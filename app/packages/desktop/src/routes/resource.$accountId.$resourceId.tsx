@@ -7,7 +7,7 @@ import { getDb } from "../db/client";
 import { getPlugin } from "../plugins/loader";
 import { AssignOutputModal } from "../components/AssignOutputModal";
 import { getSqlSession, setSqlSession } from "../lib/sql-session";
-import { sqlQuery, sqlExecute, buildHostServices, buildKvHostServices, kvCommand } from "../lib/sql-drivers";
+import { sqlQuery, sqlExecute, buildHostServices, buildKvHostServices, buildMemcachedHostServices, kvCommand, memcachedCommand } from "../lib/sql-drivers";
 
 export const Route = createFileRoute("/resource/$accountId/$resourceId")({
   component: ResourceDetailPage,
@@ -46,6 +46,7 @@ function ResourceDetailPage() {
   const [pgError, setPgError] = useState<string | null>(null);
   const [kvConnected, setKvConnected] = useState(false);
   const [isKvPlugin, setIsKvPlugin] = useState(false);
+  const [kvDriverName, setKvDriverName] = useState<string | null>(null);
 
   const connectionStringRef = useRef("");
   const setAccountConnected = useUIStore((s) => s.setAccountConnected);
@@ -103,7 +104,9 @@ function ResourceDetailPage() {
               const fastServices = loaded.plugin.manifest.sqlDriver
                 ? buildHostServices(session.connectionString)
                 : loaded.plugin.manifest.kvDriver
-                  ? buildKvHostServices(session.connectionString)
+                  ? loaded.plugin.manifest.kvDriver.driver === "memcached"
+                    ? buildMemcachedHostServices(session.connectionString)
+                    : buildKvHostServices(session.connectionString)
                   : undefined;
               const immediateSchema = loaded.plugin.createClient(
                 { connectionString: session.connectionString },
@@ -145,7 +148,10 @@ function ResourceDetailPage() {
         const sqlDriverDecl = loaded.plugin.manifest.sqlDriver;
         const kvDriverDecl = loaded.plugin.manifest.kvDriver;
         const isKv = !sqlDriverDecl && !!kvDriverDecl;
-        if (!cancelled) setIsKvPlugin(isKv);
+        if (!cancelled) {
+          setIsKvPlugin(isKv);
+          setKvDriverName(kvDriverDecl?.driver ?? null);
+        }
         const cs = sqlDriverDecl
           ? credentials[sqlDriverDecl.credentialKey]
           : kvDriverDecl
@@ -154,7 +160,9 @@ function ResourceDetailPage() {
         const hostServices = sqlDriverDecl && cs
           ? buildHostServices(cs)
           : kvDriverDecl && cs
-            ? buildKvHostServices(cs)
+            ? kvDriverDecl.driver === "memcached"
+              ? buildMemcachedHostServices(cs)
+              : buildKvHostServices(cs)
             : undefined;
 
         if (cs) {
@@ -295,8 +303,9 @@ function ResourceDetailPage() {
       )}
 
       {isKvPlugin && (
-        <RedisConsole
+        <KvConsole
           connectionString={connectionStringRef.current}
+          driverName={kvDriverName ?? "redis"}
           connected={kvConnected}
         />
       )}
@@ -311,7 +320,7 @@ interface ConsoleLine {
   text: string;
 }
 
-function RedisConsole({ connectionString, connected }: { connectionString: string; connected: boolean }) {
+function KvConsole({ connectionString, driverName, connected }: { connectionString: string; driverName: string; connected: boolean }) {
   const [input, setInput] = useState("");
   const [lines, setLines] = useState<ConsoleLine[]>([]);
   const [running, setRunning] = useState(false);
@@ -337,7 +346,8 @@ function RedisConsole({ connectionString, connected }: { connectionString: strin
     try {
       const tokens = tokenize(trimmed);
       const [cmd, ...args] = tokens;
-      const result = await kvCommand(connectionString, cmd, ...args);
+      const execFn = driverName === "memcached" ? memcachedCommand : kvCommand;
+      const result = await execFn(connectionString, cmd, ...args);
       const formatted = formatRedisResult(result);
       setLines((prev) => [...prev, { kind: "output", text: formatted }]);
     } catch (e) {
@@ -417,7 +427,7 @@ function RedisConsole({ connectionString, connected }: { connectionString: strin
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={connected ? "PING" : "connecting…"}
+          placeholder={connected ? (driverName === "memcached" ? "STATS" : "PING") : "connecting…"}
           disabled={!connected || running}
           className="flex-1 bg-transparent font-mono text-xs text-gray-200 placeholder-gray-700 focus:outline-none disabled:opacity-40"
           autoComplete="off"

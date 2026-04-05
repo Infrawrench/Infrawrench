@@ -6,6 +6,7 @@ import initSqlJs, { type Database as SqlJsDb } from "sql.js";
 import { Pool as PgPool } from "pg";
 import mysql from "mysql2/promise";
 import Redis from "ioredis";
+import Memjs from "memjs";
 import { MIGRATIONS } from "../src/db/schema";
 
 // ── Window ────────────────────────────────────────────────────────────────────
@@ -202,6 +203,59 @@ ipcMain.handle("kv_command", async (_e, {
     return await fn.call(client, ...(args ?? []));
   } finally {
     client.disconnect();
+  }
+});
+
+// ── Memcached (memjs) ─────────────────────────────────────────────────────────
+
+ipcMain.handle("memcached_command", async (_e, {
+  connectionString, command, args,
+}: { connectionString: string; command: string; args?: (string | number)[] }) => {
+  const servers = connectionString.replace(/^memcacheds?:\/\//, "");
+  const client = Memjs.Client.create(servers, { timeout: 5, retries: 0 });
+  try {
+    const cmd = command.toUpperCase();
+    const a = args ?? [];
+    switch (cmd) {
+      case "GET": {
+        const { value } = await client.get(String(a[0] ?? ""));
+        return value ? value.toString() : null;
+      }
+      case "SET": {
+        const ok = await client.set(String(a[0] ?? ""), String(a[1] ?? ""), { expires: Number(a[2] ?? 0) });
+        return ok ? "STORED" : "NOT STORED";
+      }
+      case "DELETE":
+      case "DEL": {
+        const ok = await client.delete(String(a[0] ?? ""));
+        return ok ? "DELETED" : "NOT FOUND";
+      }
+      case "STATS": {
+        const results = await client.stats();
+        return results
+          .map(({ server, stats }: { server: string; stats: Record<string, string> }) =>
+            `# ${server}\n` + Object.entries(stats).map(([k, v]) => `${k}: ${v}`).join("\n"),
+          )
+          .join("\n\n");
+      }
+      case "VERSION": {
+        const results = await client.stats();
+        return results
+          .map(({ server, stats }: { server: string; stats: Record<string, string> }) =>
+            `${server}: ${stats["version"] ?? "?"}`,
+          )
+          .join("\n");
+      }
+      case "FLUSH":
+      case "FLUSH_ALL": {
+        await client.flush();
+        return "OK";
+      }
+      default:
+        throw new Error(`Unknown Memcached command: ${command}`);
+    }
+  } finally {
+    client.quit();
   }
 });
 

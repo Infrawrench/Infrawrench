@@ -14,6 +14,7 @@ const blessedRegistry = registry as PluginRegistry;
 const PLUGIN_MODULES: Record<string, () => Promise<{ plugin: Plugin }>> = {
   "@infrawrench/plugin-digitalocean": () => import("@infrawrench/plugin-digitalocean"),
   "@infrawrench/plugin-kubernetes": () => import("@infrawrench/plugin-kubernetes"),
+  "@infrawrench/plugin-memcached": () => import("@infrawrench/plugin-memcached"),
   "@infrawrench/plugin-mysql": () => import("@infrawrench/plugin-mysql"),
   "@infrawrench/plugin-postgres": () => import("@infrawrench/plugin-postgres"),
   "@infrawrench/plugin-redis": () => import("@infrawrench/plugin-redis"),

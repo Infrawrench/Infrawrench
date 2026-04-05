@@ -43,3 +43,21 @@ export function buildKvHostServices(connectionString: string): HostServices {
     },
   };
 }
+
+/**
+ * Run a Memcached command via the main process memjs connection.
+ */
+export function memcachedCommand(connectionString: string, command: string, ...args: (string | number)[]): Promise<unknown> {
+  return invoke<unknown>("memcached_command", { connectionString, command, args });
+}
+
+/**
+ * Build a HostServices object with KV services bound to a Memcached connection string.
+ */
+export function buildMemcachedHostServices(connectionString: string): HostServices {
+  return {
+    kv: {
+      command: (cmd, ...args) => memcachedCommand(connectionString, cmd, ...args),
+    },
+  };
+}

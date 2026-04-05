@@ -6,7 +6,7 @@ import { useDroppable } from "@dnd-kit/core";
 import { useUIStore } from "@infrawrench/ui";
 import { getDb } from "../db/client";
 import { loadPlugins, getPlugin } from "../plugins/loader";
-import { buildHostServices, buildKvHostServices } from "../lib/sql-drivers";
+import { buildHostServices, buildKvHostServices, buildMemcachedHostServices } from "../lib/sql-drivers";
 import { getSqlSession, setSqlSession } from "../lib/sql-session";
 
 interface PinnedRow {
@@ -246,7 +246,9 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
         if (meta?.kvDriverName && meta.kvCredentialKey) {
           const cs = creds[meta.kvCredentialKey];
           if (!cs) return;
-          const hostServices = buildKvHostServices(cs);
+          const hostServices = meta.kvDriverName === "memcached"
+            ? buildMemcachedHostServices(cs)
+            : buildKvHostServices(cs);
           try {
             const loaded = await getPlugin(row.plugin_id);
             if (!loaded) throw new Error(`Plugin not found: ${row.plugin_id}`);
