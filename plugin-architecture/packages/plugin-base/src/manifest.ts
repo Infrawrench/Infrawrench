@@ -7,6 +7,8 @@ export interface CredentialField {
   /** Rendered as a password input and encrypted at rest */
   sensitive: boolean;
   placeholder?: string;
+  /** Pre-filled value shown in the input when the modal opens */
+  defaultValue?: string;
   /** Use a textarea instead of a single-line input (e.g. kubeconfig YAML) */
   multiline?: boolean;
 }
@@ -37,6 +39,17 @@ export interface KvDriverDeclaration {
   credentialKey: string;
 }
 
+/**
+ * Declares that this plugin manages a Docker daemon.
+ * The host manages the connection; the plugin issues typed operations via DockerHostServices.
+ */
+export interface DockerDriverDeclaration {
+  /** Identifier for the Docker engine — always "docker". */
+  driver: string;
+  /** The key in the account credentials that holds the Docker host URI. */
+  credentialKey: string;
+}
+
 export interface PluginManifest {
   /** Unique identifier — must match the blessed registry entry */
   id: string;
@@ -64,6 +77,11 @@ export interface PluginManifest {
    * enabling Redis-style command execution.
    */
   kvDriver?: KvDriverDeclaration;
+  /**
+   * If present, the host will inject DockerHostServices into the plugin client,
+   * enabling Docker daemon operations.
+   */
+  dockerDriver?: DockerDriverDeclaration;
 }
 
 /**
@@ -87,11 +105,22 @@ export interface KvHostServices {
   command(cmd: string, ...args: (string | number)[]): Promise<unknown>;
 }
 
+/**
+ * Host-provided Docker daemon operations injected into plugin clients.
+ * The host owns the connection; the plugin issues typed operation strings.
+ */
+export interface DockerHostServices {
+  /** Run a Docker operation and return the result */
+  command(op: string, params?: Record<string, unknown>): Promise<unknown>;
+}
+
 export interface HostServices {
   /** Present only when the plugin's manifest declares a sqlDriver */
   sql?: SqlHostServices;
   /** Present only when the plugin's manifest declares a kvDriver */
   kv?: KvHostServices;
+  /** Present only when the plugin's manifest declares a dockerDriver */
+  docker?: DockerHostServices;
 }
 
 export interface PluginClient {

@@ -96,4 +96,19 @@ export const MIGRATIONS = [
     UNIQUE(dashboard_id, resource_id)
   );
   `,
+  // v2 — SSH tunnel configs for accounts that connect through SSH
+  `
+  CREATE TABLE IF NOT EXISTS ssh_tunnel_configs (
+    id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL UNIQUE REFERENCES accounts(id) ON DELETE CASCADE,
+    ssh_host TEXT NOT NULL,
+    ssh_port INTEGER NOT NULL DEFAULT 22,
+    ssh_user TEXT NOT NULL DEFAULT 'root',
+    remote_host TEXT NOT NULL DEFAULT '127.0.0.1',
+    remote_port INTEGER NOT NULL,
+    encrypted_private_key TEXT NOT NULL,
+    private_key_iv TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  `,
 ] as const;

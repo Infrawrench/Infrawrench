@@ -2,6 +2,14 @@
   "schemaVersion": "1",
   "entries": [
     {
+      "id": "docker",
+      "packageName": "@infrawrench/plugin-docker",
+      "version": "0.1.0",
+      "checksum": "sha256-placeholder-replace-with-real-checksum",
+      "blessedAt": "2026-04-05T00:00:00Z",
+      "blessedBy": "astrid"
+    },
+    {
       "id": "digitalocean",
       "packageName": "@infrawrench/plugin-digitalocean",
       "version": "0.1.0",

@@ -30,6 +30,10 @@ interface UIState {
   /** Increment to tell DashboardView to reload its pins */
   dashboardPinsVersion: number;
   bumpDashboardPins: () => void;
+
+  /** Increment to tell SidebarAccounts to reload */
+  accountsVersion: number;
+  bumpAccounts: () => void;
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -59,4 +63,7 @@ export const useUIStore = create<UIState>((set) => ({
 
   dashboardPinsVersion: 0,
   bumpDashboardPins: () => set((s) => ({ dashboardPinsVersion: s.dashboardPinsVersion + 1 })),
+
+  accountsVersion: 0,
+  bumpAccounts: () => set((s) => ({ accountsVersion: s.accountsVersion + 1 })),
 }));

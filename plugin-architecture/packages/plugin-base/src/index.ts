@@ -9,6 +9,8 @@ export type {
   KvHostServices,
   SqlDriverDeclaration,
   KvDriverDeclaration,
+  DockerDriverDeclaration,
+  DockerHostServices,
 } from "./manifest.js";
 
 // Resource type definitions

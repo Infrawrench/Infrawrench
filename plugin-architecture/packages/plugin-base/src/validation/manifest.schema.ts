@@ -28,4 +28,8 @@ export const pluginManifestSchema = z.object({
     driver: z.string().min(1),
     credentialKey: z.string().min(1),
   }).optional(),
+  dockerDriver: z.object({
+    driver: z.string().min(1),
+    credentialKey: z.string().min(1),
+  }).optional(),
 });

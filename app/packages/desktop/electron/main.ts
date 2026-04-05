@@ -3,7 +3,8 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import initSqlJs, { type Database as SqlJsDb } from "sql.js";
-import { sqlDrivers, kvDrivers } from "./drivers";
+import { sqlDrivers, kvDrivers, dockerDrivers } from "./drivers";
+import { openTunnel, closeTunnel, closeAllTunnels, getActiveTunnels, type SshTunnelConfig } from "./ssh-tunnel";
 import { MIGRATIONS } from "../src/db/schema";
 
 // ── Window ────────────────────────────────────────────────────────────────────
@@ -38,6 +39,8 @@ app.whenReady().then(() => {
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
+
+app.on("before-quit", () => closeAllTunnels());
 
 // ── Encryption ────────────────────────────────────────────────────────────────
 
@@ -168,3 +171,26 @@ ipcMain.handle("plugin_kv_command", async (_e, {
   if (!driver) throw new Error(`No KV driver registered for "${driverId}"`);
   return driver.command(connectionString, command, args ?? []);
 });
+
+// ── Plugin Docker drivers ─────────────────────────────────────────────────────
+
+ipcMain.handle("plugin_docker_command", async (_e, {
+  driverId, dockerHost, op, params,
+}: { driverId: string; dockerHost: string; op: string; params?: Record<string, unknown> }) => {
+  const driver = dockerDrivers.get(driverId);
+  if (!driver) throw new Error(`No Docker driver registered for "${driverId}"`);
+  return driver.command(dockerHost, op, params ?? {});
+});
+
+// ── SSH tunnels ───────────────────────────────────────────────────────────────
+
+ipcMain.handle("ssh_open_tunnel", (_e, config: SshTunnelConfig) =>
+  openTunnel(config),
+);
+
+ipcMain.handle("ssh_close_tunnel", (_e, { tunnelId }: { tunnelId: string }) => {
+  closeTunnel(tunnelId);
+  return { ok: true };
+});
+
+ipcMain.handle("ssh_get_active_tunnels", () => getActiveTunnels());

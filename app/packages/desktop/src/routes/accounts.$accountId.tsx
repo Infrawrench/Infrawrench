@@ -3,9 +3,11 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { invoke } from "../lib/invoke";
 import { useDraggable } from "@dnd-kit/core";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
+import { useUIStore } from "@infrawrench/ui";
 import { getDb } from "../db/client";
 import { getPlugin } from "../plugins/loader";
 import { pinResource, type DraggableResource } from "../lib/pins";
+import { buildPluginHostServices } from "../lib/sql-drivers";
 
 export const Route = createFileRoute("/accounts/$accountId")({
   component: AccountPage,
@@ -29,11 +31,13 @@ interface ResourceGroup {
 function AccountPage() {
   const { accountId } = Route.useParams();
   const navigate = useNavigate();
+  const bumpAccounts = useUIStore((s) => s.bumpAccounts);
   const [account, setAccount] = useState<AccountRow | null>(null);
   const [groups, setGroups] = useState<ResourceGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pinned, setPinned] = useState<Set<string>>(new Set());
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -59,7 +63,8 @@ function AccountPage() {
         const loaded = await getPlugin(row.plugin_id);
         if (!loaded) throw new Error(`Plugin "${row.plugin_id}" not loaded`);
         const { plugin } = loaded;
-        const client = plugin.createClient(credentials);
+        const services = buildPluginHostServices(plugin.manifest, credentials);
+        const client = plugin.createClient(credentials, services);
         const topLevelTypes = plugin.resourceTypes.filter((t) => !t.parentTypeId);
 
         const results = await Promise.allSettled(
@@ -138,6 +143,14 @@ function AccountPage() {
     }
   }
 
+  async function deleteAccount() {
+    const db = await getDb();
+    // Cascade deletes resources, dashboard_pins, secret_field_states, ssh_tunnel_configs via FK
+    await db.execute("DELETE FROM accounts WHERE id = $1", [accountId]);
+    bumpAccounts();
+    navigate({ to: "/" });
+  }
+
   function openDetail(resource: ResourceInstance) {
     navigate({
       to: "/resource/$accountId/$resourceId",
@@ -154,9 +167,35 @@ function AccountPage() {
 
   return (
     <div className="p-6 overflow-auto">
-      <div className="mb-6">
-        <h1 className="text-lg font-semibold text-gray-100">{account?.display_name}</h1>
-        <p className="text-xs text-gray-500 mt-0.5">{account?.plugin_id}</p>
+      <div className="mb-6 flex items-start justify-between">
+        <div>
+          <h1 className="text-lg font-semibold text-gray-100">{account?.display_name}</h1>
+          <p className="text-xs text-gray-500 mt-0.5">{account?.plugin_id}</p>
+        </div>
+        {confirmDelete ? (
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-400">Remove this account?</span>
+            <button
+              onClick={() => void deleteAccount()}
+              className="px-2 py-1 text-xs bg-red-600 hover:bg-red-500 text-white rounded-lg transition-colors"
+            >
+              Remove
+            </button>
+            <button
+              onClick={() => setConfirmDelete(false)}
+              className="px-2 py-1 text-xs text-gray-500 hover:text-gray-300 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => setConfirmDelete(true)}
+            className="text-xs text-gray-600 hover:text-red-400 transition-colors px-2 py-1 rounded hover:bg-red-500/10"
+          >
+            Remove account
+          </button>
+        )}
       </div>
 
       {groups.map((group) =>

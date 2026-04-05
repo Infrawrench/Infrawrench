@@ -6,7 +6,8 @@ import { useDroppable } from "@dnd-kit/core";
 import { useUIStore } from "@infrawrench/ui";
 import { getDb } from "../db/client";
 import { loadPlugins, getPlugin } from "../plugins/loader";
-import { buildHostServices, buildKvHostServices, buildMemcachedHostServices } from "../lib/sql-drivers";
+import { buildHostServices, buildKvHostServices, buildMemcachedHostServices, buildDockerHostServices } from "../lib/sql-drivers";
+import { resolveTunneledHost } from "../lib/ssh-tunnel";
 import { getSqlSession, setSqlSession } from "../lib/sql-session";
 
 interface PinnedRow {
@@ -26,14 +27,18 @@ interface PluginMeta {
   sqlCredentialKey?: string | undefined;
   kvDriverName?: string | undefined;
   kvCredentialKey?: string | undefined;
+  dockerDriverName?: string | undefined;
+  dockerCredentialKey?: string | undefined;
+  tableCountLabel: string;
 }
 
 interface CardStatus {
   phase: "connecting" | "ok" | "error";
-  // postgres resource stats
+  // resource stats
   pgVersion?: string | undefined;
   dbSize?: string | undefined;
   tableCount?: number | undefined;
+  tableCountLabel?: string | undefined;
   // account summary stats
   resourceCounts?: { typeLabel: string; count: number }[] | undefined;
   error?: string | undefined;
@@ -42,6 +47,7 @@ interface CardStatus {
 interface DashboardViewProps {
   dashboardId: string;
 }
+
 
 export function DashboardView({ dashboardId }: DashboardViewProps) {
   const navigate = useNavigate();
@@ -67,13 +73,17 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
       const [db, plugins] = await Promise.all([getDb(), loadPlugins()]);
       const meta: Record<string, PluginMeta> = {};
       for (const p of plugins) {
-        meta[p.plugin.manifest.id] = {
-          logoSvg: p.plugin.manifest.logoSvg,
-          displayName: p.plugin.manifest.displayName,
-          sqlDriverName: p.plugin.manifest.sqlDriver?.driver,
-          sqlCredentialKey: p.plugin.manifest.sqlDriver?.credentialKey,
-          kvDriverName: p.plugin.manifest.kvDriver?.driver,
-          kvCredentialKey: p.plugin.manifest.kvDriver?.credentialKey,
+        const m = p.plugin.manifest;
+        meta[m.id] = {
+          logoSvg: m.logoSvg,
+          displayName: m.displayName,
+          sqlDriverName: m.sqlDriver?.driver,
+          sqlCredentialKey: m.sqlDriver?.credentialKey,
+          kvDriverName: m.kvDriver?.driver,
+          kvCredentialKey: m.kvDriver?.credentialKey,
+          dockerDriverName: m.dockerDriver?.driver,
+          dockerCredentialKey: m.dockerDriver?.credentialKey,
+          tableCountLabel: m.dockerDriver ? "Running" : "Tables",
         };
       }
       setPluginMeta(meta);
@@ -106,7 +116,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
         for (const row of rows) {
           if (prev[row.resource_id]?.phase === "ok") {
             // Keep the existing connected status
-            next[row.resource_id] = prev[row.resource_id];
+            next[row.resource_id] = prev[row.resource_id]!;
           } else if (row.resource_type_id !== "__account__" && getSqlSession(row.account_id)) {
             // Session alive — restore from cached outputs_json
             try {
@@ -177,7 +187,8 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
           return credsByAccount.has(r.account_id) &&
             (r.resource_type_id === "__account__" ||
               (!!m?.sqlDriverName && !!m.sqlCredentialKey) ||
-              (!!m?.kvDriverName && !!m.kvCredentialKey));
+              (!!m?.kvDriverName && !!m.kvCredentialKey) ||
+              (!!m?.dockerDriverName && !!m.dockerCredentialKey));
         })
         .map((r) => r.resource_id);
 
@@ -268,6 +279,36 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
               setCardStatus((prev) => ({
                 ...prev,
                 [row.resource_id]: { phase: "ok", pgVersion: version, dbSize: size },
+              }));
+            }
+          } catch (e) {
+            if (!cancelled) {
+              setCardStatus((prev) => ({
+                ...prev,
+                [row.resource_id]: { phase: "error", error: String(e) },
+              }));
+            }
+          }
+          return;
+        }
+
+        // ── Docker resource card ──────────────────────────────────────────
+        if (meta?.dockerDriverName && meta.dockerCredentialKey) {
+          const rawDockerHost = creds[meta.dockerCredentialKey] ?? "";
+          try {
+            const effectiveDockerHost = await resolveTunneledHost(row.account_id, rawDockerHost);
+            const hostServices = buildDockerHostServices(meta.dockerDriverName, effectiveDockerHost);
+            const loaded = await getPlugin(row.plugin_id);
+            if (!loaded) throw new Error(`Plugin not found: ${row.plugin_id}`);
+            const client = loaded.plugin.createClient(creds, hostServices);
+            const stats = await client.fetchStats?.();
+            const { version = "", size = "", tableCount = 0 } = stats ?? {};
+
+            if (!cancelled) {
+              setAccountConnected(row.account_id, true);
+              setCardStatus((prev) => ({
+                ...prev,
+                [row.resource_id]: { phase: "ok", pgVersion: version, dbSize: size, tableCount, tableCountLabel: "Running" },
               }));
             }
           } catch (e) {
@@ -576,7 +617,7 @@ function ConnectionFooter({ status }: { status?: CardStatus | undefined }) {
       )}
       {status.tableCount != null && (
         <div className="flex justify-between text-xs">
-          <span className="text-gray-600">Tables</span>
+          <span className="text-gray-600">{status.tableCountLabel ?? "Tables"}</span>
           <span className="text-gray-400">{status.tableCount}</span>
         </div>
       )}

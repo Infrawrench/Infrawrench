@@ -56,4 +56,10 @@ export interface ResourceTypeDefinition {
   dashboardPinnable: boolean;
   /** Named icon key within the plugin's icon set, falls back to the plugin logo */
   iconKey?: string;
+  /**
+   * When present, the host renders a "Connect to service via SSH…" context menu item
+   * for instances of this type. `hostOutputKey` names the output key whose resolved
+   * value is used as the SSH server address (e.g. "ipv4").
+   */
+  sshEndpoint?: { hostOutputKey: string };
 }

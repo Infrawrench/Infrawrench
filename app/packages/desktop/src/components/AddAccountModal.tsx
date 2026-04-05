@@ -47,7 +47,7 @@ export function AddAccountModal({ onClose, onAdded }: AddAccountModalProps) {
   function pickPlugin(p: PluginOption) {
     setSelected(p);
     setAccountName("");
-    setFieldValues(Object.fromEntries(p.credentialFields.map((f) => [f.key, ""])));
+    setFieldValues(Object.fromEntries(p.credentialFields.map((f) => [f.key, f.defaultValue ?? ""])));
     setError(null);
     setStep("enter-credentials");
   }
@@ -56,7 +56,7 @@ export function AddAccountModal({ onClose, onAdded }: AddAccountModalProps) {
     if (!selected) return;
     if (!accountName.trim()) { setError("Account name is required."); return; }
     for (const f of selected.credentialFields) {
-      if (!fieldValues[f.key]?.trim()) {
+      if (!fieldValues[f.key]?.trim() && !f.defaultValue) {
         setError(`${f.label} is required.`);
         return;
       }
@@ -66,7 +66,10 @@ export function AddAccountModal({ onClose, onAdded }: AddAccountModalProps) {
     setError(null);
     try {
       // Encrypt credentials via Tauri AES-256-GCM command
-      const credJson = JSON.stringify(fieldValues);
+      const resolvedValues = Object.fromEntries(
+        selected.credentialFields.map((f) => [f.key, fieldValues[f.key]?.trim() || f.defaultValue || ""])
+      );
+      const credJson = JSON.stringify(resolvedValues);
       const { ciphertext, iv } = await invoke<{ ciphertext: string; iv: string }>(
         "encrypt_value",
         { plaintext: credJson },

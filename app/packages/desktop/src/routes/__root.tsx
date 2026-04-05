@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { createRootRoute, Outlet, useNavigate } from "@tanstack/react-router";
+import { createRootRoute, Outlet, useNavigate, useRouter } from "@tanstack/react-router";
 import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { useUIStore } from "@infrawrench/ui";
 import { AddAccountModal } from "../components/AddAccountModal";
@@ -13,13 +13,13 @@ export const Route = createRootRoute({
 });
 
 function RootLayout() {
-  const { sidebarCollapsed, toggleSidebar, bumpDashboardPins } = useUIStore();
+  const { sidebarCollapsed, toggleSidebar, bumpDashboardPins, accountsVersion, bumpAccounts } = useUIStore();
   const navigate = useNavigate();
+  const router = useRouter();
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
   );
   const [showAddAccount, setShowAddAccount] = useState(false);
-  const [accountsKey, setAccountsKey] = useState(0);
   const [draggingResource, setDraggingResource] = useState<DraggableResource | null>(null);
 
   async function handleDragEnd(event: DragEndEvent) {
@@ -54,11 +54,32 @@ function RootLayout() {
       onDragCancel={() => setDraggingResource(null)}
     >
       <div className="flex flex-col h-screen bg-gray-950 text-gray-100 select-none">
-        {/* macOS title bar — full-width drag region that clears the traffic lights */}
+        {/* macOS title bar — drag region with back/forward buttons */}
         <div
-          className="h-8 flex-shrink-0 border-b border-gray-800/50"
+          className="h-8 flex-shrink-0 border-b border-gray-800/50 flex items-center"
           style={{ WebkitAppRegion: draggingResource ? "no-drag" : "drag" } as React.CSSProperties}
-        />
+        >
+          {/* Buttons must opt out of drag region */}
+          <div
+            className="flex items-center gap-0.5 pl-20"
+            style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+          >
+            <button
+              onClick={() => router.history.back()}
+              className="w-6 h-6 flex items-center justify-center rounded text-gray-400 hover:text-gray-100 hover:bg-gray-700 transition-colors text-base leading-none font-medium"
+              aria-label="Go back"
+            >
+              ‹
+            </button>
+            <button
+              onClick={() => router.history.forward()}
+              className="w-6 h-6 flex items-center justify-center rounded text-gray-400 hover:text-gray-100 hover:bg-gray-700 transition-colors text-base leading-none font-medium"
+              aria-label="Go forward"
+            >
+              ›
+            </button>
+          </div>
+        </div>
 
         <div className="flex flex-1 overflow-hidden">
         {/* Sidebar */}
@@ -78,7 +99,7 @@ function RootLayout() {
 
             <div className="flex-1 overflow-y-auto py-2">
               <SidebarDashboards />
-              <SidebarAccounts refreshKey={accountsKey} />
+              <SidebarAccounts refreshKey={accountsVersion} />
             </div>
 
             {/* Add account button pinned to the bottom */}
@@ -114,7 +135,7 @@ function RootLayout() {
         {showAddAccount && (
           <AddAccountModal
             onClose={() => setShowAddAccount(false)}
-            onAdded={() => setAccountsKey((k) => k + 1)}
+            onAdded={() => bumpAccounts()}
           />
         )}
         </div>{/* end flex row */}

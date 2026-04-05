@@ -7,7 +7,9 @@ import { getDb } from "../db/client";
 import { getPlugin } from "../plugins/loader";
 import { AssignOutputModal } from "../components/AssignOutputModal";
 import { getSqlSession, setSqlSession } from "../lib/sql-session";
-import { sqlQuery, sqlExecute, buildHostServices, buildKvHostServices, kvCommand } from "../lib/sql-drivers";
+import { sqlQuery, sqlExecute, buildHostServices, buildKvHostServices, kvCommand, buildDockerHostServices } from "../lib/sql-drivers";
+import { resolveTunneledHost } from "../lib/ssh-tunnel";
+import { DockerActionsPanel } from "../components/DockerActionsPanel";
 
 export const Route = createFileRoute("/resource/$accountId/$resourceId")({
   component: ResourceDetailPage,
@@ -47,6 +49,9 @@ function ResourceDetailPage() {
   const [kvConnected, setKvConnected] = useState(false);
   const [isKvPlugin, setIsKvPlugin] = useState(false);
   const [kvDriverName, setKvDriverName] = useState<string | null>(null);
+  const [isDockerPlugin, setIsDockerPlugin] = useState(false);
+  const [dockerDriverName, setDockerDriverName] = useState<string | null>(null);
+  const [dockerHostRef] = useState({ current: "" });
 
   const connectionStringRef = useRef("");
   const sqlDriverIdRef = useRef("");
@@ -148,21 +153,36 @@ function ResourceDetailPage() {
 
         const sqlDriverDecl = loaded.plugin.manifest.sqlDriver;
         const kvDriverDecl = loaded.plugin.manifest.kvDriver;
+        const dockerDriverDecl = loaded.plugin.manifest.dockerDriver;
         const isKv = !sqlDriverDecl && !!kvDriverDecl;
+        const isDocker = !sqlDriverDecl && !kvDriverDecl && !!dockerDriverDecl;
         if (!cancelled) {
           setIsKvPlugin(isKv);
           setKvDriverName(kvDriverDecl?.driver ?? null);
+          setIsDockerPlugin(isDocker);
+          setDockerDriverName(dockerDriverDecl?.driver ?? null);
         }
         const cs = sqlDriverDecl
           ? credentials[sqlDriverDecl.credentialKey]
           : kvDriverDecl
             ? credentials[kvDriverDecl.credentialKey]
-            : undefined;
+            : dockerDriverDecl
+              ? credentials[dockerDriverDecl.credentialKey]
+              : undefined;
+
+        let effectiveCs = cs ?? "";
+        if (isDocker && cs) {
+          effectiveCs = await resolveTunneledHost(accountId, cs);
+          dockerHostRef.current = effectiveCs;
+        }
+
         const hostServices = sqlDriverDecl && cs
           ? buildHostServices(sqlDriverDecl.driver, cs)
           : kvDriverDecl && cs
             ? buildKvHostServices(kvDriverDecl.driver, cs)
-            : undefined;
+            : dockerDriverDecl && effectiveCs
+              ? buildDockerHostServices(dockerDriverDecl.driver, effectiveCs)
+              : undefined;
 
         if (cs) {
           connectionStringRef.current = cs;
@@ -178,7 +198,14 @@ function ResourceDetailPage() {
         let enrichedResource: ResourceInstance = foundResource;
         let sqlOk = !!session;
 
-        if (hostServices && cs && isKv) {
+        if (hostServices && isDocker) {
+          // Docker plugin — verify connection via version check
+          try {
+            await client.fetchStats?.();
+            if (!cancelled) setAccountConnected(accountId, true);
+            sqlOk = true;
+          } catch { /* ignore */ }
+        } else if (hostServices && cs && isKv) {
           // KV plugin — just verify connection with a PING
           try {
             await client.fetchStats?.();
@@ -311,6 +338,14 @@ function ResourceDetailPage() {
           connected={kvConnected}
         />
       )}
+
+      {isDockerPlugin && resource && (
+        <DockerActionsPanel
+          containerId={String(resource.resolvedOutputs["containerId"] ?? resource.externalId ?? "")}
+          driverId={dockerDriverName ?? "docker"}
+          dockerHost={dockerHostRef.current}
+        />
+      )}
     </div>
   );
 }
@@ -348,7 +383,7 @@ function KvConsole({ connectionString, driverName, connected }: { connectionStri
     try {
       const tokens = tokenize(trimmed);
       const [cmd, ...args] = tokens;
-      const result = await kvCommand(driverName, connectionString, cmd, ...args);
+      const result = await kvCommand(driverName, connectionString, cmd ?? "", ...args);
       const formatted = formatRedisResult(result);
       setLines((prev) => [...prev, { kind: "output", text: formatted }]);
     } catch (e) {

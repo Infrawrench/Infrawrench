@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { invoke } from "../lib/invoke";
 import { useDraggable } from "@dnd-kit/core";
@@ -7,6 +7,8 @@ import { useUIStore } from "@infrawrench/ui";
 import { getDb } from "../db/client";
 import { loadPlugins, getPlugin } from "../plugins/loader";
 import type { DraggableResource } from "../lib/pins";
+import { buildPluginHostServices } from "../lib/sql-drivers";
+import { SshTunnelModal } from "./SshTunnelModal";
 
 interface Account {
   id: string;
@@ -39,8 +41,22 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [accountResources, setAccountResources] = useState<Record<string, AccountResourcesState>>({});
+  // typeId → hostOutputKey for resources with sshEndpoint
+  const [sshEndpointByTypeId, setSshEndpointByTypeId] = useState<Record<string, string>>({});
+  // resourceId → sshHost value
+  const [resourceSshHosts, setResourceSshHosts] = useState<Record<string, string>>({});
+  // context menu state
+  const [contextMenu, setContextMenu] = useState<{
+    x: number; y: number;
+    resourceId: string; sshHost: string; accountId: string;
+  } | null>(null);
+  // SSH tunnel modal target
+  const [tunnelTarget, setTunnelTarget] = useState<{
+    sshHost: string; sourceAccountId: string;
+  } | null>(null);
   const navigate = useNavigate();
   const connectedAccounts = useUIStore((s) => s.connectedAccounts);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -64,6 +80,17 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
             { displayName: p.plugin.manifest.displayName, logoSvg: p.plugin.manifest.logoSvg },
           ]),
         );
+
+        // Build sshEndpoint lookup from all resource types
+        const sshMap: Record<string, string> = {};
+        for (const p of plugins) {
+          for (const rt of p.plugin.resourceTypes) {
+            if (rt.sshEndpoint) {
+              sshMap[rt.id] = rt.sshEndpoint.hostOutputKey;
+            }
+          }
+        }
+        if (!cancelled) setSshEndpointByTypeId(sshMap);
 
         // Group accounts by plugin
         const groupMap = new Map<string, PluginGroup>();
@@ -125,7 +152,8 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
       const loaded = await getPlugin(account.pluginId);
       if (!loaded) throw new Error(`Plugin "${account.pluginId}" not loaded`);
       const { plugin } = loaded;
-      const client = plugin.createClient(credentials);
+      const services = buildPluginHostServices(plugin.manifest, credentials);
+      const client = plugin.createClient(credentials, services);
       const topLevelTypes = plugin.resourceTypes.filter((t) => !t.parentTypeId);
 
       const results = await Promise.allSettled(
@@ -141,6 +169,21 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
         ...prev,
         [id]: { loading: false, error: null, resources: allResources },
       }));
+
+      // Record SSH host values for resources with sshEndpoint
+      const sshHosts: Record<string, string> = {};
+      for (const r of allResources) {
+        const hostOutputKey = sshEndpointByTypeId[r.resourceTypeId];
+        if (hostOutputKey) {
+          const host = String(
+            r.resolvedOutputs[hostOutputKey] ?? r.fields[hostOutputKey] ?? "",
+          );
+          if (host) sshHosts[r.id] = host;
+        }
+      }
+      if (Object.keys(sshHosts).length > 0) {
+        setResourceSshHosts((prev) => ({ ...prev, ...sshHosts }));
+      }
     } catch (e) {
       setAccountResources((prev) => ({
         ...prev,
@@ -148,6 +191,18 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
       }));
     }
   }
+
+  // Close context menu on outside click
+  useEffect(() => {
+    if (!contextMenu) return;
+    function handleClick(e: MouseEvent) {
+      if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) {
+        setContextMenu(null);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [contextMenu]);
 
   if (loading) {
     return <div className="px-3 py-2 text-xs text-gray-600">Loading…</div>;
@@ -158,6 +213,7 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
   }
 
   return (
+    <>
     <div className="py-1">
       {groups.map((group) => (
         <div key={group.pluginId} className="mb-3">
@@ -217,6 +273,17 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
                         <SidebarResourceItem
                           key={resource.id}
                           draggable={draggable}
+                          sshHostValue={resourceSshHosts[resource.id]}
+                          onContextMenuSsh={(e, sshHost) => {
+                            e.preventDefault();
+                            setContextMenu({
+                              x: e.clientX,
+                              y: e.clientY,
+                              resourceId: resource.id,
+                              sshHost,
+                              accountId: resource.accountId,
+                            });
+                          }}
                         />
                       );
                     })}
@@ -228,10 +295,52 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
         </div>
       ))}
     </div>
+
+    {/* Context menu for SSH-accessible resources */}
+    {contextMenu && (
+      <div
+        ref={contextMenuRef}
+        style={{ position: "fixed", left: contextMenu.x, top: contextMenu.y, zIndex: 9999 }}
+        className="bg-gray-800 border border-gray-700 rounded-lg shadow-xl py-1 min-w-[200px]"
+      >
+        <button
+          className="w-full px-3 py-2 text-xs text-gray-200 hover:bg-gray-700 text-left flex items-center gap-2"
+          onClick={() => {
+            setTunnelTarget({ sshHost: contextMenu.sshHost, sourceAccountId: contextMenu.accountId });
+            setContextMenu(null);
+          }}
+        >
+          <span>⇢</span>
+          Connect to service via SSH…
+        </button>
+      </div>
+    )}
+
+    {/* SSH tunnel modal */}
+    {tunnelTarget && (
+      <SshTunnelModal
+        sshHost={tunnelTarget.sshHost}
+        sourceAccountId={tunnelTarget.sourceAccountId}
+        onClose={() => setTunnelTarget(null)}
+        onTunnelEstablished={(newAccountId) => {
+          setTunnelTarget(null);
+          void navigate({ to: "/accounts/$accountId", params: { accountId: newAccountId } });
+        }}
+      />
+    )}
+    </>
   );
 }
 
-function SidebarResourceItem({ draggable }: { draggable: DraggableResource }) {
+function SidebarResourceItem({
+  draggable,
+  sshHostValue,
+  onContextMenuSsh,
+}: {
+  draggable: DraggableResource;
+  sshHostValue?: string | undefined;
+  onContextMenuSsh?: (e: React.MouseEvent, sshHost: string) => void;
+}) {
   const navigate = useNavigate();
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `sidebar-${draggable.id}`,
@@ -248,6 +357,9 @@ function SidebarResourceItem({ draggable }: { draggable: DraggableResource }) {
         to: "/resource/$accountId/$resourceId",
         params: { accountId: draggable.accountId, resourceId: encodeURIComponent(draggable.id) },
       })}
+      onContextMenu={sshHostValue && onContextMenuSsh
+        ? (e) => onContextMenuSsh(e, sshHostValue)
+        : undefined}
     >
       <span className="text-gray-700">⠿</span>
       <span className="truncate">{draggable.displayName}</span>
