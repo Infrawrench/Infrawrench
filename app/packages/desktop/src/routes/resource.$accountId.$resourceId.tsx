@@ -6,6 +6,7 @@ import { DetailView, type QueryResult, useUIStore } from "@infrawrench/ui";
 import { getDb } from "../db/client";
 import { getPlugin } from "../plugins/loader";
 import { AssignOutputModal } from "../components/AssignOutputModal";
+import { getPgSession, setPgSession } from "../lib/pg-session";
 
 export const Route = createFileRoute("/resource/$accountId/$resourceId")({
   component: ResourceDetailPage,
@@ -17,6 +18,16 @@ interface AccountRow {
   display_name: string;
   encrypted_credentials: string;
   credentials_iv: string;
+}
+
+interface SqliteResourceRow {
+  id: string;
+  plugin_id: string;
+  resource_type_id: string;
+  account_id: string;
+  display_name: string;
+  external_id: string;
+  fields_json: string;
 }
 
 async function pgQuery(connectionString: string, sql: string): Promise<Record<string, unknown>[]> {
@@ -44,45 +55,97 @@ function ResourceDetailPage() {
     let cancelled = false;
 
     async function load() {
-      setLoading(true);
       setError(null);
-      setPgConnected(false);
       setPgError(null);
+
       try {
         const db = await getDb();
-        const rows = await db.select<AccountRow[]>(
+        const session = getPgSession(accountId);
+
+        // ── Fast path ─────────────────────────────────────────────────────
+        // If we have a cached connection + the resource is in SQLite, show
+        // the page immediately without waiting for listResources or pg queries.
+        if (session) {
+          connectionStringRef.current = session.connectionString;
+
+          const [accountRows, sqliteRows] = await Promise.all([
+            db.select<AccountRow[]>(
+              "SELECT id, plugin_id, display_name, encrypted_credentials, credentials_iv FROM accounts WHERE id = $1",
+              [accountId],
+            ),
+            db.select<SqliteResourceRow[]>(
+              "SELECT id, plugin_id, resource_type_id, account_id, display_name, external_id, fields_json FROM resources WHERE id = $1",
+              [decodedResourceId],
+            ),
+          ]);
+
+          const accountRow = accountRows[0];
+          const sqliteRes = sqliteRows[0];
+
+          if (accountRow && sqliteRes) {
+            const loaded = await getPlugin(accountRow.plugin_id);
+            if (loaded && !cancelled) {
+              const now = new Date().toISOString();
+              const immediateResource: ResourceInstance = {
+                id: sqliteRes.id,
+                pluginId: sqliteRes.plugin_id,
+                resourceTypeId: sqliteRes.resource_type_id,
+                accountId: sqliteRes.account_id,
+                displayName: sqliteRes.display_name,
+                externalId: sqliteRes.external_id,
+                fields: (() => { try { return JSON.parse(sqliteRes.fields_json); } catch { return {}; } })(),
+                resolvedOutputs: session.tablesJson ? { __tables__: session.tablesJson } : {},
+                secretStates: [],
+                createdAt: now,
+                updatedAt: now,
+              };
+              const immediateSchema = loaded.plugin.createClient({ connectionString: session.connectionString }).renderDetail(immediateResource);
+              setAccount(accountRow);
+              setLogoSvg(loaded.plugin.manifest.logoSvg);
+              setResource(immediateResource);
+              setSchema({ ...immediateSchema, status: { kind: "status-dot", status: "healthy" } });
+              setPgConnected(!!session.tablesJson);
+              setAccountConnected(accountId, true);
+              setLoading(false); // ← show the page NOW
+            }
+          }
+        } else {
+          setLoading(true);
+        }
+
+        // ── Full load (runs in background if fast path already showed the page) ──
+        const accountRows = await db.select<AccountRow[]>(
           "SELECT id, plugin_id, display_name, encrypted_credentials, credentials_iv FROM accounts WHERE id = $1",
           [accountId],
         );
-        const row = rows[0];
-        if (!row) throw new Error("Account not found");
-        if (!cancelled) setAccount(row);
+        const accountRow = accountRows[0];
+        if (!accountRow) throw new Error("Account not found");
+        if (!cancelled) setAccount(accountRow);
 
         const plaintext = await invoke<string>("decrypt_value", {
-          ciphertext: row.encrypted_credentials,
-          iv: row.credentials_iv,
+          ciphertext: accountRow.encrypted_credentials,
+          iv: accountRow.credentials_iv,
         });
         const credentials = JSON.parse(plaintext) as Record<string, string>;
 
-        const loaded = await getPlugin(row.plugin_id);
-        if (!loaded) throw new Error(`Plugin "${row.plugin_id}" not loaded`);
+        const loaded = await getPlugin(accountRow.plugin_id);
+        if (!loaded) throw new Error(`Plugin "${accountRow.plugin_id}" not loaded`);
         const { plugin } = loaded;
         if (!cancelled) setLogoSvg(plugin.manifest.logoSvg);
 
         const client = plugin.createClient(credentials);
-
         const resourceTypeId = decodedResourceId.split(":")[1] ?? "pg-database";
         const resources = await client.listResources(resourceTypeId, accountId);
         const foundResource = resources.find((r) => r.id === decodedResourceId) ?? resources[0];
         if (!foundResource) throw new Error("Resource not found");
 
         let enrichedResource: ResourceInstance = foundResource;
-        let pgOk = false;
+        let pgOk = !!session;
         const cs = credentials["connectionString"];
-        if (row.plugin_id === "postgres" && cs) {
+
+        if (accountRow.plugin_id === "postgres" && cs) {
           connectionStringRef.current = cs;
           try {
-            // Test connectivity and fetch schema via the Rust pg_query command
             const [tableRows, columnRows, pkRows] = await Promise.all([
               pgQuery(cs, "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name"),
               pgQuery(cs, "SELECT table_name, column_name, data_type FROM information_schema.columns WHERE table_schema = 'public' ORDER BY table_name, ordinal_position"),
@@ -94,52 +157,48 @@ function ResourceDetailPage() {
                 ORDER BY kcu.table_name, kcu.ordinal_position`),
             ]);
 
-            const colsByTable = new Map<string, Array<{ name: string; type: string }>>();
+            const colsByTable = new Map<string, { name: string; type: string }[]>();
             for (const col of columnRows as { table_name: string; column_name: string; data_type: string }[]) {
               if (!colsByTable.has(col.table_name)) colsByTable.set(col.table_name, []);
               colsByTable.get(col.table_name)!.push({ name: col.column_name, type: col.data_type });
             }
-
             const pksByTable = new Map<string, string[]>();
             for (const pk of pkRows as { table_name: string; column_name: string }[]) {
               if (!pksByTable.has(pk.table_name)) pksByTable.set(pk.table_name, []);
               pksByTable.get(pk.table_name)!.push(pk.column_name);
             }
 
+            const tablesJson = JSON.stringify(
+              (tableRows as { table_name: string }[]).map((t) => ({
+                name: t.table_name,
+                columns: colsByTable.get(t.table_name) ?? [],
+                pkColumns: pksByTable.get(t.table_name) ?? [],
+              })),
+            );
+
             enrichedResource = {
               ...foundResource,
-              resolvedOutputs: {
-                ...foundResource.resolvedOutputs,
-                __tables__: JSON.stringify(
-                  (tableRows as { table_name: string }[]).map((t) => ({
-                    name: t.table_name,
-                    columns: colsByTable.get(t.table_name) ?? [],
-                    pkColumns: pksByTable.get(t.table_name) ?? [],
-                  })),
-                ),
-              },
+              resolvedOutputs: { ...foundResource.resolvedOutputs, __tables__: tablesJson },
             };
 
-            // Fetch lightweight stats for dashboard cards (best-effort)
-            let pgVersion = "";
-            let dbSize = "";
+            setPgSession(accountId, { connectionString: cs, tablesJson });
+
+            let pgVersion = "", dbSize = "";
             try {
               const [versionRows, sizeRows] = await Promise.all([
                 pgQuery(cs, "SELECT version()"),
                 pgQuery(cs, "SELECT pg_size_pretty(pg_database_size(current_database())) AS size"),
               ]);
-              const ver = String((versionRows[0] as Record<string, unknown>)?.["version"] ?? "");
-              pgVersion = ver.split(" ").slice(0, 2).join(" "); // e.g. "PostgreSQL 16.2"
+              pgVersion = String((versionRows[0] as Record<string, unknown>)?.["version"] ?? "").split(" ").slice(0, 2).join(" ");
               dbSize = String((sizeRows[0] as Record<string, unknown>)?.["size"] ?? "");
-            } catch { /* stats are non-critical */ }
+            } catch { /* non-critical */ }
 
-            // Persist stats to outputs_json if this resource is pinned (row exists)
             try {
               await db.execute(
-                `UPDATE resources SET outputs_json = $1 WHERE id = $2`,
+                "UPDATE resources SET outputs_json = $1 WHERE id = $2",
                 [JSON.stringify({ pgVersion, dbSize, tableCount: tableRows.length }), foundResource.id],
               );
-            } catch { /* row may not exist if not pinned */ }
+            } catch { /* not pinned */ }
 
             pgOk = true;
             if (!cancelled) {
@@ -147,17 +206,13 @@ function ResourceDetailPage() {
               setAccountConnected(accountId, true);
             }
           } catch (pgErr) {
-            if (!cancelled) setPgError(String(pgErr));
+            if (!cancelled && !session) setPgError(String(pgErr));
           }
         }
 
-        const detailSchema = client.renderDetail(enrichedResource);
         if (!cancelled) {
-          // Reflect live connectivity in the status dot
-          setSchema(pgOk
-            ? { ...detailSchema, status: { kind: "status-dot", status: "healthy" } }
-            : detailSchema
-          );
+          const detailSchema = client.renderDetail(enrichedResource);
+          setSchema(pgOk ? { ...detailSchema, status: { kind: "status-dot", status: "healthy" } } : detailSchema);
           setResource(enrichedResource);
         }
       } catch (e) {
@@ -167,7 +222,7 @@ function ResourceDetailPage() {
       }
     }
 
-    load();
+    void load();
     return () => { cancelled = true; };
   }, [accountId, decodedResourceId]);
 

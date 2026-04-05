@@ -5,6 +5,7 @@ import { useDroppable } from "@dnd-kit/core";
 import { useUIStore } from "@infrawrench/ui";
 import { getDb } from "../db/client";
 import { loadPlugins, getPlugin } from "../plugins/loader";
+import { setPgSession } from "../lib/pg-session";
 
 interface PinnedRow {
   resource_id: string;
@@ -204,6 +205,9 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
               [JSON.stringify({ pgVersion, dbSize, tableCount }), row.resource_id],
             );
           } catch { /* ignore */ }
+
+          // Cache connection string so the detail page starts pre-connected
+          setPgSession(row.account_id, { connectionString: cs });
 
           if (!cancelled) {
             setCardStatus((prev) => ({
