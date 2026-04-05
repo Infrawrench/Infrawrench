@@ -7,7 +7,7 @@ import { getDb } from "../db/client";
 import { getPlugin } from "../plugins/loader";
 import { AssignOutputModal } from "../components/AssignOutputModal";
 import { getSqlSession, setSqlSession } from "../lib/sql-session";
-import { sqlQuery, sqlExecute, buildHostServices, buildKvHostServices, buildMemcachedHostServices, kvCommand, memcachedCommand } from "../lib/sql-drivers";
+import { sqlQuery, sqlExecute, buildHostServices, buildKvHostServices, kvCommand } from "../lib/sql-drivers";
 
 export const Route = createFileRoute("/resource/$accountId/$resourceId")({
   component: ResourceDetailPage,
@@ -49,6 +49,7 @@ function ResourceDetailPage() {
   const [kvDriverName, setKvDriverName] = useState<string | null>(null);
 
   const connectionStringRef = useRef("");
+  const sqlDriverIdRef = useRef("");
   const setAccountConnected = useUIStore((s) => s.setAccountConnected);
 
   useEffect(() => {
@@ -101,12 +102,12 @@ function ResourceDetailPage() {
                 createdAt: now,
                 updatedAt: now,
               };
-              const fastServices = loaded.plugin.manifest.sqlDriver
-                ? buildHostServices(session.connectionString)
-                : loaded.plugin.manifest.kvDriver
-                  ? loaded.plugin.manifest.kvDriver.driver === "memcached"
-                    ? buildMemcachedHostServices(session.connectionString)
-                    : buildKvHostServices(session.connectionString)
+              const fastSqlDecl = loaded.plugin.manifest.sqlDriver;
+              const fastKvDecl = loaded.plugin.manifest.kvDriver;
+              const fastServices = fastSqlDecl
+                ? buildHostServices(fastSqlDecl.driver, session.connectionString)
+                : fastKvDecl
+                  ? buildKvHostServices(fastKvDecl.driver, session.connectionString)
                   : undefined;
               const immediateSchema = loaded.plugin.createClient(
                 { connectionString: session.connectionString },
@@ -158,15 +159,14 @@ function ResourceDetailPage() {
             ? credentials[kvDriverDecl.credentialKey]
             : undefined;
         const hostServices = sqlDriverDecl && cs
-          ? buildHostServices(cs)
+          ? buildHostServices(sqlDriverDecl.driver, cs)
           : kvDriverDecl && cs
-            ? kvDriverDecl.driver === "memcached"
-              ? buildMemcachedHostServices(cs)
-              : buildKvHostServices(cs)
+            ? buildKvHostServices(kvDriverDecl.driver, cs)
             : undefined;
 
         if (cs) {
           connectionStringRef.current = cs;
+          sqlDriverIdRef.current = sqlDriverDecl?.driver ?? kvDriverDecl?.driver ?? "";
         }
 
         const client = plugin.createClient(credentials, hostServices);
@@ -238,16 +238,18 @@ function ResourceDetailPage() {
 
   const handleRunQuery = useCallback(async (sql: string): Promise<QueryResult> => {
     const cs = connectionStringRef.current;
+    const driverId = sqlDriverIdRef.current;
     if (!cs) throw new Error("No active SQL connection");
     const start = performance.now();
-    const rows = await sqlQuery(cs, sql);
+    const rows = await sqlQuery(driverId, cs, sql);
     return { rows, durationMs: Math.round(performance.now() - start) };
   }, []);
 
   const handleExecute = useCallback(async (sql: string, params: unknown[]): Promise<number> => {
     const cs = connectionStringRef.current;
+    const driverId = sqlDriverIdRef.current;
     if (!cs) throw new Error("No active SQL connection");
-    return sqlExecute(cs, sql, params);
+    return sqlExecute(driverId, cs, sql, params);
   }, []);
 
   if (loading) {
@@ -346,8 +348,7 @@ function KvConsole({ connectionString, driverName, connected }: { connectionStri
     try {
       const tokens = tokenize(trimmed);
       const [cmd, ...args] = tokens;
-      const execFn = driverName === "memcached" ? memcachedCommand : kvCommand;
-      const result = await execFn(connectionString, cmd, ...args);
+      const result = await kvCommand(driverName, connectionString, cmd, ...args);
       const formatted = formatRedisResult(result);
       setLines((prev) => [...prev, { kind: "output", text: formatted }]);
     } catch (e) {

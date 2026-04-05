@@ -3,10 +3,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import initSqlJs, { type Database as SqlJsDb } from "sql.js";
-import { Pool as PgPool } from "pg";
-import mysql from "mysql2/promise";
-import Redis from "ioredis";
-import Memjs from "memjs";
+import { sqlDrivers, kvDrivers } from "./drivers";
 import { MIGRATIONS } from "../src/db/schema";
 
 // ── Window ────────────────────────────────────────────────────────────────────
@@ -42,7 +39,7 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 
-// ── Encryption key ────────────────────────────────────────────────────────────
+// ── Encryption ────────────────────────────────────────────────────────────────
 
 let _encryptionKey: Buffer | null = null;
 
@@ -86,7 +83,7 @@ ipcMain.handle("decrypt_value", (_e, { ciphertext, iv }: { ciphertext: string; i
   return decipher.update(encrypted).toString("utf8") + decipher.final("utf8");
 });
 
-// ── SQLite via sql.js (pure WASM — no native module compilation needed) ───────
+// ── Local SQLite (sql.js — pure WASM, no native compilation) ─────────────────
 
 let _sqlite: SqlJsDb | null = null;
 let _sqlitePath: string;
@@ -94,7 +91,6 @@ let _sqlitePath: string;
 async function getSqlite(): Promise<SqlJsDb> {
   if (_sqlite) return _sqlite;
 
-  // Locate the WASM file next to the sql.js JS bundle
   const sqlJsMain = require.resolve("sql.js");
   const wasmPath = path.join(path.dirname(sqlJsMain), "sql-wasm.wasm");
   const SQL = await initSqlJs({ locateFile: () => wasmPath });
@@ -123,7 +119,6 @@ function persist() {
   fs.writeFileSync(_sqlitePath, Buffer.from(_sqlite.export()));
 }
 
-// Tauri SQL plugin used $1, $2 positional params — sql.js uses ?
 function normalizeSql(sql: string): string {
   return sql.replace(/\$\d+/g, "?");
 }
@@ -146,139 +141,30 @@ ipcMain.handle("db_execute", async (_e, { sql, params }: { sql: string; params?:
   return { rowsAffected, lastInsertId: 0 };
 });
 
-// ── Generic SQL (external databases via real Node.js drivers) ─────────────────
+// ── Plugin SQL drivers ────────────────────────────────────────────────────────
 
-function detectDriver(cs: string): "postgres" | "mysql" {
-  if (cs.startsWith("postgres://") || cs.startsWith("postgresql://")) return "postgres";
-  if (cs.startsWith("mysql://")) return "mysql";
-  throw new Error(`Cannot detect SQL driver from scheme: ${cs.split("://")[0]}`);
-}
-
-function sanitizePgUrl(cs: string): string {
-  try {
-    const u = new URL(cs);
-    u.searchParams.delete("channel_binding");
-    return u.toString();
-  } catch {
-    return cs;
-  }
-}
-
-ipcMain.handle("sql_query", async (_e, { connectionString, sql }: { connectionString: string; sql: string }) => {
-  const driver = detectDriver(connectionString);
-
-  if (driver === "postgres") {
-    const pool = new PgPool({ connectionString: sanitizePgUrl(connectionString), max: 1 });
-    try {
-      return (await pool.query(sql)).rows;
-    } finally {
-      await pool.end();
-    }
-  }
-
-  const conn = await mysql.createConnection(connectionString);
-  try {
-    const [rows] = await conn.query(sql);
-    return rows;
-  } finally {
-    await conn.end();
-  }
+ipcMain.handle("plugin_sql_query", async (_e, {
+  driverId, connectionString, sql,
+}: { driverId: string; connectionString: string; sql: string }) => {
+  const driver = sqlDrivers.get(driverId);
+  if (!driver) throw new Error(`No SQL driver registered for "${driverId}"`);
+  return driver.query(connectionString, sql);
 });
 
-// ── Redis (ioredis) ───────────────────────────────────────────────────────────
-
-ipcMain.handle("kv_command", async (_e, {
-  connectionString, command, args,
-}: { connectionString: string; command: string; args?: (string | number)[] }) => {
-  const client = new Redis(connectionString, {
-    maxRetriesPerRequest: 1,
-    lazyConnect: true,
-    enableReadyCheck: false,
-  });
-  try {
-    await client.connect();
-    // ioredis methods are lowercase — cast to any to call dynamically
-    const fn = (client as unknown as Record<string, (...a: unknown[]) => Promise<unknown>>)[command.toLowerCase()];
-    if (typeof fn !== "function") throw new Error(`Unknown Redis command: ${command}`);
-    return await fn.call(client, ...(args ?? []));
-  } finally {
-    client.disconnect();
-  }
+ipcMain.handle("plugin_sql_execute", async (_e, {
+  driverId, connectionString, sql, params,
+}: { driverId: string; connectionString: string; sql: string; params?: unknown[] }) => {
+  const driver = sqlDrivers.get(driverId);
+  if (!driver) throw new Error(`No SQL driver registered for "${driverId}"`);
+  return driver.execute(connectionString, sql, params ?? []);
 });
 
-// ── Memcached (memjs) ─────────────────────────────────────────────────────────
+// ── Plugin KV drivers ─────────────────────────────────────────────────────────
 
-ipcMain.handle("memcached_command", async (_e, {
-  connectionString, command, args,
-}: { connectionString: string; command: string; args?: (string | number)[] }) => {
-  const servers = connectionString.replace(/^memcacheds?:\/\//, "");
-  const client = Memjs.Client.create(servers, { timeout: 5, retries: 0 });
-  try {
-    const cmd = command.toUpperCase();
-    const a = args ?? [];
-    switch (cmd) {
-      case "GET": {
-        const { value } = await client.get(String(a[0] ?? ""));
-        return value ? value.toString() : null;
-      }
-      case "SET": {
-        const ok = await client.set(String(a[0] ?? ""), String(a[1] ?? ""), { expires: Number(a[2] ?? 0) });
-        return ok ? "STORED" : "NOT STORED";
-      }
-      case "DELETE":
-      case "DEL": {
-        const ok = await client.delete(String(a[0] ?? ""));
-        return ok ? "DELETED" : "NOT FOUND";
-      }
-      case "STATS": {
-        const results = await client.stats();
-        return results
-          .map(({ server, stats }: { server: string; stats: Record<string, string> }) =>
-            `# ${server}\n` + Object.entries(stats).map(([k, v]) => `${k}: ${v}`).join("\n"),
-          )
-          .join("\n\n");
-      }
-      case "VERSION": {
-        const results = await client.stats();
-        return results
-          .map(({ server, stats }: { server: string; stats: Record<string, string> }) =>
-            `${server}: ${stats["version"] ?? "?"}`,
-          )
-          .join("\n");
-      }
-      case "FLUSH":
-      case "FLUSH_ALL": {
-        await client.flush();
-        return "OK";
-      }
-      default:
-        throw new Error(`Unknown Memcached command: ${command}`);
-    }
-  } finally {
-    client.quit();
-  }
-});
-
-ipcMain.handle("sql_execute", async (_e, {
-  connectionString, sql, params,
-}: { connectionString: string; sql: string; params?: unknown[] }) => {
-  const driver = detectDriver(connectionString);
-  const p = params ?? [];
-
-  if (driver === "postgres") {
-    const pool = new PgPool({ connectionString: sanitizePgUrl(connectionString), max: 1 });
-    try {
-      return (await pool.query(sql, p)).rowCount ?? 0;
-    } finally {
-      await pool.end();
-    }
-  }
-
-  const conn = await mysql.createConnection(connectionString);
-  try {
-    const [result] = await conn.execute(sql, p);
-    return (result as mysql.ResultSetHeader).affectedRows;
-  } finally {
-    await conn.end();
-  }
+ipcMain.handle("plugin_kv_command", async (_e, {
+  driverId, connectionString, command, args,
+}: { driverId: string; connectionString: string; command: string; args?: (string | number)[] }) => {
+  const driver = kvDrivers.get(driverId);
+  if (!driver) throw new Error(`No KV driver registered for "${driverId}"`);
+  return driver.command(connectionString, command, args ?? []);
 });

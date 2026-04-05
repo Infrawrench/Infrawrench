@@ -209,7 +209,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
             if (!loaded) throw new Error(`Plugin not found: ${row.plugin_id}`);
             const sqlDecl = loaded.plugin.manifest.sqlDriver;
             const hostServices = sqlDecl
-              ? buildHostServices(creds[sqlDecl.credentialKey] ?? "")
+              ? buildHostServices(sqlDecl.driver, creds[sqlDecl.credentialKey] ?? "")
               : undefined;
             const client = loaded.plugin.createClient(creds, hostServices);
             const topLevelTypes = loaded.plugin.resourceTypes.filter((t) => !t.parentTypeId);
@@ -247,8 +247,8 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
           const cs = creds[meta.kvCredentialKey];
           if (!cs) return;
           const hostServices = meta.kvDriverName === "memcached"
-            ? buildMemcachedHostServices(cs)
-            : buildKvHostServices(cs);
+            ? buildMemcachedHostServices(meta.kvDriverName!, cs)
+            : buildKvHostServices(meta.kvDriverName!, cs);
           try {
             const loaded = await getPlugin(row.plugin_id);
             if (!loaded) throw new Error(`Plugin not found: ${row.plugin_id}`);
@@ -285,7 +285,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
         if (!meta?.sqlDriverName || !meta.sqlCredentialKey) return;
         const cs = creds[meta.sqlCredentialKey];
         if (!cs) return;
-        const hostServices = buildHostServices(cs);
+        const hostServices = buildHostServices(meta.sqlDriverName!, cs);
 
         try {
           const loaded = await getPlugin(row.plugin_id);
