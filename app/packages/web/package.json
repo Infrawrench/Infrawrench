@@ -1,0 +1,39 @@
+{
+  "name": "@infrawrench/web",
+  "version": "0.1.0",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "lint": "next lint",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio"
+  },
+  "dependencies": {
+    "@infrawrench/plugin-base": "workspace:*",
+    "@infrawrench/plugin-digitalocean": "workspace:*",
+    "@infrawrench/plugin-kubernetes": "workspace:*",
+    "@infrawrench/plugin-postgres": "workspace:*",
+    "@workos-inc/authkit-nextjs": "^0.13.0",
+    "@workos-inc/node": "^8.0.0",
+    "drizzle-orm": "^0.40.0",
+    "postgres": "^3.4.5",
+    "next": "^15.2.4",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "zod": "^3.24.1",
+    "uuid": "^11.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@types/uuid": "^10.0.0",
+    "drizzle-kit": "^0.30.4",
+    "typescript": "^5.7.3"
+  }
+}

@@ -1,0 +1,23 @@
+node_modules
+dist
+.next
+out
+.turbo
+coverage
+*.local
+.env
+.env.*
+!.env.example
+*.tsbuildinfo
+
+# Tauri
+src-tauri/target
+
+# SQLite
+*.db
+*.db-shm
+*.db-wal
+
+# OS
+.DS_Store
+Thumbs.db

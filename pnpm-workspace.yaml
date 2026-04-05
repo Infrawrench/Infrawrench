@@ -1,0 +1,3 @@
+packages:
+  - "plugin-architecture/packages/*"
+  - "app/packages/*"

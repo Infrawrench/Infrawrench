@@ -1,0 +1,1 @@
+{"default":{"identifier":"default","description":"Default capabilities for the Infrawrench desktop app","local":true,"windows":["main"],"permissions":["core:default","core:path:default",{"identifier":"sql:allow-load","allow":[{"db":"sqlite:*"},{"db":"postgres://*"},{"db":"postgresql://*"}]},"sql:allow-execute","sql:allow-select","sql:allow-close"]}}
