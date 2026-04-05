@@ -121,7 +121,7 @@ function DroppableDashboardLink({
   dash: DashboardRow;
   onDelete: () => void;
 }) {
-  const { setNodeRef, isOver } = useDroppable({ id: `dashboard:${dash.id}` });
+  const { setNodeRef, isOver } = useDroppable({ id: `sidebar-dashboard:${dash.id}` });
   const isHome = dash.is_default === 1;
   const isActive = useRouterState({
     select: (s) => s.location.pathname === `/dashboard/${dash.id}`,

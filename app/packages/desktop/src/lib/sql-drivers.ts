@@ -25,3 +25,21 @@ export function buildHostServices(connectionString: string): HostServices {
     },
   };
 }
+
+/**
+ * Run a Redis command via the main process ioredis connection.
+ */
+export function kvCommand(connectionString: string, command: string, ...args: (string | number)[]): Promise<unknown> {
+  return invoke<unknown>("kv_command", { connectionString, command, args });
+}
+
+/**
+ * Build a HostServices object with KV services bound to a Redis connection string.
+ */
+export function buildKvHostServices(connectionString: string): HostServices {
+  return {
+    kv: {
+      command: (cmd, ...args) => kvCommand(connectionString, cmd, ...args),
+    },
+  };
+}

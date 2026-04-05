@@ -26,6 +26,17 @@ export interface SqlDriverDeclaration {
   credentialKey: string;
 }
 
+/**
+ * Declares that this plugin supports a Redis-compatible key-value store.
+ * The host manages the connection; the plugin issues raw commands via KvHostServices.
+ */
+export interface KvDriverDeclaration {
+  /** Identifier for the KV engine (e.g. "redis"). */
+  driver: string;
+  /** The key in the account credentials that holds the connection string/URI. */
+  credentialKey: string;
+}
+
 export interface PluginManifest {
   /** Unique identifier — must match the blessed registry entry */
   id: string;
@@ -48,6 +59,11 @@ export interface PluginManifest {
    * plugins only declare intent.
    */
   sqlDriver?: SqlDriverDeclaration;
+  /**
+   * If present, the host will inject KvHostServices into the plugin client,
+   * enabling Redis-style command execution.
+   */
+  kvDriver?: KvDriverDeclaration;
 }
 
 /**
@@ -62,9 +78,20 @@ export interface SqlHostServices {
   execute(sql: string, params: unknown[]): Promise<number>;
 }
 
+/**
+ * Host-provided Redis command execution injected into plugin clients.
+ * The host owns the connection; the plugin issues raw commands.
+ */
+export interface KvHostServices {
+  /** Run a Redis command and return the response */
+  command(cmd: string, ...args: (string | number)[]): Promise<unknown>;
+}
+
 export interface HostServices {
   /** Present only when the plugin's manifest declares a sqlDriver */
   sql?: SqlHostServices;
+  /** Present only when the plugin's manifest declares a kvDriver */
+  kv?: KvHostServices;
 }
 
 export interface PluginClient {

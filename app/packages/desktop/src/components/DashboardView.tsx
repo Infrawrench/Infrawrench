@@ -6,7 +6,7 @@ import { useDroppable } from "@dnd-kit/core";
 import { useUIStore } from "@infrawrench/ui";
 import { getDb } from "../db/client";
 import { loadPlugins, getPlugin } from "../plugins/loader";
-import { buildHostServices } from "../lib/sql-drivers";
+import { buildHostServices, buildKvHostServices } from "../lib/sql-drivers";
 import { getSqlSession, setSqlSession } from "../lib/sql-session";
 
 interface PinnedRow {
@@ -24,6 +24,8 @@ interface PluginMeta {
   displayName: string;
   sqlDriverName?: string | undefined;
   sqlCredentialKey?: string | undefined;
+  kvDriverName?: string | undefined;
+  kvCredentialKey?: string | undefined;
 }
 
 interface CardStatus {
@@ -55,6 +57,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
   const [showSpotlight, setShowSpotlight] = useState(false);
   const dashboardPinsVersion = useUIStore((s) => s.dashboardPinsVersion);
   const bumpDashboardPins = useUIStore((s) => s.bumpDashboardPins);
+  const setAccountConnected = useUIStore((s) => s.setAccountConnected);
   const { setNodeRef, isOver } = useDroppable({ id: `dashboard:${dashboardId}` });
 
   const load = useCallback(async () => {
@@ -69,6 +72,8 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
           displayName: p.plugin.manifest.displayName,
           sqlDriverName: p.plugin.manifest.sqlDriver?.driver,
           sqlCredentialKey: p.plugin.manifest.sqlDriver?.credentialKey,
+          kvDriverName: p.plugin.manifest.kvDriver?.driver,
+          kvCredentialKey: p.plugin.manifest.kvDriver?.credentialKey,
         };
       }
       setPluginMeta(meta);
@@ -170,7 +175,9 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
         .filter((r) => {
           const m = pluginMeta[r.plugin_id];
           return credsByAccount.has(r.account_id) &&
-            (r.resource_type_id === "__account__" || (!!m?.sqlDriverName && !!m.sqlCredentialKey));
+            (r.resource_type_id === "__account__" ||
+              (!!m?.sqlDriverName && !!m.sqlCredentialKey) ||
+              (!!m?.kvDriverName && !!m.kvCredentialKey));
         })
         .map((r) => r.resource_id);
 
@@ -217,6 +224,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
               .map((r) => (r as PromiseFulfilledResult<{ typeLabel: string; count: number }>).value);
 
             if (!cancelled) {
+              setAccountConnected(row.account_id, true);
               setCardStatus((prev) => ({
                 ...prev,
                 [row.resource_id]: { phase: "ok", resourceCounts },
@@ -233,8 +241,45 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
           return;
         }
 
-        // ── SQL resource card (any plugin with sqlDriver declared) ────────
+        // ── KV resource card (e.g. Redis) ─────────────────────────────────
         const meta = pluginMeta[row.plugin_id];
+        if (meta?.kvDriverName && meta.kvCredentialKey) {
+          const cs = creds[meta.kvCredentialKey];
+          if (!cs) return;
+          const hostServices = buildKvHostServices(cs);
+          try {
+            const loaded = await getPlugin(row.plugin_id);
+            if (!loaded) throw new Error(`Plugin not found: ${row.plugin_id}`);
+            const client = loaded.plugin.createClient(creds, hostServices);
+            const stats = await client.fetchStats?.();
+            const { version = "", size = "" } = stats ?? {};
+
+            try {
+              await db.execute(
+                "UPDATE resources SET outputs_json = $1 WHERE id = $2",
+                [JSON.stringify({ pgVersion: version, dbSize: size }), row.resource_id],
+              );
+            } catch { /* not critical */ }
+
+            if (!cancelled) {
+              setAccountConnected(row.account_id, true);
+              setCardStatus((prev) => ({
+                ...prev,
+                [row.resource_id]: { phase: "ok", pgVersion: version, dbSize: size },
+              }));
+            }
+          } catch (e) {
+            if (!cancelled) {
+              setCardStatus((prev) => ({
+                ...prev,
+                [row.resource_id]: { phase: "error", error: String(e) },
+              }));
+            }
+          }
+          return;
+        }
+
+        // ── SQL resource card (any plugin with sqlDriver declared) ────────
         if (!meta?.sqlDriverName || !meta.sqlCredentialKey) return;
         const cs = creds[meta.sqlCredentialKey];
         if (!cs) return;
@@ -264,6 +309,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
           } catch { /* not critical */ }
 
           if (!cancelled) {
+            setAccountConnected(row.account_id, true);
             setCardStatus((prev) => ({
               ...prev,
               [row.resource_id]: { phase: "ok", pgVersion: version, dbSize: size, tableCount },

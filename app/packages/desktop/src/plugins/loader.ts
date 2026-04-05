@@ -16,6 +16,7 @@ const PLUGIN_MODULES: Record<string, () => Promise<{ plugin: Plugin }>> = {
   "@infrawrench/plugin-kubernetes": () => import("@infrawrench/plugin-kubernetes"),
   "@infrawrench/plugin-mysql": () => import("@infrawrench/plugin-mysql"),
   "@infrawrench/plugin-postgres": () => import("@infrawrench/plugin-postgres"),
+  "@infrawrench/plugin-redis": () => import("@infrawrench/plugin-redis"),
 };
 
 export interface LoadedPlugin {

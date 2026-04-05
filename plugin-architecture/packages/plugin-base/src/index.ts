@@ -6,6 +6,9 @@ export type {
   CredentialField,
   HostServices,
   SqlHostServices,
+  KvHostServices,
+  SqlDriverDeclaration,
+  KvDriverDeclaration,
 } from "./manifest.js";
 
 // Resource type definitions

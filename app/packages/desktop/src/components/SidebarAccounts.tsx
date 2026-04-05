@@ -292,6 +292,7 @@ function AccountDraggableRow({
       className={`flex items-center w-full px-4 py-1.5 text-sm text-gray-300 hover:bg-gray-800 hover:text-gray-100 transition-colors group cursor-grab active:cursor-grabbing ${isDragging ? "opacity-40" : ""}`}
     >
       <button
+        draggable={false}
         onClick={(e) => { e.stopPropagation(); onToggleExpand(); }}
         title={isExpanded ? "Collapse" : "Expand resources"}
         className="w-4 h-4 flex items-center justify-center flex-shrink-0 text-gray-600 hover:text-gray-400 transition-colors mr-1"
@@ -304,6 +305,7 @@ function AccountDraggableRow({
         </span>
       </button>
       <button
+        draggable={false}
         onClick={(e) => { e.stopPropagation(); onNavigate(); }}
         className="flex items-center gap-2 flex-1 text-left min-w-0"
       >

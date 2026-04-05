@@ -27,8 +27,14 @@ function RootLayout() {
     const { active, over } = event;
     if (!over) return;
     const overId = String(over.id);
-    if (!overId.startsWith("dashboard:")) return;
-    const dashboardId = overId.replace("dashboard:", "");
+    let dashboardId: string;
+    if (overId.startsWith("sidebar-dashboard:")) {
+      dashboardId = overId.replace("sidebar-dashboard:", "");
+    } else if (overId.startsWith("dashboard:")) {
+      dashboardId = overId.replace("dashboard:", "");
+    } else {
+      return;
+    }
     const resource = active.data.current?.resource as DraggableResource | undefined;
     if (!resource) return;
     const db = await getDb();
@@ -51,7 +57,7 @@ function RootLayout() {
         {/* macOS title bar — full-width drag region that clears the traffic lights */}
         <div
           className="h-8 flex-shrink-0 border-b border-gray-800/50"
-          style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+          style={{ WebkitAppRegion: draggingResource ? "no-drag" : "drag" } as React.CSSProperties}
         />
 
         <div className="flex flex-1 overflow-hidden">

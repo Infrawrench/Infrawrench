@@ -5,6 +5,7 @@ import path from "node:path";
 import initSqlJs, { type Database as SqlJsDb } from "sql.js";
 import { Pool as PgPool } from "pg";
 import mysql from "mysql2/promise";
+import Redis from "ioredis";
 import { MIGRATIONS } from "../src/db/schema";
 
 // ── Window ────────────────────────────────────────────────────────────────────
@@ -180,6 +181,27 @@ ipcMain.handle("sql_query", async (_e, { connectionString, sql }: { connectionSt
     return rows;
   } finally {
     await conn.end();
+  }
+});
+
+// ── Redis (ioredis) ───────────────────────────────────────────────────────────
+
+ipcMain.handle("kv_command", async (_e, {
+  connectionString, command, args,
+}: { connectionString: string; command: string; args?: (string | number)[] }) => {
+  const client = new Redis(connectionString, {
+    maxRetriesPerRequest: 1,
+    lazyConnect: true,
+    enableReadyCheck: false,
+  });
+  try {
+    await client.connect();
+    // ioredis methods are lowercase — cast to any to call dynamically
+    const fn = (client as unknown as Record<string, (...a: unknown[]) => Promise<unknown>>)[command.toLowerCase()];
+    if (typeof fn !== "function") throw new Error(`Unknown Redis command: ${command}`);
+    return await fn.call(client, ...(args ?? []));
+  } finally {
+    client.disconnect();
   }
 });
 
