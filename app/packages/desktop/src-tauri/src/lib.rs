@@ -1,6 +1,7 @@
 mod keychain;
 mod encryption;
 mod pg;
+mod mysql;
 
 use base64::{Engine as _, engine::general_purpose};
 use tauri::Manager;
@@ -20,6 +21,8 @@ pub fn run() {
             decrypt_value,
             pg::pg_query,
             pg::pg_execute,
+            mysql::mysql_query,
+            mysql::mysql_execute,
         ])
         .setup(|app| {
             // Load or generate the master key from the app data directory.

@@ -18,6 +18,14 @@
       "blessedBy": "astrid"
     },
     {
+      "id": "mysql",
+      "packageName": "@infrawrench/plugin-mysql",
+      "version": "0.1.0",
+      "checksum": "sha256-placeholder-replace-with-real-checksum",
+      "blessedAt": "2026-04-05T00:00:00Z",
+      "blessedBy": "astrid"
+    },
+    {
       "id": "postgres",
       "packageName": "@infrawrench/plugin-postgres",
       "version": "0.1.0",

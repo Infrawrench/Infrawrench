@@ -25,7 +25,7 @@ aes-gcm = "0.10"
 rand = "0.8"
 base64 = "0.22"
 anyhow = "1"
-sqlx = { version = "0.8.6", features = ["postgres", "runtime-tokio-native-tls", "json"] }
+sqlx = { version = "0.8.6", features = ["postgres", "mysql", "runtime-tokio-native-tls", "json"] }
 url = "2.5.8"
 
 [profile.dev]

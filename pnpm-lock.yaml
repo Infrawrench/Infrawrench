@@ -32,6 +32,9 @@ importers:
       '@infrawrench/plugin-kubernetes':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/kubernetes
+      '@infrawrench/plugin-mysql':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/mysql
       '@infrawrench/plugin-postgres':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/postgres
@@ -191,6 +194,22 @@ importers:
         version: 3.2.4(@types/node@22.19.17)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.21.0)
 
   plugin-architecture/packages/kubernetes:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsup:
+        specifier: ^8.3.5
+        version: 8.5.1(jiti@2.6.1)(postcss@8.5.8)(tsx@4.21.0)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.5
+        version: 3.2.4(@types/node@22.19.17)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.21.0)
+
+  plugin-architecture/packages/mysql:
     dependencies:
       '@infrawrench/plugin-base':
         specifier: workspace:*

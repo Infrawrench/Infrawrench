@@ -12,4 +12,16 @@ export const pluginManifestSchema = z.object({
   license: z.literal("MIT"),
   minHostVersion: z.string().regex(/^\d+\.\d+\.\d+/),
   peerPlugins: z.array(z.string()).optional(),
+  credentialFields: z.array(z.object({
+    key: z.string(),
+    label: z.string(),
+    description: z.string().optional(),
+    sensitive: z.boolean(),
+    placeholder: z.string().optional(),
+    multiline: z.boolean().optional(),
+  })).optional(),
+  sqlDriver: z.object({
+    driver: z.string().min(1),
+    credentialKey: z.string().min(1),
+  }).optional(),
 });
