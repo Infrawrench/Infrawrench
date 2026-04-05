@@ -5,7 +5,8 @@ import { useDroppable } from "@dnd-kit/core";
 import { useUIStore } from "@infrawrench/ui";
 import { getDb } from "../db/client";
 import { loadPlugins, getPlugin } from "../plugins/loader";
-import { setPgSession } from "../lib/pg-session";
+import { getSqlDriver } from "../lib/sql-drivers";
+import { setSqlSession } from "../lib/sql-session";
 
 interface PinnedRow {
   resource_id: string;
@@ -20,6 +21,8 @@ interface PinnedRow {
 interface PluginMeta {
   logoSvg: string;
   displayName: string;
+  sqlDriverName?: string | undefined;
+  sqlCredentialKey?: string | undefined;
 }
 
 interface CardStatus {
@@ -35,10 +38,6 @@ interface CardStatus {
 
 interface DashboardViewProps {
   dashboardId: string;
-}
-
-async function pgQuery(connectionString: string, sql: string): Promise<Record<string, unknown>[]> {
-  return invoke<Record<string, unknown>[]>("pg_query", { connectionString, sql });
 }
 
 export function DashboardView({ dashboardId }: DashboardViewProps) {
@@ -66,6 +65,8 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
         meta[p.plugin.manifest.id] = {
           logoSvg: p.plugin.manifest.logoSvg,
           displayName: p.plugin.manifest.displayName,
+          sqlDriverName: p.plugin.manifest.sqlDriver?.driver,
+          sqlCredentialKey: p.plugin.manifest.sqlDriver?.credentialKey,
         };
       }
       setPluginMeta(meta);
@@ -128,9 +129,13 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
         } catch { /* skip this account */ }
       }));
 
-      // Mark all connectable cards as "connecting"
+      // Mark cards as "connecting" if their plugin declares a sql driver
       const connectableIds = pinned
-        .filter((r) => credsByAccount.has(r.account_id))
+        .filter((r) => {
+          const m = pluginMeta[r.plugin_id];
+          return credsByAccount.has(r.account_id) &&
+            (r.resource_type_id === "__account__" || (!!m?.sqlDriverName && !!m.sqlCredentialKey));
+        })
         .map((r) => r.resource_id);
 
       if (connectableIds.length === 0) return;
@@ -182,37 +187,31 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
           return;
         }
 
-        // ── Postgres resource card ────────────────────────────────────────
-        if (row.plugin_id !== "postgres") return;
-        const cs = creds["connectionString"];
+        // ── SQL resource card (any plugin with sqlDriver declared) ────────
+        const meta = pluginMeta[row.plugin_id];
+        if (!meta?.sqlDriverName || !meta.sqlCredentialKey) return;
+        const driver = getSqlDriver(meta.sqlDriverName);
+        if (!driver) return;
+        const cs = creds[meta.sqlCredentialKey];
         if (!cs) return;
 
         try {
-          const [versionRows, sizeRows, tableRows] = await Promise.all([
-            pgQuery(cs, "SELECT version()"),
-            pgQuery(cs, "SELECT pg_size_pretty(pg_database_size(current_database())) AS size"),
-            pgQuery(cs, "SELECT COUNT(*) AS n FROM information_schema.tables WHERE table_schema = 'public'"),
-          ]);
-
-          const ver = String((versionRows[0] as Record<string, unknown>)?.["version"] ?? "");
-          const pgVersion = ver.split(" ").slice(0, 2).join(" ");
-          const dbSize = String((sizeRows[0] as Record<string, unknown>)?.["size"] ?? "");
-          const tableCount = Number((tableRows[0] as Record<string, unknown>)?.["n"] ?? 0);
+          const { version, size, tableCount } = await driver.stats(cs);
 
           try {
             await db.execute(
               "UPDATE resources SET outputs_json = $1 WHERE id = $2",
-              [JSON.stringify({ pgVersion, dbSize, tableCount }), row.resource_id],
+              [JSON.stringify({ pgVersion: version, dbSize: size, tableCount }), row.resource_id],
             );
-          } catch { /* ignore */ }
+          } catch { /* not pinned yet */ }
 
-          // Cache connection string so the detail page starts pre-connected
-          setPgSession(row.account_id, { connectionString: cs });
+          // Cache so the detail page can start pre-connected
+          setSqlSession(row.account_id, { connectionString: cs });
 
           if (!cancelled) {
             setCardStatus((prev) => ({
               ...prev,
-              [row.resource_id]: { phase: "ok", pgVersion, dbSize, tableCount },
+              [row.resource_id]: { phase: "ok", pgVersion: version, dbSize: size, tableCount },
             }));
           }
         } catch (e) {

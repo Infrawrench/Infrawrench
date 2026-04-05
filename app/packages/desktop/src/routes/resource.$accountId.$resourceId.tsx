@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "@tauri-apps/api/core"; // still needed for decrypt_value
 import type { ResourceInstance, DetailViewSchema } from "@infrawrench/plugin-base";
 import { DetailView, type QueryResult, useUIStore } from "@infrawrench/ui";
 import { getDb } from "../db/client";
 import { getPlugin } from "../plugins/loader";
 import { AssignOutputModal } from "../components/AssignOutputModal";
-import { getPgSession, setPgSession } from "../lib/pg-session";
+import { getSqlSession, setSqlSession } from "../lib/sql-session";
+import { getSqlDriver } from "../lib/sql-drivers";
 
 export const Route = createFileRoute("/resource/$accountId/$resourceId")({
   component: ResourceDetailPage,
@@ -30,10 +31,6 @@ interface SqliteResourceRow {
   fields_json: string;
 }
 
-async function pgQuery(connectionString: string, sql: string): Promise<Record<string, unknown>[]> {
-  return invoke<Record<string, unknown>[]>("pg_query", { connectionString, sql });
-}
-
 function ResourceDetailPage() {
   const { accountId, resourceId } = Route.useParams();
   const decodedResourceId = decodeURIComponent(resourceId);
@@ -49,6 +46,7 @@ function ResourceDetailPage() {
   const [pgError, setPgError] = useState<string | null>(null);
 
   const connectionStringRef = useRef("");
+  const sqlDriverNameRef = useRef("");
   const setAccountConnected = useUIStore((s) => s.setAccountConnected);
 
   useEffect(() => {
@@ -60,13 +58,15 @@ function ResourceDetailPage() {
 
       try {
         const db = await getDb();
-        const session = getPgSession(accountId);
+        const session = getSqlSession(accountId);
 
         // ── Fast path ─────────────────────────────────────────────────────
         // If we have a cached connection + the resource is in SQLite, show
         // the page immediately without waiting for listResources or pg queries.
         if (session) {
           connectionStringRef.current = session.connectionString;
+          // Driver name is resolved properly in the full load; pre-populate from manifest
+          // once we have the plugin. For now set from loaded plugin below if fast-path exits early.
 
           const [accountRows, sqliteRows] = await Promise.all([
             db.select<AccountRow[]>(
@@ -85,6 +85,9 @@ function ResourceDetailPage() {
           if (accountRow && sqliteRes) {
             const loaded = await getPlugin(accountRow.plugin_id);
             if (loaded && !cancelled) {
+              if (loaded.plugin.manifest.sqlDriver) {
+                sqlDriverNameRef.current = loaded.plugin.manifest.sqlDriver.driver;
+              }
               const now = new Date().toISOString();
               const immediateResource: ResourceInstance = {
                 id: sqliteRes.id,
@@ -140,79 +143,47 @@ function ResourceDetailPage() {
         if (!foundResource) throw new Error("Resource not found");
 
         let enrichedResource: ResourceInstance = foundResource;
-        let pgOk = !!session;
-        const cs = credentials["connectionString"];
+        let sqlOk = !!session;
 
-        if (accountRow.plugin_id === "postgres" && cs) {
+        const sqlDriverDecl = loaded.plugin.manifest.sqlDriver;
+        const cs = sqlDriverDecl ? credentials[sqlDriverDecl.credentialKey] : undefined;
+        const driver = sqlDriverDecl ? getSqlDriver(sqlDriverDecl.driver) : undefined;
+
+        if (driver && cs) {
           connectionStringRef.current = cs;
+          sqlDriverNameRef.current = sqlDriverDecl!.driver;
           try {
-            const [tableRows, columnRows, pkRows] = await Promise.all([
-              pgQuery(cs, "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name"),
-              pgQuery(cs, "SELECT table_name, column_name, data_type FROM information_schema.columns WHERE table_schema = 'public' ORDER BY table_name, ordinal_position"),
-              pgQuery(cs, `SELECT kcu.table_name, kcu.column_name
-                FROM information_schema.table_constraints tc
-                JOIN information_schema.key_column_usage kcu
-                  ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
-                WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.table_schema = 'public'
-                ORDER BY kcu.table_name, kcu.ordinal_position`),
-            ]);
-
-            const colsByTable = new Map<string, { name: string; type: string }[]>();
-            for (const col of columnRows as { table_name: string; column_name: string; data_type: string }[]) {
-              if (!colsByTable.has(col.table_name)) colsByTable.set(col.table_name, []);
-              colsByTable.get(col.table_name)!.push({ name: col.column_name, type: col.data_type });
-            }
-            const pksByTable = new Map<string, string[]>();
-            for (const pk of pkRows as { table_name: string; column_name: string }[]) {
-              if (!pksByTable.has(pk.table_name)) pksByTable.set(pk.table_name, []);
-              pksByTable.get(pk.table_name)!.push(pk.column_name);
-            }
-
-            const tablesJson = JSON.stringify(
-              (tableRows as { table_name: string }[]).map((t) => ({
-                name: t.table_name,
-                columns: colsByTable.get(t.table_name) ?? [],
-                pkColumns: pksByTable.get(t.table_name) ?? [],
-              })),
-            );
+            const tables = await driver.introspect(cs);
+            const tablesJson = JSON.stringify(tables);
 
             enrichedResource = {
               ...foundResource,
               resolvedOutputs: { ...foundResource.resolvedOutputs, __tables__: tablesJson },
             };
 
-            setPgSession(accountId, { connectionString: cs, tablesJson });
-
-            let pgVersion = "", dbSize = "";
-            try {
-              const [versionRows, sizeRows] = await Promise.all([
-                pgQuery(cs, "SELECT version()"),
-                pgQuery(cs, "SELECT pg_size_pretty(pg_database_size(current_database())) AS size"),
-              ]);
-              pgVersion = String((versionRows[0] as Record<string, unknown>)?.["version"] ?? "").split(" ").slice(0, 2).join(" ");
-              dbSize = String((sizeRows[0] as Record<string, unknown>)?.["size"] ?? "");
-            } catch { /* non-critical */ }
+            setSqlSession(accountId, { connectionString: cs, tablesJson });
 
             try {
+              const { version, size } = await driver.stats(cs);
               await db.execute(
                 "UPDATE resources SET outputs_json = $1 WHERE id = $2",
-                [JSON.stringify({ pgVersion, dbSize, tableCount: tableRows.length }), foundResource.id],
+                [JSON.stringify({ pgVersion: version, dbSize: size, tableCount: tables.length }), foundResource.id],
               );
-            } catch { /* not pinned */ }
+            } catch { /* stats + persist are non-critical */ }
 
-            pgOk = true;
+            sqlOk = true;
             if (!cancelled) {
               setPgConnected(true);
               setAccountConnected(accountId, true);
             }
-          } catch (pgErr) {
-            if (!cancelled && !session) setPgError(String(pgErr));
+          } catch (err) {
+            if (!cancelled && !session) setPgError(String(err));
           }
         }
 
         if (!cancelled) {
           const detailSchema = client.renderDetail(enrichedResource);
-          setSchema(pgOk ? { ...detailSchema, status: { kind: "status-dot", status: "healthy" } } : detailSchema);
+          setSchema(sqlOk ? { ...detailSchema, status: { kind: "status-dot", status: "healthy" } } : detailSchema);
           setResource(enrichedResource);
         }
       } catch (e) {
@@ -228,16 +199,18 @@ function ResourceDetailPage() {
 
   const handleRunQuery = useCallback(async (sql: string): Promise<QueryResult> => {
     const cs = connectionStringRef.current;
-    if (!cs) throw new Error("No connection string");
+    const d = getSqlDriver(sqlDriverNameRef.current);
+    if (!cs || !d) throw new Error("No active SQL connection");
     const start = performance.now();
-    const rows = await pgQuery(cs, sql);
+    const rows = await d.query(cs, sql);
     return { rows, durationMs: Math.round(performance.now() - start) };
   }, []);
 
   const handleExecute = useCallback(async (sql: string, params: unknown[]): Promise<number> => {
     const cs = connectionStringRef.current;
-    if (!cs) throw new Error("No connection string");
-    return invoke<number>("pg_execute", { connectionString: cs, sql, params });
+    const d = getSqlDriver(sqlDriverNameRef.current);
+    if (!cs || !d) throw new Error("No active SQL connection");
+    return d.execute(cs, sql, params);
   }, []);
 
   if (loading) {

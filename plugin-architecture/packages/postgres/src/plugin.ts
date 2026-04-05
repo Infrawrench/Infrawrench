@@ -25,6 +25,10 @@ const manifest: PluginManifest = {
       placeholder: "postgresql://user:pass@host:5432/dbname",
     },
   ],
+  sqlDriver: {
+    driver: "postgres",
+    credentialKey: "connectionString",
+  },
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [

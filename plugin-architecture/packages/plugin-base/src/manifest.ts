@@ -11,6 +11,21 @@ export interface CredentialField {
   multiline?: boolean;
 }
 
+/**
+ * Declares that this plugin supports a SQL editor.
+ * The host uses `driver` to look up the appropriate query engine and introspection
+ * queries, and `credentialKey` to find the connection string in the account credentials.
+ */
+export interface SqlDriverDeclaration {
+  /**
+   * Identifier for the SQL engine — the host maps this to concrete Tauri commands
+   * and introspection queries (e.g. "postgres", "mysql", "sqlite").
+   */
+  driver: string;
+  /** The key in the account credentials that holds the connection string/URI. */
+  credentialKey: string;
+}
+
 export interface PluginManifest {
   /** Unique identifier — must match the blessed registry entry */
   id: string;
@@ -27,6 +42,12 @@ export interface PluginManifest {
   peerPlugins?: string[];
   /** Fields the host must collect from the user when adding an account */
   credentialFields: CredentialField[];
+  /**
+   * If present, the host will offer a SQL editor for resources from this plugin.
+   * The host is responsible for the actual connection and query execution —
+   * plugins only declare intent.
+   */
+  sqlDriver?: SqlDriverDeclaration;
 }
 
 export interface PluginClient {
