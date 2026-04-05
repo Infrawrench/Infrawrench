@@ -39,5 +39,5 @@ const resourceTypes: ResourceTypeDefinition[] = [
 export const plugin: Plugin = {
   manifest,
   resourceTypes,
-  createClient: (credentials) => new PostgresClient(credentials),
+  createClient: (credentials, services) => new PostgresClient(credentials, services),
 };

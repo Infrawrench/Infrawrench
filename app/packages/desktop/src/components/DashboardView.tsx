@@ -1,12 +1,13 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { invoke } from "@tauri-apps/api/core";
+import { SpotlightSearch } from "./SpotlightSearch";
+import { invoke } from "../lib/invoke";
 import { useDroppable } from "@dnd-kit/core";
 import { useUIStore } from "@infrawrench/ui";
 import { getDb } from "../db/client";
 import { loadPlugins, getPlugin } from "../plugins/loader";
-import { getSqlDriver } from "../lib/sql-drivers";
-import { setSqlSession } from "../lib/sql-session";
+import { buildHostServices } from "../lib/sql-drivers";
+import { getSqlSession, setSqlSession } from "../lib/sql-session";
 
 interface PinnedRow {
   resource_id: string;
@@ -51,13 +52,14 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
   const [notFound, setNotFound] = useState(false);
   const [cardStatus, setCardStatus] = useState<Record<string, CardStatus>>({});
 
+  const [showSpotlight, setShowSpotlight] = useState(false);
   const dashboardPinsVersion = useUIStore((s) => s.dashboardPinsVersion);
+  const bumpDashboardPins = useUIStore((s) => s.bumpDashboardPins);
   const { setNodeRef, isOver } = useDroppable({ id: `dashboard:${dashboardId}` });
 
   const load = useCallback(async () => {
     setLoading(true);
     setNotFound(false);
-    setCardStatus({});
     try {
       const [db, plugins] = await Promise.all([getDb(), loadPlugins()]);
       const meta: Record<string, PluginMeta> = {};
@@ -91,6 +93,28 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
         ORDER BY dp.created_at DESC
         LIMIT 50
       `, [dashboardId]);
+
+      // Restore "ok" status from cache for cards that are already connected,
+      // so re-loads (e.g. after pinning a new resource) don't flash "Connecting…"
+      setCardStatus((prev) => {
+        const next: Record<string, CardStatus> = {};
+        for (const row of rows) {
+          if (prev[row.resource_id]?.phase === "ok") {
+            // Keep the existing connected status
+            next[row.resource_id] = prev[row.resource_id];
+          } else if (row.resource_type_id !== "__account__" && getSqlSession(row.account_id)) {
+            // Session alive — restore from cached outputs_json
+            try {
+              const o = JSON.parse(row.outputs_json) as { pgVersion?: string; dbSize?: string; tableCount?: number };
+              if (o.pgVersion || o.tableCount != null) {
+                next[row.resource_id] = { phase: "ok", pgVersion: o.pgVersion, dbSize: o.dbSize, tableCount: o.tableCount };
+              }
+            } catch { /* will connect fresh */ }
+          }
+        }
+        return next;
+      });
+
       setPinned(rows);
     } catch {
       // empty dashboard is fine
@@ -102,6 +126,18 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
   useEffect(() => {
     void load();
   }, [load, dashboardPinsVersion]);
+
+  // ⌘K to open spotlight
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        setShowSpotlight(true);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   // Auto-connect cards after pins load
   useEffect(() => {
@@ -129,7 +165,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
         } catch { /* skip this account */ }
       }));
 
-      // Mark cards as "connecting" if their plugin declares a sql driver
+      // Mark cards as "connecting" — but only those not already connected
       const connectableIds = pinned
         .filter((r) => {
           const m = pluginMeta[r.plugin_id];
@@ -143,22 +179,32 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
       if (!cancelled) {
         setCardStatus((prev) => {
           const next = { ...prev };
-          for (const id of connectableIds) next[id] = { phase: "connecting" };
+          for (const id of connectableIds) {
+            if (prev[id]?.phase !== "ok") next[id] = { phase: "connecting" };
+          }
           return next;
         });
       }
 
-      // Connect each card in parallel
+      // Connect each card in parallel — skip cards already showing "ok"
       await Promise.all(pinned.map(async (row) => {
         const creds = credsByAccount.get(row.account_id);
         if (!creds) return;
+        // Read current status via functional pattern below; skip if already connected
+        let alreadyOk = false;
+        setCardStatus((prev) => { alreadyOk = prev[row.resource_id]?.phase === "ok"; return prev; });
+        if (alreadyOk) return;
 
         // ── Account summary card ─────────────────────────────────────────
         if (row.resource_type_id === "__account__") {
           try {
             const loaded = await getPlugin(row.plugin_id);
             if (!loaded) throw new Error(`Plugin not found: ${row.plugin_id}`);
-            const client = loaded.plugin.createClient(creds);
+            const sqlDecl = loaded.plugin.manifest.sqlDriver;
+            const hostServices = sqlDecl
+              ? buildHostServices(creds[sqlDecl.credentialKey] ?? "")
+              : undefined;
+            const client = loaded.plugin.createClient(creds, hostServices);
             const topLevelTypes = loaded.plugin.resourceTypes.filter((t) => !t.parentTypeId);
             const results = await Promise.allSettled(
               topLevelTypes.map(async (t) => ({
@@ -190,23 +236,32 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
         // ── SQL resource card (any plugin with sqlDriver declared) ────────
         const meta = pluginMeta[row.plugin_id];
         if (!meta?.sqlDriverName || !meta.sqlCredentialKey) return;
-        const driver = getSqlDriver(meta.sqlDriverName);
-        if (!driver) return;
         const cs = creds[meta.sqlCredentialKey];
         if (!cs) return;
+        const hostServices = buildHostServices(cs);
 
         try {
-          const { version, size, tableCount } = await driver.stats(cs);
+          const loaded = await getPlugin(row.plugin_id);
+          if (!loaded) throw new Error(`Plugin not found: ${row.plugin_id}`);
+          const client = loaded.plugin.createClient(creds, hostServices);
+          const stats = await client.fetchStats?.();
+          const { version = "", size = "", tableCount = 0 } = stats ?? {};
+          // Cache the connection string immediately so the detail page can fast-path
+          setSqlSession(row.account_id, { connectionString: cs });
+
+          // Introspect in background and update the cache once done
+          void client.introspect?.().then((tables) => {
+            if (tables && tables.length > 0) {
+              setSqlSession(row.account_id, { connectionString: cs, tablesJson: JSON.stringify(tables) });
+            }
+          }).catch(() => undefined);
 
           try {
             await db.execute(
               "UPDATE resources SET outputs_json = $1 WHERE id = $2",
               [JSON.stringify({ pgVersion: version, dbSize: size, tableCount }), row.resource_id],
             );
-          } catch { /* not pinned yet */ }
-
-          // Cache so the detail page can start pre-connected
-          setSqlSession(row.account_id, { connectionString: cs });
+          } catch { /* not critical */ }
 
           if (!cancelled) {
             setCardStatus((prev) => ({
@@ -325,12 +380,14 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
       {/* Content */}
       <div className="flex-1 overflow-auto px-8 py-6">
         {pinned.length === 0 ? (
-          <div
-            className={`flex flex-col items-center justify-center h-64 rounded-2xl border-2 border-dashed transition-colors ${isOver ? "border-blue-500 text-blue-400" : "border-gray-800 text-gray-700"}`}
+          <button
+            onClick={() => setShowSpotlight(true)}
+            className={`w-full flex flex-col items-center justify-center h-64 rounded-2xl border-2 border-dashed transition-colors ${isOver ? "border-blue-500 text-blue-400" : "border-gray-800 text-gray-700 hover:border-gray-600 hover:text-gray-500"}`}
           >
             <span className="text-3xl mb-3">⊞</span>
-            <p className="text-sm">Drag a resource here to pin it</p>
-          </div>
+            <p className="text-sm">Click to add a resource</p>
+            <p className="text-xs mt-1 opacity-60">or drag one here · ⌘K</p>
+          </button>
         ) : (
           <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}>
             {pinned.map((row) => (
@@ -344,13 +401,23 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
               />
             ))}
 
-            <div
-              className={`rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-2 transition-colors min-h-[140px] ${isOver ? "border-blue-500 text-blue-400 bg-blue-500/5" : "border-gray-800 text-gray-700"}`}
+            <button
+              onClick={() => setShowSpotlight(true)}
+              className={`rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-1.5 transition-colors min-h-[140px] ${isOver ? "border-blue-500 text-blue-400 bg-blue-500/5" : "border-gray-800 text-gray-700 hover:border-gray-600 hover:text-gray-500"}`}
             >
               <span className="text-2xl">+</span>
-              <span className="text-xs">Drop to add</span>
-            </div>
+              <span className="text-xs">Add resource</span>
+              <span className="text-xs opacity-50">⌘K</span>
+            </button>
           </div>
+        )}
+
+        {showSpotlight && (
+          <SpotlightSearch
+            dashboardId={dashboardId}
+            onClose={() => setShowSpotlight(false)}
+            onPinned={() => { bumpDashboardPins(); setShowSpotlight(false); }}
+          />
         )}
       </div>
     </div>

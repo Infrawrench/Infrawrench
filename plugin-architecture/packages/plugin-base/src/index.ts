@@ -1,5 +1,12 @@
 // Core plugin interfaces
-export type { Plugin, PluginClient, PluginManifest, CredentialField } from "./manifest.js";
+export type {
+  Plugin,
+  PluginClient,
+  PluginManifest,
+  CredentialField,
+  HostServices,
+  SqlHostServices,
+} from "./manifest.js";
 
 // Resource type definitions
 export type {

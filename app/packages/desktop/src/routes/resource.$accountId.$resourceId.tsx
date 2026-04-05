@@ -1,13 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { invoke } from "@tauri-apps/api/core"; // still needed for decrypt_value
+import { invoke } from "../lib/invoke";
 import type { ResourceInstance, DetailViewSchema } from "@infrawrench/plugin-base";
 import { DetailView, type QueryResult, useUIStore } from "@infrawrench/ui";
 import { getDb } from "../db/client";
 import { getPlugin } from "../plugins/loader";
 import { AssignOutputModal } from "../components/AssignOutputModal";
 import { getSqlSession, setSqlSession } from "../lib/sql-session";
-import { getSqlDriver } from "../lib/sql-drivers";
+import { sqlQuery, sqlExecute, buildHostServices } from "../lib/sql-drivers";
 
 export const Route = createFileRoute("/resource/$accountId/$resourceId")({
   component: ResourceDetailPage,
@@ -46,7 +46,6 @@ function ResourceDetailPage() {
   const [pgError, setPgError] = useState<string | null>(null);
 
   const connectionStringRef = useRef("");
-  const sqlDriverNameRef = useRef("");
   const setAccountConnected = useUIStore((s) => s.setAccountConnected);
 
   useEffect(() => {
@@ -85,9 +84,6 @@ function ResourceDetailPage() {
           if (accountRow && sqliteRes) {
             const loaded = await getPlugin(accountRow.plugin_id);
             if (loaded && !cancelled) {
-              if (loaded.plugin.manifest.sqlDriver) {
-                sqlDriverNameRef.current = loaded.plugin.manifest.sqlDriver.driver;
-              }
               const now = new Date().toISOString();
               const immediateResource: ResourceInstance = {
                 id: sqliteRes.id,
@@ -102,7 +98,13 @@ function ResourceDetailPage() {
                 createdAt: now,
                 updatedAt: now,
               };
-              const immediateSchema = loaded.plugin.createClient({ connectionString: session.connectionString }).renderDetail(immediateResource);
+              const fastServices = loaded.plugin.manifest.sqlDriver
+                ? buildHostServices(session.connectionString)
+                : undefined;
+              const immediateSchema = loaded.plugin.createClient(
+                { connectionString: session.connectionString },
+                fastServices,
+              ).renderDetail(immediateResource);
               setAccount(accountRow);
               setLogoSvg(loaded.plugin.manifest.logoSvg);
               setResource(immediateResource);
@@ -136,7 +138,17 @@ function ResourceDetailPage() {
         const { plugin } = loaded;
         if (!cancelled) setLogoSvg(plugin.manifest.logoSvg);
 
-        const client = plugin.createClient(credentials);
+        const sqlDriverDecl = loaded.plugin.manifest.sqlDriver;
+        const cs = sqlDriverDecl ? credentials[sqlDriverDecl.credentialKey] : undefined;
+        const hostServices = sqlDriverDecl && cs
+          ? buildHostServices(cs)
+          : undefined;
+
+        if (cs) {
+          connectionStringRef.current = cs;
+        }
+
+        const client = plugin.createClient(credentials, hostServices);
         const resourceTypeId = decodedResourceId.split(":")[1] ?? "pg-database";
         const resources = await client.listResources(resourceTypeId, accountId);
         const foundResource = resources.find((r) => r.id === decodedResourceId) ?? resources[0];
@@ -145,15 +157,9 @@ function ResourceDetailPage() {
         let enrichedResource: ResourceInstance = foundResource;
         let sqlOk = !!session;
 
-        const sqlDriverDecl = loaded.plugin.manifest.sqlDriver;
-        const cs = sqlDriverDecl ? credentials[sqlDriverDecl.credentialKey] : undefined;
-        const driver = sqlDriverDecl ? getSqlDriver(sqlDriverDecl.driver) : undefined;
-
-        if (driver && cs) {
-          connectionStringRef.current = cs;
-          sqlDriverNameRef.current = sqlDriverDecl!.driver;
+        if (hostServices && cs) {
           try {
-            const tables = await driver.introspect(cs);
+            const tables = await client.introspect?.() ?? [];
             const tablesJson = JSON.stringify(tables);
 
             enrichedResource = {
@@ -164,11 +170,13 @@ function ResourceDetailPage() {
             setSqlSession(accountId, { connectionString: cs, tablesJson });
 
             try {
-              const { version, size } = await driver.stats(cs);
-              await db.execute(
-                "UPDATE resources SET outputs_json = $1 WHERE id = $2",
-                [JSON.stringify({ pgVersion: version, dbSize: size, tableCount: tables.length }), foundResource.id],
-              );
+              const stats = await client.fetchStats?.();
+              if (stats) {
+                await db.execute(
+                  "UPDATE resources SET outputs_json = $1 WHERE id = $2",
+                  [JSON.stringify({ pgVersion: stats.version, dbSize: stats.size, tableCount: tables.length }), foundResource.id],
+                );
+              }
             } catch { /* stats + persist are non-critical */ }
 
             sqlOk = true;
@@ -199,18 +207,16 @@ function ResourceDetailPage() {
 
   const handleRunQuery = useCallback(async (sql: string): Promise<QueryResult> => {
     const cs = connectionStringRef.current;
-    const d = getSqlDriver(sqlDriverNameRef.current);
-    if (!cs || !d) throw new Error("No active SQL connection");
+    if (!cs) throw new Error("No active SQL connection");
     const start = performance.now();
-    const rows = await d.query(cs, sql);
+    const rows = await sqlQuery(cs, sql);
     return { rows, durationMs: Math.round(performance.now() - start) };
   }, []);
 
   const handleExecute = useCallback(async (sql: string, params: unknown[]): Promise<number> => {
     const cs = connectionStringRef.current;
-    const d = getSqlDriver(sqlDriverNameRef.current);
-    if (!cs || !d) throw new Error("No active SQL connection");
-    return d.execute(cs, sql, params);
+    if (!cs) throw new Error("No active SQL connection");
+    return sqlExecute(cs, sql, params);
   }, []);
 
   if (loading) {

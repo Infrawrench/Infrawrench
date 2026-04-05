@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../lib/invoke";
 import type { CredentialField } from "@infrawrench/plugin-base";
 import { loadPlugins } from "../plugins/loader";
 import { getDb } from "../db/client";

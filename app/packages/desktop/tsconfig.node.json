@@ -1,0 +1,13 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "outDir": "out",
+    "rootDir": ".",
+    "types": ["node", "electron", "sql.js"]
+  },
+  "include": ["electron", "src/db/schema.ts"]
+}

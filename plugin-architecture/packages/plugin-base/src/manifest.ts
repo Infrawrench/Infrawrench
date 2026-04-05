@@ -50,6 +50,23 @@ export interface PluginManifest {
   sqlDriver?: SqlDriverDeclaration;
 }
 
+/**
+ * Host-provided SQL execution primitives injected into plugin clients.
+ * The host owns the actual connection and Tauri commands; the plugin
+ * owns the SQL strings (queries, introspection, stats).
+ */
+export interface SqlHostServices {
+  /** Run a SELECT and return rows */
+  query(sql: string): Promise<Record<string, unknown>[]>;
+  /** Run an INSERT/UPDATE/DELETE and return affected row count */
+  execute(sql: string, params: unknown[]): Promise<number>;
+}
+
+export interface HostServices {
+  /** Present only when the plugin's manifest declares a sqlDriver */
+  sql?: SqlHostServices;
+}
+
 export interface PluginClient {
   /** List all instances of a resource type for an account */
   listResources(typeId: string, accountId: string): Promise<ResourceInstance[]>;
@@ -70,15 +87,19 @@ export interface PluginClient {
   renderDetail(resource: ResourceInstance): DetailViewSchema;
   /** Return the sidebar item schema for a resource */
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema;
+  /** Fetch table/column schema for the SQL editor — only when sql services are injected */
+  introspect?(): Promise<SqlTableMeta[]>;
+  /** Fetch lightweight stats for dashboard cards (version, size, table count) */
+  fetchStats?(): Promise<{ version: string; size: string; tableCount: number }>;
 }
 
 export interface Plugin {
   manifest: PluginManifest;
   resourceTypes: ResourceTypeDefinition[];
   /** Create a scoped client for a set of credentials — host never exposes raw credentials */
-  createClient(credentials: Record<string, string>): PluginClient;
+  createClient(credentials: Record<string, string>, services?: HostServices): PluginClient;
 }
 
 // Forward declarations — defined in their own modules but used here
 import type { ResourceInstance } from "./instance.js";
-import type { DetailViewSchema, SidebarItemSchema } from "./schema.js";
+import type { DetailViewSchema, SidebarItemSchema, SqlTableMeta } from "./schema.js";

@@ -1,153 +1,27 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../lib/invoke";
+import type { HostServices } from "@infrawrench/plugin-base";
 
-export interface SqlTableMeta {
-  name: string;
-  columns: { name: string; type: string }[];
-  pkColumns: string[];
+/**
+ * Generic SQL driver — the Rust side detects the dialect from the connection
+ * string scheme (postgres:// → PostgreSQL, mysql:// → MySQL).
+ */
+export function sqlQuery(connectionString: string, sql: string): Promise<Record<string, unknown>[]> {
+  return invoke<Record<string, unknown>[]>("sql_query", { connectionString, sql });
 }
 
-export interface SqlDriverConfig {
-  /** Run a SELECT and return rows */
-  query(connectionString: string, sql: string): Promise<Record<string, unknown>[]>;
-  /** Run an INSERT/UPDATE/DELETE and return affected row count */
-  execute(connectionString: string, sql: string, params: unknown[]): Promise<number>;
-  /** Fetch table schema for the SQL editor */
-  introspect(connectionString: string): Promise<SqlTableMeta[]>;
-  /** Fetch lightweight stats for dashboard cards (version + size) */
-  stats(connectionString: string): Promise<{ version: string; size: string; tableCount: number }>;
+export function sqlExecute(connectionString: string, sql: string, params: unknown[]): Promise<number> {
+  return invoke<number>("sql_execute", { connectionString, sql, params });
 }
 
-const postgres: SqlDriverConfig = {
-  query: (cs, sql) =>
-    invoke<Record<string, unknown>[]>("pg_query", { connectionString: cs, sql }),
-
-  execute: (cs, sql, params) =>
-    invoke<number>("pg_execute", { connectionString: cs, sql, params }),
-
-  async introspect(cs) {
-    const [tableRows, columnRows, pkRows] = await Promise.all([
-      invoke<Record<string, unknown>[]>("pg_query", {
-        connectionString: cs,
-        sql: "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name",
-      }),
-      invoke<Record<string, unknown>[]>("pg_query", {
-        connectionString: cs,
-        sql: "SELECT table_name, column_name, data_type FROM information_schema.columns WHERE table_schema = 'public' ORDER BY table_name, ordinal_position",
-      }),
-      invoke<Record<string, unknown>[]>("pg_query", {
-        connectionString: cs,
-        sql: `SELECT kcu.table_name, kcu.column_name
-              FROM information_schema.table_constraints tc
-              JOIN information_schema.key_column_usage kcu
-                ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
-              WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.table_schema = 'public'
-              ORDER BY kcu.table_name, kcu.ordinal_position`,
-      }),
-    ]);
-
-    const colsByTable = new Map<string, { name: string; type: string }[]>();
-    for (const col of columnRows as { table_name: string; column_name: string; data_type: string }[]) {
-      if (!colsByTable.has(col.table_name)) colsByTable.set(col.table_name, []);
-      colsByTable.get(col.table_name)!.push({ name: col.column_name, type: col.data_type });
-    }
-    const pksByTable = new Map<string, string[]>();
-    for (const pk of pkRows as { table_name: string; column_name: string }[]) {
-      if (!pksByTable.has(pk.table_name)) pksByTable.set(pk.table_name, []);
-      pksByTable.get(pk.table_name)!.push(pk.column_name);
-    }
-
-    return (tableRows as { table_name: string }[]).map((t) => ({
-      name: t.table_name,
-      columns: colsByTable.get(t.table_name) ?? [],
-      pkColumns: pksByTable.get(t.table_name) ?? [],
-    }));
-  },
-
-  async stats(cs) {
-    const [versionRows, sizeRows, tableRows] = await Promise.all([
-      invoke<Record<string, unknown>[]>("pg_query", { connectionString: cs, sql: "SELECT version()" }),
-      invoke<Record<string, unknown>[]>("pg_query", {
-        connectionString: cs,
-        sql: "SELECT pg_size_pretty(pg_database_size(current_database())) AS size",
-      }),
-      invoke<Record<string, unknown>[]>("pg_query", {
-        connectionString: cs,
-        sql: "SELECT COUNT(*) AS n FROM information_schema.tables WHERE table_schema = 'public'",
-      }),
-    ]);
-    const ver = String(versionRows[0]?.["version"] ?? "").split(" ").slice(0, 2).join(" ");
-    const size = String(sizeRows[0]?.["size"] ?? "");
-    const tableCount = Number(tableRows[0]?.["n"] ?? 0);
-    return { version: ver, size, tableCount };
-  },
-};
-
-const mysql: SqlDriverConfig = {
-  query: (cs, sql) =>
-    invoke<Record<string, unknown>[]>("mysql_query", { connectionString: cs, sql }),
-
-  execute: (cs, sql, params) =>
-    invoke<number>("mysql_execute", { connectionString: cs, sql, params }),
-
-  async introspect(cs) {
-    const [tableRows, columnRows, pkRows] = await Promise.all([
-      invoke<Record<string, unknown>[]>("mysql_query", {
-        connectionString: cs,
-        sql: "SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE' ORDER BY table_name",
-      }),
-      invoke<Record<string, unknown>[]>("mysql_query", {
-        connectionString: cs,
-        sql: "SELECT table_name, column_name, data_type FROM information_schema.columns WHERE table_schema = DATABASE() ORDER BY table_name, ordinal_position",
-      }),
-      invoke<Record<string, unknown>[]>("mysql_query", {
-        connectionString: cs,
-        sql: "SELECT table_name, column_name FROM information_schema.key_column_usage WHERE table_schema = DATABASE() AND constraint_name = 'PRIMARY' ORDER BY table_name, ordinal_position",
-      }),
-    ]);
-
-    const colsByTable = new Map<string, { name: string; type: string }[]>();
-    for (const col of columnRows as { table_name: string; column_name: string; data_type: string }[]) {
-      if (!colsByTable.has(col.table_name)) colsByTable.set(col.table_name, []);
-      colsByTable.get(col.table_name)!.push({ name: col.column_name, type: col.data_type });
-    }
-    const pksByTable = new Map<string, string[]>();
-    for (const pk of pkRows as { table_name: string; column_name: string }[]) {
-      if (!pksByTable.has(pk.table_name)) pksByTable.set(pk.table_name, []);
-      pksByTable.get(pk.table_name)!.push(pk.column_name);
-    }
-
-    return (tableRows as { table_name: string }[]).map((t) => ({
-      name: t.table_name,
-      columns: colsByTable.get(t.table_name) ?? [],
-      pkColumns: pksByTable.get(t.table_name) ?? [],
-    }));
-  },
-
-  async stats(cs) {
-    const [versionRows, sizeRows, tableRows] = await Promise.all([
-      invoke<Record<string, unknown>[]>("mysql_query", {
-        connectionString: cs,
-        sql: "SELECT VERSION() AS version",
-      }),
-      invoke<Record<string, unknown>[]>("mysql_query", {
-        connectionString: cs,
-        sql: `SELECT CONCAT(ROUND(SUM(data_length + index_length) / 1024 / 1024, 1), ' MB') AS size
-              FROM information_schema.tables WHERE table_schema = DATABASE()`,
-      }),
-      invoke<Record<string, unknown>[]>("mysql_query", {
-        connectionString: cs,
-        sql: "SELECT COUNT(*) AS n FROM information_schema.tables WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE'",
-      }),
-    ]);
-    const version = String(versionRows[0]?.["version"] ?? "");
-    const size = String(sizeRows[0]?.["size"] ?? "");
-    const tableCount = Number(tableRows[0]?.["n"] ?? 0);
-    return { version, size, tableCount };
-  },
-};
-
-export const SQL_DRIVERS: Record<string, SqlDriverConfig> = { postgres, mysql };
-
-export function getSqlDriver(driverName: string): SqlDriverConfig | undefined {
-  return SQL_DRIVERS[driverName];
+/**
+ * Build a HostServices object bound to a specific connection string,
+ * ready to inject into a plugin client.
+ */
+export function buildHostServices(connectionString: string): HostServices {
+  return {
+    sql: {
+      query: (sql) => sqlQuery(connectionString, sql),
+      execute: (sql, params) => sqlExecute(connectionString, sql, params),
+    },
+  };
 }

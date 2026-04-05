@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke } from "../lib/invoke";
 import { useDraggable } from "@dnd-kit/core";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { getDb } from "../db/client";

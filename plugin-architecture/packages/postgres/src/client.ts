@@ -1,22 +1,28 @@
 import type {
   PluginClient,
+  HostServices,
   ResourceInstance,
   DetailViewSchema,
   SidebarItemSchema,
+  SqlTableMeta,
 } from "@infrawrench/plugin-base";
 
 /**
  * Postgres plugin client.
  * The connectionString is already resolved (decrypted) by the host's SecretResolver
  * before createClient() is called — the plugin receives the plaintext URI.
+ * When the host injects sql services, the plugin uses them to run introspection and
+ * stats queries — keeping all SQL strings inside the plugin, not the host.
  */
 export class PostgresClient implements PluginClient {
   private readonly connectionString: string;
+  private readonly services: HostServices | undefined;
 
-  constructor(credentials: Record<string, string>) {
+  constructor(credentials: Record<string, string>, services?: HostServices) {
     const cs = credentials["connectionString"];
     if (!cs) throw new Error("Postgres plugin: missing connectionString credential");
     this.connectionString = cs;
+    this.services = services;
   }
 
   async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
@@ -48,11 +54,9 @@ export class PostgresClient implements PluginClient {
     _accountId: string,
   ): Promise<string> {
     if (typeId === "pg-database" && outputKey === "serverVersion") {
-      // Would query: SELECT version() FROM pg_catalog
       return "PostgreSQL 16.2";
     }
     if (typeId === "pg-database" && outputKey === "schemaNames") {
-      // Would query: SELECT schema_name FROM information_schema.schemata
       return JSON.stringify(["public"]);
     }
     throw new Error(
@@ -63,8 +67,6 @@ export class PostgresClient implements PluginClient {
   renderDetail(resource: ResourceInstance): DetailViewSchema {
     const cs = resource.secretStates.find((s) => s.fieldKey === "connectionString");
 
-    // The host pre-fetches table/column metadata and stores it in resolvedOutputs["__tables__"]
-    // as a JSON string: Array<{ name: string; columns: Array<{ name: string; type: string }> }>
     let tables: Array<{ name: string; columns: Array<{ name: string; type: string }> }> = [];
     const tablesJson = resource.resolvedOutputs["__tables__"];
     if (typeof tablesJson === "string" && tablesJson.length > 0) {
@@ -121,20 +123,100 @@ export class PostgresClient implements PluginClient {
     };
   }
 
+  async introspect(): Promise<SqlTableMeta[]> {
+    const sql = this.services?.sql;
+    if (!sql) return [];
+
+    const [tableRows, columnRows, pkRows] = await Promise.all([
+      sql.query(
+        "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name",
+      ),
+      sql.query(
+        "SELECT table_name, column_name, data_type FROM information_schema.columns WHERE table_schema = 'public' ORDER BY table_name, ordinal_position",
+      ),
+      sql.query(
+        `SELECT kcu.table_name, kcu.column_name
+         FROM information_schema.table_constraints tc
+         JOIN information_schema.key_column_usage kcu
+           ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
+         WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.table_schema = 'public'
+         ORDER BY kcu.table_name, kcu.ordinal_position`,
+      ),
+    ]);
+
+    const colsByTable = new Map<string, { name: string; type: string }[]>();
+    for (const col of columnRows as { table_name: string; column_name: string; data_type: string }[]) {
+      if (!colsByTable.has(col.table_name)) colsByTable.set(col.table_name, []);
+      colsByTable.get(col.table_name)!.push({ name: col.column_name, type: col.data_type });
+    }
+    const pksByTable = new Map<string, string[]>();
+    for (const pk of pkRows as { table_name: string; column_name: string }[]) {
+      if (!pksByTable.has(pk.table_name)) pksByTable.set(pk.table_name, []);
+      pksByTable.get(pk.table_name)!.push(pk.column_name);
+    }
+
+    return (tableRows as { table_name: string }[]).map((t) => ({
+      name: t.table_name,
+      columns: colsByTable.get(t.table_name) ?? [],
+      pkColumns: pksByTable.get(t.table_name) ?? [],
+    }));
+  }
+
+  async fetchStats(): Promise<{ version: string; size: string; tableCount: number }> {
+    const sql = this.services?.sql;
+    if (!sql) return { version: "", size: "", tableCount: 0 };
+
+    const [versionRows, sizeRows, tableRows] = await Promise.all([
+      sql.query("SELECT version()"),
+      sql.query("SELECT pg_size_pretty(pg_database_size(current_database())) AS size"),
+      sql.query("SELECT COUNT(*) AS n FROM information_schema.tables WHERE table_schema = 'public'"),
+    ]);
+
+    const ver = String(versionRows[0]?.["version"] ?? "").split(" ").slice(0, 2).join(" ");
+    const size = String(sizeRows[0]?.["size"] ?? "");
+    const tableCount = Number(tableRows[0]?.["n"] ?? 0);
+    return { version: ver, size, tableCount };
+  }
+
   private async listDatabases(accountId: string): Promise<ResourceInstance[]> {
-    // Parse the database name from the connection string URI.
-    // Real querying (pg_catalog.pg_database) requires native connectivity
-    // via a Tauri Rust command — not yet implemented.
     const now = new Date().toISOString();
+
+    // If host SQL services are available, query the actual catalog
+    if (this.services?.sql) {
+      try {
+        const rows = await this.services.sql.query(
+          "SELECT datname FROM pg_catalog.pg_database WHERE datistemplate = false ORDER BY datname",
+        );
+        let host = "unknown";
+        try {
+          host = new URL(this.connectionString).hostname;
+        } catch { /* ignore */ }
+        return (rows as { datname: string }[]).map((row) => ({
+          id: `${accountId}:pg-database:${row.datname}`,
+          pluginId: "postgres",
+          resourceTypeId: "pg-database",
+          accountId,
+          displayName: row.datname,
+          fields: { host, database: row.datname },
+          resolvedOutputs: {},
+          secretStates: [],
+          createdAt: now,
+          updatedAt: now,
+        }));
+      } catch {
+        // Fall through to URL parsing
+      }
+    }
+
+    // Fallback: parse the connection string
     let dbName = "postgres";
     let host = "unknown";
     try {
       const url = new URL(this.connectionString);
       dbName = url.pathname.replace(/^\//, "") || "postgres";
       host = url.hostname;
-    } catch {
-      // connection string may not be a parseable URL
-    }
+    } catch { /* connection string may not be a parseable URL */ }
+
     return [
       {
         id: `${accountId}:pg-database:${dbName}`,
@@ -151,7 +233,7 @@ export class PostgresClient implements PluginClient {
     ];
   }
 
-  private async listSchemas(accountId: string): Promise<ResourceInstance[]> {
+  private async listSchemas(_accountId: string): Promise<ResourceInstance[]> {
     return [];
   }
 }

@@ -1,17 +1,17 @@
-import Database from "@tauri-apps/plugin-sql";
-import { MIGRATIONS } from "./schema.js";
+import { invoke } from "../lib/invoke";
 
-let _db: Database | null = null;
+export interface DbClient {
+  select<T>(sql: string, params?: unknown[]): Promise<T>;
+  execute(sql: string, params?: unknown[]): Promise<{ rowsAffected: number; lastInsertId: number }>;
+}
 
-export async function getDb(): Promise<Database> {
-  if (_db) return _db;
+const db: DbClient = {
+  select: <T>(sql: string, params?: unknown[]) =>
+    invoke<T>("db_select", { sql, params: params ?? [] }),
+  execute: (sql: string, params?: unknown[]) =>
+    invoke<{ rowsAffected: number; lastInsertId: number }>("db_execute", { sql, params: params ?? [] }),
+};
 
-  _db = await Database.load("sqlite:infrawrench.db");
-
-  // Run migrations (idempotent — all use CREATE IF NOT EXISTS)
-  for (const migration of MIGRATIONS) {
-    await _db.execute(migration);
-  }
-
-  return _db;
+export async function getDb(): Promise<DbClient> {
+  return db;
 }

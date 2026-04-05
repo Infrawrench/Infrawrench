@@ -47,15 +47,23 @@ function RootLayout() {
       onDragEnd={(e) => { void handleDragEnd(e); }}
       onDragCancel={() => setDraggingResource(null)}
     >
-      <div className="flex h-screen bg-gray-950 text-gray-100 select-none">
+      <div className="flex flex-col h-screen bg-gray-950 text-gray-100 select-none">
+        {/* macOS title bar — full-width drag region that clears the traffic lights */}
+        <div
+          className="h-8 flex-shrink-0 border-b border-gray-800/50"
+          style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+        />
+
+        <div className="flex flex-1 overflow-hidden">
         {/* Sidebar */}
         {!sidebarCollapsed && (
           <aside className="w-60 border-r border-gray-800 flex flex-col overflow-hidden flex-shrink-0">
-            <div className="flex items-center justify-between px-3 py-3 border-b border-gray-800">
+            <div className="flex items-center justify-between px-3 py-2 border-b border-gray-800">
               <span className="text-sm font-semibold text-gray-300">Infrawrench</span>
               <button
                 onClick={toggleSidebar}
                 className="text-gray-700 hover:text-gray-400 transition-colors text-xs"
+                style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
                 aria-label="Collapse sidebar"
               >
                 ◀
@@ -103,6 +111,7 @@ function RootLayout() {
             onAdded={() => setAccountsKey((k) => k + 1)}
           />
         )}
+        </div>{/* end flex row */}
       </div>
 
       {/* Floating drag preview */}

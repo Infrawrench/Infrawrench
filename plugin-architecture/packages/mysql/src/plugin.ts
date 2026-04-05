@@ -34,5 +34,5 @@ const resourceTypes: ResourceTypeDefinition[] = [MySQLDatabaseResourceType];
 export const plugin: Plugin = {
   manifest,
   resourceTypes,
-  createClient: (credentials) => new MySQLClient(credentials),
+  createClient: (credentials, services) => new MySQLClient(credentials, services),
 };

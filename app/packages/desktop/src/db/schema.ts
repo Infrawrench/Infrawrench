@@ -2,8 +2,7 @@
  * SQLite schema for the desktop app — same tables as the web app
  * but without organization_id (single-user, local).
  *
- * Uses @tauri-apps/plugin-sql for SQLite access from the frontend.
- * Migrations are run at startup via the initDb() function.
+ * Migrations are run at startup in the Electron main process (electron/main.ts).
  */
 
 export const MIGRATIONS = [

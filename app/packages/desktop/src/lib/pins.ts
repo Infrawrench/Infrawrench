@@ -1,4 +1,4 @@
-import Database from "@tauri-apps/plugin-sql";
+import type { DbClient } from "../db/client";
 
 export interface DraggableResource {
   id: string;
@@ -28,7 +28,7 @@ export function getDragData(e: React.DragEvent): DraggableResource | null {
   catch { return null; }
 }
 
-export async function createDashboard(name: string, db: Database): Promise<string> {
+export async function createDashboard(name: string, db: DbClient): Promise<string> {
   const id = crypto.randomUUID();
   await db.execute(
     "INSERT INTO dashboards (id, name, is_default) VALUES ($1, $2, 0)",
@@ -39,7 +39,7 @@ export async function createDashboard(name: string, db: Database): Promise<strin
 
 export async function pinResource(
   resource: DraggableResource,
-  db: Database,
+  db: DbClient,
   dashboardId?: string | undefined,
 ): Promise<void> {
   await db.execute(
