@@ -85,9 +85,7 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
         const sshMap: Record<string, string> = {};
         for (const p of plugins) {
           for (const rt of p.plugin.resourceTypes) {
-            if (rt.sshEndpoint) {
-              sshMap[rt.id] = rt.sshEndpoint.hostOutputKey;
-            }
+            if (rt.sshEndpoint) sshMap[rt.id] = rt.sshEndpoint.hostOutputKey;
           }
         }
         if (!cancelled) setSshEndpointByTypeId(sshMap);
@@ -123,26 +121,12 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
     return () => { cancelled = true; };
   }, [refreshKey]);
 
-  async function toggleExpand(account: Account) {
+  async function loadAccountResources(account: Account) {
     const id = account.id;
-    const isNowExpanded = !expanded.has(id);
-
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (isNowExpanded) next.add(id);
-      else next.delete(id);
-      return next;
-    });
-
-    // Only load resources if expanding and not already loaded
-    if (!isNowExpanded) return;
-    if (accountResources[id]) return;
-
     setAccountResources((prev) => ({
       ...prev,
       [id]: { loading: true, error: null, resources: [] },
     }));
-
     try {
       const plaintext = await invoke<string>("decrypt_value", {
         ciphertext: account.encrypted_credentials,
@@ -155,29 +139,23 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
       const services = buildPluginHostServices(plugin.manifest, credentials);
       const client = plugin.createClient(credentials, services);
       const topLevelTypes = plugin.resourceTypes.filter((t) => !t.parentTypeId);
-
       const results = await Promise.allSettled(
         topLevelTypes.map((t) => client.listResources(t.id, id)),
       );
-
       const allResources: ResourceInstance[] = [];
       for (const r of results) {
         if (r.status === "fulfilled") allResources.push(...r.value);
       }
-
       setAccountResources((prev) => ({
         ...prev,
         [id]: { loading: false, error: null, resources: allResources },
       }));
-
       // Record SSH host values for resources with sshEndpoint
       const sshHosts: Record<string, string> = {};
       for (const r of allResources) {
         const hostOutputKey = sshEndpointByTypeId[r.resourceTypeId];
         if (hostOutputKey) {
-          const host = String(
-            r.resolvedOutputs[hostOutputKey] ?? r.fields[hostOutputKey] ?? "",
-          );
+          const host = String(r.resolvedOutputs[hostOutputKey] ?? r.fields[hostOutputKey] ?? "");
           if (host) sshHosts[r.id] = host;
         }
       }
@@ -191,6 +169,41 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
       }));
     }
   }
+
+  async function toggleExpand(account: Account) {
+    const id = account.id;
+    const isNowExpanded = !expanded.has(id);
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (isNowExpanded) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+    // Only load resources if expanding and not already loaded
+    if (!isNowExpanded) return;
+    if (accountResources[id]) return;
+    void loadAccountResources(account);
+  }
+
+  // Invalidate + reload resource list when something was deleted (or otherwise changed)
+  useEffect(() => {
+    function handler(e: Event) {
+      const { accountId } = (e as CustomEvent<{ accountId: string }>).detail;
+      // If the account is currently expanded, reload immediately; otherwise just clear the cache
+      const account = groups.flatMap((g) => g.accounts).find((a) => a.id === accountId);
+      if (account && expanded.has(accountId)) {
+        void loadAccountResources(account);
+      } else {
+        setAccountResources((prev) => {
+          const next = { ...prev };
+          delete next[accountId];
+          return next;
+        });
+      }
+    }
+    window.addEventListener("iw:resources-changed", handler);
+    return () => window.removeEventListener("iw:resources-changed", handler);
+  }, [groups, expanded]);
 
   // Close context menu on outside click
   useEffect(() => {
@@ -328,6 +341,7 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
         }}
       />
     )}
+
     </>
   );
 }

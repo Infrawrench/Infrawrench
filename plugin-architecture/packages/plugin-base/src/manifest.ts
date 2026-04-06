@@ -161,6 +161,12 @@ export interface PluginClient {
   fetchStorageStats?(bucketName: string): Promise<{ count: number; size: string }>;
   /** Return SSH connection details for terminal access — only when the resource type declares supportsTerminal */
   getSshConfig?(): { host: string; port: number; username: string; privateKey: string };
+  /** Fetch a fully-populated create form config for a resource type (regions, sizes, etc. from live API). */
+  getCreateConfig?(typeId: string): Promise<CreateResourceConfig>;
+  /** Permanently delete a resource. The host is responsible for confirming with the user first. */
+  deleteResource?(typeId: string, resourceId: string, accountId: string): Promise<void>;
+  /** Create a new resource of the given type. Fields are the raw form values. */
+  createResource?(typeId: string, accountId: string, fields: Record<string, string>): Promise<ResourceInstance>;
 }
 
 export interface Plugin {
@@ -173,3 +179,4 @@ export interface Plugin {
 // Forward declarations — defined in their own modules but used here
 import type { ResourceInstance } from "./instance.js";
 import type { DetailViewSchema, SidebarItemSchema, SqlTableMeta, StorageObject } from "./schema.js";
+import type { CreateResourceConfig } from "./create.js";

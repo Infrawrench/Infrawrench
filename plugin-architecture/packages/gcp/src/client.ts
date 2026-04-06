@@ -4,6 +4,10 @@ import type {
   DetailViewSchema,
   SidebarItemSchema,
   StorageObject,
+  CreateResourceConfig,
+  SizeOption,
+  ImageOption,
+  DiskOption,
 } from "@infrawrench/plugin-base";
 import { fetchAccessToken, type ServiceAccountKey } from "./auth.js";
 
@@ -203,6 +207,249 @@ export class GcpClient implements PluginClient {
     }
 
     throw new Error(`GCP plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+  }
+
+  // Region slug → {location, flag}
+  private static readonly REGION_INFO: Record<string, { location: string; flag: string }> = {
+    "us-central1":          { location: "Iowa, USA",               flag: "🇺🇸" },
+    "us-east1":             { location: "South Carolina, USA",      flag: "🇺🇸" },
+    "us-east4":             { location: "Northern Virginia, USA",   flag: "🇺🇸" },
+    "us-east5":             { location: "Columbus, Ohio, USA",      flag: "🇺🇸" },
+    "us-south1":            { location: "Dallas, Texas, USA",       flag: "🇺🇸" },
+    "us-west1":             { location: "Oregon, USA",              flag: "🇺🇸" },
+    "us-west2":             { location: "Los Angeles, USA",         flag: "🇺🇸" },
+    "us-west3":             { location: "Salt Lake City, USA",      flag: "🇺🇸" },
+    "us-west4":             { location: "Las Vegas, USA",           flag: "🇺🇸" },
+    "northamerica-northeast1": { location: "Montréal, Canada",      flag: "🇨🇦" },
+    "northamerica-northeast2": { location: "Toronto, Canada",       flag: "🇨🇦" },
+    "southamerica-east1":   { location: "São Paulo, Brazil",        flag: "🇧🇷" },
+    "southamerica-west1":   { location: "Santiago, Chile",          flag: "🇨🇱" },
+    "europe-west1":         { location: "Belgium",                  flag: "🇧🇪" },
+    "europe-west2":         { location: "London, UK",               flag: "🇬🇧" },
+    "europe-west3":         { location: "Frankfurt, Germany",       flag: "🇩🇪" },
+    "europe-west4":         { location: "Netherlands",              flag: "🇳🇱" },
+    "europe-west6":         { location: "Zurich, Switzerland",      flag: "🇨🇭" },
+    "europe-west8":         { location: "Milan, Italy",             flag: "🇮🇹" },
+    "europe-west9":         { location: "Paris, France",            flag: "🇫🇷" },
+    "europe-west10":        { location: "Berlin, Germany",          flag: "🇩🇪" },
+    "europe-west12":        { location: "Turin, Italy",             flag: "🇮🇹" },
+    "europe-central2":      { location: "Warsaw, Poland",           flag: "🇵🇱" },
+    "europe-north1":        { location: "Finland",                  flag: "🇫🇮" },
+    "europe-southwest1":    { location: "Madrid, Spain",            flag: "🇪🇸" },
+    "asia-east1":           { location: "Taiwan",                   flag: "🇹🇼" },
+    "asia-east2":           { location: "Hong Kong",                flag: "🇭🇰" },
+    "asia-northeast1":      { location: "Tokyo, Japan",             flag: "🇯🇵" },
+    "asia-northeast2":      { location: "Osaka, Japan",             flag: "🇯🇵" },
+    "asia-northeast3":      { location: "Seoul, South Korea",       flag: "🇰🇷" },
+    "asia-south1":          { location: "Mumbai, India",            flag: "🇮🇳" },
+    "asia-south2":          { location: "Delhi, India",             flag: "🇮🇳" },
+    "asia-southeast1":      { location: "Singapore",                flag: "🇸🇬" },
+    "asia-southeast2":      { location: "Jakarta, Indonesia",       flag: "🇮🇩" },
+    "australia-southeast1": { location: "Sydney, Australia",        flag: "🇦🇺" },
+    "australia-southeast2": { location: "Melbourne, Australia",     flag: "🇦🇺" },
+    "me-west1":             { location: "Tel Aviv, Israel",         flag: "🇮🇱" },
+    "me-central1":          { location: "Doha, Qatar",              flag: "🇶🇦" },
+    "me-central2":          { location: "Dammam, Saudi Arabia",     flag: "🇸🇦" },
+    "africa-south1":        { location: "Johannesburg, South Africa", flag: "🇿🇦" },
+  };
+
+  // Curated public image families — no API call needed, GCP resolves to latest
+  private static readonly PUBLIC_IMAGES: ImageOption[] = [
+    { id: "projects/debian-cloud/global/images/family/debian-12",              label: "Debian 12 (Bookworm)",   category: "Debian",      family: "debian-12" },
+    { id: "projects/debian-cloud/global/images/family/debian-11",              label: "Debian 11 (Bullseye)",   category: "Debian",      family: "debian-11" },
+    { id: "projects/ubuntu-os-cloud/global/images/family/ubuntu-2404-lts-amd64", label: "Ubuntu 24.04 LTS",     category: "Ubuntu",      family: "ubuntu-2404-lts-amd64" },
+    { id: "projects/ubuntu-os-cloud/global/images/family/ubuntu-2204-lts",     label: "Ubuntu 22.04 LTS",       category: "Ubuntu",      family: "ubuntu-2204-lts" },
+    { id: "projects/ubuntu-os-cloud/global/images/family/ubuntu-2004-lts",     label: "Ubuntu 20.04 LTS",       category: "Ubuntu",      family: "ubuntu-2004-lts" },
+    { id: "projects/centos-cloud/global/images/family/centos-stream-9",        label: "CentOS Stream 9",        category: "CentOS",      family: "centos-stream-9" },
+    { id: "projects/rocky-linux-cloud/global/images/family/rocky-linux-9",     label: "Rocky Linux 9",          category: "Rocky Linux", family: "rocky-linux-9" },
+    { id: "projects/rocky-linux-cloud/global/images/family/rocky-linux-8",     label: "Rocky Linux 8",          category: "Rocky Linux", family: "rocky-linux-8" },
+    { id: "projects/windows-cloud/global/images/family/windows-2022",          label: "Windows Server 2022",    category: "Windows",     family: "windows-2022" },
+    { id: "projects/windows-cloud/global/images/family/windows-2019",          label: "Windows Server 2019",    category: "Windows",     family: "windows-2019" },
+  ];
+
+  async deleteResource(typeId: string, resourceId: string, accountId: string): Promise<void> {
+    if (typeId !== "gce-instance") throw new Error(`GCP plugin: deleteResource not supported for type "${typeId}"`);
+    const p = this.project;
+    const tok = await this.token();
+    // Need the zone — fetch the resource to get it
+    const resource = await this.getResource(typeId, resourceId, accountId);
+    const zone = String(resource.fields["zone"] ?? "");
+    const name = String(resource.fields["name"] ?? (resource.externalId ?? resource.displayName).split("/").pop() ?? "");
+    if (!zone || !name) throw new Error("Cannot determine zone or instance name for deletion");
+    const res = await fetch(
+      `https://compute.googleapis.com/compute/v1/projects/${p}/zones/${zone}/instances/${name}`,
+      { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
+    );
+    if (!res.ok) throw new Error(`GCP Compute API ${res.status}: ${await res.text()}`);
+  }
+
+  async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
+    if (typeId !== "gce-instance") throw new Error(`No create config for type "${typeId}"`);
+    const p = this.project;
+
+    // Fetch zones, machine types, account images, and existing disks in parallel
+    const [zonesData, machineTypesData, accountImagesData, disksData] = await Promise.all([
+      this.get<{ items?: Array<{ name: string; status: string; region: string }> }>(
+        `https://compute.googleapis.com/compute/v1/projects/${p}/zones`,
+      ),
+      this.get<{ items?: Array<{ name: string; guestCpus: number; memoryMb: number }> }>(
+        `https://compute.googleapis.com/compute/v1/projects/${p}/zones/us-central1-a/machineTypes?maxResults=500`,
+      ),
+      this.get<{ items?: Array<{ name: string; selfLink: string; description?: string; status: string }> }>(
+        `https://compute.googleapis.com/compute/v1/projects/${p}/global/images`,
+      ).catch(() => ({ items: [] as Array<{ name: string; selfLink: string; description?: string; status: string }> })),
+      this.get<{ items?: Record<string, { disks?: Array<{ name: string; selfLink: string; sizeGb: string; status: string; type: string; zone: string }> }> }>(
+        `https://compute.googleapis.com/compute/v1/projects/${p}/aggregated/disks`,
+      ).catch(() => ({ items: {} })),
+    ]);
+
+    // Zones
+    const zones = (zonesData.items ?? [])
+      .filter((z) => z.status === "UP")
+      .map((z) => {
+        const regionSlug = z.region.split("/").pop() ?? z.region;
+        const info = GcpClient.REGION_INFO[regionSlug];
+        return {
+          id: z.name,
+          label: z.name,
+          ...(info ? { location: info.location, flag: info.flag } : { location: regionSlug }),
+        };
+      })
+      .sort((a, b) => a.id.localeCompare(b.id));
+
+    // Machine types grouped by family
+    const familyOrder = ["e2", "n1", "n2", "n2d", "c2", "c3", "m1", "m2", "a2", "g2"];
+    const familyLabels: Record<string, string> = {
+      e2: "E2 · Cost-optimized", n1: "N1 · General purpose", n2: "N2 · General purpose",
+      n2d: "N2D · AMD general purpose", c2: "C2 · Compute-optimized", c3: "C3 · Compute-optimized",
+      m1: "M1 · Memory-optimized", m2: "M2 · Memory-optimized", a2: "A2 · GPU", g2: "G2 · GPU",
+    };
+    const sizes: SizeOption[] = (machineTypesData.items ?? [])
+      .filter((m) => !m.name.includes("custom"))
+      .map((m) => {
+        const family = familyOrder.find((f) => m.name.startsWith(f)) ?? m.name.split("-")[0] ?? "other";
+        return { id: m.name, label: m.name, vcpus: m.guestCpus, memoryMb: m.memoryMb, category: familyLabels[family] ?? family.toUpperCase() };
+      })
+      .sort((a, b) => {
+        const ai = familyOrder.indexOf(a.category?.split(" ")[0]?.toLowerCase() ?? "");
+        const bi = familyOrder.indexOf(b.category?.split(" ")[0]?.toLowerCase() ?? "");
+        if (ai !== bi) return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+        return a.vcpus - b.vcpus || a.memoryMb - b.memoryMb;
+      });
+
+    // Images: public families + account-owned
+    const accountImages: ImageOption[] = (accountImagesData.items ?? [])
+      .filter((i) => i.status === "READY")
+      .map((i) => ({ id: i.selfLink, label: i.name, description: i.description, category: "My Images", isOwned: true }));
+    const images: ImageOption[] = [...GcpClient.PUBLIC_IMAGES, ...accountImages];
+
+    // Existing disks from aggregated list
+    const disks: DiskOption[] = [];
+    for (const zoneData of Object.values(disksData.items ?? {})) {
+      for (const d of zoneData.disks ?? []) {
+        if (d.status !== "READY") continue;
+        const zone = d.zone.split("/").pop() ?? d.zone;
+        const diskType = d.type.split("/").pop() ?? "";
+        disks.push({ id: d.selfLink, label: d.name, sizeGb: Number(d.sizeGb), zone, diskType });
+      }
+    }
+    disks.sort((a, b) => a.label.localeCompare(b.label));
+
+    const defaultZone = zones.find((z) => z.id === "us-central1-a")?.id ?? zones[0]?.id;
+
+    return {
+      fields: [
+        { key: "name",        label: "Name",         kind: "text",          required: true },
+        { key: "zone",        label: "Zone",          kind: "region-picker", required: true,  regions: zones,  ...(defaultZone ? { defaultValue: defaultZone } : {}) },
+        { key: "machineType", label: "Machine Type",  kind: "size-picker",   required: true,  sizes,           defaultValue: "e2-medium" },
+        { key: "bootSource",  label: "Boot Disk",     kind: "select",        required: true,  defaultValue: "new-image",
+          options: [
+            { id: "new-image",      label: "New disk from OS image" },
+            { id: "existing-disk",  label: "Existing persistent disk" },
+          ],
+        },
+        { key: "image",  label: "OS Image",       kind: "image-picker", required: true,  images, defaultValue: "projects/debian-cloud/global/images/family/debian-12",
+          showWhen: { fieldKey: "bootSource", fieldValue: "new-image" } },
+        { key: "diskGb", label: "Boot Disk Size",  kind: "disk-slider",  required: false, minGb: 10, maxGb: 2000, defaultGb: 50, stepGb: 10,
+          showWhen: { fieldKey: "bootSource", fieldValue: "new-image" } },
+        { key: "existingDisk", label: "Select Disk", kind: "disk-picker", required: true,  disks,
+          showWhen: { fieldKey: "bootSource", fieldValue: "existing-disk" } },
+        { key: "sshPublicKey", label: "SSH Key", kind: "ssh-key-picker", required: false },
+      ],
+    };
+  }
+
+  async createResource(typeId: string, accountId: string, fields: Record<string, string>): Promise<ResourceInstance> {
+    if (typeId !== "gce-instance") {
+      throw new Error(`GCP plugin: createResource not supported for type "${typeId}"`);
+    }
+    const p = this.project;
+    const zone = fields["zone"] ?? "";
+    const machineType = fields["machineType"] ?? "";
+    const name = fields["name"] ?? "";
+    const tok = await this.token();
+    const bootSource = fields["bootSource"] ?? "new-image";
+
+    let bootDisk: Record<string, unknown>;
+    if (bootSource === "existing-disk") {
+      bootDisk = { boot: true, source: fields["existingDisk"] };
+    } else {
+      const diskSizeGb = Number(fields["diskGb"] ?? 50);
+      bootDisk = {
+        boot: true,
+        autoDelete: true,
+        initializeParams: {
+          sourceImage: fields["image"] ?? "projects/debian-cloud/global/images/family/debian-12",
+          diskSizeGb: String(diskSizeGb),
+        },
+      };
+    }
+
+    // SSH key → GCP metadata format: "username:ssh-rsa AAAA..."
+    let metadata: Record<string, unknown> | undefined;
+    const sshPub = fields["sshPublicKey"];
+    if (sshPub) {
+      const comment = sshPub.trim().split(" ")[2] ?? "";
+      const username = comment.split("@")[0] || "user";
+      metadata = { items: [{ key: "ssh-keys", value: `${username}:${sshPub.trim()}` }] };
+    }
+
+    const body: Record<string, unknown> = {
+      name,
+      machineType: `zones/${zone}/machineTypes/${machineType}`,
+      disks: [bootDisk],
+      networkInterfaces: [{
+        network: "global/networks/default",
+        accessConfigs: [{ type: "ONE_TO_ONE_NAT", name: "External NAT" }],
+      }],
+      ...(metadata ? { metadata } : {}),
+    };
+    const res = await fetch(
+      `https://compute.googleapis.com/compute/v1/projects/${p}/zones/${zone}/instances`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      },
+    );
+    if (!res.ok) {
+      throw new Error(`GCP Compute API ${res.status}: ${await res.text()}`);
+    }
+    // The API returns an Operation, not the instance directly — return a stub and let the user refresh
+    const now = new Date().toISOString();
+    return {
+      id: `${accountId}:gce-instance:${name}`,
+      pluginId: "gcp",
+      resourceTypeId: "gce-instance",
+      accountId,
+      displayName: name,
+      fields: { name, zone, machineType, status: "PROVISIONING" },
+      resolvedOutputs: {},
+      secretStates: [],
+      externalId: name,
+      createdAt: now,
+      updatedAt: now,
+    };
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {

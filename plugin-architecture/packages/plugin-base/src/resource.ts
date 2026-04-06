@@ -64,4 +64,6 @@ export interface ResourceTypeDefinition {
   sshEndpoint?: { hostOutputKey: string };
   /** If true, the host will show a storage browser and fetch storage stats for dashboard cards of this type */
   supportsStorageBrowser?: boolean;
+  /** If true, the host will offer a "Create" button for this resource type */
+  supportsCreate?: boolean;
 }

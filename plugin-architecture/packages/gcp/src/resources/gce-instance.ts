@@ -18,4 +18,5 @@ export const GceInstanceResourceType: ResourceTypeDefinition = {
   ],
   dashboardPinnable: true,
   sshEndpoint: { hostOutputKey: "externalIp" },
+  supportsCreate: true,
 };

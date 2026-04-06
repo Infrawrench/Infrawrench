@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { invoke } from "../lib/invoke";
 import type { ResourceInstance, DetailViewSchema } from "@infrawrench/plugin-base";
 import { DetailView, type QueryResult, useUIStore } from "@infrawrench/ui";
@@ -65,6 +65,10 @@ function ResourceDetailPage() {
   const [sshHost, setSshHost] = useState<string | null>(null);
   const setAccountConnected = useUIStore((s) => s.setAccountConnected);
   const [detailsCollapsed, setDetailsCollapsed] = useState(false);
+  const [canDelete, setCanDelete] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const navigate = useNavigate();
 
   useEffect(() => {
     let cancelled = false;
@@ -202,6 +206,7 @@ function ResourceDetailPage() {
         clientRef.current = client;
         if (!cancelled) {
           setHasStorageToken(!!client.getStorageAccessToken);
+          setCanDelete(!!client.deleteResource);
           if (client.getSshConfig) setSshConfig(client.getSshConfig());
         }
         const resourceTypeId = decodedResourceId.split(":")[1] ?? "pg-database";
@@ -305,6 +310,26 @@ function ResourceDetailPage() {
     return sqlExecute(driverId, cs, sql, params);
   }, []);
 
+  async function handleDelete() {
+    if (!resource || !account) return;
+    setDeleting(true);
+    try {
+      const client = clientRef.current;
+      if (!client?.deleteResource) throw new Error("Plugin does not support deletion");
+      await client.deleteResource(resource.resourceTypeId, resource.id, accountId);
+      // Remove from local DB and navigate back to the account page
+      const db = await getDb();
+      await db.execute("DELETE FROM dashboard_pins WHERE resource_id = $1", [resource.id]);
+      await db.execute("DELETE FROM resources WHERE id = $1", [resource.id]);
+      window.dispatchEvent(new CustomEvent("iw:resources-changed", { detail: { accountId } }));
+      void navigate({ to: "/accounts/$accountId", params: { accountId } });
+    } catch (e) {
+      setError(String(e));
+      setDeleting(false);
+      setConfirmDelete(false);
+    }
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full text-gray-600 text-sm">
@@ -361,6 +386,40 @@ function ResourceDetailPage() {
           </div>
         )}
       </div>
+
+      {/* Delete bar — only shown for resource types that support deletion */}
+      {canDelete && (
+        <div className="shrink-0 px-4 py-2 border-t border-gray-800 flex items-center justify-end gap-3">
+          {confirmDelete ? (
+            <>
+              <span className="text-xs text-gray-400">
+                Permanently delete <span className="text-white font-medium">{resource?.displayName}</span>?
+              </span>
+              <button
+                onClick={() => void handleDelete()}
+                disabled={deleting}
+                className="px-3 py-1 text-xs bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white rounded-lg transition-colors"
+              >
+                {deleting ? "Deleting…" : "Delete"}
+              </button>
+              <button
+                onClick={() => setConfirmDelete(false)}
+                disabled={deleting}
+                className="px-3 py-1 text-xs text-gray-500 hover:text-gray-300 transition-colors"
+              >
+                Cancel
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => setConfirmDelete(true)}
+              className="text-xs text-gray-600 hover:text-red-400 transition-colors px-2 py-1 rounded hover:bg-red-500/10"
+            >
+              Delete VM…
+            </button>
+          )}
+        </div>
+      )}
 
       {!hasSqlEditor && pgError && (
         <div className="shrink-0 px-4 py-2 border-t border-gray-800 bg-gray-950">

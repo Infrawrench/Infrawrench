@@ -56,13 +56,20 @@ export function SshQuickConnectPanel({ host }: SshQuickConnectPanelProps) {
       [],
     );
     setAppKeys(rows);
-    // Auto-select first available key
+    // Auto-select first available key and derive username from its public key comment
     setSelectedKey((prev) => {
       if (prev) return prev;
       if (sys[0]) return { type: "system", name: sys[0].name };
       if (rows[0]) return { type: "app", id: rows[0].id, name: rows[0].name };
       return null;
     });
+    if (sys[0]) {
+      try {
+        const pub = await invoke<string>("ssh_read_system_key", { name: `${sys[0].name}.pub` });
+        const comment = pub.trim().split(" ")[2];
+        if (comment) setUsername((prev) => (prev === "root" ? comment.split("@")[0] : prev));
+      } catch { /* .pub might not exist */ }
+    }
   }
 
   async function saveAppKey() {
@@ -188,7 +195,14 @@ export function SshQuickConnectPanel({ host }: SshQuickConnectPanelProps) {
                           label={k.name}
                           sublabel="~/.ssh/"
                           selected={selectedKey?.type === "system" && selectedKey.name === k.name}
-                          onSelect={() => setSelectedKey({ type: "system", name: k.name })}
+                          onSelect={async () => {
+                            setSelectedKey({ type: "system", name: k.name });
+                            try {
+                              const pub = await invoke<string>("ssh_read_system_key", { name: `${k.name}.pub` });
+                              const comment = pub.trim().split(" ")[2];
+                              if (comment) setUsername((prev) => (prev === "root" || prev === comment.split("@")[0] ? comment.split("@")[0] : prev));
+                            } catch { /* .pub might not exist */ }
+                          }}
                         />
                       ))}
                     </div>
@@ -283,7 +297,7 @@ function KeyRow({
   label: string;
   sublabel?: string;
   selected: boolean;
-  onSelect: () => void;
+  onSelect: () => void | Promise<void>;
   onDelete?: () => void;
 }) {
   return (

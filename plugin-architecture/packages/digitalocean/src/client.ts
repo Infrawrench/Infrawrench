@@ -3,6 +3,9 @@ import type {
   ResourceInstance,
   DetailViewSchema,
   SidebarItemSchema,
+  CreateResourceConfig,
+  SizeOption,
+  ImageOption,
 } from "@infrawrench/plugin-base";
 import { DOKSClusterResourceType } from "./resources/doks-cluster.js";
 import { ManagedDatabaseResourceType } from "./resources/managed-database.js";
@@ -16,22 +19,38 @@ export class DigitalOceanClient implements PluginClient {
   private readonly token: string;
   private readonly baseUrl = "https://api.digitalocean.com/v2";
 
+  private static readonly REGION_INFO: Record<string, { location: string; flag: string }> = {
+    nyc1: { location: "New York City, USA",    flag: "🇺🇸" },
+    nyc3: { location: "New York City, USA",    flag: "🇺🇸" },
+    sfo2: { location: "San Francisco, USA",    flag: "🇺🇸" },
+    sfo3: { location: "San Francisco, USA",    flag: "🇺🇸" },
+    ams3: { location: "Amsterdam, Netherlands", flag: "🇳🇱" },
+    fra1: { location: "Frankfurt, Germany",    flag: "🇩🇪" },
+    sgp1: { location: "Singapore",             flag: "🇸🇬" },
+    lon1: { location: "London, UK",            flag: "🇬🇧" },
+    tor1: { location: "Toronto, Canada",       flag: "🇨🇦" },
+    blr1: { location: "Bangalore, India",      flag: "🇮🇳" },
+    syd1: { location: "Sydney, Australia",     flag: "🇦🇺" },
+  };
+
   constructor(credentials: Record<string, string>) {
     const token = credentials["apiToken"];
     if (!token) throw new Error("DigitalOcean plugin: missing apiToken credential");
     this.token = token;
   }
 
-  private async fetch<T>(path: string): Promise<T> {
+  private async fetch<T>(path: string, options?: RequestInit): Promise<T> {
     const res = await fetch(`${this.baseUrl}${path}`, {
       headers: {
         Authorization: `Bearer ${this.token}`,
         "Content-Type": "application/json",
       },
+      ...options,
     });
     if (!res.ok) {
       throw new Error(`DO API error ${res.status} for ${path}: ${await res.text()}`);
     }
+    if (res.status === 204) return undefined as unknown as T;
     return res.json() as Promise<T>;
   }
 
@@ -100,6 +119,137 @@ export class DigitalOceanClient implements PluginClient {
     throw new Error(
       `DigitalOcean plugin: cannot resolve output "${outputKey}" for type "${typeId}"`,
     );
+  }
+
+  async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
+    if (typeId !== "droplet") throw new Error(`No create config for type "${typeId}"`);
+
+    const [regionsData, sizesData, publicImagesData, privateImagesData] = await Promise.all([
+      this.fetch<{ regions: Array<{ slug: string; name: string; available: boolean }> }>("/regions"),
+      this.fetch<{ sizes: Array<{ slug: string; memory: number; vcpus: number; disk: number; price_monthly: number; available: boolean; description: string }> }>("/sizes"),
+      this.fetch<{ images: Array<{ id: number; slug: string | null; name: string; distribution: string; type: string; public: boolean; status: string }> }>("/images?type=distribution&per_page=200"),
+      this.fetch<{ images: Array<{ id: number; slug: string | null; name: string; distribution: string; type: string; public: boolean; status: string }> }>("/images?private=true&per_page=200"),
+    ]);
+
+    const regions = regionsData.regions
+      .filter((r) => r.available)
+      .map((r) => {
+        const info = DigitalOceanClient.REGION_INFO[r.slug];
+        return {
+          id: r.slug,
+          label: r.name,
+          ...(info ? { location: info.location, flag: info.flag } : {}),
+        };
+      });
+
+    const sizesByCategory = new Map<string, SizeOption[]>();
+    for (const s of sizesData.sizes) {
+      if (!s.available) continue;
+      const cat = s.description || "Standard";
+      if (!sizesByCategory.has(cat)) sizesByCategory.set(cat, []);
+      sizesByCategory.get(cat)!.push({
+        id: s.slug, label: s.slug, vcpus: s.vcpus, memoryMb: s.memory,
+        diskGb: s.disk, priceMonthly: s.price_monthly, category: cat,
+      });
+    }
+    const sizes = [...sizesByCategory.values()].flat();
+
+    // Build image list: public distribution images grouped by distro, then private images
+    const imageMap = new Map<string, ImageOption[]>();
+    for (const img of publicImagesData.images) {
+      if (img.status !== "available") continue;
+      const cat = img.distribution;
+      if (!imageMap.has(cat)) imageMap.set(cat, []);
+      imageMap.get(cat)!.push({ id: img.slug ?? String(img.id), label: img.name, category: cat });
+    }
+    const privateImages: ImageOption[] = privateImagesData.images
+      .filter((i) => i.status === "available")
+      .map((i) => ({ id: String(i.id), label: i.name, category: "My Snapshots", isOwned: true }));
+    const images: ImageOption[] = [...[...imageMap.values()].flat(), ...privateImages];
+    const defaultImage = images.find((i) => i.category === "Ubuntu")?.id ?? images[0]?.id;
+
+    const firstRegion = regions[0]?.id;
+    const firstSize = sizes[0]?.id;
+    return {
+      fields: [
+        { key: "name",   label: "Name",   kind: "text",          required: true },
+        { key: "region", label: "Region", kind: "region-picker", required: true, regions, ...(firstRegion ? { defaultValue: firstRegion } : {}) },
+        { key: "size",   label: "Size",   kind: "size-picker",   required: true, sizes,   ...(firstSize   ? { defaultValue: firstSize }   : {}) },
+        { key: "image",     label: "Image",   kind: "image-picker",  required: true,  images,  ...(defaultImage ? { defaultValue: defaultImage } : {}) },
+        { key: "sshPublicKey", label: "SSH Key", kind: "ssh-key-picker", required: false },
+      ],
+    };
+  }
+
+  async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
+    if (typeId !== "droplet") throw new Error(`DigitalOcean plugin: deleteResource not supported for type "${typeId}"`);
+    // resourceId format: "{accountId}:droplet:{externalId}"
+    const externalId = resourceId.split(":").pop();
+    if (!externalId) throw new Error("Cannot parse droplet ID");
+    await this.fetch<unknown>(`/droplets/${externalId}`, { method: "DELETE" });
+  }
+
+  async createResource(typeId: string, accountId: string, fields: Record<string, string>): Promise<ResourceInstance> {
+    if (typeId !== "droplet") {
+      throw new Error(`DigitalOcean plugin: createResource not supported for type "${typeId}"`);
+    }
+
+    // SSH key: upload to DO account (idempotent — if it already exists DO returns the existing key)
+    const sshKeyIds: number[] = [];
+    const sshPub = fields["sshPublicKey"];
+    if (sshPub) {
+      try {
+        const comment = sshPub.trim().split(" ")[2] ?? "infrawrench";
+        type KeyResponse = { ssh_key: { id: number } } | { ssh_keys: Array<{ id: number; public_key: string }> };
+        const keyData = await this.fetch<KeyResponse>(
+          "/account/keys",
+          { method: "POST", body: JSON.stringify({ name: comment, public_key: sshPub.trim() }) },
+        ).catch(async (e: unknown) => {
+          if (String(e).includes("422")) {
+            return this.fetch<KeyResponse>("/account/keys");
+          }
+          throw e;
+        });
+        const keyId = "ssh_key" in keyData
+          ? keyData.ssh_key.id
+          : keyData.ssh_keys.find((k) => k.public_key.trim() === sshPub.trim())?.id;
+        if (keyId) sshKeyIds.push(keyId);
+      } catch { /* skip SSH key if upload fails */ }
+    }
+
+    const body: Record<string, unknown> = {
+      name: fields["name"],
+      region: fields["region"],
+      size: fields["size"],
+      image: fields["image"],
+      ...(sshKeyIds.length > 0 ? { ssh_keys: sshKeyIds } : {}),
+    };
+    const data = await this.fetch<{ droplet: Record<string, unknown> }>("/droplets", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    const d = data.droplet;
+    const networks = d["networks"] as { v4?: Array<{ type: string; ip_address: string }> } | undefined;
+    const publicIp = networks?.v4?.find((n) => n.type === "public")?.ip_address ?? "";
+    const privateIp = networks?.v4?.find((n) => n.type === "private")?.ip_address ?? "";
+    return {
+      id: `${accountId}:droplet:${String(d["id"])}`,
+      pluginId: "digitalocean",
+      resourceTypeId: "droplet",
+      accountId,
+      displayName: String(d["name"]),
+      fields: {
+        name: String(d["name"]),
+        region: String((d["region"] as Record<string, unknown>)?.["slug"] ?? fields["region"]),
+        size: String((d["size"] as Record<string, unknown>)?.["slug"] ?? fields["size"]),
+        image: String((d["image"] as Record<string, unknown>)?.["slug"] ?? fields["image"]),
+      },
+      resolvedOutputs: { ipv4: publicIp, ipv4Private: privateIp },
+      secretStates: [],
+      externalId: String(d["id"]),
+      createdAt: String(d["created_at"] ?? new Date().toISOString()),
+      updatedAt: String(d["created_at"] ?? new Date().toISOString()),
+    };
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {

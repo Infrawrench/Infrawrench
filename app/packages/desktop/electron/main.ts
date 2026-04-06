@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog } from "electron";
+import { app, BrowserWindow, ipcMain, dialog, session } from "electron";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -34,6 +34,32 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
+  // Allow the renderer to make cross-origin requests (including DELETE/PUT) to
+  // external APIs such as GCP and DigitalOcean. Without this, the browser blocks
+  // the CORS preflight for non-simple methods when the app loads from file://.
+  // Allow the renderer to make cross-origin DELETE/PUT/PATCH requests to external
+  // APIs (GCP, DO, etc.). Only inject headers when the server hasn't already sent
+  // them — adding a second Access-Control-Allow-Origin value breaks CORS entirely.
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    const headers = { ...details.responseHeaders };
+    const hasACAO = Object.keys(headers).some(
+      (k) => k.toLowerCase() === "access-control-allow-origin",
+    );
+    if (!hasACAO) {
+      headers["Access-Control-Allow-Origin"] = ["*"];
+      headers["Access-Control-Allow-Methods"] = ["DELETE, GET, HEAD, OPTIONS, POST, PUT, PATCH"];
+      headers["Access-Control-Allow-Headers"] = ["Authorization, Content-Type, Accept"];
+      // OPTIONS preflight must return 200 OK — servers that reject cross-origin
+      // requests (e.g. GCP compute) return 403, which the browser refuses even
+      // when CORS headers are present. Only override status when we're injecting.
+      if (details.method === "OPTIONS") {
+        callback({ responseHeaders: headers, statusLine: "HTTP/1.1 200 OK" });
+        return;
+      }
+    }
+    callback({ responseHeaders: headers });
+  });
+
   createWindow();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

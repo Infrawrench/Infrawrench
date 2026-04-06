@@ -53,43 +53,50 @@ export function SshTerminal({ host, port, username, privateKey }: SshTerminalPro
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
     term.open(containerRef.current);
-    fitAddon.fit();
 
     let shellId: string | null = null;
     let disposed = false;
 
-    term.write("\x1b[90mConnecting to \x1b[0m" + `${username}@${host}:${port}` + "\x1b[90m…\x1b[0m\r\n");
+    // Defer fit until the browser has laid out the container — calling fit()
+    // synchronously after open() can fail if the element has no dimensions yet.
+    requestAnimationFrame(() => {
+      if (disposed) return;
+      fitAddon.fit();
 
-    invoke<string>("ssh_shell_spawn", {
-      host,
-      port,
-      username,
-      privateKey,
-      cols: term.cols,
-      rows: term.rows,
-    }).then((id) => {
-      if (disposed) {
-        void invoke("ssh_shell_kill", { shellId: id });
-        return;
-      }
-      shellId = id;
+      term.write("\x1b[90mConnecting to \x1b[0m" + `${username}@${host}:${port}` + "\x1b[90m…\x1b[0m\r\n");
 
-      window.electronAPI.on(`ssh_shell_data_${id}`, (...args) => {
-        term.write(args[0] as string);
+      invoke<string>("ssh_shell_spawn", {
+        host,
+        port,
+        username,
+        privateKey,
+        cols: term.cols,
+        rows: term.rows,
+      }).then((id) => {
+        if (disposed) {
+          void invoke("ssh_shell_kill", { shellId: id });
+          return;
+        }
+        shellId = id;
+
+        window.electronAPI.on(`ssh_shell_data_${id}`, (...args) => {
+          term.write(args[0] as string);
+        });
+
+        window.electronAPI.on(`ssh_shell_exit_${id}`, () => {
+          term.write("\r\n\x1b[90m[Connection closed]\x1b[0m\r\n");
+        });
+      }).catch((err: unknown) => {
+        term.write(`\r\n\x1b[31mFailed: ${String(err)}\x1b[0m\r\n`);
       });
-
-      window.electronAPI.on(`ssh_shell_exit_${id}`, () => {
-        term.write("\r\n\x1b[90m[Connection closed]\x1b[0m\r\n");
-      });
-    }).catch((err: unknown) => {
-      term.write(`\r\n\x1b[31mFailed: ${String(err)}\x1b[0m\r\n`);
-    });
+    }); // end requestAnimationFrame
 
     const onData = term.onData((data) => {
       if (shellId) void invoke("ssh_shell_write", { shellId, data });
     });
 
     const ro = new ResizeObserver(() => {
+      if (disposed) return;
       fitAddon.fit();
       if (shellId) {
         void invoke("ssh_shell_resize", { shellId, cols: term.cols, rows: term.rows });

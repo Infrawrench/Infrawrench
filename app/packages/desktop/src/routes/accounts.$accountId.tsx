@@ -2,12 +2,13 @@ import { useState, useEffect } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { invoke } from "../lib/invoke";
 import { useDraggable } from "@dnd-kit/core";
-import type { ResourceInstance } from "@infrawrench/plugin-base";
+import type { ResourceInstance, ResourceTypeDefinition } from "@infrawrench/plugin-base";
 import { useUIStore } from "@infrawrench/ui";
 import { getDb } from "../db/client";
 import { getPlugin } from "../plugins/loader";
 import { pinResource, type DraggableResource } from "../lib/pins";
 import { buildPluginHostServices } from "../lib/sql-drivers";
+import { CreateResourceModal } from "../components/CreateResourceModal";
 
 export const Route = createFileRoute("/accounts/$accountId")({
   component: AccountPage,
@@ -22,9 +23,7 @@ interface AccountRow {
 }
 
 interface ResourceGroup {
-  typeId: string;
-  displayName: string;
-  pluralDisplayName: string;
+  typeDef: ResourceTypeDefinition;
   resources: ResourceInstance[];
 }
 
@@ -38,6 +37,18 @@ function AccountPage() {
   const [error, setError] = useState<string | null>(null);
   const [pinned, setPinned] = useState<Set<string>>(new Set());
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [createTarget, setCreateTarget] = useState<ResourceTypeDefinition | null>(null);
+  const [loadVersion, setLoadVersion] = useState(0);
+
+  // Re-fetch when a resource is deleted (or otherwise changed) for this account
+  useEffect(() => {
+    function handler(e: Event) {
+      const { accountId: changedId } = (e as CustomEvent<{ accountId: string }>).detail;
+      if (changedId === accountId) setLoadVersion((v) => v + 1);
+    }
+    window.addEventListener("iw:resources-changed", handler);
+    return () => window.removeEventListener("iw:resources-changed", handler);
+  }, [accountId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -69,9 +80,7 @@ function AccountPage() {
 
         const results = await Promise.allSettled(
           topLevelTypes.map(async (t) => ({
-            typeId: t.id,
-            displayName: t.displayName,
-            pluralDisplayName: t.pluralDisplayName,
+            typeDef: t,
             resources: await client.listResources(t.id, accountId),
           })),
         );
@@ -95,7 +104,7 @@ function AccountPage() {
     }
     load();
     return () => { cancelled = true; };
-  }, [accountId]);
+  }, [accountId, loadVersion]);
 
   async function togglePin(resource: ResourceInstance, typeId: string) {
     const db = await getDb();
@@ -199,29 +208,55 @@ function AccountPage() {
       </div>
 
       {groups.map((group) =>
-        group.resources.length === 0 ? null : (
-          <div key={group.typeId} className="mb-8">
+        group.resources.length === 0 && !group.typeDef.supportsCreate ? null : (
+          <div key={group.typeDef.id} className="mb-8">
             <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
-              {group.pluralDisplayName}
+              {group.typeDef.pluralDisplayName}
             </h2>
             <div className="flex flex-wrap gap-2">
               {group.resources.map((resource) => (
                 <ResourcePill
                   key={resource.id}
                   resource={resource}
-                  typeId={group.typeId}
+                  typeId={group.typeDef.id}
                   pinned={pinned.has(resource.id)}
-                  onPin={() => togglePin(resource, group.typeId)}
+                  onPin={() => togglePin(resource, group.typeDef.id)}
                   onOpen={() => openDetail(resource)}
                 />
               ))}
+              {group.typeDef.supportsCreate && (
+                <button
+                  onClick={() => setCreateTarget(group.typeDef)}
+                  className="flex items-center gap-1.5 pl-3 pr-3 py-1.5 rounded-full border border-dashed border-gray-700 text-gray-600 hover:border-blue-600 hover:text-blue-400 transition-colors text-sm"
+                >
+                  <span className="text-base leading-none">+</span>
+                  <span>Create {group.typeDef.displayName}</span>
+                </button>
+              )}
             </div>
           </div>
         ),
       )}
 
-      {groups.every((g) => g.resources.length === 0) && (
+      {groups.every((g) => g.resources.length === 0 && !g.typeDef.supportsCreate) && (
         <p className="text-sm text-gray-600">No resources found.</p>
+      )}
+
+      {createTarget && account && (
+        <CreateResourceModal
+          accountId={accountId}
+          pluginId={account.plugin_id}
+          resourceType={createTarget}
+          onClose={() => setCreateTarget(null)}
+          onCreated={(resource) => {
+            setCreateTarget(null);
+            window.dispatchEvent(new CustomEvent("iw:resources-changed", { detail: { accountId } }));
+            void navigate({
+              to: "/resource/$accountId/$resourceId",
+              params: { accountId, resourceId: encodeURIComponent(resource.id) },
+            });
+          }}
+        />
       )}
     </div>
   );
