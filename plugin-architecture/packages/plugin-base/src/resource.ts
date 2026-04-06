@@ -62,4 +62,6 @@ export interface ResourceTypeDefinition {
    * value is used as the SSH server address (e.g. "ipv4").
    */
   sshEndpoint?: { hostOutputKey: string };
+  /** If true, the host will show a storage browser and fetch storage stats for dashboard cards of this type */
+  supportsStorageBrowser?: boolean;
 }

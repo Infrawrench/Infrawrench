@@ -30,6 +30,7 @@ interface PluginMeta {
   dockerDriverName?: string | undefined;
   dockerCredentialKey?: string | undefined;
   tableCountLabel: string;
+  storageResourceTypeIds: string[];
 }
 
 interface CardStatus {
@@ -84,6 +85,9 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
           dockerDriverName: m.dockerDriver?.driver,
           dockerCredentialKey: m.dockerDriver?.credentialKey,
           tableCountLabel: m.dockerDriver ? "Running" : "Tables",
+          storageResourceTypeIds: p.plugin.resourceTypes
+            .filter((t) => t.supportsStorageBrowser)
+            .map((t) => t.id),
         };
       }
       setPluginMeta(meta);
@@ -188,7 +192,8 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
             (r.resource_type_id === "__account__" ||
               (!!m?.sqlDriverName && !!m.sqlCredentialKey) ||
               (!!m?.kvDriverName && !!m.kvCredentialKey) ||
-              (!!m?.dockerDriverName && !!m.dockerCredentialKey));
+              (!!m?.dockerDriverName && !!m.dockerCredentialKey) ||
+              (m?.storageResourceTypeIds.includes(r.resource_type_id) ?? false));
         })
         .map((r) => r.resource_id);
 
@@ -309,6 +314,39 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
               setCardStatus((prev) => ({
                 ...prev,
                 [row.resource_id]: { phase: "ok", pgVersion: version, dbSize: size, tableCount, tableCountLabel: "Running" },
+              }));
+            }
+          } catch (e) {
+            if (!cancelled) {
+              setCardStatus((prev) => ({
+                ...prev,
+                [row.resource_id]: { phase: "error", error: String(e) },
+              }));
+            }
+          }
+          return;
+        }
+
+        // ── Storage resource card (e.g. GCS bucket) ──────────────────────
+        if (meta?.storageResourceTypeIds.includes(row.resource_type_id)) {
+          try {
+            const loaded = await getPlugin(row.plugin_id);
+            if (!loaded) throw new Error(`Plugin not found: ${row.plugin_id}`);
+            const client = loaded.plugin.createClient(creds);
+            // bucket name is the last segment of the resource_id (accountId:typeId:bucketName)
+            const bucketName = row.resource_id.split(":").slice(2).join(":");
+            const stats = await (client as { fetchStorageStats?(b: string): Promise<{ count: number; size: string }> })
+              .fetchStorageStats?.(bucketName);
+            if (!cancelled) {
+              setAccountConnected(row.account_id, true);
+              setCardStatus((prev) => ({
+                ...prev,
+                [row.resource_id]: {
+                  phase: "ok",
+                  tableCount: stats?.count,
+                  tableCountLabel: "Objects",
+                  dbSize: stats?.size,
+                },
               }));
             }
           } catch (e) {

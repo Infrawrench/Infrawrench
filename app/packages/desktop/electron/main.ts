@@ -1,6 +1,7 @@
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain, dialog } from "electron";
 import crypto from "node:crypto";
 import fs from "node:fs";
+import https from "node:https";
 import path from "node:path";
 import initSqlJs, { type Database as SqlJsDb } from "sql.js";
 import { sqlDrivers, kvDrivers, dockerDrivers } from "./drivers";
@@ -194,3 +195,59 @@ ipcMain.handle("ssh_close_tunnel", (_e, { tunnelId }: { tunnelId: string }) => {
 });
 
 ipcMain.handle("ssh_get_active_tunnels", () => getActiveTunnels());
+
+// ── Native dialogs ────────────────────────────────────────────────────────────
+
+ipcMain.handle("show_open_dialog", async (_e, options: Electron.OpenDialogOptions) => {
+  const win = BrowserWindow.getFocusedWindow();
+  return win
+    ? dialog.showOpenDialog(win, options)
+    : dialog.showOpenDialog(options);
+});
+
+// ── GCS batch download ────────────────────────────────────────────────────────
+
+function gcsDownloadFile(url: string, accessToken: string, destPath: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const req = https.get(url, { headers: { Authorization: `Bearer ${accessToken}` } }, (res) => {
+      if (res.statusCode !== 200) {
+        res.resume();
+        reject(new Error(`HTTP ${res.statusCode ?? "?"}`));
+        return;
+      }
+      fs.mkdirSync(path.dirname(destPath), { recursive: true });
+      const out = fs.createWriteStream(destPath);
+      res.pipe(out);
+      out.on("finish", () => { out.close(); resolve(); });
+      out.on("error", (e) => { fs.unlink(destPath, () => {}); reject(e); });
+    });
+    req.on("error", reject);
+  });
+}
+
+ipcMain.handle("gcs_download_batch", async (
+  event,
+  { bucket, keys, destFolder, accessToken }: {
+    bucket: string;
+    keys: string[];
+    destFolder: string;
+    accessToken: string;
+  },
+) => {
+  const errors: string[] = [];
+  let done = 0;
+
+  for (const key of keys) {
+    const url = `https://storage.googleapis.com/storage/v1/b/${encodeURIComponent(bucket)}/o/${encodeURIComponent(key)}?alt=media`;
+    const destPath = path.join(destFolder, ...key.split("/"));
+    try {
+      await gcsDownloadFile(url, accessToken, destPath);
+    } catch (e) {
+      errors.push(`${key}: ${String(e)}`);
+    }
+    done++;
+    event.sender.send("gcs_download_progress", { done, total: keys.length });
+  }
+
+  return { errors };
+});

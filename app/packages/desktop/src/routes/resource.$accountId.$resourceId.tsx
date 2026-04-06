@@ -10,6 +10,8 @@ import { getSqlSession, setSqlSession } from "../lib/sql-session";
 import { sqlQuery, sqlExecute, buildHostServices, buildKvHostServices, kvCommand, buildDockerHostServices } from "../lib/sql-drivers";
 import { resolveTunneledHost } from "../lib/ssh-tunnel";
 import { DockerActionsPanel } from "../components/DockerActionsPanel";
+import { GcsBrowserPanel } from "../components/GcsBrowserPanel";
+import type { PluginClient } from "@infrawrench/plugin-base";
 
 export const Route = createFileRoute("/resource/$accountId/$resourceId")({
   component: ResourceDetailPage,
@@ -55,7 +57,10 @@ function ResourceDetailPage() {
 
   const connectionStringRef = useRef("");
   const sqlDriverIdRef = useRef("");
+  const clientRef = useRef<PluginClient | null>(null);
+  const [hasStorageToken, setHasStorageToken] = useState(false);
   const setAccountConnected = useUIStore((s) => s.setAccountConnected);
+  const [detailsCollapsed, setDetailsCollapsed] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -190,6 +195,8 @@ function ResourceDetailPage() {
         }
 
         const client = plugin.createClient(credentials, hostServices);
+        clientRef.current = client;
+        if (!cancelled) setHasStorageToken(!!client.getStorageAccessToken);
         const resourceTypeId = decodedResourceId.split(":")[1] ?? "pg-database";
         const resources = await client.listResources(resourceTypeId, accountId);
         const foundResource = resources.find((r) => r.id === decodedResourceId) ?? resources[0];
@@ -293,7 +300,8 @@ function ResourceDetailPage() {
 
   if (!schema) return null;
 
-  const hasSqlEditor = !!schema.sqlEditor && pgConnected;
+  const hasSqlEditor = !!schema?.sqlEditor && pgConnected;
+  const hasStorageBrowser = !!schema?.storageBrowser;
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -307,12 +315,32 @@ function ResourceDetailPage() {
         />
       )}
 
-      <DetailView
-        schema={schema}
-        resourceId={decodedResourceId}
-        pluginLogoSvg={logoSvg}
-        {...(hasSqlEditor ? { onRunQuery: handleRunQuery, onExecute: handleExecute } : {})}
-      />
+      <div className={hasStorageBrowser ? "shrink-0" : "flex-1 overflow-auto"}>
+        {hasStorageBrowser && (
+          <button
+            onClick={() => setDetailsCollapsed((c) => !c)}
+            className="w-full flex items-center gap-2 px-4 py-1.5 border-b border-gray-800 text-xs text-gray-600 hover:text-gray-400 hover:bg-gray-800/40 transition-colors"
+          >
+            <span
+              className="inline-block transition-transform text-xs"
+              style={{ transform: detailsCollapsed ? "rotate(0deg)" : "rotate(90deg)" }}
+            >
+              ▶
+            </span>
+            Details
+          </button>
+        )}
+        {!detailsCollapsed && (
+          <div className={hasStorageBrowser ? "overflow-auto" : "h-full"}>
+            <DetailView
+              schema={schema}
+              resourceId={decodedResourceId}
+              pluginLogoSvg={logoSvg}
+              {...(hasSqlEditor ? { onRunQuery: handleRunQuery, onExecute: handleExecute } : {})}
+            />
+          </div>
+        )}
+      </div>
 
       {!hasSqlEditor && pgError && (
         <div className="shrink-0 px-4 py-2 border-t border-gray-800 bg-gray-950">
@@ -344,6 +372,33 @@ function ResourceDetailPage() {
           containerId={String(resource.resolvedOutputs["containerId"] ?? resource.externalId ?? "")}
           driverId={dockerDriverName ?? "docker"}
           dockerHost={dockerHostRef.current}
+        />
+      )}
+
+      {hasStorageBrowser && (
+        <GcsBrowserPanel
+          bucketName={schema.storageBrowser!.bucketName}
+          onList={(prefix) => clientRef.current!.listStorageObjects!(schema.storageBrowser!.bucketName, prefix)}
+          onUpload={(bucket, key, file, onProgress) => clientRef.current!.uploadStorageObject!(bucket, key, file, onProgress)}
+          onMakeFolder={(bucket, key) => clientRef.current!.makeStorageFolder!(bucket, key)}
+          onDelete={(bucket, key) => clientRef.current!.deleteStorageObject!(bucket, key)}
+          onBatchDownload={hasStorageToken
+            ? async (keys) => {
+                const accessToken = await clientRef.current!.getStorageAccessToken!();
+                const result = await invoke<{ canceled?: boolean; filePaths?: string[] }>(
+                  "show_open_dialog",
+                  { properties: ["openDirectory"], title: "Choose download destination" },
+                );
+                if (result.canceled || !result.filePaths?.[0]) return;
+                const destFolder = result.filePaths[0];
+                await invoke("gcs_download_batch", {
+                  bucket: schema!.storageBrowser!.bucketName,
+                  keys,
+                  destFolder,
+                  accessToken,
+                });
+              }
+            : undefined}
         />
       )}
     </div>

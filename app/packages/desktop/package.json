@@ -15,6 +15,7 @@
     "@infrawrench/plugin-base": "workspace:*",
     "@infrawrench/plugin-digitalocean": "workspace:*",
     "@infrawrench/plugin-docker": "workspace:*",
+    "@infrawrench/plugin-gcp": "workspace:*",
     "@infrawrench/plugin-kubernetes": "workspace:*",
     "@infrawrench/plugin-mysql": "workspace:*",
     "@infrawrench/plugin-postgres": "workspace:*",

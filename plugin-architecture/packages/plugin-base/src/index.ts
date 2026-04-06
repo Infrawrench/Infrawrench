@@ -55,6 +55,8 @@ export type {
   SidebarItemSchema,
   SqlEditorCapability,
   SqlTableMeta,
+  StorageObject,
+  StorageBrowserCapability,
 } from "./schema.js";
 
 // Plugin registry

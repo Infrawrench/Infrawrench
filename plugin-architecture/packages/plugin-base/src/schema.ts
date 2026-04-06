@@ -138,6 +138,24 @@ export interface SqlEditorCapability {
   tables?: SqlTableMeta[];
 }
 
+/** A single object or directory entry returned by listStorageObjects() */
+export interface StorageObject {
+  key: string;
+  name: string;
+  size: number;
+  lastModified: string;
+  isDirectory: boolean;
+  contentType?: string;
+}
+
+/**
+ * When present on a DetailViewSchema, the host renders a file-browser panel
+ * backed by PluginClient.listStorageObjects().
+ */
+export interface StorageBrowserCapability {
+  bucketName: string;
+}
+
 /** Full detail view — shown when user clicks a card or sidebar item */
 export interface DetailViewSchema {
   title: string;
@@ -149,6 +167,8 @@ export interface DetailViewSchema {
   headerActions?: ActionNode[];
   /** If present, the host renders a SQL editor tab alongside the overview */
   sqlEditor?: SqlEditorCapability;
+  /** If present, the host renders a cloud storage file browser panel */
+  storageBrowser?: StorageBrowserCapability;
 }
 
 /** Sidebar tree node */
