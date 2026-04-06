@@ -11,6 +11,8 @@ import { sqlQuery, sqlExecute, buildHostServices, buildKvHostServices, kvCommand
 import { resolveTunneledHost } from "../lib/ssh-tunnel";
 import { DockerActionsPanel } from "../components/DockerActionsPanel";
 import { GcsBrowserPanel } from "../components/GcsBrowserPanel";
+import { SshTerminal } from "../components/SshTerminal";
+import { SshQuickConnectPanel } from "../components/SshQuickConnectPanel";
 import type { PluginClient } from "@infrawrench/plugin-base";
 
 export const Route = createFileRoute("/resource/$accountId/$resourceId")({
@@ -59,6 +61,8 @@ function ResourceDetailPage() {
   const sqlDriverIdRef = useRef("");
   const clientRef = useRef<PluginClient | null>(null);
   const [hasStorageToken, setHasStorageToken] = useState(false);
+  const [sshConfig, setSshConfig] = useState<{ host: string; port: number; username: string; privateKey: string } | null>(null);
+  const [sshHost, setSshHost] = useState<string | null>(null);
   const setAccountConnected = useUIStore((s) => s.setAccountConnected);
   const [detailsCollapsed, setDetailsCollapsed] = useState(false);
 
@@ -196,7 +200,10 @@ function ResourceDetailPage() {
 
         const client = plugin.createClient(credentials, hostServices);
         clientRef.current = client;
-        if (!cancelled) setHasStorageToken(!!client.getStorageAccessToken);
+        if (!cancelled) {
+          setHasStorageToken(!!client.getStorageAccessToken);
+          if (client.getSshConfig) setSshConfig(client.getSshConfig());
+        }
         const resourceTypeId = decodedResourceId.split(":")[1] ?? "pg-database";
         const resources = await client.listResources(resourceTypeId, accountId);
         const foundResource = resources.find((r) => r.id === decodedResourceId) ?? resources[0];
@@ -258,6 +265,18 @@ function ResourceDetailPage() {
           const detailSchema = client.renderDetail(enrichedResource);
           setSchema(sqlOk ? { ...detailSchema, status: { kind: "status-dot", status: "healthy" } } : detailSchema);
           setResource(enrichedResource);
+
+          // Resolve SSH host if this resource type declares an sshEndpoint
+          const resourceTypeDef = plugin.resourceTypes.find((t) => t.id === enrichedResource.resourceTypeId);
+          if (resourceTypeDef?.sshEndpoint) {
+            const { hostOutputKey } = resourceTypeDef.sshEndpoint;
+            const host = String(
+              enrichedResource.resolvedOutputs[hostOutputKey] ??
+              enrichedResource.fields[hostOutputKey] ??
+              "",
+            );
+            if (host) setSshHost(host);
+          }
         }
       } catch (e) {
         if (!cancelled) setError(String(e));
@@ -302,6 +321,7 @@ function ResourceDetailPage() {
 
   const hasSqlEditor = !!schema?.sqlEditor && pgConnected;
   const hasStorageBrowser = !!schema?.storageBrowser;
+  const hasTerminal = !!sshConfig;
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -315,8 +335,8 @@ function ResourceDetailPage() {
         />
       )}
 
-      <div className={hasStorageBrowser ? "shrink-0" : "flex-1 overflow-auto"}>
-        {hasStorageBrowser && (
+      <div className={(hasStorageBrowser || hasTerminal) ? "shrink-0" : "flex-1 overflow-auto"}>
+        {(hasStorageBrowser || hasTerminal) && (
           <button
             onClick={() => setDetailsCollapsed((c) => !c)}
             className="w-full flex items-center gap-2 px-4 py-1.5 border-b border-gray-800 text-xs text-gray-600 hover:text-gray-400 hover:bg-gray-800/40 transition-colors"
@@ -400,6 +420,19 @@ function ResourceDetailPage() {
               }
             : undefined}
         />
+      )}
+
+      {hasTerminal && sshConfig && (
+        <SshTerminal
+          host={sshConfig.host}
+          port={sshConfig.port}
+          username={sshConfig.username}
+          privateKey={sshConfig.privateKey}
+        />
+      )}
+
+      {!hasTerminal && sshHost && (
+        <SshQuickConnectPanel host={sshHost} />
       )}
     </div>
   );

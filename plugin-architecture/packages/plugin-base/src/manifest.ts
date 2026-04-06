@@ -159,6 +159,8 @@ export interface PluginClient {
   getStorageAccessToken?(): Promise<string>;
   /** Fetch lightweight stats for a storage bucket dashboard card (object count + total size). */
   fetchStorageStats?(bucketName: string): Promise<{ count: number; size: string }>;
+  /** Return SSH connection details for terminal access — only when the resource type declares supportsTerminal */
+  getSshConfig?(): { host: string; port: number; username: string; privateKey: string };
 }
 
 export interface Plugin {

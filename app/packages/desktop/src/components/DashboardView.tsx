@@ -31,6 +31,7 @@ interface PluginMeta {
   dockerCredentialKey?: string | undefined;
   tableCountLabel: string;
   storageResourceTypeIds: string[];
+  terminalResourceTypeIds: string[];
 }
 
 interface CardStatus {
@@ -43,6 +44,10 @@ interface CardStatus {
   // account summary stats
   resourceCounts?: { typeLabel: string; count: number }[] | undefined;
   error?: string | undefined;
+  // SSH connect button
+  sshTarget?: boolean;
+  resourceId?: string;
+  accountId?: string;
 }
 
 interface DashboardViewProps {
@@ -87,6 +92,9 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
           tableCountLabel: m.dockerDriver ? "Running" : "Tables",
           storageResourceTypeIds: p.plugin.resourceTypes
             .filter((t) => t.supportsStorageBrowser)
+            .map((t) => t.id),
+          terminalResourceTypeIds: p.plugin.resourceTypes
+            .filter((t) => t.supportsTerminal)
             .map((t) => t.id),
         };
       }
@@ -193,7 +201,8 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
               (!!m?.sqlDriverName && !!m.sqlCredentialKey) ||
               (!!m?.kvDriverName && !!m.kvCredentialKey) ||
               (!!m?.dockerDriverName && !!m.dockerCredentialKey) ||
-              (m?.storageResourceTypeIds.includes(r.resource_type_id) ?? false));
+              (m?.storageResourceTypeIds.includes(r.resource_type_id) ?? false) ||
+              (m?.terminalResourceTypeIds.includes(r.resource_type_id) ?? false));
         })
         .map((r) => r.resource_id);
 
@@ -323,6 +332,26 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
                 [row.resource_id]: { phase: "error", error: String(e) },
               }));
             }
+          }
+          return;
+        }
+
+        // ── SSH terminal card ─────────────────────────────────────────────
+        if (meta?.terminalResourceTypeIds.includes(row.resource_type_id)) {
+          const host = String(creds["host"] ?? "");
+          const port = String(creds["port"] ?? "22");
+          if (!cancelled) {
+            setAccountConnected(row.account_id, true);
+            setCardStatus((prev) => ({
+              ...prev,
+              [row.resource_id]: {
+                phase: "ok",
+                pgVersion: `${host}:${port}`,
+                sshTarget: true,
+                resourceId: row.resource_id,
+                accountId: row.account_id,
+              },
+            }));
           }
           return;
         }
@@ -525,6 +554,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
                 status={cardStatus[row.resource_id]}
                 onOpen={() => goToResource(row)}
                 onUnpin={() => void unpin(row.resource_id)}
+                onConnect={cardStatus[row.resource_id]?.sshTarget ? () => goToResource(row) : undefined}
               />
             ))}
 
@@ -557,12 +587,14 @@ function ResourceCard({
   status,
   onOpen,
   onUnpin,
+  onConnect,
 }: {
   row: PinnedRow;
   pluginMeta?: PluginMeta | undefined;
   status?: CardStatus | undefined;
   onOpen: () => void;
   onUnpin: () => void;
+  onConnect?: (() => void) | undefined;
 }) {
   const fields = (() => {
     try { return JSON.parse(row.fields_json) as Record<string, unknown>; }
@@ -613,12 +645,12 @@ function ResourceCard({
       </button>
 
       {/* Connection status footer */}
-      <ConnectionFooter status={status} />
+      <ConnectionFooter status={status} onConnect={onConnect} />
     </div>
   );
 }
 
-function ConnectionFooter({ status }: { status?: CardStatus | undefined }) {
+function ConnectionFooter({ status, onConnect }: { status?: CardStatus | undefined; onConnect?: (() => void) | undefined }) {
   if (!status) return null;
 
   if (status.phase === "connecting") {
@@ -672,6 +704,17 @@ function ConnectionFooter({ status }: { status?: CardStatus | undefined }) {
           <span className="text-gray-400">{count}</span>
         </div>
       ))}
+
+      {/* SSH fast-connect button */}
+      {status.sshTarget && onConnect && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onConnect(); }}
+          className="mt-2 w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-950 border border-green-800 hover:bg-green-900 hover:border-green-700 text-green-400 hover:text-green-300 text-xs font-medium transition-colors"
+        >
+          <span>⌨</span>
+          Connect
+        </button>
+      )}
     </div>
   );
 }

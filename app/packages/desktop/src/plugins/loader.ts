@@ -20,6 +20,7 @@ const PLUGIN_MODULES: Record<string, () => Promise<{ plugin: Plugin }>> = {
   "@infrawrench/plugin-mysql": () => import("@infrawrench/plugin-mysql"),
   "@infrawrench/plugin-postgres": () => import("@infrawrench/plugin-postgres"),
   "@infrawrench/plugin-redis": () => import("@infrawrench/plugin-redis"),
+  "@infrawrench/plugin-ssh": () => import("@infrawrench/plugin-ssh"),
 };
 
 export interface LoadedPlugin {

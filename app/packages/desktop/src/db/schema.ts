@@ -96,7 +96,8 @@ export const MIGRATIONS = [
     UNIQUE(dashboard_id, resource_id)
   );
   `,
-  // v2 — SSH tunnel configs for accounts that connect through SSH
+  // v2 — SSH tunnel configs + named SSH key registry
+
   `
   CREATE TABLE IF NOT EXISTS ssh_tunnel_configs (
     id TEXT PRIMARY KEY,
@@ -108,6 +109,14 @@ export const MIGRATIONS = [
     remote_port INTEGER NOT NULL,
     encrypted_private_key TEXT NOT NULL,
     private_key_iv TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS ssh_keys (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    encrypted_key TEXT NOT NULL,
+    key_iv TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
   `,

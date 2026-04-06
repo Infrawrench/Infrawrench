@@ -2,10 +2,12 @@ import { app, BrowserWindow, ipcMain, dialog } from "electron";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import https from "node:https";
+import os from "node:os";
 import path from "node:path";
 import initSqlJs, { type Database as SqlJsDb } from "sql.js";
 import { sqlDrivers, kvDrivers, dockerDrivers } from "./drivers";
 import { openTunnel, closeTunnel, closeAllTunnels, getActiveTunnels, type SshTunnelConfig } from "./ssh-tunnel";
+import { spawnSshShell, writeSshShell, resizeSshShell, killSshShell, killAllSshShells, type SshShellConfig } from "./ssh-shell";
 import { MIGRATIONS } from "../src/db/schema";
 
 // ── Window ────────────────────────────────────────────────────────────────────
@@ -41,7 +43,7 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 
-app.on("before-quit", () => closeAllTunnels());
+app.on("before-quit", () => { closeAllTunnels(); killAllSshShells(); });
 
 // ── Encryption ────────────────────────────────────────────────────────────────
 
@@ -203,6 +205,56 @@ ipcMain.handle("show_open_dialog", async (_e, options: Electron.OpenDialogOption
   return win
     ? dialog.showOpenDialog(win, options)
     : dialog.showOpenDialog(options);
+});
+
+// ── SSH system key discovery ──────────────────────────────────────────────────
+
+ipcMain.handle("ssh_list_system_keys", () => {
+  const sshDir = path.join(os.homedir(), ".ssh");
+  if (!fs.existsSync(sshDir)) return [];
+  const PRIVATE_KEY_HEADERS = [
+    "-----BEGIN OPENSSH PRIVATE KEY-----",
+    "-----BEGIN RSA PRIVATE KEY-----",
+    "-----BEGIN EC PRIVATE KEY-----",
+    "-----BEGIN DSA PRIVATE KEY-----",
+  ];
+  const results: { name: string }[] = [];
+  for (const filename of fs.readdirSync(sshDir)) {
+    if (filename.endsWith(".pub") || filename === "known_hosts" || filename === "authorized_keys" || filename === "config") continue;
+    try {
+      const filePath = path.join(sshDir, filename);
+      const stat = fs.statSync(filePath);
+      if (!stat.isFile()) continue;
+      const first = fs.readFileSync(filePath, "utf8").slice(0, 100);
+      if (PRIVATE_KEY_HEADERS.some((h) => first.includes(h))) {
+        results.push({ name: filename });
+      }
+    } catch { /* skip unreadable files */ }
+  }
+  return results;
+});
+
+ipcMain.handle("ssh_read_system_key", (_e, { name }: { name: string }) => {
+  const keyPath = path.join(os.homedir(), ".ssh", path.basename(name));
+  return fs.readFileSync(keyPath, "utf8");
+});
+
+// ── SSH shell sessions ────────────────────────────────────────────────────────
+
+ipcMain.handle("ssh_shell_spawn", (event, config: SshShellConfig) =>
+  spawnSshShell(event.sender, config),
+);
+
+ipcMain.handle("ssh_shell_write", (_e, { shellId, data }: { shellId: string; data: string }) => {
+  writeSshShell(shellId, data);
+});
+
+ipcMain.handle("ssh_shell_resize", (_e, { shellId, cols, rows }: { shellId: string; cols: number; rows: number }) => {
+  resizeSshShell(shellId, cols, rows);
+});
+
+ipcMain.handle("ssh_shell_kill", (_e, { shellId }: { shellId: string }) => {
+  killSshShell(shellId);
 });
 
 // ── GCS batch download ────────────────────────────────────────────────────────
