@@ -1,4 +1,5 @@
 import { Pool } from "pg";
+import type { SqlNodeDriver } from "@infrawrench/plugin-base";
 
 function sanitizePgUrl(cs: string): string {
   try {
@@ -30,4 +31,4 @@ export const driver = {
       await pool.end();
     }
   },
-};
+} satisfies SqlNodeDriver;

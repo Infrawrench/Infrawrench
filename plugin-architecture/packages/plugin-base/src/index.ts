@@ -59,6 +59,15 @@ export type {
   StorageBrowserCapability,
 } from "./schema.js";
 
+// Node.js-side driver interfaces (for Electron main / server hosts)
+export type {
+  SqlNodeDriver,
+  KvNodeDriver,
+  DockerNodeDriver,
+  StorageNodeDriver,
+  PluginNodeDriver,
+} from "./node-driver.js";
+
 // Plugin registry
 export type { PluginRegistry, PluginRegistryEntry } from "./registry.js";
 

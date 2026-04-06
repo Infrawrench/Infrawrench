@@ -1,14 +1,15 @@
 import { app, BrowserWindow, ipcMain, dialog } from "electron";
 import crypto from "node:crypto";
 import fs from "node:fs";
-import https from "node:https";
-import os from "node:os";
 import path from "node:path";
 import initSqlJs, { type Database as SqlJsDb } from "sql.js";
-import { sqlDrivers, kvDrivers, dockerDrivers } from "./drivers";
-import { openTunnel, closeTunnel, closeAllTunnels, getActiveTunnels, type SshTunnelConfig } from "./ssh-tunnel";
-import { spawnSshShell, writeSshShell, resizeSshShell, killSshShell, killAllSshShells, type SshShellConfig } from "./ssh-shell";
+import { closeAllTunnels } from "./ssh-tunnel";
+import { killAllSshShells } from "./ssh-shell";
 import { MIGRATIONS } from "../src/db/schema";
+
+// Side-effect imports: register all IPC handlers for their domain
+import "./plugin-host";
+import "./ssh-host";
 
 // ── Window ────────────────────────────────────────────────────────────────────
 
@@ -89,7 +90,7 @@ ipcMain.handle("decrypt_value", (_e, { ciphertext, iv }: { ciphertext: string; i
   return decipher.update(encrypted).toString("utf8") + decipher.final("utf8");
 });
 
-// ── Local SQLite (sql.js — pure WASM, no native compilation) ─────────────────
+// ── Local SQLite ──────────────────────────────────────────────────────────────
 
 let _sqlite: SqlJsDb | null = null;
 let _sqlitePath: string;
@@ -147,57 +148,6 @@ ipcMain.handle("db_execute", async (_e, { sql, params }: { sql: string; params?:
   return { rowsAffected, lastInsertId: 0 };
 });
 
-// ── Plugin SQL drivers ────────────────────────────────────────────────────────
-
-ipcMain.handle("plugin_sql_query", async (_e, {
-  driverId, connectionString, sql,
-}: { driverId: string; connectionString: string; sql: string }) => {
-  const driver = sqlDrivers.get(driverId);
-  if (!driver) throw new Error(`No SQL driver registered for "${driverId}"`);
-  return driver.query(connectionString, sql);
-});
-
-ipcMain.handle("plugin_sql_execute", async (_e, {
-  driverId, connectionString, sql, params,
-}: { driverId: string; connectionString: string; sql: string; params?: unknown[] }) => {
-  const driver = sqlDrivers.get(driverId);
-  if (!driver) throw new Error(`No SQL driver registered for "${driverId}"`);
-  return driver.execute(connectionString, sql, params ?? []);
-});
-
-// ── Plugin KV drivers ─────────────────────────────────────────────────────────
-
-ipcMain.handle("plugin_kv_command", async (_e, {
-  driverId, connectionString, command, args,
-}: { driverId: string; connectionString: string; command: string; args?: (string | number)[] }) => {
-  const driver = kvDrivers.get(driverId);
-  if (!driver) throw new Error(`No KV driver registered for "${driverId}"`);
-  return driver.command(connectionString, command, args ?? []);
-});
-
-// ── Plugin Docker drivers ─────────────────────────────────────────────────────
-
-ipcMain.handle("plugin_docker_command", async (_e, {
-  driverId, dockerHost, op, params,
-}: { driverId: string; dockerHost: string; op: string; params?: Record<string, unknown> }) => {
-  const driver = dockerDrivers.get(driverId);
-  if (!driver) throw new Error(`No Docker driver registered for "${driverId}"`);
-  return driver.command(dockerHost, op, params ?? {});
-});
-
-// ── SSH tunnels ───────────────────────────────────────────────────────────────
-
-ipcMain.handle("ssh_open_tunnel", (_e, config: SshTunnelConfig) =>
-  openTunnel(config),
-);
-
-ipcMain.handle("ssh_close_tunnel", (_e, { tunnelId }: { tunnelId: string }) => {
-  closeTunnel(tunnelId);
-  return { ok: true };
-});
-
-ipcMain.handle("ssh_get_active_tunnels", () => getActiveTunnels());
-
 // ── Native dialogs ────────────────────────────────────────────────────────────
 
 ipcMain.handle("show_open_dialog", async (_e, options: Electron.OpenDialogOptions) => {
@@ -205,101 +155,4 @@ ipcMain.handle("show_open_dialog", async (_e, options: Electron.OpenDialogOption
   return win
     ? dialog.showOpenDialog(win, options)
     : dialog.showOpenDialog(options);
-});
-
-// ── SSH system key discovery ──────────────────────────────────────────────────
-
-ipcMain.handle("ssh_list_system_keys", () => {
-  const sshDir = path.join(os.homedir(), ".ssh");
-  if (!fs.existsSync(sshDir)) return [];
-  const PRIVATE_KEY_HEADERS = [
-    "-----BEGIN OPENSSH PRIVATE KEY-----",
-    "-----BEGIN RSA PRIVATE KEY-----",
-    "-----BEGIN EC PRIVATE KEY-----",
-    "-----BEGIN DSA PRIVATE KEY-----",
-  ];
-  const results: { name: string }[] = [];
-  for (const filename of fs.readdirSync(sshDir)) {
-    if (filename.endsWith(".pub") || filename === "known_hosts" || filename === "authorized_keys" || filename === "config") continue;
-    try {
-      const filePath = path.join(sshDir, filename);
-      const stat = fs.statSync(filePath);
-      if (!stat.isFile()) continue;
-      const first = fs.readFileSync(filePath, "utf8").slice(0, 100);
-      if (PRIVATE_KEY_HEADERS.some((h) => first.includes(h))) {
-        results.push({ name: filename });
-      }
-    } catch { /* skip unreadable files */ }
-  }
-  return results;
-});
-
-ipcMain.handle("ssh_read_system_key", (_e, { name }: { name: string }) => {
-  const keyPath = path.join(os.homedir(), ".ssh", path.basename(name));
-  return fs.readFileSync(keyPath, "utf8");
-});
-
-// ── SSH shell sessions ────────────────────────────────────────────────────────
-
-ipcMain.handle("ssh_shell_spawn", (event, config: SshShellConfig) =>
-  spawnSshShell(event.sender, config),
-);
-
-ipcMain.handle("ssh_shell_write", (_e, { shellId, data }: { shellId: string; data: string }) => {
-  writeSshShell(shellId, data);
-});
-
-ipcMain.handle("ssh_shell_resize", (_e, { shellId, cols, rows }: { shellId: string; cols: number; rows: number }) => {
-  resizeSshShell(shellId, cols, rows);
-});
-
-ipcMain.handle("ssh_shell_kill", (_e, { shellId }: { shellId: string }) => {
-  killSshShell(shellId);
-});
-
-// ── GCS batch download ────────────────────────────────────────────────────────
-
-function gcsDownloadFile(url: string, accessToken: string, destPath: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const req = https.get(url, { headers: { Authorization: `Bearer ${accessToken}` } }, (res) => {
-      if (res.statusCode !== 200) {
-        res.resume();
-        reject(new Error(`HTTP ${res.statusCode ?? "?"}`));
-        return;
-      }
-      fs.mkdirSync(path.dirname(destPath), { recursive: true });
-      const out = fs.createWriteStream(destPath);
-      res.pipe(out);
-      out.on("finish", () => { out.close(); resolve(); });
-      out.on("error", (e) => { fs.unlink(destPath, () => {}); reject(e); });
-    });
-    req.on("error", reject);
-  });
-}
-
-ipcMain.handle("gcs_download_batch", async (
-  event,
-  { bucket, keys, destFolder, accessToken }: {
-    bucket: string;
-    keys: string[];
-    destFolder: string;
-    accessToken: string;
-  },
-) => {
-  const errors: string[] = [];
-  let done = 0;
-
-  for (const key of keys) {
-    const url = `https://storage.googleapis.com/storage/v1/b/${encodeURIComponent(bucket)}/o/${encodeURIComponent(key)}?alt=media`;
-    const destPath = path.join(destFolder, ...key.split("/"));
-    try {
-      await gcsDownloadFile(url, accessToken, destPath);
-    } catch (e) {
-      errors.push(`${key}: ${String(e)}`);
-    }
-    done++;
-    event.sender.send("gcs_download_progress", { done, total: keys.length });
-  }
-
-  return { errors };
 });

@@ -411,7 +411,8 @@ function ResourceDetailPage() {
                 );
                 if (result.canceled || !result.filePaths?.[0]) return;
                 const destFolder = result.filePaths[0];
-                await invoke("gcs_download_batch", {
+                await invoke("storage_download_batch", {
+                  pluginId: account!.plugin_id,
                   bucket: schema!.storageBrowser!.bucketName,
                   keys,
                   destFolder,

@@ -1,4 +1,5 @@
 import Memjs from "memjs";
+import type { KvNodeDriver } from "@infrawrench/plugin-base";
 
 type MemjsClient = InstanceType<typeof Memjs.Client>;
 
@@ -61,4 +62,4 @@ export const driver = {
       client.quit();
     }
   },
-};
+} satisfies KvNodeDriver;

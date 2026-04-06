@@ -8,6 +8,10 @@
       "import": "./dist/index.js",
       "require": "./dist/index.cjs",
       "types": "./dist/index.d.ts"
+    },
+    "./node-driver": {
+      "require": "./dist/node-driver.cjs",
+      "types": "./dist/node-driver.d.cts"
     }
   },
   "main": "./dist/index.cjs",
@@ -25,6 +29,7 @@
     "@infrawrench/plugin-base": "workspace:*"
   },
   "devDependencies": {
+    "@types/node": "^22.0.0",
     "tsup": "^8.3.5",
     "typescript": "^5.7.3",
     "vitest": "^3.0.5"

@@ -1,4 +1,5 @@
 import { createConnection, type ResultSetHeader } from "mysql2/promise";
+import type { SqlNodeDriver } from "@infrawrench/plugin-base";
 
 export const driver = {
   id: "mysql",
@@ -22,4 +23,4 @@ export const driver = {
       await conn.end();
     }
   },
-};
+} satisfies SqlNodeDriver;

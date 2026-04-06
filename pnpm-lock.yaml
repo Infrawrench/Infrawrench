@@ -278,6 +278,9 @@ importers:
         specifier: workspace:*
         version: link:../plugin-base
     devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.17
       tsup:
         specifier: ^8.3.5
         version: 8.5.1(jiti@2.6.1)(postcss@8.5.8)(tsx@4.21.0)(typescript@5.9.3)

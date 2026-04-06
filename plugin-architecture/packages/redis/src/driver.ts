@@ -1,4 +1,5 @@
 import Redis from "ioredis";
+import type { KvNodeDriver } from "@infrawrench/plugin-base";
 
 export const driver = {
   id: "redis",
@@ -18,4 +19,4 @@ export const driver = {
       client.disconnect();
     }
   },
-};
+} satisfies KvNodeDriver;
