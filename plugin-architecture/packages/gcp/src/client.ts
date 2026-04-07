@@ -18,6 +18,25 @@ interface TokenCache {
   expiresAt: number; // ms
 }
 
+interface CloudBillingSku {
+  description?: string;
+  serviceRegions?: string[];
+  category?: {
+    resourceFamily?: string;
+    usageType?: string;
+  };
+  pricingInfo?: Array<{
+    pricingExpression?: {
+      tieredRates?: Array<{
+        unitPrice?: {
+          units?: string;
+          nanos?: number;
+        };
+      }>;
+    };
+  }>;
+}
+
 // ─── GCP status → UI status ──────────────────────────────────────────────────
 
 function formatBytes(bytes: number): string {
@@ -67,6 +86,21 @@ export class GcpClient implements PluginClient {
   private readonly key: ServiceAccountKey;
   private readonly project: string;
   private tokenCache: TokenCache | null = null;
+  private machineTypeFamilyRateCache = new Map<
+    string,
+    {
+      expiresAt: number;
+      machineRates: Record<string, { corePerHourUsd: number; ramPerGiBHourUsd: number }>;
+      pdBalancedGbMonthUsd: number | null;
+    }
+  >();
+  private pricingRatesInFlightByGeo = new Map<
+    string,
+    Promise<{
+      machineRates: Record<string, { corePerHourUsd: number; ramPerGiBHourUsd: number }>;
+      pdBalancedGbMonthUsd: number | null;
+    }>
+  >();
 
   constructor(credentials: Record<string, string>) {
     const raw = credentials["serviceAccountJson"];
@@ -269,6 +303,157 @@ export class GcpClient implements PluginClient {
     { id: "projects/windows-cloud/global/images/family/windows-2019",          label: "Windows Server 2019",    category: "Windows",     family: "windows-2019" },
   ];
 
+  private static readonly COMPUTE_BILLING_SERVICE_ID = "6F81-5844-456A";
+  private static readonly HOURS_PER_MONTH = 730;
+
+  private regionFromZone(zone: string): string {
+    return zone.replace(/-[a-z]$/, "");
+  }
+
+  private geoFromRegion(region: string): "Americas" | "EMEA" | "APAC" {
+    if (
+      region.startsWith("us-") ||
+      region.startsWith("northamerica-") ||
+      region.startsWith("southamerica-")
+    ) return "Americas";
+    if (region.startsWith("asia-") || region.startsWith("australia-")) return "APAC";
+    return "EMEA";
+  }
+
+  private unitPriceToUsd(unitPrice?: { units?: string; nanos?: number }): number {
+    if (!unitPrice) return 0;
+    const units = Number(unitPrice.units ?? "0");
+    const nanos = Number(unitPrice.nanos ?? 0);
+    return units + nanos / 1_000_000_000;
+  }
+
+  private familyFromMachineType(machineType: string): string {
+    const lowered = machineType.toLowerCase();
+    if (lowered.startsWith("n2d-")) return "n2d";
+    const [family = ""] = lowered.split("-");
+    return family;
+  }
+
+  private async getCreatePricingRatesForGeo(
+    geo: "Americas" | "EMEA" | "APAC",
+  ): Promise<{
+    machineRates: Record<string, { corePerHourUsd: number; ramPerGiBHourUsd: number }>;
+    pdBalancedGbMonthUsd: number | null;
+  }> {
+    const cached = this.machineTypeFamilyRateCache.get(geo);
+    if (cached && cached.expiresAt > Date.now()) return {
+      machineRates: cached.machineRates,
+      pdBalancedGbMonthUsd: cached.pdBalancedGbMonthUsd,
+    };
+    const inFlight = this.pricingRatesInFlightByGeo.get(geo);
+    if (inFlight) return inFlight;
+
+    const fetchPromise = (async () => {
+      let pageToken = "";
+      const allSkus: CloudBillingSku[] = [];
+      do {
+        const params = new URLSearchParams({
+          currencyCode: "USD",
+          pageSize: "5000",
+        });
+        if (pageToken) params.set("pageToken", pageToken);
+        const page = await this.get<{ skus?: CloudBillingSku[]; nextPageToken?: string }>(
+          `https://cloudbilling.googleapis.com/v1/services/${GcpClient.COMPUTE_BILLING_SERVICE_ID}/skus?${params.toString()}`,
+        );
+        allSkus.push(...(page.skus ?? []));
+        pageToken = page.nextPageToken ?? "";
+      } while (pageToken);
+
+      const machineRates: Record<string, { corePerHourUsd: number; ramPerGiBHourUsd: number }> = {};
+      let pdBalancedGbMonthUsd: number | null = null;
+      for (const sku of allSkus) {
+        const family = sku.category?.resourceFamily;
+        const usageType = sku.category?.usageType;
+        const description = sku.description ?? "";
+        if (usageType !== "OnDemand") continue;
+        const inTargetGeo =
+          description.includes(`running in ${geo}`) ||
+          description.includes(`in ${geo}`);
+        if (!inTargetGeo) continue;
+
+        if (
+          pdBalancedGbMonthUsd == null &&
+          description.includes("Balanced PD Capacity") &&
+          !description.includes("Regional")
+        ) {
+          const pdRate = this.unitPriceToUsd(
+            sku.pricingInfo?.[0]?.pricingExpression?.tieredRates?.[0]?.unitPrice,
+          );
+          if (pdRate > 0) pdBalancedGbMonthUsd = pdRate;
+        }
+
+        if (family !== "Compute") continue;
+
+        const isCoreSku = description.includes("Instance Core");
+        const isRamSku = description.includes("Instance Ram");
+        if (!isCoreSku && !isRamSku) continue;
+
+        const familyMatch = description.match(/^([A-Z0-9]+)\b/);
+        const machineFamily = familyMatch?.[1]?.toLowerCase();
+        if (!machineFamily) continue;
+
+        const hourly = this.unitPriceToUsd(
+          sku.pricingInfo?.[0]?.pricingExpression?.tieredRates?.[0]?.unitPrice,
+        );
+        if (!hourly) continue;
+
+        if (!machineRates[machineFamily]) {
+          machineRates[machineFamily] = { corePerHourUsd: 0, ramPerGiBHourUsd: 0 };
+        }
+        if (isCoreSku) machineRates[machineFamily]!.corePerHourUsd = hourly;
+        if (isRamSku) machineRates[machineFamily]!.ramPerGiBHourUsd = hourly;
+      }
+
+      this.machineTypeFamilyRateCache.set(geo, {
+        machineRates,
+        pdBalancedGbMonthUsd,
+        expiresAt: Date.now() + 6 * 60 * 60 * 1000,
+      });
+      return { machineRates, pdBalancedGbMonthUsd };
+    })();
+
+    this.pricingRatesInFlightByGeo.set(geo, fetchPromise);
+    try {
+      return await fetchPromise;
+    } finally {
+      this.pricingRatesInFlightByGeo.delete(geo);
+    }
+  }
+
+  private async estimateMachineTypeMonthlyPrices(
+    machineTypes: Array<{ id: string; vcpus: number; memoryMb: number }>,
+    zone: string,
+  ): Promise<Record<string, number>> {
+    const region = this.regionFromZone(zone);
+    const geo = this.geoFromRegion(region);
+    const pricingRates = await this.getCreatePricingRatesForGeo(geo);
+    const ratesByFamily = pricingRates.machineRates;
+    const estimated: Record<string, number> = {};
+
+    for (const m of machineTypes) {
+      const family = this.familyFromMachineType(m.id);
+      const rates = ratesByFamily[family];
+      if (!rates) continue;
+      const memoryGiB = m.memoryMb / 1024;
+      const hourly = (m.vcpus * rates.corePerHourUsd) + (memoryGiB * rates.ramPerGiBHourUsd);
+      if (!hourly) continue;
+      estimated[m.id] = Number((hourly * GcpClient.HOURS_PER_MONTH).toFixed(2));
+    }
+    return estimated;
+  }
+
+  private async getBalancedDiskMonthlyRate(zone: string): Promise<number | null> {
+    const region = this.regionFromZone(zone);
+    const geo = this.geoFromRegion(region);
+    const pricingRates = await this.getCreatePricingRatesForGeo(geo);
+    return pricingRates.pdBalancedGbMonthUsd;
+  }
+
   async deleteResource(typeId: string, resourceId: string, accountId: string): Promise<void> {
     if (typeId !== "gce-instance") throw new Error(`GCP plugin: deleteResource not supported for type "${typeId}"`);
     const p = this.project;
@@ -326,11 +511,18 @@ export class GcpClient implements PluginClient {
       n2d: "N2D · AMD general purpose", c2: "C2 · Compute-optimized", c3: "C3 · Compute-optimized",
       m1: "M1 · Memory-optimized", m2: "M2 · Memory-optimized", a2: "A2 · GPU", g2: "G2 · GPU",
     };
-    const sizes: SizeOption[] = (machineTypesData.items ?? [])
-      .filter((m) => !m.name.includes("custom"))
+    const machineTypes = (machineTypesData.items ?? []).filter((m) => !m.name.includes("custom"));
+
+    const sizes: SizeOption[] = machineTypes
       .map((m) => {
         const family = familyOrder.find((f) => m.name.startsWith(f)) ?? m.name.split("-")[0] ?? "other";
-        return { id: m.name, label: m.name, vcpus: m.guestCpus, memoryMb: m.memoryMb, category: familyLabels[family] ?? family.toUpperCase() };
+        return {
+          id: m.name,
+          label: m.name,
+          vcpus: m.guestCpus,
+          memoryMb: m.memoryMb,
+          category: familyLabels[family] ?? family.toUpperCase(),
+        };
       })
       .sort((a, b) => {
         const ai = familyOrder.indexOf(a.category?.split(" ")[0]?.toLowerCase() ?? "");
@@ -347,7 +539,9 @@ export class GcpClient implements PluginClient {
 
     // Existing disks from aggregated list
     const disks: DiskOption[] = [];
-    for (const zoneData of Object.values(disksData.items ?? {})) {
+    for (const zoneData of Object.values(disksData.items ?? {}) as Array<{
+      disks?: Array<{ name: string; selfLink: string; sizeGb: string; status: string; type: string; zone: string }>;
+    }>) {
       for (const d of zoneData.disks ?? []) {
         if (d.status !== "READY") continue;
         const zone = d.zone.split("/").pop() ?? d.zone;
@@ -356,7 +550,6 @@ export class GcpClient implements PluginClient {
       }
     }
     disks.sort((a, b) => a.label.localeCompare(b.label));
-
     const defaultZone = zones.find((z) => z.id === "us-central1-a")?.id ?? zones[0]?.id;
 
     return {
@@ -379,6 +572,48 @@ export class GcpClient implements PluginClient {
         { key: "sshPublicKey", label: "SSH Key", kind: "ssh-key-picker", required: false },
       ],
     };
+  }
+
+  async getCreateSizePricing(
+    typeId: string,
+    request: { regionId?: string; sizes: Array<{ id: string; vcpus: number; memoryMb: number }> },
+  ): Promise<Record<string, number>> {
+    if (typeId !== "gce-instance") return {};
+    const zone = request.regionId ?? "us-central1-a";
+    return this.estimateMachineTypeMonthlyPrices(request.sizes, zone);
+  }
+
+  async getCreateCostEstimate(typeId: string, fields: Record<string, string>): Promise<number | null> {
+    if (typeId !== "gce-instance") return null;
+    const zone = fields["zone"] ?? "us-central1-a";
+    const machineType = fields["machineType"] ?? "";
+    if (!machineType) return null;
+
+    const machineTypeData = await this.get<{ guestCpus: number; memoryMb: number }>(
+      `https://compute.googleapis.com/compute/v1/projects/${this.project}/zones/${zone}/machineTypes/${machineType}`,
+    ).catch(() => null);
+    if (!machineTypeData) return null;
+
+    const vmMonthly = (
+      await this.estimateMachineTypeMonthlyPrices(
+        [{ id: machineType, vcpus: machineTypeData.guestCpus, memoryMb: machineTypeData.memoryMb }],
+        zone,
+      )
+    )[machineType] ?? 0;
+
+    let storageMonthly = 0;
+    const bootSource = fields["bootSource"] ?? "new-image";
+    if (bootSource === "new-image") {
+      const diskGb = Number(fields["diskGb"] ?? 50);
+      const diskRate = await this.getBalancedDiskMonthlyRate(zone);
+      if (diskRate != null && Number.isFinite(diskGb) && diskGb > 0) {
+        storageMonthly = diskGb * diskRate;
+      }
+    }
+
+    const total = vmMonthly + storageMonthly;
+    if (!Number.isFinite(total) || total <= 0) return null;
+    return Number(total.toFixed(2));
   }
 
   async createResource(typeId: string, accountId: string, fields: Record<string, string>): Promise<ResourceInstance> {

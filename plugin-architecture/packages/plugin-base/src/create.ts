@@ -91,3 +91,18 @@ export interface CreateFieldConfig {
 export interface CreateResourceConfig {
   fields: CreateFieldConfig[];
 }
+
+/**
+ * Optional follow-up pricing request for size-picker options.
+ * Used by hosts to progressively hydrate prices after initial create-form render.
+ */
+export interface CreateSizePricingRequest {
+  /** Region/zone selected in the create form (provider-specific identifier). */
+  regionId?: string;
+  /** Size options currently shown in the create form. */
+  sizes: Array<{
+    id: string;
+    vcpus: number;
+    memoryMb: number;
+  }>;
+}

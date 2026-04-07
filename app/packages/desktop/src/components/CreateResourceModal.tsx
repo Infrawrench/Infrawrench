@@ -1,9 +1,9 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { invoke } from "../lib/invoke";
 import { getDb } from "../db/client";
 import { getPlugin } from "../plugins/loader";
 import { buildPluginHostServices } from "../lib/sql-drivers";
-import type { ResourceTypeDefinition, CreateResourceConfig, CreateFieldConfig, SizeOption, ImageOption, DiskOption } from "@infrawrench/plugin-base";
+import type { PluginClient, ResourceTypeDefinition, CreateResourceConfig, CreateFieldConfig, SizeOption, ImageOption, DiskOption } from "@infrawrench/plugin-base";
 
 interface CreateResourceModalProps {
   accountId: string;
@@ -26,12 +26,93 @@ export function CreateResourceModal({
   const [fields, setFields] = useState<Record<string, string>>({});
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sizePricingByRegion, setSizePricingByRegion] = useState<Record<string, Record<string, number>>>({});
+  const [costEstimateMonthly, setCostEstimateMonthly] = useState<number | null>(null);
+  const clientRef = useRef<PluginClient | null>(null);
+  const pricingAttemptedRef = useRef<Map<string, Set<string>>>(new Map());
+  const pricingInFlightRequestsRef = useRef<Set<string>>(new Set());
+
+  const regionField = useMemo(
+    () => config?.fields.find((f) => f.kind === "region-picker" && f.regions?.length),
+    [config],
+  );
+  const sizeField = useMemo(
+    () => config?.fields.find((f) => f.kind === "size-picker" && f.sizes?.length),
+    [config],
+  );
+
+  const selectedRegionId = useMemo(() => {
+    if (!regionField) return undefined;
+    return fields[regionField.key] ?? regionField.defaultValue ?? regionField.regions?.[0]?.id;
+  }, [fields, regionField]);
+
+  const selectedSizeId = useMemo(() => {
+    if (!sizeField) return undefined;
+    return fields[sizeField.key] ?? sizeField.defaultValue ?? sizeField.sizes?.[0]?.id;
+  }, [fields, sizeField]);
+
+  async function loadPricingForRegion(
+    regionId: string | undefined,
+    cfgOverride?: CreateResourceConfig,
+    sizeIdsOverride?: string[],
+  ): Promise<void> {
+    const cfg = cfgOverride ?? config;
+    const client = clientRef.current;
+    if (!cfg || !client?.getCreateSizePricing) return;
+    const cfgSizeField = cfg.fields.find((f) => f.kind === "size-picker" && f.sizes?.length);
+    if (!cfgSizeField?.sizes?.length) return;
+
+    const requestedSizes = sizeIdsOverride?.length
+      ? cfgSizeField.sizes.filter((s) => sizeIdsOverride.includes(s.id))
+      : cfgSizeField.sizes;
+    if (!requestedSizes.length) return;
+
+    const regionKey = regionId ?? "__default__";
+    const attemptedForRegion = pricingAttemptedRef.current.get(regionKey) ?? new Set<string>();
+    const pendingSizes = requestedSizes.filter((s) => !attemptedForRegion.has(s.id));
+    if (!pendingSizes.length) return;
+    const requestKey = `${regionKey}|${pendingSizes.map((s) => s.id).sort().join(",")}`;
+    if (pricingInFlightRequestsRef.current.has(requestKey)) return;
+
+    pricingInFlightRequestsRef.current.add(requestKey);
+    try {
+      const pricing = await client.getCreateSizePricing(resourceType.id, {
+        ...(regionId ? { regionId } : {}),
+        sizes: pendingSizes.map((size) => ({
+          id: size.id,
+          vcpus: size.vcpus,
+          memoryMb: size.memoryMb,
+        })),
+      });
+      for (const s of pendingSizes) attemptedForRegion.add(s.id);
+      pricingAttemptedRef.current.set(regionKey, attemptedForRegion);
+      if (!pricing || Object.keys(pricing).length === 0) return;
+      setSizePricingByRegion((prev) => ({
+        ...prev,
+        [regionKey]: {
+          ...(prev[regionKey] ?? {}),
+          ...pricing,
+        },
+      }));
+    } catch {
+      // Allow retries on failures by not marking attempts.
+    } finally {
+      pricingInFlightRequestsRef.current.delete(requestKey);
+    }
+  }
 
   // Load the create config (API-driven: regions, sizes, etc.)
   useEffect(() => {
     let cancelled = false;
     async function load() {
       try {
+        setLoadingConfig(true);
+        setConfigError(null);
+        setSizePricingByRegion({});
+        setCostEstimateMonthly(null);
+        pricingAttemptedRef.current.clear();
+        pricingInFlightRequestsRef.current.clear();
+        clientRef.current = null;
         const db = await getDb();
         const rows = await db.select<{ encrypted_credentials: string; credentials_iv: string }[]>(
           "SELECT encrypted_credentials, credentials_iv FROM accounts WHERE id = $1",
@@ -48,6 +129,7 @@ export function CreateResourceModal({
         const { plugin } = loaded;
         const services = buildPluginHostServices(plugin.manifest, credentials);
         const client = plugin.createClient(credentials, services);
+        clientRef.current = client;
         if (!client.getCreateConfig) throw new Error("Plugin does not support dynamic create config");
         const cfg = await client.getCreateConfig(resourceType.id);
         if (!cancelled) {
@@ -59,6 +141,58 @@ export function CreateResourceModal({
             else if (f.kind === "disk-slider") init[f.key] = String(f.defaultGb ?? f.minGb ?? 20);
           }
           setFields(init);
+
+          const cfgRegionField = cfg.fields.find((f) => f.kind === "region-picker" && f.regions?.length);
+          const defaultRegionId = cfgRegionField
+            ? (init[cfgRegionField.key] ?? cfgRegionField.defaultValue ?? cfgRegionField.regions?.[0]?.id)
+            : undefined;
+          const cfgSizeField = cfg.fields.find((f) => f.kind === "size-picker" && f.sizes?.length);
+          const defaultSizeId = cfgSizeField
+            ? (init[cfgSizeField.key] ?? cfgSizeField.defaultValue ?? cfgSizeField.sizes?.[0]?.id)
+            : undefined;
+
+          // Progressive pricing with strict priority:
+          // 1) selected/default SKU + selected/default region
+          // 2) selected/default SKU across other regions
+          // 3) remaining SKUs for selected/default region
+          // 4) remaining SKUs for other regions
+          if (cfgRegionField?.regions?.length) {
+            const remainingRegionIds = cfgRegionField.regions
+              .map((r) => r.id)
+              .filter((id) => id !== defaultRegionId);
+            void (async () => {
+              await loadPricingForRegion(
+                defaultRegionId,
+                cfg,
+                defaultSizeId ? [defaultSizeId] : undefined,
+              );
+              if (cancelled) return;
+              await new Promise((resolve) => setTimeout(resolve, 300));
+              for (const regionId of remainingRegionIds) {
+                if (cancelled) return;
+                await loadPricingForRegion(
+                  regionId,
+                  cfg,
+                  defaultSizeId ? [defaultSizeId] : undefined,
+                );
+              }
+              if (cancelled) return;
+              await loadPricingForRegion(defaultRegionId, cfg);
+              for (const regionId of remainingRegionIds) {
+                if (cancelled) return;
+                await loadPricingForRegion(regionId, cfg);
+              }
+            })();
+          } else {
+            void (async () => {
+              await loadPricingForRegion(
+                defaultRegionId,
+                cfg,
+                defaultSizeId ? [defaultSizeId] : undefined,
+              );
+              await loadPricingForRegion(defaultRegionId, cfg);
+            })();
+          }
         }
       } catch (e) {
         if (!cancelled) setConfigError(String(e));
@@ -67,12 +201,96 @@ export function CreateResourceModal({
       }
     }
     void load();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      clientRef.current = null;
+    };
   }, [accountId, pluginId, resourceType.id]);
+
+  useEffect(() => {
+    if (!config) return;
+    void (async () => {
+      await loadPricingForRegion(selectedRegionId, undefined, selectedSizeId ? [selectedSizeId] : undefined);
+      await loadPricingForRegion(selectedRegionId);
+    })();
+  }, [config, selectedRegionId, selectedSizeId]);
 
   function setField(key: string, value: string) {
     setFields((prev) => ({ ...prev, [key]: value }));
   }
+
+  const configWithPricing = useMemo(() => {
+    if (!config) return null;
+    const selectedRegionKey = selectedRegionId ?? "__default__";
+    const regionPricing = sizePricingByRegion[selectedRegionKey];
+    if (!regionPricing) return config;
+    return {
+      ...config,
+      fields: config.fields.map((field) => {
+        if (field.kind !== "size-picker" || !field.sizes) return field;
+        return {
+          ...field,
+          sizes: field.sizes.map((size) => {
+            const regionPrice = regionPricing[size.id];
+            return regionPrice != null ? { ...size, priceMonthly: regionPrice } : size;
+          }),
+        };
+      }),
+    };
+  }, [config, selectedRegionId, sizePricingByRegion]);
+
+  useEffect(() => {
+    if (!configWithPricing) return;
+    const client = clientRef.current;
+    if (!client?.getCreateCostEstimate) {
+      setCostEstimateMonthly(null);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      const visibleFields: Record<string, string> = {};
+      for (const f of configWithPricing.fields) {
+        if (f.showWhen && fields[f.showWhen.fieldKey] !== f.showWhen.fieldValue) continue;
+        if (fields[f.key] !== undefined) visibleFields[f.key] = fields[f.key]!;
+      }
+      void client.getCreateCostEstimate!(resourceType.id, visibleFields)
+        .then((value) => {
+          if (!cancelled) setCostEstimateMonthly(value ?? null);
+        })
+        .catch(() => {
+          if (!cancelled) setCostEstimateMonthly(null);
+        });
+    }, 220);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [configWithPricing, fields, resourceType.id]);
+
+  const estimatedMonthlyPrice = useMemo(() => {
+    if (costEstimateMonthly != null) return costEstimateMonthly;
+    if (!configWithPricing) return null;
+    const visibleFields = configWithPricing.fields.filter(
+      (f) => !f.showWhen || fields[f.showWhen.fieldKey] === f.showWhen.fieldValue,
+    );
+    const sizeField = visibleFields.find((f) => f.kind === "size-picker" && f.sizes?.length);
+    if (!sizeField?.sizes) return null;
+    const selectedSizeId = fields[sizeField.key];
+    if (!selectedSizeId) return null;
+    const selectedSize = sizeField.sizes.find((size) => size.id === selectedSizeId);
+    if (selectedSize?.priceMonthly == null) return null;
+    return selectedSize.priceMonthly;
+  }, [configWithPricing, fields, costEstimateMonthly]);
+
+  const estimatedMonthlyPriceLabel = useMemo(() => {
+    if (estimatedMonthlyPrice == null) return null;
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: estimatedMonthlyPrice % 1 === 0 ? 0 : 2,
+      maximumFractionDigits: 2,
+    }).format(estimatedMonthlyPrice);
+  }, [estimatedMonthlyPrice]);
 
   async function handleCreate() {
     setCreating(true);
@@ -122,7 +340,15 @@ export function CreateResourceModal({
           <h2 className="text-base font-semibold text-gray-100">
             Create {resourceType.displayName}
           </h2>
-          <button onClick={onClose} className="text-gray-600 hover:text-gray-300 text-xl leading-none">×</button>
+          <div className="flex items-center gap-3">
+            {estimatedMonthlyPriceLabel && (
+              <div className="text-right px-3 py-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10">
+                <p className="text-[10px] uppercase tracking-wide text-emerald-300/80">Estimated cost</p>
+                <p className="text-sm font-semibold text-emerald-200">{estimatedMonthlyPriceLabel}/mo</p>
+              </div>
+            )}
+            <button onClick={onClose} className="text-gray-600 hover:text-gray-300 text-xl leading-none">×</button>
+          </div>
         </div>
 
         {/* Body */}
@@ -134,9 +360,9 @@ export function CreateResourceModal({
             </div>
           ) : configError ? (
             <p className="text-sm text-red-400">{configError}</p>
-          ) : config ? (
+          ) : configWithPricing ? (
             <div className="space-y-6">
-              {config.fields
+              {configWithPricing.fields
                 .filter((f) => !f.showWhen || fields[f.showWhen.fieldKey] === f.showWhen.fieldValue)
                 .map((f) => (
                   <FieldRenderer key={f.key} field={f} value={fields[f.key] ?? ""} onChange={(v) => setField(f.key, v)} />

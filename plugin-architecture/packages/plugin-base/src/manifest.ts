@@ -163,6 +163,16 @@ export interface PluginClient {
   getSshConfig?(): { host: string; port: number; username: string; privateKey: string };
   /** Fetch a fully-populated create form config for a resource type (regions, sizes, etc. from live API). */
   getCreateConfig?(typeId: string): Promise<CreateResourceConfig>;
+  /**
+   * Optionally resolve size pricing after initial form load.
+   * Hosts may call this asynchronously to avoid blocking create modal rendering.
+   */
+  getCreateSizePricing?(typeId: string, request: CreateSizePricingRequest): Promise<Record<string, number>>;
+  /**
+   * Optionally estimate the total monthly cost for the current create-form field values.
+   * Plugins can include provider-specific components like storage in this estimate.
+   */
+  getCreateCostEstimate?(typeId: string, fields: Record<string, string>): Promise<number | null>;
   /** Permanently delete a resource. The host is responsible for confirming with the user first. */
   deleteResource?(typeId: string, resourceId: string, accountId: string): Promise<void>;
   /** Create a new resource of the given type. Fields are the raw form values. */
@@ -179,4 +189,4 @@ export interface Plugin {
 // Forward declarations — defined in their own modules but used here
 import type { ResourceInstance } from "./instance.js";
 import type { DetailViewSchema, SidebarItemSchema, SqlTableMeta, StorageObject } from "./schema.js";
-import type { CreateResourceConfig } from "./create.js";
+import type { CreateResourceConfig, CreateSizePricingRequest } from "./create.js";

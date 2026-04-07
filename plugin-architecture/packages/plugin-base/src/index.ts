@@ -71,6 +71,7 @@ export type {
 // Create-resource config (dynamic form schema)
 export type {
   CreateResourceConfig,
+  CreateSizePricingRequest,
   CreateFieldConfig,
   CreateFieldKind,
   SizeOption,

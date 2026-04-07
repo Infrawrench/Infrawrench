@@ -217,6 +217,7 @@ All polling is *background* (no loading flash):
 - SSH key injection format: `username:ssh-rsa AAAA...` in metadata; `username` derived from key comment (`comment.split("@")[0]`)
 - Delete requires zone from `resource.fields["zone"]`, not from `externalId`
 - Storage driver (`./node-driver`) handles GCS batch downloads
+- GCP exposes `getCreateSizePricing()` for async per-region VM price hydration from the Cloud Billing Catalog API (Compute SKUs); modal opens with base options first, then prices stream in (default zone first, then others)
 
 ### DigitalOcean (`@infrawrench/plugin-digitalocean`)
 - Resource ID format: `{accountId}:{typeId}:{externalId}`
@@ -255,6 +256,11 @@ Field rendering:
 - `disk-picker` — searchable by name/zone/type
 - `ssh-key-picker` — system keys from `~/.ssh/` (private keys only); on selection, reads `.pub` file to auto-populate SSH username from comment
 
+Pricing UX:
+- Header can show an "Estimated cost" badge when the selected `size-picker` option includes `priceMonthly`; host reads generic `SizeOption.priceMonthly` metadata and does not hard-code provider pricing logic.
+- Host can call optional `getCreateSizePricing()` after initial form load to progressively fill `priceMonthly` for `size-picker` options (used for slow pricing APIs).
+- Host can call optional `getCreateCostEstimate()` for full monthly totals from provider logic (e.g. VM + boot disk) so storage is included in the estimate badge.
+
 On success: dispatches `iw:resources-changed`, navigates directly to the new resource's detail view.
 
 ---
@@ -280,6 +286,8 @@ The sidebar and account page both listen for `iw:resources-changed` and re-fetch
 5. `ssh_shell_spawn` IPC → ssh2 in Electron main → resolves to `shellId`
 6. Data events: `ssh_shell_data_{shellId}` → `term.write()`
 7. Cleanup: `ro.disconnect()`, kill shell, `term.dispose()`
+
+Resource detail pages now expose SSH as a route-local tab. The bottom-docked SSH panel was replaced with an `Open SSH tab` action that promotes the terminal or quick-connect panel into the main content area.
 
 ---
 

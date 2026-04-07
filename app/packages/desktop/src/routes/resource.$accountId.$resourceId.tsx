@@ -37,6 +37,8 @@ interface SqliteResourceRow {
   fields_json: string;
 }
 
+type ResourceMainTab = "details" | "ssh";
+
 function ResourceDetailPage() {
   const { accountId, resourceId } = Route.useParams();
   const decodedResourceId = decodeURIComponent(resourceId);
@@ -65,6 +67,8 @@ function ResourceDetailPage() {
   const [sshHost, setSshHost] = useState<string | null>(null);
   const setAccountConnected = useUIStore((s) => s.setAccountConnected);
   const [detailsCollapsed, setDetailsCollapsed] = useState(false);
+  const [sshTabOpen, setSshTabOpen] = useState(false);
+  const [activeMainTab, setActiveMainTab] = useState<ResourceMainTab>("details");
   const [canDelete, setCanDelete] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -213,7 +217,7 @@ function ResourceDetailPage() {
         if (!cancelled) {
           setHasStorageToken(!!client.getStorageAccessToken);
           setCanDelete(!!client.deleteResource);
-          if (client.getSshConfig) setSshConfig(client.getSshConfig());
+          setSshConfig(client.getSshConfig ? client.getSshConfig() : null);
         }
         const resourceTypeId = decodedResourceId.split(":")[1] ?? "pg-database";
         const resources = await client.listResources(resourceTypeId, accountId);
@@ -286,7 +290,9 @@ function ResourceDetailPage() {
               enrichedResource.fields[hostOutputKey] ??
               "",
             );
-            if (host) setSshHost(host);
+            if (!cancelled) setSshHost(host || null);
+          } else if (!cancelled) {
+            setSshHost(null);
           }
         }
       } catch (e) {
@@ -310,6 +316,13 @@ function ResourceDetailPage() {
     window.addEventListener("iw:refresh-resource", bgRefresh);
     return () => { clearInterval(id); window.removeEventListener("iw:refresh-resource", bgRefresh); };
   }, []);
+
+  useEffect(() => {
+    if (!sshConfig && !sshHost) {
+      setSshTabOpen(false);
+      setActiveMainTab("details");
+    }
+  }, [sshConfig, sshHost]);
 
   const handleRunQuery = useCallback(async (sql: string): Promise<QueryResult> => {
     const cs = connectionStringRef.current;
@@ -364,6 +377,18 @@ function ResourceDetailPage() {
   const hasSqlEditor = !!schema?.sqlEditor && pgConnected;
   const hasStorageBrowser = !!schema?.storageBrowser;
   const hasTerminal = !!sshConfig;
+  const hasSshPanel = hasTerminal || !!sshHost;
+  const hasCollapsibleDetails = hasStorageBrowser;
+
+  function openSshTab() {
+    setSshTabOpen(true);
+    setActiveMainTab("ssh");
+  }
+
+  function closeSshTab() {
+    setSshTabOpen(false);
+    setActiveMainTab("details");
+  }
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -377,29 +402,84 @@ function ResourceDetailPage() {
         />
       )}
 
-      <div className={(hasStorageBrowser || hasTerminal) ? "shrink-0" : "flex-1 overflow-auto"}>
-        {(hasStorageBrowser || hasTerminal) && (
-          <button
-            onClick={() => setDetailsCollapsed((c) => !c)}
-            className="w-full flex items-center gap-2 px-4 py-1.5 border-b border-gray-800 text-xs text-gray-600 hover:text-gray-400 hover:bg-gray-800/40 transition-colors"
-          >
-            <span
-              className="inline-block transition-transform text-xs"
-              style={{ transform: detailsCollapsed ? "rotate(0deg)" : "rotate(90deg)" }}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {hasSshPanel && (
+          <div className="shrink-0 flex items-center gap-1 px-4 border-b border-gray-800 bg-gray-950">
+            <ResourceTabButton
+              active={activeMainTab === "details"}
+              onClick={() => setActiveMainTab("details")}
             >
-              ▶
-            </span>
-            Details
-          </button>
+              Details
+            </ResourceTabButton>
+            {sshTabOpen ? (
+              <div className="flex items-center">
+                <ResourceTabButton
+                  active={activeMainTab === "ssh"}
+                  onClick={() => setActiveMainTab("ssh")}
+                >
+                  SSH
+                </ResourceTabButton>
+                <button
+                  onClick={closeSshTab}
+                  className="px-2 py-2 text-xs text-gray-600 hover:text-gray-300 transition-colors"
+                  aria-label="Close SSH tab"
+                  title="Close SSH tab"
+                >
+                  ×
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={openSshTab}
+                className="ml-auto px-3 py-1.5 text-xs text-gray-500 hover:text-gray-200 border border-gray-800 hover:border-gray-700 rounded-lg transition-colors"
+              >
+                Open SSH tab
+              </button>
+            )}
+          </div>
         )}
-        {!detailsCollapsed && (
-          <div className={hasStorageBrowser ? "overflow-auto" : "h-full"}>
-            <DetailView
-              schema={schema}
-              resourceId={decodedResourceId}
-              pluginLogoSvg={logoSvg}
-              {...(hasSqlEditor ? { onRunQuery: handleRunQuery, onExecute: handleExecute } : {})}
-            />
+
+        {activeMainTab === "details" && (
+          <div className="flex-1 flex flex-col overflow-hidden">
+            {hasCollapsibleDetails && (
+              <button
+                onClick={() => setDetailsCollapsed((c) => !c)}
+                className="w-full flex items-center gap-2 px-4 py-1.5 border-b border-gray-800 text-xs text-gray-600 hover:text-gray-400 hover:bg-gray-800/40 transition-colors"
+              >
+                <span
+                  className="inline-block transition-transform text-xs"
+                  style={{ transform: detailsCollapsed ? "rotate(0deg)" : "rotate(90deg)" }}
+                >
+                  ▶
+                </span>
+                Details
+              </button>
+            )}
+            {!detailsCollapsed && (
+              <div className="flex-1 overflow-auto">
+                <DetailView
+                  schema={schema}
+                  resourceId={decodedResourceId}
+                  pluginLogoSvg={logoSvg}
+                  {...(hasSqlEditor ? { onRunQuery: handleRunQuery, onExecute: handleExecute } : {})}
+                />
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeMainTab === "ssh" && (
+          <div className="flex-1 min-h-0 overflow-hidden">
+            {hasTerminal && sshConfig ? (
+              <SshTerminal
+                host={sshConfig.host}
+                port={sshConfig.port}
+                username={sshConfig.username}
+                privateKey={sshConfig.privateKey}
+              />
+            ) : sshHost ? (
+              <SshQuickConnectPanel host={sshHost} />
+            ) : null}
           </div>
         )}
       </div>
@@ -499,19 +579,30 @@ function ResourceDetailPage() {
         />
       )}
 
-      {hasTerminal && sshConfig && (
-        <SshTerminal
-          host={sshConfig.host}
-          port={sshConfig.port}
-          username={sshConfig.username}
-          privateKey={sshConfig.privateKey}
-        />
-      )}
-
-      {!hasTerminal && sshHost && (
-        <SshQuickConnectPanel host={sshHost} />
-      )}
     </div>
+  );
+}
+
+function ResourceTabButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`px-3 py-2 text-sm border-b transition-colors ${
+        active
+          ? "border-blue-500 text-blue-300"
+          : "border-transparent text-gray-500 hover:text-gray-300"
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 
