@@ -4,6 +4,7 @@ import type { CredentialField } from "@infrawrench/plugin-base";
 import { loadPlugins } from "../plugins/loader";
 import { getDb } from "../db/client";
 import { formatErrorMessage } from "../lib/errors";
+import { Modal } from "@infrawrench/ui";
 import { ErrorNotice } from "./ErrorNotice";
 
 interface AddAccountModalProps {
@@ -94,7 +95,7 @@ export function AddAccountModal({ onClose, onAdded }: AddAccountModalProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+    <Modal onClose={onClose}>
       <div className="bg-gray-900 border border-gray-700 rounded-xl w-full max-w-md shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800">
@@ -201,6 +202,6 @@ export function AddAccountModal({ onClose, onAdded }: AddAccountModalProps) {
           )}
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

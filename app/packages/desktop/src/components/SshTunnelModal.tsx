@@ -2,7 +2,7 @@ import { useState } from "react";
 import { invoke } from "../lib/invoke";
 import { getDb } from "../db/client";
 import { sshOpenTunnel } from "../lib/ssh-tunnel";
-import { useUIStore } from "@infrawrench/ui";
+import { useUIStore, Modal } from "@infrawrench/ui";
 import { formatErrorMessage } from "../lib/errors";
 import { ErrorNotice } from "./ErrorNotice";
 import { SshKeyPicker } from "./SshKeyPicker";
@@ -114,7 +114,7 @@ export function SshTunnelModal({ sshHost, sourceAccountId, onClose, onTunnelEsta
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+    <Modal onClose={onClose}>
       <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-[480px] max-h-[90vh] overflow-auto">
         <div className="p-6 border-b border-gray-800">
           <h2 className="text-base font-semibold text-gray-100">Connect to service via SSH</h2>
@@ -197,6 +197,6 @@ export function SshTunnelModal({ sshHost, sourceAccountId, onClose, onTunnelEsta
           </button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

@@ -5,6 +5,7 @@ import { getDb } from "../db/client";
 import { invoke } from "../lib/invoke";
 import type { DraggableResource } from "../lib/pins";
 import { formatErrorMessage } from "../lib/errors";
+import { Modal } from "@infrawrench/ui";
 import { buildPluginHostServices } from "../lib/sql-drivers";
 
 interface AccountRow {
@@ -193,10 +194,7 @@ export function SecretExportModal({
   const entryCount = selectedTemplate?.entries.length ?? 0;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
+    <Modal onClose={onClose}>
       <div className="w-[min(520px,90vw)] max-h-[80vh] overflow-y-auto rounded-2xl border border-gray-700 bg-gray-900 shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-gray-800 px-5 py-4">
@@ -347,6 +345,6 @@ export function SecretExportModal({
           </div>
         )}
       </div>
-    </div>
+    </Modal>
   );
 }

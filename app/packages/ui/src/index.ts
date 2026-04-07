@@ -19,6 +19,9 @@ export { DashboardGrid } from "./components/dashboard/DashboardGrid.js";
 export { SidebarItem } from "./components/sidebar/SidebarItem.js";
 export { SidebarSection } from "./components/sidebar/SidebarSection.js";
 
+// Modal
+export { Modal } from "./components/Modal.js";
+
 // Detail view
 export { DetailView } from "./components/detail/DetailView.js";
 export { AssociationPicker } from "./components/detail/AssociationPicker.js";

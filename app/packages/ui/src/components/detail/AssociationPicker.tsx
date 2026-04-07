@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { ProviderResource, RerollSelection } from "./DetailView.js";
+import { Modal } from "../Modal.js";
 
 interface AssociationPickerProps {
   fieldKey: string;
@@ -46,7 +47,7 @@ export function AssociationPicker({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+    <Modal onClose={onCancel}>
       <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-full max-w-md mx-4">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-gray-800">
@@ -152,6 +153,6 @@ export function AssociationPicker({
           </button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

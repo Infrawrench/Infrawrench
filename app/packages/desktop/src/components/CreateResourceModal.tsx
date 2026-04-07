@@ -4,6 +4,7 @@ import { getDb } from "../db/client";
 import { getPlugin } from "../plugins/loader";
 import { buildPluginHostServices } from "../lib/sql-drivers";
 import { formatErrorMessage } from "../lib/errors";
+import { Modal } from "@infrawrench/ui";
 import { ErrorNotice } from "./ErrorNotice";
 import type { PluginClient, ResourceTypeDefinition, CreateResourceConfig, CreateFieldConfig, SizeOption, ImageOption, DiskOption } from "@infrawrench/plugin-base";
 
@@ -309,10 +310,7 @@ export function CreateResourceModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
+    <Modal onClose={onClose}>
       <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-[560px] max-h-[72vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-800 flex-shrink-0">
@@ -379,7 +377,7 @@ export function CreateResourceModal({
           </div>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 
