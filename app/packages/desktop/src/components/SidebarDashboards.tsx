@@ -84,7 +84,11 @@ export function SidebarDashboards() {
               const db = await getDb();
               await db.execute("DELETE FROM dashboard_pins WHERE dashboard_id = $1", [dash.id]);
               await db.execute("DELETE FROM dashboards WHERE id = $1", [dash.id]);
-              removeWorkspaceTabs([`dashboard:${dash.id}`]);
+              removeWorkspaceTabs(
+                useUIStore.getState().workspaceTabs
+                  .filter((tab) => tab.target.kind === "dashboard" && tab.target.dashboardId === dash.id)
+                  .map((tab) => tab.id),
+              );
               setDashboards((prev) => prev.filter((d) => d.id !== dash.id));
               // Navigate home if we just deleted the active dashboard
               void navigate({ to: "/" });

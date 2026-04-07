@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { createRootRoute, Outlet, useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
 import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
-import { getWorkspaceTabId, normalizeResourceId, useUIStore, type WorkspaceTab, type WorkspaceTabTarget } from "@infrawrench/ui";
+import { normalizeResourceId, useUIStore, workspaceTabTargetsEqual, type WorkspaceTab, type WorkspaceTabTarget } from "@infrawrench/ui";
 import { AddAccountModal } from "../components/AddAccountModal";
 import { GlobalTabBar } from "../components/GlobalTabBar";
 import { SidebarAccounts } from "../components/SidebarAccounts";
@@ -74,7 +74,7 @@ async function validateWorkspaceTab(tab: WorkspaceTab): Promise<WorkspaceTab | n
     return found
       ? {
           ...tab,
-          title: target.view === "ssh" ? `SSH: ${found.displayName}` : found.displayName,
+          title: target.view === "ssh" ? `SSH: ${found.displayName}` : target.view === "sftp" ? `SFTP: ${found.displayName}` : found.displayName,
           target: {
             kind: "resource",
             accountId: target.accountId,
@@ -98,6 +98,7 @@ function RootLayout() {
     workspaceTabs,
     activeWorkspaceTabId,
     tabsHydrated,
+    createWorkspaceTabInstance,
     syncWorkspaceRoute,
     activateWorkspaceTab,
     closeWorkspaceTab,
@@ -124,28 +125,34 @@ function RootLayout() {
       return;
     }
     setActiveDashboard(currentTarget.kind === "dashboard" ? currentTarget.dashboardId : null);
-    // Skip sync if the active tab already matches the current URL — this prevents
-    // syncWorkspaceRoute (reuse-active) from replacing a pinned tab that was just
-    // set as active by pinWorkspaceTab right before navigate() was called.
-    if (activeWorkspaceTabId === getWorkspaceTabId(currentTarget)) return;
+    const activeTab = workspaceTabs.find((tab) => tab.id === activeWorkspaceTabId);
+    // Skip sync if the active tab already points at the current URL. This preserves
+    // duplicate tab instances that share a target, such as multiple Home tabs.
+    if (activeTab && workspaceTabTargetsEqual(activeTab.target, currentTarget)) return;
     syncWorkspaceRoute(currentTarget);
-  }, [hash, pathname, activeWorkspaceTabId, setActiveDashboard, syncWorkspaceRoute, tabsHydrated]);
+  }, [hash, pathname, activeWorkspaceTabId, setActiveDashboard, syncWorkspaceRoute, tabsHydrated, workspaceTabs]);
 
   useEffect(() => {
     if (!tabsHydrated || tabsValidated) return;
     let cancelled = false;
 
+    // Capture current tabs/activeId at hydration time — we deliberately exclude
+    // workspaceTabs and activeWorkspaceTabId from deps so this only runs once.
+    const tabsSnapshot = useUIStore.getState().workspaceTabs;
+    const activeIdSnapshot = useUIStore.getState().activeWorkspaceTabId;
+
     async function validateTabs() {
-      const validated = await Promise.all(workspaceTabs.map((tab) => validateWorkspaceTab(tab)));
+      const validated = await Promise.all(tabsSnapshot.map((tab) => validateWorkspaceTab(tab)));
       if (cancelled) return;
       const nextTabs = validated.filter((tab): tab is WorkspaceTab => !!tab);
-      replaceWorkspaceTabs(nextTabs, activeWorkspaceTabId);
+      replaceWorkspaceTabs(nextTabs, activeIdSnapshot);
       setTabsValidated(true);
     }
 
     void validateTabs();
     return () => { cancelled = true; };
-  }, [activeWorkspaceTabId, replaceWorkspaceTabs, tabsHydrated, tabsValidated, workspaceTabs]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [replaceWorkspaceTabs, tabsHydrated, tabsValidated]);
 
   useEffect(() => {
     if (!tabsHydrated || pathname !== "/") return;
@@ -193,7 +200,16 @@ function RootLayout() {
     const db = await getDb();
     await pinResource(resource, db, dashboardId);
     bumpDashboardPins();
-    void navigateToWorkspaceTarget(navigate, dashboardTabTarget(dashboardId));
+    const dashRows = await db.select<{ name: string }[]>(
+      "SELECT name FROM dashboards WHERE id = $1 LIMIT 1",
+      [dashboardId],
+    );
+    const dashLabel = dashRows[0]?.name;
+    void navigateToWorkspaceTarget(
+      navigate,
+      dashboardTabTarget(dashboardId),
+      dashLabel ? { label: dashLabel } : undefined,
+    );
   }
 
   function handleActivateTab(tabId: string) {
@@ -209,7 +225,9 @@ function RootLayout() {
       "SELECT id FROM dashboards WHERE is_default = 1 LIMIT 1",
     );
     const homeId = rows[0]?.id ?? "dashboard-home";
-    void navigateToWorkspaceTarget(navigate, dashboardTabTarget(homeId), { mode: "pin", label: "Home" });
+    const target = dashboardTabTarget(homeId);
+    createWorkspaceTabInstance(target, "Home");
+    void navigate(getWorkspaceNavigateArgs(target));
   }
 
   function handleCloseTab(tabId: string) {

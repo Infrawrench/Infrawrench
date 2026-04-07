@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { getDb } from "../db/client";
 import { useUIStore } from "@infrawrench/ui";
-import { getWorkspaceNavigateArgs } from "../lib/workspace-tabs";
+import { dashboardTabTarget, getWorkspaceNavigateArgs, navigateToWorkspaceTarget } from "../lib/workspace-tabs";
 
 export const Route = createFileRoute("/")({
   component: IndexPage,
@@ -26,13 +26,15 @@ function IndexPage() {
           return;
         }
         const db = await getDb();
-        const rows = await db.select<{ id: string }[]>(
-          "SELECT id FROM dashboards WHERE is_default = 1 LIMIT 1",
+        const rows = await db.select<{ id: string; name: string }[]>(
+          "SELECT id, name FROM dashboards WHERE is_default = 1 LIMIT 1",
         );
         if (cancelled) return;
         let homeId: string;
+        let homeName = "Home";
         if (rows[0]) {
           homeId = rows[0].id;
+          homeName = rows[0].name;
         } else {
           // Fixed ID so concurrent StrictMode double-effect runs don't create duplicates
           homeId = "dashboard-home";
@@ -44,14 +46,19 @@ function IndexPage() {
             bumpDashboardPins();
           } catch {
             // Already exists (e.g. from the parallel StrictMode run) — find the real id
-            const existing = await db.select<{ id: string }[]>(
-              "SELECT id FROM dashboards WHERE is_default = 1 LIMIT 1",
+            const existing = await db.select<{ id: string; name: string }[]>(
+              "SELECT id, name FROM dashboards WHERE is_default = 1 LIMIT 1",
             );
             homeId = existing[0]?.id ?? homeId;
+            homeName = existing[0]?.name ?? homeName;
           }
         }
         if (!cancelled) {
-          navigate({ to: "/dashboard/$dashboardId", params: { dashboardId: homeId }, replace: true });
+          void navigateToWorkspaceTarget(
+            navigate,
+            dashboardTabTarget(homeId),
+            { label: homeName, replace: true },
+          );
         }
       } catch {
         // If DB fails, just stay on the loading screen

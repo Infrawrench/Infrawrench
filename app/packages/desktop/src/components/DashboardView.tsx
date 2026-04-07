@@ -73,7 +73,6 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
   const bumpDashboardPins = useUIStore((s) => s.bumpDashboardPins);
   const setAccountConnected = useUIStore((s) => s.setAccountConnected);
   const removeWorkspaceTabs = useUIStore((s) => s.removeWorkspaceTabs);
-  const setWorkspaceTabTitle = useUIStore((s) => s.setWorkspaceTabTitle);
   const { setNodeRef, isOver } = useDroppable({ id: `dashboard:${dashboardId}` });
 
   const load = useCallback(async () => {
@@ -112,7 +111,8 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
         setNotFound(true);
         return;
       }
-      setDashboardName(nameRows[0].name);
+      const loadedName = nameRows[0].name;
+      setDashboardName(loadedName);
       setIsHome(nameRows[0].is_default === 1);
 
       const rows = await db.select<PinnedRow[]>(`
@@ -461,7 +461,12 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
     setEditingName(false);
     const db = await getDb();
     await db.execute("UPDATE dashboards SET name = $1 WHERE id = $2", [trimmed, dashboardId]);
-    setWorkspaceTabTitle(`dashboard:${dashboardId}`, trimmed);
+    const tabsToRename = useUIStore.getState().workspaceTabs
+      .filter((tab) => tab.target.kind === "dashboard" && tab.target.dashboardId === dashboardId)
+      .map((tab) => tab.id);
+    for (const tabId of tabsToRename) {
+      useUIStore.getState().setWorkspaceTabTitle(tabId, trimmed);
+    }
   }
 
   async function deleteDashboard() {
@@ -469,7 +474,11 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
     const db = await getDb();
     await db.execute("DELETE FROM dashboard_pins WHERE dashboard_id = $1", [dashboardId]);
     await db.execute("DELETE FROM dashboards WHERE id = $1", [dashboardId]);
-    removeWorkspaceTabs([`dashboard:${dashboardId}`]);
+    removeWorkspaceTabs(
+      useUIStore.getState().workspaceTabs
+        .filter((tab) => tab.target.kind === "dashboard" && tab.target.dashboardId === dashboardId)
+        .map((tab) => tab.id),
+    );
     navigate({ to: "/" });
   }
 

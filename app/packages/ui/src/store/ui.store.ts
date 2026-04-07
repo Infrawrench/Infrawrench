@@ -48,14 +48,34 @@ export function getWorkspaceTabFallbackTitle(target: WorkspaceTabTarget): string
   }
 }
 
-function createWorkspaceTab(target: WorkspaceTabTarget, title?: string): WorkspaceTab {
+export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabTarget): boolean {
+  if (a.kind !== b.kind) return false;
+  switch (a.kind) {
+    case "dashboard":
+      return a.dashboardId === (b as { dashboardId: string }).dashboardId;
+    case "account":
+      return a.accountId === (b as { accountId: string }).accountId;
+    case "resource":
+      return (
+        a.accountId === (b as { accountId: string }).accountId &&
+        normalizeResourceId(a.resourceId) === normalizeResourceId((b as { resourceId: string }).resourceId) &&
+        (a.view ?? "details") === ((b as { view?: "details" | "ssh" | "sftp" }).view ?? "details")
+      );
+  }
+}
+
+function createWorkspaceTab(target: WorkspaceTabTarget, title?: string, id?: string): WorkspaceTab {
   return {
-    id: getWorkspaceTabId(target),
+    id: id ?? getWorkspaceTabId(target),
     target: target.kind === "resource"
       ? { ...target, resourceId: normalizeResourceId(target.resourceId), view: target.view ?? "details" }
       : target,
     title: title?.trim() || getWorkspaceTabFallbackTitle(target),
   };
+}
+
+function createWorkspaceTabInstance(target: WorkspaceTabTarget, title?: string): WorkspaceTab {
+  return createWorkspaceTab(target, title, `${getWorkspaceTabId(target)}::${crypto.randomUUID()}`);
 }
 
 function upsertWorkspaceTabTitle(tab: WorkspaceTab, title?: string): WorkspaceTab {
@@ -71,12 +91,21 @@ function applyWorkspaceNavigation(
   mode: "reuse-active" | "pin",
 ): Pick<UIState, "workspaceTabs" | "activeWorkspaceTabId"> {
   const nextTab = createWorkspaceTab(target, title);
-  const existing = tabs.find((tab) => tab.id === nextTab.id);
+  const activeTab = activeTabId ? tabs.find((tab) => tab.id === activeTabId) : undefined;
+
+  if (activeTab && workspaceTabTargetsEqual(activeTab.target, nextTab.target)) {
+    return {
+      workspaceTabs: tabs.map((tab) => tab.id === activeTab.id ? upsertWorkspaceTabTitle(tab, title) : tab),
+      activeWorkspaceTabId: activeTab.id,
+    };
+  }
+
+  const existing = tabs.find((tab) => workspaceTabTargetsEqual(tab.target, nextTab.target));
 
   if (existing) {
     return {
-      workspaceTabs: tabs.map((tab) => tab.id === nextTab.id ? upsertWorkspaceTabTitle(tab, title) : tab),
-      activeWorkspaceTabId: nextTab.id,
+      workspaceTabs: tabs.map((tab) => tab.id === existing.id ? upsertWorkspaceTabTitle(tab, title) : tab),
+      activeWorkspaceTabId: existing.id,
     };
   }
 
@@ -145,6 +174,7 @@ interface UIState {
   tabsHydrated: boolean;
   openInActiveWorkspaceTab: (target: WorkspaceTabTarget, title?: string) => void;
   pinWorkspaceTab: (target: WorkspaceTabTarget, title?: string) => void;
+  createWorkspaceTabInstance: (target: WorkspaceTabTarget, title?: string) => void;
   syncWorkspaceRoute: (target: WorkspaceTabTarget, title?: string) => void;
   activateWorkspaceTab: (tabId: string) => void;
   closeWorkspaceTab: (tabId: string) => void;
@@ -205,6 +235,22 @@ export const useUIStore = create<UIState>()(persist((set) => ({
       title,
       "pin",
     )),
+  createWorkspaceTabInstance: (target, title) =>
+    set((state) => {
+      const nextTab = createWorkspaceTabInstance(target, title);
+      const activeIndex = state.activeWorkspaceTabId
+        ? state.workspaceTabs.findIndex((tab) => tab.id === state.activeWorkspaceTabId)
+        : -1;
+      const insertAt = activeIndex >= 0 ? activeIndex + 1 : state.workspaceTabs.length;
+      return {
+        workspaceTabs: [
+          ...state.workspaceTabs.slice(0, insertAt),
+          nextTab,
+          ...state.workspaceTabs.slice(insertAt),
+        ],
+        activeWorkspaceTabId: nextTab.id,
+      };
+    }),
   syncWorkspaceRoute: (target, title) =>
     set((state) => applyWorkspaceNavigation(
       state.workspaceTabs,
@@ -242,7 +288,9 @@ export const useUIStore = create<UIState>()(persist((set) => ({
     })),
   replaceWorkspaceTabs: (tabs, activeTabId) =>
     set(() => {
-      const deduped = Array.from(new Map(tabs.map((tab) => [tab.id, createWorkspaceTab(tab.target, tab.title)])).values());
+      const deduped = Array.from(
+        new Map(tabs.map((tab) => [tab.id, createWorkspaceTab(tab.target, tab.title, tab.id)])).values(),
+      );
       return {
         workspaceTabs: deduped,
         activeWorkspaceTabId: deduped.some((tab) => tab.id === activeTabId)
