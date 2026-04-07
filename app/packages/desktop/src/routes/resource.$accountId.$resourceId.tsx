@@ -68,14 +68,20 @@ function ResourceDetailPage() {
   const [canDelete, setCanDelete] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [refreshVersion, setRefreshVersion] = useState(0);
+  const backgroundRefreshRef = useRef(false);
   const navigate = useNavigate();
 
   useEffect(() => {
     let cancelled = false;
+    const isBackground = backgroundRefreshRef.current;
+    backgroundRefreshRef.current = false;
 
     async function load() {
-      setError(null);
-      setPgError(null);
+      if (!isBackground) {
+        setError(null);
+        setPgError(null);
+      }
 
       try {
         const db = await getDb();
@@ -140,7 +146,7 @@ function ResourceDetailPage() {
               setLoading(false); // ← show the page NOW
             }
           }
-        } else {
+        } else if (!isBackground) {
           setLoading(true);
         }
 
@@ -284,7 +290,7 @@ function ResourceDetailPage() {
           }
         }
       } catch (e) {
-        if (!cancelled) setError(String(e));
+        if (!cancelled && !isBackground) setError(String(e));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -292,7 +298,18 @@ function ResourceDetailPage() {
 
     void load();
     return () => { cancelled = true; };
-  }, [accountId, decodedResourceId]);
+  }, [accountId, decodedResourceId, refreshVersion]);
+
+  // Background refresh — auto every 30 s and on manual "Refresh" action
+  useEffect(() => {
+    function bgRefresh() {
+      backgroundRefreshRef.current = true;
+      setRefreshVersion((v) => v + 1);
+    }
+    const id = setInterval(bgRefresh, 30_000);
+    window.addEventListener("iw:refresh-resource", bgRefresh);
+    return () => { clearInterval(id); window.removeEventListener("iw:refresh-resource", bgRefresh); };
+  }, []);
 
   const handleRunQuery = useCallback(async (sql: string): Promise<QueryResult> => {
     const cs = connectionStringRef.current;

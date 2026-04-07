@@ -437,7 +437,9 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
     }
 
     void connectAll();
-    return () => { cancelled = true; };
+
+    const interval = setInterval(() => { void connectAll(); }, 30_000);
+    return () => { cancelled = true; clearInterval(interval); };
   }, [pinned]);
 
   async function unpin(resourceId: string) {

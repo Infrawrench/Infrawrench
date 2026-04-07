@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { invoke } from "../lib/invoke";
 import { useDraggable } from "@dnd-kit/core";
@@ -39,22 +39,30 @@ function AccountPage() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [createTarget, setCreateTarget] = useState<ResourceTypeDefinition | null>(null);
   const [loadVersion, setLoadVersion] = useState(0);
+  const backgroundLoadRef = useRef(false);
 
   // Re-fetch when a resource is deleted (or otherwise changed) for this account
   useEffect(() => {
     function handler(e: Event) {
       const { accountId: changedId } = (e as CustomEvent<{ accountId: string }>).detail;
-      if (changedId === accountId) setLoadVersion((v) => v + 1);
+      if (changedId === accountId) { backgroundLoadRef.current = true; setLoadVersion((v) => v + 1); }
     }
     window.addEventListener("iw:resources-changed", handler);
     return () => window.removeEventListener("iw:resources-changed", handler);
   }, [accountId]);
 
+  // Auto-refresh every 30 s (background — no loading flash)
+  useEffect(() => {
+    const id = setInterval(() => { backgroundLoadRef.current = true; setLoadVersion((v) => v + 1); }, 30_000);
+    return () => clearInterval(id);
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
+    const isBackground = backgroundLoadRef.current;
+    backgroundLoadRef.current = false;
     async function load() {
-      setLoading(true);
-      setError(null);
+      if (!isBackground) { setLoading(true); setError(null); }
       try {
         const db = await getDb();
         const rows = await db.select<AccountRow[]>(
@@ -97,7 +105,7 @@ function AccountPage() {
         );
         if (!cancelled) setPinned(new Set(pins.map((p) => p.resource_id)));
       } catch (e) {
-        if (!cancelled) setError(String(e));
+        if (!cancelled && !isBackground) setError(String(e));
       } finally {
         if (!cancelled) setLoading(false);
       }

@@ -121,12 +121,14 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
     return () => { cancelled = true; };
   }, [refreshKey]);
 
-  async function loadAccountResources(account: Account) {
+  async function loadAccountResources(account: Account, background = false) {
     const id = account.id;
-    setAccountResources((prev) => ({
-      ...prev,
-      [id]: { loading: true, error: null, resources: [] },
-    }));
+    if (!background) {
+      setAccountResources((prev) => ({
+        ...prev,
+        [id]: { loading: true, error: null, resources: [] },
+      }));
+    }
     try {
       const plaintext = await invoke<string>("decrypt_value", {
         ciphertext: account.encrypted_credentials,
@@ -163,9 +165,10 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
         setResourceSshHosts((prev) => ({ ...prev, ...sshHosts }));
       }
     } catch (e) {
+      if (background) return; // silently ignore errors during background refresh
       setAccountResources((prev) => ({
         ...prev,
-        [id]: { loading: false, error: String(e), resources: [] },
+        [id]: { loading: false, error: String(e), resources: prev[id]?.resources ?? [] },
       }));
     }
   }
@@ -185,6 +188,18 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
     void loadAccountResources(account);
   }
 
+  // Auto-refresh expanded accounts every 30 s (background — no loading flash)
+  useEffect(() => {
+    const id = setInterval(() => {
+      const allAccounts = groups.flatMap((g) => g.accounts);
+      for (const accountId of expanded) {
+        const account = allAccounts.find((a) => a.id === accountId);
+        if (account) void loadAccountResources(account, true);
+      }
+    }, 30_000);
+    return () => clearInterval(id);
+  }, [groups, expanded]);
+
   // Invalidate + reload resource list when something was deleted (or otherwise changed)
   useEffect(() => {
     function handler(e: Event) {
@@ -192,7 +207,7 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
       // If the account is currently expanded, reload immediately; otherwise just clear the cache
       const account = groups.flatMap((g) => g.accounts).find((a) => a.id === accountId);
       if (account && expanded.has(accountId)) {
-        void loadAccountResources(account);
+        void loadAccountResources(account, true);
       } else {
         setAccountResources((prev) => {
           const next = { ...prev };

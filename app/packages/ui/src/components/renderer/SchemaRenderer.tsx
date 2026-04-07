@@ -32,7 +32,7 @@ function useActionDispatch() {
         window.location.href = `/resources/${action.pluginId}/${action.resourceTypeId}/${action.resourceId}`;
         break;
       case "refresh-resource":
-        window.location.reload();
+        window.dispatchEvent(new CustomEvent("iw:refresh-resource"));
         break;
     }
   };
