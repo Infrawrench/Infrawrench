@@ -71,7 +71,6 @@ function ResourceDetailPage() {
   const setAccountConnected = useUIStore((s) => s.setAccountConnected);
   const removeWorkspaceTabs = useUIStore((s) => s.removeWorkspaceTabs);
   const locationHash = useRouterState({ select: (s) => s.location.hash });
-  const [detailsCollapsed, setDetailsCollapsed] = useState(false);
   const [canDelete, setCanDelete] = useState(false);
   const [resourceTypeLabel, setResourceTypeLabel] = useState<string>("Resource");
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -191,7 +190,7 @@ function ResourceDetailPage() {
           setKvDriverName(kvDriverDecl?.driver ?? null);
           setIsDockerPlugin(isDocker);
           setDockerDriverName(dockerDriverDecl?.driver ?? null);
-          if (kvDriverDecl?.driver === "mongodb") setDetailsCollapsed(true);
+
         }
         const cs = sqlDriverDecl
           ? credentials[sqlDriverDecl.credentialKey]
@@ -469,7 +468,6 @@ function ResourceDetailPage() {
   const isSftpView = currentView === "sftp";
   const hasSftpBrowser = !!sshConfig || !!sshHost;
   const isMongoPlugin = isKvPlugin && kvDriverName === "mongodb";
-  const hasCollapsibleDetails = hasStorageBrowser || isMongoPlugin;
 
   function openSshTab() {
     void navigateToWorkspaceTarget(
@@ -527,21 +525,7 @@ function ResourceDetailPage() {
                 )}
               </div>
             )}
-            {hasCollapsibleDetails && (
-              <button
-                onClick={() => setDetailsCollapsed((c) => !c)}
-                className="w-full flex items-center gap-2 px-4 py-1.5 border-b border-gray-800 text-xs text-gray-600 hover:text-gray-400 hover:bg-gray-800/40 transition-colors"
-              >
-                <span
-                  className="inline-block transition-transform text-xs"
-                  style={{ transform: detailsCollapsed ? "rotate(0deg)" : "rotate(90deg)" }}
-                >
-                  ▶
-                </span>
-                Details
-              </button>
-            )}
-            {!detailsCollapsed && (
+            {(
               <div className="flex-1 overflow-auto">
                 <DetailView
                   schema={schema}

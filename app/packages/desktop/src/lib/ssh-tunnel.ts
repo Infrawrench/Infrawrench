@@ -28,6 +28,16 @@ export function sshGetActiveTunnels(): Promise<Record<string, ActiveTunnelInfo>>
   return invoke<Record<string, ActiveTunnelInfo>>("ssh_get_active_tunnels");
 }
 
+export function sshExecCommand(
+  config: { sshHost: string; sshPort: number; sshUser: string; privateKey: string },
+  command: string,
+): Promise<{ stdout: string; stderr: string; code: number }> {
+  return invoke<{ stdout: string; stderr: string; code: number }>("ssh_exec_command", {
+    config,
+    command,
+  } as unknown as Record<string, unknown>);
+}
+
 /**
  * If the account has an ssh_tunnel_configs row, ensures the SSH tunnel is open
  * and returns `tcp://127.0.0.1:{localPort}`. Otherwise returns `rawHost` unchanged.

@@ -56,7 +56,7 @@ export class MongoDBClient implements PluginClient {
     return {
       title: resource.displayName,
       subtitle: `${String(resource.fields["host"] ?? "MongoDB")} · ${String(resource.fields["database"] ?? "")}`,
-      status: { kind: "status-dot", status: "unknown" },
+      status: { kind: "status-dot", status: "healthy" },
       sections: [
         {
           kind: "section",
@@ -82,7 +82,7 @@ export class MongoDBClient implements PluginClient {
     return {
       id: resource.id,
       label: resource.displayName,
-      status: { kind: "status-dot", status: "unknown" },
+      status: { kind: "status-dot", status: "healthy" },
     };
   }
 

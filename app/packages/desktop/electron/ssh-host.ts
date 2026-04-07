@@ -10,7 +10,7 @@ import { ipcMain } from "electron";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { openTunnel, closeTunnel, getActiveTunnels, type SshTunnelConfig } from "./ssh-tunnel";
+import { openTunnel, closeTunnel, getActiveTunnels, sshExecCommand, type SshTunnelConfig } from "./ssh-tunnel";
 import { spawnSshShell, writeSshShell, resizeSshShell, killSshShell, type SshShellConfig } from "./ssh-shell";
 import { sftpList, sftpMkdir, sftpDelete, sftpUpload, sftpDownload, type SftpConfig } from "./sftp";
 
@@ -24,6 +24,11 @@ ipcMain.handle("ssh_close_tunnel", (_e, { tunnelId }: { tunnelId: string }) => {
 });
 
 ipcMain.handle("ssh_get_active_tunnels", () => getActiveTunnels());
+
+ipcMain.handle("ssh_exec_command", (_e, { config, command }: {
+  config: { sshHost: string; sshPort: number; sshUser: string; privateKey: string };
+  command: string;
+}) => sshExecCommand(config, command));
 
 // ── Shell sessions ────────────────────────────────────────────────────────────
 

@@ -30,6 +30,11 @@ export function MongoDocumentBrowser({ connectionString, databaseName, connected
   const [error, setError] = useState<string | null>(null);
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const [collectionsLoading, setCollectionsLoading] = useState(false);
+  const [showNewCollection, setShowNewCollection] = useState(false);
+  const [newCollectionName, setNewCollectionName] = useState("");
+  const [showInsertDoc, setShowInsertDoc] = useState(false);
+  const [insertDocText, setInsertDocText] = useState("{\n  \n}");
+  const [insertError, setInsertError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Load collections on mount / when connected
@@ -115,6 +120,48 @@ export function MongoDocumentBrowser({ connectionString, databaseName, connected
     });
   }
 
+  async function handleCreateCollection() {
+    const name = newCollectionName.trim();
+    if (!name) return;
+    try {
+      await kvCommand("mongodb", connectionString, "createCollection", databaseName, name);
+      setNewCollectionName("");
+      setShowNewCollection(false);
+      // Reload collections and select the new one
+      const cols = await kvCommand("mongodb", connectionString, "listCollections", databaseName) as string[];
+      setCollections(cols);
+      setActiveCollection(name);
+      setPage(0);
+      setFilterText("");
+      setAppliedFilter("{}");
+    } catch (e) {
+      setError(formatErrorMessage(e));
+    }
+  }
+
+  async function handleInsertDocument() {
+    if (!activeCollection) return;
+    const trimmed = insertDocText.trim();
+    setInsertError(null);
+    let doc: unknown;
+    try {
+      doc = JSON.parse(trimmed);
+    } catch {
+      setInsertError("Invalid JSON");
+      return;
+    }
+    try {
+      await kvCommand("mongodb", connectionString, "insertOne",
+        databaseName, activeCollection, JSON.stringify(doc),
+      );
+      setShowInsertDoc(false);
+      setInsertDocText("{\n  \n}");
+      void fetchDocuments();
+    } catch (e) {
+      setInsertError(formatErrorMessage(e));
+    }
+  }
+
   async function handleDeleteDocument(doc: Record<string, unknown>) {
     if (!activeCollection) return;
     const id = doc["_id"];
@@ -142,10 +189,35 @@ export function MongoDocumentBrowser({ connectionString, databaseName, connected
   return (
     <div className="flex flex-1 overflow-hidden border-t border-gray-800">
       {/* Collection sidebar */}
-      <div className="w-48 border-r border-gray-800 flex flex-col overflow-hidden flex-shrink-0 bg-gray-950">
-        <div className="px-3 py-2 border-b border-gray-800/60">
+      <div className="w-64 border-r border-gray-800 flex flex-col overflow-hidden flex-shrink-0 bg-gray-950">
+        <div className="px-3 py-2 border-b border-gray-800/60 flex items-center justify-between">
           <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Collections</span>
+          <button
+            onClick={() => setShowNewCollection((v) => !v)}
+            className="text-gray-600 hover:text-gray-300 transition-colors text-sm leading-none"
+            title="Create collection"
+          >
+            +
+          </button>
         </div>
+        {showNewCollection && (
+          <div className="px-2 py-2 border-b border-gray-800/60 flex gap-1">
+            <input
+              value={newCollectionName}
+              onChange={(e) => setNewCollectionName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") void handleCreateCollection(); }}
+              placeholder="collection name"
+              className="flex-1 min-w-0 bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 font-mono placeholder-gray-600 focus:outline-none focus:border-blue-500"
+              autoFocus
+            />
+            <button
+              onClick={() => void handleCreateCollection()}
+              className="px-2 py-1 rounded bg-blue-600 text-xs text-white hover:bg-blue-500 transition-colors flex-shrink-0"
+            >
+              Create
+            </button>
+          </div>
+        )}
         <div className="flex-1 overflow-y-auto py-1">
           {collectionsLoading ? (
             <div className="px-3 py-2 text-xs text-gray-600">Loading...</div>
@@ -206,7 +278,49 @@ export function MongoDocumentBrowser({ connectionString, databaseName, connected
           >
             Refresh
           </button>
+          {activeCollection && (
+            <button
+              onClick={() => setShowInsertDoc((v) => !v)}
+              className="px-2.5 py-1 rounded bg-blue-600/80 border border-blue-500/50 text-xs text-white hover:bg-blue-600 transition-colors"
+            >
+              + Insert
+            </button>
+          )}
         </div>
+
+        {/* Insert document editor */}
+        {showInsertDoc && activeCollection && (
+          <div className="px-3 py-3 border-b border-gray-800/60 bg-gray-950/80">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs text-gray-400 font-medium">Insert Document into <span className="text-gray-200">{activeCollection}</span></span>
+              <button
+                onClick={() => { setShowInsertDoc(false); setInsertError(null); }}
+                className="text-xs text-gray-600 hover:text-gray-400 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+            <textarea
+              value={insertDocText}
+              onChange={(e) => setInsertDocText(e.target.value)}
+              rows={6}
+              className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-xs text-gray-200 font-mono placeholder-gray-600 focus:outline-none focus:border-blue-500 resize-y"
+              spellCheck={false}
+              placeholder='{ "key": "value" }'
+            />
+            {insertError && (
+              <div className="text-xs text-red-400 mt-1">{insertError}</div>
+            )}
+            <div className="flex justify-end mt-2">
+              <button
+                onClick={() => void handleInsertDocument()}
+                className="px-3 py-1.5 rounded bg-blue-600 text-xs text-white hover:bg-blue-500 transition-colors"
+              >
+                Insert Document
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Error banner */}
         {error && (

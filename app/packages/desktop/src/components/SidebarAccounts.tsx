@@ -11,6 +11,7 @@ import { getAccountResourceTypes } from "../lib/account-resource-types";
 import { formatErrorMessage } from "../lib/errors";
 import { buildPluginHostServices } from "../lib/sql-drivers";
 import { SshTunnelModal } from "./SshTunnelModal";
+import { DockerSetupModal } from "./DockerSetupModal";
 import { SecretExportModal } from "./SecretExportModal";
 import { accountTabTarget, navigateToWorkspaceTarget, resourceTabTarget } from "../lib/workspace-tabs";
 
@@ -58,6 +59,10 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
   } | null>(null);
   // SSH tunnel modal target
   const [tunnelTarget, setTunnelTarget] = useState<{
+    sshHost: string; sourceAccountId: string;
+  } | null>(null);
+  // Docker setup modal target
+  const [dockerSetupTarget, setDockerSetupTarget] = useState<{
     sshHost: string; sourceAccountId: string;
   } | null>(null);
   // Plugin IDs that support secret import (e.g. kubernetes)
@@ -449,6 +454,16 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
           <span>⇢</span>
           Connect to service via SSH…
         </button>
+        <button
+          className="w-full px-3 py-2 text-xs text-gray-200 hover:bg-gray-700 text-left flex items-center gap-2"
+          onClick={() => {
+            setDockerSetupTarget({ sshHost: contextMenu.sshHost, sourceAccountId: contextMenu.accountId });
+            setContextMenu(null);
+          }}
+        >
+          <span>🐳</span>
+          Setup Docker on VM…
+        </button>
       </div>
     )}
 
@@ -460,6 +475,19 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
         onClose={() => setTunnelTarget(null)}
         onTunnelEstablished={(newAccountId) => {
           setTunnelTarget(null);
+          void navigateToWorkspaceTarget(navigate, accountTabTarget(newAccountId));
+        }}
+      />
+    )}
+
+    {/* Docker setup modal */}
+    {dockerSetupTarget && (
+      <DockerSetupModal
+        sshHost={dockerSetupTarget.sshHost}
+        sourceAccountId={dockerSetupTarget.sourceAccountId}
+        onClose={() => setDockerSetupTarget(null)}
+        onComplete={(newAccountId) => {
+          setDockerSetupTarget(null);
           void navigateToWorkspaceTarget(navigate, accountTabTarget(newAccountId));
         }}
       />
