@@ -66,4 +66,6 @@ export interface ResourceTypeDefinition {
   supportsStorageBrowser?: boolean;
   /** If true, the host will offer a "Create" button for this resource type */
   supportsCreate?: boolean;
+  /** If true, the host will open a built-in SSH terminal for instances of this type */
+  supportsTerminal?: boolean;
 }

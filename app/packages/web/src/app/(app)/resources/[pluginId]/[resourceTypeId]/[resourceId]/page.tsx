@@ -59,17 +59,17 @@ export default async function ResourceDetailPage({ params }: Props) {
                 sourceResourceId: s.sourceResourceId ?? "",
                 sourceAccountId: s.sourceAccountId ?? "",
                 outputKey: s.sourceOutputKey ?? "",
-                cachedEncryptedValue: s.cachedEncryptedValue ?? undefined,
-                cachedIv: s.cachedValueIv ?? undefined,
-                cachedAt: s.cachedAt?.toISOString(),
+                ...(s.cachedEncryptedValue != null && { cachedEncryptedValue: s.cachedEncryptedValue }),
+                ...(s.cachedValueIv != null && { cachedIv: s.cachedValueIv }),
+                ...(s.cachedAt != null && { cachedAt: s.cachedAt.toISOString() }),
               } satisfies SecretResolution),
       }),
     ),
-    externalId: resource.externalId ?? undefined,
-    parentResourceId: resource.parentResourceId ?? undefined,
+    ...(resource.externalId != null && { externalId: resource.externalId }),
+    ...(resource.parentResourceId != null && { parentResourceId: resource.parentResourceId }),
     createdAt: resource.createdAt.toISOString(),
     updatedAt: resource.updatedAt.toISOString(),
-    lastSyncedAt: resource.lastSyncedAt?.toISOString(),
+    ...(resource.lastSyncedAt != null && { lastSyncedAt: resource.lastSyncedAt.toISOString() }),
   };
 
   const loadedPlugin = await getPlugin(pluginId);
