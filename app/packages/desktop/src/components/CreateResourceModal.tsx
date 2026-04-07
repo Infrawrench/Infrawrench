@@ -129,7 +129,7 @@ export function CreateResourceModal({
         <div className="overflow-y-auto flex-1 px-6 py-5">
           {loadingConfig ? (
             <div className="flex items-center gap-3 text-sm text-gray-500 py-8 justify-center">
-              <span className="animate-spin text-base">⟳</span>
+              <span className="animate-spin inline-block w-4 h-4 rounded-full border-2 border-gray-600 border-t-gray-300" />
               Fetching available options…
             </div>
           ) : configError ? (
