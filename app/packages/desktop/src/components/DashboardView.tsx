@@ -10,6 +10,7 @@ import { buildHostServices, buildKvHostServices, buildMemcachedHostServices, bui
 import { resolveTunneledHost } from "../lib/ssh-tunnel";
 import { getSqlSession, setSqlSession } from "../lib/sql-session";
 import { accountTabTarget, navigateToWorkspaceTarget, resourceTabTarget } from "../lib/workspace-tabs";
+import type { SearchResult } from "./SpotlightSearch";
 
 interface PinnedRow {
   resource_id: string;
@@ -67,7 +68,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
   const [notFound, setNotFound] = useState(false);
   const [cardStatus, setCardStatus] = useState<Record<string, CardStatus>>({});
 
-  const [showSpotlight, setShowSpotlight] = useState(false);
+  const [spotlightMode, setSpotlightMode] = useState<"pin" | "navigate" | null>(null);
   const dashboardPinsVersion = useUIStore((s) => s.dashboardPinsVersion);
   const bumpDashboardPins = useUIStore((s) => s.bumpDashboardPins);
   const setAccountConnected = useUIStore((s) => s.setAccountConnected);
@@ -157,12 +158,12 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
     void load();
   }, [load, dashboardPinsVersion]);
 
-  // ⌘K to open spotlight
+  // ⌘K to open spotlight in navigate mode
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
         e.preventDefault();
-        setShowSpotlight(true);
+        setSpotlightMode("navigate");
       }
     }
     window.addEventListener("keydown", onKeyDown);
@@ -549,12 +550,12 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
       <div className="flex-1 overflow-auto px-8 py-6">
         {pinned.length === 0 ? (
           <button
-            onClick={() => setShowSpotlight(true)}
+            onClick={() => setSpotlightMode("pin")}
             className={`w-full flex flex-col items-center justify-center h-64 rounded-2xl border-2 border-dashed transition-colors ${isOver ? "border-blue-500 text-blue-400" : "border-gray-800 text-gray-700 hover:border-gray-600 hover:text-gray-500"}`}
           >
             <span className="text-3xl mb-3">⊞</span>
             <p className="text-sm">Click to add a resource</p>
-            <p className="text-xs mt-1 opacity-60">or drag one here · ⌘K</p>
+            <p className="text-xs mt-1 opacity-60">or drag one here</p>
           </button>
         ) : (
           <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}>
@@ -571,21 +572,29 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
             ))}
 
             <button
-              onClick={() => setShowSpotlight(true)}
+              onClick={() => setSpotlightMode("pin")}
               className={`rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-1.5 transition-colors min-h-[140px] ${isOver ? "border-blue-500 text-blue-400 bg-blue-500/5" : "border-gray-800 text-gray-700 hover:border-gray-600 hover:text-gray-500"}`}
             >
               <span className="text-2xl">+</span>
               <span className="text-xs">Add resource</span>
-              <span className="text-xs opacity-50">⌘K</span>
             </button>
           </div>
         )}
 
-        {showSpotlight && (
+        {spotlightMode && (
           <SpotlightSearch
             dashboardId={dashboardId}
-            onClose={() => setShowSpotlight(false)}
-            onPinned={() => { bumpDashboardPins(); setShowSpotlight(false); }}
+            mode={spotlightMode}
+            onClose={() => setSpotlightMode(null)}
+            onPinned={() => { bumpDashboardPins(); setSpotlightMode(null); }}
+            onNavigate={(result) => {
+              setSpotlightMode(null);
+              void navigateToWorkspaceTarget(
+                navigate,
+                resourceTabTarget(result.accountId, result.id),
+                { label: result.displayName },
+              );
+            }}
           />
         )}
       </div>

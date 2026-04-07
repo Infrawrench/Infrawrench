@@ -6,6 +6,7 @@ interface GlobalTabBarProps {
   activeTabId: string | null;
   onActivate: (tabId: string) => void;
   onClose: (tabId: string) => void;
+  onNew: () => void;
 }
 
 export function GlobalTabBar({
@@ -13,6 +14,7 @@ export function GlobalTabBar({
   activeTabId,
   onActivate,
   onClose,
+  onNew,
 }: GlobalTabBarProps) {
   const { setNodeRef, isOver } = useDroppable({ id: "global-tabs-bar" });
 
@@ -39,6 +41,14 @@ export function GlobalTabBar({
           />
         ))
       )}
+      <button
+        onClick={onNew}
+        className="ml-1 self-center w-5 h-5 flex items-center justify-center rounded text-gray-600 hover:text-gray-200 hover:bg-gray-700 transition-colors text-base leading-none"
+        aria-label="New tab"
+        title="New tab"
+      >
+        +
+      </button>
     </div>
   );
 }

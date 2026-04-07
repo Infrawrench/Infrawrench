@@ -11,10 +11,11 @@ import { sqlQuery, sqlExecute, buildHostServices, buildKvHostServices, kvCommand
 import { resolveTunneledHost } from "../lib/ssh-tunnel";
 import { DockerActionsPanel } from "../components/DockerActionsPanel";
 import { GcsBrowserPanel } from "../components/GcsBrowserPanel";
+import { SftpBrowserPanel } from "../components/SftpBrowserPanel";
 import { SshTerminal } from "../components/SshTerminal";
 import { SshQuickConnectPanel } from "../components/SshQuickConnectPanel";
 import type { PluginClient } from "@infrawrench/plugin-base";
-import { accountTabTarget, navigateToWorkspaceTarget, resourceSshTabTarget } from "../lib/workspace-tabs";
+import { accountTabTarget, navigateToWorkspaceTarget, resourceSshTabTarget, resourceSftpTabTarget } from "../lib/workspace-tabs";
 
 export const Route = createFileRoute("/resource/$accountId/$resourceId")({
   component: ResourceDetailPage,
@@ -371,6 +372,7 @@ function ResourceDetailPage() {
       removeWorkspaceTabs([
         `resource:${accountId}:${decodedResourceId}`,
         `resource:${accountId}:${decodedResourceId}:ssh`,
+        `resource:${accountId}:${decodedResourceId}:sftp`,
       ]);
       window.dispatchEvent(new CustomEvent("iw:resources-changed", { detail: { accountId } }));
       void navigateToWorkspaceTarget(
@@ -403,7 +405,10 @@ function ResourceDetailPage() {
   const hasStorageBrowser = !!schema?.storageBrowser;
   const hasTerminal = !!sshConfig;
   const hasSshPanel = hasTerminal || !!sshHost;
-  const isSshView = locationHash.replace(/^#/, "") === "ssh";
+  const currentView = locationHash.replace(/^#/, "");
+  const isSshView = currentView === "ssh";
+  const isSftpView = currentView === "sftp";
+  const hasSftpBrowser = !!sshConfig || !!sshHost;
   const hasCollapsibleDetails = hasStorageBrowser;
 
   function openSshTab() {
@@ -411,6 +416,14 @@ function ResourceDetailPage() {
       navigate,
       resourceSshTabTarget(accountId, decodedResourceId),
       { label: resource ? `SSH: ${resource.displayName}` : "SSH", mode: "pin" },
+    );
+  }
+
+  function openSftpTab() {
+    void navigateToWorkspaceTarget(
+      navigate,
+      resourceSftpTabTarget(accountId, decodedResourceId),
+      { label: resource ? `SFTP: ${resource.displayName}` : "SFTP", mode: "pin" },
     );
   }
 
@@ -427,16 +440,41 @@ function ResourceDetailPage() {
       )}
 
       <div className="flex-1 flex flex-col overflow-hidden">
-        {!isSshView && (
+        {isSftpView && (
+          <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+            {sshConfig ? (
+              <SftpBrowserPanel sftpConfig={sshConfig} initialPath="/" />
+            ) : sshHost && quickSshConnection ? (
+              <SftpBrowserPanel
+                sftpConfig={{ host: sshHost, port: 22, ...quickSshConnection }}
+                initialPath="/"
+              />
+            ) : sshHost ? (
+              <SshQuickConnectPanel host={sshHost} onConnect={(config) => setQuickSshConnection(config)} />
+            ) : null}
+          </div>
+        )}
+
+        {!isSshView && !isSftpView && (
           <div className="flex-1 flex flex-col overflow-hidden">
-            {hasSshPanel && (
-              <div className="shrink-0 flex justify-end px-4 py-2 border-b border-gray-800 bg-gray-950">
-                <button
-                  onClick={openSshTab}
-                  className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-200 border border-gray-800 hover:border-gray-700 rounded-lg transition-colors"
-                >
-                  Open SSH tab
-                </button>
+            {(hasSshPanel || hasSftpBrowser) && (
+              <div className="shrink-0 flex justify-end gap-2 px-4 py-2 border-b border-gray-800 bg-gray-950">
+                {hasSftpBrowser && (
+                  <button
+                    onClick={openSftpTab}
+                    className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-200 border border-gray-800 hover:border-gray-700 rounded-lg transition-colors"
+                  >
+                    Open SFTP tab
+                  </button>
+                )}
+                {hasSshPanel && (
+                  <button
+                    onClick={openSshTab}
+                    className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-200 border border-gray-800 hover:border-gray-700 rounded-lg transition-colors"
+                  >
+                    Open SSH tab
+                  </button>
+                )}
               </div>
             )}
             {hasCollapsibleDetails && (
@@ -515,7 +553,7 @@ function ResourceDetailPage() {
       )}
 
       {/* Non-SSH bottom panels — hidden when in SSH view */}
-      {!isSshView && canDelete && (
+      {!isSshView && !isSftpView && canDelete && (
         <div className="shrink-0 px-4 py-2 border-t border-gray-800 flex items-center justify-end gap-3">
           {confirmDelete ? (
             <>
@@ -548,13 +586,13 @@ function ResourceDetailPage() {
         </div>
       )}
 
-      {!isSshView && !hasSqlEditor && pgError && (
+      {!isSshView && !isSftpView && !hasSqlEditor && pgError && (
         <div className="shrink-0 px-4 py-2 border-t border-gray-800 bg-gray-950">
           <span className="text-xs text-red-400 font-mono">SQL connection failed: {pgError}</span>
         </div>
       )}
 
-      {!isSshView && hasSqlEditor && (
+      {!isSshView && !isSftpView && hasSqlEditor && (
         <div className="shrink-0 flex justify-end px-4 py-2 border-t border-gray-800 bg-gray-950">
           <button
             onClick={() => setAssignModalOutput(schema.sqlEditor!.connectionStringOutputKey)}
@@ -565,7 +603,7 @@ function ResourceDetailPage() {
         </div>
       )}
 
-      {!isSshView && isKvPlugin && (
+      {!isSshView && !isSftpView && isKvPlugin && (
         <KvConsole
           connectionString={connectionStringRef.current}
           driverName={kvDriverName ?? "redis"}
@@ -573,7 +611,7 @@ function ResourceDetailPage() {
         />
       )}
 
-      {!isSshView && isDockerPlugin && resource && (
+      {!isSshView && !isSftpView && isDockerPlugin && resource && (
         <DockerActionsPanel
           containerId={String(resource.resolvedOutputs["containerId"] ?? resource.externalId ?? "")}
           driverId={dockerDriverName ?? "docker"}
@@ -581,7 +619,7 @@ function ResourceDetailPage() {
         />
       )}
 
-      {!isSshView && hasStorageBrowser && (
+      {!isSshView && !isSftpView && hasStorageBrowser && (
         <GcsBrowserPanel
           bucketName={schema.storageBrowser!.bucketName}
           onList={(prefix) => clientRef.current!.listStorageObjects!(schema.storageBrowser!.bucketName, prefix)}

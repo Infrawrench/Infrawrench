@@ -68,4 +68,6 @@ export interface ResourceTypeDefinition {
   supportsCreate?: boolean;
   /** If true, the host will open a built-in SSH terminal for instances of this type */
   supportsTerminal?: boolean;
+  /** If true, the host will open a built-in SFTP file browser for instances of this type */
+  supportsSftpBrowser?: boolean;
 }

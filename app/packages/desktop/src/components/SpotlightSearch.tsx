@@ -20,13 +20,17 @@ interface SearchResult {
   externalId?: string;
 }
 
+export type { SearchResult };
+
 interface SpotlightSearchProps {
   dashboardId: string;
+  mode: "pin" | "navigate";
   onClose: () => void;
   onPinned: () => void;
+  onNavigate: (result: SearchResult) => void;
 }
 
-export function SpotlightSearch({ dashboardId, onClose, onPinned }: SpotlightSearchProps) {
+export function SpotlightSearch({ dashboardId, mode, onClose, onPinned, onNavigate }: SpotlightSearchProps) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(true);
@@ -161,7 +165,11 @@ export function SpotlightSearch({ dashboardId, onClose, onPinned }: SpotlightSea
     setSelectedIndex(0);
   }, [query]);
 
-  const handlePin = useCallback(async (result: SearchResult) => {
+  const handleSelect = useCallback(async (result: SearchResult) => {
+    if (mode === "navigate") {
+      onNavigate(result);
+      return;
+    }
     const resource: DraggableResource = {
       id: result.id,
       pluginId: result.pluginId,
@@ -175,7 +183,7 @@ export function SpotlightSearch({ dashboardId, onClose, onPinned }: SpotlightSea
     await pinResource(resource, db, dashboardId);
     onPinned();
     onClose();
-  }, [dashboardId, onPinned, onClose]);
+  }, [mode, dashboardId, onPinned, onClose, onNavigate]);
 
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === "Escape") { onClose(); return; }
@@ -186,7 +194,7 @@ export function SpotlightSearch({ dashboardId, onClose, onPinned }: SpotlightSea
       e.preventDefault();
       setSelectedIndex((i) => Math.max(i - 1, 0));
     } else if (e.key === "Enter" && results[selectedIndex]) {
-      void handlePin(results[selectedIndex]);
+      void handleSelect(results[selectedIndex]);
     }
   }
 
@@ -216,7 +224,7 @@ export function SpotlightSearch({ dashboardId, onClose, onPinned }: SpotlightSea
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Search resources…"
+            placeholder={mode === "navigate" ? "Jump to resource…" : "Search resources to add…"}
             className="flex-1 bg-transparent text-gray-100 placeholder-gray-600 text-sm focus:outline-none"
           />
           {loading && (
@@ -255,7 +263,7 @@ export function SpotlightSearch({ dashboardId, onClose, onPinned }: SpotlightSea
                       <div
                         key={result.id}
                         data-idx={globalIdx}
-                        onClick={() => void handlePin(result)}
+                        onClick={() => void handleSelect(result)}
                         onMouseEnter={() => setSelectedIndex(globalIdx)}
                         className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors ${
                           isSelected ? "bg-blue-600/20 text-gray-100" : "text-gray-300 hover:bg-gray-800"
@@ -271,7 +279,7 @@ export function SpotlightSearch({ dashboardId, onClose, onPinned }: SpotlightSea
                           {result.resourceTypeLabel}
                         </span>
                         {isSelected && (
-                          <kbd className="text-xs text-blue-400 flex-shrink-0">↵ add</kbd>
+                          <kbd className="text-xs text-blue-400 flex-shrink-0">{mode === "navigate" ? "↵ open" : "↵ add"}</kbd>
                         )}
                       </div>
                     );
@@ -285,7 +293,7 @@ export function SpotlightSearch({ dashboardId, onClose, onPinned }: SpotlightSea
         {results.length > 0 && (
           <div className="px-4 py-2 border-t border-gray-800 flex items-center gap-4 text-xs text-gray-700">
             <span>↑↓ navigate</span>
-            <span>↵ pin to dashboard</span>
+            <span>{mode === "navigate" ? "↵ open" : "↵ pin to dashboard"}</span>
             <span>esc close</span>
           </div>
         )}

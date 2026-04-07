@@ -13,4 +13,5 @@ export const SshTargetResourceType: ResourceTypeDefinition = {
   outputs: [],
   dashboardPinnable: true,
   supportsTerminal: true,
+  supportsSftpBrowser: true,
 };

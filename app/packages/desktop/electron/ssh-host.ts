@@ -12,6 +12,7 @@ import os from "node:os";
 import path from "node:path";
 import { openTunnel, closeTunnel, getActiveTunnels, type SshTunnelConfig } from "./ssh-tunnel";
 import { spawnSshShell, writeSshShell, resizeSshShell, killSshShell, type SshShellConfig } from "./ssh-shell";
+import { sftpList, sftpMkdir, sftpDelete, sftpUpload, sftpDownload, type SftpConfig } from "./sftp";
 
 // ── Tunnels ───────────────────────────────────────────────────────────────────
 
@@ -41,6 +42,28 @@ ipcMain.handle("ssh_shell_resize", (_e, { shellId, cols, rows }: { shellId: stri
 ipcMain.handle("ssh_shell_kill", (_e, { shellId }: { shellId: string }) => {
   killSshShell(shellId);
 });
+
+// ── SFTP ─────────────────────────────────────────────────────────────────────
+
+ipcMain.handle("sftp_list", (_e, { config, path }: { config: SftpConfig; path: string }) =>
+  sftpList(config, path),
+);
+
+ipcMain.handle("sftp_mkdir", (_e, { config, path }: { config: SftpConfig; path: string }) =>
+  sftpMkdir(config, path),
+);
+
+ipcMain.handle("sftp_delete", (_e, { config, path, isDir }: { config: SftpConfig; path: string; isDir: boolean }) =>
+  sftpDelete(config, path, isDir),
+);
+
+ipcMain.handle("sftp_upload", (_e, { config, remotePath, data }: { config: SftpConfig; remotePath: string; data: Buffer }) =>
+  sftpUpload(config, remotePath, data),
+);
+
+ipcMain.handle("sftp_download", (_e, { config, remotePath, localPath }: { config: SftpConfig; remotePath: string; localPath: string }) =>
+  sftpDownload(config, remotePath, localPath),
+);
 
 // ── System key discovery ──────────────────────────────────────────────────────
 

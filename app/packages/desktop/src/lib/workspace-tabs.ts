@@ -20,6 +20,10 @@ export function resourceSshTabTarget(accountId: string, resourceId: string): Wor
   return { kind: "resource", accountId, resourceId: normalizeResourceId(resourceId), view: "ssh" };
 }
 
+export function resourceSftpTabTarget(accountId: string, resourceId: string): WorkspaceTabTarget {
+  return { kind: "resource", accountId, resourceId: normalizeResourceId(resourceId), view: "sftp" };
+}
+
 export function getWorkspaceNavigateArgs(target: WorkspaceTabTarget, replace = false): {
   to: string;
   params?: Record<string, string>;
@@ -35,7 +39,7 @@ export function getWorkspaceNavigateArgs(target: WorkspaceTabTarget, replace = f
       return {
         to: "/resource/$accountId/$resourceId",
         params: { accountId: target.accountId, resourceId: encodeURIComponent(normalizeResourceId(target.resourceId)) },
-        ...(target.view === "ssh" ? { hash: "ssh" } : {}),
+        ...(target.view === "ssh" ? { hash: "ssh" } : target.view === "sftp" ? { hash: "sftp" } : {}),
         ...(replace ? { replace: true } : {}),
       };
   }
@@ -69,9 +73,9 @@ export function syncWorkspaceRouteFromPath(pathname: string, hash?: string): Wor
     return accountTabTarget(segments[1]);
   }
   if (segments[0] === "resource" && segments[1] && segments[2]) {
-    return normalizedHash === "ssh"
-      ? resourceSshTabTarget(segments[1], segments.slice(2).join("/"))
-      : resourceTabTarget(segments[1], segments.slice(2).join("/"));
+    if (normalizedHash === "ssh") return resourceSshTabTarget(segments[1], segments.slice(2).join("/"));
+    if (normalizedHash === "sftp") return resourceSftpTabTarget(segments[1], segments.slice(2).join("/"));
+    return resourceTabTarget(segments[1], segments.slice(2).join("/"));
   }
   return null;
 }

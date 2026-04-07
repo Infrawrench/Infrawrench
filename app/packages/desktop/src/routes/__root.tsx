@@ -203,6 +203,15 @@ function RootLayout() {
     void navigate(getWorkspaceNavigateArgs(tab.target));
   }
 
+  async function handleNewTab() {
+    const db = await getDb();
+    const rows = await db.select<{ id: string }[]>(
+      "SELECT id FROM dashboards WHERE is_default = 1 LIMIT 1",
+    );
+    const homeId = rows[0]?.id ?? "dashboard-home";
+    void navigateToWorkspaceTarget(navigate, dashboardTabTarget(homeId), { mode: "pin", label: "Home" });
+  }
+
   function handleCloseTab(tabId: string) {
     const wasActive = activeWorkspaceTabId === tabId;
     closeWorkspaceTab(tabId);
@@ -260,6 +269,7 @@ function RootLayout() {
           activeTabId={activeWorkspaceTabId}
           onActivate={handleActivateTab}
           onClose={handleCloseTab}
+          onNew={() => { void handleNewTab(); }}
         />
 
         <div className="flex flex-1 overflow-hidden">

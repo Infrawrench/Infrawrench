@@ -4,7 +4,7 @@ import { createJSONStorage, persist } from "zustand/middleware";
 export type WorkspaceTabTarget =
   | { kind: "dashboard"; dashboardId: string }
   | { kind: "account"; accountId: string }
-  | { kind: "resource"; accountId: string; resourceId: string; view?: "details" | "ssh" };
+  | { kind: "resource"; accountId: string; resourceId: string; view?: "details" | "ssh" | "sftp" };
 
 export interface WorkspaceTab {
   id: string;
@@ -29,9 +29,9 @@ export function getWorkspaceTabId(target: WorkspaceTabTarget): string {
     case "account":
       return `account:${target.accountId}`;
     case "resource":
-      return target.view === "ssh"
-        ? `resource:${target.accountId}:${normalizeResourceId(target.resourceId)}:ssh`
-        : `resource:${target.accountId}:${normalizeResourceId(target.resourceId)}`;
+      if (target.view === "ssh") return `resource:${target.accountId}:${normalizeResourceId(target.resourceId)}:ssh`;
+      if (target.view === "sftp") return `resource:${target.accountId}:${normalizeResourceId(target.resourceId)}:sftp`;
+      return `resource:${target.accountId}:${normalizeResourceId(target.resourceId)}`;
   }
 }
 
@@ -42,7 +42,9 @@ export function getWorkspaceTabFallbackTitle(target: WorkspaceTabTarget): string
     case "account":
       return "Account";
     case "resource":
-      return target.view === "ssh" ? "SSH" : "Resource";
+      if (target.view === "ssh") return "SSH";
+      if (target.view === "sftp") return "SFTP";
+      return "Resource";
   }
 }
 
