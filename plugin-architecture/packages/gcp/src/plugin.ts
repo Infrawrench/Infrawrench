@@ -28,15 +28,10 @@ const manifest: PluginManifest = {
   displayName: "Google Cloud",
   description: "Manage Google Cloud resources: Compute, GKE, Cloud SQL, Cloud Run, Storage, BigQuery, and more.",
   logoSvg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-    <rect width="100" height="100" rx="12" fill="#fff"/>
-    <path d="M50 22l16 9.2v18.4L50 58.8 34 49.6V31.2L50 22z" fill="#EA4335"/>
-    <path d="M66 31.2v18.4L50 58.8V40.4L66 31.2z" fill="#FBBC04"/>
-    <path d="M50 40.4v18.4L34 49.6V31.2L50 40.4z" fill="#4285F4"/>
-    <path d="M34 49.6l16 9.2 16-9.2-16 9.2z" fill="#34A853"/>
-    <path d="M26 62h48v8H26z" fill="#4285F4"/>
-    <path d="M26 74h12v6H26z" fill="#EA4335"/>
-    <path d="M44 74h12v6H44z" fill="#FBBC04"/>
-    <path d="M62 74h12v6H62z" fill="#34A853"/>
+    <rect width="100" height="100" rx="12" fill="#4285F4"/>
+    <g transform="translate(12,12) scale(3.167)" fill="white">
+      <path d="M12.19 2.38a9.344 9.344 0 0 0-9.234 6.893c.053-.02-.055.013 0 0-3.875 2.551-3.922 8.11-.247 10.941l.006-.007-.007.03a6.717 6.717 0 0 0 4.077 1.356h5.173l.03.03h5.192c6.687.053 9.376-8.605 3.835-12.35a9.365 9.365 0 0 0-2.821-4.552l-.043.043.006-.05A9.344 9.344 0 0 0 12.19 2.38zm-.358 4.146c1.244-.04 2.518.368 3.486 1.15a5.186 5.186 0 0 1 1.862 4.078v.518c3.53-.07 3.53 5.262 0 5.193h-5.193l-.008.009v-.04H6.785a2.59 2.59 0 0 1-1.067-.23h.001a2.597 2.597 0 1 1 3.437-3.437l3.013-3.012A6.747 6.747 0 0 0 8.11 8.24c.018-.01.04-.026.054-.023a5.186 5.186 0 0 1 3.67-1.69z"/>
+    </g>
   </svg>`,
   author: "Infrawrench",
   license: "MIT",

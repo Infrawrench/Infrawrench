@@ -36,6 +36,8 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
   const [createResourceType, setCreateResourceType] = useState<ResourceTypeDefinition | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
   const [secretExportSource, setSecretExportSource] = useState<DraggableResource | null>(null);
+  const [nsFilter, setNsFilter] = useState<string | null>(null);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     setResourceGroups(pane.schema.resourceGroups);
@@ -91,7 +93,6 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
   const droppableId = `secret-import:${accountId}:${parentResourceId}`;
   const { setNodeRef: setDropRef, isOver } = useDroppable({ id: droppableId });
 
-  // Detect when a resource is dropped on this pane's droppable zone
   useDndMonitor({
     onDragEnd(event) {
       if (!supportsSecretImport) return;
@@ -111,6 +112,47 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
         ? "Open in k9s"
         : "k9s not installed";
 
+  // Derive available namespaces from all resource groups (skip namespace group itself)
+  const namespaces = useMemo(() => {
+    const nsSet = new Set<string>();
+    for (const group of resourceGroups) {
+      if (group.resourceTypeId === "k8s-namespace") continue;
+      for (const item of group.items) {
+        const ns = item.namespace ?? String(item.fields["namespace"] ?? "");
+        if (ns) nsSet.add(ns);
+      }
+    }
+    return Array.from(nsSet).sort();
+  }, [resourceGroups]);
+
+  // Apply namespace filter to all groups (namespace group itself is special-cased)
+  const filteredGroups = useMemo(() => {
+    if (!nsFilter) return resourceGroups;
+    return resourceGroups.map((group) => {
+      if (group.resourceTypeId === "k8s-namespace") {
+        // Highlight the selected namespace in the namespace group
+        return {
+          ...group,
+          items: group.items.filter(
+            (item) => item.displayName === nsFilter,
+          ),
+        };
+      }
+      return {
+        ...group,
+        items: group.items.filter((item) => {
+          const ns = item.namespace ?? String(item.fields["namespace"] ?? "");
+          return ns === nsFilter;
+        }),
+      };
+    });
+  }, [resourceGroups, nsFilter]);
+
+  // Groups that have items after filtering (never hide empty groups with supportsCreate)
+  const visibleGroups = filteredGroups.filter(
+    (g) => g.items.length > 0 || g.supportsCreate,
+  );
+
   const createClientFactory = useMemo(
     () =>
       createTarget
@@ -124,19 +166,44 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
     [createTarget, pane.credentials],
   );
 
+  function toggleGroupCollapsed(key: string) {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
   return (
     <div
       ref={setDropRef}
-      className={`space-y-5 transition-colors rounded-xl ${isOver && supportsSecretImport ? "ring-2 ring-blue-500/50 bg-blue-500/5" : ""}`}
+      className={`space-y-3 transition-colors rounded-xl ${isOver && supportsSecretImport ? "ring-2 ring-blue-500/50 bg-blue-500/5" : ""}`}
       data-parent-resource-id={parentResourceId}
     >
-      {/* Status dot only shown when there's no k9s action (avoids a lonely dot) */}
-      {pane.schema.status && !showK9sAction && (
-        <StatusDotNodeRenderer node={pane.schema.status} />
-      )}
-
-      {showK9sAction && (
-        <div className="flex justify-end">
+      {/* Header: status + actions */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          {pane.schema.status && (
+            <StatusDotNodeRenderer node={pane.schema.status} />
+          )}
+          {/* Namespace filter */}
+          {namespaces.length > 1 && (
+            <select
+              value={nsFilter ?? ""}
+              onChange={(e) => setNsFilter(e.target.value || null)}
+              className="text-xs bg-gray-800 border border-gray-700 text-gray-300 rounded-lg px-2 py-1.5 focus:outline-none focus:border-blue-500 transition-colors"
+            >
+              <option value="">All namespaces ({namespaces.length})</option>
+              {namespaces.map((ns) => (
+                <option key={ns} value={ns}>
+                  {ns}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+        {showK9sAction && (
           <button
             onClick={() => {
               if (canOpenK9s) setK9sOpen(true);
@@ -146,8 +213,8 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
           >
             {k9sLabel}
           </button>
-        </div>
-      )}
+        )}
+      </div>
 
       {createError && (
         <ErrorNotice
@@ -157,41 +224,82 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
         />
       )}
 
-      {resourceGroups.map((group) => (
-        <section
-          key={`${group.pluginId}:${group.resourceTypeId}`}
-          className="rounded-2xl border border-gray-800 bg-gray-900/40 p-4"
-        >
-          <div className="flex items-center justify-between gap-3 mb-3">
-            <h3 className="text-sm font-semibold text-gray-100">{group.title}</h3>
-            {group.supportsCreate && (
-              <button
-                onClick={() => setCreateTarget(group)}
-                className="px-2.5 py-1 rounded-lg border border-gray-700 bg-gray-800 text-xs text-gray-200 hover:border-gray-600 hover:bg-gray-700 transition-colors"
-              >
-                Create {getCreateLabel(group.title)}
-              </button>
-            )}
-          </div>
+      {visibleGroups.map((group) => {
+        const groupKey = `${group.pluginId}:${group.resourceTypeId}`;
+        const isNamespaceGroup = group.resourceTypeId === "k8s-namespace";
+        const isCollapsed = collapsedGroups.has(groupKey);
+        const itemCount = group.items.length;
 
-          {group.items.length > 0 ? (
-            <div className="flex flex-wrap gap-2">
-              {group.items.map((resource) => (
-                <ResourcePill
-                  key={resource.id}
-                  pane={pane}
-                  group={group}
-                  resource={resource}
-                  accountId={accountId}
-                  onExec={() => setExecTarget({ resource, group })}
-                />
-              ))}
+        // When filtering by namespace, skip the namespace group entirely
+        if (isNamespaceGroup && nsFilter) return null;
+
+        return (
+          <section
+            key={groupKey}
+            className="rounded-2xl border border-gray-800 bg-gray-900/40 overflow-hidden"
+          >
+            <div
+              className="flex items-center justify-between gap-3 px-4 py-3 cursor-pointer select-none hover:bg-gray-800/30 transition-colors"
+              onClick={() => toggleGroupCollapsed(groupKey)}
+            >
+              <div className="flex items-center gap-2">
+                <span className={`text-gray-500 text-xs transition-transform ${isCollapsed ? "" : "rotate-90"}`}>
+                  ▶
+                </span>
+                <h3 className="text-sm font-semibold text-gray-100">
+                  {getGroupDisplayTitle(group.title, itemCount)}
+                </h3>
+                {isNamespaceGroup && (
+                  <span className="text-xs text-gray-500">
+                    {group.items.filter((ns) => ns.fields["system"] !== "true").length} user
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {group.supportsCreate && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setCreateTarget(group); }}
+                    className="px-2.5 py-1 rounded-lg border border-gray-700 bg-gray-800 text-xs text-gray-200 hover:border-gray-600 hover:bg-gray-700 transition-colors"
+                  >
+                    Create {getCreateLabel(group.title)}
+                  </button>
+                )}
+              </div>
             </div>
-          ) : (
-            <p className="text-sm text-gray-500">No resources found.</p>
-          )}
-        </section>
-      ))}
+
+            {!isCollapsed && itemCount > 0 && (
+              <div className="px-4 pb-3">
+                {isNamespaceGroup ? (
+                  <NamespaceGrid
+                    items={group.items}
+                    activeNamespace={nsFilter}
+                    onSelect={(ns) => setNsFilter(nsFilter === ns ? null : ns)}
+                  />
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {group.items.map((resource) => (
+                      <ResourcePill
+                        key={resource.id}
+                        pane={pane}
+                        group={group}
+                        resource={resource}
+                        accountId={accountId}
+                        onExec={() => setExecTarget({ resource, group })}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {!isCollapsed && itemCount === 0 && (
+              <div className="px-4 pb-3">
+                <p className="text-sm text-gray-500">No resources found.</p>
+              </div>
+            )}
+          </section>
+        );
+      })}
 
       {k9sOpen && kubeconfig && (
         <TerminalOverlay title="k9s" onClose={() => setK9sOpen(false)}>
@@ -249,7 +357,6 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
         />
       )}
 
-      {/* Drop hint overlay for secret import */}
       {isOver && supportsSecretImport && (
         <div className="rounded-xl border-2 border-dashed border-blue-500/40 bg-blue-500/5 px-4 py-6 text-center">
           <p className="text-sm font-medium text-blue-300">Drop to create K8s Secret</p>
@@ -259,6 +366,76 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
     </div>
   );
 }
+
+// ── Namespace grid ────────────────────────────────────────────────────────
+
+function NamespaceGrid({
+  items,
+  activeNamespace,
+  onSelect,
+}: {
+  items: PeerPaneResource[];
+  activeNamespace: string | null;
+  onSelect: (ns: string) => void;
+}) {
+  const userNs = items.filter((ns) => ns.fields["system"] !== "true");
+  const systemNs = items.filter((ns) => ns.fields["system"] === "true");
+  const [showSystem, setShowSystem] = useState(false);
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-1.5">
+        {userNs.map((ns) => (
+          <button
+            key={ns.id}
+            onClick={() => onSelect(ns.displayName)}
+            className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
+              activeNamespace === ns.displayName
+                ? "bg-blue-600 text-white"
+                : "bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-gray-100"
+            }`}
+          >
+            {ns.displayName}
+            {ns.status && (
+              <span
+                className={`ml-1.5 inline-block w-1.5 h-1.5 rounded-full ${statusClassName(ns.status)}`}
+              />
+            )}
+          </button>
+        ))}
+      </div>
+      {systemNs.length > 0 && (
+        <div>
+          <button
+            onClick={() => setShowSystem(!showSystem)}
+            className="text-xs text-gray-600 hover:text-gray-400 transition-colors"
+          >
+            {showSystem ? "Hide" : "Show"} {systemNs.length} system namespace{systemNs.length === 1 ? "" : "s"}
+          </button>
+          {showSystem && (
+            <div className="flex flex-wrap gap-1.5 mt-1.5">
+              {systemNs.map((ns) => (
+                <button
+                  key={ns.id}
+                  onClick={() => onSelect(ns.displayName)}
+                  className={`px-2.5 py-1 rounded-lg text-xs transition-colors ${
+                    activeNamespace === ns.displayName
+                      ? "bg-blue-600/60 text-blue-100"
+                      : "bg-gray-800/50 text-gray-500 hover:bg-gray-700/50 hover:text-gray-400"
+                  }`}
+                >
+                  {ns.displayName}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Resource pill ─────────────────────────────────────────────────────────
 
 function ResourcePill({
   pane,
@@ -337,6 +514,8 @@ function ResourcePill({
   );
 }
 
+// ── Terminal overlay ──────────────────────────────────────────────────────
+
 function TerminalOverlay({
   title,
   onClose,
@@ -370,10 +549,20 @@ function TerminalOverlay({
   );
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────
+
 function replaceTrailingCount(title: string, count: number): string {
   return /\(\d+\)$/.test(title)
     ? title.replace(/\(\d+\)$/, `(${count})`)
     : title;
+}
+
+function getGroupDisplayTitle(title: string, itemCount: number): string {
+  // Replace the count in titles like "Pods (5)" with the filtered count
+  if (/\(\d+\)$/.test(title)) {
+    return title.replace(/\(\d+\)$/, `(${itemCount})`);
+  }
+  return `${title} (${itemCount})`;
 }
 
 function getCreateLabel(title: string): string {
@@ -420,6 +609,7 @@ function mapPeerStatus(
     case "running":
     case "ready":
     case "active":
+    case "succeeded":
       return "healthy";
     case "pending":
     case "creating":
@@ -427,9 +617,13 @@ function mapPeerStatus(
       return "provisioning";
     case "crashloopbackoff":
     case "terminating":
+    case "evicted":
       return "degraded";
     case "failed":
     case "error":
+    case "imagepullbackoff":
+    case "errimagepull":
+    case "oomkilled":
       return "error";
     default:
       return "unknown";
