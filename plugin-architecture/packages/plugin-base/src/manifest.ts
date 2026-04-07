@@ -207,6 +207,19 @@ export interface PluginClient {
    * Counterpart to introspect() but resource-scoped, for REST-based query providers.
    */
   introspectResource?(resourceId: string, accountId: string): Promise<SqlTableMeta[]>;
+  /**
+   * Import secret data into this plugin's target (e.g. create a K8s Secret).
+   * Called by the host after resolving all output values from the source resource.
+   */
+  importSecret?(
+    accountId: string,
+    config: { namespace: string; secretName: string; data: Record<string, string> },
+  ): Promise<void>;
+  /**
+   * List namespaces available for secret import targeting.
+   * The host uses this to populate the namespace dropdown in the secret export modal.
+   */
+  listNamespacesForImport?(accountId: string): Promise<string[]>;
 }
 
 export interface Plugin {

@@ -39,4 +39,14 @@ export const PostgresDatabaseResourceType: ResourceTypeDefinition = {
   ],
   dashboardPinnable: true,
   iconKey: "postgres",
+  secretExportTemplates: [
+    {
+      id: "connection-url",
+      displayName: "Connection URL",
+      description: "Single DATABASE_URL containing the full PostgreSQL connection string",
+      entries: [
+        { envKey: "DATABASE_URL", outputKey: "connectionString" },
+      ],
+    },
+  ],
 };

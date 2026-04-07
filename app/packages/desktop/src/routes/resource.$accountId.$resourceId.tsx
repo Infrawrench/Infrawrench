@@ -152,7 +152,7 @@ function ResourceDetailPage() {
               setLogoSvg(loaded.plugin.manifest.logoSvg);
               setResource(immediateResource);
               setResourceTypeLabel(fastTypeDef?.displayName ?? "Resource");
-              setSchema({ ...immediateSchema, status: { kind: "status-dot", status: "healthy" } });
+              setSchema(immediateSchema);
               setPgConnected(!!session.tablesJson);
               setAccountConnected(accountId, true);
               setLoading(false); // ← show the page NOW
@@ -301,7 +301,7 @@ function ResourceDetailPage() {
 
         if (!cancelled) {
           const detailSchema = client.renderDetail(enrichedResource);
-          setSchema(sqlOk ? { ...detailSchema, status: { kind: "status-dot", status: "healthy" } } : detailSchema);
+          setSchema(detailSchema);
           setResource(enrichedResource);
 
           // Resolve SSH host if this resource type declares an sshEndpoint
@@ -320,47 +320,53 @@ function ResourceDetailPage() {
           }
 
           // ── Peer plugin integrations ──────────────────────────────────────
-          if (resourceTypeDef?.peerIntegrations?.length) {
-            const resolvedPanes: PeerPaneData[] = [];
-            await Promise.allSettled(
-              resourceTypeDef.peerIntegrations.map(async (integration) => {
-                // Resolve all required outputs from this resource
-                const peerCredentials: Record<string, string> = {};
-                for (const mapping of integration.credentialMappings) {
-                  const value = await client.resolveOutput(
-                    enrichedResource.resourceTypeId,
-                    enrichedResource.id,
-                    mapping.outputKey,
-                    accountId,
-                  );
-                  peerCredentials[mapping.credentialKey] = value;
-                }
+          // Skip on background refreshes — resolveOutput() re-fetches credentials
+          // (e.g. DOKS kubeconfig) from the provider API, returning a new token string
+          // each time. That causes K9sTerminal to see a changed kubeconfig prop and
+          // restart the k9s process on every 30-second tick.
+          if (!isBackground) {
+            if (resourceTypeDef?.peerIntegrations?.length) {
+              const resolvedPanes: PeerPaneData[] = [];
+              await Promise.allSettled(
+                resourceTypeDef.peerIntegrations.map(async (integration) => {
+                  // Resolve all required outputs from this resource
+                  const peerCredentials: Record<string, string> = {};
+                  for (const mapping of integration.credentialMappings) {
+                    const value = await client.resolveOutput(
+                      enrichedResource.resourceTypeId,
+                      enrichedResource.id,
+                      mapping.outputKey,
+                      accountId,
+                    );
+                    peerCredentials[mapping.credentialKey] = value;
+                  }
 
-                const peerLoaded = await getPlugin(integration.pluginId);
-                if (!peerLoaded) return;
+                  const peerLoaded = await getPlugin(integration.pluginId);
+                  if (!peerLoaded) return;
 
-                const peerClient = peerLoaded.plugin.createClient(peerCredentials);
-                if (!peerClient.renderPeerPane) return;
+                  const peerClient = peerLoaded.plugin.createClient(peerCredentials);
+                  if (!peerClient.renderPeerPane) return;
 
-                const context: PeerPaneContext = {
-                  tabLabel: integration.tabLabel,
-                  parentPluginId: plugin.manifest.id,
-                  parentResourceTypeId: enrichedResource.resourceTypeId,
-                  parentResourceId: enrichedResource.id,
-                };
-                const peerSchema = await peerClient.renderPeerPane(context);
+                  const context: PeerPaneContext = {
+                    tabLabel: integration.tabLabel,
+                    parentPluginId: plugin.manifest.id,
+                    parentResourceTypeId: enrichedResource.resourceTypeId,
+                    parentResourceId: enrichedResource.id,
+                  };
+                  const peerSchema = await peerClient.renderPeerPane(context);
 
-                resolvedPanes.push({
-                  tabLabel: integration.tabLabel,
-                  pluginLogoSvg: peerLoaded.plugin.manifest.logoSvg,
-                  credentials: peerCredentials,
-                  schema: peerSchema,
-                });
-              }),
-            );
-            if (!cancelled) setPeerPanes(resolvedPanes);
-          } else if (!cancelled) {
-            setPeerPanes([]);
+                  resolvedPanes.push({
+                    tabLabel: integration.tabLabel,
+                    pluginLogoSvg: peerLoaded.plugin.manifest.logoSvg,
+                    credentials: peerCredentials,
+                    schema: peerSchema,
+                  });
+                }),
+              );
+              if (!cancelled) setPeerPanes(resolvedPanes);
+            } else if (!cancelled) {
+              setPeerPanes([]);
+            }
           }
         }
       } catch (e) {

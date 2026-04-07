@@ -8,15 +8,65 @@ import type {
   CreateResourceConfig,
 } from "@infrawrench/plugin-base";
 
+// ── Kubeconfig parsing ──────────────────────────────────────────────────────
+
+interface ParsedKubeconfig {
+  server: string;
+  caCertData?: string;
+  token?: string;
+  clientCertData?: string;
+  clientKeyData?: string;
+}
+
+/**
+ * Minimal kubeconfig YAML parser — handles the standard fields without
+ * pulling in a full YAML library. Works for DOKS/GKE/EKS token-based configs.
+ */
+function parseKubeconfig(raw: string): ParsedKubeconfig {
+  const getVal = (key: string): string => {
+    const re = new RegExp(`^\\s*${key}:\\s*(.+)$`, "m");
+    const m = raw.match(re);
+    return m?.[1]?.trim() ?? "";
+  };
+  const ca = getVal("certificate-authority-data");
+  const tok = getVal("token");
+  const cert = getVal("client-certificate-data");
+  const key = getVal("client-key-data");
+  return {
+    server: getVal("server"),
+    ...(ca ? { caCertData: ca } : {}),
+    ...(tok ? { token: tok } : {}),
+    ...(cert ? { clientCertData: cert } : {}),
+    ...(key ? { clientKeyData: key } : {}),
+  };
+}
+
 /**
  * Kubernetes plugin client.
  * The kubeconfig string is resolved by the host's SecretResolver before
  * being passed in credentials — the plugin never sees unresolved references.
  */
 export class KubernetesClient implements PluginClient {
+  private readonly kubeconfig: string;
+  private readonly parsed: ParsedKubeconfig;
+
   constructor(credentials: Record<string, string>) {
     const kubeconfig = credentials["kubeconfig"];
     if (!kubeconfig) throw new Error("Kubernetes plugin: missing kubeconfig credential");
+    this.kubeconfig = kubeconfig;
+    this.parsed = parseKubeconfig(kubeconfig);
+  }
+
+  private async k8sFetch<T>(path: string, options?: RequestInit): Promise<T> {
+    const { server, token } = this.parsed;
+    if (!server) throw new Error("Kubernetes plugin: no server in kubeconfig");
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const res = await fetch(`${server}${path}`, { headers, ...options });
+    if (!res.ok) throw new Error(`K8s API error ${res.status}: ${await res.text()}`);
+    return res.json() as Promise<T>;
   }
 
   async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
@@ -88,6 +138,46 @@ export class KubernetesClient implements PluginClient {
     };
   }
 
+  async listNamespacesForImport(_accountId: string): Promise<string[]> {
+    try {
+      const data = await this.k8sFetch<{ items: Array<{ metadata: { name: string } }> }>(
+        "/api/v1/namespaces",
+      );
+      return data.items.map((ns) => ns.metadata.name).sort();
+    } catch {
+      // Fallback for stub/offline mode
+      return ["default", "kube-system"];
+    }
+  }
+
+  async importSecret(
+    _accountId: string,
+    config: { namespace: string; secretName: string; data: Record<string, string> },
+  ): Promise<void> {
+    // Base64-encode each value as required by the K8s Secret API
+    const encoded: Record<string, string> = {};
+    for (const [key, value] of Object.entries(config.data)) {
+      encoded[key] = btoa(value);
+    }
+
+    await this.k8sFetch(`/api/v1/namespaces/${encodeURIComponent(config.namespace)}/secrets`, {
+      method: "POST",
+      body: JSON.stringify({
+        apiVersion: "v1",
+        kind: "Secret",
+        metadata: {
+          name: config.secretName,
+          namespace: config.namespace,
+          labels: {
+            "app.kubernetes.io/managed-by": "infrawrench",
+          },
+        },
+        type: "Opaque",
+        data: encoded,
+      }),
+    });
+  }
+
   async renderPeerPane(_context: PeerPaneContext): Promise<PeerPaneSchema> {
     const syntheticAccountId = "peer";
     const [namespaces, pods, deployments] = await Promise.all([
@@ -99,6 +189,7 @@ export class KubernetesClient implements PluginClient {
     return {
       status: { kind: "status-dot", status: "healthy" },
       supportsK9s: true,
+      supportsSecretImport: true,
       resourceGroups: [
         {
           title: `Namespaces (${namespaces.length})`,

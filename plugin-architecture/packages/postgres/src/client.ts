@@ -53,6 +53,9 @@ export class PostgresClient implements PluginClient {
     outputKey: string,
     _accountId: string,
   ): Promise<string> {
+    if (typeId === "pg-database" && outputKey === "connectionString") {
+      return this.connectionString;
+    }
     if (typeId === "pg-database" && outputKey === "serverVersion") {
       return "PostgreSQL 16.2";
     }

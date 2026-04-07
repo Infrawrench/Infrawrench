@@ -18,4 +18,15 @@ export const CloudSqlInstanceResourceType: ResourceTypeDefinition = {
     { key: "ipAddress", label: "IP Address", sensitive: false },
   ],
   dashboardPinnable: true,
+  secretExportTemplates: [
+    {
+      id: "cloudsql-connection",
+      displayName: "Cloud SQL Connection",
+      description: "Connection name and IP address for Cloud SQL proxy or direct access",
+      entries: [
+        { envKey: "CLOUDSQL_CONNECTION_NAME", outputKey: "connectionName", description: "project:region:instance format" },
+        { envKey: "DB_HOST", outputKey: "ipAddress" },
+      ],
+    },
+  ],
 };

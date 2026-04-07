@@ -64,4 +64,39 @@ export const ManagedDatabaseResourceType: ResourceTypeDefinition = {
   parentTypeId: "project",
   dashboardPinnable: true,
   iconKey: "database",
+  secretExportTemplates: [
+    {
+      id: "connection-url",
+      displayName: "Connection URL",
+      description: "Single DATABASE_URL containing the full connection string",
+      entries: [
+        { envKey: "DATABASE_URL", outputKey: "connectionString", description: "Full connection URI" },
+      ],
+    },
+    {
+      id: "individual",
+      displayName: "Individual Credentials",
+      description: "Separate environment variables for host, port, user, password, and database",
+      entries: [
+        { envKey: "DB_HOST", outputKey: "host" },
+        { envKey: "DB_PORT", outputKey: "port" },
+        { envKey: "DB_USER", outputKey: "username" },
+        { envKey: "DB_PASSWORD", outputKey: "password" },
+        { envKey: "DB_NAME", outputKey: "database" },
+      ],
+    },
+    {
+      id: "individual-with-ca",
+      displayName: "Individual + CA Certificate",
+      description: "Individual credentials plus the TLS CA certificate for verified connections",
+      entries: [
+        { envKey: "DB_HOST", outputKey: "host" },
+        { envKey: "DB_PORT", outputKey: "port" },
+        { envKey: "DB_USER", outputKey: "username" },
+        { envKey: "DB_PASSWORD", outputKey: "password" },
+        { envKey: "DB_NAME", outputKey: "database" },
+        { envKey: "DB_CA_CERT", outputKey: "caCertificate", description: "TLS CA certificate" },
+      ],
+    },
+  ],
 };

@@ -187,6 +187,20 @@ function RootLayout() {
       return;
     }
 
+    // Secret import — resource dropped onto a K8s peer pane
+    if (overId.startsWith("secret-import:")) {
+      const resource = activeData?.resource as DraggableResource | undefined;
+      if (resource) {
+        const targetAccountId = overId.replace("secret-import:", "");
+        window.dispatchEvent(
+          new CustomEvent("iw:secret-export-drop", {
+            detail: { source: resource, targetAccountId },
+          }),
+        );
+      }
+      return;
+    }
+
     let dashboardId: string | null = null;
     if (overId.startsWith("sidebar-dashboard:")) {
       dashboardId = overId.replace("sidebar-dashboard:", "");

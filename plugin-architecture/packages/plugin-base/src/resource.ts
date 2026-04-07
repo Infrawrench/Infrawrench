@@ -62,6 +62,28 @@ export interface PeerPluginIntegration {
   tabLabel: string;
 }
 
+/** A single key-value entry in a secret export (e.g. DATABASE_URL → connectionString output) */
+export interface SecretExportEntry {
+  /** The key in the K8s secret / env var name */
+  envKey: string;
+  /** The output key on the source resource to resolve */
+  outputKey: string;
+  /** Human-readable description */
+  description?: string;
+}
+
+/**
+ * Declares a set of secrets that can be created from a resource's outputs.
+ * Shown when the user drags a resource onto a K8s cluster or SSH target.
+ * Multiple templates allow different shapes (e.g. single URL vs individual fields).
+ */
+export interface SecretExportTemplate {
+  id: string;
+  displayName: string;
+  description?: string;
+  entries: SecretExportEntry[];
+}
+
 export interface ResourceTypeDefinition {
   id: string;
   displayName: string;
@@ -95,4 +117,10 @@ export interface ResourceTypeDefinition {
   supportsTerminal?: boolean;
   /** If true, the host will open a built-in SFTP file browser for instances of this type */
   supportsSftpBrowser?: boolean;
+  /**
+   * Secret export templates — declares what secrets this resource can produce
+   * when dragged onto a K8s cluster or SSH target. Each template maps output keys
+   * to env-var-style secret keys.
+   */
+  secretExportTemplates?: SecretExportTemplate[];
 }

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useDraggable } from "@dnd-kit/core";
+import { useDraggable, useDroppable } from "@dnd-kit/core";
 import type {
   PeerPaneResource,
   PeerPaneResourceGroup,
@@ -15,6 +15,7 @@ import { CreateResourceModal } from "./CreateResourceModal";
 import { ErrorNotice } from "./ErrorNotice";
 import { K8sExecPanel } from "./K8sExecPanel";
 import { K9sTerminal } from "./K9sTerminal";
+import { SecretExportModal } from "./SecretExportModal";
 
 interface PeerPaneViewProps {
   pane: PeerPaneData;
@@ -33,6 +34,7 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
   const [k9sInstalled, setK9sInstalled] = useState<boolean | null>(null);
   const [createResourceType, setCreateResourceType] = useState<ResourceTypeDefinition | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [secretExportSource, setSecretExportSource] = useState<DraggableResource | null>(null);
 
   useEffect(() => {
     setResourceGroups(pane.schema.resourceGroups);
@@ -84,6 +86,23 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
     };
   }, [createTarget]);
 
+  const supportsSecretImport = !!pane.schema.supportsSecretImport;
+  const droppableId = supportsSecretImport ? `secret-import:${accountId}` : `peer-pane:${accountId}`;
+  const { setNodeRef: setDropRef, isOver } = useDroppable({ id: droppableId });
+
+  // Listen for secret-import drop events dispatched by the root DndContext handler
+  useEffect(() => {
+    if (!supportsSecretImport) return;
+    function onSecretDrop(e: Event) {
+      const detail = (e as CustomEvent).detail as { source: DraggableResource; targetAccountId: string } | undefined;
+      if (detail?.targetAccountId === accountId) {
+        setSecretExportSource(detail.source);
+      }
+    }
+    window.addEventListener("iw:secret-export-drop", onSecretDrop);
+    return () => window.removeEventListener("iw:secret-export-drop", onSecretDrop);
+  }, [supportsSecretImport, accountId]);
+
   const kubeconfig = pane.credentials["kubeconfig"];
   const showK9sAction = !!pane.schema.supportsK9s;
   const canOpenK9s = showK9sAction && !!kubeconfig;
@@ -107,25 +126,17 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
   );
 
   return (
-    <div className="space-y-5" data-parent-resource-id={parentResourceId}>
-      {pane.schema.status && (
-        <div className="flex items-center justify-between gap-3">
-          <StatusDotNodeRenderer node={pane.schema.status} />
-          {showK9sAction && (
-            <button
-              onClick={() => {
-                if (canOpenK9s) setK9sOpen(true);
-              }}
-              disabled={!canOpenK9s}
-              className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:bg-gray-800 disabled:text-gray-400 disabled:hover:bg-gray-800 text-sm font-medium text-white transition-colors"
-            >
-              {k9sLabel}
-            </button>
-          )}
-        </div>
+    <div
+      ref={setDropRef}
+      className={`space-y-5 transition-colors rounded-xl ${isOver && supportsSecretImport ? "ring-2 ring-blue-500/50 bg-blue-500/5" : ""}`}
+      data-parent-resource-id={parentResourceId}
+    >
+      {/* Status dot only shown when there's no k9s action (avoids a lonely dot) */}
+      {pane.schema.status && !showK9sAction && (
+        <StatusDotNodeRenderer node={pane.schema.status} />
       )}
 
-      {!pane.schema.status && showK9sAction && (
+      {showK9sAction && (
         <div className="flex justify-end">
           <button
             onClick={() => {
@@ -227,6 +238,23 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
             setCreateTarget(null);
           }}
         />
+      )}
+
+      {secretExportSource && (
+        <SecretExportModal
+          source={secretExportSource}
+          targetAccountId={accountId}
+          onClose={() => setSecretExportSource(null)}
+          onCreated={() => setSecretExportSource(null)}
+        />
+      )}
+
+      {/* Drop hint overlay for secret import */}
+      {isOver && supportsSecretImport && (
+        <div className="rounded-xl border-2 border-dashed border-blue-500/40 bg-blue-500/5 px-4 py-6 text-center">
+          <p className="text-sm font-medium text-blue-300">Drop to create K8s Secret</p>
+          <p className="text-xs text-blue-400/60 mt-1">Secret keys will be created from the resource's outputs</p>
+        </div>
       )}
     </div>
   );

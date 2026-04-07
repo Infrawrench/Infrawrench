@@ -34,6 +34,19 @@ const peerPluginIntegrationSchema = z.object({
   tabLabel: z.string().min(1),
 });
 
+const secretExportEntrySchema = z.object({
+  envKey: z.string().min(1),
+  outputKey: z.string().min(1),
+  description: z.string().optional(),
+});
+
+const secretExportTemplateSchema = z.object({
+  id: z.string().min(1),
+  displayName: z.string().min(1),
+  description: z.string().optional(),
+  entries: z.array(secretExportEntrySchema).min(1),
+});
+
 export const resourceTypeDefinitionSchema = z.object({
   id: z.string().min(1),
   displayName: z.string().min(1),
@@ -45,4 +58,5 @@ export const resourceTypeDefinitionSchema = z.object({
   dashboardPinnable: z.boolean(),
   iconKey: z.string().optional(),
   peerIntegrations: z.array(peerPluginIntegrationSchema).optional(),
+  secretExportTemplates: z.array(secretExportTemplateSchema).optional(),
 });

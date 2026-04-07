@@ -210,5 +210,7 @@ export interface PeerPaneSchema {
   status?: StatusDotNode;
   /** k9s launcher button shown if this is true and k9s is installed */
   supportsK9s?: boolean;
+  /** If true, the host enables this pane as a drop target for secret export */
+  supportsSecretImport?: boolean;
   resourceGroups: PeerPaneResourceGroup[];
 }

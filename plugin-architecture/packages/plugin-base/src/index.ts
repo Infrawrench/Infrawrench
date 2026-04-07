@@ -22,6 +22,8 @@ export type {
   AssociationSource,
   ResourceOutput,
   PeerPluginIntegration,
+  SecretExportTemplate,
+  SecretExportEntry,
 } from "./resource.js";
 
 // Resource instances

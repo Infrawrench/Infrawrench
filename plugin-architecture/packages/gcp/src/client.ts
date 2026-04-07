@@ -193,10 +193,11 @@ export class GcpClient implements PluginClient {
 
     if (typeId === "gke-cluster" && outputKey === "kubeconfig") {
       const resource = await this.getResource(typeId, resourceId, accountId);
-      const endpoint = resource.resolvedOutputs["clusterEndpoint"] ?? "";
       const cluster = await this.get<Record<string, unknown>>(
         `https://container.googleapis.com/v1/projects/${p}/locations/${String(resource.fields["location"])}/clusters/${resource.externalId}`,
       );
+      // The endpoint comes from the API response, not from resolvedOutputs
+      const endpoint = (cluster["endpoint"] as string) ?? "";
       const caCert = ((cluster["masterAuth"] as Record<string, unknown> | undefined)?.["clusterCaCertificate"] as string) ?? "";
       const tok = await this.token();
       const kubeconfig = [
@@ -221,13 +222,35 @@ export class GcpClient implements PluginClient {
       return kubeconfig;
     }
 
-    if (typeId === "memorystore-redis" && outputKey === "authString") {
+    if (typeId === "memorystore-redis") {
       const resource = await this.getResource(typeId, resourceId, accountId);
-      const name = resource.externalId ?? "";
-      const data = await this.get<Record<string, unknown>>(
-        `https://redis.googleapis.com/v1/${name}/authString`,
-      );
-      return (data["authString"] as string) ?? "";
+      if (outputKey === "authString") {
+        const name = resource.externalId ?? "";
+        const data = await this.get<Record<string, unknown>>(
+          `https://redis.googleapis.com/v1/${name}/authString`,
+        );
+        return (data["authString"] as string) ?? "";
+      }
+      if (outputKey === "host") return String(resource.fields["host"] ?? resource.resolvedOutputs["host"] ?? "");
+      if (outputKey === "port") return String(resource.fields["port"] ?? resource.resolvedOutputs["port"] ?? "6379");
+      if (outputKey === "redisUrl") {
+        const host = String(resource.fields["host"] ?? resource.resolvedOutputs["host"] ?? "");
+        const port = String(resource.fields["port"] ?? resource.resolvedOutputs["port"] ?? "6379");
+        const name = resource.externalId ?? "";
+        try {
+          const data = await this.get<Record<string, unknown>>(`https://redis.googleapis.com/v1/${name}/authString`);
+          const auth = (data["authString"] as string) ?? "";
+          return auth ? `redis://:${auth}@${host}:${port}` : `redis://${host}:${port}`;
+        } catch {
+          return `redis://${host}:${port}`;
+        }
+      }
+    }
+
+    if (typeId === "cloudsql-instance") {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      if (outputKey === "connectionName") return String(resource.fields["connectionName"] ?? resource.resolvedOutputs["connectionName"] ?? "");
+      if (outputKey === "ipAddress") return String(resource.fields["ipAddress"] ?? resource.resolvedOutputs["ipAddress"] ?? "");
     }
 
     if (typeId === "secret-manager-secret" && outputKey === "latestVersion") {
@@ -456,19 +479,36 @@ export class GcpClient implements PluginClient {
   }
 
   async deleteResource(typeId: string, resourceId: string, accountId: string): Promise<void> {
-    if (typeId !== "gce-instance") throw new Error(`GCP plugin: deleteResource not supported for type "${typeId}"`);
     const p = this.project;
     const tok = await this.token();
-    // Need the zone — fetch the resource to get it
-    const resource = await this.getResource(typeId, resourceId, accountId);
-    const zone = String(resource.fields["zone"] ?? "");
-    const name = String(resource.fields["name"] ?? (resource.externalId ?? resource.displayName).split("/").pop() ?? "");
-    if (!zone || !name) throw new Error("Cannot determine zone or instance name for deletion");
-    const res = await fetch(
-      `https://compute.googleapis.com/compute/v1/projects/${p}/zones/${zone}/instances/${name}`,
-      { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
-    );
-    if (!res.ok) throw new Error(`GCP Compute API ${res.status}: ${await res.text()}`);
+
+    if (typeId === "gce-instance") {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      const zone = String(resource.fields["zone"] ?? "");
+      const name = String(resource.fields["name"] ?? (resource.externalId ?? resource.displayName).split("/").pop() ?? "");
+      if (!zone || !name) throw new Error("Cannot determine zone or instance name for deletion");
+      const res = await fetch(
+        `https://compute.googleapis.com/compute/v1/projects/${p}/zones/${zone}/instances/${name}`,
+        { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
+      );
+      if (!res.ok) throw new Error(`GCP Compute API ${res.status}: ${await res.text()}`);
+      return;
+    }
+
+    if (typeId === "gke-cluster") {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      const location = String(resource.fields["location"] ?? "");
+      const name = resource.externalId ?? resource.displayName;
+      if (!location || !name) throw new Error("Cannot determine location or cluster name for deletion");
+      const res = await fetch(
+        `https://container.googleapis.com/v1/projects/${p}/locations/${location}/clusters/${name}`,
+        { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
+      );
+      if (!res.ok) throw new Error(`GKE API ${res.status}: ${await res.text()}`);
+      return;
+    }
+
+    throw new Error(`GCP plugin: deleteResource not supported for type "${typeId}"`);
   }
 
   async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {

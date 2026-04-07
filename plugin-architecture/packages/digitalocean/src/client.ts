@@ -17,6 +17,7 @@ import { ManagedDatabaseResourceType } from "./resources/managed-database.js";
  */
 export class DigitalOceanClient implements PluginClient {
   private readonly token: string;
+  private readonly credentials: Record<string, string>;
   private readonly baseUrl = "https://api.digitalocean.com/v2";
 
   private static readonly REGION_INFO: Record<string, { location: string; flag: string }> = {
@@ -37,6 +38,7 @@ export class DigitalOceanClient implements PluginClient {
     const token = credentials["apiToken"];
     if (!token) throw new Error("DigitalOcean plugin: missing apiToken credential");
     this.token = token;
+    this.credentials = credentials;
   }
 
   private async fetch<T>(path: string, options?: RequestInit): Promise<T> {
@@ -97,7 +99,7 @@ export class DigitalOceanClient implements PluginClient {
 
     if (typeId === "managed-database") {
       const data = await this.fetch<{
-        database: { connection: Record<string, string> };
+        database: { connection: Record<string, string>; private_connection?: Record<string, string> };
       }>(`/databases/${resourceId}`);
       const conn = data.database.connection;
       switch (outputKey) {
@@ -113,7 +115,22 @@ export class DigitalOceanClient implements PluginClient {
           return conn["password"] ?? "";
         case "database":
           return conn["database"] ?? "";
+        case "caCertificate": {
+          const caData = await this.fetch<{ ca: { certificate: string } }>(`/databases/${resourceId}/ca`);
+          return caData.ca.certificate;
+        }
       }
+    }
+
+    if (typeId === "spaces-bucket") {
+      // Spaces credentials are account-level (from the Spaces API keys), not bucket-specific
+      if (outputKey === "endpoint") {
+        const resource = await this.getResource(typeId, resourceId, _accountId);
+        const region = String(resource.fields["region"] ?? "nyc3");
+        return `https://${region}.digitaloceanspaces.com`;
+      }
+      if (outputKey === "accessKeyId") return this.credentials["spacesAccessKeyId"] ?? "";
+      if (outputKey === "secretAccessKey") return this.credentials["spacesSecretAccessKey"] ?? "";
     }
 
     throw new Error(
