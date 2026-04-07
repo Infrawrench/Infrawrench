@@ -9,6 +9,7 @@ import { loadPlugins, getPlugin } from "../plugins/loader";
 import type { DraggableResource } from "../lib/pins";
 import { buildPluginHostServices } from "../lib/sql-drivers";
 import { SshTunnelModal } from "./SshTunnelModal";
+import { accountTabTarget, navigateToWorkspaceTarget, resourceTabTarget } from "../lib/workspace-tabs";
 
 interface Account {
   id: string;
@@ -270,7 +271,11 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
                   isExpanded={isExpanded}
                   connected={connectedAccounts.has(account.id)}
                   onToggleExpand={() => void toggleExpand(account)}
-                  onNavigate={() => navigate({ to: "/accounts/$accountId", params: { accountId: account.id } })}
+                  onNavigate={() => void navigateToWorkspaceTarget(
+                    navigate,
+                    accountTabTarget(account.id),
+                    { label: account.displayName },
+                  )}
                 />
 
                 {/* Expanded resources */}
@@ -352,7 +357,7 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
         onClose={() => setTunnelTarget(null)}
         onTunnelEstablished={(newAccountId) => {
           setTunnelTarget(null);
-          void navigate({ to: "/accounts/$accountId", params: { accountId: newAccountId } });
+          void navigateToWorkspaceTarget(navigate, accountTabTarget(newAccountId));
         }}
       />
     )}
@@ -373,7 +378,11 @@ function SidebarResourceItem({
   const navigate = useNavigate();
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `sidebar-${draggable.id}`,
-    data: { resource: draggable },
+    data: {
+      resource: draggable,
+      workspaceTabTarget: resourceTabTarget(draggable.accountId, draggable.id),
+      dragLabel: draggable.displayName,
+    },
   });
 
   return (
@@ -382,10 +391,11 @@ function SidebarResourceItem({
       {...listeners}
       {...attributes}
       className={`flex items-center gap-2 px-3 py-1 text-xs text-gray-400 hover:text-gray-200 hover:bg-gray-800 rounded cursor-pointer transition-colors ${isDragging ? "opacity-40" : ""}`}
-      onClick={() => navigate({
-        to: "/resource/$accountId/$resourceId",
-        params: { accountId: draggable.accountId, resourceId: encodeURIComponent(draggable.id) },
-      })}
+      onClick={() => void navigateToWorkspaceTarget(
+        navigate,
+        resourceTabTarget(draggable.accountId, draggable.id),
+        { label: draggable.displayName },
+      )}
       onContextMenu={sshHostValue && onContextMenuSsh
         ? (e) => onContextMenuSsh(e, sshHostValue)
         : undefined}
@@ -422,7 +432,11 @@ function AccountDraggableRow({
 
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `account-${account.id}`,
-    data: { resource: draggableData },
+    data: {
+      resource: draggableData,
+      workspaceTabTarget: accountTabTarget(account.id),
+      dragLabel: account.displayName,
+    },
   });
 
   return (

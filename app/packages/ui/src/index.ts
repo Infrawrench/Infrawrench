@@ -1,5 +1,7 @@
 // Stores
 export { useUIStore } from "./store/ui.store.js";
+export type { WorkspaceTab, WorkspaceTabTarget } from "./store/ui.store.js";
+export { getWorkspaceTabFallbackTitle, getWorkspaceTabId, normalizeResourceId } from "./store/ui.store.js";
 
 // Schema renderer
 export { SchemaRenderer, StatusDotNodeRenderer } from "./components/renderer/SchemaRenderer.js";

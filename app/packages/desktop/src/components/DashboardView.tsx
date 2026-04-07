@@ -9,6 +9,7 @@ import { loadPlugins, getPlugin } from "../plugins/loader";
 import { buildHostServices, buildKvHostServices, buildMemcachedHostServices, buildDockerHostServices } from "../lib/sql-drivers";
 import { resolveTunneledHost } from "../lib/ssh-tunnel";
 import { getSqlSession, setSqlSession } from "../lib/sql-session";
+import { accountTabTarget, navigateToWorkspaceTarget, resourceTabTarget } from "../lib/workspace-tabs";
 
 interface PinnedRow {
   resource_id: string;
@@ -70,6 +71,8 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
   const dashboardPinsVersion = useUIStore((s) => s.dashboardPinsVersion);
   const bumpDashboardPins = useUIStore((s) => s.bumpDashboardPins);
   const setAccountConnected = useUIStore((s) => s.setAccountConnected);
+  const removeWorkspaceTabs = useUIStore((s) => s.removeWorkspaceTabs);
+  const setWorkspaceTabTitle = useUIStore((s) => s.setWorkspaceTabTitle);
   const { setNodeRef, isOver } = useDroppable({ id: `dashboard:${dashboardId}` });
 
   const load = useCallback(async () => {
@@ -457,6 +460,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
     setEditingName(false);
     const db = await getDb();
     await db.execute("UPDATE dashboards SET name = $1 WHERE id = $2", [trimmed, dashboardId]);
+    setWorkspaceTabTitle(`dashboard:${dashboardId}`, trimmed);
   }
 
   async function deleteDashboard() {
@@ -464,17 +468,23 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
     const db = await getDb();
     await db.execute("DELETE FROM dashboard_pins WHERE dashboard_id = $1", [dashboardId]);
     await db.execute("DELETE FROM dashboards WHERE id = $1", [dashboardId]);
+    removeWorkspaceTabs([`dashboard:${dashboardId}`]);
     navigate({ to: "/" });
   }
 
   function goToResource(row: PinnedRow) {
     if (row.resource_type_id === "__account__") {
-      void navigate({ to: "/accounts/$accountId", params: { accountId: row.account_id } });
+      void navigateToWorkspaceTarget(
+        navigate,
+        accountTabTarget(row.account_id),
+        { label: row.display_name },
+      );
     } else {
-      void navigate({
-        to: "/resource/$accountId/$resourceId",
-        params: { accountId: row.account_id, resourceId: encodeURIComponent(row.resource_id) },
-      });
+      void navigateToWorkspaceTarget(
+        navigate,
+        resourceTabTarget(row.account_id, row.resource_id),
+        { label: row.display_name },
+      );
     }
   }
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, useNavigate, useRouterState } from "@tanstack/react-router";
 import { invoke } from "../lib/invoke";
 import type { ResourceInstance, DetailViewSchema } from "@infrawrench/plugin-base";
 import { DetailView, type QueryResult, useUIStore } from "@infrawrench/ui";
@@ -14,6 +14,7 @@ import { GcsBrowserPanel } from "../components/GcsBrowserPanel";
 import { SshTerminal } from "../components/SshTerminal";
 import { SshQuickConnectPanel } from "../components/SshQuickConnectPanel";
 import type { PluginClient } from "@infrawrench/plugin-base";
+import { accountTabTarget, navigateToWorkspaceTarget, resourceSshTabTarget } from "../lib/workspace-tabs";
 
 export const Route = createFileRoute("/resource/$accountId/$resourceId")({
   component: ResourceDetailPage,
@@ -36,8 +37,6 @@ interface SqliteResourceRow {
   external_id: string;
   fields_json: string;
 }
-
-type ResourceMainTab = "details" | "ssh";
 
 function ResourceDetailPage() {
   const { accountId, resourceId } = Route.useParams();
@@ -66,9 +65,9 @@ function ResourceDetailPage() {
   const [sshConfig, setSshConfig] = useState<{ host: string; port: number; username: string; privateKey: string } | null>(null);
   const [sshHost, setSshHost] = useState<string | null>(null);
   const setAccountConnected = useUIStore((s) => s.setAccountConnected);
+  const removeWorkspaceTabs = useUIStore((s) => s.removeWorkspaceTabs);
+  const locationHash = useRouterState({ select: (s) => s.location.hash });
   const [detailsCollapsed, setDetailsCollapsed] = useState(false);
-  const [sshTabOpen, setSshTabOpen] = useState(false);
-  const [activeMainTab, setActiveMainTab] = useState<ResourceMainTab>("details");
   const [canDelete, setCanDelete] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -317,13 +316,6 @@ function ResourceDetailPage() {
     return () => { clearInterval(id); window.removeEventListener("iw:refresh-resource", bgRefresh); };
   }, []);
 
-  useEffect(() => {
-    if (!sshConfig && !sshHost) {
-      setSshTabOpen(false);
-      setActiveMainTab("details");
-    }
-  }, [sshConfig, sshHost]);
-
   const handleRunQuery = useCallback(async (sql: string): Promise<QueryResult> => {
     const cs = connectionStringRef.current;
     const driverId = sqlDriverIdRef.current;
@@ -351,8 +343,16 @@ function ResourceDetailPage() {
       const db = await getDb();
       await db.execute("DELETE FROM dashboard_pins WHERE resource_id = $1", [resource.id]);
       await db.execute("DELETE FROM resources WHERE id = $1", [resource.id]);
+      removeWorkspaceTabs([
+        `resource:${accountId}:${decodedResourceId}`,
+        `resource:${accountId}:${decodedResourceId}:ssh`,
+      ]);
       window.dispatchEvent(new CustomEvent("iw:resources-changed", { detail: { accountId } }));
-      void navigate({ to: "/accounts/$accountId", params: { accountId } });
+      void navigateToWorkspaceTarget(
+        navigate,
+        accountTabTarget(accountId),
+        { label: account.display_name },
+      );
     } catch (e) {
       setError(String(e));
       setDeleting(false);
@@ -378,16 +378,15 @@ function ResourceDetailPage() {
   const hasStorageBrowser = !!schema?.storageBrowser;
   const hasTerminal = !!sshConfig;
   const hasSshPanel = hasTerminal || !!sshHost;
+  const isSshView = locationHash.replace(/^#/, "") === "ssh";
   const hasCollapsibleDetails = hasStorageBrowser;
 
   function openSshTab() {
-    setSshTabOpen(true);
-    setActiveMainTab("ssh");
-  }
-
-  function closeSshTab() {
-    setSshTabOpen(false);
-    setActiveMainTab("details");
+    void navigateToWorkspaceTarget(
+      navigate,
+      resourceSshTabTarget(accountId, decodedResourceId),
+      { label: resource ? `SSH: ${resource.displayName}` : "SSH", mode: "pin" },
+    );
   }
 
   return (
@@ -403,44 +402,18 @@ function ResourceDetailPage() {
       )}
 
       <div className="flex-1 flex flex-col overflow-hidden">
-        {hasSshPanel && (
-          <div className="shrink-0 flex items-center gap-1 px-4 border-b border-gray-800 bg-gray-950">
-            <ResourceTabButton
-              active={activeMainTab === "details"}
-              onClick={() => setActiveMainTab("details")}
-            >
-              Details
-            </ResourceTabButton>
-            {sshTabOpen ? (
-              <div className="flex items-center">
-                <ResourceTabButton
-                  active={activeMainTab === "ssh"}
-                  onClick={() => setActiveMainTab("ssh")}
-                >
-                  SSH
-                </ResourceTabButton>
+        {!isSshView && (
+          <div className="flex-1 flex flex-col overflow-hidden">
+            {hasSshPanel && (
+              <div className="shrink-0 flex justify-end px-4 py-2 border-b border-gray-800 bg-gray-950">
                 <button
-                  onClick={closeSshTab}
-                  className="px-2 py-2 text-xs text-gray-600 hover:text-gray-300 transition-colors"
-                  aria-label="Close SSH tab"
-                  title="Close SSH tab"
+                  onClick={openSshTab}
+                  className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-200 border border-gray-800 hover:border-gray-700 rounded-lg transition-colors"
                 >
-                  ×
+                  Open SSH tab
                 </button>
               </div>
-            ) : (
-              <button
-                onClick={openSshTab}
-                className="ml-auto px-3 py-1.5 text-xs text-gray-500 hover:text-gray-200 border border-gray-800 hover:border-gray-700 rounded-lg transition-colors"
-              >
-                Open SSH tab
-              </button>
             )}
-          </div>
-        )}
-
-        {activeMainTab === "details" && (
-          <div className="flex-1 flex flex-col overflow-hidden">
             {hasCollapsibleDetails && (
               <button
                 onClick={() => setDetailsCollapsed((c) => !c)}
@@ -468,7 +441,7 @@ function ResourceDetailPage() {
           </div>
         )}
 
-        {activeMainTab === "ssh" && (
+        {isSshView && (
           <div className="flex-1 min-h-0 overflow-hidden">
             {hasTerminal && sshConfig ? (
               <SshTerminal
@@ -580,29 +553,6 @@ function ResourceDetailPage() {
       )}
 
     </div>
-  );
-}
-
-function ResourceTabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`px-3 py-2 text-sm border-b transition-colors ${
-        active
-          ? "border-blue-500 text-blue-300"
-          : "border-transparent text-gray-500 hover:text-gray-300"
-      }`}
-    >
-      {children}
-    </button>
   );
 }
 

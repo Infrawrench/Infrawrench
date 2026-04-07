@@ -9,6 +9,7 @@ import { getPlugin } from "../plugins/loader";
 import { pinResource, type DraggableResource } from "../lib/pins";
 import { buildPluginHostServices } from "../lib/sql-drivers";
 import { CreateResourceModal } from "../components/CreateResourceModal";
+import { navigateToWorkspaceTarget, resourceTabTarget } from "../lib/workspace-tabs";
 
 export const Route = createFileRoute("/accounts/$accountId")({
   component: AccountPage,
@@ -31,6 +32,7 @@ function AccountPage() {
   const { accountId } = Route.useParams();
   const navigate = useNavigate();
   const bumpAccounts = useUIStore((s) => s.bumpAccounts);
+  const removeWorkspaceTabs = useUIStore((s) => s.removeWorkspaceTabs);
   const [account, setAccount] = useState<AccountRow | null>(null);
   const [groups, setGroups] = useState<ResourceGroup[]>([]);
   const [loading, setLoading] = useState(true);
@@ -164,15 +166,24 @@ function AccountPage() {
     const db = await getDb();
     // Cascade deletes resources, dashboard_pins, secret_field_states, ssh_tunnel_configs via FK
     await db.execute("DELETE FROM accounts WHERE id = $1", [accountId]);
+    removeWorkspaceTabs(
+      useUIStore.getState().workspaceTabs
+        .filter((tab) =>
+          (tab.target.kind === "account" && tab.target.accountId === accountId) ||
+          (tab.target.kind === "resource" && tab.target.accountId === accountId),
+        )
+        .map((tab) => tab.id),
+    );
     bumpAccounts();
     navigate({ to: "/" });
   }
 
   function openDetail(resource: ResourceInstance) {
-    navigate({
-      to: "/resource/$accountId/$resourceId",
-      params: { accountId, resourceId: encodeURIComponent(resource.id) },
-    });
+    void navigateToWorkspaceTarget(
+      navigate,
+      resourceTabTarget(accountId, resource.id),
+      { label: resource.displayName },
+    );
   }
 
   if (loading) {
@@ -259,10 +270,11 @@ function AccountPage() {
           onCreated={(resource) => {
             setCreateTarget(null);
             window.dispatchEvent(new CustomEvent("iw:resources-changed", { detail: { accountId } }));
-            void navigate({
-              to: "/resource/$accountId/$resourceId",
-              params: { accountId, resourceId: encodeURIComponent(resource.id) },
-            });
+            void navigateToWorkspaceTarget(
+              navigate,
+              resourceTabTarget(accountId, resource.id),
+              { label: resource.displayName },
+            );
           }}
         />
       )}

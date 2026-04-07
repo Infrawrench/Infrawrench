@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { getDb } from "../db/client";
 import { useUIStore } from "@infrawrench/ui";
+import { getWorkspaceNavigateArgs } from "../lib/workspace-tabs";
 
 export const Route = createFileRoute("/")({
   component: IndexPage,
@@ -10,11 +11,20 @@ export const Route = createFileRoute("/")({
 function IndexPage() {
   const navigate = useNavigate();
   const bumpDashboardPins = useUIStore((s) => s.bumpDashboardPins);
+  const tabsHydrated = useUIStore((s) => s.tabsHydrated);
+  const workspaceTabs = useUIStore((s) => s.workspaceTabs);
+  const activeWorkspaceTabId = useUIStore((s) => s.activeWorkspaceTabId);
 
   useEffect(() => {
+    if (!tabsHydrated) return;
     let cancelled = false;
     async function redirect() {
       try {
+        const activeTab = workspaceTabs.find((tab) => tab.id === activeWorkspaceTabId) ?? workspaceTabs[0];
+        if (activeTab) {
+          navigate({ ...getWorkspaceNavigateArgs(activeTab.target), replace: true });
+          return;
+        }
         const db = await getDb();
         const rows = await db.select<{ id: string }[]>(
           "SELECT id FROM dashboards WHERE is_default = 1 LIMIT 1",
@@ -49,7 +59,7 @@ function IndexPage() {
     }
     void redirect();
     return () => { cancelled = true; };
-  }, [navigate]);
+  }, [activeWorkspaceTabId, navigate, tabsHydrated, workspaceTabs]);
 
   return (
     <div className="flex items-center justify-center h-full text-gray-600 text-sm">

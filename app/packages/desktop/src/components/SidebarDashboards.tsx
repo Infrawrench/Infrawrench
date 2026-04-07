@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from "react";
-import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
-import { useDroppable } from "@dnd-kit/core";
+import { useNavigate, useRouterState } from "@tanstack/react-router";
+import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { getDb } from "../db/client";
 import { createDashboard } from "../lib/pins";
 import { useUIStore } from "@infrawrench/ui";
+import { dashboardTabTarget, navigateToWorkspaceTarget } from "../lib/workspace-tabs";
 
 interface DashboardRow {
   id: string;
@@ -17,6 +18,7 @@ export function SidebarDashboards() {
   const [newName, setNewName] = useState("");
   const newInputRef = useRef<HTMLInputElement>(null);
   const dashboardPinsVersion = useUIStore((s) => s.dashboardPinsVersion);
+  const removeWorkspaceTabs = useUIStore((s) => s.removeWorkspaceTabs);
   const navigate = useNavigate();
 
   async function load() {
@@ -82,6 +84,7 @@ export function SidebarDashboards() {
               const db = await getDb();
               await db.execute("DELETE FROM dashboard_pins WHERE dashboard_id = $1", [dash.id]);
               await db.execute("DELETE FROM dashboards WHERE id = $1", [dash.id]);
+              removeWorkspaceTabs([`dashboard:${dash.id}`]);
               setDashboards((prev) => prev.filter((d) => d.id !== dash.id));
               // Navigate home if we just deleted the active dashboard
               void navigate({ to: "/" });
@@ -121,14 +124,32 @@ function DroppableDashboardLink({
   dash: DashboardRow;
   onDelete: () => void;
 }) {
+  const navigate = useNavigate();
   const { setNodeRef, isOver } = useDroppable({ id: `sidebar-dashboard:${dash.id}` });
+  const {
+    attributes,
+    listeners,
+    setNodeRef: setDragRef,
+    isDragging,
+  } = useDraggable({
+    id: `sidebar-dashboard-tab:${dash.id}`,
+    data: {
+      workspaceTabTarget: dashboardTabTarget(dash.id),
+      dragLabel: dash.name,
+    },
+  });
   const isHome = dash.is_default === 1;
   const isActive = useRouterState({
     select: (s) => s.location.pathname === `/dashboard/${dash.id}`,
   });
 
+  function setRefs(node: HTMLDivElement | null) {
+    setNodeRef(node);
+    setDragRef(node);
+  }
+
   return (
-    <div ref={setNodeRef} className="mx-2">
+    <div ref={setRefs} className={`mx-2 ${isDragging ? "opacity-40" : ""}`} {...attributes} {...listeners}>
       <div
         className={`group flex items-center rounded-lg text-xs transition-colors ${
           isOver
@@ -136,18 +157,18 @@ function DroppableDashboardLink({
             : isActive
               ? "bg-gray-800 text-gray-100"
               : "text-gray-400 hover:text-gray-200 hover:bg-gray-800"
-        }`}
+        } cursor-grab active:cursor-grabbing`}
       >
-        <Link
-          to="/dashboard/$dashboardId"
-          params={{ dashboardId: dash.id }}
+        <button
+          type="button"
           draggable={false}
+          onClick={() => void navigateToWorkspaceTarget(navigate, dashboardTabTarget(dash.id), { label: dash.name })}
           className="flex flex-1 items-center gap-2 px-3 py-1.5 min-w-0"
         >
           <span className="opacity-50 flex-shrink-0">⊞</span>
           <span className="truncate">{dash.name}</span>
           {isOver && <span className="ml-auto text-blue-400 flex-shrink-0 pr-1">Drop</span>}
-        </Link>
+        </button>
         {!isHome && (
           <button
             onClick={(e) => { e.stopPropagation(); onDelete(); }}
