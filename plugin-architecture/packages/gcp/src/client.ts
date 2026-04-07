@@ -8,6 +8,7 @@ import type {
   SizeOption,
   ImageOption,
   DiskOption,
+  SqlTableMeta,
 } from "@infrawrench/plugin-base";
 import { fetchAccessToken, type ServiceAccountKey } from "./auth.js";
 
@@ -534,7 +535,7 @@ export class GcpClient implements PluginClient {
     // Images: public families + account-owned
     const accountImages: ImageOption[] = (accountImagesData.items ?? [])
       .filter((i) => i.status === "READY")
-      .map((i) => ({ id: i.selfLink, label: i.name, description: i.description, category: "My Images", isOwned: true }));
+      .map((i) => ({ id: i.selfLink, label: i.name, ...(i.description ? { description: i.description } : {}), category: "My Images", isOwned: true as const }));
     const images: ImageOption[] = [...GcpClient.PUBLIC_IMAGES, ...accountImages];
 
     // Existing disks from aggregated list
@@ -698,7 +699,7 @@ export class GcpClient implements PluginClient {
     const base: DetailViewSchema = {
       title: resource.displayName,
       subtitle,
-      status: { kind: "status-dot", status: gcpStatus(statusVal), label: statusVal || undefined },
+      status: { kind: "status-dot", status: gcpStatus(statusVal), ...(statusVal ? { label: statusVal } : {}) },
       sections: [
         {
           kind: "section",
@@ -720,10 +721,112 @@ export class GcpClient implements PluginClient {
 
     if (resource.resourceTypeId === "gcs-bucket") {
       base.storageBrowser = { bucketName: resource.externalId ?? resource.displayName };
-      base.status = undefined;
+      delete base.status;
+    }
+
+    if (resource.resourceTypeId === "bigquery-dataset") {
+      const datasetId = String(resource.fields["name"] ?? "");
+      const tablesJson = resource.resolvedOutputs["__tables__"] ?? "[]";
+      const tables: SqlTableMeta[] = (() => { try { return JSON.parse(tablesJson) as SqlTableMeta[]; } catch { return []; } })();
+      base.sqlEditor = {
+        connectionStringOutputKey: "__bigquery__",
+        defaultQuery: `SELECT * FROM \`${datasetId}.INFORMATION_SCHEMA.TABLES\` LIMIT 20`,
+        tables,
+      };
     }
 
     return base;
+  }
+
+  // ─── BigQuery query execution ─────────────────────────────────────────────
+
+  async executeQuery(resourceId: string, _accountId: string, sql: string): Promise<{ rows: Record<string, unknown>[]; durationMs: number }> {
+    const externalId = resourceId.split(":").slice(2).join(":");
+    const colonIdx = externalId.indexOf(":");
+    const project = externalId.slice(0, colonIdx);
+    const datasetId = externalId.slice(colonIdx + 1);
+    const tok = await this.token();
+    const start = Date.now();
+
+    // Submit query job
+    const jobRes = await fetch(
+      `https://bigquery.googleapis.com/bigquery/v2/projects/${project}/jobs`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          configuration: {
+            query: {
+              query: sql,
+              useLegacySql: false,
+              defaultDataset: { projectId: project, datasetId },
+            },
+          },
+        }),
+      },
+    );
+    if (!jobRes.ok) throw new Error(`BigQuery error ${jobRes.status}: ${await jobRes.text()}`);
+    const job = await jobRes.json() as Record<string, unknown>;
+    const jobRef = job["jobReference"] as Record<string, string>;
+    const jobId = jobRef["jobId"];
+    const location = jobRef["location"];
+
+    // Poll until complete (BigQuery Jobs.getQueryResults has built-in timeout)
+    let data: Record<string, unknown>;
+    for (;;) {
+      const r = await fetch(
+        `https://bigquery.googleapis.com/bigquery/v2/projects/${project}/queries/${jobId}?location=${encodeURIComponent(location ?? "")}&maxResults=1000&timeoutMs=10000`,
+        { headers: { Authorization: `Bearer ${tok}` } },
+      );
+      if (!r.ok) throw new Error(`BigQuery poll error ${r.status}: ${await r.text()}`);
+      data = await r.json() as Record<string, unknown>;
+      if (data["jobComplete"]) break;
+    }
+
+    // Parse schema + rows
+    const schemaFields = ((data["schema"] as Record<string, unknown> | undefined)?.["fields"] as Array<Record<string, unknown>> | undefined) ?? [];
+    const columns = schemaFields.map((f) => String(f["name"]));
+    const rawRows = (data["rows"] as Array<{ f: Array<{ v: unknown }> }> | undefined) ?? [];
+    const rows = rawRows.map((r) => {
+      const obj: Record<string, unknown> = {};
+      r.f.forEach((cell, i) => { obj[columns[i] ?? String(i)] = cell.v; });
+      return obj;
+    });
+
+    return { rows, durationMs: Date.now() - start };
+  }
+
+  async introspectResource(resourceId: string, _accountId: string): Promise<SqlTableMeta[]> {
+    const externalId = resourceId.split(":").slice(2).join(":");
+    const colonIdx = externalId.indexOf(":");
+    const project = externalId.slice(0, colonIdx);
+    const datasetId = externalId.slice(colonIdx + 1);
+
+    const data = await this.get<{ tables?: Array<Record<string, unknown>> }>(
+      `https://bigquery.googleapis.com/bigquery/v2/projects/${project}/datasets/${datasetId}/tables?maxResults=200`,
+    );
+
+    const tableItems = data.tables ?? [];
+    const metas = await Promise.all(
+      tableItems.slice(0, 100).map(async (t): Promise<SqlTableMeta> => {
+        const ref = t["tableReference"] as Record<string, string> | undefined;
+        const tableId = ref?.["tableId"] ?? "";
+        try {
+          const td = await this.get<{ schema?: { fields: Array<Record<string, unknown>> } }>(
+            `https://bigquery.googleapis.com/bigquery/v2/projects/${project}/datasets/${datasetId}/tables/${tableId}`,
+          );
+          return {
+            name: tableId,
+            columns: (td.schema?.fields ?? []).map((f) => ({ name: String(f["name"]), type: String(f["type"]) })),
+            pkColumns: [],
+          };
+        } catch {
+          return { name: tableId, columns: [], pkColumns: [] };
+        }
+      }),
+    );
+
+    return metas;
   }
 
   async getStorageAccessToken(): Promise<string> {
@@ -842,7 +945,7 @@ export class GcpClient implements PluginClient {
           size: Number(obj.size ?? 0),
           lastModified: obj.updated ?? "",
           isDirectory: false,
-          contentType: obj.contentType,
+          ...(obj.contentType ? { contentType: obj.contentType } : {}),
         });
       }
 

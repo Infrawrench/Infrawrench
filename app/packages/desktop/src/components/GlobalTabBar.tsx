@@ -19,13 +19,13 @@ export function GlobalTabBar({
   return (
     <div
       ref={setNodeRef}
-      className={`h-10 shrink-0 border-b border-gray-800/80 bg-gray-950/95 px-3 flex items-center gap-1 overflow-x-auto ${
-        isOver ? "ring-1 ring-inset ring-blue-500/60" : ""
+      className={`h-9 shrink-0 border-b border-gray-800 bg-gray-950 flex items-end gap-0 overflow-x-auto overflow-y-hidden ${
+        isOver ? "ring-1 ring-inset ring-blue-500/40" : ""
       }`}
       style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
     >
       {tabs.length === 0 ? (
-        <div className="px-3 text-xs text-gray-600">
+        <div className="px-4 pb-2 text-xs text-gray-700">
           Drag dashboards, accounts, or resources here to pin tabs
         </div>
       ) : (
@@ -70,20 +70,23 @@ function GlobalTabBarItem({
       ref={setNodeRef}
       {...attributes}
       {...listeners}
-      className={`group min-w-0 max-w-60 flex items-center gap-2 px-3 h-8 rounded-lg border transition-colors cursor-grab active:cursor-grabbing ${
+      className={`group relative min-w-0 max-w-52 flex items-center gap-1.5 px-3 h-8 rounded-t-md transition-colors cursor-grab active:cursor-grabbing select-none ${
         active
-          ? "border-gray-700 bg-gray-900 text-gray-100"
-          : "border-transparent bg-transparent text-gray-500 hover:text-gray-200 hover:bg-gray-900/70"
-      } ${isOver ? "ring-1 ring-inset ring-blue-500/60" : ""} ${isDragging ? "opacity-40" : ""}`}
+          ? "bg-gray-800 text-gray-100 border border-b-0 border-gray-700"
+          : "bg-transparent text-gray-500 border border-transparent hover:text-gray-300 hover:bg-gray-800/50"
+      } ${isOver ? "ring-1 ring-inset ring-blue-500/40" : ""} ${isDragging ? "opacity-40" : ""}`}
       onClick={() => onActivate(tab.id)}
     >
-      <span className="truncate text-sm">{tab.title}</span>
+      {active && (
+        <span className="absolute bottom-0 left-0 right-0 h-px bg-gray-800" />
+      )}
+      <span className="truncate text-xs font-medium">{tab.title}</span>
       <button
         onClick={(e) => {
           e.stopPropagation();
           onClose(tab.id);
         }}
-        className="shrink-0 w-4 h-4 rounded text-gray-600 hover:text-gray-200 hover:bg-gray-700/70 transition-colors opacity-0 group-hover:opacity-100"
+        className="shrink-0 w-3.5 h-3.5 flex items-center justify-center rounded text-gray-600 hover:text-gray-200 hover:bg-gray-700 transition-colors opacity-0 group-hover:opacity-100"
         aria-label={`Close ${tab.title}`}
         title={`Close ${tab.title}`}
       >

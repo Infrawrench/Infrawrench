@@ -80,7 +80,7 @@ export function SshTerminal({ host, port, username, privateKey }: SshTerminalPro
         shellId = id;
 
         window.electronAPI.on(`ssh_shell_data_${id}`, (...args) => {
-          term.write(args[0] as string);
+          term.write(args[0] as Uint8Array);
         });
 
         window.electronAPI.on(`ssh_shell_exit_${id}`, () => {
@@ -119,14 +119,10 @@ export function SshTerminal({ host, port, username, privateKey }: SshTerminalPro
   }, [host, port, username, privateKey]);
 
   return (
-    <div className="flex-1 min-h-0 flex flex-col bg-[#0d0d0d] overflow-hidden">
-      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-gray-800 bg-gray-950 shrink-0">
-        <span className="text-xs text-gray-500 font-mono">{username}@{host}:{port}</span>
-      </div>
+    <div className="h-full w-full relative bg-[#0d0d0d] overflow-hidden">
       <div
         ref={containerRef}
-        className="flex-1 min-h-0 p-2"
-        style={{ contain: "strict" }}
+        className="absolute inset-0 p-2"
       />
     </div>
   );

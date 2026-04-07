@@ -177,6 +177,17 @@ export interface PluginClient {
   deleteResource?(typeId: string, resourceId: string, accountId: string): Promise<void>;
   /** Create a new resource of the given type. Fields are the raw form values. */
   createResource?(typeId: string, accountId: string, fields: Record<string, string>): Promise<ResourceInstance>;
+  /**
+   * Execute a SQL query against a specific resource without using the node SQL driver.
+   * Used for providers with REST-based query APIs (e.g. BigQuery).
+   * The host calls this in place of the standard sql driver path when present.
+   */
+  executeQuery?(resourceId: string, accountId: string, sql: string): Promise<{ rows: Record<string, unknown>[]; durationMs: number }>;
+  /**
+   * Introspect a specific resource's schema (tables, columns) for SQL autocomplete.
+   * Counterpart to introspect() but resource-scoped, for REST-based query providers.
+   */
+  introspectResource?(resourceId: string, accountId: string): Promise<SqlTableMeta[]>;
 }
 
 export interface Plugin {

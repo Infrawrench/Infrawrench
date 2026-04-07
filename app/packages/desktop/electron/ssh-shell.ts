@@ -40,7 +40,7 @@ export function spawnSshShell(
           const send = (data: Buffer | string) => {
             const wc = shells.get(shellId)?.webContents.deref();
             if (wc && !wc.isDestroyed()) {
-              wc.send(`ssh_shell_data_${shellId}`, typeof data === "string" ? data : data.toString("binary"));
+              wc.send(`ssh_shell_data_${shellId}`, typeof data === "string" ? Buffer.from(data, "utf8") : data);
             }
           };
 

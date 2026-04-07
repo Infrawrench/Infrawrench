@@ -64,6 +64,7 @@ function ResourceDetailPage() {
   const [hasStorageToken, setHasStorageToken] = useState(false);
   const [sshConfig, setSshConfig] = useState<{ host: string; port: number; username: string; privateKey: string } | null>(null);
   const [sshHost, setSshHost] = useState<string | null>(null);
+  const [quickSshConnection, setQuickSshConnection] = useState<{ username: string; privateKey: string } | null>(null);
   const setAccountConnected = useUIStore((s) => s.setAccountConnected);
   const removeWorkspaceTabs = useUIStore((s) => s.removeWorkspaceTabs);
   const locationHash = useRouterState({ select: (s) => s.location.hash });
@@ -243,6 +244,21 @@ function ResourceDetailPage() {
             }
             sqlOk = true;
           } catch { /* ignore — console will show the error on first command */ }
+        } else if (client.executeQuery) {
+          // REST-based query provider (e.g. BigQuery) — no node SQL driver needed
+          try {
+            const tables = await client.introspectResource?.(decodedResourceId, accountId) ?? [];
+            const tablesJson = JSON.stringify(tables);
+            enrichedResource = {
+              ...foundResource,
+              resolvedOutputs: { ...foundResource.resolvedOutputs, __tables__: tablesJson },
+            };
+            sqlOk = true;
+            if (!cancelled) {
+              setPgConnected(true);
+              setAccountConnected(accountId, true);
+            }
+          } catch { /* table listing is non-critical — query still works */ }
         } else if (hostServices && cs) {
           try {
             const tables = await client.introspect?.() ?? [];
@@ -317,20 +333,29 @@ function ResourceDetailPage() {
   }, []);
 
   const handleRunQuery = useCallback(async (sql: string): Promise<QueryResult> => {
+    const client = clientRef.current;
+    if (client?.executeQuery) {
+      return client.executeQuery(decodedResourceId, accountId, sql);
+    }
     const cs = connectionStringRef.current;
     const driverId = sqlDriverIdRef.current;
     if (!cs) throw new Error("No active SQL connection");
     const start = performance.now();
     const rows = await sqlQuery(driverId, cs, sql);
     return { rows, durationMs: Math.round(performance.now() - start) };
-  }, []);
+  }, [decodedResourceId, accountId]);
 
   const handleExecute = useCallback(async (sql: string, params: unknown[]): Promise<number> => {
+    const client = clientRef.current;
+    if (client?.executeQuery) {
+      await client.executeQuery(decodedResourceId, accountId, sql);
+      return 0;
+    }
     const cs = connectionStringRef.current;
     const driverId = sqlDriverIdRef.current;
     if (!cs) throw new Error("No active SQL connection");
     return sqlExecute(driverId, cs, sql, params);
-  }, []);
+  }, [decodedResourceId, accountId]);
 
   async function handleDelete() {
     if (!resource || !account) return;
@@ -450,15 +475,47 @@ function ResourceDetailPage() {
                 username={sshConfig.username}
                 privateKey={sshConfig.privateKey}
               />
+            ) : sshHost && quickSshConnection ? (
+              <SshTerminal
+                host={sshHost}
+                port={22}
+                username={quickSshConnection.username}
+                privateKey={quickSshConnection.privateKey}
+              />
             ) : sshHost ? (
-              <SshQuickConnectPanel host={sshHost} />
+              <SshQuickConnectPanel
+                host={sshHost}
+                onConnect={(config) => setQuickSshConnection(config)}
+              />
             ) : null}
           </div>
         )}
       </div>
 
-      {/* Delete bar — only shown for resource types that support deletion */}
-      {canDelete && (
+      {/* SSH bottom bar — connection info + disconnect */}
+      {isSshView && (hasTerminal || quickSshConnection) && (
+        <div className="shrink-0 flex items-center gap-3 px-4 py-2 border-t border-gray-800 bg-gray-950">
+          <span className="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0" />
+          <span className="text-xs font-mono text-gray-400">
+            {sshConfig
+              ? `${sshConfig.username}@${sshConfig.host}:${sshConfig.port}`
+              : quickSshConnection && sshHost
+                ? `${quickSshConnection.username}@${sshHost}:22`
+                : null}
+          </span>
+          {quickSshConnection && (
+            <button
+              onClick={() => setQuickSshConnection(null)}
+              className="ml-auto text-xs text-gray-600 hover:text-gray-300 transition-colors"
+            >
+              Disconnect ✕
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Non-SSH bottom panels — hidden when in SSH view */}
+      {!isSshView && canDelete && (
         <div className="shrink-0 px-4 py-2 border-t border-gray-800 flex items-center justify-end gap-3">
           {confirmDelete ? (
             <>
@@ -491,13 +548,13 @@ function ResourceDetailPage() {
         </div>
       )}
 
-      {!hasSqlEditor && pgError && (
+      {!isSshView && !hasSqlEditor && pgError && (
         <div className="shrink-0 px-4 py-2 border-t border-gray-800 bg-gray-950">
           <span className="text-xs text-red-400 font-mono">SQL connection failed: {pgError}</span>
         </div>
       )}
 
-      {hasSqlEditor && (
+      {!isSshView && hasSqlEditor && (
         <div className="shrink-0 flex justify-end px-4 py-2 border-t border-gray-800 bg-gray-950">
           <button
             onClick={() => setAssignModalOutput(schema.sqlEditor!.connectionStringOutputKey)}
@@ -508,7 +565,7 @@ function ResourceDetailPage() {
         </div>
       )}
 
-      {isKvPlugin && (
+      {!isSshView && isKvPlugin && (
         <KvConsole
           connectionString={connectionStringRef.current}
           driverName={kvDriverName ?? "redis"}
@@ -516,7 +573,7 @@ function ResourceDetailPage() {
         />
       )}
 
-      {isDockerPlugin && resource && (
+      {!isSshView && isDockerPlugin && resource && (
         <DockerActionsPanel
           containerId={String(resource.resolvedOutputs["containerId"] ?? resource.externalId ?? "")}
           driverId={dockerDriverName ?? "docker"}
@@ -524,7 +581,7 @@ function ResourceDetailPage() {
         />
       )}
 
-      {hasStorageBrowser && (
+      {!isSshView && hasStorageBrowser && (
         <GcsBrowserPanel
           bucketName={schema.storageBrowser!.bucketName}
           onList={(prefix) => clientRef.current!.listStorageObjects!(schema.storageBrowser!.bucketName, prefix)}

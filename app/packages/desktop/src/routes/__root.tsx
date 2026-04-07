@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { createRootRoute, Outlet, useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
 import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
-import { normalizeResourceId, useUIStore, type WorkspaceTab, type WorkspaceTabTarget } from "@infrawrench/ui";
+import { getWorkspaceTabId, normalizeResourceId, useUIStore, type WorkspaceTab, type WorkspaceTabTarget } from "@infrawrench/ui";
 import { AddAccountModal } from "../components/AddAccountModal";
 import { GlobalTabBar } from "../components/GlobalTabBar";
 import { SidebarAccounts } from "../components/SidebarAccounts";
@@ -119,13 +119,17 @@ function RootLayout() {
   useEffect(() => {
     if (!tabsHydrated) return;
     const currentTarget = syncWorkspaceRouteFromPath(pathname, hash);
-    if (currentTarget) {
-      syncWorkspaceRoute(currentTarget);
-      setActiveDashboard(currentTarget.kind === "dashboard" ? currentTarget.dashboardId : null);
-    } else {
+    if (!currentTarget) {
       setActiveDashboard(null);
+      return;
     }
-  }, [hash, pathname, setActiveDashboard, syncWorkspaceRoute, tabsHydrated]);
+    setActiveDashboard(currentTarget.kind === "dashboard" ? currentTarget.dashboardId : null);
+    // Skip sync if the active tab already matches the current URL — this prevents
+    // syncWorkspaceRoute (reuse-active) from replacing a pinned tab that was just
+    // set as active by pinWorkspaceTab right before navigate() was called.
+    if (activeWorkspaceTabId === getWorkspaceTabId(currentTarget)) return;
+    syncWorkspaceRoute(currentTarget);
+  }, [hash, pathname, activeWorkspaceTabId, setActiveDashboard, syncWorkspaceRoute, tabsHydrated]);
 
   useEffect(() => {
     if (!tabsHydrated || tabsValidated) return;
