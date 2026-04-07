@@ -17,6 +17,7 @@ const PLUGIN_MODULES: Record<string, () => Promise<{ plugin: Plugin }>> = {
   "@infrawrench/plugin-gcp": () => import("@infrawrench/plugin-gcp"),
   "@infrawrench/plugin-kubernetes": () => import("@infrawrench/plugin-kubernetes"),
   "@infrawrench/plugin-memcached": () => import("@infrawrench/plugin-memcached"),
+  "@infrawrench/plugin-mongodb": () => import("@infrawrench/plugin-mongodb"),
   "@infrawrench/plugin-mysql": () => import("@infrawrench/plugin-mysql"),
   "@infrawrench/plugin-postgres": () => import("@infrawrench/plugin-postgres"),
   "@infrawrench/plugin-redis": () => import("@infrawrench/plugin-redis"),

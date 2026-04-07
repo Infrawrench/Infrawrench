@@ -94,7 +94,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
           kvCredentialKey: m.kvDriver?.credentialKey,
           dockerDriverName: m.dockerDriver?.driver,
           dockerCredentialKey: m.dockerDriver?.credentialKey,
-          tableCountLabel: m.dockerDriver ? "Running" : "Tables",
+          tableCountLabel: m.dockerDriver ? "Running" : m.kvDriver?.driver === "mongodb" ? "Collections" : "Tables",
           storageResourceTypeIds: p.plugin.resourceTypes
             .filter((t) => t.supportsStorageBrowser)
             .map((t) => t.id),

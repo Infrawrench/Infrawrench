@@ -9,6 +9,7 @@ import { getSqlSession, setSqlSession } from "../lib/sql-session";
 import { sqlQuery, sqlExecute, buildHostServices, buildKvHostServices, kvCommand, buildDockerHostServices, buildPluginHostServices } from "../lib/sql-drivers";
 import { resolveTunneledHost } from "../lib/ssh-tunnel";
 import { DockerActionsPanel } from "../components/DockerActionsPanel";
+import { MongoDocumentBrowser } from "../components/MongoDocumentBrowser";
 import { GcsBrowserPanel } from "../components/GcsBrowserPanel";
 import { SftpBrowserPanel } from "../components/SftpBrowserPanel";
 import { SshTerminal } from "../components/SshTerminal";
@@ -190,6 +191,7 @@ function ResourceDetailPage() {
           setKvDriverName(kvDriverDecl?.driver ?? null);
           setIsDockerPlugin(isDocker);
           setDockerDriverName(dockerDriverDecl?.driver ?? null);
+          if (kvDriverDecl?.driver === "mongodb") setDetailsCollapsed(true);
         }
         const cs = sqlDriverDecl
           ? credentials[sqlDriverDecl.credentialKey]
@@ -466,7 +468,8 @@ function ResourceDetailPage() {
   const isSshView = currentView === "ssh";
   const isSftpView = currentView === "sftp";
   const hasSftpBrowser = !!sshConfig || !!sshHost;
-  const hasCollapsibleDetails = hasStorageBrowser;
+  const isMongoPlugin = isKvPlugin && kvDriverName === "mongodb";
+  const hasCollapsibleDetails = hasStorageBrowser || isMongoPlugin;
 
   function openSshTab() {
     void navigateToWorkspaceTarget(
@@ -648,7 +651,15 @@ function ResourceDetailPage() {
         </div>
       )}
 
-      {!isSshView && !isSftpView && isKvPlugin && (
+      {!isSshView && !isSftpView && isKvPlugin && kvDriverName === "mongodb" && resource && (
+        <MongoDocumentBrowser
+          connectionString={connectionStringRef.current}
+          databaseName={String(resource.fields["database"] ?? "test")}
+          connected={kvConnected}
+        />
+      )}
+
+      {!isSshView && !isSftpView && isKvPlugin && kvDriverName !== "mongodb" && (
         <KvConsole
           connectionString={connectionStringRef.current}
           driverName={kvDriverName ?? "redis"}

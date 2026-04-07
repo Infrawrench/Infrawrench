@@ -1,0 +1,40 @@
+{
+  "name": "@infrawrench/plugin-mongodb",
+  "version": "0.1.0",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs",
+      "types": "./dist/index.d.ts"
+    },
+    "./driver": {
+      "require": "./dist/driver.cjs",
+      "types": "./dist/driver.d.cts"
+    }
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@infrawrench/plugin-base": "workspace:*"
+  },
+  "peerDependencies": {
+    "mongodb": ">=6"
+  },
+  "devDependencies": {
+    "mongodb": "^6.12.0",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  }
+}
