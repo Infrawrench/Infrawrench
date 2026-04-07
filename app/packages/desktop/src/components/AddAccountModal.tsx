@@ -16,7 +16,6 @@ type Step = "pick-plugin" | "enter-credentials";
 interface PluginOption {
   id: string;
   displayName: string;
-  description: string;
   logoSvg: string;
   credentialFields: CredentialField[];
 }
@@ -29,6 +28,7 @@ export function AddAccountModal({ onClose, onAdded }: AddAccountModalProps) {
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
 
   // Load plugins on mount
   if (plugins === null) {
@@ -38,7 +38,6 @@ export function AddAccountModal({ onClose, onAdded }: AddAccountModalProps) {
         loaded.map((l) => ({
           id: l.plugin.manifest.id,
           displayName: l.plugin.manifest.displayName,
-          description: l.plugin.manifest.description,
           logoSvg: l.plugin.manifest.logoSvg,
           credentialFields: l.plugin.manifest.credentialFields,
         })),
@@ -112,27 +111,32 @@ export function AddAccountModal({ onClose, onAdded }: AddAccountModalProps) {
 
         <div className="p-5">
           {step === "pick-plugin" && (
-            <div className="space-y-2">
-              <p className="text-xs text-gray-500 mb-3">Choose a plugin to connect</p>
+            <div>
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search plugins…"
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-gray-500 mb-3"
+                autoFocus
+              />
               {plugins === null || plugins.length === 0 ? (
                 <p className="text-xs text-gray-600">Loading plugins…</p>
               ) : (
-                plugins.map((p) => (
-                  <button
-                    key={p.id}
-                    onClick={() => pickPlugin(p)}
-                    className="w-full flex items-center gap-3 px-3 py-3 rounded-lg border border-gray-800 hover:border-gray-600 hover:bg-gray-800 transition-colors text-left"
-                  >
-                    <div
-                      className="w-8 h-8 flex-shrink-0"
-                      dangerouslySetInnerHTML={{ __html: p.logoSvg }}
-                    />
-                    <div>
-                      <div className="text-sm font-medium text-gray-200">{p.displayName}</div>
-                      <div className="text-xs text-gray-500 line-clamp-1">{p.description}</div>
-                    </div>
-                  </button>
-                ))
+                <div className="flex flex-wrap gap-2 max-h-[320px] overflow-y-auto">
+                  {plugins.filter((p) => p.displayName.toLowerCase().includes(search.toLowerCase())).map((p) => (
+                    <button
+                      key={p.id}
+                      onClick={() => pickPlugin(p)}
+                      className="flex items-center gap-2 px-3 py-2 rounded-full border border-gray-700 hover:border-gray-500 hover:bg-gray-800 transition-colors"
+                    >
+                      <div
+                        className="w-5 h-5 flex-shrink-0"
+                        dangerouslySetInnerHTML={{ __html: p.logoSvg }}
+                      />
+                      <span className="text-sm font-medium text-gray-200 whitespace-nowrap">{p.displayName}</span>
+                    </button>
+                  ))}
+                </div>
               )}
             </div>
           )}

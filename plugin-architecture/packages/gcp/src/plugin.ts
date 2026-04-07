@@ -26,7 +26,6 @@ const manifest: PluginManifest = {
   id: "gcp",
   version: "0.1.0",
   displayName: "Google Cloud",
-  description: "Manage Google Cloud resources: Compute, GKE, Cloud SQL, Cloud Run, Storage, BigQuery, and more.",
   logoSvg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     <rect width="100" height="100" rx="12" fill="#4285F4"/>
     <g transform="translate(12,12) scale(3.167)" fill="white">

@@ -6,7 +6,6 @@ const manifest: PluginManifest = {
   id: "ssh",
   version: "0.1.0",
   displayName: "SSH",
-  description: "Connect to remote servers via SSH with a full terminal.",
   logoSvg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     <rect width="100" height="100" rx="12" fill="#1a1a2e"/>
     <text x="50" y="62" font-size="34" text-anchor="middle" fill="#4ade80" font-family="monospace" font-weight="bold">&gt;_</text>

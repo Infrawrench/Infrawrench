@@ -6,7 +6,7 @@ export const pluginManifestSchema = z.object({
     .string()
     .regex(/^\d+\.\d+\.\d+/, "version must be semver"),
   displayName: z.string().min(1),
-  description: z.string().min(1),
+  description: z.string().optional(),
   logoSvg: z.string().min(1),
   author: z.string().min(1),
   license: z.literal("MIT"),

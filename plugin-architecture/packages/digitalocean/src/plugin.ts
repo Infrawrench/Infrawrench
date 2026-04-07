@@ -10,7 +10,6 @@ const manifest: PluginManifest = {
   id: "digitalocean",
   version: "0.1.0",
   displayName: "DigitalOcean",
-  description: "Manage DigitalOcean resources: Droplets, DOKS clusters, Managed Databases, Spaces, and more.",
   logoSvg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     <rect width="100" height="100" rx="12" fill="#0080FF"/>
     <g transform="translate(12,12) scale(3.167)" fill="white">

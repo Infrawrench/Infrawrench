@@ -2,8 +2,11 @@ import { useState, useCallback } from "react";
 import { invoke } from "../lib/invoke";
 import { getDb } from "../db/client";
 import { sshExecCommand, sshOpenTunnel } from "../lib/ssh-tunnel";
+import { useUIStore } from "@infrawrench/ui";
 import { formatErrorMessage } from "../lib/errors";
+import { pinResource } from "../lib/pins";
 import { ErrorNotice } from "./ErrorNotice";
+import { SshKeyPicker } from "./SshKeyPicker";
 
 type Step = "credentials" | "checking" | "installing" | "configuring" | "done";
 
@@ -18,32 +21,15 @@ export function DockerSetupModal({ sshHost, sourceAccountId, onClose, onComplete
   const [sshUser, setSshUser] = useState("root");
   const [sshPort, setSshPort] = useState(22);
   const [privateKey, setPrivateKey] = useState("");
+  const [accountName, setAccountName] = useState(`Docker on ${sshHost}`);
   const [step, setStep] = useState<Step>("credentials");
   const [log, setLog] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [dockerVersion, setDockerVersion] = useState<string | null>(null);
-
-  // System key picker
-  const [systemKeys, setSystemKeys] = useState<{ name: string }[] | null>(null);
-  const [loadingKeys, setLoadingKeys] = useState(false);
-
-  async function loadSystemKeys() {
-    setLoadingKeys(true);
-    try {
-      const keys = await invoke<{ name: string }[]>("ssh_list_system_keys");
-      setSystemKeys(keys);
-    } catch {
-      setSystemKeys([]);
-    } finally {
-      setLoadingKeys(false);
-    }
-  }
-
-  async function selectSystemKey(name: string) {
-    const content = await invoke<string>("ssh_read_system_key", { name });
-    setPrivateKey(content);
-    setSystemKeys(null);
-  }
+  const [createdAccountId, setCreatedAccountId] = useState<string | null>(null);
+  const [pinnedToDashboard, setPinnedToDashboard] = useState(false);
+  const [dashboards, setDashboards] = useState<{ id: string; name: string }[]>([]);
+  const [showDashboardPicker, setShowDashboardPicker] = useState(false);
 
   function appendLog(msg: string) {
     setLog((prev) => [...prev, msg]);
@@ -60,8 +46,13 @@ export function DockerSetupModal({ sshHost, sourceAccountId, onClose, onComplete
     return sshExecCommand(sshConfig(), command);
   }
 
+  /** Prefix with sudo when not connecting as root */
+  function sudo(cmd: string): string {
+    return sshUser === "root" ? cmd : `sudo ${cmd}`;
+  }
+
   async function startSetup() {
-    if (!privateKey.trim()) { setError("SSH private key is required"); return; }
+    if (!privateKey.trim()) { setError("Select an SSH key first"); return; }
     setError(null);
     setLog([]);
     setStep("checking");
@@ -79,13 +70,12 @@ export function DockerSetupModal({ sshHost, sourceAccountId, onClose, onComplete
         appendLog("Docker not found. Installing...");
         setStep("installing");
 
-        const installResult = await exec("curl -fsSL https://get.docker.com | sh 2>&1");
+        const installResult = await exec(`curl -fsSL https://get.docker.com | ${sudo("sh")} 2>&1`);
         if (installResult.code !== 0) {
           throw new Error("Docker installation failed:\n" + (installResult.stderr || installResult.stdout).slice(0, 500));
         }
         appendLog("Docker installed successfully.");
 
-        // Verify installation
         const verifyResult = await exec("docker --version");
         if (verifyResult.code !== 0) {
           throw new Error("Docker installed but not accessible: " + verifyResult.stderr);
@@ -96,7 +86,7 @@ export function DockerSetupModal({ sshHost, sourceAccountId, onClose, onComplete
 
       // Step 2: Ensure Docker is running
       appendLog("Ensuring Docker service is running...");
-      await exec("systemctl start docker 2>/dev/null || service docker start 2>/dev/null");
+      await exec(sudo("systemctl start docker 2>/dev/null || service docker start 2>/dev/null"));
 
       // Step 3: Check if Docker is listening on TCP
       setStep("configuring");
@@ -107,16 +97,13 @@ export function DockerSetupModal({ sshHost, sourceAccountId, onClose, onComplete
       if (tcpCheck.code !== 0 || !tcpCheck.stdout.includes("ApiVersion")) {
         appendLog("Configuring Docker to listen on TCP 127.0.0.1:2375...");
 
-        // Create systemd override to add TCP listener (bound to localhost only for security)
+        // Use printf piped to tee to avoid heredoc issues over SSH
+        const confContent = "[Service]\\nExecStart=\\nExecStart=/usr/bin/dockerd -H fd:// -H tcp://127.0.0.1:2375";
         const overrideCmd = [
-          "mkdir -p /etc/systemd/system/docker.service.d",
-          `cat > /etc/systemd/system/docker.service.d/tcp.conf << 'EOCONF'
-[Service]
-ExecStart=
-ExecStart=/usr/bin/dockerd -H fd:// -H tcp://127.0.0.1:2375
-EOCONF`,
-          "systemctl daemon-reload",
-          "systemctl restart docker",
+          sudo("mkdir -p /etc/systemd/system/docker.service.d"),
+          `printf '${confContent}\\n' | ${sudo("tee /etc/systemd/system/docker.service.d/tcp.conf > /dev/null")}`,
+          sudo("systemctl daemon-reload"),
+          sudo("systemctl restart docker"),
         ].join(" && ");
 
         const configResult = await exec(overrideCmd);
@@ -125,10 +112,8 @@ EOCONF`,
         }
         appendLog("Docker TCP listener configured on 127.0.0.1:2375.");
 
-        // Wait a moment for Docker to restart
         await exec("sleep 2");
 
-        // Verify TCP
         const verifyTcp = await exec("curl -s --max-time 5 http://127.0.0.1:2375/version");
         if (verifyTcp.code !== 0 || !verifyTcp.stdout.includes("ApiVersion")) {
           throw new Error("Docker TCP listener not responding after configuration");
@@ -147,7 +132,6 @@ EOCONF`,
       });
       appendLog(`Tunnel open: localhost:${localPort} -> ${sshHost}:2375`);
 
-      // Create the Docker account
       const db = await getDb();
       const newAccountId = crypto.randomUUID();
 
@@ -161,13 +145,12 @@ EOCONF`,
         { plaintext: privateKey.trim() },
       );
 
-      const displayName = `Docker on ${sshHost}`;
+      const displayName = accountName;
       await db.execute(
         "INSERT INTO accounts (id, plugin_id, display_name, encrypted_credentials, credentials_iv) VALUES ($1, $2, $3, $4, $5)",
         [newAccountId, "docker", displayName, credCiphertext, credIv],
       );
 
-      // Save SSH tunnel config
       const tunnelConfigId = crypto.randomUUID();
       await db.execute(
         `INSERT OR REPLACE INTO ssh_tunnel_configs
@@ -177,6 +160,8 @@ EOCONF`,
       );
 
       appendLog("Docker account created.");
+      setCreatedAccountId(newAccountId);
+      useUIStore.getState().bumpAccounts();
       setStep("done");
     } catch (e) {
       setError(formatErrorMessage(e));
@@ -198,57 +183,30 @@ EOCONF`,
         <div className="p-6 space-y-4">
           {step === "credentials" && (
             <>
-              {/* SSH credentials */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">SSH User</label>
-                  <input
-                    value={sshUser}
-                    onChange={(e) => setSshUser(e.target.value)}
-                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-500 mb-1">SSH Port</label>
-                  <input
-                    type="number"
-                    value={sshPort}
-                    onChange={(e) => setSshPort(Number(e.target.value))}
-                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-blue-500"
-                  />
-                </div>
+              <div className="flex items-center gap-3">
+                <label className="text-xs text-gray-500 w-20 shrink-0">Name</label>
+                <input
+                  value={accountName}
+                  onChange={(e) => setAccountName(e.target.value)}
+                  className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-200 focus:outline-none focus:border-gray-500"
+                  placeholder={`Docker on ${sshHost}`}
+                  spellCheck={false}
+                />
               </div>
 
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs text-gray-500">SSH Private Key (PEM)</label>
-                  <button
-                    onClick={() => void loadSystemKeys()}
-                    disabled={loadingKeys}
-                    className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
-                  >
-                    {loadingKeys ? "Loading..." : "Use system key"}
-                  </button>
-                </div>
-                {systemKeys && systemKeys.length > 0 && (
-                  <div className="mb-2 flex flex-wrap gap-1">
-                    {systemKeys.map((k) => (
-                      <button
-                        key={k.name}
-                        onClick={() => void selectSystemKey(k.name)}
-                        className="px-2 py-1 rounded bg-gray-800 border border-gray-700 text-xs text-gray-300 hover:border-blue-500 hover:text-blue-300 transition-colors"
-                      >
-                        ~/.ssh/{k.name}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                <textarea
-                  value={privateKey}
-                  onChange={(e) => setPrivateKey(e.target.value)}
-                  placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"
-                  rows={5}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-xs text-gray-200 font-mono focus:outline-none focus:border-blue-500 resize-none"
+              <SshKeyPicker
+                username={sshUser}
+                onUsernameChange={setSshUser}
+                onKeyResolved={setPrivateKey}
+              />
+
+              <div className="flex items-center gap-3">
+                <label className="text-xs text-gray-500 w-20 shrink-0">SSH Port</label>
+                <input
+                  type="number"
+                  value={sshPort}
+                  onChange={(e) => setSshPort(Number(e.target.value))}
+                  className="w-24 bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-200 font-mono focus:outline-none focus:border-gray-500"
                 />
               </div>
 
@@ -267,7 +225,6 @@ EOCONF`,
           {/* Progress log */}
           {step !== "credentials" && (
             <div className="space-y-3">
-              {/* Step indicators */}
               <div className="flex items-center gap-6 text-xs">
                 <StepIndicator label="Check" active={step === "checking"} done={step !== "checking"} />
                 <StepIndicator label="Install" active={step === "installing"} done={step === "configuring" || step === "done"} />
@@ -275,7 +232,6 @@ EOCONF`,
                 <StepIndicator label="Done" active={step === "done"} done={false} />
               </div>
 
-              {/* Log output */}
               <div className="bg-gray-950 rounded-lg p-3 max-h-[200px] overflow-y-auto">
                 {log.map((line, i) => (
                   <div key={i} className="text-xs font-mono text-gray-400 leading-relaxed">
@@ -314,30 +270,84 @@ EOCONF`,
           {step === "credentials" && (
             <button
               onClick={() => void startSetup()}
-              className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
+              disabled={!privateKey.trim()}
+              className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors disabled:opacity-50"
             >
               Start Setup
             </button>
           )}
-          {step === "done" && (
-            <button
-              onClick={() => {
-                // Find the account ID from the log — it was created during setup
-                // We need to get the account ID; let's use a ref or find it from DB
-                void (async () => {
-                  const db = await getDb();
-                  const rows = await db.select<{ id: string }[]>(
-                    "SELECT a.id FROM accounts a INNER JOIN ssh_tunnel_configs s ON s.account_id = a.id WHERE s.ssh_host = $1 AND a.plugin_id = 'docker' ORDER BY a.rowid DESC LIMIT 1",
-                    [sshHost],
-                  );
-                  if (rows[0]) onComplete(rows[0].id);
-                  else onClose();
-                })();
-              }}
-              className="px-4 py-2 text-sm bg-green-600 hover:bg-green-500 text-white rounded-lg transition-colors"
-            >
-              Open Docker Dashboard
-            </button>
+          {step === "done" && createdAccountId && (
+            <>
+              <div className="relative">
+                <button
+                  onClick={() => {
+                    if (pinnedToDashboard) return;
+                    void (async () => {
+                      const db = await getDb();
+                      const rows = await db.select<{ id: string; name: string }[]>(
+                        "SELECT id, name FROM dashboards ORDER BY is_default DESC, name ASC",
+                      );
+                      if (rows.length <= 1) {
+                        // Only one (or zero) dashboard — pin directly
+                        await pinResource({
+                          id: createdAccountId,
+                          pluginId: "docker",
+                          resourceTypeId: "__account__",
+                          accountId: createdAccountId,
+                          displayName: accountName,
+                          fields: { pluginId: "docker", pluginDisplayName: "Docker" },
+                        }, db, rows[0]?.id);
+                        setPinnedToDashboard(true);
+                      } else {
+                        setDashboards(rows);
+                        setShowDashboardPicker(true);
+                      }
+                    })();
+                  }}
+                  disabled={pinnedToDashboard}
+                  className={`px-4 py-2 text-sm rounded-lg transition-colors ${
+                    pinnedToDashboard
+                      ? "bg-gray-700 text-gray-400"
+                      : "bg-gray-700 hover:bg-gray-600 text-gray-200"
+                  }`}
+                >
+                  {pinnedToDashboard ? "Added to Dashboard" : "Add to Dashboard"}
+                </button>
+                {showDashboardPicker && (
+                  <div className="absolute bottom-full mb-1 right-0 bg-gray-800 border border-gray-700 rounded-lg shadow-xl py-1 min-w-[180px] z-10">
+                    {dashboards.map((d) => (
+                      <button
+                        key={d.id}
+                        onClick={() => {
+                          setShowDashboardPicker(false);
+                          void (async () => {
+                            const db = await getDb();
+                            await pinResource({
+                              id: createdAccountId,
+                              pluginId: "docker",
+                              resourceTypeId: "__account__",
+                              accountId: createdAccountId,
+                              displayName: accountName,
+                              fields: { pluginId: "docker", pluginDisplayName: "Docker" },
+                            }, db, d.id);
+                            setPinnedToDashboard(true);
+                          })();
+                        }}
+                        className="w-full px-3 py-2 text-xs text-gray-200 hover:bg-gray-700 text-left"
+                      >
+                        {d.name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={() => onComplete(createdAccountId)}
+                className="px-4 py-2 text-sm bg-green-600 hover:bg-green-500 text-white rounded-lg transition-colors"
+              >
+                Open Docker
+              </button>
+            </>
           )}
           {error && step !== "credentials" && (
             <button

@@ -6,7 +6,6 @@ const manifest: PluginManifest = {
   id: "mysql",
   version: "0.1.0",
   displayName: "MySQL",
-  description: "Connect to and inspect MySQL databases.",
   logoSvg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     <rect width="100" height="100" rx="12" fill="#4479A1"/>
     <g transform="translate(12,12) scale(3.167)" fill="white">

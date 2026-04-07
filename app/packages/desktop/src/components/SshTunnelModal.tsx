@@ -2,8 +2,10 @@ import { useState } from "react";
 import { invoke } from "../lib/invoke";
 import { getDb } from "../db/client";
 import { sshOpenTunnel } from "../lib/ssh-tunnel";
+import { useUIStore } from "@infrawrench/ui";
 import { formatErrorMessage } from "../lib/errors";
 import { ErrorNotice } from "./ErrorNotice";
+import { SshKeyPicker } from "./SshKeyPicker";
 
 const PRESETS = {
   docker:    { label: "Docker",     pluginId: "docker",    port: 2375 },
@@ -11,7 +13,7 @@ const PRESETS = {
   mysql:     { label: "MySQL",      pluginId: "mysql",     port: 3306 },
   redis:     { label: "Redis",      pluginId: "redis",     port: 6379 },
   memcached: { label: "Memcached",  pluginId: "memcached", port: 11211 },
-  custom:    { label: "Custom…",    pluginId: null,        port: 0 },
+  custom:    { label: "Custom...",  pluginId: null,        port: 0 },
 } as const;
 
 type PresetKey = keyof typeof PRESETS;
@@ -53,7 +55,7 @@ export function SshTunnelModal({ sshHost, sourceAccountId, onClose, onTunnelEsta
   const remotePort = service === "custom" ? customPort : preset.port;
 
   async function onConfirm() {
-    if (!privateKey.trim()) { setError("SSH private key is required"); return; }
+    if (!privateKey.trim()) { setError("Select an SSH key first"); return; }
     if (service === "custom" && !customPort) { setError("Remote port is required"); return; }
     const pluginId = preset.pluginId;
     if (!pluginId) { setError("Select a service type"); return; }
@@ -102,6 +104,7 @@ export function SshTunnelModal({ sshHost, sourceAccountId, onClose, onTunnelEsta
       );
 
       void localPort; // tunnel is live; the new account will re-use or re-open it
+      useUIStore.getState().bumpAccounts();
       onTunnelEstablished(newAccountId);
     } catch (e) {
       setError(formatErrorMessage(e));
@@ -119,35 +122,19 @@ export function SshTunnelModal({ sshHost, sourceAccountId, onClose, onTunnelEsta
         </div>
 
         <div className="p-6 space-y-4">
-          {/* SSH credentials */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">SSH User</label>
-              <input
-                value={sshUser}
-                onChange={(e) => setSshUser(e.target.value)}
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-blue-500"
-              />
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">SSH Port</label>
-              <input
-                type="number"
-                value={sshPort}
-                onChange={(e) => setSshPort(Number(e.target.value))}
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-blue-500"
-              />
-            </div>
-          </div>
+          <SshKeyPicker
+            username={sshUser}
+            onUsernameChange={setSshUser}
+            onKeyResolved={setPrivateKey}
+          />
 
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">SSH Private Key (PEM)</label>
-            <textarea
-              value={privateKey}
-              onChange={(e) => setPrivateKey(e.target.value)}
-              placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"
-              rows={5}
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-xs text-gray-200 font-mono focus:outline-none focus:border-blue-500 resize-none"
+          <div className="flex items-center gap-3">
+            <label className="text-xs text-gray-500 w-20 shrink-0">SSH Port</label>
+            <input
+              type="number"
+              value={sshPort}
+              onChange={(e) => setSshPort(Number(e.target.value))}
+              className="w-24 bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-200 font-mono focus:outline-none focus:border-gray-500"
             />
           </div>
 
@@ -173,13 +160,13 @@ export function SshTunnelModal({ sshHost, sourceAccountId, onClose, onTunnelEsta
           </div>
 
           {service === "custom" && (
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">Remote Port</label>
+            <div className="flex items-center gap-3">
+              <label className="text-xs text-gray-500 w-20 shrink-0">Remote Port</label>
               <input
                 type="number"
                 value={customPort}
                 onChange={(e) => setCustomPort(Number(e.target.value))}
-                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:border-blue-500"
+                className="w-24 bg-gray-800 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-gray-200 font-mono focus:outline-none focus:border-gray-500"
               />
             </div>
           )}
@@ -203,10 +190,10 @@ export function SshTunnelModal({ sshHost, sourceAccountId, onClose, onTunnelEsta
           </button>
           <button
             onClick={() => void onConfirm()}
-            disabled={connecting}
+            disabled={connecting || !privateKey.trim()}
             className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors disabled:opacity-50"
           >
-            {connecting ? "Connecting…" : "Connect"}
+            {connecting ? "Connecting..." : "Connect"}
           </button>
         </div>
       </div>

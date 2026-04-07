@@ -55,7 +55,7 @@ export interface PluginManifest {
   id: string;
   version: string;
   displayName: string;
-  description: string;
+  description?: string;
   /** Raw SVG string — injected by the host into dashboard cards */
   logoSvg: string;
   author: string;

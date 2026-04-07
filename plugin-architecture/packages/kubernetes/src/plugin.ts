@@ -17,7 +17,6 @@ const manifest: PluginManifest = {
   id: "kubernetes",
   version: "0.1.0",
   displayName: "Kubernetes",
-  description: "Manage Kubernetes clusters — connects via kubeconfig (literal or from a DOKS cluster).",
   logoSvg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     <rect width="100" height="100" rx="12" fill="#326CE5"/>
     <g transform="translate(12,12) scale(3.167)" fill="white">

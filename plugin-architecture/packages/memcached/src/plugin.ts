@@ -6,7 +6,6 @@ const manifest: PluginManifest = {
   id: "memcached",
   version: "0.1.0",
   displayName: "Memcached",
-  description: "Connect to and inspect Memcached instances.",
   logoSvg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     <rect width="100" height="100" rx="12" fill="#6B8E23"/>
     <text x="50" y="65" font-size="42" text-anchor="middle" fill="white" font-family="monospace" font-weight="bold">MC</text>

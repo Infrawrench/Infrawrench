@@ -7,7 +7,6 @@ const manifest: PluginManifest = {
   id: "postgres",
   version: "0.1.0",
   displayName: "PostgreSQL",
-  description: "Connect to and inspect PostgreSQL databases — connection string can be linked to a DigitalOcean Managed Database.",
   logoSvg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     <rect width="100" height="100" rx="12" fill="#336791"/>
     <g transform="translate(12,12) scale(3.167)" fill="white">

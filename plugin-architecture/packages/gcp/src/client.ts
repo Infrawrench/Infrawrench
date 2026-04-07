@@ -426,21 +426,34 @@ export class GcpClient implements PluginClient {
         const usageType = sku.category?.usageType;
         const description = sku.description ?? "";
         if (usageType !== "OnDemand") continue;
+
+        // Disk SKUs use serviceRegions instead of geo in description
+        if (
+          pdBalancedGbMonthUsd == null &&
+          family === "Storage" &&
+          description.includes("Balanced PD Capacity") &&
+          !description.includes("Regional")
+        ) {
+          const regions = sku.serviceRegions ?? [];
+          const geoRegionPrefixes: Record<string, string[]> = {
+            Americas: ["us-", "northamerica-", "southamerica-"],
+            EMEA: ["europe-", "me-", "africa-"],
+            APAC: ["asia-", "australia-"],
+          };
+          const prefixes = geoRegionPrefixes[geo] ?? [];
+          const matchesGeo = regions.some((r) => prefixes.some((p) => r.startsWith(p)));
+          if (matchesGeo) {
+            const pdRate = this.unitPriceToUsd(
+              sku.pricingInfo?.[0]?.pricingExpression?.tieredRates?.[0]?.unitPrice,
+            );
+            if (pdRate > 0) pdBalancedGbMonthUsd = pdRate;
+          }
+        }
+
         const inTargetGeo =
           description.includes(`running in ${geo}`) ||
           description.includes(`in ${geo}`);
         if (!inTargetGeo) continue;
-
-        if (
-          pdBalancedGbMonthUsd == null &&
-          description.includes("Balanced PD Capacity") &&
-          !description.includes("Regional")
-        ) {
-          const pdRate = this.unitPriceToUsd(
-            sku.pricingInfo?.[0]?.pricingExpression?.tieredRates?.[0]?.unitPrice,
-          );
-          if (pdRate > 0) pdBalancedGbMonthUsd = pdRate;
-        }
 
         if (family !== "Compute") continue;
 

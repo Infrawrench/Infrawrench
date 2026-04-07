@@ -15,6 +15,8 @@ import { SftpBrowserPanel } from "../components/SftpBrowserPanel";
 import { SshTerminal } from "../components/SshTerminal";
 import { SshQuickConnectPanel } from "../components/SshQuickConnectPanel";
 import { PeerPaneView } from "../components/PeerPaneView";
+import { SshTunnelModal } from "../components/SshTunnelModal";
+import { DockerSetupModal } from "../components/DockerSetupModal";
 import type { PluginClient, PeerPaneContext } from "@infrawrench/plugin-base";
 import type { PeerPaneData } from "@infrawrench/ui";
 import { accountTabTarget, navigateToWorkspaceTarget, resourceSshTabTarget, resourceSftpTabTarget } from "../lib/workspace-tabs";
@@ -68,6 +70,8 @@ function ResourceDetailPage() {
   const [sshConfig, setSshConfig] = useState<{ host: string; port: number; username: string; privateKey: string } | null>(null);
   const [sshHost, setSshHost] = useState<string | null>(null);
   const [quickSshConnection, setQuickSshConnection] = useState<{ username: string; privateKey: string } | null>(null);
+  const [showTunnelModal, setShowTunnelModal] = useState(false);
+  const [showDockerSetup, setShowDockerSetup] = useState(false);
   const setAccountConnected = useUIStore((s) => s.setAccountConnected);
   const removeWorkspaceTabs = useUIStore((s) => s.removeWorkspaceTabs);
   const locationHash = useRouterState({ select: (s) => s.location.hash });
@@ -523,6 +527,22 @@ function ResourceDetailPage() {
                     Open SSH tab
                   </button>
                 )}
+                {sshHost && (
+                  <>
+                    <button
+                      onClick={() => setShowTunnelModal(true)}
+                      className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-200 border border-gray-800 hover:border-gray-700 rounded-lg transition-colors"
+                    >
+                      Connect service via SSH
+                    </button>
+                    <button
+                      onClick={() => setShowDockerSetup(true)}
+                      className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-200 border border-gray-800 hover:border-gray-700 rounded-lg transition-colors"
+                    >
+                      Setup Docker
+                    </button>
+                  </>
+                )}
               </div>
             )}
             {(
@@ -686,6 +706,30 @@ function ResourceDetailPage() {
                 },
               }
             : {})}
+        />
+      )}
+
+      {showTunnelModal && sshHost && (
+        <SshTunnelModal
+          sshHost={sshHost}
+          sourceAccountId={accountId}
+          onClose={() => setShowTunnelModal(false)}
+          onTunnelEstablished={(newAccountId) => {
+            setShowTunnelModal(false);
+            void navigateToWorkspaceTarget(navigate, accountTabTarget(newAccountId));
+          }}
+        />
+      )}
+
+      {showDockerSetup && sshHost && (
+        <DockerSetupModal
+          sshHost={sshHost}
+          sourceAccountId={accountId}
+          onClose={() => setShowDockerSetup(false)}
+          onComplete={(newAccountId) => {
+            setShowDockerSetup(false);
+            void navigateToWorkspaceTarget(navigate, accountTabTarget(newAccountId));
+          }}
         />
       )}
 

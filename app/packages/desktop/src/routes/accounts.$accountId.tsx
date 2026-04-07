@@ -12,7 +12,9 @@ import { formatErrorMessage } from "../lib/errors";
 import { buildPluginHostServices } from "../lib/sql-drivers";
 import { CreateResourceModal } from "../components/CreateResourceModal";
 import { SecretExportModal } from "../components/SecretExportModal";
-import { navigateToWorkspaceTarget, resourceTabTarget } from "../lib/workspace-tabs";
+import { SshTunnelModal } from "../components/SshTunnelModal";
+import { DockerSetupModal } from "../components/DockerSetupModal";
+import { navigateToWorkspaceTarget, resourceTabTarget, accountTabTarget } from "../lib/workspace-tabs";
 
 export const Route = createFileRoute("/accounts/$accountId")({
   component: AccountPage,
@@ -46,6 +48,12 @@ function AccountPage() {
   const [loadVersion, setLoadVersion] = useState(0);
   const backgroundLoadRef = useRef(false);
   const [kubeconfigTypeIds, setKubeconfigTypeIds] = useState<Set<string>>(new Set());
+  const [contextMenu, setContextMenu] = useState<{
+    x: number; y: number; sshHost: string;
+  } | null>(null);
+  const [tunnelTarget, setTunnelTarget] = useState<{ sshHost: string } | null>(null);
+  const [dockerSetupTarget, setDockerSetupTarget] = useState<{ sshHost: string } | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
   const [secretExportDrop, setSecretExportDrop] = useState<{
     source: DraggableResource;
     targetPluginId: string;
@@ -61,6 +69,18 @@ function AccountPage() {
     window.addEventListener("iw:resources-changed", handler);
     return () => window.removeEventListener("iw:resources-changed", handler);
   }, [accountId]);
+
+  // Close context menu on outside click
+  useEffect(() => {
+    if (!contextMenu) return;
+    function handleClick(e: MouseEvent) {
+      if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) {
+        setContextMenu(null);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [contextMenu]);
 
   // Handle secret drops onto resource pills on this page
   useEffect(() => {
@@ -307,8 +327,13 @@ function AccountPage() {
                   typeId={group.typeDef.id}
                   pinned={pinned.has(resource.id)}
                   acceptsSecretImport={kubeconfigTypeIds.has(group.typeDef.id)}
+                  sshHostOutputKey={group.typeDef.sshEndpoint?.hostOutputKey}
                   onPin={() => togglePin(resource, group.typeDef.id)}
                   onOpen={() => openDetail(resource)}
+                  onContextMenuSsh={(e, sshHost) => {
+                    e.preventDefault();
+                    setContextMenu({ x: e.clientX, y: e.clientY, sshHost });
+                  }}
                 />
               ))}
               {group.typeDef.supportsCreate && (
@@ -356,6 +381,60 @@ function AccountPage() {
           }}
         />
       )}
+
+      {/* SSH context menu */}
+      {contextMenu && (
+        <div
+          ref={contextMenuRef}
+          style={{ position: "fixed", left: contextMenu.x, top: contextMenu.y, zIndex: 9999 }}
+          className="bg-gray-800 border border-gray-700 rounded-lg shadow-xl py-1 min-w-[200px]"
+        >
+          <button
+            className="w-full px-3 py-2 text-xs text-gray-200 hover:bg-gray-700 text-left flex items-center gap-2"
+            onClick={() => {
+              setTunnelTarget({ sshHost: contextMenu.sshHost });
+              setContextMenu(null);
+            }}
+          >
+            <span>⇢</span>
+            Connect to service via SSH…
+          </button>
+          <button
+            className="w-full px-3 py-2 text-xs text-gray-200 hover:bg-gray-700 text-left flex items-center gap-2"
+            onClick={() => {
+              setDockerSetupTarget({ sshHost: contextMenu.sshHost });
+              setContextMenu(null);
+            }}
+          >
+            <span>🐳</span>
+            Setup Docker on VM…
+          </button>
+        </div>
+      )}
+
+      {tunnelTarget && (
+        <SshTunnelModal
+          sshHost={tunnelTarget.sshHost}
+          sourceAccountId={accountId}
+          onClose={() => setTunnelTarget(null)}
+          onTunnelEstablished={(newAccountId) => {
+            setTunnelTarget(null);
+            void navigateToWorkspaceTarget(navigate, accountTabTarget(newAccountId));
+          }}
+        />
+      )}
+
+      {dockerSetupTarget && (
+        <DockerSetupModal
+          sshHost={dockerSetupTarget.sshHost}
+          sourceAccountId={accountId}
+          onClose={() => setDockerSetupTarget(null)}
+          onComplete={(newAccountId) => {
+            setDockerSetupTarget(null);
+            void navigateToWorkspaceTarget(navigate, accountTabTarget(newAccountId));
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -365,15 +444,19 @@ function ResourcePill({
   typeId,
   pinned,
   acceptsSecretImport,
+  sshHostOutputKey,
   onPin,
   onOpen,
+  onContextMenuSsh,
 }: {
   resource: ResourceInstance;
   typeId: string;
   pinned: boolean;
   acceptsSecretImport?: boolean;
+  sshHostOutputKey?: string;
   onPin: () => void;
   onOpen: () => void;
+  onContextMenuSsh?: (e: React.MouseEvent, sshHost: string) => void;
 }) {
   const subtitle = String(
     resource.fields["host"] ?? resource.fields["region"] ?? resource.fields["engine"] ?? "",
@@ -403,12 +486,19 @@ function ResourcePill({
 
   const showDropHint = isOver && !!acceptsSecretImport && !isDragging;
 
+  const sshHost = sshHostOutputKey
+    ? String(resource.resolvedOutputs?.[sshHostOutputKey] ?? resource.fields[sshHostOutputKey] ?? "")
+    : "";
+
   return (
       <div ref={setDropRef} className="inline-flex">
         <div
           ref={setDragRef}
           {...listeners}
           {...attributes}
+          onContextMenu={sshHost && onContextMenuSsh
+            ? (e) => onContextMenuSsh(e, sshHost)
+            : undefined}
           className={`group flex items-center gap-1 pl-3 pr-1.5 py-1.5 rounded-full border transition-colors cursor-grab active:cursor-grabbing ${
             showDropHint
               ? "border-blue-500 bg-blue-500/20"

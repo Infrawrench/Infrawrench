@@ -6,7 +6,6 @@ const manifest: PluginManifest = {
   id: "docker",
   version: "0.1.0",
   displayName: "Docker",
-  description: "Manage Docker containers on a local or remote Docker daemon.",
   logoSvg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     <rect width="100" height="100" rx="12" fill="#2496ED"/>
     <g transform="translate(12,12) scale(3.167)" fill="white">
