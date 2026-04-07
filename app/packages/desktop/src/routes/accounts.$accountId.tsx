@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { invoke } from "../lib/invoke";
-import { useDraggable } from "@dnd-kit/core";
+import { useDraggable, useDroppable } from "@dnd-kit/core";
 import type { ResourceInstance, ResourceTypeDefinition } from "@infrawrench/plugin-base";
 import { useUIStore } from "@infrawrench/ui";
 import { getDb } from "../db/client";
@@ -11,6 +11,7 @@ import { getAccountResourceTypes } from "../lib/account-resource-types";
 import { formatErrorMessage } from "../lib/errors";
 import { buildPluginHostServices } from "../lib/sql-drivers";
 import { CreateResourceModal } from "../components/CreateResourceModal";
+import { SecretExportModal } from "../components/SecretExportModal";
 import { navigateToWorkspaceTarget, resourceTabTarget } from "../lib/workspace-tabs";
 
 export const Route = createFileRoute("/accounts/$accountId")({
@@ -44,6 +45,12 @@ function AccountPage() {
   const [createTarget, setCreateTarget] = useState<ResourceTypeDefinition | null>(null);
   const [loadVersion, setLoadVersion] = useState(0);
   const backgroundLoadRef = useRef(false);
+  const [kubeconfigTypeIds, setKubeconfigTypeIds] = useState<Set<string>>(new Set());
+  const [secretExportDrop, setSecretExportDrop] = useState<{
+    source: DraggableResource;
+    targetPluginId: string;
+    targetCredentials: Record<string, string>;
+  } | null>(null);
 
   // Re-fetch when a resource is deleted (or otherwise changed) for this account
   useEffect(() => {
@@ -54,6 +61,48 @@ function AccountPage() {
     window.addEventListener("iw:resources-changed", handler);
     return () => window.removeEventListener("iw:resources-changed", handler);
   }, [accountId]);
+
+  // Handle secret drops onto resource pills on this page
+  useEffect(() => {
+    function handler(e: Event) {
+      const { source, targetId, kind } = (e as CustomEvent<{
+        source: DraggableResource; targetId: string; kind: string;
+      }>).detail;
+      if (kind !== "resource") return;
+      // Find the target in our groups
+      const targetResource = groups.flatMap((g) => g.resources).find((r) => r.id === targetId);
+      if (!targetResource || !kubeconfigTypeIds.has(targetResource.resourceTypeId)) return;
+      if (!account) return;
+      void (async () => {
+        try {
+          const plaintext = await invoke<string>("decrypt_value", {
+            ciphertext: account.encrypted_credentials,
+            iv: account.credentials_iv,
+          });
+          const ownerCreds = JSON.parse(plaintext) as Record<string, string>;
+          const loaded = await getPlugin(account.plugin_id);
+          if (!loaded) return;
+          const services = buildPluginHostServices(loaded.plugin.manifest, ownerCreds);
+          const client = loaded.plugin.createClient(ownerCreds, services);
+          const kubeconfig = await client.resolveOutput(
+            targetResource.resourceTypeId,
+            targetResource.id,
+            "kubeconfig",
+            targetResource.accountId,
+          );
+          setSecretExportDrop({
+            source,
+            targetPluginId: "kubernetes",
+            targetCredentials: { kubeconfig },
+          });
+        } catch (err) {
+          console.error("Failed to resolve kubeconfig for secret drop:", err);
+        }
+      })();
+    }
+    window.addEventListener("iw:sidebar-secret-drop", handler);
+    return () => window.removeEventListener("iw:sidebar-secret-drop", handler);
+  }, [groups, kubeconfigTypeIds, account]);
 
   // Auto-refresh every 30 s (background — no loading flash)
   useEffect(() => {
@@ -89,6 +138,13 @@ function AccountPage() {
         const services = buildPluginHostServices(plugin.manifest, credentials);
         const client = plugin.createClient(credentials, services);
         const topLevelTypes = getAccountResourceTypes(plugin.resourceTypes);
+
+        // Check which resource types have kubeconfig outputs (can accept secret drops)
+        const kcTypes = new Set<string>();
+        for (const rt of plugin.resourceTypes) {
+          if (rt.outputs?.some((o) => o.key === "kubeconfig")) kcTypes.add(rt.id);
+        }
+        if (!cancelled) setKubeconfigTypeIds(kcTypes);
 
         const results = await Promise.allSettled(
           topLevelTypes.map(async (t) => ({
@@ -250,6 +306,7 @@ function AccountPage() {
                   resource={resource}
                   typeId={group.typeDef.id}
                   pinned={pinned.has(resource.id)}
+                  acceptsSecretImport={kubeconfigTypeIds.has(group.typeDef.id)}
                   onPin={() => togglePin(resource, group.typeDef.id)}
                   onOpen={() => openDetail(resource)}
                 />
@@ -270,6 +327,16 @@ function AccountPage() {
 
       {groups.every((g) => g.resources.length === 0 && !g.typeDef.supportsCreate) && (
         <p className="text-sm text-gray-600">No resources found.</p>
+      )}
+
+      {secretExportDrop && (
+        <SecretExportModal
+          source={secretExportDrop.source}
+          targetPluginId={secretExportDrop.targetPluginId}
+          targetCredentials={secretExportDrop.targetCredentials}
+          onClose={() => setSecretExportDrop(null)}
+          onCreated={() => setSecretExportDrop(null)}
+        />
       )}
 
       {createTarget && account && (
@@ -297,12 +364,14 @@ function ResourcePill({
   resource,
   typeId,
   pinned,
+  acceptsSecretImport,
   onPin,
   onOpen,
 }: {
   resource: ResourceInstance;
   typeId: string;
   pinned: boolean;
+  acceptsSecretImport?: boolean;
   onPin: () => void;
   onOpen: () => void;
 }) {
@@ -320,42 +389,63 @@ function ResourcePill({
     externalId: resource.externalId,
   };
 
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+  const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
     id: resource.id,
     data: { resource: draggableData },
   });
 
+  // Separate droppable from draggable — combining refs on the same node in a
+  // flex-wrap layout causes @dnd-kit to lose rect measurements during drag.
+  const { setNodeRef: setDropRef, isOver } = useDroppable({
+    id: `sidebar-resource:${resource.id}`,
+    disabled: !acceptsSecretImport,
+  });
+
+  const showDropHint = isOver && !!acceptsSecretImport && !isDragging;
+
   return (
-    <div
-      ref={setNodeRef}
-      {...listeners}
-      {...attributes}
-      className={`group flex items-center gap-1 pl-3 pr-1.5 py-1.5 rounded-full border border-gray-700 bg-gray-900 hover:border-gray-600 transition-colors cursor-grab active:cursor-grabbing ${isDragging ? "opacity-40" : ""}`}
-    >
-      <div onClick={onOpen} className="flex items-center gap-2 min-w-0">
-        <span className="text-sm font-medium text-gray-200 leading-none">{resource.displayName}</span>
-        {subtitle && <span className="text-xs text-gray-500 leading-none">{subtitle}</span>}
+      <div ref={setDropRef} className="inline-flex">
+        <div
+          ref={setDragRef}
+          {...listeners}
+          {...attributes}
+          className={`group flex items-center gap-1 pl-3 pr-1.5 py-1.5 rounded-full border transition-colors cursor-grab active:cursor-grabbing ${
+            showDropHint
+              ? "border-blue-500 bg-blue-500/20"
+              : "border-gray-700 bg-gray-900 hover:border-gray-600"
+          } ${isDragging ? "opacity-40" : ""}`}
+        >
+          <div onClick={onOpen} className="flex items-center gap-2 min-w-0">
+            <span className="text-sm font-medium text-gray-200 leading-none">{resource.displayName}</span>
+            {subtitle && <span className="text-xs text-gray-500 leading-none">{subtitle}</span>}
+          </div>
+
+          {showDropHint ? (
+            <span className="ml-1 text-xs text-blue-400">Drop</span>
+          ) : (
+            <>
+              <button
+                onClick={(e) => { e.stopPropagation(); onPin(); }}
+                title={pinned ? "Unpin" : "Pin to dashboard"}
+                className={`ml-1 p-1 rounded-full text-xs transition-all ${
+                  pinned
+                    ? "text-blue-400 hover:text-blue-300"
+                    : "text-gray-700 hover:text-gray-400 opacity-0 group-hover:opacity-100"
+                }`}
+              >
+                📌
+              </button>
+
+              <button
+                onClick={(e) => { e.stopPropagation(); onOpen(); }}
+                title="Open detail view"
+                className="p-1 rounded-full text-gray-700 hover:text-gray-300 opacity-0 group-hover:opacity-100 transition-all text-xs"
+              >
+                →
+              </button>
+            </>
+          )}
+        </div>
       </div>
-
-      <button
-        onClick={(e) => { e.stopPropagation(); onPin(); }}
-        title={pinned ? "Unpin" : "Pin to dashboard"}
-        className={`ml-1 p-1 rounded-full text-xs transition-all ${
-          pinned
-            ? "text-blue-400 hover:text-blue-300"
-            : "text-gray-700 hover:text-gray-400 opacity-0 group-hover:opacity-100"
-        }`}
-      >
-        📌
-      </button>
-
-      <button
-        onClick={(e) => { e.stopPropagation(); onOpen(); }}
-        title="Open detail view"
-        className="p-1 rounded-full text-gray-700 hover:text-gray-300 opacity-0 group-hover:opacity-100 transition-all text-xs"
-      >
-        →
-      </button>
-    </div>
   );
 }

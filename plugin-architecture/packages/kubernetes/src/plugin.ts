@@ -1,4 +1,4 @@
-import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import type { Plugin, PluginManifest, ResourceTypeDefinition, HostServices } from "@infrawrench/plugin-base";
 import { KubernetesClient } from "./client.js";
 import { KubernetesClusterResourceType } from "./resources/k8s-cluster.js";
 import { NamespaceResourceType } from "./resources/namespace.js";
@@ -18,6 +18,7 @@ const manifest: PluginManifest = {
   license: "MIT",
   minHostVersion: "0.1.0",
   peerPlugins: ["digitalocean"],
+  supportsSecretImport: true,
   credentialFields: [
     {
       key: "kubeconfig",
@@ -40,5 +41,5 @@ const resourceTypes: ResourceTypeDefinition[] = [
 export const plugin: Plugin = {
   manifest,
   resourceTypes,
-  createClient: (credentials) => new KubernetesClient(credentials),
+  createClient: (credentials, services) => new KubernetesClient(credentials, services),
 };

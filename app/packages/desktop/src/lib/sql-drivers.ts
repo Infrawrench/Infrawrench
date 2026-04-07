@@ -51,6 +51,18 @@ export function buildDockerHostServices(driverId: string, dockerHost: string): H
   };
 }
 
+function httpRequest(req: {
+  url: string;
+  method: string;
+  headers: Record<string, string>;
+  body?: string;
+  caCert?: string;
+}): Promise<{ status: number; body: string }> {
+  return invoke<{ status: number; body: string }>("k8s_api_request", req);
+}
+
+const httpHostServices = { http: { request: httpRequest } };
+
 /** Inspects the plugin manifest and builds the appropriate HostServices for use with createClient(). */
 export function buildPluginHostServices(
   manifest: PluginManifest,
@@ -58,15 +70,16 @@ export function buildPluginHostServices(
 ): HostServices | undefined {
   if (manifest.dockerDriver) {
     const dockerHost = credentials[manifest.dockerDriver.credentialKey] ?? "";
-    return buildDockerHostServices(manifest.dockerDriver.driver, dockerHost);
+    return { ...buildDockerHostServices(manifest.dockerDriver.driver, dockerHost), ...httpHostServices };
   }
   if (manifest.sqlDriver) {
     const connectionString = credentials[manifest.sqlDriver.credentialKey] ?? "";
-    return buildHostServices(manifest.sqlDriver.driver, connectionString);
+    return { ...buildHostServices(manifest.sqlDriver.driver, connectionString), ...httpHostServices };
   }
   if (manifest.kvDriver) {
     const connectionString = credentials[manifest.kvDriver.credentialKey] ?? "";
-    return buildKvHostServices(manifest.kvDriver.driver, connectionString);
+    return { ...buildKvHostServices(manifest.kvDriver.driver, connectionString), ...httpHostServices };
   }
-  return undefined;
+  // Even without a specific driver, provide HTTP proxy for plugins like K8s
+  return httpHostServices;
 }

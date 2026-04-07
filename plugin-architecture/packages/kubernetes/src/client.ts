@@ -1,5 +1,6 @@
 import type {
   DetailViewSchema,
+  HostServices,
   PeerPaneContext,
   PeerPaneSchema,
   PluginClient,
@@ -49,21 +50,42 @@ function parseKubeconfig(raw: string): ParsedKubeconfig {
 export class KubernetesClient implements PluginClient {
   private readonly kubeconfig: string;
   private readonly parsed: ParsedKubeconfig;
+  private readonly services?: HostServices;
 
-  constructor(credentials: Record<string, string>) {
+  constructor(credentials: Record<string, string>, services?: HostServices) {
     const kubeconfig = credentials["kubeconfig"];
     if (!kubeconfig) throw new Error("Kubernetes plugin: missing kubeconfig credential");
     this.kubeconfig = kubeconfig;
     this.parsed = parseKubeconfig(kubeconfig);
+    if (services) this.services = services;
   }
 
   private async k8sFetch<T>(path: string, options?: RequestInit): Promise<T> {
-    const { server, token } = this.parsed;
+    const { server, token, caCertData } = this.parsed;
     if (!server) throw new Error("Kubernetes plugin: no server in kubeconfig");
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
     };
     if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    // When a CA cert is present and the host provides an HTTP proxy, route
+    // through the host process so Node's TLS stack can trust the cluster CA.
+    if (caCertData && this.services?.http) {
+      // certificate-authority-data in kubeconfig is base64-encoded PEM
+      const caPem = atob(caCertData);
+      const result = await this.services.http.request({
+        url: `${server}${path}`,
+        method: options?.method ?? "GET",
+        headers,
+        ...(options?.body ? { body: String(options.body) } : {}),
+        caCert: caPem,
+      });
+      if (result.status < 200 || result.status >= 300) {
+        throw new Error(`K8s API error ${result.status}: ${result.body}`);
+      }
+      return JSON.parse(result.body) as T;
+    }
+
     const res = await fetch(`${server}${path}`, { headers, ...options });
     if (!res.ok) throw new Error(`K8s API error ${res.status}: ${await res.text()}`);
     return res.json() as Promise<T>;

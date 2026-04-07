@@ -11,6 +11,7 @@ export type {
   KvDriverDeclaration,
   DockerDriverDeclaration,
   DockerHostServices,
+  HttpHostServices,
   PeerPaneContext,
 } from "./manifest.js";
 

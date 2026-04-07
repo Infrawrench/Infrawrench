@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { invoke } from "../lib/invoke";
-import { useDraggable } from "@dnd-kit/core";
+import { useDraggable, useDroppable } from "@dnd-kit/core";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { useUIStore } from "@infrawrench/ui";
 import { getDb } from "../db/client";
@@ -11,6 +11,7 @@ import { getAccountResourceTypes } from "../lib/account-resource-types";
 import { formatErrorMessage } from "../lib/errors";
 import { buildPluginHostServices } from "../lib/sql-drivers";
 import { SshTunnelModal } from "./SshTunnelModal";
+import { SecretExportModal } from "./SecretExportModal";
 import { accountTabTarget, navigateToWorkspaceTarget, resourceTabTarget } from "../lib/workspace-tabs";
 
 interface Account {
@@ -46,6 +47,8 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
   const [accountResources, setAccountResources] = useState<Record<string, AccountResourcesState>>({});
   // typeId → hostOutputKey for resources with sshEndpoint
   const [sshEndpointByTypeId, setSshEndpointByTypeId] = useState<Record<string, string>>({});
+  // Resource type IDs that have a "kubeconfig" output — can be drop targets for secret import
+  const [kubeconfigTypeIds, setKubeconfigTypeIds] = useState<Set<string>>(new Set());
   // resourceId → sshHost value
   const [resourceSshHosts, setResourceSshHosts] = useState<Record<string, string>>({});
   // context menu state
@@ -56,6 +59,14 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
   // SSH tunnel modal target
   const [tunnelTarget, setTunnelTarget] = useState<{
     sshHost: string; sourceAccountId: string;
+  } | null>(null);
+  // Plugin IDs that support secret import (e.g. kubernetes)
+  const [secretImportPluginIds, setSecretImportPluginIds] = useState<Set<string>>(new Set());
+  // Secret export modal state (triggered by dropping onto a K8s account)
+  const [secretExportDrop, setSecretExportDrop] = useState<{
+    source: DraggableResource;
+    targetPluginId: string;
+    targetCredentials: Record<string, string>;
   } | null>(null);
   const navigate = useNavigate();
   const connectedAccounts = useUIStore((s) => s.connectedAccounts);
@@ -92,6 +103,22 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
           }
         }
         if (!cancelled) setSshEndpointByTypeId(sshMap);
+
+        // Build set of plugin IDs that support secret import
+        const importPlugins = new Set<string>();
+        for (const p of plugins) {
+          if (p.plugin.manifest.supportsSecretImport) importPlugins.add(p.plugin.manifest.id);
+        }
+        if (!cancelled) setSecretImportPluginIds(importPlugins);
+
+        // Build set of resource type IDs that have a kubeconfig output (GKE, DOKS clusters)
+        const kcTypes = new Set<string>();
+        for (const p of plugins) {
+          for (const rt of p.plugin.resourceTypes) {
+            if (rt.outputs?.some((o) => o.key === "kubeconfig")) kcTypes.add(rt.id);
+          }
+        }
+        if (!cancelled) setKubeconfigTypeIds(kcTypes);
 
         // Group accounts by plugin
         const groupMap = new Map<string, PluginGroup>();
@@ -223,6 +250,78 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
     return () => window.removeEventListener("iw:resources-changed", handler);
   }, [groups, expanded]);
 
+  // Handle secret drops onto sidebar accounts and resources
+  useEffect(() => {
+    function handler(e: Event) {
+      const { source, targetId, kind } = (e as CustomEvent<{
+        source: DraggableResource;
+        targetId: string;
+        kind: "account" | "resource";
+      }>).detail;
+
+      if (kind === "account") {
+        // Drop onto a K8s account row — use account credentials directly
+        const allAccounts = groups.flatMap((g) => g.accounts);
+        const account = allAccounts.find((a) => a.id === targetId);
+        if (!account || !secretImportPluginIds.has(account.pluginId)) return;
+        void (async () => {
+          try {
+            const plaintext = await invoke<string>("decrypt_value", {
+              ciphertext: account.encrypted_credentials,
+              iv: account.credentials_iv,
+            });
+            const creds = JSON.parse(plaintext) as Record<string, string>;
+            setSecretExportDrop({
+              source,
+              targetPluginId: "kubernetes",
+              targetCredentials: creds,
+            });
+          } catch (err) {
+            console.error("Failed to resolve credentials for secret drop:", err);
+          }
+        })();
+      } else {
+        // Drop onto a resource (e.g. GKE cluster) — resolve kubeconfig from the resource
+        // Find the resource in expanded account resources
+        const allResources = Object.values(accountResources).flatMap((s) => s.resources);
+        const targetResource = allResources.find((r) => r.id === targetId);
+        if (!targetResource || !kubeconfigTypeIds.has(targetResource.resourceTypeId)) return;
+        // Find the account that owns this resource
+        const allAccounts = groups.flatMap((g) => g.accounts);
+        const ownerAccount = allAccounts.find((a) => a.id === targetResource.accountId);
+        if (!ownerAccount) return;
+        void (async () => {
+          try {
+            const plaintext = await invoke<string>("decrypt_value", {
+              ciphertext: ownerAccount.encrypted_credentials,
+              iv: ownerAccount.credentials_iv,
+            });
+            const ownerCreds = JSON.parse(plaintext) as Record<string, string>;
+            const loaded = await getPlugin(ownerAccount.pluginId);
+            if (!loaded) return;
+            const services = buildPluginHostServices(loaded.plugin.manifest, ownerCreds);
+            const client = loaded.plugin.createClient(ownerCreds, services);
+            const kubeconfig = await client.resolveOutput(
+              targetResource.resourceTypeId,
+              targetResource.id,
+              "kubeconfig",
+              targetResource.accountId,
+            );
+            setSecretExportDrop({
+              source,
+              targetPluginId: "kubernetes",
+              targetCredentials: { kubeconfig },
+            });
+          } catch (err) {
+            console.error("Failed to resolve kubeconfig for secret drop:", err);
+          }
+        })();
+      }
+    }
+    window.addEventListener("iw:sidebar-secret-drop", handler);
+    return () => window.removeEventListener("iw:sidebar-secret-drop", handler);
+  }, [groups, secretImportPluginIds, accountResources, kubeconfigTypeIds]);
+
   // Close context menu on outside click
   useEffect(() => {
     if (!contextMenu) return;
@@ -272,6 +371,7 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
                   group={group}
                   isExpanded={isExpanded}
                   connected={connectedAccounts.has(account.id)}
+                  acceptsSecretImport={secretImportPluginIds.has(account.pluginId)}
                   onToggleExpand={() => void toggleExpand(account)}
                   onNavigate={() => void navigateToWorkspaceTarget(
                     navigate,
@@ -308,6 +408,7 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
                         <SidebarResourceItem
                           key={resource.id}
                           draggable={draggable}
+                          acceptsSecretImport={kubeconfigTypeIds.has(resource.resourceTypeId)}
                           sshHostValue={resourceSshHosts[resource.id]}
                           onContextMenuSsh={(e, sshHost) => {
                             e.preventDefault();
@@ -364,21 +465,34 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
       />
     )}
 
+    {/* Secret export modal (triggered by dropping onto a K8s account) */}
+    {secretExportDrop && (
+      <SecretExportModal
+        source={secretExportDrop.source}
+        targetPluginId={secretExportDrop.targetPluginId}
+        targetCredentials={secretExportDrop.targetCredentials}
+        onClose={() => setSecretExportDrop(null)}
+        onCreated={() => setSecretExportDrop(null)}
+      />
+    )}
+
     </>
   );
 }
 
 function SidebarResourceItem({
   draggable,
+  acceptsSecretImport,
   sshHostValue,
   onContextMenuSsh,
 }: {
   draggable: DraggableResource;
+  acceptsSecretImport?: boolean;
   sshHostValue?: string | undefined;
   onContextMenuSsh?: (e: React.MouseEvent, sshHost: string) => void;
 }) {
   const navigate = useNavigate();
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+  const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
     id: `sidebar-${draggable.id}`,
     data: {
       resource: draggable,
@@ -387,12 +501,28 @@ function SidebarResourceItem({
     },
   });
 
+  const { setNodeRef: setDropRef, isOver } = useDroppable({
+    id: `sidebar-resource:${draggable.id}`,
+    disabled: !acceptsSecretImport || isDragging,
+  });
+
+  const showDropHint = isOver && !!acceptsSecretImport;
+
+  function setRefs(node: HTMLDivElement | null) {
+    setDragRef(node);
+    setDropRef(node);
+  }
+
   return (
     <div
-      ref={setNodeRef}
+      ref={setRefs}
       {...listeners}
       {...attributes}
-      className={`flex items-center gap-2 px-3 py-1 text-xs text-gray-400 hover:text-gray-200 hover:bg-gray-800 rounded cursor-pointer transition-colors ${isDragging ? "opacity-40" : ""}`}
+      className={`flex items-center gap-2 px-3 py-1 text-xs rounded cursor-pointer transition-colors ${
+        showDropHint
+          ? "bg-blue-500/20 text-blue-200 ring-1 ring-inset ring-blue-500"
+          : "text-gray-400 hover:text-gray-200 hover:bg-gray-800"
+      } ${isDragging ? "opacity-40" : ""}`}
       onClick={() => void navigateToWorkspaceTarget(
         navigate,
         resourceTabTarget(draggable.accountId, draggable.id),
@@ -404,6 +534,9 @@ function SidebarResourceItem({
     >
       <span className="text-gray-700">⠿</span>
       <span className="truncate">{draggable.displayName}</span>
+      {showDropHint && (
+        <span className="ml-auto text-blue-400 flex-shrink-0">Drop</span>
+      )}
     </div>
   );
 }
@@ -413,6 +546,7 @@ function AccountDraggableRow({
   group,
   isExpanded,
   connected,
+  acceptsSecretImport,
   onToggleExpand,
   onNavigate,
 }: {
@@ -420,6 +554,7 @@ function AccountDraggableRow({
   group: PluginGroup;
   isExpanded: boolean;
   connected: boolean;
+  acceptsSecretImport: boolean;
   onToggleExpand: () => void;
   onNavigate: () => void;
 }) {
@@ -432,7 +567,7 @@ function AccountDraggableRow({
     fields: { pluginId: account.pluginId, pluginDisplayName: group.displayName },
   };
 
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+  const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
     id: `account-${account.id}`,
     data: {
       resource: draggableData,
@@ -441,12 +576,28 @@ function AccountDraggableRow({
     },
   });
 
+  const { setNodeRef: setDropRef, isOver } = useDroppable({
+    id: `sidebar-account:${account.id}`,
+    disabled: !acceptsSecretImport || isDragging,
+  });
+
+  const showDropHint = isOver && acceptsSecretImport;
+
+  function setRefs(node: HTMLDivElement | null) {
+    setDragRef(node);
+    setDropRef(node);
+  }
+
   return (
     <div
-      ref={setNodeRef}
+      ref={setRefs}
       {...listeners}
       {...attributes}
-      className={`flex items-center w-full px-4 py-1.5 text-sm text-gray-300 hover:bg-gray-800 hover:text-gray-100 transition-colors group cursor-grab active:cursor-grabbing ${isDragging ? "opacity-40" : ""}`}
+      className={`flex items-center w-full px-4 py-1.5 text-sm transition-colors group cursor-grab active:cursor-grabbing ${
+        showDropHint
+          ? "bg-blue-500/20 text-blue-200 ring-1 ring-inset ring-blue-500"
+          : "text-gray-300 hover:bg-gray-800 hover:text-gray-100"
+      } ${isDragging ? "opacity-40" : ""}`}
     >
       <button
         draggable={false}
@@ -469,6 +620,9 @@ function AccountDraggableRow({
         <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 transition-colors ${connected ? "bg-blue-400" : "bg-gray-600"}`} />
         <span className="truncate">{account.displayName}</span>
       </button>
+      {showDropHint && (
+        <span className="text-xs text-blue-400 flex-shrink-0">Drop</span>
+      )}
     </div>
   );
 }

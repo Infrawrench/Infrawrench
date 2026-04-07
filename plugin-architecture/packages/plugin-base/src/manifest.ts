@@ -82,6 +82,11 @@ export interface PluginManifest {
    * enabling Docker daemon operations.
    */
   dockerDriver?: DockerDriverDeclaration;
+  /**
+   * If true, this plugin's client implements importSecret() and listNamespacesForImport(),
+   * allowing other resources to be dragged onto accounts of this plugin to create secrets.
+   */
+  supportsSecretImport?: boolean;
 }
 
 /**
@@ -114,6 +119,22 @@ export interface DockerHostServices {
   command(op: string, params?: Record<string, unknown>): Promise<unknown>;
 }
 
+/**
+ * Host-provided HTTP request proxy injected into plugin clients.
+ * Allows plugins to make HTTP requests through the host process, which can
+ * supply custom CA certificates that the browser/renderer won't trust.
+ */
+export interface HttpHostServices {
+  /** Make an HTTP request through the host process (supports custom CA certs). */
+  request(req: {
+    url: string;
+    method: string;
+    headers: Record<string, string>;
+    body?: string;
+    caCert?: string;
+  }): Promise<{ status: number; body: string }>;
+}
+
 export interface HostServices {
   /** Present only when the plugin's manifest declares a sqlDriver */
   sql?: SqlHostServices;
@@ -121,6 +142,8 @@ export interface HostServices {
   kv?: KvHostServices;
   /** Present only when the plugin's manifest declares a dockerDriver */
   docker?: DockerHostServices;
+  /** Always available — proxies HTTP requests through the host for custom CA support */
+  http?: HttpHostServices;
 }
 
 /**

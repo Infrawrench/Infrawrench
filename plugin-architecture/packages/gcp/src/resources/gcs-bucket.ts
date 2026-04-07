@@ -20,7 +20,28 @@ export const GcsBucketResourceType: ResourceTypeDefinition = {
   ],
   outputs: [
     { key: "endpoint", label: "Endpoint URL", sensitive: false },
+    { key: "bucketName", label: "Bucket Name", sensitive: false },
+    { key: "serviceAccountKey", label: "Service Account Key (JSON)", sensitive: true, description: "Created on demand via the IAM API" },
   ],
   dashboardPinnable: true,
   supportsStorageBrowser: true,
+  secretExportTemplates: [
+    {
+      id: "gcs-full",
+      displayName: "GCS Credentials",
+      description: "Service account key JSON and bucket name — a new key is created via the IAM API",
+      entries: [
+        { envKey: "GOOGLE_APPLICATION_CREDENTIALS_JSON", outputKey: "serviceAccountKey", description: "Service account key JSON (created on demand)" },
+        { envKey: "GCS_BUCKET", outputKey: "bucketName" },
+      ],
+    },
+    {
+      id: "sa-key-only",
+      displayName: "Service Account Key Only",
+      description: "Just the service account key JSON — a new key is created via the IAM API",
+      entries: [
+        { envKey: "GOOGLE_APPLICATION_CREDENTIALS_JSON", outputKey: "serviceAccountKey" },
+      ],
+    },
+  ],
 };

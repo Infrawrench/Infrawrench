@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { createRootRoute, Outlet, useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
-import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
+import { DndContext, DragOverlay, PointerSensor, pointerWithin, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { normalizeResourceId, useUIStore, workspaceTabTargetsEqual, type WorkspaceTab, type WorkspaceTabTarget } from "@infrawrench/ui";
 import { AddAccountModal } from "../components/AddAccountModal";
 import { GlobalTabBar } from "../components/GlobalTabBar";
@@ -187,17 +187,22 @@ function RootLayout() {
       return;
     }
 
-    // Secret import — resource dropped onto a K8s peer pane
-    if (overId.startsWith("secret-import:")) {
+    // Secret import drops are handled directly by PeerPaneView via useDndMonitor
+    if (overId.startsWith("secret-import:")) return;
+
+    // Sidebar account/resource drops — dispatch event for SidebarAccounts to handle
+    if (overId.startsWith("sidebar-account:") || overId.startsWith("sidebar-resource:")) {
       const resource = activeData?.resource as DraggableResource | undefined;
-      if (resource) {
-        const targetAccountId = overId.replace("secret-import:", "");
-        window.dispatchEvent(
-          new CustomEvent("iw:secret-export-drop", {
-            detail: { source: resource, targetAccountId },
-          }),
-        );
-      }
+      if (!resource) return;
+      const targetId = overId.startsWith("sidebar-account:")
+        ? overId.replace("sidebar-account:", "")
+        : overId.replace("sidebar-resource:", "");
+      // Ignore self-drops (dragged element's own droppable following the pointer)
+      if (resource.id === targetId) return;
+      const kind = overId.startsWith("sidebar-account:") ? "account" : "resource";
+      window.dispatchEvent(new CustomEvent("iw:sidebar-secret-drop", {
+        detail: { source: resource, targetId, kind },
+      }));
       return;
     }
 
@@ -260,6 +265,7 @@ function RootLayout() {
   return (
     <DndContext
       sensors={sensors}
+      collisionDetection={pointerWithin}
       onDragStart={(e) => {
         const preview = e.active.data.current?.dragLabel as string | undefined;
         const resource = e.active.data.current?.resource as DraggableResource | undefined;

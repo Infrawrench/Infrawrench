@@ -253,6 +253,37 @@ export class GcpClient implements PluginClient {
       if (outputKey === "ipAddress") return String(resource.fields["ipAddress"] ?? resource.resolvedOutputs["ipAddress"] ?? "");
     }
 
+    if (typeId === "gcs-bucket") {
+      if (outputKey === "bucketName") {
+        const resource = await this.getResource(typeId, resourceId, accountId);
+        return String(resource.fields["name"] ?? resource.displayName);
+      }
+      if (outputKey === "endpoint") {
+        const resource = await this.getResource(typeId, resourceId, accountId);
+        return `https://storage.googleapis.com/${String(resource.fields["name"] ?? resource.displayName)}`;
+      }
+      if (outputKey === "serviceAccountKey") {
+        // Create a new service account key via the IAM API
+        const tok = await this.token();
+        const email = this.key.client_email;
+        const res = await fetch(
+          `https://iam.googleapis.com/v1/projects/${this.project}/serviceAccounts/${encodeURIComponent(email)}/keys`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${tok}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ keyAlgorithm: "KEY_ALG_RSA_2048" }),
+          },
+        );
+        if (!res.ok) throw new Error(`IAM API ${res.status}: ${await res.text()}`);
+        const data = await res.json() as { privateKeyData: string };
+        // privateKeyData is base64-encoded JSON — decode it
+        return atob(data.privateKeyData);
+      }
+    }
+
     if (typeId === "secret-manager-secret" && outputKey === "latestVersion") {
       const resource = await this.getResource(typeId, resourceId, accountId);
       const secretName = resource.externalId ?? "";

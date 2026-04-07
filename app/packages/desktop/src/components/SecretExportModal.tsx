@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import type { SecretExportTemplate } from "@infrawrench/plugin-base";
+import type { SecretExportTemplate, PluginClient } from "@infrawrench/plugin-base";
 import { getPlugin } from "../plugins/loader";
 import { getDb } from "../db/client";
 import { invoke } from "../lib/invoke";
 import type { DraggableResource } from "../lib/pins";
 import { formatErrorMessage } from "../lib/errors";
+import { buildPluginHostServices } from "../lib/sql-drivers";
 
 interface AccountRow {
   id: string;
@@ -16,13 +17,21 @@ interface AccountRow {
 interface SecretExportModalProps {
   /** Source resource being dragged */
   source: DraggableResource;
-  /** Account ID of the target K8s cluster */
-  targetAccountId: string;
+  /** Plugin ID of the target (e.g. "kubernetes") */
+  targetPluginId: string;
+  /** Pre-resolved credentials for the target plugin (e.g. { kubeconfig: "..." }) */
+  targetCredentials: Record<string, string>;
   onClose: () => void;
   onCreated: () => void;
 }
 
-export function SecretExportModal({ source, targetAccountId, onClose, onCreated }: SecretExportModalProps) {
+export function SecretExportModal({
+  source,
+  targetPluginId,
+  targetCredentials,
+  onClose,
+  onCreated,
+}: SecretExportModalProps) {
   const [templates, setTemplates] = useState<SecretExportTemplate[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [namespaces, setNamespaces] = useState<string[]>([]);
@@ -33,8 +42,11 @@ export function SecretExportModal({ source, targetAccountId, onClose, onCreated 
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [targetClient, setTargetClient] = useState<PluginClient | null>(null);
+  /** The resource type ID we found templates on — may differ from source.resourceTypeId for __account__ drops */
+  const [effectiveTypeId, setEffectiveTypeId] = useState<string>(source.resourceTypeId);
 
-  // Load templates from source plugin + namespaces from target K8s
+  // Load templates from source plugin + namespaces from target
   useEffect(() => {
     let cancelled = false;
 
@@ -44,18 +56,26 @@ export function SecretExportModal({ source, targetAccountId, onClose, onCreated 
         const sourceLoaded = await getPlugin(source.pluginId);
         if (!sourceLoaded || cancelled) return;
 
-        const resourceType = sourceLoaded.plugin.resourceTypes.find(
+        // For account-level drops, find the first resource type that has secret export templates
+        let resourceType = sourceLoaded.plugin.resourceTypes.find(
           (t) => t.id === source.resourceTypeId,
         );
+        if (!resourceType?.secretExportTemplates?.length && source.resourceTypeId === "__account__") {
+          resourceType = sourceLoaded.plugin.resourceTypes.find(
+            (t) => (t.secretExportTemplates?.length ?? 0) > 0,
+          );
+        }
         const tpls = resourceType?.secretExportTemplates ?? [];
         if (tpls.length === 0) {
           setLoadError("This resource type doesn't declare any secret export templates.");
           return;
         }
+        if (!cancelled && resourceType) {
+          setEffectiveTypeId(resourceType.id);
+        }
         if (!cancelled) {
           setTemplates(tpls);
           setSelectedTemplateId(tpls[0]!.id);
-          // Initialize editable keys from first template
           const initial: Record<string, string> = {};
           for (const entry of tpls[0]!.entries) initial[entry.outputKey] = entry.envKey;
           setEditableKeys(initial);
@@ -69,27 +89,21 @@ export function SecretExportModal({ source, targetAccountId, onClose, onCreated 
           .replace(/^-|-$/g, "");
         if (!cancelled) setSecretName(baseName || "imported-secret");
 
-        // Load target K8s namespaces
-        const db = await getDb();
-        const targetRows = await db.select<AccountRow[]>(
-          "SELECT id, plugin_id, encrypted_credentials, credentials_iv FROM accounts WHERE id = $1",
-          [targetAccountId],
-        );
-        const targetRow = targetRows[0];
-        if (!targetRow || cancelled) return;
+        // Create the target client directly from the provided credentials
+        const targetLoaded = await getPlugin(targetPluginId);
+        if (!targetLoaded || cancelled) return;
+        const targetServices = buildPluginHostServices(targetLoaded.plugin.manifest, targetCredentials);
+        const client = targetLoaded.plugin.createClient(targetCredentials, targetServices);
+        if (!cancelled) setTargetClient(client);
 
-        const targetPlaintext = await invoke<string>("decrypt_value", {
-          ciphertext: targetRow.encrypted_credentials,
-          iv: targetRow.credentials_iv,
-        });
-        const targetCreds = JSON.parse(targetPlaintext) as Record<string, string>;
-        const targetPlugin = await getPlugin(targetRow.plugin_id);
-        if (!targetPlugin || cancelled) return;
-
-        const targetClient = targetPlugin.plugin.createClient(targetCreds);
-        if (targetClient.listNamespacesForImport) {
-          const ns = await targetClient.listNamespacesForImport(targetAccountId);
-          if (!cancelled) setNamespaces(ns);
+        // Fetch namespaces from the target
+        if (client.listNamespacesForImport) {
+          try {
+            const ns = await client.listNamespacesForImport("");
+            if (!cancelled) setNamespaces(ns);
+          } catch {
+            // Namespace listing is best-effort
+          }
         }
       } catch (e) {
         if (!cancelled) setLoadError(formatErrorMessage(e));
@@ -98,7 +112,7 @@ export function SecretExportModal({ source, targetAccountId, onClose, onCreated 
 
     void init();
     return () => { cancelled = true; };
-  }, [source, targetAccountId]);
+  }, [source, targetPluginId, targetCredentials]);
 
   const selectedTemplate = templates.find((t) => t.id === selectedTemplateId);
 
@@ -113,14 +127,13 @@ export function SecretExportModal({ source, targetAccountId, onClose, onCreated 
   }, [templates]);
 
   const handleCreate = useCallback(async () => {
-    if (!selectedTemplate) return;
+    if (!selectedTemplate || !targetClient) return;
     setCreating(true);
     setError(null);
 
     try {
-      const db = await getDb();
-
       // 1. Resolve source outputs
+      const db = await getDb();
       const sourceRows = await db.select<AccountRow[]>(
         "SELECT id, plugin_id, encrypted_credentials, credentials_iv FROM accounts WHERE id = $1",
         [source.accountId],
@@ -143,9 +156,8 @@ export function SecretExportModal({ source, targetAccountId, onClose, onCreated 
       for (const entry of selectedTemplate.entries) {
         const envKey = editableKeys[entry.outputKey] ?? entry.envKey;
         try {
-          // Try resolveOutput first (live API call)
           const value = await sourceClient.resolveOutput(
-            source.resourceTypeId,
+            effectiveTypeId,
             source.externalId ?? source.id,
             entry.outputKey,
             source.accountId,
@@ -161,26 +173,9 @@ export function SecretExportModal({ source, targetAccountId, onClose, onCreated 
       }
       setResolving(false);
 
-      // 2. Create K8s secret via target plugin
-      const targetRows = await db.select<AccountRow[]>(
-        "SELECT id, plugin_id, encrypted_credentials, credentials_iv FROM accounts WHERE id = $1",
-        [targetAccountId],
-      );
-      const targetRow = targetRows[0];
-      if (!targetRow) throw new Error("Target account not found");
-
-      const targetPlaintext = await invoke<string>("decrypt_value", {
-        ciphertext: targetRow.encrypted_credentials,
-        iv: targetRow.credentials_iv,
-      });
-      const targetCreds = JSON.parse(targetPlaintext) as Record<string, string>;
-      const targetPlugin = await getPlugin(targetRow.plugin_id);
-      if (!targetPlugin) throw new Error(`Target plugin "${targetRow.plugin_id}" not loaded`);
-
-      const targetClient = targetPlugin.plugin.createClient(targetCreds);
+      // 2. Create secret via the target client (already initialized with credentials)
       if (!targetClient.importSecret) throw new Error("Target plugin doesn't support secret import");
-
-      await targetClient.importSecret(targetAccountId, {
+      await targetClient.importSecret("", {
         namespace,
         secretName,
         data,
@@ -193,7 +188,7 @@ export function SecretExportModal({ source, targetAccountId, onClose, onCreated 
       setCreating(false);
       setResolving(false);
     }
-  }, [selectedTemplate, editableKeys, namespace, secretName, source, targetAccountId, onCreated]);
+  }, [selectedTemplate, targetClient, editableKeys, namespace, secretName, source, effectiveTypeId, onCreated]);
 
   const entryCount = selectedTemplate?.entries.length ?? 0;
 

@@ -5,9 +5,8 @@ import type { ResourceInstance, DetailViewSchema } from "@infrawrench/plugin-bas
 import { DetailView, type QueryResult, useUIStore } from "@infrawrench/ui";
 import { getDb } from "../db/client";
 import { getPlugin } from "../plugins/loader";
-import { AssignOutputModal } from "../components/AssignOutputModal";
 import { getSqlSession, setSqlSession } from "../lib/sql-session";
-import { sqlQuery, sqlExecute, buildHostServices, buildKvHostServices, kvCommand, buildDockerHostServices } from "../lib/sql-drivers";
+import { sqlQuery, sqlExecute, buildHostServices, buildKvHostServices, kvCommand, buildDockerHostServices, buildPluginHostServices } from "../lib/sql-drivers";
 import { resolveTunneledHost } from "../lib/ssh-tunnel";
 import { DockerActionsPanel } from "../components/DockerActionsPanel";
 import { GcsBrowserPanel } from "../components/GcsBrowserPanel";
@@ -52,7 +51,6 @@ function ResourceDetailPage() {
   const [logoSvg, setLogoSvg] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [assignModalOutput, setAssignModalOutput] = useState<string | null>(null);
   const [pgConnected, setPgConnected] = useState(false);
   const [pgError, setPgError] = useState<string | null>(null);
   const [kvConnected, setKvConnected] = useState(false);
@@ -344,7 +342,8 @@ function ResourceDetailPage() {
                   const peerLoaded = await getPlugin(integration.pluginId);
                   if (!peerLoaded) return;
 
-                  const peerClient = peerLoaded.plugin.createClient(peerCredentials);
+                  const peerServices = buildPluginHostServices(peerLoaded.plugin.manifest, peerCredentials);
+                  const peerClient = peerLoaded.plugin.createClient(peerCredentials, peerServices);
                   if (!peerClient.renderPeerPane) return;
 
                   const context: PeerPaneContext = {
@@ -487,16 +486,6 @@ function ResourceDetailPage() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {assignModalOutput && account && resource && (
-        <AssignOutputModal
-          providerResourceId={resource.id}
-          providerPluginId={account.plugin_id}
-          providerResourceTypeId={resource.resourceTypeId}
-          outputKey={assignModalOutput}
-          onClose={() => setAssignModalOutput(null)}
-        />
-      )}
-
       <div className="flex-1 flex flex-col overflow-hidden">
         {isSftpView && (
           <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
@@ -656,17 +645,6 @@ function ResourceDetailPage() {
       {!isSshView && !isSftpView && !hasSqlEditor && pgError && (
         <div className="shrink-0 px-4 py-2 border-t border-gray-800 bg-gray-950">
           <span className="text-xs text-red-400 font-mono">SQL connection failed: {pgError}</span>
-        </div>
-      )}
-
-      {!isSshView && !isSftpView && hasSqlEditor && (
-        <div className="shrink-0 flex justify-end px-4 py-2 border-t border-gray-800 bg-gray-950">
-          <button
-            onClick={() => setAssignModalOutput(schema.sqlEditor!.connectionStringOutputKey)}
-            className="px-3 py-1 text-xs text-gray-500 hover:text-gray-300 border border-gray-800 hover:border-gray-700 rounded-lg transition-colors"
-          >
-            Assign connection to…
-          </button>
         </div>
       )}
 

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useDraggable, useDroppable } from "@dnd-kit/core";
+import { useDraggable, useDndMonitor, useDroppable } from "@dnd-kit/core";
 import type {
   PeerPaneResource,
   PeerPaneResourceGroup,
@@ -16,6 +16,7 @@ import { ErrorNotice } from "./ErrorNotice";
 import { K8sExecPanel } from "./K8sExecPanel";
 import { K9sTerminal } from "./K9sTerminal";
 import { SecretExportModal } from "./SecretExportModal";
+import { buildPluginHostServices } from "../lib/sql-drivers";
 
 interface PeerPaneViewProps {
   pane: PeerPaneData;
@@ -87,21 +88,18 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
   }, [createTarget]);
 
   const supportsSecretImport = !!pane.schema.supportsSecretImport;
-  const droppableId = supportsSecretImport ? `secret-import:${accountId}` : `peer-pane:${accountId}`;
+  const droppableId = `secret-import:${accountId}:${parentResourceId}`;
   const { setNodeRef: setDropRef, isOver } = useDroppable({ id: droppableId });
 
-  // Listen for secret-import drop events dispatched by the root DndContext handler
-  useEffect(() => {
-    if (!supportsSecretImport) return;
-    function onSecretDrop(e: Event) {
-      const detail = (e as CustomEvent).detail as { source: DraggableResource; targetAccountId: string } | undefined;
-      if (detail?.targetAccountId === accountId) {
-        setSecretExportSource(detail.source);
-      }
-    }
-    window.addEventListener("iw:secret-export-drop", onSecretDrop);
-    return () => window.removeEventListener("iw:secret-export-drop", onSecretDrop);
-  }, [supportsSecretImport, accountId]);
+  // Detect when a resource is dropped on this pane's droppable zone
+  useDndMonitor({
+    onDragEnd(event) {
+      if (!supportsSecretImport) return;
+      if (String(event.over?.id) !== droppableId) return;
+      const resource = event.active.data.current?.resource as DraggableResource | undefined;
+      if (resource) setSecretExportSource(resource);
+    },
+  });
 
   const kubeconfig = pane.credentials["kubeconfig"];
   const showK9sAction = !!pane.schema.supportsK9s;
@@ -119,7 +117,8 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
         ? async () => {
             const loaded = await getPlugin(createTarget.pluginId);
             if (!loaded) throw new Error(`Plugin "${createTarget.pluginId}" not loaded`);
-            return loaded.plugin.createClient(pane.credentials);
+            const services = buildPluginHostServices(loaded.plugin.manifest, pane.credentials);
+            return loaded.plugin.createClient(pane.credentials, services);
           }
         : undefined,
     [createTarget, pane.credentials],
@@ -243,7 +242,8 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
       {secretExportSource && (
         <SecretExportModal
           source={secretExportSource}
-          targetAccountId={accountId}
+          targetPluginId={pane.schema.resourceGroups[0]?.pluginId ?? "kubernetes"}
+          targetCredentials={pane.credentials}
           onClose={() => setSecretExportSource(null)}
           onCreated={() => setSecretExportSource(null)}
         />
