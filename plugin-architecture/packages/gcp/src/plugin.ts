@@ -21,6 +21,8 @@ import { ServiceAccountResourceType } from "./resources/service-account.js";
 import { CloudArmorPolicyResourceType } from "./resources/cloud-armor-policy.js";
 import { SecretManagerSecretResourceType } from "./resources/secret-manager-secret.js";
 import { DataflowJobResourceType } from "./resources/dataflow-job.js";
+import { CloudDnsZoneResourceType } from "./resources/cloud-dns-zone.js";
+import { CloudDnsRecordSetResourceType } from "./resources/cloud-dns-record-set.js";
 
 const manifest: PluginManifest = {
   id: "gcp",
@@ -77,6 +79,9 @@ const resourceTypes: ResourceTypeDefinition[] = [
   // Networking & Security
   VpcNetworkResourceType,
   CloudArmorPolicyResourceType,
+  // DNS
+  CloudDnsZoneResourceType,
+  CloudDnsRecordSetResourceType,
   // Data
   BigQueryDatasetResourceType,
   DataflowJobResourceType,

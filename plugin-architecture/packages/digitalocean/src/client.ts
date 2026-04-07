@@ -6,9 +6,30 @@ import type {
   CreateResourceConfig,
   SizeOption,
   ImageOption,
+  SectionNode,
+  BadgeNode,
 } from "@infrawrench/plugin-base";
 import { DOKSClusterResourceType } from "./resources/doks-cluster.js";
 import { ManagedDatabaseResourceType } from "./resources/managed-database.js";
+
+// ─── DNS helpers ────────────────────────────────────────────────────────────
+
+const DNS_RECORD_TYPE_COLORS: Record<string, BadgeNode["color"]> = {
+  A: "blue", AAAA: "blue", CNAME: "green", MX: "yellow", TXT: "gray",
+  NS: "gray", SRV: "yellow", CAA: "red", SOA: "gray",
+};
+
+function dnsRecordBadgeColor(type: string): BadgeNode["color"] {
+  return DNS_RECORD_TYPE_COLORS[type] ?? "gray";
+}
+
+function formatDnsTtl(ttl: number): string {
+  if (ttl <= 0) return "Default";
+  if (ttl < 60) return `${ttl}s`;
+  if (ttl < 3600) return `${Math.round(ttl / 60)}m`;
+  if (ttl < 86400) return `${Math.round(ttl / 3600)}h`;
+  return `${Math.round(ttl / 86400)}d`;
+}
 
 /**
  * DigitalOcean plugin client.
@@ -68,6 +89,10 @@ export class DigitalOceanClient implements PluginClient {
         return this.listManagedDatabases(accountId);
       case "spaces-bucket":
         return this.listSpacesBuckets(accountId);
+      case "domain":
+        return this.listDomains(accountId);
+      case "dns-record":
+        return this.listAllDnsRecords(accountId);
       default:
         throw new Error(`DigitalOcean plugin: unknown resource type "${typeId}"`);
     }
@@ -131,6 +156,10 @@ export class DigitalOceanClient implements PluginClient {
       }
       if (outputKey === "accessKeyId") return this.credentials["spacesAccessKeyId"] ?? "";
       if (outputKey === "secretAccessKey") return this.credentials["spacesSecretAccessKey"] ?? "";
+    }
+
+    if (typeId === "domain" && outputKey === "nameservers") {
+      return "ns1.digitalocean.com, ns2.digitalocean.com, ns3.digitalocean.com";
     }
 
     throw new Error(
@@ -389,10 +418,16 @@ export class DigitalOceanClient implements PluginClient {
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
+    if (resource.resourceTypeId === "domain") {
+      return this.renderDomainDetail(resource);
+    }
+    if (resource.resourceTypeId === "dns-record") {
+      return this.renderDnsRecordDetail(resource);
+    }
     const fields = resource.fields;
     return {
       title: resource.displayName,
-      subtitle: `${resource.resourceTypeId} · ${String(fields["region"] ?? "")}`,
+      subtitle: `${resource.resourceTypeId} \u00B7 ${String(fields["region"] ?? "")}`,
       status: { kind: "status-dot", status: "unknown" },
       sections: [
         {
@@ -415,7 +450,123 @@ export class DigitalOceanClient implements PluginClient {
     };
   }
 
+  private renderDomainDetail(resource: ResourceInstance): DetailViewSchema {
+    const fields = resource.fields;
+    const sections: SectionNode[] = [
+      {
+        kind: "section",
+        title: "Domain Info",
+        children: [
+          {
+            kind: "key-value-list",
+            items: [
+              { key: "Domain", value: String(fields["name"] ?? ""), copyable: true },
+              { key: "Default TTL", value: formatDnsTtl(Number(fields["ttl"] ?? 0)) },
+            ],
+          },
+        ],
+      },
+      {
+        kind: "section",
+        title: "Nameservers",
+        children: [
+          {
+            kind: "key-value-list",
+            items: [
+              { key: "NS 1", value: "ns1.digitalocean.com", copyable: true },
+              { key: "NS 2", value: "ns2.digitalocean.com", copyable: true },
+              { key: "NS 3", value: "ns3.digitalocean.com", copyable: true },
+            ],
+          },
+          {
+            kind: "text",
+            content: "Point your domain registrar to these nameservers to use DigitalOcean DNS.",
+            variant: "muted",
+          },
+        ],
+      },
+    ];
+    return {
+      title: resource.displayName,
+      subtitle: "DNS Domain",
+      status: { kind: "status-dot", status: "healthy", label: "Active" },
+      sections,
+      headerActions: [
+        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
+      ],
+    };
+  }
+
+  private renderDnsRecordDetail(resource: ResourceInstance): DetailViewSchema {
+    const fields = resource.fields;
+    const type = String(fields["type"] ?? "");
+    const name = String(fields["name"] ?? "");
+    const data = String(fields["data"] ?? "");
+    const ttl = Number(fields["ttl"] ?? 0);
+    const priority = fields["priority"] !== undefined ? Number(fields["priority"]) : null;
+    const domainName = String(fields["domainName"] ?? "");
+
+    const infoItems: Array<{ key: string; value: string; copyable?: boolean }> = [
+      { key: "Type", value: type },
+      { key: "Name", value: name, copyable: true },
+      { key: "Data", value: data, copyable: true },
+      { key: "TTL", value: formatDnsTtl(ttl) },
+    ];
+    if (priority !== null && priority > 0) {
+      infoItems.push({ key: "Priority", value: String(priority) });
+    }
+    if (fields["port"] !== undefined) {
+      infoItems.push({ key: "Port", value: String(fields["port"]) });
+    }
+    if (fields["weight"] !== undefined) {
+      infoItems.push({ key: "Weight", value: String(fields["weight"]) });
+    }
+    if (domainName) {
+      infoItems.push({ key: "Domain", value: domainName });
+    }
+    if (fields["tag"]) {
+      infoItems.push({ key: "Tag", value: String(fields["tag"]) });
+    }
+
+    const sections: SectionNode[] = [
+      {
+        kind: "section",
+        title: "Record Details",
+        children: [
+          { kind: "badge", label: type, color: dnsRecordBadgeColor(type) },
+          { kind: "key-value-list", items: infoItems },
+        ],
+      },
+    ];
+
+    return {
+      title: name,
+      subtitle: `${type} \u2192 ${data.length > 50 ? `${data.slice(0, 47)}...` : data}`,
+      status: { kind: "status-dot", status: "healthy" },
+      sections,
+      headerActions: [
+        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
+      ],
+    };
+  }
+
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema {
+    if (resource.resourceTypeId === "dns-record") {
+      const type = String(resource.fields["type"] ?? "");
+      const name = String(resource.fields["name"] ?? "");
+      const shortName = name.length > 30 ? `${name.slice(0, 27)}...` : name;
+      return {
+        id: resource.id,
+        label: `${type}  ${shortName}`,
+      };
+    }
+    if (resource.resourceTypeId === "domain") {
+      return {
+        id: resource.id,
+        label: resource.displayName,
+        status: { kind: "status-dot", status: "healthy", label: "Active" },
+      };
+    }
     return {
       id: resource.id,
       label: resource.displayName,
@@ -528,6 +679,75 @@ export class DigitalOceanClient implements PluginClient {
   private async listSpacesBuckets(accountId: string): Promise<ResourceInstance[]> {
     // Spaces uses S3-compatible API — stub for now
     return [];
+  }
+
+  private async listDomains(accountId: string): Promise<ResourceInstance[]> {
+    const data = await this.fetch<{ domains: Array<Record<string, unknown>> }>("/domains");
+    return (data.domains ?? []).map((d) => ({
+      id: `${accountId}:domain:${String(d["name"])}`,
+      pluginId: "digitalocean",
+      resourceTypeId: "domain",
+      accountId,
+      displayName: String(d["name"]),
+      fields: {
+        name: String(d["name"]),
+        ttl: Number(d["ttl"] ?? 1800),
+        zoneFile: String(d["zone_file"] ?? ""),
+      },
+      resolvedOutputs: {
+        nameservers: "ns1.digitalocean.com, ns2.digitalocean.com, ns3.digitalocean.com",
+      },
+      secretStates: [],
+      externalId: String(d["name"]),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }));
+  }
+
+  private async listAllDnsRecords(accountId: string): Promise<ResourceInstance[]> {
+    const domains = await this.listDomains(accountId);
+    const results: ResourceInstance[] = [];
+    for (const domain of domains) {
+      const domainName = String(domain.fields["name"]);
+      try {
+        const data = await this.fetch<{
+          domain_records: Array<Record<string, unknown>>;
+        }>(`/domains/${domainName}/records?per_page=200`);
+        for (const r of data.domain_records ?? []) {
+          const type = String(r["type"] ?? "");
+          const name = String(r["name"] ?? "@");
+          const displayName = name === "@" ? domainName : `${name}.${domainName}`;
+          results.push({
+            id: `${accountId}:dns-record:${domainName}/${String(r["id"])}`,
+            pluginId: "digitalocean",
+            resourceTypeId: "dns-record",
+            accountId,
+            displayName: `${type} ${displayName}`,
+            fields: {
+              type,
+              name: displayName,
+              data: String(r["data"] ?? ""),
+              ttl: Number(r["ttl"] ?? 1800),
+              ...(r["priority"] !== undefined && r["priority"] !== null ? { priority: Number(r["priority"]) } : {}),
+              ...(r["port"] !== undefined && r["port"] !== null ? { port: Number(r["port"]) } : {}),
+              ...(r["weight"] !== undefined && r["weight"] !== null ? { weight: Number(r["weight"]) } : {}),
+              ...(r["flags"] !== undefined && r["flags"] !== null ? { flags: Number(r["flags"]) } : {}),
+              ...(r["tag"] ? { tag: String(r["tag"]) } : {}),
+              domainName,
+            },
+            resolvedOutputs: {},
+            secretStates: [],
+            externalId: `${domainName}/${String(r["id"])}`,
+            parentResourceId: `${accountId}:domain:${domainName}`,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          });
+        }
+      } catch {
+        // Skip domains we can't read records for
+      }
+    }
+    return results;
   }
 
   // Satisfy the required fields from DOKSClusterResourceType and ManagedDatabaseResourceType

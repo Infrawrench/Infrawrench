@@ -15,6 +15,7 @@ const PLUGIN_MODULES: Record<string, () => Promise<{ plugin: Plugin }>> = {
   "@infrawrench/plugin-digitalocean": () => import("@infrawrench/plugin-digitalocean"),
   "@infrawrench/plugin-docker": () => import("@infrawrench/plugin-docker"),
   "@infrawrench/plugin-gcp": () => import("@infrawrench/plugin-gcp"),
+  "@infrawrench/plugin-hetzner": () => import("@infrawrench/plugin-hetzner"),
   "@infrawrench/plugin-kubernetes": () => import("@infrawrench/plugin-kubernetes"),
   "@infrawrench/plugin-memcached": () => import("@infrawrench/plugin-memcached"),
   "@infrawrench/plugin-mongodb": () => import("@infrawrench/plugin-mongodb"),
@@ -22,7 +23,10 @@ const PLUGIN_MODULES: Record<string, () => Promise<{ plugin: Plugin }>> = {
   "@infrawrench/plugin-neon": () => import("@infrawrench/plugin-neon"),
   "@infrawrench/plugin-postgres": () => import("@infrawrench/plugin-postgres"),
   "@infrawrench/plugin-redis": () => import("@infrawrench/plugin-redis"),
+  "@infrawrench/plugin-scaleway": () => import("@infrawrench/plugin-scaleway"),
   "@infrawrench/plugin-ssh": () => import("@infrawrench/plugin-ssh"),
+  "@infrawrench/plugin-cloudflare": () => import("@infrawrench/plugin-cloudflare"),
+  "@infrawrench/plugin-ovh": () => import("@infrawrench/plugin-ovh"),
 };
 
 export interface LoadedPlugin {

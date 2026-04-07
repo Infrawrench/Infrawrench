@@ -5,6 +5,8 @@ import { DropletResourceType } from "./resources/droplet.js";
 import { DOKSClusterResourceType } from "./resources/doks-cluster.js";
 import { ManagedDatabaseResourceType } from "./resources/managed-database.js";
 import { SpacesResourceType } from "./resources/spaces.js";
+import { DomainResourceType } from "./resources/domain.js";
+import { DnsRecordResourceType } from "./resources/dns-record.js";
 
 const manifest: PluginManifest = {
   id: "digitalocean",
@@ -36,6 +38,8 @@ const resourceTypes: ResourceTypeDefinition[] = [
   DOKSClusterResourceType,
   ManagedDatabaseResourceType,
   SpacesResourceType,
+  DomainResourceType,
+  DnsRecordResourceType,
 ];
 
 export const plugin: Plugin = {

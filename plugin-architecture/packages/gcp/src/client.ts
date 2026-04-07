@@ -123,6 +123,8 @@ export class GcpClient implements PluginClient {
       case "cloud-armor-policy": return listers.listCloudArmorPolicies(ctx, accountId, p);
       case "secret-manager-secret": return listers.listSecretManagerSecrets(ctx, accountId, p);
       case "dataflow-job":       return listers.listDataflowJobs(ctx, accountId, p);
+      case "cloud-dns-zone":     return listers.listCloudDnsZones(ctx, accountId, p);
+      case "cloud-dns-record-set": return listers.listCloudDnsRecordSets(ctx, accountId, p);
       default:
         throw new Error(`GCP plugin: unknown resource type "${typeId}"`);
     }
@@ -229,6 +231,11 @@ export class GcpClient implements PluginClient {
         // privateKeyData is base64-encoded JSON — decode it
         return atob(data.privateKeyData);
       }
+    }
+
+    if (typeId === "cloud-dns-zone" && outputKey === "nameservers") {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      return String(resource.fields["nameservers"] ?? "");
     }
 
     if (typeId === "secret-manager-secret" && outputKey === "latestVersion") {
@@ -797,6 +804,91 @@ export class GcpClient implements PluginClient {
         defaultQuery: `SELECT * FROM \`${datasetId}.INFORMATION_SCHEMA.TABLES\` LIMIT 20`,
         tables,
       };
+    }
+
+    if (resource.resourceTypeId === "cloud-dns-zone") {
+      const dnsName = String(fields["dnsName"] ?? "");
+      const nameservers = String(fields["nameservers"] ?? "");
+      const nsList = nameservers.split(", ").filter(Boolean);
+      const visibility = String(fields["visibility"] ?? "public");
+      const dnssec = String(fields["dnssecState"] ?? "off");
+      base.subtitle = `Cloud DNS \u00B7 ${visibility}`;
+      base.status = { kind: "status-dot", status: "healthy", label: "Active" };
+      base.sections = [
+        {
+          kind: "section",
+          title: "Zone Info",
+          children: [
+            {
+              kind: "key-value-list",
+              items: [
+                { key: "DNS Name", value: dnsName, copyable: true },
+                { key: "Zone Name", value: String(fields["name"] ?? "") },
+                { key: "Visibility", value: visibility },
+                { key: "DNSSEC", value: dnssec },
+                ...(fields["description"] ? [{ key: "Description", value: String(fields["description"]) }] : []),
+              ],
+            },
+          ],
+        },
+        ...(nsList.length > 0
+          ? [
+              {
+                kind: "section" as const,
+                title: "Nameservers",
+                children: [
+                  {
+                    kind: "key-value-list" as const,
+                    items: nsList.map((ns, i) => ({
+                      key: `NS ${i + 1}`,
+                      value: ns,
+                      copyable: true,
+                    })),
+                  },
+                  {
+                    kind: "text" as const,
+                    content: "Point your domain registrar to these nameservers to use Google Cloud DNS.",
+                    variant: "muted" as const,
+                  },
+                ],
+              },
+            ]
+          : []),
+      ];
+    }
+
+    if (resource.resourceTypeId === "cloud-dns-record-set") {
+      const type = String(fields["type"] ?? "");
+      const name = String(fields["name"] ?? "");
+      const rrdatas = String(fields["rrdatas"] ?? "");
+      const ttl = Number(fields["ttl"] ?? 300);
+      const zoneName = String(fields["zoneName"] ?? "");
+      const ttlStr = ttl < 60 ? `${ttl}s` : ttl < 3600 ? `${Math.round(ttl / 60)}m` : ttl < 86400 ? `${Math.round(ttl / 3600)}h` : `${Math.round(ttl / 86400)}d`;
+      const typeColors: Record<string, "blue" | "green" | "yellow" | "gray" | "red"> = {
+        A: "blue", AAAA: "blue", CNAME: "green", MX: "yellow", TXT: "gray",
+        NS: "gray", SRV: "yellow", CAA: "red", SOA: "gray", PTR: "green",
+      };
+      base.subtitle = `${type} \u2192 ${rrdatas.length > 50 ? `${rrdatas.slice(0, 47)}...` : rrdatas}`;
+      base.status = { kind: "status-dot", status: "healthy" };
+      base.sections = [
+        {
+          kind: "section",
+          title: "Record Details",
+          children: [
+            { kind: "badge", label: type, color: typeColors[type] ?? "gray" },
+            {
+              kind: "key-value-list",
+              items: [
+                { key: "Type", value: type },
+                { key: "Name", value: name, copyable: true },
+                { key: "Data", value: rrdatas, copyable: true },
+                { key: "TTL", value: ttlStr },
+                ...(zoneName ? [{ key: "Zone", value: zoneName }] : []),
+              ],
+            },
+          ],
+        },
+      ];
     }
 
     return base;

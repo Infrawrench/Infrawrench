@@ -6,7 +6,7 @@
 
 ## What it is
 
-Infrawrench is a desktop infrastructure management tool. It presents a unified sidebar and dashboard for cloud accounts (GCP, DigitalOcean, Kubernetes, Docker, Postgres, Redis, MySQL, Memcached, SSH VMs). The desktop app is Electron + Vite + React, using a local SQLite database for persistence.
+Infrawrench is a desktop infrastructure management tool. It presents a unified sidebar and dashboard for cloud accounts (GCP, DigitalOcean, Hetzner Cloud, Kubernetes, Docker, Postgres, Redis, MySQL, Memcached, SSH VMs). The desktop app is Electron + Vite + React, using a local SQLite database for persistence.
 
 There is also a web app (`@infrawrench/web`) scaffolded with Next.js for a future multi-user SaaS version, but it is not the current focus.
 
@@ -20,10 +20,12 @@ infrawrench/
 │   ├── plugin-base/          # @infrawrench/plugin-base — zero-runtime-dep interfaces + Zod validators
 │   ├── digitalocean/         # @infrawrench/plugin-digitalocean
 │   ├── gcp/                  # @infrawrench/plugin-gcp
+│   ├── hetzner/              # @infrawrench/plugin-hetzner
 │   ├── kubernetes/           # @infrawrench/plugin-kubernetes
 │   ├── postgres/             # @infrawrench/plugin-postgres
 │   ├── mysql/                # @infrawrench/plugin-mysql
 │   ├── redis/                # @infrawrench/plugin-redis
+│   ├── scaleway/             # @infrawrench/plugin-scaleway
 │   ├── memcached/            # @infrawrench/plugin-memcached
 │   ├── neon/                 # @infrawrench/plugin-neon
 │   ├── docker/               # @infrawrench/plugin-docker
@@ -166,7 +168,7 @@ Resource IDs follow the convention `{accountId}:{resourceTypeId}:{externalId}`. 
 
 The loader (`app/packages/desktop/src/plugins/loader.ts`) validates each plugin's manifest against the Zod schema and checks the manifest `id` matches the registry `id` before mounting. Unknown packages are refused.
 
-Currently blessed: `gcp`, `docker`, `digitalocean`, `kubernetes`, `memcached`, `mongodb`, `mysql`, `neon`, `postgres`, `redis`, `ssh`.
+Currently blessed: `gcp`, `docker`, `digitalocean`, `hetzner`, `kubernetes`, `memcached`, `mongodb`, `mysql`, `neon`, `postgres`, `redis`, `scaleway`, `ssh`, `cloudflare`, `ovh`.
 
 ---
 
@@ -235,6 +237,27 @@ All polling is *background* (no loading flash):
 - Postgres plugin declares `peerPlugins: ["digitalocean", "neon"]` and `pg-database.connectionString` has a `resolvableFrom` entry for `neon/neon-database/connectionString`
 - Supports create for projects (with region/pg-version picker), branches, and databases
 - Supports delete for projects, branches, and databases
+
+### Hetzner Cloud (`@infrawrench/plugin-hetzner`)
+- Auth: Bearer token against `https://api.hetzner.cloud/v1`
+- Resource ID format: `{accountId}:{typeId}:{externalId}` (externalId is the Hetzner numeric ID)
+- Resource types: `server`, `volume`, `floating-ip`, `firewall`
+- Server create supports SSH key upload (idempotent — catches uniqueness_error and matches by public_key)
+- Paginated fetch helper (`fetchAll`) handles Hetzner's `meta.pagination` envelope
+- Locations: `fsn1` (Falkenstein), `nbg1` (Nuremberg), `hel1` (Helsinki), `ash` (Ashburn), `hil` (Hillsboro), `sin` (Singapore)
+- Server status mapping: running→healthy, initializing/starting/rebuilding→provisioning, stopping/migrating→degraded, off/deleting→error
+
+### Scaleway (`@infrawrench/plugin-scaleway`)
+- Auth: `X-Auth-Token` header against `https://api.scaleway.com`
+- Credentials: `accessKey` (SCW...), `secretKey` (UUID), `defaultProjectId` (UUID)
+- Resource types: `instance`, `kapsule-cluster`, `rdb-instance`, `object-storage-bucket`
+- Instance API is zone-scoped (`/instance/v1/zones/{zone}/servers`); all 9 zones (fr-par-1/2/3, nl-ams-1/2/3, pl-waw-1/2/3) are polled in parallel
+- Kapsule and RDB APIs are region-scoped (`/k8s/v1/regions/{region}/clusters`, `/rdb/v1/regions/{region}/instances`); all 3 regions polled in parallel
+- Resource ID format: `{accountId}:{typeId}:{zone_or_region}/{providerId}`
+- Instance delete uses `terminate` action (also releases IP); Kapsule delete passes `with_additional_resources: true`
+- Object Storage uses S3-compatible API at `s3.{region}.scw.cloud`; bucket listing via Scaleway REST API
+- Commercial types fetched from `/instance/v1/zones/{zone}/products/servers` for create form
+- Instance status mapping: running/ready→healthy, starting/stopping/provisioning/creating→provisioning, stopped/error/locked/deleting→error
 
 ### Docker (`@infrawrench/plugin-docker`)
 - `dockerHost` credential: `unix:///var/run/docker.sock` (default) or `tcp://host:port`

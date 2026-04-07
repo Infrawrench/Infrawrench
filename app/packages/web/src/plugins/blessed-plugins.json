@@ -26,6 +26,14 @@
       "blessedBy": "astrid"
     },
     {
+      "id": "hetzner",
+      "packageName": "@infrawrench/plugin-hetzner",
+      "version": "0.1.0",
+      "checksum": "sha256-placeholder-replace-with-real-checksum",
+      "blessedAt": "2026-04-07T00:00:00Z",
+      "blessedBy": "astrid"
+    },
+    {
       "id": "kubernetes",
       "packageName": "@infrawrench/plugin-kubernetes",
       "version": "0.1.0",
@@ -82,11 +90,35 @@
       "blessedBy": "astrid"
     },
     {
+      "id": "scaleway",
+      "packageName": "@infrawrench/plugin-scaleway",
+      "version": "0.1.0",
+      "checksum": "sha256-placeholder-replace-with-real-checksum",
+      "blessedAt": "2026-04-07T00:00:00Z",
+      "blessedBy": "astrid"
+    },
+    {
       "id": "ssh",
       "packageName": "@infrawrench/plugin-ssh",
       "version": "0.1.0",
       "checksum": "sha256-placeholder-replace-with-real-checksum",
       "blessedAt": "2026-04-06T00:00:00Z",
+      "blessedBy": "astrid"
+    },
+    {
+      "id": "cloudflare",
+      "packageName": "@infrawrench/plugin-cloudflare",
+      "version": "0.1.0",
+      "checksum": "sha256-placeholder-replace-with-real-checksum",
+      "blessedAt": "2026-04-07T00:00:00Z",
+      "blessedBy": "astrid"
+    },
+    {
+      "id": "ovh",
+      "packageName": "@infrawrench/plugin-ovh",
+      "version": "0.1.0",
+      "checksum": "sha256-placeholder-replace-with-real-checksum",
+      "blessedAt": "2026-04-07T00:00:00Z",
       "blessedBy": "astrid"
     }
   ]

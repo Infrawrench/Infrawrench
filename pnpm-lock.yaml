@@ -35,6 +35,9 @@ importers:
       '@infrawrench/plugin-gcp':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/gcp
+      '@infrawrench/plugin-hetzner':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/hetzner
       '@infrawrench/plugin-kubernetes':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/kubernetes
@@ -50,12 +53,18 @@ importers:
       '@infrawrench/plugin-neon':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/neon
+      '@infrawrench/plugin-ovh':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/ovh
       '@infrawrench/plugin-postgres':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/postgres
       '@infrawrench/plugin-redis':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/redis
+      '@infrawrench/plugin-scaleway':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/scaleway
       '@infrawrench/plugin-ssh':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/ssh
@@ -249,6 +258,38 @@ importers:
         specifier: ^5.7.3
         version: 5.9.3
 
+  plugin-architecture/packages/aws:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsup:
+        specifier: ^8.3.5
+        version: 8.5.1(jiti@2.6.1)(postcss@8.5.8)(tsx@4.21.0)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.5
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@22.19.17)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.21.0)
+
+  plugin-architecture/packages/cloudflare:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsup:
+        specifier: ^8.3.5
+        version: 8.5.1(jiti@2.6.1)(postcss@8.5.8)(tsx@4.21.0)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.5
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@22.19.17)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.21.0)
+
   plugin-architecture/packages/digitalocean:
     dependencies:
       '@infrawrench/plugin-base':
@@ -293,6 +334,22 @@ importers:
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.17
+      tsup:
+        specifier: ^8.3.5
+        version: 8.5.1(jiti@2.6.1)(postcss@8.5.8)(tsx@4.21.0)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.5
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@22.19.17)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.21.0)
+
+  plugin-architecture/packages/hetzner:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
       tsup:
         specifier: ^8.3.5
         version: 8.5.1(jiti@2.6.1)(postcss@8.5.8)(tsx@4.21.0)(typescript@5.9.3)
@@ -389,6 +446,22 @@ importers:
         specifier: ^3.0.5
         version: 3.2.4(@types/debug@4.1.13)(@types/node@22.19.17)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.21.0)
 
+  plugin-architecture/packages/ovh:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsup:
+        specifier: ^8.3.5
+        version: 8.5.1(jiti@2.6.1)(postcss@8.5.8)(tsx@4.21.0)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.5
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@22.19.17)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.21.0)
+
   plugin-architecture/packages/plugin-base:
     dependencies:
       zod:
@@ -436,6 +509,22 @@ importers:
       ioredis:
         specifier: ^5.3.2
         version: 5.10.1
+      tsup:
+        specifier: ^8.3.5
+        version: 8.5.1(jiti@2.6.1)(postcss@8.5.8)(tsx@4.21.0)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.5
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@22.19.17)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.21.0)
+
+  plugin-architecture/packages/scaleway:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
       tsup:
         specifier: ^8.3.5
         version: 8.5.1(jiti@2.6.1)(postcss@8.5.8)(tsx@4.21.0)(typescript@5.9.3)
