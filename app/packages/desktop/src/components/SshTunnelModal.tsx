@@ -16,7 +16,7 @@ const PRESETS = {
   custom:    { label: "Custom...",  pluginId: null,        port: 0 },
 } as const;
 
-type PresetKey = keyof typeof PRESETS;
+export type PresetKey = keyof typeof PRESETS;
 
 function buildCredentials(pluginId: string, remotePort: number): Record<string, string> {
   switch (pluginId) {
@@ -38,15 +38,16 @@ function buildCredentials(pluginId: string, remotePort: number): Record<string, 
 interface SshTunnelModalProps {
   sshHost: string;
   sourceAccountId: string;
+  defaultService?: PresetKey;
   onClose: () => void;
   onTunnelEstablished: (newAccountId: string) => void;
 }
 
-export function SshTunnelModal({ sshHost, sourceAccountId, onClose, onTunnelEstablished }: SshTunnelModalProps) {
+export function SshTunnelModal({ sshHost, sourceAccountId, defaultService, onClose, onTunnelEstablished }: SshTunnelModalProps) {
   const [sshUser, setSshUser] = useState("root");
   const [sshPort, setSshPort] = useState(22);
   const [privateKey, setPrivateKey] = useState("");
-  const [service, setService] = useState<PresetKey>("docker");
+  const [service, setService] = useState<PresetKey>(defaultService ?? "docker");
   const [customPort, setCustomPort] = useState(22222);
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);

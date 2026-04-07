@@ -12,8 +12,9 @@ import { formatErrorMessage } from "../lib/errors";
 import { buildPluginHostServices } from "../lib/sql-drivers";
 import { CreateResourceModal } from "../components/CreateResourceModal";
 import { SecretExportModal } from "../components/SecretExportModal";
-import { SshTunnelModal } from "../components/SshTunnelModal";
+import { SshTunnelModal, type PresetKey } from "../components/SshTunnelModal";
 import { DockerSetupModal } from "../components/DockerSetupModal";
+import { SshEnvDeployModal } from "../components/SshEnvDeployModal";
 import { navigateToWorkspaceTarget, resourceTabTarget, accountTabTarget } from "../lib/workspace-tabs";
 
 export const Route = createFileRoute("/accounts/$accountId")({
@@ -51,13 +52,16 @@ function AccountPage() {
   const [contextMenu, setContextMenu] = useState<{
     x: number; y: number; sshHost: string;
   } | null>(null);
-  const [tunnelTarget, setTunnelTarget] = useState<{ sshHost: string } | null>(null);
+  const [tunnelTarget, setTunnelTarget] = useState<{ sshHost: string; defaultService?: PresetKey } | null>(null);
   const [dockerSetupTarget, setDockerSetupTarget] = useState<{ sshHost: string } | null>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const [secretExportDrop, setSecretExportDrop] = useState<{
     source: DraggableResource;
     targetPluginId: string;
     targetCredentials: Record<string, string>;
+  } | null>(null);
+  const [envDeployDrop, setEnvDeployDrop] = useState<{
+    source: DraggableResource; sshHost: string;
   } | null>(null);
 
   // Re-fetch when a resource is deleted (or otherwise changed) for this account
@@ -91,7 +95,31 @@ function AccountPage() {
       if (kind !== "resource") return;
       // Find the target in our groups
       const targetResource = groups.flatMap((g) => g.resources).find((r) => r.id === targetId);
-      if (!targetResource || !kubeconfigTypeIds.has(targetResource.resourceTypeId)) return;
+      if (!targetResource) return;
+
+      // Check if dropped onto a VM with SSH endpoint
+      const targetGroup = groups.find((g) => g.resources.some((r) => r.id === targetId));
+      const sshHostKey = targetGroup?.typeDef.sshEndpoint?.hostOutputKey;
+      if (sshHostKey && !kubeconfigTypeIds.has(targetResource.resourceTypeId)) {
+        const sshHost = String(targetResource.resolvedOutputs?.[sshHostKey] ?? targetResource.fields[sshHostKey] ?? "");
+        if (sshHost) {
+          const TUNNEL_PLUGINS = new Set(["docker", "postgres", "mysql", "redis", "memcached"]);
+          const sourcePlugin = source.pluginId === "__account__"
+            ? String(source.fields["pluginId"] ?? "") : source.pluginId;
+          if (TUNNEL_PLUGINS.has(sourcePlugin)) {
+            const pluginToPreset: Record<string, PresetKey> = {
+              docker: "docker", postgres: "postgres", mysql: "mysql",
+              redis: "redis", memcached: "memcached",
+            };
+            setTunnelTarget({ sshHost, defaultService: pluginToPreset[sourcePlugin] });
+          } else {
+            setEnvDeployDrop({ source, sshHost });
+          }
+          return;
+        }
+      }
+
+      if (!kubeconfigTypeIds.has(targetResource.resourceTypeId)) return;
       if (!account) return;
       void (async () => {
         try {
@@ -354,6 +382,15 @@ function AccountPage() {
         <p className="text-sm text-gray-600">No resources found.</p>
       )}
 
+      {envDeployDrop && (
+        <SshEnvDeployModal
+          source={envDeployDrop.source}
+          sshHost={envDeployDrop.sshHost}
+          onClose={() => setEnvDeployDrop(null)}
+          onDeployed={() => setEnvDeployDrop(null)}
+        />
+      )}
+
       {secretExportDrop && (
         <SecretExportModal
           source={secretExportDrop.source}
@@ -416,6 +453,7 @@ function AccountPage() {
         <SshTunnelModal
           sshHost={tunnelTarget.sshHost}
           sourceAccountId={accountId}
+          defaultService={tunnelTarget.defaultService}
           onClose={() => setTunnelTarget(null)}
           onTunnelEstablished={(newAccountId) => {
             setTunnelTarget(null);
@@ -477,18 +515,19 @@ function ResourcePill({
     data: { resource: draggableData },
   });
 
-  // Separate droppable from draggable — combining refs on the same node in a
-  // flex-wrap layout causes @dnd-kit to lose rect measurements during drag.
-  const { setNodeRef: setDropRef, isOver } = useDroppable({
-    id: `sidebar-resource:${resource.id}`,
-    disabled: !acceptsSecretImport,
-  });
-
-  const showDropHint = isOver && !!acceptsSecretImport && !isDragging;
-
   const sshHost = sshHostOutputKey
     ? String(resource.resolvedOutputs?.[sshHostOutputKey] ?? resource.fields[sshHostOutputKey] ?? "")
     : "";
+
+  // Separate droppable from draggable — combining refs on the same node in a
+  // flex-wrap layout causes @dnd-kit to lose rect measurements during drag.
+  const isDropTarget = !!acceptsSecretImport || !!sshHost;
+  const { setNodeRef: setDropRef, isOver } = useDroppable({
+    id: `sidebar-resource:${resource.id}`,
+    disabled: !isDropTarget,
+  });
+
+  const showDropHint = isOver && isDropTarget && !isDragging;
 
   return (
       <div ref={setDropRef} className="inline-flex">

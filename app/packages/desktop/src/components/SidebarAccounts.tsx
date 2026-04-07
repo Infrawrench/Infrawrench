@@ -10,9 +10,10 @@ import type { DraggableResource } from "../lib/pins";
 import { getAccountResourceTypes } from "../lib/account-resource-types";
 import { formatErrorMessage } from "../lib/errors";
 import { buildPluginHostServices } from "../lib/sql-drivers";
-import { SshTunnelModal } from "./SshTunnelModal";
+import { SshTunnelModal, type PresetKey } from "./SshTunnelModal";
 import { DockerSetupModal } from "./DockerSetupModal";
 import { SecretExportModal } from "./SecretExportModal";
+import { SshEnvDeployModal } from "./SshEnvDeployModal";
 import { accountTabTarget, navigateToWorkspaceTarget, resourceTabTarget } from "../lib/workspace-tabs";
 
 interface Account {
@@ -59,7 +60,7 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
   } | null>(null);
   // SSH tunnel modal target
   const [tunnelTarget, setTunnelTarget] = useState<{
-    sshHost: string; sourceAccountId: string;
+    sshHost: string; sourceAccountId: string; defaultService?: PresetKey;
   } | null>(null);
   // Docker setup modal target
   const [dockerSetupTarget, setDockerSetupTarget] = useState<{
@@ -72,6 +73,10 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
     source: DraggableResource;
     targetPluginId: string;
     targetCredentials: Record<string, string>;
+  } | null>(null);
+  // Env deploy modal state (triggered by dropping a non-tunnel resource onto a VM)
+  const [envDeployDrop, setEnvDeployDrop] = useState<{
+    source: DraggableResource; sshHost: string;
   } | null>(null);
   const navigate = useNavigate();
   const connectedAccounts = useUIStore((s) => s.connectedAccounts);
@@ -286,11 +291,36 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
           }
         })();
       } else {
-        // Drop onto a resource (e.g. GKE cluster) — resolve kubeconfig from the resource
-        // Find the resource in expanded account resources
+        // Drop onto a resource — could be a K8s cluster (secret import) or a VM (SSH tunnel)
         const allResources = Object.values(accountResources).flatMap((s) => s.resources);
         const targetResource = allResources.find((r) => r.id === targetId);
-        if (!targetResource || !kubeconfigTypeIds.has(targetResource.resourceTypeId)) return;
+        if (!targetResource) return;
+
+        // Check if the target is a VM with an SSH endpoint
+        const sshHost = resourceSshHosts[targetId];
+        if (sshHost && !kubeconfigTypeIds.has(targetResource.resourceTypeId)) {
+          // Tunnel-able services open the SSH tunnel modal
+          const TUNNEL_PLUGINS = new Set(["docker", "postgres", "mysql", "redis", "memcached"]);
+          const sourcePlugin = source.pluginId === "__account__"
+            ? String(source.fields["pluginId"] ?? "") : source.pluginId;
+          if (TUNNEL_PLUGINS.has(sourcePlugin)) {
+            const pluginToPreset: Record<string, PresetKey> = {
+              docker: "docker", postgres: "postgres", mysql: "mysql",
+              redis: "redis", memcached: "memcached",
+            };
+            setTunnelTarget({
+              sshHost,
+              sourceAccountId: targetResource.accountId,
+              defaultService: pluginToPreset[sourcePlugin],
+            });
+          } else {
+            // Non-tunnel resources → deploy credentials via SSH
+            setEnvDeployDrop({ source, sshHost });
+          }
+          return;
+        }
+
+        if (!kubeconfigTypeIds.has(targetResource.resourceTypeId)) return;
         // Find the account that owns this resource
         const allAccounts = groups.flatMap((g) => g.accounts);
         const ownerAccount = allAccounts.find((a) => a.id === targetResource.accountId);
@@ -472,6 +502,7 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
       <SshTunnelModal
         sshHost={tunnelTarget.sshHost}
         sourceAccountId={tunnelTarget.sourceAccountId}
+        defaultService={tunnelTarget.defaultService}
         onClose={() => setTunnelTarget(null)}
         onTunnelEstablished={(newAccountId) => {
           setTunnelTarget(null);
@@ -490,6 +521,16 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
           setDockerSetupTarget(null);
           void navigateToWorkspaceTarget(navigate, accountTabTarget(newAccountId));
         }}
+      />
+    )}
+
+    {/* Env deploy modal (triggered by dropping a non-tunnel resource onto a VM) */}
+    {envDeployDrop && (
+      <SshEnvDeployModal
+        source={envDeployDrop.source}
+        sshHost={envDeployDrop.sshHost}
+        onClose={() => setEnvDeployDrop(null)}
+        onDeployed={() => setEnvDeployDrop(null)}
       />
     )}
 
@@ -529,12 +570,13 @@ function SidebarResourceItem({
     },
   });
 
+  const isDropTarget = !!acceptsSecretImport || !!sshHostValue;
   const { setNodeRef: setDropRef, isOver } = useDroppable({
     id: `sidebar-resource:${draggable.id}`,
-    disabled: !acceptsSecretImport || isDragging,
+    disabled: !isDropTarget || isDragging,
   });
 
-  const showDropHint = isOver && !!acceptsSecretImport;
+  const showDropHint = isOver && isDropTarget;
 
   function setRefs(node: HTMLDivElement | null) {
     setDragRef(node);
