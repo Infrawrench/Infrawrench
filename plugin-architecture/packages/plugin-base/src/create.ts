@@ -50,6 +50,7 @@ export interface DiskOption {
 
 export type CreateFieldKind =
   | "text"           // single-line text input
+  | "number"         // numeric input
   | "select"         // simple dropdown with static options
   | "size-picker"    // visual size selector with RAM/CPU bars
   | "region-picker"  // searchable list of region/zone options
@@ -73,6 +74,10 @@ export interface CreateFieldConfig {
   showWhen?: { fieldKey: string; fieldValue: string };
   /** `select` options */
   options?: { id: string; label: string }[];
+  /** `number` input bounds */
+  minValue?: number;
+  maxValue?: number;
+  stepValue?: number;
   /** `size-picker` data */
   sizes?: SizeOption[];
   /** `region-picker` data */

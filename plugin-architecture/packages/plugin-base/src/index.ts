@@ -11,6 +11,7 @@ export type {
   KvDriverDeclaration,
   DockerDriverDeclaration,
   DockerHostServices,
+  PeerPaneContext,
 } from "./manifest.js";
 
 // Resource type definitions
@@ -20,6 +21,7 @@ export type {
   FieldKind,
   AssociationSource,
   ResourceOutput,
+  PeerPluginIntegration,
 } from "./resource.js";
 
 // Resource instances
@@ -53,6 +55,9 @@ export type {
   DashboardCardSchema,
   DetailViewSchema,
   SidebarItemSchema,
+  PeerPaneSchema,
+  PeerPaneResourceGroup,
+  PeerPaneResource,
   SqlEditorCapability,
   SqlTableMeta,
   StorageObject,

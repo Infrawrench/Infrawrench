@@ -178,3 +178,37 @@ export interface SidebarItemSchema {
   status?: StatusDotNode;
   children?: SidebarItemSchema[];
 }
+
+export interface PeerPaneResource {
+  id: string;
+  pluginId: string;
+  resourceTypeId: string;
+  displayName: string;
+  subtitle?: string;
+  status?: "healthy" | "degraded" | "error" | "unknown" | "provisioning";
+  fields: Record<string, unknown>;
+  externalId?: string;
+  /** Host will show an exec/shell button for pods */
+  supportsExec?: boolean;
+  /** Extra: container name for kubectl exec */
+  containerName?: string;
+  /** Extra: namespace this resource lives in */
+  namespace?: string;
+}
+
+export interface PeerPaneResourceGroup {
+  title: string;
+  /** Resource type being listed — used by host to build DraggableResource */
+  resourceTypeId: string;
+  pluginId: string;
+  items: PeerPaneResource[];
+  /** If true, host shows a "Create" button for this group */
+  supportsCreate?: boolean;
+}
+
+export interface PeerPaneSchema {
+  status?: StatusDotNode;
+  /** k9s launcher button shown if this is true and k9s is installed */
+  supportsK9s?: boolean;
+  resourceGroups: PeerPaneResourceGroup[];
+}

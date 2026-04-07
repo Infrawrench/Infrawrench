@@ -1,15 +1,18 @@
-import { app, BrowserWindow, ipcMain, dialog, session } from "electron";
+import { app, BrowserWindow, ipcMain, dialog, session, shell } from "electron";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import initSqlJs, { type Database as SqlJsDb } from "sql.js";
 import { closeAllTunnels } from "./ssh-tunnel";
 import { killAllSshShells } from "./ssh-shell";
+import { killAllK8sExecs } from "./k8s-exec";
+import { killAllK9sSessions } from "./k9s";
 import { MIGRATIONS } from "../src/db/schema";
 
 // Side-effect imports: register all IPC handlers for their domain
 import "./plugin-host";
 import "./ssh-host";
+import "./k8s-host";
 
 // ── Window ────────────────────────────────────────────────────────────────────
 
@@ -70,7 +73,12 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 
-app.on("before-quit", () => { closeAllTunnels(); killAllSshShells(); });
+app.on("before-quit", () => {
+  closeAllTunnels();
+  killAllSshShells();
+  killAllK8sExecs();
+  killAllK9sSessions();
+});
 
 // ── Encryption ────────────────────────────────────────────────────────────────
 
@@ -181,4 +189,8 @@ ipcMain.handle("show_open_dialog", async (_e, options: Electron.OpenDialogOption
   return win
     ? dialog.showOpenDialog(win, options)
     : dialog.showOpenDialog(options);
+});
+
+ipcMain.handle("open_external_url", async (_e, { url }: { url: string }) => {
+  await shell.openExternal(url);
 });

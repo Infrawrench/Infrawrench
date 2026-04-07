@@ -123,6 +123,19 @@ export interface HostServices {
   docker?: DockerHostServices;
 }
 
+/**
+ * Context passed to a plugin's renderPeerPane method when the plugin is being
+ * rendered as a secondary tab inside another plugin's resource detail view.
+ */
+export interface PeerPaneContext {
+  /** The label declared in PeerPluginIntegration.tabLabel */
+  tabLabel: string;
+  /** Info about the parent resource that initiated the peer integration */
+  parentPluginId: string;
+  parentResourceTypeId: string;
+  parentResourceId: string;
+}
+
 export interface PluginClient {
   /** List all instances of a resource type for an account */
   listResources(typeId: string, accountId: string): Promise<ResourceInstance[]>;
@@ -141,6 +154,12 @@ export interface PluginClient {
   ): Promise<string>;
   /** Return the component schema for a resource's detail view */
   renderDetail(resource: ResourceInstance): DetailViewSchema;
+  /**
+   * Return the component schema for a peer pane — called when this plugin is embedded
+   * as a secondary tab inside another plugin's resource detail view.
+   * The client's credentials have already been resolved from the parent resource's outputs.
+   */
+  renderPeerPane?(context: PeerPaneContext): PeerPaneSchema | Promise<PeerPaneSchema>;
   /** Return the sidebar item schema for a resource */
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema;
   /** Fetch table/column schema for the SQL editor — only when sql services are injected */
@@ -199,5 +218,11 @@ export interface Plugin {
 
 // Forward declarations — defined in their own modules but used here
 import type { ResourceInstance } from "./instance.js";
-import type { DetailViewSchema, SidebarItemSchema, SqlTableMeta, StorageObject } from "./schema.js";
+import type {
+  DetailViewSchema,
+  PeerPaneSchema,
+  SidebarItemSchema,
+  SqlTableMeta,
+  StorageObject,
+} from "./schema.js";
 import type { CreateResourceConfig, CreateSizePricingRequest } from "./create.js";

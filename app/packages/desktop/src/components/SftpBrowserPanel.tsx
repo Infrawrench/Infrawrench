@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "../lib/invoke";
+import { formatErrorMessage } from "../lib/errors";
 
 export interface SftpConfig {
   host: string;
@@ -94,7 +95,7 @@ export function SftpBrowserPanel({ sftpConfig, initialPath = "/" }: SftpBrowserP
     setSelected(new Set());
     invoke<SftpEntry[]>("sftp_list", { config: sftpConfig, path: currentPath })
       .then((items) => { if (!cancelled) setEntries(items); })
-      .catch((e) => { if (!cancelled) setError(String(e).replace(/^Error: /, "")); })
+      .catch((e) => { if (!cancelled) setError(formatErrorMessage(e)); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [currentPath, refreshCount]);
@@ -180,7 +181,12 @@ export function SftpBrowserPanel({ sftpConfig, initialPath = "/" }: SftpBrowserP
     setTransfers((prev) => prev.map((t) => t.id === id ? { ...t, pct } : t));
   }
   function finishTransfer(id: string, error?: string) {
-    setTransfers((prev) => prev.map((t) => t.id === id ? { ...t, pct: 100, done: true, error } : t));
+    setTransfers((prev) => prev.map((t) => {
+      if (t.id !== id) return t;
+      return error
+        ? { ...t, pct: 100, done: true, error }
+        : { ...t, pct: 100, done: true };
+    }));
     setTimeout(() => setTransfers((prev) => prev.filter((t) => t.id !== id)), 2500);
   }
 
@@ -197,7 +203,7 @@ export function SftpBrowserPanel({ sftpConfig, initialPath = "/" }: SftpBrowserP
         await invoke("sftp_upload", { config: sftpConfig, remotePath, data: Buffer.from(buf) });
         finishTransfer(id);
       } catch (e) {
-        finishTransfer(id, String(e).replace(/^Error: /, ""));
+        finishTransfer(id, formatErrorMessage(e));
       }
     }));
     reload();
@@ -216,7 +222,7 @@ export function SftpBrowserPanel({ sftpConfig, initialPath = "/" }: SftpBrowserP
       setNewFolderName("");
       reload();
     } catch (e) {
-      setNewFolderError(String(e).replace(/^Error: /, ""));
+      setNewFolderError(formatErrorMessage(e));
     }
   }
 
@@ -230,7 +236,7 @@ export function SftpBrowserPanel({ sftpConfig, initialPath = "/" }: SftpBrowserP
       reload();
     } catch (e) {
       setConfirmDeleteKey(null);
-      setError(String(e).replace(/^Error: /, ""));
+      setError(formatErrorMessage(e));
     } finally {
       setDeleting(false);
     }
@@ -283,7 +289,7 @@ export function SftpBrowserPanel({ sftpConfig, initialPath = "/" }: SftpBrowserP
           await invoke("sftp_download", { config: sftpConfig, remotePath, localPath });
           finishTransfer(id);
         } catch (e) {
-          finishTransfer(id, String(e).replace(/^Error: /, ""));
+          finishTransfer(id, formatErrorMessage(e));
         }
       }));
     } finally {

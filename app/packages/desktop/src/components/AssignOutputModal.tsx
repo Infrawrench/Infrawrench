@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { getDb } from "../db/client";
 import { getPlugin } from "../plugins/loader";
+import { formatErrorMessage } from "../lib/errors";
+import { ErrorNotice } from "./ErrorNotice";
 
 interface Props {
   /** The resource that is providing the output (e.g. a pg-database) */
@@ -87,7 +89,7 @@ export function AssignOutputModal({ providerResourceId, providerPluginId, provid
         }
       } catch (e) {
         if (!cancelled) {
-          setError(String(e));
+          setError(formatErrorMessage(e));
           setLoading(false);
         }
       }
@@ -123,7 +125,7 @@ export function AssignOutputModal({ providerResourceId, providerPluginId, provid
       }
       onClose();
     } catch (e) {
-      setError(String(e));
+      setError(formatErrorMessage(e));
     } finally {
       setSaving(false);
     }
@@ -146,7 +148,7 @@ export function AssignOutputModal({ providerResourceId, providerPluginId, provid
           {loading ? (
             <p className="text-xs text-gray-600">Loading resources…</p>
           ) : error ? (
-            <p className="text-xs text-red-400">{error}</p>
+            <ErrorNotice message={error} textClassName="text-xs text-red-400" />
           ) : targets.length === 0 ? (
             <p className="text-xs text-gray-500">
               No resources with a compatible field found. Add a resource that accepts a{" "}

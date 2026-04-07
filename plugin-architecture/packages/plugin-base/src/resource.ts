@@ -43,6 +43,25 @@ export interface ResourceOutput {
   description?: string;
 }
 
+/**
+ * Declares that another plugin can be instantiated from this resource's outputs
+ * and rendered as additional tabs in the resource detail view.
+ *
+ * Example: A GKE cluster declares a Kubernetes peer integration, mapping its
+ * `kubeconfig` output to the Kubernetes plugin's `kubeconfig` credential.
+ */
+export interface PeerPluginIntegration {
+  /** ID of the peer plugin to instantiate */
+  pluginId: string;
+  /**
+   * Maps output keys from this resource to credential keys on the peer plugin.
+   * All listed outputs are resolved and passed as credentials to the peer plugin's client.
+   */
+  credentialMappings: { outputKey: string; credentialKey: string }[];
+  /** Label shown on the tab in the detail view */
+  tabLabel: string;
+}
+
 export interface ResourceTypeDefinition {
   id: string;
   displayName: string;
@@ -56,6 +75,12 @@ export interface ResourceTypeDefinition {
   dashboardPinnable: boolean;
   /** Named icon key within the plugin's icon set, falls back to the plugin logo */
   iconKey?: string;
+  /**
+   * Peer plugin integrations — other plugins whose panes are shown as extra tabs
+   * when viewing a resource of this type. The host resolves the listed outputs and
+   * passes them as credentials to the peer plugin's client.
+   */
+  peerIntegrations?: PeerPluginIntegration[];
   /**
    * When present, the host renders a "Connect to service via SSH…" context menu item
    * for instances of this type. `hostOutputKey` names the output key whose resolved

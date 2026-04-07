@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { dockerCommand } from "../lib/sql-drivers";
+import { formatErrorMessage } from "../lib/errors";
 
 interface DockerActionsPanelProps {
   containerId: string;
@@ -24,7 +25,7 @@ export function DockerActionsPanel({ containerId, driverId, dockerHost }: Docker
       setTimeout(() => setState("idle"), 2000);
     } catch (e) {
       setState("error");
-      setError(String(e).replace(/^Error: /, ""));
+      setError(formatErrorMessage(e));
     }
   }
 

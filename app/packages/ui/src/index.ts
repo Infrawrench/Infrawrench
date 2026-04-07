@@ -22,5 +22,5 @@ export { SidebarSection } from "./components/sidebar/SidebarSection.js";
 // Detail view
 export { DetailView } from "./components/detail/DetailView.js";
 export { AssociationPicker } from "./components/detail/AssociationPicker.js";
-export type { RerollSelection, ProviderResource } from "./components/detail/DetailView.js";
+export type { RerollSelection, ProviderResource, PeerPaneData } from "./components/detail/DetailView.js";
 export type { QueryResult } from "./components/detail/SqlEditorView.js";

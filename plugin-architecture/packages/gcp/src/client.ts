@@ -472,107 +472,199 @@ export class GcpClient implements PluginClient {
   }
 
   async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
-    if (typeId !== "gce-instance") throw new Error(`No create config for type "${typeId}"`);
     const p = this.project;
+    if (typeId === "gce-instance") {
+      // Fetch zones, machine types, account images, and existing disks in parallel
+      const [zonesData, machineTypesData, accountImagesData, disksData] = await Promise.all([
+        this.get<{ items?: Array<{ name: string; status: string; region: string }> }>(
+          `https://compute.googleapis.com/compute/v1/projects/${p}/zones`,
+        ),
+        this.get<{ items?: Array<{ name: string; guestCpus: number; memoryMb: number }> }>(
+          `https://compute.googleapis.com/compute/v1/projects/${p}/zones/us-central1-a/machineTypes?maxResults=500`,
+        ),
+        this.get<{ items?: Array<{ name: string; selfLink: string; description?: string; status: string }> }>(
+          `https://compute.googleapis.com/compute/v1/projects/${p}/global/images`,
+        ).catch(() => ({ items: [] as Array<{ name: string; selfLink: string; description?: string; status: string }> })),
+        this.get<{ items?: Record<string, { disks?: Array<{ name: string; selfLink: string; sizeGb: string; status: string; type: string; zone: string }> }> }>(
+          `https://compute.googleapis.com/compute/v1/projects/${p}/aggregated/disks`,
+        ).catch(() => ({ items: {} })),
+      ]);
 
-    // Fetch zones, machine types, account images, and existing disks in parallel
-    const [zonesData, machineTypesData, accountImagesData, disksData] = await Promise.all([
-      this.get<{ items?: Array<{ name: string; status: string; region: string }> }>(
-        `https://compute.googleapis.com/compute/v1/projects/${p}/zones`,
-      ),
-      this.get<{ items?: Array<{ name: string; guestCpus: number; memoryMb: number }> }>(
-        `https://compute.googleapis.com/compute/v1/projects/${p}/zones/us-central1-a/machineTypes?maxResults=500`,
-      ),
-      this.get<{ items?: Array<{ name: string; selfLink: string; description?: string; status: string }> }>(
-        `https://compute.googleapis.com/compute/v1/projects/${p}/global/images`,
-      ).catch(() => ({ items: [] as Array<{ name: string; selfLink: string; description?: string; status: string }> })),
-      this.get<{ items?: Record<string, { disks?: Array<{ name: string; selfLink: string; sizeGb: string; status: string; type: string; zone: string }> }> }>(
-        `https://compute.googleapis.com/compute/v1/projects/${p}/aggregated/disks`,
-      ).catch(() => ({ items: {} })),
-    ]);
+      // Zones
+      const zones = (zonesData.items ?? [])
+        .filter((z) => z.status === "UP")
+        .map((z) => {
+          const regionSlug = z.region.split("/").pop() ?? z.region;
+          const info = GcpClient.REGION_INFO[regionSlug];
+          return {
+            id: z.name,
+            label: z.name,
+            ...(info ? { location: info.location, flag: info.flag } : { location: regionSlug }),
+          };
+        })
+        .sort((a, b) => a.id.localeCompare(b.id));
 
-    // Zones
-    const zones = (zonesData.items ?? [])
-      .filter((z) => z.status === "UP")
-      .map((z) => {
-        const regionSlug = z.region.split("/").pop() ?? z.region;
-        const info = GcpClient.REGION_INFO[regionSlug];
-        return {
-          id: z.name,
-          label: z.name,
-          ...(info ? { location: info.location, flag: info.flag } : { location: regionSlug }),
-        };
-      })
-      .sort((a, b) => a.id.localeCompare(b.id));
+      // Machine types grouped by family
+      const familyOrder = ["e2", "n1", "n2", "n2d", "c2", "c3", "m1", "m2", "a2", "g2"];
+      const familyLabels: Record<string, string> = {
+        e2: "E2 · Cost-optimized", n1: "N1 · General purpose", n2: "N2 · General purpose",
+        n2d: "N2D · AMD general purpose", c2: "C2 · Compute-optimized", c3: "C3 · Compute-optimized",
+        m1: "M1 · Memory-optimized", m2: "M2 · Memory-optimized", a2: "A2 · GPU", g2: "G2 · GPU",
+      };
+      const machineTypes = (machineTypesData.items ?? []).filter((m) => !m.name.includes("custom"));
 
-    // Machine types grouped by family
-    const familyOrder = ["e2", "n1", "n2", "n2d", "c2", "c3", "m1", "m2", "a2", "g2"];
-    const familyLabels: Record<string, string> = {
-      e2: "E2 · Cost-optimized", n1: "N1 · General purpose", n2: "N2 · General purpose",
-      n2d: "N2D · AMD general purpose", c2: "C2 · Compute-optimized", c3: "C3 · Compute-optimized",
-      m1: "M1 · Memory-optimized", m2: "M2 · Memory-optimized", a2: "A2 · GPU", g2: "G2 · GPU",
-    };
-    const machineTypes = (machineTypesData.items ?? []).filter((m) => !m.name.includes("custom"));
+      const sizes: SizeOption[] = machineTypes
+        .map((m) => {
+          const family = familyOrder.find((f) => m.name.startsWith(f)) ?? m.name.split("-")[0] ?? "other";
+          return {
+            id: m.name,
+            label: m.name,
+            vcpus: m.guestCpus,
+            memoryMb: m.memoryMb,
+            category: familyLabels[family] ?? family.toUpperCase(),
+          };
+        })
+        .sort((a, b) => {
+          const ai = familyOrder.indexOf(a.category?.split(" ")[0]?.toLowerCase() ?? "");
+          const bi = familyOrder.indexOf(b.category?.split(" ")[0]?.toLowerCase() ?? "");
+          if (ai !== bi) return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+          return a.vcpus - b.vcpus || a.memoryMb - b.memoryMb;
+        });
 
-    const sizes: SizeOption[] = machineTypes
-      .map((m) => {
-        const family = familyOrder.find((f) => m.name.startsWith(f)) ?? m.name.split("-")[0] ?? "other";
-        return {
-          id: m.name,
-          label: m.name,
-          vcpus: m.guestCpus,
-          memoryMb: m.memoryMb,
-          category: familyLabels[family] ?? family.toUpperCase(),
-        };
-      })
-      .sort((a, b) => {
-        const ai = familyOrder.indexOf(a.category?.split(" ")[0]?.toLowerCase() ?? "");
-        const bi = familyOrder.indexOf(b.category?.split(" ")[0]?.toLowerCase() ?? "");
-        if (ai !== bi) return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
-        return a.vcpus - b.vcpus || a.memoryMb - b.memoryMb;
-      });
+      // Images: public families + account-owned
+      const accountImages: ImageOption[] = (accountImagesData.items ?? [])
+        .filter((i) => i.status === "READY")
+        .map((i) => ({ id: i.selfLink, label: i.name, ...(i.description ? { description: i.description } : {}), category: "My Images", isOwned: true as const }));
+      const images: ImageOption[] = [...GcpClient.PUBLIC_IMAGES, ...accountImages];
 
-    // Images: public families + account-owned
-    const accountImages: ImageOption[] = (accountImagesData.items ?? [])
-      .filter((i) => i.status === "READY")
-      .map((i) => ({ id: i.selfLink, label: i.name, ...(i.description ? { description: i.description } : {}), category: "My Images", isOwned: true as const }));
-    const images: ImageOption[] = [...GcpClient.PUBLIC_IMAGES, ...accountImages];
-
-    // Existing disks from aggregated list
-    const disks: DiskOption[] = [];
-    for (const zoneData of Object.values(disksData.items ?? {}) as Array<{
-      disks?: Array<{ name: string; selfLink: string; sizeGb: string; status: string; type: string; zone: string }>;
-    }>) {
-      for (const d of zoneData.disks ?? []) {
-        if (d.status !== "READY") continue;
-        const zone = d.zone.split("/").pop() ?? d.zone;
-        const diskType = d.type.split("/").pop() ?? "";
-        disks.push({ id: d.selfLink, label: d.name, sizeGb: Number(d.sizeGb), zone, diskType });
+      // Existing disks from aggregated list
+      const disks: DiskOption[] = [];
+      for (const zoneData of Object.values(disksData.items ?? {}) as Array<{
+        disks?: Array<{ name: string; selfLink: string; sizeGb: string; status: string; type: string; zone: string }>;
+      }>) {
+        for (const d of zoneData.disks ?? []) {
+          if (d.status !== "READY") continue;
+          const zone = d.zone.split("/").pop() ?? d.zone;
+          const diskType = d.type.split("/").pop() ?? "";
+          disks.push({ id: d.selfLink, label: d.name, sizeGb: Number(d.sizeGb), zone, diskType });
+        }
       }
-    }
-    disks.sort((a, b) => a.label.localeCompare(b.label));
-    const defaultZone = zones.find((z) => z.id === "us-central1-a")?.id ?? zones[0]?.id;
+      disks.sort((a, b) => a.label.localeCompare(b.label));
+      const defaultZone = zones.find((z) => z.id === "us-central1-a")?.id ?? zones[0]?.id;
 
-    return {
-      fields: [
-        { key: "name",        label: "Name",         kind: "text",          required: true },
-        { key: "zone",        label: "Zone",          kind: "region-picker", required: true,  regions: zones,  ...(defaultZone ? { defaultValue: defaultZone } : {}) },
-        { key: "machineType", label: "Machine Type",  kind: "size-picker",   required: true,  sizes,           defaultValue: "e2-medium" },
-        { key: "bootSource",  label: "Boot Disk",     kind: "select",        required: true,  defaultValue: "new-image",
-          options: [
-            { id: "new-image",      label: "New disk from OS image" },
-            { id: "existing-disk",  label: "Existing persistent disk" },
-          ],
-        },
-        { key: "image",  label: "OS Image",       kind: "image-picker", required: true,  images, defaultValue: "projects/debian-cloud/global/images/family/debian-12",
-          showWhen: { fieldKey: "bootSource", fieldValue: "new-image" } },
-        { key: "diskGb", label: "Boot Disk Size",  kind: "disk-slider",  required: false, minGb: 10, maxGb: 2000, defaultGb: 50, stepGb: 10,
-          showWhen: { fieldKey: "bootSource", fieldValue: "new-image" } },
-        { key: "existingDisk", label: "Select Disk", kind: "disk-picker", required: true,  disks,
-          showWhen: { fieldKey: "bootSource", fieldValue: "existing-disk" } },
-        { key: "sshPublicKey", label: "SSH Key", kind: "ssh-key-picker", required: false },
-      ],
-    };
+      return {
+        fields: [
+          { key: "name",        label: "Name",         kind: "text",          required: true },
+          { key: "zone",        label: "Zone",          kind: "region-picker", required: true,  regions: zones,  ...(defaultZone ? { defaultValue: defaultZone } : {}) },
+          { key: "machineType", label: "Machine Type",  kind: "size-picker",   required: true,  sizes,           defaultValue: "e2-medium" },
+          { key: "bootSource",  label: "Boot Disk",     kind: "select",        required: true,  defaultValue: "new-image",
+            options: [
+              { id: "new-image",      label: "New disk from OS image" },
+              { id: "existing-disk",  label: "Existing persistent disk" },
+            ],
+          },
+          { key: "image",  label: "OS Image",       kind: "image-picker", required: true,  images, defaultValue: "projects/debian-cloud/global/images/family/debian-12",
+            showWhen: { fieldKey: "bootSource", fieldValue: "new-image" } },
+          { key: "diskGb", label: "Boot Disk Size",  kind: "disk-slider",  required: false, minGb: 10, maxGb: 2000, defaultGb: 50, stepGb: 10,
+            showWhen: { fieldKey: "bootSource", fieldValue: "new-image" } },
+          { key: "existingDisk", label: "Select Disk", kind: "disk-picker", required: true,  disks,
+            showWhen: { fieldKey: "bootSource", fieldValue: "existing-disk" } },
+          { key: "sshPublicKey", label: "SSH Key", kind: "ssh-key-picker", required: false },
+        ],
+      };
+    }
+
+    if (typeId === "gke-cluster") {
+      const [zonesData, machineTypesData, serverConfig] = await Promise.all([
+        this.get<{ items?: Array<{ name: string; status: string; region: string }> }>(
+          `https://compute.googleapis.com/compute/v1/projects/${p}/zones`,
+        ),
+        this.get<{ items?: Array<{ name: string; guestCpus: number; memoryMb: number }> }>(
+          `https://compute.googleapis.com/compute/v1/projects/${p}/zones/us-central1-a/machineTypes?maxResults=500`,
+        ),
+        this.get<{
+          defaultClusterVersion?: string;
+          validMasterVersions?: string[];
+        }>(`https://container.googleapis.com/v1/projects/${p}/locations/us-central1-a/serverConfig`),
+      ]);
+
+      const locations = (zonesData.items ?? [])
+        .filter((zone) => zone.status === "UP")
+        .map((zone) => {
+          const regionSlug = zone.region.split("/").pop() ?? zone.region;
+          const info = GcpClient.REGION_INFO[regionSlug];
+          return {
+            id: zone.name,
+            label: zone.name,
+            ...(info ? { location: info.location, flag: info.flag } : { location: regionSlug }),
+          };
+        })
+        .sort((a, b) => a.id.localeCompare(b.id));
+      const machineTypes = (machineTypesData.items ?? []).filter((m) => !m.name.includes("custom"));
+      const familyOrder = ["e2", "n1", "n2", "n2d", "c2", "c3", "m1", "m2", "a2", "g2"];
+      const familyLabels: Record<string, string> = {
+        e2: "E2 · Cost-optimized", n1: "N1 · General purpose", n2: "N2 · General purpose",
+        n2d: "N2D · AMD general purpose", c2: "C2 · Compute-optimized", c3: "C3 · Compute-optimized",
+        m1: "M1 · Memory-optimized", m2: "M2 · Memory-optimized", a2: "A2 · GPU", g2: "G2 · GPU",
+      };
+      const sizes: SizeOption[] = machineTypes
+        .map((machineType) => {
+          const family = familyOrder.find((candidate) => machineType.name.startsWith(candidate))
+            ?? machineType.name.split("-")[0]
+            ?? "other";
+          return {
+            id: machineType.name,
+            label: machineType.name,
+            vcpus: machineType.guestCpus,
+            memoryMb: machineType.memoryMb,
+            category: familyLabels[family] ?? family.toUpperCase(),
+          };
+        })
+        .sort((a, b) => {
+          const ai = familyOrder.indexOf(a.category?.split(" ")[0]?.toLowerCase() ?? "");
+          const bi = familyOrder.indexOf(b.category?.split(" ")[0]?.toLowerCase() ?? "");
+          if (ai !== bi) return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+          return a.vcpus - b.vcpus || a.memoryMb - b.memoryMb;
+        });
+      const versions = (serverConfig.validMasterVersions ?? []).map((version) => ({
+        id: version,
+        label: version,
+      }));
+      const defaultLocation = locations.find((location) => location.id === "us-central1-a")?.id ?? locations[0]?.id;
+      const defaultVersion = serverConfig.defaultClusterVersion ?? versions[0]?.id;
+
+      return {
+        fields: [
+          { key: "name", label: "Name", kind: "text", required: true },
+          { key: "location", label: "Location", kind: "region-picker", required: true, regions: locations, ...(defaultLocation ? { defaultValue: defaultLocation } : {}) },
+          { key: "version", label: "Kubernetes Version", kind: "select", required: true, options: versions, ...(defaultVersion ? { defaultValue: defaultVersion } : {}) },
+          { key: "machineType", label: "Node Machine Type", kind: "size-picker", required: true, sizes, defaultValue: "e2-medium" },
+          {
+            key: "diskSizeGb",
+            label: "Disk Per Node",
+            kind: "disk-slider",
+            required: false,
+            minGb: 10,
+            maxGb: 2048,
+            defaultGb: 100,
+            stepGb: 10,
+            description: "Persistent disk size attached to each node.",
+          },
+          {
+            key: "nodeCount",
+            label: "Node Count",
+            kind: "number",
+            required: true,
+            defaultValue: "3",
+            minValue: 1,
+            stepValue: 1,
+            description: "Initial number of nodes in the default node pool.",
+          },
+        ],
+      };
+    }
+
+    throw new Error(`No create config for type "${typeId}"`);
   }
 
   async getCreateSizePricing(
@@ -618,76 +710,138 @@ export class GcpClient implements PluginClient {
   }
 
   async createResource(typeId: string, accountId: string, fields: Record<string, string>): Promise<ResourceInstance> {
-    if (typeId !== "gce-instance") {
-      throw new Error(`GCP plugin: createResource not supported for type "${typeId}"`);
-    }
-    const p = this.project;
-    const zone = fields["zone"] ?? "";
-    const machineType = fields["machineType"] ?? "";
-    const name = fields["name"] ?? "";
-    const tok = await this.token();
-    const bootSource = fields["bootSource"] ?? "new-image";
+    if (typeId === "gce-instance") {
+      const p = this.project;
+      const zone = fields["zone"] ?? "";
+      const machineType = fields["machineType"] ?? "";
+      const name = fields["name"] ?? "";
+      const tok = await this.token();
+      const bootSource = fields["bootSource"] ?? "new-image";
 
-    let bootDisk: Record<string, unknown>;
-    if (bootSource === "existing-disk") {
-      bootDisk = { boot: true, source: fields["existingDisk"] };
-    } else {
-      const diskSizeGb = Number(fields["diskGb"] ?? 50);
-      bootDisk = {
-        boot: true,
-        autoDelete: true,
-        initializeParams: {
-          sourceImage: fields["image"] ?? "projects/debian-cloud/global/images/family/debian-12",
-          diskSizeGb: String(diskSizeGb),
+      let bootDisk: Record<string, unknown>;
+      if (bootSource === "existing-disk") {
+        bootDisk = { boot: true, source: fields["existingDisk"] };
+      } else {
+        const diskSizeGb = Number(fields["diskGb"] ?? 50);
+        bootDisk = {
+          boot: true,
+          autoDelete: true,
+          initializeParams: {
+            sourceImage: fields["image"] ?? "projects/debian-cloud/global/images/family/debian-12",
+            diskSizeGb: String(diskSizeGb),
+          },
+        };
+      }
+
+      // SSH key → GCP metadata format: "username:ssh-rsa AAAA..."
+      let metadata: Record<string, unknown> | undefined;
+      const sshPub = fields["sshPublicKey"];
+      if (sshPub) {
+        const comment = sshPub.trim().split(" ")[2] ?? "";
+        const username = comment.split("@")[0] || "user";
+        metadata = { items: [{ key: "ssh-keys", value: `${username}:${sshPub.trim()}` }] };
+      }
+
+      const body: Record<string, unknown> = {
+        name,
+        machineType: `zones/${zone}/machineTypes/${machineType}`,
+        disks: [bootDisk],
+        networkInterfaces: [{
+          network: "global/networks/default",
+          accessConfigs: [{ type: "ONE_TO_ONE_NAT", name: "External NAT" }],
+        }],
+        ...(metadata ? { metadata } : {}),
+      };
+      const res = await fetch(
+        `https://compute.googleapis.com/compute/v1/projects/${p}/zones/${zone}/instances`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
+          body: JSON.stringify(body),
         },
+      );
+      if (!res.ok) {
+        throw new Error(`GCP Compute API ${res.status}: ${await res.text()}`);
+      }
+      // The API returns an Operation, not the instance directly — return a stub and let the user refresh
+      const now = new Date().toISOString();
+      return {
+        id: `${accountId}:gce-instance:${name}`,
+        pluginId: "gcp",
+        resourceTypeId: "gce-instance",
+        accountId,
+        displayName: name,
+        fields: { name, zone, machineType, status: "PROVISIONING" },
+        resolvedOutputs: {},
+        secretStates: [],
+        externalId: name,
+        createdAt: now,
+        updatedAt: now,
       };
     }
 
-    // SSH key → GCP metadata format: "username:ssh-rsa AAAA..."
-    let metadata: Record<string, unknown> | undefined;
-    const sshPub = fields["sshPublicKey"];
-    if (sshPub) {
-      const comment = sshPub.trim().split(" ")[2] ?? "";
-      const username = comment.split("@")[0] || "user";
-      metadata = { items: [{ key: "ssh-keys", value: `${username}:${sshPub.trim()}` }] };
+    if (typeId === "gke-cluster") {
+      const p = this.project;
+      const location = fields["location"] ?? "";
+      const machineType = fields["machineType"] ?? "e2-medium";
+      const requestedDiskSizeGb = Number.parseInt(fields["diskSizeGb"] ?? "100", 10);
+      const diskSizeGb = Number.isFinite(requestedDiskSizeGb) && requestedDiskSizeGb >= 10
+        ? requestedDiskSizeGb
+        : 100;
+      const name = fields["name"] ?? "";
+      const version = fields["version"] ?? "";
+      const requestedNodeCount = Number.parseInt(fields["nodeCount"] ?? "3", 10);
+      const initialNodeCount = Number.isFinite(requestedNodeCount) && requestedNodeCount > 0
+        ? requestedNodeCount
+        : 3;
+      const tok = await this.token();
+      const body = {
+        cluster: {
+          name,
+          ...(version ? { initialClusterVersion: version } : {}),
+          initialNodeCount,
+          nodeConfig: {
+            machineType,
+            diskSizeGb,
+          },
+        },
+      };
+      const res = await fetch(
+        `https://container.googleapis.com/v1/projects/${p}/locations/${location}/clusters`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        },
+      );
+      if (!res.ok) {
+        throw new Error(`GKE API ${res.status}: ${await res.text()}`);
+      }
+      const now = new Date().toISOString();
+      return {
+        id: this.id(accountId, "gke-cluster", `${p}/${location}/${name}`),
+        pluginId: "gcp",
+        resourceTypeId: "gke-cluster",
+        accountId,
+        displayName: name,
+        fields: {
+          name,
+          location,
+          version,
+          machineType,
+          diskSizeGb,
+          nodeCount: initialNodeCount,
+          status: "PROVISIONING",
+        },
+        resolvedOutputs: {},
+        secretStates: [],
+        externalId: name,
+        createdAt: now,
+        updatedAt: now,
+      };
     }
 
-    const body: Record<string, unknown> = {
-      name,
-      machineType: `zones/${zone}/machineTypes/${machineType}`,
-      disks: [bootDisk],
-      networkInterfaces: [{
-        network: "global/networks/default",
-        accessConfigs: [{ type: "ONE_TO_ONE_NAT", name: "External NAT" }],
-      }],
-      ...(metadata ? { metadata } : {}),
-    };
-    const res = await fetch(
-      `https://compute.googleapis.com/compute/v1/projects/${p}/zones/${zone}/instances`,
-      {
-        method: "POST",
-        headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      },
-    );
-    if (!res.ok) {
-      throw new Error(`GCP Compute API ${res.status}: ${await res.text()}`);
-    }
-    // The API returns an Operation, not the instance directly — return a stub and let the user refresh
-    const now = new Date().toISOString();
-    return {
-      id: `${accountId}:gce-instance:${name}`,
-      pluginId: "gcp",
-      resourceTypeId: "gce-instance",
-      accountId,
-      displayName: name,
-      fields: { name, zone, machineType, status: "PROVISIONING" },
-      resolvedOutputs: {},
-      secretStates: [],
-      externalId: name,
-      createdAt: now,
-      updatedAt: now,
-    };
+    throw new Error(`GCP plugin: createResource not supported for type "${typeId}"`);
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
@@ -1071,6 +1225,7 @@ export class GcpClient implements PluginClient {
       const name = String(c["name"]);
       const location = String(c["location"] ?? "");
       const nodePool = (c["nodePools"] as Array<Record<string, unknown>> | undefined)?.[0];
+      const nodeConfig = (nodePool?.["config"] as Record<string, unknown> | undefined) ?? {};
       const nodeCount = Number(
         (nodePool?.["initialNodeCount"] as number | undefined) ?? 0,
       );
@@ -1084,6 +1239,8 @@ export class GcpClient implements PluginClient {
           name,
           location,
           version: String(c["currentMasterVersion"] ?? ""),
+          machineType: String(nodeConfig["machineType"] ?? ""),
+          diskSizeGb: Number(nodeConfig["diskSizeGb"] ?? 0),
           nodeCount,
           status: String(c["status"] ?? ""),
         },

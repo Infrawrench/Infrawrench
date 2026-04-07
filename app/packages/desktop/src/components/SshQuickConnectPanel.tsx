@@ -63,7 +63,10 @@ export function SshQuickConnectPanel({ host, onConnect }: SshQuickConnectPanelPr
       try {
         const pub = await invoke<string>("ssh_read_system_key", { name: `${sys[0].name}.pub` });
         const comment = pub.trim().split(" ")[2];
-        if (comment) setUsername((prev) => (prev === "root" ? comment.split("@")[0] : prev));
+        if (comment) {
+          const derivedUsername = comment.split("@")[0] || "root";
+          setUsername((prev) => (prev === "root" ? derivedUsername : prev));
+        }
       } catch { /* .pub might not exist */ }
     }
   }
@@ -166,7 +169,12 @@ export function SshQuickConnectPanel({ host, onConnect }: SshQuickConnectPanelPr
                           try {
                             const pub = await invoke<string>("ssh_read_system_key", { name: `${k.name}.pub` });
                             const comment = pub.trim().split(" ")[2];
-                            if (comment) setUsername((prev) => (prev === "root" || prev === comment.split("@")[0] ? comment.split("@")[0] : prev));
+                            if (comment) {
+                              const derivedUsername = comment.split("@")[0] || "root";
+                              setUsername((prev) => (
+                                prev === "root" || prev === derivedUsername ? derivedUsername : prev
+                              ));
+                            }
                           } catch { /* .pub might not exist */ }
                         }}
                       />

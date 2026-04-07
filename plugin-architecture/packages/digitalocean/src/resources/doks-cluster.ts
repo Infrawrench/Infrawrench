@@ -52,4 +52,5 @@ export const DOKSClusterResourceType: ResourceTypeDefinition = {
   parentTypeId: "project",
   dashboardPinnable: true,
   iconKey: "kubernetes",
+  supportsCreate: true,
 };

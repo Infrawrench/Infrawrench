@@ -7,6 +7,8 @@ import { useUIStore } from "@infrawrench/ui";
 import { getDb } from "../db/client";
 import { getPlugin } from "../plugins/loader";
 import { pinResource, type DraggableResource } from "../lib/pins";
+import { getAccountResourceTypes } from "../lib/account-resource-types";
+import { formatErrorMessage } from "../lib/errors";
 import { buildPluginHostServices } from "../lib/sql-drivers";
 import { CreateResourceModal } from "../components/CreateResourceModal";
 import { navigateToWorkspaceTarget, resourceTabTarget } from "../lib/workspace-tabs";
@@ -86,7 +88,7 @@ function AccountPage() {
         const { plugin } = loaded;
         const services = buildPluginHostServices(plugin.manifest, credentials);
         const client = plugin.createClient(credentials, services);
-        const topLevelTypes = plugin.resourceTypes.filter((t) => !t.parentTypeId);
+        const topLevelTypes = getAccountResourceTypes(plugin.resourceTypes);
 
         const results = await Promise.allSettled(
           topLevelTypes.map(async (t) => ({
@@ -96,8 +98,17 @@ function AccountPage() {
         );
 
         const resolved: ResourceGroup[] = [];
-        for (const r of results) {
-          if (r.status === "fulfilled") resolved.push(r.value);
+        for (let i = 0; i < results.length; i += 1) {
+          const result = results[i];
+          const typeDef = topLevelTypes[i];
+          if (!typeDef) continue;
+          if (result?.status === "fulfilled") {
+            resolved.push(result.value);
+            continue;
+          }
+          if (typeDef.supportsCreate) {
+            resolved.push({ typeDef, resources: [] });
+          }
         }
         if (!cancelled) setGroups(resolved);
 
@@ -107,7 +118,7 @@ function AccountPage() {
         );
         if (!cancelled) setPinned(new Set(pins.map((p) => p.resource_id)));
       } catch (e) {
-        if (!cancelled && !isBackground) setError(String(e));
+        if (!cancelled && !isBackground) setError(formatErrorMessage(e));
       } finally {
         if (!cancelled) setLoading(false);
       }

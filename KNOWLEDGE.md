@@ -249,6 +249,8 @@ Electron's renderer runs from `file://` (or `http://localhost:5173` in dev). Ext
 
 `getCreateConfig(typeId)` returns `CreateResourceConfig` with live data from the provider API. The host renders it generically in `CreateResourceModal`.
 
+The same generic flow also powers managed Kubernetes cluster creation for providers that implement it (currently DOKS and GKE). For account-level views, the desktop now loads all top-level resource types plus child resource types that set `supportsCreate`, so creatable provider resources can show up even when they are nested under a parent type like DigitalOcean `project`.
+
 Field rendering:
 - `region-picker` — searchable by zone ID, human-readable location name, or flag. Shows location as primary label, zone ID as secondary monospaced hint.
 - `size-picker` — collapsible categories, CPU/RAM bars per option

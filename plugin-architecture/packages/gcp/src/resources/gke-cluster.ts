@@ -9,6 +9,8 @@ export const GkeClusterResourceType: ResourceTypeDefinition = {
     { key: "name", label: "Name", kind: "string", required: true },
     { key: "location", label: "Location", kind: "string", required: true },
     { key: "version", label: "Kubernetes Version", kind: "string", required: false },
+    { key: "machineType", label: "Machine Type", kind: "string", required: false },
+    { key: "diskSizeGb", label: "Disk Size (GB)", kind: "number", required: false },
     { key: "nodeCount", label: "Node Count", kind: "number", required: false },
     { key: "status", label: "Status", kind: "string", required: false },
   ],
@@ -17,4 +19,12 @@ export const GkeClusterResourceType: ResourceTypeDefinition = {
     { key: "kubeconfig", label: "Kubeconfig", sensitive: true, description: "Full kubeconfig YAML for kubectl access" },
   ],
   dashboardPinnable: true,
+  supportsCreate: true,
+  peerIntegrations: [
+    {
+      pluginId: "kubernetes",
+      credentialMappings: [{ outputKey: "kubeconfig", credentialKey: "kubeconfig" }],
+      tabLabel: "Kubernetes",
+    },
+  ],
 };

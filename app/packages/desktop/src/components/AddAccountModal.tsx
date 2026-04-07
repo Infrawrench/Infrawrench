@@ -3,6 +3,8 @@ import { invoke } from "../lib/invoke";
 import type { CredentialField } from "@infrawrench/plugin-base";
 import { loadPlugins } from "../plugins/loader";
 import { getDb } from "../db/client";
+import { formatErrorMessage } from "../lib/errors";
+import { ErrorNotice } from "./ErrorNotice";
 
 interface AddAccountModalProps {
   onClose: () => void;
@@ -86,7 +88,7 @@ export function AddAccountModal({ onClose, onAdded }: AddAccountModalProps) {
       onAdded();
       onClose();
     } catch (e) {
-      setError(String(e));
+      setError(formatErrorMessage(e));
     } finally {
       setSaving(false);
     }
@@ -174,7 +176,7 @@ export function AddAccountModal({ onClose, onAdded }: AddAccountModalProps) {
                 </div>
               ))}
 
-              {error && <p className="text-xs text-red-400">{error}</p>}
+              {error && <ErrorNotice message={error} textClassName="text-xs text-red-400" />}
 
               <div className="flex gap-2 pt-1">
                 <button

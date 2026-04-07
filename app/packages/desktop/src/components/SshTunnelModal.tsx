@@ -2,6 +2,8 @@ import { useState } from "react";
 import { invoke } from "../lib/invoke";
 import { getDb } from "../db/client";
 import { sshOpenTunnel } from "../lib/ssh-tunnel";
+import { formatErrorMessage } from "../lib/errors";
+import { ErrorNotice } from "./ErrorNotice";
 
 const PRESETS = {
   docker:    { label: "Docker",     pluginId: "docker",    port: 2375 },
@@ -102,7 +104,7 @@ export function SshTunnelModal({ sshHost, sourceAccountId, onClose, onTunnelEsta
       void localPort; // tunnel is live; the new account will re-use or re-open it
       onTunnelEstablished(newAccountId);
     } catch (e) {
-      setError(String(e).replace(/^Error: /, ""));
+      setError(formatErrorMessage(e));
     } finally {
       setConnecting(false);
     }
@@ -183,9 +185,11 @@ export function SshTunnelModal({ sshHost, sourceAccountId, onClose, onTunnelEsta
           )}
 
           {error && (
-            <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2 text-xs text-red-400">
-              {error}
-            </div>
+            <ErrorNotice
+              message={error}
+              className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2"
+              textClassName="text-xs text-red-400"
+            />
           )}
         </div>
 

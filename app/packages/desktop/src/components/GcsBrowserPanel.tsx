@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import type { StorageObject } from "@infrawrench/plugin-base";
+import { formatErrorMessage } from "../lib/errors";
 
 interface GcsBrowserPanelProps {
   bucketName: string;
@@ -70,7 +71,7 @@ export function GcsBrowserPanel({
     setSelected(new Set());
     onList(prefix)
       .then((items) => { if (!cancelled) setObjects(items); })
-      .catch((e) => { if (!cancelled) setError(String(e)); })
+      .catch((e) => { if (!cancelled) setError(formatErrorMessage(e)); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [prefix, refreshCount]);
@@ -165,7 +166,12 @@ export function GcsBrowserPanel({
     setTransfers((prev) => prev.map((t) => t.id === id ? { ...t, pct } : t));
   }
   function finishTransfer(id: string, error?: string) {
-    setTransfers((prev) => prev.map((t) => t.id === id ? { ...t, pct: 100, done: true, error } : t));
+    setTransfers((prev) => prev.map((t) => {
+      if (t.id !== id) return t;
+      return error
+        ? { ...t, pct: 100, done: true, error }
+        : { ...t, pct: 100, done: true };
+    }));
     setTimeout(() => setTransfers((prev) => prev.filter((t) => t.id !== id)), 2500);
   }
 
@@ -182,7 +188,7 @@ export function GcsBrowserPanel({
         await onUpload(bucketName, key, file, (pct) => updateTransfer(id, pct));
         finishTransfer(id);
       } catch (e) {
-        finishTransfer(id, String(e));
+        finishTransfer(id, formatErrorMessage(e));
       }
     }));
     reload();
@@ -200,7 +206,7 @@ export function GcsBrowserPanel({
       setNewFolderName("");
       reload();
     } catch (e) {
-      setNewFolderError(String(e).replace(/^Error: /, ""));
+      setNewFolderError(formatErrorMessage(e));
     }
   }
 
@@ -215,7 +221,7 @@ export function GcsBrowserPanel({
       reload();
     } catch (e) {
       setConfirmDeleteKey(null);
-      setError(String(e));
+      setError(formatErrorMessage(e));
     } finally {
       setDeleting(false);
     }

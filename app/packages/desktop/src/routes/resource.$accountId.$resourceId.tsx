@@ -14,8 +14,11 @@ import { GcsBrowserPanel } from "../components/GcsBrowserPanel";
 import { SftpBrowserPanel } from "../components/SftpBrowserPanel";
 import { SshTerminal } from "../components/SshTerminal";
 import { SshQuickConnectPanel } from "../components/SshQuickConnectPanel";
-import type { PluginClient } from "@infrawrench/plugin-base";
+import { PeerPaneView } from "../components/PeerPaneView";
+import type { PluginClient, PeerPaneContext } from "@infrawrench/plugin-base";
+import type { PeerPaneData } from "@infrawrench/ui";
 import { accountTabTarget, navigateToWorkspaceTarget, resourceSshTabTarget, resourceSftpTabTarget } from "../lib/workspace-tabs";
+import { formatErrorMessage } from "../lib/errors";
 
 export const Route = createFileRoute("/resource/$accountId/$resourceId")({
   component: ResourceDetailPage,
@@ -71,9 +74,11 @@ function ResourceDetailPage() {
   const locationHash = useRouterState({ select: (s) => s.location.hash });
   const [detailsCollapsed, setDetailsCollapsed] = useState(false);
   const [canDelete, setCanDelete] = useState(false);
+  const [resourceTypeLabel, setResourceTypeLabel] = useState<string>("Resource");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [refreshVersion, setRefreshVersion] = useState(0);
+  const [peerPanes, setPeerPanes] = useState<PeerPaneData[]>([]);
   const backgroundRefreshRef = useRef(false);
   const navigate = useNavigate();
 
@@ -117,6 +122,7 @@ function ResourceDetailPage() {
           if (accountRow && sqliteRes) {
             const loaded = await getPlugin(accountRow.plugin_id);
             if (loaded && !cancelled) {
+              const fastTypeDef = loaded.plugin.resourceTypes.find((t) => t.id === sqliteRes.resource_type_id);
               const now = new Date().toISOString();
               const immediateResource: ResourceInstance = {
                 id: sqliteRes.id,
@@ -145,6 +151,7 @@ function ResourceDetailPage() {
               setAccount(accountRow);
               setLogoSvg(loaded.plugin.manifest.logoSvg);
               setResource(immediateResource);
+              setResourceTypeLabel(fastTypeDef?.displayName ?? "Resource");
               setSchema({ ...immediateSchema, status: { kind: "status-dot", status: "healthy" } });
               setPgConnected(!!session.tablesJson);
               setAccountConnected(accountId, true);
@@ -299,6 +306,7 @@ function ResourceDetailPage() {
 
           // Resolve SSH host if this resource type declares an sshEndpoint
           const resourceTypeDef = plugin.resourceTypes.find((t) => t.id === enrichedResource.resourceTypeId);
+          setResourceTypeLabel(resourceTypeDef?.displayName ?? "Resource");
           if (resourceTypeDef?.sshEndpoint) {
             const { hostOutputKey } = resourceTypeDef.sshEndpoint;
             const host = String(
@@ -310,9 +318,53 @@ function ResourceDetailPage() {
           } else if (!cancelled) {
             setSshHost(null);
           }
+
+          // ── Peer plugin integrations ──────────────────────────────────────
+          if (resourceTypeDef?.peerIntegrations?.length) {
+            const resolvedPanes: PeerPaneData[] = [];
+            await Promise.allSettled(
+              resourceTypeDef.peerIntegrations.map(async (integration) => {
+                // Resolve all required outputs from this resource
+                const peerCredentials: Record<string, string> = {};
+                for (const mapping of integration.credentialMappings) {
+                  const value = await client.resolveOutput(
+                    enrichedResource.resourceTypeId,
+                    enrichedResource.id,
+                    mapping.outputKey,
+                    accountId,
+                  );
+                  peerCredentials[mapping.credentialKey] = value;
+                }
+
+                const peerLoaded = await getPlugin(integration.pluginId);
+                if (!peerLoaded) return;
+
+                const peerClient = peerLoaded.plugin.createClient(peerCredentials);
+                if (!peerClient.renderPeerPane) return;
+
+                const context: PeerPaneContext = {
+                  tabLabel: integration.tabLabel,
+                  parentPluginId: plugin.manifest.id,
+                  parentResourceTypeId: enrichedResource.resourceTypeId,
+                  parentResourceId: enrichedResource.id,
+                };
+                const peerSchema = await peerClient.renderPeerPane(context);
+
+                resolvedPanes.push({
+                  tabLabel: integration.tabLabel,
+                  pluginLogoSvg: peerLoaded.plugin.manifest.logoSvg,
+                  credentials: peerCredentials,
+                  schema: peerSchema,
+                });
+              }),
+            );
+            if (!cancelled) setPeerPanes(resolvedPanes);
+          } else if (!cancelled) {
+            setPeerPanes([]);
+          }
         }
       } catch (e) {
-        if (!cancelled && !isBackground) setError(String(e));
+        if (!cancelled && !isBackground) setError(formatErrorMessage(e));
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -381,7 +433,7 @@ function ResourceDetailPage() {
         { label: account.display_name },
       );
     } catch (e) {
-      setError(String(e));
+      setError(formatErrorMessage(e));
       setDeleting(false);
       setConfirmDelete(false);
     }
@@ -497,6 +549,15 @@ function ResourceDetailPage() {
                   schema={schema}
                   resourceId={decodedResourceId}
                   pluginLogoSvg={logoSvg}
+                  peerPanes={peerPanes}
+                  renderPeerPane={(pane, i) => (
+                    <PeerPaneView
+                      key={i}
+                      pane={pane}
+                      accountId={accountId}
+                      parentResourceId={decodedResourceId}
+                    />
+                  )}
                   {...(hasSqlEditor ? { onRunQuery: handleRunQuery, onExecute: handleExecute } : {})}
                 />
               </div>
@@ -580,7 +641,7 @@ function ResourceDetailPage() {
               onClick={() => setConfirmDelete(true)}
               className="text-xs text-gray-600 hover:text-red-400 transition-colors px-2 py-1 rounded hover:bg-red-500/10"
             >
-              Delete VM…
+              Delete {resourceTypeLabel}…
             </button>
           )}
         </div>
@@ -626,24 +687,26 @@ function ResourceDetailPage() {
           onUpload={(bucket, key, file, onProgress) => clientRef.current!.uploadStorageObject!(bucket, key, file, onProgress)}
           onMakeFolder={(bucket, key) => clientRef.current!.makeStorageFolder!(bucket, key)}
           onDelete={(bucket, key) => clientRef.current!.deleteStorageObject!(bucket, key)}
-          onBatchDownload={hasStorageToken
-            ? async (keys) => {
-                const accessToken = await clientRef.current!.getStorageAccessToken!();
-                const result = await invoke<{ canceled?: boolean; filePaths?: string[] }>(
-                  "show_open_dialog",
-                  { properties: ["openDirectory"], title: "Choose download destination" },
-                );
-                if (result.canceled || !result.filePaths?.[0]) return;
-                const destFolder = result.filePaths[0];
-                await invoke("storage_download_batch", {
-                  pluginId: account!.plugin_id,
-                  bucket: schema!.storageBrowser!.bucketName,
-                  keys,
-                  destFolder,
-                  accessToken,
-                });
+          {...(hasStorageToken
+            ? {
+                onBatchDownload: async (keys: string[]) => {
+                  const accessToken = await clientRef.current!.getStorageAccessToken!();
+                  const result = await invoke<{ canceled?: boolean; filePaths?: string[] }>(
+                    "show_open_dialog",
+                    { properties: ["openDirectory"], title: "Choose download destination" },
+                  );
+                  if (result.canceled || !result.filePaths?.[0]) return;
+                  const destFolder = result.filePaths[0];
+                  await invoke("storage_download_batch", {
+                    pluginId: account!.plugin_id,
+                    bucket: schema!.storageBrowser!.bucketName,
+                    keys,
+                    destFolder,
+                    accessToken,
+                  });
+                },
               }
-            : undefined}
+            : {})}
         />
       )}
 
@@ -688,7 +751,7 @@ function KvConsole({ connectionString, driverName, connected }: { connectionStri
       const formatted = formatRedisResult(result);
       setLines((prev) => [...prev, { kind: "output", text: formatted }]);
     } catch (e) {
-      setLines((prev) => [...prev, { kind: "error", text: String(e).replace(/^Error: /, "") }]);
+        setLines((prev) => [...prev, { kind: "error", text: formatErrorMessage(e) }]);
     } finally {
       setRunning(false);
       inputRef.current?.focus();

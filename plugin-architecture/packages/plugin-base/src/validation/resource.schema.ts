@@ -25,6 +25,15 @@ const resourceOutputSchema = z.object({
   description: z.string().optional(),
 });
 
+const peerPluginIntegrationSchema = z.object({
+  pluginId: z.string().min(1),
+  credentialMappings: z.array(z.object({
+    outputKey: z.string().min(1),
+    credentialKey: z.string().min(1),
+  })),
+  tabLabel: z.string().min(1),
+});
+
 export const resourceTypeDefinitionSchema = z.object({
   id: z.string().min(1),
   displayName: z.string().min(1),
@@ -35,4 +44,5 @@ export const resourceTypeDefinitionSchema = z.object({
   parentTypeId: z.string().optional(),
   dashboardPinnable: z.boolean(),
   iconKey: z.string().optional(),
+  peerIntegrations: z.array(peerPluginIntegrationSchema).optional(),
 });

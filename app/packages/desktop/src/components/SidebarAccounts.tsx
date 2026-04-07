@@ -7,6 +7,8 @@ import { useUIStore } from "@infrawrench/ui";
 import { getDb } from "../db/client";
 import { loadPlugins, getPlugin } from "../plugins/loader";
 import type { DraggableResource } from "../lib/pins";
+import { getAccountResourceTypes } from "../lib/account-resource-types";
+import { formatErrorMessage } from "../lib/errors";
 import { buildPluginHostServices } from "../lib/sql-drivers";
 import { SshTunnelModal } from "./SshTunnelModal";
 import { accountTabTarget, navigateToWorkspaceTarget, resourceTabTarget } from "../lib/workspace-tabs";
@@ -141,7 +143,7 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
       const { plugin } = loaded;
       const services = buildPluginHostServices(plugin.manifest, credentials);
       const client = plugin.createClient(credentials, services);
-      const topLevelTypes = plugin.resourceTypes.filter((t) => !t.parentTypeId);
+      const topLevelTypes = getAccountResourceTypes(plugin.resourceTypes);
       const results = await Promise.allSettled(
         topLevelTypes.map((t) => client.listResources(t.id, id)),
       );
@@ -169,7 +171,7 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
       if (background) return; // silently ignore errors during background refresh
       setAccountResources((prev) => ({
         ...prev,
-        [id]: { loading: false, error: String(e), resources: prev[id]?.resources ?? [] },
+        [id]: { loading: false, error: formatErrorMessage(e), resources: prev[id]?.resources ?? [] },
       }));
     }
   }

@@ -6,6 +6,8 @@ import { useDroppable } from "@dnd-kit/core";
 import { useUIStore } from "@infrawrench/ui";
 import { getDb } from "../db/client";
 import { loadPlugins, getPlugin } from "../plugins/loader";
+import { getAccountResourceTypes } from "../lib/account-resource-types";
+import { formatErrorMessage } from "../lib/errors";
 import { buildHostServices, buildKvHostServices, buildMemcachedHostServices, buildDockerHostServices } from "../lib/sql-drivers";
 import { resolveTunneledHost } from "../lib/ssh-tunnel";
 import { getSqlSession, setSqlSession } from "../lib/sql-session";
@@ -241,7 +243,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
               ? buildHostServices(sqlDecl.driver, creds[sqlDecl.credentialKey] ?? "")
               : undefined;
             const client = loaded.plugin.createClient(creds, hostServices);
-            const topLevelTypes = loaded.plugin.resourceTypes.filter((t) => !t.parentTypeId);
+            const topLevelTypes = getAccountResourceTypes(loaded.plugin.resourceTypes);
             const results = await Promise.allSettled(
               topLevelTypes.map(async (t) => ({
                 typeLabel: t.pluralDisplayName,
@@ -263,7 +265,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
             if (!cancelled) {
               setCardStatus((prev) => ({
                 ...prev,
-                [row.resource_id]: { phase: "error", error: String(e) },
+                [row.resource_id]: { phase: "error", error: formatErrorMessage(e) },
               }));
             }
           }
@@ -303,7 +305,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
             if (!cancelled) {
               setCardStatus((prev) => ({
                 ...prev,
-                [row.resource_id]: { phase: "error", error: String(e) },
+                [row.resource_id]: { phase: "error", error: formatErrorMessage(e) },
               }));
             }
           }
@@ -333,7 +335,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
             if (!cancelled) {
               setCardStatus((prev) => ({
                 ...prev,
-                [row.resource_id]: { phase: "error", error: String(e) },
+                [row.resource_id]: { phase: "error", error: formatErrorMessage(e) },
               }));
             }
           }
@@ -386,7 +388,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
             if (!cancelled) {
               setCardStatus((prev) => ({
                 ...prev,
-                [row.resource_id]: { phase: "error", error: String(e) },
+                [row.resource_id]: { phase: "error", error: formatErrorMessage(e) },
               }));
             }
           }
@@ -433,7 +435,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
           if (!cancelled) {
             setCardStatus((prev) => ({
               ...prev,
-              [row.resource_id]: { phase: "error", error: String(e) },
+              [row.resource_id]: { phase: "error", error: formatErrorMessage(e) },
             }));
           }
         }
@@ -696,7 +698,7 @@ function ConnectionFooter({ status, onConnect }: { status?: CardStatus | undefin
     return (
       <div className="px-5 py-3 border-t border-gray-800 flex items-center gap-2" title={status.error}>
         <span className="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0" />
-        <span className="text-xs text-red-500 truncate">{status.error?.replace(/^Error: /, "") ?? "Connection failed"}</span>
+        <span className="text-xs text-red-500 truncate">{status.error ?? "Connection failed"}</span>
       </div>
     );
   }

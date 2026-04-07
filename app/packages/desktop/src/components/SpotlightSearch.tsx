@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "../lib/invoke";
 import { getDb } from "../db/client";
 import { loadPlugins } from "../plugins/loader";
+import { getAccountResourceTypes } from "../lib/account-resource-types";
 import { buildHostServices } from "../lib/sql-drivers";
 import { pinResource, type DraggableResource } from "../lib/pins";
 
@@ -119,10 +120,12 @@ export function SpotlightSearch({ dashboardId, mode, onClose, onPinned, onNaviga
         } catch { return; }
 
         const sqlDecl = plugin.manifest.sqlDriver;
-        const hostServices = sqlDecl ? buildHostServices(creds[sqlDecl.credentialKey] ?? "") : undefined;
+        const hostServices = sqlDecl
+          ? buildHostServices(sqlDecl.driver, creds[sqlDecl.credentialKey] ?? "")
+          : undefined;
         const client = plugin.createClient(creds, hostServices);
 
-        const topLevelTypes = plugin.resourceTypes.filter((t) => !t.parentTypeId);
+        const topLevelTypes = getAccountResourceTypes(plugin.resourceTypes);
 
         await Promise.allSettled(topLevelTypes.map(async (rt) => {
           const instances = await client.listResources(rt.id, account.id);
@@ -139,7 +142,7 @@ export function SpotlightSearch({ dashboardId, mode, onClose, onPinned, onNaviga
               displayName: inst.displayName,
               subtitle: subtitleFromFields(inst.fields),
               fields: inst.fields,
-              externalId: inst.externalId,
+              ...(inst.externalId ? { externalId: inst.externalId } : {}),
             });
           }
         }));
@@ -242,6 +245,7 @@ export function SpotlightSearch({ dashboardId, mode, onClose, onPinned, onNaviga
           ) : (
             Object.entries(grouped).map(([pluginId, items]) => {
               const first = items[0];
+              if (!first) return null;
               return (
                 <div key={pluginId}>
                   {/* Plugin section header */}

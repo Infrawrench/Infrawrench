@@ -3,12 +3,15 @@ import { invoke } from "../lib/invoke";
 import { getDb } from "../db/client";
 import { getPlugin } from "../plugins/loader";
 import { buildPluginHostServices } from "../lib/sql-drivers";
+import { formatErrorMessage } from "../lib/errors";
+import { ErrorNotice } from "./ErrorNotice";
 import type { PluginClient, ResourceTypeDefinition, CreateResourceConfig, CreateFieldConfig, SizeOption, ImageOption, DiskOption } from "@infrawrench/plugin-base";
 
 interface CreateResourceModalProps {
   accountId: string;
   pluginId: string;
   resourceType: ResourceTypeDefinition;
+  clientFactory?: () => PluginClient | Promise<PluginClient>;
   onClose: () => void;
   onCreated: (resource: import("@infrawrench/plugin-base").ResourceInstance) => void;
 }
@@ -17,6 +20,7 @@ export function CreateResourceModal({
   accountId,
   pluginId,
   resourceType,
+  clientFactory,
   onClose,
   onCreated,
 }: CreateResourceModalProps) {
@@ -113,22 +117,9 @@ export function CreateResourceModal({
         pricingAttemptedRef.current.clear();
         pricingInFlightRequestsRef.current.clear();
         clientRef.current = null;
-        const db = await getDb();
-        const rows = await db.select<{ encrypted_credentials: string; credentials_iv: string }[]>(
-          "SELECT encrypted_credentials, credentials_iv FROM accounts WHERE id = $1",
-          [accountId],
-        );
-        if (!rows[0]) throw new Error("Account not found");
-        const plaintext = await invoke<string>("decrypt_value", {
-          ciphertext: rows[0].encrypted_credentials,
-          iv: rows[0].credentials_iv,
-        });
-        const credentials = JSON.parse(plaintext) as Record<string, string>;
-        const loaded = await getPlugin(pluginId);
-        if (!loaded) throw new Error(`Plugin "${pluginId}" not loaded`);
-        const { plugin } = loaded;
-        const services = buildPluginHostServices(plugin.manifest, credentials);
-        const client = plugin.createClient(credentials, services);
+        const client = clientFactory
+          ? await clientFactory()
+          : await createPluginClient(accountId, pluginId);
         clientRef.current = client;
         if (!client.getCreateConfig) throw new Error("Plugin does not support dynamic create config");
         const cfg = await client.getCreateConfig(resourceType.id);
@@ -195,7 +186,7 @@ export function CreateResourceModal({
           }
         }
       } catch (e) {
-        if (!cancelled) setConfigError(String(e));
+        if (!cancelled) setConfigError(formatErrorMessage(e));
       } finally {
         if (!cancelled) setLoadingConfig(false);
       }
@@ -205,7 +196,7 @@ export function CreateResourceModal({
       cancelled = true;
       clientRef.current = null;
     };
-  }, [accountId, pluginId, resourceType.id]);
+  }, [accountId, clientFactory, pluginId, resourceType.id]);
 
   useEffect(() => {
     if (!config) return;
@@ -296,22 +287,10 @@ export function CreateResourceModal({
     setCreating(true);
     setError(null);
     try {
-      const db = await getDb();
-      const rows = await db.select<{ encrypted_credentials: string; credentials_iv: string }[]>(
-        "SELECT encrypted_credentials, credentials_iv FROM accounts WHERE id = $1",
-        [accountId],
-      );
-      if (!rows[0]) throw new Error("Account not found");
-      const plaintext = await invoke<string>("decrypt_value", {
-        ciphertext: rows[0].encrypted_credentials,
-        iv: rows[0].credentials_iv,
-      });
-      const credentials = JSON.parse(plaintext) as Record<string, string>;
-      const loaded = await getPlugin(pluginId);
-      if (!loaded) throw new Error(`Plugin "${pluginId}" not loaded`);
-      const { plugin } = loaded;
-      const services = buildPluginHostServices(plugin.manifest, credentials);
-      const client = plugin.createClient(credentials, services);
+      const client = clientRef.current
+        ?? (clientFactory
+          ? await clientFactory()
+          : await createPluginClient(accountId, pluginId));
       if (!client.createResource) throw new Error("Plugin does not support resource creation");
       // Only submit fields that are currently visible (respect showWhen)
       const cfg = config;
@@ -323,7 +302,7 @@ export function CreateResourceModal({
       const created = await client.createResource(resourceType.id, accountId, visibleFields);
       onCreated(created);
     } catch (e) {
-      setError(String(e));
+      setError(formatErrorMessage(e));
     } finally {
       setCreating(false);
     }
@@ -359,7 +338,10 @@ export function CreateResourceModal({
               Fetching available options…
             </div>
           ) : configError ? (
-            <p className="text-sm text-red-400">{configError}</p>
+            <ErrorNotice
+              message={configError}
+              textClassName="text-sm text-red-400"
+            />
           ) : configWithPricing ? (
             <div className="space-y-6">
               {configWithPricing.fields
@@ -374,7 +356,11 @@ export function CreateResourceModal({
         {/* Footer */}
         <div className="px-6 py-4 border-t border-gray-800 flex-shrink-0">
           {error && (
-            <p className="text-xs text-red-400 bg-red-900/20 rounded px-3 py-2 mb-3">{error}</p>
+            <ErrorNotice
+              message={error}
+              className="mb-3 rounded bg-red-900/20 px-3 py-2"
+              textClassName="text-xs text-red-400"
+            />
           )}
           <div className="flex gap-3">
             <button
@@ -395,6 +381,25 @@ export function CreateResourceModal({
       </div>
     </div>
   );
+}
+
+async function createPluginClient(accountId: string, pluginId: string): Promise<PluginClient> {
+  const db = await getDb();
+  const rows = await db.select<{ encrypted_credentials: string; credentials_iv: string }[]>(
+    "SELECT encrypted_credentials, credentials_iv FROM accounts WHERE id = $1",
+    [accountId],
+  );
+  if (!rows[0]) throw new Error("Account not found");
+  const plaintext = await invoke<string>("decrypt_value", {
+    ciphertext: rows[0].encrypted_credentials,
+    iv: rows[0].credentials_iv,
+  });
+  const credentials = JSON.parse(plaintext) as Record<string, string>;
+  const loaded = await getPlugin(pluginId);
+  if (!loaded) throw new Error(`Plugin "${pluginId}" not loaded`);
+  const { plugin } = loaded;
+  const services = buildPluginHostServices(plugin.manifest, credentials);
+  return plugin.createClient(credentials, services);
 }
 
 // ─── Field renderers ──────────────────────────────────────────────────────────
@@ -418,22 +423,40 @@ function FieldRenderer({ field, value, onChange }: { field: CreateFieldConfig; v
         />
       )}
 
+      {field.kind === "number" && (
+        <input
+          type="number"
+          inputMode="numeric"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={field.label}
+          min={field.minValue}
+          max={field.maxValue}
+          step={field.stepValue ?? 1}
+          className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500"
+        />
+      )}
+
       {field.kind === "select" && field.options && (
-        <div className="flex gap-2 flex-wrap">
-          {field.options.map((opt) => (
-            <button
-              key={opt.id}
-              onClick={() => onChange(opt.id)}
-              className={`px-4 py-2 rounded-lg border text-sm transition-all ${
-                value === opt.id
-                  ? "border-blue-500 bg-blue-600/10 text-blue-300"
-                  : "border-gray-700 bg-gray-800/50 text-gray-400 hover:border-gray-600"
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
-        </div>
+        field.options.length <= 4 && Math.max(...field.options.map((opt) => opt.label.length)) < 28 ? (
+          <div className="flex gap-2 flex-wrap">
+            {field.options.map((opt) => (
+              <button
+                key={opt.id}
+                onClick={() => onChange(opt.id)}
+                className={`px-4 py-2 rounded-lg border text-sm transition-all ${
+                  value === opt.id
+                    ? "border-blue-500 bg-blue-600/10 text-blue-300"
+                    : "border-gray-700 bg-gray-800/50 text-gray-400 hover:border-gray-600"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <SelectPicker options={field.options} value={value} onChange={onChange} />
+        )
       )}
 
       {field.kind === "region-picker" && field.regions && (
@@ -465,6 +488,77 @@ function FieldRenderer({ field, value, onChange }: { field: CreateFieldConfig; v
       {field.kind === "ssh-key-picker" && (
         <SshKeyPicker value={value} onChange={onChange} />
       )}
+    </div>
+  );
+}
+
+// ─── Select picker ────────────────────────────────────────────────────────────
+
+function SelectPicker({
+  options,
+  value,
+  onChange,
+}: {
+  options: { id: string; label: string }[];
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const [search, setSearch] = useState("");
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase();
+    return q
+      ? options.filter((opt) =>
+          opt.label.toLowerCase().includes(q) || opt.id.toLowerCase().includes(q),
+        )
+      : options;
+  }, [options, search]);
+
+  const selected = options.find((opt) => opt.id === value);
+
+  return (
+    <div className="border border-gray-700 rounded-lg overflow-hidden">
+      <div className="px-3 py-2 border-b border-gray-700 bg-gray-800/50 flex items-center gap-2">
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search options…"
+          className="flex-1 bg-transparent text-sm text-gray-300 placeholder-gray-600 focus:outline-none"
+        />
+        {selected && !search && (
+          <span className="text-xs text-blue-400 truncate max-w-48">{selected.label}</span>
+        )}
+      </div>
+      <div className="max-h-56 overflow-y-auto p-3 bg-gray-900/30">
+        <div className="grid grid-cols-2 gap-2">
+          {filtered.map((opt) => {
+            const showSecondary = opt.label !== opt.id;
+            return (
+              <button
+                key={opt.id}
+                onClick={() => onChange(opt.id)}
+                className={`text-left px-3 py-2.5 rounded-lg border transition-all min-w-0 ${
+                  value === opt.id
+                    ? "border-blue-500 bg-blue-600/10 text-blue-300"
+                    : "border-gray-700 bg-gray-800/50 text-gray-300 hover:border-gray-600"
+                }`}
+              >
+                <span className="block text-sm font-medium truncate">{opt.label}</span>
+                {showSecondary && (
+                  <span className={`block text-[11px] font-mono mt-1 truncate ${
+                    value === opt.id ? "text-blue-400/70" : "text-gray-600"
+                  }`}>
+                    {opt.id}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+        {filtered.length === 0 && (
+          <p className="px-1 py-2 text-xs text-gray-600">No matches</p>
+        )}
+      </div>
     </div>
   );
 }
