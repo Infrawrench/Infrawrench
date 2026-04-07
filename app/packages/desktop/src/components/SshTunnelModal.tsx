@@ -71,7 +71,8 @@ export function SshTunnelModal({ sshHost, sourceAccountId, onClose, onTunnelEsta
       });
 
       // Open SSH tunnel to verify credentials + get local port
-      const { localPort, tunnelId } = await sshOpenTunnel({
+      // Open tunnel to verify credentials; it stays open and will be re-established via ssh_tunnel_configs on reconnect
+      await sshOpenTunnel({
         sshHost,
         sshPort,
         sshUser,
@@ -79,7 +80,6 @@ export function SshTunnelModal({ sshHost, sourceAccountId, onClose, onTunnelEsta
         remoteHost: "127.0.0.1",
         remotePort,
       });
-      void tunnelId; // tunnel stays open; it will be re-established via ssh_tunnel_configs on next connect
 
       // Create new account with original remote address credentials
       const newAccountId = crypto.randomUUID();
@@ -103,7 +103,6 @@ export function SshTunnelModal({ sshHost, sourceAccountId, onClose, onTunnelEsta
         [tunnelId2, newAccountId, sshHost, sshPort, sshUser, "127.0.0.1", remotePort, ciphertext, iv],
       );
 
-      void localPort; // tunnel is live; the new account will re-use or re-open it
       useUIStore.getState().bumpAccounts();
       onTunnelEstablished(newAccountId);
     } catch (e) {

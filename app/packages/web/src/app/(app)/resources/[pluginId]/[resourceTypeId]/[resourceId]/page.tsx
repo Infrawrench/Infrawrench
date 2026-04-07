@@ -7,12 +7,12 @@ import type { ResourceInstance, SecretFieldState, SecretResolution } from "@infr
 import { notFound } from "next/navigation";
 
 interface Props {
-  params: { pluginId: string; resourceTypeId: string; resourceId: string };
+  params: Promise<{ pluginId: string; resourceTypeId: string; resourceId: string }>;
 }
 
 export default async function ResourceDetailPage({ params }: Props) {
   const { organizationId } = await requireAuth();
-  const { pluginId, resourceTypeId, resourceId } = params;
+  const { pluginId, resourceTypeId, resourceId } = await params;
 
   const [resource] = await db
     .select()
