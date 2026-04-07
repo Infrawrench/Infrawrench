@@ -42,6 +42,14 @@
       "blessedBy": "astrid"
     },
     {
+      "id": "neon",
+      "packageName": "@infrawrench/plugin-neon",
+      "version": "0.1.0",
+      "checksum": "sha256-placeholder-replace-with-real-checksum",
+      "blessedAt": "2026-04-07T00:00:00Z",
+      "blessedBy": "astrid"
+    },
+    {
       "id": "mongodb",
       "packageName": "@infrawrench/plugin-mongodb",
       "version": "0.1.0",

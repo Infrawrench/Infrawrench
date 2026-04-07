@@ -20,6 +20,7 @@
     "@infrawrench/plugin-memcached": "workspace:*",
     "@infrawrench/plugin-mongodb": "workspace:*",
     "@infrawrench/plugin-mysql": "workspace:*",
+    "@infrawrench/plugin-neon": "workspace:*",
     "@infrawrench/plugin-postgres": "workspace:*",
     "@infrawrench/plugin-redis": "workspace:*",
     "@infrawrench/plugin-ssh": "workspace:*",

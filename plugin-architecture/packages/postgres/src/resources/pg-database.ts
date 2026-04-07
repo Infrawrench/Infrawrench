@@ -22,6 +22,11 @@ export const PostgresDatabaseResourceType: ResourceTypeDefinition = {
           resourceTypeId: "managed-database",
           outputKey: "connectionString",
         },
+        {
+          pluginId: "neon",
+          resourceTypeId: "neon-database",
+          outputKey: "connectionString",
+        },
       ],
     },
     {

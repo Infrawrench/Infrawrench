@@ -25,6 +25,7 @@ infrawrench/
 │   ├── mysql/                # @infrawrench/plugin-mysql
 │   ├── redis/                # @infrawrench/plugin-redis
 │   ├── memcached/            # @infrawrench/plugin-memcached
+│   ├── neon/                 # @infrawrench/plugin-neon
 │   ├── docker/               # @infrawrench/plugin-docker
 │   └── ssh/                  # @infrawrench/plugin-ssh
 ├── app/packages/
@@ -165,7 +166,7 @@ Resource IDs follow the convention `{accountId}:{resourceTypeId}:{externalId}`. 
 
 The loader (`app/packages/desktop/src/plugins/loader.ts`) validates each plugin's manifest against the Zod schema and checks the manifest `id` matches the registry `id` before mounting. Unknown packages are refused.
 
-Currently blessed: `gcp`, `docker`, `digitalocean`, `kubernetes`, `memcached`, `mysql`, `postgres`, `redis`, `ssh`.
+Currently blessed: `gcp`, `docker`, `digitalocean`, `kubernetes`, `memcached`, `mongodb`, `mysql`, `neon`, `postgres`, `redis`, `ssh`.
 
 ---
 
@@ -223,6 +224,17 @@ All polling is *background* (no loading flash):
 - Resource ID format: `{accountId}:{typeId}:{externalId}`
 - SSH key upload: `POST /v2/account/keys` — handle 422 (duplicate) by listing existing keys and matching by `public_key`
 - `fetch` helper handles `204 No Content` explicitly to avoid JSON parse error on DELETE
+
+### Neon (`@infrawrench/plugin-neon`)
+- Auth: Neon API key (`neon_...`), passed as `Bearer` token to `https://console.neon.tech/api/v2`
+- Resource hierarchy: Project → Branch → (Endpoint, Database, Role)
+- Resource ID formats: `{accountId}:neon-project:{projectId}`, `{accountId}:neon-branch:{projectId}/{branchId}`, `{accountId}:neon-database:{projectId}/{branchId}/{dbName}`
+- Connection string resolved via `GET /projects/{id}/connection_uri?branch_id=...&database_name=...&role_name=...`
+- Role password resolved via `GET /projects/{id}/branches/{branchId}/roles/{roleName}/reveal_password`
+- No `sqlDriver` declared — Neon is a management plugin. For SQL editing, link a Postgres plugin account to a Neon database's `connectionString` output
+- Postgres plugin declares `peerPlugins: ["digitalocean", "neon"]` and `pg-database.connectionString` has a `resolvableFrom` entry for `neon/neon-database/connectionString`
+- Supports create for projects (with region/pg-version picker), branches, and databases
+- Supports delete for projects, branches, and databases
 
 ### Docker (`@infrawrench/plugin-docker`)
 - `dockerHost` credential: `unix:///var/run/docker.sock` (default) or `tcp://host:port`

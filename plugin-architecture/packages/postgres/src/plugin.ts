@@ -16,7 +16,7 @@ const manifest: PluginManifest = {
   author: "Infrawrench",
   license: "MIT",
   minHostVersion: "0.1.0",
-  peerPlugins: ["digitalocean"],
+  peerPlugins: ["digitalocean", "neon"],
   credentialFields: [
     {
       key: "connectionString",
