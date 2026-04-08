@@ -366,6 +366,68 @@ export class KubernetesClient implements PluginClient {
     throw new Error(`Kubernetes plugin: createResource not supported for type "${typeId}"`);
   }
 
+  // ── Manifest editor ──────────────────────────────────────────────────
+
+  /**
+   * Map a resource type ID to its K8s API path components.
+   * Returns [apiPrefix, pluralResource] where the full path is:
+   *   {apiPrefix}/namespaces/{ns}/{pluralResource}/{name}
+   * or for non-namespaced resources:
+   *   {apiPrefix}/{pluralResource}/{name}
+   */
+  private k8sApiPath(typeId: string): { prefix: string; plural: string; namespaced: boolean } {
+    switch (typeId) {
+      case "k8s-pod":         return { prefix: "/api/v1",                     plural: "pods",         namespaced: true };
+      case "k8s-deployment":  return { prefix: "/apis/apps/v1",               plural: "deployments",  namespaced: true };
+      case "k8s-service":     return { prefix: "/api/v1",                     plural: "services",     namespaced: true };
+      case "k8s-statefulset": return { prefix: "/apis/apps/v1",               plural: "statefulsets", namespaced: true };
+      case "k8s-daemonset":   return { prefix: "/apis/apps/v1",               plural: "daemonsets",   namespaced: true };
+      case "k8s-job":         return { prefix: "/apis/batch/v1",              plural: "jobs",         namespaced: true };
+      case "k8s-cronjob":     return { prefix: "/apis/batch/v1",              plural: "cronjobs",     namespaced: true };
+      case "k8s-ingress":     return { prefix: "/apis/networking.k8s.io/v1",  plural: "ingresses",    namespaced: true };
+      case "k8s-configmap":   return { prefix: "/api/v1",                     plural: "configmaps",   namespaced: true };
+      case "k8s-secret":      return { prefix: "/api/v1",                     plural: "secrets",      namespaced: true };
+      case "k8s-namespace":   return { prefix: "/api/v1",                     plural: "namespaces",   namespaced: false };
+      default: throw new Error(`Unknown resource type for manifest: ${typeId}`);
+    }
+  }
+
+  /** Parse the resource type, namespace, and name from a resource ID */
+  private parseResourceId(resourceId: string): { typeId: string; namespace: string; name: string } {
+    // Format: {accountId}:{typeId}:{namespace}:{name} (namespaced)
+    //     or: {accountId}:{typeId}:{name}             (non-namespaced, e.g. namespace)
+    const parts = resourceId.split(":");
+    const typeId = parts[1] ?? "";
+    if (parts.length >= 4) {
+      return { typeId, namespace: parts[2]!, name: parts[3]! };
+    }
+    return { typeId, namespace: "", name: parts[2] ?? "" };
+  }
+
+  private buildResourcePath(resourceId: string): string {
+    const { typeId, namespace, name } = this.parseResourceId(resourceId);
+    const api = this.k8sApiPath(typeId);
+    if (api.namespaced) {
+      return `${api.prefix}/namespaces/${encodeURIComponent(namespace)}/${api.plural}/${encodeURIComponent(name)}`;
+    }
+    return `${api.prefix}/${api.plural}/${encodeURIComponent(name)}`;
+  }
+
+  async getManifest(resourceId: string, _accountId: string): Promise<string> {
+    const path = this.buildResourcePath(resourceId);
+    const raw = await this.k8sFetch<Record<string, unknown>>(path);
+    return JSON.stringify(raw, null, 2);
+  }
+
+  async applyManifest(resourceId: string, _accountId: string, manifest: string): Promise<void> {
+    const path = this.buildResourcePath(resourceId);
+    const body = JSON.parse(manifest);
+    await this.k8sFetch(path, {
+      method: "PUT",
+      body: JSON.stringify(body),
+    });
+  }
+
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema {
     return {
       id: resource.id,

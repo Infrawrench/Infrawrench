@@ -27,3 +27,4 @@ export { DetailView } from "./components/detail/DetailView.js";
 export { AssociationPicker } from "./components/detail/AssociationPicker.js";
 export type { RerollSelection, ProviderResource, PeerPaneData, ChildResource, ChildResourceGroup } from "./components/detail/DetailView.js";
 export type { QueryResult } from "./components/detail/SqlEditorView.js";
+export { ManifestEditorView } from "./components/detail/ManifestEditorView.js";

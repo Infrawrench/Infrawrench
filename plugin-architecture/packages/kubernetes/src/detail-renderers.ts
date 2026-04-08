@@ -1,5 +1,10 @@
-import type { DetailViewSchema, ResourceInstance } from "@infrawrench/plugin-base";
+import type { DetailViewSchema, ManifestEditorCapability, ResourceInstance } from "@infrawrench/plugin-base";
 import { mapPeerStatus, mapJobStatus } from "./types.js";
+
+/** Standard manifest editor capability for all namespaced K8s resources */
+const K8S_MANIFEST_EDITOR: ManifestEditorCapability = {
+  language: "json",
+};
 
 export function renderGenericDetail(resource: ResourceInstance): DetailViewSchema {
   return {
@@ -61,6 +66,7 @@ export function renderPodDetail(resource: ResourceInstance): DetailViewSchema {
     headerActions: [
       { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
     ],
+    manifestEditor: { ...K8S_MANIFEST_EDITOR, resourceKind: "Pod" },
   };
 }
 
@@ -100,6 +106,7 @@ export function renderDeploymentDetail(resource: ResourceInstance): DetailViewSc
     headerActions: [
       { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
     ],
+    manifestEditor: { ...K8S_MANIFEST_EDITOR, resourceKind: "Deployment" },
   };
 }
 
@@ -132,6 +139,7 @@ export function renderServiceDetail(resource: ResourceInstance): DetailViewSchem
     headerActions: [
       { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
     ],
+    manifestEditor: { ...K8S_MANIFEST_EDITOR, resourceKind: "Service" },
   };
 }
 
@@ -168,6 +176,7 @@ export function renderStatefulSetDetail(resource: ResourceInstance): DetailViewS
     headerActions: [
       { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
     ],
+    manifestEditor: { ...K8S_MANIFEST_EDITOR, resourceKind: "StatefulSet" },
   };
 }
 
@@ -205,6 +214,7 @@ export function renderDaemonSetDetail(resource: ResourceInstance): DetailViewSch
     headerActions: [
       { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
     ],
+    manifestEditor: { ...K8S_MANIFEST_EDITOR, resourceKind: "DaemonSet" },
   };
 }
 
@@ -236,6 +246,7 @@ export function renderJobDetail(resource: ResourceInstance): DetailViewSchema {
     headerActions: [
       { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
     ],
+    manifestEditor: { ...K8S_MANIFEST_EDITOR, resourceKind: "Job" },
   };
 }
 
@@ -271,6 +282,7 @@ export function renderCronJobDetail(resource: ResourceInstance): DetailViewSchem
     headerActions: [
       { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
     ],
+    manifestEditor: { ...K8S_MANIFEST_EDITOR, resourceKind: "CronJob" },
   };
 }
 
@@ -305,6 +317,7 @@ export function renderIngressDetail(resource: ResourceInstance): DetailViewSchem
     headerActions: [
       { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
     ],
+    manifestEditor: { ...K8S_MANIFEST_EDITOR, resourceKind: "Ingress" },
   };
 }
 
@@ -333,6 +346,7 @@ export function renderConfigMapDetail(resource: ResourceInstance): DetailViewSch
     headerActions: [
       { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
     ],
+    manifestEditor: { ...K8S_MANIFEST_EDITOR, resourceKind: "ConfigMap" },
   };
 }
 
@@ -362,5 +376,6 @@ export function renderSecretDetail(resource: ResourceInstance): DetailViewSchema
     headerActions: [
       { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
     ],
+    manifestEditor: { ...K8S_MANIFEST_EDITOR, resourceKind: "Secret" },
   };
 }

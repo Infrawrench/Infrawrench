@@ -65,6 +65,7 @@ export type {
   SqlTableMeta,
   StorageObject,
   StorageBrowserCapability,
+  ManifestEditorCapability,
 } from "./schema.js";
 
 // Node.js-side driver interfaces (for Electron main / server hosts)

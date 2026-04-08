@@ -156,6 +156,20 @@ export interface StorageBrowserCapability {
   bucketName: string;
 }
 
+/**
+ * When present on a DetailViewSchema, the host renders a Monaco-based manifest
+ * editor tab alongside the overview. The plugin is responsible for fetching and
+ * applying manifests via getManifest() / applyManifest() on PluginClient.
+ */
+export interface ManifestEditorCapability {
+  /** Language mode for the editor — typically "json" for K8s resources */
+  language: "json" | "yaml";
+  /** K8s resource kind — shown in the tab label (e.g. "Deployment", "ConfigMap") */
+  resourceKind?: string;
+  /** If true, the manifest is read-only (no Apply button) */
+  readOnly?: boolean;
+}
+
 /** Full detail view — shown when user clicks a card or sidebar item */
 export interface DetailViewSchema {
   title: string;
@@ -169,6 +183,8 @@ export interface DetailViewSchema {
   sqlEditor?: SqlEditorCapability;
   /** If present, the host renders a cloud storage file browser panel */
   storageBrowser?: StorageBrowserCapability;
+  /** If present, the host renders a Monaco manifest editor tab */
+  manifestEditor?: ManifestEditorCapability;
 }
 
 /** Sidebar tree node */
