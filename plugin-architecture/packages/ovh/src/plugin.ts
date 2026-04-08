@@ -10,9 +10,8 @@ const manifest: PluginManifest = {
   displayName: "OVHcloud",
   logoSvg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     <rect width="100" height="100" rx="12" fill="#000E9C"/>
-    <g transform="translate(10,25) scale(0.8)">
-      <path d="M25 0C11.2 0 0 11.2 0 25c0 9.1 4.9 17.1 12.2 21.4L20.5 31C18.3 29 17 26.2 17 23c0-5.5 4.5-10 10-10s10 4.5 10 10c0 3.2-1.3 6-3.5 8L41.8 46.4C49.1 42.1 54 34.1 54 25 54 11.2 42.8 0 27 0h-2z" fill="white"/>
-      <path d="M50 62L75 12h25L66 62z" fill="white"/>
+    <g transform="translate(10,20) scale(3.33)" fill="white">
+      <path d="M19.881 10.095l2.563-4.45C23.434 7.389 24 9.404 24 11.555c0 2.88-1.017 5.523-2.71 7.594h-6.62l2.04-3.541h-2.696l3.176-5.513h2.691zm-2.32-5.243L9.333 19.14l.003.009H2.709C1.014 17.077 0 14.435 0 11.555c0-2.152.57-4.17 1.561-5.918L5.855 13.1 10.6 4.852h6.961z"/>
     </g>
   </svg>`,
   author: "Infrawrench",

@@ -26,6 +26,9 @@ importers:
       '@infrawrench/plugin-base':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/plugin-base
+      '@infrawrench/plugin-cloudflare':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/cloudflare
       '@infrawrench/plugin-digitalocean':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/digitalocean

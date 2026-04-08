@@ -29,8 +29,10 @@ interface AccountRow {
   credentials_iv: string;
 }
 
-interface ResourceGroup {
+interface CategoryState {
   typeDef: ResourceTypeDefinition;
+  loading: boolean;
+  error: string | null;
   resources: ResourceInstance[];
 }
 
@@ -40,8 +42,8 @@ function AccountPage() {
   const bumpAccounts = useUIStore((s) => s.bumpAccounts);
   const removeWorkspaceTabs = useUIStore((s) => s.removeWorkspaceTabs);
   const [account, setAccount] = useState<AccountRow | null>(null);
-  const [groups, setGroups] = useState<ResourceGroup[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [categories, setCategories] = useState<CategoryState[]>([]);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pinned, setPinned] = useState<Set<string>>(new Set());
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -93,13 +95,13 @@ function AccountPage() {
         source: DraggableResource; targetId: string; kind: string;
       }>).detail;
       if (kind !== "resource") return;
-      // Find the target in our groups
-      const targetResource = groups.flatMap((g) => g.resources).find((r) => r.id === targetId);
+      // Find the target in our categories
+      const targetResource = categories.flatMap((c) => c.resources).find((r) => r.id === targetId);
       if (!targetResource) return;
 
       // Check if dropped onto a VM with SSH endpoint
-      const targetGroup = groups.find((g) => g.resources.some((r) => r.id === targetId));
-      const sshHostKey = targetGroup?.typeDef.sshEndpoint?.hostOutputKey;
+      const targetCategory = categories.find((c) => c.resources.some((r) => r.id === targetId));
+      const sshHostKey = targetCategory?.typeDef.sshEndpoint?.hostOutputKey;
       if (sshHostKey && !kubeconfigTypeIds.has(targetResource.resourceTypeId)) {
         const sshHost = String(targetResource.resolvedOutputs?.[sshHostKey] ?? targetResource.fields[sshHostKey] ?? "");
         if (sshHost) {
@@ -150,7 +152,7 @@ function AccountPage() {
     }
     window.addEventListener("iw:sidebar-secret-drop", handler);
     return () => window.removeEventListener("iw:sidebar-secret-drop", handler);
-  }, [groups, kubeconfigTypeIds, account]);
+  }, [categories, kubeconfigTypeIds, account]);
 
   // Auto-refresh every 30 s (background — no loading flash)
   useEffect(() => {
@@ -163,7 +165,7 @@ function AccountPage() {
     const isBackground = backgroundLoadRef.current;
     backgroundLoadRef.current = false;
     async function load() {
-      if (!isBackground) { setLoading(true); setError(null); }
+      if (!isBackground) { setInitialLoading(true); setError(null); }
       try {
         const db = await getDb();
         const rows = await db.select<AccountRow[]>(
@@ -194,27 +196,45 @@ function AccountPage() {
         }
         if (!cancelled) setKubeconfigTypeIds(kcTypes);
 
-        const results = await Promise.allSettled(
-          topLevelTypes.map(async (t) => ({
+        // On foreground load, show category headers immediately with loading skeletons
+        if (!isBackground && !cancelled) {
+          setCategories(topLevelTypes.map((t) => ({
             typeDef: t,
-            resources: await client.listResources(t.id, accountId),
-          })),
-        );
-
-        const resolved: ResourceGroup[] = [];
-        for (let i = 0; i < results.length; i += 1) {
-          const result = results[i];
-          const typeDef = topLevelTypes[i];
-          if (!typeDef) continue;
-          if (result?.status === "fulfilled") {
-            resolved.push(result.value);
-            continue;
-          }
-          if (typeDef.supportsCreate) {
-            resolved.push({ typeDef, resources: [] });
-          }
+            loading: true,
+            error: null,
+            resources: [],
+          })));
+          setInitialLoading(false);
         }
-        if (!cancelled) setGroups(resolved);
+
+        // Fire off independent async loads per category — each resolves on its own
+        for (const typeDef of topLevelTypes) {
+          client.listResources(typeDef.id, accountId).then((resources) => {
+            if (cancelled) return;
+            setCategories((prev) => prev.map((cat) =>
+              cat.typeDef.id === typeDef.id
+                ? { ...cat, loading: false, error: null, resources }
+                : cat,
+            ));
+          }).catch((err) => {
+            if (cancelled) return;
+            if (isBackground) {
+              // Background refresh: silently clear loading, keep stale data
+              setCategories((prev) => prev.map((cat) =>
+                cat.typeDef.id === typeDef.id
+                  ? { ...cat, loading: false }
+                  : cat,
+              ));
+            } else {
+              // Foreground: show error, but keep the category visible if it supports create
+              setCategories((prev) => prev.map((cat) =>
+                cat.typeDef.id === typeDef.id
+                  ? { ...cat, loading: false, error: formatErrorMessage(err) }
+                  : cat,
+              ));
+            }
+          });
+        }
 
         // Which resources are already pinned?
         const pins = await db.select<{ resource_id: string }[]>(
@@ -222,9 +242,10 @@ function AccountPage() {
         );
         if (!cancelled) setPinned(new Set(pins.map((p) => p.resource_id)));
       } catch (e) {
-        if (!cancelled && !isBackground) setError(formatErrorMessage(e));
-      } finally {
-        if (!cancelled) setLoading(false);
+        if (!cancelled && !isBackground) {
+          setError(formatErrorMessage(e));
+          setInitialLoading(false);
+        }
       }
     }
     load();
@@ -301,7 +322,7 @@ function AccountPage() {
     );
   }
 
-  if (loading) {
+  if (initialLoading) {
     return <div className="flex items-center justify-center h-full text-gray-600 text-sm">Loading…</div>;
   }
   if (error) {
@@ -309,7 +330,7 @@ function AccountPage() {
   }
 
   return (
-    <div className="p-6 overflow-auto">
+    <div className="p-6 h-full overflow-auto">
       <div className="mb-6 flex items-start justify-between">
         <div>
           <h1 className="text-lg font-semibold text-gray-100">{account?.display_name}</h1>
@@ -341,44 +362,60 @@ function AccountPage() {
         )}
       </div>
 
-      {groups.map((group) =>
-        group.resources.length === 0 && !group.typeDef.supportsCreate ? null : (
-          <div key={group.typeDef.id} className="mb-8">
-            <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
-              {group.typeDef.pluralDisplayName}
-            </h2>
-            <div className="flex flex-wrap gap-2">
-              {group.resources.map((resource) => (
-                <ResourcePill
-                  key={resource.id}
-                  resource={resource}
-                  typeId={group.typeDef.id}
-                  pinned={pinned.has(resource.id)}
-                  acceptsSecretImport={kubeconfigTypeIds.has(group.typeDef.id)}
-                  sshHostOutputKey={group.typeDef.sshEndpoint?.hostOutputKey}
-                  onPin={() => togglePin(resource, group.typeDef.id)}
-                  onOpen={() => openDetail(resource)}
-                  onContextMenuSsh={(e, sshHost) => {
-                    e.preventDefault();
-                    setContextMenu({ x: e.clientX, y: e.clientY, sshHost });
-                  }}
-                />
-              ))}
-              {group.typeDef.supportsCreate && (
-                <button
-                  onClick={() => setCreateTarget(group.typeDef)}
-                  className="flex items-center gap-1.5 pl-3 pr-3 py-1.5 rounded-full border border-dashed border-gray-700 text-gray-600 hover:border-blue-600 hover:text-blue-400 transition-colors text-sm"
-                >
-                  <span className="text-base leading-none">+</span>
-                  <span>Create {group.typeDef.displayName}</span>
-                </button>
-              )}
-            </div>
-          </div>
-        ),
-      )}
+      {categories.map((cat) => {
+        // Hide categories that finished loading with no resources and no create support,
+        // or that errored (e.g. API not enabled) with nothing useful to show
+        if (!cat.loading && cat.resources.length === 0 && !cat.typeDef.supportsCreate) return null;
 
-      {groups.every((g) => g.resources.length === 0 && !g.typeDef.supportsCreate) && (
+        return (
+          <div key={cat.typeDef.id} className="mb-8">
+            <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+              {cat.typeDef.pluralDisplayName}
+            </h2>
+
+            {cat.loading ? (
+              /* Skeleton pills while this category is loading */
+              <div className="flex flex-wrap gap-2">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="h-8 rounded-full bg-gray-800 animate-pulse" style={{ width: `${5 + i * 1.5}rem` }} />
+                ))}
+              </div>
+            ) : cat.error ? (
+              <div className="text-xs text-red-400">{cat.error}</div>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {cat.resources.map((resource) => (
+                  <ResourcePill
+                    key={resource.id}
+                    resource={resource}
+                    typeId={cat.typeDef.id}
+                    pinned={pinned.has(resource.id)}
+                    acceptsSecretImport={kubeconfigTypeIds.has(cat.typeDef.id)}
+                    sshHostOutputKey={cat.typeDef.sshEndpoint?.hostOutputKey}
+                    onPin={() => togglePin(resource, cat.typeDef.id)}
+                    onOpen={() => openDetail(resource)}
+                    onContextMenuSsh={(e, sshHost) => {
+                      e.preventDefault();
+                      setContextMenu({ x: e.clientX, y: e.clientY, sshHost });
+                    }}
+                  />
+                ))}
+                {cat.typeDef.supportsCreate && (
+                  <button
+                    onClick={() => setCreateTarget(cat.typeDef)}
+                    className="flex items-center gap-1.5 pl-3 pr-3 py-1.5 rounded-full border border-dashed border-gray-700 text-gray-600 hover:border-blue-600 hover:text-blue-400 transition-colors text-sm"
+                  >
+                    <span className="text-base leading-none">+</span>
+                    <span>Create {cat.typeDef.displayName}</span>
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {categories.length > 0 && categories.every((c) => !c.loading && c.resources.length === 0 && !c.typeDef.supportsCreate) && (
         <p className="text-sm text-gray-600">No resources found.</p>
       )}
 

@@ -390,8 +390,8 @@ export class OvhClient implements PluginClient {
         fields: {
           name: instance.name,
           region: instance.region,
-          flavorName: instance.flavor?.name ?? fields["flavorId"],
-          imageName: instance.image?.name ?? fields["imageId"],
+          flavorName: instance.flavor?.name ?? fields["flavorId"] ?? "",
+          imageName: instance.image?.name ?? fields["imageId"] ?? "",
           status: instance.status,
         },
         resolvedOutputs: { ipv4: publicIp, ipv4Private: privateIp },

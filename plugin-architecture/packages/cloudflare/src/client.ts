@@ -180,9 +180,9 @@ export class CloudflareClient implements PluginClient {
       return {
         id: resource.id,
         label: `${type}  ${shortName}`,
-        status: resource.fields["proxied"]
-          ? { kind: "status-dot", status: "healthy", label: "Proxied" }
-          : undefined,
+        ...(resource.fields["proxied"]
+          ? { status: { kind: "status-dot" as const, status: "healthy" as const, label: "Proxied" } }
+          : {}),
       };
     }
     if (resource.resourceTypeId === "zone") {
