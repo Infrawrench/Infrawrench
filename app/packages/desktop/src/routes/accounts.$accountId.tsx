@@ -3,11 +3,11 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { invoke } from "../lib/invoke";
 import { useDraggable, useDroppable, useDndContext } from "@dnd-kit/core";
 import type { ResourceInstance, ResourceTypeDefinition } from "@infrawrench/plugin-base";
-import { useUIStore } from "@infrawrench/ui";
+import { useUIStore, type DraggableResource } from "@infrawrench/ui";
 import { getDb } from "../db/client";
 import { getPlugin } from "../plugins/loader";
-import { pinResource, type DraggableResource } from "../lib/pins";
-import { getAccountResourceTypes } from "../lib/account-resource-types";
+import { pinResource } from "../lib/pins";
+import { getAccountResourceTypes, isCreateOnlyType } from "../lib/account-resource-types";
 import { formatErrorMessage } from "../lib/errors";
 import { buildPluginHostServices } from "../lib/sql-drivers";
 import { CreateResourceModal } from "../components/CreateResourceModal";
@@ -346,9 +346,12 @@ function AccountPage() {
       </div>
 
       {categories.map((cat) => {
+        const createOnly = isCreateOnlyType(cat.typeDef);
         // Hide categories that finished loading with no resources and no create support,
         // or that errored (e.g. API not enabled) with nothing useful to show
         if (!cat.loading && cat.resources.length === 0 && !cat.typeDef.supportsCreate) return null;
+        // Create-only types (child types with supportsCreate) show only the create button
+        if (createOnly && !cat.typeDef.supportsCreate) return null;
 
         return (
           <div key={cat.typeDef.id} className="mb-8">
@@ -356,7 +359,18 @@ function AccountPage() {
               {cat.typeDef.pluralDisplayName}
             </h2>
 
-            {cat.loading ? (
+            {createOnly ? (
+              /* Child type — only show create button, resources shown on parent detail page */
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => setCreateTarget(cat.typeDef)}
+                  className="flex items-center gap-1.5 pl-3 pr-3 py-1.5 rounded-full border border-dashed border-gray-700 text-gray-600 hover:border-blue-600 hover:text-blue-400 transition-colors text-sm"
+                >
+                  <span className="text-base leading-none">+</span>
+                  <span>Create {cat.typeDef.displayName}</span>
+                </button>
+              </div>
+            ) : cat.loading ? (
               /* Skeleton pills while this category is loading */
               <div className="flex flex-wrap gap-2">
                 {[1, 2, 3].map((i) => (

@@ -11,6 +11,7 @@
     },
     "./driver": {
       "types": "./dist/driver.d.cts",
+      "import": "./dist/driver.js",
       "require": "./dist/driver.cjs"
     }
   },

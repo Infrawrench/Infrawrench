@@ -9,6 +9,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import { handleSshSession } from "./src/services/ssh-proxy";
 import { handleSqlSession } from "./src/services/sql-proxy";
 import { authenticateApiRequest } from "./src/auth/api-auth";
+import { validateWsToken } from "./src/services/ws-tokens";
 
 const dev = process.env["NODE_ENV"] !== "production";
 const hostname = "localhost";
@@ -34,7 +35,7 @@ app.prepare().then(() => {
       return;
     }
 
-    // Authenticate via query param token or cookie
+    // Authenticate via query param token — try session token first, then API key
     const token = url.query["token"] as string | undefined;
     if (!token) {
       socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
@@ -42,10 +43,15 @@ app.prepare().then(() => {
       return;
     }
 
-    const fakeRequest = new Request("http://localhost", {
-      headers: { authorization: `Bearer ${token}` },
-    });
-    const auth = await authenticateApiRequest(fakeRequest);
+    // Try short-lived session token first (from web app)
+    let auth = validateWsToken(token);
+    if (!auth) {
+      // Fall back to API key auth (from desktop sync client)
+      const fakeRequest = new Request("http://localhost", {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      auth = await authenticateApiRequest(fakeRequest);
+    }
     if (!auth) {
       socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
       socket.destroy();

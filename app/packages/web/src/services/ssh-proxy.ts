@@ -9,6 +9,7 @@ import { db } from "@/db/client";
 import { accounts } from "@/db/schema";
 import { decrypt } from "@/services/encryption";
 import { getPlugin } from "@/plugins/loader";
+import { buildPluginHostServices } from "@/services/host-services";
 
 export async function handleSshSession(
   ws: WebSocket,
@@ -38,7 +39,8 @@ export async function handleSshSession(
       return;
     }
 
-    const client = loaded.plugin.createClient(credentials);
+    const hostServices = buildPluginHostServices(loaded.plugin.manifest, credentials);
+    const client = loaded.plugin.createClient(credentials, hostServices);
     const sshConfig = client.getSshConfig?.();
     if (!sshConfig) {
       ws.send(JSON.stringify({ type: "ssh:error", error: "Plugin does not support SSH" }));

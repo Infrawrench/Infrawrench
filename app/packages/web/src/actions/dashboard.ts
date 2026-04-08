@@ -3,7 +3,7 @@
 import { requireAuth } from "@/auth/session";
 import { db } from "@/db/client";
 import { dashboards, dashboardPins, resources } from "@/db/schema";
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and, isNull, desc } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 
 export async function pinResourceToDashboard(input: {
@@ -96,7 +96,7 @@ export async function listDashboards() {
         isNull(dashboards.deletedAt),
       ),
     )
-    .orderBy(dashboards.isDefault, dashboards.createdAt);
+    .orderBy(desc(dashboards.isDefault), dashboards.createdAt);
 }
 
 export async function renameDashboard(input: { id: string; name: string }) {

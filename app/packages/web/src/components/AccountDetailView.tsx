@@ -1,10 +1,12 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { ResourcePill, type DraggableResource } from "@infrawrench/ui";
 
 interface ResourceType {
   id: string;
   displayName: string;
+  pluralDisplayName: string;
   parentTypeId: string | undefined;
   supportsCreate: boolean | undefined;
 }
@@ -45,9 +47,10 @@ export function AccountDetailView({
     groupedResources.set(resource.resourceTypeId, group);
   }
 
-  // Show types that have resources, ordered by the plugin's type definition order
-  const typesWithResources = resourceTypes.filter(
-    (rt) => (groupedResources.get(rt.id)?.length ?? 0) > 0,
+  // Mirror desktop's getAccountResourceTypes: show top-level types, plus
+  // child types with supportsCreate (create-only — no resource listing).
+  const visibleTypes = resourceTypes.filter(
+    (rt) => !rt.parentTypeId || rt.supportsCreate,
   );
 
   return (
@@ -66,35 +69,79 @@ export function AccountDetailView({
         </div>
       </div>
 
-      {/* Resource groups */}
-      {typesWithResources.map((type) => {
+      {/* Resource categories — mirrors desktop layout */}
+      {visibleTypes.map((type) => {
+        const isCreateOnly = !!type.parentTypeId && !!type.supportsCreate;
         const items = groupedResources.get(type.id) ?? [];
+
+        // Hide categories with no resources and no create support
+        if (items.length === 0 && !type.supportsCreate) return null;
+
         return (
-          <div key={type.id} className="mb-6">
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="text-sm font-medium text-gray-400">{type.displayName}</h2>
-              <span className="text-xs text-gray-600">{items.length}</span>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {items.map((resource) => (
+          <div key={type.id} className="mb-8">
+            <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+              {type.pluralDisplayName}
+            </h2>
+
+            {isCreateOnly ? (
+              /* Child type — only show create button, resources shown on parent detail page */
+              <div className="flex flex-wrap gap-2">
                 <button
-                  key={resource.id}
-                  onClick={() =>
-                    router.push(
-                      `/resources/${resource.pluginId}/${resource.resourceTypeId}/${encodeURIComponent(resource.id)}`,
-                    )
-                  }
-                  className="flex items-center gap-2 px-3 py-2 rounded-full border border-gray-700 hover:border-gray-500 hover:bg-gray-800 transition-colors"
+                  className="flex items-center gap-1.5 pl-3 pr-3 py-1.5 rounded-full border border-dashed border-gray-700 text-gray-600 hover:border-blue-600 hover:text-blue-400 transition-colors text-sm"
                 >
-                  <span className="text-sm text-gray-200">{resource.displayName}</span>
+                  <span className="text-base leading-none">+</span>
+                  <span>Create {type.displayName}</span>
                 </button>
-              ))}
-            </div>
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {items.map((resource) => {
+                  const subtitle = String(
+                    (resource.fieldsJson as Record<string, unknown>)?.["host"]
+                      ?? (resource.fieldsJson as Record<string, unknown>)?.["region"]
+                      ?? (resource.fieldsJson as Record<string, unknown>)?.["engine"]
+                      ?? "",
+                  );
+                  const draggable: DraggableResource = {
+                    id: resource.id,
+                    pluginId: resource.pluginId,
+                    resourceTypeId: resource.resourceTypeId,
+                    accountId: account.id,
+                    displayName: resource.displayName,
+                    fields: (resource.fieldsJson as Record<string, unknown>) ?? {},
+                    ...(resource.externalId != null ? { externalId: resource.externalId } : {}),
+                  };
+                  return (
+                    <ResourcePill
+                      key={resource.id}
+                      resource={draggable}
+                      subtitle={subtitle || undefined}
+                      onOpen={() =>
+                        router.push(
+                          `/resources/${resource.pluginId}/${resource.resourceTypeId}/${encodeURIComponent(resource.id)}`,
+                        )
+                      }
+                    />
+                  );
+                })}
+                {type.supportsCreate && (
+                  <button
+                    className="flex items-center gap-1.5 pl-3 pr-3 py-1.5 rounded-full border border-dashed border-gray-700 text-gray-600 hover:border-blue-600 hover:text-blue-400 transition-colors text-sm"
+                  >
+                    <span className="text-base leading-none">+</span>
+                    <span>Create {type.displayName}</span>
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         );
       })}
 
-      {resources.length === 0 && (
+      {visibleTypes.every((t) => {
+        const items = groupedResources.get(t.id) ?? [];
+        return items.length === 0 && !t.supportsCreate;
+      }) && (
         <div className="text-center py-12">
           <p className="text-gray-500 text-sm">No resources synced yet.</p>
           <p className="text-gray-600 text-xs mt-1">

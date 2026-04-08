@@ -8,6 +8,7 @@ import { db } from "@/db/client";
 import { accounts } from "@/db/schema";
 import { decrypt } from "@/services/encryption";
 import { getPlugin } from "@/plugins/loader";
+import { buildPluginHostServices } from "@/services/host-services";
 
 export async function handleSqlSession(
   ws: WebSocket,
@@ -36,7 +37,8 @@ export async function handleSqlSession(
       return;
     }
 
-    const client = loaded.plugin.createClient(credentials);
+    const hostServices = buildPluginHostServices(loaded.plugin.manifest, credentials);
+    const client = loaded.plugin.createClient(credentials, hostServices);
 
     // Use REST-based executeQuery if available
     if (client.executeQuery) {

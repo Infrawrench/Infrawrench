@@ -62,6 +62,7 @@ export default async function AccountPage({ params }: Props) {
       resourceTypes={resourceTypes.map((rt) => ({
         id: rt.id,
         displayName: rt.displayName,
+        pluralDisplayName: rt.pluralDisplayName,
         parentTypeId: rt.parentTypeId,
         supportsCreate: rt.supportsCreate,
       }))}

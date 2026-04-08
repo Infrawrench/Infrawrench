@@ -27,6 +27,8 @@ const PLUGIN_MODULES: Record<string, () => Promise<{ plugin: Plugin }>> = {
   "@infrawrench/plugin-ssh": () => import("@infrawrench/plugin-ssh"),
   "@infrawrench/plugin-cloudflare": () => import("@infrawrench/plugin-cloudflare"),
   "@infrawrench/plugin-ovh": () => import("@infrawrench/plugin-ovh"),
+  "@infrawrench/plugin-databricks": () => import("@infrawrench/plugin-databricks"),
+  "@infrawrench/plugin-turso": () => import("@infrawrench/plugin-turso"),
 };
 
 export interface LoadedPlugin {

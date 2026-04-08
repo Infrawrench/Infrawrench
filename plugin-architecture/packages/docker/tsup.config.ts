@@ -11,7 +11,7 @@ export default defineConfig([
   },
   {
     entry: ["src/driver.ts"],
-    format: ["cjs"],
+    format: ["esm", "cjs"],
     dts: true,
     sourcemap: true,
     external: ["@infrawrench/plugin-base", "dockerode"],

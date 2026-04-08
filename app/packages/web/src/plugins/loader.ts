@@ -19,6 +19,8 @@ import { plugin as postgresPlugin } from "@infrawrench/plugin-postgres";
 import { plugin as redisPlugin } from "@infrawrench/plugin-redis";
 import { plugin as scalewayPlugin } from "@infrawrench/plugin-scaleway";
 import { plugin as sshPlugin } from "@infrawrench/plugin-ssh";
+import { plugin as databricksPlugin } from "@infrawrench/plugin-databricks";
+import { plugin as tursoPlugin } from "@infrawrench/plugin-turso";
 
 const blessedRegistry = registry as PluginRegistry;
 
@@ -39,6 +41,8 @@ const PLUGIN_MODULES: Record<string, Plugin> = {
   "@infrawrench/plugin-redis": redisPlugin,
   "@infrawrench/plugin-scaleway": scalewayPlugin,
   "@infrawrench/plugin-ssh": sshPlugin,
+  "@infrawrench/plugin-databricks": databricksPlugin,
+  "@infrawrench/plugin-turso": tursoPlugin,
 };
 
 export interface LoadedPlugin {

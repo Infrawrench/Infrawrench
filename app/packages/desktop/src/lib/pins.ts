@@ -1,14 +1,7 @@
+import type { DraggableResource } from "@infrawrench/ui";
 import type { DbClient } from "../db/client";
 
-export interface DraggableResource {
-  id: string;
-  pluginId: string;
-  resourceTypeId: string;
-  accountId: string;
-  displayName: string;
-  fields: Record<string, unknown>;
-  externalId?: string | undefined;
-}
+export type { DraggableResource };
 
 export const DRAG_MIME = "application/x-infrawrench-resource";
 

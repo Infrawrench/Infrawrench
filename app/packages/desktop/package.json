@@ -14,6 +14,7 @@
     "@dnd-kit/core": "^6.3.1",
     "@infrawrench/plugin-base": "workspace:*",
     "@infrawrench/plugin-cloudflare": "workspace:*",
+    "@infrawrench/plugin-databricks": "workspace:*",
     "@infrawrench/plugin-digitalocean": "workspace:*",
     "@infrawrench/plugin-docker": "workspace:*",
     "@infrawrench/plugin-gcp": "workspace:*",
@@ -28,6 +29,7 @@
     "@infrawrench/plugin-scaleway": "workspace:*",
     "@infrawrench/plugin-ovh": "workspace:*",
     "@infrawrench/plugin-ssh": "workspace:*",
+    "@infrawrench/plugin-turso": "workspace:*",
     "@infrawrench/ui": "workspace:*",
     "@tailwindcss/vite": "^4.2.2",
     "@tanstack/react-query": "^5.71.6",
@@ -46,6 +48,7 @@
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "sql.js": "^1.12.0",
+    "@libsql/client": "^0.14.0",
     "ssh2": "^1.16.0",
     "tailwindcss": "^4.2.2"
   },

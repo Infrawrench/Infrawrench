@@ -159,7 +159,17 @@ async function getSqlite(): Promise<SqlJsDb> {
   _sqlite.run("PRAGMA foreign_keys = ON");
 
   for (const migration of MIGRATIONS) {
-    _sqlite.run(migration);
+    // Split multi-statement migrations and run each individually,
+    // ignoring "duplicate column" errors from re-running ALTER TABLE
+    const statements = migration.split(";").map((s) => s.trim()).filter(Boolean);
+    for (const stmt of statements) {
+      try {
+        _sqlite.run(stmt);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (!msg.includes("duplicate column name")) throw err;
+      }
+    }
   }
   persist();
 

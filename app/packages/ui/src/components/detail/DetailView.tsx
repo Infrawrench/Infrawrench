@@ -20,8 +20,8 @@ export interface ChildResource {
   pluginId: string;
   resourceTypeId: string;
   accountId: string;
-  status?: StatusDotNode;
-  subtitle?: string;
+  status?: StatusDotNode | undefined;
+  subtitle?: string | undefined;
 }
 
 /** A group of child resources by type */

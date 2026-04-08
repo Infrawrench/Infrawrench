@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { createRootRoute, Outlet, useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
-import { DndContext, DragOverlay, PointerSensor, pointerWithin, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
-import { normalizeResourceId, useUIStore, workspaceTabTargetsEqual, type WorkspaceTab, type WorkspaceTabTarget } from "@infrawrench/ui";
+import type { DragEndEvent } from "@dnd-kit/core";
+import { DndShell, normalizeResourceId, useUIStore, workspaceTabTargetsEqual, type DraggableResource, type WorkspaceTab, type WorkspaceTabTarget } from "@infrawrench/ui";
 import { AddAccountModal } from "../components/AddAccountModal";
 import { GlobalTabBar } from "../components/GlobalTabBar";
 import { SwipeIndicator } from "../components/SwipeIndicator";
 import { SidebarAccounts } from "../components/SidebarAccounts";
 import { SidebarDashboards } from "../components/SidebarDashboards";
 import { getDb } from "../db/client";
-import { pinResource, type DraggableResource } from "../lib/pins";
+import { pinResource } from "../lib/pins";
 import { invoke } from "../lib/invoke";
 import { buildPluginHostServices } from "../lib/sql-drivers";
 import { getPlugin } from "../plugins/loader";
@@ -112,11 +112,7 @@ function RootLayout() {
   const router = useRouter();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const hash = useRouterState({ select: (state) => state.location.hash });
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-  );
   const [showAddAccount, setShowAddAccount] = useState(false);
-  const [dragPreview, setDragPreview] = useState<string | null>(null);
   const [tabsValidated, setTabsValidated] = useState(false);
 
   // Trackpad swipe gesture → browser-style back/forward
@@ -168,61 +164,7 @@ function RootLayout() {
     void navigate(getWorkspaceNavigateArgs(activeTab.target, true));
   }, [activeWorkspaceTabId, navigate, pathname, tabsHydrated, workspaceTabs]);
 
-  async function handleDragEnd(event: DragEndEvent) {
-    setDragPreview(null);
-    const { active, over } = event;
-    if (!over) return;
-    const activeData = active.data.current;
-    const overId = String(over.id);
-    const workspaceTabId = activeData?.workspaceTabId as string | undefined;
-    const workspaceTabTarget = activeData?.workspaceTabTarget as WorkspaceTabTarget | undefined;
-    const dragLabel = activeData?.dragLabel as string | undefined;
-
-    if (overId === "global-tabs-bar" || overId.startsWith("global-tab:")) {
-      if (workspaceTabId) {
-        const overTabId = overId.startsWith("global-tab:") ? overId.replace("global-tab:", "") : null;
-        if (overTabId) reorderWorkspaceTabs(workspaceTabId, overTabId);
-        return;
-      }
-      if (workspaceTabTarget) {
-        void navigateToWorkspaceTarget(
-          navigate,
-          workspaceTabTarget,
-          dragLabel ? { label: dragLabel, mode: "pin" } : { mode: "pin" },
-        );
-      }
-      return;
-    }
-
-    // Secret import drops are handled directly by PeerPaneView via useDndMonitor
-    if (overId.startsWith("secret-import:")) return;
-
-    // Sidebar account/resource drops — dispatch event for SidebarAccounts to handle
-    if (overId.startsWith("sidebar-account:") || overId.startsWith("sidebar-resource:")) {
-      const resource = activeData?.resource as DraggableResource | undefined;
-      if (!resource) return;
-      const targetId = overId.startsWith("sidebar-account:")
-        ? overId.replace("sidebar-account:", "")
-        : overId.replace("sidebar-resource:", "");
-      // Ignore self-drops (dragged element's own droppable following the pointer)
-      if (resource.id === targetId) return;
-      const kind = overId.startsWith("sidebar-account:") ? "account" : "resource";
-      window.dispatchEvent(new CustomEvent("iw:sidebar-secret-drop", {
-        detail: { source: resource, targetId, kind },
-      }));
-      return;
-    }
-
-    let dashboardId: string | null = null;
-    if (overId.startsWith("sidebar-dashboard:")) {
-      dashboardId = overId.replace("sidebar-dashboard:", "");
-    } else if (overId.startsWith("dashboard:")) {
-      dashboardId = overId.replace("dashboard:", "");
-    }
-    if (!dashboardId) return;
-
-    const resource = activeData?.resource as DraggableResource | undefined;
-    if (!resource) return;
+  async function handlePinToDashboard(resource: DraggableResource, dashboardId: string) {
     const db = await getDb();
     await pinResource(resource, db, dashboardId);
     bumpDashboardPins();
@@ -236,6 +178,35 @@ function RootLayout() {
       dashboardTabTarget(dashboardId),
       dashLabel ? { label: dashLabel } : undefined,
     );
+  }
+
+  function handleSecretDrop(source: DraggableResource, targetId: string, kind: "account" | "resource") {
+    window.dispatchEvent(new CustomEvent("iw:sidebar-secret-drop", {
+      detail: { source, targetId, kind },
+    }));
+  }
+
+  function handleTabDrop(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over) return;
+    const overId = String(over.id);
+    const activeData = active.data.current;
+    const workspaceTabId = activeData?.workspaceTabId as string | undefined;
+    const workspaceTabTarget = activeData?.workspaceTabTarget as WorkspaceTabTarget | undefined;
+    const dragLabel = activeData?.dragLabel as string | undefined;
+
+    if (workspaceTabId) {
+      const overTabId = overId.startsWith("global-tab:") ? overId.replace("global-tab:", "") : null;
+      if (overTabId) reorderWorkspaceTabs(workspaceTabId, overTabId);
+      return;
+    }
+    if (workspaceTabTarget) {
+      void navigateToWorkspaceTarget(
+        navigate,
+        workspaceTabTarget,
+        dragLabel ? { label: dragLabel, mode: "pin" } : { mode: "pin" },
+      );
+    }
   }
 
   function handleActivateTab(tabId: string) {
@@ -270,22 +241,16 @@ function RootLayout() {
   }
 
   return (
-    <DndContext
-      sensors={sensors}
-      collisionDetection={pointerWithin}
-      onDragStart={(e) => {
-        const preview = e.active.data.current?.dragLabel as string | undefined;
-        const resource = e.active.data.current?.resource as DraggableResource | undefined;
-        setDragPreview(preview ?? resource?.displayName ?? null);
-      }}
-      onDragEnd={(e) => { void handleDragEnd(e); }}
-      onDragCancel={() => setDragPreview(null)}
+    <DndShell
+      onPinToDashboard={(r, d) => { void handlePinToDashboard(r, d); }}
+      onSecretDrop={handleSecretDrop}
+      onTabDrop={handleTabDrop}
     >
       <div className="flex flex-col h-screen bg-gray-950 text-gray-100 select-none">
         {/* macOS title bar — drag region with back/forward buttons */}
         <div
           className="h-8 flex-shrink-0 border-b border-gray-800/50 flex items-center"
-          style={{ WebkitAppRegion: dragPreview ? "no-drag" : "drag" } as React.CSSProperties}
+          style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
         >
           {/* Buttons must opt out of drag region */}
           <div
@@ -377,17 +342,8 @@ function RootLayout() {
         </div>{/* end flex row */}
       </div>
 
-      {/* Floating drag preview */}
-      <DragOverlay>
-        {dragPreview && (
-          <div className="px-3 py-1.5 rounded-full border border-blue-500 bg-gray-900 text-sm font-medium text-gray-200 shadow-lg cursor-grabbing opacity-90">
-            {dragPreview}
-          </div>
-        )}
-      </DragOverlay>
-
       {/* Trackpad swipe navigation indicator */}
       <SwipeIndicator gesture={swipeGesture} />
-    </DndContext>
+    </DndShell>
   );
 }

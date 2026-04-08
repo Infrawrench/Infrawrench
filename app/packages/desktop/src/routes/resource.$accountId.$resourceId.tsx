@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { createFileRoute, useNavigate, useRouterState } from "@tanstack/react-router";
-import { useDraggable } from "@dnd-kit/core";
+// useDraggable now used inside shared DraggableChildPill from @infrawrench/ui
 import { invoke } from "../lib/invoke";
 import type { ResourceInstance, DetailViewSchema, ResourceTypeDefinition } from "@infrawrench/plugin-base";
-import { DetailView, type QueryResult, type ChildResource, type ChildResourceGroup, useUIStore } from "@infrawrench/ui";
+import { DetailView, DraggableChildPill, type QueryResult, type ChildResource, type ChildResourceGroup, type DraggableResource, useUIStore } from "@infrawrench/ui";
 import { getDb } from "../db/client";
 import { getPlugin } from "../plugins/loader";
 import { getSqlSession, setSqlSession } from "../lib/sql-session";
@@ -24,7 +24,7 @@ import { CreateResourceModal } from "../components/CreateResourceModal";
 import type { PluginClient, PeerPaneContext } from "@infrawrench/plugin-base";
 import type { PeerPaneData } from "@infrawrench/ui";
 import { accountTabTarget, navigateToWorkspaceTarget, resourceSshTabTarget, resourceSftpTabTarget, resourceTabTarget } from "../lib/workspace-tabs";
-import type { DraggableResource } from "../lib/pins";
+// DraggableResource now imported from @infrawrench/ui above
 import { formatErrorMessage } from "../lib/errors";
 
 export const Route = createFileRoute("/resource/$accountId/$resourceId")({
@@ -736,6 +736,9 @@ function ResourceDetailPage() {
                           { label: child.displayName },
                         );
                       }}
+                      extraDragData={{
+                        workspaceTabTarget: resourceTabTarget(child.accountId, child.id),
+                      }}
                     />
                   )}
                   {...(hasSqlEditor ? { onRunQuery: handleRunQuery, onExecute: handleExecute } : {})}
@@ -915,67 +918,6 @@ function ResourceDetailPage() {
         />
       )}
 
-    </div>
-  );
-}
-
-/** Draggable pill for child resources — supports dnd-kit for pinning to dashboards */
-function DraggableChildPill({
-  child,
-  onOpen,
-}: {
-  child: ChildResource;
-  onOpen: () => void;
-}) {
-  const draggableData: DraggableResource = {
-    id: child.id,
-    pluginId: child.pluginId,
-    resourceTypeId: child.resourceTypeId,
-    accountId: child.accountId,
-    displayName: child.displayName,
-    fields: {},
-  };
-
-  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
-    id: `child-${child.id}`,
-    data: {
-      resource: draggableData,
-      workspaceTabTarget: resourceTabTarget(child.accountId, child.id),
-      dragLabel: child.displayName,
-    },
-  });
-
-  return (
-    <div
-      ref={setNodeRef}
-      {...listeners}
-      {...attributes}
-      className={`group flex items-center gap-1 pl-3 pr-1.5 py-1.5 rounded-full border border-gray-700 bg-gray-900 hover:border-gray-600 transition-colors cursor-grab active:cursor-grabbing ${
-        isDragging ? "opacity-40" : ""
-      }`}
-    >
-      <div onClick={onOpen} className="flex items-center gap-2 min-w-0">
-        {child.status && (
-          <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-            child.status.status === "healthy" ? "bg-blue-400"
-            : child.status.status === "error" ? "bg-red-400"
-            : child.status.status === "degraded" ? "bg-yellow-400"
-            : child.status.status === "provisioning" ? "bg-blue-400 animate-pulse"
-            : "bg-gray-500"
-          }`} />
-        )}
-        <span className="text-sm font-medium text-gray-200 leading-none">{child.displayName}</span>
-        {child.subtitle && (
-          <span className="text-xs text-gray-500 leading-none">{child.subtitle}</span>
-        )}
-      </div>
-      <button
-        onClick={(e) => { e.stopPropagation(); onOpen(); }}
-        title="Open detail view"
-        className="p-1 rounded-full text-gray-700 hover:text-gray-300 opacity-0 group-hover:opacity-100 transition-all text-xs"
-      >
-        &rarr;
-      </button>
     </div>
   );
 }

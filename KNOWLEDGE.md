@@ -35,6 +35,8 @@ infrawrench/
 │   ├── memcached/            # @infrawrench/plugin-memcached
 │   ├── neon/                 # @infrawrench/plugin-neon
 │   ├── docker/               # @infrawrench/plugin-docker
+│   ├── databricks/           # @infrawrench/plugin-databricks
+│   ├── turso/                # @infrawrench/plugin-turso
 │   └── ssh/                  # @infrawrench/plugin-ssh
 ├── app/packages/
 │   ├── desktop/              # @infrawrench/desktop — Electron app
@@ -135,7 +137,7 @@ Each plugin that needs native Node.js capabilities exports from `./node-driver`:
 
 ### Driver registration (`electron/drivers.ts`)
 ```typescript
-sqlDrivers     → Map<string, SqlNodeDriver>    (postgres, mysql)
+sqlDrivers     → Map<string, SqlNodeDriver>    (postgres, mysql, libsql)
 kvDrivers      → Map<string, KvNodeDriver>     (redis, memcached)
 dockerDrivers  → Map<string, DockerNodeDriver> (docker)
 storageDrivers → Map<string, StorageNodeDriver> (gcp)
@@ -178,7 +180,7 @@ Resource IDs follow the convention `{accountId}:{resourceTypeId}:{externalId}`. 
 
 The loader (`app/packages/desktop/src/plugins/loader.ts`) validates each plugin's manifest against the Zod schema and checks the manifest `id` matches the registry `id` before mounting. Unknown packages are refused.
 
-Currently blessed: `gcp`, `docker`, `digitalocean`, `hetzner`, `kubernetes`, `memcached`, `mongodb`, `mysql`, `neon`, `postgres`, `redis`, `scaleway`, `ssh`, `cloudflare`, `ovh`.
+Currently blessed: `gcp`, `docker`, `digitalocean`, `hetzner`, `kubernetes`, `memcached`, `mongodb`, `mysql`, `neon`, `postgres`, `redis`, `scaleway`, `ssh`, `cloudflare`, `ovh`, `aws`, `databricks`, `turso`.
 
 ---
 
@@ -283,6 +285,33 @@ All polling is *background* (no loading flash):
 
 ### SSH (`@infrawrench/plugin-ssh`)
 - Generic SSH VM plugin; credential: `host`, `port`, `username`, `privateKeyName` (references a saved key)
+
+### Databricks (`@infrawrench/plugin-databricks`)
+- Auth: Personal Access Token (PAT) as `Bearer` token against the workspace URL
+- Credentials: `host` (workspace URL, e.g. `https://adb-1234567890.7.azuredatabricks.net`), `token` (PAT starting with `dapi...`)
+- Resource types: `databricks-cluster`, `databricks-sql-warehouse`, `databricks-job`, `databricks-pipeline`, `databricks-catalog`, `databricks-schema` (child of catalog), `databricks-table` (child of schema)
+- SQL Warehouses expose `executeQuery()` and `introspectResource()` via the Databricks SQL Statement API (`POST /api/2.0/sql/statements`) — REST-based query execution, no native SQL driver needed
+- `resourceSqlDriver` declared on `databricks-sql-warehouse` with driver `"databricks"` and `connectionStringOutputKey: "warehouseId"`
+- SQL introspection queries `system.information_schema.columns` for autocomplete metadata
+- Unity Catalog hierarchy: Catalog → Schema → Table (schema is child of catalog, table is child of schema)
+- Cluster state mapping: RUNNING→healthy, PENDING/RESTARTING/RESIZING→provisioning, TERMINATING→degraded, TERMINATED/ERROR→error
+- Delete supported for clusters (`permanent-delete`), SQL warehouses, jobs, and pipelines
+- Resource ID format: `{accountId}:{typeId}:{externalId}` — externalId is cluster_id, warehouse_id, job_id, pipeline_id, or Unity Catalog full name (`catalog.schema.table`)
+
+### Turso (`@infrawrench/plugin-turso`)
+- Auth: Bearer token (Platform API token) against `https://api.turso.tech/v1`
+- Credentials: `apiToken` (Platform API token), `organizationName` (org slug)
+- Resource types: `turso-group`, `turso-database`
+- Groups are placement groups that define where database replicas live; databases belong to a group
+- Database connection via libsql protocol: `libsql://dbname-orgname.turso.io`
+- Per-database auth tokens generated via `POST /v1/organizations/{org}/databases/{name}/auth/tokens`
+- Connection string format for the SQL driver: `libsql://host?authToken=TOKEN` — the libsql driver parses the authToken from the query parameter
+- `resourceSqlDriver` declared on `turso-database` with driver `"libsql"` and `connectionStringOutputKey: "connectionString"`
+- SQL node driver (`./driver`) uses `@libsql/client` — registered in `drivers.ts` as `libsql`
+- Supports create/delete for both groups and databases
+- Database status: sleeping→degraded, active→healthy
+- Resource ID format: `{accountId}:{typeId}:{dbName}` or `{accountId}:{typeId}:{groupName}`
+- 30+ edge locations available for group placement (3-letter IATA codes: iad, fra, nrt, etc.)
 
 ---
 

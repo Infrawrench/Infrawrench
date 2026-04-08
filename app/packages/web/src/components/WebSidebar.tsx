@@ -2,7 +2,12 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { useUIStore } from "@infrawrench/ui";
+import {
+  useUIStore,
+  DroppableDashboardItem,
+  DraggableSidebarResource,
+  type DraggableResource,
+} from "@infrawrench/ui";
 import { listAccounts, listPlugins, type AccountSummary, type PluginInfo } from "@/actions/accounts";
 import { syncResources, listResources, type ResourceSummary } from "@/actions/resources";
 import {
@@ -258,38 +263,23 @@ export function WebSidebar() {
               }
 
               return (
-                <div key={dash.id} className="mx-2">
-                  <div
-                    className={`group flex items-center rounded-lg text-xs transition-colors ${
-                      isActive
-                        ? "bg-gray-800 text-gray-100"
-                        : "text-gray-400 hover:text-gray-200 hover:bg-gray-800"
-                    }`}
-                  >
-                    <button
-                      onClick={() => router.push(href)}
-                      onDoubleClick={() => {
-                        if (!dash.isDefault) {
+                <DroppableDashboardItem
+                  key={dash.id}
+                  dashboardId={dash.id}
+                  name={dash.name}
+                  isActive={isActive}
+                  isDefault={dash.isDefault}
+                  onClick={() => router.push(href)}
+                  onDoubleClick={
+                    !dash.isDefault
+                      ? () => {
                           setRenamingId(dash.id);
                           setRenameValue(dash.name);
                         }
-                      }}
-                      className="flex flex-1 items-center gap-2 px-3 py-1.5 min-w-0"
-                    >
-                      <span className="opacity-50 flex-shrink-0">&#8862;</span>
-                      <span className="truncate">{dash.name}</span>
-                    </button>
-                    {!dash.isDefault && (
-                      <button
-                        onClick={() => void handleDelete(dash.id)}
-                        title="Delete dashboard"
-                        className="opacity-0 group-hover:opacity-100 mr-1.5 w-5 h-5 flex items-center justify-center rounded text-gray-600 hover:text-red-400 hover:bg-red-500/10 transition-all flex-shrink-0"
-                      >
-                        &#10005;
-                      </button>
-                    )}
-                  </div>
-                </div>
+                      : undefined
+                  }
+                  onDelete={!dash.isDefault ? () => void handleDelete(dash.id) : undefined}
+                />
               );
             })}
 
@@ -370,16 +360,20 @@ export function WebSidebar() {
                           <div className="px-3 py-1 text-xs text-gray-600">No resources</div>
                         )}
                         {resourceState?.resources.map((resource) => (
-                          <button
+                          <DraggableSidebarResource
                             key={resource.id}
-                            className="flex items-center gap-2 px-3 py-1 text-xs rounded cursor-pointer transition-colors text-gray-400 hover:text-gray-200 hover:bg-gray-800 w-full text-left"
+                            resource={{
+                              id: resource.id,
+                              pluginId: resource.pluginId,
+                              resourceTypeId: resource.resourceTypeId,
+                              accountId: resource.accountId,
+                              displayName: resource.displayName,
+                              fields: {},
+                            }}
                             onClick={() => router.push(
                               `/resources/${resource.pluginId}/${resource.resourceTypeId}/${encodeURIComponent(resource.id)}`,
                             )}
-                          >
-                            <span className="text-gray-700">&#9783;</span>
-                            <span className="truncate">{resource.displayName}</span>
-                          </button>
+                          />
                         ))}
                       </div>
                     )}
