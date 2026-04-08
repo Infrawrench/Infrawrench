@@ -1,12 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
-import { useDraggable, useDndMonitor, useDroppable } from "@dnd-kit/core";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import { useDraggable, useDndContext, useDndMonitor, useDroppable } from "@dnd-kit/core";
 import type {
   PeerPaneResource,
   PeerPaneResourceGroup,
   ResourceInstance,
   ResourceTypeDefinition,
+  PluginClient,
 } from "@infrawrench/plugin-base";
-import { StatusDotNodeRenderer, type PeerPaneData } from "@infrawrench/ui";
+import { StatusDotNodeRenderer, ManifestEditorView, type PeerPaneData } from "@infrawrench/ui";
 import type { DraggableResource } from "../lib/pins";
 import { invoke } from "../lib/invoke";
 import { getPlugin } from "../plugins/loader";
@@ -24,11 +25,21 @@ interface PeerPaneViewProps {
   parentResourceId: string;
 }
 
+interface PortForwardEntry {
+  sessionId: string;
+  localPort: number;
+  remotePort: number;
+  resourceName: string;
+  namespace: string;
+}
+
 export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneViewProps) {
   const [resourceGroups, setResourceGroups] = useState(pane.schema.resourceGroups);
   const [execTarget, setExecTarget] = useState<{
     resource: PeerPaneResource;
     group: PeerPaneResourceGroup;
+    /** When true, the pod is auto-deleted when the terminal closes */
+    ephemeral?: boolean;
   } | null>(null);
   const [k9sOpen, setK9sOpen] = useState(false);
   const [createTarget, setCreateTarget] = useState<PeerPaneResourceGroup | null>(null);
@@ -38,6 +49,119 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
   const [secretExportSource, setSecretExportSource] = useState<DraggableResource | null>(null);
   const [nsFilter, setNsFilter] = useState<string | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+
+  // ── Manifest editor state ──────────────────────────────────────────────
+  const [manifestTarget, setManifestTarget] = useState<{
+    resource: PeerPaneResource;
+    group: PeerPaneResourceGroup;
+  } | null>(null);
+  const [pluginClient, setPluginClient] = useState<PluginClient | null>(null);
+
+  // Build a plugin client when we need it (for manifest fetching)
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        // Grab the first group's pluginId (they're all from the same plugin in K8s peer panes)
+        const pluginId = pane.schema.resourceGroups[0]?.pluginId;
+        if (!pluginId) return;
+        const loaded = await getPlugin(pluginId);
+        if (!loaded || cancelled) return;
+        const services = buildPluginHostServices(loaded.plugin.manifest, pane.credentials);
+        const client = loaded.plugin.createClient(pane.credentials, services);
+        if (!cancelled) setPluginClient(client);
+      } catch {
+        // non-critical — manifest tab just won't work
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [pane.credentials, pane.schema.resourceGroups]);
+
+  const handleGetManifest = useCallback(async (): Promise<string> => {
+    if (!pluginClient?.getManifest || !manifestTarget) {
+      throw new Error("Manifest viewing not supported");
+    }
+    return pluginClient.getManifest(manifestTarget.resource.id, accountId);
+  }, [pluginClient, manifestTarget, accountId]);
+
+  const handleApplyManifest = useCallback(async (manifest: string): Promise<void> => {
+    if (!pluginClient?.applyManifest || !manifestTarget) {
+      throw new Error("Manifest editing not supported");
+    }
+    await pluginClient.applyManifest(manifestTarget.resource.id, accountId, manifest);
+  }, [pluginClient, manifestTarget, accountId]);
+
+  // ── Port forward state ─────────────────────────────────────────────────
+  const [portForwards, setPortForwards] = useState<PortForwardEntry[]>([]);
+  const [pfStarting, setPfStarting] = useState<string | null>(null); // resource ID currently starting
+  const [pfError, setPfError] = useState<string | null>(null);
+
+  async function handleStartPortForward(resource: PeerPaneResource) {
+    const kubeconfig = pane.credentials["kubeconfig"];
+    if (!kubeconfig) return;
+
+    const namespace = resource.namespace ?? String(resource.fields["namespace"] ?? "default");
+    const portsStr = String(resource.fields["ports"] ?? "");
+    // Parse first port from "80/TCP, 443/TCP" format
+    const firstPort = Number(portsStr.split("/")[0]);
+    if (!firstPort || isNaN(firstPort)) {
+      setPfError(`Cannot determine port for ${resource.displayName}`);
+      return;
+    }
+
+    setPfStarting(resource.id);
+    setPfError(null);
+    try {
+      const result = await invoke<{ sessionId: string; localPort: number }>(
+        "k8s_pf_start",
+        {
+          kubeconfig,
+          namespace,
+          resourceType: "svc",
+          resourceName: resource.displayName,
+          remotePort: firstPort,
+          localPort: 0,
+        },
+      );
+
+      setPortForwards((prev) => [
+        ...prev,
+        {
+          sessionId: result.sessionId,
+          localPort: result.localPort,
+          remotePort: firstPort,
+          resourceName: resource.displayName,
+          namespace,
+        },
+      ]);
+
+      // Listen for exit to remove from the list
+      window.electronAPI.on(`k8s_pf_exit_${result.sessionId}`, () => {
+        setPortForwards((prev) => prev.filter((pf) => pf.sessionId !== result.sessionId));
+        window.electronAPI.offAll(`k8s_pf_exit_${result.sessionId}`);
+      });
+    } catch (err) {
+      setPfError(formatErrorMessage(err));
+    } finally {
+      setPfStarting(null);
+    }
+  }
+
+  function handleStopPortForward(sessionId: string) {
+    void invoke("k8s_pf_stop", { sessionId });
+    setPortForwards((prev) => prev.filter((pf) => pf.sessionId !== sessionId));
+    window.electronAPI.offAll(`k8s_pf_exit_${sessionId}`);
+  }
+
+  // Clean up port forwards on unmount
+  useEffect(() => {
+    return () => {
+      for (const pf of portForwards) {
+        void invoke("k8s_pf_stop", { sessionId: pf.sessionId });
+        window.electronAPI.offAll(`k8s_pf_exit_${pf.sessionId}`);
+      }
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     setResourceGroups(pane.schema.resourceGroups);
@@ -91,14 +215,25 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
 
   const supportsSecretImport = !!pane.schema.supportsSecretImport;
   const droppableId = `secret-import:${accountId}:${parentResourceId}`;
-  const { setNodeRef: setDropRef, isOver } = useDroppable({ id: droppableId });
+  // Disable drop target when the dragged resource is already in this cluster —
+  // creating a secret for something that's already here makes no sense.
+  const { active } = useDndContext();
+  const activeResource = active?.data.current?.resource as DraggableResource | undefined;
+  const dragFromSameCluster = activeResource?.accountId === accountId;
+  const { setNodeRef: setDropRef, isOver } = useDroppable({
+    id: droppableId,
+    disabled: dragFromSameCluster,
+  });
 
   useDndMonitor({
     onDragEnd(event) {
       if (!supportsSecretImport) return;
       if (String(event.over?.id) !== droppableId) return;
       const resource = event.active.data.current?.resource as DraggableResource | undefined;
-      if (resource) setSecretExportSource(resource);
+      if (!resource) return;
+      // Ignore drops from within the same cluster
+      if (resource.accountId === accountId) return;
+      setSecretExportSource(resource);
     },
   });
 
@@ -301,6 +436,18 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
                         resource={resource}
                         accountId={accountId}
                         onExec={() => setExecTarget({ resource, group })}
+                        onClick={() => setManifestTarget({ resource, group })}
+                        onPortForward={
+                          group.resourceTypeId === "k8s-service" && resource.fields["hasSelector"] === "true"
+                            ? () => handleStartPortForward(resource)
+                            : undefined
+                        }
+                        isPortForwarding={pfStarting === resource.id}
+                        activePortForward={portForwards.find(
+                          (pf) => pf.resourceName === resource.displayName
+                            && pf.namespace === (resource.namespace ?? String(resource.fields["namespace"] ?? "default")),
+                        )}
+                        onStopPortForward={(sessionId) => handleStopPortForward(sessionId)}
                       />
                     ))}
                   </div>
@@ -325,8 +472,33 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
 
       {execTarget && kubeconfig && (
         <TerminalOverlay
-          title={`Exec: ${execTarget.resource.displayName}`}
-          onClose={() => setExecTarget(null)}
+          title={
+            execTarget.ephemeral
+              ? `Scratch: ${execTarget.resource.displayName}`
+              : `Exec: ${execTarget.resource.displayName}`
+          }
+          onClose={() => {
+            if (execTarget.ephemeral && pluginClient?.deleteResource) {
+              // Auto-delete the ephemeral pod and remove from the list
+              const resourceId = execTarget.resource.id;
+              const groupTypeId = execTarget.group.resourceTypeId;
+              pluginClient
+                .deleteResource(execTarget.resource.resourceTypeId, resourceId, accountId)
+                .catch(() => { /* silently ignore cleanup errors */ });
+              setResourceGroups((prev) =>
+                prev.map((group) =>
+                  group.resourceTypeId === groupTypeId
+                    ? {
+                        ...group,
+                        title: replaceTrailingCount(group.title, Math.max(0, group.items.length - 1)),
+                        items: group.items.filter((item) => item.id !== resourceId),
+                      }
+                    : group,
+                ),
+              );
+            }
+            setExecTarget(null);
+          }}
         >
           <K8sExecPanel
             kubeconfig={kubeconfig}
@@ -347,19 +519,97 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
           {...(createClientFactory ? { clientFactory: createClientFactory } : {})}
           onClose={() => setCreateTarget(null)}
           onCreated={(created) => {
+            const peerResource = toPeerPaneResource(created);
+            const isEphemeralPod =
+              createTarget.resourceTypeId === "k8s-pod" &&
+              created.fields["ephemeral"] === "true";
+
             setResourceGroups((prev) =>
               prev.map((group) =>
                 group.resourceTypeId === createTarget.resourceTypeId
                   ? {
                       ...group,
                       title: replaceTrailingCount(group.title, group.items.length + 1),
-                      items: [toPeerPaneResource(created), ...group.items],
+                      items: [peerResource, ...group.items],
                     }
                   : group,
               ),
             );
+
+            // Auto-open exec terminal for ephemeral scratch pods
+            if (isEphemeralPod) {
+              setExecTarget({
+                resource: { ...peerResource, supportsExec: true, containerName: "scratch" },
+                group: createTarget,
+                ephemeral: true,
+              });
+            }
+
             setCreateTarget(null);
           }}
+        />
+      )}
+
+      {manifestTarget && pluginClient?.getManifest && (
+        <TerminalOverlay
+          title={`${manifestTarget.resource.displayName} — Manifest`}
+          onClose={() => setManifestTarget(null)}
+        >
+          <ManifestEditorView
+            capability={{
+              language: "yaml",
+              resourceKind: manifestTarget.group.title.replace(/\s*\(\d+\)$/, "").replace(/s$/i, ""),
+            }}
+            onGetManifest={handleGetManifest}
+            onApplyManifest={pluginClient.applyManifest ? handleApplyManifest : undefined}
+          />
+        </TerminalOverlay>
+      )}
+
+      {/* Active port forwards status bar */}
+      {portForwards.length > 0 && (
+        <div className="space-y-1.5">
+          {portForwards.map((pf) => (
+            <div
+              key={pf.sessionId}
+              className="flex items-center justify-between gap-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-2.5"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse flex-shrink-0" />
+                <span className="text-sm text-gray-200 font-medium truncate">
+                  {pf.resourceName}
+                </span>
+                <span className="text-xs text-gray-500">
+                  {pf.namespace}
+                </span>
+              </div>
+              <div className="flex items-center gap-3 flex-shrink-0">
+                <button
+                  onClick={() => {
+                    void navigator.clipboard.writeText(`localhost:${pf.localPort}`);
+                  }}
+                  className="text-xs font-mono text-emerald-300 hover:text-emerald-200 transition-colors"
+                  title="Click to copy"
+                >
+                  localhost:{pf.localPort} → {pf.remotePort}
+                </button>
+                <button
+                  onClick={() => handleStopPortForward(pf.sessionId)}
+                  className="px-2 py-0.5 rounded text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors"
+                >
+                  Stop
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {pfError && (
+        <ErrorNotice
+          message={pfError}
+          className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2"
+          textClassName="text-sm text-red-200"
         />
       )}
 
@@ -459,12 +709,22 @@ function ResourcePill({
   resource,
   accountId,
   onExec,
+  onClick,
+  onPortForward,
+  isPortForwarding,
+  activePortForward,
+  onStopPortForward,
 }: {
   pane: PeerPaneData;
   group: PeerPaneResourceGroup;
   resource: PeerPaneResource;
   accountId: string;
   onExec: () => void;
+  onClick?: () => void;
+  onPortForward?: () => void;
+  isPortForwarding?: boolean;
+  activePortForward?: PortForwardEntry;
+  onStopPortForward?: (sessionId: string) => void;
 }) {
   const draggableResource: DraggableResource = {
     id: resource.id,
@@ -489,8 +749,12 @@ function ResourcePill({
       ref={setNodeRef}
       {...listeners}
       {...attributes}
-      className={`group flex items-center gap-2 rounded-full border border-gray-700 bg-gray-900 px-3 py-2 cursor-grab active:cursor-grabbing transition-colors ${
-        isDragging ? "opacity-40" : "hover:border-gray-600"
+      className={`group flex items-center gap-2 rounded-full border bg-gray-900 px-3 py-2 cursor-grab active:cursor-grabbing transition-colors ${
+        activePortForward
+          ? "border-emerald-500/40"
+          : isDragging
+            ? "opacity-40 border-gray-700"
+            : "border-gray-700 hover:border-gray-600"
       }`}
     >
       <span
@@ -511,7 +775,59 @@ function ResourcePill({
         {resource.subtitle && (
           <p className="text-xs text-gray-500 truncate">{resource.subtitle}</p>
         )}
+        {activePortForward && (
+          <p className="text-xs text-emerald-400 font-mono truncate">
+            :{activePortForward.localPort} → :{activePortForward.remotePort}
+          </p>
+        )}
       </div>
+      {/* Manifest editor button */}
+      {onClick && (
+        <button
+          type="button"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation();
+            onClick();
+          }}
+          className="ml-1 w-6 h-6 rounded-full bg-gray-800 hover:bg-gray-700 text-xs text-gray-200 transition-colors"
+          title="View manifest"
+        >
+          { /* code/braces icon */ }
+          {"{ }"}
+        </button>
+      )}
+      {/* Port forward button for services */}
+      {onPortForward && !activePortForward && (
+        <button
+          type="button"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation();
+            onPortForward();
+          }}
+          disabled={isPortForwarding}
+          className="ml-1 h-6 px-2 rounded-full bg-gray-800 hover:bg-gray-700 disabled:opacity-50 text-xs text-gray-200 transition-colors whitespace-nowrap"
+          title="Port forward"
+        >
+          {isPortForwarding ? "…" : "⇌"}
+        </button>
+      )}
+      {/* Stop port forward */}
+      {activePortForward && onStopPortForward && (
+        <button
+          type="button"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation();
+            onStopPortForward(activePortForward.sessionId);
+          }}
+          className="ml-1 w-6 h-6 rounded-full bg-red-900/50 hover:bg-red-800/50 text-xs text-red-300 transition-colors"
+          title="Stop port forward"
+        >
+          ■
+        </button>
+      )}
       {resource.supportsExec && (
         <button
           type="button"

@@ -65,10 +65,11 @@ export function ManifestEditorView({ capability, onGetManifest, onApplyManifest 
     setApplyError(null);
     setApplySuccess(false);
     try {
-      // Validate JSON before applying
+      // Basic syntax validation before applying
       if (capability.language === "json") {
         JSON.parse(value);
       }
+      // YAML validation is handled by the plugin's applyManifest()
       await onApplyManifest(value);
       setApplySuccess(true);
       originalRef.current = value;

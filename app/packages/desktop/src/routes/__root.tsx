@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { createRootRoute, Outlet, useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
 import { DndContext, DragOverlay, PointerSensor, pointerWithin, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { normalizeResourceId, useUIStore, workspaceTabTargetsEqual, type WorkspaceTab, type WorkspaceTabTarget } from "@infrawrench/ui";
 import { AddAccountModal } from "../components/AddAccountModal";
 import { GlobalTabBar } from "../components/GlobalTabBar";
+import { SwipeIndicator } from "../components/SwipeIndicator";
 import { SidebarAccounts } from "../components/SidebarAccounts";
 import { SidebarDashboards } from "../components/SidebarDashboards";
 import { getDb } from "../db/client";
@@ -11,6 +12,7 @@ import { pinResource, type DraggableResource } from "../lib/pins";
 import { invoke } from "../lib/invoke";
 import { buildPluginHostServices } from "../lib/sql-drivers";
 import { getPlugin } from "../plugins/loader";
+import { useSwipeNavigation } from "../lib/useSwipeNavigation";
 import {
   dashboardTabTarget,
   getWorkspaceNavigateArgs,
@@ -116,6 +118,11 @@ function RootLayout() {
   const [showAddAccount, setShowAddAccount] = useState(false);
   const [dragPreview, setDragPreview] = useState<string | null>(null);
   const [tabsValidated, setTabsValidated] = useState(false);
+
+  // Trackpad swipe gesture → browser-style back/forward
+  const swipeBack = useCallback(() => router.history.back(), [router]);
+  const swipeForward = useCallback(() => router.history.forward(), [router]);
+  const swipeGesture = useSwipeNavigation(swipeBack, swipeForward);
 
   useEffect(() => {
     if (!tabsHydrated) return;
@@ -378,6 +385,9 @@ function RootLayout() {
           </div>
         )}
       </DragOverlay>
+
+      {/* Trackpad swipe navigation indicator */}
+      <SwipeIndicator gesture={swipeGesture} />
     </DndContext>
   );
 }

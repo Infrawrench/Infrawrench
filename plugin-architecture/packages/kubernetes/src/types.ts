@@ -6,6 +6,7 @@ export interface K8sMeta {
   uid: string;
   creationTimestamp: string;
   labels?: Record<string, string>;
+  annotations?: Record<string, string>;
 }
 
 export interface K8sList<T> {
@@ -50,6 +51,7 @@ export interface K8sService {
     type: string;
     clusterIP?: string;
     ports?: Array<{ port: number; targetPort: number | string; protocol: string; name?: string }>;
+    selector?: Record<string, string>;
   };
 }
 

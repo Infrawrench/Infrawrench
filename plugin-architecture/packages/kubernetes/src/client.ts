@@ -4,6 +4,7 @@ import type {
   PeerPaneContext,
   PeerPaneSchema,
   PeerPaneResource,
+  PeerPaneResourceGroup,
   PluginClient,
   ResourceInstance,
   SidebarItemSchema,
@@ -26,6 +27,8 @@ import type {
   ParsedKubeconfig,
 } from "./types.js";
 import { parseKubeconfig } from "./types.js";
+
+import yaml from "js-yaml";
 
 import {
   renderGenericDetail,
@@ -260,7 +263,7 @@ export class KubernetesClient implements PluginClient {
         this.listIngresses(syntheticAccountId),
       ]);
 
-    const groups = [
+    const allGroups: PeerPaneResourceGroup[] = [
       namespacePeerGroup(namespaces),
       podPeerGroup(pods),
       deploymentPeerGroup(deployments),
@@ -270,7 +273,8 @@ export class KubernetesClient implements PluginClient {
       ingressPeerGroup(ingresses),
       jobPeerGroup(jobs),
       cronJobPeerGroup(cronJobs),
-    ].filter((g) => g.items.length > 0);
+    ];
+    const groups = allGroups.filter((g) => g.items.length > 0 || g.supportsCreate);
 
     return {
       supportsK9s: true,
@@ -283,11 +287,81 @@ export class KubernetesClient implements PluginClient {
 
   async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
     if (typeId === "k8s-pod") {
+      // Fetch available namespaces for the namespace picker
+      let namespaceOptions: { id: string; label: string }[] = [
+        { id: "default", label: "default" },
+      ];
+      try {
+        const nsData = await this.k8sFetch<K8sList<K8sNamespace>>("/api/v1/namespaces");
+        namespaceOptions = nsData.items
+          .filter((ns) => !SYSTEM_NAMESPACES.has(ns.metadata.name))
+          .map((ns) => ({ id: ns.metadata.name, label: ns.metadata.name }))
+          .sort((a, b) => a.label.localeCompare(b.label));
+      } catch { /* fall back to default */ }
+
       return {
         fields: [
-          { key: "name", label: "Name", kind: "text", required: true },
-          { key: "namespace", label: "Namespace", kind: "text", required: true, defaultValue: "default" },
-          { key: "image", label: "Image", kind: "text", required: true },
+          {
+            key: "name",
+            label: "Pod Name",
+            kind: "text",
+            required: true,
+            defaultValue: `scratch-${Date.now().toString(36)}`,
+            description: "A unique name for your scratch pod",
+          },
+          {
+            key: "namespace",
+            label: "Namespace",
+            kind: "select",
+            required: true,
+            defaultValue: "default",
+            options: namespaceOptions,
+          },
+          {
+            key: "image",
+            label: "OS Image",
+            kind: "select",
+            required: true,
+            defaultValue: "ubuntu:24.04",
+            description: "Base OS for your scratch pod",
+            options: [
+              { id: "ubuntu:24.04", label: "Ubuntu 24.04 LTS" },
+              { id: "ubuntu:22.04", label: "Ubuntu 22.04 LTS" },
+              { id: "debian:12", label: "Debian 12 (Bookworm)" },
+              { id: "debian:11", label: "Debian 11 (Bullseye)" },
+              { id: "alpine:3.20", label: "Alpine 3.20" },
+              { id: "fedora:40", label: "Fedora 40" },
+              { id: "rockylinux:9", label: "Rocky Linux 9" },
+              { id: "amazonlinux:2023", label: "Amazon Linux 2023" },
+              { id: "archlinux:latest", label: "Arch Linux (latest)" },
+              { id: "custom", label: "Custom image\u2026" },
+            ],
+          },
+          {
+            key: "customImage",
+            label: "Custom Image",
+            kind: "text",
+            required: true,
+            description: "Full container image reference (e.g. myregistry.io/myimage:tag)",
+            showWhen: { fieldKey: "image", fieldValue: "custom" },
+          },
+          {
+            key: "ttl",
+            label: "Time to Live",
+            kind: "select",
+            required: true,
+            defaultValue: "3600",
+            description: "Pod auto-terminates and is cleaned up after this duration",
+            options: [
+              { id: "900", label: "15 minutes" },
+              { id: "1800", label: "30 minutes" },
+              { id: "3600", label: "1 hour" },
+              { id: "7200", label: "2 hours" },
+              { id: "14400", label: "4 hours" },
+              { id: "28800", label: "8 hours" },
+              { id: "86400", label: "24 hours" },
+            ],
+          },
         ],
       };
     }
@@ -312,23 +386,60 @@ export class KubernetesClient implements PluginClient {
     const name = fields["name"] || "unnamed";
 
     if (typeId === "k8s-pod") {
-      const image = fields["image"] || "busybox";
+      const rawImage = fields["image"] || "ubuntu:24.04";
+      const image = rawImage === "custom" ? (fields["customImage"] || "ubuntu:24.04") : rawImage;
+      const ttlSeconds = parseInt(fields["ttl"] || "3600", 10);
+      const expiresAt = new Date(Date.now() + ttlSeconds * 1000).toISOString();
+
       await this.k8sFetch(`/api/v1/namespaces/${encodeURIComponent(namespace)}/pods`, {
         method: "POST",
         body: JSON.stringify({
           apiVersion: "v1",
           kind: "Pod",
-          metadata: { name, namespace, labels: { "app.kubernetes.io/managed-by": "infrawrench" } },
-          spec: { containers: [{ name, image }] },
+          metadata: {
+            name,
+            namespace,
+            labels: {
+              "app.kubernetes.io/managed-by": "infrawrench",
+              "infrawrench.io/ephemeral": "true",
+            },
+            annotations: {
+              "infrawrench.io/ttl-seconds": String(ttlSeconds),
+              "infrawrench.io/expires-at": expiresAt,
+            },
+          },
+          spec: {
+            activeDeadlineSeconds: ttlSeconds,
+            restartPolicy: "Never",
+            containers: [
+              {
+                name: "scratch",
+                image,
+                command: ["sleep", String(ttlSeconds)],
+                stdin: true,
+                tty: true,
+              },
+            ],
+          },
         }),
       });
+
       return {
         id: `${accountId}:k8s-pod:${namespace}:${name}`,
         pluginId: "kubernetes",
         resourceTypeId: "k8s-pod",
         accountId,
         displayName: name,
-        fields: { name, namespace, image, status: "Pending", containerName: name },
+        fields: {
+          name,
+          namespace,
+          image,
+          status: "Pending",
+          containerName: "scratch",
+          ephemeral: "true",
+          ttlSeconds,
+          expiresAt,
+        },
         resolvedOutputs: {},
         secretStates: [],
         parentResourceId: `${accountId}:k8s-namespace:${namespace}`,
@@ -363,6 +474,13 @@ export class KubernetesClient implements PluginClient {
     }
 
     throw new Error(`Kubernetes plugin: createResource not supported for type "${typeId}"`);
+  }
+
+  // ── Delete ──────────────────────────────────────────────────────────
+
+  async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
+    const path = this.buildResourcePath(resourceId);
+    await this.k8sFetch(path, { method: "DELETE" });
   }
 
   // ── Manifest editor ──────────────────────────────────────────────────
@@ -415,12 +533,16 @@ export class KubernetesClient implements PluginClient {
   async getManifest(resourceId: string, _accountId: string): Promise<string> {
     const path = this.buildResourcePath(resourceId);
     const raw = await this.k8sFetch<Record<string, unknown>>(path);
-    return JSON.stringify(raw, null, 2);
+    // Strip managed fields — they're noisy and kubectl hides them by default
+    if (raw.metadata && typeof raw.metadata === "object") {
+      delete (raw.metadata as Record<string, unknown>).managedFields;
+    }
+    return yaml.dump(raw, { lineWidth: 120, noRefs: true, sortKeys: false });
   }
 
   async applyManifest(resourceId: string, _accountId: string, manifest: string): Promise<void> {
     const path = this.buildResourcePath(resourceId);
-    const body = JSON.parse(manifest);
+    const body = yaml.load(manifest);
     await this.k8sFetch(path, {
       method: "PUT",
       body: JSON.stringify(body),
@@ -490,32 +612,53 @@ export class KubernetesClient implements PluginClient {
     const now = new Date().toISOString();
     try {
       const data = await this.k8sFetch<K8sList<K8sPod>>("/api/v1/pods");
-      return data.items
-        .filter((pod) => !SYSTEM_NAMESPACES.has(pod.metadata.namespace ?? ""))
-        .map((pod) => {
-          const container = pod.spec.containers[0];
-          const restarts = pod.status.containerStatuses?.[0]?.restartCount ?? 0;
-          return {
-            id: `${accountId}:k8s-pod:${pod.metadata.namespace}:${pod.metadata.name}`,
-            pluginId: "kubernetes",
-            resourceTypeId: "k8s-pod",
-            accountId,
-            displayName: pod.metadata.name,
-            fields: {
-              name: pod.metadata.name,
-              namespace: pod.metadata.namespace ?? "default",
-              image: container?.image ?? "",
-              status: pod.status.phase,
-              containerName: container?.name ?? pod.metadata.name,
-              restarts,
-            },
-            resolvedOutputs: {},
-            secretStates: [],
-            parentResourceId: `${accountId}:k8s-namespace:${pod.metadata.namespace ?? "default"}`,
-            createdAt: pod.metadata.creationTimestamp,
-            updatedAt: now,
-          };
+      const results: ResourceInstance[] = [];
+
+      for (const pod of data.items) {
+        if (SYSTEM_NAMESPACES.has(pod.metadata.namespace ?? "")) continue;
+
+        const isEphemeral = pod.metadata.labels?.["infrawrench.io/ephemeral"] === "true";
+        const phase = pod.status.phase;
+
+        // Auto-cleanup: delete expired ephemeral pods that K8s has already terminated
+        if (isEphemeral && (phase === "Failed" || phase === "Succeeded")) {
+          const ns = pod.metadata.namespace ?? "default";
+          this.k8sFetch(
+            `/api/v1/namespaces/${encodeURIComponent(ns)}/pods/${encodeURIComponent(pod.metadata.name)}`,
+            { method: "DELETE" },
+          ).catch(() => { /* silently ignore cleanup errors */ });
+          continue; // exclude terminated ephemeral pods from the list
+        }
+
+        const container = pod.spec.containers[0];
+        const restarts = pod.status.containerStatuses?.[0]?.restartCount ?? 0;
+        const expiresAt = isEphemeral ? (pod.metadata.annotations?.["infrawrench.io/expires-at"] ?? "") : "";
+        const ttlSeconds = isEphemeral ? (pod.metadata.annotations?.["infrawrench.io/ttl-seconds"] ?? "") : "";
+
+        results.push({
+          id: `${accountId}:k8s-pod:${pod.metadata.namespace}:${pod.metadata.name}`,
+          pluginId: "kubernetes",
+          resourceTypeId: "k8s-pod",
+          accountId,
+          displayName: pod.metadata.name,
+          fields: {
+            name: pod.metadata.name,
+            namespace: pod.metadata.namespace ?? "default",
+            image: container?.image ?? "",
+            status: phase,
+            containerName: container?.name ?? pod.metadata.name,
+            restarts,
+            ...(isEphemeral ? { ephemeral: "true", expiresAt, ttlSeconds } : {}),
+          },
+          resolvedOutputs: {},
+          secretStates: [],
+          parentResourceId: `${accountId}:k8s-namespace:${pod.metadata.namespace ?? "default"}`,
+          createdAt: pod.metadata.creationTimestamp,
+          updatedAt: now,
         });
+      }
+
+      return results;
     } catch {
       return [];
     }
@@ -564,6 +707,7 @@ export class KubernetesClient implements PluginClient {
           const ports = (s.spec.ports ?? [])
             .map((p) => `${p.port}/${p.protocol}`)
             .join(", ");
+          const hasSelector = !!s.spec.selector && Object.keys(s.spec.selector).length > 0;
           return {
             id: `${accountId}:k8s-service:${s.metadata.namespace}:${s.metadata.name}`,
             pluginId: "kubernetes",
@@ -576,6 +720,7 @@ export class KubernetesClient implements PluginClient {
               type: s.spec.type,
               clusterIP: s.spec.clusterIP ?? "",
               ports,
+              hasSelector: hasSelector ? "true" : "false",
             },
             resolvedOutputs: {},
             secretStates: [],

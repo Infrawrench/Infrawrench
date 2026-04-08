@@ -268,6 +268,8 @@ All polling is *background* (no loading flash):
 - `getManifest(resourceId, accountId)` fetches the full resource JSON from the K8s API; `applyManifest()` PUTs it back.
 - Resource ID format: `{accountId}:k8s-{type}:{namespace}:{name}` (namespaced) or `{accountId}:k8s-{type}:{name}` (non-namespaced like namespaces).
 - The `k8sApiPath()` helper maps type IDs to K8s API paths (e.g. `k8s-deployment` -> `/apis/apps/v1/namespaces/{ns}/deployments/{name}`).
+- **Scratch (ephemeral) pods:** Pod creation form offers OS image presets (Ubuntu 24.04 default, Debian, Alpine, Fedora, Rocky, Amazon Linux, Arch, or custom) and a TTL picker (15m–24h). Pods are created with `activeDeadlineSeconds` + `restartPolicy: Never` + `sleep <ttl>` command. K8s auto-terminates the pod when the TTL expires. Expired ephemeral pods are auto-deleted during the next `listPods()` cycle (sidebar refresh). Pods are tagged with `infrawrench.io/ephemeral: "true"` label and `infrawrench.io/expires-at` / `infrawrench.io/ttl-seconds` annotations.
+- `deleteResource()` is implemented for all namespaced K8s resource types via `buildResourcePath()`.
 
 ### Docker (`@infrawrench/plugin-docker`)
 - `dockerHost` credential: `unix:///var/run/docker.sock` (default) or `tcp://host:port`

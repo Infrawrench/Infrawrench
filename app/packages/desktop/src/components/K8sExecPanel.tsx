@@ -70,32 +70,47 @@ export function K8sExecPanel({
         `\x1b[90mConnecting to ${podName} in ${namespace}…\x1b[0m\r\n`,
       );
 
-      invoke<string>("k8s_exec_spawn", {
-        kubeconfig,
-        namespace,
-        podName,
-        ...(containerName ? { containerName } : {}),
-        cols: term.cols,
-        rows: term.rows,
-      })
-        .then((id) => {
-          if (disposed) {
-            void invoke("k8s_exec_kill", { sessionId: id });
-            return;
-          }
-          sessionId = id;
+      const MAX_RETRIES = 15;
+      const RETRY_DELAY_MS = 2_000;
 
-          window.electronAPI.on(`k8s_exec_data_${id}`, (...args) => {
-            term.write(args[0] as Uint8Array);
-          });
-
-          window.electronAPI.on(`k8s_exec_exit_${id}`, () => {
-            term.write("\r\n\x1b[90m[Session closed]\x1b[0m\r\n");
-          });
+      function attemptConnect(retriesLeft: number) {
+        if (disposed) return;
+        invoke<string>("k8s_exec_spawn", {
+          kubeconfig,
+          namespace,
+          podName,
+          ...(containerName ? { containerName } : {}),
+          cols: term.cols,
+          rows: term.rows,
         })
-        .catch((err: unknown) => {
-          term.write(`\r\n\x1b[31mFailed: ${String(err)}\x1b[0m\r\n`);
-        });
+          .then((id) => {
+            if (disposed) {
+              void invoke("k8s_exec_kill", { sessionId: id });
+              return;
+            }
+            sessionId = id;
+
+            window.electronAPI.on(`k8s_exec_data_${id}`, (...args) => {
+              term.write(args[0] as Uint8Array);
+            });
+
+            window.electronAPI.on(`k8s_exec_exit_${id}`, () => {
+              term.write("\r\n\x1b[90m[Session closed]\x1b[0m\r\n");
+            });
+          })
+          .catch((err: unknown) => {
+            if (retriesLeft > 0 && !disposed) {
+              term.write(
+                `\x1b[90mWaiting for pod to be ready… (retrying in ${RETRY_DELAY_MS / 1000}s)\x1b[0m\r\n`,
+              );
+              setTimeout(() => attemptConnect(retriesLeft - 1), RETRY_DELAY_MS);
+            } else {
+              term.write(`\r\n\x1b[31mFailed: ${String(err)}\x1b[0m\r\n`);
+            }
+          });
+      }
+
+      attemptConnect(MAX_RETRIES);
     });
 
     const onData = term.onData((data) => {

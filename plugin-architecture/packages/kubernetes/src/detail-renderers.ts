@@ -3,7 +3,7 @@ import { mapPeerStatus, mapJobStatus } from "./types.js";
 
 /** Standard manifest editor capability for all namespaced K8s resources */
 const K8S_MANIFEST_EDITOR: ManifestEditorCapability = {
-  language: "json",
+  language: "yaml",
 };
 
 export function renderGenericDetail(resource: ResourceInstance): DetailViewSchema {
@@ -32,13 +32,65 @@ export function renderGenericDetail(resource: ResourceInstance): DetailViewSchem
   };
 }
 
+/** Format remaining TTL as a human-readable string */
+function formatTimeRemaining(expiresAt: string): string {
+  const remaining = new Date(expiresAt).getTime() - Date.now();
+  if (remaining <= 0) return "Expired";
+  const hours = Math.floor(remaining / 3_600_000);
+  const minutes = Math.floor((remaining % 3_600_000) / 60_000);
+  if (hours > 0) return `${hours}h ${minutes}m remaining`;
+  if (minutes > 0) return `${minutes}m remaining`;
+  return "< 1m remaining";
+}
+
+/** Format a TTL in seconds as a human-readable duration */
+function formatTtl(seconds: number): string {
+  if (seconds >= 86400) return `${seconds / 86400}d`;
+  if (seconds >= 3600) return `${seconds / 3600}h`;
+  if (seconds >= 60) return `${seconds / 60}m`;
+  return `${seconds}s`;
+}
+
 export function renderPodDetail(resource: ResourceInstance): DetailViewSchema {
   const status = String(resource.fields["status"] ?? "Unknown");
+  const isEphemeral = resource.fields["ephemeral"] === "true";
+  const expiresAt = String(resource.fields["expiresAt"] ?? "");
+  const ttlSeconds = Number(resource.fields["ttlSeconds"] ?? 0);
+
+  const subtitle = isEphemeral
+    ? `Scratch pod in ${resource.fields["namespace"] ?? "default"}`
+    : `Pod in ${resource.fields["namespace"] ?? "default"}`;
+
+  const ephemeralItems = isEphemeral
+    ? [
+        { key: "TTL", value: formatTtl(ttlSeconds) },
+        ...(expiresAt ? [{ key: "Time Remaining", value: formatTimeRemaining(expiresAt) }] : []),
+        ...(expiresAt ? [{ key: "Expires At", value: new Date(expiresAt).toLocaleString() }] : []),
+      ]
+    : [];
+
   return {
     title: resource.displayName,
-    subtitle: `Pod in ${resource.fields["namespace"] ?? "default"}`,
+    subtitle,
     status: { kind: "status-dot", status: mapPeerStatus(status), label: status },
     sections: [
+      ...(isEphemeral
+        ? [
+            {
+              kind: "section" as const,
+              title: "Scratch Pod",
+              children: [
+                {
+                  kind: "key-value-list" as const,
+                  items: [
+                    { key: "Type", value: "Ephemeral \u2014 auto-destroys after TTL" },
+                    ...ephemeralItems,
+                  ],
+                },
+              ],
+            },
+          ]
+        : []),
       {
         kind: "section",
         title: "Pod Info",

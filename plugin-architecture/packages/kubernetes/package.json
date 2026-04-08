@@ -24,9 +24,11 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@infrawrench/plugin-base": "workspace:*"
+    "@infrawrench/plugin-base": "workspace:*",
+    "js-yaml": "^4.1.1"
   },
   "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
     "tsup": "^8.3.5",
     "typescript": "^5.7.3",
     "vitest": "^3.0.5"

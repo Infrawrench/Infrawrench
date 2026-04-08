@@ -14,6 +14,10 @@ import "./plugin-host";
 import "./ssh-host";
 import "./k8s-host";
 
+// Disable Chromium's built-in overscroll history navigation — we handle
+// swipe-to-navigate ourselves in the renderer via wheel events.
+app.commandLine.appendSwitch("overscroll-history-navigation", "0");
+
 // ── Window ────────────────────────────────────────────────────────────────────
 
 function createWindow() {
@@ -34,6 +38,13 @@ function createWindow() {
   } else {
     win.loadFile(path.join(__dirname, "../../index.html"));
   }
+
+  // macOS native swipe gesture → send to renderer for back/forward navigation.
+  // Direction is the physical swipe direction: "right" = fingers moved right = go back.
+  win.on("swipe" as never, (_event: unknown, direction: string) => {
+    if (direction === "right") win.webContents.send("swipe-navigate", "back");
+    if (direction === "left") win.webContents.send("swipe-navigate", "forward");
+  });
 }
 
 app.whenReady().then(() => {
