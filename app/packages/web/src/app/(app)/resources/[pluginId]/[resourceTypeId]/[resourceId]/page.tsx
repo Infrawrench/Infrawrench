@@ -1,10 +1,12 @@
 import { requireAuth } from "@/auth/session";
 import { db } from "@/db/client";
-import { resources, secretFieldStates } from "@/db/schema";
-import { and, eq } from "drizzle-orm";
+import { accounts, resources, secretFieldStates } from "@/db/schema";
+import { and, eq, isNull } from "drizzle-orm";
 import { getPlugin } from "@/plugins/loader";
+import { decrypt } from "@/services/encryption";
 import type { ResourceInstance, SecretFieldState, SecretResolution } from "@infrawrench/plugin-base";
 import { notFound } from "next/navigation";
+import { ResourceDetailClient } from "@/components/ResourceDetailClient";
 
 interface Props {
   params: Promise<{ pluginId: string; resourceTypeId: string; resourceId: string }>;
@@ -12,7 +14,8 @@ interface Props {
 
 export default async function ResourceDetailPage({ params }: Props) {
   const { organizationId } = await requireAuth();
-  const { pluginId, resourceTypeId, resourceId } = await params;
+  const { pluginId, resourceTypeId, resourceId: rawResourceId } = await params;
+  const resourceId = decodeURIComponent(rawResourceId);
 
   const [resource] = await db
     .select()
@@ -23,6 +26,7 @@ export default async function ResourceDetailPage({ params }: Props) {
         eq(resources.organizationId, organizationId),
         eq(resources.pluginId, pluginId),
         eq(resources.resourceTypeId, resourceTypeId),
+        isNull(resources.deletedAt),
       ),
     )
     .limit(1);
@@ -75,12 +79,55 @@ export default async function ResourceDetailPage({ params }: Props) {
   const loadedPlugin = await getPlugin(pluginId);
   if (!loadedPlugin) notFound();
 
-  // Plugin renders the schema — no React, just data
-  const detailSchema = loadedPlugin.plugin.createClient({}).renderDetail(instance);
+  // Decrypt account credentials to create a proper plugin client
+  const [account] = await db
+    .select({
+      encryptedCredentials: accounts.encryptedCredentials,
+      credentialsIv: accounts.credentialsIv,
+    })
+    .from(accounts)
+    .where(
+      and(
+        eq(accounts.id, resource.accountId),
+        eq(accounts.organizationId, organizationId),
+      ),
+    )
+    .limit(1);
+
+  if (!account) notFound();
+
+  const plaintext = await decrypt(account.encryptedCredentials, account.credentialsIv);
+  const credentials = JSON.parse(plaintext) as Record<string, string>;
+  const client = loadedPlugin.plugin.createClient(credentials);
+  const detailSchema = client.renderDetail(instance);
+
+  // Find child resources
+  const childRows = await db
+    .select()
+    .from(resources)
+    .where(
+      and(
+        eq(resources.parentResourceId, resourceId),
+        eq(resources.organizationId, organizationId),
+        isNull(resources.deletedAt),
+      ),
+    );
+
+  const childResources = childRows.map((c) => ({
+    id: c.id,
+    displayName: c.displayName,
+    resourceTypeId: c.resourceTypeId,
+    pluginId: c.pluginId,
+    accountId: c.accountId,
+  }));
 
   return (
-    <div className="p-6">
-      <div id="detail-view-root" data-schema={JSON.stringify(detailSchema)} />
-    </div>
+    <ResourceDetailClient
+      detailSchema={detailSchema}
+      childResources={childResources}
+      pluginId={pluginId}
+      pluginLogoSvg={loadedPlugin.plugin.manifest.logoSvg}
+      resourceId={resourceId}
+    />
   );
 }

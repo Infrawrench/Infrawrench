@@ -30,6 +30,7 @@ export const users = pgTable(
       .references(() => organizations.id, { onDelete: "cascade" }),
     email: text("email").notNull(),
     displayName: text("display_name"),
+    role: text("role").notNull().default("member"),  // "owner" | "admin" | "member"
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
@@ -77,6 +78,8 @@ export const accounts = pgTable(
     /** AES-256-GCM encrypted JSON blob of credentials */
     encryptedCredentials: text("encrypted_credentials").notNull(),
     credentialsIv: text("credentials_iv").notNull(),
+    syncVersion: integer("sync_version").notNull().default(0),
+    deletedAt: timestamp("deleted_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
@@ -107,6 +110,8 @@ export const resources = pgTable(
     outputsJson: jsonb("outputs_json").notNull().default(sql`'{}'::jsonb`),
     parentResourceId: text("parent_resource_id"),
     lastSyncedAt: timestamp("last_synced_at"),
+    syncVersion: integer("sync_version").notNull().default(0),
+    deletedAt: timestamp("deleted_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
@@ -173,6 +178,8 @@ export const associations = pgTable(
       .notNull()
       .references(() => resources.id, { onDelete: "restrict" }),
     providerOutputKey: text("provider_output_key").notNull(),
+    syncVersion: integer("sync_version").notNull().default(0),
+    deletedAt: timestamp("deleted_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
@@ -197,6 +204,8 @@ export const dashboards = pgTable(
       .references(() => organizations.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     isDefault: boolean("is_default").notNull().default(false),
+    syncVersion: integer("sync_version").notNull().default(0),
+    deletedAt: timestamp("deleted_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
@@ -221,10 +230,119 @@ export const dashboardPins = pgTable(
     gridY: integer("grid_y").notNull().default(0),
     gridW: integer("grid_w").notNull().default(1),
     gridH: integer("grid_h").notNull().default(1),
+    syncVersion: integer("sync_version").notNull().default(0),
+    deletedAt: timestamp("deleted_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (t) => ({
     dashboardPinUnique: uniqueIndex("dashboard_pin_unique").on(t.dashboardId, t.resourceId),
     dashboardIdx: index("dashboard_pin_dashboard_idx").on(t.dashboardId),
+  }),
+);
+
+// ─── Audit Logs ──────────────────────────────────────────────────────────────
+
+export const auditLogs = pgTable(
+  "audit_logs",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    userId: text("user_id"),
+    apiKeyId: text("api_key_id"),
+    action: text("action").notNull(),        // e.g. "account.create", "resource.delete"
+    entityType: text("entity_type").notNull(), // "account" | "resource" | "dashboard" | ...
+    entityId: text("entity_id").notNull(),
+    metadata: jsonb("metadata"),              // action-specific payload
+    ipAddress: text("ip_address"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgCreatedIdx: index("audit_logs_org_created_idx").on(t.organizationId, t.createdAt),
+    orgEntityTypeIdx: index("audit_logs_org_entity_type_idx").on(
+      t.organizationId,
+      t.entityType,
+    ),
+  }),
+);
+
+// ─── API Keys ────────────────────────────────────────────────────────────────
+
+export const apiKeys = pgTable(
+  "api_keys",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    hashedKey: text("hashed_key").notNull(),  // SHA-256 of full key
+    prefix: text("prefix").notNull(),          // first 8 chars for display (e.g. "iwk_abc1")
+    scopes: jsonb("scopes").notNull(),         // string[] of granted scopes
+    lastUsedAt: timestamp("last_used_at"),
+    expiresAt: timestamp("expires_at"),
+    revokedAt: timestamp("revoked_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    hashedKeyUnique: uniqueIndex("api_keys_hashed_key_unique").on(t.hashedKey),
+    orgIdx: index("api_keys_org_idx").on(t.organizationId),
+  }),
+);
+
+// ─── Subscriptions (Stripe) ─────────────────────────────────────────────────
+
+export const subscriptions = pgTable(
+  "subscriptions",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    stripeCustomerId: text("stripe_customer_id").notNull(),
+    stripeSubscriptionId: text("stripe_subscription_id"),
+    stripePriceId: text("stripe_price_id"),
+    /** "active" | "past_due" | "canceled" | "unpaid" | "trialing" */
+    status: text("status").notNull().default("trialing"),
+    currentPeriodStart: timestamp("current_period_start"),
+    currentPeriodEnd: timestamp("current_period_end"),
+    seatCount: integer("seat_count").notNull().default(1),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgUnique: uniqueIndex("subscriptions_org_unique").on(t.organizationId),
+    stripeCustomerIdx: index("subscriptions_stripe_customer_idx").on(t.stripeCustomerId),
+    stripeSubIdx: index("subscriptions_stripe_sub_idx").on(t.stripeSubscriptionId),
+  }),
+);
+
+// ─── Invitations ─────────────────────────────────────────────────────────────
+
+export const invitations = pgTable(
+  "invitations",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    email: text("email").notNull(),
+    role: text("role").notNull().default("member"),  // "admin" | "member"
+    invitedByUserId: text("invited_by_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    token: text("token").notNull(),
+    acceptedAt: timestamp("accepted_at"),
+    expiresAt: timestamp("expires_at").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    tokenUnique: uniqueIndex("invitations_token_unique").on(t.token),
+    orgIdx: index("invitations_org_idx").on(t.organizationId),
+    emailOrgIdx: index("invitations_email_org_idx").on(t.email, t.organizationId),
   }),
 );

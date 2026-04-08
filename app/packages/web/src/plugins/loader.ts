@@ -2,13 +2,43 @@ import type { Plugin, PluginRegistry } from "@infrawrench/plugin-base";
 import { pluginManifestSchema } from "@infrawrench/plugin-base";
 import registry from "./blessed-plugins.json";
 
+// Static imports — avoids dynamic import() issues in Next.js server action bundles
+import { plugin as awsPlugin } from "@infrawrench/plugin-aws";
+import { plugin as cloudflarePlugin } from "@infrawrench/plugin-cloudflare";
+import { plugin as digitaloceanPlugin } from "@infrawrench/plugin-digitalocean";
+import { plugin as dockerPlugin } from "@infrawrench/plugin-docker";
+import { plugin as gcpPlugin } from "@infrawrench/plugin-gcp";
+import { plugin as hetznerPlugin } from "@infrawrench/plugin-hetzner";
+import { plugin as kubernetesPlugin } from "@infrawrench/plugin-kubernetes";
+import { plugin as memcachedPlugin } from "@infrawrench/plugin-memcached";
+import { plugin as mongodbPlugin } from "@infrawrench/plugin-mongodb";
+import { plugin as mysqlPlugin } from "@infrawrench/plugin-mysql";
+import { plugin as neonPlugin } from "@infrawrench/plugin-neon";
+import { plugin as ovhPlugin } from "@infrawrench/plugin-ovh";
+import { plugin as postgresPlugin } from "@infrawrench/plugin-postgres";
+import { plugin as redisPlugin } from "@infrawrench/plugin-redis";
+import { plugin as scalewayPlugin } from "@infrawrench/plugin-scaleway";
+import { plugin as sshPlugin } from "@infrawrench/plugin-ssh";
+
 const blessedRegistry = registry as PluginRegistry;
 
-/** Statically imported plugins — only blessed plugins are ever imported */
-const PLUGIN_MODULES: Record<string, () => Promise<{ plugin: Plugin }>> = {
-  "@infrawrench/plugin-digitalocean": () => import("@infrawrench/plugin-digitalocean"),
-  "@infrawrench/plugin-kubernetes": () => import("@infrawrench/plugin-kubernetes"),
-  "@infrawrench/plugin-postgres": () => import("@infrawrench/plugin-postgres"),
+const PLUGIN_MODULES: Record<string, Plugin> = {
+  "@infrawrench/plugin-aws": awsPlugin,
+  "@infrawrench/plugin-cloudflare": cloudflarePlugin,
+  "@infrawrench/plugin-digitalocean": digitaloceanPlugin,
+  "@infrawrench/plugin-docker": dockerPlugin,
+  "@infrawrench/plugin-gcp": gcpPlugin,
+  "@infrawrench/plugin-hetzner": hetznerPlugin,
+  "@infrawrench/plugin-kubernetes": kubernetesPlugin,
+  "@infrawrench/plugin-memcached": memcachedPlugin,
+  "@infrawrench/plugin-mongodb": mongodbPlugin,
+  "@infrawrench/plugin-mysql": mysqlPlugin,
+  "@infrawrench/plugin-neon": neonPlugin,
+  "@infrawrench/plugin-ovh": ovhPlugin,
+  "@infrawrench/plugin-postgres": postgresPlugin,
+  "@infrawrench/plugin-redis": redisPlugin,
+  "@infrawrench/plugin-scaleway": scalewayPlugin,
+  "@infrawrench/plugin-ssh": sshPlugin,
 };
 
 export interface LoadedPlugin {
@@ -21,7 +51,6 @@ let _loaded: LoadedPlugin[] | null = null;
 /**
  * Load and validate all blessed plugins.
  * Results are cached after the first call.
- * In Next.js, this is called in server components/actions — never on the client.
  */
 export async function loadPlugins(): Promise<LoadedPlugin[]> {
   if (_loaded) return _loaded;
@@ -29,23 +58,13 @@ export async function loadPlugins(): Promise<LoadedPlugin[]> {
   const loaded: LoadedPlugin[] = [];
 
   for (const entry of blessedRegistry.entries) {
-    const moduleLoader = PLUGIN_MODULES[entry.packageName];
-    if (!moduleLoader) {
+    const plugin = PLUGIN_MODULES[entry.packageName];
+    if (!plugin) {
       console.warn(
         `[plugin-loader] No module registered for "${entry.packageName}" — skipping`,
       );
       continue;
     }
-
-    let mod: { plugin: Plugin };
-    try {
-      mod = await moduleLoader();
-    } catch (err) {
-      console.error(`[plugin-loader] Failed to import "${entry.packageName}":`, err);
-      continue;
-    }
-
-    const { plugin } = mod;
 
     // Validate manifest with Zod
     const result = pluginManifestSchema.safeParse(plugin.manifest);

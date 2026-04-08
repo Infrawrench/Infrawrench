@@ -6,9 +6,15 @@
 
 ## What it is
 
-Infrawrench is a desktop infrastructure management tool. It presents a unified sidebar and dashboard for cloud accounts (GCP, DigitalOcean, Hetzner Cloud, Kubernetes, Docker, Postgres, Redis, MySQL, Memcached, SSH VMs). The desktop app is Electron + Vite + React, using a local SQLite database for persistence.
+Infrawrench is an infrastructure management platform with both a desktop app and a cloud SaaS web app.
 
-There is also a web app (`@infrawrench/web`) scaffolded with Next.js for a future multi-user SaaS version, but it is not the current focus.
+**Desktop app** — Electron + Vite + React, local SQLite, works offline. All 16 provider plugins loaded. SSH terminals, SQL editors, K8s exec, SFTP browsers run locally.
+
+**Web app** — Next.js 15 App Router, Neon PostgreSQL via Drizzle ORM, WorkOS auth. All 16 plugins loaded server-side. SSH/SQL/K8s proxied through a custom WebSocket server (`server.ts`).
+
+**Shared UI** — `@infrawrench/ui` React component library used by both apps. Plugins return schema data, both hosts render via SchemaRenderer/DetailView.
+
+**Cloud features** — Desktop syncs to cloud via OAuth PKCE (WorkOS) + bidirectional sync protocol. Stripe billing at $20/seat/month with free tier (1 user, 3 accounts, no audit). API key system for programmatic access. Audit trail, team management, invitations.
 
 ---
 
@@ -33,7 +39,7 @@ infrawrench/
 ├── app/packages/
 │   ├── desktop/              # @infrawrench/desktop — Electron app
 │   ├── ui/                   # @infrawrench/ui — shared React components
-│   └── web/                  # @infrawrench/web — Next.js (future SaaS)
+│   └── web/                  # @infrawrench/web — Next.js SaaS web app
 ├── CLAUDE.md                 # Hard rules (keep short)
 └── KNOWLEDGE.md              # This file
 ```
@@ -352,3 +358,59 @@ Resource detail pages now expose SSH as a route-local tab. The bottom-docked SSH
 | Plugin-base types missing after change | Dependent package built before plugin-base | Run `pnpm --filter @infrawrench/plugin-base build` first |
 | SSH auth fails despite correct key | Username defaults to `root`; GCP/DO use key comment as username | Read `.pub` file comment, use `comment.split("@")[0]` as username |
 | Sidebar shows deleted resource | Sidebar caches resource lists; `iw:resources-changed` event not fired | Dispatch event after delete; sidebar listener calls `loadAccountResources(..., true)` |
+
+---
+
+## Web app architecture
+
+### Auth
+WorkOS AuthKit — middleware-enforced on all `(app)/*` routes. Auto-provisions user/org on first login. `requireAuth()` returns `{ userId, organizationId, email }`.
+
+### Database
+Drizzle ORM + Neon PostgreSQL. Schema at `web/src/db/schema.ts`. 13 tables total:
+- Core: organizations, users, plugin_installations, accounts, resources, secret_field_states, associations, dashboards, dashboard_pins
+- SaaS: audit_logs, api_keys, subscriptions, invitations
+
+Sync columns on accounts/resources/dashboards/dashboard_pins/associations: `syncVersion` (monotonic counter), `deletedAt` (soft delete).
+
+Migrations generated via `drizzle-kit generate` — never write SQL directly.
+
+### Server Actions
+All mutations in `web/src/actions/`: accounts, resources, dashboard, associations, api-keys, billing, team, audit. Each calls `logAudit()` for the audit trail.
+
+### WebSocket proxy
+Custom Next.js server (`web/server.ts`) handles WS upgrades at `/api/ws`. Auth via `?token=` query param (API key or OAuth token). Channels:
+- `ssh:open` → SSH terminal session via ssh2
+- `sql:query` → SQL execution via plugin drivers
+- `ssh:data` / `ssh:resize` → bidirectional terminal I/O
+
+### Sync protocol
+- `POST /api/v1/sync/pull` — returns entities with `syncVersion > lastSyncVersion`
+- `POST /api/v1/sync/push` — upserts entities with last-write-wins by `updatedAt`
+- `GET /api/v1/sync/status` — returns max syncVersion
+
+Auth via `Authorization: Bearer <api_key_or_oauth_token>`. Scopes: `sync:read`, `sync:write`, `resources:read/write`, `dashboards:read/write`.
+
+### Stripe billing
+$20/month per seat. Free tier: 1 user, 3 accounts, no audit/API keys/team.
+- `POST /api/v1/webhooks/stripe` — handles checkout.session.completed, invoice.paid/failed, subscription.updated/deleted
+- Server Actions: createCheckoutSession, createBillingPortalSession, getSubscriptionStatus
+
+---
+
+## Desktop cloud sync
+
+### OAuth PKCE
+`desktop/electron/cloud-auth.ts` — WorkOS OAuth2 PKCE flow. Custom protocol `infrawrench://callback`. Tokens encrypted in `cloud_sync_state` SQLite table.
+
+### Sync engine
+`desktop/electron/cloud-sync.ts` — 60-second interval. Push: modified rows since `lastPushAt`. Pull: entities with `syncVersion > lastSyncVersion`. Credentials decrypted locally, sent plaintext over TLS, re-encrypted on server.
+
+### Desktop SQLite v3 migration
+Added `cloud_sync_state` table + `cloud_id`, `sync_version`, `deleted_at` columns to synced tables.
+
+---
+
+## API key system
+
+Format: `iwk_` + 32 random bytes (base64url). Stored as SHA-256 hash. Prefix (first 12 chars) shown for identification. Scopes control access. Revokable, rotatable.

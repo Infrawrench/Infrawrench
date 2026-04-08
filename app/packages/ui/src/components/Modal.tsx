@@ -21,9 +21,26 @@ export function Modal({ onClose, children, className }: ModalProps) {
       ref={ref}
       onCancel={(e) => { e.preventDefault(); onClose(); }}
       onClick={(e) => { if (e.target === ref.current) onClose(); }}
-      className={`backdrop:bg-black/60 backdrop:backdrop-blur-sm bg-transparent p-0 m-auto outline-none ${className ?? ""}`}
+      className={className ?? ""}
+      style={{
+        position: "fixed",
+        inset: 0,
+        margin: "auto",
+        border: "none",
+        background: "transparent",
+        padding: 0,
+        maxWidth: "fit-content",
+        maxHeight: "fit-content",
+        outline: "none",
+      }}
     >
       {children}
+      <style>{`
+        dialog::backdrop {
+          background: rgba(0, 0, 0, 0.6);
+          backdrop-filter: blur(4px);
+        }
+      `}</style>
     </dialog>
   );
 }

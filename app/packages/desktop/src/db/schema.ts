@@ -120,4 +120,32 @@ export const MIGRATIONS = [
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
   `,
+  // v3 — Cloud sync state + sync columns for bidirectional sync
+
+  `
+  CREATE TABLE IF NOT EXISTS cloud_sync_state (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
+
+  ALTER TABLE accounts ADD COLUMN cloud_id TEXT;
+  ALTER TABLE accounts ADD COLUMN sync_version INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE accounts ADD COLUMN deleted_at TEXT;
+
+  ALTER TABLE resources ADD COLUMN cloud_id TEXT;
+  ALTER TABLE resources ADD COLUMN sync_version INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE resources ADD COLUMN deleted_at TEXT;
+
+  ALTER TABLE associations ADD COLUMN cloud_id TEXT;
+  ALTER TABLE associations ADD COLUMN sync_version INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE associations ADD COLUMN deleted_at TEXT;
+
+  ALTER TABLE dashboards ADD COLUMN cloud_id TEXT;
+  ALTER TABLE dashboards ADD COLUMN sync_version INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE dashboards ADD COLUMN deleted_at TEXT;
+
+  ALTER TABLE dashboard_pins ADD COLUMN cloud_id TEXT;
+  ALTER TABLE dashboard_pins ADD COLUMN sync_version INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE dashboard_pins ADD COLUMN deleted_at TEXT;
+  `,
 ] as const;
