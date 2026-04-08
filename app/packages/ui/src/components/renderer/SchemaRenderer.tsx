@@ -70,7 +70,7 @@ function BadgeNodeRenderer({ node }: { node: BadgeNode }) {
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  healthy: "bg-blue-400",
+  healthy: "bg-emerald-400",
   degraded: "bg-yellow-400",
   error: "bg-red-400",
   unknown: "bg-gray-500",

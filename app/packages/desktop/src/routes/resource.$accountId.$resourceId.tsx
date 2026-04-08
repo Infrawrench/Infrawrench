@@ -455,39 +455,55 @@ function ResourceDetailPage() {
               const resolvedPanes: PeerPaneData[] = [];
               await Promise.allSettled(
                 resourceTypeDef.peerIntegrations.map(async (integration) => {
-                  // Resolve all required outputs from this resource
-                  const peerCredentials: Record<string, string> = {};
-                  for (const mapping of integration.credentialMappings) {
-                    const value = await client.resolveOutput(
-                      enrichedResource.resourceTypeId,
-                      enrichedResource.id,
-                      mapping.outputKey,
-                      accountId,
-                    );
-                    peerCredentials[mapping.credentialKey] = value;
+                  try {
+                    // Resolve all required outputs from this resource
+                    const peerCredentials: Record<string, string> = {};
+                    for (const mapping of integration.credentialMappings) {
+                      const value = await client.resolveOutput(
+                        enrichedResource.resourceTypeId,
+                        enrichedResource.id,
+                        mapping.outputKey,
+                        accountId,
+                      );
+                      peerCredentials[mapping.credentialKey] = value;
+                    }
+
+                    const peerLoaded = await getPlugin(integration.pluginId);
+                    if (!peerLoaded) return;
+
+                    const peerServices = buildPluginHostServices(peerLoaded.plugin.manifest, peerCredentials);
+                    const peerClient = peerLoaded.plugin.createClient(peerCredentials, peerServices);
+                    if (!peerClient.renderPeerPane) return;
+
+                    const context: PeerPaneContext = {
+                      tabLabel: integration.tabLabel,
+                      parentPluginId: plugin.manifest.id,
+                      parentResourceTypeId: enrichedResource.resourceTypeId,
+                      parentResourceId: enrichedResource.id,
+                    };
+                    const peerSchema = await peerClient.renderPeerPane(context);
+
+                    resolvedPanes.push({
+                      tabLabel: integration.tabLabel,
+                      pluginLogoSvg: peerLoaded.plugin.manifest.logoSvg,
+                      credentials: peerCredentials,
+                      schema: peerSchema,
+                    });
+                  } catch {
+                    // Peer integration failed (e.g. cluster still provisioning) —
+                    // show the tab with a provisioning placeholder instead of hiding it
+                    const peerLoaded = await getPlugin(integration.pluginId);
+                    if (!peerLoaded) return;
+                    resolvedPanes.push({
+                      tabLabel: integration.tabLabel,
+                      pluginLogoSvg: peerLoaded.plugin.manifest.logoSvg,
+                      credentials: {},
+                      schema: {
+                        status: { kind: "status-dot", status: "provisioning", label: "Provisioning" },
+                        resourceGroups: [],
+                      },
+                    });
                   }
-
-                  const peerLoaded = await getPlugin(integration.pluginId);
-                  if (!peerLoaded) return;
-
-                  const peerServices = buildPluginHostServices(peerLoaded.plugin.manifest, peerCredentials);
-                  const peerClient = peerLoaded.plugin.createClient(peerCredentials, peerServices);
-                  if (!peerClient.renderPeerPane) return;
-
-                  const context: PeerPaneContext = {
-                    tabLabel: integration.tabLabel,
-                    parentPluginId: plugin.manifest.id,
-                    parentResourceTypeId: enrichedResource.resourceTypeId,
-                    parentResourceId: enrichedResource.id,
-                  };
-                  const peerSchema = await peerClient.renderPeerPane(context);
-
-                  resolvedPanes.push({
-                    tabLabel: integration.tabLabel,
-                    pluginLogoSvg: peerLoaded.plugin.manifest.logoSvg,
-                    credentials: peerCredentials,
-                    schema: peerSchema,
-                  });
                 }),
               );
               if (!cancelled) setPeerPanes(resolvedPanes);
