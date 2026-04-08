@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { invoke } from "../lib/invoke";
-import { useDraggable, useDroppable } from "@dnd-kit/core";
+import { useDraggable, useDroppable, useDndContext } from "@dnd-kit/core";
 import type { ResourceInstance, ResourceTypeDefinition } from "@infrawrench/plugin-base";
 import { useUIStore } from "@infrawrench/ui";
 import { getDb } from "../db/client";
@@ -550,7 +550,12 @@ function ResourcePill({
 
   // Separate droppable from draggable — combining refs on the same node in a
   // flex-wrap layout causes @dnd-kit to lose rect measurements during drag.
-  const isDropTarget = !!acceptsSecretImport || !!sshHost;
+  // Disable drop when the dragged resource is from the same account — it's
+  // already in this cluster, so creating a secret is pointless.
+  const { active } = useDndContext();
+  const activeResource = active?.data.current?.resource as DraggableResource | undefined;
+  const sameCluster = activeResource?.accountId === resource.accountId;
+  const isDropTarget = (!!acceptsSecretImport || !!sshHost) && !sameCluster;
   const { setNodeRef: setDropRef, isOver } = useDroppable({
     id: `sidebar-resource:${resource.id}`,
     disabled: !isDropTarget,

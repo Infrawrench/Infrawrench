@@ -2,6 +2,14 @@
   "schemaVersion": "1",
   "entries": [
     {
+      "id": "aws",
+      "packageName": "@infrawrench/plugin-aws",
+      "version": "0.1.0",
+      "checksum": "sha256-placeholder-replace-with-real-checksum",
+      "blessedAt": "2026-04-08T00:00:00Z",
+      "blessedBy": "astrid"
+    },
+    {
       "id": "gcp",
       "packageName": "@infrawrench/plugin-gcp",
       "version": "0.1.0",
