@@ -1,5 +1,5 @@
-import { useState } from "react";
-import type { DetailViewSchema, PeerPaneSchema } from "@infrawrench/plugin-base";
+import React, { useState } from "react";
+import type { DetailViewSchema, PeerPaneSchema, StatusDotNode } from "@infrawrench/plugin-base";
 import { SchemaRenderer, StatusDotNodeRenderer } from "../renderer/SchemaRenderer.js";
 import { AssociationPicker } from "./AssociationPicker.js";
 import { SqlEditorView, type QueryResult } from "./SqlEditorView.js";
@@ -10,6 +10,26 @@ export interface PeerPaneData {
   pluginLogoSvg: string;
   credentials: Record<string, string>;
   schema: PeerPaneSchema;
+}
+
+/** A single child resource shown in a group on the detail page */
+export interface ChildResource {
+  id: string;
+  displayName: string;
+  pluginId: string;
+  resourceTypeId: string;
+  accountId: string;
+  status?: StatusDotNode;
+  subtitle?: string;
+}
+
+/** A group of child resources by type */
+export interface ChildResourceGroup {
+  typeId: string;
+  displayName: string;
+  pluralDisplayName: string;
+  supportsCreate: boolean;
+  resources: ChildResource[];
 }
 
 interface DetailViewProps {
@@ -30,6 +50,14 @@ interface DetailViewProps {
   /** Additional panes from peer plugins — rendered as extra tabs */
   peerPanes?: PeerPaneData[];
   renderPeerPane?: (pane: PeerPaneData, index: number) => React.ReactNode;
+  /** Child resource groups — fetched by the host from child resource types */
+  childResourceGroups?: ChildResourceGroup[];
+  /** Called when a child resource card is clicked */
+  onChildClick?: (child: ChildResource) => void;
+  /** Called when the user clicks "Create" for a child resource type */
+  onChildCreate?: (group: ChildResourceGroup) => void;
+  /** Custom renderer for child resource pills — allows the host to provide draggable pills */
+  renderChildResource?: (child: ChildResource, group: ChildResourceGroup) => React.ReactNode;
 }
 
 export interface RerollSelection {
@@ -63,6 +91,10 @@ export function DetailView({
   onExecute,
   peerPanes = [],
   renderPeerPane,
+  childResourceGroups = [],
+  onChildClick,
+  onChildCreate,
+  renderChildResource,
 }: DetailViewProps) {
   const { rerollingField, closeReroll } = useUIStore();
   const hasSqlEditor = !!schema.sqlEditor && !!onRunQuery;
@@ -146,6 +178,43 @@ export function DetailView({
               </div>
             </div>
           )}
+
+          {childResourceGroups.map((group) => (
+            <div key={group.typeId}>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                  {group.pluralDisplayName}
+                </h3>
+                {group.supportsCreate && onChildCreate && (
+                  <button
+                    onClick={() => onChildCreate(group)}
+                    className="text-xs text-gray-600 hover:text-blue-400 transition-colors"
+                  >
+                    + Create {group.displayName}
+                  </button>
+                )}
+              </div>
+              {group.resources.length === 0 ? (
+                <p className="text-xs text-gray-600">No {group.pluralDisplayName.toLowerCase()} yet.</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {group.resources.map((child) =>
+                    renderChildResource ? (
+                      <React.Fragment key={child.id}>
+                        {renderChildResource(child, group)}
+                      </React.Fragment>
+                    ) : (
+                      <ChildResourcePill
+                        key={child.id}
+                        child={child}
+                        onClick={() => onChildClick?.(child)}
+                      />
+                    ),
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       )}
 
@@ -188,6 +257,33 @@ export function DetailView({
         />
       )}
     </div>
+  );
+}
+
+/** Fallback child pill — used when no custom renderChildResource is provided */
+function ChildResourcePill({ child, onClick }: { child: ChildResource; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="group flex items-center gap-2 pl-3 pr-3 py-1.5 rounded-full border border-gray-700 bg-gray-900 hover:border-gray-600 transition-colors text-left"
+    >
+      {child.status && (
+        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+          child.status.status === "healthy" ? "bg-blue-400"
+          : child.status.status === "error" ? "bg-red-400"
+          : child.status.status === "degraded" ? "bg-yellow-400"
+          : child.status.status === "provisioning" ? "bg-blue-400 animate-pulse"
+          : "bg-gray-500"
+        }`} />
+      )}
+      <span className="text-sm font-medium text-gray-200">{child.displayName}</span>
+      {child.subtitle && (
+        <span className="text-xs text-gray-500">{child.subtitle}</span>
+      )}
+      <span className="text-gray-700 group-hover:text-gray-400 transition-colors text-xs ml-1">
+        &rarr;
+      </span>
+    </button>
   );
 }
 

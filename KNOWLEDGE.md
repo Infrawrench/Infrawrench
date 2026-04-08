@@ -96,6 +96,8 @@ Important flags:
 - `supportsStorageBrowser?: boolean` — whether the host renders the GCS browser panel
 - `supportsTerminal?: boolean` — whether the host renders the SSH terminal panel
 - `sshEndpoint?: { hostOutputKey: string }` — enables "Connect via SSH" right-click in sidebar; `hostOutputKey` names the resolved output to use as the SSH host (e.g. `"ipv4"`)
+- `resourceSqlDriver?: { driver, connectionStringOutputKey }` — per-resource SQL editor; the host resolves the connection string from the resource's outputs via `resolveOutput()` and enables the SQL editor tab (unlike manifest-level `sqlDriver` which uses account credentials)
+- `parentTypeId?: string` — child types are shown on their parent's detail page, not on the account page; the host auto-fetches children and renders them as navigable cards with optional create buttons
 
 **`src/create.ts`** — `CreateResourceConfig`, `CreateFieldConfig`
 

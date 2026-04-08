@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { createFileRoute, useNavigate, useRouterState } from "@tanstack/react-router";
+import { useDraggable } from "@dnd-kit/core";
 import { invoke } from "../lib/invoke";
-import type { ResourceInstance, DetailViewSchema } from "@infrawrench/plugin-base";
-import { DetailView, type QueryResult, useUIStore } from "@infrawrench/ui";
+import type { ResourceInstance, DetailViewSchema, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { DetailView, type QueryResult, type ChildResource, type ChildResourceGroup, useUIStore } from "@infrawrench/ui";
 import { getDb } from "../db/client";
 import { getPlugin } from "../plugins/loader";
 import { getSqlSession, setSqlSession } from "../lib/sql-session";
@@ -18,9 +19,12 @@ import { KvConsole } from "../components/KvConsole";
 import { PeerPaneView } from "../components/PeerPaneView";
 import { SshTunnelModal } from "../components/SshTunnelModal";
 import { DockerSetupModal } from "../components/DockerSetupModal";
+import { ConfirmDeleteModal } from "../components/ConfirmDeleteModal";
+import { CreateResourceModal } from "../components/CreateResourceModal";
 import type { PluginClient, PeerPaneContext } from "@infrawrench/plugin-base";
 import type { PeerPaneData } from "@infrawrench/ui";
-import { accountTabTarget, navigateToWorkspaceTarget, resourceSshTabTarget, resourceSftpTabTarget } from "../lib/workspace-tabs";
+import { accountTabTarget, navigateToWorkspaceTarget, resourceSshTabTarget, resourceSftpTabTarget, resourceTabTarget } from "../lib/workspace-tabs";
+import type { DraggableResource } from "../lib/pins";
 import { formatErrorMessage } from "../lib/errors";
 
 export const Route = createFileRoute("/resource/$accountId/$resourceId")({
@@ -79,9 +83,10 @@ function ResourceDetailPage() {
   const [canDelete, setCanDelete] = useState(false);
   const [resourceTypeLabel, setResourceTypeLabel] = useState<string>("Resource");
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [deleting, setDeleting] = useState(false);
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [peerPanes, setPeerPanes] = useState<PeerPaneData[]>([]);
+  const [childResourceGroups, setChildResourceGroups] = useState<ChildResourceGroup[]>([]);
+  const [createChildTarget, setCreateChildTarget] = useState<ResourceTypeDefinition | null>(null);
   const backgroundRefreshRef = useRef(false);
   const navigate = useNavigate();
 
@@ -232,6 +237,7 @@ function ResourceDetailPage() {
           setSshConfig(client.getSshConfig ? client.getSshConfig() : null);
         }
         const resourceTypeId = decodedResourceId.split(":")[1] ?? "pg-database";
+        const resourceTypeDef = plugin.resourceTypes.find((t) => t.id === resourceTypeId);
         const resources = await client.listResources(resourceTypeId, accountId);
         const foundResource = resources.find((r) => r.id === decodedResourceId) ?? resources[0];
         if (!foundResource) throw new Error("Resource not found");
@@ -303,13 +309,87 @@ function ResourceDetailPage() {
           }
         }
 
+        // ── Per-resource SQL driver ──────────────────────────────────────
+        // When the resource type declares resourceSqlDriver, resolve the
+        // connection string from the resource's outputs and enable SQL.
+        const rtSqlDriver = resourceTypeDef?.resourceSqlDriver;
+        if (rtSqlDriver && !sqlOk) {
+          try {
+            const rtConnectionString = await client.resolveOutput(
+              enrichedResource.resourceTypeId,
+              enrichedResource.id,
+              rtSqlDriver.connectionStringOutputKey,
+              accountId,
+            );
+            if (rtConnectionString) {
+              connectionStringRef.current = rtConnectionString;
+              sqlDriverIdRef.current = rtSqlDriver.driver;
+
+              // Introspect via the resolved connection
+              try {
+                const [tableRows, columnRows, pkRows] = await Promise.all([
+                  sqlQuery(rtSqlDriver.driver, rtConnectionString,
+                    "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name"),
+                  sqlQuery(rtSqlDriver.driver, rtConnectionString,
+                    "SELECT table_name, column_name, data_type FROM information_schema.columns WHERE table_schema = 'public' ORDER BY table_name, ordinal_position"),
+                  sqlQuery(rtSqlDriver.driver, rtConnectionString,
+                    "SELECT tc.table_name, kcu.column_name FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.table_schema = 'public'"),
+                ]);
+
+                const tables = (tableRows as Array<{ table_name: string }>).map((t) => {
+                  const cols = (columnRows as Array<{ table_name: string; column_name: string; data_type: string }>)
+                    .filter((c) => c.table_name === t.table_name)
+                    .map((c) => ({ name: c.column_name, type: c.data_type }));
+                  const pks = (pkRows as Array<{ table_name: string; column_name: string }>)
+                    .filter((p) => p.table_name === t.table_name)
+                    .map((p) => p.column_name);
+                  return { name: t.table_name, columns: cols, ...(pks.length > 0 ? { pkColumns: pks } : {}) };
+                });
+
+                enrichedResource = {
+                  ...enrichedResource,
+                  resolvedOutputs: { ...enrichedResource.resolvedOutputs, __tables__: JSON.stringify(tables) },
+                };
+                sqlOk = true;
+                if (!cancelled) {
+                  setPgConnected(true);
+                  setAccountConnected(accountId, true);
+                }
+              } catch {
+                // Introspection failed — still enable SQL editor without table metadata
+                sqlOk = true;
+                if (!cancelled) {
+                  setPgConnected(true);
+                  setAccountConnected(accountId, true);
+                }
+              }
+            }
+          } catch (err) {
+            if (!cancelled && !session) setPgError(String(err));
+          }
+        }
+
         if (!cancelled) {
           const detailSchema = client.renderDetail(enrichedResource);
-          setSchema(detailSchema);
+
+          // Inject sqlEditor into the schema if per-resource SQL driver is active
+          const finalSchema = (rtSqlDriver && sqlOk && !detailSchema.sqlEditor)
+            ? {
+                ...detailSchema,
+                sqlEditor: {
+                  connectionStringOutputKey: rtSqlDriver.connectionStringOutputKey,
+                  defaultQuery: "SELECT * FROM information_schema.tables WHERE table_schema = 'public' LIMIT 20;",
+                  ...(enrichedResource.resolvedOutputs["__tables__"]
+                    ? { tables: JSON.parse(enrichedResource.resolvedOutputs["__tables__"]) }
+                    : {}),
+                },
+              }
+            : detailSchema;
+
+          setSchema(finalSchema);
           setResource(enrichedResource);
 
           // Resolve SSH host if this resource type declares an sshEndpoint
-          const resourceTypeDef = plugin.resourceTypes.find((t) => t.id === enrichedResource.resourceTypeId);
           setResourceTypeLabel(resourceTypeDef?.displayName ?? "Resource");
           if (resourceTypeDef?.sshEndpoint) {
             const { hostOutputKey } = resourceTypeDef.sshEndpoint;
@@ -321,6 +401,48 @@ function ResourceDetailPage() {
             if (!cancelled) setSshHost(host || null);
           } else if (!cancelled) {
             setSshHost(null);
+          }
+
+          // ── Child resource groups ────────────────────────────────────────
+          // Find child types and fetch their resources for this parent
+          const childTypes = plugin.resourceTypes.filter(
+            (t) => t.parentTypeId === enrichedResource.resourceTypeId,
+          );
+          if (childTypes.length > 0) {
+            const groups: ChildResourceGroup[] = [];
+            await Promise.allSettled(
+              childTypes.map(async (childType) => {
+                try {
+                  const childResources = await client.listResources(childType.id, accountId);
+                  const filtered = childResources.filter(
+                    (r) => r.parentResourceId === enrichedResource.id,
+                  );
+                  const items: ChildResource[] = filtered.map((r) => {
+                    const sidebar = client.renderSidebarItem(r);
+                    return {
+                      id: r.id,
+                      displayName: r.displayName,
+                      pluginId: r.pluginId,
+                      resourceTypeId: r.resourceTypeId,
+                      accountId: r.accountId,
+                      status: sidebar.status,
+                    };
+                  });
+                  groups.push({
+                    typeId: childType.id,
+                    displayName: childType.displayName,
+                    pluralDisplayName: childType.pluralDisplayName,
+                    supportsCreate: !!childType.supportsCreate,
+                    resources: items,
+                  });
+                } catch {
+                  /* skip failed child type loads */
+                }
+              }),
+            );
+            if (!cancelled) setChildResourceGroups(groups);
+          } else if (!cancelled) {
+            setChildResourceGroups([]);
           }
 
           // ── Peer plugin integrations ──────────────────────────────────────
@@ -423,31 +545,24 @@ function ResourceDetailPage() {
 
   async function handleDelete() {
     if (!resource || !account) return;
-    setDeleting(true);
-    try {
-      const client = clientRef.current;
-      if (!client?.deleteResource) throw new Error("Plugin does not support deletion");
-      await client.deleteResource(resource.resourceTypeId, resource.id, accountId);
-      // Remove from local DB and navigate back to the account page
-      const db = await getDb();
-      await db.execute("DELETE FROM dashboard_pins WHERE resource_id = $1", [resource.id]);
-      await db.execute("DELETE FROM resources WHERE id = $1", [resource.id]);
-      removeWorkspaceTabs([
-        `resource:${accountId}:${decodedResourceId}`,
-        `resource:${accountId}:${decodedResourceId}:ssh`,
-        `resource:${accountId}:${decodedResourceId}:sftp`,
-      ]);
-      window.dispatchEvent(new CustomEvent("iw:resources-changed", { detail: { accountId } }));
-      void navigateToWorkspaceTarget(
-        navigate,
-        accountTabTarget(accountId),
-        { label: account.display_name },
-      );
-    } catch (e) {
-      setError(formatErrorMessage(e));
-      setDeleting(false);
-      setConfirmDelete(false);
-    }
+    const client = clientRef.current;
+    if (!client?.deleteResource) throw new Error("Plugin does not support deletion");
+    await client.deleteResource(resource.resourceTypeId, resource.id, accountId);
+    // Remove from local DB and navigate back to the account page
+    const db = await getDb();
+    await db.execute("DELETE FROM dashboard_pins WHERE resource_id = $1", [resource.id]);
+    await db.execute("DELETE FROM resources WHERE id = $1", [resource.id]);
+    removeWorkspaceTabs([
+      `resource:${accountId}:${decodedResourceId}`,
+      `resource:${accountId}:${decodedResourceId}:ssh`,
+      `resource:${accountId}:${decodedResourceId}:sftp`,
+    ]);
+    window.dispatchEvent(new CustomEvent("iw:resources-changed", { detail: { accountId } }));
+    void navigateToWorkspaceTarget(
+      navigate,
+      accountTabTarget(accountId),
+      { label: account.display_name },
+    );
   }
 
   if (loading) {
@@ -561,6 +676,38 @@ function ResourceDetailPage() {
                       parentResourceId={decodedResourceId}
                     />
                   )}
+                  childResourceGroups={childResourceGroups}
+                  onChildClick={(child) => {
+                    void navigateToWorkspaceTarget(
+                      navigate,
+                      resourceTabTarget(child.accountId, child.id),
+                      { label: child.displayName },
+                    );
+                  }}
+                  onChildCreate={(group) => {
+                    const loaded = resource?.pluginId;
+                    if (!loaded || !account) return;
+                    const typeDef = childResourceGroups
+                      .find((g) => g.typeId === group.typeId);
+                    if (!typeDef) return;
+                    // Find the full ResourceTypeDefinition from the plugin
+                    void getPlugin(account.plugin_id).then((p) => {
+                      const rt = p?.plugin.resourceTypes.find((t) => t.id === group.typeId);
+                      if (rt) setCreateChildTarget(rt);
+                    });
+                  }}
+                  renderChildResource={(child) => (
+                    <DraggableChildPill
+                      child={child}
+                      onOpen={() => {
+                        void navigateToWorkspaceTarget(
+                          navigate,
+                          resourceTabTarget(child.accountId, child.id),
+                          { label: child.displayName },
+                        );
+                      }}
+                    />
+                  )}
                   {...(hasSqlEditor ? { onRunQuery: handleRunQuery, onExecute: handleExecute } : {})}
                 />
               </div>
@@ -619,35 +766,22 @@ function ResourceDetailPage() {
       {/* Non-SSH bottom panels — hidden when in SSH view */}
       {!isSshView && !isSftpView && canDelete && (
         <div className="shrink-0 px-4 py-2 border-t border-gray-800 flex items-center justify-end gap-3">
-          {confirmDelete ? (
-            <>
-              <span className="text-xs text-gray-400">
-                Permanently delete <span className="text-white font-medium">{resource?.displayName}</span>?
-              </span>
-              <button
-                onClick={() => void handleDelete()}
-                disabled={deleting}
-                className="px-3 py-1 text-xs bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white rounded-lg transition-colors"
-              >
-                {deleting ? "Deleting…" : "Delete"}
-              </button>
-              <button
-                onClick={() => setConfirmDelete(false)}
-                disabled={deleting}
-                className="px-3 py-1 text-xs text-gray-500 hover:text-gray-300 transition-colors"
-              >
-                Cancel
-              </button>
-            </>
-          ) : (
-            <button
-              onClick={() => setConfirmDelete(true)}
-              className="text-xs text-gray-600 hover:text-red-400 transition-colors px-2 py-1 rounded hover:bg-red-500/10"
-            >
-              Delete {resourceTypeLabel}…
-            </button>
-          )}
+          <button
+            onClick={() => setConfirmDelete(true)}
+            className="text-xs text-gray-600 hover:text-red-400 transition-colors px-2 py-1 rounded hover:bg-red-500/10"
+          >
+            Delete {resourceTypeLabel}…
+          </button>
         </div>
+      )}
+
+      {confirmDelete && resource && (
+        <ConfirmDeleteModal
+          kind={resourceTypeLabel.toLowerCase()}
+          name={resource.displayName}
+          onConfirm={() => handleDelete()}
+          onClose={() => setConfirmDelete(false)}
+        />
       )}
 
       {!isSshView && !isSftpView && !hasSqlEditor && pgError && (
@@ -734,6 +868,83 @@ function ResourceDetailPage() {
         />
       )}
 
+      {createChildTarget && account && (
+        <CreateResourceModal
+          accountId={accountId}
+          pluginId={account.plugin_id}
+          resourceType={createChildTarget}
+          onClose={() => setCreateChildTarget(null)}
+          onCreated={(newResource) => {
+            setCreateChildTarget(null);
+            window.dispatchEvent(new CustomEvent("iw:resources-changed", { detail: { accountId } }));
+            // Refresh the current page to show the new child
+            backgroundRefreshRef.current = true;
+            setRefreshVersion((v) => v + 1);
+          }}
+        />
+      )}
+
+    </div>
+  );
+}
+
+/** Draggable pill for child resources — supports dnd-kit for pinning to dashboards */
+function DraggableChildPill({
+  child,
+  onOpen,
+}: {
+  child: ChildResource;
+  onOpen: () => void;
+}) {
+  const draggableData: DraggableResource = {
+    id: child.id,
+    pluginId: child.pluginId,
+    resourceTypeId: child.resourceTypeId,
+    accountId: child.accountId,
+    displayName: child.displayName,
+    fields: {},
+  };
+
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `child-${child.id}`,
+    data: {
+      resource: draggableData,
+      workspaceTabTarget: resourceTabTarget(child.accountId, child.id),
+      dragLabel: child.displayName,
+    },
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      {...listeners}
+      {...attributes}
+      className={`group flex items-center gap-1 pl-3 pr-1.5 py-1.5 rounded-full border border-gray-700 bg-gray-900 hover:border-gray-600 transition-colors cursor-grab active:cursor-grabbing ${
+        isDragging ? "opacity-40" : ""
+      }`}
+    >
+      <div onClick={onOpen} className="flex items-center gap-2 min-w-0">
+        {child.status && (
+          <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+            child.status.status === "healthy" ? "bg-blue-400"
+            : child.status.status === "error" ? "bg-red-400"
+            : child.status.status === "degraded" ? "bg-yellow-400"
+            : child.status.status === "provisioning" ? "bg-blue-400 animate-pulse"
+            : "bg-gray-500"
+          }`} />
+        )}
+        <span className="text-sm font-medium text-gray-200 leading-none">{child.displayName}</span>
+        {child.subtitle && (
+          <span className="text-xs text-gray-500 leading-none">{child.subtitle}</span>
+        )}
+      </div>
+      <button
+        onClick={(e) => { e.stopPropagation(); onOpen(); }}
+        title="Open detail view"
+        className="p-1 rounded-full text-gray-700 hover:text-gray-300 opacity-0 group-hover:opacity-100 transition-all text-xs"
+      >
+        &rarr;
+      </button>
     </div>
   );
 }

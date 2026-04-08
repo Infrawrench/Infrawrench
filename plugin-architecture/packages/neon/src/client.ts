@@ -145,6 +145,9 @@ export class NeonClient implements PluginClient {
     accountId: string,
   ): Promise<string> {
     if (typeId === "neon-project") {
+      if (outputKey === "connectionString") {
+        return this.resolveProjectConnectionString(resourceId, accountId);
+      }
       const resource = await this.getResource(typeId, resourceId, accountId);
       if (outputKey === "projectId") return String(resource.externalId ?? "");
       if (outputKey === "region") return String(resource.fields["region"] ?? "");
@@ -152,6 +155,9 @@ export class NeonClient implements PluginClient {
     }
 
     if (typeId === "neon-branch") {
+      if (outputKey === "connectionString") {
+        return this.resolveBranchConnectionString(resourceId, accountId);
+      }
       const resource = await this.getResource(typeId, resourceId, accountId);
       if (outputKey === "branchId") return String(resource.externalId ?? "");
       if (outputKey === "projectId") return String(resource.fields["projectId"] ?? "");
@@ -705,6 +711,64 @@ export class NeonClient implements PluginClient {
     // Neon provides a connection_uri endpoint
     const data = await this.fetch<{ uri: string }>(
       `/projects/${projectId}/connection_uri?branch_id=${encodeURIComponent(branchId)}&database_name=${encodeURIComponent(dbName)}&role_name=${encodeURIComponent(roleName)}`,
+    );
+    return data.uri;
+  }
+
+  /**
+   * Resolve a connection string for a project by finding the primary branch's
+   * default database and returning its connection URI.
+   */
+  private async resolveProjectConnectionString(
+    resourceId: string,
+    accountId: string,
+  ): Promise<string> {
+    const resource = await this.getResource("neon-project", resourceId, accountId);
+    const projectId = String(resource.externalId ?? "");
+
+    // Find the primary branch
+    const branchData = await this.fetch<{ branches: NeonBranch[] }>(
+      `/projects/${projectId}/branches`,
+    );
+    const primary = branchData.branches.find((b) => b.primary) ?? branchData.branches[0];
+    if (!primary) throw new Error("Neon plugin: no branches found on project");
+
+    // Find the first database on that branch
+    const dbData = await this.fetch<{ databases: NeonDatabase[] }>(
+      `/projects/${projectId}/branches/${primary.id}/databases`,
+    );
+    const db = dbData.databases[0];
+    if (!db) throw new Error("Neon plugin: no databases found on primary branch");
+
+    // Get a connection URI via Neon's connection_uri endpoint
+    const data = await this.fetch<{ uri: string }>(
+      `/projects/${projectId}/connection_uri?branch_id=${encodeURIComponent(primary.id)}&database_name=${encodeURIComponent(db.name)}&role_name=${encodeURIComponent(db.owner_name)}`,
+    );
+    return data.uri;
+  }
+
+  /**
+   * Resolve a connection string for a branch by finding the first database
+   * on that branch and returning its connection URI.
+   */
+  private async resolveBranchConnectionString(
+    resourceId: string,
+    accountId: string,
+  ): Promise<string> {
+    const resource = await this.getResource("neon-branch", resourceId, accountId);
+    const projectId = String(resource.fields["projectId"] ?? "");
+    const branchId = String(resource.externalId ?? "");
+
+    // Find the first database on this branch
+    const dbData = await this.fetch<{ databases: NeonDatabase[] }>(
+      `/projects/${projectId}/branches/${branchId}/databases`,
+    );
+    const db = dbData.databases[0];
+    if (!db) throw new Error("Neon plugin: no databases found on this branch");
+
+    // Get a connection URI via Neon's connection_uri endpoint
+    const data = await this.fetch<{ uri: string }>(
+      `/projects/${projectId}/connection_uri?branch_id=${encodeURIComponent(branchId)}&database_name=${encodeURIComponent(db.name)}&role_name=${encodeURIComponent(db.owner_name)}`,
     );
     return data.uri;
   }

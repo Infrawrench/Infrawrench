@@ -123,4 +123,16 @@ export interface ResourceTypeDefinition {
    * to env-var-style secret keys.
    */
   secretExportTemplates?: SecretExportTemplate[];
+  /**
+   * Per-resource SQL driver — when present, the host resolves a connection string
+   * from this resource's outputs and enables a SQL editor tab in the detail view.
+   * Unlike the manifest-level sqlDriver (which uses account credentials), this
+   * resolves the connection per-resource via client.resolveOutput().
+   */
+  resourceSqlDriver?: {
+    /** Identifier for the SQL engine (e.g. "postgres", "mysql") */
+    driver: string;
+    /** The output key to resolve for the connection string */
+    connectionStringOutputKey: string;
+  };
 }

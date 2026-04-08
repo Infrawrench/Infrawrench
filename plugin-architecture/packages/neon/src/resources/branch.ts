@@ -15,9 +15,20 @@ export const NeonBranchResourceType: ResourceTypeDefinition = {
   outputs: [
     { key: "branchId", label: "Branch ID", sensitive: false },
     { key: "projectId", label: "Project ID", sensitive: false },
+    { key: "connectionString", label: "Connection String (default database)", sensitive: true },
   ],
   parentTypeId: "neon-project",
-  dashboardPinnable: false,
+  dashboardPinnable: true,
   supportsCreate: true,
   iconKey: "neon",
+  secretExportTemplates: [
+    {
+      id: "connection-url",
+      displayName: "Connection URL",
+      description: "DATABASE_URL for the default database on this branch",
+      entries: [
+        { envKey: "DATABASE_URL", outputKey: "connectionString" },
+      ],
+    },
+  ],
 };

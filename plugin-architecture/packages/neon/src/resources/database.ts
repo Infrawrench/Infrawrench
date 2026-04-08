@@ -30,4 +30,8 @@ export const NeonDatabaseResourceType: ResourceTypeDefinition = {
       ],
     },
   ],
+  resourceSqlDriver: {
+    driver: "postgres",
+    connectionStringOutputKey: "connectionString",
+  },
 };

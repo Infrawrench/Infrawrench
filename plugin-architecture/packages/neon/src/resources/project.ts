@@ -15,8 +15,19 @@ export const NeonProjectResourceType: ResourceTypeDefinition = {
     { key: "projectId", label: "Project ID", sensitive: false },
     { key: "region", label: "Region", sensitive: false },
     { key: "pgVersion", label: "PostgreSQL Version", sensitive: false },
+    { key: "connectionString", label: "Connection String (default database)", sensitive: true },
   ],
   dashboardPinnable: true,
   supportsCreate: true,
   iconKey: "neon",
+  secretExportTemplates: [
+    {
+      id: "connection-url",
+      displayName: "Connection URL",
+      description: "DATABASE_URL for the default database on the primary branch",
+      entries: [
+        { envKey: "DATABASE_URL", outputKey: "connectionString" },
+      ],
+    },
+  ],
 };

@@ -14,6 +14,7 @@ import { SshTunnelModal, type PresetKey } from "./SshTunnelModal";
 import { DockerSetupModal } from "./DockerSetupModal";
 import { SecretExportModal } from "./SecretExportModal";
 import { SshEnvDeployModal } from "./SshEnvDeployModal";
+import { ConfirmDeleteModal } from "./ConfirmDeleteModal";
 import { accountTabTarget, navigateToWorkspaceTarget, resourceTabTarget } from "../lib/workspace-tabs";
 
 interface Account {
@@ -78,7 +79,12 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
   const [envDeployDrop, setEnvDeployDrop] = useState<{
     source: DraggableResource; sshHost: string;
   } | null>(null);
+  // Account deletion state
+  const [deleteTarget, setDeleteTarget] = useState<Account | null>(null);
   const navigate = useNavigate();
+  const bumpAccounts = useUIStore((s) => s.bumpAccounts);
+  const removeWorkspaceTabs = useUIStore((s) => s.removeWorkspaceTabs);
+  const workspaceTabs = useUIStore((s) => s.workspaceTabs);
   const connectedAccounts = useUIStore((s) => s.connectedAccounts);
   const contextMenuRef = useRef<HTMLDivElement>(null);
 
@@ -226,6 +232,20 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
     if (!isNowExpanded) return;
     if (accountResources[id]) return;
     void loadAccountResources(account);
+  }
+
+  async function handleDeleteAccount(account: Account) {
+    const db = await getDb();
+    // Cascade deletes resources, dashboard_pins, secret_field_states, ssh_tunnel_configs via FK
+    await db.execute("DELETE FROM accounts WHERE id = $1", [account.id]);
+    const tabsToRemove = workspaceTabs.filter((tab) => {
+      const t = tab.target;
+      return (t.kind === "account" && t.accountId === account.id) ||
+             (t.kind === "resource" && t.accountId === account.id);
+    }).map((tab) => tab.id);
+    removeWorkspaceTabs(tabsToRemove);
+    bumpAccounts();
+    setDeleteTarget(null);
   }
 
   // Auto-refresh expanded accounts every 30 s (background — no loading flash)
@@ -413,6 +433,7 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
                     accountTabTarget(account.id),
                     { label: account.displayName },
                   )}
+                  onDelete={() => setDeleteTarget(account)}
                 />
 
                 {/* Expanded resources */}
@@ -545,6 +566,16 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
       />
     )}
 
+    {/* Account deletion modal */}
+    {deleteTarget && (
+      <ConfirmDeleteModal
+        kind="account"
+        name={deleteTarget.displayName}
+        onConfirm={() => handleDeleteAccount(deleteTarget)}
+        onClose={() => setDeleteTarget(null)}
+      />
+    )}
+
     </>
   );
 }
@@ -619,6 +650,7 @@ function AccountDraggableRow({
   acceptsSecretImport,
   onToggleExpand,
   onNavigate,
+  onDelete,
 }: {
   account: Account;
   group: PluginGroup;
@@ -627,6 +659,7 @@ function AccountDraggableRow({
   acceptsSecretImport: boolean;
   onToggleExpand: () => void;
   onNavigate: () => void;
+  onDelete: () => void;
 }) {
   const draggableData: DraggableResource = {
     id: account.id,
@@ -692,6 +725,16 @@ function AccountDraggableRow({
       </button>
       {showDropHint && (
         <span className="text-xs text-blue-400 flex-shrink-0">Drop</span>
+      )}
+      {!showDropHint && (
+        <button
+          draggable={false}
+          onClick={(e) => { e.stopPropagation(); onDelete(); }}
+          title="Delete account"
+          className="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded text-gray-700 opacity-0 group-hover:opacity-100 hover:text-red-400 hover:bg-red-500/10 transition-all"
+        >
+          ✕
+        </button>
       )}
     </div>
   );

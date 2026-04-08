@@ -15,6 +15,7 @@ import { SecretExportModal } from "../components/SecretExportModal";
 import { SshTunnelModal, type PresetKey } from "../components/SshTunnelModal";
 import { DockerSetupModal } from "../components/DockerSetupModal";
 import { SshEnvDeployModal } from "../components/SshEnvDeployModal";
+import { ConfirmDeleteModal } from "../components/ConfirmDeleteModal";
 import { navigateToWorkspaceTarget, resourceTabTarget, accountTabTarget } from "../lib/workspace-tabs";
 
 export const Route = createFileRoute("/accounts/$accountId")({
@@ -336,30 +337,12 @@ function AccountPage() {
           <h1 className="text-lg font-semibold text-gray-100">{account?.display_name}</h1>
           <p className="text-xs text-gray-500 mt-0.5">{account?.plugin_id}</p>
         </div>
-        {confirmDelete ? (
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-400">Remove this account?</span>
-            <button
-              onClick={() => void deleteAccount()}
-              className="px-2 py-1 text-xs bg-red-600 hover:bg-red-500 text-white rounded-lg transition-colors"
-            >
-              Remove
-            </button>
-            <button
-              onClick={() => setConfirmDelete(false)}
-              className="px-2 py-1 text-xs text-gray-500 hover:text-gray-300 transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
-        ) : (
-          <button
-            onClick={() => setConfirmDelete(true)}
-            className="text-xs text-gray-600 hover:text-red-400 transition-colors px-2 py-1 rounded hover:bg-red-500/10"
-          >
-            Remove account
-          </button>
-        )}
+        <button
+          onClick={() => setConfirmDelete(true)}
+          className="text-xs text-gray-600 hover:text-red-400 transition-colors px-2 py-1 rounded hover:bg-red-500/10"
+        >
+          Remove account
+        </button>
       </div>
 
       {categories.map((cat) => {
@@ -508,6 +491,15 @@ function AccountPage() {
             setDockerSetupTarget(null);
             void navigateToWorkspaceTarget(navigate, accountTabTarget(newAccountId));
           }}
+        />
+      )}
+
+      {confirmDelete && account && (
+        <ConfirmDeleteModal
+          kind="account"
+          name={account.display_name}
+          onConfirm={() => deleteAccount()}
+          onClose={() => setConfirmDelete(false)}
         />
       )}
     </div>
