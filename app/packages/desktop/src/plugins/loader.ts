@@ -29,6 +29,7 @@ const PLUGIN_MODULES: Record<string, () => Promise<{ plugin: Plugin }>> = {
   "@infrawrench/plugin-ovh": () => import("@infrawrench/plugin-ovh"),
   "@infrawrench/plugin-databricks": () => import("@infrawrench/plugin-databricks"),
   "@infrawrench/plugin-turso": () => import("@infrawrench/plugin-turso"),
+  "@infrawrench/plugin-planetscale": () => import("@infrawrench/plugin-planetscale"),
 };
 
 export interface LoadedPlugin {

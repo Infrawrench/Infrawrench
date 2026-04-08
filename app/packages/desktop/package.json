@@ -24,6 +24,7 @@
     "@infrawrench/plugin-mongodb": "workspace:*",
     "@infrawrench/plugin-mysql": "workspace:*",
     "@infrawrench/plugin-neon": "workspace:*",
+    "@infrawrench/plugin-planetscale": "workspace:*",
     "@infrawrench/plugin-postgres": "workspace:*",
     "@infrawrench/plugin-redis": "workspace:*",
     "@infrawrench/plugin-scaleway": "workspace:*",

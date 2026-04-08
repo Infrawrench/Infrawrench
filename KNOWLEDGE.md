@@ -137,7 +137,7 @@ Each plugin that needs native Node.js capabilities exports from `./node-driver`:
 
 ### Driver registration (`electron/drivers.ts`)
 ```typescript
-sqlDrivers     → Map<string, SqlNodeDriver>    (postgres, mysql, libsql)
+sqlDrivers     → Map<string, SqlNodeDriver>    (postgres, mysql, libsql, mysql-planetscale)
 kvDrivers      → Map<string, KvNodeDriver>     (redis, memcached)
 dockerDrivers  → Map<string, DockerNodeDriver> (docker)
 storageDrivers → Map<string, StorageNodeDriver> (gcp)
@@ -180,7 +180,7 @@ Resource IDs follow the convention `{accountId}:{resourceTypeId}:{externalId}`. 
 
 The loader (`app/packages/desktop/src/plugins/loader.ts`) validates each plugin's manifest against the Zod schema and checks the manifest `id` matches the registry `id` before mounting. Unknown packages are refused.
 
-Currently blessed: `gcp`, `docker`, `digitalocean`, `hetzner`, `kubernetes`, `memcached`, `mongodb`, `mysql`, `neon`, `postgres`, `redis`, `scaleway`, `ssh`, `cloudflare`, `ovh`, `aws`, `databricks`, `turso`.
+Currently blessed: `gcp`, `docker`, `digitalocean`, `hetzner`, `kubernetes`, `memcached`, `mongodb`, `mysql`, `neon`, `postgres`, `redis`, `scaleway`, `ssh`, `cloudflare`, `ovh`, `aws`, `databricks`, `turso`, `planetscale`.
 
 ---
 
@@ -312,6 +312,20 @@ All polling is *background* (no loading flash):
 - Database status: sleeping→degraded, active→healthy
 - Resource ID format: `{accountId}:{typeId}:{dbName}` or `{accountId}:{typeId}:{groupName}`
 - 30+ edge locations available for group placement (3-letter IATA codes: iad, fra, nrt, etc.)
+
+### PlanetScale (`@infrawrench/plugin-planetscale`)
+- Auth: Service token — `Authorization: {serviceTokenId}:{serviceTokenSecret}` against `https://api.planetscale.com/v1`
+- Credentials: `serviceTokenId`, `serviceTokenSecret` (sensitive), `organizationName` (org slug)
+- Resource types: `ps-database`, `ps-branch` (child of ps-database)
+- PlanetScale is MySQL-compatible (built on Vitess); branches are isolated schema environments with their own connection endpoints
+- Branch connection: `POST /v1/organizations/{org}/databases/{db}/branches/{branch}/passwords` creates a password, then builds `mysql://user:pass@host/database`
+- SQL node driver (`./driver`) is `mysql-planetscale` — wraps mysql2 with TLS forced on (PlanetScale requires encrypted connections); registered in `drivers.ts`
+- `resourceSqlDriver` declared on `ps-branch` with driver `"mysql-planetscale"` and `connectionStringOutputKey: "connectionString"`
+- Supports create/delete for both databases and branches
+- Database state mapping: ready→healthy, awaiting_import→provisioning, else→error
+- Branch status: ready→healthy, else→provisioning
+- Resource ID format: `{accountId}:ps-database:{databaseName}` or `{accountId}:ps-branch:{databaseName}/{branchName}`
+- Regions: AWS regions (us-east, us-west, eu-west, eu-central, ap-south, ap-southeast, ap-northeast, sa-east, ap-southeast-2)
 
 ---
 

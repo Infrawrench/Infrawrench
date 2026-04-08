@@ -21,6 +21,7 @@ import { plugin as scalewayPlugin } from "@infrawrench/plugin-scaleway";
 import { plugin as sshPlugin } from "@infrawrench/plugin-ssh";
 import { plugin as databricksPlugin } from "@infrawrench/plugin-databricks";
 import { plugin as tursoPlugin } from "@infrawrench/plugin-turso";
+import { plugin as planetscalePlugin } from "@infrawrench/plugin-planetscale";
 
 const blessedRegistry = registry as PluginRegistry;
 
@@ -43,6 +44,7 @@ const PLUGIN_MODULES: Record<string, Plugin> = {
   "@infrawrench/plugin-ssh": sshPlugin,
   "@infrawrench/plugin-databricks": databricksPlugin,
   "@infrawrench/plugin-turso": tursoPlugin,
+  "@infrawrench/plugin-planetscale": planetscalePlugin,
 };
 
 export interface LoadedPlugin {

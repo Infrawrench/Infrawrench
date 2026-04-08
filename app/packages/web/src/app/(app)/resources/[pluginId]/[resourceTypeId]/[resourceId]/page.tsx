@@ -4,10 +4,11 @@ import { accounts, resources, secretFieldStates } from "@/db/schema";
 import { and, eq, isNull } from "drizzle-orm";
 import { getPlugin } from "@/plugins/loader";
 import { decrypt } from "@/services/encryption";
-import type { ResourceInstance, SecretFieldState, SecretResolution, PeerPaneSchema } from "@infrawrench/plugin-base";
+import type { ResourceInstance, SecretFieldState, SecretResolution, PeerPaneSchema, DetailViewSchema } from "@infrawrench/plugin-base";
 import { notFound } from "next/navigation";
 import { ResourceDetailClient } from "@/components/ResourceDetailClient";
 import { buildPluginHostServices } from "@/services/host-services";
+import { sqlDrivers } from "@/services/drivers";
 
 interface Props {
   params: Promise<{ pluginId: string; resourceTypeId: string; resourceId: string }>;
@@ -121,7 +122,86 @@ export default async function ResourceDetailPage({ params }: Props) {
   const resourceTypeDef = loadedPlugin.plugin.resourceTypes.find(
     (t) => t.id === resourceTypeId,
   );
-  const detailSchema = client.renderDetail(instance);
+
+  // ── SQL introspection (mirrors desktop) ───────────────────────────────────
+  // Try to introspect tables so the SQL sidecar is populated.
+  let sqlOk = false;
+  let enrichedInstance = instance;
+
+  // Path 1: Plugin-level introspection (introspectResource or introspect)
+  const manifest = loadedPlugin.plugin.manifest;
+  if (manifest.sqlDriver || client.executeQuery) {
+    try {
+      const tables = await client.introspectResource?.(resourceId, accountId)
+        ?? await client.introspect?.()
+        ?? [];
+      enrichedInstance = {
+        ...enrichedInstance,
+        resolvedOutputs: { ...enrichedInstance.resolvedOutputs, __tables__: JSON.stringify(tables) },
+      };
+      sqlOk = true;
+    } catch { /* introspection is non-critical */ }
+  }
+
+  // Path 2: Per-resource SQL driver (e.g. Neon, Turso, Databricks)
+  const rtSqlDriver = resourceTypeDef?.resourceSqlDriver;
+  if (rtSqlDriver && !sqlOk) {
+    try {
+      const rtConnectionString = await client.resolveOutput(
+        resourceTypeId,
+        resourceId,
+        rtSqlDriver.connectionStringOutputKey,
+        accountId,
+      );
+      if (rtConnectionString) {
+        const driver = sqlDrivers.get(rtSqlDriver.driver);
+        if (driver) {
+          try {
+            const [tableRows, columnRows, pkRows] = await Promise.all([
+              driver.query(rtConnectionString,
+                "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name"),
+              driver.query(rtConnectionString,
+                "SELECT table_name, column_name, data_type FROM information_schema.columns WHERE table_schema = 'public' ORDER BY table_name, ordinal_position"),
+              driver.query(rtConnectionString,
+                "SELECT tc.table_name, kcu.column_name FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.table_schema = 'public'"),
+            ]);
+
+            const tables = (tableRows as Array<{ table_name: string }>).map((t) => {
+              const cols = (columnRows as Array<{ table_name: string; column_name: string; data_type: string }>)
+                .filter((c) => c.table_name === t.table_name)
+                .map((c) => ({ name: c.column_name, type: c.data_type }));
+              const pks = (pkRows as Array<{ table_name: string; column_name: string }>)
+                .filter((p) => p.table_name === t.table_name)
+                .map((p) => p.column_name);
+              return { name: t.table_name, columns: cols, ...(pks.length > 0 ? { pkColumns: pks } : {}) };
+            });
+
+            enrichedInstance = {
+              ...enrichedInstance,
+              resolvedOutputs: { ...enrichedInstance.resolvedOutputs, __tables__: JSON.stringify(tables) },
+            };
+          } catch { /* introspection failed — still enable SQL editor */ }
+          sqlOk = true;
+        }
+      }
+    } catch { /* resolveOutput failed */ }
+  }
+
+  const detailSchema = client.renderDetail(enrichedInstance);
+
+  // Inject sqlEditor into schema if per-resource SQL driver is active but plugin didn't provide one
+  const finalSchema: DetailViewSchema = (rtSqlDriver && sqlOk && !detailSchema.sqlEditor)
+    ? {
+        ...detailSchema,
+        sqlEditor: {
+          connectionStringOutputKey: rtSqlDriver.connectionStringOutputKey,
+          defaultQuery: "SELECT * FROM information_schema.tables WHERE table_schema = 'public' LIMIT 20;",
+          ...(enrichedInstance.resolvedOutputs?.["__tables__"]
+            ? { tables: JSON.parse(enrichedInstance.resolvedOutputs["__tables__"]) }
+            : {}),
+        },
+      }
+    : detailSchema;
 
   // ── Peer pane integrations ─────────────────────────────────────────────────
   // Mirror desktop: resolve outputs for each peer integration, create peer
@@ -225,13 +305,12 @@ export default async function ResourceDetailPage({ params }: Props) {
 
   // ── Capabilities ───────────────────────────────────────────────────────────
   const canDelete = !!client.deleteResource;
-  const hasManifestEditor = !!detailSchema.manifestEditor && !!client.getManifest;
+  const hasManifestEditor = !!finalSchema.manifestEditor && !!client.getManifest;
   const resourceTypeLabel = resourceTypeDef?.displayName ?? "Resource";
 
   // ── Connection feature flags ──────────────────────────────────────────────
-  const manifest = loadedPlugin.plugin.manifest;
-  const hasSqlEditor = !!detailSchema.sqlEditor || !!manifest.sqlDriver || !!resourceTypeDef?.resourceSqlDriver || !!client.executeQuery;
-  const hasStorageBrowser = !!detailSchema.storageBrowser;
+  const hasSqlEditor = !!finalSchema.sqlEditor || !!manifest.sqlDriver || !!resourceTypeDef?.resourceSqlDriver || !!client.executeQuery;
+  const hasStorageBrowser = !!finalSchema.storageBrowser;
   const hasKvConsole = !!manifest.kvDriver;
   const kvDriverName = manifest.kvDriver?.driver;
   const isMongoDb = kvDriverName === "mongodb";
@@ -241,11 +320,11 @@ export default async function ResourceDetailPage({ params }: Props) {
   const hasSftpBrowser = !!sshConfig;
   const containerId = String(instance.resolvedOutputs?.["containerId"] ?? instance.externalId ?? "");
   const databaseName = String(instance.fields?.["database"] ?? "test");
-  const storageBucketName = detailSchema.storageBrowser?.bucketName ?? "";
+  const storageBucketName = finalSchema.storageBrowser?.bucketName ?? "";
 
   return (
     <ResourceDetailClient
-      detailSchema={detailSchema}
+      detailSchema={finalSchema}
       childResources={childResources}
       childTypes={childTypes}
       pluginId={pluginId}
