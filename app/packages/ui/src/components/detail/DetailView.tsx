@@ -295,7 +295,7 @@ function ChildResourcePill({ child, onClick }: { child: ChildResource; onClick: 
     >
       {child.status && (
         <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-          child.status.status === "healthy" ? "bg-blue-400"
+          child.status.status === "healthy" ? "bg-emerald-400"
           : child.status.status === "error" ? "bg-red-400"
           : child.status.status === "degraded" ? "bg-yellow-400"
           : child.status.status === "provisioning" ? "bg-blue-400 animate-pulse"

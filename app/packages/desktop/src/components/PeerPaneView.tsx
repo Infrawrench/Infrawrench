@@ -175,6 +175,25 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
     });
   }
 
+  // Provisioning state: no resource groups and status is provisioning
+  const isProvisioning =
+    pane.schema.status?.status === "provisioning" &&
+    resourceGroups.length === 0;
+
+  if (isProvisioning) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 px-6 text-center space-y-4">
+        <div className="w-10 h-10 rounded-full border-2 border-blue-400/30 border-t-blue-400 animate-spin" />
+        <div className="space-y-1.5">
+          <p className="text-sm font-medium text-gray-200">Cluster is provisioning</p>
+          <p className="text-xs text-gray-500 max-w-xs">
+            Workloads will appear here once the cluster is ready. This usually takes a few minutes.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       ref={setDropRef}
@@ -184,9 +203,6 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
       {/* Header: status + actions */}
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          {pane.schema.status && (
-            <StatusDotNodeRenderer node={pane.schema.status} />
-          )}
           {/* Namespace filter */}
           {namespaces.length > 1 && (
             <select

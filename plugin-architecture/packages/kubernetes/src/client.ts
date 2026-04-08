@@ -273,7 +273,6 @@ export class KubernetesClient implements PluginClient {
     ].filter((g) => g.items.length > 0);
 
     return {
-      status: { kind: "status-dot", status: "healthy" },
       supportsK9s: true,
       supportsSecretImport: true,
       resourceGroups: groups,
