@@ -2,13 +2,11 @@ import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
 
 /**
  * Returns resource types to show on the account page.
- * Includes all top-level types, plus child types that support create
- * so users get a direct "+ Create" button without navigating into the parent first.
+ * Only top-level types (no parentTypeId) are shown — child types appear
+ * nested under their parent on the resource detail page instead.
  */
 export function getAccountResourceTypes(
   resourceTypes: ResourceTypeDefinition[],
 ): ResourceTypeDefinition[] {
-  return resourceTypes.filter(
-    (typeDef) => !typeDef.parentTypeId || typeDef.supportsCreate,
-  );
+  return resourceTypes.filter((typeDef) => !typeDef.parentTypeId);
 }
