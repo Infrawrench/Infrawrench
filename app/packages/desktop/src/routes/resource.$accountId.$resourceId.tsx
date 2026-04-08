@@ -543,6 +543,20 @@ function ResourceDetailPage() {
     return sqlExecute(driverId, cs, sql, params);
   }, [decodedResourceId, accountId]);
 
+  const handleGetManifest = useCallback(async (): Promise<string> => {
+    const client = clientRef.current;
+    if (!client?.getManifest) throw new Error("Plugin does not support manifest viewing");
+    return client.getManifest(decodedResourceId, accountId);
+  }, [decodedResourceId, accountId]);
+
+  const handleApplyManifest = useCallback(async (manifest: string): Promise<void> => {
+    const client = clientRef.current;
+    if (!client?.applyManifest) throw new Error("Plugin does not support manifest editing");
+    await client.applyManifest(decodedResourceId, accountId, manifest);
+    // Trigger a refresh so the overview tab reflects changes
+    window.dispatchEvent(new CustomEvent("iw:refresh-resource"));
+  }, [decodedResourceId, accountId]);
+
   async function handleDelete() {
     if (!resource || !account) return;
     const client = clientRef.current;
@@ -709,6 +723,7 @@ function ResourceDetailPage() {
                     />
                   )}
                   {...(hasSqlEditor ? { onRunQuery: handleRunQuery, onExecute: handleExecute } : {})}
+                  {...(schema.manifestEditor ? { onGetManifest: handleGetManifest, onApplyManifest: handleApplyManifest } : {})}
                 />
               </div>
             )}

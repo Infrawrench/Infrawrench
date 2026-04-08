@@ -86,6 +86,8 @@ deleteStorageObject?(bucket, key): Promise<void>
 getStorageAccessToken?(): Promise<string>
 fetchStorageStats?(bucketName): Promise<{ count, size }>
 getSshConfig?(): { host, port, username, privateKey }
+getManifest?(resourceId, accountId): Promise<string>        // raw manifest text (JSON) for Monaco editor
+applyManifest?(resourceId, accountId, manifest): Promise<void>  // apply edited manifest back
 ```
 
 **`src/resource.ts`** — `ResourceTypeDefinition`
@@ -181,7 +183,7 @@ Currently blessed: `gcp`, `docker`, `digitalocean`, `hetzner`, `kubernetes`, `me
 - `index.tsx` — redirect to default dashboard
 - `dashboard.$dashboardId.tsx` — renders `DashboardView`
 - `accounts.$accountId.tsx` — account detail: resource groups as pill lists, "+ Create" buttons
-- `resource.$accountId.$resourceId.tsx` — resource detail: `DetailView` + SQL editor / KV console / Docker panel / storage browser / SSH terminal / delete bar
+- `resource.$accountId.$resourceId.tsx` — resource detail: `DetailView` + SQL editor / KV console / Docker panel / storage browser / manifest editor / SSH terminal / delete bar
 
 ### Key components (`src/components/`)
 - `SidebarAccounts.tsx` — grouped by plugin, lazy-loaded per account on expand, auto-refresh every 30s, right-click SSH context menu
@@ -260,6 +262,12 @@ All polling is *background* (no loading flash):
 - Object Storage uses S3-compatible API at `s3.{region}.scw.cloud`; bucket listing via Scaleway REST API
 - Commercial types fetched from `/instance/v1/zones/{zone}/products/servers` for create form
 - Instance status mapping: running/ready→healthy, starting/stopping/provisioning/creating→provisioning, stopped/error/locked/deleting→error
+
+### Kubernetes (`@infrawrench/plugin-kubernetes`)
+- Manifest editor: all namespaced resource types (Pod, Deployment, Service, StatefulSet, DaemonSet, Job, CronJob, Ingress, ConfigMap, Secret) declare `manifestEditor` on their `DetailViewSchema`. The host renders a Monaco-based JSON editor tab.
+- `getManifest(resourceId, accountId)` fetches the full resource JSON from the K8s API; `applyManifest()` PUTs it back.
+- Resource ID format: `{accountId}:k8s-{type}:{namespace}:{name}` (namespaced) or `{accountId}:k8s-{type}:{name}` (non-namespaced like namespaces).
+- The `k8sApiPath()` helper maps type IDs to K8s API paths (e.g. `k8s-deployment` -> `/apis/apps/v1/namespaces/{ns}/deployments/{name}`).
 
 ### Docker (`@infrawrench/plugin-docker`)
 - `dockerHost` credential: `unix:///var/run/docker.sock` (default) or `tcp://host:port`

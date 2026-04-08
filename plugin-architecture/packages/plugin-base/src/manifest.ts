@@ -243,6 +243,16 @@ export interface PluginClient {
    * The host uses this to populate the namespace dropdown in the secret export modal.
    */
   listNamespacesForImport?(accountId: string): Promise<string[]>;
+  /**
+   * Fetch the full manifest for a resource as a text string (JSON or YAML).
+   * Called when the user opens the manifest editor tab.
+   */
+  getManifest?(resourceId: string, accountId: string): Promise<string>;
+  /**
+   * Apply an updated manifest back to the resource.
+   * The host is responsible for confirming destructive changes with the user first.
+   */
+  applyManifest?(resourceId: string, accountId: string, manifest: string): Promise<void>;
 }
 
 export interface Plugin {

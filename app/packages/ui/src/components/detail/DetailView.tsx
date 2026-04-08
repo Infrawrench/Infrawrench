@@ -1,8 +1,9 @@
 import React, { useState } from "react";
-import type { DetailViewSchema, PeerPaneSchema, StatusDotNode } from "@infrawrench/plugin-base";
+import type { DetailViewSchema, ManifestEditorCapability, PeerPaneSchema, StatusDotNode } from "@infrawrench/plugin-base";
 import { SchemaRenderer, StatusDotNodeRenderer } from "../renderer/SchemaRenderer.js";
 import { AssociationPicker } from "./AssociationPicker.js";
 import { SqlEditorView, type QueryResult } from "./SqlEditorView.js";
+import { ManifestEditorView } from "./ManifestEditorView.js";
 import { useUIStore } from "../../store/ui.store.js";
 
 export interface PeerPaneData {
@@ -47,6 +48,10 @@ interface DetailViewProps {
   onRunQuery?: (sql: string) => Promise<QueryResult>;
   /** Host-provided mutation executor (UPDATE/INSERT/DELETE with $1… params) */
   onExecute?: (sql: string, params: unknown[]) => Promise<number>;
+  /** Fetch the raw manifest text for the manifest editor tab */
+  onGetManifest?: () => Promise<string>;
+  /** Apply an updated manifest — used by the manifest editor tab */
+  onApplyManifest?: (manifest: string) => Promise<void>;
   /** Additional panes from peer plugins — rendered as extra tabs */
   peerPanes?: PeerPaneData[];
   renderPeerPane?: (pane: PeerPaneData, index: number) => React.ReactNode;
@@ -79,7 +84,7 @@ export interface ProviderResource {
   pluginLogoSvg: string;
 }
 
-type Tab = "overview" | "sql" | `peer:${number}`;
+type Tab = "overview" | "sql" | "manifest" | `peer:${number}`;
 
 export function DetailView({
   schema,
@@ -89,6 +94,8 @@ export function DetailView({
   providerResources = [],
   onRunQuery,
   onExecute,
+  onGetManifest,
+  onApplyManifest,
   peerPanes = [],
   renderPeerPane,
   childResourceGroups = [],
@@ -98,7 +105,8 @@ export function DetailView({
 }: DetailViewProps) {
   const { rerollingField, closeReroll } = useUIStore();
   const hasSqlEditor = !!schema.sqlEditor && !!onRunQuery;
-  const hasTabs = hasSqlEditor || peerPanes.length > 0;
+  const hasManifestEditor = !!schema.manifestEditor && !!onGetManifest;
+  const hasTabs = hasSqlEditor || hasManifestEditor || peerPanes.length > 0;
   const [activeTab, setActiveTab] = useState<Tab>("overview");
 
   return (
@@ -131,6 +139,14 @@ export function DetailView({
                   onClick={() => setActiveTab("sql")}
                 >
                   SQL Editor
+                </TabButton>
+              )}
+              {hasManifestEditor && (
+                <TabButton
+                  active={activeTab === "manifest"}
+                  onClick={() => setActiveTab("manifest")}
+                >
+                  Manifest
                 </TabButton>
               )}
               {peerPanes.map((pane, i) => (
@@ -225,6 +241,16 @@ export function DetailView({
             defaultQuery={schema.sqlEditor!.defaultQuery ?? "SELECT 1;"}
             onRunQuery={onRunQuery!}
             onExecute={onExecute}
+          />
+        </div>
+      )}
+
+      {hasManifestEditor && activeTab === "manifest" && (
+        <div className="flex-1 overflow-hidden">
+          <ManifestEditorView
+            capability={schema.manifestEditor!}
+            onGetManifest={onGetManifest!}
+            onApplyManifest={onApplyManifest}
           />
         </div>
       )}
