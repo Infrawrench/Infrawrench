@@ -1,6 +1,4 @@
-"use client";
-
-import { useRouter } from "next/navigation";
+import { useNavigate } from "@tanstack/react-router";
 import { ResourcePill, type DraggableResource } from "@infrawrench/ui";
 
 interface ResourceType {
@@ -37,7 +35,7 @@ export function AccountDetailView({
   pluginDisplayName,
   pluginLogoSvg,
 }: Props) {
-  const router = useRouter();
+  const navigate = useNavigate();
 
   // Group ALL resources by type
   const groupedResources = new Map<string, Resource[]>();
@@ -117,9 +115,10 @@ export function AccountDetailView({
                       resource={draggable}
                       subtitle={subtitle || undefined}
                       onOpen={() =>
-                        router.push(
-                          `/resources/${resource.pluginId}/${resource.resourceTypeId}/${encodeURIComponent(resource.id)}`,
-                        )
+                        void navigate({
+                          to: "/resources/$pluginId/$resourceTypeId/$resourceId",
+                          params: { pluginId: resource.pluginId, resourceTypeId: resource.resourceTypeId, resourceId: encodeURIComponent(resource.id) },
+                        })
                       }
                     />
                   );

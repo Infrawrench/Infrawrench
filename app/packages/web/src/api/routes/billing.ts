@@ -1,0 +1,94 @@
+import { Hono } from "hono";
+import { eq } from "drizzle-orm";
+import { v4 as uuid } from "uuid";
+import { db } from "../../db/client";
+import { subscriptions } from "../../db/schema";
+import { getStripe, getStripePriceId } from "../../services/stripe";
+import type { AuthSession } from "../auth-middleware";
+
+declare module "hono" {
+  interface ContextVariableMap {
+    session: AuthSession;
+  }
+}
+
+const app = new Hono();
+
+/** GET /api/billing/status */
+app.get("/status", async (c) => {
+  const session = c.get("session");
+  const [sub] = await db
+    .select()
+    .from(subscriptions)
+    .where(eq(subscriptions.organizationId, session.organizationId));
+  if (!sub) return c.json(null);
+  return c.json({
+    status: sub.status,
+    seatCount: sub.seatCount,
+    currentPeriodEnd: sub.currentPeriodEnd,
+    stripeCustomerId: sub.stripeCustomerId,
+  });
+});
+
+/** POST /api/billing/checkout */
+app.post("/checkout", async (c) => {
+  const session = c.get("session");
+  const stripe = getStripe();
+  const priceId = getStripePriceId();
+
+  let [sub] = await db
+    .select()
+    .from(subscriptions)
+    .where(eq(subscriptions.organizationId, session.organizationId));
+
+  let customerId: string;
+  if (sub) {
+    customerId = sub.stripeCustomerId;
+  } else {
+    const customer = await stripe.customers.create({
+      email: session.email,
+      metadata: { organizationId: session.organizationId },
+    });
+    customerId = customer.id;
+    await db.insert(subscriptions).values({
+      id: uuid(),
+      organizationId: session.organizationId,
+      stripeCustomerId: customerId,
+      status: "trialing",
+      seatCount: 1,
+    });
+  }
+
+  const appUrl = process.env["APP_URL"] ?? process.env["NEXT_PUBLIC_APP_URL"] ?? "http://localhost:3000";
+  const checkoutSession = await stripe.checkout.sessions.create({
+    customer: customerId,
+    mode: "subscription",
+    line_items: [{ price: priceId, quantity: 1 }],
+    success_url: `${appUrl}/settings/billing?success=true`,
+    cancel_url: `${appUrl}/settings/billing`,
+  });
+
+  if (!checkoutSession.url) return c.json({ error: "Failed to create checkout session" }, 500);
+  return c.json({ url: checkoutSession.url });
+});
+
+/** POST /api/billing/portal */
+app.post("/portal", async (c) => {
+  const session = c.get("session");
+  const stripe = getStripe();
+
+  const [sub] = await db
+    .select()
+    .from(subscriptions)
+    .where(eq(subscriptions.organizationId, session.organizationId));
+  if (!sub) return c.json({ error: "No subscription found" }, 404);
+
+  const appUrl = process.env["APP_URL"] ?? process.env["NEXT_PUBLIC_APP_URL"] ?? "http://localhost:3000";
+  const portalSession = await stripe.billingPortal.sessions.create({
+    customer: sub.stripeCustomerId,
+    return_url: `${appUrl}/settings/billing`,
+  });
+  return c.json({ url: portalSession.url });
+});
+
+export { app as billingRoutes };

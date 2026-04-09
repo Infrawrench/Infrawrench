@@ -1,8 +1,21 @@
-"use client";
-
 import { useState, useEffect } from "react";
 import { Modal } from "@infrawrench/ui";
-import { listPlugins, createAccount, type PluginInfo } from "@/actions/accounts";
+import { apiGet, apiPost } from "@/lib/api";
+
+interface PluginInfo {
+  id: string;
+  displayName: string;
+  logoSvg: string;
+  credentialFields: Array<{
+    key: string;
+    label: string;
+    description?: string;
+    placeholder?: string;
+    sensitive?: boolean;
+    multiline?: boolean;
+    defaultValue?: string;
+  }>;
+}
 
 interface AddAccountModalProps {
   onClose: () => void;
@@ -22,7 +35,7 @@ export function AddAccountModal({ onClose, onAdded }: AddAccountModalProps) {
   const [search, setSearch] = useState("");
 
   useEffect(() => {
-    listPlugins().then(setPlugins);
+    apiGet<PluginInfo[]>("/api/accounts/plugins").then(setPlugins);
   }, []);
 
   function pickPlugin(p: PluginInfo) {
@@ -57,7 +70,7 @@ export function AddAccountModal({ onClose, onAdded }: AddAccountModalProps) {
           fieldValues[f.key]?.trim() || f.defaultValue || "",
         ]),
       );
-      await createAccount({
+      await apiPost("/api/accounts", {
         pluginId: selected.id,
         displayName: accountName.trim(),
         credentials,

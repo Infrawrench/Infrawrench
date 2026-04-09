@@ -1,41 +1,69 @@
 /**
- * Custom Next.js server with WebSocket support for SSH terminals,
- * SQL query proxy, and K8s exec sessions.
+ * Hono API server + Vite SPA dev middleware + WebSocket support
+ * for SSH terminals, SQL query proxy, and K8s exec sessions.
  */
-import { createServer } from "node:http";
+import { createServer as createHttpServer } from "node:http";
+import { getRequestListener } from "@hono/node-server";
 import { parse } from "node:url";
-import next from "next";
 import { WebSocketServer, WebSocket } from "ws";
+import { api } from "./src/api/index";
 import { handleSshSession } from "./src/services/ssh-proxy";
 import { handleSqlSession } from "./src/services/sql-proxy";
 import { authenticateApiRequest } from "./src/auth/api-auth";
 import { validateWsToken } from "./src/services/ws-tokens";
 
 const dev = process.env["NODE_ENV"] !== "production";
-const hostname = "localhost";
 const port = parseInt(process.env["PORT"] ?? "3000", 10);
 
-const app = next({ dev, hostname, port });
-const handle = app.getRequestHandler();
+async function start() {
+  const honoListener = getRequestListener(api.fetch);
+  let server: ReturnType<typeof createHttpServer>;
 
-app.prepare().then(() => {
-  const server = createServer((req, res) => {
-    const parsedUrl = parse(req.url ?? "", true);
-    void handle(req, res, parsedUrl);
-  });
+  if (dev) {
+    // In dev: Vite dev server in middleware mode, Hono for API routes
+    const { createServer: createViteServer } = await import("vite");
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+    });
 
+    // Route at the Node.js HTTP level: API/callback → Hono, everything else → Vite
+    server = createHttpServer((req, res) => {
+      const url = req.url ?? "";
+      if (url.startsWith("/api/") || url.startsWith("/callback")) {
+        honoListener(req, res);
+      } else {
+        vite.middlewares(req, res);
+      }
+    });
+    server.listen(port);
+  } else {
+    // In prod: serve static files from dist/client/ via Hono
+    const { serveStatic } = await import("@hono/node-server/serve-static");
+    const { Hono } = await import("hono");
+    const prodApp = new Hono();
+
+    prodApp.route("/", api);
+    prodApp.use("*", serveStatic({ root: "./dist/client" }));
+    // SPA fallback: serve index.html for all non-API, non-static routes
+    prodApp.use("*", serveStatic({ root: "./dist/client", path: "index.html" }));
+
+    const prodListener = getRequestListener(prodApp.fetch);
+    server = createHttpServer(prodListener);
+    server.listen(port);
+  }
+
+  // ── WebSocket support ──────────────────────────────────────────────────
   const wss = new WebSocketServer({ noServer: true });
 
   server.on("upgrade", async (request, socket, head) => {
     const url = parse(request.url ?? "", true);
 
-    // Only handle /api/ws
     if (url.pathname !== "/api/ws") {
       socket.destroy();
       return;
     }
 
-    // Authenticate via query param token — try session token first, then API key
     const token = url.query["token"] as string | undefined;
     if (!token) {
       socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
@@ -84,10 +112,8 @@ app.prepare().then(() => {
             }
             break;
           case "ssh:data":
-            // stdin data is forwarded by the ssh session handler
             break;
           case "ssh:resize":
-            // resize is forwarded by the ssh session handler
             break;
           case "sql:query":
             if (msg.accountId && msg.sql) {
@@ -101,7 +127,10 @@ app.prepare().then(() => {
     });
   });
 
-  server.listen(port, () => {
-    console.log(`> Ready on http://${hostname}:${port}`);
-  });
+  console.log(`> Ready on http://localhost:${port}`);
+}
+
+start().catch((err) => {
+  console.error("Failed to start server:", err);
+  process.exit(1);
 });

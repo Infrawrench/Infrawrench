@@ -39,6 +39,8 @@ export class GcpClient implements PluginClient {
   private tokenCache: TokenCache | null = null;
   private machineTypeFamilyRateCache = new Map<string, PricingCacheEntry>();
   private pricingRatesInFlightByGeo = new Map<string, Promise<PricingRates>>();
+  /** Cached machine type specs (vcpus + memoryMb) keyed by machine type name, populated during getCreateConfig. */
+  private machineTypeSpecCache = new Map<string, { guestCpus: number; memoryMb: number }>();
 
   constructor(credentials: Record<string, string>) {
     const raw = credentials["serviceAccountJson"];
@@ -430,6 +432,11 @@ export class GcpClient implements PluginClient {
       };
       const machineTypes = (machineTypesData.items ?? []).filter((m) => !m.name.includes("custom"));
 
+      // Pre-populate machine type spec cache so getCreateCostEstimate can skip the API call
+      for (const m of machineTypes) {
+        this.machineTypeSpecCache.set(m.name, { guestCpus: m.guestCpus, memoryMb: m.memoryMb });
+      }
+
       const sizes: SizeOption[] = machineTypes
         .map((m) => {
           const family = familyOrder.find((f) => m.name.startsWith(f)) ?? m.name.split("-")[0] ?? "other";
@@ -518,6 +525,12 @@ export class GcpClient implements PluginClient {
         })
         .sort((a, b) => a.id.localeCompare(b.id));
       const machineTypes = (machineTypesData.items ?? []).filter((m) => !m.name.includes("custom"));
+
+      // Pre-populate machine type spec cache for GKE cost estimates
+      for (const m of machineTypes) {
+        this.machineTypeSpecCache.set(m.name, { guestCpus: m.guestCpus, memoryMb: m.memoryMb });
+      }
+
       const familyOrder = ["e2", "n1", "n2", "n2d", "c2", "c3", "m1", "m2", "a2", "g2"];
       const familyLabels: Record<string, string> = {
         e2: "E2 · Cost-optimized", n1: "N1 · General purpose", n2: "N2 · General purpose",
@@ -588,42 +601,87 @@ export class GcpClient implements PluginClient {
     typeId: string,
     request: { regionId?: string; sizes: Array<{ id: string; vcpus: number; memoryMb: number }> },
   ): Promise<Record<string, number>> {
-    if (typeId !== "gce-instance") return {};
+    if (typeId !== "gce-instance" && typeId !== "gke-cluster") return {};
     const zone = request.regionId ?? "us-central1-a";
     return this.estimateMachineTypeMonthlyPrices(request.sizes, zone);
   }
 
   async getCreateCostEstimate(typeId: string, fields: Record<string, string>): Promise<number | null> {
-    if (typeId !== "gce-instance") return null;
-    const zone = fields["zone"] ?? "us-central1-a";
-    const machineType = fields["machineType"] ?? "";
-    if (!machineType) return null;
+    if (typeId === "gce-instance") {
+      const zone = fields["zone"] ?? "us-central1-a";
+      const machineType = fields["machineType"] ?? "";
+      if (!machineType) return null;
 
-    const machineTypeData = await this.get<{ guestCpus: number; memoryMb: number }>(
-      `https://compute.googleapis.com/compute/v1/projects/${this.project}/zones/${zone}/machineTypes/${machineType}`,
-    ).catch(() => null);
-    if (!machineTypeData) return null;
-
-    const vmMonthly = (
-      await this.estimateMachineTypeMonthlyPrices(
-        [{ id: machineType, vcpus: machineTypeData.guestCpus, memoryMb: machineTypeData.memoryMb }],
-        zone,
-      )
-    )[machineType] ?? 0;
-
-    let storageMonthly = 0;
-    const bootSource = fields["bootSource"] ?? "new-image";
-    if (bootSource === "new-image") {
-      const diskGb = Number(fields["diskGb"] ?? 50);
-      const diskRate = await this.getBalancedDiskMonthlyRate(zone);
-      if (diskRate != null && Number.isFinite(diskGb) && diskGb > 0) {
-        storageMonthly = diskGb * diskRate;
+      // Use cached machine type specs (populated during getCreateConfig) to avoid
+      // a network roundtrip on every field change — this lets the cost badge update
+      // instantly when the storage slider moves.
+      let machineTypeData = this.machineTypeSpecCache.get(machineType);
+      if (!machineTypeData) {
+        const fetched = await this.get<{ guestCpus: number; memoryMb: number }>(
+          `https://compute.googleapis.com/compute/v1/projects/${this.project}/zones/${zone}/machineTypes/${machineType}`,
+        ).catch(() => null);
+        if (!fetched) return null;
+        this.machineTypeSpecCache.set(machineType, fetched);
+        machineTypeData = fetched;
       }
+
+      const vmMonthly = (
+        await this.estimateMachineTypeMonthlyPrices(
+          [{ id: machineType, vcpus: machineTypeData.guestCpus, memoryMb: machineTypeData.memoryMb }],
+          zone,
+        )
+      )[machineType] ?? 0;
+
+      let storageMonthly = 0;
+      const bootSource = fields["bootSource"] ?? "new-image";
+      if (bootSource === "new-image") {
+        const diskGb = Number(fields["diskGb"] ?? 50);
+        const diskRate = await this.getBalancedDiskMonthlyRate(zone);
+        if (diskRate != null && Number.isFinite(diskGb) && diskGb > 0) {
+          storageMonthly = diskGb * diskRate;
+        }
+      }
+
+      const total = vmMonthly + storageMonthly;
+      if (!Number.isFinite(total) || total <= 0) return null;
+      return Number(total.toFixed(2));
     }
 
-    const total = vmMonthly + storageMonthly;
-    if (!Number.isFinite(total) || total <= 0) return null;
-    return Number(total.toFixed(2));
+    if (typeId === "gke-cluster") {
+      const zone = fields["location"] ?? "us-central1-a";
+      const machineType = fields["machineType"] ?? "";
+      const nodeCount = Math.max(1, Number(fields["nodeCount"] ?? 3));
+      if (!machineType) return null;
+
+      let machineTypeData = this.machineTypeSpecCache.get(machineType);
+      if (!machineTypeData) {
+        const fetched = await this.get<{ guestCpus: number; memoryMb: number }>(
+          `https://compute.googleapis.com/compute/v1/projects/${this.project}/zones/${zone}/machineTypes/${machineType}`,
+        ).catch(() => null);
+        if (!fetched) return null;
+        this.machineTypeSpecCache.set(machineType, fetched);
+        machineTypeData = fetched;
+      }
+
+      const perNodeVm = (
+        await this.estimateMachineTypeMonthlyPrices(
+          [{ id: machineType, vcpus: machineTypeData.guestCpus, memoryMb: machineTypeData.memoryMb }],
+          zone,
+        )
+      )[machineType] ?? 0;
+
+      const diskGb = Number(fields["diskSizeGb"] ?? 100);
+      const diskRate = await this.getBalancedDiskMonthlyRate(zone);
+      const perNodeDisk = diskRate != null && Number.isFinite(diskGb) && diskGb > 0
+        ? diskGb * diskRate
+        : 0;
+
+      const total = (perNodeVm + perNodeDisk) * nodeCount;
+      if (!Number.isFinite(total) || total <= 0) return null;
+      return Number(total.toFixed(2));
+    }
+
+    return null;
   }
 
   async createResource(typeId: string, accountId: string, fields: Record<string, string>): Promise<ResourceInstance> {

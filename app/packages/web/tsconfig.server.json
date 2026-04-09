@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist",
+    "module": "ESNext",
+    "declaration": false
+  },
+  "include": [
+    "server.ts",
+    "src/api/**/*.ts",
+    "src/auth/**/*.ts",
+    "src/db/**/*.ts",
+    "src/services/**/*.ts",
+    "src/plugins/**/*.ts"
+  ]
+}

@@ -1,9 +1,7 @@
-"use client";
-
-import { useRouter } from "next/navigation";
+import { useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { DroppableDashboardArea } from "@infrawrench/ui";
-import { unpinResourceFromDashboard } from "@/actions/dashboard";
+import { apiPost } from "@/lib/api";
 
 interface PinnedResource {
   pinId: string;
@@ -27,14 +25,14 @@ interface DashboardViewProps {
 }
 
 export function DashboardView({ dashboardId, dashboardName, pins: initialPins }: DashboardViewProps) {
-  const router = useRouter();
+  const navigate = useNavigate();
   const [pins, setPins] = useState(initialPins);
   const [unpinning, setUnpinning] = useState<string | null>(null);
 
   async function handleUnpin(pinId: string, resourceId: string) {
     setUnpinning(pinId);
     try {
-      await unpinResourceFromDashboard({ dashboardId, resourceId });
+      await apiPost("/api/dashboards/unpin", { dashboardId, resourceId });
       setPins((prev) => prev.filter((p) => p.pinId !== pinId));
     } catch (e) {
       console.error("Failed to unpin:", e);
@@ -63,9 +61,10 @@ export function DashboardView({ dashboardId, dashboardName, pins: initialPins }:
               >
                 <button
                   onClick={() =>
-                    router.push(
-                      `/resources/${pin.pluginId}/${pin.resourceTypeId}/${encodeURIComponent(pin.resourceId)}`,
-                    )
+                    void navigate({
+                      to: "/resources/$pluginId/$resourceTypeId/$resourceId",
+                      params: { pluginId: pin.pluginId, resourceTypeId: pin.resourceTypeId, resourceId: encodeURIComponent(pin.resourceId) },
+                    })
                   }
                   className="block w-full text-left"
                 >

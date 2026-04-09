@@ -1,22 +1,27 @@
-"use client";
-
 import { useState, useEffect, useRef } from "react";
-import { useRouter, usePathname } from "next/navigation";
+import { useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   useUIStore,
   DroppableDashboardItem,
   DraggableSidebarResource,
-  type DraggableResource,
 } from "@infrawrench/ui";
-import { listAccounts, listPlugins, type AccountSummary, type PluginInfo } from "@/actions/accounts";
-import { syncResources, listResources, type ResourceSummary } from "@/actions/resources";
-import {
-  listDashboards,
-  createDashboard,
-  renameDashboard,
-  deleteDashboard,
-} from "@/actions/dashboard";
+import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import { AddAccountModal } from "./AddAccountModal";
+
+interface AccountSummary {
+  id: string;
+  pluginId: string;
+  displayName: string;
+  createdAt: string;
+}
+
+interface ResourceSummary {
+  id: string;
+  pluginId: string;
+  resourceTypeId: string;
+  accountId: string;
+  displayName: string;
+}
 
 interface PluginGroup {
   pluginId: string;
@@ -32,8 +37,8 @@ interface DashboardEntry {
 }
 
 export function WebSidebar() {
-  const router = useRouter();
-  const pathname = usePathname();
+  const navigate = useNavigate();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [groups, setGroups] = useState<PluginGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -58,7 +63,7 @@ export function WebSidebar() {
 
   // Load dashboards
   useEffect(() => {
-    listDashboards().then(setDashboardList).catch(console.error);
+    apiGet<DashboardEntry[]>("/api/dashboards").then(setDashboardList).catch(console.error);
   }, [dashboardPinsVersion]);
 
   // Load accounts and plugins
@@ -67,7 +72,10 @@ export function WebSidebar() {
     async function load() {
       setLoading(true);
       try {
-        const [accts, pluginList] = await Promise.all([listAccounts(), listPlugins()]);
+        const [accts, pluginList] = await Promise.all([
+          apiGet<AccountSummary[]>("/api/accounts"),
+          apiGet<Array<{ id: string; displayName: string; logoSvg: string }>>("/api/accounts/plugins"),
+        ]);
         if (cancelled) return;
 
         const pluginMeta = Object.fromEntries(
@@ -112,10 +120,10 @@ export function WebSidebar() {
     setNewDashboardName("");
     if (!name) return;
     try {
-      const created = await createDashboard({ name });
+      const created = await apiPost<{ id: string; name: string }>("/api/dashboards", { name });
       if (created) {
         setDashboardList((prev) => [...prev, { id: created.id, name: created.name, isDefault: false }]);
-        router.push(`/dashboard/${created.id}`);
+        void navigate({ to: "/dashboard/$dashboardId", params: { dashboardId: created.id } });
       }
     } catch (e) {
       console.error("Failed to create dashboard:", e);
@@ -129,7 +137,7 @@ export function WebSidebar() {
     setRenameValue("");
     if (!name || !id) return;
     try {
-      await renameDashboard({ id, name });
+      await apiPost(`/api/dashboards/${id}/rename`, { name });
       setDashboardList((prev) =>
         prev.map((d) => (d.id === id ? { ...d, name } : d)),
       );
@@ -140,10 +148,10 @@ export function WebSidebar() {
 
   async function handleDelete(id: string) {
     try {
-      await deleteDashboard({ id });
+      await apiDelete(`/api/dashboards/${id}`);
       setDashboardList((prev) => prev.filter((d) => d.id !== id));
       if (pathname === `/dashboard/${id}`) {
-        router.push("/");
+        void navigate({ to: "/" });
       }
     } catch (e) {
       console.error("Failed to delete dashboard:", e);
@@ -168,15 +176,15 @@ export function WebSidebar() {
 
     try {
       // Load from DB first (fast), then sync in background and refresh
-      const existing = await listResources(accountId, true);
+      const existing = await apiGet<ResourceSummary[]>(`/api/accounts/${accountId}/resources?topLevelOnly=true`);
       setAccountResources((prev) => ({
         ...prev,
         [accountId]: { loading: false, resources: existing },
       }));
 
       // Background sync — refresh when done
-      syncResources(accountId)
-        .then(() => listResources(accountId, true))
+      apiPost(`/api/accounts/${accountId}/sync`)
+        .then(() => apiGet<ResourceSummary[]>(`/api/accounts/${accountId}/resources?topLevelOnly=true`))
         .then((fresh) => {
           setAccountResources((prev) => ({
             ...prev,
@@ -269,7 +277,7 @@ export function WebSidebar() {
                   name={dash.name}
                   isActive={isActive}
                   isDefault={dash.isDefault}
-                  onClick={() => router.push(href)}
+                  onClick={() => void navigate({ to: href })}
                   onDoubleClick={
                     !dash.isDefault
                       ? () => {
@@ -342,7 +350,7 @@ export function WebSidebar() {
                         </span>
                       </button>
                       <button
-                        onClick={() => router.push(`/accounts/${account.id}`)}
+                        onClick={() => void navigate({ to: "/accounts/$accountId", params: { accountId: account.id } })}
                         className="flex items-center gap-2 flex-1 text-left min-w-0"
                       >
                         <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-gray-600" />
@@ -370,9 +378,10 @@ export function WebSidebar() {
                               displayName: resource.displayName,
                               fields: {},
                             }}
-                            onClick={() => router.push(
-                              `/resources/${resource.pluginId}/${resource.resourceTypeId}/${encodeURIComponent(resource.id)}`,
-                            )}
+                            onClick={() => void navigate({
+                              to: "/resources/$pluginId/$resourceTypeId/$resourceId",
+                              params: { pluginId: resource.pluginId, resourceTypeId: resource.resourceTypeId, resourceId: encodeURIComponent(resource.id) },
+                            })}
                           />
                         ))}
                       </div>
@@ -394,7 +403,7 @@ export function WebSidebar() {
             Add account
           </button>
           <button
-            onClick={() => router.push("/settings")}
+            onClick={() => void navigate({ to: "/settings" })}
             className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-gray-500 hover:text-gray-300 hover:bg-gray-800 transition-colors"
           >
             <span className="text-base leading-none">&#9881;</span>

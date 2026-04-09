@@ -1,7 +1,5 @@
-"use client";
-
 import { useState } from "react";
-import { dockerCommand } from "@/actions/connection-features";
+import { apiPost } from "@/lib/api";
 import { formatErrorMessage } from "@/lib/errors";
 
 interface DockerActionsPanelProps {
@@ -21,7 +19,7 @@ export function DockerActionsPanel({ accountId, containerId }: DockerActionsPane
     setLastOp(label);
     setError(null);
     try {
-      await dockerCommand({ accountId, op, params: { id: containerId } });
+      await apiPost("/api/docker/command", { accountId, op, params: { id: containerId } });
       setState("success");
       setTimeout(() => setState("idle"), 2000);
     } catch (e) {

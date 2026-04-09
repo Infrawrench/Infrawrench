@@ -232,7 +232,8 @@ All polling is *background* (no loading flash):
 - SSH key injection format: `username:ssh-rsa AAAA...` in metadata; `username` derived from key comment (`comment.split("@")[0]`)
 - Delete requires zone from `resource.fields["zone"]`, not from `externalId`
 - Storage driver (`./node-driver`) handles GCS batch downloads
-- GCP exposes `getCreateSizePricing()` for async per-region VM price hydration from the Cloud Billing Catalog API (Compute SKUs); modal opens with base options first, then prices stream in (default zone first, then others)
+- GCP exposes `getCreateSizePricing()` for async per-region VM price hydration from the Cloud Billing Catalog API (Compute SKUs) — supports both `gce-instance` and `gke-cluster`; modal opens with base options first, then prices stream in (default zone first, then others)
+- `getCreateCostEstimate()` handles `gce-instance` (VM + boot disk) and `gke-cluster` (per-node VM + per-node disk × node count); machine type specs are cached in `machineTypeSpecCache` (populated during `getCreateConfig`) so cost recalculations from slider/field changes don't require API calls
 
 ### DigitalOcean (`@infrawrench/plugin-digitalocean`)
 - Resource ID format: `{accountId}:{typeId}:{externalId}`

@@ -1,11 +1,15 @@
-"use client";
-
 import { useState, useEffect, useRef, useCallback } from "react";
-import {
-  sftpList as sftpListAction,
-  sftpMkdir as sftpMkdirAction,
-  sftpDelete as sftpDeleteAction,
-} from "@/actions/connection-features";
+import { apiPost } from "@/lib/api";
+
+async function sftpListAction(input: { accountId: string; path: string }) {
+  return apiPost<Array<{ key: string; name: string; size: number; lastModified: string; isDirectory: boolean }>>("/api/sftp/list", input);
+}
+async function sftpMkdirAction(input: { accountId: string; path: string }) {
+  await apiPost("/api/sftp/mkdir", input);
+}
+async function sftpDeleteAction(input: { accountId: string; path: string; isDir: boolean }) {
+  await apiPost("/api/sftp/delete", input);
+}
 import { formatErrorMessage } from "@/lib/errors";
 
 interface SftpEntry {

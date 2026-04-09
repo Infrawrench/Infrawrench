@@ -1,7 +1,10 @@
-"use client";
-
 import { useCallback, useEffect, useRef, useState } from "react";
-import { kvCommand } from "@/actions/connection-features";
+import { apiPost } from "@/lib/api";
+
+async function kvCommand(input: { accountId: string; command: string; args: (string | number)[] }): Promise<unknown> {
+  const { result } = await apiPost<{ result: unknown }>("/api/kv/command", input);
+  return result;
+}
 import { formatErrorMessage } from "@/lib/errors";
 
 interface MongoDocumentBrowserProps {

@@ -1,7 +1,5 @@
-"use client";
-
 import { useCallback, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useNavigate } from "@tanstack/react-router";
 import {
   DetailView,
   DraggableChildPill,
@@ -12,19 +10,13 @@ import {
   type PeerPaneData,
 } from "@infrawrench/ui";
 import type { DetailViewSchema, PeerPaneSchema } from "@infrawrench/plugin-base";
-import {
-  getManifest as getManifestAction,
-  applyManifest as applyManifestAction,
-  deleteResource as deleteResourceAction,
-} from "@/actions/resource-detail";
-import { sqlQuery, sqlExecute } from "@/actions/connection-features";
+import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import { KvConsole } from "@/components/KvConsole";
 import { DockerActionsPanel } from "@/components/DockerActionsPanel";
 import { MongoDocumentBrowser } from "@/components/MongoDocumentBrowser";
 import { StorageBrowser } from "@/components/StorageBrowser";
 import { SftpBrowser } from "@/components/SftpBrowser";
 import { WebTerminal } from "@/components/WebTerminal";
-import { generateWsToken } from "@/actions/ws-token";
 
 interface ChildResourceData {
   id: string;
@@ -100,16 +92,16 @@ export function ResourceDetailClient({
   databaseName,
   storageBucketName,
 }: Props) {
-  const router = useRouter();
+  const navigate = useNavigate();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [wsToken, setWsToken] = useState<string | null>(null);
 
-  // SQL queries via server action
+  // SQL queries via API
   const handleRunQuery = useCallback(
     async (sql: string): Promise<QueryResult> => {
       if (!hasSqlEditor) return { rows: [], durationMs: 0 };
-      const result = await sqlQuery({ accountId, resourceId, resourceTypeId, sql });
+      const result = await apiPost<{ rows: Record<string, unknown>[]; durationMs: number }>("/api/sql/query", { accountId, resourceId, resourceTypeId, sql });
       return { rows: result.rows, durationMs: result.durationMs };
     },
     [accountId, resourceId, resourceTypeId, hasSqlEditor],
@@ -117,7 +109,7 @@ export function ResourceDetailClient({
 
   const handleExecute = useCallback(
     async (sql: string, params: unknown[]): Promise<number> => {
-      const result = await sqlExecute({ accountId, resourceId, resourceTypeId, sql, params });
+      const result = await apiPost<{ affectedRows: number }>("/api/sql/execute", { accountId, resourceId, resourceTypeId, sql, params });
       return result.affectedRows;
     },
     [accountId, resourceId, resourceTypeId],
@@ -125,30 +117,32 @@ export function ResourceDetailClient({
 
   const handleChildClick = useCallback(
     (child: ChildResource) => {
-      router.push(
-        `/resources/${child.pluginId}/${child.resourceTypeId}/${encodeURIComponent(child.id)}`,
-      );
+      void navigate({
+        to: "/resources/$pluginId/$resourceTypeId/$resourceId",
+        params: { pluginId: child.pluginId, resourceTypeId: child.resourceTypeId, resourceId: encodeURIComponent(child.id) },
+      });
     },
-    [router],
+    [navigate],
   );
 
   // ── Manifest editor ──────────────────────────────────────────────────────
   const handleGetManifest = useCallback(async (): Promise<string> => {
-    return getManifestAction({ accountId, resourceId });
-  }, [accountId, resourceId]);
+    const result = await apiGet<{ manifest: string }>(`/api/resources/${pluginId}/${resourceTypeId}/${encodeURIComponent(resourceId)}/manifest?accountId=${accountId}`);
+    return result.manifest;
+  }, [accountId, resourceId, pluginId, resourceTypeId]);
 
   const handleApplyManifest = useCallback(async (manifest: string): Promise<void> => {
-    await applyManifestAction({ accountId, resourceId, manifest });
-    router.refresh();
-  }, [accountId, resourceId, router]);
+    await apiPost(`/api/resources/${pluginId}/${resourceTypeId}/${encodeURIComponent(resourceId)}/manifest`, { accountId, manifest });
+    window.dispatchEvent(new CustomEvent("iw:resources-changed"));
+  }, [accountId, resourceId, pluginId, resourceTypeId]);
 
   // ── Delete resource ──────────────────────────────────────────────────────
   async function handleDelete() {
     setDeleting(true);
     try {
-      await deleteResourceAction({ accountId, resourceTypeId, resourceId });
-      router.push(`/accounts/${accountId}`);
-      router.refresh();
+      await apiDelete(`/api/resources/${pluginId}/${resourceTypeId}/${encodeURIComponent(resourceId)}?accountId=${accountId}`);
+      void navigate({ to: "/accounts/$accountId", params: { accountId } });
+      window.dispatchEvent(new CustomEvent("iw:resources-changed"));
     } catch (err) {
       setDeleting(false);
       alert(err instanceof Error ? err.message : "Failed to delete resource");
@@ -238,7 +232,7 @@ export function ResourceDetailClient({
             <div className="flex items-center justify-center h-full">
               <button
                 onClick={async () => {
-                  const token = await generateWsToken();
+                  const { token } = await apiPost<{ token: string }>("/api/ws-token");
                   setWsToken(token);
                 }}
                 className="px-4 py-2 text-sm text-gray-300 border border-gray-700 hover:border-gray-500 rounded-lg transition-colors"

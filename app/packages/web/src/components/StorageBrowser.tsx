@@ -1,11 +1,15 @@
-"use client";
-
 import { useState, useEffect, useRef, useCallback } from "react";
-import {
-  storageList,
-  storageMakeFolder,
-  storageDelete,
-} from "@/actions/connection-features";
+import { apiPost } from "@/lib/api";
+
+async function storageList(input: { accountId: string; bucket: string; prefix: string }) {
+  return apiPost<Array<{ key: string; name: string; size: number; lastModified: string; isDirectory: boolean }>>("/api/storage/list", input);
+}
+async function storageMakeFolder(input: { accountId: string; bucket: string; key: string }) {
+  await apiPost("/api/storage/mkdir", input);
+}
+async function storageDelete(input: { accountId: string; bucket: string; key: string }) {
+  await apiPost("/api/storage/delete", input);
+}
 import { formatErrorMessage } from "@/lib/errors";
 
 interface StorageObject {

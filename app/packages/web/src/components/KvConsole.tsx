@@ -1,7 +1,5 @@
-"use client";
-
 import { useState, useEffect, useRef } from "react";
-import { kvCommand } from "@/actions/connection-features";
+import { apiPost } from "@/lib/api";
 import { formatErrorMessage } from "@/lib/errors";
 
 interface ConsoleLine {
@@ -35,7 +33,7 @@ export function KvConsole({ accountId, driverName }: { accountId: string; driver
     try {
       const tokens = tokenize(trimmed);
       const [cmd, ...args] = tokens;
-      const result = await kvCommand({
+      const { result } = await apiPost<{ result: unknown }>("/api/kv/command", {
         accountId,
         command: cmd ?? "",
         args: args.map((a) => (isNaN(Number(a)) ? a : Number(a))),
