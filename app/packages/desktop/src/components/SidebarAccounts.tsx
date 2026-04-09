@@ -6,7 +6,7 @@ import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { useUIStore, type DraggableResource } from "@infrawrench/ui";
 import { getDb } from "../db/client";
 import { loadPlugins, getPlugin } from "../plugins/loader";
-import { getAccountResourceTypes } from "../lib/account-resource-types";
+import { getListableResourceTypes } from "../lib/account-resource-types";
 import { formatErrorMessage } from "../lib/errors";
 import { buildPluginHostServices } from "../lib/sql-drivers";
 import { SshTunnelModal, type PresetKey } from "./SshTunnelModal";
@@ -185,7 +185,7 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
       const { plugin } = loaded;
       const services = buildPluginHostServices(plugin.manifest, credentials);
       const client = plugin.createClient(credentials, services);
-      const topLevelTypes = getAccountResourceTypes(plugin.resourceTypes);
+      const topLevelTypes = getListableResourceTypes(plugin.resourceTypes);
       const results = await Promise.allSettled(
         topLevelTypes.map((t) => client.listResources(t.id, id)),
       );

@@ -20,8 +20,14 @@ export interface ResourceSummary {
   parentResourceId: string | null;
 }
 
-export async function listResources(accountId: string): Promise<ResourceSummary[]> {
+export async function listResources(accountId: string, topLevelOnly = false): Promise<ResourceSummary[]> {
   const session = await requireAuth();
+  const conditions = [
+    eq(resources.accountId, accountId),
+    eq(resources.organizationId, session.organizationId),
+    isNull(resources.deletedAt),
+  ];
+  if (topLevelOnly) conditions.push(isNull(resources.parentResourceId));
   const rows = await db
     .select({
       id: resources.id,
@@ -35,13 +41,7 @@ export async function listResources(accountId: string): Promise<ResourceSummary[
       parentResourceId: resources.parentResourceId,
     })
     .from(resources)
-    .where(
-      and(
-        eq(resources.accountId, accountId),
-        eq(resources.organizationId, session.organizationId),
-        isNull(resources.deletedAt),
-      ),
-    );
+    .where(and(...conditions));
   return rows;
 }
 

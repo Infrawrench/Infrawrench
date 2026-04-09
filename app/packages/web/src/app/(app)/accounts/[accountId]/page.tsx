@@ -48,6 +48,7 @@ export default async function AccountPage({ params }: Props) {
         eq(resources.accountId, accountId),
         eq(resources.organizationId, organizationId),
         isNull(resources.deletedAt),
+        isNull(resources.parentResourceId),
       ),
     );
 

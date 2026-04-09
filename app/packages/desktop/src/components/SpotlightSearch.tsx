@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "../lib/invoke";
 import { getDb } from "../db/client";
 import { loadPlugins } from "../plugins/loader";
-import { getAccountResourceTypes } from "../lib/account-resource-types";
+import { getListableResourceTypes } from "../lib/account-resource-types";
 import { buildHostServices } from "../lib/sql-drivers";
 import { pinResource, type DraggableResource } from "../lib/pins";
 
@@ -125,7 +125,7 @@ export function SpotlightSearch({ dashboardId, mode, onClose, onPinned, onNaviga
           : undefined;
         const client = plugin.createClient(creds, hostServices);
 
-        const topLevelTypes = getAccountResourceTypes(plugin.resourceTypes);
+        const topLevelTypes = getListableResourceTypes(plugin.resourceTypes);
 
         await Promise.allSettled(topLevelTypes.map(async (rt) => {
           const instances = await client.listResources(rt.id, account.id);

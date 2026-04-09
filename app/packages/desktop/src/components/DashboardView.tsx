@@ -6,7 +6,7 @@ import { useDroppable } from "@dnd-kit/core";
 import { useUIStore } from "@infrawrench/ui";
 import { getDb } from "../db/client";
 import { loadPlugins, getPlugin } from "../plugins/loader";
-import { getAccountResourceTypes } from "../lib/account-resource-types";
+import { getListableResourceTypes } from "../lib/account-resource-types";
 import { formatErrorMessage } from "../lib/errors";
 import { buildHostServices, buildKvHostServices, buildMemcachedHostServices, buildDockerHostServices } from "../lib/sql-drivers";
 import { resolveTunneledHost } from "../lib/ssh-tunnel";
@@ -243,7 +243,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
               ? buildHostServices(sqlDecl.driver, creds[sqlDecl.credentialKey] ?? "")
               : undefined;
             const client = loaded.plugin.createClient(creds, hostServices);
-            const topLevelTypes = getAccountResourceTypes(loaded.plugin.resourceTypes);
+            const topLevelTypes = getListableResourceTypes(loaded.plugin.resourceTypes);
             const results = await Promise.allSettled(
               topLevelTypes.map(async (t) => ({
                 typeLabel: t.pluralDisplayName,

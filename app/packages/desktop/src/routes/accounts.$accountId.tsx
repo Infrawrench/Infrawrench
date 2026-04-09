@@ -7,7 +7,7 @@ import { useUIStore, type DraggableResource } from "@infrawrench/ui";
 import { getDb } from "../db/client";
 import { getPlugin } from "../plugins/loader";
 import { pinResource } from "../lib/pins";
-import { getAccountResourceTypes, isCreateOnlyType } from "../lib/account-resource-types";
+import { getAccountResourceTypes, isCreateOnlyType, getListableResourceTypes } from "../lib/account-resource-types";
 import { formatErrorMessage } from "../lib/errors";
 import { buildPluginHostServices } from "../lib/sql-drivers";
 import { CreateResourceModal } from "../components/CreateResourceModal";
@@ -208,8 +208,16 @@ function AccountPage() {
           setInitialLoading(false);
         }
 
-        // Fire off independent async loads per category — each resolves on its own
+        // Fire off independent async loads per category — skip create-only types
+        const listableTypes = getListableResourceTypes(plugin.resourceTypes);
         for (const typeDef of topLevelTypes) {
+          if (!listableTypes.some((t) => t.id === typeDef.id)) {
+            // Create-only child type — no resources to list, just mark as loaded
+            setCategories((prev) => prev.map((cat) =>
+              cat.typeDef.id === typeDef.id ? { ...cat, loading: false } : cat,
+            ));
+            continue;
+          }
           client.listResources(typeDef.id, accountId).then((resources) => {
             if (cancelled) return;
             setCategories((prev) => prev.map((cat) =>

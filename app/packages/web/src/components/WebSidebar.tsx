@@ -168,7 +168,7 @@ export function WebSidebar() {
 
     try {
       // Load from DB first (fast), then sync in background and refresh
-      const existing = await listResources(accountId);
+      const existing = await listResources(accountId, true);
       setAccountResources((prev) => ({
         ...prev,
         [accountId]: { loading: false, resources: existing },
@@ -176,7 +176,7 @@ export function WebSidebar() {
 
       // Background sync — refresh when done
       syncResources(accountId)
-        .then(() => listResources(accountId))
+        .then(() => listResources(accountId, true))
         .then((fresh) => {
           setAccountResources((prev) => ({
             ...prev,

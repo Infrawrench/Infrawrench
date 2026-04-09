@@ -14,6 +14,13 @@ export function getAccountResourceTypes(
   );
 }
 
+/** Returns only top-level resource types (no parent) whose resources should be listed. */
+export function getListableResourceTypes(
+  resourceTypes: ResourceTypeDefinition[],
+): ResourceTypeDefinition[] {
+  return resourceTypes.filter((typeDef) => !typeDef.parentTypeId);
+}
+
 /** Whether a type should hide its resource list on the account page */
 export function isCreateOnlyType(typeDef: ResourceTypeDefinition): boolean {
   return !!typeDef.parentTypeId && !!typeDef.supportsCreate;
