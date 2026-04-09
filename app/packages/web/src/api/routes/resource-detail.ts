@@ -42,12 +42,13 @@ async function getClientForAccount(accountId: string, organizationId: string) {
   return { client, plugin: loaded.plugin, credentials, account };
 }
 
-/** GET /api/resources/:pluginId/:typeId/:resourceId/detail — full resource detail payload */
-app.get("/:pluginId/:typeId/:resourceId/detail", async (c) => {
+/** GET /api/resources/:pluginId/:typeId/detail?resourceId=... — full resource detail payload */
+app.get("/:pluginId/:typeId/detail", async (c) => {
   const { organizationId } = c.get("session");
   const pluginId = c.req.param("pluginId");
   const resourceTypeId = c.req.param("typeId");
-  const resourceId = decodeURIComponent(c.req.param("resourceId"));
+  const resourceId = c.req.query("resourceId");
+  if (!resourceId) return c.json({ error: "Missing resourceId" }, 400);
 
   // Try to find the resource in the database first
   const [dbResource] = await db
@@ -67,7 +68,7 @@ app.get("/:pluginId/:typeId/:resourceId/detail", async (c) => {
   const loadedPlugin = await getPlugin(pluginId);
   if (!loadedPlugin) return c.json({ error: "Plugin not found" }, 404);
 
-  const accountId = dbResource?.accountId ?? resourceId.split(":")[0];
+  const accountId = dbResource?.accountId ?? c.req.query("accountId") ?? resourceId.split(":")[0];
   if (!accountId) return c.json({ error: "Cannot resolve account" }, 404);
 
   const ctx = await getClientForAccount(accountId, organizationId);
@@ -330,6 +331,7 @@ app.get("/:pluginId/:typeId/:resourceId/detail", async (c) => {
     peerPanes,
     canDelete,
     hasManifestEditor,
+    resourceDisplayName: instance.displayName,
     resourceTypeLabel,
     hasSqlEditor,
     hasStorageBrowser,
@@ -347,10 +349,11 @@ app.get("/:pluginId/:typeId/:resourceId/detail", async (c) => {
 
 // ── Manifest editor ──────────────────────────────────────────────────────────
 
-/** GET /api/resources/:pluginId/:typeId/:resourceId/manifest */
-app.get("/:pluginId/:typeId/:resourceId/manifest", async (c) => {
+/** GET /api/resources/:pluginId/:typeId/manifest?resourceId=...&accountId=... */
+app.get("/:pluginId/:typeId/manifest", async (c) => {
   const { organizationId } = c.get("session");
-  const resourceId = decodeURIComponent(c.req.param("resourceId"));
+  const resourceId = c.req.query("resourceId");
+  if (!resourceId) return c.json({ error: "Missing resourceId" }, 400);
   const accountId = c.req.query("accountId");
   if (!accountId) return c.json({ error: "Missing accountId" }, 400);
 
@@ -362,11 +365,10 @@ app.get("/:pluginId/:typeId/:resourceId/manifest", async (c) => {
   return c.json({ manifest });
 });
 
-/** POST /api/resources/:pluginId/:typeId/:resourceId/manifest */
-app.post("/:pluginId/:typeId/:resourceId/manifest", async (c) => {
+/** POST /api/resources/:pluginId/:typeId/manifest */
+app.post("/:pluginId/:typeId/manifest", async (c) => {
   const { organizationId } = c.get("session");
-  const resourceId = decodeURIComponent(c.req.param("resourceId"));
-  const { accountId, manifest } = await c.req.json<{ accountId: string; manifest: string }>();
+  const { accountId, resourceId, manifest } = await c.req.json<{ accountId: string; resourceId: string; manifest: string }>();
 
   const ctx = await getClientForAccount(accountId, organizationId);
   if (!ctx) return c.json({ error: "Account not found" }, 404);
@@ -376,17 +378,25 @@ app.post("/:pluginId/:typeId/:resourceId/manifest", async (c) => {
   return c.json({ ok: true });
 });
 
-/** DELETE /api/resources/:pluginId/:typeId/:resourceId */
-app.delete("/:pluginId/:typeId/:resourceId", async (c) => {
+/** DELETE /api/resources/:pluginId/:typeId?resourceId=...&accountId=... */
+app.delete("/:pluginId/:typeId", async (c) => {
   const { organizationId } = c.get("session");
   const resourceTypeId = c.req.param("typeId");
-  const resourceId = decodeURIComponent(c.req.param("resourceId"));
+  const resourceId = c.req.query("resourceId");
+  if (!resourceId) return c.json({ error: "Missing resourceId" }, 400);
   const accountId = c.req.query("accountId");
   if (!accountId) return c.json({ error: "Missing accountId" }, 400);
 
   const ctx = await getClientForAccount(accountId, organizationId);
   if (!ctx) return c.json({ error: "Account not found" }, 404);
   if (!ctx.client.deleteResource) return c.json({ error: "Plugin does not support deletion" }, 400);
+
+  // Debug: verify the resource can be found before attempting delete
+  const all = await ctx.client.listResources(resourceTypeId, accountId);
+  console.log(`[DELETE] resourceId=${resourceId}, accountId=${accountId}, typeId=${resourceTypeId}, listed=${all.length}, match=${all.some((r) => r.id === resourceId)}`);
+  if (!all.some((r) => r.id === resourceId)) {
+    console.log("[DELETE] IDs from listResources:", all.map((r) => r.id));
+  }
 
   await ctx.client.deleteResource(resourceTypeId, resourceId, accountId);
   return c.json({ ok: true });
@@ -407,15 +417,53 @@ app.post("/create", async (c) => {
   if (!ctx.client.createResource) return c.json({ error: "Plugin does not support creation" }, 400);
 
   const created = await ctx.client.createResource(input.resourceTypeId, input.accountId, input.fields);
+
+  // Persist to DB immediately so the detail page can find it without
+  // waiting for the next sync / provider propagation.
+  try {
+    await db
+      .insert(resources)
+      .values({
+        id: created.id,
+        organizationId,
+        pluginId: input.pluginId,
+        resourceTypeId: input.resourceTypeId,
+        accountId: input.accountId,
+        displayName: created.displayName,
+        externalId: created.externalId ?? null,
+        fieldsJson: created.fields ?? {},
+        outputsJson: created.resolvedOutputs ?? {},
+        parentResourceId: created.parentResourceId ?? null,
+      })
+      .onConflictDoNothing();
+  } catch {
+    // Non-critical — detail page will fall back to listResources
+  }
+
   return c.json({ id: created.id, displayName: created.displayName });
 });
 
-/** POST /api/resources/:pluginId/:typeId/:resourceId/peer-panes */
-app.post("/:pluginId/:typeId/:resourceId/peer-panes", async (c) => {
+/** POST /api/resources/create-config */
+app.post("/create-config", async (c) => {
+  const { organizationId } = c.get("session");
+  const input = await c.req.json<{
+    accountId: string;
+    resourceTypeId: string;
+  }>();
+
+  const ctx = await getClientForAccount(input.accountId, organizationId);
+  if (!ctx) return c.json({ error: "Account not found" }, 404);
+  if (!ctx.client.getCreateConfig) return c.json({ error: "Plugin does not support dynamic create config" }, 400);
+
+  const config = await ctx.client.getCreateConfig(input.resourceTypeId);
+  return c.json(config);
+});
+
+/** POST /api/resources/:pluginId/:typeId/peer-panes */
+app.post("/:pluginId/:typeId/peer-panes", async (c) => {
   const { organizationId } = c.get("session");
   const resourceTypeId = c.req.param("typeId");
-  const resourceId = decodeURIComponent(c.req.param("resourceId"));
-  const { accountId } = await c.req.json<{ accountId: string }>();
+  const { accountId, resourceId } = await c.req.json<{ accountId: string; resourceId: string }>();
 
   const ctx = await getClientForAccount(accountId, organizationId);
   if (!ctx) return c.json({ error: "Account not found" }, 404);

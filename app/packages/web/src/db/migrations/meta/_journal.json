@@ -15,6 +15,20 @@
       "when": 1775666853146,
       "tag": "0001_rare_wolfpack",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1775747781453,
+      "tag": "0002_melodic_arclight",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1775749104089,
+      "tag": "0003_daily_shockwave",
+      "breakpoints": true
     }
   ]
 }

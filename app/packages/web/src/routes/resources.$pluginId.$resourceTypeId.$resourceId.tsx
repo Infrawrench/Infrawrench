@@ -11,26 +11,44 @@ export const Route = createFileRoute(
 
 function ResourceDetailPage() {
   const { pluginId, resourceTypeId, resourceId } = Route.useParams();
+  const accountId = new URLSearchParams(window.location.search).get("accountId");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [data, setData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const detailUrl = `/api/resources/${pluginId}/${resourceTypeId}/detail?resourceId=${encodeURIComponent(resourceId)}${accountId ? `&accountId=${encodeURIComponent(accountId)}` : ""}`;
+
   useEffect(() => {
     setData(null);
     setError(null);
-    apiGet(`/api/resources/${pluginId}/${resourceTypeId}/${encodeURIComponent(resourceId)}/detail`)
-      .then(setData)
-      .catch((e) => setError(e.message));
-  }, [pluginId, resourceTypeId, resourceId]);
+    let retries = 0;
+    let cancelled = false;
+
+    function load() {
+      apiGet(detailUrl)
+        .then((d) => { if (!cancelled) setData(d); })
+        .catch((e) => {
+          if (cancelled) return;
+          // Retry up to 3 times on "not found" — resource may still be propagating
+          if (retries < 3 && e.message?.includes("not found")) {
+            retries++;
+            setTimeout(load, 1000 * retries);
+          } else {
+            setError(e.message);
+          }
+        });
+    }
+    load();
+    return () => { cancelled = true; };
+  }, [detailUrl]);
 
   useEffect(() => {
     function onChanged() {
-      apiGet(`/api/resources/${pluginId}/${resourceTypeId}/${encodeURIComponent(resourceId)}/detail`)
-        .then(setData);
+      apiGet(detailUrl).then(setData);
     }
     window.addEventListener("iw:resources-changed", onChanged);
     return () => window.removeEventListener("iw:resources-changed", onChanged);
-  }, [pluginId, resourceTypeId, resourceId]);
+  }, [detailUrl]);
 
   if (error) {
     return (
@@ -55,6 +73,7 @@ function ResourceDetailPage() {
       peerPanes={data.peerPanes}
       canDelete={data.canDelete}
       hasManifestEditor={data.hasManifestEditor}
+      resourceDisplayName={data.resourceDisplayName}
       resourceTypeLabel={data.resourceTypeLabel}
       hasSqlEditor={data.hasSqlEditor}
       hasStorageBrowser={data.hasStorageBrowser}

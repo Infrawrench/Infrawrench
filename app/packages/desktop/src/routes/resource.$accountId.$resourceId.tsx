@@ -3,7 +3,7 @@ import { createFileRoute, useNavigate, useRouterState } from "@tanstack/react-ro
 // useDraggable now used inside shared DraggableChildPill from @infrawrench/ui
 import { invoke } from "../lib/invoke";
 import type { ResourceInstance, DetailViewSchema, ResourceTypeDefinition } from "@infrawrench/plugin-base";
-import { DetailView, DraggableChildPill, type QueryResult, type ChildResource, type ChildResourceGroup, type DraggableResource, useUIStore } from "@infrawrench/ui";
+import { DetailView, DraggableChildPill, ConfirmDeleteModal, type QueryResult, type ChildResource, type ChildResourceGroup, type DraggableResource, useUIStore } from "@infrawrench/ui";
 import { getDb } from "../db/client";
 import { getPlugin } from "../plugins/loader";
 import { getSqlSession, setSqlSession } from "../lib/sql-session";
@@ -19,7 +19,6 @@ import { KvConsole } from "../components/KvConsole";
 import { PeerPaneView } from "../components/PeerPaneView";
 import { SshTunnelModal } from "../components/SshTunnelModal";
 import { DockerSetupModal } from "../components/DockerSetupModal";
-import { ConfirmDeleteModal } from "../components/ConfirmDeleteModal";
 import { CreateResourceModal } from "../components/CreateResourceModal";
 import type { PluginClient, PeerPaneContext } from "@infrawrench/plugin-base";
 import type { PeerPaneData } from "@infrawrench/ui";

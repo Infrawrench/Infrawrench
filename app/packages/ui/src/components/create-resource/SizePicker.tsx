@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import type { SizeOption } from "@infrawrench/plugin-base";
-import { SizeCard } from "./SizeCard";
+import { SizeCard } from "./SizeCard.js";
 
 export function SizePicker({ sizes, value, onChange }: { sizes: SizeOption[]; value: string; onChange: (v: string) => void }) {
   const categories = useMemo(() => {

@@ -73,10 +73,12 @@ app.post("/", async (c) => {
     credentialsIv: iv,
   });
 
-  // Fire-and-forget: sync resources
-  void syncAccountResources(id, organizationId).catch((e) =>
-    console.error(`[createAccount] Background sync failed for ${id}:`, e),
-  );
+  // Sync resources before returning so the UI has data immediately
+  try {
+    await syncAccountResources(id, organizationId);
+  } catch (e) {
+    console.error(`[createAccount] Sync failed for ${id}:`, e);
+  }
 
   return c.json({ id });
 });
@@ -151,6 +153,13 @@ app.get("/:id/detail", async (c) => {
     .where(and(eq(accounts.id, accountId), eq(accounts.organizationId, organizationId)));
   if (!account) return c.json({ error: "Account not found" }, 404);
 
+  // Sync resources from the provider so data is always fresh
+  try {
+    await syncAccountResources(accountId, organizationId);
+  } catch {
+    // Non-critical — show whatever we have in the DB
+  }
+
   const resourceRows = await db
     .select({
       id: resources.id,
@@ -203,42 +212,46 @@ async function syncAccountResources(accountId: string, organizationId: string): 
   const hostServices = buildPluginHostServices(loaded.plugin.manifest, credentials);
   const client = loaded.plugin.createClient(credentials, hostServices);
 
+  // Fetch all resource types in parallel (like desktop)
+  const results = await Promise.allSettled(
+    loaded.plugin.resourceTypes.map((typeDef) => client.listResources(typeDef.id, accountId)),
+  );
   const allResources: ResourceInstance[] = [];
-  for (const typeDef of loaded.plugin.resourceTypes) {
-    try {
-      const instances = await client.listResources(typeDef.id, accountId);
-      allResources.push(...instances);
-    } catch { /* skip types we can't list */ }
+  for (const r of results) {
+    if (r.status === "fulfilled") allResources.push(...r.value);
   }
 
-  for (const r of allResources) {
-    await db
-      .insert(resources)
-      .values({
-        id: r.id,
-        organizationId,
-        pluginId: r.pluginId,
-        resourceTypeId: r.resourceTypeId,
-        accountId,
-        displayName: r.displayName,
-        externalId: r.externalId ?? null,
-        fieldsJson: r.fields ?? {},
-        outputsJson: r.resolvedOutputs ?? {},
-        parentResourceId: r.parentResourceId ?? null,
-        lastSyncedAt: new Date(),
-      })
-      .onConflictDoUpdate({
-        target: resources.id,
-        set: {
+  // Upsert all resources in parallel
+  await Promise.all(
+    allResources.map((r) =>
+      db
+        .insert(resources)
+        .values({
+          id: r.id,
+          organizationId,
+          pluginId: r.pluginId,
+          resourceTypeId: r.resourceTypeId,
+          accountId,
           displayName: r.displayName,
+          externalId: r.externalId ?? null,
           fieldsJson: r.fields ?? {},
           outputsJson: r.resolvedOutputs ?? {},
           parentResourceId: r.parentResourceId ?? null,
           lastSyncedAt: new Date(),
-          updatedAt: new Date(),
-        },
-      });
-  }
+        })
+        .onConflictDoUpdate({
+          target: resources.id,
+          set: {
+            displayName: r.displayName,
+            fieldsJson: r.fields ?? {},
+            outputsJson: r.resolvedOutputs ?? {},
+            parentResourceId: r.parentResourceId ?? null,
+            lastSyncedAt: new Date(),
+            updatedAt: new Date(),
+          },
+        }),
+    ),
+  );
 
   return allResources.length;
 }

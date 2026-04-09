@@ -3,7 +3,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { invoke } from "../lib/invoke";
 import { useDraggable, useDroppable, useDndContext } from "@dnd-kit/core";
 import type { ResourceInstance, ResourceTypeDefinition } from "@infrawrench/plugin-base";
-import { useUIStore, type DraggableResource } from "@infrawrench/ui";
+import { useUIStore, ConfirmDeleteModal, type DraggableResource } from "@infrawrench/ui";
 import { getDb } from "../db/client";
 import { getPlugin } from "../plugins/loader";
 import { pinResource } from "../lib/pins";
@@ -15,7 +15,6 @@ import { SecretExportModal } from "../components/SecretExportModal";
 import { SshTunnelModal, type PresetKey } from "../components/SshTunnelModal";
 import { DockerSetupModal } from "../components/DockerSetupModal";
 import { SshEnvDeployModal } from "../components/SshEnvDeployModal";
-import { ConfirmDeleteModal } from "../components/ConfirmDeleteModal";
 import { navigateToWorkspaceTarget, resourceTabTarget, accountTabTarget } from "../lib/workspace-tabs";
 
 export const Route = createFileRoute("/accounts/$accountId")({

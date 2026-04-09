@@ -63,7 +63,7 @@ export function DashboardView({ dashboardId, dashboardName, pins: initialPins }:
                   onClick={() =>
                     void navigate({
                       to: "/resources/$pluginId/$resourceTypeId/$resourceId",
-                      params: { pluginId: pin.pluginId, resourceTypeId: pin.resourceTypeId, resourceId: encodeURIComponent(pin.resourceId) },
+                      params: { pluginId: pin.pluginId, resourceTypeId: pin.resourceTypeId, resourceId: pin.resourceId },
                     })
                   }
                   className="block w-full text-left"

@@ -4,6 +4,7 @@ import {
   DetailView,
   DraggableChildPill,
   StatusDotNodeRenderer,
+  ConfirmDeleteModal,
   type QueryResult,
   type ChildResource,
   type ChildResourceGroup,
@@ -11,6 +12,7 @@ import {
 } from "@infrawrench/ui";
 import type { DetailViewSchema, PeerPaneSchema } from "@infrawrench/plugin-base";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
+import { CreateResourceModal } from "./CreateResourceModal";
 import { KvConsole } from "@/components/KvConsole";
 import { DockerActionsPanel } from "@/components/DockerActionsPanel";
 import { MongoDocumentBrowser } from "@/components/MongoDocumentBrowser";
@@ -52,6 +54,7 @@ interface Props {
   peerPanes: PeerPaneServerData[];
   canDelete: boolean;
   hasManifestEditor: boolean;
+  resourceDisplayName: string;
   resourceTypeLabel: string;
   // Connection feature flags
   hasSqlEditor?: boolean | undefined;
@@ -79,6 +82,7 @@ export function ResourceDetailClient({
   peerPanes: serverPeerPanes,
   canDelete,
   hasManifestEditor,
+  resourceDisplayName,
   resourceTypeLabel,
   hasSqlEditor,
   hasStorageBrowser,
@@ -94,8 +98,8 @@ export function ResourceDetailClient({
 }: Props) {
   const navigate = useNavigate();
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [deleting, setDeleting] = useState(false);
   const [wsToken, setWsToken] = useState<string | null>(null);
+  const [createTarget, setCreateTarget] = useState<ChildResourceGroup | null>(null);
 
   // SQL queries via API
   const handleRunQuery = useCallback(
@@ -119,34 +123,35 @@ export function ResourceDetailClient({
     (child: ChildResource) => {
       void navigate({
         to: "/resources/$pluginId/$resourceTypeId/$resourceId",
-        params: { pluginId: child.pluginId, resourceTypeId: child.resourceTypeId, resourceId: encodeURIComponent(child.id) },
+        params: { pluginId: child.pluginId, resourceTypeId: child.resourceTypeId, resourceId: child.id },
       });
     },
     [navigate],
   );
 
+  const handleChildCreate = useCallback(
+    (group: ChildResourceGroup) => {
+      setCreateTarget(group);
+    },
+    [],
+  );
+
   // ── Manifest editor ──────────────────────────────────────────────────────
   const handleGetManifest = useCallback(async (): Promise<string> => {
-    const result = await apiGet<{ manifest: string }>(`/api/resources/${pluginId}/${resourceTypeId}/${encodeURIComponent(resourceId)}/manifest?accountId=${accountId}`);
+    const result = await apiGet<{ manifest: string }>(`/api/resources/${pluginId}/${resourceTypeId}/manifest?resourceId=${encodeURIComponent(resourceId)}&accountId=${accountId}`);
     return result.manifest;
   }, [accountId, resourceId, pluginId, resourceTypeId]);
 
   const handleApplyManifest = useCallback(async (manifest: string): Promise<void> => {
-    await apiPost(`/api/resources/${pluginId}/${resourceTypeId}/${encodeURIComponent(resourceId)}/manifest`, { accountId, manifest });
+    await apiPost(`/api/resources/${pluginId}/${resourceTypeId}/manifest`, { accountId, resourceId, manifest });
     window.dispatchEvent(new CustomEvent("iw:resources-changed"));
   }, [accountId, resourceId, pluginId, resourceTypeId]);
 
   // ── Delete resource ──────────────────────────────────────────────────────
   async function handleDelete() {
-    setDeleting(true);
-    try {
-      await apiDelete(`/api/resources/${pluginId}/${resourceTypeId}/${encodeURIComponent(resourceId)}?accountId=${accountId}`);
-      void navigate({ to: "/accounts/$accountId", params: { accountId } });
-      window.dispatchEvent(new CustomEvent("iw:resources-changed"));
-    } catch (err) {
-      setDeleting(false);
-      alert(err instanceof Error ? err.message : "Failed to delete resource");
-    }
+    await apiDelete(`/api/resources/${pluginId}/${resourceTypeId}?resourceId=${encodeURIComponent(resourceId)}&accountId=${accountId}`);
+    void navigate({ to: "/accounts/$accountId", params: { accountId } });
+    window.dispatchEvent(new CustomEvent("iw:resources-changed"));
   }
 
   // ── Child resource groups ────────────────────────────────────────────────
@@ -198,6 +203,7 @@ export function ResourceDetailClient({
           )}
           childResourceGroups={childResourceGroups}
           onChildClick={handleChildClick}
+          onChildCreate={handleChildCreate}
           renderChildResource={(child) => (
             <DraggableChildPill
               child={child}
@@ -245,7 +251,7 @@ export function ResourceDetailClient({
       )}
 
       {/* Delete button — mirrors desktop bottom bar */}
-      {canDelete && !confirmDelete && (
+      {canDelete && (
         <div className="shrink-0 px-4 py-2 border-t border-gray-800 flex items-center justify-end gap-3">
           <button
             onClick={() => setConfirmDelete(true)}
@@ -256,29 +262,32 @@ export function ResourceDetailClient({
         </div>
       )}
 
-      {/* Delete confirmation */}
       {confirmDelete && (
-        <div className="shrink-0 px-4 py-3 border-t border-red-900/50 bg-red-950/30 flex items-center justify-between gap-3">
-          <span className="text-xs text-red-400">
-            Are you sure you want to delete this {resourceTypeLabel.toLowerCase()}? This cannot be undone.
-          </span>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setConfirmDelete(false)}
-              className="text-xs text-gray-400 hover:text-gray-200 px-3 py-1.5 rounded border border-gray-700 hover:border-gray-600 transition-colors"
-              disabled={deleting}
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleDelete}
-              disabled={deleting}
-              className="text-xs text-red-400 hover:text-red-300 px-3 py-1.5 rounded border border-red-800 hover:border-red-700 bg-red-950 hover:bg-red-900 transition-colors disabled:opacity-50"
-            >
-              {deleting ? "Deleting…" : "Delete"}
-            </button>
-          </div>
-        </div>
+        <ConfirmDeleteModal
+          kind={resourceTypeLabel.toLowerCase()}
+          name={resourceDisplayName}
+          onConfirm={handleDelete}
+          onClose={() => setConfirmDelete(false)}
+        />
+      )}
+
+      {createTarget && (
+        <CreateResourceModal
+          accountId={accountId}
+          pluginId={pluginId}
+          resourceTypeId={createTarget.typeId}
+          resourceTypeDisplayName={createTarget.displayName}
+          onClose={() => setCreateTarget(null)}
+          onCreated={(resource) => {
+            setCreateTarget(null);
+            window.dispatchEvent(new CustomEvent("iw:resources-changed"));
+            void navigate({
+              to: "/resources/$pluginId/$resourceTypeId/$resourceId",
+              params: { pluginId, resourceTypeId: createTarget.typeId, resourceId: resource.id },
+              search: { accountId },
+            });
+          }}
+        />
       )}
     </div>
   );

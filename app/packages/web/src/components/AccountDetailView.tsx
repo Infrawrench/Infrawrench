@@ -1,5 +1,8 @@
+import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { ResourcePill, type DraggableResource } from "@infrawrench/ui";
+import { ResourcePill, ConfirmDeleteModal, type DraggableResource, useUIStore } from "@infrawrench/ui";
+import { apiDelete } from "@/lib/api";
+import { CreateResourceModal } from "./CreateResourceModal";
 
 interface ResourceType {
   id: string;
@@ -36,6 +39,15 @@ export function AccountDetailView({
   pluginLogoSvg,
 }: Props) {
   const navigate = useNavigate();
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [createTarget, setCreateTarget] = useState<ResourceType | null>(null);
+
+  async function handleDeleteAccount() {
+    await apiDelete(`/api/accounts/${account.id}`);
+    useUIStore.getState().bumpAccounts();
+    window.dispatchEvent(new CustomEvent("iw:resources-changed"));
+    void navigate({ to: "/" });
+  }
 
   // Group ALL resources by type
   const groupedResources = new Map<string, Resource[]>();
@@ -61,11 +73,26 @@ export function AccountDetailView({
             dangerouslySetInnerHTML={{ __html: pluginLogoSvg }}
           />
         )}
-        <div>
+        <div className="flex-1">
           <h1 className="text-xl font-semibold">{account.displayName}</h1>
           <p className="text-xs text-gray-500">{pluginDisplayName}</p>
         </div>
+        <button
+          onClick={() => setConfirmDelete(true)}
+          className="px-3 py-1.5 text-xs text-red-400 hover:text-red-300 hover:bg-red-950/50 rounded transition-colors"
+        >
+          Delete
+        </button>
       </div>
+
+      {confirmDelete && (
+        <ConfirmDeleteModal
+          kind="account"
+          name={account.displayName}
+          onConfirm={handleDeleteAccount}
+          onClose={() => setConfirmDelete(false)}
+        />
+      )}
 
       {/* Resource categories — mirrors desktop layout */}
       {visibleTypes.map((type) => {
@@ -85,6 +112,7 @@ export function AccountDetailView({
               /* Child type — only show create button, resources shown on parent detail page */
               <div className="flex flex-wrap gap-2">
                 <button
+                  onClick={() => setCreateTarget(type)}
                   className="flex items-center gap-1.5 pl-3 pr-3 py-1.5 rounded-full border border-dashed border-gray-700 text-gray-600 hover:border-blue-600 hover:text-blue-400 transition-colors text-sm"
                 >
                   <span className="text-base leading-none">+</span>
@@ -117,7 +145,7 @@ export function AccountDetailView({
                       onOpen={() =>
                         void navigate({
                           to: "/resources/$pluginId/$resourceTypeId/$resourceId",
-                          params: { pluginId: resource.pluginId, resourceTypeId: resource.resourceTypeId, resourceId: encodeURIComponent(resource.id) },
+                          params: { pluginId: resource.pluginId, resourceTypeId: resource.resourceTypeId, resourceId: resource.id },
                         })
                       }
                     />
@@ -125,6 +153,7 @@ export function AccountDetailView({
                 })}
                 {type.supportsCreate && (
                   <button
+                    onClick={() => setCreateTarget(type)}
                     className="flex items-center gap-1.5 pl-3 pr-3 py-1.5 rounded-full border border-dashed border-gray-700 text-gray-600 hover:border-blue-600 hover:text-blue-400 transition-colors text-sm"
                   >
                     <span className="text-base leading-none">+</span>
@@ -147,6 +176,25 @@ export function AccountDetailView({
             Resources will appear after the first sync.
           </p>
         </div>
+      )}
+
+      {createTarget && (
+        <CreateResourceModal
+          accountId={account.id}
+          pluginId={account.pluginId}
+          resourceTypeId={createTarget.id}
+          resourceTypeDisplayName={createTarget.displayName}
+          onClose={() => setCreateTarget(null)}
+          onCreated={(resource) => {
+            setCreateTarget(null);
+            window.dispatchEvent(new CustomEvent("iw:resources-changed"));
+            void navigate({
+              to: "/resources/$pluginId/$resourceTypeId/$resourceId",
+              params: { pluginId: account.pluginId, resourceTypeId: createTarget.id, resourceId: resource.id },
+              search: { accountId: account.id },
+            });
+          }}
+        />
       )}
     </div>
   );

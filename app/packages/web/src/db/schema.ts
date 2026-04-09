@@ -240,6 +240,37 @@ export const dashboardPins = pgTable(
   }),
 );
 
+// ─── SSH Keys (user-owned, org-visible public keys) ─────────────────────────
+
+export const sshKeys = pgTable(
+  "ssh_keys",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /** Owner of this key — only the owner can manage it */
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    /** AES-256-GCM encrypted public key */
+    encryptedPublicKey: text("encrypted_public_key").notNull(),
+    publicKeyIv: text("public_key_iv").notNull(),
+    /** AES-256-GCM encrypted private key (server-generated keys only) */
+    encryptedPrivateKey: text("encrypted_private_key"),
+    privateKeyIv: text("private_key_iv"),
+    /** e.g. "ssh-ed25519" */
+    keyType: text("key_type"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("ssh_keys_org_idx").on(t.organizationId),
+    userIdx: index("ssh_keys_user_idx").on(t.userId),
+    userNameUnique: uniqueIndex("ssh_keys_user_name_unique").on(t.userId, t.name),
+  }),
+);
+
 // ─── Audit Logs ──────────────────────────────────────────────────────────────
 
 export const auditLogs = pgTable(

@@ -3,7 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { invoke } from "../lib/invoke";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
-import { useUIStore, type DraggableResource } from "@infrawrench/ui";
+import { useUIStore, ConfirmDeleteModal, type DraggableResource } from "@infrawrench/ui";
 import { getDb } from "../db/client";
 import { loadPlugins, getPlugin } from "../plugins/loader";
 import { getListableResourceTypes } from "../lib/account-resource-types";
@@ -13,7 +13,6 @@ import { SshTunnelModal, type PresetKey } from "./SshTunnelModal";
 import { DockerSetupModal } from "./DockerSetupModal";
 import { SecretExportModal } from "./SecretExportModal";
 import { SshEnvDeployModal } from "./SshEnvDeployModal";
-import { ConfirmDeleteModal } from "./ConfirmDeleteModal";
 import { accountTabTarget, navigateToWorkspaceTarget, resourceTabTarget } from "../lib/workspace-tabs";
 
 interface Account {

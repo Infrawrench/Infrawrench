@@ -21,6 +21,10 @@ export { SidebarSection } from "./components/sidebar/SidebarSection.js";
 
 // Modal
 export { Modal } from "./components/Modal.js";
+export { ConfirmDeleteModal } from "./components/ConfirmDeleteModal.js";
+export { AddAccountModal } from "./components/AddAccountModal.js";
+export type { PluginInfo } from "./components/AddAccountModal.js";
+export { DockerActionsPanel } from "./components/DockerActionsPanel.js";
 
 // Detail view
 export { DetailView } from "./components/detail/DetailView.js";
@@ -28,6 +32,20 @@ export { AssociationPicker } from "./components/detail/AssociationPicker.js";
 export type { RerollSelection, ProviderResource, PeerPaneData, ChildResource, ChildResourceGroup } from "./components/detail/DetailView.js";
 export type { QueryResult } from "./components/detail/SqlEditorView.js";
 export { ManifestEditorView } from "./components/detail/ManifestEditorView.js";
+
+// Create resource form
+export { FieldRenderer } from "./components/create-resource/index.js";
+export type { FieldRendererProps, SshKeyPickerCallbacks } from "./components/create-resource/index.js";
+export { SelectPicker } from "./components/create-resource/index.js";
+export { RegionPicker } from "./components/create-resource/index.js";
+export { SizePicker } from "./components/create-resource/index.js";
+export { SizeCard } from "./components/create-resource/index.js";
+export { DiskSlider } from "./components/create-resource/index.js";
+export { ImagePicker } from "./components/create-resource/index.js";
+export { ImageRow } from "./components/create-resource/index.js";
+export { DiskPicker } from "./components/create-resource/index.js";
+export { SshKeyPicker } from "./components/create-resource/index.js";
+export type { SshKeyPickerProps, SshKeyEntry, SystemSshKey } from "./components/create-resource/index.js";
 
 // DnD
 export { DndShell } from "./dnd/DndShell.js";

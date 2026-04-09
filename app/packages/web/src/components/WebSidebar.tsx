@@ -175,23 +175,23 @@ export function WebSidebar() {
     }));
 
     try {
-      // Load from DB first (fast), then sync in background and refresh
-      const existing = await apiGet<ResourceSummary[]>(`/api/accounts/${accountId}/resources?topLevelOnly=true`);
+      // Load from DB and sync in parallel — show DB results immediately, refresh after sync
+      const [existing] = await Promise.all([
+        apiGet<ResourceSummary[]>(`/api/accounts/${accountId}/resources?topLevelOnly=true`),
+        apiPost(`/api/accounts/${accountId}/sync`)
+          .then(() => apiGet<ResourceSummary[]>(`/api/accounts/${accountId}/resources?topLevelOnly=true`))
+          .then((fresh) => {
+            setAccountResources((prev) => ({
+              ...prev,
+              [accountId]: { loading: false, resources: fresh },
+            }));
+          })
+          .catch((e) => console.error("Background sync failed:", e)),
+      ]);
       setAccountResources((prev) => ({
         ...prev,
         [accountId]: { loading: false, resources: existing },
       }));
-
-      // Background sync — refresh when done
-      apiPost(`/api/accounts/${accountId}/sync`)
-        .then(() => apiGet<ResourceSummary[]>(`/api/accounts/${accountId}/resources?topLevelOnly=true`))
-        .then((fresh) => {
-          setAccountResources((prev) => ({
-            ...prev,
-            [accountId]: { loading: false, resources: fresh },
-          }));
-        })
-        .catch((e) => console.error("Background sync failed:", e));
     } catch (e) {
       console.error("Failed to load resources:", e);
       setAccountResources((prev) => ({
@@ -380,7 +380,7 @@ export function WebSidebar() {
                             }}
                             onClick={() => void navigate({
                               to: "/resources/$pluginId/$resourceTypeId/$resourceId",
-                              params: { pluginId: resource.pluginId, resourceTypeId: resource.resourceTypeId, resourceId: encodeURIComponent(resource.id) },
+                              params: { pluginId: resource.pluginId, resourceTypeId: resource.resourceTypeId, resourceId: resource.id },
                             })}
                           />
                         ))}

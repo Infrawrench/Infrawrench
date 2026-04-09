@@ -13,6 +13,9 @@ import { MIGRATIONS } from "../src/db/schema";
 import "./plugin-host";
 import "./ssh-host";
 import "./k8s-host";
+import "./cloud-auth";
+import "./cloud-sync";
+import "./cloud-ssh-keys";
 
 // Disable Chromium's built-in overscroll history navigation — we handle
 // swipe-to-navigate ourselves in the renderer via wheel events.

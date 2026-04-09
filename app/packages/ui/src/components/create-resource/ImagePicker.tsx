@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import type { ImageOption } from "@infrawrench/plugin-base";
-import { ImageRow } from "./ImageRow";
+import { ImageRow } from "./ImageRow.js";
 
 export function ImagePicker({ images, value, onChange }: { images: ImageOption[]; value: string; onChange: (v: string) => void }) {
   const [search, setSearch] = useState("");

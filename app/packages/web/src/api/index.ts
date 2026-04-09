@@ -22,6 +22,7 @@ import { associationRoutes } from "./routes/associations";
 import { wsTokenRoutes } from "./routes/ws-token";
 import { storageRoutes } from "./routes/storage";
 import { sftpRoutes } from "./routes/sftp";
+import { sshKeyRoutes } from "./routes/ssh-keys";
 
 // API-key-authed routes (handle their own auth)
 import { syncRoutes } from "./routes/sync";
@@ -64,6 +65,7 @@ authed.route("/associations", associationRoutes);
 authed.route("/ws-token", wsTokenRoutes);
 authed.route("/v1/storage", storageRoutes);
 authed.route("/v1/sftp", sftpRoutes);
+authed.route("/ssh-keys", sshKeyRoutes);
 
 api.route("/api", authed);
 
