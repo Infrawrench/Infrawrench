@@ -1,8 +1,14 @@
 import { useState, useEffect } from "react";
-import { createRootRoute, Outlet } from "@tanstack/react-router";
-import { DndShell, useUIStore, type DraggableResource } from "@infrawrench/ui";
+import { createRootRoute, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
+import { DndShell, useUIStore, workspaceTabTargetsEqual, type DraggableResource } from "@infrawrench/ui";
 import { WebSidebar } from "@/components/WebSidebar";
+import { WebGlobalTabBar } from "@/components/WebGlobalTabBar";
 import { apiGet, apiPost } from "@/lib/api";
+import {
+  dashboardTabTarget,
+  getWorkspaceNavigateArgs,
+  syncWorkspaceRouteFromPath,
+} from "@/lib/workspace-tabs";
 
 export const Route = createRootRoute({
   component: RootLayout,
@@ -32,6 +38,66 @@ function RootLayout() {
 }
 
 function AuthenticatedShell() {
+  const navigate = useNavigate();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const hash = useRouterState({ select: (s) => s.location.hash });
+
+  const {
+    workspaceTabs,
+    activeWorkspaceTabId,
+    tabsHydrated,
+    syncWorkspaceRoute,
+    activateWorkspaceTab,
+    closeWorkspaceTab,
+    createWorkspaceTabInstance,
+    setActiveDashboard,
+  } = useUIStore();
+
+  // Sync route changes → workspace tabs
+  useEffect(() => {
+    if (!tabsHydrated) return;
+    const currentTarget = syncWorkspaceRouteFromPath(pathname, hash);
+    if (!currentTarget) {
+      setActiveDashboard(null);
+      return;
+    }
+    setActiveDashboard(currentTarget.kind === "dashboard" ? currentTarget.dashboardId : null);
+    const activeTab = workspaceTabs.find((tab) => tab.id === activeWorkspaceTabId);
+    if (activeTab && workspaceTabTargetsEqual(activeTab.target, currentTarget)) return;
+    syncWorkspaceRoute(currentTarget);
+  }, [hash, pathname, activeWorkspaceTabId, setActiveDashboard, syncWorkspaceRoute, tabsHydrated, workspaceTabs]);
+
+  function handleActivateTab(tabId: string) {
+    const tab = workspaceTabs.find((candidate) => candidate.id === tabId);
+    if (!tab) return;
+    activateWorkspaceTab(tabId);
+    void navigate(getWorkspaceNavigateArgs(tab.target));
+  }
+
+  async function handleNewTab() {
+    try {
+      const data = await apiGet<{ dashboard: { id: string; name: string } }>("/api/dashboards/default/full");
+      const target = dashboardTabTarget(data.dashboard.id);
+      createWorkspaceTabInstance(target, data.dashboard.name);
+      void navigate({ to: "/" });
+    } catch {
+      void navigate({ to: "/" });
+    }
+  }
+
+  function handleCloseTab(tabId: string) {
+    const wasActive = activeWorkspaceTabId === tabId;
+    closeWorkspaceTab(tabId);
+    if (!wasActive) return;
+    const nextState = useUIStore.getState();
+    const nextTab = nextState.workspaceTabs.find((tab) => tab.id === nextState.activeWorkspaceTabId);
+    if (nextTab) {
+      void navigate(getWorkspaceNavigateArgs(nextTab.target, true));
+    } else {
+      void navigate({ to: "/", replace: true });
+    }
+  }
+
   async function handlePinToDashboard(resource: DraggableResource, dashboardId: string) {
     await apiPost("/api/dashboards/pin", { dashboardId, resourceId: resource.id });
     useUIStore.getState().bumpDashboardPins();
@@ -40,11 +106,20 @@ function AuthenticatedShell() {
 
   return (
     <DndShell onPinToDashboard={handlePinToDashboard}>
-      <div className="flex h-screen bg-gray-950 text-gray-100">
-        <WebSidebar />
-        <main className="flex-1 overflow-auto">
-          <Outlet />
-        </main>
+      <div className="flex flex-col h-screen bg-gray-950 text-gray-100">
+        <WebGlobalTabBar
+          tabs={workspaceTabs}
+          activeTabId={activeWorkspaceTabId}
+          onActivate={handleActivateTab}
+          onClose={handleCloseTab}
+          onNew={handleNewTab}
+        />
+        <div className="flex flex-1 overflow-hidden">
+          <WebSidebar />
+          <main className="flex-1 overflow-auto">
+            <Outlet />
+          </main>
+        </div>
       </div>
     </DndShell>
   );

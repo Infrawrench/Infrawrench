@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
+import { useUIStore } from "@infrawrench/ui";
 import { DashboardView } from "@/components/DashboardView";
 import { apiGet } from "@/lib/api";
 
@@ -30,6 +31,13 @@ function DashboardPage() {
   useEffect(() => {
     apiGet<typeof data>(`/api/dashboards/${dashboardId}`).then(setData);
   }, [dashboardId]);
+
+  // Update tab title with real dashboard name
+  useEffect(() => {
+    if (!data) return;
+    const { activeWorkspaceTabId, setWorkspaceTabTitle } = useUIStore.getState();
+    if (activeWorkspaceTabId) setWorkspaceTabTitle(activeWorkspaceTabId, data.dashboard.name);
+  }, [data]);
 
   useEffect(() => {
     function onChanged() {

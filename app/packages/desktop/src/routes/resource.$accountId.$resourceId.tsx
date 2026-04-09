@@ -388,6 +388,13 @@ function ResourceDetailPage() {
           setSchema(finalSchema);
           setResource(enrichedResource);
 
+          // Update tab title with actual resource name
+          const { activeWorkspaceTabId, setWorkspaceTabTitle } = useUIStore.getState();
+          if (activeWorkspaceTabId) {
+            const viewSuffix = locationHash === "ssh" ? `SSH: ${enrichedResource.displayName}` : locationHash === "sftp" ? `SFTP: ${enrichedResource.displayName}` : enrichedResource.displayName;
+            setWorkspaceTabTitle(activeWorkspaceTabId, viewSuffix);
+          }
+
           // Resolve SSH host if this resource type declares an sshEndpoint
           setResourceTypeLabel(resourceTypeDef?.displayName ?? "Resource");
           if (resourceTypeDef?.sshEndpoint) {

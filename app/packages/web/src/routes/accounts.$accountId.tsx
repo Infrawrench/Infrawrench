@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
+import { useUIStore } from "@infrawrench/ui";
 import { AccountDetailView } from "@/components/AccountDetailView";
 import { apiGet } from "@/lib/api";
 
@@ -36,12 +37,24 @@ function AccountPage() {
     apiGet<typeof data>(`/api/accounts/${accountId}/detail`).then(setData);
   }, [accountId]);
 
+  // Update tab title with real account name
   useEffect(() => {
-    function onChanged() {
-      apiGet<typeof data>(`/api/accounts/${accountId}/detail`).then(setData);
+    if (!data) return;
+    const { activeWorkspaceTabId, setWorkspaceTabTitle } = useUIStore.getState();
+    if (activeWorkspaceTabId) setWorkspaceTabTitle(activeWorkspaceTabId, data.account.displayName);
+  }, [data]);
+
+  // Auto-refresh every 30s + on resource-changed events
+  useEffect(() => {
+    function refresh() {
+      apiGet<typeof data>(`/api/accounts/${accountId}/detail`).then(setData).catch(() => {});
     }
-    window.addEventListener("iw:resources-changed", onChanged);
-    return () => window.removeEventListener("iw:resources-changed", onChanged);
+    const id = setInterval(refresh, 30_000);
+    window.addEventListener("iw:resources-changed", refresh);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener("iw:resources-changed", refresh);
+    };
   }, [accountId]);
 
   if (!data) return <div className="p-6 text-gray-500 text-sm animate-pulse">Loading…</div>;

@@ -174,7 +174,12 @@ function AccountPage() {
         );
         const row = rows[0];
         if (!row) throw new Error("Account not found");
-        if (!cancelled) setAccount(row);
+        if (!cancelled) {
+          setAccount(row);
+          // Update tab title with actual account name
+          const { activeWorkspaceTabId, setWorkspaceTabTitle } = useUIStore.getState();
+          if (activeWorkspaceTabId) setWorkspaceTabTitle(activeWorkspaceTabId, row.display_name);
+        }
 
         const plaintext = await invoke<string>("decrypt_value", {
           ciphertext: row.encrypted_credentials,

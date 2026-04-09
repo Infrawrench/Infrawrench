@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
+import { useUIStore } from "@infrawrench/ui";
 import { ResourceDetailClient } from "@/components/ResourceDetailClient";
 import { apiGet } from "@/lib/api";
 
@@ -42,12 +43,24 @@ function ResourceDetailPage() {
     return () => { cancelled = true; };
   }, [detailUrl]);
 
+  // Update tab title with real resource name
   useEffect(() => {
-    function onChanged() {
-      apiGet(detailUrl).then(setData);
+    if (!data) return;
+    const { activeWorkspaceTabId, setWorkspaceTabTitle } = useUIStore.getState();
+    if (activeWorkspaceTabId) setWorkspaceTabTitle(activeWorkspaceTabId, data.resourceDisplayName);
+  }, [data]);
+
+  // Auto-refresh every 30s + on resource-changed events
+  useEffect(() => {
+    function refresh() {
+      apiGet(detailUrl).then(setData).catch(() => {});
     }
-    window.addEventListener("iw:resources-changed", onChanged);
-    return () => window.removeEventListener("iw:resources-changed", onChanged);
+    const id = setInterval(refresh, 30_000);
+    window.addEventListener("iw:resources-changed", refresh);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener("iw:resources-changed", refresh);
+    };
   }, [detailUrl]);
 
   if (error) {

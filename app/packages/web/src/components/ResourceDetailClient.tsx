@@ -70,6 +70,8 @@ interface Props {
   storageBucketName?: string | undefined;
 }
 
+type ConnectionTab = "ssh" | "sftp" | "kv" | "mongo" | "docker" | "storage";
+
 export function ResourceDetailClient({
   detailSchema,
   childResources,
@@ -100,6 +102,19 @@ export function ResourceDetailClient({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [wsToken, setWsToken] = useState<string | null>(null);
   const [createTarget, setCreateTarget] = useState<ChildResourceGroup | null>(null);
+  const [activeConnectionTab, setActiveConnectionTab] = useState<ConnectionTab | null>(null);
+
+  // Build the list of available connection tabs
+  const connectionTabs = useMemo(() => {
+    const tabs: Array<{ id: ConnectionTab; label: string }> = [];
+    if (hasSshTerminal) tabs.push({ id: "ssh", label: "SSH Terminal" });
+    if (hasSftpBrowser) tabs.push({ id: "sftp", label: "SFTP Browser" });
+    if (hasKvConsole && !isMongoDb) tabs.push({ id: "kv", label: kvDriverName === "memcached" ? "Memcached" : "Redis Console" });
+    if (hasKvConsole && isMongoDb) tabs.push({ id: "mongo", label: "Documents" });
+    if (hasDockerActions && containerId) tabs.push({ id: "docker", label: "Docker" });
+    if (hasStorageBrowser && storageBucketName) tabs.push({ id: "storage", label: "Storage Browser" });
+    return tabs;
+  }, [hasSshTerminal, hasSftpBrowser, hasKvConsole, isMongoDb, kvDriverName, hasDockerActions, containerId, hasStorageBrowser, storageBucketName]);
 
   // SQL queries via API
   const handleRunQuery = useCallback(
@@ -189,49 +204,68 @@ export function ResourceDetailClient({
     }));
   }, [serverPeerPanes]);
 
+  const showingConnectionPanel = activeConnectionTab !== null;
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      <div className="flex-1 overflow-auto">
-        <DetailView
-          schema={detailSchema}
-          resourceId={resourceId}
-          pluginLogoSvg={pluginLogoSvg}
-          {...(hasSqlEditor ? { onRunQuery: handleRunQuery, onExecute: handleExecute } : {})}
-          peerPanes={peerPanes}
-          renderPeerPane={(pane) => (
-            <PeerPaneView pane={pane} />
-          )}
-          childResourceGroups={childResourceGroups}
-          onChildClick={handleChildClick}
-          onChildCreate={handleChildCreate}
-          renderChildResource={(child) => (
-            <DraggableChildPill
-              child={child}
-              onOpen={() => handleChildClick(child)}
-            />
-          )}
-          {...(hasManifestEditor ? { onGetManifest: handleGetManifest, onApplyManifest: handleApplyManifest } : {})}
-        />
-      </div>
+      {/* Connection feature tabs — shown above the detail view when features are available */}
+      {connectionTabs.length > 0 && (
+        <div className="shrink-0 flex items-center gap-0 px-4 border-b border-gray-800 bg-gray-950">
+          <button
+            onClick={() => setActiveConnectionTab(null)}
+            className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              !showingConnectionPanel
+                ? "border-blue-500 text-white"
+                : "border-transparent text-gray-500 hover:text-gray-300 hover:border-gray-600"
+            }`}
+          >
+            Details
+          </button>
+          {connectionTabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveConnectionTab(tab.id)}
+              className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                activeConnectionTab === tab.id
+                  ? "border-blue-500 text-white"
+                  : "border-transparent text-gray-500 hover:text-gray-300 hover:border-gray-600"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Detail view (overview + sql/manifest/peer tabs) */}
+      {!showingConnectionPanel && (
+        <div className="flex-1 overflow-auto">
+          <DetailView
+            schema={detailSchema}
+            resourceId={resourceId}
+            pluginLogoSvg={pluginLogoSvg}
+            {...(hasSqlEditor ? { onRunQuery: handleRunQuery, onExecute: handleExecute } : {})}
+            peerPanes={peerPanes}
+            renderPeerPane={(pane) => (
+              <PeerPaneView pane={pane} />
+            )}
+            childResourceGroups={childResourceGroups}
+            onChildClick={handleChildClick}
+            onChildCreate={handleChildCreate}
+            renderChildResource={(child) => (
+              <DraggableChildPill
+                child={child}
+                onOpen={() => handleChildClick(child)}
+              />
+            )}
+            {...(hasManifestEditor ? { onGetManifest: handleGetManifest, onApplyManifest: handleApplyManifest } : {})}
+          />
+        </div>
+      )}
 
       {/* Connection feature panels */}
-      {hasKvConsole && !isMongoDb && (
-        <KvConsole accountId={accountId} driverName={kvDriverName ?? "redis"} />
-      )}
-      {hasKvConsole && isMongoDb && (
-        <MongoDocumentBrowser accountId={accountId} databaseName={databaseName ?? "test"} />
-      )}
-      {hasDockerActions && containerId && (
-        <DockerActionsPanel accountId={accountId} containerId={containerId} />
-      )}
-      {hasStorageBrowser && storageBucketName && (
-        <StorageBrowser accountId={accountId} bucketName={storageBucketName} />
-      )}
-      {hasSftpBrowser && (
-        <SftpBrowser accountId={accountId} />
-      )}
-      {hasSshTerminal && (
-        <div className="border-t border-gray-800" style={{ height: "300px" }}>
+      {activeConnectionTab === "ssh" && (
+        <div className="flex-1 overflow-hidden">
           {wsToken ? (
             <WebTerminal accountId={accountId} token={wsToken} />
           ) : (
@@ -250,8 +284,38 @@ export function ResourceDetailClient({
         </div>
       )}
 
-      {/* Delete button — mirrors desktop bottom bar */}
-      {canDelete && (
+      {activeConnectionTab === "sftp" && (
+        <div className="flex-1 overflow-hidden">
+          <SftpBrowser accountId={accountId} />
+        </div>
+      )}
+
+      {activeConnectionTab === "kv" && (
+        <div className="flex-1 overflow-hidden">
+          <KvConsole accountId={accountId} driverName={kvDriverName ?? "redis"} />
+        </div>
+      )}
+
+      {activeConnectionTab === "mongo" && (
+        <div className="flex-1 overflow-hidden">
+          <MongoDocumentBrowser accountId={accountId} databaseName={databaseName ?? "test"} />
+        </div>
+      )}
+
+      {activeConnectionTab === "docker" && containerId && (
+        <div className="flex-1 overflow-hidden">
+          <DockerActionsPanel accountId={accountId} containerId={containerId} />
+        </div>
+      )}
+
+      {activeConnectionTab === "storage" && storageBucketName && (
+        <div className="flex-1 overflow-hidden">
+          <StorageBrowser accountId={accountId} bucketName={storageBucketName} />
+        </div>
+      )}
+
+      {/* Delete button */}
+      {canDelete && !showingConnectionPanel && (
         <div className="shrink-0 px-4 py-2 border-t border-gray-800 flex items-center justify-end gap-3">
           <button
             onClick={() => setConfirmDelete(true)}

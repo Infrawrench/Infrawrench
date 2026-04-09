@@ -158,21 +158,13 @@ export function WebSidebar() {
     }
   }
 
-  async function toggleExpand(accountId: string) {
-    const isNowExpanded = !expanded.has(accountId);
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (isNowExpanded) next.add(accountId);
-      else next.delete(accountId);
-      return next;
-    });
-    if (!isNowExpanded) return;
-    if (accountResources[accountId]) return;
-
-    setAccountResources((prev) => ({
-      ...prev,
-      [accountId]: { loading: true, resources: [] },
-    }));
+  async function loadResources(accountId: string, background = false) {
+    if (!background) {
+      setAccountResources((prev) => ({
+        ...prev,
+        [accountId]: { loading: true, resources: prev[accountId]?.resources ?? [] },
+      }));
+    }
 
     try {
       // Load from DB and sync in parallel — show DB results immediately, refresh after sync
@@ -193,6 +185,7 @@ export function WebSidebar() {
         [accountId]: { loading: false, resources: existing },
       }));
     } catch (e) {
+      if (background) return;
       console.error("Failed to load resources:", e);
       setAccountResources((prev) => ({
         ...prev,
@@ -200,6 +193,41 @@ export function WebSidebar() {
       }));
     }
   }
+
+  async function toggleExpand(accountId: string) {
+    const isNowExpanded = !expanded.has(accountId);
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (isNowExpanded) next.add(accountId);
+      else next.delete(accountId);
+      return next;
+    });
+    if (!isNowExpanded) return;
+    if (accountResources[accountId]) return;
+    void loadResources(accountId);
+  }
+
+  // Reload expanded accounts when resources change
+  useEffect(() => {
+    function handler() {
+      for (const accountId of expanded) {
+        void loadResources(accountId, true);
+      }
+    }
+    window.addEventListener("iw:resources-changed", handler);
+    return () => window.removeEventListener("iw:resources-changed", handler);
+  }, [expanded]);
+
+  // Auto-refresh expanded accounts every 30s
+  useEffect(() => {
+    if (expanded.size === 0) return;
+    const id = setInterval(() => {
+      for (const accountId of expanded) {
+        void loadResources(accountId, true);
+      }
+    }, 30_000);
+    return () => clearInterval(id);
+  }, [expanded]);
 
   if (sidebarCollapsed) {
     return (

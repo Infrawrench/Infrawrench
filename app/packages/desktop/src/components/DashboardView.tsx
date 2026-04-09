@@ -117,6 +117,10 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
       setDashboardName(loadedName);
       setIsHome(nameRows[0].is_default === 1);
 
+      // Update tab title with actual dashboard name
+      const { activeWorkspaceTabId, setWorkspaceTabTitle } = useUIStore.getState();
+      if (activeWorkspaceTabId) setWorkspaceTabTitle(activeWorkspaceTabId, loadedName);
+
       const rows = await db.select<PinnedRow[]>(`
         SELECT r.id as resource_id, r.plugin_id, r.resource_type_id,
                r.account_id, r.display_name, r.fields_json, r.outputs_json

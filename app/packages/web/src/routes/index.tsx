@@ -1,7 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
+import { useUIStore } from "@infrawrench/ui";
 import { DashboardView } from "@/components/DashboardView";
 import { apiGet } from "@/lib/api";
+import { dashboardTabTarget } from "@/lib/workspace-tabs";
 
 export const Route = createFileRoute("/")({
   component: HomePage,
@@ -29,6 +31,14 @@ function HomePage() {
   useEffect(() => {
     apiGet<typeof data>("/api/dashboards/default/full").then(setData);
   }, []);
+
+  // Sync the active tab to show the default dashboard with its real name
+  useEffect(() => {
+    if (!data) return;
+    const { syncWorkspaceRoute, activeWorkspaceTabId, workspaceTabs } = useUIStore.getState();
+    const target = dashboardTabTarget(data.dashboard.id);
+    syncWorkspaceRoute(target, data.dashboard.name);
+  }, [data]);
 
   useEffect(() => {
     function onChanged() {
