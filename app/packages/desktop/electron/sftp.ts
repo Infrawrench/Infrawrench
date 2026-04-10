@@ -87,7 +87,7 @@ export function sftpMkdir(config: SftpConfig, dirPath: string): Promise<void> {
 export function sftpDelete(config: SftpConfig, remotePath: string, isDir: boolean): Promise<void> {
   return withSftp(config, (sftp) =>
     new Promise((resolve, reject) => {
-      const done = (err: Error | undefined) => { if (err) reject(err); else resolve(); };
+      const done = (err: Error | null | undefined) => { if (err) reject(err); else resolve(); };
       if (isDir) sftp.rmdir(remotePath, done);
       else sftp.unlink(remotePath, done);
     }),

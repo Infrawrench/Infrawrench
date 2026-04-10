@@ -16,39 +16,12 @@ async function sftpMkdirAction(input: { accountId: string; path: string } & SshK
 async function sftpDeleteAction(input: { accountId: string; path: string; isDir: boolean } & SshKeyParams) {
   await apiPost("/api/sftp/delete", input);
 }
-import { formatErrorMessage } from "@/lib/errors";
+import { formatSize, formatDate, formatErrorMessage, type TransferEntry } from "@infrawrench/ui";
+import type { StorageObject } from "@infrawrench/plugin-base";
 
-interface SftpEntry {
-  key: string;
-  name: string;
-  size: number;
-  lastModified: string;
-  isDirectory: boolean;
-}
+type SftpEntry = StorageObject;
 
-interface TransferEntry {
-  id: string;
-  name: string;
-  pct: number;
-  done: boolean;
-  error?: string;
-}
 
-function formatSize(bytes: number): string {
-  if (bytes === 0) return "\u2014";
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1_048_576) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1_073_741_824) return `${(bytes / 1_048_576).toFixed(1)} MB`;
-  return `${(bytes / 1_073_741_824).toFixed(2)} GB`;
-}
-
-function formatDate(iso: string): string {
-  if (!iso) return "\u2014";
-  return new Date(iso).toLocaleDateString(undefined, {
-    year: "numeric", month: "short", day: "numeric",
-    hour: "2-digit", minute: "2-digit",
-  });
-}
 
 function normalizePath(p: string): string {
   const parts = p.replace(/\/+/g, "/").split("/").filter(Boolean);
@@ -83,7 +56,11 @@ export function SftpBrowser({ accountId, initialPath = "/", sshKeyId, sshHost, s
   const fileInputRef = useRef<HTMLInputElement>(null);
   const newFolderInputRef = useRef<HTMLInputElement>(null);
 
-  const sshParams: SshKeyParams = sshKeyId ? { sshKeyId, sshHost, sshUsername } : {};
+  const sshParams: SshKeyParams = sshKeyId ? {
+    sshKeyId,
+    ...(sshHost !== undefined ? { sshHost } : {}),
+    ...(sshUsername !== undefined ? { sshUsername } : {}),
+  } : {};
 
   function reload() { setRefreshCount((n) => n + 1); setSearch(""); setSelected(new Set()); setConfirmBulkDelete(false); }
 

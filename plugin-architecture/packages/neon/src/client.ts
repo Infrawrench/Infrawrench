@@ -5,6 +5,7 @@ import type {
   DetailViewSchema,
   SidebarItemSchema,
   CreateResourceConfig,
+  ResourceStatus,
 } from "@infrawrench/plugin-base";
 
 /**
@@ -1020,7 +1021,7 @@ export class NeonClient implements PluginClient {
 
 function mapNeonState(
   state: string,
-): "healthy" | "degraded" | "error" | "unknown" | "provisioning" {
+): ResourceStatus {
   switch (state.toLowerCase()) {
     case "active":
     case "ready":

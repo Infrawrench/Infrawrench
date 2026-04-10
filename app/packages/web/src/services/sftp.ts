@@ -12,13 +12,8 @@ export interface SftpConfig {
   privateKey: string;
 }
 
-export interface SftpEntry {
-  key: string;
-  name: string;
-  size: number;
-  lastModified: string;
-  isDirectory: boolean;
-}
+import type { StorageObject } from "@infrawrench/plugin-base";
+export type SftpEntry = StorageObject;
 
 function withSftp<T>(config: SftpConfig, fn: (sftp: SFTPWrapper) => Promise<T>): Promise<T> {
   return new Promise((resolve, reject) => {

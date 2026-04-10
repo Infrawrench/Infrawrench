@@ -40,7 +40,7 @@ describe("resourceTabTarget", () => {
 
   it("decodes URL-encoded resource IDs", () => {
     const result = resourceTabTarget("acc-1", "ns%2Fname");
-    expect(result.resourceId).toBe("ns/name");
+    expect(result.kind === "resource" && result.resourceId).toBe("ns/name");
   });
 });
 

@@ -6,6 +6,7 @@ import type {
   CreateResourceConfig,
   SizeOption,
   ImageOption,
+  ResourceStatus,
 } from "@infrawrench/plugin-base";
 
 /**
@@ -222,7 +223,7 @@ export class ScalewayClient implements PluginClient {
     const fields = resource.fields;
     const state = String(fields["state"] ?? fields["status"] ?? "");
 
-    let statusKind: "healthy" | "degraded" | "error" | "unknown" | "provisioning" = "unknown";
+    let statusKind: ResourceStatus = "unknown";
     if (state === "running" || state === "ready") statusKind = "healthy";
     else if (state === "starting" || state === "stopping" || state === "provisioning" || state === "creating") statusKind = "provisioning";
     else if (state === "stopped" || state === "error" || state === "locked" || state === "deleting") statusKind = "error";
@@ -254,7 +255,7 @@ export class ScalewayClient implements PluginClient {
 
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema {
     const state = String(resource.fields["state"] ?? resource.fields["status"] ?? "");
-    let status: "healthy" | "degraded" | "error" | "unknown" | "provisioning" = "unknown";
+    let status: ResourceStatus = "unknown";
     if (state === "running" || state === "ready") status = "healthy";
     else if (state === "starting" || state === "stopping" || state === "provisioning") status = "provisioning";
     else if (state === "stopped" || state === "error" || state === "locked") status = "error";

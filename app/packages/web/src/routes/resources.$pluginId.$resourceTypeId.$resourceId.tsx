@@ -1,6 +1,6 @@
 import { createFileRoute, useRouterState } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
-import { useUIStore } from "@infrawrench/ui";
+import { useUIStore, RESOURCES_CHANGED_EVENT } from "@infrawrench/ui";
 import { ResourceDetailClient } from "@/components/ResourceDetailClient";
 import { apiGet } from "@/lib/api";
 
@@ -70,10 +70,10 @@ function ResourceDetailPage() {
       apiGet(detailUrl).then(setData).catch(() => {});
     }
     const id = setInterval(refresh, 30_000);
-    window.addEventListener("iw:resources-changed", refresh);
+    window.addEventListener(RESOURCES_CHANGED_EVENT, refresh);
     return () => {
       clearInterval(id);
-      window.removeEventListener("iw:resources-changed", refresh);
+      window.removeEventListener(RESOURCES_CHANGED_EVENT, refresh);
     };
   }, [detailUrl]);
 

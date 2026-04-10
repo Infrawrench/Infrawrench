@@ -6,6 +6,7 @@ import type {
   ResourceInstance,
   ResourceTypeDefinition,
   PluginClient,
+  ResourceStatus,
 } from "@infrawrench/plugin-base";
 import { StatusDotNodeRenderer, ManifestEditorView, type PeerPaneData } from "@infrawrench/ui";
 import type { DraggableResource } from "../lib/pins";
@@ -437,16 +438,17 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
                         accountId={accountId}
                         onExec={() => setExecTarget({ resource, group })}
                         onClick={() => setManifestTarget({ resource, group })}
-                        onPortForward={
-                          group.resourceTypeId === "k8s-service" && resource.fields["hasSelector"] === "true"
-                            ? () => handleStartPortForward(resource)
-                            : undefined
-                        }
+                        {...(group.resourceTypeId === "k8s-service" && resource.fields["hasSelector"] === "true"
+                          ? { onPortForward: () => handleStartPortForward(resource) }
+                          : {})}
                         isPortForwarding={pfStarting === resource.id}
-                        activePortForward={portForwards.find(
-                          (pf) => pf.resourceName === resource.displayName
-                            && pf.namespace === (resource.namespace ?? String(resource.fields["namespace"] ?? "default")),
-                        )}
+                        {...(() => {
+                          const pf = portForwards.find(
+                            (pf) => pf.resourceName === resource.displayName
+                              && pf.namespace === (resource.namespace ?? String(resource.fields["namespace"] ?? "default")),
+                          );
+                          return pf !== undefined ? { activePortForward: pf } : {};
+                        })()}
                         onStopPortForward={(sessionId) => handleStopPortForward(sessionId)}
                       />
                     ))}
@@ -561,7 +563,7 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
               resourceKind: manifestTarget.group.title.replace(/\s*\(\d+\)$/, "").replace(/s$/i, ""),
             }}
             onGetManifest={handleGetManifest}
-            onApplyManifest={pluginClient.applyManifest ? handleApplyManifest : undefined}
+            {...(pluginClient.applyManifest ? { onApplyManifest: handleApplyManifest } : {})}
           />
         </TerminalOverlay>
       )}
@@ -936,7 +938,7 @@ function toPeerPaneResource(resource: ResourceInstance): PeerPaneResource {
 
 function mapPeerStatus(
   status: string,
-): "healthy" | "degraded" | "error" | "unknown" | "provisioning" {
+): ResourceStatus {
   switch (status.toLowerCase()) {
     case "running":
     case "ready":

@@ -46,6 +46,7 @@ export type {
   SchemaNode,
   TextNode,
   BadgeNode,
+  ResourceStatus,
   StatusDotNode,
   SecretValuePlaceholder,
   KVItem,

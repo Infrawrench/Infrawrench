@@ -44,8 +44,11 @@ async function resolveSshConfigForUpload(
     .limit(1);
   if (!keyRow) throw new Error("SSH key not found");
 
+  if (!keyRow.encryptedPrivateKey || !keyRow.privateKeyIv) throw new Error("SSH key has no private key data");
   const privateKey = await decrypt(keyRow.encryptedPrivateKey, keyRow.privateKeyIv);
-  return { host: opts.sshHost, port: 22, username: opts.sshUsername ?? "root", privateKey };
+  const host = opts.sshHost;
+  if (!host) throw new Error("SSH host is required");
+  return { host, port: 22, username: opts.sshUsername ?? "root", privateKey };
 }
 
 /** POST /api/v1/sftp/upload */
@@ -84,7 +87,11 @@ app.post("/upload", async (c) => {
   if (!loaded) return c.json({ error: "Plugin not found" }, 404);
 
   const client = loaded.plugin.createClient(credentials);
-  const sshConfig = await resolveSshConfigForUpload(client, organizationId, { sshKeyId, sshHost, sshUsername });
+  const sshConfig = await resolveSshConfigForUpload(client, organizationId, {
+    ...(sshKeyId !== undefined ? { sshKeyId } : {}),
+    ...(sshHost !== undefined ? { sshHost } : {}),
+    ...(sshUsername !== undefined ? { sshUsername } : {}),
+  });
 
   const arrayBuffer = await file.arrayBuffer();
   await sftpUpload(sshConfig, remotePath, Buffer.from(arrayBuffer));
@@ -133,7 +140,11 @@ app.get("/download", async (c) => {
   if (!loaded) return c.json({ error: "Plugin not found" }, 404);
 
   const client = loaded.plugin.createClient(credentials);
-  const sshConfig = await resolveSshConfigForUpload(client, organizationId, { sshKeyId, sshHost, sshUsername });
+  const sshConfig = await resolveSshConfigForUpload(client, organizationId, {
+    ...(sshKeyId !== undefined ? { sshKeyId } : {}),
+    ...(sshHost !== undefined ? { sshHost } : {}),
+    ...(sshUsername !== undefined ? { sshUsername } : {}),
+  });
 
   // Single file → direct download
   if (paths.length === 1) {

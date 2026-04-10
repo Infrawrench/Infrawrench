@@ -4,6 +4,7 @@ import type {
   DetailViewSchema,
   SidebarItemSchema,
   SqlTableMeta,
+  ResourceStatus,
 } from "@infrawrench/plugin-base";
 import type { ListerContext } from "./resource-listers.js";
 import {
@@ -188,7 +189,7 @@ export class DatabricksClient implements PluginClient {
     const fields = resource.fields;
     const state = String(fields["state"] ?? fields["lastRunState"] ?? "");
 
-    const statusMap: Record<string, "healthy" | "degraded" | "error" | "unknown" | "provisioning"> = {
+    const statusMap: Record<string, ResourceStatus> = {
       RUNNING: "healthy",
       IDLE: "healthy",
       STOPPED: "degraded",
@@ -278,7 +279,7 @@ export class DatabricksClient implements PluginClient {
     const state = String(
       resource.fields["state"] ?? resource.fields["lastRunState"] ?? "",
     );
-    const statusMap: Record<string, "healthy" | "degraded" | "error" | "unknown" | "provisioning"> = {
+    const statusMap: Record<string, ResourceStatus> = {
       RUNNING: "healthy",
       IDLE: "healthy",
       STOPPED: "degraded",

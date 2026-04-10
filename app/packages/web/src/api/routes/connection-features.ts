@@ -82,9 +82,12 @@ async function resolveSshConfig(
     .limit(1);
   if (!keyRow) throw new Error("SSH key not found");
 
+  if (!keyRow.encryptedPrivateKey || !keyRow.privateKeyIv) throw new Error("SSH key has no private key data");
   const privateKey = await decrypt(keyRow.encryptedPrivateKey, keyRow.privateKeyIv);
+  const host = input.sshHost;
+  if (!host) throw new Error("SSH host is required");
   return {
-    host: input.sshHost,
+    host,
     port: 22,
     username: input.sshUsername ?? "root",
     privateKey,

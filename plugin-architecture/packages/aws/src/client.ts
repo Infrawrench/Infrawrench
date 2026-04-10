@@ -3,6 +3,7 @@ import type {
   ResourceInstance,
   DetailViewSchema,
   SidebarItemSchema,
+  ResourceStatus,
 } from "@infrawrench/plugin-base";
 import { signRequest, parseXml, ensureArray } from "./auth.js";
 import type { AwsCredentials } from "./auth.js";
@@ -190,7 +191,7 @@ export class AWSClient implements PluginClient {
     const fields = resource.fields;
     const state = String(fields["state"] ?? fields["status"] ?? "");
 
-    const statusMap: Record<string, "healthy" | "degraded" | "error" | "unknown" | "provisioning"> = {
+    const statusMap: Record<string, ResourceStatus> = {
       running: "healthy",
       active: "healthy",
       "in-use": "healthy",
@@ -253,7 +254,7 @@ export class AWSClient implements PluginClient {
 
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema {
     const state = String(resource.fields["state"] ?? resource.fields["status"] ?? "");
-    const statusMap: Record<string, "healthy" | "degraded" | "error" | "unknown" | "provisioning"> = {
+    const statusMap: Record<string, ResourceStatus> = {
       running: "healthy",
       active: "healthy",
       available: "healthy",

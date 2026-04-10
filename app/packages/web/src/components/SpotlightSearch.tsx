@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { groupBy } from "@infrawrench/ui";
 import { useNavigate } from "@tanstack/react-router";
 import { apiGet, apiPost } from "@/lib/api";
 import { navigateToWorkspaceTarget } from "@/lib/workspace-tabs";
@@ -185,10 +186,3 @@ export function SpotlightSearch({ dashboardId, mode, onClose, onPinned }: Spotli
   );
 }
 
-function groupBy<T>(arr: T[], key: (item: T) => string): Record<string, T[]> {
-  return arr.reduce<Record<string, T[]>>((acc, item) => {
-    const k = key(item);
-    (acc[k] ??= []).push(item);
-    return acc;
-  }, {});
-}

@@ -6,6 +6,7 @@ import type {
   SectionNode,
   SchemaNode,
   BadgeNode,
+  ResourceStatus,
 } from "@infrawrench/plugin-base";
 
 // ─── DNS record type badge colors ─────────────────────────────────────────────
@@ -46,7 +47,7 @@ function formatTtl(ttl: number): string {
   return `${Math.round(ttl / 86400)}d`;
 }
 
-function cfZoneStatus(status: string): "healthy" | "degraded" | "error" | "unknown" | "provisioning" {
+function cfZoneStatus(status: string): ResourceStatus {
   switch (status) {
     case "active": return "healthy";
     case "pending": return "provisioning";

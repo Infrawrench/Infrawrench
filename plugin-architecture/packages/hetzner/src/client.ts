@@ -6,6 +6,7 @@ import type {
   CreateResourceConfig,
   SizeOption,
   ImageOption,
+  ResourceStatus,
 } from "@infrawrench/plugin-base";
 
 /**
@@ -431,7 +432,7 @@ export class HetznerClient implements PluginClient {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function serverStatusToDot(status: string): "healthy" | "degraded" | "error" | "unknown" | "provisioning" {
+function serverStatusToDot(status: string): ResourceStatus {
   switch (status) {
     case "running":
       return "healthy";

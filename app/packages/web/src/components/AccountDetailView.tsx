@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { ResourcePill, ConfirmDeleteModal, type DraggableResource, useUIStore } from "@infrawrench/ui";
+import { ResourcePill, ConfirmDeleteModal, dispatchResourcesChanged, type DraggableResource, useUIStore } from "@infrawrench/ui";
 import { apiDelete } from "@/lib/api";
 import { CreateResourceModal } from "./CreateResourceModal";
 
@@ -45,7 +45,7 @@ export function AccountDetailView({
   async function handleDeleteAccount() {
     await apiDelete(`/api/accounts/${account.id}`);
     useUIStore.getState().bumpAccounts();
-    window.dispatchEvent(new CustomEvent("iw:resources-changed"));
+    dispatchResourcesChanged();
     void navigate({ to: "/" });
   }
 
@@ -187,7 +187,7 @@ export function AccountDetailView({
           onClose={() => setCreateTarget(null)}
           onCreated={(resource) => {
             setCreateTarget(null);
-            window.dispatchEvent(new CustomEvent("iw:resources-changed"));
+            dispatchResourcesChanged();
             void navigate({
               to: "/resources/$pluginId/$resourceTypeId/$resourceId",
               params: { pluginId: account.pluginId, resourceTypeId: createTarget.id, resourceId: resource.id },

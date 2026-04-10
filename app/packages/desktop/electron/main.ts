@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, dialog, session, shell } from "electron";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import initSqlJs, { type Database as SqlJsDb } from "sql.js";
+import initSqlJs, { type Database as SqlJsDb, type SqlValue } from "sql.js";
 import { closeAllTunnels } from "./ssh-tunnel";
 import { killAllSshShells } from "./ssh-shell";
 import { killAllK8sExecs } from "./k8s-exec";
@@ -192,7 +192,7 @@ ipcMain.handle("db_select", async (_e, { sql, params }: { sql: string; params?: 
   const db = await getSqlite();
   const stmt = db.prepare(normalizeSql(sql));
   const rows: Record<string, unknown>[] = [];
-  stmt.bind(params ?? []);
+  stmt.bind((params ?? []) as SqlValue[]);
   while (stmt.step()) rows.push(stmt.getAsObject() as Record<string, unknown>);
   stmt.free();
   return rows;
@@ -200,7 +200,7 @@ ipcMain.handle("db_select", async (_e, { sql, params }: { sql: string; params?: 
 
 ipcMain.handle("db_execute", async (_e, { sql, params }: { sql: string; params?: unknown[] }) => {
   const db = await getSqlite();
-  db.run(normalizeSql(sql), params ?? []);
+  db.run(normalizeSql(sql), (params ?? []) as SqlValue[]);
   const rowsAffected = db.getRowsModified();
   persist();
   return { rowsAffected, lastInsertId: 0 };

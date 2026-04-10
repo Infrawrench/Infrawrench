@@ -38,7 +38,7 @@ async function hmac(
 ): Promise<ArrayBuffer> {
   const cryptoKey = await crypto.subtle.importKey(
     "raw",
-    key,
+    key instanceof Uint8Array ? new Uint8Array(key).buffer as ArrayBuffer : key,
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["sign"],
@@ -157,7 +157,7 @@ export function parseXml(xml: string): Record<string, unknown> {
 
 function elementToObject(el: Element): Record<string, unknown> {
   const obj: Record<string, unknown> = {};
-  for (const child of el.children) {
+  for (const child of Array.from(el.children)) {
     const key = child.localName;
     // If multiple children share the same tag, collect as array
     if (obj[key] !== undefined) {

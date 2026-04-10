@@ -270,7 +270,7 @@ describe("resource-detail feature flag parity with desktop", () => {
   });
 
   it("hasSshTerminal=false when sshEndpoint declared but host field is empty", async () => {
-    const emptyResource = { ...DB_RESOURCE, fieldsJson: { state: "running" }, outputsJson: {} };
+    const emptyResource = { ...DB_RESOURCE, fieldsJson: { state: "running", publicIp: "" }, outputsJson: { publicIp: "" } };
     setupMocks(
       { getSshConfig: null, sshEndpoint: { hostOutputKey: "publicIp" } },
       emptyResource,

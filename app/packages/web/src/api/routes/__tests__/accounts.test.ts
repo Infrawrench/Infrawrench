@@ -142,7 +142,7 @@ describe("Account routes", () => {
       expect(body.id).toBe("acct-uuid-1");
 
       // Verify encrypted values were stored
-      const insertedValues = values.mock.calls[0][0];
+      const insertedValues = values.mock.calls[0]![0];
       expect(insertedValues.encryptedCredentials).toBe("enc-blob");
       expect(insertedValues.credentialsIv).toBe("iv-123");
     });

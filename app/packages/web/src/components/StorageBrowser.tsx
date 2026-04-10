@@ -10,40 +10,9 @@ async function storageMakeFolder(input: { accountId: string; bucket: string; key
 async function storageDelete(input: { accountId: string; bucket: string; key: string }) {
   await apiPost("/api/storage/delete", input);
 }
-import { formatErrorMessage } from "@/lib/errors";
+import { formatSize, formatDate, formatErrorMessage, type TransferEntry } from "@infrawrench/ui";
+import type { StorageObject } from "@infrawrench/plugin-base";
 
-interface StorageObject {
-  key: string;
-  name: string;
-  size: number;
-  lastModified: string;
-  isDirectory: boolean;
-  contentType?: string;
-}
-
-interface TransferEntry {
-  id: string;
-  name: string;
-  pct: number;
-  done: boolean;
-  error?: string;
-}
-
-function formatSize(bytes: number): string {
-  if (bytes === 0) return "\u2014";
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1_048_576) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1_073_741_824) return `${(bytes / 1_048_576).toFixed(1)} MB`;
-  return `${(bytes / 1_073_741_824).toFixed(2)} GB`;
-}
-
-function formatDate(iso: string): string {
-  if (!iso) return "\u2014";
-  return new Date(iso).toLocaleDateString(undefined, {
-    year: "numeric", month: "short", day: "numeric",
-    hour: "2-digit", minute: "2-digit",
-  });
-}
 
 export function StorageBrowser({ accountId, bucketName }: { accountId: string; bucketName: string }) {
   const [prefix, setPrefix] = useState("");

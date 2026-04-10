@@ -19,11 +19,11 @@ export function AddAccountModal({ onClose, onAdded }: Props) {
       credentialFields: l.plugin.manifest.credentialFields.map((f) => ({
         key: f.key,
         label: f.label,
-        description: f.description,
-        placeholder: f.placeholder,
+        ...(f.description !== undefined ? { description: f.description } : {}),
+        ...(f.placeholder !== undefined ? { placeholder: f.placeholder } : {}),
         sensitive: f.sensitive,
-        multiline: f.multiline,
-        defaultValue: f.defaultValue,
+        ...(f.multiline !== undefined ? { multiline: f.multiline } : {}),
+        ...(f.defaultValue !== undefined ? { defaultValue: f.defaultValue } : {}),
       })),
     }));
   }, []);

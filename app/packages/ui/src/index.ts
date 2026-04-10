@@ -65,3 +65,10 @@ export type { DroppableDashboardAreaProps } from "./dnd/DroppableDashboardArea.j
 export { DraggableSidebarResource } from "./dnd/DraggableSidebarResource.js";
 export type { DraggableSidebarResourceProps } from "./dnd/DraggableSidebarResource.js";
 export type { DraggableResource } from "./dnd/types.js";
+
+// Utilities
+export {
+  formatSize, formatDate, groupBy, formatErrorMessage, evaluateShowWhen, buildDefaultFields, deriveSSHUsername,
+  RESOURCES_CHANGED_EVENT, REFRESH_RESOURCE_EVENT, dispatchResourcesChanged, dispatchRefreshResource,
+} from "./utils.js";
+export type { TransferEntry, SftpConfig } from "./utils.js";

@@ -12,6 +12,7 @@ import type {
   HostAction,
 } from "@infrawrench/plugin-base";
 import { useUIStore } from "../../store/ui.store.js";
+import { dispatchRefreshResource } from "../../utils.js";
 
 // ─── Action dispatcher ────────────────────────────────────────────────────────
 
@@ -32,7 +33,7 @@ function useActionDispatch() {
         window.location.href = `/resources/${action.pluginId}/${action.resourceTypeId}/${action.resourceId}`;
         break;
       case "refresh-resource":
-        window.dispatchEvent(new CustomEvent("iw:refresh-resource"));
+        dispatchRefreshResource();
         break;
     }
   };

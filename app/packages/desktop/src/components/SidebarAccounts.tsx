@@ -3,7 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { invoke } from "../lib/invoke";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
-import { useUIStore, ConfirmDeleteModal, type DraggableResource } from "@infrawrench/ui";
+import { useUIStore, ConfirmDeleteModal, RESOURCES_CHANGED_EVENT, type DraggableResource } from "@infrawrench/ui";
 import { getDb } from "../db/client";
 import { loadPlugins, getPlugin } from "../plugins/loader";
 import { getListableResourceTypes } from "../lib/account-resource-types";
@@ -274,8 +274,8 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
         });
       }
     }
-    window.addEventListener("iw:resources-changed", handler);
-    return () => window.removeEventListener("iw:resources-changed", handler);
+    window.addEventListener(RESOURCES_CHANGED_EVENT, handler);
+    return () => window.removeEventListener(RESOURCES_CHANGED_EVENT, handler);
   }, [groups, expanded]);
 
   // Handle secret drops onto sidebar accounts and resources
@@ -329,7 +329,7 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
             setTunnelTarget({
               sshHost,
               sourceAccountId: targetResource.accountId,
-              defaultService: pluginToPreset[sourcePlugin],
+              ...(pluginToPreset[sourcePlugin] !== undefined ? { defaultService: pluginToPreset[sourcePlugin] } : {}),
             });
           } else {
             // Non-tunnel resources → deploy credentials via SSH
@@ -521,7 +521,7 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
       <SshTunnelModal
         sshHost={tunnelTarget.sshHost}
         sourceAccountId={tunnelTarget.sourceAccountId}
-        defaultService={tunnelTarget.defaultService}
+        {...(tunnelTarget.defaultService !== undefined ? { defaultService: tunnelTarget.defaultService } : {})}
         onClose={() => setTunnelTarget(null)}
         onTunnelEstablished={(newAccountId) => {
           setTunnelTarget(null);

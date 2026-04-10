@@ -153,7 +153,8 @@ export function parseKubeconfig(raw: string): ParsedKubeconfig {
 
 // ── Status mapping helpers ────────────────────────────────────────────────
 
-export type HealthStatus = "healthy" | "degraded" | "error" | "unknown" | "provisioning";
+import type { ResourceStatus } from "@infrawrench/plugin-base";
+export type HealthStatus = ResourceStatus;
 
 export function mapPeerStatus(status: string): HealthStatus {
   switch (status.toLowerCase()) {

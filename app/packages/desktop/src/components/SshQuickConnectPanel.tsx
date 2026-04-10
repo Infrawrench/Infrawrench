@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { deriveSSHUsername } from "@infrawrench/ui";
 import { invoke } from "../lib/invoke";
 import { getDb } from "../db/client";
 
@@ -64,7 +65,7 @@ export function SshQuickConnectPanel({ host, onConnect }: SshQuickConnectPanelPr
         const pub = await invoke<string>("ssh_read_system_key", { name: `${sys[0].name}.pub` });
         const comment = pub.trim().split(" ")[2];
         if (comment) {
-          const derivedUsername = comment.split("@")[0] || "root";
+          const derivedUsername = deriveSSHUsername(comment);
           setUsername((prev) => (prev === "root" ? derivedUsername : prev));
         }
       } catch { /* .pub might not exist */ }
@@ -170,7 +171,7 @@ export function SshQuickConnectPanel({ host, onConnect }: SshQuickConnectPanelPr
                             const pub = await invoke<string>("ssh_read_system_key", { name: `${k.name}.pub` });
                             const comment = pub.trim().split(" ")[2];
                             if (comment) {
-                              const derivedUsername = comment.split("@")[0] || "root";
+                              const derivedUsername = deriveSSHUsername(comment);
                               setUsername((prev) => (
                                 prev === "root" || prev === derivedUsername ? derivedUsername : prev
                               ));

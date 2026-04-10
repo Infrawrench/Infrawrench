@@ -6,6 +6,7 @@ import type {
   CreateResourceConfig,
   SizeOption,
   ImageOption,
+  ResourceStatus,
 } from "@infrawrench/plugin-base";
 
 /**
@@ -467,7 +468,7 @@ export class OvhClient implements PluginClient {
     const fields = resource.fields;
     const statusStr = String(fields["status"] ?? "").toUpperCase();
 
-    const status = ((): "healthy" | "degraded" | "error" | "unknown" | "provisioning" => {
+    const status = ((): ResourceStatus => {
       if (statusStr === "ACTIVE" || statusStr === "READY") return "healthy";
       if (statusStr === "BUILD" || statusStr === "INSTALLING" || statusStr === "CREATING") return "provisioning";
       if (statusStr === "ERROR" || statusStr === "DELETED") return "error";
@@ -504,7 +505,7 @@ export class OvhClient implements PluginClient {
 
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema {
     const statusStr = String(resource.fields["status"] ?? "").toUpperCase();
-    const status = ((): "healthy" | "degraded" | "error" | "unknown" | "provisioning" => {
+    const status = ((): ResourceStatus => {
       if (statusStr === "ACTIVE" || statusStr === "READY") return "healthy";
       if (statusStr === "BUILD" || statusStr === "INSTALLING" || statusStr === "CREATING") return "provisioning";
       if (statusStr === "ERROR" || statusStr === "DELETED") return "error";

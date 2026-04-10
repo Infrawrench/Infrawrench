@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { formatErrorMessage } from "../lib/errors";
 import { createPluginClient } from "../lib/plugin-client";
-import { Modal } from "@infrawrench/ui";
+import { Modal, buildDefaultFields, evaluateShowWhen } from "@infrawrench/ui";
 import { ErrorNotice } from "./ErrorNotice";
 import { FieldRenderer } from "./create-resource";
 import type { PluginClient, ResourceTypeDefinition, CreateResourceConfig } from "@infrawrench/plugin-base";
@@ -124,12 +124,7 @@ export function CreateResourceModal({
         const cfg = await client.getCreateConfig(resourceType.id);
         if (!cancelled) {
           setConfig(cfg);
-          // Seed defaults
-          const init: Record<string, string> = {};
-          for (const f of cfg.fields) {
-            if (f.defaultValue) init[f.key] = f.defaultValue;
-            else if (f.kind === "disk-slider") init[f.key] = String(f.defaultGb ?? f.minGb ?? 20);
-          }
+          const init = buildDefaultFields(cfg.fields);
           setFields(init);
 
           const cfgRegionField = cfg.fields.find((f) => f.kind === "region-picker" && f.regions?.length);
@@ -240,7 +235,7 @@ export function CreateResourceModal({
     const timer = setTimeout(() => {
       const visibleFields: Record<string, string> = {};
       for (const f of configWithPricing.fields) {
-        if (f.showWhen && fields[f.showWhen.fieldKey] !== f.showWhen.fieldValue) continue;
+        if (!evaluateShowWhen(f, fields)) continue;
         if (fields[f.key] !== undefined) visibleFields[f.key] = fields[f.key]!;
       }
       void client.getCreateCostEstimate!(resourceType.id, visibleFields)
@@ -261,7 +256,7 @@ export function CreateResourceModal({
     if (costEstimateMonthly != null) return costEstimateMonthly;
     if (!configWithPricing) return null;
     const visibleFields = configWithPricing.fields.filter(
-      (f) => !f.showWhen || fields[f.showWhen.fieldKey] === f.showWhen.fieldValue,
+      (f) => evaluateShowWhen(f, fields),
     );
     const sizeField = visibleFields.find((f) => f.kind === "size-picker" && f.sizes?.length);
     if (!sizeField?.sizes) return null;
@@ -295,7 +290,7 @@ export function CreateResourceModal({
       const cfg = config;
       const visibleFields: Record<string, string> = {};
       for (const f of (cfg?.fields ?? [])) {
-        if (f.showWhen && fields[f.showWhen.fieldKey] !== f.showWhen.fieldValue) continue;
+        if (!evaluateShowWhen(f, fields)) continue;
         if (fields[f.key] !== undefined) visibleFields[f.key] = fields[f.key]!;
       }
       const created = await client.createResource(resourceType.id, accountId, visibleFields);
@@ -341,7 +336,7 @@ export function CreateResourceModal({
           ) : configWithPricing ? (
             <div className="space-y-6">
               {configWithPricing.fields
-                .filter((f) => !f.showWhen || fields[f.showWhen.fieldKey] === f.showWhen.fieldValue)
+                .filter((f) => evaluateShowWhen(f, fields))
                 .map((f) => (
                   <FieldRenderer key={f.key} field={f} value={fields[f.key] ?? ""} onChange={(v) => setField(f.key, v)} />
                 ))}

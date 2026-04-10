@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
-import { useUIStore } from "@infrawrench/ui";
+import { useUIStore, RESOURCES_CHANGED_EVENT } from "@infrawrench/ui";
 import { DashboardView } from "@/components/DashboardView";
 import { apiGet } from "@/lib/api";
 
@@ -43,8 +43,8 @@ function DashboardPage() {
     function onChanged() {
       apiGet<typeof data>(`/api/dashboards/${dashboardId}`).then(setData);
     }
-    window.addEventListener("iw:resources-changed", onChanged);
-    return () => window.removeEventListener("iw:resources-changed", onChanged);
+    window.addEventListener(RESOURCES_CHANGED_EVENT, onChanged);
+    return () => window.removeEventListener(RESOURCES_CHANGED_EVENT, onChanged);
   }, [dashboardId]);
 
   if (!data) return <div className="p-6 text-gray-500 text-sm animate-pulse">Loading…</div>;

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { deriveSSHUsername } from "@infrawrench/ui";
 import { apiGet } from "@/lib/api";
 
 interface SshKey {
@@ -28,8 +29,7 @@ export function SshQuickConnectPanel({ host, onConnect }: SshQuickConnectPanelPr
           setSelectedKeyId(result[0]!.id);
           // Auto-derive username from key owner (matches desktop behavior)
           if (result[0]!.ownerName) {
-            const derivedUsername = result[0]!.ownerName.split("@")[0] || "root";
-            setUsername(derivedUsername);
+            setUsername(deriveSSHUsername(result[0]!.ownerName));
           }
         }
       })
@@ -85,7 +85,7 @@ export function SshQuickConnectPanel({ host, onConnect }: SshQuickConnectPanelPr
                   onClick={() => {
                     setSelectedKeyId(k.id);
                     if (k.ownerName) {
-                      const derivedUsername = k.ownerName.split("@")[0] || "root";
+                      const derivedUsername = deriveSSHUsername(k.ownerName);
                       setUsername((prev) => (prev === "root" || prev === derivedUsername ? derivedUsername : prev));
                     }
                   }}

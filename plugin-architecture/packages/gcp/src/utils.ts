@@ -1,3 +1,5 @@
+import type { ResourceStatus } from "@infrawrench/plugin-base";
+
 // ─── Shared utility functions ───────────────────────────────────────────────
 
 export function formatBytes(bytes: number): string {
@@ -10,7 +12,7 @@ export function formatBytes(bytes: number): string {
 
 export function gcpStatus(
   s: string | undefined,
-): "healthy" | "degraded" | "error" | "unknown" | "provisioning" {
+): ResourceStatus {
   switch ((s ?? "").toUpperCase()) {
     case "RUNNING":
     case "ACTIVE":

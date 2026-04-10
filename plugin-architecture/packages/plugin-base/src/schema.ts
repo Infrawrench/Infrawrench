@@ -37,9 +37,12 @@ export interface BadgeNode {
   color: "green" | "yellow" | "red" | "blue" | "gray";
 }
 
+/** Health/lifecycle status for infrastructure resources. */
+export type ResourceStatus = "healthy" | "degraded" | "error" | "unknown" | "provisioning";
+
 export interface StatusDotNode {
   kind: "status-dot";
-  status: "healthy" | "degraded" | "error" | "unknown" | "provisioning";
+  status: ResourceStatus;
   label?: string;
 }
 
@@ -201,7 +204,7 @@ export interface PeerPaneResource {
   resourceTypeId: string;
   displayName: string;
   subtitle?: string;
-  status?: "healthy" | "degraded" | "error" | "unknown" | "provisioning";
+  status?: ResourceStatus;
   fields: Record<string, unknown>;
   externalId?: string;
   /** Host will show an exec/shell button for pods */

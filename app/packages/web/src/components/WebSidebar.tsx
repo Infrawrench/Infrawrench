@@ -4,6 +4,7 @@ import {
   useUIStore,
   DroppableDashboardItem,
   DraggableSidebarResource,
+  RESOURCES_CHANGED_EVENT,
 } from "@infrawrench/ui";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import { AddAccountModal } from "./AddAccountModal";
@@ -214,8 +215,8 @@ export function WebSidebar() {
         void loadResources(accountId, true);
       }
     }
-    window.addEventListener("iw:resources-changed", handler);
-    return () => window.removeEventListener("iw:resources-changed", handler);
+    window.addEventListener(RESOURCES_CHANGED_EVENT, handler);
+    return () => window.removeEventListener(RESOURCES_CHANGED_EVENT, handler);
   }, [expanded]);
 
   // Auto-refresh expanded accounts every 30s

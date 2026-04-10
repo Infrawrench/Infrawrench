@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { evaluateShowWhen, buildDefaultFields } from "@/components/CreateResourceModal";
+import { evaluateShowWhen, buildDefaultFields } from "@infrawrench/ui";
 
 describe("evaluateShowWhen", () => {
   it("returns true when no showWhen is set", () => {

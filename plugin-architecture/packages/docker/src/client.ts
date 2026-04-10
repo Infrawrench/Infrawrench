@@ -4,6 +4,7 @@ import type {
   ResourceInstance,
   DetailViewSchema,
   SidebarItemSchema,
+  ResourceStatus,
 } from "@infrawrench/plugin-base";
 
 interface ContainerInfo {
@@ -32,7 +33,7 @@ function formatPorts(ports: ContainerInfo["Ports"]): string {
     .join(", ");
 }
 
-function containerStatus(state: string): "healthy" | "degraded" | "error" | "unknown" | "provisioning" {
+function containerStatus(state: string): ResourceStatus {
   switch (state.toLowerCase()) {
     case "running": return "healthy";
     case "paused": return "degraded";

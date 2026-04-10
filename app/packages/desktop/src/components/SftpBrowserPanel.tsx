@@ -1,45 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { invoke } from "../lib/invoke";
+import { formatSize, formatDate, type TransferEntry, type SftpConfig } from "@infrawrench/ui";
+import type { StorageObject } from "@infrawrench/plugin-base";
 import { formatErrorMessage } from "../lib/errors";
 
-export interface SftpConfig {
-  host: string;
-  port: number;
-  username: string;
-  privateKey: string;
-}
+type SftpEntry = StorageObject;
 
-interface SftpEntry {
-  key: string;
-  name: string;
-  size: number;
-  lastModified: string;
-  isDirectory: boolean;
-}
 
-interface TransferEntry {
-  id: string;
-  name: string;
-  pct: number;
-  done: boolean;
-  error?: string;
-}
-
-function formatSize(bytes: number): string {
-  if (bytes === 0) return "—";
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1_048_576) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1_073_741_824) return `${(bytes / 1_048_576).toFixed(1)} MB`;
-  return `${(bytes / 1_073_741_824).toFixed(2)} GB`;
-}
-
-function formatDate(iso: string): string {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleDateString(undefined, {
-    year: "numeric", month: "short", day: "numeric",
-    hour: "2-digit", minute: "2-digit",
-  });
-}
 
 function normalizePath(p: string): string {
   // Collapse double slashes, ensure leading slash, strip trailing slash (except root)

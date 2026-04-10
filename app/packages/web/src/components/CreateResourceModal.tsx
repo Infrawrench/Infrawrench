@@ -1,27 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { Modal, FieldRenderer, type SshKeyEntry } from "@infrawrench/ui";
+import { Modal, FieldRenderer, evaluateShowWhen, buildDefaultFields, type SshKeyEntry } from "@infrawrench/ui";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import type { CreateResourceConfig } from "@infrawrench/plugin-base";
-
-/** Evaluate whether a field should be visible based on showWhen conditions */
-export function evaluateShowWhen(
-  field: { showWhen?: { fieldKey: string; fieldValue: string } },
-  fields: Record<string, string>,
-): boolean {
-  return !field.showWhen || fields[field.showWhen.fieldKey] === field.showWhen.fieldValue;
-}
-
-/** Build the initial field values from a CreateResourceConfig */
-export function buildDefaultFields(
-  configFields: Array<{ key: string; kind: string; defaultValue?: string; defaultGb?: number; minGb?: number }>,
-): Record<string, string> {
-  const init: Record<string, string> = {};
-  for (const f of configFields) {
-    if (f.defaultValue) init[f.key] = f.defaultValue;
-    else if (f.kind === "disk-slider") init[f.key] = String(f.defaultGb ?? f.minGb ?? 20);
-  }
-  return init;
-}
 
 interface Props {
   accountId: string;

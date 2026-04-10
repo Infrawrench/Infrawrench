@@ -5,6 +5,7 @@ import {
   DraggableChildPill,
   StatusDotNodeRenderer,
   ConfirmDeleteModal,
+  dispatchResourcesChanged,
   type QueryResult,
   type ChildResource,
   type ChildResourceGroup,
@@ -155,14 +156,14 @@ export function ResourceDetailClient({
 
   const handleApplyManifest = useCallback(async (manifest: string): Promise<void> => {
     await apiPost(`/api/resources/${pluginId}/${resourceTypeId}/manifest`, { accountId, resourceId, manifest });
-    window.dispatchEvent(new CustomEvent("iw:resources-changed"));
+    dispatchResourcesChanged();
   }, [accountId, resourceId, pluginId, resourceTypeId]);
 
   // ── Delete resource ──────────────────────────────────────────────────────
   async function handleDelete() {
     await apiDelete(`/api/resources/${pluginId}/${resourceTypeId}?resourceId=${encodeURIComponent(resourceId)}&accountId=${accountId}`);
     void navigate({ to: "/accounts/$accountId", params: { accountId } });
-    window.dispatchEvent(new CustomEvent("iw:resources-changed"));
+    dispatchResourcesChanged();
   }
 
   // ── Child resource groups ────────────────────────────────────────────────
@@ -372,7 +373,7 @@ export function ResourceDetailClient({
           onClose={() => setCreateTarget(null)}
           onCreated={(resource) => {
             setCreateTarget(null);
-            window.dispatchEvent(new CustomEvent("iw:resources-changed"));
+            dispatchResourcesChanged();
             void navigate({
               to: "/resources/$pluginId/$resourceTypeId/$resourceId",
               params: { pluginId, resourceTypeId: createTarget.typeId, resourceId: resource.id },

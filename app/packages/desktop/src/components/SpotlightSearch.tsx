@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { groupBy } from "@infrawrench/ui";
 import { invoke } from "../lib/invoke";
 import { getDb } from "../db/client";
 import { loadPlugins } from "../plugins/loader";
@@ -330,10 +331,3 @@ function filter(results: SearchResult[], query: string): SearchResult[] {
   );
 }
 
-function groupBy<T>(arr: T[], key: (item: T) => string): Record<string, T[]> {
-  return arr.reduce<Record<string, T[]>>((acc, item) => {
-    const k = key(item);
-    (acc[k] ??= []).push(item);
-    return acc;
-  }, {});
-}

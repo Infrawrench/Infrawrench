@@ -1,9 +1,6 @@
 import cp from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { createRequire } from "node:module";
-
-const require = createRequire(import.meta.url);
 
 export function resolveBinaryPath(command: string): string {
   const binaryPath = cp.execFileSync("/usr/bin/which", [command], {

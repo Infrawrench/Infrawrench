@@ -109,7 +109,7 @@ function setupSync(pluginResources: ReturnType<typeof makeResource>[]) {
   // db.insert().values().onConflictDoUpdate()
   insertCalls.length = 0;
   const onConflictDoUpdate = vi.fn().mockImplementation((conflict) => {
-    insertCalls[insertCalls.length - 1].conflictSet = conflict.set;
+    insertCalls[insertCalls.length - 1]!.conflictSet = conflict.set;
     return Promise.resolve();
   });
   const values = vi.fn().mockImplementation((v) => {
@@ -147,16 +147,16 @@ describe("syncAccountResources stale resource cleanup", () => {
 
     // Verify the upsert happened for vm-2
     expect(insertCalls.length).toBe(1);
-    expect(insertCalls[0].values).toMatchObject({ id: "vm-2", displayName: "Running VM" });
+    expect(insertCalls[0]!.values).toMatchObject({ id: "vm-2", displayName: "Running VM" });
 
     // Verify db.update was called to soft-delete stale resources
     // Call 1: soft-delete synced resources not in live list
     // Call 2: clean up stale locally-created resources (lastSyncedAt IS NULL, older than 5 min)
     expect(updateCalls.length).toBe(2);
-    expect(updateCalls[0].set).toMatchObject({
+    expect(updateCalls[0]!.set).toMatchObject({
       deletedAt: expect.any(Date),
     });
-    expect(updateCalls[1].set).toMatchObject({
+    expect(updateCalls[1]!.set).toMatchObject({
       deletedAt: expect.any(Date),
     });
   });
@@ -175,7 +175,7 @@ describe("syncAccountResources stale resource cleanup", () => {
     // Call 1: soft-delete synced resources
     // Call 2: clean up stale locally-created resources
     expect(updateCalls.length).toBe(2);
-    expect(updateCalls[0].set).toMatchObject({
+    expect(updateCalls[0]!.set).toMatchObject({
       deletedAt: expect.any(Date),
     });
   });
@@ -189,12 +189,12 @@ describe("syncAccountResources stale resource cleanup", () => {
 
     // The upsert should set deletedAt: null to undelete it
     expect(insertCalls.length).toBe(1);
-    expect(insertCalls[0].values).toMatchObject({
+    expect(insertCalls[0]!.values).toMatchObject({
       id: "vm-revived",
       deletedAt: null,
     });
     // The onConflictDoUpdate should also set deletedAt: null
-    expect(insertCalls[0].conflictSet).toMatchObject({
+    expect(insertCalls[0]!.conflictSet).toMatchObject({
       deletedAt: null,
     });
   });
@@ -205,11 +205,11 @@ describe("syncAccountResources stale resource cleanup", () => {
     const app = buildApp();
     await app.request("/acct-1/sync", { method: "POST" });
 
-    expect(insertCalls[0].values).toMatchObject({
+    expect(insertCalls[0]!.values).toMatchObject({
       displayName: "Updated Name",
       fieldsJson: { state: "running" },
     });
-    expect(insertCalls[0].conflictSet).toMatchObject({
+    expect(insertCalls[0]!.conflictSet).toMatchObject({
       displayName: "Updated Name",
       fieldsJson: { state: "running" },
     });
@@ -234,7 +234,7 @@ describe("syncAccountResources stale resource cleanup", () => {
     // Two update calls: one for synced resources not in live list,
     // one for stale locally-created resources
     expect(updateCalls.length).toBe(2);
-    expect(updateCalls[0].set).toMatchObject({
+    expect(updateCalls[0]!.set).toMatchObject({
       deletedAt: expect.any(Date),
     });
   });

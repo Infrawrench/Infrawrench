@@ -3,7 +3,7 @@ import { createFileRoute, useNavigate, useRouterState } from "@tanstack/react-ro
 // useDraggable now used inside shared DraggableChildPill from @infrawrench/ui
 import { invoke } from "../lib/invoke";
 import type { ResourceInstance, DetailViewSchema, ResourceTypeDefinition } from "@infrawrench/plugin-base";
-import { DetailView, DraggableChildPill, ConfirmDeleteModal, type QueryResult, type ChildResource, type ChildResourceGroup, type DraggableResource, useUIStore } from "@infrawrench/ui";
+import { DetailView, DraggableChildPill, ConfirmDeleteModal, RESOURCES_CHANGED_EVENT, REFRESH_RESOURCE_EVENT, dispatchResourcesChanged, dispatchRefreshResource, type QueryResult, type ChildResource, type ChildResourceGroup, type DraggableResource, useUIStore } from "@infrawrench/ui";
 import { getDb } from "../db/client";
 import { getPlugin } from "../plugins/loader";
 import { getSqlSession, setSqlSession } from "../lib/sql-session";
@@ -536,8 +536,8 @@ function ResourceDetailPage() {
       setRefreshVersion((v) => v + 1);
     }
     const id = setInterval(bgRefresh, 30_000);
-    window.addEventListener("iw:refresh-resource", bgRefresh);
-    return () => { clearInterval(id); window.removeEventListener("iw:refresh-resource", bgRefresh); };
+    window.addEventListener(REFRESH_RESOURCE_EVENT, bgRefresh);
+    return () => { clearInterval(id); window.removeEventListener(REFRESH_RESOURCE_EVENT, bgRefresh); };
   }, []);
 
   const handleRunQuery = useCallback(async (sql: string): Promise<QueryResult> => {
@@ -576,7 +576,7 @@ function ResourceDetailPage() {
     if (!client?.applyManifest) throw new Error("Plugin does not support manifest editing");
     await client.applyManifest(decodedResourceId, accountId, manifest);
     // Trigger a refresh so the overview tab reflects changes
-    window.dispatchEvent(new CustomEvent("iw:refresh-resource"));
+    dispatchRefreshResource();
   }, [decodedResourceId, accountId]);
 
   async function handleDelete() {
@@ -593,7 +593,7 @@ function ResourceDetailPage() {
       `resource:${accountId}:${decodedResourceId}:ssh`,
       `resource:${accountId}:${decodedResourceId}:sftp`,
     ]);
-    window.dispatchEvent(new CustomEvent("iw:resources-changed", { detail: { accountId } }));
+    dispatchResourcesChanged(accountId);
     void navigateToWorkspaceTarget(
       navigate,
       accountTabTarget(accountId),
@@ -916,7 +916,7 @@ function ResourceDetailPage() {
           onClose={() => setCreateChildTarget(null)}
           onCreated={(newResource) => {
             setCreateChildTarget(null);
-            window.dispatchEvent(new CustomEvent("iw:resources-changed", { detail: { accountId } }));
+            dispatchResourcesChanged(accountId);
             // Refresh the current page to show the new child
             backgroundRefreshRef.current = true;
             setRefreshVersion((v) => v + 1);

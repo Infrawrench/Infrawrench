@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { deriveSSHUsername } from "@infrawrench/ui";
 import { invoke } from "../lib/invoke";
 import { getDb } from "../db/client";
 
@@ -69,7 +70,7 @@ export function SshKeyPicker({ username, onUsernameChange, onKeyResolved, select
           const pub = await invoke<string>("ssh_read_system_key", { name: `${first.name}.pub` });
           const comment = pub.trim().split(" ")[2];
           if (comment) {
-            const derived = comment.split("@")[0] || "root";
+            const derived = deriveSSHUsername(comment);
             if (username === "root") onUsernameChange(derived);
           }
         } catch { /* .pub might not exist */ }
@@ -106,7 +107,7 @@ export function SshKeyPicker({ username, onUsernameChange, onKeyResolved, select
         const pub = await invoke<string>("ssh_read_system_key", { name: `${source.name}.pub` });
         const comment = pub.trim().split(" ")[2];
         if (comment) {
-          const derived = comment.split("@")[0] || "root";
+          const derived = deriveSSHUsername(comment);
           if (username === "root" || username === derived) onUsernameChange(derived);
         }
       } catch { /* .pub might not exist */ }

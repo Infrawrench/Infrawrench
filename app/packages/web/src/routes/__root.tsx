@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { createRootRoute, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
-import { DndShell, useUIStore, workspaceTabTargetsEqual, type DraggableResource } from "@infrawrench/ui";
+import { DndShell, useUIStore, workspaceTabTargetsEqual, dispatchResourcesChanged, type DraggableResource } from "@infrawrench/ui";
 import { WebSidebar } from "@/components/WebSidebar";
 import { WebGlobalTabBar } from "@/components/WebGlobalTabBar";
 import { SpotlightSearch } from "@/components/SpotlightSearch";
@@ -115,7 +115,7 @@ function AuthenticatedShell() {
   async function handlePinToDashboard(resource: DraggableResource, dashboardId: string) {
     await apiPost("/api/dashboards/pin", { dashboardId, resourceId: resource.id });
     useUIStore.getState().bumpDashboardPins();
-    window.dispatchEvent(new CustomEvent("iw:resources-changed"));
+    dispatchResourcesChanged();
   }
 
   return (

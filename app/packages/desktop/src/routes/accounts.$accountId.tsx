@@ -3,7 +3,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { invoke } from "../lib/invoke";
 import { useDraggable, useDroppable, useDndContext } from "@dnd-kit/core";
 import type { ResourceInstance, ResourceTypeDefinition } from "@infrawrench/plugin-base";
-import { useUIStore, ConfirmDeleteModal, type DraggableResource } from "@infrawrench/ui";
+import { useUIStore, ConfirmDeleteModal, RESOURCES_CHANGED_EVENT, dispatchResourcesChanged, type DraggableResource } from "@infrawrench/ui";
 import { getDb } from "../db/client";
 import { getPlugin } from "../plugins/loader";
 import { pinResource } from "../lib/pins";
@@ -72,8 +72,8 @@ function AccountPage() {
       const { accountId: changedId } = (e as CustomEvent<{ accountId: string }>).detail;
       if (changedId === accountId) { backgroundLoadRef.current = true; setLoadVersion((v) => v + 1); }
     }
-    window.addEventListener("iw:resources-changed", handler);
-    return () => window.removeEventListener("iw:resources-changed", handler);
+    window.addEventListener(RESOURCES_CHANGED_EVENT, handler);
+    return () => window.removeEventListener(RESOURCES_CHANGED_EVENT, handler);
   }, [accountId]);
 
   // Close context menu on outside click
@@ -113,7 +113,7 @@ function AccountPage() {
               docker: "docker", postgres: "postgres", mysql: "mysql",
               redis: "redis", memcached: "memcached",
             };
-            setTunnelTarget({ sshHost, defaultService: pluginToPreset[sourcePlugin] });
+            setTunnelTarget({ sshHost, ...(pluginToPreset[sourcePlugin] !== undefined ? { defaultService: pluginToPreset[sourcePlugin] } : {}) });
           } else {
             setEnvDeployDrop({ source, sshHost });
           }
@@ -400,7 +400,7 @@ function AccountPage() {
                     typeId={cat.typeDef.id}
                     pinned={pinned.has(resource.id)}
                     acceptsSecretImport={kubeconfigTypeIds.has(cat.typeDef.id)}
-                    sshHostOutputKey={cat.typeDef.sshEndpoint?.hostOutputKey}
+                    {...(cat.typeDef.sshEndpoint?.hostOutputKey !== undefined ? { sshHostOutputKey: cat.typeDef.sshEndpoint.hostOutputKey } : {})}
                     onPin={() => togglePin(resource, cat.typeDef.id)}
                     onOpen={() => openDetail(resource)}
                     onContextMenuSsh={(e, sshHost) => {
@@ -455,7 +455,7 @@ function AccountPage() {
           onClose={() => setCreateTarget(null)}
           onCreated={(resource) => {
             setCreateTarget(null);
-            window.dispatchEvent(new CustomEvent("iw:resources-changed", { detail: { accountId } }));
+            dispatchResourcesChanged(accountId);
             void navigateToWorkspaceTarget(
               navigate,
               resourceTabTarget(accountId, resource.id),
@@ -499,7 +499,7 @@ function AccountPage() {
         <SshTunnelModal
           sshHost={tunnelTarget.sshHost}
           sourceAccountId={accountId}
-          defaultService={tunnelTarget.defaultService}
+          {...(tunnelTarget.defaultService !== undefined ? { defaultService: tunnelTarget.defaultService } : {})}
           onClose={() => setTunnelTarget(null)}
           onTunnelEstablished={(newAccountId) => {
             setTunnelTarget(null);
