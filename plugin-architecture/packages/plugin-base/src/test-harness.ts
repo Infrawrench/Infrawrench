@@ -28,6 +28,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   cloudflare: { apiToken: "test-cf-token" },
   ssh: { host: "192.168.1.1", port: "22", username: "root", privateKey: "-----BEGIN OPENSSH PRIVATE KEY-----\ntest\n-----END OPENSSH PRIVATE KEY-----" },
   databricks: { host: "https://adb-test.azuredatabricks.net", token: "dapi-test" },
+  azure: { tenantId: "test-tenant-id", clientId: "test-client-id", clientSecret: "test-client-secret", subscriptionId: "test-subscription-id" },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {

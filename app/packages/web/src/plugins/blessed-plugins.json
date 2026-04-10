@@ -152,6 +152,14 @@
       "checksum": "sha256-placeholder-replace-with-real-checksum",
       "blessedAt": "2026-04-08T00:00:00Z",
       "blessedBy": "astrid"
+    },
+    {
+      "id": "azure",
+      "packageName": "@infrawrench/plugin-azure",
+      "version": "0.1.0",
+      "checksum": "sha256-placeholder-replace-with-real-checksum",
+      "blessedAt": "2026-04-10T00:00:00Z",
+      "blessedBy": "astrid"
     }
   ]
 }

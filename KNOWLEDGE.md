@@ -35,6 +35,7 @@ infrawrench/
 │   ├── memcached/            # @infrawrench/plugin-memcached
 │   ├── neon/                 # @infrawrench/plugin-neon
 │   ├── docker/               # @infrawrench/plugin-docker
+│   ├── azure/                # @infrawrench/plugin-azure
 │   ├── databricks/           # @infrawrench/plugin-databricks
 │   ├── turso/                # @infrawrench/plugin-turso
 │   └── ssh/                  # @infrawrench/plugin-ssh
@@ -180,7 +181,7 @@ Resource IDs follow the convention `{accountId}:{resourceTypeId}:{externalId}`. 
 
 The loader (`app/packages/desktop/src/plugins/loader.ts`) validates each plugin's manifest against the Zod schema and checks the manifest `id` matches the registry `id` before mounting. Unknown packages are refused.
 
-Currently blessed: `gcp`, `docker`, `digitalocean`, `hetzner`, `kubernetes`, `memcached`, `mongodb`, `mysql`, `neon`, `postgres`, `redis`, `scaleway`, `ssh`, `cloudflare`, `ovh`, `aws`, `databricks`, `turso`, `planetscale`.
+Currently blessed: `gcp`, `docker`, `digitalocean`, `hetzner`, `kubernetes`, `memcached`, `mongodb`, `mysql`, `neon`, `postgres`, `redis`, `scaleway`, `ssh`, `cloudflare`, `ovh`, `aws`, `azure`, `databricks`, `turso`, `planetscale`.
 
 ---
 
@@ -327,6 +328,34 @@ All polling is *background* (no loading flash):
 - Branch status: ready→healthy, else→provisioning
 - Resource ID format: `{accountId}:ps-database:{databaseName}` or `{accountId}:ps-branch:{databaseName}/{branchName}`
 - Regions: AWS regions (us-east, us-west, eu-west, eu-central, ap-south, ap-southeast, ap-northeast, sa-east, ap-southeast-2)
+
+### Azure (`@infrawrench/plugin-azure`)
+- Auth: Azure AD service principal client credentials flow (tenant_id + client_id + client_secret)
+- Credentials: `tenantId`, `clientId`, `clientSecret` (sensitive), `subscriptionId`
+- All API calls go through Azure Resource Manager REST API (`management.azure.com`)
+- Resource ID format: `{accountId}:{typeId}:{resourceGroup}/{resourceName}` (or `{rg}/{server}/{db}` for SQL Database)
+- 26 resource types: `azure-resource-group`, `azure-vm`, `azure-disk`, `azure-vnet`, `azure-aks-cluster`, `azure-sql-database`, `azure-cosmos-db`, `azure-storage-account`, `azure-function-app`, `azure-app-service`, `azure-container-instance`, `azure-key-vault`, `azure-redis-cache`, `azure-service-bus`, `azure-container-registry`, `azure-load-balancer`, `azure-dns-zone`, `azure-nsg`, `azure-public-ip`, `azure-postgres-flexible`, `azure-mysql-flexible`, `azure-event-hub`, `azure-app-gateway`, `azure-log-analytics`, `azure-managed-identity`, `azure-firewall`
+- VM create supports B-series (burstable), D-series (general purpose), E-series (memory optimized), F-series (compute optimized) sizes with image picker (Ubuntu, Debian, RHEL, CentOS, SUSE, Windows Server) and SSH key injection
+- AKS clusters declare a Kubernetes peer integration (maps `kubeconfig` output to the Kubernetes plugin)
+- AKS kubeconfig resolved via `POST .../listClusterUserCredential` (base64-decoded)
+- Storage accounts support the storage browser via Azure Blob Storage REST API (separate storage-scoped token)
+- Cosmos DB keys/connection strings resolved via `listKeys`/`listConnectionStrings` ARM APIs
+- Redis Cache keys resolved via `listKeys` ARM API; connection string built as `host:6380,password=...,ssl=True`
+- Service Bus connection strings resolved via `listKeys` on the `RootManageSharedAccessKey` authorization rule
+- Storage Account keys resolved via `listKeys` ARM API
+- Event Hub connection strings resolved via `listKeys` on `RootManageSharedAccessKey` authorization rule
+- PostgreSQL/MySQL Flexible Server connection strings built from FQDN + admin login
+- Log Analytics shared keys resolved via `sharedKeys` ARM API
+- Secret export templates on: SQL Database, Cosmos DB, Storage Account, Redis Cache, Service Bus, Event Hub, PostgreSQL Flexible, MySQL Flexible, Log Analytics
+- Provisioning state mapping: Succeeded→healthy, Creating/Updating/Upgrading→provisioning, Stopped/Paused/Deallocated→degraded, Failed/Deleting→error
+- Delete supported for all 26 resource types via ARM DELETE
+- VM create auto-provisions VNet, Subnet, Public IP, NSG (with SSH/RDP rule), and NIC before creating the VM
+- VM listing resolves public/private IPs by following NIC → IP Configuration → Public IP references
+- Create supported for 22 of 26 types: Resource Groups, VMs, Disks, VNets, AKS Clusters, SQL Databases (with auto SQL Server provisioning), Cosmos DB, Storage Accounts, Function Apps, App Services, Container Instances, Key Vaults, Redis Caches, Service Bus, Container Registries, DNS Zones, NSGs, Public IPs, PostgreSQL Flexible, MySQL Flexible, Event Hub, Log Analytics, Managed Identities
+- `getCreateCostEstimate` for VM, AKS, Container Instance, Redis Cache, App Service, Function App, SQL Database, Disk
+- `fetchStorageStats` for storage account dashboard cards (iterates containers + blobs)
+- `getManifest`/`applyManifest` implemented for all resource types — returns/accepts ARM JSON via GET/PUT
+- 34 Azure regions configured for create form region picker
 
 ---
 

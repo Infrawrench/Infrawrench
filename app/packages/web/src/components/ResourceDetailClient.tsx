@@ -201,8 +201,8 @@ export function ResourceDetailClient({
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* SFTP view — full screen */}
-      {isSftpView && (
+      {/* SFTP view — full screen (hidden while provisioning) */}
+      {isSftpView && hasSftpBrowser && (
         <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
           {sshHost && !sshQuickConnect ? (
             <SshQuickConnectPanel host={sshHost} onConnect={(config) => setSshQuickConnect(config)} />
@@ -212,6 +212,11 @@ export function ResourceDetailClient({
               {...(sshQuickConnect && sshHost ? { sshKeyId: sshQuickConnect.sshKeyId, sshHost, sshUsername: sshQuickConnect.username } : {})}
             />
           )}
+        </div>
+      )}
+      {isSftpView && !hasSftpBrowser && (
+        <div className="flex-1 flex items-center justify-center text-gray-500 text-sm">
+          Waiting for resource to be ready…
         </div>
       )}
 

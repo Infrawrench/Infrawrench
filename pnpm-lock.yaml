@@ -23,6 +23,9 @@ importers:
       '@dnd-kit/core':
         specifier: ^6.3.1
         version: 6.3.1(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      '@infrawrench/plugin-azure':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/azure
       '@infrawrench/plugin-base':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/plugin-base
@@ -235,6 +238,9 @@ importers:
       '@infrawrench/plugin-aws':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/aws
+      '@infrawrench/plugin-azure':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/azure
       '@infrawrench/plugin-base':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/plugin-base
@@ -418,6 +424,22 @@ importers:
         version: 3.2.4(@types/debug@4.1.13)(@types/node@22.19.17)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.21.0)
 
   plugin-architecture/packages/aws:
+    dependencies:
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-base
+    devDependencies:
+      tsup:
+        specifier: ^8.3.5
+        version: 8.5.1(jiti@2.6.1)(postcss@8.5.8)(tsx@4.21.0)(typescript@5.9.3)
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.5
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@22.19.17)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.21.0)
+
+  plugin-architecture/packages/azure:
     dependencies:
       '@infrawrench/plugin-base':
         specifier: workspace:*
