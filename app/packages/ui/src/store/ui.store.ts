@@ -4,7 +4,7 @@ import { createJSONStorage, persist } from "zustand/middleware";
 export type WorkspaceTabTarget =
   | { kind: "dashboard"; dashboardId: string }
   | { kind: "account"; accountId: string }
-  | { kind: "resource"; accountId: string; resourceId: string; view?: "details" | "ssh" | "sftp" };
+  | { kind: "resource"; accountId: string; resourceId: string; view?: "details" | "ssh" | "sftp"; pluginId?: string; resourceTypeId?: string };
 
 export interface WorkspaceTab {
   id: string;

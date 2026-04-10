@@ -741,7 +741,7 @@ export class GcpClient implements PluginClient {
       // The API returns an Operation, not the instance directly — return a stub and let the user refresh
       const now = new Date().toISOString();
       return {
-        id: `${accountId}:gce-instance:${name}`,
+        id: this.id(accountId, "gce-instance", `${p}/${zone}/${name}`),
         pluginId: "gcp",
         resourceTypeId: "gce-instance",
         accountId,

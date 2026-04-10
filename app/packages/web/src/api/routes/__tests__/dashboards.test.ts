@@ -19,6 +19,14 @@ vi.mock("@/db/client", () => ({
 
 vi.mock("uuid", () => ({ v4: () => "dash-uuid-1" }));
 
+vi.mock("@/plugins/loader", () => ({
+  getPlugin: vi.fn().mockResolvedValue({
+    plugin: {
+      manifest: { logoSvg: "<svg/>", displayName: "Mock Plugin" },
+    },
+  }),
+}));
+
 const { dashboardRoutes } = await import("@/api/routes/dashboards");
 
 // ── Helper ────────────────────────────────────────────────────────────────
@@ -104,8 +112,11 @@ describe("Dashboard routes", () => {
     it("creates the default dashboard when none exists", async () => {
       // First select() for finding default dashboard returns empty
       const selectChain1 = chainMock([]);
-      // Second select() for pins returns empty array
-      const selectChain2 = chainMock([]);
+      // Second select() for pins — uses innerJoin().where() which resolves directly
+      const pinsWhere = vi.fn().mockResolvedValue([]);
+      const pinsInnerJoin = vi.fn().mockReturnValue({ where: pinsWhere });
+      const pinsFrom = vi.fn().mockReturnValue({ innerJoin: pinsInnerJoin });
+      const selectChain2 = { from: pinsFrom };
 
       let selectCallCount = 0;
       mockSelect.mockImplementation(() => {

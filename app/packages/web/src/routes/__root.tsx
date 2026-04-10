@@ -3,6 +3,7 @@ import { createRootRoute, Outlet, useNavigate, useRouterState } from "@tanstack/
 import { DndShell, useUIStore, workspaceTabTargetsEqual, type DraggableResource } from "@infrawrench/ui";
 import { WebSidebar } from "@/components/WebSidebar";
 import { WebGlobalTabBar } from "@/components/WebGlobalTabBar";
+import { SpotlightSearch } from "@/components/SpotlightSearch";
 import { apiGet, apiPost } from "@/lib/api";
 import {
   dashboardTabTarget,
@@ -41,6 +42,19 @@ function AuthenticatedShell() {
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const hash = useRouterState({ select: (s) => s.location.hash });
+  const [spotlightOpen, setSpotlightOpen] = useState(false);
+
+  // ⌘K / Ctrl+K to open spotlight search
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        setSpotlightOpen((v) => !v);
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   const {
     workspaceTabs,
@@ -121,6 +135,12 @@ function AuthenticatedShell() {
           </main>
         </div>
       </div>
+      {spotlightOpen && (
+        <SpotlightSearch
+          mode="navigate"
+          onClose={() => setSpotlightOpen(false)}
+        />
+      )}
     </DndShell>
   );
 }

@@ -4,6 +4,8 @@ import { v4 as uuidv4 } from "uuid";
 import { db } from "../../db/client";
 import { dashboards, dashboardPins, resources } from "../../db/schema";
 import type { AuthSession } from "../auth-middleware";
+import { getPlugin } from "../../plugins/loader";
+import { syncAccountResources } from "./accounts";
 
 declare module "hono" {
   interface ContextVariableMap {
@@ -12,6 +14,37 @@ declare module "hono" {
 }
 
 const app = new Hono();
+
+/** Sync all accounts that have pinned resources on a dashboard */
+async function syncPinnedAccounts(dashboardId: string, organizationId: string) {
+  const pinAccountRows = await db
+    .select({ accountId: resources.accountId })
+    .from(dashboardPins)
+    .innerJoin(resources, eq(dashboardPins.resourceId, resources.id))
+    .where(and(eq(dashboardPins.dashboardId, dashboardId), isNull(dashboardPins.deletedAt)));
+  const uniqueAccountIds = [...new Set(pinAccountRows.map((r) => r.accountId))];
+  await Promise.allSettled(
+    uniqueAccountIds.map((accountId) => syncAccountResources(accountId, organizationId)),
+  );
+}
+
+/** Enrich pins with plugin logo and display name */
+async function enrichPins(pins: Array<{ pluginId: string; [key: string]: unknown }>) {
+  const pluginCache = new Map<string, { logoSvg: string; displayName: string }>();
+  return Promise.all(
+    pins.map(async (pin) => {
+      let meta = pluginCache.get(pin.pluginId);
+      if (!meta) {
+        const loaded = await getPlugin(pin.pluginId as string);
+        meta = loaded
+          ? { logoSvg: loaded.plugin.manifest.logoSvg, displayName: loaded.plugin.manifest.displayName }
+          : { logoSvg: "", displayName: pin.pluginId as string };
+        pluginCache.set(pin.pluginId as string, meta);
+      }
+      return { ...pin, pluginLogoSvg: meta.logoSvg, pluginDisplayName: meta.displayName };
+    }),
+  );
+}
 
 /** GET /api/dashboards — list all dashboards */
 app.get("/", async (c) => {
@@ -48,7 +81,10 @@ app.get("/:id", async (c) => {
 
   if (!dashboard) return c.json({ error: "Not found" }, 404);
 
-  const pins = await db
+  // Sync pinned accounts so deleted/updated resources are reflected
+  await syncPinnedAccounts(dashboardId, organizationId).catch(() => {});
+
+  const rawPins = await db
     .select({
       pinId: dashboardPins.id,
       resourceId: dashboardPins.resourceId,
@@ -65,8 +101,9 @@ app.get("/:id", async (c) => {
     })
     .from(dashboardPins)
     .innerJoin(resources, eq(dashboardPins.resourceId, resources.id))
-    .where(and(eq(dashboardPins.dashboardId, dashboardId), isNull(dashboardPins.deletedAt)));
+    .where(and(eq(dashboardPins.dashboardId, dashboardId), isNull(dashboardPins.deletedAt), isNull(resources.deletedAt)));
 
+  const pins = await enrichPins(rawPins);
   return c.json({ dashboard, pins });
 });
 
@@ -88,7 +125,10 @@ app.get("/default/full", async (c) => {
     defaultDashboard = created!;
   }
 
-  const pins = await db
+  // Sync pinned accounts so deleted/updated resources are reflected
+  await syncPinnedAccounts(defaultDashboard.id, organizationId).catch(() => {});
+
+  const rawPins = await db
     .select({
       pinId: dashboardPins.id,
       resourceId: dashboardPins.resourceId,
@@ -105,8 +145,9 @@ app.get("/default/full", async (c) => {
     })
     .from(dashboardPins)
     .innerJoin(resources, eq(dashboardPins.resourceId, resources.id))
-    .where(and(eq(dashboardPins.dashboardId, defaultDashboard.id), isNull(dashboardPins.deletedAt)));
+    .where(and(eq(dashboardPins.dashboardId, defaultDashboard.id), isNull(dashboardPins.deletedAt), isNull(resources.deletedAt)));
 
+  const pins = await enrichPins(rawPins);
   return c.json({ dashboard: defaultDashboard, pins });
 });
 

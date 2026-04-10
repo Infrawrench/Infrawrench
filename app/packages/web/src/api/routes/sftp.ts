@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import path from "node:path";
 import { eq, and } from "drizzle-orm";
 import { db } from "../../db/client";
-import { accounts } from "../../db/schema";
+import { accounts, sshKeys } from "../../db/schema";
 import { decrypt } from "../../services/encryption";
 import { getPlugin } from "../../plugins/loader";
 import { sftpUpload, sftpDownloadToBuffer } from "../../services/sftp";
@@ -17,6 +17,37 @@ declare module "hono" {
 
 const app = new Hono();
 
+/**
+ * Resolve SSH config from either the plugin's getSshConfig() or from
+ * an org SSH key + host (for sshEndpoint-based resources).
+ */
+async function resolveSshConfigForUpload(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  client: any,
+  organizationId: string,
+  opts: { sshKeyId?: string; sshHost?: string; sshUsername?: string },
+): Promise<{ host: string; port: number; username: string; privateKey: string }> {
+  const pluginConfig = client.getSshConfig?.();
+  if (pluginConfig) return pluginConfig;
+
+  if (!opts.sshKeyId || !opts.sshHost) {
+    throw new Error("Plugin does not support SSH and no SSH key/host provided");
+  }
+
+  const [keyRow] = await db
+    .select({
+      encryptedPrivateKey: sshKeys.encryptedPrivateKey,
+      privateKeyIv: sshKeys.privateKeyIv,
+    })
+    .from(sshKeys)
+    .where(and(eq(sshKeys.id, opts.sshKeyId), eq(sshKeys.organizationId, organizationId)))
+    .limit(1);
+  if (!keyRow) throw new Error("SSH key not found");
+
+  const privateKey = await decrypt(keyRow.encryptedPrivateKey, keyRow.privateKeyIv);
+  return { host: opts.sshHost, port: 22, username: opts.sshUsername ?? "root", privateKey };
+}
+
 /** POST /api/v1/sftp/upload */
 app.post("/upload", async (c) => {
   const { organizationId } = c.get("session");
@@ -25,6 +56,9 @@ app.post("/upload", async (c) => {
   const accountId = formData["accountId"] as string | undefined;
   const remotePath = formData["remotePath"] as string | undefined;
   const file = formData["file"] as File | undefined;
+  const sshKeyId = formData["sshKeyId"] as string | undefined;
+  const sshHost = formData["sshHost"] as string | undefined;
+  const sshUsername = formData["sshUsername"] as string | undefined;
 
   if (!accountId || !remotePath || !file) {
     return c.json({ error: "Missing accountId, remotePath, or file" }, 400);
@@ -50,9 +84,7 @@ app.post("/upload", async (c) => {
   if (!loaded) return c.json({ error: "Plugin not found" }, 404);
 
   const client = loaded.plugin.createClient(credentials);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const sshConfig = (client as any).getSshConfig?.();
-  if (!sshConfig) return c.json({ error: "Plugin does not support SSH" }, 400);
+  const sshConfig = await resolveSshConfigForUpload(client, organizationId, { sshKeyId, sshHost, sshUsername });
 
   const arrayBuffer = await file.arrayBuffer();
   await sftpUpload(sshConfig, remotePath, Buffer.from(arrayBuffer));
@@ -64,6 +96,9 @@ app.get("/download", async (c) => {
   const { organizationId } = c.get("session");
   const accountId = c.req.query("accountId");
   const pathsParam = c.req.query("paths");
+  const sshKeyId = c.req.query("sshKeyId");
+  const sshHost = c.req.query("sshHost");
+  const sshUsername = c.req.query("sshUsername");
 
   if (!accountId || !pathsParam) {
     return c.json({ error: "Missing accountId or paths" }, 400);
@@ -98,9 +133,7 @@ app.get("/download", async (c) => {
   if (!loaded) return c.json({ error: "Plugin not found" }, 404);
 
   const client = loaded.plugin.createClient(credentials);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const sshConfig = (client as any).getSshConfig?.();
-  if (!sshConfig) return c.json({ error: "Plugin does not support SSH" }, 400);
+  const sshConfig = await resolveSshConfigForUpload(client, organizationId, { sshKeyId, sshHost, sshUsername });
 
   // Single file → direct download
   if (paths.length === 1) {

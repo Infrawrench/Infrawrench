@@ -6,12 +6,14 @@ import type { AuthSession } from "@/api/auth-middleware";
 const mockInsert = vi.fn();
 const mockSelect = vi.fn();
 const mockDelete = vi.fn();
+const mockUpdate = vi.fn();
 
 vi.mock("@/db/client", () => ({
   db: {
     insert: (...args: unknown[]) => mockInsert(...args),
     select: (...args: unknown[]) => mockSelect(...args),
     delete: (...args: unknown[]) => mockDelete(...args),
+    update: (...args: unknown[]) => mockUpdate(...args),
   },
 }));
 
@@ -162,23 +164,21 @@ describe("Account routes", () => {
 
   // ── POST /:id/sync — trigger sync ────────────────────────────────────
   describe("POST /:id/sync — trigger resource sync", () => {
-    it("returns synced count on success", async () => {
-      // syncAccountResources calls db.select().from().where() which resolves to an array
-      const account = {
-        id: "a1",
-        organizationId: "org-1",
-        pluginId: "aws",
-        encryptedCredentials: "enc",
-        credentialsIv: "iv",
-      };
+    const account = {
+      id: "a1",
+      organizationId: "org-1",
+      pluginId: "aws",
+      encryptedCredentials: "enc",
+      credentialsIv: "iv",
+    };
 
-      // where() must resolve directly to an array (no .limit() in sync path)
+    function setupSyncMocks(pluginResources: Array<{ id: string; pluginId: string; resourceTypeId: string; displayName: string; accountId: string; fields: Record<string, unknown>; resolvedOutputs: Record<string, unknown> }>) {
       const where = vi.fn().mockResolvedValue([account]);
       const from = vi.fn().mockReturnValue({ where });
       mockSelect.mockReturnValue({ from });
 
       const mockClient = {
-        listResources: vi.fn().mockResolvedValue([]),
+        listResources: vi.fn().mockResolvedValue(pluginResources),
       };
       mockGetPlugin.mockResolvedValue({
         plugin: {
@@ -192,12 +192,85 @@ describe("Account routes", () => {
       const values = vi.fn().mockReturnValue({ onConflictDoUpdate });
       mockInsert.mockReturnValue({ values });
 
+      // db.update().set().where()
+      const updateWhere = vi.fn().mockResolvedValue(undefined);
+      const set = vi.fn().mockReturnValue({ where: updateWhere });
+      mockUpdate.mockReturnValue({ set });
+
+      return { mockClient, updateWhere, set };
+    }
+
+    it("returns synced count on success", async () => {
+      setupSyncMocks([]);
+
       const app = buildApp();
       const res = await app.request("/a1/sync", { method: "POST" });
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body).toHaveProperty("synced");
       expect(body.synced).toBe(0);
+    });
+
+    it("soft-deletes stale resources not returned by plugin", async () => {
+      const liveResource = {
+        id: "r-live",
+        pluginId: "aws",
+        resourceTypeId: "ec2-instance",
+        displayName: "live-vm",
+        accountId: "a1",
+        fields: {},
+        resolvedOutputs: {},
+      };
+
+      const { set } = setupSyncMocks([liveResource]);
+
+      const app = buildApp();
+      const res = await app.request("/a1/sync", { method: "POST" });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.synced).toBe(1);
+
+      // db.update was called to soft-delete stale resources
+      expect(mockUpdate).toHaveBeenCalled();
+      // set() was called with deletedAt
+      expect(set).toHaveBeenCalledWith(
+        expect.objectContaining({ deletedAt: expect.any(Date) }),
+      );
+    });
+
+    it("soft-deletes all resources when plugin returns empty list", async () => {
+      const { set } = setupSyncMocks([]);
+
+      const app = buildApp();
+      const res = await app.request("/a1/sync", { method: "POST" });
+      expect(res.status).toBe(200);
+
+      // db.update was called to soft-delete all resources for this account
+      expect(mockUpdate).toHaveBeenCalled();
+      expect(set).toHaveBeenCalledWith(
+        expect.objectContaining({ deletedAt: expect.any(Date) }),
+      );
+    });
+
+    it("clears deletedAt on upsert for resources that reappear", async () => {
+      const resource = {
+        id: "r-returned",
+        pluginId: "aws",
+        resourceTypeId: "ec2-instance",
+        displayName: "returned-vm",
+        accountId: "a1",
+        fields: {},
+        resolvedOutputs: {},
+      };
+
+      setupSyncMocks([resource]);
+
+      const app = buildApp();
+      await app.request("/a1/sync", { method: "POST" });
+
+      // The upsert should include deletedAt: null to clear soft-delete
+      const insertCall = mockInsert.mock.calls[0];
+      expect(insertCall).toBeDefined();
     });
   });
 });

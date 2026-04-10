@@ -75,10 +75,62 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
   if (!ctx) return c.json({ error: "Account not found" }, 404);
   const { client, plugin, credentials, account } = ctx;
 
-  // Build the ResourceInstance
+  // Build the ResourceInstance — always fetch live data from the provider
+  // (like desktop does) so status changes (e.g. provisioning → running)
+  // are reflected immediately.
   let instance: ResourceInstance;
 
-  if (dbResource) {
+  // Fetch live from provider
+  let liveResources: ResourceInstance[] = [];
+  let liveFetchOk = false;
+  try {
+    liveResources = await client.listResources(resourceTypeId, accountId);
+    liveFetchOk = true;
+  } catch {
+    // Provider API failed — fall back to DB data
+  }
+  const liveInstance = liveResources.find((r) => r.id === resourceId);
+
+  if (liveInstance) {
+    instance = liveInstance;
+    // Update DB with fresh data in the background
+    db.insert(resources)
+      .values({
+        id: liveInstance.id,
+        organizationId,
+        pluginId: liveInstance.pluginId,
+        resourceTypeId: liveInstance.resourceTypeId,
+        accountId,
+        displayName: liveInstance.displayName,
+        externalId: liveInstance.externalId ?? null,
+        fieldsJson: liveInstance.fields ?? {},
+        outputsJson: liveInstance.resolvedOutputs ?? {},
+        parentResourceId: liveInstance.parentResourceId ?? null,
+        lastSyncedAt: new Date(),
+        deletedAt: null,
+      })
+      .onConflictDoUpdate({
+        target: resources.id,
+        set: {
+          displayName: liveInstance.displayName,
+          fieldsJson: liveInstance.fields ?? {},
+          outputsJson: liveInstance.resolvedOutputs ?? {},
+          lastSyncedAt: new Date(),
+          updatedAt: new Date(),
+          deletedAt: null,
+        },
+      })
+      .catch(() => {});
+  } else if (liveFetchOk && dbResource?.lastSyncedAt) {
+    // Provider listed resources successfully but this one wasn't included,
+    // and it was previously synced — it's been deleted externally.
+    db.update(resources)
+      .set({ deletedAt: new Date() })
+      .where(eq(resources.id, resourceId))
+      .catch(() => {});
+    return c.json({ error: "Resource not found" }, 404);
+  } else if (dbResource) {
+    // Provider API failed OR resource was never synced (just created) — use DB data
     const secretStates = await db
       .select()
       .from(secretFieldStates)
@@ -122,10 +174,7 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
       ...(dbResource.lastSyncedAt != null && { lastSyncedAt: dbResource.lastSyncedAt.toISOString() }),
     };
   } else {
-    const allResources = await client.listResources(resourceTypeId, accountId);
-    const found = allResources.find((r) => r.id === resourceId);
-    if (!found) return c.json({ error: "Resource not found" }, 404);
-    instance = found;
+    return c.json({ error: "Resource not found" }, 404);
   }
 
   const resourceTypeDef = plugin.resourceTypes.find((t) => t.id === resourceTypeId);
@@ -313,8 +362,22 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
   const isMongoDb = kvDriverName === "mongodb";
   const hasDockerActions = !!manifest.dockerDriver;
   const sshConfig = client.getSshConfig?.();
-  const hasSshTerminal = !!sshConfig;
-  const hasSftpBrowser = !!sshConfig;
+
+  // Resolve SSH host from resource type's sshEndpoint declaration (like desktop)
+  // This enables SSH/SFTP for cloud VMs (AWS EC2, DO droplets, Hetzner servers, etc.)
+  let sshHost: string | null = null;
+  if (resourceTypeDef?.sshEndpoint) {
+    const { hostOutputKey } = resourceTypeDef.sshEndpoint;
+    const host = String(
+      enrichedInstance.resolvedOutputs?.[hostOutputKey] ??
+      enrichedInstance.fields?.[hostOutputKey] ??
+      "",
+    );
+    if (host) sshHost = host;
+  }
+
+  const hasSshTerminal = !!sshConfig || !!sshHost;
+  const hasSftpBrowser = !!sshConfig || !!sshHost;
   const containerId = String(instance.resolvedOutputs?.["containerId"] ?? instance.externalId ?? "");
   const databaseName = String(instance.fields?.["database"] ?? "test");
   const storageBucketName = finalSchema.storageBrowser?.bucketName ?? "";
@@ -341,6 +404,7 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
     hasDockerActions,
     hasSshTerminal,
     hasSftpBrowser,
+    sshHost,
     containerId,
     databaseName,
     storageBucketName,
@@ -420,6 +484,8 @@ app.post("/create", async (c) => {
 
   // Persist to DB immediately so the detail page can find it without
   // waiting for the next sync / provider propagation.
+  // Use onConflictDoUpdate to clear deletedAt — the resource may already
+  // exist from a previous sync that later soft-deleted it.
   try {
     await db
       .insert(resources)
@@ -435,7 +501,16 @@ app.post("/create", async (c) => {
         outputsJson: created.resolvedOutputs ?? {},
         parentResourceId: created.parentResourceId ?? null,
       })
-      .onConflictDoNothing();
+      .onConflictDoUpdate({
+        target: resources.id,
+        set: {
+          displayName: created.displayName,
+          fieldsJson: created.fields ?? {},
+          outputsJson: created.resolvedOutputs ?? {},
+          deletedAt: null,
+          updatedAt: new Date(),
+        },
+      });
   } catch {
     // Non-critical — detail page will fall back to listResources
   }

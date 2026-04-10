@@ -12,6 +12,7 @@ import {
 } from "@infrawrench/ui";
 import type { DetailViewSchema, PeerPaneSchema } from "@infrawrench/plugin-base";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
+import { navigateToWorkspaceTarget, resourceSshTabTarget, resourceSftpTabTarget } from "@/lib/workspace-tabs";
 import { CreateResourceModal } from "./CreateResourceModal";
 import { KvConsole } from "@/components/KvConsole";
 import { DockerActionsPanel } from "@/components/DockerActionsPanel";
@@ -19,6 +20,7 @@ import { MongoDocumentBrowser } from "@/components/MongoDocumentBrowser";
 import { StorageBrowser } from "@/components/StorageBrowser";
 import { SftpBrowser } from "@/components/SftpBrowser";
 import { WebTerminal } from "@/components/WebTerminal";
+import { SshQuickConnectPanel } from "@/components/SshQuickConnectPanel";
 
 interface ChildResourceData {
   id: string;
@@ -65,12 +67,12 @@ interface Props {
   hasDockerActions?: boolean | undefined;
   hasSshTerminal?: boolean | undefined;
   hasSftpBrowser?: boolean | undefined;
+  sshHost?: string | undefined;
   containerId?: string | undefined;
   databaseName?: string | undefined;
   storageBucketName?: string | undefined;
+  initialView?: "ssh" | "sftp" | undefined;
 }
-
-type ConnectionTab = "ssh" | "sftp" | "kv" | "mongo" | "docker" | "storage";
 
 export function ResourceDetailClient({
   detailSchema,
@@ -94,27 +96,21 @@ export function ResourceDetailClient({
   hasDockerActions,
   hasSshTerminal,
   hasSftpBrowser,
+  sshHost,
   containerId,
   databaseName,
   storageBucketName,
+  initialView,
 }: Props) {
   const navigate = useNavigate();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [wsToken, setWsToken] = useState<string | null>(null);
   const [createTarget, setCreateTarget] = useState<ChildResourceGroup | null>(null);
-  const [activeConnectionTab, setActiveConnectionTab] = useState<ConnectionTab | null>(null);
+  const [sshQuickConnect, setSshQuickConnect] = useState<{ sshKeyId: string; username: string } | null>(null);
 
-  // Build the list of available connection tabs
-  const connectionTabs = useMemo(() => {
-    const tabs: Array<{ id: ConnectionTab; label: string }> = [];
-    if (hasSshTerminal) tabs.push({ id: "ssh", label: "SSH Terminal" });
-    if (hasSftpBrowser) tabs.push({ id: "sftp", label: "SFTP Browser" });
-    if (hasKvConsole && !isMongoDb) tabs.push({ id: "kv", label: kvDriverName === "memcached" ? "Memcached" : "Redis Console" });
-    if (hasKvConsole && isMongoDb) tabs.push({ id: "mongo", label: "Documents" });
-    if (hasDockerActions && containerId) tabs.push({ id: "docker", label: "Docker" });
-    if (hasStorageBrowser && storageBucketName) tabs.push({ id: "storage", label: "Storage Browser" });
-    return tabs;
-  }, [hasSshTerminal, hasSftpBrowser, hasKvConsole, isMongoDb, kvDriverName, hasDockerActions, containerId, hasStorageBrowser, storageBucketName]);
+  const isSshView = initialView === "ssh";
+  const isSftpView = initialView === "sftp";
+  const hasSshPanel = hasSshTerminal || !!sshHost;
 
   // SQL queries via API
   const handleRunQuery = useCallback(
@@ -204,70 +200,45 @@ export function ResourceDetailClient({
     }));
   }, [serverPeerPanes]);
 
-  const showingConnectionPanel = activeConnectionTab !== null;
+  function openSshTab() {
+    void navigateToWorkspaceTarget(
+      navigate,
+      resourceSshTabTarget(accountId, resourceId, pluginId, resourceTypeId),
+      { label: `SSH: ${resourceDisplayName}`, mode: "pin" },
+    );
+  }
+
+  function openSftpTab() {
+    void navigateToWorkspaceTarget(
+      navigate,
+      resourceSftpTabTarget(accountId, resourceId, pluginId, resourceTypeId),
+      { label: `SFTP: ${resourceDisplayName}`, mode: "pin" },
+    );
+  }
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Connection feature tabs — shown above the detail view when features are available */}
-      {connectionTabs.length > 0 && (
-        <div className="shrink-0 flex items-center gap-0 px-4 border-b border-gray-800 bg-gray-950">
-          <button
-            onClick={() => setActiveConnectionTab(null)}
-            className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-              !showingConnectionPanel
-                ? "border-blue-500 text-white"
-                : "border-transparent text-gray-500 hover:text-gray-300 hover:border-gray-600"
-            }`}
-          >
-            Details
-          </button>
-          {connectionTabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveConnectionTab(tab.id)}
-              className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                activeConnectionTab === tab.id
-                  ? "border-blue-500 text-white"
-                  : "border-transparent text-gray-500 hover:text-gray-300 hover:border-gray-600"
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
+      {/* SFTP view — full screen */}
+      {isSftpView && (
+        <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+          {sshHost && !sshQuickConnect ? (
+            <SshQuickConnectPanel host={sshHost} onConnect={(config) => setSshQuickConnect(config)} />
+          ) : (
+            <SftpBrowser
+              accountId={accountId}
+              {...(sshQuickConnect && sshHost ? { sshKeyId: sshQuickConnect.sshKeyId, sshHost, sshUsername: sshQuickConnect.username } : {})}
+            />
+          )}
         </div>
       )}
 
-      {/* Detail view (overview + sql/manifest/peer tabs) */}
-      {!showingConnectionPanel && (
-        <div className="flex-1 overflow-auto">
-          <DetailView
-            schema={detailSchema}
-            resourceId={resourceId}
-            pluginLogoSvg={pluginLogoSvg}
-            {...(hasSqlEditor ? { onRunQuery: handleRunQuery, onExecute: handleExecute } : {})}
-            peerPanes={peerPanes}
-            renderPeerPane={(pane) => (
-              <PeerPaneView pane={pane} />
-            )}
-            childResourceGroups={childResourceGroups}
-            onChildClick={handleChildClick}
-            onChildCreate={handleChildCreate}
-            renderChildResource={(child) => (
-              <DraggableChildPill
-                child={child}
-                onOpen={() => handleChildClick(child)}
-              />
-            )}
-            {...(hasManifestEditor ? { onGetManifest: handleGetManifest, onApplyManifest: handleApplyManifest } : {})}
-          />
-        </div>
-      )}
-
-      {/* Connection feature panels */}
-      {activeConnectionTab === "ssh" && (
-        <div className="flex-1 overflow-hidden">
-          {wsToken ? (
-            <WebTerminal accountId={accountId} token={wsToken} />
+      {/* SSH view — full screen */}
+      {isSshView && (
+        <div className="flex-1 min-h-0 overflow-hidden">
+          {sshHost && !sshQuickConnect ? (
+            <SshQuickConnectPanel host={sshHost} onConnect={(config) => setSshQuickConnect(config)} />
+          ) : wsToken ? (
+            <WebTerminal accountId={accountId} resourceId={resourceId} token={wsToken} />
           ) : (
             <div className="flex items-center justify-center h-full">
               <button
@@ -284,38 +255,95 @@ export function ResourceDetailClient({
         </div>
       )}
 
-      {activeConnectionTab === "sftp" && (
-        <div className="flex-1 overflow-hidden">
-          <SftpBrowser accountId={accountId} />
+      {/* Detail view — shown when not in SSH or SFTP view */}
+      {!isSshView && !isSftpView && (
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Desktop-style top buttons for SSH/SFTP — open as new pinned tabs */}
+          {(hasSshPanel || hasSftpBrowser) && (
+            <div className="shrink-0 flex justify-end gap-2 px-4 py-2 border-b border-gray-800 bg-gray-950">
+              {hasSftpBrowser && (
+                <button
+                  onClick={openSftpTab}
+                  className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-200 border border-gray-800 hover:border-gray-700 rounded-lg transition-colors"
+                >
+                  Open SFTP tab
+                </button>
+              )}
+              {hasSshPanel && (
+                <button
+                  onClick={openSshTab}
+                  className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-200 border border-gray-800 hover:border-gray-700 rounded-lg transition-colors"
+                >
+                  Open SSH tab
+                </button>
+              )}
+            </div>
+          )}
+
+          <div className="flex-1 overflow-auto">
+            <DetailView
+              schema={detailSchema}
+              resourceId={resourceId}
+              pluginLogoSvg={pluginLogoSvg}
+              {...(hasSqlEditor ? { onRunQuery: handleRunQuery, onExecute: handleExecute } : {})}
+              peerPanes={peerPanes}
+              renderPeerPane={(pane) => (
+                <PeerPaneView pane={pane} />
+              )}
+              childResourceGroups={childResourceGroups}
+              onChildClick={handleChildClick}
+              onChildCreate={handleChildCreate}
+              renderChildResource={(child) => (
+                <DraggableChildPill
+                  child={child}
+                  onOpen={() => handleChildClick(child)}
+                />
+              )}
+              {...(hasManifestEditor ? { onGetManifest: handleGetManifest, onApplyManifest: handleApplyManifest } : {})}
+            />
+          </div>
         </div>
       )}
 
-      {activeConnectionTab === "kv" && (
-        <div className="flex-1 overflow-hidden">
-          <KvConsole accountId={accountId} driverName={kvDriverName ?? "redis"} />
-        </div>
+      {/* Bottom panels — KV, Docker, Storage (inline like desktop, only when not in SSH/SFTP) */}
+      {!isSshView && !isSftpView && hasKvConsole && !isMongoDb && (
+        <KvConsole accountId={accountId} driverName={kvDriverName ?? "redis"} />
       )}
 
-      {activeConnectionTab === "mongo" && (
-        <div className="flex-1 overflow-hidden">
-          <MongoDocumentBrowser accountId={accountId} databaseName={databaseName ?? "test"} />
-        </div>
+      {!isSshView && !isSftpView && hasKvConsole && isMongoDb && (
+        <MongoDocumentBrowser accountId={accountId} databaseName={databaseName ?? "test"} />
       )}
 
-      {activeConnectionTab === "docker" && containerId && (
-        <div className="flex-1 overflow-hidden">
-          <DockerActionsPanel accountId={accountId} containerId={containerId} />
-        </div>
+      {!isSshView && !isSftpView && hasDockerActions && containerId && (
+        <DockerActionsPanel accountId={accountId} containerId={containerId} />
       )}
 
-      {activeConnectionTab === "storage" && storageBucketName && (
-        <div className="flex-1 overflow-hidden">
-          <StorageBrowser accountId={accountId} bucketName={storageBucketName} />
+      {!isSshView && !isSftpView && hasStorageBrowser && storageBucketName && (
+        <StorageBrowser accountId={accountId} bucketName={storageBucketName} />
+      )}
+
+      {/* SSH bottom bar — connection info */}
+      {isSshView && (wsToken || sshQuickConnect) && (
+        <div className="shrink-0 flex items-center gap-3 px-4 py-2 border-t border-gray-800 bg-gray-950">
+          <span className="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0" />
+          <span className="text-xs font-mono text-gray-400">
+            {sshQuickConnect && sshHost
+              ? `${sshQuickConnect.username}@${sshHost}:22`
+              : `SSH connected`}
+          </span>
+          {sshQuickConnect && (
+            <button
+              onClick={() => setSshQuickConnect(null)}
+              className="ml-auto text-xs text-gray-600 hover:text-gray-300 transition-colors"
+            >
+              Disconnect
+            </button>
+          )}
         </div>
       )}
 
       {/* Delete button */}
-      {canDelete && !showingConnectionPanel && (
+      {canDelete && !isSshView && !isSftpView && (
         <div className="shrink-0 px-4 py-2 border-t border-gray-800 flex items-center justify-end gap-3">
           <button
             onClick={() => setConfirmDelete(true)}

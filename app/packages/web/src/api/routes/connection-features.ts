@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { eq, and } from "drizzle-orm";
 import { db } from "../../db/client";
-import { accounts } from "../../db/schema";
+import { accounts, sshKeys } from "../../db/schema";
 import { decrypt } from "../../services/encryption";
 import { getPlugin } from "../../plugins/loader";
 import { buildPluginHostServices } from "../../services/host-services";
@@ -51,6 +51,44 @@ function getSshConfig(client: any): { host: string; port: number; username: stri
   const config = client.getSshConfig?.();
   if (!config) throw new Error("Plugin does not support SSH");
   return config;
+}
+
+/**
+ * Resolve SSH config from either the plugin's getSshConfig() or from an
+ * org SSH key + host (for sshEndpoint-based resources like EC2, droplets, etc.)
+ */
+async function resolveSshConfig(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  client: any,
+  organizationId: string,
+  input: { sshKeyId?: string; sshHost?: string; sshUsername?: string },
+): Promise<{ host: string; port: number; username: string; privateKey: string }> {
+  // If the plugin has a native SSH config, use it
+  const pluginConfig = client.getSshConfig?.();
+  if (pluginConfig) return pluginConfig;
+
+  // Otherwise, use the provided SSH key + host (sshEndpoint-based resources)
+  if (!input.sshKeyId || !input.sshHost) {
+    throw new Error("Plugin does not support SSH and no SSH key/host provided");
+  }
+
+  const [keyRow] = await db
+    .select({
+      encryptedPrivateKey: sshKeys.encryptedPrivateKey,
+      privateKeyIv: sshKeys.privateKeyIv,
+    })
+    .from(sshKeys)
+    .where(and(eq(sshKeys.id, input.sshKeyId), eq(sshKeys.organizationId, organizationId)))
+    .limit(1);
+  if (!keyRow) throw new Error("SSH key not found");
+
+  const privateKey = await decrypt(keyRow.encryptedPrivateKey, keyRow.privateKeyIv);
+  return {
+    host: input.sshHost,
+    port: 22,
+    username: input.sshUsername ?? "root",
+    privateKey,
+  };
 }
 
 // ── SQL ─────────────────────────────────────────────────────────────────────
@@ -244,31 +282,43 @@ app.post("/storage/stats", async (c) => {
 /** POST /api/sftp/list */
 app.post("/sftp/list", async (c) => {
   const { organizationId } = c.get("session");
-  const input = await c.req.json<{ accountId: string; path: string }>();
-  const { client } = await getClientForAccount(input.accountId, organizationId);
-  const config = getSshConfig(client);
-  const result = await sftpListImpl(config, input.path);
-  return c.json(result);
+  const input = await c.req.json<{ accountId: string; path: string; sshKeyId?: string; sshHost?: string; sshUsername?: string }>();
+  try {
+    const { client } = await getClientForAccount(input.accountId, organizationId);
+    const config = await resolveSshConfig(client, organizationId, input);
+    const result = await sftpListImpl(config, input.path);
+    return c.json(result);
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : "SFTP list failed" }, 500);
+  }
 });
 
 /** POST /api/sftp/mkdir */
 app.post("/sftp/mkdir", async (c) => {
   const { organizationId } = c.get("session");
-  const input = await c.req.json<{ accountId: string; path: string }>();
-  const { client } = await getClientForAccount(input.accountId, organizationId);
-  const config = getSshConfig(client);
-  await sftpMkdirImpl(config, input.path);
-  return c.json({ ok: true });
+  const input = await c.req.json<{ accountId: string; path: string; sshKeyId?: string; sshHost?: string; sshUsername?: string }>();
+  try {
+    const { client } = await getClientForAccount(input.accountId, organizationId);
+    const config = await resolveSshConfig(client, organizationId, input);
+    await sftpMkdirImpl(config, input.path);
+    return c.json({ ok: true });
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : "SFTP mkdir failed" }, 500);
+  }
 });
 
 /** POST /api/sftp/delete */
 app.post("/sftp/delete", async (c) => {
   const { organizationId } = c.get("session");
-  const input = await c.req.json<{ accountId: string; path: string; isDir: boolean }>();
-  const { client } = await getClientForAccount(input.accountId, organizationId);
-  const config = getSshConfig(client);
-  await sftpDeleteImpl(config, input.path, input.isDir);
-  return c.json({ ok: true });
+  const input = await c.req.json<{ accountId: string; path: string; isDir: boolean; sshKeyId?: string; sshHost?: string; sshUsername?: string }>();
+  try {
+    const { client } = await getClientForAccount(input.accountId, organizationId);
+    const config = await resolveSshConfig(client, organizationId, input);
+    await sftpDeleteImpl(config, input.path, input.isDir);
+    return c.json({ ok: true });
+  } catch (err) {
+    return c.json({ error: err instanceof Error ? err.message : "SFTP delete failed" }, 500);
+  }
 });
 
 export { app as connectionFeatureRoutes };

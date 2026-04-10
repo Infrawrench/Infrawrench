@@ -1,9 +1,12 @@
 import { describe, it, expect, vi } from "vitest";
 
+const mockPinWorkspaceTab = vi.fn();
+const mockOpenInActiveWorkspaceTab = vi.fn();
+
 // Mock the @infrawrench/ui module before importing the module under test
 vi.mock("@infrawrench/ui", () => ({
   normalizeResourceId: (id: string) => decodeURIComponent(id),
-  useUIStore: { getState: () => ({ pinWorkspaceTab: vi.fn(), openInActiveWorkspaceTab: vi.fn() }) },
+  useUIStore: { getState: () => ({ pinWorkspaceTab: mockPinWorkspaceTab, openInActiveWorkspaceTab: mockOpenInActiveWorkspaceTab }) },
 }));
 
 import {
@@ -13,6 +16,7 @@ import {
   resourceSshTabTarget,
   resourceSftpTabTarget,
   getWorkspaceNavigateArgs,
+  navigateToWorkspaceTarget,
   syncWorkspaceRouteFromPath,
 } from "../workspace-tabs";
 
@@ -72,7 +76,7 @@ describe("getWorkspaceNavigateArgs", () => {
     expect(args).toEqual({ to: "/accounts/$accountId", params: { accountId: "a1" } });
   });
 
-  it("returns resource route args with ssh hash", () => {
+  it("returns resource route args with ssh hash (fallback without pluginId)", () => {
     const args = getWorkspaceNavigateArgs({
       kind: "resource",
       accountId: "a1",
@@ -80,6 +84,23 @@ describe("getWorkspaceNavigateArgs", () => {
       view: "ssh",
     });
     expect(args).toMatchObject({ to: "/accounts/$accountId", params: { accountId: "a1" }, hash: "ssh" });
+  });
+
+  it("returns resource route args with ssh hash (with pluginId/resourceTypeId)", () => {
+    const args = getWorkspaceNavigateArgs({
+      kind: "resource",
+      accountId: "a1",
+      resourceId: "r1",
+      view: "ssh",
+      pluginId: "aws",
+      resourceTypeId: "ec2-instance",
+    });
+    expect(args).toMatchObject({
+      to: "/resources/$pluginId/$resourceTypeId/$resourceId",
+      params: { pluginId: "aws", resourceTypeId: "ec2-instance", resourceId: "r1" },
+      search: { accountId: "a1" },
+      hash: "ssh",
+    });
   });
 
   it("returns resource route args with sftp hash", () => {
@@ -119,5 +140,56 @@ describe("syncWorkspaceRouteFromPath", () => {
 
   it("returns null for unknown paths", () => {
     expect(syncWorkspaceRouteFromPath("/settings")).toBeNull();
+  });
+});
+
+describe("navigateToWorkspaceTarget", () => {
+  it("opens SSH tab as a pinned workspace tab (desktop parity)", () => {
+    mockPinWorkspaceTab.mockClear();
+    const mockNavigate = vi.fn();
+
+    navigateToWorkspaceTarget(
+      mockNavigate,
+      resourceSshTabTarget("acct-1", "res-1", "aws", "ec2-instance"),
+      { label: "SSH: My EC2", mode: "pin" },
+    );
+
+    // Should pin a new tab with the SSH target
+    expect(mockPinWorkspaceTab).toHaveBeenCalledWith(
+      { kind: "resource", accountId: "acct-1", resourceId: "res-1", view: "ssh", pluginId: "aws", resourceTypeId: "ec2-instance" },
+      "SSH: My EC2",
+    );
+
+    // Should navigate to the resource detail route with hash "ssh"
+    expect(mockNavigate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: "/resources/$pluginId/$resourceTypeId/$resourceId",
+        params: { pluginId: "aws", resourceTypeId: "ec2-instance", resourceId: "res-1" },
+        hash: "ssh",
+      }),
+    );
+  });
+
+  it("opens SFTP tab as a pinned workspace tab (desktop parity)", () => {
+    mockPinWorkspaceTab.mockClear();
+    const mockNavigate = vi.fn();
+
+    navigateToWorkspaceTarget(
+      mockNavigate,
+      resourceSftpTabTarget("acct-1", "res-1", "aws", "ec2-instance"),
+      { label: "SFTP: My EC2", mode: "pin" },
+    );
+
+    expect(mockPinWorkspaceTab).toHaveBeenCalledWith(
+      { kind: "resource", accountId: "acct-1", resourceId: "res-1", view: "sftp", pluginId: "aws", resourceTypeId: "ec2-instance" },
+      "SFTP: My EC2",
+    );
+
+    expect(mockNavigate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to: "/resources/$pluginId/$resourceTypeId/$resourceId",
+        hash: "sftp",
+      }),
+    );
   });
 });

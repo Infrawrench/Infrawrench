@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { v4 as uuid } from "uuid";
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and, isNull, isNotNull, notInArray, lt } from "drizzle-orm";
 import { db } from "../../db/client";
 import { accounts, resources } from "../../db/schema";
 import { encrypt, decrypt } from "../../services/encryption";
@@ -196,7 +196,7 @@ app.get("/:id/detail", async (c) => {
   });
 });
 
-async function syncAccountResources(accountId: string, organizationId: string): Promise<number> {
+export async function syncAccountResources(accountId: string, organizationId: string): Promise<number> {
   const [account] = await db
     .select()
     .from(accounts)
@@ -238,6 +238,7 @@ async function syncAccountResources(accountId: string, organizationId: string): 
           outputsJson: r.resolvedOutputs ?? {},
           parentResourceId: r.parentResourceId ?? null,
           lastSyncedAt: new Date(),
+          deletedAt: null,
         })
         .onConflictDoUpdate({
           target: resources.id,
@@ -248,10 +249,67 @@ async function syncAccountResources(accountId: string, organizationId: string): 
             parentResourceId: r.parentResourceId ?? null,
             lastSyncedAt: new Date(),
             updatedAt: new Date(),
+            deletedAt: null,
           },
         }),
     ),
   );
+
+  // Soft-delete resources that no longer exist upstream.
+  // Skip resources that have never been synced (lastSyncedAt IS NULL) — these
+  // were locally created and the provider may not list them yet (e.g. VM still
+  // provisioning). They'll become eligible for cleanup once a future sync
+  // confirms them (sets lastSyncedAt).
+  const liveIds = allResources.map((r) => r.id);
+  if (liveIds.length > 0) {
+    await db
+      .update(resources)
+      .set({ deletedAt: new Date() })
+      .where(
+        and(
+          eq(resources.accountId, accountId),
+          eq(resources.organizationId, organizationId),
+          isNull(resources.deletedAt),
+          isNotNull(resources.lastSyncedAt),
+          notInArray(resources.id, liveIds),
+        ),
+      );
+  } else {
+    // If the plugin returned zero resources, soft-delete synced ones for this account
+    await db
+      .update(resources)
+      .set({ deletedAt: new Date() })
+      .where(
+        and(
+          eq(resources.accountId, accountId),
+          eq(resources.organizationId, organizationId),
+          isNull(resources.deletedAt),
+          isNotNull(resources.lastSyncedAt),
+        ),
+      );
+  }
+
+  // Clean up locally-created resources that were never confirmed by the
+  // provider. These have lastSyncedAt IS NULL (the create endpoint doesn't
+  // set it). After a grace period (5 minutes), if the provider still doesn't
+  // list them, they're ghost records — e.g. the VM was deleted externally
+  // before a sync could confirm it, or the provider uses a different ID
+  // format than createResource returned.
+  const staleThreshold = new Date(Date.now() - 5 * 60 * 1000);
+  const staleConditions = [
+    eq(resources.accountId, accountId),
+    eq(resources.organizationId, organizationId),
+    isNull(resources.deletedAt),
+    isNull(resources.lastSyncedAt),
+    lt(resources.createdAt, staleThreshold),
+  ];
+  if (liveIds.length > 0) {
+    staleConditions.push(notInArray(resources.id, liveIds));
+  }
+  await db
+    .update(resources)
+    .set({ deletedAt: new Date() })
+    .where(and(...staleConditions));
 
   return allResources.length;
 }

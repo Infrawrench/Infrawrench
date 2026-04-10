@@ -12,16 +12,16 @@ export function accountTabTarget(accountId: string): WorkspaceTabTarget {
   return { kind: "account", accountId };
 }
 
-export function resourceTabTarget(accountId: string, resourceId: string): WorkspaceTabTarget {
-  return { kind: "resource", accountId, resourceId: normalizeResourceId(resourceId), view: "details" };
+export function resourceTabTarget(accountId: string, resourceId: string, pluginId?: string, resourceTypeId?: string): WorkspaceTabTarget {
+  return { kind: "resource", accountId, resourceId: normalizeResourceId(resourceId), view: "details", ...(pluginId ? { pluginId } : {}), ...(resourceTypeId ? { resourceTypeId } : {}) };
 }
 
-export function resourceSshTabTarget(accountId: string, resourceId: string): WorkspaceTabTarget {
-  return { kind: "resource", accountId, resourceId: normalizeResourceId(resourceId), view: "ssh" };
+export function resourceSshTabTarget(accountId: string, resourceId: string, pluginId?: string, resourceTypeId?: string): WorkspaceTabTarget {
+  return { kind: "resource", accountId, resourceId: normalizeResourceId(resourceId), view: "ssh", ...(pluginId ? { pluginId } : {}), ...(resourceTypeId ? { resourceTypeId } : {}) };
 }
 
-export function resourceSftpTabTarget(accountId: string, resourceId: string): WorkspaceTabTarget {
-  return { kind: "resource", accountId, resourceId: normalizeResourceId(resourceId), view: "sftp" };
+export function resourceSftpTabTarget(accountId: string, resourceId: string, pluginId?: string, resourceTypeId?: string): WorkspaceTabTarget {
+  return { kind: "resource", accountId, resourceId: normalizeResourceId(resourceId), view: "sftp", ...(pluginId ? { pluginId } : {}), ...(resourceTypeId ? { resourceTypeId } : {}) };
 }
 
 export function getWorkspaceNavigateArgs(target: WorkspaceTabTarget, replace = false): {
@@ -38,10 +38,22 @@ export function getWorkspaceNavigateArgs(target: WorkspaceTabTarget, replace = f
       return { to: "/accounts/$accountId", params: { accountId: target.accountId }, ...(replace ? { replace: true } : {}) };
     case "resource": {
       const rid = normalizeResourceId(target.resourceId);
+      const hash = target.view === "ssh" ? "ssh" : target.view === "sftp" ? "sftp" : undefined;
+      // If we have pluginId + resourceTypeId, navigate to the resource detail route
+      if (target.pluginId && target.resourceTypeId) {
+        return {
+          to: "/resources/$pluginId/$resourceTypeId/$resourceId",
+          params: { pluginId: target.pluginId, resourceTypeId: target.resourceTypeId, resourceId: rid },
+          search: { accountId: target.accountId },
+          ...(hash ? { hash } : {}),
+          ...(replace ? { replace: true } : {}),
+        };
+      }
+      // Fallback: navigate to account page
       return {
         to: "/accounts/$accountId",
         params: { accountId: target.accountId },
-        ...(target.view === "ssh" ? { hash: "ssh" } : target.view === "sftp" ? { hash: "sftp" } : {}),
+        ...(hash ? { hash } : {}),
         ...(replace ? { replace: true } : {}),
       };
     }
@@ -78,12 +90,14 @@ export function syncWorkspaceRouteFromPath(pathname: string, hash?: string): Wor
     return accountTabTarget(segments[1]);
   }
   if (segments[0] === "resources" && segments[1] && segments[2] && segments[3]) {
+    const pluginId = decodeURIComponent(segments[1]);
+    const resourceTypeId = decodeURIComponent(segments[2]);
     const resourceId = decodeURIComponent(segments[3]);
     const params = new URLSearchParams(window.location.search);
     const accountId = params.get("accountId") ?? resourceId.split(":")[0] ?? "";
-    if (normalizedHash === "ssh") return resourceSshTabTarget(accountId, resourceId);
-    if (normalizedHash === "sftp") return resourceSftpTabTarget(accountId, resourceId);
-    return resourceTabTarget(accountId, resourceId);
+    if (normalizedHash === "ssh") return resourceSshTabTarget(accountId, resourceId, pluginId, resourceTypeId);
+    if (normalizedHash === "sftp") return resourceSftpTabTarget(accountId, resourceId, pluginId, resourceTypeId);
+    return resourceTabTarget(accountId, resourceId, pluginId, resourceTypeId);
   }
   return null;
 }

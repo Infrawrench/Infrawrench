@@ -12,6 +12,8 @@ interface PinnedResource {
   gridH: number;
   displayName: string;
   pluginId: string;
+  pluginLogoSvg?: string | undefined;
+  pluginDisplayName?: string | undefined;
   resourceTypeId: string;
   accountId: string;
   fieldsJson: unknown;
@@ -46,47 +48,77 @@ export function DashboardView({ dashboardId, dashboardName, pins: initialPins }:
       <h1 className="text-2xl font-semibold mb-6">{dashboardName}</h1>
       <DroppableDashboardArea dashboardId={dashboardId}>
         {pins.length === 0 ? (
-          <div className="text-center py-20">
-            <p className="text-gray-500 text-sm">No pinned resources yet.</p>
-            <p className="text-gray-600 text-xs mt-1">
+          <div className="flex flex-col items-center justify-center h-64 rounded-2xl border-2 border-dashed border-gray-800 text-gray-700">
+            <span className="text-3xl mb-3">&#8862;</span>
+            <p className="text-sm">No pinned resources yet.</p>
+            <p className="text-xs mt-1 opacity-60">
               Drag resources from your accounts to pin them here.
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-3 gap-4">
-            {pins.map((pin) => (
-              <div
-                key={pin.pinId}
-                className="group relative bg-gray-900 border border-gray-800 rounded-xl p-4 hover:border-gray-700 transition-colors"
-              >
-                <button
-                  onClick={() =>
-                    void navigate({
-                      to: "/resources/$pluginId/$resourceTypeId/$resourceId",
-                      params: { pluginId: pin.pluginId, resourceTypeId: pin.resourceTypeId, resourceId: pin.resourceId },
-                    })
-                  }
-                  className="block w-full text-left"
+          <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}>
+            {pins.map((pin) => {
+              const fields = typeof pin.fieldsJson === "string"
+                ? (() => { try { return JSON.parse(pin.fieldsJson) as Record<string, unknown>; } catch { return {}; } })()
+                : (pin.fieldsJson as Record<string, unknown> ?? {});
+              const rawHost = String(fields["host"] ?? fields["region"] ?? fields["engine"] ?? "");
+              const host = (() => {
+                try {
+                  const h = rawHost.includes("://") ? new URL(rawHost).hostname : rawHost;
+                  return h.length > 28 ? h.slice(0, 26) + "\u2026" : h;
+                } catch {
+                  return rawHost.length > 28 ? rawHost.slice(0, 26) + "\u2026" : rawHost;
+                }
+              })();
+
+              return (
+                <div
+                  key={pin.pinId}
+                  className="group relative rounded-2xl border border-gray-800 bg-gray-900 hover:border-gray-700 transition-colors flex flex-col overflow-hidden"
                 >
-                  <div className="flex items-center gap-3 mb-3">
-                    <span className="text-sm font-medium text-gray-200 truncate">
-                      {pin.displayName}
-                    </span>
-                  </div>
-                  <div className="text-xs text-gray-500">
-                    {pin.pluginId} / {pin.resourceTypeId}
-                  </div>
-                </button>
-                <button
-                  onClick={() => void handleUnpin(pin.pinId, pin.resourceId)}
-                  disabled={unpinning === pin.pinId}
-                  className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 w-6 h-6 flex items-center justify-center rounded text-gray-600 hover:text-red-400 hover:bg-red-500/10 transition-all text-xs"
-                  title="Unpin"
-                >
-                  ✕
-                </button>
-              </div>
-            ))}
+                  {/* Unpin button */}
+                  <button
+                    onClick={() => void handleUnpin(pin.pinId, pin.resourceId)}
+                    disabled={unpinning === pin.pinId}
+                    title="Remove from dashboard"
+                    className="absolute top-2 right-2 w-5 h-5 rounded-full text-gray-700 hover:text-gray-300 hover:bg-gray-700 transition-all opacity-0 group-hover:opacity-100 text-xs flex items-center justify-center"
+                  >
+                    &#10005;
+                  </button>
+
+                  <button
+                    onClick={() =>
+                      void navigate({
+                        to: "/resources/$pluginId/$resourceTypeId/$resourceId",
+                        params: { pluginId: pin.pluginId, resourceTypeId: pin.resourceTypeId, resourceId: pin.resourceId },
+                      })
+                    }
+                    className="flex-1 flex flex-col p-5 text-left gap-3"
+                  >
+                    {/* Plugin logo + name */}
+                    <div className="flex items-center gap-2">
+                      {pin.pluginLogoSvg ? (
+                        <div
+                          className="w-6 h-6 flex-shrink-0"
+                          dangerouslySetInnerHTML={{ __html: pin.pluginLogoSvg }}
+                        />
+                      ) : (
+                        <span className="text-xs text-gray-600 font-mono">{pin.pluginId}</span>
+                      )}
+                      <span className="text-xs text-gray-500">
+                        {pin.pluginDisplayName ?? pin.pluginId}
+                      </span>
+                    </div>
+
+                    {/* Resource name */}
+                    <div>
+                      <p className="text-base font-semibold text-gray-100 leading-tight">{pin.displayName}</p>
+                      {host && <p className="text-xs text-gray-500 mt-0.5 truncate">{host}</p>}
+                    </div>
+                  </button>
+                </div>
+              );
+            })}
           </div>
         )}
       </DroppableDashboardArea>

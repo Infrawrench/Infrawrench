@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useRouterState } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { useUIStore } from "@infrawrench/ui";
 import { ResourceDetailClient } from "@/components/ResourceDetailClient";
@@ -8,11 +8,18 @@ export const Route = createFileRoute(
   "/resources/$pluginId/$resourceTypeId/$resourceId",
 )({
   component: ResourceDetailPage,
+  validateSearch: (search: Record<string, unknown>): { accountId?: string } => ({
+    ...(typeof search["accountId"] === "string" ? { accountId: search["accountId"] } : {}),
+  }),
 });
 
 function ResourceDetailPage() {
-  const { pluginId, resourceTypeId, resourceId } = Route.useParams();
-  const accountId = new URLSearchParams(window.location.search).get("accountId");
+  const { pluginId, resourceTypeId, resourceId: rawResourceId } = Route.useParams();
+  const decodedResourceId = decodeURIComponent(rawResourceId);
+  const resourceId = decodedResourceId;
+  const { accountId } = Route.useSearch();
+  const locationHash = useRouterState({ select: (s) => s.location.hash });
+  const currentView = locationHash.replace(/^#/, "");
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [data, setData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
@@ -43,12 +50,19 @@ function ResourceDetailPage() {
     return () => { cancelled = true; };
   }, [detailUrl]);
 
-  // Update tab title with real resource name
+  // Update tab title with real resource name (prefix SSH/SFTP like desktop)
   useEffect(() => {
     if (!data) return;
     const { activeWorkspaceTabId, setWorkspaceTabTitle } = useUIStore.getState();
-    if (activeWorkspaceTabId) setWorkspaceTabTitle(activeWorkspaceTabId, data.resourceDisplayName);
-  }, [data]);
+    if (activeWorkspaceTabId) {
+      const viewSuffix = currentView === "ssh"
+        ? `SSH: ${data.resourceDisplayName}`
+        : currentView === "sftp"
+          ? `SFTP: ${data.resourceDisplayName}`
+          : data.resourceDisplayName;
+      setWorkspaceTabTitle(activeWorkspaceTabId, viewSuffix);
+    }
+  }, [data, currentView]);
 
   // Auto-refresh every 30s + on resource-changed events
   useEffect(() => {
@@ -96,9 +110,11 @@ function ResourceDetailPage() {
       hasDockerActions={data.hasDockerActions}
       hasSshTerminal={data.hasSshTerminal}
       hasSftpBrowser={data.hasSftpBrowser}
+      sshHost={data.sshHost}
       containerId={data.containerId}
       databaseName={data.databaseName}
       storageBucketName={data.storageBucketName}
+      initialView={currentView === "ssh" || currentView === "sftp" ? currentView : undefined}
     />
   );
 }

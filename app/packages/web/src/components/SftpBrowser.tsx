@@ -1,13 +1,19 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { apiPost } from "@/lib/api";
 
-async function sftpListAction(input: { accountId: string; path: string }) {
+interface SshKeyParams {
+  sshKeyId?: string;
+  sshHost?: string;
+  sshUsername?: string;
+}
+
+async function sftpListAction(input: { accountId: string; path: string } & SshKeyParams) {
   return apiPost<Array<{ key: string; name: string; size: number; lastModified: string; isDirectory: boolean }>>("/api/sftp/list", input);
 }
-async function sftpMkdirAction(input: { accountId: string; path: string }) {
+async function sftpMkdirAction(input: { accountId: string; path: string } & SshKeyParams) {
   await apiPost("/api/sftp/mkdir", input);
 }
-async function sftpDeleteAction(input: { accountId: string; path: string; isDir: boolean }) {
+async function sftpDeleteAction(input: { accountId: string; path: string; isDir: boolean } & SshKeyParams) {
   await apiPost("/api/sftp/delete", input);
 }
 import { formatErrorMessage } from "@/lib/errors";
@@ -55,7 +61,7 @@ function parentPath(p: string): string {
   return "/" + parts.slice(0, -1).join("/");
 }
 
-export function SftpBrowser({ accountId, initialPath = "/" }: { accountId: string; initialPath?: string }) {
+export function SftpBrowser({ accountId, initialPath = "/", sshKeyId, sshHost, sshUsername }: { accountId: string; initialPath?: string; sshKeyId?: string; sshHost?: string; sshUsername?: string }) {
   const [currentPath, setCurrentPath] = useState(normalizePath(initialPath));
   const [pathInput, setPathInput] = useState(normalizePath(initialPath));
   const [pathEditing, setPathEditing] = useState(false);
@@ -77,6 +83,8 @@ export function SftpBrowser({ accountId, initialPath = "/" }: { accountId: strin
   const fileInputRef = useRef<HTMLInputElement>(null);
   const newFolderInputRef = useRef<HTMLInputElement>(null);
 
+  const sshParams: SshKeyParams = sshKeyId ? { sshKeyId, sshHost, sshUsername } : {};
+
   function reload() { setRefreshCount((n) => n + 1); setSearch(""); setSelected(new Set()); setConfirmBulkDelete(false); }
 
   useEffect(() => {
@@ -84,7 +92,7 @@ export function SftpBrowser({ accountId, initialPath = "/" }: { accountId: strin
     setLoading(true);
     setError(null);
     setSelected(new Set());
-    sftpListAction({ accountId, path: currentPath })
+    sftpListAction({ accountId, path: currentPath, ...sshParams })
       .then((items) => { if (!cancelled) setEntries(items); })
       .catch((e) => { if (!cancelled) setError(formatErrorMessage(e)); })
       .finally(() => { if (!cancelled) setLoading(false); });
@@ -149,7 +157,7 @@ export function SftpBrowser({ accountId, initialPath = "/" }: { accountId: strin
   }
 
   const listAllFlat = useCallback(async (p: string): Promise<SftpEntry[]> => {
-    const items = await sftpListAction({ accountId, path: p });
+    const items = await sftpListAction({ accountId, path: p, ...sshParams });
     const fileItems = items.filter((e) => !e.isDirectory);
     const dirItems = items.filter((e) => e.isDirectory);
     const nested = await Promise.all(dirItems.map((d) => listAllFlat(d.key)));
@@ -195,7 +203,7 @@ export function SftpBrowser({ accountId, initialPath = "/" }: { accountId: strin
     setNewFolderError(null);
     const folderPath = `${currentPath === "/" ? "" : currentPath}/${name}`;
     try {
-      await sftpMkdirAction({ accountId, path: folderPath });
+      await sftpMkdirAction({ accountId, path: folderPath, ...sshParams });
       setNewFolderActive(false);
       setNewFolderName("");
       reload();
@@ -207,7 +215,7 @@ export function SftpBrowser({ accountId, initialPath = "/" }: { accountId: strin
   async function handleDelete(key: string, isDir: boolean) {
     setDeleting(true);
     try {
-      await sftpDeleteAction({ accountId, path: key, isDir });
+      await sftpDeleteAction({ accountId, path: key, isDir, ...sshParams });
       setConfirmDeleteKey(null);
       reload();
     } catch (e) {
@@ -223,7 +231,7 @@ export function SftpBrowser({ accountId, initialPath = "/" }: { accountId: strin
     try {
       await Promise.allSettled([...selected].map((key) => {
         const entry = entries.find((e) => e.key === key);
-        return sftpDeleteAction({ accountId, path: key, isDir: entry?.isDirectory ?? false });
+        return sftpDeleteAction({ accountId, path: key, isDir: entry?.isDirectory ?? false, ...sshParams });
       }));
       reload();
     } finally {

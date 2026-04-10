@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { tokenize, formatRedisResult } from "@/components/KvConsole";
+import { tokenize, formatRedisResult } from "@infrawrench/ui";
 
 describe("tokenize", () => {
   it("splits simple command", () => {
