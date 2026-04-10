@@ -23,6 +23,31 @@ import { SecretManagerSecretResourceType } from "./resources/secret-manager-secr
 import { DataflowJobResourceType } from "./resources/dataflow-job.js";
 import { CloudDnsZoneResourceType } from "./resources/cloud-dns-zone.js";
 import { CloudDnsRecordSetResourceType } from "./resources/cloud-dns-record-set.js";
+// New resource types
+import { FirewallRuleResourceType } from "./resources/firewall-rule.js";
+import { SubnetResourceType } from "./resources/subnet.js";
+import { StaticIpResourceType } from "./resources/static-ip.js";
+import { CloudRouterResourceType } from "./resources/cloud-router.js";
+import { CloudNatResourceType } from "./resources/cloud-nat.js";
+import { CloudSchedulerJobResourceType } from "./resources/cloud-scheduler-job.js";
+import { CloudTasksQueueResourceType } from "./resources/cloud-tasks-queue.js";
+import { CloudBuildTriggerResourceType } from "./resources/cloud-build-trigger.js";
+import { LogSinkResourceType } from "./resources/log-sink.js";
+import { AlertPolicyResourceType } from "./resources/alert-policy.js";
+import { KmsKeyRingResourceType } from "./resources/kms-key-ring.js";
+import { KmsKeyResourceType } from "./resources/kms-key.js";
+import { FilestoreInstanceResourceType } from "./resources/filestore-instance.js";
+import { BackendServiceResourceType } from "./resources/backend-service.js";
+import { ForwardingRuleResourceType } from "./resources/forwarding-rule.js";
+import { MemorystoreMemcachedResourceType } from "./resources/memorystore-memcached.js";
+import { VertexAiEndpointResourceType } from "./resources/vertex-ai-endpoint.js";
+import { ComposerEnvironmentResourceType } from "./resources/composer-environment.js";
+import { WorkflowResourceType } from "./resources/workflow.js";
+import { CloudDeployPipelineResourceType } from "./resources/cloud-deploy-pipeline.js";
+import { AppEngineServiceResourceType } from "./resources/app-engine-service.js";
+import { HealthCheckResourceType } from "./resources/health-check.js";
+import { SslCertificateResourceType } from "./resources/ssl-certificate.js";
+import { InstanceGroupResourceType } from "./resources/instance-group.js";
 
 const manifest: PluginManifest = {
   id: "gcp",
@@ -60,6 +85,7 @@ const resourceTypes: ResourceTypeDefinition[] = [
   // Compute
   GceInstanceResourceType,
   GceDiskResourceType,
+  InstanceGroupResourceType,
   // Kubernetes
   GkeClusterResourceType,
   // Databases
@@ -68,6 +94,7 @@ const resourceTypes: ResourceTypeDefinition[] = [
   BigtableInstanceResourceType,
   FirestoreDatabaseResourceType,
   MemorystoreRedisResourceType,
+  MemorystoreMemcachedResourceType,
   AlloyDbClusterResourceType,
   // Storage & Messaging
   GcsBucketResourceType,
@@ -76,21 +103,47 @@ const resourceTypes: ResourceTypeDefinition[] = [
   // Serverless
   CloudRunServiceResourceType,
   CloudFunctionResourceType,
+  AppEngineServiceResourceType,
   // Networking & Security
   VpcNetworkResourceType,
+  SubnetResourceType,
+  FirewallRuleResourceType,
+  StaticIpResourceType,
+  CloudRouterResourceType,
+  CloudNatResourceType,
   CloudArmorPolicyResourceType,
+  // Load Balancing
+  BackendServiceResourceType,
+  ForwardingRuleResourceType,
+  HealthCheckResourceType,
+  SslCertificateResourceType,
   // DNS
   CloudDnsZoneResourceType,
   CloudDnsRecordSetResourceType,
-  // Data
+  // Data & Analytics
   BigQueryDatasetResourceType,
   DataflowJobResourceType,
+  // CI/CD
+  CloudBuildTriggerResourceType,
+  CloudDeployPipelineResourceType,
+  // Scheduling & Orchestration
+  CloudSchedulerJobResourceType,
+  CloudTasksQueueResourceType,
+  WorkflowResourceType,
+  ComposerEnvironmentResourceType,
+  // AI/ML
+  VertexAiEndpointResourceType,
   // Developer Tools
   ArtifactRegistryRepoResourceType,
   // IAM
   ServiceAccountResourceType,
-  // Secrets
+  // Secrets & Encryption
   SecretManagerSecretResourceType,
+  KmsKeyRingResourceType,
+  KmsKeyResourceType,
+  // Observability
+  LogSinkResourceType,
+  AlertPolicyResourceType,
 ];
 
 export const plugin: Plugin = {

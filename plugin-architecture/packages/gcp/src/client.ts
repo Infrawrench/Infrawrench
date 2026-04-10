@@ -128,6 +128,30 @@ export class GcpClient implements PluginClient {
       case "dataflow-job":       return listers.listDataflowJobs(ctx, accountId, p);
       case "cloud-dns-zone":     return listers.listCloudDnsZones(ctx, accountId, p);
       case "cloud-dns-record-set": return listers.listCloudDnsRecordSets(ctx, accountId, p);
+      case "firewall-rule":       return listers.listFirewallRules(ctx, accountId, p);
+      case "subnet":              return listers.listSubnets(ctx, accountId, p);
+      case "static-ip":           return listers.listStaticIps(ctx, accountId, p);
+      case "cloud-router":        return listers.listCloudRouters(ctx, accountId, p);
+      case "cloud-nat":           return listers.listCloudNats(ctx, accountId, p);
+      case "cloud-scheduler-job": return listers.listCloudSchedulerJobs(ctx, accountId, p);
+      case "cloud-tasks-queue":   return listers.listCloudTasksQueues(ctx, accountId, p);
+      case "cloud-build-trigger": return listers.listCloudBuildTriggers(ctx, accountId, p);
+      case "log-sink":            return listers.listLogSinks(ctx, accountId, p);
+      case "alert-policy":        return listers.listAlertPolicies(ctx, accountId, p);
+      case "kms-key-ring":        return listers.listKmsKeyRings(ctx, accountId, p);
+      case "kms-key":             return listers.listKmsKeys(ctx, accountId, p);
+      case "filestore-instance":  return listers.listFilestoreInstances(ctx, accountId, p);
+      case "backend-service":     return listers.listBackendServices(ctx, accountId, p);
+      case "forwarding-rule":     return listers.listForwardingRules(ctx, accountId, p);
+      case "memorystore-memcached": return listers.listMemorystoreMemcached(ctx, accountId, p);
+      case "vertex-ai-endpoint":  return listers.listVertexAiEndpoints(ctx, accountId, p);
+      case "composer-environment": return listers.listComposerEnvironments(ctx, accountId, p);
+      case "workflow":            return listers.listWorkflows(ctx, accountId, p);
+      case "cloud-deploy-pipeline": return listers.listCloudDeployPipelines(ctx, accountId, p);
+      case "app-engine-service":  return listers.listAppEngineServices(ctx, accountId, p);
+      case "health-check":        return listers.listHealthChecks(ctx, accountId, p);
+      case "ssl-certificate":     return listers.listSslCertificates(ctx, accountId, p);
+      case "instance-group":      return listers.listInstanceGroups(ctx, accountId, p);
       default:
         throw new Error(`GCP plugin: unknown resource type "${typeId}"`);
     }
@@ -250,6 +274,41 @@ export class GcpClient implements PluginClient {
       const payload = data["payload"] as Record<string, unknown> | undefined;
       const b64 = (payload?.["data"] as string) ?? "";
       return atob(b64);
+    }
+
+    if (typeId === "static-ip" && outputKey === "address") {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      return String(resource.fields["address"] ?? resource.resolvedOutputs["address"] ?? "");
+    }
+
+    if (typeId === "forwarding-rule" && outputKey === "IPAddress") {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      return String(resource.fields["IPAddress"] ?? resource.resolvedOutputs["IPAddress"] ?? "");
+    }
+
+    if (typeId === "filestore-instance" && outputKey === "ipAddress") {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      return String(resource.fields["ipAddress"] ?? resource.resolvedOutputs["ipAddress"] ?? "");
+    }
+
+    if (typeId === "memorystore-memcached" && outputKey === "discoveryEndpoint") {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      return String(resource.fields["discoveryEndpoint"] ?? resource.resolvedOutputs["discoveryEndpoint"] ?? "");
+    }
+
+    if (typeId === "composer-environment" && outputKey === "airflowUri") {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      return String(resource.fields["airflowUri"] ?? resource.resolvedOutputs["airflowUri"] ?? "");
+    }
+
+    if (typeId === "app-engine-service" && outputKey === "url") {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      return String(resource.resolvedOutputs["url"] ?? "");
+    }
+
+    if (typeId === "cloud-function" && outputKey === "url") {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      return String(resource.resolvedOutputs["url"] ?? "");
     }
 
     throw new Error(`GCP plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
@@ -385,6 +444,164 @@ export class GcpClient implements PluginClient {
         { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
       );
       if (!res.ok) throw new Error(`GKE API ${res.status}: ${await res.text()}`);
+      return;
+    }
+
+    if (typeId === "gce-disk") {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      const zone = String(resource.fields["zone"] ?? "");
+      const name = String(resource.fields["name"] ?? "");
+      if (!zone || !name) throw new Error("Cannot determine zone or disk name for deletion");
+      const res = await fetch(
+        `https://compute.googleapis.com/compute/v1/projects/${p}/zones/${zone}/disks/${name}`,
+        { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
+      );
+      if (!res.ok) throw new Error(`GCP Compute API ${res.status}: ${await res.text()}`);
+      return;
+    }
+
+    if (typeId === "cloudsql-instance") {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      const name = String(resource.fields["name"] ?? resource.externalId ?? "");
+      const res = await fetch(
+        `https://sqladmin.googleapis.com/v1/projects/${p}/instances/${name}`,
+        { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
+      );
+      if (!res.ok) throw new Error(`Cloud SQL API ${res.status}: ${await res.text()}`);
+      return;
+    }
+
+    if (typeId === "cloud-run-service") {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      const fullName = resource.externalId ?? "";
+      const res = await fetch(
+        `https://run.googleapis.com/v2/${fullName}`,
+        { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
+      );
+      if (!res.ok) throw new Error(`Cloud Run API ${res.status}: ${await res.text()}`);
+      return;
+    }
+
+    if (typeId === "cloud-function") {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      const fullName = resource.externalId ?? "";
+      const res = await fetch(
+        `https://cloudfunctions.googleapis.com/v2/${fullName}`,
+        { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
+      );
+      if (!res.ok) throw new Error(`Cloud Functions API ${res.status}: ${await res.text()}`);
+      return;
+    }
+
+    if (typeId === "pubsub-topic") {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      const fullName = resource.externalId ?? "";
+      const res = await fetch(
+        `https://pubsub.googleapis.com/v1/${fullName}`,
+        { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
+      );
+      if (!res.ok) throw new Error(`Pub/Sub API ${res.status}: ${await res.text()}`);
+      return;
+    }
+
+    if (typeId === "pubsub-subscription") {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      const fullName = resource.externalId ?? "";
+      const res = await fetch(
+        `https://pubsub.googleapis.com/v1/${fullName}`,
+        { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
+      );
+      if (!res.ok) throw new Error(`Pub/Sub API ${res.status}: ${await res.text()}`);
+      return;
+    }
+
+    if (typeId === "secret-manager-secret") {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      const fullName = resource.externalId ?? "";
+      const res = await fetch(
+        `https://secretmanager.googleapis.com/v1/${fullName}`,
+        { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
+      );
+      if (!res.ok) throw new Error(`Secret Manager API ${res.status}: ${await res.text()}`);
+      return;
+    }
+
+    if (typeId === "firewall-rule") {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      const name = String(resource.fields["name"] ?? resource.externalId ?? "");
+      const res = await fetch(
+        `https://compute.googleapis.com/compute/v1/projects/${p}/global/firewalls/${name}`,
+        { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
+      );
+      if (!res.ok) throw new Error(`GCP Compute API ${res.status}: ${await res.text()}`);
+      return;
+    }
+
+    if (typeId === "static-ip") {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      const name = String(resource.fields["name"] ?? "");
+      const region = String(resource.fields["region"] ?? "");
+      if (!name || !region) throw new Error("Cannot determine name or region for deletion");
+      const res = await fetch(
+        `https://compute.googleapis.com/compute/v1/projects/${p}/regions/${region}/addresses/${name}`,
+        { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
+      );
+      if (!res.ok) throw new Error(`GCP Compute API ${res.status}: ${await res.text()}`);
+      return;
+    }
+
+    if (typeId === "cloud-scheduler-job") {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      const fullName = resource.externalId ?? "";
+      const res = await fetch(
+        `https://cloudscheduler.googleapis.com/v1/${fullName}`,
+        { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
+      );
+      if (!res.ok) throw new Error(`Cloud Scheduler API ${res.status}: ${await res.text()}`);
+      return;
+    }
+
+    if (typeId === "cloud-tasks-queue") {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      const fullName = resource.externalId ?? "";
+      const res = await fetch(
+        `https://cloudtasks.googleapis.com/v2/${fullName}`,
+        { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
+      );
+      if (!res.ok) throw new Error(`Cloud Tasks API ${res.status}: ${await res.text()}`);
+      return;
+    }
+
+    if (typeId === "artifact-registry-repo") {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      const fullName = resource.externalId ?? "";
+      const res = await fetch(
+        `https://artifactregistry.googleapis.com/v1/${fullName}`,
+        { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
+      );
+      if (!res.ok) throw new Error(`Artifact Registry API ${res.status}: ${await res.text()}`);
+      return;
+    }
+
+    if (typeId === "workflow") {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      const fullName = resource.externalId ?? "";
+      const res = await fetch(
+        `https://workflows.googleapis.com/v1/${fullName}`,
+        { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
+      );
+      if (!res.ok) throw new Error(`Workflows API ${res.status}: ${await res.text()}`);
+      return;
+    }
+
+    if (typeId === "filestore-instance") {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      const fullName = resource.externalId ?? "";
+      const res = await fetch(
+        `https://file.googleapis.com/v1/${fullName}`,
+        { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
+      );
+      if (!res.ok) throw new Error(`Filestore API ${res.status}: ${await res.text()}`);
       return;
     }
 
