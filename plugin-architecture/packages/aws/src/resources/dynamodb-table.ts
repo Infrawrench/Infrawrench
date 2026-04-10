@@ -19,4 +19,15 @@ export const DynamoDBTableResourceType: ResourceTypeDefinition = {
   ],
   dashboardPinnable: true,
   iconKey: "database",
+  supportsCreate: true,
+  secretExportTemplates: [
+    {
+      id: "dynamodb-table",
+      displayName: "DynamoDB Table",
+      description: "Table ARN for DynamoDB access",
+      entries: [
+        { envKey: "DYNAMODB_TABLE_ARN", outputKey: "tableArn", description: "Table ARN" },
+      ],
+    },
+  ],
 };

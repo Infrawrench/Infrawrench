@@ -10,6 +10,8 @@ export interface ListerContext {
   ec2<T>(action: string, params?: Record<string, string>): Promise<T>;
   json<T>(service: string, target: string, body: Record<string, unknown>): Promise<T>;
   jsonGet<T>(service: string, path: string): Promise<T>;
+  /** Make an XML Query API call for non-EC2 services (ELBv2, AutoScaling, Redshift, CloudFormation) */
+  ec2Query<T>(service: string, action: string, version: string, params?: Record<string, string>): Promise<T>;
   id(accountId: string, typeId: string, externalId: string): string;
   now(): string;
   region: string;
@@ -187,6 +189,40 @@ export async function listEKSClusters(
         `/clusters/${encodeURIComponent(name)}`,
       );
       const c = detail.cluster;
+      const endpoint = String(c["endpoint"] ?? "");
+      const caData = String(
+        (c["certificateAuthority"] as Record<string, unknown> | undefined)?.["data"] ?? "",
+      );
+      // Generate a kubeconfig YAML for kubectl access
+      const kubeconfig = [
+        "apiVersion: v1",
+        "kind: Config",
+        "clusters:",
+        `- name: ${name}`,
+        "  cluster:",
+        `    server: ${endpoint}`,
+        `    certificate-authority-data: ${caData}`,
+        "contexts:",
+        `- name: ${name}`,
+        "  context:",
+        `    cluster: ${name}`,
+        `    user: ${name}`,
+        "current-context: " + name,
+        "users:",
+        `- name: ${name}`,
+        "  user:",
+        "    exec:",
+        "      apiVersion: client.authentication.k8s.io/v1beta1",
+        "      command: aws",
+        "      args:",
+        "        - eks",
+        "        - get-token",
+        "        - --cluster-name",
+        `        - ${name}`,
+        `        - --region`,
+        `        - ${ctx.region}`,
+      ].join("\n");
+
       results.push({
         id: ctx.id(accountId, "eks-cluster", name),
         pluginId: "aws",
@@ -201,10 +237,9 @@ export async function listEKSClusters(
           roleArn: String(c["roleArn"] ?? ""),
         },
         resolvedOutputs: {
-          endpoint: String(c["endpoint"] ?? ""),
-          certificateAuthority: String(
-            (c["certificateAuthority"] as Record<string, unknown> | undefined)?.["data"] ?? "",
-          ),
+          endpoint,
+          certificateAuthority: caData,
+          kubeconfig,
         },
         secretStates: [],
         externalId: name,

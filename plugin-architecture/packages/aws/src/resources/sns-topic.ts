@@ -16,4 +16,15 @@ export const SNSTopicResourceType: ResourceTypeDefinition = {
   ],
   dashboardPinnable: true,
   iconKey: "topic",
+  supportsCreate: true,
+  secretExportTemplates: [
+    {
+      id: "sns-topic",
+      displayName: "SNS Topic ARN",
+      description: "Topic ARN for publishing messages",
+      entries: [
+        { envKey: "SNS_TOPIC_ARN", outputKey: "topicArn", description: "Topic ARN" },
+      ],
+    },
+  ],
 };

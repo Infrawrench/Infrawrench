@@ -20,4 +20,14 @@ export const LambdaFunctionResourceType: ResourceTypeDefinition = {
   ],
   dashboardPinnable: true,
   iconKey: "function",
+  secretExportTemplates: [
+    {
+      id: "lambda-invoke",
+      displayName: "Lambda Function ARN",
+      description: "ARN for invoking this Lambda function",
+      entries: [
+        { envKey: "LAMBDA_FUNCTION_ARN", outputKey: "functionArn", description: "Function ARN" },
+      ],
+    },
+  ],
 };

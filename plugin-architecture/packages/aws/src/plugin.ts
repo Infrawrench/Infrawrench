@@ -16,6 +16,42 @@ import { ECRRepositoryResourceType } from "./resources/ecr-repository.js";
 import { SecretsManagerSecretResourceType } from "./resources/secrets-manager-secret.js";
 import { CloudFrontDistributionResourceType } from "./resources/cloudfront-distribution.js";
 import { IAMUserResourceType } from "./resources/iam-user.js";
+import { Route53HostedZoneResourceType } from "./resources/route53-hosted-zone.js";
+import { Route53RecordSetResourceType } from "./resources/route53-record-set.js";
+import { ALBResourceType } from "./resources/alb.js";
+import { TargetGroupResourceType } from "./resources/target-group.js";
+import { AutoScalingGroupResourceType } from "./resources/auto-scaling-group.js";
+import { IAMRoleResourceType } from "./resources/iam-role.js";
+import { SecurityGroupResourceType } from "./resources/security-group.js";
+import { SubnetResourceType } from "./resources/subnet.js";
+import { NATGatewayResourceType } from "./resources/nat-gateway.js";
+import { ElasticIPResourceType } from "./resources/elastic-ip.js";
+import { StepFunctionResourceType } from "./resources/step-function.js";
+import { EventBridgeRuleResourceType } from "./resources/eventbridge-rule.js";
+import { KinesisStreamResourceType } from "./resources/kinesis-stream.js";
+import { RedshiftClusterResourceType } from "./resources/redshift-cluster.js";
+import { RDSClusterResourceType } from "./resources/rds-cluster.js";
+import { OpenSearchDomainResourceType } from "./resources/opensearch-domain.js";
+import { ACMCertificateResourceType } from "./resources/acm-certificate.js";
+import { WAFWebACLResourceType } from "./resources/waf-web-acl.js";
+import { CodeBuildProjectResourceType } from "./resources/codebuild-project.js";
+import { CodePipelinePipelineResourceType } from "./resources/codepipeline-pipeline.js";
+import { CloudFormationStackResourceType } from "./resources/cloudformation-stack.js";
+import { SSMParameterResourceType } from "./resources/ssm-parameter.js";
+import { EFSFileSystemResourceType } from "./resources/efs-file-system.js";
+import { APIGatewayResourceType } from "./resources/api-gateway.js";
+import { CloudWatchAlarmResourceType } from "./resources/cloudwatch-alarm.js";
+import { CloudWatchLogGroupResourceType } from "./resources/cloudwatch-log-group.js";
+import { AppRunnerServiceResourceType } from "./resources/apprunner-service.js";
+import { GlueDatabaseResourceType } from "./resources/glue-database.js";
+import { InternetGatewayResourceType } from "./resources/internet-gateway.js";
+import { CloudTrailTrailResourceType } from "./resources/cloudtrail-trail.js";
+import { MSKClusterResourceType } from "./resources/msk-cluster.js";
+import { NeptuneClusterResourceType } from "./resources/neptune-cluster.js";
+import { DocumentDBClusterResourceType } from "./resources/documentdb-cluster.js";
+import { MQBrokerResourceType } from "./resources/mq-broker.js";
+import { BatchJobQueueResourceType } from "./resources/batch-job-queue.js";
+import { SageMakerEndpointResourceType } from "./resources/sagemaker-endpoint.js";
 
 const manifest: PluginManifest = {
   id: "aws",
@@ -59,22 +95,74 @@ const manifest: PluginManifest = {
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [
+  // Compute
   EC2InstanceResourceType,
-  EBSVolumeResourceType,
-  VPCResourceType,
-  EKSClusterResourceType,
-  RDSInstanceResourceType,
-  S3BucketResourceType,
   LambdaFunctionResourceType,
   ECSServiceResourceType,
+  EKSClusterResourceType,
+  AppRunnerServiceResourceType,
+  AutoScalingGroupResourceType,
+  // Storage
+  S3BucketResourceType,
+  EBSVolumeResourceType,
+  EFSFileSystemResourceType,
+  // Database
+  RDSInstanceResourceType,
+  RDSClusterResourceType,
   DynamoDBTableResourceType,
   ElastiCacheClusterResourceType,
+  RedshiftClusterResourceType,
+  OpenSearchDomainResourceType,
+  // Networking
+  VPCResourceType,
+  SubnetResourceType,
+  SecurityGroupResourceType,
+  ALBResourceType,
+  TargetGroupResourceType,
+  NATGatewayResourceType,
+  ElasticIPResourceType,
+  Route53HostedZoneResourceType,
+  Route53RecordSetResourceType,
+  CloudFrontDistributionResourceType,
+  APIGatewayResourceType,
+  // Messaging & Events
   SQSQueueResourceType,
   SNSTopicResourceType,
+  EventBridgeRuleResourceType,
+  KinesisStreamResourceType,
+  // Containers & Registries
   ECRRepositoryResourceType,
-  SecretsManagerSecretResourceType,
-  CloudFrontDistributionResourceType,
+  // Security & Identity
   IAMUserResourceType,
+  IAMRoleResourceType,
+  SecretsManagerSecretResourceType,
+  SSMParameterResourceType,
+  ACMCertificateResourceType,
+  WAFWebACLResourceType,
+  // Orchestration & CI/CD
+  StepFunctionResourceType,
+  CodeBuildProjectResourceType,
+  CodePipelinePipelineResourceType,
+  CloudFormationStackResourceType,
+  // Monitoring
+  CloudWatchAlarmResourceType,
+  CloudWatchLogGroupResourceType,
+  // Networking (continued)
+  InternetGatewayResourceType,
+  // Analytics & Data
+  GlueDatabaseResourceType,
+  // Messaging (continued)
+  MSKClusterResourceType,
+  MQBrokerResourceType,
+  // Database (continued)
+  NeptuneClusterResourceType,
+  DocumentDBClusterResourceType,
+  // Audit & Compliance
+  CloudTrailTrailResourceType,
+  // Compute (continued)
+  BatchJobQueueResourceType,
+  // ML
+  SageMakerEndpointResourceType,
 ];
 
 export const plugin: Plugin = {

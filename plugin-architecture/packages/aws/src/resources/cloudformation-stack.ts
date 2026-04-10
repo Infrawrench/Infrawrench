@@ -1,0 +1,37 @@
+import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+
+export const CloudFormationStackResourceType: ResourceTypeDefinition = {
+  id: "cloudformation-stack",
+  displayName: "CloudFormation Stack",
+  pluralDisplayName: "CloudFormation Stacks",
+  description: "An AWS CloudFormation stack",
+  fields: [
+    { key: "stackName", label: "Stack Name", kind: "string", required: true },
+    { key: "stackId", label: "Stack ID", kind: "string", required: true },
+    {
+      key: "status",
+      label: "Status",
+      kind: "enum",
+      required: true,
+      enumValues: [
+        "CREATE_IN_PROGRESS", "CREATE_FAILED", "CREATE_COMPLETE",
+        "ROLLBACK_IN_PROGRESS", "ROLLBACK_FAILED", "ROLLBACK_COMPLETE",
+        "DELETE_IN_PROGRESS", "DELETE_FAILED", "DELETE_COMPLETE",
+        "UPDATE_IN_PROGRESS", "UPDATE_COMPLETE_CLEANUP_IN_PROGRESS",
+        "UPDATE_COMPLETE", "UPDATE_FAILED",
+        "UPDATE_ROLLBACK_IN_PROGRESS", "UPDATE_ROLLBACK_FAILED",
+        "UPDATE_ROLLBACK_COMPLETE_CLEANUP_IN_PROGRESS", "UPDATE_ROLLBACK_COMPLETE",
+        "REVIEW_IN_PROGRESS", "IMPORT_IN_PROGRESS", "IMPORT_COMPLETE",
+        "IMPORT_ROLLBACK_IN_PROGRESS", "IMPORT_ROLLBACK_FAILED", "IMPORT_ROLLBACK_COMPLETE",
+      ],
+    },
+    { key: "description", label: "Description", kind: "string", required: false },
+    { key: "driftStatus", label: "Drift Status", kind: "string", required: false },
+    { key: "enableTerminationProtection", label: "Termination Protection", kind: "boolean", required: false },
+  ],
+  outputs: [
+    { key: "stackArn", label: "Stack ARN", sensitive: false },
+  ],
+  dashboardPinnable: true,
+  iconKey: "stack",
+};

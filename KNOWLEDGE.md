@@ -398,6 +398,38 @@ All polling is *background* (no loading flash):
 - `getManifest`/`applyManifest` implemented for all resource types — returns/accepts ARM JSON via GET/PUT
 - 34 Azure regions configured for create form region picker
 
+### AWS (`@infrawrench/plugin-aws`)
+- Auth: AWS Signature Version 4 (pure Web Crypto, no AWS SDK dependency)
+- Credentials: `accessKeyId`, `secretAccessKey` (sensitive), `region`
+- API calls use direct AWS REST APIs: EC2 Query API (XML), JSON Amz-Target APIs, REST JSON APIs
+- Resource ID format: `{accountId}:{typeId}:{externalId}`
+- 51 resource types organized by category:
+  - **Compute (8):** `ec2-instance` (SSH, create), `lambda-function`, `ecs-service`, `eks-cluster` (K8s peer integration, create), `apprunner-service`, `auto-scaling-group`, `batch-job-queue`, `sagemaker-endpoint`
+  - **Storage (3):** `s3-bucket` (storage browser), `ebs-volume`, `efs-file-system`
+  - **Database (8):** `rds-instance`, `rds-cluster` (Aurora), `dynamodb-table`, `elasticache-cluster`, `redshift-cluster`, `opensearch-domain`, `neptune-cluster`, `documentdb-cluster`
+  - **Networking (10):** `vpc`, `subnet` (child of VPC), `security-group`, `alb` (ALB/NLB/GLB), `target-group` (child of ALB), `nat-gateway`, `elastic-ip`, `internet-gateway`, `route53-hosted-zone`, `route53-record-set` (child of hosted zone), `cloudfront-distribution`, `api-gateway`
+  - **Messaging (6):** `sqs-queue`, `sns-topic`, `eventbridge-rule`, `kinesis-stream`, `msk-cluster`, `mq-broker`
+  - **Security (5):** `iam-user`, `iam-role`, `secrets-manager-secret`, `ssm-parameter`, `acm-certificate`, `waf-web-acl`
+  - **CI/CD (4):** `step-function`, `codebuild-project`, `codepipeline-pipeline`, `cloudformation-stack`
+  - **Monitoring (2):** `cloudwatch-alarm`, `cloudwatch-log-group`
+  - **Analytics (1):** `glue-database`
+  - **Audit (1):** `cloudtrail-trail`
+- EKS clusters declare Kubernetes peer integration (maps `kubeconfig` output to K8s plugin)
+- Secret export templates on: RDS Instance, Aurora Cluster, Redshift Cluster, OpenSearch Domain, ElastiCache, S3 Bucket, Lambda, SQS, SNS, DynamoDB
+- Global services (CloudFront, IAM, Route 53) use region-less endpoints
+- EC2 instances support SSH via `publicIp` output
+- S3 buckets: full storage browser (listStorageObjects, uploadStorageObject, makeStorageFolder, deleteStorageObject, fetchStorageStats) via ListObjectsV2 XML API + PUT/DELETE
+- RDS Instance + Aurora Cluster: `resourceSqlDriver` with `postgres` driver for per-resource SQL editor
+- EKS kubeconfig: generated as YAML with aws eks get-token exec credential, enables K8s peer integration
+- Route 53: uses shared dns.ts helpers (renderDnsRecordDetail, renderDnsRecordSidebar, dnsZoneStatus) for DNS record rendering
+- Create support for 8 resource types: EC2 Instance (AMI picker, instance type picker, disk slider, SSH key), EKS Cluster (K8s version picker), S3 Bucket, VPC, Security Group, SQS Queue, SNS Topic, DynamoDB Table (partition/sort key, billing mode)
+- 27 AWS regions configured for create form region picker
+- EC2 instance types: T3 burstable, M6i general purpose, C6i compute-optimized, R6i memory-optimized
+- Delete support for 18 resource types: EC2 Instance, EBS Volume, VPC, Subnet, Security Group, NAT Gateway, Elastic IP, Internet Gateway, S3 Bucket, Lambda Function, SQS Queue, SNS Topic, DynamoDB Table, Secrets Manager Secret, ECR Repository, CloudFormation Stack, SSM Parameter, CloudWatch Alarm, CloudWatch Log Group, CloudTrail Trail, SageMaker Endpoint
+- Secret export templates on 17 resource types: RDS Instance, Aurora Cluster, Redshift Cluster, OpenSearch Domain, ElastiCache, S3 Bucket, Lambda, SQS, SNS, DynamoDB, EKS Cluster, ECR Repository, MSK Cluster, Neptune Cluster, DocumentDB Cluster, MQ Broker
+- `getManifest` for read-only manifest viewer (all resource types)
+- Status mapping: running/active/available/issued/ok → healthy; stopped/paused/disabled → degraded; pending/creating/updating → provisioning; terminated/failed/deleted/alarm → error
+
 ---
 
 ## CORS in Electron

@@ -18,4 +18,15 @@ export const ECRRepositoryResourceType: ResourceTypeDefinition = {
   ],
   dashboardPinnable: true,
   iconKey: "container-registry",
+  secretExportTemplates: [
+    {
+      id: "ecr-registry",
+      displayName: "ECR Registry",
+      description: "Container registry URI for pushing/pulling images",
+      entries: [
+        { envKey: "ECR_REGISTRY_URI", outputKey: "repositoryUri", description: "Repository URI" },
+        { envKey: "ECR_REGISTRY_ARN", outputKey: "repositoryArn", description: "Repository ARN" },
+      ],
+    },
+  ],
 };

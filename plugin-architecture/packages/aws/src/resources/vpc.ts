@@ -16,4 +16,5 @@ export const VPCResourceType: ResourceTypeDefinition = {
   outputs: [],
   dashboardPinnable: true,
   iconKey: "network",
+  supportsCreate: true,
 };

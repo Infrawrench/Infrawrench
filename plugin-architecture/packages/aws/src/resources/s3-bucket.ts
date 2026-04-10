@@ -17,6 +17,7 @@ export const S3BucketResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   iconKey: "storage",
   supportsStorageBrowser: true,
+  supportsCreate: true,
   secretExportTemplates: [
     {
       id: "s3-env",

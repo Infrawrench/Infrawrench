@@ -28,6 +28,10 @@ export const RDSInstanceResourceType: ResourceTypeDefinition = {
   ],
   dashboardPinnable: true,
   iconKey: "database",
+  resourceSqlDriver: {
+    driver: "postgres",
+    connectionStringOutputKey: "endpoint",
+  },
   secretExportTemplates: [
     {
       id: "connection-url",

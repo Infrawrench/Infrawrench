@@ -18,4 +18,15 @@ export const SQSQueueResourceType: ResourceTypeDefinition = {
   ],
   dashboardPinnable: true,
   iconKey: "queue",
+  supportsCreate: true,
+  secretExportTemplates: [
+    {
+      id: "sqs-queue",
+      displayName: "SQS Queue URL",
+      description: "Queue URL and ARN for messaging",
+      entries: [
+        { envKey: "SQS_QUEUE_ARN", outputKey: "queueArn", description: "Queue ARN" },
+      ],
+    },
+  ],
 };

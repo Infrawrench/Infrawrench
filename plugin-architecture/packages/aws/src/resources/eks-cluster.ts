@@ -31,6 +31,12 @@ export const EKSClusterResourceType: ResourceTypeDefinition = {
       sensitive: false,
       description: "Base64-encoded CA data for cluster TLS verification",
     },
+    {
+      key: "kubeconfig",
+      label: "Kubeconfig",
+      sensitive: true,
+      description: "Generated kubeconfig YAML for kubectl access",
+    },
   ],
   dashboardPinnable: true,
   iconKey: "kubernetes",
@@ -42,6 +48,17 @@ export const EKSClusterResourceType: ResourceTypeDefinition = {
         { outputKey: "kubeconfig", credentialKey: "kubeconfig" },
       ],
       tabLabel: "Workloads",
+    },
+  ],
+  secretExportTemplates: [
+    {
+      id: "eks-kubeconfig",
+      displayName: "EKS Kubeconfig",
+      description: "Kubeconfig for connecting to this EKS cluster",
+      entries: [
+        { envKey: "KUBECONFIG_DATA", outputKey: "kubeconfig", description: "Generated kubeconfig YAML" },
+        { envKey: "KUBE_API_ENDPOINT", outputKey: "endpoint", description: "Kubernetes API endpoint" },
+      ],
     },
   ],
 };
