@@ -98,9 +98,9 @@ describe("plugin feature flags", () => {
     expect(flags.hasKvConsole).toBe(false);
   });
 
-  it("cloudflare plugin does not have sqlEditor or kvConsole", () => {
+  it("cloudflare plugin has sqlEditor via D1 resource but no kvConsole", () => {
     const flags = deriveFeatureFlags(getPlugin("cloudflare"));
-    expect(flags.hasSqlEditor).toBe(false);
+    expect(flags.hasSqlEditor).toBe(true);
     expect(flags.hasKvConsole).toBe(false);
   });
 

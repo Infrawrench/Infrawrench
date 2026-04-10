@@ -143,6 +143,7 @@ function setupMocks(opts: SetupOpts = {}, resourceOverride?: typeof DB_RESOURCE)
 
   const detailSchema: Record<string, unknown> = {
     title: "My EC2",
+    status: { kind: "status-dot", status: "healthy", label: "Running" },
     sections: [],
   };
   if (opts.storageBrowser) detailSchema.storageBrowser = opts.storageBrowser;

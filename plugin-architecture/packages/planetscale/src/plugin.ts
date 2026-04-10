@@ -9,9 +9,8 @@ const manifest: PluginManifest = {
   displayName: "PlanetScale",
   logoSvg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     <rect width="100" height="100" rx="12" fill="#000000"/>
-    <g transform="translate(15,15) scale(0.7)">
-      <circle cx="50" cy="50" r="42" fill="none" stroke="#FFFFFF" stroke-width="5"/>
-      <path d="M50 8 L92 50 L50 50 Z" fill="#FFFFFF"/>
+    <g transform="translate(14,14) scale(3)" fill="#fff">
+      <path d="M0 12C0 5.373 5.373 0 12 0c4.873 0 9.067 2.904 10.947 7.077l-15.87 15.87a11.981 11.981 0 0 1-1.935-1.099L14.99 12H12l-8.485 8.485A11.962 11.962 0 0 1 0 12Zm12.004 12L24 12.004C23.998 18.628 18.628 23.998 12.004 24Z"/>
     </g>
   </svg>`,
   author: "Infrawrench",
