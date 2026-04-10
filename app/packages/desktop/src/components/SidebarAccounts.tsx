@@ -153,7 +153,7 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
           });
         }
 
-        if (!cancelled) setGroups([...groupMap.values()]);
+        if (!cancelled) setGroups([...groupMap.values()].sort((a, b) => a.displayName.localeCompare(b.displayName)));
       } catch (e) {
         console.error("SidebarAccounts load error:", e);
       } finally {

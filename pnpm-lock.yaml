@@ -23,6 +23,9 @@ importers:
       '@dnd-kit/core':
         specifier: ^6.3.1
         version: 6.3.1(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      '@infrawrench/plugin-aws':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/aws
       '@infrawrench/plugin-azure':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/azure

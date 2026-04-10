@@ -113,6 +113,7 @@ export function AddAccountModal({ onClose, onAdded, loadPlugins, saveAccount }: 
                 <div className="flex flex-wrap gap-2 max-h-[320px] overflow-y-auto">
                   {plugins
                     .filter((p) => p.displayName.toLowerCase().includes(search.toLowerCase()))
+                    .sort((a, b) => a.displayName.localeCompare(b.displayName))
                     .map((p) => (
                       <button
                         key={p.id}
