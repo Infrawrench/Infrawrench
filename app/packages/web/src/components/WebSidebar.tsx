@@ -44,7 +44,7 @@ export function WebSidebar() {
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [accountResources, setAccountResources] = useState<
-    Record<string, { loading: boolean; resources: ResourceSummary[] }>
+    Record<string, { loading: boolean; resources: ResourceSummary[]; error?: string | undefined }>
   >({});
   const [showAddAccount, setShowAddAccount] = useState(false);
 
@@ -187,10 +187,9 @@ export function WebSidebar() {
       }));
     } catch (e) {
       if (background) return;
-      console.error("Failed to load resources:", e);
       setAccountResources((prev) => ({
         ...prev,
-        [accountId]: { loading: false, resources: [] },
+        [accountId]: { loading: false, resources: [], error: e instanceof Error ? e.message : "Failed to load resources" },
       }));
     }
   }
@@ -393,7 +392,10 @@ export function WebSidebar() {
                         {resourceState?.loading && (
                           <div className="px-3 py-1 text-xs text-gray-600">Loading...</div>
                         )}
-                        {resourceState && !resourceState.loading && resourceState.resources.length === 0 && (
+                        {resourceState && !resourceState.loading && resourceState.error && (
+                          <div className="px-3 py-1 text-xs text-red-400">Error loading resources</div>
+                        )}
+                        {resourceState && !resourceState.loading && !resourceState.error && resourceState.resources.length === 0 && (
                           <div className="px-3 py-1 text-xs text-gray-600">No resources</div>
                         )}
                         {resourceState?.resources.map((resource) => (

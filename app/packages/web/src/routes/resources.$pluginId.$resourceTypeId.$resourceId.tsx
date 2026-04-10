@@ -1,6 +1,6 @@
 import { createFileRoute, useRouterState } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
-import { useUIStore, RESOURCES_CHANGED_EVENT } from "@infrawrench/ui";
+import { useUIStore, resourceTabTitle, RESOURCES_CHANGED_EVENT, REFRESH_RESOURCE_EVENT } from "@infrawrench/ui";
 import { ResourceDetailClient } from "@/components/ResourceDetailClient";
 import { apiGet } from "@/lib/api";
 
@@ -55,12 +55,7 @@ function ResourceDetailPage() {
     if (!data) return;
     const { activeWorkspaceTabId, setWorkspaceTabTitle } = useUIStore.getState();
     if (activeWorkspaceTabId) {
-      const viewSuffix = currentView === "ssh"
-        ? `SSH: ${data.resourceDisplayName}`
-        : currentView === "sftp"
-          ? `SFTP: ${data.resourceDisplayName}`
-          : data.resourceDisplayName;
-      setWorkspaceTabTitle(activeWorkspaceTabId, viewSuffix);
+      setWorkspaceTabTitle(activeWorkspaceTabId, resourceTabTitle(data.resourceDisplayName, currentView));
     }
   }, [data, currentView]);
 
@@ -71,9 +66,11 @@ function ResourceDetailPage() {
     }
     const id = setInterval(refresh, 30_000);
     window.addEventListener(RESOURCES_CHANGED_EVENT, refresh);
+    window.addEventListener(REFRESH_RESOURCE_EVENT, refresh);
     return () => {
       clearInterval(id);
       window.removeEventListener(RESOURCES_CHANGED_EVENT, refresh);
+      window.removeEventListener(REFRESH_RESOURCE_EVENT, refresh);
     };
   }, [detailUrl]);
 

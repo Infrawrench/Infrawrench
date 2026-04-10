@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { Modal, FieldRenderer, evaluateShowWhen, buildDefaultFields, type SshKeyEntry } from "@infrawrench/ui";
-import { apiGet, apiPost, apiDelete } from "@/lib/api";
+import { Modal, FieldRenderer, ErrorNotice, useCreateResourceForm, type SshKeyEntry } from "@infrawrench/ui";
 import type { CreateResourceConfig } from "@infrawrench/plugin-base";
+import { apiGet, apiPost, apiDelete } from "@/lib/api";
 
 interface Props {
   accountId: string;
@@ -20,17 +20,11 @@ export function CreateResourceModal({
   onClose,
   onCreated,
 }: Props) {
-  const [config, setConfig] = useState<CreateResourceConfig | null>(null);
-  const [loadingConfig, setLoadingConfig] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string | undefined>();
 
   useEffect(() => {
     apiGet<{ userId: string }>("/api/auth/me").then((s) => setCurrentUserId(s.userId));
   }, []);
-  const [configError, setConfigError] = useState<string | null>(null);
-  const [fields, setFields] = useState<Record<string, string>>({});
-  const [creating, setCreating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const loadSshKeys = useCallback(
     () => apiGet<SshKeyEntry[]>("/api/ssh-keys"),
@@ -46,55 +40,34 @@ export function CreateResourceModal({
     [],
   );
 
-  useEffect(() => {
-    let cancelled = false;
-    async function load() {
-      try {
-        setLoadingConfig(true);
-        setConfigError(null);
-        const cfg = await apiPost<CreateResourceConfig>("/api/resources/create-config", {
-          accountId,
-          resourceTypeId,
-        });
-        if (cancelled) return;
-        setConfig(cfg);
-        setFields(buildDefaultFields(cfg.fields));
-      } catch (e) {
-        if (!cancelled) setConfigError(e instanceof Error ? e.message : "Failed to load config");
-      } finally {
-        if (!cancelled) setLoadingConfig(false);
-      }
-    }
-    void load();
-    return () => { cancelled = true; };
-  }, [accountId, resourceTypeId]);
-
-  const visibleFields = useMemo(() => {
-    if (!config) return [];
-    return config.fields.filter((f) => evaluateShowWhen(f, fields));
-  }, [config, fields]);
-
-  async function handleCreate() {
-    setCreating(true);
-    setError(null);
-    try {
-      const submitFields: Record<string, string> = {};
-      for (const f of visibleFields) {
-        if (fields[f.key] !== undefined) submitFields[f.key] = fields[f.key]!;
-      }
+  const callbacks = useMemo(() => ({
+    loadConfig: () =>
+      apiPost<CreateResourceConfig>("/api/resources/create-config", { accountId, resourceTypeId }),
+    loadSizePricing: (request: { regionId?: string; sizes: Array<{ id: string; vcpus: number; memoryMb: number }> }) =>
+      apiPost<Record<string, number>>("/api/resources/create-pricing", {
+        accountId,
+        resourceTypeId,
+        ...(request.regionId ? { regionId: request.regionId } : {}),
+        sizes: request.sizes,
+      }),
+    loadCostEstimate: (fields: Record<string, string>) =>
+      apiPost<{ estimate: number | null }>("/api/resources/create-cost-estimate", {
+        accountId,
+        resourceTypeId,
+        fields,
+      }).then(({ estimate }) => estimate),
+    create: async (fields: Record<string, string>) => {
       const created = await apiPost<{ id: string; displayName: string }>("/api/resources/create", {
         accountId,
         pluginId,
         resourceTypeId,
-        fields: submitFields,
+        fields,
       });
       onCreated(created);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to create resource");
-    } finally {
-      setCreating(false);
-    }
-  }
+    },
+  }), [accountId, pluginId, resourceTypeId, onCreated]);
+
+  const form = useCreateResourceForm(callbacks, [accountId, resourceTypeId]);
 
   return (
     <Modal onClose={onClose}>
@@ -103,27 +76,35 @@ export function CreateResourceModal({
           <h2 className="text-base font-semibold text-gray-100">
             Create {resourceTypeDisplayName}
           </h2>
-          <button onClick={onClose} className="text-gray-600 hover:text-gray-300 text-xl leading-none">
-            &times;
-          </button>
+          <div className="flex items-center gap-3">
+            {form.estimatedMonthlyPriceLabel && (
+              <div className="text-right px-3 py-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10">
+                <p className="text-[10px] uppercase tracking-wide text-emerald-300/80">Estimated cost</p>
+                <p className="text-sm font-semibold text-emerald-200">{form.estimatedMonthlyPriceLabel}/mo</p>
+              </div>
+            )}
+            <button onClick={onClose} className="text-gray-600 hover:text-gray-300 text-xl leading-none">
+              &times;
+            </button>
+          </div>
         </div>
 
         <div className="overflow-y-auto flex-1 px-6 py-5">
-          {loadingConfig ? (
+          {form.loadingConfig ? (
             <div className="flex items-center gap-3 text-sm text-gray-500 py-8 justify-center">
               <span className="animate-spin inline-block w-4 h-4 rounded-full border-2 border-gray-600 border-t-gray-300" />
               Fetching available options...
             </div>
-          ) : configError ? (
-            <p className="text-sm text-red-400">{configError}</p>
-          ) : config ? (
+          ) : form.configError ? (
+            <ErrorNotice message={form.configError} textClassName="text-sm text-red-400" />
+          ) : form.configWithPricing ? (
             <div className="space-y-6">
-              {visibleFields.map((f) => (
+              {form.visibleFields.map((f) => (
                 <FieldRenderer
                   key={f.key}
                   field={f}
-                  value={fields[f.key] ?? ""}
-                  onChange={(v) => setFields((prev) => ({ ...prev, [f.key]: v }))}
+                  value={form.fields[f.key] ?? ""}
+                  onChange={(v) => form.setField(f.key, v)}
                   sshKeyProps={{
                     loadKeys: loadSshKeys,
                     generateKey: generateSshKey,
@@ -137,7 +118,7 @@ export function CreateResourceModal({
         </div>
 
         <div className="px-6 py-4 border-t border-gray-800 flex-shrink-0">
-          {error && <p className="text-xs text-red-400 mb-3">{error}</p>}
+          {form.error && <ErrorNotice message={form.error} className="mb-3 rounded bg-red-900/20 px-3 py-2" textClassName="text-xs text-red-400" />}
           <div className="flex gap-3">
             <button
               onClick={onClose}
@@ -146,11 +127,11 @@ export function CreateResourceModal({
               Cancel
             </button>
             <button
-              onClick={() => void handleCreate()}
-              disabled={creating || loadingConfig || !!configError}
+              onClick={() => void form.handleCreate()}
+              disabled={form.creating || form.loadingConfig || !!form.configError}
               className="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded-lg transition-colors"
             >
-              {creating ? "Creating..." : `Create ${resourceTypeDisplayName}`}
+              {form.creating ? "Creating..." : `Create ${resourceTypeDisplayName}`}
             </button>
           </div>
         </div>

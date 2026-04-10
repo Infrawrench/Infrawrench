@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { createRootRoute, Outlet, useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
 import type { DragEndEvent } from "@dnd-kit/core";
-import { DndShell, normalizeResourceId, useUIStore, workspaceTabTargetsEqual, type DraggableResource, type WorkspaceTab, type WorkspaceTabTarget } from "@infrawrench/ui";
+import { DndShell, normalizeResourceId, resourceTabTitle, useUIStore, useWorkspaceTabHandlers, workspaceTabTargetsEqual, type DraggableResource, type WorkspaceTab, type WorkspaceTabTarget } from "@infrawrench/ui";
 import { AddAccountModal } from "../components/AddAccountModal";
 import { GlobalTabBar } from "../components/GlobalTabBar";
 import { SwipeIndicator } from "../components/SwipeIndicator";
@@ -76,7 +76,7 @@ async function validateWorkspaceTab(tab: WorkspaceTab): Promise<WorkspaceTab | n
     return found
       ? {
           ...tab,
-          title: target.view === "ssh" ? `SSH: ${found.displayName}` : target.view === "sftp" ? `SFTP: ${found.displayName}` : found.displayName,
+          title: resourceTabTitle(found.displayName, target.view),
           target: {
             kind: "resource",
             accountId: target.accountId,
@@ -102,13 +102,13 @@ function RootLayout() {
     tabsHydrated,
     createWorkspaceTabInstance,
     syncWorkspaceRoute,
-    activateWorkspaceTab,
-    closeWorkspaceTab,
     reorderWorkspaceTabs,
     replaceWorkspaceTabs,
     setActiveDashboard,
   } = useUIStore();
   const navigate = useNavigate();
+
+  const { handleActivateTab, handleCloseTab } = useWorkspaceTabHandlers(navigate, getWorkspaceNavigateArgs);
   const router = useRouter();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const hash = useRouterState({ select: (state) => state.location.hash });
@@ -209,13 +209,6 @@ function RootLayout() {
     }
   }
 
-  function handleActivateTab(tabId: string) {
-    const tab = workspaceTabs.find((candidate) => candidate.id === tabId);
-    if (!tab) return;
-    activateWorkspaceTab(tabId);
-    void navigate(getWorkspaceNavigateArgs(tab.target));
-  }
-
   async function handleNewTab() {
     const db = await getDb();
     const rows = await db.select<{ id: string }[]>(
@@ -225,19 +218,6 @@ function RootLayout() {
     const target = dashboardTabTarget(homeId);
     createWorkspaceTabInstance(target, "Home");
     void navigate(getWorkspaceNavigateArgs(target));
-  }
-
-  function handleCloseTab(tabId: string) {
-    const wasActive = activeWorkspaceTabId === tabId;
-    closeWorkspaceTab(tabId);
-    if (!wasActive) return;
-    const nextState = useUIStore.getState();
-    const nextTab = nextState.workspaceTabs.find((tab) => tab.id === nextState.activeWorkspaceTabId);
-    if (nextTab) {
-      void navigate(getWorkspaceNavigateArgs(nextTab.target, true));
-    } else {
-      void navigate({ to: "/", replace: true });
-    }
   }
 
   return (

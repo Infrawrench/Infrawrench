@@ -4,10 +4,14 @@ const mockPinWorkspaceTab = vi.fn();
 const mockOpenInActiveWorkspaceTab = vi.fn();
 
 // Mock the @infrawrench/ui module before importing the module under test
-vi.mock("@infrawrench/ui", () => ({
-  normalizeResourceId: (id: string) => decodeURIComponent(id),
-  useUIStore: { getState: () => ({ pinWorkspaceTab: mockPinWorkspaceTab, openInActiveWorkspaceTab: mockOpenInActiveWorkspaceTab }) },
-}));
+vi.mock("@infrawrench/ui", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@infrawrench/ui")>();
+  return {
+    ...actual,
+    normalizeResourceId: (id: string) => decodeURIComponent(id),
+    useUIStore: { getState: () => ({ pinWorkspaceTab: mockPinWorkspaceTab, openInActiveWorkspaceTab: mockOpenInActiveWorkspaceTab }) },
+  };
+});
 
 import {
   dashboardTabTarget,

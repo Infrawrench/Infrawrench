@@ -1,7 +1,8 @@
 import { useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
-import { DroppableDashboardArea } from "@infrawrench/ui";
-import { apiPost } from "@/lib/api";
+import { useState, useEffect, useRef } from "react";
+import { DroppableDashboardArea, useUIStore, formatErrorMessage, extractHostLabel } from "@infrawrench/ui";
+import { apiPost, apiDelete } from "@/lib/api";
+import { SpotlightSearch } from "./SpotlightSearch";
 
 interface PinnedResource {
   pinId: string;
@@ -20,16 +21,87 @@ interface PinnedResource {
   outputsJson: unknown;
 }
 
+interface CardStatus {
+  phase: "connecting" | "ok" | "error";
+  pgVersion?: string;
+  dbSize?: string;
+  tableCount?: number;
+  tableCountLabel?: string;
+  resourceCounts?: Array<{ typeLabel: string; count: number }>;
+  error?: string;
+}
+
 interface DashboardViewProps {
   dashboardId: string;
   dashboardName: string;
+  isHome?: boolean | undefined;
   pins: PinnedResource[];
 }
 
-export function DashboardView({ dashboardId, dashboardName, pins: initialPins }: DashboardViewProps) {
+export function DashboardView({ dashboardId, dashboardName: initialName, isHome = false, pins: initialPins }: DashboardViewProps) {
   const navigate = useNavigate();
   const [pins, setPins] = useState(initialPins);
   const [unpinning, setUnpinning] = useState<string | null>(null);
+  const [spotlightMode, setSpotlightMode] = useState<"pin" | "navigate" | null>(null);
+  const [dashboardName, setDashboardName] = useState(initialName);
+  const [editingName, setEditingName] = useState(false);
+  const [cardStatus, setCardStatus] = useState<Record<string, CardStatus>>({});
+  const probeAbortRef = useRef<AbortController | null>(null);
+
+  const bumpDashboardPins = useUIStore((s) => s.bumpDashboardPins);
+
+  // Probe resource status for dashboard cards
+  useEffect(() => {
+    if (pins.length === 0) return;
+    probeAbortRef.current?.abort();
+    const controller = new AbortController();
+    probeAbortRef.current = controller;
+
+    // Set all cards to "connecting"
+    setCardStatus((prev) => {
+      const next: Record<string, CardStatus> = {};
+      for (const pin of pins) {
+        if (prev[pin.resourceId]?.phase === "ok") next[pin.resourceId] = prev[pin.resourceId]!;
+        else next[pin.resourceId] = { phase: "connecting" };
+      }
+      return next;
+    });
+
+    apiPost<Record<string, Omit<CardStatus, "phase"> & { phase: "ok" | "error" }>>(
+      "/api/dashboards/probe",
+      {
+        items: pins.map((p) => ({
+          resourceId: p.resourceId,
+          accountId: p.accountId,
+          pluginId: p.pluginId,
+          resourceTypeId: p.resourceTypeId,
+        })),
+      },
+    ).then((results) => {
+      if (controller.signal.aborted) return;
+      setCardStatus(results);
+    }).catch((e) => {
+      if (controller.signal.aborted) return;
+      const error = formatErrorMessage(e);
+      setCardStatus(
+        Object.fromEntries(pins.map((p) => [p.resourceId, { phase: "error" as const, error }])),
+      );
+    });
+
+    return () => controller.abort();
+  }, [pins]);
+
+  // Cmd+K to open spotlight
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        setSpotlightMode("navigate");
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
 
   async function handleUnpin(pinId: string, resourceId: string) {
     setUnpinning(pinId);
@@ -43,85 +115,210 @@ export function DashboardView({ dashboardId, dashboardName, pins: initialPins }:
     }
   }
 
+  async function saveName(name: string) {
+    const trimmed = name.trim() || "Dashboard";
+    setDashboardName(trimmed);
+    setEditingName(false);
+    try {
+      await apiPost(`/api/dashboards/${dashboardId}/rename`, { name: trimmed });
+    } catch (e) {
+      console.error("Failed to rename:", e);
+    }
+  }
+
+  async function deleteDashboard() {
+    if (isHome) return;
+    try {
+      await apiDelete(`/api/dashboards/${dashboardId}`);
+      void navigate({ to: "/" });
+    } catch (e) {
+      console.error("Failed to delete:", e);
+    }
+  }
+
   return (
-    <div className="p-6">
-      <h1 className="text-2xl font-semibold mb-6">{dashboardName}</h1>
-      <DroppableDashboardArea dashboardId={dashboardId}>
-        {pins.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64 rounded-2xl border-2 border-dashed border-gray-800 text-gray-700">
-            <span className="text-3xl mb-3">&#8862;</span>
-            <p className="text-sm">No pinned resources yet.</p>
-            <p className="text-xs mt-1 opacity-60">
-              Drag resources from your accounts to pin them here.
-            </p>
-          </div>
-        ) : (
-          <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}>
-            {pins.map((pin) => {
-              const fields = typeof pin.fieldsJson === "string"
-                ? (() => { try { return JSON.parse(pin.fieldsJson) as Record<string, unknown>; } catch { return {}; } })()
-                : (pin.fieldsJson as Record<string, unknown> ?? {});
-              const rawHost = String(fields["host"] ?? fields["region"] ?? fields["engine"] ?? "");
-              const host = (() => {
-                try {
-                  const h = rawHost.includes("://") ? new URL(rawHost).hostname : rawHost;
-                  return h.length > 28 ? h.slice(0, 26) + "\u2026" : h;
-                } catch {
-                  return rawHost.length > 28 ? rawHost.slice(0, 26) + "\u2026" : rawHost;
-                }
-              })();
+    <div className="flex flex-col h-full">
+      {/* Header */}
+      <div className="px-8 pt-8 pb-4 border-b border-gray-800/50 flex items-center justify-between">
+        <div>
+          {editingName ? (
+            <input
+              autoFocus
+              defaultValue={dashboardName}
+              onBlur={(e) => void saveName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void saveName(e.currentTarget.value);
+                if (e.key === "Escape") setEditingName(false);
+              }}
+              className="text-2xl font-semibold bg-transparent border-b border-blue-500 text-gray-100 focus:outline-none"
+            />
+          ) : (
+            <h1
+              className="text-2xl font-semibold text-gray-100 cursor-default hover:text-white"
+              onDoubleClick={() => setEditingName(true)}
+              title="Double-click to rename"
+            >
+              {dashboardName}
+            </h1>
+          )}
+        </div>
 
-              return (
-                <div
-                  key={pin.pinId}
-                  className="group relative rounded-2xl border border-gray-800 bg-gray-900 hover:border-gray-700 transition-colors flex flex-col overflow-hidden"
-                >
-                  {/* Unpin button */}
-                  <button
-                    onClick={() => void handleUnpin(pin.pinId, pin.resourceId)}
-                    disabled={unpinning === pin.pinId}
-                    title="Remove from dashboard"
-                    className="absolute top-2 right-2 w-5 h-5 rounded-full text-gray-700 hover:text-gray-300 hover:bg-gray-700 transition-all opacity-0 group-hover:opacity-100 text-xs flex items-center justify-center"
-                  >
-                    &#10005;
-                  </button>
-
-                  <button
-                    onClick={() =>
-                      void navigate({
-                        to: "/resources/$pluginId/$resourceTypeId/$resourceId",
-                        params: { pluginId: pin.pluginId, resourceTypeId: pin.resourceTypeId, resourceId: pin.resourceId },
-                      })
-                    }
-                    className="flex-1 flex flex-col p-5 text-left gap-3"
-                  >
-                    {/* Plugin logo + name */}
-                    <div className="flex items-center gap-2">
-                      {pin.pluginLogoSvg ? (
-                        <div
-                          className="w-6 h-6 flex-shrink-0"
-                          dangerouslySetInnerHTML={{ __html: pin.pluginLogoSvg }}
-                        />
-                      ) : (
-                        <span className="text-xs text-gray-600 font-mono">{pin.pluginId}</span>
-                      )}
-                      <span className="text-xs text-gray-500">
-                        {pin.pluginDisplayName ?? pin.pluginId}
-                      </span>
-                    </div>
-
-                    {/* Resource name */}
-                    <div>
-                      <p className="text-base font-semibold text-gray-100 leading-tight">{pin.displayName}</p>
-                      {host && <p className="text-xs text-gray-500 mt-0.5 truncate">{host}</p>}
-                    </div>
-                  </button>
-                </div>
-              );
-            })}
-          </div>
+        {!isHome && (
+          <button
+            onClick={() => void deleteDashboard()}
+            title="Delete dashboard"
+            className="text-xs text-gray-600 hover:text-red-400 transition-colors px-2 py-1 rounded hover:bg-red-500/10"
+          >
+            Delete
+          </button>
         )}
-      </DroppableDashboardArea>
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 overflow-auto px-8 py-6">
+        <DroppableDashboardArea dashboardId={dashboardId}>
+          {pins.length === 0 ? (
+            <button
+              onClick={() => setSpotlightMode("pin")}
+              className="w-full flex flex-col items-center justify-center h-64 rounded-2xl border-2 border-dashed border-gray-800 text-gray-700 hover:border-gray-600 hover:text-gray-500 transition-colors"
+            >
+              <span className="text-3xl mb-3">&#8862;</span>
+              <p className="text-sm">Click to add a resource</p>
+              <p className="text-xs mt-1 opacity-60">or drag one here</p>
+            </button>
+          ) : (
+            <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}>
+              {pins.map((pin) => {
+                const fields = typeof pin.fieldsJson === "string"
+                  ? (() => { try { return JSON.parse(pin.fieldsJson) as Record<string, unknown>; } catch { return {}; } })()
+                  : (pin.fieldsJson as Record<string, unknown> ?? {});
+                const host = extractHostLabel(fields);
+
+                return (
+                  <div
+                    key={pin.pinId}
+                    className="group relative rounded-2xl border border-gray-800 bg-gray-900 hover:border-gray-700 transition-colors flex flex-col overflow-hidden"
+                  >
+                    {/* Unpin button */}
+                    <button
+                      onClick={() => void handleUnpin(pin.pinId, pin.resourceId)}
+                      disabled={unpinning === pin.pinId}
+                      title="Remove from dashboard"
+                      className="absolute top-2 right-2 w-5 h-5 rounded-full text-gray-700 hover:text-gray-300 hover:bg-gray-700 transition-all opacity-0 group-hover:opacity-100 text-xs flex items-center justify-center"
+                    >
+                      &#10005;
+                    </button>
+
+                    <button
+                      onClick={() =>
+                        void navigate({
+                          to: "/resources/$pluginId/$resourceTypeId/$resourceId",
+                          params: { pluginId: pin.pluginId, resourceTypeId: pin.resourceTypeId, resourceId: pin.resourceId },
+                        })
+                      }
+                      className="flex-1 flex flex-col p-5 text-left gap-3"
+                    >
+                      {/* Plugin logo + name */}
+                      <div className="flex items-center gap-2">
+                        {pin.pluginLogoSvg ? (
+                          <div
+                            className="w-6 h-6 flex-shrink-0"
+                            dangerouslySetInnerHTML={{ __html: pin.pluginLogoSvg }}
+                          />
+                        ) : (
+                          <span className="text-xs text-gray-600 font-mono">{pin.pluginId}</span>
+                        )}
+                        <span className="text-xs text-gray-500">
+                          {pin.pluginDisplayName ?? pin.pluginId}
+                        </span>
+                      </div>
+
+                      {/* Resource name */}
+                      <div>
+                        <p className="text-base font-semibold text-gray-100 leading-tight">{pin.displayName}</p>
+                        {host && <p className="text-xs text-gray-500 mt-0.5 truncate">{host}</p>}
+                      </div>
+                    </button>
+
+                    {/* Status footer */}
+                    <ConnectionFooter status={cardStatus[pin.resourceId]} />
+                  </div>
+                );
+              })}
+
+              {/* Add resource button */}
+              <button
+                onClick={() => setSpotlightMode("pin")}
+                className="rounded-2xl border-2 border-dashed border-gray-800 text-gray-700 hover:border-gray-600 hover:text-gray-500 flex flex-col items-center justify-center gap-1.5 transition-colors min-h-[140px]"
+              >
+                <span className="text-2xl">+</span>
+                <span className="text-xs">Add resource</span>
+              </button>
+            </div>
+          )}
+        </DroppableDashboardArea>
+
+        {spotlightMode && (
+          <SpotlightSearch
+            dashboardId={dashboardId}
+            mode={spotlightMode}
+            onClose={() => setSpotlightMode(null)}
+            onPinned={() => {
+              bumpDashboardPins();
+              setSpotlightMode(null);
+            }}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ConnectionFooter({ status }: { status?: CardStatus | undefined }) {
+  if (!status) return null;
+
+  if (status.phase === "connecting") {
+    return (
+      <div className="px-4 py-2 border-t border-gray-800/50">
+        <span className="text-xs text-gray-600 animate-pulse">Connecting...</span>
+      </div>
+    );
+  }
+
+  if (status.phase === "error") {
+    return (
+      <div className="px-4 py-2 border-t border-gray-800/50">
+        <span className="text-xs text-red-400 truncate" title={status.error}>{status.error}</span>
+      </div>
+    );
+  }
+
+  // Resource counts (account summary card)
+  if (status.resourceCounts && status.resourceCounts.length > 0) {
+    return (
+      <div className="px-4 py-2 border-t border-gray-800/50 flex flex-wrap gap-x-3 gap-y-0.5">
+        {status.resourceCounts.map((rc) => (
+          <span key={rc.typeLabel} className="text-xs text-gray-500">
+            <span className="text-gray-300 font-medium">{rc.count}</span> {rc.typeLabel}
+          </span>
+        ))}
+      </div>
+    );
+  }
+
+  // DB/service stats
+  const parts: string[] = [];
+  if (status.pgVersion) parts.push(status.pgVersion);
+  if (status.dbSize) parts.push(status.dbSize);
+  if (status.tableCount !== undefined) {
+    parts.push(`${status.tableCount} ${status.tableCountLabel ?? "Tables"}`);
+  }
+
+  if (parts.length === 0) return null;
+
+  return (
+    <div className="px-4 py-2 border-t border-gray-800/50">
+      <span className="text-xs text-gray-500">{parts.join(" · ")}</span>
     </div>
   );
 }

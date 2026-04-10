@@ -6,6 +6,7 @@ import {
   StatusDotNodeRenderer,
   ConfirmDeleteModal,
   dispatchResourcesChanged,
+  buildChildResourceGroups,
   type QueryResult,
   type ChildResource,
   type ChildResourceGroup,
@@ -167,29 +168,10 @@ export function ResourceDetailClient({
   }
 
   // ── Child resource groups ────────────────────────────────────────────────
-  const childResourceGroups = useMemo((): ChildResourceGroup[] => {
-    return childTypes
-      .map((ct) => ({
-        typeId: ct.id,
-        displayName: ct.displayName,
-        pluralDisplayName: ct.pluralDisplayName,
-        supportsCreate: ct.supportsCreate,
-        resources: childResources
-          .filter((r) => r.resourceTypeId === ct.id)
-          .map((r) => {
-            const child: ChildResource = {
-              id: r.id,
-              displayName: r.displayName,
-              pluginId: r.pluginId,
-              resourceTypeId: r.resourceTypeId,
-              accountId: r.accountId,
-            };
-            if (r.status) child.status = r.status as ChildResource["status"];
-            return child;
-          }),
-      }))
-      .filter((g) => g.resources.length > 0 || g.supportsCreate);
-  }, [childResources, childTypes]);
+  const childResourceGroups = useMemo(
+    () => buildChildResourceGroups(childTypes, childResources) as ChildResourceGroup[],
+    [childResources, childTypes],
+  );
 
   // ── Peer panes ───────────────────────────────────────────────────────────
   const peerPanes = useMemo((): PeerPaneData[] => {

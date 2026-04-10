@@ -534,6 +534,44 @@ app.post("/create-config", async (c) => {
   return c.json(config);
 });
 
+/** POST /api/resources/create-pricing — get size pricing for create form */
+app.post("/create-pricing", async (c) => {
+  const { organizationId } = c.get("session");
+  const input = await c.req.json<{
+    accountId: string;
+    resourceTypeId: string;
+    regionId?: string;
+    sizes: Array<{ id: string; vcpus: number; memoryMb: number }>;
+  }>();
+
+  const ctx = await getClientForAccount(input.accountId, organizationId);
+  if (!ctx) return c.json({ error: "Account not found" }, 404);
+  if (!ctx.client.getCreateSizePricing) return c.json({});
+
+  const pricing = await ctx.client.getCreateSizePricing(input.resourceTypeId, {
+    ...(input.regionId ? { regionId: input.regionId } : {}),
+    sizes: input.sizes,
+  });
+  return c.json(pricing ?? {});
+});
+
+/** POST /api/resources/create-cost-estimate — get cost estimate for create form */
+app.post("/create-cost-estimate", async (c) => {
+  const { organizationId } = c.get("session");
+  const input = await c.req.json<{
+    accountId: string;
+    resourceTypeId: string;
+    fields: Record<string, string>;
+  }>();
+
+  const ctx = await getClientForAccount(input.accountId, organizationId);
+  if (!ctx) return c.json({ error: "Account not found" }, 404);
+  if (!ctx.client.getCreateCostEstimate) return c.json({ estimate: null });
+
+  const estimate = await ctx.client.getCreateCostEstimate(input.resourceTypeId, input.fields);
+  return c.json({ estimate: estimate ?? null });
+});
+
 /** POST /api/resources/:pluginId/:typeId/peer-panes */
 app.post("/:pluginId/:typeId/peer-panes", async (c) => {
   const { organizationId } = c.get("session");

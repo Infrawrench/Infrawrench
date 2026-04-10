@@ -10,8 +10,9 @@ export const Route = createFileRoute("/dashboard/$dashboardId")({
 
 function DashboardPage() {
   const { dashboardId } = Route.useParams();
+  const dashboardPinsVersion = useUIStore((s) => s.dashboardPinsVersion);
   const [data, setData] = useState<{
-    dashboard: { id: string; name: string };
+    dashboard: { id: string; name: string; isDefault: boolean };
     pins: Array<{
       pinId: string;
       resourceId: string;
@@ -30,7 +31,7 @@ function DashboardPage() {
 
   useEffect(() => {
     apiGet<typeof data>(`/api/dashboards/${dashboardId}`).then(setData);
-  }, [dashboardId]);
+  }, [dashboardId, dashboardPinsVersion]);
 
   // Update tab title with real dashboard name
   useEffect(() => {
@@ -53,6 +54,7 @@ function DashboardPage() {
     <DashboardView
       dashboardId={data.dashboard.id}
       dashboardName={data.dashboard.name}
+      isHome={data.dashboard.isDefault}
       pins={data.pins}
     />
   );

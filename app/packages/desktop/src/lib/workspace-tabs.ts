@@ -1,28 +1,17 @@
-import { normalizeResourceId, useUIStore, type WorkspaceTabTarget } from "@infrawrench/ui";
+import {
+  normalizeResourceId,
+  useUIStore,
+  dashboardTabTarget,
+  accountTabTarget,
+  resourceTabTarget,
+  resourceSshTabTarget,
+  resourceSftpTabTarget,
+  type WorkspaceTabTarget,
+  type RouteNavigator,
+} from "@infrawrench/ui";
 
-export interface RouteNavigator {
-  (options: { to: string; params?: Record<string, string>; replace?: boolean; hash?: string }): Promise<void> | void;
-}
-
-export function dashboardTabTarget(dashboardId: string): WorkspaceTabTarget {
-  return { kind: "dashboard", dashboardId };
-}
-
-export function accountTabTarget(accountId: string): WorkspaceTabTarget {
-  return { kind: "account", accountId };
-}
-
-export function resourceTabTarget(accountId: string, resourceId: string): WorkspaceTabTarget {
-  return { kind: "resource", accountId, resourceId: normalizeResourceId(resourceId), view: "details" };
-}
-
-export function resourceSshTabTarget(accountId: string, resourceId: string): WorkspaceTabTarget {
-  return { kind: "resource", accountId, resourceId: normalizeResourceId(resourceId), view: "ssh" };
-}
-
-export function resourceSftpTabTarget(accountId: string, resourceId: string): WorkspaceTabTarget {
-  return { kind: "resource", accountId, resourceId: normalizeResourceId(resourceId), view: "sftp" };
-}
+// Re-export shared target factories
+export { dashboardTabTarget, accountTabTarget, resourceTabTarget, resourceSshTabTarget, resourceSftpTabTarget };
 
 export function getWorkspaceNavigateArgs(target: WorkspaceTabTarget, replace = false): {
   to: string;

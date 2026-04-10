@@ -11,6 +11,14 @@ export {
 // Schema renderer
 export { SchemaRenderer, StatusDotNodeRenderer } from "./components/renderer/SchemaRenderer.js";
 
+// SpotlightSearch
+export { SpotlightSearch } from "./components/SpotlightSearch.js";
+export type { SpotlightSearchProps, SpotlightResult } from "./components/SpotlightSearch.js";
+
+// GlobalTabBar
+export { GlobalTabBar } from "./components/GlobalTabBar.js";
+export type { GlobalTabBarProps } from "./components/GlobalTabBar.js";
+
 // Dashboard
 export { DashboardCard } from "./components/dashboard/DashboardCard.js";
 export { DashboardGrid } from "./components/dashboard/DashboardGrid.js";
@@ -18,6 +26,14 @@ export { DashboardGrid } from "./components/dashboard/DashboardGrid.js";
 // Sidebar
 export { SidebarItem } from "./components/sidebar/SidebarItem.js";
 export { SidebarSection } from "./components/sidebar/SidebarSection.js";
+
+// FileBrowser
+export { FileBrowser } from "./components/FileBrowser.js";
+export type { FileBrowserProps } from "./components/FileBrowser.js";
+
+// Error display
+export { ErrorNotice } from "./components/ErrorNotice.js";
+export type { ErrorNoticeProps } from "./components/ErrorNotice.js";
 
 // Modal
 export { Modal } from "./components/Modal.js";
@@ -66,9 +82,26 @@ export { DraggableSidebarResource } from "./dnd/DraggableSidebarResource.js";
 export type { DraggableSidebarResourceProps } from "./dnd/DraggableSidebarResource.js";
 export type { DraggableResource } from "./dnd/types.js";
 
+// Workspace tab targets
+export {
+  dashboardTabTarget,
+  accountTabTarget,
+  resourceTabTarget,
+  resourceSshTabTarget,
+  resourceSftpTabTarget,
+  navigateToWorkspaceTarget,
+} from "./workspace-tabs.js";
+export type { RouteNavigator } from "./workspace-tabs.js";
+
+// Shared hooks
+export { useCreateResourceForm } from "./hooks/useCreateResourceForm.js";
+export { useWorkspaceTabHandlers } from "./hooks/useWorkspaceTabHandlers.js";
+export type { CreateResourceCallbacks, CreateResourceFormState } from "./hooks/useCreateResourceForm.js";
+
 // Utilities
 export {
   formatSize, formatDate, groupBy, formatErrorMessage, evaluateShowWhen, buildDefaultFields, deriveSSHUsername,
   RESOURCES_CHANGED_EVENT, REFRESH_RESOURCE_EVENT, dispatchResourcesChanged, dispatchRefreshResource,
+  getAccountResourceTypes, getListableResourceTypes, isCreateOnlyType, extractHostLabel, buildChildResourceGroups, resourceTabTitle,
 } from "./utils.js";
 export type { TransferEntry, SftpConfig } from "./utils.js";

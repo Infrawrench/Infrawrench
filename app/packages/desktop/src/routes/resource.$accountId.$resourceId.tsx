@@ -3,7 +3,7 @@ import { createFileRoute, useNavigate, useRouterState } from "@tanstack/react-ro
 // useDraggable now used inside shared DraggableChildPill from @infrawrench/ui
 import { invoke } from "../lib/invoke";
 import type { ResourceInstance, DetailViewSchema, ResourceTypeDefinition } from "@infrawrench/plugin-base";
-import { DetailView, DraggableChildPill, ConfirmDeleteModal, RESOURCES_CHANGED_EVENT, REFRESH_RESOURCE_EVENT, dispatchResourcesChanged, dispatchRefreshResource, type QueryResult, type ChildResource, type ChildResourceGroup, type DraggableResource, useUIStore } from "@infrawrench/ui";
+import { DetailView, DraggableChildPill, ConfirmDeleteModal, RESOURCES_CHANGED_EVENT, REFRESH_RESOURCE_EVENT, dispatchResourcesChanged, dispatchRefreshResource, resourceTabTitle, buildChildResourceGroups, type QueryResult, type ChildResource, type ChildResourceGroup, type DraggableResource, useUIStore } from "@infrawrench/ui";
 import { getDb } from "../db/client";
 import { getPlugin } from "../plugins/loader";
 import { getSqlSession, setSqlSession } from "../lib/sql-session";
@@ -391,7 +391,7 @@ function ResourceDetailPage() {
           // Update tab title with actual resource name
           const { activeWorkspaceTabId, setWorkspaceTabTitle } = useUIStore.getState();
           if (activeWorkspaceTabId) {
-            const viewSuffix = locationHash === "ssh" ? `SSH: ${enrichedResource.displayName}` : locationHash === "sftp" ? `SFTP: ${enrichedResource.displayName}` : enrichedResource.displayName;
+            const viewSuffix = resourceTabTitle(enrichedResource.displayName, locationHash);
             setWorkspaceTabTitle(activeWorkspaceTabId, viewSuffix);
           }
 
@@ -410,43 +410,37 @@ function ResourceDetailPage() {
           }
 
           // ── Child resource groups ────────────────────────────────────────
-          // Find child types and fetch their resources for this parent
           const childTypes = plugin.resourceTypes.filter(
             (t) => t.parentTypeId === enrichedResource.resourceTypeId,
           );
           if (childTypes.length > 0) {
-            const groups: ChildResourceGroup[] = [];
+            const allChildResources: ChildResource[] = [];
             await Promise.allSettled(
               childTypes.map(async (childType) => {
                 try {
-                  const childResources = await client.listResources(childType.id, accountId);
-                  const filtered = childResources.filter(
-                    (r) => r.parentResourceId === enrichedResource.id,
-                  );
-                  const items: ChildResource[] = filtered.map((r) => {
+                  const resources = await client.listResources(childType.id, accountId);
+                  for (const r of resources) {
+                    if (r.parentResourceId !== enrichedResource.id) continue;
                     const sidebar = client.renderSidebarItem(r);
-                    return {
+                    allChildResources.push({
                       id: r.id,
                       displayName: r.displayName,
                       pluginId: r.pluginId,
                       resourceTypeId: r.resourceTypeId,
                       accountId: r.accountId,
                       status: sidebar.status,
-                    };
-                  });
-                  groups.push({
-                    typeId: childType.id,
-                    displayName: childType.displayName,
-                    pluralDisplayName: childType.pluralDisplayName,
-                    supportsCreate: !!childType.supportsCreate,
-                    resources: items,
-                  });
+                    });
+                  }
                 } catch {
                   /* skip failed child type loads */
                 }
               }),
             );
-            if (!cancelled) setChildResourceGroups(groups);
+            if (!cancelled) {
+              setChildResourceGroups(
+                buildChildResourceGroups(childTypes, allChildResources) as ChildResourceGroup[],
+              );
+            }
           } else if (!cancelled) {
             setChildResourceGroups([]);
           }
@@ -629,7 +623,7 @@ function ResourceDetailPage() {
     void navigateToWorkspaceTarget(
       navigate,
       resourceSshTabTarget(accountId, decodedResourceId),
-      { label: resource ? `SSH: ${resource.displayName}` : "SSH", mode: "pin" },
+      { label: resourceTabTitle(resource?.displayName ?? "", "ssh") || "SSH", mode: "pin" },
     );
   }
 
@@ -637,7 +631,7 @@ function ResourceDetailPage() {
     void navigateToWorkspaceTarget(
       navigate,
       resourceSftpTabTarget(accountId, decodedResourceId),
-      { label: resource ? `SFTP: ${resource.displayName}` : "SFTP", mode: "pin" },
+      { label: resourceTabTitle(resource?.displayName ?? "", "sftp") || "SFTP", mode: "pin" },
     );
   }
 

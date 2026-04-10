@@ -1,28 +1,17 @@
-import { normalizeResourceId, useUIStore, type WorkspaceTabTarget } from "@infrawrench/ui";
+import {
+  normalizeResourceId,
+  useUIStore,
+  dashboardTabTarget,
+  accountTabTarget,
+  resourceTabTarget,
+  resourceSshTabTarget,
+  resourceSftpTabTarget,
+  type WorkspaceTabTarget,
+  type RouteNavigator,
+} from "@infrawrench/ui";
 
-export interface RouteNavigator {
-  (options: { to: string; params?: Record<string, string>; search?: Record<string, string>; replace?: boolean; hash?: string }): Promise<void> | void;
-}
-
-export function dashboardTabTarget(dashboardId: string): WorkspaceTabTarget {
-  return { kind: "dashboard", dashboardId };
-}
-
-export function accountTabTarget(accountId: string): WorkspaceTabTarget {
-  return { kind: "account", accountId };
-}
-
-export function resourceTabTarget(accountId: string, resourceId: string, pluginId?: string, resourceTypeId?: string): WorkspaceTabTarget {
-  return { kind: "resource", accountId, resourceId: normalizeResourceId(resourceId), view: "details", ...(pluginId ? { pluginId } : {}), ...(resourceTypeId ? { resourceTypeId } : {}) };
-}
-
-export function resourceSshTabTarget(accountId: string, resourceId: string, pluginId?: string, resourceTypeId?: string): WorkspaceTabTarget {
-  return { kind: "resource", accountId, resourceId: normalizeResourceId(resourceId), view: "ssh", ...(pluginId ? { pluginId } : {}), ...(resourceTypeId ? { resourceTypeId } : {}) };
-}
-
-export function resourceSftpTabTarget(accountId: string, resourceId: string, pluginId?: string, resourceTypeId?: string): WorkspaceTabTarget {
-  return { kind: "resource", accountId, resourceId: normalizeResourceId(resourceId), view: "sftp", ...(pluginId ? { pluginId } : {}), ...(resourceTypeId ? { resourceTypeId } : {}) };
-}
+// Re-export shared target factories
+export { dashboardTabTarget, accountTabTarget, resourceTabTarget, resourceSshTabTarget, resourceSftpTabTarget };
 
 export function getWorkspaceNavigateArgs(target: WorkspaceTabTarget, replace = false): {
   to: string;
@@ -39,7 +28,6 @@ export function getWorkspaceNavigateArgs(target: WorkspaceTabTarget, replace = f
     case "resource": {
       const rid = normalizeResourceId(target.resourceId);
       const hash = target.view === "ssh" ? "ssh" : target.view === "sftp" ? "sftp" : undefined;
-      // If we have pluginId + resourceTypeId, navigate to the resource detail route
       if (target.pluginId && target.resourceTypeId) {
         return {
           to: "/resources/$pluginId/$resourceTypeId/$resourceId",
@@ -49,7 +37,6 @@ export function getWorkspaceNavigateArgs(target: WorkspaceTabTarget, replace = f
           ...(replace ? { replace: true } : {}),
         };
       }
-      // Fallback: navigate to account page
       return {
         to: "/accounts/$accountId",
         params: { accountId: target.accountId },
@@ -80,7 +67,6 @@ export function syncWorkspaceRouteFromPath(pathname: string, hash?: string): Wor
   const normalizedHash = hash?.replace(/^#/, "");
   const segments = pathname.split("/").filter(Boolean);
 
-  // "/" — default dashboard (handled separately by the caller which fetches the real ID)
   if (segments.length === 0) return null;
 
   if (segments[0] === "dashboard" && segments[1]) {

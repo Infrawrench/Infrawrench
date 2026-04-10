@@ -2,6 +2,14 @@
  * Shared utility functions used by both desktop and web apps.
  */
 
+import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+
+/** Minimal shape needed by the account resource type helpers. */
+interface ResourceTypeInfo {
+  parentTypeId?: string | undefined;
+  supportsCreate?: boolean | undefined;
+}
+
 // ─── Event constants ────────────────────────────────────────────────────────
 
 /** Custom DOM event name dispatched when resources are created or deleted. */
@@ -205,4 +213,94 @@ export function buildDefaultFields(
     else if (f.kind === "disk-slider") init[f.key] = String(f.defaultGb ?? f.minGb ?? 20);
   }
   return init;
+}
+
+// ─── Account resource type helpers ──────────────────────────────────────────
+
+/**
+ * Returns resource types to show on the account page.
+ * Top-level types show their full resource list + create button.
+ * Child types with supportsCreate show only the create button (no resource
+ * listing — those appear nested under their parent on the detail page).
+ */
+export function getAccountResourceTypes<T extends ResourceTypeInfo>(
+  resourceTypes: T[],
+): T[] {
+  return resourceTypes.filter(
+    (typeDef) => !typeDef.parentTypeId || typeDef.supportsCreate,
+  );
+}
+
+/** Returns only top-level resource types (no parent) whose resources should be listed. */
+export function getListableResourceTypes<T extends ResourceTypeInfo>(
+  resourceTypes: T[],
+): T[] {
+  return resourceTypes.filter((typeDef) => !typeDef.parentTypeId);
+}
+
+/** Whether a type should hide its resource list on the account page */
+export function isCreateOnlyType(typeDef: ResourceTypeInfo): boolean {
+  return !!typeDef.parentTypeId && !!typeDef.supportsCreate;
+}
+
+/** Extract and truncate a display-friendly host from resource fields. */
+export function extractHostLabel(fields: Record<string, unknown>, maxLength = 28): string {
+  const rawHost = String(fields["host"] ?? fields["region"] ?? fields["engine"] ?? "");
+  if (!rawHost) return "";
+  try {
+    const h = rawHost.includes("://") ? new URL(rawHost).hostname : rawHost;
+    return h.length > maxLength ? h.slice(0, maxLength - 2) + "\u2026" : h;
+  } catch {
+    return rawHost.length > maxLength ? rawHost.slice(0, maxLength - 2) + "\u2026" : rawHost;
+  }
+}
+
+/** Minimal child resource info for building groups. */
+interface ChildResourceInput {
+  id: string;
+  displayName: string;
+  pluginId: string;
+  resourceTypeId: string;
+  accountId: string;
+  status?: { kind: "status-dot"; status: string; label?: string } | undefined;
+}
+
+/** Minimal child type info for building groups. */
+interface ChildTypeInput {
+  id: string;
+  displayName: string;
+  pluralDisplayName: string;
+  supportsCreate?: boolean | undefined;
+}
+
+/**
+ * Build ChildResourceGroup[] from flat lists of child types and child resources.
+ * Used by both desktop (after live-fetching) and web (from API response).
+ */
+export function buildChildResourceGroups(
+  childTypes: ChildTypeInput[],
+  childResources: ChildResourceInput[],
+): Array<{
+  typeId: string;
+  displayName: string;
+  pluralDisplayName: string;
+  supportsCreate: boolean;
+  resources: ChildResourceInput[];
+}> {
+  return childTypes
+    .map((ct) => ({
+      typeId: ct.id,
+      displayName: ct.displayName,
+      pluralDisplayName: ct.pluralDisplayName,
+      supportsCreate: !!ct.supportsCreate,
+      resources: childResources.filter((r) => r.resourceTypeId === ct.id),
+    }))
+    .filter((g) => g.resources.length > 0 || g.supportsCreate);
+}
+
+/** Returns a display title for a resource tab, prefixed with SSH/SFTP when applicable. */
+export function resourceTabTitle(displayName: string, view?: string): string {
+  if (view === "ssh") return `SSH: ${displayName}`;
+  if (view === "sftp") return `SFTP: ${displayName}`;
+  return displayName;
 }

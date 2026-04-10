@@ -3,10 +3,9 @@ import { useNavigate } from "@tanstack/react-router";
 import { SpotlightSearch } from "./SpotlightSearch";
 import { invoke } from "../lib/invoke";
 import { useDroppable } from "@dnd-kit/core";
-import { useUIStore } from "@infrawrench/ui";
+import { useUIStore, getListableResourceTypes, extractHostLabel } from "@infrawrench/ui";
 import { getDb } from "../db/client";
 import { loadPlugins, getPlugin } from "../plugins/loader";
-import { getListableResourceTypes } from "../lib/account-resource-types";
 import { formatErrorMessage } from "../lib/errors";
 import { buildHostServices, buildKvHostServices, buildMemcachedHostServices, buildDockerHostServices } from "../lib/sql-drivers";
 import { resolveTunneledHost } from "../lib/ssh-tunnel";
@@ -637,16 +636,7 @@ function ResourceCard({
     catch { return {}; }
   })();
 
-  const rawHost = String(fields["host"] ?? fields["region"] ?? fields["engine"] ?? "");
-  // Strip scheme and credentials, keep only hostname (up to first dot-segment or 28 chars)
-  const host = (() => {
-    try {
-      const h = rawHost.includes("://") ? new URL(rawHost).hostname : rawHost;
-      return h.length > 28 ? h.slice(0, 26) + "…" : h;
-    } catch {
-      return rawHost.length > 28 ? rawHost.slice(0, 26) + "…" : rawHost;
-    }
-  })();
+  const host = extractHostLabel(fields);
 
   return (
     <div className="group relative rounded-2xl border border-gray-800 bg-gray-900 hover:border-gray-700 transition-colors flex flex-col overflow-hidden">

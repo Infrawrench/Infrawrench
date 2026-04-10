@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { createRootRoute, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
-import { DndShell, useUIStore, workspaceTabTargetsEqual, dispatchResourcesChanged, type DraggableResource } from "@infrawrench/ui";
+import { DndShell, useUIStore, useWorkspaceTabHandlers, workspaceTabTargetsEqual, dispatchResourcesChanged, type DraggableResource, type WorkspaceTab } from "@infrawrench/ui";
 import { WebSidebar } from "@/components/WebSidebar";
 import { WebGlobalTabBar } from "@/components/WebGlobalTabBar";
 import { SpotlightSearch } from "@/components/SpotlightSearch";
@@ -43,6 +43,7 @@ function AuthenticatedShell() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const hash = useRouterState({ select: (s) => s.location.hash });
   const [spotlightOpen, setSpotlightOpen] = useState(false);
+  const [tabsValidated, setTabsValidated] = useState(false);
 
   // ⌘K / Ctrl+K to open spotlight search
   useEffect(() => {
@@ -61,11 +62,12 @@ function AuthenticatedShell() {
     activeWorkspaceTabId,
     tabsHydrated,
     syncWorkspaceRoute,
-    activateWorkspaceTab,
-    closeWorkspaceTab,
     createWorkspaceTabInstance,
+    replaceWorkspaceTabs,
     setActiveDashboard,
   } = useUIStore();
+
+  const { handleActivateTab, handleCloseTab } = useWorkspaceTabHandlers(navigate, getWorkspaceNavigateArgs);
 
   // Sync route changes → workspace tabs
   useEffect(() => {
@@ -81,12 +83,32 @@ function AuthenticatedShell() {
     syncWorkspaceRoute(currentTarget);
   }, [hash, pathname, activeWorkspaceTabId, setActiveDashboard, syncWorkspaceRoute, tabsHydrated, workspaceTabs]);
 
-  function handleActivateTab(tabId: string) {
-    const tab = workspaceTabs.find((candidate) => candidate.id === tabId);
-    if (!tab) return;
-    activateWorkspaceTab(tabId);
-    void navigate(getWorkspaceNavigateArgs(tab.target));
-  }
+  // Validate persisted tabs on first hydration — prune stale references
+  useEffect(() => {
+    if (!tabsHydrated || tabsValidated) return;
+    const tabsSnapshot = useUIStore.getState().workspaceTabs;
+    const activeIdSnapshot = useUIStore.getState().activeWorkspaceTabId;
+    if (tabsSnapshot.length === 0) {
+      setTabsValidated(true);
+      return;
+    }
+
+    let cancelled = false;
+    apiPost<{ validTabIds: string[] }>("/api/dashboards/validate-tabs", {
+      tabs: tabsSnapshot.map((t) => ({ id: t.id, target: t.target })),
+    }).then(({ validTabIds }) => {
+      if (cancelled) return;
+      const validSet = new Set(validTabIds);
+      const nextTabs = tabsSnapshot.filter((t) => validSet.has(t.id));
+      replaceWorkspaceTabs(nextTabs, activeIdSnapshot);
+      setTabsValidated(true);
+    }).catch(() => {
+      // On failure, keep all tabs rather than losing them
+      if (!cancelled) setTabsValidated(true);
+    });
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabsHydrated, tabsValidated, replaceWorkspaceTabs]);
 
   async function handleNewTab() {
     try {
@@ -96,19 +118,6 @@ function AuthenticatedShell() {
       void navigate({ to: "/" });
     } catch {
       void navigate({ to: "/" });
-    }
-  }
-
-  function handleCloseTab(tabId: string) {
-    const wasActive = activeWorkspaceTabId === tabId;
-    closeWorkspaceTab(tabId);
-    if (!wasActive) return;
-    const nextState = useUIStore.getState();
-    const nextTab = nextState.workspaceTabs.find((tab) => tab.id === nextState.activeWorkspaceTabId);
-    if (nextTab) {
-      void navigate(getWorkspaceNavigateArgs(nextTab.target, true));
-    } else {
-      void navigate({ to: "/", replace: true });
     }
   }
 

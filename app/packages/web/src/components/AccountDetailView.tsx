@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { ResourcePill, ConfirmDeleteModal, dispatchResourcesChanged, type DraggableResource, useUIStore } from "@infrawrench/ui";
+import { ResourcePill, ConfirmDeleteModal, dispatchResourcesChanged, getAccountResourceTypes, isCreateOnlyType, type DraggableResource, useUIStore } from "@infrawrench/ui";
 import { apiDelete } from "@/lib/api";
 import { CreateResourceModal } from "./CreateResourceModal";
 
@@ -57,11 +57,7 @@ export function AccountDetailView({
     groupedResources.set(resource.resourceTypeId, group);
   }
 
-  // Mirror desktop's getAccountResourceTypes: show top-level types, plus
-  // child types with supportsCreate (create-only — no resource listing).
-  const visibleTypes = resourceTypes.filter(
-    (rt) => !rt.parentTypeId || rt.supportsCreate,
-  );
+  const visibleTypes = getAccountResourceTypes(resourceTypes);
 
   return (
     <div className="p-6">
@@ -96,7 +92,7 @@ export function AccountDetailView({
 
       {/* Resource categories — mirrors desktop layout */}
       {visibleTypes.map((type) => {
-        const isCreateOnly = !!type.parentTypeId && !!type.supportsCreate;
+        const isCreateOnly = isCreateOnlyType(type);
         const items = groupedResources.get(type.id) ?? [];
 
         // Hide categories with no resources and no create support

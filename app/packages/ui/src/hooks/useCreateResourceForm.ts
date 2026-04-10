@@ -1,0 +1,302 @@
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import type { CreateResourceConfig, CreateFieldConfig } from "@infrawrench/plugin-base";
+import { evaluateShowWhen, buildDefaultFields } from "../utils.js";
+
+/** Callback signatures that each platform provides */
+export interface CreateResourceCallbacks {
+  /** Load the create config for this resource type */
+  loadConfig: () => Promise<CreateResourceConfig>;
+  /** Fetch pricing for a set of sizes in a region */
+  loadSizePricing?: (request: {
+    regionId?: string;
+    sizes: Array<{ id: string; vcpus: number; memoryMb: number }>;
+  }) => Promise<Record<string, number>>;
+  /** Get a full cost estimate given the current fields */
+  loadCostEstimate?: (fields: Record<string, string>) => Promise<number | null>;
+  /** Submit the create form — platform handles the result via its own callback */
+  create: (fields: Record<string, string>) => Promise<void>;
+}
+
+export interface CreateResourceFormState {
+  config: CreateResourceConfig | null;
+  configWithPricing: CreateResourceConfig | null;
+  loadingConfig: boolean;
+  configError: string | null;
+  fields: Record<string, string>;
+  setField: (key: string, value: string) => void;
+  creating: boolean;
+  error: string | null;
+  visibleFields: CreateFieldConfig[];
+  estimatedMonthlyPriceLabel: string | null;
+  handleCreate: () => Promise<void>;
+}
+
+export function useCreateResourceForm(
+  callbacks: CreateResourceCallbacks,
+  /** Used as dependency keys to reset the form when they change */
+  deps: unknown[],
+): CreateResourceFormState {
+  const [config, setConfig] = useState<CreateResourceConfig | null>(null);
+  const [loadingConfig, setLoadingConfig] = useState(true);
+  const [configError, setConfigError] = useState<string | null>(null);
+  const [fields, setFields] = useState<Record<string, string>>({});
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [sizePricingByRegion, setSizePricingByRegion] = useState<Record<string, Record<string, number>>>({});
+  const [costEstimateMonthly, setCostEstimateMonthly] = useState<number | null>(null);
+  const pricingAttemptedRef = useRef<Map<string, Set<string>>>(new Map());
+  const pricingInFlightRef = useRef<Set<string>>(new Set());
+  const callbacksRef = useRef(callbacks);
+  callbacksRef.current = callbacks;
+
+  const setField = useCallback((key: string, value: string) => {
+    setFields((prev) => ({ ...prev, [key]: value }));
+  }, []);
+
+  const regionField = useMemo(
+    () => config?.fields.find((f) => f.kind === "region-picker" && f.regions?.length),
+    [config],
+  );
+  const sizeField = useMemo(
+    () => config?.fields.find((f) => f.kind === "size-picker" && f.sizes?.length),
+    [config],
+  );
+
+  const selectedRegionId = useMemo(() => {
+    if (!regionField) return undefined;
+    return fields[regionField.key] ?? regionField.defaultValue ?? regionField.regions?.[0]?.id;
+  }, [fields, regionField]);
+
+  const selectedSizeId = useMemo(() => {
+    if (!sizeField) return undefined;
+    return fields[sizeField.key] ?? sizeField.defaultValue ?? sizeField.sizes?.[0]?.id;
+  }, [fields, sizeField]);
+
+  async function loadPricingForRegion(
+    regionId: string | undefined,
+    cfgOverride?: CreateResourceConfig,
+    sizeIdsOverride?: string[],
+  ): Promise<void> {
+    const loadSizePricing = callbacksRef.current.loadSizePricing;
+    if (!loadSizePricing) return;
+    const cfg = cfgOverride ?? config;
+    if (!cfg) return;
+    const cfgSizeField = cfg.fields.find((f) => f.kind === "size-picker" && f.sizes?.length);
+    if (!cfgSizeField?.sizes?.length) return;
+
+    const requestedSizes = sizeIdsOverride?.length
+      ? cfgSizeField.sizes.filter((s) => sizeIdsOverride.includes(s.id))
+      : cfgSizeField.sizes;
+    if (!requestedSizes.length) return;
+
+    const regionKey = regionId ?? "__default__";
+    const attemptedForRegion = pricingAttemptedRef.current.get(regionKey) ?? new Set<string>();
+    const pendingSizes = requestedSizes.filter((s) => !attemptedForRegion.has(s.id));
+    if (!pendingSizes.length) return;
+    const requestKey = `${regionKey}|${pendingSizes.map((s) => s.id).sort().join(",")}`;
+    if (pricingInFlightRef.current.has(requestKey)) return;
+
+    pricingInFlightRef.current.add(requestKey);
+    try {
+      const pricing = await loadSizePricing({
+        ...(regionId ? { regionId } : {}),
+        sizes: pendingSizes.map((size) => ({
+          id: size.id,
+          vcpus: size.vcpus,
+          memoryMb: size.memoryMb,
+        })),
+      });
+      for (const s of pendingSizes) attemptedForRegion.add(s.id);
+      pricingAttemptedRef.current.set(regionKey, attemptedForRegion);
+      if (!pricing || Object.keys(pricing).length === 0) return;
+      setSizePricingByRegion((prev) => ({
+        ...prev,
+        [regionKey]: { ...(prev[regionKey] ?? {}), ...pricing },
+      }));
+    } catch {
+      // Allow retries on failures
+    } finally {
+      pricingInFlightRef.current.delete(requestKey);
+    }
+  }
+
+  // Load config on mount / deps change
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        setLoadingConfig(true);
+        setConfigError(null);
+        setSizePricingByRegion({});
+        setCostEstimateMonthly(null);
+        pricingAttemptedRef.current.clear();
+        pricingInFlightRef.current.clear();
+
+        const cfg = await callbacksRef.current.loadConfig();
+        if (cancelled) return;
+        setConfig(cfg);
+        const init = buildDefaultFields(cfg.fields);
+        setFields(init);
+
+        // Progressive pricing loading
+        const cfgRegionField = cfg.fields.find((f) => f.kind === "region-picker" && f.regions?.length);
+        const defaultRegionId = cfgRegionField
+          ? (init[cfgRegionField.key] ?? cfgRegionField.defaultValue ?? cfgRegionField.regions?.[0]?.id)
+          : undefined;
+        const cfgSizeField = cfg.fields.find((f) => f.kind === "size-picker" && f.sizes?.length);
+        const defaultSizeId = cfgSizeField
+          ? (init[cfgSizeField.key] ?? cfgSizeField.defaultValue ?? cfgSizeField.sizes?.[0]?.id)
+          : undefined;
+
+        if (cfgRegionField?.regions?.length) {
+          const remainingRegionIds = cfgRegionField.regions
+            .map((r) => r.id)
+            .filter((id) => id !== defaultRegionId);
+          void (async () => {
+            await loadPricingForRegion(defaultRegionId, cfg, defaultSizeId ? [defaultSizeId] : undefined);
+            if (cancelled) return;
+            for (const regionId of remainingRegionIds) {
+              if (cancelled) return;
+              await loadPricingForRegion(regionId, cfg, defaultSizeId ? [defaultSizeId] : undefined);
+            }
+            if (cancelled) return;
+            await loadPricingForRegion(defaultRegionId, cfg);
+            for (const regionId of remainingRegionIds) {
+              if (cancelled) return;
+              await loadPricingForRegion(regionId, cfg);
+            }
+          })();
+        } else {
+          void (async () => {
+            await loadPricingForRegion(defaultRegionId, cfg, defaultSizeId ? [defaultSizeId] : undefined);
+            await loadPricingForRegion(defaultRegionId, cfg);
+          })();
+        }
+      } catch (e) {
+        if (!cancelled) setConfigError(e instanceof Error ? e.message : "Failed to load config");
+      } finally {
+        if (!cancelled) setLoadingConfig(false);
+      }
+    }
+    void load();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
+
+  // Reload pricing when region/size changes
+  useEffect(() => {
+    if (!config) return;
+    void (async () => {
+      await loadPricingForRegion(selectedRegionId, undefined, selectedSizeId ? [selectedSizeId] : undefined);
+      await loadPricingForRegion(selectedRegionId);
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config, selectedRegionId, selectedSizeId]);
+
+  const configWithPricing = useMemo(() => {
+    if (!config) return null;
+    const selectedRegionKey = selectedRegionId ?? "__default__";
+    const regionPricing = sizePricingByRegion[selectedRegionKey];
+    if (!regionPricing) return config;
+    return {
+      ...config,
+      fields: config.fields.map((field) => {
+        if (field.kind !== "size-picker" || !field.sizes) return field;
+        return {
+          ...field,
+          sizes: field.sizes.map((size) => {
+            const regionPrice = regionPricing[size.id];
+            return regionPrice != null ? { ...size, priceMonthly: regionPrice } : size;
+          }),
+        };
+      }),
+    };
+  }, [config, selectedRegionId, sizePricingByRegion]);
+
+  // Cost estimate
+  useEffect(() => {
+    if (!configWithPricing) return;
+    const loadCostEstimate = callbacksRef.current.loadCostEstimate;
+    if (!loadCostEstimate) {
+      setCostEstimateMonthly(null);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      const visibleFields: Record<string, string> = {};
+      for (const f of configWithPricing.fields) {
+        if (!evaluateShowWhen(f, fields)) continue;
+        if (fields[f.key] !== undefined) visibleFields[f.key] = fields[f.key]!;
+      }
+      void loadCostEstimate(visibleFields)
+        .then((value) => {
+          if (!cancelled) setCostEstimateMonthly(value ?? null);
+        })
+        .catch(() => {
+          if (!cancelled) setCostEstimateMonthly(null);
+        });
+    }, 220);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [configWithPricing, fields]);
+
+  const estimatedMonthlyPrice = useMemo(() => {
+    if (costEstimateMonthly != null) return costEstimateMonthly;
+    if (!configWithPricing) return null;
+    const vf = configWithPricing.fields.filter((f) => evaluateShowWhen(f, fields));
+    const sf = vf.find((f) => f.kind === "size-picker" && f.sizes?.length);
+    if (!sf?.sizes) return null;
+    const sid = fields[sf.key];
+    if (!sid) return null;
+    const selectedSize = sf.sizes.find((size) => size.id === sid);
+    if (selectedSize?.priceMonthly == null) return null;
+    return selectedSize.priceMonthly;
+  }, [configWithPricing, fields, costEstimateMonthly]);
+
+  const estimatedMonthlyPriceLabel = useMemo(() => {
+    if (estimatedMonthlyPrice == null) return null;
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: estimatedMonthlyPrice % 1 === 0 ? 0 : 2,
+      maximumFractionDigits: 2,
+    }).format(estimatedMonthlyPrice);
+  }, [estimatedMonthlyPrice]);
+
+  const visibleFields = useMemo(() => {
+    if (!configWithPricing) return [];
+    return configWithPricing.fields.filter((f) => evaluateShowWhen(f, fields));
+  }, [configWithPricing, fields]);
+
+  const handleCreate = useCallback(async () => {
+    setCreating(true);
+    setError(null);
+    try {
+      const submitFields: Record<string, string> = {};
+      const cfg = configWithPricing ?? config;
+      for (const f of (cfg?.fields ?? [])) {
+        if (!evaluateShowWhen(f, fields)) continue;
+        if (fields[f.key] !== undefined) submitFields[f.key] = fields[f.key]!;
+      }
+      await callbacksRef.current.create(submitFields);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to create resource");
+    } finally {
+      setCreating(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [configWithPricing, config, fields]);
+
+  return {
+    config,
+    configWithPricing,
+    loadingConfig,
+    configError,
+    fields,
+    setField,
+    creating,
+    error,
+    visibleFields,
+    estimatedMonthlyPriceLabel,
+    handleCreate,
+  };
+}

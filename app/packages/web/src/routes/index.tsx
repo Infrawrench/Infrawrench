@@ -10,6 +10,7 @@ export const Route = createFileRoute("/")({
 });
 
 function HomePage() {
+  const dashboardPinsVersion = useUIStore((s) => s.dashboardPinsVersion);
   const [data, setData] = useState<{
     dashboard: { id: string; name: string };
     pins: Array<{
@@ -30,7 +31,7 @@ function HomePage() {
 
   useEffect(() => {
     apiGet<typeof data>("/api/dashboards/default/full").then(setData);
-  }, []);
+  }, [dashboardPinsVersion]);
 
   // Sync the active tab to show the default dashboard with its real name
   useEffect(() => {
@@ -54,6 +55,7 @@ function HomePage() {
     <DashboardView
       dashboardId={data.dashboard.id}
       dashboardName={data.dashboard.name}
+      isHome
       pins={data.pins}
     />
   );
