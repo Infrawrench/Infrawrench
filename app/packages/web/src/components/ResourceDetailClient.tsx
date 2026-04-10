@@ -219,10 +219,16 @@ export function ResourceDetailClient({
       {isSshView && (
         <div className="flex-1 min-h-0 overflow-hidden">
           {sshHost && !sshQuickConnect ? (
-            <SshQuickConnectPanel host={sshHost} onConnect={(config) => setSshQuickConnect(config)} />
+            <SshQuickConnectPanel host={sshHost} onConnect={async (config) => {
+              setSshQuickConnect(config);
+              const { token } = await apiPost<{ token: string }>("/api/ws-token");
+              setWsToken(token);
+            }} />
+          ) : sshHost && sshQuickConnect && wsToken ? (
+            <WebTerminal accountId={accountId} resourceId={resourceId} token={wsToken} sshKeyId={sshQuickConnect.sshKeyId} sshHost={sshHost} sshUsername={sshQuickConnect.username} />
           ) : wsToken ? (
             <WebTerminal accountId={accountId} resourceId={resourceId} token={wsToken} />
-          ) : (
+          ) : !sshHost ? (
             <div className="flex items-center justify-center h-full">
               <button
                 onClick={async () => {
@@ -233,6 +239,10 @@ export function ResourceDetailClient({
               >
                 Connect SSH Terminal
               </button>
+            </div>
+          ) : (
+            <div className="flex items-center justify-center h-full text-gray-500 text-sm animate-pulse">
+              Connecting…
             </div>
           )}
         </div>

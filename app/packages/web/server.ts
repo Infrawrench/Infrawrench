@@ -103,12 +103,15 @@ async function start() {
           cols?: number;
           rows?: number;
           sql?: string;
+          sshKeyId?: string;
+          sshHost?: string;
+          sshUsername?: string;
         };
 
         switch (msg.type) {
           case "ssh:open":
             if (msg.accountId) {
-              void handleSshSession(ws, auth.organizationId, msg.accountId, msg.resourceId);
+              void handleSshSession(ws, auth.organizationId, msg.accountId, msg.resourceId, msg.sshKeyId ? { sshKeyId: msg.sshKeyId, host: msg.sshHost!, username: msg.sshUsername! } : undefined, msg.cols, msg.rows);
             }
             break;
           case "ssh:data":

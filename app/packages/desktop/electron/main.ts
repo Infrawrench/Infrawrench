@@ -8,6 +8,7 @@ import { killAllSshShells } from "./ssh-shell";
 import { killAllK8sExecs } from "./k8s-exec";
 import { killAllK9sSessions } from "./k9s";
 import { MIGRATIONS } from "../src/db/schema";
+import { setDbGetter } from "./main-utils";
 
 // Side-effect imports: register all IPC handlers for their domain
 import "./plugin-host";
@@ -178,6 +179,25 @@ async function getSqlite(): Promise<SqlJsDb> {
 
   return _sqlite;
 }
+
+// Wire up the DB getter so cloud-auth / cloud-sync can access SQLite
+setDbGetter(async () => {
+  const db = await getSqlite();
+  return {
+    select: async <T>(sql: string, params?: unknown[]): Promise<T> => {
+      const stmt = db.prepare(normalizeSql(sql));
+      const rows: Record<string, unknown>[] = [];
+      stmt.bind((params ?? []) as SqlValue[]);
+      while (stmt.step()) rows.push(stmt.getAsObject() as Record<string, unknown>);
+      stmt.free();
+      return rows as T;
+    },
+    execute: async (sql: string, params?: unknown[]): Promise<void> => {
+      db.run(normalizeSql(sql), (params ?? []) as SqlValue[]);
+      persist();
+    },
+  };
+});
 
 function persist() {
   if (!_sqlite) return;

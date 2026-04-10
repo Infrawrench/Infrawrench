@@ -376,8 +376,9 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
     if (host) sshHost = host;
   }
 
-  const hasSshTerminal = !!sshConfig || !!sshHost;
-  const hasSftpBrowser = !!sshConfig || !!sshHost;
+  const isRunning = finalSchema.status?.status === "healthy";
+  const hasSshTerminal = isRunning && (!!sshConfig || !!sshHost);
+  const hasSftpBrowser = isRunning && (!!sshConfig || !!sshHost);
   const containerId = String(instance.resolvedOutputs?.["containerId"] ?? instance.externalId ?? "");
   const databaseName = String(instance.fields?.["database"] ?? "test");
   const storageBucketName = finalSchema.storageBrowser?.bucketName ?? "";
