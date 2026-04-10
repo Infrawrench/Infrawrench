@@ -3,7 +3,7 @@
  * Populated by dashboard auto-connect and the resource detail page.
  * Lets the detail page start pre-connected when navigating from the dashboard.
  */
-export interface SqlSession {
+interface SqlSession {
   connectionString: string;
   /** Serialised SqlTableMeta[]. Present once introspection has run. */
   tablesJson?: string | undefined;

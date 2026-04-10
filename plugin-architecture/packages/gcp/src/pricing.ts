@@ -1,6 +1,6 @@
 // ─── GCP Billing / Pricing logic ────────────────────────────────────────────
 
-export interface CloudBillingSku {
+interface CloudBillingSku {
   description?: string;
   serviceRegions?: string[];
   category?: {
@@ -30,8 +30,8 @@ export interface PricingCacheEntry extends PricingRates {
 
 export type GeoRegion = "Americas" | "EMEA" | "APAC";
 
-export const COMPUTE_BILLING_SERVICE_ID = "6F81-5844-456A";
-export const HOURS_PER_MONTH = 730;
+const COMPUTE_BILLING_SERVICE_ID = "6F81-5844-456A";
+const HOURS_PER_MONTH = 730;
 
 export function regionFromZone(zone: string): string {
   return zone.replace(/-[a-z]$/, "");
@@ -47,14 +47,14 @@ export function geoFromRegion(region: string): GeoRegion {
   return "EMEA";
 }
 
-export function unitPriceToUsd(unitPrice?: { units?: string; nanos?: number }): number {
+function unitPriceToUsd(unitPrice?: { units?: string; nanos?: number }): number {
   if (!unitPrice) return 0;
   const units = Number(unitPrice.units ?? "0");
   const nanos = Number(unitPrice.nanos ?? 0);
   return units + nanos / 1_000_000_000;
 }
 
-export function familyFromMachineType(machineType: string): string {
+function familyFromMachineType(machineType: string): string {
   const lowered = machineType.toLowerCase();
   if (lowered.startsWith("n2d-")) return "n2d";
   const [family = ""] = lowered.split("-");

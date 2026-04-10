@@ -5,7 +5,7 @@
 import { Client as SshClient } from "ssh2";
 import type { SFTPWrapper, FileEntry } from "ssh2";
 
-export interface SftpConfig {
+interface SftpConfig {
   host: string;
   port: number;
   username: string;
@@ -13,7 +13,7 @@ export interface SftpConfig {
 }
 
 import type { StorageObject } from "@infrawrench/plugin-base";
-export type SftpEntry = StorageObject;
+type SftpEntry = StorageObject;
 
 function withSftp<T>(config: SftpConfig, fn: (sftp: SFTPWrapper) => Promise<T>): Promise<T> {
   return new Promise((resolve, reject) => {

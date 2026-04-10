@@ -154,9 +154,8 @@ export function parseKubeconfig(raw: string): ParsedKubeconfig {
 // ── Status mapping helpers ────────────────────────────────────────────────
 
 import type { ResourceStatus } from "@infrawrench/plugin-base";
-export type HealthStatus = ResourceStatus;
 
-export function mapPeerStatus(status: string): HealthStatus {
+export function mapPeerStatus(status: string): ResourceStatus {
   switch (status.toLowerCase()) {
     case "running":
     case "ready":
@@ -182,7 +181,7 @@ export function mapPeerStatus(status: string): HealthStatus {
   }
 }
 
-export function mapJobStatus(status: string): HealthStatus {
+export function mapJobStatus(status: string): ResourceStatus {
   switch (status.toLowerCase()) {
     case "complete":
     case "succeeded":

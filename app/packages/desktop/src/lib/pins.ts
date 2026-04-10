@@ -3,24 +3,6 @@ import type { DbClient } from "../db/client";
 
 export type { DraggableResource };
 
-export const DRAG_MIME = "application/x-infrawrench-resource";
-
-// WebKit (Tauri/macOS) silently returns "" for custom MIME types in getData().
-// Always write text/plain too, and read text/plain on drop.
-export function setDragData(e: React.DragEvent, resource: DraggableResource): void {
-  const json = JSON.stringify(resource);
-  e.dataTransfer.setData(DRAG_MIME, json);
-  e.dataTransfer.setData("text/plain", json);
-  e.dataTransfer.effectAllowed = "copy";
-}
-
-export function getDragData(e: React.DragEvent): DraggableResource | null {
-  const raw = e.dataTransfer.getData(DRAG_MIME) || e.dataTransfer.getData("text/plain");
-  if (!raw) return null;
-  try { return JSON.parse(raw) as DraggableResource; }
-  catch { return null; }
-}
-
 export async function createDashboard(name: string, db: DbClient): Promise<string> {
   const id = crypto.randomUUID();
   await db.execute(

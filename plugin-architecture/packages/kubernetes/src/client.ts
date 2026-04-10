@@ -3,7 +3,6 @@ import type {
   HostServices,
   PeerPaneContext,
   PeerPaneSchema,
-  PeerPaneResource,
   PeerPaneResourceGroup,
   PluginClient,
   ResourceInstance,
@@ -77,14 +76,12 @@ const SYSTEM_NAMESPACES = new Set([
 // ── Client ──────────────────────────────────────────────────────────────────
 
 export class KubernetesClient implements PluginClient {
-  private readonly kubeconfig: string;
   private readonly parsed: ParsedKubeconfig;
   private readonly services?: HostServices;
 
   constructor(credentials: Record<string, string>, services?: HostServices) {
     const kubeconfig = credentials["kubeconfig"];
     if (!kubeconfig) throw new Error("Kubernetes plugin: missing kubeconfig credential");
-    this.kubeconfig = kubeconfig;
     this.parsed = parseKubeconfig(kubeconfig);
     if (services) this.services = services;
   }

@@ -11,7 +11,7 @@ function getMasterKey(): Buffer {
   return buf;
 }
 
-export interface Encrypted {
+interface Encrypted {
   /** base64-encoded AES-256-GCM ciphertext + 16-byte auth tag appended */
   ciphertext: string;
   /** base64-encoded 96-bit IV */

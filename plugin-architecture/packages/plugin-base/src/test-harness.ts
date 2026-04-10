@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import type { Plugin, PluginClient } from "./manifest.js";
+import type { Plugin } from "./manifest.js";
 import type { ResourceInstance } from "./instance.js";
 import type { ResourceTypeDefinition } from "./resource.js";
 import {

@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { EventEmitter, Readable } from "node:stream";
-import type { IncomingMessage } from "node:http";
 
 const mockMkdirSync = vi.fn();
 const mockCreateWriteStream = vi.fn();

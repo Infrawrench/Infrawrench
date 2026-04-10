@@ -2,7 +2,7 @@ import { v4 as uuid } from "uuid";
 import { db } from "@/db/client";
 import { auditLogs } from "@/db/schema";
 
-export interface AuditParams {
+interface AuditParams {
   organizationId: string;
   userId?: string | undefined;
   apiKeyId?: string | undefined;

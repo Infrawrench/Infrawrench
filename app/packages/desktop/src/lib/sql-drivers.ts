@@ -31,7 +31,6 @@ export function buildKvHostServices(driverId: string, connectionString: string):
 }
 
 // memcached routes through the same plugin_kv_command channel with driverId="memcached"
-export const memcachedCommand = kvCommand;
 export const buildMemcachedHostServices = buildKvHostServices;
 
 export function dockerCommand(

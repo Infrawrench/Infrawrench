@@ -1,7 +1,7 @@
 import { invoke } from "./invoke";
 import { getDb } from "../db/client";
 
-export interface SshOpenTunnelPayload {
+interface SshOpenTunnelPayload {
   sshHost: string;
   sshPort: number;
   sshUser: string;
@@ -10,7 +10,7 @@ export interface SshOpenTunnelPayload {
   remotePort: number;
 }
 
-export interface ActiveTunnelInfo {
+interface ActiveTunnelInfo {
   localPort: number;
   sshHost: string;
   remotePort: number;
@@ -20,11 +20,7 @@ export function sshOpenTunnel(payload: SshOpenTunnelPayload): Promise<{ tunnelId
   return invoke<{ tunnelId: string; localPort: number }>("ssh_open_tunnel", payload as unknown as Record<string, unknown>);
 }
 
-export function sshCloseTunnel(tunnelId: string): Promise<void> {
-  return invoke<void>("ssh_close_tunnel", { tunnelId });
-}
-
-export function sshGetActiveTunnels(): Promise<Record<string, ActiveTunnelInfo>> {
+function sshGetActiveTunnels(): Promise<Record<string, ActiveTunnelInfo>> {
   return invoke<Record<string, ActiveTunnelInfo>>("ssh_get_active_tunnels");
 }
 

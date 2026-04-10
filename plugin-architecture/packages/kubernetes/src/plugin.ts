@@ -1,4 +1,4 @@
-import type { Plugin, PluginManifest, ResourceTypeDefinition, HostServices } from "@infrawrench/plugin-base";
+import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
 import { KubernetesClient } from "./client.js";
 import { KubernetesClusterResourceType } from "./resources/k8s-cluster.js";
 import { NamespaceResourceType } from "./resources/namespace.js";

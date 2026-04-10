@@ -16,11 +16,6 @@ type KeySource =
   | { type: "system"; name: string }
   | { type: "app"; id: string; name: string };
 
-export interface SshKeyPickerValue {
-  username: string;
-  privateKey: string;
-}
-
 interface SshKeyPickerProps {
   username: string;
   onUsernameChange: (username: string) => void;

@@ -3,7 +3,7 @@ import { eq, and, isNull } from "drizzle-orm";
 import { db } from "@/db/client";
 import { apiKeys } from "@/db/schema";
 
-export interface ApiAuthResult {
+interface ApiAuthResult {
   userId: string;
   organizationId: string;
   apiKeyId?: string;

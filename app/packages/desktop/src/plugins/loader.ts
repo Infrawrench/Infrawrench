@@ -32,7 +32,7 @@ const PLUGIN_MODULES: Record<string, () => Promise<{ plugin: Plugin }>> = {
   "@infrawrench/plugin-planetscale": () => import("@infrawrench/plugin-planetscale"),
 };
 
-export interface LoadedPlugin {
+interface LoadedPlugin {
   plugin: Plugin;
 }
 
