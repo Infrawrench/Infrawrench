@@ -124,6 +124,17 @@ Each plugin that needs native Node.js capabilities exports from `./node-driver`:
 - `DockerNodeDriver` — `command()`
 - `StorageNodeDriver` — `downloadFile()` (for batch downloads via IPC)
 
+**`src/dns.ts`** — Shared DNS record rendering helpers
+
+Plugins that expose DNS records import these to avoid duplicating badge-color mapping, TTL formatting, and detail-view rendering:
+- `dnsRecordBadgeColor(type)` — maps DNS record types (A, AAAA, CNAME, MX, etc.) to badge colors
+- `formatDnsTtl(ttl)` — formats TTL seconds to human-readable strings (Auto, 5m, 1h, etc.)
+- `dnsZoneStatus(status)` — maps zone statuses to ResourceStatus
+- `renderDnsRecordDetail(resource, options?)` — full DNS record detail view with type badges, proxied indicator, and optional extra sections
+- `renderDnsRecordSidebar(resource)` — sidebar item with type prefix and optional proxied status dot
+
+Currently used by: Cloudflare (full), DigitalOcean (detail + sidebar), GCP (badge colors + TTL formatting).
+
 ---
 
 ## Electron host — how it works
@@ -328,6 +339,36 @@ All polling is *background* (no loading flash):
 - Branch status: ready→healthy, else→provisioning
 - Resource ID format: `{accountId}:ps-database:{databaseName}` or `{accountId}:ps-branch:{databaseName}/{branchName}`
 - Regions: AWS regions (us-east, us-west, eu-west, eu-central, ap-south, ap-southeast, ap-northeast, sa-east, ap-southeast-2)
+
+### Cloudflare (`@infrawrench/plugin-cloudflare`)
+- Auth: API Token (scoped, created at dash.cloudflare.com/profile/api-tokens), passed as `Bearer` token to `https://api.cloudflare.com/client/v4`
+- Account ID is lazy-resolved from the first zone's `account.id` field and cached for the session
+- 23 resource types: `zone`, `dns-record` (child of zone), `worker`, `r2-bucket`, `pages-project`, `pages-deployment` (child of pages-project), `kv-namespace`, `d1-database`, `queue`, `tunnel`, `ssl-certificate` (child of zone), `page-rule` (child of zone), `firewall-rule` (child of zone), `access-application`, `access-policy` (child of access-application), `load-balancer` (child of zone), `worker-route` (child of zone), `custom-hostname` (child of zone), `hyperdrive`, `email-routing-rule` (child of zone), `waiting-room` (child of zone), `spectrum-application` (child of zone), `logpush-job` (child of zone)
+- DNS records use shared `@infrawrench/plugin-base` DNS helpers (`dnsRecordBadgeColor`, `formatDnsTtl`, `renderDnsRecordDetail`, `renderDnsRecordSidebar`) — same helpers used by DigitalOcean and GCP
+- Paginated fetch uses Cloudflare's `page` + `per_page` + `result_info.total_pages` pattern
+- Resource ID formats: `{accountId}:zone:{zoneId}`, `{accountId}:dns-record:{zoneId}/{recordId}`, `{accountId}:r2-bucket:{bucketName}`, `{accountId}:pages-project:{projectName}`, `{accountId}:pages-deployment:{projectName}/{deploymentId}`, etc.
+- Zone-scoped resources (DNS records, SSL certs, page rules, firewall rules, load balancers, worker routes, custom hostnames, email routing rules, waiting rooms) iterate all zones to list
+- Account-scoped resources (Workers, R2, Pages, KV, D1, Queues, Tunnels, Access Apps, Hyperdrive) use the resolved `cfAccountId`
+- Create supported for: zones, DNS records, R2 buckets, KV namespaces, D1 databases, queues, hyperdrive configs
+- Delete supported for: zones, DNS records, R2 buckets, KV namespaces, D1 databases, queues, hyperdrive configs, workers
+- R2 buckets declare `supportsStorageBrowser: true` — host renders the file browser via `listStorageObjects()`, `uploadStorageObject()`, `makeStorageFolder()`, `deleteStorageObject()`, `fetchStorageStats()`
+- R2 storage browser uses `GET /accounts/{cfAccountId}/r2/buckets/{bucket}/objects?prefix=...&delimiter=/`; uploads via `PUT .../objects/{key}`
+- D1 databases declare `resourceSqlDriver: { driver: "d1", connectionStringOutputKey: "databaseId" }` — REST-based SQL execution via `POST /accounts/{cfAccountId}/d1/database/{dbId}/query`
+- D1 `executeQuery()` and `introspectResource()` implemented — introspection uses `sqlite_master` + `PRAGMA table_info` to populate SQL editor autocomplete with tables, columns, and primary keys
+- Firewall rules are fetched from WAF custom rulesets (`phase: http_request_firewall_custom`) via the Rulesets API
+- Tunnels exclude soft-deleted entries (filters out records where `deleted_at` is set)
+- Pages deployments are capped at 5 per project to avoid excessive API calls
+- Tunnel tokens resolved via `GET /accounts/{cfAccountId}/cfd_tunnel/{tunnelId}/token`
+- Access Policies are children of Access Applications — listed by iterating all apps and fetching per-app policies
+- Hyperdrive configs include origin connection details (host, port, scheme, database, user) and caching state
+- Email Routing Rules parse matchers and actions into human-readable strings
+- Workers declare `manifestEditor: { language: "json", resourceKind: "Worker Settings", readOnly: true }` — read-only JSON view of worker settings
+- Zones declare `manifestEditor: { language: "json", resourceKind: "Zone Settings" }` — editable JSON view of zone settings; `applyManifest` patches each setting individually
+- `getManifest()` fetches worker settings via `GET /accounts/{cfAccountId}/workers/scripts/{name}/settings` and zone settings via `GET /zones/{zoneId}/settings`
+- R2 buckets declare `secretExportTemplates` with S3 endpoint + bucket name for K8s secret export
+- Tunnels declare `secretExportTemplates` with tunnel token + ID for K8s secret export
+- Spectrum Applications show protocol badges and origin connection details
+- Logpush Jobs show dataset, destination type (parsed from URL scheme), enable/error status, and last error in mono text
 
 ### Azure (`@infrawrench/plugin-azure`)
 - Auth: Azure AD service principal client credentials flow (tenant_id + client_id + client_secret)

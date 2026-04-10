@@ -10,6 +10,7 @@ import type {
   DiskOption,
   SqlTableMeta,
 } from "@infrawrench/plugin-base";
+import { dnsRecordBadgeColor, formatDnsTtl } from "@infrawrench/plugin-base";
 import { fetchAccessToken, type ServiceAccountKey } from "./auth.js";
 import { formatBytes, gcpStatus } from "./utils.js";
 import {
@@ -921,26 +922,21 @@ export class GcpClient implements PluginClient {
       const rrdatas = String(fields["rrdatas"] ?? "");
       const ttl = Number(fields["ttl"] ?? 300);
       const zoneName = String(fields["zoneName"] ?? "");
-      const ttlStr = ttl < 60 ? `${ttl}s` : ttl < 3600 ? `${Math.round(ttl / 60)}m` : ttl < 86400 ? `${Math.round(ttl / 3600)}h` : `${Math.round(ttl / 86400)}d`;
-      const typeColors: Record<string, "blue" | "green" | "yellow" | "gray" | "red"> = {
-        A: "blue", AAAA: "blue", CNAME: "green", MX: "yellow", TXT: "gray",
-        NS: "gray", SRV: "yellow", CAA: "red", SOA: "gray", PTR: "green",
-      };
-      base.subtitle = `${type} \u2192 ${rrdatas.length > 50 ? `${rrdatas.slice(0, 47)}...` : rrdatas}`;
+      base.subtitle = `${type} → ${rrdatas.length > 50 ? `${rrdatas.slice(0, 47)}...` : rrdatas}`;
       base.status = { kind: "status-dot", status: "healthy" };
       base.sections = [
         {
           kind: "section",
           title: "Record Details",
           children: [
-            { kind: "badge", label: type, color: typeColors[type] ?? "gray" },
+            { kind: "badge", label: type, color: dnsRecordBadgeColor(type) },
             {
               kind: "key-value-list",
               items: [
                 { key: "Type", value: type },
                 { key: "Name", value: name, copyable: true },
                 { key: "Data", value: rrdatas, copyable: true },
-                { key: "TTL", value: ttlStr },
+                { key: "TTL", value: formatDnsTtl(ttl) },
                 ...(zoneName ? [{ key: "Zone", value: zoneName }] : []),
               ],
             },

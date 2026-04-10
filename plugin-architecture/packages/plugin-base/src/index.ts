@@ -93,6 +93,16 @@ export type {
 // Plugin registry
 export type { PluginRegistry, PluginRegistryEntry } from "./registry.js";
 
+// Shared DNS helpers
+export {
+  dnsRecordBadgeColor,
+  formatDnsTtl,
+  dnsZoneStatus,
+  renderDnsRecordDetail,
+  renderDnsRecordSidebar,
+} from "./dns.js";
+export type { DnsRecordDetailOptions } from "./dns.js";
+
 // Zod validators
 export {
   pluginManifestSchema,

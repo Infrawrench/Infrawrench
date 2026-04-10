@@ -7,29 +7,15 @@ import type {
   SizeOption,
   ImageOption,
   SectionNode,
-  BadgeNode,
+} from "@infrawrench/plugin-base";
+import {
+  dnsRecordBadgeColor,
+  formatDnsTtl,
+  renderDnsRecordDetail as sharedRenderDnsRecordDetail,
+  renderDnsRecordSidebar,
 } from "@infrawrench/plugin-base";
 import { DOKSClusterResourceType } from "./resources/doks-cluster.js";
 import { ManagedDatabaseResourceType } from "./resources/managed-database.js";
-
-// ─── DNS helpers ────────────────────────────────────────────────────────────
-
-const DNS_RECORD_TYPE_COLORS: Record<string, BadgeNode["color"]> = {
-  A: "blue", AAAA: "blue", CNAME: "green", MX: "yellow", TXT: "gray",
-  NS: "gray", SRV: "yellow", CAA: "red", SOA: "gray",
-};
-
-function dnsRecordBadgeColor(type: string): BadgeNode["color"] {
-  return DNS_RECORD_TYPE_COLORS[type] ?? "gray";
-}
-
-function formatDnsTtl(ttl: number): string {
-  if (ttl <= 0) return "Default";
-  if (ttl < 60) return `${ttl}s`;
-  if (ttl < 3600) return `${Math.round(ttl / 60)}m`;
-  if (ttl < 86400) return `${Math.round(ttl / 3600)}h`;
-  return `${Math.round(ttl / 86400)}d`;
-}
 
 /**
  * DigitalOcean plugin client.
@@ -499,66 +485,23 @@ export class DigitalOceanClient implements PluginClient {
 
   private renderDnsRecordDetail(resource: ResourceInstance): DetailViewSchema {
     const fields = resource.fields;
-    const type = String(fields["type"] ?? "");
-    const name = String(fields["name"] ?? "");
-    const data = String(fields["data"] ?? "");
-    const ttl = Number(fields["ttl"] ?? 0);
-    const priority = fields["priority"] !== undefined ? Number(fields["priority"]) : null;
-    const domainName = String(fields["domainName"] ?? "");
-
-    const infoItems: Array<{ key: string; value: string; copyable?: boolean }> = [
-      { key: "Type", value: type },
-      { key: "Name", value: name, copyable: true },
-      { key: "Data", value: data, copyable: true },
-      { key: "TTL", value: formatDnsTtl(ttl) },
-    ];
-    if (priority !== null && priority > 0) {
-      infoItems.push({ key: "Priority", value: String(priority) });
-    }
+    const extraInfoItems: Array<{ key: string; value: string; copyable?: boolean }> = [];
     if (fields["port"] !== undefined) {
-      infoItems.push({ key: "Port", value: String(fields["port"]) });
+      extraInfoItems.push({ key: "Port", value: String(fields["port"]) });
     }
     if (fields["weight"] !== undefined) {
-      infoItems.push({ key: "Weight", value: String(fields["weight"]) });
-    }
-    if (domainName) {
-      infoItems.push({ key: "Domain", value: domainName });
+      extraInfoItems.push({ key: "Weight", value: String(fields["weight"]) });
     }
     if (fields["tag"]) {
-      infoItems.push({ key: "Tag", value: String(fields["tag"]) });
+      extraInfoItems.push({ key: "Tag", value: String(fields["tag"]) });
     }
-
-    const sections: SectionNode[] = [
-      {
-        kind: "section",
-        title: "Record Details",
-        children: [
-          { kind: "badge", label: type, color: dnsRecordBadgeColor(type) },
-          { kind: "key-value-list", items: infoItems },
-        ],
-      },
-    ];
-
-    return {
-      title: name,
-      subtitle: `${type} \u2192 ${data.length > 50 ? `${data.slice(0, 47)}...` : data}`,
-      status: { kind: "status-dot", status: "healthy" },
-      sections,
-      headerActions: [
-        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
-      ],
-    };
+    const opts = extraInfoItems.length > 0 ? { extraInfoItems } : {};
+    return sharedRenderDnsRecordDetail(resource, opts);
   }
 
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema {
     if (resource.resourceTypeId === "dns-record") {
-      const type = String(resource.fields["type"] ?? "");
-      const name = String(resource.fields["name"] ?? "");
-      const shortName = name.length > 30 ? `${name.slice(0, 27)}...` : name;
-      return {
-        id: resource.id,
-        label: `${type}  ${shortName}`,
-      };
+      return renderDnsRecordSidebar(resource);
     }
     if (resource.resourceTypeId === "domain") {
       return {

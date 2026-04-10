@@ -3,10 +3,30 @@ import { CloudflareClient } from "./client.js";
 import { ZoneResourceType } from "./resources/zone.js";
 import { DnsRecordResourceType } from "./resources/dns-record.js";
 import { WorkerResourceType } from "./resources/worker.js";
+import { R2BucketResourceType } from "./resources/r2-bucket.js";
+import { PagesProjectResourceType } from "./resources/pages-project.js";
+import { PagesDeploymentResourceType } from "./resources/pages-deployment.js";
+import { KVNamespaceResourceType } from "./resources/kv-namespace.js";
+import { D1DatabaseResourceType } from "./resources/d1-database.js";
+import { QueueResourceType } from "./resources/queue.js";
+import { TunnelResourceType } from "./resources/tunnel.js";
+import { SSLCertificateResourceType } from "./resources/ssl-certificate.js";
+import { PageRuleResourceType } from "./resources/page-rule.js";
+import { FirewallRuleResourceType } from "./resources/firewall-rule.js";
+import { AccessApplicationResourceType } from "./resources/access-application.js";
+import { AccessPolicyResourceType } from "./resources/access-policy.js";
+import { LoadBalancerResourceType } from "./resources/load-balancer.js";
+import { WorkerRouteResourceType } from "./resources/worker-route.js";
+import { CustomHostnameResourceType } from "./resources/custom-hostname.js";
+import { HyperdriveResourceType } from "./resources/hyperdrive.js";
+import { EmailRoutingRuleResourceType } from "./resources/email-routing-rule.js";
+import { WaitingRoomResourceType } from "./resources/waiting-room.js";
+import { SpectrumApplicationResourceType } from "./resources/spectrum-application.js";
+import { LogpushJobResourceType } from "./resources/logpush-job.js";
 
 const manifest: PluginManifest = {
   id: "cloudflare",
-  version: "0.1.0",
+  version: "0.3.0",
   displayName: "Cloudflare",
   logoSvg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     <rect width="100" height="100" rx="12" fill="#F6821F"/>
@@ -21,7 +41,7 @@ const manifest: PluginManifest = {
     {
       key: "apiToken",
       label: "API Token",
-      description: "A Cloudflare API token with Zone:Read and DNS:Read permissions. Create one at dash.cloudflare.com/profile/api-tokens.",
+      description: "A Cloudflare API token. For full functionality, grant permissions: Zone:Read, DNS:Edit, Workers Scripts:Read, Pages:Read, R2:Read, D1:Read, Queues:Read, Access:Read, Load Balancers:Read. Create at dash.cloudflare.com/profile/api-tokens.",
       sensitive: true,
       placeholder: "Scoped API token...",
     },
@@ -32,6 +52,26 @@ const resourceTypes: ResourceTypeDefinition[] = [
   ZoneResourceType,
   DnsRecordResourceType,
   WorkerResourceType,
+  R2BucketResourceType,
+  PagesProjectResourceType,
+  PagesDeploymentResourceType,
+  KVNamespaceResourceType,
+  D1DatabaseResourceType,
+  QueueResourceType,
+  TunnelResourceType,
+  SSLCertificateResourceType,
+  PageRuleResourceType,
+  FirewallRuleResourceType,
+  AccessApplicationResourceType,
+  AccessPolicyResourceType,
+  LoadBalancerResourceType,
+  WorkerRouteResourceType,
+  CustomHostnameResourceType,
+  HyperdriveResourceType,
+  EmailRoutingRuleResourceType,
+  WaitingRoomResourceType,
+  SpectrumApplicationResourceType,
+  LogpushJobResourceType,
 ];
 
 export const plugin: Plugin = {

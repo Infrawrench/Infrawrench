@@ -18,5 +18,6 @@ export const DnsRecordResourceType: ResourceTypeDefinition = {
   outputs: [],
   parentTypeId: "zone",
   dashboardPinnable: false,
+  supportsCreate: true,
   iconKey: "dns-record",
 };
