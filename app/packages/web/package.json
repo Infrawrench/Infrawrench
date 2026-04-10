@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "test": "vitest run"
   },
   "dependencies": {
     "@hono/node-server": "^1.19.13",
@@ -75,6 +76,7 @@
     "tailwindcss": "^4.2.2",
     "tsx": "^4.19.0",
     "typescript": "^5.7.3",
-    "vite": "^6.2.5"
+    "vite": "^6.2.5",
+    "vitest": "^3.0.5"
   }
 }

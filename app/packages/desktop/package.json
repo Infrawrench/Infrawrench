@@ -5,6 +5,7 @@
   "private": true,
   "main": "out/main/index.js",
   "scripts": {
+    "test": "vitest run",
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
@@ -67,6 +68,7 @@
     "electron-builder": "^25.1.8",
     "electron-vite": "^3.1.0",
     "typescript": "^5.7.3",
-    "vite": "^6.2.5"
+    "vite": "^6.2.5",
+    "vitest": "^3.0.5"
   }
 }

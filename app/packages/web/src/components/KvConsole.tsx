@@ -129,7 +129,7 @@ export function KvConsole({ accountId, driverName }: { accountId: string; driver
   );
 }
 
-function tokenize(cmd: string): string[] {
+export function tokenize(cmd: string): string[] {
   const tokens: string[] = [];
   let current = "";
   let inQuote = false;
@@ -151,7 +151,7 @@ function tokenize(cmd: string): string[] {
   return tokens;
 }
 
-function formatRedisResult(value: unknown): string {
+export function formatRedisResult(value: unknown): string {
   if (value === null) return "(nil)";
   if (typeof value === "string") return value;
   if (typeof value === "number") return String(value);

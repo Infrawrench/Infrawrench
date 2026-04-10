@@ -4,6 +4,9 @@
   "license": "MIT",
   "type": "module",
   "exports": {
+    "./test-harness": {
+      "import": "./src/test-harness.ts"
+    },
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
