@@ -43,8 +43,8 @@ function RootLayout() {
           return;
         }
 
-        // If at root, redirect to default org
-        if (pathname === "/") {
+        // If not inside an org-scoped route, redirect to default org
+        if (!pathname.startsWith("/org/")) {
           const orgs = await apiGet<Array<{ id: string }>>("/api/auth/orgs");
           if (orgs.length > 0) {
             void navigate({ to: "/org/$orgId", params: { orgId: orgs[0]!.id }, replace: true });
@@ -75,6 +75,17 @@ function RootLayout() {
     return <Outlet />;
   }
 
+  // If auth is confirmed but we're not on an org route yet, the redirect is
+  // still in-flight — show the loading screen rather than the shell with
+  // orgId=null (which would show "Select organization" in the org switcher).
+  if (!pathname.startsWith("/org/")) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-gray-950 text-gray-400">
+        <div className="animate-pulse text-sm">Loading...</div>
+      </div>
+    );
+  }
+
   return <AuthenticatedShell />;
 }
 
@@ -87,7 +98,7 @@ function AuthenticatedShell() {
 
   // Extract orgId from path for API calls
   const orgIdMatch = pathname.match(/^\/org\/([^/]+)/);
-  const orgId = orgIdMatch?.[1] ?? null;
+  const orgId = orgIdMatch?.[1] ? decodeURIComponent(orgIdMatch[1]) : null;
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {

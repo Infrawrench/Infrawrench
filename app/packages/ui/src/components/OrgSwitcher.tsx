@@ -12,6 +12,7 @@ export interface OrgSwitcherProps {
   onSwitch: (orgId: string | null) => void;
   showLocalOption?: boolean;
   onCreateOrg?: () => void;
+  loading?: boolean;
 }
 
 export function OrgSwitcher({
@@ -20,6 +21,7 @@ export function OrgSwitcher({
   onSwitch,
   showLocalOption = false,
   onCreateOrg,
+  loading = false,
 }: OrgSwitcherProps) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -38,7 +40,7 @@ export function OrgSwitcher({
   const activeOrg = orgs.find((o) => o.id === activeOrgId);
   const label = activeOrgId === null && showLocalOption
     ? "Local"
-    : activeOrg?.displayName ?? "Select organization";
+    : activeOrg?.displayName ?? (loading ? "Loading..." : "Select organization");
 
   return (
     <div ref={ref} className="relative">

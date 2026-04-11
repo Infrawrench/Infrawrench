@@ -7,5 +7,5 @@ import { useRouterState } from "@tanstack/react-router";
 export function useOrgId(): string {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const match = pathname.match(/^\/org\/([^/]+)/);
-  return match?.[1] ?? "";
+  return match?.[1] ? decodeURIComponent(match[1]) : "";
 }

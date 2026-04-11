@@ -65,16 +65,19 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
 
   // Org switcher state
   const [orgs, setOrgs] = useState<OrgEntry[]>([]);
+  const [orgsLoaded, setOrgsLoaded] = useState(false);
 
   const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed);
   const toggleSidebar = useUIStore((s) => s.toggleSidebar);
   const accountsVersion = useUIStore((s) => s.accountsVersion);
   const dashboardPinsVersion = useUIStore((s) => s.dashboardPinsVersion);
 
-  // Load orgs for the switcher
+  // Load orgs for the switcher — re-fetch when orgId changes (e.g. after creating a new org)
   useEffect(() => {
-    apiGet<OrgEntry[]>("/api/auth/orgs").then(setOrgs).catch(console.error);
-  }, []);
+    apiGet<OrgEntry[]>("/api/auth/orgs")
+      .then((data) => { setOrgs(data); setOrgsLoaded(true); })
+      .catch(console.error);
+  }, [orgId]);
 
   // API base path for org-scoped calls
   const apiBase = orgId ? `/api/org/${orgId}` : null;
@@ -285,6 +288,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
               activeOrgId={orgId}
               onSwitch={handleOrgSwitch}
               onCreateOrg={() => void navigate({ to: "/onboarding" })}
+              loading={!orgsLoaded}
             />
           </div>
           <button
