@@ -222,10 +222,10 @@ export async function syncAccountResources(accountId: string, organizationId: st
   const allResources: ResourceInstance[] = [];
   const succeededTypeIds = new Set<string>();
   for (let i = 0; i < results.length; i++) {
-    const r = results[i];
+    const r = results[i]!;
     if (r.status === "fulfilled") {
       allResources.push(...r.value);
-      succeededTypeIds.add(loaded.plugin.resourceTypes[i].id);
+      succeededTypeIds.add(loaded.plugin.resourceTypes[i]!.id);
     }
   }
 
