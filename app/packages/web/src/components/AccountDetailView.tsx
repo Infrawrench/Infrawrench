@@ -1,16 +1,16 @@
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { ResourcePill, ConfirmDeleteModal, dispatchResourcesChanged, getAccountResourceTypes, isCreateOnlyType, type DraggableResource, useUIStore } from "@infrawrench/ui";
+import { ResourcePill, ConfirmDeleteModal, dispatchResourcesChanged, isCreateOnlyType, type DraggableResource, useUIStore } from "@infrawrench/ui";
 import { apiDelete } from "@/lib/api";
 import { useOrgId } from "@/lib/useOrgId";
 import { CreateResourceModal } from "./CreateResourceModal";
 
-interface ResourceType {
+export interface ResourceTypeInfo {
   id: string;
   displayName: string;
   pluralDisplayName: string;
   parentTypeId: string | undefined;
-  supportsCreate: boolean | undefined;
+  supportsCreate: boolean;
 }
 
 interface Resource {
@@ -24,25 +24,30 @@ interface Resource {
   parentResourceId: string | null;
 }
 
+export interface CategoryState {
+  typeDef: ResourceTypeInfo;
+  loading: boolean;
+  error: string | null;
+  resources: Resource[];
+}
+
 interface Props {
   account: { id: string; pluginId: string; displayName: string };
-  resources: Resource[];
-  resourceTypes: ResourceType[];
+  categories: CategoryState[];
   pluginDisplayName: string;
   pluginLogoSvg: string;
 }
 
 export function AccountDetailView({
   account,
-  resources,
-  resourceTypes,
+  categories,
   pluginDisplayName,
   pluginLogoSvg,
 }: Props) {
   const navigate = useNavigate();
   const orgId = useOrgId();
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [createTarget, setCreateTarget] = useState<ResourceType | null>(null);
+  const [createTarget, setCreateTarget] = useState<ResourceTypeInfo | null>(null);
 
   async function handleDeleteAccount() {
     await apiDelete(`/api/org/${orgId}/accounts/${account.id}`);
@@ -50,15 +55,6 @@ export function AccountDetailView({
     dispatchResourcesChanged();
     void navigate({ to: "/org/$orgId", params: { orgId } });
   }
-
-  const groupedResources = new Map<string, Resource[]>();
-  for (const resource of resources) {
-    const group = groupedResources.get(resource.resourceTypeId) ?? [];
-    group.push(resource);
-    groupedResources.set(resource.resourceTypeId, group);
-  }
-
-  const visibleTypes = getAccountResourceTypes(resourceTypes);
 
   return (
     <div className="p-6">
@@ -91,34 +87,39 @@ export function AccountDetailView({
         />
       )}
 
-      {/* Resource categories — mirrors desktop layout */}
-      {visibleTypes.map((type) => {
-        const isCreateOnly = isCreateOnlyType(type);
-        const items = groupedResources.get(type.id) ?? [];
-
-        // Hide categories with no resources and no create support
-        if (items.length === 0 && !type.supportsCreate) return null;
+      {/* Resource categories — per-type loading like desktop */}
+      {categories.map((cat) => {
+        const createOnly = isCreateOnlyType(cat.typeDef);
+        if (!cat.loading && cat.resources.length === 0 && !cat.typeDef.supportsCreate) return null;
+        if (createOnly && !cat.typeDef.supportsCreate) return null;
 
         return (
-          <div key={type.id} className="mb-8">
+          <div key={cat.typeDef.id} className="mb-8">
             <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
-              {type.pluralDisplayName}
+              {cat.typeDef.pluralDisplayName}
             </h2>
 
-            {isCreateOnly ? (
-              /* Child type — only show create button, resources shown on parent detail page */
+            {createOnly ? (
               <div className="flex flex-wrap gap-2">
                 <button
-                  onClick={() => setCreateTarget(type)}
+                  onClick={() => setCreateTarget(cat.typeDef)}
                   className="flex items-center gap-1.5 pl-3 pr-3 py-1.5 rounded-full border border-dashed border-gray-700 text-gray-600 hover:border-blue-600 hover:text-blue-400 transition-colors text-sm"
                 >
                   <span className="text-base leading-none">+</span>
-                  <span>Create {type.displayName}</span>
+                  <span>Create {cat.typeDef.displayName}</span>
                 </button>
               </div>
+            ) : cat.loading ? (
+              <div className="flex flex-wrap gap-2">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="h-8 rounded-full bg-gray-800 animate-pulse" style={{ width: `${5 + i * 1.5}rem` }} />
+                ))}
+              </div>
+            ) : cat.error ? (
+              <div className="text-xs text-red-400">{cat.error}</div>
             ) : (
               <div className="flex flex-wrap gap-2">
-                {items.map((resource) => {
+                {cat.resources.map((resource) => {
                   const subtitle = String(
                     (resource.fieldsJson as Record<string, unknown>)?.["host"]
                       ?? (resource.fieldsJson as Record<string, unknown>)?.["region"]
@@ -148,13 +149,13 @@ export function AccountDetailView({
                     />
                   );
                 })}
-                {type.supportsCreate && (
+                {cat.typeDef.supportsCreate && (
                   <button
-                    onClick={() => setCreateTarget(type)}
+                    onClick={() => setCreateTarget(cat.typeDef)}
                     className="flex items-center gap-1.5 pl-3 pr-3 py-1.5 rounded-full border border-dashed border-gray-700 text-gray-600 hover:border-blue-600 hover:text-blue-400 transition-colors text-sm"
                   >
                     <span className="text-base leading-none">+</span>
-                    <span>Create {type.displayName}</span>
+                    <span>Create {cat.typeDef.displayName}</span>
                   </button>
                 )}
               </div>
@@ -163,10 +164,7 @@ export function AccountDetailView({
         );
       })}
 
-      {visibleTypes.every((t) => {
-        const items = groupedResources.get(t.id) ?? [];
-        return items.length === 0 && !t.supportsCreate;
-      }) && (
+      {categories.length > 0 && categories.every((c) => !c.loading && c.resources.length === 0 && !c.typeDef.supportsCreate) && (
         <div className="text-center py-12">
           <p className="text-gray-500 text-sm">No resources synced yet.</p>
           <p className="text-gray-600 text-xs mt-1">

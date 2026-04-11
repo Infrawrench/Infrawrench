@@ -142,7 +142,7 @@ app.post("/:id/sync", async (c) => {
   return c.json({ synced: count });
 });
 
-/** GET /api/accounts/:id/detail — full account detail for the account page */
+/** GET /api/accounts/:id/detail — account metadata + resource types (no resources, no sync) */
 app.get("/:id/detail", async (c) => {
   const organizationId = c.get("organizationId");
   const accountId = c.req.param("id");
@@ -152,27 +152,6 @@ app.get("/:id/detail", async (c) => {
     .from(accounts)
     .where(and(eq(accounts.id, accountId), eq(accounts.organizationId, organizationId)));
   if (!account) return c.json({ error: "Account not found" }, 404);
-
-  // Sync resources from the provider so data is always fresh
-  try {
-    await syncAccountResources(accountId, organizationId);
-  } catch {
-    // Non-critical — show whatever we have in the DB
-  }
-
-  const resourceRows = await db
-    .select({
-      id: resources.id,
-      pluginId: resources.pluginId,
-      resourceTypeId: resources.resourceTypeId,
-      displayName: resources.displayName,
-      externalId: resources.externalId,
-      fieldsJson: resources.fieldsJson,
-      outputsJson: resources.outputsJson,
-      parentResourceId: resources.parentResourceId,
-    })
-    .from(resources)
-    .where(and(eq(resources.accountId, accountId), eq(resources.organizationId, organizationId), isNull(resources.deletedAt), isNull(resources.parentResourceId)));
 
   const plugin = await getPlugin(account.pluginId);
   const resourceTypes = plugin?.plugin.resourceTypes.map((rt) => ({
@@ -189,11 +168,100 @@ app.get("/:id/detail", async (c) => {
       pluginId: account.pluginId,
       displayName: account.displayName,
     },
-    resources: resourceRows,
     resourceTypes,
     pluginDisplayName: plugin?.plugin.manifest.displayName ?? "",
     pluginLogoSvg: plugin?.plugin.manifest.logoSvg ?? "",
   });
+});
+
+/** POST /api/accounts/:id/sync-type/:typeId — sync a single resource type and return its resources */
+app.post("/:id/sync-type/:typeId", async (c) => {
+  const organizationId = c.get("organizationId");
+  const accountId = c.req.param("id");
+  const typeId = c.req.param("typeId");
+
+  const [account] = await db
+    .select()
+    .from(accounts)
+    .where(and(eq(accounts.id, accountId), eq(accounts.organizationId, organizationId)));
+  if (!account) return c.json({ error: "Account not found" }, 404);
+
+  const loaded = await getPlugin(account.pluginId);
+  if (!loaded) return c.json({ error: `Plugin "${account.pluginId}" not loaded` }, 500);
+
+  const typeDef = loaded.plugin.resourceTypes.find((t) => t.id === typeId);
+  if (!typeDef) return c.json({ error: `Resource type "${typeId}" not found` }, 404);
+
+  const plaintext = await decrypt(account.encryptedCredentials, account.credentialsIv);
+  const credentials = JSON.parse(plaintext) as Record<string, string>;
+  const hostServices = buildPluginHostServices(loaded.plugin.manifest, credentials);
+  const client = loaded.plugin.createClient(credentials, hostServices);
+
+  const fetched = await client.listResources(typeId, accountId);
+
+  // Upsert fetched resources
+  await Promise.all(
+    fetched.map((r) =>
+      db
+        .insert(resources)
+        .values({
+          id: r.id,
+          organizationId,
+          pluginId: r.pluginId,
+          resourceTypeId: r.resourceTypeId,
+          accountId,
+          displayName: r.displayName,
+          externalId: r.externalId ?? null,
+          fieldsJson: r.fields ?? {},
+          outputsJson: r.resolvedOutputs ?? {},
+          parentResourceId: r.parentResourceId ?? null,
+          lastSyncedAt: new Date(),
+          deletedAt: null,
+        })
+        .onConflictDoUpdate({
+          target: resources.id,
+          set: {
+            displayName: r.displayName,
+            fieldsJson: r.fields ?? {},
+            outputsJson: r.resolvedOutputs ?? {},
+            parentResourceId: r.parentResourceId ?? null,
+            lastSyncedAt: new Date(),
+            updatedAt: new Date(),
+            deletedAt: null,
+          },
+        }),
+    ),
+  );
+
+  // Soft-delete resources of this type that no longer exist upstream
+  const liveIds = fetched.map((r) => r.id);
+  const deleteConditions = [
+    eq(resources.accountId, accountId),
+    eq(resources.organizationId, organizationId),
+    eq(resources.resourceTypeId, typeId),
+    isNull(resources.deletedAt),
+    isNotNull(resources.lastSyncedAt),
+  ];
+  if (liveIds.length > 0) {
+    deleteConditions.push(notInArray(resources.id, liveIds));
+  }
+  await db
+    .update(resources)
+    .set({ deletedAt: new Date() })
+    .where(and(...deleteConditions));
+
+  return c.json(
+    fetched.map((r) => ({
+      id: r.id,
+      pluginId: r.pluginId,
+      resourceTypeId: r.resourceTypeId,
+      displayName: r.displayName,
+      externalId: r.externalId ?? null,
+      fieldsJson: r.fields ?? {},
+      outputsJson: r.resolvedOutputs ?? {},
+      parentResourceId: r.parentResourceId ?? null,
+    })),
+  );
 });
 
 export async function syncAccountResources(accountId: string, organizationId: string): Promise<number> {
