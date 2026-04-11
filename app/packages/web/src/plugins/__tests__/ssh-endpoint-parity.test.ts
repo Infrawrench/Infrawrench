@@ -27,7 +27,11 @@ describe("SSH endpoint parity", () => {
 
   // These are the plugins that declare sshEndpoint on their resource types,
   // enabling SSH/SFTP for cloud VMs in both desktop and web.
-  const SSH_ENDPOINT_PLUGINS: Array<{ pluginId: string; resourceTypeId: string; hostOutputKey: string }> = [
+  const SSH_ENDPOINT_PLUGINS: Array<{
+    pluginId: string;
+    resourceTypeId: string;
+    hostOutputKey: string;
+  }> = [
     { pluginId: "aws", resourceTypeId: "ec2-instance", hostOutputKey: "publicIp" },
     { pluginId: "digitalocean", resourceTypeId: "droplet", hostOutputKey: "ipv4" },
     { pluginId: "hetzner", resourceTypeId: "server", hostOutputKey: "ipv4" },
@@ -65,9 +69,18 @@ describe("SSH endpoint parity", () => {
 
   // Plugins that should NOT have SSH
   const NO_SSH_PLUGINS = [
-    "postgres", "mysql", "redis", "memcached", "mongodb",
-    "docker", "cloudflare", "neon", "planetscale", "turso",
-    "kubernetes", "databricks",
+    "postgres",
+    "mysql",
+    "redis",
+    "memcached",
+    "mongodb",
+    "docker",
+    "cloudflare",
+    "neon",
+    "planetscale",
+    "turso",
+    "kubernetes",
+    "databricks",
   ];
 
   for (const pluginId of NO_SSH_PLUGINS) {

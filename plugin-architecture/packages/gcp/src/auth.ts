@@ -57,7 +57,9 @@ async function makeJwt(key: ServiceAccountKey): Promise<string> {
   );
 
   const sigB64 = btoa(String.fromCharCode(...new Uint8Array(sig)))
-    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=/g, "");
 
   return `${unsigned}.${sigB64}`;
 }
@@ -75,6 +77,6 @@ export async function fetchAccessToken(key: ServiceAccountKey): Promise<string> 
   if (!res.ok) {
     throw new Error(`GCP auth error ${res.status}: ${await res.text()}`);
   }
-  const data = await res.json() as { access_token: string };
+  const data = (await res.json()) as { access_token: string };
   return data.access_token;
 }

@@ -14,9 +14,7 @@ export const CodeBuildProjectResourceType: ResourceTypeDefinition = {
     { key: "lastBuildStatus", label: "Last Build", kind: "string", required: false },
     { key: "badge", label: "Badge Enabled", kind: "boolean", required: false },
   ],
-  outputs: [
-    { key: "projectArn", label: "Project ARN", sensitive: false },
-  ],
+  outputs: [{ key: "projectArn", label: "Project ARN", sensitive: false }],
   dashboardPinnable: true,
   iconKey: "build",
 };

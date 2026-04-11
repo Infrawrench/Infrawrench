@@ -17,9 +17,7 @@ export const MemcachedInstanceResourceType: ResourceTypeDefinition = {
       resolvableOutputKeys: ["connectionString"],
     },
   ],
-  outputs: [
-    { key: "connectionString", label: "Connection String", sensitive: true },
-  ],
+  outputs: [{ key: "connectionString", label: "Connection String", sensitive: true }],
   dashboardPinnable: true,
   iconKey: "memcached",
 };

@@ -33,16 +33,18 @@ export const MemorystoreRedisResourceType: ResourceTypeDefinition = {
       entries: [
         { envKey: "REDIS_HOST", outputKey: "host" },
         { envKey: "REDIS_PORT", outputKey: "port" },
-        { envKey: "REDIS_AUTH", outputKey: "authString", description: "AUTH string for the Redis instance" },
+        {
+          envKey: "REDIS_AUTH",
+          outputKey: "authString",
+          description: "AUTH string for the Redis instance",
+        },
       ],
     },
     {
       id: "redis-url",
       displayName: "Redis URL",
       description: "Single REDIS_URL in redis://:<auth>@<host>:<port> format",
-      entries: [
-        { envKey: "REDIS_URL", outputKey: "redisUrl" },
-      ],
+      entries: [{ envKey: "REDIS_URL", outputKey: "redisUrl" }],
     },
   ],
 };

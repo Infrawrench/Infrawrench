@@ -50,9 +50,7 @@ export function DashboardCard({ card, pluginLogoSvg }: DashboardCardProps) {
       </span>
 
       {/* Status */}
-      {card.status && (
-        <StatusDotNodeRenderer node={card.status} />
-      )}
+      {card.status && <StatusDotNodeRenderer node={card.status} />}
     </button>
   );
 }

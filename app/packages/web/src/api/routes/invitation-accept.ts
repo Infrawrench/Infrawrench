@@ -84,10 +84,7 @@ app.post("/accept", async (c) => {
     })
     .onConflictDoNothing();
 
-  await db
-    .update(invitations)
-    .set({ acceptedAt: new Date() })
-    .where(eq(invitations.id, invite.id));
+  await db.update(invitations).set({ acceptedAt: new Date() }).where(eq(invitations.id, invite.id));
 
   const orgRows = await db
     .select({ id: organizations.id, displayName: organizations.displayName })

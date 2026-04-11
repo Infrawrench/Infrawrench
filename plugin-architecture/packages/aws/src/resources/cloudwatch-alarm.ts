@@ -21,9 +21,7 @@ export const CloudWatchAlarmResourceType: ResourceTypeDefinition = {
     { key: "period", label: "Period (s)", kind: "number", required: false },
     { key: "actionsEnabled", label: "Actions Enabled", kind: "boolean", required: false },
   ],
-  outputs: [
-    { key: "alarmArn", label: "Alarm ARN", sensitive: false },
-  ],
+  outputs: [{ key: "alarmArn", label: "Alarm ARN", sensitive: false }],
   dashboardPinnable: true,
   iconKey: "alarm",
 };

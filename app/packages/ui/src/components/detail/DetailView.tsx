@@ -1,5 +1,10 @@
 import React, { useState } from "react";
-import type { DetailViewSchema, ManifestEditorCapability, PeerPaneSchema, StatusDotNode } from "@infrawrench/plugin-base";
+import type {
+  DetailViewSchema,
+  ManifestEditorCapability,
+  PeerPaneSchema,
+  StatusDotNode,
+} from "@infrawrench/plugin-base";
 import { SchemaRenderer, StatusDotNodeRenderer } from "../renderer/SchemaRenderer.js";
 import { AssociationPicker } from "./AssociationPicker.js";
 import { SqlEditorView, type QueryResult } from "./SqlEditorView.js";
@@ -38,7 +43,10 @@ interface DetailViewProps {
   resourceId: string;
   pluginLogoSvg: string;
   /** Called when the user confirms an association reroll */
-  onReroll?: (fieldKey: string, selection: RerollSelection | { kind: "literal"; value: string }) => void;
+  onReroll?: (
+    fieldKey: string,
+    selection: RerollSelection | { kind: "literal"; value: string },
+  ) => void;
   /** Available provider resources for the reroll picker */
   providerResources?: ProviderResource[];
   /**
@@ -120,9 +128,7 @@ export function DetailView({
         />
         <div className="flex-1 min-w-0">
           <h1 className="text-xl font-semibold text-gray-100 truncate">{schema.title}</h1>
-          {schema.subtitle && (
-            <p className="text-sm text-gray-500 mt-0.5">{schema.subtitle}</p>
-          )}
+          {schema.subtitle && <p className="text-sm text-gray-500 mt-0.5">{schema.subtitle}</p>}
           {/* Tab bar */}
           {hasTabs && (
             <div className="flex gap-0 mt-3 -mb-px">
@@ -134,10 +140,7 @@ export function DetailView({
                 Overview
               </TabButton>
               {hasSqlEditor && (
-                <TabButton
-                  active={activeTab === "sql"}
-                  onClick={() => setActiveTab("sql")}
-                >
+                <TabButton active={activeTab === "sql"} onClick={() => setActiveTab("sql")}>
                   SQL Editor
                 </TabButton>
               )}
@@ -211,7 +214,9 @@ export function DetailView({
                 )}
               </div>
               {group.resources.length === 0 ? (
-                <p className="text-xs text-gray-600">No {group.pluralDisplayName.toLowerCase()} yet.</p>
+                <p className="text-xs text-gray-600">
+                  No {group.pluralDisplayName.toLowerCase()} yet.
+                </p>
               ) : (
                 <div className="flex flex-wrap gap-2">
                   {group.resources.map((child) =>
@@ -294,18 +299,22 @@ function ChildResourcePill({ child, onClick }: { child: ChildResource; onClick: 
       className="group flex items-center gap-2 pl-3 pr-3 py-1.5 rounded-full border border-gray-700 bg-gray-900 hover:border-gray-600 transition-colors text-left"
     >
       {child.status && (
-        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-          child.status.status === "healthy" ? "bg-emerald-400"
-          : child.status.status === "error" ? "bg-red-400"
-          : child.status.status === "degraded" ? "bg-yellow-400"
-          : child.status.status === "provisioning" ? "bg-blue-400 animate-pulse"
-          : "bg-gray-500"
-        }`} />
+        <span
+          className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+            child.status.status === "healthy"
+              ? "bg-emerald-400"
+              : child.status.status === "error"
+                ? "bg-red-400"
+                : child.status.status === "degraded"
+                  ? "bg-yellow-400"
+                  : child.status.status === "provisioning"
+                    ? "bg-blue-400 animate-pulse"
+                    : "bg-gray-500"
+          }`}
+        />
       )}
       <span className="text-sm font-medium text-gray-200">{child.displayName}</span>
-      {child.subtitle && (
-        <span className="text-xs text-gray-500">{child.subtitle}</span>
-      )}
+      {child.subtitle && <span className="text-xs text-gray-500">{child.subtitle}</span>}
       <span className="text-gray-700 group-hover:text-gray-400 transition-colors text-xs ml-1">
         &rarr;
       </span>

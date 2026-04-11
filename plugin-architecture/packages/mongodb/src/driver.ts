@@ -6,7 +6,8 @@ function serializeDoc(doc: unknown): unknown {
   if (doc === null || doc === undefined) return doc;
   if (doc instanceof ObjectId) return { $oid: doc.toHexString() };
   if (doc instanceof Date) return { $date: doc.toISOString() };
-  if (typeof doc === "object" && doc !== null && "buffer" in doc && "byteLength" in doc) return { $binary: String(doc) };
+  if (typeof doc === "object" && doc !== null && "buffer" in doc && "byteLength" in doc)
+    return { $binary: String(doc) };
   if (Array.isArray(doc)) return doc.map(serializeDoc);
   if (typeof doc === "object") {
     const out: Record<string, unknown> = {};
@@ -58,14 +59,20 @@ function deserializeFilter(filter: unknown): unknown {
  */
 
 // Reuse MongoClient instances per connection string to avoid session/topology churn with Atlas
-const clientPool = new Map<string, { client: MongoClient; refCount: number; timer: ReturnType<typeof setTimeout> | null }>();
+const clientPool = new Map<
+  string,
+  { client: MongoClient; refCount: number; timer: ReturnType<typeof setTimeout> | null }
+>();
 const IDLE_TIMEOUT = 60_000;
 
 function getClient(connectionString: string): MongoClient {
   let entry = clientPool.get(connectionString);
   if (entry) {
     entry.refCount++;
-    if (entry.timer) { clearTimeout(entry.timer); entry.timer = null; }
+    if (entry.timer) {
+      clearTimeout(entry.timer);
+      entry.timer = null;
+    }
     return entry.client;
   }
   const client = new MongoClient(connectionString);
@@ -133,9 +140,19 @@ export const driver = {
           const coll = db.collection(collName);
           const [count, indexes] = await Promise.all([
             coll.estimatedDocumentCount().catch(() => coll.countDocuments()),
-            coll.indexes().then((idx) => idx.length).catch(() => 0),
+            coll
+              .indexes()
+              .then((idx) => idx.length)
+              .catch(() => 0),
           ]);
-          return { count, size: 0, avgObjSize: 0, storageSize: 0, nindexes: indexes, totalIndexSize: 0 };
+          return {
+            count,
+            size: 0,
+            avgObjSize: 0,
+            storageSize: 0,
+            nindexes: indexes,
+            totalIndexSize: 0,
+          };
         }
 
         case "find": {
@@ -173,7 +190,9 @@ export const driver = {
           if (!collection) throw new Error("updateOne requires a collection name");
           const filter = deserializeFilter(JSON.parse(String(args[2] ?? "{}")));
           const update = JSON.parse(String(args[3] ?? "{}"));
-          const result = await db.collection(collection).updateOne(filter as Record<string, unknown>, update);
+          const result = await db
+            .collection(collection)
+            .updateOne(filter as Record<string, unknown>, update);
           return { modifiedCount: result.modifiedCount, matchedCount: result.matchedCount };
         }
 
@@ -181,7 +200,9 @@ export const driver = {
           const collection = String(args[1] ?? "");
           if (!collection) throw new Error("deleteOne requires a collection name");
           const filter = deserializeFilter(JSON.parse(String(args[2] ?? "{}")));
-          const result = await db.collection(collection).deleteOne(filter as Record<string, unknown>);
+          const result = await db
+            .collection(collection)
+            .deleteOne(filter as Record<string, unknown>);
           return { deletedCount: result.deletedCount };
         }
 
@@ -189,7 +210,9 @@ export const driver = {
           const collection = String(args[1] ?? "");
           if (!collection) throw new Error("deleteMany requires a collection name");
           const filter = deserializeFilter(JSON.parse(String(args[2] ?? "{}")));
-          const result = await db.collection(collection).deleteMany(filter as Record<string, unknown>);
+          const result = await db
+            .collection(collection)
+            .deleteMany(filter as Record<string, unknown>);
           return { deletedCount: result.deletedCount };
         }
 

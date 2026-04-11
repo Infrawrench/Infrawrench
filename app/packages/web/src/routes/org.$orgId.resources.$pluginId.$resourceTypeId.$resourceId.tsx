@@ -1,17 +1,22 @@
 import { createFileRoute, useRouterState } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
-import { useUIStore, resourceTabTitle, RESOURCES_CHANGED_EVENT, REFRESH_RESOURCE_EVENT } from "@infrawrench/ui";
+import {
+  useUIStore,
+  resourceTabTitle,
+  RESOURCES_CHANGED_EVENT,
+  REFRESH_RESOURCE_EVENT,
+} from "@infrawrench/ui";
 import { ResourceDetailClient } from "@/components/ResourceDetailClient";
 import { apiGet } from "@/lib/api";
 
-export const Route = createFileRoute(
-  "/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId",
-)({
-  component: ResourceDetailPage,
-  validateSearch: (search: Record<string, unknown>): { accountId?: string } => ({
-    ...(typeof search["accountId"] === "string" ? { accountId: search["accountId"] } : {}),
-  }),
-});
+export const Route = createFileRoute("/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId")(
+  {
+    component: ResourceDetailPage,
+    validateSearch: (search: Record<string, unknown>): { accountId?: string } => ({
+      ...(typeof search["accountId"] === "string" ? { accountId: search["accountId"] } : {}),
+    }),
+  },
+);
 
 function ResourceDetailPage() {
   const { orgId, pluginId, resourceTypeId, resourceId: rawResourceId } = Route.useParams();
@@ -34,7 +39,9 @@ function ResourceDetailPage() {
 
     function load() {
       apiGet(detailUrl)
-        .then((d) => { if (!cancelled) setData(d); })
+        .then((d) => {
+          if (!cancelled) setData(d);
+        })
         .catch((e) => {
           if (cancelled) return;
           // Retry up to 3 times on "not found" — resource may still be propagating
@@ -47,20 +54,27 @@ function ResourceDetailPage() {
         });
     }
     load();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [detailUrl]);
 
   useEffect(() => {
     if (!data) return;
     const { activeWorkspaceTabId, setWorkspaceTabTitle } = useUIStore.getState();
     if (activeWorkspaceTabId) {
-      setWorkspaceTabTitle(activeWorkspaceTabId, resourceTabTitle(data.resourceDisplayName, currentView));
+      setWorkspaceTabTitle(
+        activeWorkspaceTabId,
+        resourceTabTitle(data.resourceDisplayName, currentView),
+      );
     }
   }, [data, currentView]);
 
   useEffect(() => {
     function refresh() {
-      apiGet(detailUrl).then(setData).catch(() => {});
+      apiGet(detailUrl)
+        .then(setData)
+        .catch(() => {});
     }
     const id = setInterval(refresh, 30_000);
     window.addEventListener(RESOURCES_CHANGED_EVENT, refresh);

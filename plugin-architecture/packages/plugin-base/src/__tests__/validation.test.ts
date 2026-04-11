@@ -27,7 +27,13 @@ describe("pluginManifestSchema", () => {
     const result = pluginManifestSchema.safeParse({
       ...validManifest,
       credentialFields: [
-        { key: "apiToken", label: "API Token", sensitive: true, placeholder: "dop_v1_...", multiline: false },
+        {
+          key: "apiToken",
+          label: "API Token",
+          sensitive: true,
+          placeholder: "dop_v1_...",
+          multiline: false,
+        },
       ],
       sqlDriver: { driver: "postgres", credentialKey: "connStr" },
       kvDriver: { driver: "redis", credentialKey: "connStr" },
@@ -39,7 +45,9 @@ describe("pluginManifestSchema", () => {
   });
 
   it("rejects non-kebab-case id", () => {
-    expect(pluginManifestSchema.safeParse({ ...validManifest, id: "DigitalOcean" }).success).toBe(false);
+    expect(pluginManifestSchema.safeParse({ ...validManifest, id: "DigitalOcean" }).success).toBe(
+      false,
+    );
   });
 
   it("rejects id starting with number", () => {
@@ -47,7 +55,9 @@ describe("pluginManifestSchema", () => {
   });
 
   it("rejects non-semver version", () => {
-    expect(pluginManifestSchema.safeParse({ ...validManifest, version: "not-a-version" }).success).toBe(false);
+    expect(
+      pluginManifestSchema.safeParse({ ...validManifest, version: "not-a-version" }).success,
+    ).toBe(false);
   });
 
   it("rejects missing required fields", () => {
@@ -69,9 +79,7 @@ const validResourceType = {
     { key: "name", label: "Name", kind: "string", required: true },
     { key: "region", label: "Region", kind: "enum", required: true, enumValues: ["nyc1", "sfo3"] },
   ],
-  outputs: [
-    { key: "kubeconfig", label: "Kubeconfig", sensitive: true },
-  ],
+  outputs: [{ key: "kubeconfig", label: "Kubeconfig", sensitive: true }],
   dashboardPinnable: true,
 };
 
@@ -81,14 +89,21 @@ describe("resourceTypeDefinitionSchema", () => {
   });
 
   it("accepts with optional parentTypeId", () => {
-    expect(resourceTypeDefinitionSchema.safeParse({ ...validResourceType, parentTypeId: "project" }).success).toBe(true);
+    expect(
+      resourceTypeDefinitionSchema.safeParse({ ...validResourceType, parentTypeId: "project" })
+        .success,
+    ).toBe(true);
   });
 
   it("accepts with peerIntegrations", () => {
     const result = resourceTypeDefinitionSchema.safeParse({
       ...validResourceType,
       peerIntegrations: [
-        { pluginId: "kubernetes", credentialMappings: [{ outputKey: "kubeconfig", credentialKey: "kubeconfig" }], tabLabel: "K8s" },
+        {
+          pluginId: "kubernetes",
+          credentialMappings: [{ outputKey: "kubeconfig", credentialKey: "kubeconfig" }],
+          tabLabel: "K8s",
+        },
       ],
     });
     expect(result.success).toBe(true);
@@ -98,7 +113,11 @@ describe("resourceTypeDefinitionSchema", () => {
     const result = resourceTypeDefinitionSchema.safeParse({
       ...validResourceType,
       secretExportTemplates: [
-        { id: "env", displayName: "Env Vars", entries: [{ envKey: "DB_URL", outputKey: "connectionString" }] },
+        {
+          id: "env",
+          displayName: "Env Vars",
+          entries: [{ envKey: "DB_URL", outputKey: "connectionString" }],
+        },
       ],
     });
     expect(result.success).toBe(true);
@@ -110,7 +129,9 @@ describe("resourceTypeDefinitionSchema", () => {
   });
 
   it("rejects empty id", () => {
-    expect(resourceTypeDefinitionSchema.safeParse({ ...validResourceType, id: "" }).success).toBe(false);
+    expect(resourceTypeDefinitionSchema.safeParse({ ...validResourceType, id: "" }).success).toBe(
+      false,
+    );
   });
 
   it("rejects missing dashboardPinnable", () => {
@@ -122,16 +143,24 @@ describe("resourceTypeDefinitionSchema", () => {
 describe("fieldDefinitionSchema", () => {
   it("accepts all valid field kinds", () => {
     for (const kind of ["string", "number", "boolean", "enum", "secret", "association"]) {
-      expect(fieldDefinitionSchema.safeParse({ key: "f", label: "F", kind, required: true }).success).toBe(true);
+      expect(
+        fieldDefinitionSchema.safeParse({ key: "f", label: "F", kind, required: true }).success,
+      ).toBe(true);
     }
   });
 
   it("rejects unknown kind", () => {
-    expect(fieldDefinitionSchema.safeParse({ key: "f", label: "F", kind: "unknown", required: true }).success).toBe(false);
+    expect(
+      fieldDefinitionSchema.safeParse({ key: "f", label: "F", kind: "unknown", required: true })
+        .success,
+    ).toBe(false);
   });
 
   it("rejects empty key", () => {
-    expect(fieldDefinitionSchema.safeParse({ key: "", label: "F", kind: "string", required: true }).success).toBe(false);
+    expect(
+      fieldDefinitionSchema.safeParse({ key: "", label: "F", kind: "string", required: true })
+        .success,
+    ).toBe(false);
   });
 
   it("accepts optional resolvableFrom", () => {
@@ -140,7 +169,9 @@ describe("fieldDefinitionSchema", () => {
       label: "Database",
       kind: "association",
       required: true,
-      resolvableFrom: [{ pluginId: "postgres", resourceTypeId: "db", outputKey: "connectionString" }],
+      resolvableFrom: [
+        { pluginId: "postgres", resourceTypeId: "db", outputKey: "connectionString" },
+      ],
       allowLiteral: true,
     });
     expect(result.success).toBe(true);
@@ -154,24 +185,35 @@ describe("schemaNodeSchema", () => {
 
   it("accepts text node with variant", () => {
     for (const variant of ["heading", "subheading", "body", "mono", "muted"]) {
-      expect(schemaNodeSchema.safeParse({ kind: "text", content: "x", variant }).success).toBe(true);
+      expect(schemaNodeSchema.safeParse({ kind: "text", content: "x", variant }).success).toBe(
+        true,
+      );
     }
   });
 
   it("accepts badge node", () => {
-    expect(schemaNodeSchema.safeParse({ kind: "badge", label: "us-east-1", color: "blue" }).success).toBe(true);
+    expect(
+      schemaNodeSchema.safeParse({ kind: "badge", label: "us-east-1", color: "blue" }).success,
+    ).toBe(true);
   });
 
   it("rejects badge with invalid color", () => {
-    expect(schemaNodeSchema.safeParse({ kind: "badge", label: "x", color: "purple" }).success).toBe(false);
+    expect(schemaNodeSchema.safeParse({ kind: "badge", label: "x", color: "purple" }).success).toBe(
+      false,
+    );
   });
 
   it("accepts status-dot node", () => {
-    expect(schemaNodeSchema.safeParse({ kind: "status-dot", status: "healthy", label: "Running" }).success).toBe(true);
+    expect(
+      schemaNodeSchema.safeParse({ kind: "status-dot", status: "healthy", label: "Running" })
+        .success,
+    ).toBe(true);
   });
 
   it("rejects status-dot with invalid status", () => {
-    expect(schemaNodeSchema.safeParse({ kind: "status-dot", status: "broken" }).success).toBe(false);
+    expect(schemaNodeSchema.safeParse({ kind: "status-dot", status: "broken" }).success).toBe(
+      false,
+    );
   });
 
   it("accepts key-value-list node", () => {
@@ -194,7 +236,9 @@ describe("schemaNodeSchema", () => {
       { type: "refresh-resource" },
     ];
     for (const action of actions) {
-      expect(schemaNodeSchema.safeParse({ kind: "action", label: "Act", action }).success).toBe(true);
+      expect(schemaNodeSchema.safeParse({ kind: "action", label: "Act", action }).success).toBe(
+        true,
+      );
     }
   });
 
@@ -227,7 +271,13 @@ describe("schemaNodeSchema", () => {
   });
 
   it("accepts link node", () => {
-    expect(schemaNodeSchema.safeParse({ kind: "link", label: "Console", url: "https://console.aws.amazon.com" }).success).toBe(true);
+    expect(
+      schemaNodeSchema.safeParse({
+        kind: "link",
+        label: "Console",
+        url: "https://console.aws.amazon.com",
+      }).success,
+    ).toBe(true);
   });
 
   it("rejects unknown kind", () => {
@@ -237,85 +287,97 @@ describe("schemaNodeSchema", () => {
 
 describe("dashboardCardSchema", () => {
   it("accepts a valid card", () => {
-    expect(dashboardCardSchema.safeParse({
-      pluginId: "digitalocean",
-      resourceTypeId: "doks-cluster",
-      resourceId: "abc-123",
-      displayName: "prod-cluster",
-      status: { kind: "status-dot", status: "healthy", label: "Running" },
-    }).success).toBe(true);
+    expect(
+      dashboardCardSchema.safeParse({
+        pluginId: "digitalocean",
+        resourceTypeId: "doks-cluster",
+        resourceId: "abc-123",
+        displayName: "prod-cluster",
+        status: { kind: "status-dot", status: "healthy", label: "Running" },
+      }).success,
+    ).toBe(true);
   });
 
   it("accepts card without optional status and badges", () => {
-    expect(dashboardCardSchema.safeParse({
-      pluginId: "aws",
-      resourceTypeId: "ec2",
-      resourceId: "i-123",
-      displayName: "web-server",
-    }).success).toBe(true);
+    expect(
+      dashboardCardSchema.safeParse({
+        pluginId: "aws",
+        resourceTypeId: "ec2",
+        resourceId: "i-123",
+        displayName: "web-server",
+      }).success,
+    ).toBe(true);
   });
 
   it("accepts card with badges array", () => {
-    expect(dashboardCardSchema.safeParse({
-      pluginId: "aws",
-      resourceTypeId: "ec2",
-      resourceId: "i-123",
-      displayName: "web-server",
-      badges: [
-        { kind: "badge", label: "t3.micro", color: "gray" },
-        { kind: "badge", label: "us-east-1", color: "blue" },
-      ],
-    }).success).toBe(true);
+    expect(
+      dashboardCardSchema.safeParse({
+        pluginId: "aws",
+        resourceTypeId: "ec2",
+        resourceId: "i-123",
+        displayName: "web-server",
+        badges: [
+          { kind: "badge", label: "t3.micro", color: "gray" },
+          { kind: "badge", label: "us-east-1", color: "blue" },
+        ],
+      }).success,
+    ).toBe(true);
   });
 
   it("rejects card with invalid status enum", () => {
-    expect(dashboardCardSchema.safeParse({
-      pluginId: "aws",
-      resourceTypeId: "ec2",
-      resourceId: "i-123",
-      displayName: "x",
-      status: { kind: "status-dot", status: "invalid-status" },
-    }).success).toBe(false);
+    expect(
+      dashboardCardSchema.safeParse({
+        pluginId: "aws",
+        resourceTypeId: "ec2",
+        resourceId: "i-123",
+        displayName: "x",
+        status: { kind: "status-dot", status: "invalid-status" },
+      }).success,
+    ).toBe(false);
   });
 });
 
 describe("detailViewSchema", () => {
   it("accepts a detail view with nested sections", () => {
-    expect(detailViewSchema.safeParse({
-      title: "prod-cluster",
-      subtitle: "DOKS · nyc1",
-      status: { kind: "status-dot", status: "healthy" },
-      sections: [
-        {
-          kind: "section",
-          title: "Details",
-          children: [
-            { kind: "text", content: "Kubernetes 1.30" },
-            { kind: "badge", label: "nyc1", color: "blue" },
-          ],
-        },
-      ],
-      headerActions: [
-        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
-      ],
-    }).success).toBe(true);
+    expect(
+      detailViewSchema.safeParse({
+        title: "prod-cluster",
+        subtitle: "DOKS · nyc1",
+        status: { kind: "status-dot", status: "healthy" },
+        sections: [
+          {
+            kind: "section",
+            title: "Details",
+            children: [
+              { kind: "text", content: "Kubernetes 1.30" },
+              { kind: "badge", label: "nyc1", color: "blue" },
+            ],
+          },
+        ],
+        headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+      }).success,
+    ).toBe(true);
   });
 
   it("accepts minimal detail view", () => {
-    expect(detailViewSchema.safeParse({
-      title: "test",
-      sections: [],
-    }).success).toBe(true);
+    expect(
+      detailViewSchema.safeParse({
+        title: "test",
+        sections: [],
+      }).success,
+    ).toBe(true);
   });
 
   it("accepts detail view with children (dashboard cards)", () => {
-    expect(detailViewSchema.safeParse({
-      title: "Account",
-      sections: [{ kind: "section", children: [] }],
-      children: [
-        { pluginId: "aws", resourceTypeId: "ec2", resourceId: "i-1", displayName: "web" },
-      ],
-    }).success).toBe(true);
+    expect(
+      detailViewSchema.safeParse({
+        title: "Account",
+        sections: [{ kind: "section", children: [] }],
+        children: [
+          { pluginId: "aws", resourceTypeId: "ec2", resourceId: "i-1", displayName: "web" },
+        ],
+      }).success,
+    ).toBe(true);
   });
 
   it("rejects missing title", () => {
@@ -323,40 +385,54 @@ describe("detailViewSchema", () => {
   });
 
   it("accepts detail view with all action variants", () => {
-    expect(detailViewSchema.safeParse({
-      title: "test",
-      sections: [],
-      headerActions: [
-        { kind: "action", label: "Delete", action: { type: "refresh-resource" }, variant: "danger" },
-        { kind: "action", label: "Copy", action: { type: "copy-to-clipboard", fieldKey: "ip" }, variant: "ghost" },
-      ],
-    }).success).toBe(true);
+    expect(
+      detailViewSchema.safeParse({
+        title: "test",
+        sections: [],
+        headerActions: [
+          {
+            kind: "action",
+            label: "Delete",
+            action: { type: "refresh-resource" },
+            variant: "danger",
+          },
+          {
+            kind: "action",
+            label: "Copy",
+            action: { type: "copy-to-clipboard", fieldKey: "ip" },
+            variant: "ghost",
+          },
+        ],
+      }).success,
+    ).toBe(true);
   });
 
   it("accepts detail view with key-value-list containing secret placeholders", () => {
-    expect(detailViewSchema.safeParse({
-      title: "test",
-      sections: [
-        {
-          kind: "section",
-          children: [
-            {
-              kind: "key-value-list",
-              items: [
-                {
-                  key: "Password",
-                  value: {
-                    kind: "secret-placeholder",
-                    fieldKey: "password",
-                    resolution: { kind: "literal", encryptedValue: "enc", iv: "iv" },
+    expect(
+      detailViewSchema.safeParse({
+        title: "test",
+        sections: [
+          {
+            kind: "section",
+            children: [
+              {
+                kind: "key-value-list",
+                items: [
+                  {
+                    key: "Password",
+                    value: {
+                      kind: "secret-placeholder",
+                      fieldKey: "password",
+                      resolution: { kind: "literal", encryptedValue: "enc", iv: "iv" },
+                    },
+                    sensitive: true,
                   },
-                  sensitive: true,
-                },
-              ],
-            },
-          ],
-        },
-      ],
-    }).success).toBe(true);
+                ],
+              },
+            ],
+          },
+        ],
+      }).success,
+    ).toBe(true);
   });
 });

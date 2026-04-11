@@ -13,9 +13,7 @@ export const CodePipelinePipelineResourceType: ResourceTypeDefinition = {
     { key: "updatedAt", label: "Updated", kind: "string", required: false },
     { key: "pipelineType", label: "Type", kind: "string", required: false },
   ],
-  outputs: [
-    { key: "pipelineArn", label: "Pipeline ARN", sensitive: false },
-  ],
+  outputs: [{ key: "pipelineArn", label: "Pipeline ARN", sensitive: false }],
   dashboardPinnable: true,
   iconKey: "pipeline",
 };

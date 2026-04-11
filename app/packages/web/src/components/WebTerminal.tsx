@@ -10,7 +10,14 @@ interface WebTerminalProps {
   sshUsername?: string;
 }
 
-export function WebTerminal({ accountId, resourceId, token, sshKeyId, sshHost, sshUsername }: WebTerminalProps) {
+export function WebTerminal({
+  accountId,
+  resourceId,
+  token,
+  sshKeyId,
+  sshHost,
+  sshUsername,
+}: WebTerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -74,20 +81,28 @@ export function WebTerminal({ accountId, resourceId, token, sshKeyId, sshHost, s
         if (disposed || !term) return;
         fitAddon.fit();
 
-        const connectLabel = sshHost && sshUsername
-          ? `${sshUsername}@${sshHost}:22`
-          : "SSH";
+        const connectLabel = sshHost && sshUsername ? `${sshUsername}@${sshHost}:22` : "SSH";
         term.write(`\x1b[90mConnecting to \x1b[0m${connectLabel}\x1b[90m…\x1b[0m\r\n`);
 
         const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-        const ws = new WebSocket(`${wsProtocol}//${window.location.host}/api/ws?token=${encodeURIComponent(token)}`);
+        const ws = new WebSocket(
+          `${wsProtocol}//${window.location.host}/api/ws?token=${encodeURIComponent(token)}`,
+        );
         wsRef.current = ws;
 
         ws.onopen = () => {
-          ws.send(JSON.stringify({
-            type: "ssh:open", accountId, resourceId, sshKeyId, sshHost, sshUsername,
-            cols: term!.cols, rows: term!.rows,
-          }));
+          ws.send(
+            JSON.stringify({
+              type: "ssh:open",
+              accountId,
+              resourceId,
+              sshKeyId,
+              sshHost,
+              sshUsername,
+              cols: term!.cols,
+              rows: term!.rows,
+            }),
+          );
         };
 
         ws.onmessage = (event) => {
@@ -125,7 +140,9 @@ export function WebTerminal({ accountId, resourceId, token, sshKeyId, sshHost, s
         if (disposed || !term) return;
         fitAddon.fit();
         if (connected && wsRef.current?.readyState === WebSocket.OPEN) {
-          wsRef.current.send(JSON.stringify({ type: "ssh:resize", cols: term.cols, rows: term.rows }));
+          wsRef.current.send(
+            JSON.stringify({ type: "ssh:resize", cols: term.cols, rows: term.rows }),
+          );
         }
       });
       ro.observe(containerRef.current);
@@ -148,10 +165,7 @@ export function WebTerminal({ accountId, resourceId, token, sshKeyId, sshHost, s
 
   return (
     <div className="h-full w-full relative bg-[#0d0d0d] overflow-hidden">
-      <div
-        ref={containerRef}
-        className="absolute inset-0 p-2"
-      />
+      <div ref={containerRef} className="absolute inset-0 p-2" />
     </div>
   );
 }

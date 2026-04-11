@@ -4,12 +4,22 @@ import type { StorageObject } from "@infrawrench/plugin-base";
 import { apiPost } from "@/lib/api";
 import { useOrgId } from "@/lib/useOrgId";
 
-export function StorageBrowser({ accountId, bucketName }: { accountId: string; bucketName: string }) {
+export function StorageBrowser({
+  accountId,
+  bucketName,
+}: {
+  accountId: string;
+  bucketName: string;
+}) {
   const orgId = useOrgId();
 
   const onList = useCallback(
     (prefix: string) =>
-      apiPost<StorageObject[]>(`/api/org/${orgId}/storage/list`, { accountId, bucket: bucketName, prefix }),
+      apiPost<StorageObject[]>(`/api/org/${orgId}/storage/list`, {
+        accountId,
+        bucket: bucketName,
+        prefix,
+      }),
     [accountId, bucketName, orgId],
   );
 
@@ -55,7 +65,10 @@ export function StorageBrowser({ accountId, bucketName }: { accountId: string; b
   const onBatchDownload = useCallback(
     async (keys: string[]) => {
       for (const key of keys) {
-        window.open(`/api/org/${orgId}/storage/download?accountId=${encodeURIComponent(accountId)}&bucket=${encodeURIComponent(bucketName)}&key=${encodeURIComponent(key)}`, "_blank");
+        window.open(
+          `/api/org/${orgId}/storage/download?accountId=${encodeURIComponent(accountId)}&bucket=${encodeURIComponent(bucketName)}&key=${encodeURIComponent(key)}`,
+          "_blank",
+        );
       }
     },
     [accountId, bucketName, orgId],

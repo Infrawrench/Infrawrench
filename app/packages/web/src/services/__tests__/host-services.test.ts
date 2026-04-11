@@ -10,12 +10,8 @@ vi.mock("../drivers", () => {
     sqlDrivers: new Map([
       ["postgres", { id: "postgres", query: mockSqlQuery, execute: mockSqlExecute }],
     ]),
-    kvDrivers: new Map([
-      ["redis", { id: "redis", command: mockKvCommand }],
-    ]),
-    dockerDrivers: new Map([
-      ["docker", { id: "docker", command: mockDockerCommand }],
-    ]),
+    kvDrivers: new Map([["redis", { id: "redis", command: mockKvCommand }]]),
+    dockerDrivers: new Map([["docker", { id: "docker", command: mockDockerCommand }]]),
   };
 });
 
@@ -60,7 +56,9 @@ describe("buildDockerHostServices", () => {
   });
 
   it("throws for unknown Docker driver", () => {
-    expect(() => buildDockerHostServices("unknown", "host")).toThrow("Unknown Docker driver: unknown");
+    expect(() => buildDockerHostServices("unknown", "host")).toThrow(
+      "Unknown Docker driver: unknown",
+    );
   });
 });
 
@@ -89,7 +87,9 @@ describe("buildPluginHostServices", () => {
     const manifest = {
       dockerDriver: { driver: "docker", credentialKey: "dockerHost" },
     } as unknown as PluginManifest;
-    const services = buildPluginHostServices(manifest, { dockerHost: "unix:///var/run/docker.sock" });
+    const services = buildPluginHostServices(manifest, {
+      dockerHost: "unix:///var/run/docker.sock",
+    });
     expect(services).toBeDefined();
     expect(services!.docker).toBeDefined();
     expect(services!.http).toBeDefined();

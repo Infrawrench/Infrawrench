@@ -11,7 +11,13 @@ vi.mock("@/db/client", () => ({
 }));
 
 vi.mock("@/services/encryption", () => ({
-  decrypt: vi.fn().mockResolvedValue(JSON.stringify({ connectionString: "postgres://localhost/db", redisUrl: "redis://localhost", dockerHost: "tcp://localhost:2375" })),
+  decrypt: vi.fn().mockResolvedValue(
+    JSON.stringify({
+      connectionString: "postgres://localhost/db",
+      redisUrl: "redis://localhost",
+      dockerHost: "tcp://localhost:2375",
+    }),
+  ),
 }));
 
 const mockGetPlugin = vi.fn();
@@ -29,9 +35,19 @@ const mockKvCommand = vi.fn();
 const mockDockerCommand = vi.fn();
 
 vi.mock("@/services/drivers", () => ({
-  sqlDrivers: new Map([["postgres", { query: (...args: unknown[]) => mockSqlQuery(...args), execute: (...args: unknown[]) => mockSqlExecute(...args) }]]),
+  sqlDrivers: new Map([
+    [
+      "postgres",
+      {
+        query: (...args: unknown[]) => mockSqlQuery(...args),
+        execute: (...args: unknown[]) => mockSqlExecute(...args),
+      },
+    ],
+  ]),
   kvDrivers: new Map([["redis", { command: (...args: unknown[]) => mockKvCommand(...args) }]]),
-  dockerDrivers: new Map([["docker-http", { command: (...args: unknown[]) => mockDockerCommand(...args) }]]),
+  dockerDrivers: new Map([
+    ["docker-http", { command: (...args: unknown[]) => mockDockerCommand(...args) }],
+  ]),
 }));
 
 vi.mock("@/services/sftp", () => ({

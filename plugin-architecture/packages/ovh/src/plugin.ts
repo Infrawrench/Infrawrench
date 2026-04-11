@@ -20,7 +20,8 @@ const manifest: PluginManifest = {
     {
       key: "applicationKey",
       label: "Application Key",
-      description: "Your OVHcloud API application key (AK). Create one at https://api.ovh.com/createApp/",
+      description:
+        "Your OVHcloud API application key (AK). Create one at https://api.ovh.com/createApp/",
       sensitive: false,
       placeholder: "a1b2c3d4e5f6g7h8",
     },
@@ -34,7 +35,8 @@ const manifest: PluginManifest = {
     {
       key: "consumerKey",
       label: "Consumer Key",
-      description: "Your OVHcloud API consumer key (CK). Generated when you validate API credentials.",
+      description:
+        "Your OVHcloud API consumer key (CK). Generated when you validate API credentials.",
       sensitive: true,
       placeholder: "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6",
     },
@@ -49,7 +51,8 @@ const manifest: PluginManifest = {
     {
       key: "projectId",
       label: "Public Cloud Project ID",
-      description: "Your OVHcloud Public Cloud project UUID. Found in the OVHcloud control panel under Public Cloud.",
+      description:
+        "Your OVHcloud Public Cloud project UUID. Found in the OVHcloud control panel under Public Cloud.",
       sensitive: false,
       placeholder: "12345678-abcd-1234-abcd-1234567890ab",
     },

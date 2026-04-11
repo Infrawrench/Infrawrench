@@ -38,7 +38,11 @@ export const SpacesResourceType: ResourceTypeDefinition = {
       entries: [
         { envKey: "AWS_ACCESS_KEY_ID", outputKey: "accessKeyId" },
         { envKey: "AWS_SECRET_ACCESS_KEY", outputKey: "secretAccessKey" },
-        { envKey: "AWS_ENDPOINT_URL", outputKey: "endpoint", description: "S3-compatible endpoint URL" },
+        {
+          envKey: "AWS_ENDPOINT_URL",
+          outputKey: "endpoint",
+          description: "S3-compatible endpoint URL",
+        },
       ],
     },
   ],

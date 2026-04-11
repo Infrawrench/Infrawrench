@@ -44,9 +44,7 @@ export const EKSClusterResourceType: ResourceTypeDefinition = {
   peerIntegrations: [
     {
       pluginId: "kubernetes",
-      credentialMappings: [
-        { outputKey: "kubeconfig", credentialKey: "kubeconfig" },
-      ],
+      credentialMappings: [{ outputKey: "kubeconfig", credentialKey: "kubeconfig" }],
       tabLabel: "Workloads",
     },
   ],
@@ -56,8 +54,16 @@ export const EKSClusterResourceType: ResourceTypeDefinition = {
       displayName: "EKS Kubeconfig",
       description: "Kubeconfig for connecting to this EKS cluster",
       entries: [
-        { envKey: "KUBECONFIG_DATA", outputKey: "kubeconfig", description: "Generated kubeconfig YAML" },
-        { envKey: "KUBE_API_ENDPOINT", outputKey: "endpoint", description: "Kubernetes API endpoint" },
+        {
+          envKey: "KUBECONFIG_DATA",
+          outputKey: "kubeconfig",
+          description: "Generated kubeconfig YAML",
+        },
+        {
+          envKey: "KUBE_API_ENDPOINT",
+          outputKey: "endpoint",
+          description: "Kubernetes API endpoint",
+        },
       ],
     },
   ],

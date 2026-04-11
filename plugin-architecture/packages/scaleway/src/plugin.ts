@@ -35,7 +35,8 @@ const manifest: PluginManifest = {
     {
       key: "defaultProjectId",
       label: "Default Project ID",
-      description: "Your Scaleway project ID (UUID). Found in the Scaleway console under Project Settings.",
+      description:
+        "Your Scaleway project ID (UUID). Found in the Scaleway console under Project Settings.",
       sensitive: false,
       placeholder: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
     },

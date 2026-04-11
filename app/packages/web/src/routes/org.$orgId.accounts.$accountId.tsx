@@ -1,7 +1,17 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect, useRef } from "react";
-import { useUIStore, RESOURCES_CHANGED_EVENT, getAccountResourceTypes, getListableResourceTypes, isCreateOnlyType } from "@infrawrench/ui";
-import { AccountDetailView, type CategoryState, type ResourceTypeInfo } from "@/components/AccountDetailView";
+import {
+  useUIStore,
+  RESOURCES_CHANGED_EVENT,
+  getAccountResourceTypes,
+  getListableResourceTypes,
+  isCreateOnlyType,
+} from "@infrawrench/ui";
+import {
+  AccountDetailView,
+  type CategoryState,
+  type ResourceTypeInfo,
+} from "@/components/AccountDetailView";
 import { apiGet, apiPost } from "@/lib/api";
 
 export const Route = createFileRoute("/org/$orgId/accounts/$accountId")({
@@ -61,26 +71,27 @@ function AccountPage() {
     async function load() {
       try {
         // Fetch account metadata + resource types (lightweight, no sync)
-        const detail = await apiGet<AccountMeta>(
-          `/api/org/${orgId}/accounts/${accountId}/detail`,
-        );
+        const detail = await apiGet<AccountMeta>(`/api/org/${orgId}/accounts/${accountId}/detail`);
         if (cancelled) return;
         setMeta(detail);
 
         const { activeWorkspaceTabId, setWorkspaceTabTitle } = useUIStore.getState();
-        if (activeWorkspaceTabId) setWorkspaceTabTitle(activeWorkspaceTabId, detail.account.displayName);
+        if (activeWorkspaceTabId)
+          setWorkspaceTabTitle(activeWorkspaceTabId, detail.account.displayName);
 
         const visibleTypes = getAccountResourceTypes(detail.resourceTypes);
         const listableTypes = getListableResourceTypes(detail.resourceTypes);
 
         // Show category headers immediately with loading skeletons (foreground only)
         if (!isBackground && !cancelled) {
-          setCategories(visibleTypes.map((t) => ({
-            typeDef: t,
-            loading: true,
-            error: null,
-            resources: [],
-          })));
+          setCategories(
+            visibleTypes.map((t) => ({
+              typeDef: t,
+              loading: true,
+              error: null,
+              resources: [],
+            })),
+          );
           setInitialLoading(false);
         }
 
@@ -89,36 +100,48 @@ function AccountPage() {
           if (!listableTypes.some((t) => t.id === typeDef.id)) {
             // Create-only child type — no resources to list
             if (!cancelled) {
-              setCategories((prev) => prev.map((cat) =>
-                cat.typeDef.id === typeDef.id ? { ...cat, loading: false } : cat,
-              ));
+              setCategories((prev) =>
+                prev.map((cat) =>
+                  cat.typeDef.id === typeDef.id ? { ...cat, loading: false } : cat,
+                ),
+              );
             }
             continue;
           }
 
-          apiPost<ResourceRow[]>(
-            `/api/org/${orgId}/accounts/${accountId}/sync-type/${typeDef.id}`,
-          ).then((rows) => {
-            if (cancelled) return;
-            setCategories((prev) => prev.map((cat) =>
-              cat.typeDef.id === typeDef.id
-                ? { ...cat, loading: false, error: null, resources: rows }
-                : cat,
-            ));
-          }).catch((err) => {
-            if (cancelled) return;
-            if (isBackground) {
-              setCategories((prev) => prev.map((cat) =>
-                cat.typeDef.id === typeDef.id ? { ...cat, loading: false } : cat,
-              ));
-            } else {
-              setCategories((prev) => prev.map((cat) =>
-                cat.typeDef.id === typeDef.id
-                  ? { ...cat, loading: false, error: err instanceof Error ? err.message : "Failed to load" }
-                  : cat,
-              ));
-            }
-          });
+          apiPost<ResourceRow[]>(`/api/org/${orgId}/accounts/${accountId}/sync-type/${typeDef.id}`)
+            .then((rows) => {
+              if (cancelled) return;
+              setCategories((prev) =>
+                prev.map((cat) =>
+                  cat.typeDef.id === typeDef.id
+                    ? { ...cat, loading: false, error: null, resources: rows }
+                    : cat,
+                ),
+              );
+            })
+            .catch((err) => {
+              if (cancelled) return;
+              if (isBackground) {
+                setCategories((prev) =>
+                  prev.map((cat) =>
+                    cat.typeDef.id === typeDef.id ? { ...cat, loading: false } : cat,
+                  ),
+                );
+              } else {
+                setCategories((prev) =>
+                  prev.map((cat) =>
+                    cat.typeDef.id === typeDef.id
+                      ? {
+                          ...cat,
+                          loading: false,
+                          error: err instanceof Error ? err.message : "Failed to load",
+                        }
+                      : cat,
+                  ),
+                );
+              }
+            });
         }
       } catch {
         if (!cancelled && !isBackground) setInitialLoading(false);
@@ -126,10 +149,13 @@ function AccountPage() {
     }
 
     load();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [accountId, loadVersion]);
 
-  if (initialLoading) return <div className="p-6 text-gray-500 text-sm animate-pulse">Loading…</div>;
+  if (initialLoading)
+    return <div className="p-6 text-gray-500 text-sm animate-pulse">Loading…</div>;
   if (!meta) return <div className="p-6 text-red-400 text-sm">Failed to load account.</div>;
 
   return (

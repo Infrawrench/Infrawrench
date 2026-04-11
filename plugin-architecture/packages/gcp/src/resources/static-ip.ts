@@ -14,8 +14,6 @@ export const StaticIpResourceType: ResourceTypeDefinition = {
     { key: "networkTier", label: "Network Tier", kind: "string", required: false },
     { key: "ipVersion", label: "IP Version", kind: "string", required: false },
   ],
-  outputs: [
-    { key: "address", label: "IP Address", sensitive: false },
-  ],
+  outputs: [{ key: "address", label: "IP Address", sensitive: false }],
   dashboardPinnable: true,
 };

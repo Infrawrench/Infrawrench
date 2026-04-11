@@ -60,7 +60,9 @@ export async function spawnK8sExec(
     } catch {
       // Ignore temp cleanup failures.
     }
-    throw new Error(`Failed to launch kubectl exec: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(
+      `Failed to launch kubectl exec: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
 
   sessions.set(id, { proc, tmpDir, webContents: new WeakRef(webContents) });

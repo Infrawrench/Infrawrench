@@ -1,6 +1,11 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useState, useEffect, useRef } from "react";
-import { DroppableDashboardArea, useUIStore, formatErrorMessage, extractHostLabel } from "@infrawrench/ui";
+import {
+  DroppableDashboardArea,
+  useUIStore,
+  formatErrorMessage,
+  extractHostLabel,
+} from "@infrawrench/ui";
 import { apiPost, apiDelete } from "@/lib/api";
 import { useOrgId } from "@/lib/useOrgId";
 import { SpotlightSearch } from "./SpotlightSearch";
@@ -39,7 +44,12 @@ interface DashboardViewProps {
   pins: PinnedResource[];
 }
 
-export function DashboardView({ dashboardId, dashboardName: initialName, isHome = false, pins: initialPins }: DashboardViewProps) {
+export function DashboardView({
+  dashboardId,
+  dashboardName: initialName,
+  isHome = false,
+  pins: initialPins,
+}: DashboardViewProps) {
   const navigate = useNavigate();
   const orgId = useOrgId();
   const [pins, setPins] = useState(initialPins);
@@ -77,16 +87,18 @@ export function DashboardView({ dashboardId, dashboardName: initialName, isHome 
           resourceTypeId: p.resourceTypeId,
         })),
       },
-    ).then((results) => {
-      if (controller.signal.aborted) return;
-      setCardStatus(results);
-    }).catch((e) => {
-      if (controller.signal.aborted) return;
-      const error = formatErrorMessage(e);
-      setCardStatus(
-        Object.fromEntries(pins.map((p) => [p.resourceId, { phase: "error" as const, error }])),
-      );
-    });
+    )
+      .then((results) => {
+        if (controller.signal.aborted) return;
+        setCardStatus(results);
+      })
+      .catch((e) => {
+        if (controller.signal.aborted) return;
+        const error = formatErrorMessage(e);
+        setCardStatus(
+          Object.fromEntries(pins.map((p) => [p.resourceId, { phase: "error" as const, error }])),
+        );
+      });
 
     return () => controller.abort();
   }, [pins]);
@@ -186,11 +198,21 @@ export function DashboardView({ dashboardId, dashboardName: initialName, isHome 
               <p className="text-xs mt-1 opacity-60">or drag one here</p>
             </button>
           ) : (
-            <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}>
+            <div
+              className="grid gap-4"
+              style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}
+            >
               {pins.map((pin) => {
-                const fields = typeof pin.fieldsJson === "string"
-                  ? (() => { try { return JSON.parse(pin.fieldsJson) as Record<string, unknown>; } catch { return {}; } })()
-                  : (pin.fieldsJson as Record<string, unknown> ?? {});
+                const fields =
+                  typeof pin.fieldsJson === "string"
+                    ? (() => {
+                        try {
+                          return JSON.parse(pin.fieldsJson) as Record<string, unknown>;
+                        } catch {
+                          return {};
+                        }
+                      })()
+                    : ((pin.fieldsJson as Record<string, unknown>) ?? {});
                 const host = extractHostLabel(fields);
 
                 return (
@@ -212,7 +234,12 @@ export function DashboardView({ dashboardId, dashboardName: initialName, isHome 
                       onClick={() =>
                         void navigate({
                           to: "/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId",
-                          params: { orgId, pluginId: pin.pluginId, resourceTypeId: pin.resourceTypeId, resourceId: pin.resourceId },
+                          params: {
+                            orgId,
+                            pluginId: pin.pluginId,
+                            resourceTypeId: pin.resourceTypeId,
+                            resourceId: pin.resourceId,
+                          },
                         })
                       }
                       className="flex-1 flex flex-col p-5 text-left gap-3"
@@ -234,7 +261,9 @@ export function DashboardView({ dashboardId, dashboardName: initialName, isHome 
 
                       {/* Resource name */}
                       <div>
-                        <p className="text-base font-semibold text-gray-100 leading-tight">{pin.displayName}</p>
+                        <p className="text-base font-semibold text-gray-100 leading-tight">
+                          {pin.displayName}
+                        </p>
                         {host && <p className="text-xs text-gray-500 mt-0.5 truncate">{host}</p>}
                       </div>
                     </button>
@@ -287,7 +316,9 @@ function ConnectionFooter({ status }: { status?: CardStatus | undefined }) {
   if (status.phase === "error") {
     return (
       <div className="px-4 py-2 border-t border-gray-800/50">
-        <span className="text-xs text-red-400 truncate" title={status.error}>{status.error}</span>
+        <span className="text-xs text-red-400 truncate" title={status.error}>
+          {status.error}
+        </span>
       </div>
     );
   }

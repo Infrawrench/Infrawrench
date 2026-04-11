@@ -31,15 +31,11 @@ describe("normalizeResourceId", () => {
 
 describe("getWorkspaceTabId", () => {
   it("returns deterministic id for dashboard target", () => {
-    expect(getWorkspaceTabId({ kind: "dashboard", dashboardId: "main" })).toBe(
-      "dashboard:main",
-    );
+    expect(getWorkspaceTabId({ kind: "dashboard", dashboardId: "main" })).toBe("dashboard:main");
   });
 
   it("returns deterministic id for account target", () => {
-    expect(getWorkspaceTabId({ kind: "account", accountId: "acc-1" })).toBe(
-      "account:acc-1",
-    );
+    expect(getWorkspaceTabId({ kind: "account", accountId: "acc-1" })).toBe("account:acc-1");
   });
 
   it("returns deterministic id for resource target without view", () => {
@@ -87,15 +83,11 @@ describe("getWorkspaceTabId", () => {
 
 describe("getWorkspaceTabFallbackTitle", () => {
   it("returns 'Dashboard' for dashboard target", () => {
-    expect(
-      getWorkspaceTabFallbackTitle({ kind: "dashboard", dashboardId: "x" }),
-    ).toBe("Dashboard");
+    expect(getWorkspaceTabFallbackTitle({ kind: "dashboard", dashboardId: "x" })).toBe("Dashboard");
   });
 
   it("returns 'Account' for account target", () => {
-    expect(
-      getWorkspaceTabFallbackTitle({ kind: "account", accountId: "x" }),
-    ).toBe("Account");
+    expect(getWorkspaceTabFallbackTitle({ kind: "account", accountId: "x" })).toBe("Account");
   });
 
   it("returns 'Resource' for resource target without view", () => {

@@ -7,7 +7,13 @@ export const ElastiCacheClusterResourceType: ResourceTypeDefinition = {
   description: "An Amazon ElastiCache Redis or Memcached cluster",
   fields: [
     { key: "clusterId", label: "Cluster ID", kind: "string", required: true },
-    { key: "engine", label: "Engine", kind: "enum", required: true, enumValues: ["redis", "memcached"] },
+    {
+      key: "engine",
+      label: "Engine",
+      kind: "enum",
+      required: true,
+      enumValues: ["redis", "memcached"],
+    },
     { key: "engineVersion", label: "Engine Version", kind: "string", required: true },
     { key: "nodeType", label: "Node Type", kind: "string", required: true },
     { key: "numNodes", label: "Number of Nodes", kind: "number", required: true },

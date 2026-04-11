@@ -12,9 +12,7 @@ export const D1DatabaseResourceType: ResourceTypeDefinition = {
     { key: "fileSize", label: "File Size", kind: "string", required: false },
     { key: "createdAt", label: "Created", kind: "string", required: false },
   ],
-  outputs: [
-    { key: "databaseId", label: "Database ID", sensitive: false },
-  ],
+  outputs: [{ key: "databaseId", label: "Database ID", sensitive: false }],
   dashboardPinnable: true,
   supportsCreate: true,
   resourceSqlDriver: {

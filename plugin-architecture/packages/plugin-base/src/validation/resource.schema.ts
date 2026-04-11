@@ -27,10 +27,12 @@ const resourceOutputSchema = z.object({
 
 const peerPluginIntegrationSchema = z.object({
   pluginId: z.string().min(1),
-  credentialMappings: z.array(z.object({
-    outputKey: z.string().min(1),
-    credentialKey: z.string().min(1),
-  })),
+  credentialMappings: z.array(
+    z.object({
+      outputKey: z.string().min(1),
+      credentialKey: z.string().min(1),
+    }),
+  ),
   tabLabel: z.string().min(1),
 });
 

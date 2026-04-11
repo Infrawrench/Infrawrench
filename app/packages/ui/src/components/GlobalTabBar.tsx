@@ -85,9 +85,7 @@ function TabBarItem({
       }`}
       onClick={() => onActivate(tab.id)}
     >
-      {active && (
-        <span className="absolute bottom-0 left-0 right-0 h-px bg-gray-800" />
-      )}
+      {active && <span className="absolute bottom-0 left-0 right-0 h-px bg-gray-800" />}
       <span className="truncate text-xs font-medium">{tab.title}</span>
       <button
         onClick={(e) => {

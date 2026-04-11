@@ -46,9 +46,9 @@ describe("planetscale driver", () => {
     it("calls conn.end() even on error", async () => {
       mockQuery.mockRejectedValue(new Error("connection refused"));
 
-      await expect(
-        driver.query("mysql://user:pass@host/db", "SELECT 1"),
-      ).rejects.toThrow("connection refused");
+      await expect(driver.query("mysql://user:pass@host/db", "SELECT 1")).rejects.toThrow(
+        "connection refused",
+      );
       expect(mockEnd).toHaveBeenCalled();
     });
   });

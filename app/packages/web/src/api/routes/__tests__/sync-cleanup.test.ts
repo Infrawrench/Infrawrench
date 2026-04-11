@@ -211,10 +211,7 @@ describe("syncAccountResources stale resource cleanup", () => {
 
   it("handles multiple resources correctly — keeps live, deletes stale", async () => {
     // Two VMs alive, previously there were three
-    setupSync([
-      makeResource("vm-1", "VM One"),
-      makeResource("vm-3", "VM Three"),
-    ]);
+    setupSync([makeResource("vm-1", "VM One"), makeResource("vm-3", "VM Three")]);
 
     const app = buildApp();
     const res = await app.request("/acct-1/sync", { method: "POST" });
@@ -223,7 +220,10 @@ describe("syncAccountResources stale resource cleanup", () => {
 
     // Two inserts for the live resources
     expect(insertCalls.length).toBe(2);
-    expect(insertCalls.map((c) => (c.values as { id: string }).id).sort()).toEqual(["vm-1", "vm-3"]);
+    expect(insertCalls.map((c) => (c.values as { id: string }).id).sort()).toEqual([
+      "vm-1",
+      "vm-3",
+    ]);
 
     // Two update calls: one for synced resources not in live list,
     // one for stale locally-created resources

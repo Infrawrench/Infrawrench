@@ -103,10 +103,7 @@ describe("apiDelete", () => {
   it("sends DELETE request", async () => {
     const fn = mockFetch({ ok: true, status: 200, text: async () => "" });
     await apiDelete("/api/test/1");
-    expect(fn).toHaveBeenCalledWith(
-      "/api/test/1",
-      expect.objectContaining({ method: "DELETE" }),
-    );
+    expect(fn).toHaveBeenCalledWith("/api/test/1", expect.objectContaining({ method: "DELETE" }));
   });
 });
 

@@ -35,11 +35,16 @@ function formatPorts(ports: ContainerInfo["Ports"]): string {
 
 function containerStatus(state: string): ResourceStatus {
   switch (state.toLowerCase()) {
-    case "running": return "healthy";
-    case "paused": return "degraded";
-    case "exited": return "error";
-    case "created": return "provisioning";
-    default: return "unknown";
+    case "running":
+      return "healthy";
+    case "paused":
+      return "degraded";
+    case "exited":
+      return "error";
+    case "created":
+      return "provisioning";
+    default:
+      return "unknown";
   }
 }
 
@@ -89,7 +94,11 @@ export class DockerClient implements PluginClient {
     });
   }
 
-  async getResource(typeId: string, resourceId: string, accountId: string): Promise<ResourceInstance> {
+  async getResource(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+  ): Promise<ResourceInstance> {
     const all = await this.listResources(typeId, accountId);
     const found = all.find((r) => r.id === resourceId);
     if (!found) throw new Error(`Docker plugin: resource ${typeId}/${resourceId} not found`);
@@ -105,7 +114,9 @@ export class DockerClient implements PluginClient {
     const image = String(resource.fields["image"] ?? "");
     const status = String(resource.fields["status"] ?? "");
     const ports = String(resource.fields["ports"] ?? "");
-    const containerId = String(resource.resolvedOutputs["containerId"] ?? resource.externalId ?? "");
+    const containerId = String(
+      resource.resolvedOutputs["containerId"] ?? resource.externalId ?? "",
+    );
     const state = String(resource.resolvedOutputs["status"] ?? "unknown");
 
     return {
@@ -129,9 +140,7 @@ export class DockerClient implements PluginClient {
           ],
         },
       ],
-      headerActions: [
-        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
-      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
   }
 

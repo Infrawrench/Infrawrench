@@ -21,7 +21,7 @@ async function cloudFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${CLOUD_URL}/api${path}`, {
     ...init,
     headers: {
-      "Authorization": `Bearer ${token}`,
+      Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
       ...init?.headers,
     },
@@ -57,9 +57,6 @@ ipcMain.handle(
   },
 );
 
-ipcMain.handle(
-  "cloud_ssh_keys_delete",
-  async (_e, { id }: { id: string }): Promise<void> => {
-    await cloudFetch<unknown>(`/ssh-keys/${id}`, { method: "DELETE" });
-  },
-);
+ipcMain.handle("cloud_ssh_keys_delete", async (_e, { id }: { id: string }): Promise<void> => {
+  await cloudFetch<unknown>(`/ssh-keys/${id}`, { method: "DELETE" });
+});

@@ -11,7 +11,7 @@ import {
 import { sql } from "drizzle-orm";
 
 export const organizations = pgTable("organizations", {
-  id: text("id").primaryKey(),               // WorkOS org ID
+  id: text("id").primaryKey(), // WorkOS org ID
   displayName: text("display_name").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -20,7 +20,7 @@ export const organizations = pgTable("organizations", {
 export const users = pgTable(
   "users",
   {
-    id: text("id").primaryKey(),             // WorkOS user ID
+    id: text("id").primaryKey(), // WorkOS user ID
     email: text("email").notNull(),
     displayName: text("display_name"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -41,7 +41,7 @@ export const organizationMembers = pgTable(
     organizationId: text("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
-    role: text("role").notNull().default("member"),  // "owner" | "admin" | "member"
+    role: text("role").notNull().default("member"), // "owner" | "admin" | "member"
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (t) => ({
@@ -110,9 +110,13 @@ export const resources = pgTable(
     displayName: text("display_name").notNull(),
     externalId: text("external_id"),
     /** Non-secret fields as JSON */
-    fieldsJson: jsonb("fields_json").notNull().default(sql`'{}'::jsonb`),
+    fieldsJson: jsonb("fields_json")
+      .notNull()
+      .default(sql`'{}'::jsonb`),
     /** Resolved outputs cache as JSON */
-    outputsJson: jsonb("outputs_json").notNull().default(sql`'{}'::jsonb`),
+    outputsJson: jsonb("outputs_json")
+      .notNull()
+      .default(sql`'{}'::jsonb`),
     parentResourceId: text("parent_resource_id"),
     lastSyncedAt: timestamp("last_synced_at"),
     syncVersion: integer("sync_version").notNull().default(0),
@@ -275,19 +279,16 @@ export const auditLogs = pgTable(
       .references(() => organizations.id, { onDelete: "cascade" }),
     userId: text("user_id"),
     apiKeyId: text("api_key_id"),
-    action: text("action").notNull(),        // e.g. "account.create", "resource.delete"
+    action: text("action").notNull(), // e.g. "account.create", "resource.delete"
     entityType: text("entity_type").notNull(), // "account" | "resource" | "dashboard" | ...
     entityId: text("entity_id").notNull(),
-    metadata: jsonb("metadata"),              // action-specific payload
+    metadata: jsonb("metadata"), // action-specific payload
     ipAddress: text("ip_address"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (t) => ({
     orgCreatedIdx: index("audit_logs_org_created_idx").on(t.organizationId, t.createdAt),
-    orgEntityTypeIdx: index("audit_logs_org_entity_type_idx").on(
-      t.organizationId,
-      t.entityType,
-    ),
+    orgEntityTypeIdx: index("audit_logs_org_entity_type_idx").on(t.organizationId, t.entityType),
   }),
 );
 
@@ -302,9 +303,9 @@ export const apiKeys = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
-    hashedKey: text("hashed_key").notNull(),  // SHA-256 of full key
-    prefix: text("prefix").notNull(),          // first 8 chars for display (e.g. "iwk_abc1")
-    scopes: jsonb("scopes").notNull(),         // string[] of granted scopes
+    hashedKey: text("hashed_key").notNull(), // SHA-256 of full key
+    prefix: text("prefix").notNull(), // first 8 chars for display (e.g. "iwk_abc1")
+    scopes: jsonb("scopes").notNull(), // string[] of granted scopes
     lastUsedAt: timestamp("last_used_at"),
     expiresAt: timestamp("expires_at"),
     revokedAt: timestamp("revoked_at"),
@@ -349,7 +350,7 @@ export const invitations = pgTable(
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
     email: text("email").notNull(),
-    role: text("role").notNull().default("member"),  // "admin" | "member"
+    role: text("role").notNull().default("member"), // "admin" | "member"
     invitedByUserId: text("invited_by_user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),

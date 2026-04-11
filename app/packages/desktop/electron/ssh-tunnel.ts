@@ -22,21 +22,22 @@ interface TunnelRecord {
 
 const activeTunnels = new Map<string, TunnelRecord>();
 
-export function openTunnel(config: SshTunnelConfig): Promise<{ tunnelId: string; localPort: number }> {
+export function openTunnel(
+  config: SshTunnelConfig,
+): Promise<{ tunnelId: string; localPort: number }> {
   return new Promise((resolve, reject) => {
     const sshClient = new SshClient();
     const server = net.createServer((socket) => {
-      sshClient.forwardOut(
-        "127.0.0.1", 0,
-        config.remoteHost, config.remotePort,
-        (err, channel) => {
-          if (err) { socket.destroy(); return; }
-          socket.pipe(channel);
-          channel.pipe(socket);
-          socket.on("close", () => channel.end());
-          channel.on("close", () => socket.destroy());
-        },
-      );
+      sshClient.forwardOut("127.0.0.1", 0, config.remoteHost, config.remotePort, (err, channel) => {
+        if (err) {
+          socket.destroy();
+          return;
+        }
+        socket.pipe(channel);
+        channel.pipe(socket);
+        socket.on("close", () => channel.end());
+        channel.on("close", () => socket.destroy());
+      });
     });
 
     sshClient.once("ready", () => {
@@ -95,11 +96,19 @@ export function sshExecCommand(
     const client = new SshClient();
     client.once("ready", () => {
       client.exec(command, (err, channel) => {
-        if (err) { client.end(); reject(err); return; }
+        if (err) {
+          client.end();
+          reject(err);
+          return;
+        }
         let stdout = "";
         let stderr = "";
-        channel.on("data", (data: Buffer) => { stdout += data.toString(); });
-        channel.stderr.on("data", (data: Buffer) => { stderr += data.toString(); });
+        channel.on("data", (data: Buffer) => {
+          stdout += data.toString();
+        });
+        channel.stderr.on("data", (data: Buffer) => {
+          stderr += data.toString();
+        });
         channel.on("close", (code: number) => {
           client.end();
           resolve({ stdout, stderr, code: code ?? 0 });
@@ -116,10 +125,17 @@ export function sshExecCommand(
   });
 }
 
-export function getActiveTunnels(): Record<string, { localPort: number; sshHost: string; remotePort: number }> {
+export function getActiveTunnels(): Record<
+  string,
+  { localPort: number; sshHost: string; remotePort: number }
+> {
   const result: Record<string, { localPort: number; sshHost: string; remotePort: number }> = {};
   for (const [id, record] of activeTunnels) {
-    result[id] = { localPort: record.localPort, sshHost: record.sshHost, remotePort: record.remotePort };
+    result[id] = {
+      localPort: record.localPort,
+      sshHost: record.sshHost,
+      remotePort: record.remotePort,
+    };
   }
   return result;
 }

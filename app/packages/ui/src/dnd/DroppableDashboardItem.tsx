@@ -29,7 +29,12 @@ export function DroppableDashboardItem({
     id: `sidebar-dashboard:${dashboardId}`,
   });
 
-  const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
+  const {
+    attributes,
+    listeners,
+    setNodeRef: setDragRef,
+    isDragging,
+  } = useDraggable({
     id: `sidebar-dashboard-tab:${dashboardId}`,
     disabled: !draggable,
     data: {
@@ -58,9 +63,7 @@ export function DroppableDashboardItem({
         >
           <span className="opacity-50 flex-shrink-0">&#8862;</span>
           <span className="truncate">{name}</span>
-          {isOver && (
-            <span className="ml-auto text-xs text-blue-400 flex-shrink-0">Drop</span>
-          )}
+          {isOver && <span className="ml-auto text-xs text-blue-400 flex-shrink-0">Drop</span>}
         </button>
         {!isDefault && onDelete && (
           <button

@@ -10,7 +10,12 @@ export const AlertPolicyResourceType: ResourceTypeDefinition = {
     { key: "displayName", label: "Display Name", kind: "string", required: false },
     { key: "enabled", label: "Enabled", kind: "boolean", required: false },
     { key: "conditionCount", label: "Conditions", kind: "number", required: false },
-    { key: "notificationChannelCount", label: "Notification Channels", kind: "number", required: false },
+    {
+      key: "notificationChannelCount",
+      label: "Notification Channels",
+      kind: "number",
+      required: false,
+    },
     { key: "combiner", label: "Combiner", kind: "string", required: false },
   ],
   outputs: [],

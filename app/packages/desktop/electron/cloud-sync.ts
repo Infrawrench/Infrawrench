@@ -19,10 +19,10 @@ async function getSyncState(key: string): Promise<string | null> {
 
 async function setSyncState(key: string, value: string): Promise<void> {
   const db = await getDb();
-  await db.execute(
-    "INSERT OR REPLACE INTO cloud_sync_state (key, value) VALUES ($1, $2)",
-    [key, value],
-  );
+  await db.execute("INSERT OR REPLACE INTO cloud_sync_state (key, value) VALUES ($1, $2)", [
+    key,
+    value,
+  ]);
 }
 
 function notifyRenderer(event: string, data: unknown) {
@@ -36,15 +36,17 @@ async function pushChanges(token: string): Promise<void> {
   const lastPushAt = (await getSyncState("last_push_at")) ?? "1970-01-01T00:00:00Z";
   const encKey = getEncryptionKey();
 
-  const modifiedAccounts = await db.select<Array<{
-    id: string;
-    plugin_id: string;
-    display_name: string;
-    encrypted_credentials: string;
-    credentials_iv: string;
-    updated_at: string;
-    deleted_at: string | null;
-  }>>(
+  const modifiedAccounts = await db.select<
+    Array<{
+      id: string;
+      plugin_id: string;
+      display_name: string;
+      encrypted_credentials: string;
+      credentials_iv: string;
+      updated_at: string;
+      deleted_at: string | null;
+    }>
+  >(
     "SELECT id, plugin_id, display_name, encrypted_credentials, credentials_iv, updated_at, deleted_at FROM accounts WHERE updated_at > $1",
     [lastPushAt],
   );
@@ -55,7 +57,9 @@ async function pushChanges(token: string): Promise<void> {
     try {
       const plain = decryptValue(a.encrypted_credentials, a.credentials_iv, encKey);
       credentials = JSON.parse(plain) as Record<string, string>;
-    } catch { /* skip if can't decrypt */ }
+    } catch {
+      /* skip if can't decrypt */
+    }
 
     return {
       id: a.id,
@@ -67,12 +71,17 @@ async function pushChanges(token: string): Promise<void> {
     };
   });
 
-  const modifiedDashboards = await db.select<Array<{
-    id: string; name: string; is_default: number; updated_at: string; deleted_at: string | null;
-  }>>(
-    "SELECT id, name, is_default, updated_at, deleted_at FROM dashboards WHERE updated_at > $1",
-    [lastPushAt],
-  );
+  const modifiedDashboards = await db.select<
+    Array<{
+      id: string;
+      name: string;
+      is_default: number;
+      updated_at: string;
+      deleted_at: string | null;
+    }>
+  >("SELECT id, name, is_default, updated_at, deleted_at FROM dashboards WHERE updated_at > $1", [
+    lastPushAt,
+  ]);
 
   const dashboardPayload = modifiedDashboards.map((d) => ({
     id: d.id,
@@ -87,7 +96,7 @@ async function pushChanges(token: string): Promise<void> {
   const response = await fetch(`${CLOUD_URL}/api/v1/sync/push`, {
     method: "POST",
     headers: {
-      "Authorization": `Bearer ${token}`,
+      Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
@@ -104,12 +113,12 @@ async function pushChanges(token: string): Promise<void> {
 }
 
 async function pullChanges(token: string): Promise<void> {
-  const lastSyncVersion = Number(await getSyncState("last_sync_version") ?? "0");
+  const lastSyncVersion = Number((await getSyncState("last_sync_version")) ?? "0");
 
   const response = await fetch(`${CLOUD_URL}/api/v1/sync/pull`, {
     method: "POST",
     headers: {
-      "Authorization": `Bearer ${token}`,
+      Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ lastSyncVersion }),

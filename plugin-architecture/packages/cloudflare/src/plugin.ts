@@ -40,7 +40,8 @@ const manifest: PluginManifest = {
     {
       key: "apiToken",
       label: "API Token",
-      description: "A Cloudflare API token. For full functionality, grant permissions: Zone:Read, DNS:Edit, Workers Scripts:Read, Pages:Read, R2:Read, D1:Read, Queues:Read, Access:Read, Load Balancers:Read. Create at dash.cloudflare.com/profile/api-tokens.",
+      description:
+        "A Cloudflare API token. For full functionality, grant permissions: Zone:Read, DNS:Edit, Workers Scripts:Read, Pages:Read, R2:Read, D1:Read, Queues:Read, Access:Read, Load Balancers:Read. Create at dash.cloudflare.com/profile/api-tokens.",
       sensitive: true,
       placeholder: "Scoped API token...",
     },

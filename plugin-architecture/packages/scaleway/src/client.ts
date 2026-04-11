@@ -19,22 +19,37 @@ export class ScalewayClient implements PluginClient {
   private readonly defaultProjectId: string;
   private readonly credentials: Record<string, string>;
 
-  private static readonly ZONE_INFO: Record<string, { region: string; location: string; flag: string }> = {
-    "fr-par-1": { region: "fr-par", location: "Paris, France",       flag: "\u{1F1EB}\u{1F1F7}" },
-    "fr-par-2": { region: "fr-par", location: "Paris, France",       flag: "\u{1F1EB}\u{1F1F7}" },
-    "fr-par-3": { region: "fr-par", location: "Paris, France",       flag: "\u{1F1EB}\u{1F1F7}" },
-    "nl-ams-1": { region: "nl-ams", location: "Amsterdam, Netherlands", flag: "\u{1F1F3}\u{1F1F1}" },
-    "nl-ams-2": { region: "nl-ams", location: "Amsterdam, Netherlands", flag: "\u{1F1F3}\u{1F1F1}" },
-    "nl-ams-3": { region: "nl-ams", location: "Amsterdam, Netherlands", flag: "\u{1F1F3}\u{1F1F1}" },
-    "pl-waw-1": { region: "pl-waw", location: "Warsaw, Poland",      flag: "\u{1F1F5}\u{1F1F1}" },
-    "pl-waw-2": { region: "pl-waw", location: "Warsaw, Poland",      flag: "\u{1F1F5}\u{1F1F1}" },
-    "pl-waw-3": { region: "pl-waw", location: "Warsaw, Poland",      flag: "\u{1F1F5}\u{1F1F1}" },
+  private static readonly ZONE_INFO: Record<
+    string,
+    { region: string; location: string; flag: string }
+  > = {
+    "fr-par-1": { region: "fr-par", location: "Paris, France", flag: "\u{1F1EB}\u{1F1F7}" },
+    "fr-par-2": { region: "fr-par", location: "Paris, France", flag: "\u{1F1EB}\u{1F1F7}" },
+    "fr-par-3": { region: "fr-par", location: "Paris, France", flag: "\u{1F1EB}\u{1F1F7}" },
+    "nl-ams-1": {
+      region: "nl-ams",
+      location: "Amsterdam, Netherlands",
+      flag: "\u{1F1F3}\u{1F1F1}",
+    },
+    "nl-ams-2": {
+      region: "nl-ams",
+      location: "Amsterdam, Netherlands",
+      flag: "\u{1F1F3}\u{1F1F1}",
+    },
+    "nl-ams-3": {
+      region: "nl-ams",
+      location: "Amsterdam, Netherlands",
+      flag: "\u{1F1F3}\u{1F1F1}",
+    },
+    "pl-waw-1": { region: "pl-waw", location: "Warsaw, Poland", flag: "\u{1F1F5}\u{1F1F1}" },
+    "pl-waw-2": { region: "pl-waw", location: "Warsaw, Poland", flag: "\u{1F1F5}\u{1F1F1}" },
+    "pl-waw-3": { region: "pl-waw", location: "Warsaw, Poland", flag: "\u{1F1F5}\u{1F1F1}" },
   };
 
   private static readonly REGION_INFO: Record<string, { location: string; flag: string }> = {
-    "fr-par": { location: "Paris, France",          flag: "\u{1F1EB}\u{1F1F7}" },
-    "nl-ams": { location: "Amsterdam, Netherlands",  flag: "\u{1F1F3}\u{1F1F1}" },
-    "pl-waw": { location: "Warsaw, Poland",          flag: "\u{1F1F5}\u{1F1F1}" },
+    "fr-par": { location: "Paris, France", flag: "\u{1F1EB}\u{1F1F7}" },
+    "nl-ams": { location: "Amsterdam, Netherlands", flag: "\u{1F1F3}\u{1F1F1}" },
+    "pl-waw": { location: "Warsaw, Poland", flag: "\u{1F1F5}\u{1F1F1}" },
   };
 
   constructor(credentials: Record<string, string>) {
@@ -152,9 +167,7 @@ export class ScalewayClient implements PluginClient {
       if (outputKey === "secretAccessKey") return this.secretKey;
     }
 
-    throw new Error(
-      `Scaleway plugin: cannot resolve output "${outputKey}" for type "${typeId}"`,
-    );
+    throw new Error(`Scaleway plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
   }
 
   async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
@@ -177,10 +190,10 @@ export class ScalewayClient implements PluginClient {
       const zone = parts[0]!;
       const serverId = parts[1]!;
       // Terminate to also release the IP
-      await this.apiFetch<unknown>(
-        this.instanceUrl(zone, `/servers/${serverId}/action`),
-        { method: "POST", body: JSON.stringify({ action: "terminate" }) },
-      );
+      await this.apiFetch<unknown>(this.instanceUrl(zone, `/servers/${serverId}/action`), {
+        method: "POST",
+        body: JSON.stringify({ action: "terminate" }),
+      });
       return;
     }
 
@@ -189,10 +202,10 @@ export class ScalewayClient implements PluginClient {
       const parts = externalId.split("/");
       const region = parts[0]!;
       const clusterId = parts[1]!;
-      await this.apiFetch<unknown>(
-        this.k8sUrl(region, `/clusters/${clusterId}`),
-        { method: "DELETE", body: JSON.stringify({ with_additional_resources: true }) },
-      );
+      await this.apiFetch<unknown>(this.k8sUrl(region, `/clusters/${clusterId}`), {
+        method: "DELETE",
+        body: JSON.stringify({ with_additional_resources: true }),
+      });
       return;
     }
 
@@ -221,8 +234,15 @@ export class ScalewayClient implements PluginClient {
 
     let statusKind: ResourceStatus = "unknown";
     if (state === "running" || state === "ready") statusKind = "healthy";
-    else if (state === "starting" || state === "stopping" || state === "provisioning" || state === "creating") statusKind = "provisioning";
-    else if (state === "stopped" || state === "error" || state === "locked" || state === "deleting") statusKind = "error";
+    else if (
+      state === "starting" ||
+      state === "stopping" ||
+      state === "provisioning" ||
+      state === "creating"
+    )
+      statusKind = "provisioning";
+    else if (state === "stopped" || state === "error" || state === "locked" || state === "deleting")
+      statusKind = "error";
 
     return {
       title: resource.displayName,
@@ -243,9 +263,7 @@ export class ScalewayClient implements PluginClient {
           ],
         },
       ],
-      headerActions: [
-        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
-      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
   }
 
@@ -253,7 +271,8 @@ export class ScalewayClient implements PluginClient {
     const state = String(resource.fields["state"] ?? resource.fields["status"] ?? "");
     let status: ResourceStatus = "unknown";
     if (state === "running" || state === "ready") status = "healthy";
-    else if (state === "starting" || state === "stopping" || state === "provisioning") status = "provisioning";
+    else if (state === "starting" || state === "stopping" || state === "provisioning")
+      status = "provisioning";
     else if (state === "stopped" || state === "error" || state === "locked") status = "error";
 
     return {
@@ -264,7 +283,17 @@ export class ScalewayClient implements PluginClient {
   }
 
   private async listInstances(accountId: string): Promise<ResourceInstance[]> {
-    const zones = ["fr-par-1", "fr-par-2", "fr-par-3", "nl-ams-1", "nl-ams-2", "nl-ams-3", "pl-waw-1", "pl-waw-2", "pl-waw-3"];
+    const zones = [
+      "fr-par-1",
+      "fr-par-2",
+      "fr-par-3",
+      "nl-ams-1",
+      "nl-ams-2",
+      "nl-ams-3",
+      "pl-waw-1",
+      "pl-waw-2",
+      "pl-waw-3",
+    ];
     const results: ResourceInstance[] = [];
 
     const fetches = zones.map(async (zone) => {
@@ -293,9 +322,7 @@ export class ScalewayClient implements PluginClient {
   ): ResourceInstance {
     const publicIpObj = s["public_ip"] as Record<string, unknown> | null;
     const publicIp = publicIpObj ? String(publicIpObj["address"] ?? "") : "";
-    const privateIp = String(
-      (s["private_ip"] as string) ?? "",
-    );
+    const privateIp = String((s["private_ip"] as string) ?? "");
     const serverId = String(s["id"]);
     const externalId = `${zone}/${serverId}`;
 
@@ -322,7 +349,17 @@ export class ScalewayClient implements PluginClient {
 
   private async getInstanceCreateConfig(): Promise<CreateResourceConfig> {
     // Fetch available commercial types from one zone first — they're mostly uniform
-    const zones = ["fr-par-1", "fr-par-2", "fr-par-3", "nl-ams-1", "nl-ams-2", "nl-ams-3", "pl-waw-1", "pl-waw-2", "pl-waw-3"];
+    const zones = [
+      "fr-par-1",
+      "fr-par-2",
+      "fr-par-3",
+      "nl-ams-1",
+      "nl-ams-2",
+      "nl-ams-3",
+      "pl-waw-1",
+      "pl-waw-2",
+      "pl-waw-3",
+    ];
 
     const regionOptions = zones.map((zone) => {
       const info = ScalewayClient.ZONE_INFO[zone];
@@ -336,13 +373,16 @@ export class ScalewayClient implements PluginClient {
     let sizes: SizeOption[] = [];
     try {
       const data = await this.apiFetch<{
-        servers: Record<string, {
-          ncpus: number;
-          ram: number;
-          monthly_price?: number;
-          hourly_price?: number;
-          alt_names?: string[];
-        }>;
+        servers: Record<
+          string,
+          {
+            ncpus: number;
+            ram: number;
+            monthly_price?: number;
+            hourly_price?: number;
+            alt_names?: string[];
+          }
+        >;
       }>(this.instanceUrl("fr-par-1", "/products/servers"));
 
       const sizesByCategory = new Map<string, SizeOption[]>();
@@ -350,7 +390,8 @@ export class ScalewayClient implements PluginClient {
         // Categorize by prefix: DEV1, GP1, PRO2, ENT1, STARDUST1, etc.
         const category = slug.replace(/-.*$/, "");
         if (!sizesByCategory.has(category)) sizesByCategory.set(category, []);
-        const monthlyPrice = info.monthly_price ?? (info.hourly_price ? info.hourly_price * 730 : undefined);
+        const monthlyPrice =
+          info.monthly_price ?? (info.hourly_price ? info.hourly_price * 730 : undefined);
         sizesByCategory.get(category)!.push({
           id: slug,
           label: slug,
@@ -365,15 +406,22 @@ export class ScalewayClient implements PluginClient {
     } catch {
       // Fall back to a minimal static list
       sizes = [
-        { id: "DEV1-S",  label: "DEV1-S",  vcpus: 2,  memoryMb: 2048,   diskGb: 0, category: "DEV1" },
-        { id: "DEV1-M",  label: "DEV1-M",  vcpus: 3,  memoryMb: 4096,   diskGb: 0, category: "DEV1" },
-        { id: "DEV1-L",  label: "DEV1-L",  vcpus: 4,  memoryMb: 8192,   diskGb: 0, category: "DEV1" },
-        { id: "GP1-XS",  label: "GP1-XS",  vcpus: 4,  memoryMb: 16384,  diskGb: 0, category: "GP1" },
-        { id: "GP1-S",   label: "GP1-S",   vcpus: 8,  memoryMb: 32768,  diskGb: 0, category: "GP1" },
-        { id: "GP1-M",   label: "GP1-M",   vcpus: 16, memoryMb: 65536,  diskGb: 0, category: "GP1" },
-        { id: "PRO2-XXS", label: "PRO2-XXS", vcpus: 2,  memoryMb: 8192,  diskGb: 0, category: "PRO2" },
-        { id: "PRO2-XS", label: "PRO2-XS", vcpus: 4,  memoryMb: 16384,  diskGb: 0, category: "PRO2" },
-        { id: "PRO2-S",  label: "PRO2-S",  vcpus: 8,  memoryMb: 32768,  diskGb: 0, category: "PRO2" },
+        { id: "DEV1-S", label: "DEV1-S", vcpus: 2, memoryMb: 2048, diskGb: 0, category: "DEV1" },
+        { id: "DEV1-M", label: "DEV1-M", vcpus: 3, memoryMb: 4096, diskGb: 0, category: "DEV1" },
+        { id: "DEV1-L", label: "DEV1-L", vcpus: 4, memoryMb: 8192, diskGb: 0, category: "DEV1" },
+        { id: "GP1-XS", label: "GP1-XS", vcpus: 4, memoryMb: 16384, diskGb: 0, category: "GP1" },
+        { id: "GP1-S", label: "GP1-S", vcpus: 8, memoryMb: 32768, diskGb: 0, category: "GP1" },
+        { id: "GP1-M", label: "GP1-M", vcpus: 16, memoryMb: 65536, diskGb: 0, category: "GP1" },
+        {
+          id: "PRO2-XXS",
+          label: "PRO2-XXS",
+          vcpus: 2,
+          memoryMb: 8192,
+          diskGb: 0,
+          category: "PRO2",
+        },
+        { id: "PRO2-XS", label: "PRO2-XS", vcpus: 4, memoryMb: 16384, diskGb: 0, category: "PRO2" },
+        { id: "PRO2-S", label: "PRO2-S", vcpus: 8, memoryMb: 32768, diskGb: 0, category: "PRO2" },
       ];
     }
 
@@ -417,9 +465,30 @@ export class ScalewayClient implements PluginClient {
     return {
       fields: [
         { key: "name", label: "Name", kind: "text", required: true },
-        { key: "zone", label: "Zone", kind: "region-picker", required: true, regions: regionOptions, ...(firstRegion ? { defaultValue: firstRegion } : {}) },
-        { key: "commercialType", label: "Size", kind: "size-picker", required: true, sizes, ...(firstSize ? { defaultValue: firstSize } : {}) },
-        { key: "image", label: "Image", kind: "image-picker", required: true, images, ...(defaultImage ? { defaultValue: defaultImage } : {}) },
+        {
+          key: "zone",
+          label: "Zone",
+          kind: "region-picker",
+          required: true,
+          regions: regionOptions,
+          ...(firstRegion ? { defaultValue: firstRegion } : {}),
+        },
+        {
+          key: "commercialType",
+          label: "Size",
+          kind: "size-picker",
+          required: true,
+          sizes,
+          ...(firstSize ? { defaultValue: firstSize } : {}),
+        },
+        {
+          key: "image",
+          label: "Image",
+          kind: "image-picker",
+          required: true,
+          images,
+          ...(defaultImage ? { defaultValue: defaultImage } : {}),
+        },
         { key: "sshPublicKey", label: "SSH Key", kind: "ssh-key-picker", required: false },
       ],
     };
@@ -449,10 +518,10 @@ export class ScalewayClient implements PluginClient {
 
     // Boot the instance after creation
     try {
-      await this.apiFetch<unknown>(
-        this.instanceUrl(zone, `/servers/${serverId}/action`),
-        { method: "POST", body: JSON.stringify({ action: "poweron" }) },
-      );
+      await this.apiFetch<unknown>(this.instanceUrl(zone, `/servers/${serverId}/action`), {
+        method: "POST",
+        body: JSON.stringify({ action: "poweron" }),
+      });
     } catch {
       // Non-fatal — instance was created even if boot fails
     }
@@ -563,14 +632,18 @@ export class ScalewayClient implements PluginClient {
     let sizes: SizeOption[] = [];
     try {
       const data = await this.apiFetch<{
-        servers: Record<string, { ncpus: number; ram: number; monthly_price?: number; hourly_price?: number }>;
+        servers: Record<
+          string,
+          { ncpus: number; ram: number; monthly_price?: number; hourly_price?: number }
+        >;
       }>(this.instanceUrl("fr-par-1", "/products/servers"));
 
       const sizesByCategory = new Map<string, SizeOption[]>();
       for (const [slug, info] of Object.entries(data.servers)) {
         const category = slug.replace(/-.*$/, "");
         if (!sizesByCategory.has(category)) sizesByCategory.set(category, []);
-        const monthlyPrice = info.monthly_price ?? (info.hourly_price ? info.hourly_price * 730 : undefined);
+        const monthlyPrice =
+          info.monthly_price ?? (info.hourly_price ? info.hourly_price * 730 : undefined);
         sizesByCategory.get(category)!.push({
           id: slug,
           label: slug,
@@ -584,9 +657,9 @@ export class ScalewayClient implements PluginClient {
       sizes = [...sizesByCategory.values()].flat();
     } catch {
       sizes = [
-        { id: "DEV1-M",  label: "DEV1-M",  vcpus: 3,  memoryMb: 4096,  diskGb: 0, category: "DEV1" },
-        { id: "GP1-XS",  label: "GP1-XS",  vcpus: 4,  memoryMb: 16384, diskGb: 0, category: "GP1" },
-        { id: "GP1-S",   label: "GP1-S",   vcpus: 8,  memoryMb: 32768, diskGb: 0, category: "GP1" },
+        { id: "DEV1-M", label: "DEV1-M", vcpus: 3, memoryMb: 4096, diskGb: 0, category: "DEV1" },
+        { id: "GP1-XS", label: "GP1-XS", vcpus: 4, memoryMb: 16384, diskGb: 0, category: "GP1" },
+        { id: "GP1-S", label: "GP1-S", vcpus: 8, memoryMb: 32768, diskGb: 0, category: "GP1" },
       ];
     }
 
@@ -597,9 +670,30 @@ export class ScalewayClient implements PluginClient {
     return {
       fields: [
         { key: "name", label: "Name", kind: "text", required: true },
-        { key: "region", label: "Region", kind: "region-picker", required: true, regions, ...(defaultRegion ? { defaultValue: defaultRegion } : {}) },
-        { key: "version", label: "Kubernetes Version", kind: "select", required: true, options: versions, ...(defaultVersion ? { defaultValue: defaultVersion } : {}) },
-        { key: "nodeType", label: "Node Pool Size", kind: "size-picker", required: true, sizes, ...(defaultSize ? { defaultValue: defaultSize } : {}) },
+        {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions,
+          ...(defaultRegion ? { defaultValue: defaultRegion } : {}),
+        },
+        {
+          key: "version",
+          label: "Kubernetes Version",
+          kind: "select",
+          required: true,
+          options: versions,
+          ...(defaultVersion ? { defaultValue: defaultVersion } : {}),
+        },
+        {
+          key: "nodeType",
+          label: "Node Pool Size",
+          kind: "size-picker",
+          required: true,
+          sizes,
+          ...(defaultSize ? { defaultValue: defaultSize } : {}),
+        },
         {
           key: "nodeCount",
           label: "Node Count",
@@ -620,9 +714,8 @@ export class ScalewayClient implements PluginClient {
   ): Promise<ResourceInstance> {
     const region = fields["region"] ?? "fr-par";
     const requestedNodeCount = Number.parseInt(fields["nodeCount"] ?? "3", 10);
-    const nodeCount = Number.isFinite(requestedNodeCount) && requestedNodeCount > 0
-      ? requestedNodeCount
-      : 3;
+    const nodeCount =
+      Number.isFinite(requestedNodeCount) && requestedNodeCount > 0 ? requestedNodeCount : 3;
 
     const poolNameBase = (fields["name"] ?? "cluster").trim() || "cluster";
 
@@ -739,7 +832,9 @@ export class ScalewayClient implements PluginClient {
       try {
         const data = await this.apiFetch<{
           buckets: Array<Record<string, unknown>>;
-        }>(`https://api.scaleway.com/object/v1/regions/${region}/buckets?project_id=${this.defaultProjectId}`);
+        }>(
+          `https://api.scaleway.com/object/v1/regions/${region}/buckets?project_id=${this.defaultProjectId}`,
+        );
         for (const b of data.buckets ?? []) {
           const name = String(b["name"]);
           results.push({

@@ -17,9 +17,7 @@ export const AppGatewayResourceType: ResourceTypeDefinition = {
     { key: "backendPoolCount", label: "Backend Pools", kind: "number", required: false },
     { key: "httpListenerCount", label: "HTTP Listeners", kind: "number", required: false },
   ],
-  outputs: [
-    { key: "frontendIp", label: "Frontend IP", sensitive: false },
-  ],
+  outputs: [{ key: "frontendIp", label: "Frontend IP", sensitive: false }],
   dashboardPinnable: true,
   iconKey: "network",
 };

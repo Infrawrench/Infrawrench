@@ -3,10 +3,12 @@ import fs from "node:fs";
 import path from "node:path";
 
 export function resolveBinaryPath(command: string): string {
-  const binaryPath = cp.execFileSync("/usr/bin/which", [command], {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "ignore"],
-  }).trim();
+  const binaryPath = cp
+    .execFileSync("/usr/bin/which", [command], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    })
+    .trim();
   if (!binaryPath) throw new Error(`Command not found: ${command}`);
   return binaryPath;
 }

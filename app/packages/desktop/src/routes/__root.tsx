@@ -1,7 +1,25 @@
 import { useCallback, useEffect, useState } from "react";
-import { createRootRoute, Outlet, useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
+import {
+  createRootRoute,
+  Outlet,
+  useNavigate,
+  useRouter,
+  useRouterState,
+} from "@tanstack/react-router";
 import type { DragEndEvent } from "@dnd-kit/core";
-import { DndShell, normalizeResourceId, resourceTabTitle, useUIStore, useWorkspaceTabHandlers, workspaceTabTargetsEqual, OrgSwitcher, type OrgEntry, type DraggableResource, type WorkspaceTab, type WorkspaceTabTarget } from "@infrawrench/ui";
+import {
+  DndShell,
+  normalizeResourceId,
+  resourceTabTitle,
+  useUIStore,
+  useWorkspaceTabHandlers,
+  workspaceTabTargetsEqual,
+  OrgSwitcher,
+  type OrgEntry,
+  type DraggableResource,
+  type WorkspaceTab,
+  type WorkspaceTabTarget,
+} from "@infrawrench/ui";
 import { AddAccountModal } from "../components/AddAccountModal";
 import { GlobalTabBar } from "../components/GlobalTabBar";
 import { SwipeIndicator } from "../components/SwipeIndicator";
@@ -73,7 +91,9 @@ async function validateWorkspaceTab(tab: WorkspaceTab): Promise<WorkspaceTab | n
     const typeId = normalizeResourceId(target.resourceId).split(":")[1];
     if (!typeId) return tab;
     const resources = await client.listResources(typeId, account.id);
-    const found = resources.find((resource) => resource.id === normalizeResourceId(target.resourceId));
+    const found = resources.find(
+      (resource) => resource.id === normalizeResourceId(target.resourceId),
+    );
     return found
       ? {
           ...tab,
@@ -110,7 +130,10 @@ function RootLayout() {
   } = useUIStore();
   const navigate = useNavigate();
 
-  const { handleActivateTab, handleCloseTab } = useWorkspaceTabHandlers(navigate, getWorkspaceNavigateArgs);
+  const { handleActivateTab, handleCloseTab } = useWorkspaceTabHandlers(
+    navigate,
+    getWorkspaceNavigateArgs,
+  );
   const router = useRouter();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const hash = useRouterState({ select: (state) => state.location.hash });
@@ -126,12 +149,14 @@ function RootLayout() {
   }, [activeOrgId, setActiveCloudOrgId]);
 
   useEffect(() => {
-    getCloudAuthStatus().then((status) => {
-      setCloudAuthenticated(status.authenticated);
-      if (status.authenticated) {
-        getCloudOrgs().then(setCloudOrgs).catch(console.error);
-      }
-    }).catch(console.error);
+    getCloudAuthStatus()
+      .then((status) => {
+        setCloudAuthenticated(status.authenticated);
+        if (status.authenticated) {
+          getCloudOrgs().then(setCloudOrgs).catch(console.error);
+        }
+      })
+      .catch(console.error);
   }, []);
 
   // Trackpad swipe gesture → browser-style back/forward
@@ -152,7 +177,15 @@ function RootLayout() {
     // duplicate tab instances that share a target, such as multiple Home tabs.
     if (activeTab && workspaceTabTargetsEqual(activeTab.target, currentTarget)) return;
     syncWorkspaceRoute(currentTarget);
-  }, [hash, pathname, activeWorkspaceTabId, setActiveDashboard, syncWorkspaceRoute, tabsHydrated, workspaceTabs]);
+  }, [
+    hash,
+    pathname,
+    activeWorkspaceTabId,
+    setActiveDashboard,
+    syncWorkspaceRoute,
+    tabsHydrated,
+    workspaceTabs,
+  ]);
 
   useEffect(() => {
     if (!tabsHydrated || tabsValidated) return;
@@ -172,13 +205,16 @@ function RootLayout() {
     }
 
     void validateTabs();
-    return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [replaceWorkspaceTabs, tabsHydrated, tabsValidated]);
 
   useEffect(() => {
     if (!tabsHydrated || pathname !== "/") return;
-    const activeTab = workspaceTabs.find((tab) => tab.id === activeWorkspaceTabId) ?? workspaceTabs[0];
+    const activeTab =
+      workspaceTabs.find((tab) => tab.id === activeWorkspaceTabId) ?? workspaceTabs[0];
     if (!activeTab) return;
     void navigate(getWorkspaceNavigateArgs(activeTab.target, true));
   }, [activeWorkspaceTabId, navigate, pathname, tabsHydrated, workspaceTabs]);
@@ -199,10 +235,16 @@ function RootLayout() {
     );
   }
 
-  function handleSecretDrop(source: DraggableResource, targetId: string, kind: "account" | "resource") {
-    window.dispatchEvent(new CustomEvent("iw:sidebar-secret-drop", {
-      detail: { source, targetId, kind },
-    }));
+  function handleSecretDrop(
+    source: DraggableResource,
+    targetId: string,
+    kind: "account" | "resource",
+  ) {
+    window.dispatchEvent(
+      new CustomEvent("iw:sidebar-secret-drop", {
+        detail: { source, targetId, kind },
+      }),
+    );
   }
 
   function handleTabDrop(event: DragEndEvent) {
@@ -241,7 +283,9 @@ function RootLayout() {
 
   return (
     <DndShell
-      onPinToDashboard={(r, d) => { void handlePinToDashboard(r, d); }}
+      onPinToDashboard={(r, d) => {
+        void handlePinToDashboard(r, d);
+      }}
       onSecretDrop={handleSecretDrop}
       onTabDrop={handleTabDrop}
     >
@@ -278,103 +322,108 @@ function RootLayout() {
           activeTabId={activeWorkspaceTabId}
           onActivate={handleActivateTab}
           onClose={handleCloseTab}
-          onNew={() => { void handleNewTab(); }}
+          onNew={() => {
+            void handleNewTab();
+          }}
         />
 
         <div className="flex flex-1 overflow-hidden">
-        {/* Sidebar */}
-        {!sidebarCollapsed && (
-          <aside className="w-60 border-r border-gray-800 flex flex-col overflow-hidden flex-shrink-0">
-            <div className="flex items-center justify-between px-1 py-1 border-b border-gray-800">
-              <div
-                className="flex-1 min-w-0"
-                style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-              >
-                <OrgSwitcher
-                  orgs={cloudOrgs}
-                  activeOrgId={activeOrgId}
-                  onSwitch={(orgId) => setActiveOrgId(orgId)}
-                  showLocalOption
-                />
+          {/* Sidebar */}
+          {!sidebarCollapsed && (
+            <aside className="w-60 border-r border-gray-800 flex flex-col overflow-hidden flex-shrink-0">
+              <div className="flex items-center justify-between px-1 py-1 border-b border-gray-800">
+                <div
+                  className="flex-1 min-w-0"
+                  style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+                >
+                  <OrgSwitcher
+                    orgs={cloudOrgs}
+                    activeOrgId={activeOrgId}
+                    onSwitch={(orgId) => setActiveOrgId(orgId)}
+                    showLocalOption
+                  />
+                </div>
+                <button
+                  onClick={toggleSidebar}
+                  className="text-gray-700 hover:text-gray-400 transition-colors text-xs px-2"
+                  style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+                  aria-label="Collapse sidebar"
+                >
+                  &#9664;
+                </button>
               </div>
-              <button
-                onClick={toggleSidebar}
-                className="text-gray-700 hover:text-gray-400 transition-colors text-xs px-2"
-                style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-                aria-label="Collapse sidebar"
-              >
-                &#9664;
-              </button>
-            </div>
 
-            <div className="flex-1 overflow-y-auto py-2">
-              <SidebarDashboards />
-              <SidebarAccounts refreshKey={accountsVersion} />
-            </div>
+              <div className="flex-1 overflow-y-auto py-2">
+                <SidebarDashboards />
+                <SidebarAccounts refreshKey={accountsVersion} />
+              </div>
 
-            {/* Bottom buttons */}
-            <div className="border-t border-gray-800 p-2">
-              {activeOrgId === null && (
-                <button
-                  onClick={() => setShowAddAccount(true)}
-                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-gray-500 hover:text-gray-300 hover:bg-gray-800 transition-colors"
-                >
-                  <span className="text-base leading-none">+</span>
-                  Add account
-                </button>
-              )}
-              {!cloudAuthenticated && (
-                <button
-                  onClick={() => {
-                    void startCloudAuth().then(() => {
-                      // Poll for auth status after opening browser
-                      const poll = setInterval(() => {
-                        getCloudAuthStatus().then((status) => {
-                          if (status.authenticated) {
-                            setCloudAuthenticated(true);
-                            getCloudOrgs().then(setCloudOrgs).catch(console.error);
-                            clearInterval(poll);
-                          }
-                        }).catch(console.error);
-                      }, 2000);
-                      // Stop polling after 2 minutes
-                      setTimeout(() => clearInterval(poll), 120_000);
-                    });
-                  }}
-                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-gray-500 hover:text-gray-300 hover:bg-gray-800 transition-colors"
-                >
-                  <span className="text-base leading-none">&#9729;</span>
-                  Sign in to cloud
-                </button>
-              )}
-            </div>
-          </aside>
-        )}
+              {/* Bottom buttons */}
+              <div className="border-t border-gray-800 p-2">
+                {activeOrgId === null && (
+                  <button
+                    onClick={() => setShowAddAccount(true)}
+                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-gray-500 hover:text-gray-300 hover:bg-gray-800 transition-colors"
+                  >
+                    <span className="text-base leading-none">+</span>
+                    Add account
+                  </button>
+                )}
+                {!cloudAuthenticated && (
+                  <button
+                    onClick={() => {
+                      void startCloudAuth().then(() => {
+                        // Poll for auth status after opening browser
+                        const poll = setInterval(() => {
+                          getCloudAuthStatus()
+                            .then((status) => {
+                              if (status.authenticated) {
+                                setCloudAuthenticated(true);
+                                getCloudOrgs().then(setCloudOrgs).catch(console.error);
+                                clearInterval(poll);
+                              }
+                            })
+                            .catch(console.error);
+                        }, 2000);
+                        // Stop polling after 2 minutes
+                        setTimeout(() => clearInterval(poll), 120_000);
+                      });
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-gray-500 hover:text-gray-300 hover:bg-gray-800 transition-colors"
+                  >
+                    <span className="text-base leading-none">&#9729;</span>
+                    Sign in to cloud
+                  </button>
+                )}
+              </div>
+            </aside>
+          )}
 
-        {/* Expand toggle when collapsed */}
-        {sidebarCollapsed && (
-          <button
-            onClick={toggleSidebar}
-            className="w-8 border-r border-gray-800 flex items-center justify-center text-gray-700 hover:text-gray-400 transition-colors flex-shrink-0"
-            aria-label="Expand sidebar"
-          >
-            ▶
-          </button>
-        )}
+          {/* Expand toggle when collapsed */}
+          {sidebarCollapsed && (
+            <button
+              onClick={toggleSidebar}
+              className="w-8 border-r border-gray-800 flex items-center justify-center text-gray-700 hover:text-gray-400 transition-colors flex-shrink-0"
+              aria-label="Expand sidebar"
+            >
+              ▶
+            </button>
+          )}
 
-        {/* Main content */}
-        <main className="flex-1 overflow-hidden">
-          <Outlet />
-        </main>
+          {/* Main content */}
+          <main className="flex-1 overflow-hidden">
+            <Outlet />
+          </main>
 
-        {/* Add account modal */}
-        {showAddAccount && (
-          <AddAccountModal
-            onClose={() => setShowAddAccount(false)}
-            onAdded={() => bumpAccounts()}
-          />
-        )}
-        </div>{/* end flex row */}
+          {/* Add account modal */}
+          {showAddAccount && (
+            <AddAccountModal
+              onClose={() => setShowAddAccount(false)}
+              onAdded={() => bumpAccounts()}
+            />
+          )}
+        </div>
+        {/* end flex row */}
       </div>
 
       {/* Trackpad swipe navigation indicator */}

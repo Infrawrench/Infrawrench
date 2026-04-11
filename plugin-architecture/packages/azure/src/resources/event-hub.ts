@@ -13,7 +13,12 @@ export const EventHubNamespaceResourceType: ResourceTypeDefinition = {
     { key: "provisioningState", label: "Provisioning State", kind: "string", required: true },
     { key: "status", label: "Status", kind: "string", required: false },
     { key: "isAutoInflateEnabled", label: "Auto-Inflate", kind: "boolean", required: false },
-    { key: "maximumThroughputUnits", label: "Max Throughput Units", kind: "number", required: false },
+    {
+      key: "maximumThroughputUnits",
+      label: "Max Throughput Units",
+      kind: "number",
+      required: false,
+    },
   ],
   outputs: [
     { key: "serviceBusEndpoint", label: "Endpoint", sensitive: false },

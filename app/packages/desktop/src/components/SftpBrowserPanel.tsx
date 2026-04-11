@@ -46,11 +46,13 @@ export function SftpBrowserPanel({ sftpConfig, initialPath = "/" }: SftpBrowserP
       if (result.canceled || !result.filePaths?.[0]) return;
       const destFolder = result.filePaths[0];
 
-      await Promise.allSettled(keys.map(async (remotePath) => {
-        const fileName = remotePath.split("/").pop() ?? remotePath;
-        const localPath = `${destFolder}/${fileName}`;
-        await invoke("sftp_download", { config: sftpConfig, remotePath, localPath });
-      }));
+      await Promise.allSettled(
+        keys.map(async (remotePath) => {
+          const fileName = remotePath.split("/").pop() ?? remotePath;
+          const localPath = `${destFolder}/${fileName}`;
+          await invoke("sftp_download", { config: sftpConfig, remotePath, localPath });
+        }),
+      );
     },
     [sftpConfig],
   );

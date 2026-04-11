@@ -11,14 +11,18 @@ export const AutoScalingGroupResourceType: ResourceTypeDefinition = {
     { key: "maxSize", label: "Max Size", kind: "number", required: true },
     { key: "desiredCapacity", label: "Desired Capacity", kind: "number", required: true },
     { key: "status", label: "Status", kind: "string", required: false },
-    { key: "healthCheckType", label: "Health Check Type", kind: "enum", required: false, enumValues: ["EC2", "ELB"] },
+    {
+      key: "healthCheckType",
+      label: "Health Check Type",
+      kind: "enum",
+      required: false,
+      enumValues: ["EC2", "ELB"],
+    },
     { key: "availabilityZones", label: "Availability Zones", kind: "string", required: false },
     { key: "launchTemplate", label: "Launch Template", kind: "string", required: false },
     { key: "instanceCount", label: "Instance Count", kind: "number", required: false },
   ],
-  outputs: [
-    { key: "autoScalingGroupArn", label: "ASG ARN", sensitive: false },
-  ],
+  outputs: [{ key: "autoScalingGroupArn", label: "ASG ARN", sensitive: false }],
   dashboardPinnable: true,
   iconKey: "scaling",
 };

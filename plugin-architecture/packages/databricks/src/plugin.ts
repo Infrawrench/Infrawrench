@@ -12,7 +12,8 @@ const manifest: PluginManifest = {
   id: "databricks",
   version: "0.1.0",
   displayName: "Databricks",
-  description: "Manage Databricks workspaces — clusters, SQL warehouses, jobs, pipelines, and Unity Catalog.",
+  description:
+    "Manage Databricks workspaces — clusters, SQL warehouses, jobs, pipelines, and Unity Catalog.",
   logoSvg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     <rect width="100" height="100" rx="12" fill="#FF3621"/>
     <g transform="translate(14,10) scale(3)" fill="#fff">
@@ -25,7 +26,8 @@ const manifest: PluginManifest = {
     {
       key: "host",
       label: "Workspace URL",
-      description: "Your Databricks workspace URL (e.g. https://adb-1234567890.7.azuredatabricks.net or https://dbc-abc123.cloud.databricks.com).",
+      description:
+        "Your Databricks workspace URL (e.g. https://adb-1234567890.7.azuredatabricks.net or https://dbc-abc123.cloud.databricks.com).",
       sensitive: false,
       placeholder: "https://adb-1234567890.7.azuredatabricks.net",
     },

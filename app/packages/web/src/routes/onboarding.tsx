@@ -36,14 +36,14 @@ function OnboardingPage() {
           Organizations let you manage infrastructure and collaborate with your team.
         </p>
 
-        <label className="block text-sm font-medium text-gray-300 mb-2">
-          Organization name
-        </label>
+        <label className="block text-sm font-medium text-gray-300 mb-2">Organization name</label>
         <input
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") void handleCreate(); }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") void handleCreate();
+          }}
           placeholder="My Company"
           autoFocus
           className="w-full bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-gray-500 mb-4"

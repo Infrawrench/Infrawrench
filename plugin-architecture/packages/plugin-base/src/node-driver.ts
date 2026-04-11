@@ -40,12 +40,7 @@ export interface StorageNodeDriver {
    * Download a single object to `destPath`.
    * The host calls this in a loop and handles directory creation.
    */
-  downloadFile(
-    bucket: string,
-    key: string,
-    accessToken: string,
-    destPath: string,
-  ): Promise<void>;
+  downloadFile(bucket: string, key: string, accessToken: string, destPath: string): Promise<void>;
 }
 
 /**

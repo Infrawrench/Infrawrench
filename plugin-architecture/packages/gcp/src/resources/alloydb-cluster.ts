@@ -12,8 +12,6 @@ export const AlloyDbClusterResourceType: ResourceTypeDefinition = {
     { key: "state", label: "State", kind: "string", required: false },
     { key: "clusterType", label: "Cluster Type", kind: "string", required: false },
   ],
-  outputs: [
-    { key: "primaryEndpoint", label: "Primary Endpoint", sensitive: false },
-  ],
+  outputs: [{ key: "primaryEndpoint", label: "Primary Endpoint", sensitive: false }],
   dashboardPinnable: true,
 };

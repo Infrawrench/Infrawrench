@@ -2,7 +2,15 @@ import { useState, useMemo } from "react";
 import type { ImageOption } from "@infrawrench/plugin-base";
 import { ImageRow } from "./ImageRow.js";
 
-export function ImagePicker({ images, value, onChange }: { images: ImageOption[]; value: string; onChange: (v: string) => void }) {
+export function ImagePicker({
+  images,
+  value,
+  onChange,
+}: {
+  images: ImageOption[];
+  value: string;
+  onChange: (v: string) => void;
+}) {
   const [search, setSearch] = useState("");
 
   const categories = useMemo(() => {
@@ -18,7 +26,9 @@ export function ImagePicker({ images, value, onChange }: { images: ImageOption[]
   const filtered = useMemo(() => {
     if (!search) return null; // no search — show categorised
     const q = search.toLowerCase();
-    return images.filter((i) => i.label.toLowerCase().includes(q) || i.id.toLowerCase().includes(q));
+    return images.filter(
+      (i) => i.label.toLowerCase().includes(q) || i.id.toLowerCase().includes(q),
+    );
   }, [images, search]);
 
   const selectedImage = images.find((i) => i.id === value);
@@ -35,7 +45,9 @@ export function ImagePicker({ images, value, onChange }: { images: ImageOption[]
           className="flex-1 bg-transparent text-sm text-gray-300 placeholder-gray-600 focus:outline-none"
         />
         {selectedImage && !search && (
-          <span className="text-xs text-blue-400 truncate max-w-[160px]">{selectedImage.label}</span>
+          <span className="text-xs text-blue-400 truncate max-w-[160px]">
+            {selectedImage.label}
+          </span>
         )}
       </div>
 
@@ -46,7 +58,12 @@ export function ImagePicker({ images, value, onChange }: { images: ImageOption[]
             <p className="px-3 py-3 text-xs text-gray-600">No matches</p>
           ) : (
             filtered.map((img) => (
-              <ImageRow key={img.id} img={img} selected={value === img.id} onSelect={() => onChange(img.id)} />
+              <ImageRow
+                key={img.id}
+                img={img}
+                selected={value === img.id}
+                onSelect={() => onChange(img.id)}
+              />
             ))
           )
         ) : (
@@ -54,10 +71,17 @@ export function ImagePicker({ images, value, onChange }: { images: ImageOption[]
           [...categories.entries()].map(([cat, catImages]) => (
             <div key={cat}>
               <div className="px-3 py-1 bg-gray-800/30 border-b border-gray-700/40">
-                <span className="text-[10px] font-semibold text-gray-600 uppercase tracking-wide">{cat}</span>
+                <span className="text-[10px] font-semibold text-gray-600 uppercase tracking-wide">
+                  {cat}
+                </span>
               </div>
               {catImages.map((img) => (
-                <ImageRow key={img.id} img={img} selected={value === img.id} onSelect={() => onChange(img.id)} />
+                <ImageRow
+                  key={img.id}
+                  img={img}
+                  selected={value === img.id}
+                  onSelect={() => onChange(img.id)}
+                />
               ))}
             </div>
           ))

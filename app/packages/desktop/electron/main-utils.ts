@@ -22,10 +22,7 @@ export function getEncryptionKey(): Buffer {
   return _encryptionKey;
 }
 
-export function encryptValue(
-  plaintext: string,
-  key: Buffer,
-): { ciphertext: string; iv: string } {
+export function encryptValue(plaintext: string, key: Buffer): { ciphertext: string; iv: string } {
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
   const encrypted = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
@@ -36,11 +33,7 @@ export function encryptValue(
   };
 }
 
-export function decryptValue(
-  ciphertext: string,
-  ivBase64: string,
-  key: Buffer,
-): string {
+export function decryptValue(ciphertext: string, ivBase64: string, key: Buffer): string {
   const data = Buffer.from(ciphertext, "base64");
   const iv = Buffer.from(ivBase64, "base64");
   const tag = data.subarray(-16);
@@ -52,7 +45,12 @@ export function decryptValue(
 
 // Re-export getDb. This lazy-requires to avoid circular import issues since
 // the DB is initialized in main.ts. At call time main.ts will have already set it up.
-let _getDb: (() => Promise<{ select: <T>(sql: string, params?: unknown[]) => Promise<T>; execute: (sql: string, params?: unknown[]) => Promise<void> }>) | null = null;
+let _getDb:
+  | (() => Promise<{
+      select: <T>(sql: string, params?: unknown[]) => Promise<T>;
+      execute: (sql: string, params?: unknown[]) => Promise<void>;
+    }>)
+  | null = null;
 
 export function setDbGetter(fn: typeof _getDb): void {
   _getDb = fn;

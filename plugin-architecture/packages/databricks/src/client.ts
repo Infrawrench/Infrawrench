@@ -36,11 +36,7 @@ export class DatabricksClient implements PluginClient {
     }
   }
 
-  private async api<T>(
-    method: string,
-    path: string,
-    body?: Record<string, unknown>,
-  ): Promise<T> {
+  private async api<T>(method: string, path: string, body?: Record<string, unknown>): Promise<T> {
     // Separate path from query string if present
     const url = path.startsWith("http") ? path : `${this.host}${path}`;
     const init: RequestInit = {
@@ -99,11 +95,7 @@ export class DatabricksClient implements PluginClient {
       const results: ResourceInstance[] = [];
       for (const cat of catalogs) {
         try {
-          const schemas = await listSchemas(
-            this.ctx,
-            accountId,
-            String(cat.fields["name"]),
-          );
+          const schemas = await listSchemas(this.ctx, accountId, String(cat.fields["name"]));
           results.push(...schemas);
         } catch {
           // Skip catalogs we can't access
@@ -118,11 +110,7 @@ export class DatabricksClient implements PluginClient {
       const results: ResourceInstance[] = [];
       for (const cat of catalogs) {
         try {
-          const schemas = await listSchemas(
-            this.ctx,
-            accountId,
-            String(cat.fields["name"]),
-          );
+          const schemas = await listSchemas(this.ctx, accountId, String(cat.fields["name"]));
           for (const schema of schemas) {
             try {
               const tables = await listTables(
@@ -244,31 +232,25 @@ export class DatabricksClient implements PluginClient {
                 children: [
                   {
                     kind: "key-value-list" as const,
-                    items: Object.entries(resource.resolvedOutputs).map(
-                      ([key, value]) => ({
-                        key,
-                        value: String(value),
-                        copyable: true,
-                      }),
-                    ),
+                    items: Object.entries(resource.resolvedOutputs).map(([key, value]) => ({
+                      key,
+                      value: String(value),
+                      copyable: true,
+                    })),
                   },
                 ],
               },
             ]
           : []),
       ],
-      headerActions: [
-        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
-      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
 
     return detail;
   }
 
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema {
-    const state = String(
-      resource.fields["state"] ?? resource.fields["lastRunState"] ?? "",
-    );
+    const state = String(resource.fields["state"] ?? resource.fields["lastRunState"] ?? "");
     const statusMap: Record<string, ResourceStatus> = {
       RUNNING: "healthy",
       IDLE: "healthy",
@@ -292,11 +274,7 @@ export class DatabricksClient implements PluginClient {
     accountId: string,
     sql: string,
   ): Promise<{ rows: Record<string, unknown>[]; durationMs: number }> {
-    const resource = await this.getResource(
-      "databricks-sql-warehouse",
-      resourceId,
-      accountId,
-    );
+    const resource = await this.getResource("databricks-sql-warehouse", resourceId, accountId);
     const warehouseId = String(resource.fields["warehouseId"]);
     const start = Date.now();
 
@@ -320,9 +298,7 @@ export class DatabricksClient implements PluginClient {
 
     const status = result.status?.state ?? "FAILED";
     if (status === "FAILED") {
-      throw new Error(
-        `SQL execution failed: ${result.status?.error?.message ?? "unknown error"}`,
-      );
+      throw new Error(`SQL execution failed: ${result.status?.error?.message ?? "unknown error"}`);
     }
 
     // If still pending/running, poll until complete
@@ -338,9 +314,7 @@ export class DatabricksClient implements PluginClient {
         const s = finalResult.status?.state ?? "";
         if (s === "SUCCEEDED") break;
         if (s === "FAILED" || s === "CANCELED" || s === "CLOSED") {
-          throw new Error(
-            `SQL execution ${s}: ${finalResult.status?.error?.message ?? ""}`,
-          );
+          throw new Error(`SQL execution ${s}: ${finalResult.status?.error?.message ?? ""}`);
         }
       }
     }
@@ -360,10 +334,7 @@ export class DatabricksClient implements PluginClient {
     return { rows, durationMs };
   }
 
-  async introspectResource(
-    resourceId: string,
-    accountId: string,
-  ): Promise<SqlTableMeta[]> {
+  async introspectResource(resourceId: string, accountId: string): Promise<SqlTableMeta[]> {
     // Use INFORMATION_SCHEMA to list tables and columns
     try {
       const tablesResult = await this.executeQuery(
@@ -395,11 +366,7 @@ export class DatabricksClient implements PluginClient {
     }
   }
 
-  async deleteResource(
-    typeId: string,
-    resourceId: string,
-    accountId: string,
-  ): Promise<void> {
+  async deleteResource(typeId: string, resourceId: string, accountId: string): Promise<void> {
     const resource = await this.getResource(typeId, resourceId, accountId);
 
     switch (typeId) {

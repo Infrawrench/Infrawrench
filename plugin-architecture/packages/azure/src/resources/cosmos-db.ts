@@ -14,7 +14,12 @@ export const CosmosDBAccountResourceType: ResourceTypeDefinition = {
     { key: "provisioningState", label: "Provisioning State", kind: "string", required: true },
     { key: "consistencyLevel", label: "Consistency Level", kind: "string", required: false },
     { key: "enableAutomaticFailover", label: "Auto Failover", kind: "boolean", required: false },
-    { key: "enableMultipleWriteLocations", label: "Multi-Region Writes", kind: "boolean", required: false },
+    {
+      key: "enableMultipleWriteLocations",
+      label: "Multi-Region Writes",
+      kind: "boolean",
+      required: false,
+    },
     { key: "readLocations", label: "Read Locations", kind: "string", required: false },
     { key: "writeLocations", label: "Write Locations", kind: "string", required: false },
   ],

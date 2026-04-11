@@ -15,9 +15,7 @@ export const LambdaFunctionResourceType: ResourceTypeDefinition = {
     { key: "state", label: "State", kind: "string", required: false },
     { key: "lastModified", label: "Last Modified", kind: "string", required: false },
   ],
-  outputs: [
-    { key: "functionArn", label: "Function ARN", sensitive: false },
-  ],
+  outputs: [{ key: "functionArn", label: "Function ARN", sensitive: false }],
   dashboardPinnable: true,
   iconKey: "function",
   secretExportTemplates: [

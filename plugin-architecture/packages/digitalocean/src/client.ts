@@ -28,17 +28,17 @@ export class DigitalOceanClient implements PluginClient {
   private readonly baseUrl = "https://api.digitalocean.com/v2";
 
   private static readonly REGION_INFO: Record<string, { location: string; flag: string }> = {
-    nyc1: { location: "New York City, USA",    flag: "🇺🇸" },
-    nyc3: { location: "New York City, USA",    flag: "🇺🇸" },
-    sfo2: { location: "San Francisco, USA",    flag: "🇺🇸" },
-    sfo3: { location: "San Francisco, USA",    flag: "🇺🇸" },
+    nyc1: { location: "New York City, USA", flag: "🇺🇸" },
+    nyc3: { location: "New York City, USA", flag: "🇺🇸" },
+    sfo2: { location: "San Francisco, USA", flag: "🇺🇸" },
+    sfo3: { location: "San Francisco, USA", flag: "🇺🇸" },
     ams3: { location: "Amsterdam, Netherlands", flag: "🇳🇱" },
-    fra1: { location: "Frankfurt, Germany",    flag: "🇩🇪" },
-    sgp1: { location: "Singapore",             flag: "🇸🇬" },
-    lon1: { location: "London, UK",            flag: "🇬🇧" },
-    tor1: { location: "Toronto, Canada",       flag: "🇨🇦" },
-    blr1: { location: "Bangalore, India",      flag: "🇮🇳" },
-    syd1: { location: "Sydney, Australia",     flag: "🇦🇺" },
+    fra1: { location: "Frankfurt, Germany", flag: "🇩🇪" },
+    sgp1: { location: "Singapore", flag: "🇸🇬" },
+    lon1: { location: "London, UK", flag: "🇬🇧" },
+    tor1: { location: "Toronto, Canada", flag: "🇨🇦" },
+    blr1: { location: "Bangalore, India", flag: "🇮🇳" },
+    syd1: { location: "Sydney, Australia", flag: "🇦🇺" },
   };
 
   constructor(credentials: Record<string, string>) {
@@ -110,7 +110,10 @@ export class DigitalOceanClient implements PluginClient {
 
     if (typeId === "managed-database") {
       const data = await this.fetch<{
-        database: { connection: Record<string, string>; private_connection?: Record<string, string> };
+        database: {
+          connection: Record<string, string>;
+          private_connection?: Record<string, string>;
+        };
       }>(`/databases/${resourceId}`);
       const conn = data.database.connection;
       switch (outputKey) {
@@ -127,7 +130,9 @@ export class DigitalOceanClient implements PluginClient {
         case "database":
           return conn["database"] ?? "";
         case "caCertificate": {
-          const caData = await this.fetch<{ ca: { certificate: string } }>(`/databases/${resourceId}/ca`);
+          const caData = await this.fetch<{ ca: { certificate: string } }>(
+            `/databases/${resourceId}/ca`,
+          );
           return caData.ca.certificate;
         }
       }
@@ -156,10 +161,42 @@ export class DigitalOceanClient implements PluginClient {
   async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
     if (typeId === "droplet") {
       const [regionsData, sizesData, publicImagesData, privateImagesData] = await Promise.all([
-        this.fetch<{ regions: Array<{ slug: string; name: string; available: boolean }> }>("/regions"),
-        this.fetch<{ sizes: Array<{ slug: string; memory: number; vcpus: number; disk: number; price_monthly: number; available: boolean; description: string }> }>("/sizes"),
-        this.fetch<{ images: Array<{ id: number; slug: string | null; name: string; distribution: string; type: string; public: boolean; status: string }> }>("/images?type=distribution&per_page=200"),
-        this.fetch<{ images: Array<{ id: number; slug: string | null; name: string; distribution: string; type: string; public: boolean; status: string }> }>("/images?private=true&per_page=200"),
+        this.fetch<{ regions: Array<{ slug: string; name: string; available: boolean }> }>(
+          "/regions",
+        ),
+        this.fetch<{
+          sizes: Array<{
+            slug: string;
+            memory: number;
+            vcpus: number;
+            disk: number;
+            price_monthly: number;
+            available: boolean;
+            description: string;
+          }>;
+        }>("/sizes"),
+        this.fetch<{
+          images: Array<{
+            id: number;
+            slug: string | null;
+            name: string;
+            distribution: string;
+            type: string;
+            public: boolean;
+            status: string;
+          }>;
+        }>("/images?type=distribution&per_page=200"),
+        this.fetch<{
+          images: Array<{
+            id: number;
+            slug: string | null;
+            name: string;
+            distribution: string;
+            type: string;
+            public: boolean;
+            status: string;
+          }>;
+        }>("/images?private=true&per_page=200"),
       ]);
 
       const regions = regionsData.regions
@@ -179,8 +216,13 @@ export class DigitalOceanClient implements PluginClient {
         const cat = s.description || "Standard";
         if (!sizesByCategory.has(cat)) sizesByCategory.set(cat, []);
         sizesByCategory.get(cat)!.push({
-          id: s.slug, label: s.slug, vcpus: s.vcpus, memoryMb: s.memory,
-          diskGb: s.disk, priceMonthly: s.price_monthly, category: cat,
+          id: s.slug,
+          label: s.slug,
+          vcpus: s.vcpus,
+          memoryMb: s.memory,
+          diskGb: s.disk,
+          priceMonthly: s.price_monthly,
+          category: cat,
         });
       }
       const sizes = [...sizesByCategory.values()].flat();
@@ -203,10 +245,31 @@ export class DigitalOceanClient implements PluginClient {
       const firstSize = sizes[0]?.id;
       return {
         fields: [
-          { key: "name",   label: "Name",   kind: "text",          required: true },
-          { key: "region", label: "Region", kind: "region-picker", required: true, regions, ...(firstRegion ? { defaultValue: firstRegion } : {}) },
-          { key: "size",   label: "Size",   kind: "size-picker",   required: true, sizes,   ...(firstSize   ? { defaultValue: firstSize }   : {}) },
-          { key: "image",     label: "Image",   kind: "image-picker",  required: true,  images,  ...(defaultImage ? { defaultValue: defaultImage } : {}) },
+          { key: "name", label: "Name", kind: "text", required: true },
+          {
+            key: "region",
+            label: "Region",
+            kind: "region-picker",
+            required: true,
+            regions,
+            ...(firstRegion ? { defaultValue: firstRegion } : {}),
+          },
+          {
+            key: "size",
+            label: "Size",
+            kind: "size-picker",
+            required: true,
+            sizes,
+            ...(firstSize ? { defaultValue: firstSize } : {}),
+          },
+          {
+            key: "image",
+            label: "Image",
+            kind: "image-picker",
+            required: true,
+            images,
+            ...(defaultImage ? { defaultValue: defaultImage } : {}),
+          },
           { key: "sshPublicKey", label: "SSH Key", kind: "ssh-key-picker", required: false },
         ],
       };
@@ -221,7 +284,17 @@ export class DigitalOceanClient implements PluginClient {
             versions?: Array<{ slug: string; kubernetes_version: string }>;
           };
         }>("/kubernetes/options"),
-        this.fetch<{ sizes: Array<{ slug: string; memory: number; vcpus: number; disk: number; price_monthly: number; available: boolean; description: string }> }>("/sizes"),
+        this.fetch<{
+          sizes: Array<{
+            slug: string;
+            memory: number;
+            vcpus: number;
+            disk: number;
+            price_monthly: number;
+            available: boolean;
+            description: string;
+          }>;
+        }>("/sizes"),
       ]);
 
       const regions = (optionsData.options?.regions ?? []).map((region) => {
@@ -233,7 +306,9 @@ export class DigitalOceanClient implements PluginClient {
         };
       });
 
-      const availableSizeSlugs = new Set((optionsData.options?.sizes ?? []).map((size) => size.slug));
+      const availableSizeSlugs = new Set(
+        (optionsData.options?.sizes ?? []).map((size) => size.slug),
+      );
       const sizesByCategory = new Map<string, SizeOption[]>();
       for (const size of sizesData.sizes) {
         if (!size.available || !availableSizeSlugs.has(size.slug)) continue;
@@ -262,9 +337,30 @@ export class DigitalOceanClient implements PluginClient {
       return {
         fields: [
           { key: "name", label: "Name", kind: "text", required: true },
-          { key: "region", label: "Region", kind: "region-picker", required: true, regions, ...(defaultRegion ? { defaultValue: defaultRegion } : {}) },
-          { key: "version", label: "Kubernetes Version", kind: "select", required: true, options: versions, ...(defaultVersion ? { defaultValue: defaultVersion } : {}) },
-          { key: "nodePoolSize", label: "Node Pool Size", kind: "size-picker", required: true, sizes, ...(defaultSize ? { defaultValue: defaultSize } : {}) },
+          {
+            key: "region",
+            label: "Region",
+            kind: "region-picker",
+            required: true,
+            regions,
+            ...(defaultRegion ? { defaultValue: defaultRegion } : {}),
+          },
+          {
+            key: "version",
+            label: "Kubernetes Version",
+            kind: "select",
+            required: true,
+            options: versions,
+            ...(defaultVersion ? { defaultValue: defaultVersion } : {}),
+          },
+          {
+            key: "nodePoolSize",
+            label: "Node Pool Size",
+            kind: "size-picker",
+            required: true,
+            sizes,
+            ...(defaultSize ? { defaultValue: defaultSize } : {}),
+          },
           {
             key: "nodeCount",
             label: "Node Count",
@@ -283,14 +379,19 @@ export class DigitalOceanClient implements PluginClient {
   }
 
   async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
-    if (typeId !== "droplet") throw new Error(`DigitalOcean plugin: deleteResource not supported for type "${typeId}"`);
+    if (typeId !== "droplet")
+      throw new Error(`DigitalOcean plugin: deleteResource not supported for type "${typeId}"`);
     // resourceId format: "{accountId}:droplet:{externalId}"
     const externalId = resourceId.split(":").pop();
     if (!externalId) throw new Error("Cannot parse droplet ID");
     await this.fetch<unknown>(`/droplets/${externalId}`, { method: "DELETE" });
   }
 
-  async createResource(typeId: string, accountId: string, fields: Record<string, string>): Promise<ResourceInstance> {
+  async createResource(
+    typeId: string,
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
     if (typeId === "droplet") {
       // SSH key: upload to DO account (idempotent — if it already exists DO returns the existing key)
       const sshKeyIds: number[] = [];
@@ -298,21 +399,26 @@ export class DigitalOceanClient implements PluginClient {
       if (sshPub) {
         try {
           const comment = sshPub.trim().split(" ")[2] ?? "infrawrench";
-          type KeyResponse = { ssh_key: { id: number } } | { ssh_keys: Array<{ id: number; public_key: string }> };
-          const keyData = await this.fetch<KeyResponse>(
-            "/account/keys",
-            { method: "POST", body: JSON.stringify({ name: comment, public_key: sshPub.trim() }) },
-          ).catch(async (e: unknown) => {
+          type KeyResponse =
+            | { ssh_key: { id: number } }
+            | { ssh_keys: Array<{ id: number; public_key: string }> };
+          const keyData = await this.fetch<KeyResponse>("/account/keys", {
+            method: "POST",
+            body: JSON.stringify({ name: comment, public_key: sshPub.trim() }),
+          }).catch(async (e: unknown) => {
             if (String(e).includes("422")) {
               return this.fetch<KeyResponse>("/account/keys");
             }
             throw e;
           });
-          const keyId = "ssh_key" in keyData
-            ? keyData.ssh_key.id
-            : keyData.ssh_keys.find((k) => k.public_key.trim() === sshPub.trim())?.id;
+          const keyId =
+            "ssh_key" in keyData
+              ? keyData.ssh_key.id
+              : keyData.ssh_keys.find((k) => k.public_key.trim() === sshPub.trim())?.id;
           if (keyId) sshKeyIds.push(keyId);
-        } catch { /* skip SSH key if upload fails */ }
+        } catch {
+          /* skip SSH key if upload fails */
+        }
       }
 
       const body: Record<string, unknown> = {
@@ -327,7 +433,9 @@ export class DigitalOceanClient implements PluginClient {
         body: JSON.stringify(body),
       });
       const d = data.droplet;
-      const networks = d["networks"] as { v4?: Array<{ type: string; ip_address: string }> } | undefined;
+      const networks = d["networks"] as
+        | { v4?: Array<{ type: string; ip_address: string }> }
+        | undefined;
       const publicIp = networks?.v4?.find((n) => n.type === "public")?.ip_address ?? "";
       const privateIp = networks?.v4?.find((n) => n.type === "private")?.ip_address ?? "";
       return {
@@ -352,9 +460,8 @@ export class DigitalOceanClient implements PluginClient {
 
     if (typeId === "doks-cluster") {
       const requestedNodeCount = Number.parseInt(fields["nodeCount"] ?? "3", 10);
-      const nodeCount = Number.isFinite(requestedNodeCount) && requestedNodeCount > 0
-        ? requestedNodeCount
-        : 3;
+      const nodeCount =
+        Number.isFinite(requestedNodeCount) && requestedNodeCount > 0 ? requestedNodeCount : 3;
       const nodePoolNameBase = (fields["name"] ?? "cluster").trim() || "cluster";
       const body = {
         name: fields["name"],
@@ -396,7 +503,9 @@ export class DigitalOceanClient implements PluginClient {
         secretStates: [],
         externalId: String(cluster["id"]),
         createdAt: String(cluster["created_at"] ?? new Date().toISOString()),
-        updatedAt: String(cluster["updated_at"] ?? cluster["created_at"] ?? new Date().toISOString()),
+        updatedAt: String(
+          cluster["updated_at"] ?? cluster["created_at"] ?? new Date().toISOString(),
+        ),
       };
     }
 
@@ -430,9 +539,7 @@ export class DigitalOceanClient implements PluginClient {
           ],
         },
       ],
-      headerActions: [
-        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
-      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
   }
 
@@ -477,9 +584,7 @@ export class DigitalOceanClient implements PluginClient {
       subtitle: "DNS Domain",
       status: { kind: "status-dot", status: "healthy", label: "Active" },
       sections,
-      headerActions: [
-        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
-      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
   }
 
@@ -566,9 +671,7 @@ export class DigitalOceanClient implements PluginClient {
       kubernetes_clusters: Array<Record<string, unknown>>;
     }>("/kubernetes/clusters");
     return data.kubernetes_clusters.map((c) => {
-      const nodePool = (
-        c["node_pools"] as Array<Record<string, unknown>> | undefined
-      )?.[0];
+      const nodePool = (c["node_pools"] as Array<Record<string, unknown>> | undefined)?.[0];
       return {
         id: `${accountId}:doks-cluster:${String(c["id"])}`,
         pluginId: "digitalocean",
@@ -669,10 +772,16 @@ export class DigitalOceanClient implements PluginClient {
               name: displayName,
               data: String(r["data"] ?? ""),
               ttl: Number(r["ttl"] ?? 1800),
-              ...(r["priority"] !== undefined && r["priority"] !== null ? { priority: Number(r["priority"]) } : {}),
+              ...(r["priority"] !== undefined && r["priority"] !== null
+                ? { priority: Number(r["priority"]) }
+                : {}),
               ...(r["port"] !== undefined && r["port"] !== null ? { port: Number(r["port"]) } : {}),
-              ...(r["weight"] !== undefined && r["weight"] !== null ? { weight: Number(r["weight"]) } : {}),
-              ...(r["flags"] !== undefined && r["flags"] !== null ? { flags: Number(r["flags"]) } : {}),
+              ...(r["weight"] !== undefined && r["weight"] !== null
+                ? { weight: Number(r["weight"]) }
+                : {}),
+              ...(r["flags"] !== undefined && r["flags"] !== null
+                ? { flags: Number(r["flags"]) }
+                : {}),
               ...(r["tag"] ? { tag: String(r["tag"]) } : {}),
               domainName,
             },

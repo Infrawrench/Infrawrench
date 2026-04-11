@@ -74,11 +74,16 @@ app.post("/", async (c) => {
         await db
           .update(subscriptions)
           .set({
-            status: sub.status === "active" ? "active"
-              : sub.status === "past_due" ? "past_due"
-              : sub.status === "canceled" ? "canceled"
-              : sub.status === "unpaid" ? "unpaid"
-              : sub.status,
+            status:
+              sub.status === "active"
+                ? "active"
+                : sub.status === "past_due"
+                  ? "past_due"
+                  : sub.status === "canceled"
+                    ? "canceled"
+                    : sub.status === "unpaid"
+                      ? "unpaid"
+                      : sub.status,
             seatCount: quantity,
             currentPeriodStart: new Date(sub.current_period_start * 1000),
             currentPeriodEnd: new Date(sub.current_period_end * 1000),

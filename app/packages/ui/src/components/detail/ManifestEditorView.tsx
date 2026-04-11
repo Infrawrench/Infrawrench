@@ -41,22 +41,25 @@ export function ManifestEditorView({ capability, onGetManifest, onApplyManifest 
     void fetchManifest();
   }, [fetchManifest]);
 
-  const handleEditorMount: OnMount = useCallback((editor) => {
-    // Cmd/Ctrl+S to apply
-    editor.addAction({
-      id: "apply-manifest",
-      label: "Apply Manifest",
-      keybindings: [
-        // Monaco.KeyMod.CtrlCmd | Monaco.KeyCode.KeyS
-        2048 | 49, // CtrlCmd + S
-      ],
-      run: () => {
-        if (!applying && !capability.readOnly && onApplyManifest) {
-          void handleApply();
-        }
-      },
-    });
-  }, [applying, capability.readOnly, onApplyManifest]);
+  const handleEditorMount: OnMount = useCallback(
+    (editor) => {
+      // Cmd/Ctrl+S to apply
+      editor.addAction({
+        id: "apply-manifest",
+        label: "Apply Manifest",
+        keybindings: [
+          // Monaco.KeyMod.CtrlCmd | Monaco.KeyCode.KeyS
+          2048 | 49, // CtrlCmd + S
+        ],
+        run: () => {
+          if (!applying && !capability.readOnly && onApplyManifest) {
+            void handleApply();
+          }
+        },
+      });
+    },
+    [applying, capability.readOnly, onApplyManifest],
+  );
 
   async function handleApply() {
     if (!onApplyManifest) return;
@@ -116,17 +119,11 @@ export function ManifestEditorView({ capability, onGetManifest, onApplyManifest 
           {kindLabel}
         </span>
         {readOnly && (
-          <span className="text-xs text-gray-600 bg-gray-800 rounded px-1.5 py-0.5">
-            Read-only
-          </span>
+          <span className="text-xs text-gray-600 bg-gray-800 rounded px-1.5 py-0.5">Read-only</span>
         )}
         <div className="ml-auto flex items-center gap-2">
-          {dirty && !readOnly && (
-            <span className="text-xs text-yellow-500">Unsaved changes</span>
-          )}
-          {applySuccess && (
-            <span className="text-xs text-green-400">Applied</span>
-          )}
+          {dirty && !readOnly && <span className="text-xs text-yellow-500">Unsaved changes</span>}
+          {applySuccess && <span className="text-xs text-green-400">Applied</span>}
           {applyError && (
             <span className="text-xs text-red-400 max-w-xs truncate" title={applyError}>
               {applyError}

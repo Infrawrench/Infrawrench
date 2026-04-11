@@ -12,9 +12,7 @@ interface AppKey {
   name: string;
 }
 
-type KeySource =
-  | { type: "system"; name: string }
-  | { type: "app"; id: string; name: string };
+type KeySource = { type: "system"; name: string } | { type: "app"; id: string; name: string };
 
 interface SshQuickConnectPanelProps {
   host: string;
@@ -39,10 +37,7 @@ export function SshQuickConnectPanel({ host, onConnect }: SshQuickConnectPanelPr
   }, []);
 
   async function loadKeys() {
-    const [sys, db] = await Promise.all([
-      invoke<SystemKey[]>("ssh_list_system_keys"),
-      getDb(),
-    ]);
+    const [sys, db] = await Promise.all([invoke<SystemKey[]>("ssh_list_system_keys"), getDb()]);
     setSystemKeys(sys);
     const rows = await db.select<{ id: string; name: string }[]>(
       "SELECT id, name FROM ssh_keys ORDER BY created_at ASC",
@@ -64,7 +59,9 @@ export function SshQuickConnectPanel({ host, onConnect }: SshQuickConnectPanelPr
           const derivedUsername = deriveSSHUsername(comment);
           setUsername((prev) => (prev === "root" ? derivedUsername : prev));
         }
-      } catch { /* .pub might not exist */ }
+      } catch {
+        /* .pub might not exist */
+      }
     }
   }
 
@@ -72,10 +69,9 @@ export function SshQuickConnectPanel({ host, onConnect }: SshQuickConnectPanelPr
     if (!newKeyName.trim() || !newKeyPem.trim()) return;
     setSaving(true);
     try {
-      const { ciphertext, iv } = await invoke<{ ciphertext: string; iv: string }>(
-        "encrypt_value",
-        { plaintext: newKeyPem.trim() },
-      );
+      const { ciphertext, iv } = await invoke<{ ciphertext: string; iv: string }>("encrypt_value", {
+        plaintext: newKeyPem.trim(),
+      });
       const db = await getDb();
       const id = crypto.randomUUID();
       await db.execute(
@@ -97,9 +93,7 @@ export function SshQuickConnectPanel({ host, onConnect }: SshQuickConnectPanelPr
     const db = await getDb();
     await db.execute("DELETE FROM ssh_keys WHERE id = $1", [id]);
     setAppKeys((prev) => prev.filter((k) => k.id !== id));
-    setSelectedKey((prev) =>
-      prev?.type === "app" && prev.id === id ? null : prev,
-    );
+    setSelectedKey((prev) => (prev?.type === "app" && prev.id === id ? null : prev));
   }
 
   async function connect() {
@@ -162,15 +156,21 @@ export function SshQuickConnectPanel({ host, onConnect }: SshQuickConnectPanelPr
                         onSelect={async () => {
                           setSelectedKey({ type: "system", name: k.name });
                           try {
-                            const pub = await invoke<string>("ssh_read_system_key", { name: `${k.name}.pub` });
+                            const pub = await invoke<string>("ssh_read_system_key", {
+                              name: `${k.name}.pub`,
+                            });
                             const comment = pub.trim().split(" ")[2];
                             if (comment) {
                               const derivedUsername = deriveSSHUsername(comment);
-                              setUsername((prev) => (
-                                prev === "root" || prev === derivedUsername ? derivedUsername : prev
-                              ));
+                              setUsername((prev) =>
+                                prev === "root" || prev === derivedUsername
+                                  ? derivedUsername
+                                  : prev,
+                              );
                             }
-                          } catch { /* .pub might not exist */ }
+                          } catch {
+                            /* .pub might not exist */
+                          }
                         }}
                       />
                     ))}
@@ -208,12 +208,18 @@ export function SshQuickConnectPanel({ host, onConnect }: SshQuickConnectPanelPr
                   onChange={(e) => setNewKeyPem(e.target.value)}
                   className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-xs text-gray-200 font-mono focus:outline-none focus:border-gray-500 resize-none"
                   rows={5}
-                  placeholder={"-----BEGIN OPENSSH PRIVATE KEY-----\n...\n-----END OPENSSH PRIVATE KEY-----"}
+                  placeholder={
+                    "-----BEGIN OPENSSH PRIVATE KEY-----\n...\n-----END OPENSSH PRIVATE KEY-----"
+                  }
                   spellCheck={false}
                 />
                 <div className="flex gap-2 justify-end">
                   <button
-                    onClick={() => { setShowAddKey(false); setNewKeyName(""); setNewKeyPem(""); }}
+                    onClick={() => {
+                      setShowAddKey(false);
+                      setNewKeyName("");
+                      setNewKeyPem("");
+                    }}
                     className="px-3 py-1 text-xs text-gray-500 hover:text-gray-300 transition-colors"
                   >
                     Cancel
@@ -282,7 +288,10 @@ function KeyRow({
       </span>
       {onDelete && (
         <button
-          onClick={(e) => { e.stopPropagation(); onDelete(); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
           className="opacity-0 group-hover:opacity-100 text-gray-600 hover:text-red-400 text-xs px-1 transition-all"
           title="Remove key"
         >

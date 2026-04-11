@@ -7,12 +7,12 @@ import { ErrorNotice } from "./ErrorNotice";
 import { SshKeyPicker } from "./SshKeyPicker";
 
 const PRESETS = {
-  docker:    { label: "Docker",     pluginId: "docker",    port: 2375 },
-  postgres:  { label: "PostgreSQL", pluginId: "postgres",  port: 5432 },
-  mysql:     { label: "MySQL",      pluginId: "mysql",     port: 3306 },
-  redis:     { label: "Redis",      pluginId: "redis",     port: 6379 },
-  memcached: { label: "Memcached",  pluginId: "memcached", port: 11211 },
-  custom:    { label: "Custom...",  pluginId: null,        port: 0 },
+  docker: { label: "Docker", pluginId: "docker", port: 2375 },
+  postgres: { label: "PostgreSQL", pluginId: "postgres", port: 5432 },
+  mysql: { label: "MySQL", pluginId: "mysql", port: 3306 },
+  redis: { label: "Redis", pluginId: "redis", port: 6379 },
+  memcached: { label: "Memcached", pluginId: "memcached", port: 11211 },
+  custom: { label: "Custom...", pluginId: null, port: 0 },
 } as const;
 
 export type PresetKey = keyof typeof PRESETS;
@@ -42,7 +42,13 @@ interface SshTunnelModalProps {
   onTunnelEstablished: (newAccountId: string) => void;
 }
 
-export function SshTunnelModal({ sshHost, sourceAccountId, defaultService, onClose, onTunnelEstablished }: SshTunnelModalProps) {
+export function SshTunnelModal({
+  sshHost,
+  sourceAccountId,
+  defaultService,
+  onClose,
+  onTunnelEstablished,
+}: SshTunnelModalProps) {
   const [sshUser, setSshUser] = useState("root");
   const [sshPort, setSshPort] = useState(22);
   const [privateKey, setPrivateKey] = useState("");
@@ -55,10 +61,19 @@ export function SshTunnelModal({ sshHost, sourceAccountId, defaultService, onClo
   const remotePort = service === "custom" ? customPort : preset.port;
 
   async function onConfirm() {
-    if (!privateKey.trim()) { setError("Select an SSH key first"); return; }
-    if (service === "custom" && !customPort) { setError("Remote port is required"); return; }
+    if (!privateKey.trim()) {
+      setError("Select an SSH key first");
+      return;
+    }
+    if (service === "custom" && !customPort) {
+      setError("Remote port is required");
+      return;
+    }
     const pluginId = preset.pluginId;
-    if (!pluginId) { setError("Select a service type"); return; }
+    if (!pluginId) {
+      setError("Select a service type");
+      return;
+    }
 
     setConnecting(true);
     setError(null);
@@ -81,10 +96,10 @@ export function SshTunnelModal({ sshHost, sourceAccountId, defaultService, onClo
 
       const newAccountId = crypto.randomUUID();
       const credentials = buildCredentials(pluginId, remotePort);
-      const { ciphertext: credCiphertext, iv: credIv } = await invoke<{ ciphertext: string; iv: string }>(
-        "encrypt_value",
-        { plaintext: JSON.stringify(credentials) },
-      );
+      const { ciphertext: credCiphertext, iv: credIv } = await invoke<{
+        ciphertext: string;
+        iv: string;
+      }>("encrypt_value", { plaintext: JSON.stringify(credentials) });
       const displayName = `${preset.label} on ${sshHost}`;
       await db.execute(
         "INSERT INTO accounts (id, plugin_id, display_name, encrypted_credentials, credentials_iv) VALUES ($1, $2, $3, $4, $5)",
@@ -96,7 +111,17 @@ export function SshTunnelModal({ sshHost, sourceAccountId, defaultService, onClo
         `INSERT OR REPLACE INTO ssh_tunnel_configs
          (id, account_id, ssh_host, ssh_port, ssh_user, remote_host, remote_port, encrypted_private_key, private_key_iv)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-        [tunnelId2, newAccountId, sshHost, sshPort, sshUser, "127.0.0.1", remotePort, ciphertext, iv],
+        [
+          tunnelId2,
+          newAccountId,
+          sshHost,
+          sshPort,
+          sshUser,
+          "127.0.0.1",
+          remotePort,
+          ciphertext,
+          iv,
+        ],
       );
 
       useUIStore.getState().bumpAccounts();
@@ -113,7 +138,9 @@ export function SshTunnelModal({ sshHost, sourceAccountId, defaultService, onClo
       <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl w-[480px] max-h-[90vh] overflow-auto">
         <div className="p-6 border-b border-gray-800">
           <h2 className="text-base font-semibold text-gray-100">Connect to service via SSH</h2>
-          <p className="text-xs text-gray-500 mt-1">SSH host: <span className="text-gray-300 font-mono">{sshHost}</span></p>
+          <p className="text-xs text-gray-500 mt-1">
+            SSH host: <span className="text-gray-300 font-mono">{sshHost}</span>
+          </p>
         </div>
 
         <div className="p-6 space-y-4">
@@ -137,20 +164,22 @@ export function SshTunnelModal({ sshHost, sourceAccountId, defaultService, onClo
           <div>
             <label className="block text-xs text-gray-500 mb-2">Target Service</label>
             <div className="grid grid-cols-3 gap-2">
-              {(Object.entries(PRESETS) as [PresetKey, typeof PRESETS[PresetKey]][]).map(([key, p]) => (
-                <button
-                  key={key}
-                  onClick={() => setService(key)}
-                  className={`px-3 py-2 rounded-lg text-xs border transition-colors ${
-                    service === key
-                      ? "border-blue-500 bg-blue-500/10 text-blue-300"
-                      : "border-gray-700 bg-gray-800 text-gray-400 hover:border-gray-600 hover:text-gray-200"
-                  }`}
-                >
-                  <div className="font-medium">{p.label}</div>
-                  {key !== "custom" && <div className="text-gray-500 mt-0.5">:{p.port}</div>}
-                </button>
-              ))}
+              {(Object.entries(PRESETS) as [PresetKey, (typeof PRESETS)[PresetKey]][]).map(
+                ([key, p]) => (
+                  <button
+                    key={key}
+                    onClick={() => setService(key)}
+                    className={`px-3 py-2 rounded-lg text-xs border transition-colors ${
+                      service === key
+                        ? "border-blue-500 bg-blue-500/10 text-blue-300"
+                        : "border-gray-700 bg-gray-800 text-gray-400 hover:border-gray-600 hover:text-gray-200"
+                    }`}
+                  >
+                    <div className="font-medium">{p.label}</div>
+                    {key !== "custom" && <div className="text-gray-500 mt-0.5">:{p.port}</div>}
+                  </button>
+                ),
+              )}
             </div>
           </div>
 

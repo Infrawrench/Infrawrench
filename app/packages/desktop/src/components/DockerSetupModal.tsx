@@ -16,7 +16,12 @@ interface DockerSetupModalProps {
   onComplete: (newAccountId: string) => void;
 }
 
-export function DockerSetupModal({ sshHost, sourceAccountId, onClose, onComplete }: DockerSetupModalProps) {
+export function DockerSetupModal({
+  sshHost,
+  sourceAccountId,
+  onClose,
+  onComplete,
+}: DockerSetupModalProps) {
   const [sshUser, setSshUser] = useState("root");
   const [sshPort, setSshPort] = useState(22);
   const [privateKey, setPrivateKey] = useState("");
@@ -34,12 +39,15 @@ export function DockerSetupModal({ sshHost, sourceAccountId, onClose, onComplete
     setLog((prev) => [...prev, msg]);
   }
 
-  const sshConfig = useCallback(() => ({
-    sshHost,
-    sshPort,
-    sshUser,
-    privateKey: privateKey.trim(),
-  }), [sshHost, sshPort, sshUser, privateKey]);
+  const sshConfig = useCallback(
+    () => ({
+      sshHost,
+      sshPort,
+      sshUser,
+      privateKey: privateKey.trim(),
+    }),
+    [sshHost, sshPort, sshUser, privateKey],
+  );
 
   async function exec(command: string): Promise<{ stdout: string; stderr: string; code: number }> {
     return sshExecCommand(sshConfig(), command);
@@ -51,7 +59,10 @@ export function DockerSetupModal({ sshHost, sourceAccountId, onClose, onComplete
   }
 
   async function startSetup() {
-    if (!privateKey.trim()) { setError("Select an SSH key first"); return; }
+    if (!privateKey.trim()) {
+      setError("Select an SSH key first");
+      return;
+    }
     setError(null);
     setLog([]);
     setStep("checking");
@@ -71,7 +82,10 @@ export function DockerSetupModal({ sshHost, sourceAccountId, onClose, onComplete
 
         const installResult = await exec(`curl -fsSL https://get.docker.com | ${sudo("sh")} 2>&1`);
         if (installResult.code !== 0) {
-          throw new Error("Docker installation failed:\n" + (installResult.stderr || installResult.stdout).slice(0, 500));
+          throw new Error(
+            "Docker installation failed:\n" +
+              (installResult.stderr || installResult.stdout).slice(0, 500),
+          );
         }
         appendLog("Docker installed successfully.");
 
@@ -97,7 +111,8 @@ export function DockerSetupModal({ sshHost, sourceAccountId, onClose, onComplete
         appendLog("Configuring Docker to listen on TCP 127.0.0.1:2375...");
 
         // Use printf piped to tee to avoid heredoc issues over SSH
-        const confContent = "[Service]\\nExecStart=\\nExecStart=/usr/bin/dockerd -H fd:// -H tcp://127.0.0.1:2375";
+        const confContent =
+          "[Service]\\nExecStart=\\nExecStart=/usr/bin/dockerd -H fd:// -H tcp://127.0.0.1:2375";
         const overrideCmd = [
           sudo("mkdir -p /etc/systemd/system/docker.service.d"),
           `printf '${confContent}\\n' | ${sudo("tee /etc/systemd/system/docker.service.d/tcp.conf > /dev/null")}`,
@@ -107,7 +122,10 @@ export function DockerSetupModal({ sshHost, sourceAccountId, onClose, onComplete
 
         const configResult = await exec(overrideCmd);
         if (configResult.code !== 0) {
-          throw new Error("Failed to configure Docker TCP:\n" + (configResult.stderr || configResult.stdout).slice(0, 500));
+          throw new Error(
+            "Failed to configure Docker TCP:\n" +
+              (configResult.stderr || configResult.stdout).slice(0, 500),
+          );
         }
         appendLog("Docker TCP listener configured on 127.0.0.1:2375.");
 
@@ -135,14 +153,14 @@ export function DockerSetupModal({ sshHost, sourceAccountId, onClose, onComplete
       const newAccountId = crypto.randomUUID();
 
       const credentials = { dockerHost: "tcp://localhost:2375" };
-      const { ciphertext: credCiphertext, iv: credIv } = await invoke<{ ciphertext: string; iv: string }>(
-        "encrypt_value",
-        { plaintext: JSON.stringify(credentials) },
-      );
-      const { ciphertext: keyCiphertext, iv: keyIv } = await invoke<{ ciphertext: string; iv: string }>(
-        "encrypt_value",
-        { plaintext: privateKey.trim() },
-      );
+      const { ciphertext: credCiphertext, iv: credIv } = await invoke<{
+        ciphertext: string;
+        iv: string;
+      }>("encrypt_value", { plaintext: JSON.stringify(credentials) });
+      const { ciphertext: keyCiphertext, iv: keyIv } = await invoke<{
+        ciphertext: string;
+        iv: string;
+      }>("encrypt_value", { plaintext: privateKey.trim() });
 
       const displayName = accountName;
       await db.execute(
@@ -155,7 +173,17 @@ export function DockerSetupModal({ sshHost, sourceAccountId, onClose, onComplete
         `INSERT OR REPLACE INTO ssh_tunnel_configs
          (id, account_id, ssh_host, ssh_port, ssh_user, remote_host, remote_port, encrypted_private_key, private_key_iv)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-        [tunnelConfigId, newAccountId, sshHost, sshPort, sshUser, "127.0.0.1", 2375, keyCiphertext, keyIv],
+        [
+          tunnelConfigId,
+          newAccountId,
+          sshHost,
+          sshPort,
+          sshUser,
+          "127.0.0.1",
+          2375,
+          keyCiphertext,
+          keyIv,
+        ],
       );
 
       appendLog("Docker account created.");
@@ -225,9 +253,21 @@ export function DockerSetupModal({ sshHost, sourceAccountId, onClose, onComplete
           {step !== "credentials" && (
             <div className="space-y-3">
               <div className="flex items-center gap-6 text-xs">
-                <StepIndicator label="Check" active={step === "checking"} done={step !== "checking"} />
-                <StepIndicator label="Install" active={step === "installing"} done={step === "configuring" || step === "done"} />
-                <StepIndicator label="Configure" active={step === "configuring"} done={step === "done"} />
+                <StepIndicator
+                  label="Check"
+                  active={step === "checking"}
+                  done={step !== "checking"}
+                />
+                <StepIndicator
+                  label="Install"
+                  active={step === "installing"}
+                  done={step === "configuring" || step === "done"}
+                />
+                <StepIndicator
+                  label="Configure"
+                  active={step === "configuring"}
+                  done={step === "done"}
+                />
                 <StepIndicator label="Done" active={step === "done"} done={false} />
               </div>
 
@@ -239,7 +279,9 @@ export function DockerSetupModal({ sshHost, sourceAccountId, onClose, onComplete
                   </div>
                 ))}
                 {isRunning && (
-                  <div className="text-xs font-mono text-blue-400 animate-pulse mt-1">Working...</div>
+                  <div className="text-xs font-mono text-blue-400 animate-pulse mt-1">
+                    Working...
+                  </div>
                 )}
               </div>
 
@@ -288,14 +330,18 @@ export function DockerSetupModal({ sshHost, sourceAccountId, onClose, onComplete
                       );
                       if (rows.length <= 1) {
                         // Only one (or zero) dashboard — pin directly
-                        await pinResource({
-                          id: createdAccountId,
-                          pluginId: "docker",
-                          resourceTypeId: "__account__",
-                          accountId: createdAccountId,
-                          displayName: accountName,
-                          fields: { pluginId: "docker", pluginDisplayName: "Docker" },
-                        }, db, rows[0]?.id);
+                        await pinResource(
+                          {
+                            id: createdAccountId,
+                            pluginId: "docker",
+                            resourceTypeId: "__account__",
+                            accountId: createdAccountId,
+                            displayName: accountName,
+                            fields: { pluginId: "docker", pluginDisplayName: "Docker" },
+                          },
+                          db,
+                          rows[0]?.id,
+                        );
                         setPinnedToDashboard(true);
                       } else {
                         setDashboards(rows);
@@ -321,14 +367,18 @@ export function DockerSetupModal({ sshHost, sourceAccountId, onClose, onComplete
                           setShowDashboardPicker(false);
                           void (async () => {
                             const db = await getDb();
-                            await pinResource({
-                              id: createdAccountId,
-                              pluginId: "docker",
-                              resourceTypeId: "__account__",
-                              accountId: createdAccountId,
-                              displayName: accountName,
-                              fields: { pluginId: "docker", pluginDisplayName: "Docker" },
-                            }, db, d.id);
+                            await pinResource(
+                              {
+                                id: createdAccountId,
+                                pluginId: "docker",
+                                resourceTypeId: "__account__",
+                                accountId: createdAccountId,
+                                displayName: accountName,
+                                fields: { pluginId: "docker", pluginDisplayName: "Docker" },
+                              },
+                              db,
+                              d.id,
+                            );
                             setPinnedToDashboard(true);
                           })();
                         }}
@@ -350,7 +400,10 @@ export function DockerSetupModal({ sshHost, sourceAccountId, onClose, onComplete
           )}
           {error && step !== "credentials" && (
             <button
-              onClick={() => { setError(null); setStep("credentials"); }}
+              onClick={() => {
+                setError(null);
+                setStep("credentials");
+              }}
               className="px-4 py-2 text-sm bg-gray-700 hover:bg-gray-600 text-gray-200 rounded-lg transition-colors"
             >
               Retry
@@ -364,8 +417,12 @@ export function DockerSetupModal({ sshHost, sourceAccountId, onClose, onComplete
 
 function StepIndicator({ label, active, done }: { label: string; active: boolean; done: boolean }) {
   return (
-    <div className={`flex items-center gap-1.5 ${active ? "text-blue-400" : done ? "text-green-400" : "text-gray-600"}`}>
-      <span className={`w-1.5 h-1.5 rounded-full ${active ? "bg-blue-400 animate-pulse" : done ? "bg-green-400" : "bg-gray-700"}`} />
+    <div
+      className={`flex items-center gap-1.5 ${active ? "text-blue-400" : done ? "text-green-400" : "text-gray-600"}`}
+    >
+      <span
+        className={`w-1.5 h-1.5 rounded-full ${active ? "bg-blue-400 animate-pulse" : done ? "bg-green-400" : "bg-gray-700"}`}
+      />
       {label}
     </div>
   );

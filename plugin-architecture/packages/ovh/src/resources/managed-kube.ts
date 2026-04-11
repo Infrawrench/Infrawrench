@@ -13,7 +13,10 @@ export const ManagedKubeResourceType: ResourceTypeDefinition = {
       kind: "enum",
       required: true,
       enumValues: [
-        "GRA5", "GRA7", "GRA9", "GRA11",
+        "GRA5",
+        "GRA7",
+        "GRA9",
+        "GRA11",
         "SBG5",
         "BHS5",
         "WAW1",

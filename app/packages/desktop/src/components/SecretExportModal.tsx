@@ -60,7 +60,10 @@ export function SecretExportModal({
         let resourceType = sourceLoaded.plugin.resourceTypes.find(
           (t) => t.id === source.resourceTypeId,
         );
-        if (!resourceType?.secretExportTemplates?.length && source.resourceTypeId === "__account__") {
+        if (
+          !resourceType?.secretExportTemplates?.length &&
+          source.resourceTypeId === "__account__"
+        ) {
           resourceType = sourceLoaded.plugin.resourceTypes.find(
             (t) => (t.secretExportTemplates?.length ?? 0) > 0,
           );
@@ -92,7 +95,10 @@ export function SecretExportModal({
         // Create the target client directly from the provided credentials
         const targetLoaded = await getPlugin(targetPluginId);
         if (!targetLoaded || cancelled) return;
-        const targetServices = buildPluginHostServices(targetLoaded.plugin.manifest, targetCredentials);
+        const targetServices = buildPluginHostServices(
+          targetLoaded.plugin.manifest,
+          targetCredentials,
+        );
         const client = targetLoaded.plugin.createClient(targetCredentials, targetServices);
         if (!cancelled) setTargetClient(client);
 
@@ -111,20 +117,25 @@ export function SecretExportModal({
     }
 
     void init();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [source, targetPluginId, targetCredentials]);
 
   const selectedTemplate = templates.find((t) => t.id === selectedTemplateId);
 
-  const handleTemplateChange = useCallback((id: string) => {
-    setSelectedTemplateId(id);
-    const tpl = templates.find((t) => t.id === id);
-    if (tpl) {
-      const keys: Record<string, string> = {};
-      for (const entry of tpl.entries) keys[entry.outputKey] = entry.envKey;
-      setEditableKeys(keys);
-    }
-  }, [templates]);
+  const handleTemplateChange = useCallback(
+    (id: string) => {
+      setSelectedTemplateId(id);
+      const tpl = templates.find((t) => t.id === id);
+      if (tpl) {
+        const keys: Record<string, string> = {};
+        for (const entry of tpl.entries) keys[entry.outputKey] = entry.envKey;
+        setEditableKeys(keys);
+      }
+    },
+    [templates],
+  );
 
   const handleCreate = useCallback(async () => {
     if (!selectedTemplate || !targetClient) return;
@@ -174,7 +185,8 @@ export function SecretExportModal({
       setResolving(false);
 
       // 2. Create secret via the target client (already initialized with credentials)
-      if (!targetClient.importSecret) throw new Error("Target plugin doesn't support secret import");
+      if (!targetClient.importSecret)
+        throw new Error("Target plugin doesn't support secret import");
       await targetClient.importSecret("", {
         namespace,
         secretName,
@@ -188,7 +200,16 @@ export function SecretExportModal({
       setCreating(false);
       setResolving(false);
     }
-  }, [selectedTemplate, targetClient, editableKeys, namespace, secretName, source, effectiveTypeId, onCreated]);
+  }, [
+    selectedTemplate,
+    targetClient,
+    editableKeys,
+    namespace,
+    secretName,
+    source,
+    effectiveTypeId,
+    onCreated,
+  ]);
 
   const entryCount = selectedTemplate?.entries.length ?? 0;
 
@@ -197,9 +218,7 @@ export function SecretExportModal({
       <div className="w-[min(520px,90vw)] max-h-[80vh] overflow-y-auto rounded-2xl border border-gray-700 bg-gray-900 shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-gray-800 px-5 py-4">
-          <h2 className="text-base font-semibold text-gray-100">
-            Create Kubernetes Secret
-          </h2>
+          <h2 className="text-base font-semibold text-gray-100">Create Kubernetes Secret</h2>
           <button
             onClick={onClose}
             className="text-gray-500 hover:text-gray-300 transition-colors text-lg leading-none"
@@ -222,7 +241,9 @@ export function SecretExportModal({
               {/* Template picker */}
               {templates.length > 1 && (
                 <div className="space-y-2">
-                  <label className="text-xs font-medium text-gray-400 uppercase tracking-wider">Template</label>
+                  <label className="text-xs font-medium text-gray-400 uppercase tracking-wider">
+                    Template
+                  </label>
                   <div className="space-y-1.5">
                     {templates.map((tpl) => (
                       <label
@@ -266,7 +287,10 @@ export function SecretExportModal({
                           type="text"
                           value={editableKeys[entry.outputKey] ?? entry.envKey}
                           onChange={(e) =>
-                            setEditableKeys((prev) => ({ ...prev, [entry.outputKey]: e.target.value }))
+                            setEditableKeys((prev) => ({
+                              ...prev,
+                              [entry.outputKey]: e.target.value,
+                            }))
                           }
                           className="flex-1 bg-transparent text-sm font-mono text-gray-100 outline-none"
                         />
@@ -280,7 +304,9 @@ export function SecretExportModal({
 
               {/* Namespace */}
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-gray-400 uppercase tracking-wider">Namespace</label>
+                <label className="text-xs font-medium text-gray-400 uppercase tracking-wider">
+                  Namespace
+                </label>
                 {namespaces.length > 0 ? (
                   <select
                     value={namespace}
@@ -288,7 +314,9 @@ export function SecretExportModal({
                     className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 outline-none focus:border-blue-500"
                   >
                     {namespaces.map((ns) => (
-                      <option key={ns} value={ns}>{ns}</option>
+                      <option key={ns} value={ns}>
+                        {ns}
+                      </option>
                     ))}
                   </select>
                 ) : (
@@ -304,7 +332,9 @@ export function SecretExportModal({
 
               {/* Secret name */}
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-gray-400 uppercase tracking-wider">Secret Name</label>
+                <label className="text-xs font-medium text-gray-400 uppercase tracking-wider">
+                  Secret Name
+                </label>
                 <input
                   type="text"
                   value={secretName}

@@ -74,7 +74,15 @@ describe("Account routes", () => {
               displayName: "AWS",
               logoSvg: "<svg/>",
               credentialFields: [
-                { key: "accessKeyId", label: "Access Key", description: "desc", placeholder: "", sensitive: true, multiline: false, defaultValue: "" },
+                {
+                  key: "accessKeyId",
+                  label: "Access Key",
+                  description: "desc",
+                  placeholder: "",
+                  sensitive: true,
+                  multiline: false,
+                  defaultValue: "",
+                },
               ],
             },
           },
@@ -165,7 +173,17 @@ describe("Account routes", () => {
       credentialsIv: "iv",
     };
 
-    function setupSyncMocks(pluginResources: Array<{ id: string; pluginId: string; resourceTypeId: string; displayName: string; accountId: string; fields: Record<string, unknown>; resolvedOutputs: Record<string, unknown> }>) {
+    function setupSyncMocks(
+      pluginResources: Array<{
+        id: string;
+        pluginId: string;
+        resourceTypeId: string;
+        displayName: string;
+        accountId: string;
+        fields: Record<string, unknown>;
+        resolvedOutputs: Record<string, unknown>;
+      }>,
+    ) {
       const where = vi.fn().mockResolvedValue([account]);
       const from = vi.fn().mockReturnValue({ where });
       mockSelect.mockReturnValue({ from });
@@ -226,9 +244,7 @@ describe("Account routes", () => {
       // db.update was called to soft-delete stale resources
       expect(mockUpdate).toHaveBeenCalled();
       // set() was called with deletedAt
-      expect(set).toHaveBeenCalledWith(
-        expect.objectContaining({ deletedAt: expect.any(Date) }),
-      );
+      expect(set).toHaveBeenCalledWith(expect.objectContaining({ deletedAt: expect.any(Date) }));
     });
 
     it("soft-deletes all resources when plugin returns empty list", async () => {
@@ -240,9 +256,7 @@ describe("Account routes", () => {
 
       // db.update was called to soft-delete all resources for this account
       expect(mockUpdate).toHaveBeenCalled();
-      expect(set).toHaveBeenCalledWith(
-        expect.objectContaining({ deletedAt: expect.any(Date) }),
-      );
+      expect(set).toHaveBeenCalledWith(expect.objectContaining({ deletedAt: expect.any(Date) }));
     });
 
     it("clears deletedAt on upsert for resources that reappear", async () => {

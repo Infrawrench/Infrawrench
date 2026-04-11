@@ -47,7 +47,12 @@ async function getClientForAccount(accountId: string, organizationId: string) {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function getSshConfig(client: any): { host: string; port: number; username: string; privateKey: string } {
+function getSshConfig(client: any): {
+  host: string;
+  port: number;
+  username: string;
+  privateKey: string;
+} {
   const config = client.getSshConfig?.();
   if (!config) throw new Error("Plugin does not support SSH");
   return config;
@@ -82,7 +87,8 @@ async function resolveSshConfig(
     .limit(1);
   if (!keyRow) throw new Error("SSH key not found");
 
-  if (!keyRow.encryptedPrivateKey || !keyRow.privateKeyIv) throw new Error("SSH key has no private key data");
+  if (!keyRow.encryptedPrivateKey || !keyRow.privateKeyIv)
+    throw new Error("SSH key has no private key data");
   const privateKey = await decrypt(keyRow.encryptedPrivateKey, keyRow.privateKeyIv);
   const host = input.sshHost;
   if (!host) throw new Error("SSH host is required");
@@ -104,7 +110,10 @@ app.post("/sql/query", async (c) => {
     sql: string;
   }>();
 
-  const { client, plugin, credentials } = await getClientForAccount(input.accountId, organizationId);
+  const { client, plugin, credentials } = await getClientForAccount(
+    input.accountId,
+    organizationId,
+  );
 
   // REST-based query (e.g. BigQuery, Databricks)
   if (input.resourceId && client.executeQuery) {
@@ -156,7 +165,10 @@ app.post("/sql/execute", async (c) => {
     params?: unknown[];
   }>();
 
-  const { client, plugin, credentials } = await getClientForAccount(input.accountId, organizationId);
+  const { client, plugin, credentials } = await getClientForAccount(
+    input.accountId,
+    organizationId,
+  );
   const params = input.params ?? [];
 
   // Per-resource SQL driver
@@ -226,7 +238,8 @@ app.post("/docker/command", async (c) => {
 
   const dockerHost = credentials[manifest.dockerDriver.credentialKey] ?? "";
   const driver = dockerDrivers.get(manifest.dockerDriver.driver);
-  if (!driver) return c.json({ error: `Unknown Docker driver: ${manifest.dockerDriver.driver}` }, 400);
+  if (!driver)
+    return c.json({ error: `Unknown Docker driver: ${manifest.dockerDriver.driver}` }, 400);
 
   const result = await driver.command(dockerHost, input.op, input.params);
   return c.json({ result });
@@ -237,7 +250,8 @@ app.post("/storage/list", async (c) => {
   const organizationId = c.get("organizationId");
   const input = await c.req.json<{ accountId: string; bucket: string; prefix: string }>();
   const { client } = await getClientForAccount(input.accountId, organizationId);
-  if (!client.listStorageObjects) return c.json({ error: "Plugin does not support storage listing" }, 400);
+  if (!client.listStorageObjects)
+    return c.json({ error: "Plugin does not support storage listing" }, 400);
   const result = await client.listStorageObjects(input.bucket, input.prefix);
   return c.json(result);
 });
@@ -247,7 +261,8 @@ app.post("/storage/mkdir", async (c) => {
   const organizationId = c.get("organizationId");
   const input = await c.req.json<{ accountId: string; bucket: string; key: string }>();
   const { client } = await getClientForAccount(input.accountId, organizationId);
-  if (!client.makeStorageFolder) return c.json({ error: "Plugin does not support folder creation" }, 400);
+  if (!client.makeStorageFolder)
+    return c.json({ error: "Plugin does not support folder creation" }, 400);
   await client.makeStorageFolder(input.bucket, input.key);
   return c.json({ ok: true });
 });
@@ -257,7 +272,8 @@ app.post("/storage/delete", async (c) => {
   const organizationId = c.get("organizationId");
   const input = await c.req.json<{ accountId: string; bucket: string; key: string }>();
   const { client } = await getClientForAccount(input.accountId, organizationId);
-  if (!client.deleteStorageObject) return c.json({ error: "Plugin does not support object deletion" }, 400);
+  if (!client.deleteStorageObject)
+    return c.json({ error: "Plugin does not support object deletion" }, 400);
   await client.deleteStorageObject(input.bucket, input.key);
   return c.json({ ok: true });
 });
@@ -267,7 +283,8 @@ app.post("/storage/stats", async (c) => {
   const organizationId = c.get("organizationId");
   const input = await c.req.json<{ accountId: string; bucket: string }>();
   const { client } = await getClientForAccount(input.accountId, organizationId);
-  if (!client.fetchStorageStats) return c.json({ error: "Plugin does not support storage stats" }, 400);
+  if (!client.fetchStorageStats)
+    return c.json({ error: "Plugin does not support storage stats" }, 400);
   const result = await client.fetchStorageStats(input.bucket);
   return c.json(result);
 });
@@ -275,7 +292,13 @@ app.post("/storage/stats", async (c) => {
 /** POST /api/sftp/list */
 app.post("/sftp/list", async (c) => {
   const organizationId = c.get("organizationId");
-  const input = await c.req.json<{ accountId: string; path: string; sshKeyId?: string; sshHost?: string; sshUsername?: string }>();
+  const input = await c.req.json<{
+    accountId: string;
+    path: string;
+    sshKeyId?: string;
+    sshHost?: string;
+    sshUsername?: string;
+  }>();
   try {
     const { client } = await getClientForAccount(input.accountId, organizationId);
     const config = await resolveSshConfig(client, organizationId, input);
@@ -289,7 +312,13 @@ app.post("/sftp/list", async (c) => {
 /** POST /api/sftp/mkdir */
 app.post("/sftp/mkdir", async (c) => {
   const organizationId = c.get("organizationId");
-  const input = await c.req.json<{ accountId: string; path: string; sshKeyId?: string; sshHost?: string; sshUsername?: string }>();
+  const input = await c.req.json<{
+    accountId: string;
+    path: string;
+    sshKeyId?: string;
+    sshHost?: string;
+    sshUsername?: string;
+  }>();
   try {
     const { client } = await getClientForAccount(input.accountId, organizationId);
     const config = await resolveSshConfig(client, organizationId, input);
@@ -303,7 +332,14 @@ app.post("/sftp/mkdir", async (c) => {
 /** POST /api/sftp/delete */
 app.post("/sftp/delete", async (c) => {
   const organizationId = c.get("organizationId");
-  const input = await c.req.json<{ accountId: string; path: string; isDir: boolean; sshKeyId?: string; sshHost?: string; sshUsername?: string }>();
+  const input = await c.req.json<{
+    accountId: string;
+    path: string;
+    isDir: boolean;
+    sshKeyId?: string;
+    sshHost?: string;
+    sshUsername?: string;
+  }>();
   try {
     const { client } = await getClientForAccount(input.accountId, organizationId);
     const config = await resolveSshConfig(client, organizationId, input);

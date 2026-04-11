@@ -28,7 +28,9 @@ export async function listGceInstances(
       const status = String(inst["status"] ?? "");
       const nets = inst["networkInterfaces"] as Array<Record<string, unknown>> | undefined;
       const externalIp =
-        ((nets?.[0]?.["accessConfigs"] as Array<Record<string, unknown>> | undefined)?.[0]?.["natIP"] as string) ?? "";
+        ((nets?.[0]?.["accessConfigs"] as Array<Record<string, unknown>> | undefined)?.[0]?.[
+          "natIP"
+        ] as string) ?? "";
       const internalIp = (nets?.[0]?.["networkIP"] as string) ?? "";
       results.push({
         id: ctx.id(accountId, "gce-instance", `${p}/${zone_}/${name}`),
@@ -99,9 +101,7 @@ export async function listGkeClusters(
     const location = String(c["location"] ?? "");
     const nodePool = (c["nodePools"] as Array<Record<string, unknown>> | undefined)?.[0];
     const nodeConfig = (nodePool?.["config"] as Record<string, unknown> | undefined) ?? {};
-    const nodeCount = Number(
-      (nodePool?.["initialNodeCount"] as number | undefined) ?? 0,
-    );
+    const nodeCount = Number((nodePool?.["initialNodeCount"] as number | undefined) ?? 0);
     return {
       id: ctx.id(accountId, "gke-cluster", `${p}/${location}/${name}`),
       pluginId: "gcp",
@@ -151,9 +151,7 @@ export async function listCloudSqlInstances(
         name: String(db["name"]),
         databaseVersion: String(db["databaseVersion"] ?? ""),
         region: String(db["region"] ?? ""),
-        tier: String(
-          (db["settings"] as Record<string, unknown> | undefined)?.["tier"] ?? "",
-        ),
+        tier: String((db["settings"] as Record<string, unknown> | undefined)?.["tier"] ?? ""),
         state: String(db["state"] ?? ""),
         availabilityType: String(
           (db["settings"] as Record<string, unknown> | undefined)?.["availabilityType"] ?? "",
@@ -191,7 +189,10 @@ export async function listSpannerInstances(
       fields: {
         name,
         displayName: String(inst["displayName"] ?? ""),
-        config: String(inst["config"] ?? "").split("/").pop() ?? "",
+        config:
+          String(inst["config"] ?? "")
+            .split("/")
+            .pop() ?? "",
         nodeCount: Number(inst["nodeCount"] ?? 0),
         processingUnits: Number(inst["processingUnits"] ?? 0),
         state: String(inst["state"] ?? ""),
@@ -370,7 +371,9 @@ export async function listGcsBuckets(
         location: String(b["location"] ?? ""),
         storageClass: String(b["storageClass"] ?? ""),
         publicAccessPrevention: String(
-          (b["iamConfiguration"] as Record<string, unknown> | undefined)?.["publicAccessPrevention"] ?? "",
+          (b["iamConfiguration"] as Record<string, unknown> | undefined)?.[
+            "publicAccessPrevention"
+          ] ?? "",
         ),
         versioning,
       },
@@ -477,7 +480,10 @@ export async function listCloudRunServices(
       fields: {
         name,
         region,
-        latestRevision: String(svc["latestReadyRevision"] ?? "").split("/").pop() ?? "",
+        latestRevision:
+          String(svc["latestReadyRevision"] ?? "")
+            .split("/")
+            .pop() ?? "",
         state,
         ingress: String(svc["ingress"] ?? ""),
       },
@@ -615,8 +621,8 @@ export async function listArtifactRegistryRepos(
       sizeBytes > 1_073_741_824
         ? `${(sizeBytes / 1_073_741_824).toFixed(1)} GB`
         : sizeBytes > 1_048_576
-        ? `${(sizeBytes / 1_048_576).toFixed(1)} MB`
-        : `${Math.round(sizeBytes / 1024)} KB`;
+          ? `${(sizeBytes / 1_048_576).toFixed(1)} MB`
+          : `${Math.round(sizeBytes / 1024)} KB`;
     return {
       id: ctx.id(accountId, "artifact-registry-repo", fullName),
       pluginId: "gcp",
@@ -721,8 +727,8 @@ export async function listSecretManagerSecrets(
     const replicationType = replication?.["automatic"]
       ? "automatic"
       : replication?.["userManaged"]
-      ? "user-managed"
-      : "unknown";
+        ? "user-managed"
+        : "unknown";
     return {
       id: ctx.id(accountId, "secret-manager-secret", fullName),
       pluginId: "gcp",
@@ -755,9 +761,9 @@ export async function listDataflowJobs(
   return items.map((job) => {
     const name = String(job["name"]);
     const region = String(job["location"] ?? "");
-    const sdkVersion = (job["jobMetadata"] as Record<string, unknown> | undefined)?.["sdkVersion"] as
-      | Record<string, string>
-      | undefined;
+    const sdkVersion = (job["jobMetadata"] as Record<string, unknown> | undefined)?.[
+      "sdkVersion"
+    ] as Record<string, string> | undefined;
     return {
       id: ctx.id(accountId, "dataflow-job", String(job["id"])),
       pluginId: "gcp",
@@ -841,9 +847,7 @@ export async function listCloudDnsRecordSets(
       for (const rr of rrsets) {
         const type = String(rr["type"] ?? "");
         const name = String(rr["name"] ?? "");
-        const rrdatas = Array.isArray(rr["rrdatas"])
-          ? (rr["rrdatas"] as string[]).join(", ")
-          : "";
+        const rrdatas = Array.isArray(rr["rrdatas"]) ? (rr["rrdatas"] as string[]).join(", ") : "";
         const ttl = Number(rr["ttl"] ?? 300);
         // Use type+name as a composite ID since Cloud DNS doesn't expose record IDs
         const recordKey = `${type}:${name}`;
@@ -887,7 +891,10 @@ export async function listFirewallRules(
   );
   return items.map((fw) => {
     const name = String(fw["name"]);
-    const network = String(fw["network"] ?? "").split("/").pop() ?? "";
+    const network =
+      String(fw["network"] ?? "")
+        .split("/")
+        .pop() ?? "";
     const direction = String(fw["direction"] ?? "");
     const priority = Number(fw["priority"] ?? 1000);
     const disabled = fw["disabled"] === true;
@@ -922,7 +929,18 @@ export async function listFirewallRules(
       resourceTypeId: "firewall-rule",
       accountId,
       displayName: name,
-      fields: { name, network, direction, priority, action, sourceRanges, destinationRanges, allowed, denied, disabled },
+      fields: {
+        name,
+        network,
+        direction,
+        priority,
+        action,
+        sourceRanges,
+        destinationRanges,
+        allowed,
+        denied,
+        disabled,
+      },
       resolvedOutputs: {},
       secretStates: [],
       externalId: name,
@@ -942,10 +960,19 @@ export async function listSubnets(
   );
   const results: ResourceInstance[] = [];
   for (const regionData of Object.values(data.items ?? {})) {
-    for (const sub of ((regionData as Record<string, unknown>).subnetworks ?? []) as Record<string, unknown>[]) {
+    for (const sub of ((regionData as Record<string, unknown>).subnetworks ?? []) as Record<
+      string,
+      unknown
+    >[]) {
       const name = String(sub["name"]);
-      const region = String(sub["region"] ?? "").split("/").pop() ?? "";
-      const network = String(sub["network"] ?? "").split("/").pop() ?? "";
+      const region =
+        String(sub["region"] ?? "")
+          .split("/")
+          .pop() ?? "";
+      const network =
+        String(sub["network"] ?? "")
+          .split("/")
+          .pop() ?? "";
       results.push({
         id: ctx.id(accountId, "subnet", `${region}/${name}`),
         pluginId: "gcp",
@@ -983,9 +1010,15 @@ export async function listStaticIps(
   );
   const results: ResourceInstance[] = [];
   for (const regionData of Object.values(data.items ?? {})) {
-    for (const addr of ((regionData as Record<string, unknown>).addresses ?? []) as Record<string, unknown>[]) {
+    for (const addr of ((regionData as Record<string, unknown>).addresses ?? []) as Record<
+      string,
+      unknown
+    >[]) {
       const name = String(addr["name"]);
-      const region = String(addr["region"] ?? "").split("/").pop() ?? "";
+      const region =
+        String(addr["region"] ?? "")
+          .split("/")
+          .pop() ?? "";
       const address = String(addr["address"] ?? "");
       results.push({
         id: ctx.id(accountId, "static-ip", `${region}/${name}`),
@@ -1023,10 +1056,19 @@ export async function listCloudRouters(
   );
   const results: ResourceInstance[] = [];
   for (const regionData of Object.values(data.items ?? {})) {
-    for (const router of ((regionData as Record<string, unknown>).routers ?? []) as Record<string, unknown>[]) {
+    for (const router of ((regionData as Record<string, unknown>).routers ?? []) as Record<
+      string,
+      unknown
+    >[]) {
       const name = String(router["name"]);
-      const region = String(router["region"] ?? "").split("/").pop() ?? "";
-      const network = String(router["network"] ?? "").split("/").pop() ?? "";
+      const region =
+        String(router["region"] ?? "")
+          .split("/")
+          .pop() ?? "";
+      const network =
+        String(router["network"] ?? "")
+          .split("/")
+          .pop() ?? "";
       const bgp = router["bgp"] as Record<string, unknown> | undefined;
       const nats = router["nats"] as unknown[] | undefined;
       results.push({
@@ -1063,9 +1105,15 @@ export async function listCloudNats(
   );
   const results: ResourceInstance[] = [];
   for (const regionData of Object.values(data.items ?? {})) {
-    for (const router of ((regionData as Record<string, unknown>).routers ?? []) as Record<string, unknown>[]) {
+    for (const router of ((regionData as Record<string, unknown>).routers ?? []) as Record<
+      string,
+      unknown
+    >[]) {
       const routerName = String(router["name"]);
-      const region = String(router["region"] ?? "").split("/").pop() ?? "";
+      const region =
+        String(router["region"] ?? "")
+          .split("/")
+          .pop() ?? "";
       const nats = router["nats"] as Array<Record<string, unknown>> | undefined;
       if (!nats) continue;
       for (const nat of nats) {
@@ -1126,9 +1174,19 @@ export async function listCloudSchedulerJobs(
           const appEngineTarget = job["appEngineHttpTarget"] as Record<string, unknown> | undefined;
           let targetType = "unknown";
           let targetUri = "";
-          if (httpTarget) { targetType = "HTTP"; targetUri = String(httpTarget["uri"] ?? ""); }
-          else if (pubsubTarget) { targetType = "Pub/Sub"; targetUri = String(pubsubTarget["topicName"] ?? "").split("/").pop() ?? ""; }
-          else if (appEngineTarget) { targetType = "App Engine"; targetUri = String(appEngineTarget["relativeUri"] ?? ""); }
+          if (httpTarget) {
+            targetType = "HTTP";
+            targetUri = String(httpTarget["uri"] ?? "");
+          } else if (pubsubTarget) {
+            targetType = "Pub/Sub";
+            targetUri =
+              String(pubsubTarget["topicName"] ?? "")
+                .split("/")
+                .pop() ?? "";
+          } else if (appEngineTarget) {
+            targetType = "App Engine";
+            targetUri = String(appEngineTarget["relativeUri"] ?? "");
+          }
           results.push({
             id: ctx.id(accountId, "cloud-scheduler-job", fullName),
             pluginId: "gcp",
@@ -1494,7 +1552,10 @@ export async function listFilestoreInstances(
     const name = fullName.split("/").pop() ?? "";
     const location = fullName.split("/locations/")[1]?.split("/")[0] ?? "";
     const networks = inst["networks"] as Array<Record<string, unknown>> | undefined;
-    const network = String(networks?.[0]?.["network"] ?? "").split("/").pop() ?? "";
+    const network =
+      String(networks?.[0]?.["network"] ?? "")
+        .split("/")
+        .pop() ?? "";
     const ipAddresses = networks?.[0]?.["ipAddresses"] as string[] | undefined;
     const fileShares = inst["fileShares"] as Array<Record<string, unknown>> | undefined;
     const fileShareName = String(fileShares?.[0]?.["name"] ?? "");
@@ -1534,7 +1595,10 @@ export async function listBackendServices(
   );
   const results: ResourceInstance[] = [];
   for (const regionData of Object.values(data.items ?? {})) {
-    for (const bs of ((regionData as Record<string, unknown>).backendServices ?? []) as Record<string, unknown>[]) {
+    for (const bs of ((regionData as Record<string, unknown>).backendServices ?? []) as Record<
+      string,
+      unknown
+    >[]) {
       const name = String(bs["name"]);
       const backends = bs["backends"] as unknown[] | undefined;
       const healthChecks = bs["healthChecks"] as unknown[] | undefined;
@@ -1576,9 +1640,15 @@ export async function listForwardingRules(
   );
   const results: ResourceInstance[] = [];
   for (const regionData of Object.values(data.items ?? {})) {
-    for (const fr of ((regionData as Record<string, unknown>).forwardingRules ?? []) as Record<string, unknown>[]) {
+    for (const fr of ((regionData as Record<string, unknown>).forwardingRules ?? []) as Record<
+      string,
+      unknown
+    >[]) {
       const name = String(fr["name"]);
-      const region = String(fr["region"] ?? "").split("/").pop() ?? "global";
+      const region =
+        String(fr["region"] ?? "")
+          .split("/")
+          .pop() ?? "global";
       const ipAddress = String(fr["IPAddress"] ?? "");
       results.push({
         id: ctx.id(accountId, "forwarding-rule", `${region}/${name}`),
@@ -1592,7 +1662,10 @@ export async function listForwardingRules(
           IPAddress: ipAddress,
           IPProtocol: String(fr["IPProtocol"] ?? ""),
           portRange: String(fr["portRange"] ?? ""),
-          target: String(fr["target"] ?? "").split("/").pop() ?? "",
+          target:
+            String(fr["target"] ?? "")
+              .split("/")
+              .pop() ?? "",
           loadBalancingScheme: String(fr["loadBalancingScheme"] ?? ""),
           networkTier: String(fr["networkTier"] ?? ""),
         },
@@ -1626,8 +1699,12 @@ export async function listMemorystoreMemcached(
     const name = fullName.split("/").pop() ?? "";
     const location = fullName.split("/locations/")[1]?.split("/")[0] ?? "";
     const nodeConfig = inst["nodeConfig"] as Record<string, unknown> | undefined;
-    const discoveryEndpoint = String((inst["discoveryEndpoint"] as Record<string, unknown> | undefined)?.["address"] ?? "");
-    const discoveryPort = String((inst["discoveryEndpoint"] as Record<string, unknown> | undefined)?.["port"] ?? "");
+    const discoveryEndpoint = String(
+      (inst["discoveryEndpoint"] as Record<string, unknown> | undefined)?.["address"] ?? "",
+    );
+    const discoveryPort = String(
+      (inst["discoveryEndpoint"] as Record<string, unknown> | undefined)?.["port"] ?? "",
+    );
     const endpoint = discoveryEndpoint ? `${discoveryEndpoint}:${discoveryPort}` : "";
     return {
       id: ctx.id(accountId, "memorystore-memcached", fullName),
@@ -1659,7 +1736,15 @@ export async function listVertexAiEndpoints(
   accountId: string,
   p: string,
 ): Promise<ResourceInstance[]> {
-  const regions = ["us-central1", "us-east1", "us-west1", "europe-west1", "europe-west4", "asia-east1", "asia-northeast1"];
+  const regions = [
+    "us-central1",
+    "us-east1",
+    "us-west1",
+    "europe-west1",
+    "europe-west4",
+    "asia-east1",
+    "asia-northeast1",
+  ];
   const results: ResourceInstance[] = [];
   await Promise.all(
     regions.map(async (region) => {
@@ -1775,7 +1860,10 @@ export async function listWorkflows(
         region,
         state: String(wf["state"] ?? ""),
         revisionId: String(wf["revisionId"] ?? ""),
-        serviceAccount: String(wf["serviceAccount"] ?? "").split("/").pop() ?? "",
+        serviceAccount:
+          String(wf["serviceAccount"] ?? "")
+            .split("/")
+            .pop() ?? "",
       },
       resolvedOutputs: {},
       secretStates: [],
@@ -1817,7 +1905,9 @@ export async function listCloudDeployPipelines(
         region,
         description: String(pipeline["description"] ?? ""),
         stageCount: Array.isArray(stages) ? stages.length : 0,
-        stages: Array.isArray(stages) ? stages.map((s) => String(s["targetId"] ?? "")).join(", ") : "",
+        stages: Array.isArray(stages)
+          ? stages.map((s) => String(s["targetId"] ?? "")).join(", ")
+          : "",
       },
       resolvedOutputs: {},
       secretStates: [],
@@ -1847,9 +1937,11 @@ export async function listAppEngineServices(
     const split = svc["split"] as Record<string, unknown> | undefined;
     const allocations = split?.["allocations"] as Record<string, number> | undefined;
     const trafficSplit = allocations
-      ? Object.entries(allocations).map(([v, pct]) => `${v}: ${(pct * 100).toFixed(0)}%`).join(", ")
+      ? Object.entries(allocations)
+          .map(([v, pct]) => `${v}: ${(pct * 100).toFixed(0)}%`)
+          .join(", ")
       : "";
-    const latestVersion = allocations ? Object.keys(allocations)[0] ?? "" : "";
+    const latestVersion = allocations ? (Object.keys(allocations)[0] ?? "") : "";
     return {
       id: ctx.id(accountId, "app-engine-service", name),
       pluginId: "gcp",
@@ -1862,7 +1954,9 @@ export async function listAppEngineServices(
         latestVersion,
         trafficSplit,
       },
-      resolvedOutputs: { url: `https://${name === "default" ? "" : `${name}-dot-`}${p}.appspot.com` },
+      resolvedOutputs: {
+        url: `https://${name === "default" ? "" : `${name}-dot-`}${p}.appspot.com`,
+      },
       secretStates: [],
       externalId: name,
       createdAt: ctx.now(),
@@ -1887,9 +1981,16 @@ export async function listHealthChecks(
     const tcpHc = hc["tcpHealthCheck"] as Record<string, unknown> | undefined;
     let type = "TCP";
     let port = 0;
-    if (httpHc) { type = "HTTP"; port = Number(httpHc["port"] ?? 80); }
-    else if (httpsHc) { type = "HTTPS"; port = Number(httpsHc["port"] ?? 443); }
-    else if (tcpHc) { type = "TCP"; port = Number(tcpHc["port"] ?? 0); }
+    if (httpHc) {
+      type = "HTTP";
+      port = Number(httpHc["port"] ?? 80);
+    } else if (httpsHc) {
+      type = "HTTPS";
+      port = Number(httpsHc["port"] ?? 443);
+    } else if (tcpHc) {
+      type = "TCP";
+      port = Number(tcpHc["port"] ?? 0);
+    }
     return {
       id: ctx.id(accountId, "health-check", name),
       pluginId: "gcp",
@@ -1965,11 +2066,23 @@ export async function listInstanceGroups(
   );
   const results: ResourceInstance[] = [];
   for (const zoneData of Object.values(data.items ?? {})) {
-    for (const igm of ((zoneData as Record<string, unknown>).instanceGroupManagers ?? []) as Record<string, unknown>[]) {
+    for (const igm of ((zoneData as Record<string, unknown>).instanceGroupManagers ?? []) as Record<
+      string,
+      unknown
+    >[]) {
       const name = String(igm["name"]);
-      const zone = String(igm["zone"] ?? "").split("/").pop() ?? "";
-      const region = String(igm["region"] ?? "").split("/").pop() ?? "";
-      const instanceTemplate = String(igm["instanceTemplate"] ?? "").split("/").pop() ?? "";
+      const zone =
+        String(igm["zone"] ?? "")
+          .split("/")
+          .pop() ?? "";
+      const region =
+        String(igm["region"] ?? "")
+          .split("/")
+          .pop() ?? "";
+      const instanceTemplate =
+        String(igm["instanceTemplate"] ?? "")
+          .split("/")
+          .pop() ?? "";
       results.push({
         id: ctx.id(accountId, "instance-group", `${zone || region}/${name}`),
         pluginId: "gcp",

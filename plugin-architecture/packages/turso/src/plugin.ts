@@ -19,7 +19,8 @@ const manifest: PluginManifest = {
     {
       key: "apiToken",
       label: "API Token",
-      description: "A Turso Platform API token. Generate one at https://turso.tech/app or via `turso auth api-tokens mint`.",
+      description:
+        "A Turso Platform API token. Generate one at https://turso.tech/app or via `turso auth api-tokens mint`.",
       sensitive: true,
       placeholder: "eyJ...",
     },
@@ -33,10 +34,7 @@ const manifest: PluginManifest = {
   ],
 };
 
-const resourceTypes: ResourceTypeDefinition[] = [
-  TursoGroupResourceType,
-  TursoDatabaseResourceType,
-];
+const resourceTypes: ResourceTypeDefinition[] = [TursoGroupResourceType, TursoDatabaseResourceType];
 
 export const plugin: Plugin = {
   manifest,

@@ -7,10 +7,22 @@ export const WAFWebACLResourceType: ResourceTypeDefinition = {
   description: "An AWS WAFv2 web access control list",
   fields: [
     { key: "name", label: "Name", kind: "string", required: true },
-    { key: "scope", label: "Scope", kind: "enum", required: true, enumValues: ["REGIONAL", "CLOUDFRONT"] },
+    {
+      key: "scope",
+      label: "Scope",
+      kind: "enum",
+      required: true,
+      enumValues: ["REGIONAL", "CLOUDFRONT"],
+    },
     { key: "description", label: "Description", kind: "string", required: false },
     { key: "ruleCount", label: "Rules", kind: "number", required: false },
-    { key: "defaultAction", label: "Default Action", kind: "enum", required: false, enumValues: ["ALLOW", "BLOCK"] },
+    {
+      key: "defaultAction",
+      label: "Default Action",
+      kind: "enum",
+      required: false,
+      enumValues: ["ALLOW", "BLOCK"],
+    },
     { key: "capacity", label: "Capacity (WCU)", kind: "number", required: false },
   ],
   outputs: [

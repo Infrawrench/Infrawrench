@@ -10,7 +10,12 @@ export interface ListerContext {
   json<T>(service: string, target: string, body: Record<string, unknown>): Promise<T>;
   jsonGet<T>(service: string, path: string): Promise<T>;
   /** Make an XML Query API call for non-EC2 services (ELBv2, AutoScaling, Redshift, CloudFormation) */
-  ec2Query<T>(service: string, action: string, version: string, params?: Record<string, string>): Promise<T>;
+  ec2Query<T>(
+    service: string,
+    action: string,
+    version: string,
+    params?: Record<string, string>,
+  ): Promise<T>;
   id(accountId: string, typeId: string, externalId: string): string;
   now(): string;
   region: string;
@@ -123,10 +128,7 @@ export async function listEBSVolumes(
   });
 }
 
-export async function listVPCs(
-  ctx: ListerContext,
-  accountId: string,
-): Promise<ResourceInstance[]> {
+export async function listVPCs(ctx: ListerContext, accountId: string): Promise<ResourceInstance[]> {
   const data = await ctx.ec2<Record<string, unknown>>("DescribeVpcs");
   const vpcs = ensureArray(
     (data["vpcSet"] as Record<string, unknown> | undefined)?.["item"],
@@ -166,10 +168,7 @@ export async function listEKSClusters(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const listData = await ctx.jsonGet<{ clusters?: string[] }>(
-    "eks",
-    "/clusters",
-  );
+  const listData = await ctx.jsonGet<{ clusters?: string[] }>("eks", "/clusters");
   const clusterNames = listData.clusters ?? [];
   const results: ResourceInstance[] = [];
 
@@ -408,7 +407,10 @@ export async function listECSServices(
             launchType: String(svc["launchType"] ?? ""),
             desiredCount: Number(svc["desiredCount"] ?? 0),
             runningCount: Number(svc["runningCount"] ?? 0),
-            taskDefinition: String(svc["taskDefinition"] ?? "").split("/").pop() ?? "",
+            taskDefinition:
+              String(svc["taskDefinition"] ?? "")
+                .split("/")
+                .pop() ?? "",
           },
           resolvedOutputs: { serviceArn },
           secretStates: [],
@@ -448,7 +450,8 @@ export async function listDynamoDBTables(
       const partitionKey = keySchema?.find((k) => k["KeyType"] === "HASH")?.["AttributeName"] ?? "";
       const sortKey = keySchema?.find((k) => k["KeyType"] === "RANGE")?.["AttributeName"] ?? "";
       const billingMode = String(
-        (t["BillingModeSummary"] as Record<string, unknown> | undefined)?.["BillingMode"] ?? "PROVISIONED",
+        (t["BillingModeSummary"] as Record<string, unknown> | undefined)?.["BillingMode"] ??
+          "PROVISIONED",
       );
 
       results.push({
@@ -527,11 +530,7 @@ export async function listSQSQueues(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.json<{ QueueUrls?: string[] }>(
-    "sqs",
-    "AmazonSQS.ListQueues",
-    {},
-  );
+  const data = await ctx.json<{ QueueUrls?: string[] }>("sqs", "AmazonSQS.ListQueues", {});
   const queueUrls = data.QueueUrls ?? [];
   const results: ResourceInstance[] = [];
 
@@ -567,7 +566,11 @@ export async function listSQSQueues(
         },
         secretStates: [],
         externalId: queueName,
-        createdAt: String(a["CreatedTimestamp"] ? new Date(Number(a["CreatedTimestamp"]) * 1000).toISOString() : ctx.now()),
+        createdAt: String(
+          a["CreatedTimestamp"]
+            ? new Date(Number(a["CreatedTimestamp"]) * 1000).toISOString()
+            : ctx.now(),
+        ),
         updatedAt: ctx.now(),
       });
     } catch {
@@ -658,9 +661,14 @@ export async function listECRRepositories(
         repositoryName: name,
         registryId: String(repo["registryId"] ?? ""),
         imageCount: 0, // Would need a separate DescribeImages call
-        imageScanOnPush: (repo["imageScanningConfiguration"] as Record<string, unknown> | undefined)?.["scanOnPush"] === true,
+        imageScanOnPush:
+          (repo["imageScanningConfiguration"] as Record<string, unknown> | undefined)?.[
+            "scanOnPush"
+          ] === true,
         encryptionType: String(
-          (repo["encryptionConfiguration"] as Record<string, unknown> | undefined)?.["encryptionType"] ?? "AES256",
+          (repo["encryptionConfiguration"] as Record<string, unknown> | undefined)?.[
+            "encryptionType"
+          ] ?? "AES256",
         ),
       },
       resolvedOutputs: {

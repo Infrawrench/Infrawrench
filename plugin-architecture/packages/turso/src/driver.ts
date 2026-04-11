@@ -11,9 +11,7 @@ function buildClient(connectionString: string) {
     const authToken = parsed.searchParams.get("authToken");
     parsed.search = "";
     const url = parsed.toString();
-    return authToken
-      ? createClient({ url, authToken })
-      : createClient({ url });
+    return authToken ? createClient({ url, authToken }) : createClient({ url });
   } catch {
     return createClient({ url: connectionString });
   }

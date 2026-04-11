@@ -37,7 +37,10 @@ app.get("/", async (c) => {
 
   const accountMap = new Map(allAccounts.map((a) => [a.id, a]));
 
-  const pluginCache = new Map<string, { logoSvg: string; displayName: string; resourceTypes: Map<string, string> }>();
+  const pluginCache = new Map<
+    string,
+    { logoSvg: string; displayName: string; resourceTypes: Map<string, string> }
+  >();
 
   const results = [];
   for (const r of allResources) {
@@ -46,7 +49,11 @@ app.get("/", async (c) => {
       const loaded = await getPlugin(r.pluginId);
       if (loaded) {
         const rtMap = new Map(loaded.plugin.resourceTypes.map((rt) => [rt.id, rt.displayName]));
-        pluginMeta = { logoSvg: loaded.plugin.manifest.logoSvg, displayName: loaded.plugin.manifest.displayName, resourceTypes: rtMap };
+        pluginMeta = {
+          logoSvg: loaded.plugin.manifest.logoSvg,
+          displayName: loaded.plugin.manifest.displayName,
+          resourceTypes: rtMap,
+        };
       } else {
         pluginMeta = { logoSvg: "", displayName: r.pluginId, resourceTypes: new Map() };
       }
@@ -58,7 +65,8 @@ app.get("/", async (c) => {
     const resourceTypeLabel = pluginMeta.resourceTypes.get(r.resourceTypeId) ?? r.resourceTypeId;
 
     if (q) {
-      const searchable = `${r.displayName} ${accountName} ${pluginMeta.displayName} ${resourceTypeLabel}`.toLowerCase();
+      const searchable =
+        `${r.displayName} ${accountName} ${pluginMeta.displayName} ${resourceTypeLabel}`.toLowerCase();
       if (!searchable.includes(q)) continue;
     }
 

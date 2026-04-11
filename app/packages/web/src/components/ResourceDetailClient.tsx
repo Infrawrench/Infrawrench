@@ -15,7 +15,11 @@ import {
 import type { DetailViewSchema, PeerPaneSchema } from "@infrawrench/plugin-base";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import { useOrgId } from "@/lib/useOrgId";
-import { navigateToWorkspaceTarget, resourceSshTabTarget, resourceSftpTabTarget } from "@/lib/workspace-tabs";
+import {
+  navigateToWorkspaceTarget,
+  resourceSshTabTarget,
+  resourceSftpTabTarget,
+} from "@/lib/workspace-tabs";
 import { CreateResourceModal } from "./CreateResourceModal";
 import { KvConsole } from "@/components/KvConsole";
 import { DockerActionsPanel } from "@/components/DockerActionsPanel";
@@ -110,7 +114,10 @@ export function ResourceDetailClient({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [wsToken, setWsToken] = useState<string | null>(null);
   const [createTarget, setCreateTarget] = useState<ChildResourceGroup | null>(null);
-  const [sshQuickConnect, setSshQuickConnect] = useState<{ sshKeyId: string; username: string } | null>(null);
+  const [sshQuickConnect, setSshQuickConnect] = useState<{
+    sshKeyId: string;
+    username: string;
+  } | null>(null);
 
   const isSshView = initialView === "ssh";
   const isSftpView = initialView === "sftp";
@@ -119,7 +126,10 @@ export function ResourceDetailClient({
   const handleRunQuery = useCallback(
     async (sql: string): Promise<QueryResult> => {
       if (!hasSqlEditor) return { rows: [], durationMs: 0 };
-      const result = await apiPost<{ rows: Record<string, unknown>[]; durationMs: number }>("/api/sql/query", { accountId, resourceId, resourceTypeId, sql });
+      const result = await apiPost<{ rows: Record<string, unknown>[]; durationMs: number }>(
+        "/api/sql/query",
+        { accountId, resourceId, resourceTypeId, sql },
+      );
       return { rows: result.rows, durationMs: result.durationMs };
     },
     [accountId, resourceId, resourceTypeId, hasSqlEditor],
@@ -127,7 +137,13 @@ export function ResourceDetailClient({
 
   const handleExecute = useCallback(
     async (sql: string, params: unknown[]): Promise<number> => {
-      const result = await apiPost<{ affectedRows: number }>("/api/sql/execute", { accountId, resourceId, resourceTypeId, sql, params });
+      const result = await apiPost<{ affectedRows: number }>("/api/sql/execute", {
+        accountId,
+        resourceId,
+        resourceTypeId,
+        sql,
+        params,
+      });
       return result.affectedRows;
     },
     [accountId, resourceId, resourceTypeId],
@@ -137,31 +153,44 @@ export function ResourceDetailClient({
     (child: ChildResource) => {
       void navigate({
         to: "/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId",
-        params: { orgId, pluginId: child.pluginId, resourceTypeId: child.resourceTypeId, resourceId: child.id },
+        params: {
+          orgId,
+          pluginId: child.pluginId,
+          resourceTypeId: child.resourceTypeId,
+          resourceId: child.id,
+        },
       });
     },
     [navigate],
   );
 
-  const handleChildCreate = useCallback(
-    (group: ChildResourceGroup) => {
-      setCreateTarget(group);
-    },
-    [],
-  );
+  const handleChildCreate = useCallback((group: ChildResourceGroup) => {
+    setCreateTarget(group);
+  }, []);
 
   const handleGetManifest = useCallback(async (): Promise<string> => {
-    const result = await apiGet<{ manifest: string }>(`/api/resources/${pluginId}/${resourceTypeId}/manifest?resourceId=${encodeURIComponent(resourceId)}&accountId=${accountId}`);
+    const result = await apiGet<{ manifest: string }>(
+      `/api/resources/${pluginId}/${resourceTypeId}/manifest?resourceId=${encodeURIComponent(resourceId)}&accountId=${accountId}`,
+    );
     return result.manifest;
   }, [accountId, resourceId, pluginId, resourceTypeId]);
 
-  const handleApplyManifest = useCallback(async (manifest: string): Promise<void> => {
-    await apiPost(`/api/org/${orgId}/resources/${pluginId}/${resourceTypeId}/manifest`, { accountId, resourceId, manifest });
-    dispatchResourcesChanged();
-  }, [accountId, resourceId, pluginId, resourceTypeId]);
+  const handleApplyManifest = useCallback(
+    async (manifest: string): Promise<void> => {
+      await apiPost(`/api/org/${orgId}/resources/${pluginId}/${resourceTypeId}/manifest`, {
+        accountId,
+        resourceId,
+        manifest,
+      });
+      dispatchResourcesChanged();
+    },
+    [accountId, resourceId, pluginId, resourceTypeId],
+  );
 
   async function handleDelete() {
-    await apiDelete(`/api/org/${orgId}/resources/${pluginId}/${resourceTypeId}?resourceId=${encodeURIComponent(resourceId)}&accountId=${accountId}`);
+    await apiDelete(
+      `/api/org/${orgId}/resources/${pluginId}/${resourceTypeId}?resourceId=${encodeURIComponent(resourceId)}&accountId=${accountId}`,
+    );
     void navigate({ to: "/org/$orgId/accounts/$accountId", params: { orgId, accountId } });
     dispatchResourcesChanged();
   }
@@ -202,11 +231,20 @@ export function ResourceDetailClient({
       {isSftpView && hasSftpBrowser && (
         <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
           {sshHost && !sshQuickConnect ? (
-            <SshQuickConnectPanel host={sshHost} onConnect={(config) => setSshQuickConnect(config)} />
+            <SshQuickConnectPanel
+              host={sshHost}
+              onConnect={(config) => setSshQuickConnect(config)}
+            />
           ) : (
             <SftpBrowser
               accountId={accountId}
-              {...(sshQuickConnect && sshHost ? { sshKeyId: sshQuickConnect.sshKeyId, sshHost, sshUsername: sshQuickConnect.username } : {})}
+              {...(sshQuickConnect && sshHost
+                ? {
+                    sshKeyId: sshQuickConnect.sshKeyId,
+                    sshHost,
+                    sshUsername: sshQuickConnect.username,
+                  }
+                : {})}
             />
           )}
         </div>
@@ -221,13 +259,23 @@ export function ResourceDetailClient({
       {isSshView && (
         <div className="flex-1 min-h-0 overflow-hidden">
           {sshHost && !sshQuickConnect ? (
-            <SshQuickConnectPanel host={sshHost} onConnect={async (config) => {
-              setSshQuickConnect(config);
-              const { token } = await apiPost<{ token: string }>(`/api/org/${orgId}/ws-token`);
-              setWsToken(token);
-            }} />
+            <SshQuickConnectPanel
+              host={sshHost}
+              onConnect={async (config) => {
+                setSshQuickConnect(config);
+                const { token } = await apiPost<{ token: string }>(`/api/org/${orgId}/ws-token`);
+                setWsToken(token);
+              }}
+            />
           ) : sshHost && sshQuickConnect && wsToken ? (
-            <WebTerminal accountId={accountId} resourceId={resourceId} token={wsToken} sshKeyId={sshQuickConnect.sshKeyId} sshHost={sshHost} sshUsername={sshQuickConnect.username} />
+            <WebTerminal
+              accountId={accountId}
+              resourceId={resourceId}
+              token={wsToken}
+              sshKeyId={sshQuickConnect.sshKeyId}
+              sshHost={sshHost}
+              sshUsername={sshQuickConnect.username}
+            />
           ) : wsToken ? (
             <WebTerminal accountId={accountId} resourceId={resourceId} token={wsToken} />
           ) : !sshHost ? (
@@ -282,19 +330,16 @@ export function ResourceDetailClient({
               pluginLogoSvg={pluginLogoSvg}
               {...(hasSqlEditor ? { onRunQuery: handleRunQuery, onExecute: handleExecute } : {})}
               peerPanes={peerPanes}
-              renderPeerPane={(pane) => (
-                <PeerPaneView pane={pane} />
-              )}
+              renderPeerPane={(pane) => <PeerPaneView pane={pane} />}
               childResourceGroups={childResourceGroups}
               onChildClick={handleChildClick}
               onChildCreate={handleChildCreate}
               renderChildResource={(child) => (
-                <DraggableChildPill
-                  child={child}
-                  onOpen={() => handleChildClick(child)}
-                />
+                <DraggableChildPill child={child} onOpen={() => handleChildClick(child)} />
               )}
-              {...(hasManifestEditor ? { onGetManifest: handleGetManifest, onApplyManifest: handleApplyManifest } : {})}
+              {...(hasManifestEditor
+                ? { onGetManifest: handleGetManifest, onApplyManifest: handleApplyManifest }
+                : {})}
             />
           </div>
         </div>
@@ -370,7 +415,12 @@ export function ResourceDetailClient({
             dispatchResourcesChanged();
             void navigate({
               to: "/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId",
-              params: { orgId, pluginId, resourceTypeId: createTarget.typeId, resourceId: resource.id },
+              params: {
+                orgId,
+                pluginId,
+                resourceTypeId: createTarget.typeId,
+                resourceId: resource.id,
+              },
               search: { accountId },
             });
           }}
@@ -418,14 +468,10 @@ function PeerPaneView({ pane }: { pane: PeerPaneData }) {
                   className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-800 bg-gray-900/50 text-sm"
                 >
                   {item.status && (
-                    <StatusDotNodeRenderer
-                      node={{ kind: "status-dot", status: item.status }}
-                    />
+                    <StatusDotNodeRenderer node={{ kind: "status-dot", status: item.status }} />
                   )}
                   <span className="text-gray-200 font-medium">{item.displayName}</span>
-                  {item.subtitle && (
-                    <span className="text-gray-500 text-xs">{item.subtitle}</span>
-                  )}
+                  {item.subtitle && <span className="text-gray-500 text-xs">{item.subtitle}</span>}
                 </div>
               ))}
             </div>

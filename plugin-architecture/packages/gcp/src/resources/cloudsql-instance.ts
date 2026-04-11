@@ -14,7 +14,12 @@ export const CloudSqlInstanceResourceType: ResourceTypeDefinition = {
     { key: "availabilityType", label: "Availability Type", kind: "string", required: false },
   ],
   outputs: [
-    { key: "connectionName", label: "Connection Name", sensitive: false, description: "project:region:instance" },
+    {
+      key: "connectionName",
+      label: "Connection Name",
+      sensitive: false,
+      description: "project:region:instance",
+    },
     { key: "ipAddress", label: "IP Address", sensitive: false },
   ],
   dashboardPinnable: true,
@@ -24,7 +29,11 @@ export const CloudSqlInstanceResourceType: ResourceTypeDefinition = {
       displayName: "Cloud SQL Connection",
       description: "Connection name and IP address for Cloud SQL proxy or direct access",
       entries: [
-        { envKey: "CLOUDSQL_CONNECTION_NAME", outputKey: "connectionName", description: "project:region:instance format" },
+        {
+          envKey: "CLOUDSQL_CONNECTION_NAME",
+          outputKey: "connectionName",
+          description: "project:region:instance format",
+        },
         { envKey: "DB_HOST", outputKey: "ipAddress" },
       ],
     },

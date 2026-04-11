@@ -101,66 +101,122 @@ export class GcpClient implements PluginClient {
     const p = this.project;
     const ctx = this.listerCtx;
     switch (typeId) {
-      case "gce-instance":       return listers.listGceInstances(ctx, accountId, p);
-      case "gce-disk":           return listers.listGceDisks(ctx, accountId, p);
-      case "gke-cluster":        return listers.listGkeClusters(ctx, accountId, p);
-      case "cloudsql-instance":  return listers.listCloudSqlInstances(ctx, accountId, p);
-      case "spanner-instance":   return listers.listSpannerInstances(ctx, accountId, p);
-      case "bigtable-instance":  return listers.listBigtableInstances(ctx, accountId, p);
-      case "firestore-database": return listers.listFirestoreDatabases(ctx, accountId, p);
-      case "memorystore-redis":  return listers.listMemorystoreRedis(ctx, accountId, p);
-      case "alloydb-cluster":    return listers.listAlloyDbClusters(ctx, accountId, p);
-      case "gcs-bucket":         return listers.listGcsBuckets(ctx, accountId, p);
-      case "pubsub-topic":       return listers.listPubSubTopics(ctx, accountId, p);
-      case "pubsub-subscription":return listers.listPubSubSubscriptions(ctx, accountId, p);
-      case "cloud-run-service":  return listers.listCloudRunServices(ctx, accountId, p);
-      case "cloud-function":     return listers.listCloudFunctions(ctx, accountId, p);
-      case "vpc-network":        return listers.listVpcNetworks(ctx, accountId, p);
-      case "bigquery-dataset":   return listers.listBigQueryDatasets(ctx, accountId, p);
-      case "artifact-registry-repo": return listers.listArtifactRegistryRepos(ctx, accountId, p);
-      case "gcp-service-account":return listers.listServiceAccounts(ctx, accountId, p);
-      case "cloud-armor-policy": return listers.listCloudArmorPolicies(ctx, accountId, p);
-      case "secret-manager-secret": return listers.listSecretManagerSecrets(ctx, accountId, p);
-      case "dataflow-job":       return listers.listDataflowJobs(ctx, accountId, p);
-      case "cloud-dns-zone":     return listers.listCloudDnsZones(ctx, accountId, p);
-      case "cloud-dns-record-set": return listers.listCloudDnsRecordSets(ctx, accountId, p);
-      case "firewall-rule":       return listers.listFirewallRules(ctx, accountId, p);
-      case "subnet":              return listers.listSubnets(ctx, accountId, p);
-      case "static-ip":           return listers.listStaticIps(ctx, accountId, p);
-      case "cloud-router":        return listers.listCloudRouters(ctx, accountId, p);
-      case "cloud-nat":           return listers.listCloudNats(ctx, accountId, p);
-      case "cloud-scheduler-job": return listers.listCloudSchedulerJobs(ctx, accountId, p);
-      case "cloud-tasks-queue":   return listers.listCloudTasksQueues(ctx, accountId, p);
-      case "cloud-build-trigger": return listers.listCloudBuildTriggers(ctx, accountId, p);
-      case "log-sink":            return listers.listLogSinks(ctx, accountId, p);
-      case "alert-policy":        return listers.listAlertPolicies(ctx, accountId, p);
-      case "kms-key-ring":        return listers.listKmsKeyRings(ctx, accountId, p);
-      case "kms-key":             return listers.listKmsKeys(ctx, accountId, p);
-      case "filestore-instance":  return listers.listFilestoreInstances(ctx, accountId, p);
-      case "backend-service":     return listers.listBackendServices(ctx, accountId, p);
-      case "forwarding-rule":     return listers.listForwardingRules(ctx, accountId, p);
-      case "memorystore-memcached": return listers.listMemorystoreMemcached(ctx, accountId, p);
-      case "vertex-ai-endpoint":  return listers.listVertexAiEndpoints(ctx, accountId, p);
-      case "composer-environment": return listers.listComposerEnvironments(ctx, accountId, p);
-      case "workflow":            return listers.listWorkflows(ctx, accountId, p);
-      case "cloud-deploy-pipeline": return listers.listCloudDeployPipelines(ctx, accountId, p);
-      case "app-engine-service":  return listers.listAppEngineServices(ctx, accountId, p);
-      case "health-check":        return listers.listHealthChecks(ctx, accountId, p);
-      case "ssl-certificate":     return listers.listSslCertificates(ctx, accountId, p);
-      case "instance-group":      return listers.listInstanceGroups(ctx, accountId, p);
+      case "gce-instance":
+        return listers.listGceInstances(ctx, accountId, p);
+      case "gce-disk":
+        return listers.listGceDisks(ctx, accountId, p);
+      case "gke-cluster":
+        return listers.listGkeClusters(ctx, accountId, p);
+      case "cloudsql-instance":
+        return listers.listCloudSqlInstances(ctx, accountId, p);
+      case "spanner-instance":
+        return listers.listSpannerInstances(ctx, accountId, p);
+      case "bigtable-instance":
+        return listers.listBigtableInstances(ctx, accountId, p);
+      case "firestore-database":
+        return listers.listFirestoreDatabases(ctx, accountId, p);
+      case "memorystore-redis":
+        return listers.listMemorystoreRedis(ctx, accountId, p);
+      case "alloydb-cluster":
+        return listers.listAlloyDbClusters(ctx, accountId, p);
+      case "gcs-bucket":
+        return listers.listGcsBuckets(ctx, accountId, p);
+      case "pubsub-topic":
+        return listers.listPubSubTopics(ctx, accountId, p);
+      case "pubsub-subscription":
+        return listers.listPubSubSubscriptions(ctx, accountId, p);
+      case "cloud-run-service":
+        return listers.listCloudRunServices(ctx, accountId, p);
+      case "cloud-function":
+        return listers.listCloudFunctions(ctx, accountId, p);
+      case "vpc-network":
+        return listers.listVpcNetworks(ctx, accountId, p);
+      case "bigquery-dataset":
+        return listers.listBigQueryDatasets(ctx, accountId, p);
+      case "artifact-registry-repo":
+        return listers.listArtifactRegistryRepos(ctx, accountId, p);
+      case "gcp-service-account":
+        return listers.listServiceAccounts(ctx, accountId, p);
+      case "cloud-armor-policy":
+        return listers.listCloudArmorPolicies(ctx, accountId, p);
+      case "secret-manager-secret":
+        return listers.listSecretManagerSecrets(ctx, accountId, p);
+      case "dataflow-job":
+        return listers.listDataflowJobs(ctx, accountId, p);
+      case "cloud-dns-zone":
+        return listers.listCloudDnsZones(ctx, accountId, p);
+      case "cloud-dns-record-set":
+        return listers.listCloudDnsRecordSets(ctx, accountId, p);
+      case "firewall-rule":
+        return listers.listFirewallRules(ctx, accountId, p);
+      case "subnet":
+        return listers.listSubnets(ctx, accountId, p);
+      case "static-ip":
+        return listers.listStaticIps(ctx, accountId, p);
+      case "cloud-router":
+        return listers.listCloudRouters(ctx, accountId, p);
+      case "cloud-nat":
+        return listers.listCloudNats(ctx, accountId, p);
+      case "cloud-scheduler-job":
+        return listers.listCloudSchedulerJobs(ctx, accountId, p);
+      case "cloud-tasks-queue":
+        return listers.listCloudTasksQueues(ctx, accountId, p);
+      case "cloud-build-trigger":
+        return listers.listCloudBuildTriggers(ctx, accountId, p);
+      case "log-sink":
+        return listers.listLogSinks(ctx, accountId, p);
+      case "alert-policy":
+        return listers.listAlertPolicies(ctx, accountId, p);
+      case "kms-key-ring":
+        return listers.listKmsKeyRings(ctx, accountId, p);
+      case "kms-key":
+        return listers.listKmsKeys(ctx, accountId, p);
+      case "filestore-instance":
+        return listers.listFilestoreInstances(ctx, accountId, p);
+      case "backend-service":
+        return listers.listBackendServices(ctx, accountId, p);
+      case "forwarding-rule":
+        return listers.listForwardingRules(ctx, accountId, p);
+      case "memorystore-memcached":
+        return listers.listMemorystoreMemcached(ctx, accountId, p);
+      case "vertex-ai-endpoint":
+        return listers.listVertexAiEndpoints(ctx, accountId, p);
+      case "composer-environment":
+        return listers.listComposerEnvironments(ctx, accountId, p);
+      case "workflow":
+        return listers.listWorkflows(ctx, accountId, p);
+      case "cloud-deploy-pipeline":
+        return listers.listCloudDeployPipelines(ctx, accountId, p);
+      case "app-engine-service":
+        return listers.listAppEngineServices(ctx, accountId, p);
+      case "health-check":
+        return listers.listHealthChecks(ctx, accountId, p);
+      case "ssl-certificate":
+        return listers.listSslCertificates(ctx, accountId, p);
+      case "instance-group":
+        return listers.listInstanceGroups(ctx, accountId, p);
       default:
         throw new Error(`GCP plugin: unknown resource type "${typeId}"`);
     }
   }
 
-  async getResource(typeId: string, resourceId: string, accountId: string): Promise<ResourceInstance> {
+  async getResource(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+  ): Promise<ResourceInstance> {
     const all = await this.listResources(typeId, accountId);
     const found = all.find((r) => r.id === resourceId);
     if (!found) throw new Error(`GCP plugin: resource ${typeId}/${resourceId} not found`);
     return found;
   }
 
-  async resolveOutput(typeId: string, resourceId: string, outputKey: string, accountId: string): Promise<string> {
+  async resolveOutput(
+    typeId: string,
+    resourceId: string,
+    outputKey: string,
+    accountId: string,
+  ): Promise<string> {
     const p = this.project;
 
     if (typeId === "gke-cluster" && outputKey === "kubeconfig") {
@@ -170,7 +226,10 @@ export class GcpClient implements PluginClient {
       );
       // The endpoint comes from the API response, not from resolvedOutputs
       const endpoint = (cluster["endpoint"] as string) ?? "";
-      const caCert = ((cluster["masterAuth"] as Record<string, unknown> | undefined)?.["clusterCaCertificate"] as string) ?? "";
+      const caCert =
+        ((cluster["masterAuth"] as Record<string, unknown> | undefined)?.[
+          "clusterCaCertificate"
+        ] as string) ?? "";
       const tok = await this.token();
       const kubeconfig = [
         "apiVersion: v1",
@@ -203,14 +262,18 @@ export class GcpClient implements PluginClient {
         );
         return (data["authString"] as string) ?? "";
       }
-      if (outputKey === "host") return String(resource.fields["host"] ?? resource.resolvedOutputs["host"] ?? "");
-      if (outputKey === "port") return String(resource.fields["port"] ?? resource.resolvedOutputs["port"] ?? "6379");
+      if (outputKey === "host")
+        return String(resource.fields["host"] ?? resource.resolvedOutputs["host"] ?? "");
+      if (outputKey === "port")
+        return String(resource.fields["port"] ?? resource.resolvedOutputs["port"] ?? "6379");
       if (outputKey === "redisUrl") {
         const host = String(resource.fields["host"] ?? resource.resolvedOutputs["host"] ?? "");
         const port = String(resource.fields["port"] ?? resource.resolvedOutputs["port"] ?? "6379");
         const name = resource.externalId ?? "";
         try {
-          const data = await this.get<Record<string, unknown>>(`https://redis.googleapis.com/v1/${name}/authString`);
+          const data = await this.get<Record<string, unknown>>(
+            `https://redis.googleapis.com/v1/${name}/authString`,
+          );
           const auth = (data["authString"] as string) ?? "";
           return auth ? `redis://:${auth}@${host}:${port}` : `redis://${host}:${port}`;
         } catch {
@@ -221,8 +284,12 @@ export class GcpClient implements PluginClient {
 
     if (typeId === "cloudsql-instance") {
       const resource = await this.getResource(typeId, resourceId, accountId);
-      if (outputKey === "connectionName") return String(resource.fields["connectionName"] ?? resource.resolvedOutputs["connectionName"] ?? "");
-      if (outputKey === "ipAddress") return String(resource.fields["ipAddress"] ?? resource.resolvedOutputs["ipAddress"] ?? "");
+      if (outputKey === "connectionName")
+        return String(
+          resource.fields["connectionName"] ?? resource.resolvedOutputs["connectionName"] ?? "",
+        );
+      if (outputKey === "ipAddress")
+        return String(resource.fields["ipAddress"] ?? resource.resolvedOutputs["ipAddress"] ?? "");
     }
 
     if (typeId === "gcs-bucket") {
@@ -250,7 +317,7 @@ export class GcpClient implements PluginClient {
           },
         );
         if (!res.ok) throw new Error(`IAM API ${res.status}: ${await res.text()}`);
-        const data = await res.json() as { privateKeyData: string };
+        const data = (await res.json()) as { privateKeyData: string };
         // privateKeyData is base64-encoded JSON — decode it
         return atob(data.privateKeyData);
       }
@@ -289,7 +356,9 @@ export class GcpClient implements PluginClient {
 
     if (typeId === "memorystore-memcached" && outputKey === "discoveryEndpoint") {
       const resource = await this.getResource(typeId, resourceId, accountId);
-      return String(resource.fields["discoveryEndpoint"] ?? resource.resolvedOutputs["discoveryEndpoint"] ?? "");
+      return String(
+        resource.fields["discoveryEndpoint"] ?? resource.resolvedOutputs["discoveryEndpoint"] ?? "",
+      );
     }
 
     if (typeId === "composer-environment" && outputKey === "airflowUri") {
@@ -312,70 +381,121 @@ export class GcpClient implements PluginClient {
 
   // Region slug → {location, flag}
   private static readonly REGION_INFO: Record<string, { location: string; flag: string }> = {
-    "us-central1":          { location: "Iowa, USA",               flag: "🇺🇸" },
-    "us-east1":             { location: "South Carolina, USA",      flag: "🇺🇸" },
-    "us-east4":             { location: "Northern Virginia, USA",   flag: "🇺🇸" },
-    "us-east5":             { location: "Columbus, Ohio, USA",      flag: "🇺🇸" },
-    "us-south1":            { location: "Dallas, Texas, USA",       flag: "🇺🇸" },
-    "us-west1":             { location: "Oregon, USA",              flag: "🇺🇸" },
-    "us-west2":             { location: "Los Angeles, USA",         flag: "🇺🇸" },
-    "us-west3":             { location: "Salt Lake City, USA",      flag: "🇺🇸" },
-    "us-west4":             { location: "Las Vegas, USA",           flag: "🇺🇸" },
-    "northamerica-northeast1": { location: "Montréal, Canada",        flag: "🇨🇦" },
-    "northamerica-northeast2": { location: "Toronto, Canada",         flag: "🇨🇦" },
-    "northamerica-south1":  { location: "Dallas, Texas, USA",         flag: "🇺🇸" },
-    "southamerica-east1":   { location: "São Paulo, Brazil",          flag: "🇧🇷" },
-    "southamerica-west1":   { location: "Santiago, Chile",            flag: "🇨🇱" },
-    "europe-west1":         { location: "Belgium",                    flag: "🇧🇪" },
-    "europe-west2":         { location: "London, UK",                 flag: "🇬🇧" },
-    "europe-west3":         { location: "Frankfurt, Germany",         flag: "🇩🇪" },
-    "europe-west4":         { location: "Netherlands",                flag: "🇳🇱" },
-    "europe-west6":         { location: "Zurich, Switzerland",        flag: "🇨🇭" },
-    "europe-west8":         { location: "Milan, Italy",               flag: "🇮🇹" },
-    "europe-west9":         { location: "Paris, France",              flag: "🇫🇷" },
-    "europe-west10":        { location: "Berlin, Germany",            flag: "🇩🇪" },
-    "europe-west12":        { location: "Turin, Italy",               flag: "🇮🇹" },
-    "europe-central2":      { location: "Warsaw, Poland",             flag: "🇵🇱" },
-    "europe-north1":        { location: "Finland",                    flag: "🇫🇮" },
-    "europe-north2":        { location: "Stockholm, Sweden",          flag: "🇸🇪" },
-    "europe-southwest1":    { location: "Madrid, Spain",              flag: "🇪🇸" },
-    "asia-east1":           { location: "Taiwan",                     flag: "🇹🇼" },
-    "asia-east2":           { location: "Hong Kong",                  flag: "🇭🇰" },
-    "asia-northeast1":      { location: "Tokyo, Japan",               flag: "🇯🇵" },
-    "asia-northeast2":      { location: "Osaka, Japan",               flag: "🇯🇵" },
-    "asia-northeast3":      { location: "Seoul, South Korea",         flag: "🇰🇷" },
-    "asia-south1":          { location: "Mumbai, India",              flag: "🇮🇳" },
-    "asia-south2":          { location: "Delhi, India",               flag: "🇮🇳" },
-    "asia-southeast1":      { location: "Singapore",                  flag: "🇸🇬" },
-    "asia-southeast2":      { location: "Jakarta, Indonesia",         flag: "🇮🇩" },
-    "australia-southeast1": { location: "Sydney, Australia",          flag: "🇦🇺" },
-    "australia-southeast2": { location: "Melbourne, Australia",       flag: "🇦🇺" },
-    "me-west1":             { location: "Tel Aviv, Israel",           flag: "🇮🇱" },
-    "me-central1":          { location: "Doha, Qatar",                flag: "🇶🇦" },
-    "me-central2":          { location: "Dammam, Saudi Arabia",       flag: "🇸🇦" },
-    "africa-south1":        { location: "Johannesburg, South Africa", flag: "🇿🇦" },
+    "us-central1": { location: "Iowa, USA", flag: "🇺🇸" },
+    "us-east1": { location: "South Carolina, USA", flag: "🇺🇸" },
+    "us-east4": { location: "Northern Virginia, USA", flag: "🇺🇸" },
+    "us-east5": { location: "Columbus, Ohio, USA", flag: "🇺🇸" },
+    "us-south1": { location: "Dallas, Texas, USA", flag: "🇺🇸" },
+    "us-west1": { location: "Oregon, USA", flag: "🇺🇸" },
+    "us-west2": { location: "Los Angeles, USA", flag: "🇺🇸" },
+    "us-west3": { location: "Salt Lake City, USA", flag: "🇺🇸" },
+    "us-west4": { location: "Las Vegas, USA", flag: "🇺🇸" },
+    "northamerica-northeast1": { location: "Montréal, Canada", flag: "🇨🇦" },
+    "northamerica-northeast2": { location: "Toronto, Canada", flag: "🇨🇦" },
+    "northamerica-south1": { location: "Dallas, Texas, USA", flag: "🇺🇸" },
+    "southamerica-east1": { location: "São Paulo, Brazil", flag: "🇧🇷" },
+    "southamerica-west1": { location: "Santiago, Chile", flag: "🇨🇱" },
+    "europe-west1": { location: "Belgium", flag: "🇧🇪" },
+    "europe-west2": { location: "London, UK", flag: "🇬🇧" },
+    "europe-west3": { location: "Frankfurt, Germany", flag: "🇩🇪" },
+    "europe-west4": { location: "Netherlands", flag: "🇳🇱" },
+    "europe-west6": { location: "Zurich, Switzerland", flag: "🇨🇭" },
+    "europe-west8": { location: "Milan, Italy", flag: "🇮🇹" },
+    "europe-west9": { location: "Paris, France", flag: "🇫🇷" },
+    "europe-west10": { location: "Berlin, Germany", flag: "🇩🇪" },
+    "europe-west12": { location: "Turin, Italy", flag: "🇮🇹" },
+    "europe-central2": { location: "Warsaw, Poland", flag: "🇵🇱" },
+    "europe-north1": { location: "Finland", flag: "🇫🇮" },
+    "europe-north2": { location: "Stockholm, Sweden", flag: "🇸🇪" },
+    "europe-southwest1": { location: "Madrid, Spain", flag: "🇪🇸" },
+    "asia-east1": { location: "Taiwan", flag: "🇹🇼" },
+    "asia-east2": { location: "Hong Kong", flag: "🇭🇰" },
+    "asia-northeast1": { location: "Tokyo, Japan", flag: "🇯🇵" },
+    "asia-northeast2": { location: "Osaka, Japan", flag: "🇯🇵" },
+    "asia-northeast3": { location: "Seoul, South Korea", flag: "🇰🇷" },
+    "asia-south1": { location: "Mumbai, India", flag: "🇮🇳" },
+    "asia-south2": { location: "Delhi, India", flag: "🇮🇳" },
+    "asia-southeast1": { location: "Singapore", flag: "🇸🇬" },
+    "asia-southeast2": { location: "Jakarta, Indonesia", flag: "🇮🇩" },
+    "australia-southeast1": { location: "Sydney, Australia", flag: "🇦🇺" },
+    "australia-southeast2": { location: "Melbourne, Australia", flag: "🇦🇺" },
+    "me-west1": { location: "Tel Aviv, Israel", flag: "🇮🇱" },
+    "me-central1": { location: "Doha, Qatar", flag: "🇶🇦" },
+    "me-central2": { location: "Dammam, Saudi Arabia", flag: "🇸🇦" },
+    "africa-south1": { location: "Johannesburg, South Africa", flag: "🇿🇦" },
   };
 
   // Curated public image families — no API call needed, GCP resolves to latest
   private static readonly PUBLIC_IMAGES: ImageOption[] = [
-    { id: "projects/debian-cloud/global/images/family/debian-12",              label: "Debian 12 (Bookworm)",   category: "Debian",      family: "debian-12" },
-    { id: "projects/debian-cloud/global/images/family/debian-11",              label: "Debian 11 (Bullseye)",   category: "Debian",      family: "debian-11" },
-    { id: "projects/ubuntu-os-cloud/global/images/family/ubuntu-2404-lts-amd64", label: "Ubuntu 24.04 LTS",     category: "Ubuntu",      family: "ubuntu-2404-lts-amd64" },
-    { id: "projects/ubuntu-os-cloud/global/images/family/ubuntu-2204-lts",     label: "Ubuntu 22.04 LTS",       category: "Ubuntu",      family: "ubuntu-2204-lts" },
-    { id: "projects/ubuntu-os-cloud/global/images/family/ubuntu-2004-lts",     label: "Ubuntu 20.04 LTS",       category: "Ubuntu",      family: "ubuntu-2004-lts" },
-    { id: "projects/centos-cloud/global/images/family/centos-stream-9",        label: "CentOS Stream 9",        category: "CentOS",      family: "centos-stream-9" },
-    { id: "projects/rocky-linux-cloud/global/images/family/rocky-linux-9",     label: "Rocky Linux 9",          category: "Rocky Linux", family: "rocky-linux-9" },
-    { id: "projects/rocky-linux-cloud/global/images/family/rocky-linux-8",     label: "Rocky Linux 8",          category: "Rocky Linux", family: "rocky-linux-8" },
-    { id: "projects/windows-cloud/global/images/family/windows-2022",          label: "Windows Server 2022",    category: "Windows",     family: "windows-2022" },
-    { id: "projects/windows-cloud/global/images/family/windows-2019",          label: "Windows Server 2019",    category: "Windows",     family: "windows-2019" },
+    {
+      id: "projects/debian-cloud/global/images/family/debian-12",
+      label: "Debian 12 (Bookworm)",
+      category: "Debian",
+      family: "debian-12",
+    },
+    {
+      id: "projects/debian-cloud/global/images/family/debian-11",
+      label: "Debian 11 (Bullseye)",
+      category: "Debian",
+      family: "debian-11",
+    },
+    {
+      id: "projects/ubuntu-os-cloud/global/images/family/ubuntu-2404-lts-amd64",
+      label: "Ubuntu 24.04 LTS",
+      category: "Ubuntu",
+      family: "ubuntu-2404-lts-amd64",
+    },
+    {
+      id: "projects/ubuntu-os-cloud/global/images/family/ubuntu-2204-lts",
+      label: "Ubuntu 22.04 LTS",
+      category: "Ubuntu",
+      family: "ubuntu-2204-lts",
+    },
+    {
+      id: "projects/ubuntu-os-cloud/global/images/family/ubuntu-2004-lts",
+      label: "Ubuntu 20.04 LTS",
+      category: "Ubuntu",
+      family: "ubuntu-2004-lts",
+    },
+    {
+      id: "projects/centos-cloud/global/images/family/centos-stream-9",
+      label: "CentOS Stream 9",
+      category: "CentOS",
+      family: "centos-stream-9",
+    },
+    {
+      id: "projects/rocky-linux-cloud/global/images/family/rocky-linux-9",
+      label: "Rocky Linux 9",
+      category: "Rocky Linux",
+      family: "rocky-linux-9",
+    },
+    {
+      id: "projects/rocky-linux-cloud/global/images/family/rocky-linux-8",
+      label: "Rocky Linux 8",
+      category: "Rocky Linux",
+      family: "rocky-linux-8",
+    },
+    {
+      id: "projects/windows-cloud/global/images/family/windows-2022",
+      label: "Windows Server 2022",
+      category: "Windows",
+      family: "windows-2022",
+    },
+    {
+      id: "projects/windows-cloud/global/images/family/windows-2019",
+      label: "Windows Server 2019",
+      category: "Windows",
+      family: "windows-2019",
+    },
   ];
 
   private async getPricingRatesForGeo(geo: GeoRegion): Promise<PricingRates> {
     const cached = this.machineTypeFamilyRateCache.get(geo);
-    if (cached && cached.expiresAt > Date.now()) return {
-      machineRates: cached.machineRates,
-      pdBalancedGbMonthUsd: cached.pdBalancedGbMonthUsd,
-    };
+    if (cached && cached.expiresAt > Date.now())
+      return {
+        machineRates: cached.machineRates,
+        pdBalancedGbMonthUsd: cached.pdBalancedGbMonthUsd,
+      };
     const inFlight = this.pricingRatesInFlightByGeo.get(geo);
     if (inFlight) return inFlight;
 
@@ -420,7 +540,11 @@ export class GcpClient implements PluginClient {
     if (typeId === "gce-instance") {
       const resource = await this.getResource(typeId, resourceId, accountId);
       const zone = String(resource.fields["zone"] ?? "");
-      const name = String(resource.fields["name"] ?? (resource.externalId ?? resource.displayName).split("/").pop() ?? "");
+      const name = String(
+        resource.fields["name"] ??
+          (resource.externalId ?? resource.displayName).split("/").pop() ??
+          "",
+      );
       if (!zone || !name) throw new Error("Cannot determine zone or instance name for deletion");
       const res = await fetch(
         `https://compute.googleapis.com/compute/v1/projects/${p}/zones/${zone}/instances/${name}`,
@@ -434,7 +558,8 @@ export class GcpClient implements PluginClient {
       const resource = await this.getResource(typeId, resourceId, accountId);
       const location = String(resource.fields["location"] ?? "");
       const name = resource.externalId ?? resource.displayName;
-      if (!location || !name) throw new Error("Cannot determine location or cluster name for deletion");
+      if (!location || !name)
+        throw new Error("Cannot determine location or cluster name for deletion");
       const res = await fetch(
         `https://container.googleapis.com/v1/projects/${p}/locations/${location}/clusters/${name}`,
         { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
@@ -470,10 +595,10 @@ export class GcpClient implements PluginClient {
     if (typeId === "cloud-run-service") {
       const resource = await this.getResource(typeId, resourceId, accountId);
       const fullName = resource.externalId ?? "";
-      const res = await fetch(
-        `https://run.googleapis.com/v2/${fullName}`,
-        { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
-      );
+      const res = await fetch(`https://run.googleapis.com/v2/${fullName}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${tok}` },
+      });
       if (!res.ok) throw new Error(`Cloud Run API ${res.status}: ${await res.text()}`);
       return;
     }
@@ -481,10 +606,10 @@ export class GcpClient implements PluginClient {
     if (typeId === "cloud-function") {
       const resource = await this.getResource(typeId, resourceId, accountId);
       const fullName = resource.externalId ?? "";
-      const res = await fetch(
-        `https://cloudfunctions.googleapis.com/v2/${fullName}`,
-        { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
-      );
+      const res = await fetch(`https://cloudfunctions.googleapis.com/v2/${fullName}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${tok}` },
+      });
       if (!res.ok) throw new Error(`Cloud Functions API ${res.status}: ${await res.text()}`);
       return;
     }
@@ -492,10 +617,10 @@ export class GcpClient implements PluginClient {
     if (typeId === "pubsub-topic") {
       const resource = await this.getResource(typeId, resourceId, accountId);
       const fullName = resource.externalId ?? "";
-      const res = await fetch(
-        `https://pubsub.googleapis.com/v1/${fullName}`,
-        { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
-      );
+      const res = await fetch(`https://pubsub.googleapis.com/v1/${fullName}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${tok}` },
+      });
       if (!res.ok) throw new Error(`Pub/Sub API ${res.status}: ${await res.text()}`);
       return;
     }
@@ -503,10 +628,10 @@ export class GcpClient implements PluginClient {
     if (typeId === "pubsub-subscription") {
       const resource = await this.getResource(typeId, resourceId, accountId);
       const fullName = resource.externalId ?? "";
-      const res = await fetch(
-        `https://pubsub.googleapis.com/v1/${fullName}`,
-        { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
-      );
+      const res = await fetch(`https://pubsub.googleapis.com/v1/${fullName}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${tok}` },
+      });
       if (!res.ok) throw new Error(`Pub/Sub API ${res.status}: ${await res.text()}`);
       return;
     }
@@ -514,10 +639,10 @@ export class GcpClient implements PluginClient {
     if (typeId === "secret-manager-secret") {
       const resource = await this.getResource(typeId, resourceId, accountId);
       const fullName = resource.externalId ?? "";
-      const res = await fetch(
-        `https://secretmanager.googleapis.com/v1/${fullName}`,
-        { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
-      );
+      const res = await fetch(`https://secretmanager.googleapis.com/v1/${fullName}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${tok}` },
+      });
       if (!res.ok) throw new Error(`Secret Manager API ${res.status}: ${await res.text()}`);
       return;
     }
@@ -549,10 +674,10 @@ export class GcpClient implements PluginClient {
     if (typeId === "cloud-scheduler-job") {
       const resource = await this.getResource(typeId, resourceId, accountId);
       const fullName = resource.externalId ?? "";
-      const res = await fetch(
-        `https://cloudscheduler.googleapis.com/v1/${fullName}`,
-        { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
-      );
+      const res = await fetch(`https://cloudscheduler.googleapis.com/v1/${fullName}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${tok}` },
+      });
       if (!res.ok) throw new Error(`Cloud Scheduler API ${res.status}: ${await res.text()}`);
       return;
     }
@@ -560,10 +685,10 @@ export class GcpClient implements PluginClient {
     if (typeId === "cloud-tasks-queue") {
       const resource = await this.getResource(typeId, resourceId, accountId);
       const fullName = resource.externalId ?? "";
-      const res = await fetch(
-        `https://cloudtasks.googleapis.com/v2/${fullName}`,
-        { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
-      );
+      const res = await fetch(`https://cloudtasks.googleapis.com/v2/${fullName}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${tok}` },
+      });
       if (!res.ok) throw new Error(`Cloud Tasks API ${res.status}: ${await res.text()}`);
       return;
     }
@@ -571,10 +696,10 @@ export class GcpClient implements PluginClient {
     if (typeId === "artifact-registry-repo") {
       const resource = await this.getResource(typeId, resourceId, accountId);
       const fullName = resource.externalId ?? "";
-      const res = await fetch(
-        `https://artifactregistry.googleapis.com/v1/${fullName}`,
-        { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
-      );
+      const res = await fetch(`https://artifactregistry.googleapis.com/v1/${fullName}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${tok}` },
+      });
       if (!res.ok) throw new Error(`Artifact Registry API ${res.status}: ${await res.text()}`);
       return;
     }
@@ -582,10 +707,10 @@ export class GcpClient implements PluginClient {
     if (typeId === "workflow") {
       const resource = await this.getResource(typeId, resourceId, accountId);
       const fullName = resource.externalId ?? "";
-      const res = await fetch(
-        `https://workflows.googleapis.com/v1/${fullName}`,
-        { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
-      );
+      const res = await fetch(`https://workflows.googleapis.com/v1/${fullName}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${tok}` },
+      });
       if (!res.ok) throw new Error(`Workflows API ${res.status}: ${await res.text()}`);
       return;
     }
@@ -593,10 +718,10 @@ export class GcpClient implements PluginClient {
     if (typeId === "filestore-instance") {
       const resource = await this.getResource(typeId, resourceId, accountId);
       const fullName = resource.externalId ?? "";
-      const res = await fetch(
-        `https://file.googleapis.com/v1/${fullName}`,
-        { method: "DELETE", headers: { Authorization: `Bearer ${tok}` } },
-      );
+      const res = await fetch(`https://file.googleapis.com/v1/${fullName}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${tok}` },
+      });
       if (!res.ok) throw new Error(`Filestore API ${res.status}: ${await res.text()}`);
       return;
     }
@@ -615,12 +740,33 @@ export class GcpClient implements PluginClient {
         this.get<{ items?: Array<{ name: string; guestCpus: number; memoryMb: number }> }>(
           `https://compute.googleapis.com/compute/v1/projects/${p}/zones/us-central1-a/machineTypes?maxResults=500`,
         ),
-        this.get<{ items?: Array<{ name: string; selfLink: string; description?: string; status: string }> }>(
-          `https://compute.googleapis.com/compute/v1/projects/${p}/global/images`,
-        ).catch(() => ({ items: [] as Array<{ name: string; selfLink: string; description?: string; status: string }> })),
-        this.get<{ items?: Record<string, { disks?: Array<{ name: string; selfLink: string; sizeGb: string; status: string; type: string; zone: string }> }> }>(
-          `https://compute.googleapis.com/compute/v1/projects/${p}/aggregated/disks`,
-        ).catch(() => ({ items: {} })),
+        this.get<{
+          items?: Array<{ name: string; selfLink: string; description?: string; status: string }>;
+        }>(`https://compute.googleapis.com/compute/v1/projects/${p}/global/images`).catch(() => ({
+          items: [] as Array<{
+            name: string;
+            selfLink: string;
+            description?: string;
+            status: string;
+          }>,
+        })),
+        this.get<{
+          items?: Record<
+            string,
+            {
+              disks?: Array<{
+                name: string;
+                selfLink: string;
+                sizeGb: string;
+                status: string;
+                type: string;
+                zone: string;
+              }>;
+            }
+          >;
+        }>(`https://compute.googleapis.com/compute/v1/projects/${p}/aggregated/disks`).catch(
+          () => ({ items: {} }),
+        ),
       ]);
 
       // Zones
@@ -640,9 +786,16 @@ export class GcpClient implements PluginClient {
       // Machine types grouped by family
       const familyOrder = ["e2", "n1", "n2", "n2d", "c2", "c3", "m1", "m2", "a2", "g2"];
       const familyLabels: Record<string, string> = {
-        e2: "E2 · Cost-optimized", n1: "N1 · General purpose", n2: "N2 · General purpose",
-        n2d: "N2D · AMD general purpose", c2: "C2 · Compute-optimized", c3: "C3 · Compute-optimized",
-        m1: "M1 · Memory-optimized", m2: "M2 · Memory-optimized", a2: "A2 · GPU", g2: "G2 · GPU",
+        e2: "E2 · Cost-optimized",
+        n1: "N1 · General purpose",
+        n2: "N2 · General purpose",
+        n2d: "N2D · AMD general purpose",
+        c2: "C2 · Compute-optimized",
+        c3: "C3 · Compute-optimized",
+        m1: "M1 · Memory-optimized",
+        m2: "M2 · Memory-optimized",
+        a2: "A2 · GPU",
+        g2: "G2 · GPU",
       };
       const machineTypes = (machineTypesData.items ?? []).filter((m) => !m.name.includes("custom"));
 
@@ -653,7 +806,8 @@ export class GcpClient implements PluginClient {
 
       const sizes: SizeOption[] = machineTypes
         .map((m) => {
-          const family = familyOrder.find((f) => m.name.startsWith(f)) ?? m.name.split("-")[0] ?? "other";
+          const family =
+            familyOrder.find((f) => m.name.startsWith(f)) ?? m.name.split("-")[0] ?? "other";
           return {
             id: m.name,
             label: m.name,
@@ -672,13 +826,26 @@ export class GcpClient implements PluginClient {
       // Images: public families + account-owned
       const accountImages: ImageOption[] = (accountImagesData.items ?? [])
         .filter((i) => i.status === "READY")
-        .map((i) => ({ id: i.selfLink, label: i.name, ...(i.description ? { description: i.description } : {}), category: "My Images", isOwned: true as const }));
+        .map((i) => ({
+          id: i.selfLink,
+          label: i.name,
+          ...(i.description ? { description: i.description } : {}),
+          category: "My Images",
+          isOwned: true as const,
+        }));
       const images: ImageOption[] = [...GcpClient.PUBLIC_IMAGES, ...accountImages];
 
       // Existing disks from aggregated list
       const disks: DiskOption[] = [];
       for (const zoneData of Object.values(disksData.items ?? {}) as Array<{
-        disks?: Array<{ name: string; selfLink: string; sizeGb: string; status: string; type: string; zone: string }>;
+        disks?: Array<{
+          name: string;
+          selfLink: string;
+          sizeGb: string;
+          status: string;
+          type: string;
+          zone: string;
+        }>;
       }>) {
         for (const d of zoneData.disks ?? []) {
           if (d.status !== "READY") continue;
@@ -692,21 +859,62 @@ export class GcpClient implements PluginClient {
 
       return {
         fields: [
-          { key: "name",        label: "Name",         kind: "text",          required: true },
-          { key: "zone",        label: "Zone",          kind: "region-picker", required: true,  regions: zones,  ...(defaultZone ? { defaultValue: defaultZone } : {}) },
-          { key: "machineType", label: "Machine Type",  kind: "size-picker",   required: true,  sizes,           defaultValue: "e2-medium" },
-          { key: "bootSource",  label: "Boot Disk",     kind: "select",        required: true,  defaultValue: "new-image",
+          { key: "name", label: "Name", kind: "text", required: true },
+          {
+            key: "zone",
+            label: "Zone",
+            kind: "region-picker",
+            required: true,
+            regions: zones,
+            ...(defaultZone ? { defaultValue: defaultZone } : {}),
+          },
+          {
+            key: "machineType",
+            label: "Machine Type",
+            kind: "size-picker",
+            required: true,
+            sizes,
+            defaultValue: "e2-medium",
+          },
+          {
+            key: "bootSource",
+            label: "Boot Disk",
+            kind: "select",
+            required: true,
+            defaultValue: "new-image",
             options: [
-              { id: "new-image",      label: "New disk from OS image" },
-              { id: "existing-disk",  label: "Existing persistent disk" },
+              { id: "new-image", label: "New disk from OS image" },
+              { id: "existing-disk", label: "Existing persistent disk" },
             ],
           },
-          { key: "image",  label: "OS Image",       kind: "image-picker", required: true,  images, defaultValue: "projects/debian-cloud/global/images/family/debian-12",
-            showWhen: { fieldKey: "bootSource", fieldValue: "new-image" } },
-          { key: "diskGb", label: "Boot Disk Size",  kind: "disk-slider",  required: false, minGb: 10, maxGb: 2000, defaultGb: 50, stepGb: 10,
-            showWhen: { fieldKey: "bootSource", fieldValue: "new-image" } },
-          { key: "existingDisk", label: "Select Disk", kind: "disk-picker", required: true,  disks,
-            showWhen: { fieldKey: "bootSource", fieldValue: "existing-disk" } },
+          {
+            key: "image",
+            label: "OS Image",
+            kind: "image-picker",
+            required: true,
+            images,
+            defaultValue: "projects/debian-cloud/global/images/family/debian-12",
+            showWhen: { fieldKey: "bootSource", fieldValue: "new-image" },
+          },
+          {
+            key: "diskGb",
+            label: "Boot Disk Size",
+            kind: "disk-slider",
+            required: false,
+            minGb: 10,
+            maxGb: 2000,
+            defaultGb: 50,
+            stepGb: 10,
+            showWhen: { fieldKey: "bootSource", fieldValue: "new-image" },
+          },
+          {
+            key: "existingDisk",
+            label: "Select Disk",
+            kind: "disk-picker",
+            required: true,
+            disks,
+            showWhen: { fieldKey: "bootSource", fieldValue: "existing-disk" },
+          },
           { key: "sshPublicKey", label: "SSH Key", kind: "ssh-key-picker", required: false },
         ],
       };
@@ -723,7 +931,9 @@ export class GcpClient implements PluginClient {
         this.get<{
           defaultClusterVersion?: string;
           validMasterVersions?: string[];
-        }>(`https://container.googleapis.com/v1/projects/${p}/locations/us-central1-a/serverConfig`),
+        }>(
+          `https://container.googleapis.com/v1/projects/${p}/locations/us-central1-a/serverConfig`,
+        ),
       ]);
 
       const locations = (zonesData.items ?? [])
@@ -747,15 +957,23 @@ export class GcpClient implements PluginClient {
 
       const familyOrder = ["e2", "n1", "n2", "n2d", "c2", "c3", "m1", "m2", "a2", "g2"];
       const familyLabels: Record<string, string> = {
-        e2: "E2 · Cost-optimized", n1: "N1 · General purpose", n2: "N2 · General purpose",
-        n2d: "N2D · AMD general purpose", c2: "C2 · Compute-optimized", c3: "C3 · Compute-optimized",
-        m1: "M1 · Memory-optimized", m2: "M2 · Memory-optimized", a2: "A2 · GPU", g2: "G2 · GPU",
+        e2: "E2 · Cost-optimized",
+        n1: "N1 · General purpose",
+        n2: "N2 · General purpose",
+        n2d: "N2D · AMD general purpose",
+        c2: "C2 · Compute-optimized",
+        c3: "C3 · Compute-optimized",
+        m1: "M1 · Memory-optimized",
+        m2: "M2 · Memory-optimized",
+        a2: "A2 · GPU",
+        g2: "G2 · GPU",
       };
       const sizes: SizeOption[] = machineTypes
         .map((machineType) => {
-          const family = familyOrder.find((candidate) => machineType.name.startsWith(candidate))
-            ?? machineType.name.split("-")[0]
-            ?? "other";
+          const family =
+            familyOrder.find((candidate) => machineType.name.startsWith(candidate)) ??
+            machineType.name.split("-")[0] ??
+            "other";
           return {
             id: machineType.name,
             label: machineType.name,
@@ -774,15 +992,37 @@ export class GcpClient implements PluginClient {
         id: version,
         label: version,
       }));
-      const defaultLocation = locations.find((location) => location.id === "us-central1-a")?.id ?? locations[0]?.id;
+      const defaultLocation =
+        locations.find((location) => location.id === "us-central1-a")?.id ?? locations[0]?.id;
       const defaultVersion = serverConfig.defaultClusterVersion ?? versions[0]?.id;
 
       return {
         fields: [
           { key: "name", label: "Name", kind: "text", required: true },
-          { key: "location", label: "Location", kind: "region-picker", required: true, regions: locations, ...(defaultLocation ? { defaultValue: defaultLocation } : {}) },
-          { key: "version", label: "Kubernetes Version", kind: "select", required: true, options: versions, ...(defaultVersion ? { defaultValue: defaultVersion } : {}) },
-          { key: "machineType", label: "Node Machine Type", kind: "size-picker", required: true, sizes, defaultValue: "e2-medium" },
+          {
+            key: "location",
+            label: "Location",
+            kind: "region-picker",
+            required: true,
+            regions: locations,
+            ...(defaultLocation ? { defaultValue: defaultLocation } : {}),
+          },
+          {
+            key: "version",
+            label: "Kubernetes Version",
+            kind: "select",
+            required: true,
+            options: versions,
+            ...(defaultVersion ? { defaultValue: defaultVersion } : {}),
+          },
+          {
+            key: "machineType",
+            label: "Node Machine Type",
+            kind: "size-picker",
+            required: true,
+            sizes,
+            defaultValue: "e2-medium",
+          },
           {
             key: "diskSizeGb",
             label: "Disk Per Node",
@@ -820,7 +1060,10 @@ export class GcpClient implements PluginClient {
     return this.estimateMachineTypeMonthlyPrices(request.sizes, zone);
   }
 
-  async getCreateCostEstimate(typeId: string, fields: Record<string, string>): Promise<number | null> {
+  async getCreateCostEstimate(
+    typeId: string,
+    fields: Record<string, string>,
+  ): Promise<number | null> {
     if (typeId === "gce-instance") {
       const zone = fields["zone"] ?? "us-central1-a";
       const machineType = fields["machineType"] ?? "";
@@ -839,12 +1082,19 @@ export class GcpClient implements PluginClient {
         machineTypeData = fetched;
       }
 
-      const vmMonthly = (
-        await this.estimateMachineTypeMonthlyPrices(
-          [{ id: machineType, vcpus: machineTypeData.guestCpus, memoryMb: machineTypeData.memoryMb }],
-          zone,
-        )
-      )[machineType] ?? 0;
+      const vmMonthly =
+        (
+          await this.estimateMachineTypeMonthlyPrices(
+            [
+              {
+                id: machineType,
+                vcpus: machineTypeData.guestCpus,
+                memoryMb: machineTypeData.memoryMb,
+              },
+            ],
+            zone,
+          )
+        )[machineType] ?? 0;
 
       let storageMonthly = 0;
       const bootSource = fields["bootSource"] ?? "new-image";
@@ -877,18 +1127,24 @@ export class GcpClient implements PluginClient {
         machineTypeData = fetched;
       }
 
-      const perNodeVm = (
-        await this.estimateMachineTypeMonthlyPrices(
-          [{ id: machineType, vcpus: machineTypeData.guestCpus, memoryMb: machineTypeData.memoryMb }],
-          zone,
-        )
-      )[machineType] ?? 0;
+      const perNodeVm =
+        (
+          await this.estimateMachineTypeMonthlyPrices(
+            [
+              {
+                id: machineType,
+                vcpus: machineTypeData.guestCpus,
+                memoryMb: machineTypeData.memoryMb,
+              },
+            ],
+            zone,
+          )
+        )[machineType] ?? 0;
 
       const diskGb = Number(fields["diskSizeGb"] ?? 100);
       const diskRate = await this.getBalancedDiskMonthlyRate(zone);
-      const perNodeDisk = diskRate != null && Number.isFinite(diskGb) && diskGb > 0
-        ? diskGb * diskRate
-        : 0;
+      const perNodeDisk =
+        diskRate != null && Number.isFinite(diskGb) && diskGb > 0 ? diskGb * diskRate : 0;
 
       const total = (perNodeVm + perNodeDisk) * nodeCount;
       if (!Number.isFinite(total) || total <= 0) return null;
@@ -898,7 +1154,11 @@ export class GcpClient implements PluginClient {
     return null;
   }
 
-  async createResource(typeId: string, accountId: string, fields: Record<string, string>): Promise<ResourceInstance> {
+  async createResource(
+    typeId: string,
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
     if (typeId === "gce-instance") {
       const p = this.project;
       const zone = fields["zone"] ?? "";
@@ -935,10 +1195,12 @@ export class GcpClient implements PluginClient {
         name,
         machineType: `zones/${zone}/machineTypes/${machineType}`,
         disks: [bootDisk],
-        networkInterfaces: [{
-          network: "global/networks/default",
-          accessConfigs: [{ type: "ONE_TO_ONE_NAT", name: "External NAT" }],
-        }],
+        networkInterfaces: [
+          {
+            network: "global/networks/default",
+            accessConfigs: [{ type: "ONE_TO_ONE_NAT", name: "External NAT" }],
+          },
+        ],
         ...(metadata ? { metadata } : {}),
       };
       const res = await fetch(
@@ -974,15 +1236,15 @@ export class GcpClient implements PluginClient {
       const location = fields["location"] ?? "";
       const machineType = fields["machineType"] ?? "e2-medium";
       const requestedDiskSizeGb = Number.parseInt(fields["diskSizeGb"] ?? "100", 10);
-      const diskSizeGb = Number.isFinite(requestedDiskSizeGb) && requestedDiskSizeGb >= 10
-        ? requestedDiskSizeGb
-        : 100;
+      const diskSizeGb =
+        Number.isFinite(requestedDiskSizeGb) && requestedDiskSizeGb >= 10
+          ? requestedDiskSizeGb
+          : 100;
       const name = fields["name"] ?? "";
       const version = fields["version"] ?? "";
       const requestedNodeCount = Number.parseInt(fields["nodeCount"] ?? "3", 10);
-      const initialNodeCount = Number.isFinite(requestedNodeCount) && requestedNodeCount > 0
-        ? requestedNodeCount
-        : 3;
+      const initialNodeCount =
+        Number.isFinite(requestedNodeCount) && requestedNodeCount > 0 ? requestedNodeCount : 3;
       const tok = await this.token();
       const body = {
         cluster: {
@@ -1042,7 +1304,11 @@ export class GcpClient implements PluginClient {
     const base: DetailViewSchema = {
       title: resource.displayName,
       subtitle,
-      status: { kind: "status-dot", status: gcpStatus(statusVal), ...(statusVal ? { label: statusVal } : {}) },
+      status: {
+        kind: "status-dot",
+        status: gcpStatus(statusVal),
+        ...(statusVal ? { label: statusVal } : {}),
+      },
       sections: [
         {
           kind: "section",
@@ -1057,9 +1323,7 @@ export class GcpClient implements PluginClient {
           ],
         },
       ],
-      headerActions: [
-        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
-      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
 
     if (resource.resourceTypeId === "gcs-bucket") {
@@ -1070,7 +1334,13 @@ export class GcpClient implements PluginClient {
     if (resource.resourceTypeId === "bigquery-dataset") {
       const datasetId = String(resource.fields["name"] ?? "");
       const tablesJson = resource.resolvedOutputs["__tables__"] ?? "[]";
-      const tables: SqlTableMeta[] = (() => { try { return JSON.parse(tablesJson) as SqlTableMeta[]; } catch { return []; } })();
+      const tables: SqlTableMeta[] = (() => {
+        try {
+          return JSON.parse(tablesJson) as SqlTableMeta[];
+        } catch {
+          return [];
+        }
+      })();
       base.sqlEditor = {
         connectionStringOutputKey: "__bigquery__",
         defaultQuery: `SELECT * FROM \`${datasetId}.INFORMATION_SCHEMA.TABLES\` LIMIT 20`,
@@ -1098,7 +1368,9 @@ export class GcpClient implements PluginClient {
                 { key: "Zone Name", value: String(fields["name"] ?? "") },
                 { key: "Visibility", value: visibility },
                 { key: "DNSSEC", value: dnssec },
-                ...(fields["description"] ? [{ key: "Description", value: String(fields["description"]) }] : []),
+                ...(fields["description"]
+                  ? [{ key: "Description", value: String(fields["description"]) }]
+                  : []),
               ],
             },
           ],
@@ -1119,7 +1391,8 @@ export class GcpClient implements PluginClient {
                   },
                   {
                     kind: "text" as const,
-                    content: "Point your domain registrar to these nameservers to use Google Cloud DNS.",
+                    content:
+                      "Point your domain registrar to these nameservers to use Google Cloud DNS.",
                     variant: "muted" as const,
                   },
                 ],
@@ -1161,7 +1434,11 @@ export class GcpClient implements PluginClient {
     return base;
   }
 
-  async executeQuery(resourceId: string, _accountId: string, sql: string): Promise<{ rows: Record<string, unknown>[]; durationMs: number }> {
+  async executeQuery(
+    resourceId: string,
+    _accountId: string,
+    sql: string,
+  ): Promise<{ rows: Record<string, unknown>[]; durationMs: number }> {
     const externalId = resourceId.split(":").slice(2).join(":");
     const colonIdx = externalId.indexOf(":");
     const project = externalId.slice(0, colonIdx);
@@ -1187,7 +1464,7 @@ export class GcpClient implements PluginClient {
       },
     );
     if (!jobRes.ok) throw new Error(`BigQuery error ${jobRes.status}: ${await jobRes.text()}`);
-    const job = await jobRes.json() as Record<string, unknown>;
+    const job = (await jobRes.json()) as Record<string, unknown>;
     const jobRef = job["jobReference"] as Record<string, string>;
     const jobId = jobRef["jobId"];
     const location = jobRef["location"];
@@ -1200,17 +1477,22 @@ export class GcpClient implements PluginClient {
         { headers: { Authorization: `Bearer ${tok}` } },
       );
       if (!r.ok) throw new Error(`BigQuery poll error ${r.status}: ${await r.text()}`);
-      data = await r.json() as Record<string, unknown>;
+      data = (await r.json()) as Record<string, unknown>;
       if (data["jobComplete"]) break;
     }
 
     // Parse schema + rows
-    const schemaFields = ((data["schema"] as Record<string, unknown> | undefined)?.["fields"] as Array<Record<string, unknown>> | undefined) ?? [];
+    const schemaFields =
+      ((data["schema"] as Record<string, unknown> | undefined)?.["fields"] as
+        | Array<Record<string, unknown>>
+        | undefined) ?? [];
     const columns = schemaFields.map((f) => String(f["name"]));
     const rawRows = (data["rows"] as Array<{ f: Array<{ v: unknown }> }> | undefined) ?? [];
     const rows = rawRows.map((r) => {
       const obj: Record<string, unknown> = {};
-      r.f.forEach((cell, i) => { obj[columns[i] ?? String(i)] = cell.v; });
+      r.f.forEach((cell, i) => {
+        obj[columns[i] ?? String(i)] = cell.v;
+      });
       return obj;
     });
 
@@ -1238,7 +1520,10 @@ export class GcpClient implements PluginClient {
           );
           return {
             name: tableId,
-            columns: (td.schema?.fields ?? []).map((f) => ({ name: String(f["name"]), type: String(f["type"]) })),
+            columns: (td.schema?.fields ?? []).map((f) => ({
+              name: String(f["name"]),
+              type: String(f["type"]),
+            })),
             pkColumns: [],
           };
         } catch {
@@ -1328,13 +1613,18 @@ export class GcpClient implements PluginClient {
     const url = `https://storage.googleapis.com/upload/storage/v1/b/${encodeURIComponent(bucket)}/o?uploadType=media&name=${encodeURIComponent(folderKey)}`;
     const res = await fetch(url, {
       method: "POST",
-      headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/x-www-form-urlencoded" },
+      headers: {
+        Authorization: `Bearer ${tok}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
     });
     if (!res.ok) throw new Error(`Make folder failed: ${res.status}`);
   }
 
   async listStorageObjects(bucket: string, prefix: string): Promise<StorageObject[]> {
-    const url = new URL(`https://storage.googleapis.com/storage/v1/b/${encodeURIComponent(bucket)}/o`);
+    const url = new URL(
+      `https://storage.googleapis.com/storage/v1/b/${encodeURIComponent(bucket)}/o`,
+    );
     url.searchParams.set("delimiter", "/");
     url.searchParams.set("maxResults", "1000");
     if (prefix) url.searchParams.set("prefix", prefix);
@@ -1377,7 +1667,9 @@ export class GcpClient implements PluginClient {
   }
 
   async fetchStorageStats(bucketName: string): Promise<{ count: number; size: string }> {
-    const url = new URL(`https://storage.googleapis.com/storage/v1/b/${encodeURIComponent(bucketName)}/o`);
+    const url = new URL(
+      `https://storage.googleapis.com/storage/v1/b/${encodeURIComponent(bucketName)}/o`,
+    );
     url.searchParams.set("maxResults", "1000");
     url.searchParams.set("fields", "nextPageToken,items/size");
 
@@ -1387,7 +1679,9 @@ export class GcpClient implements PluginClient {
 
     do {
       if (pageToken) url.searchParams.set("pageToken", pageToken);
-      const page = await this.get<{ items?: Array<{ size?: string }>; nextPageToken?: string }>(url.toString());
+      const page = await this.get<{ items?: Array<{ size?: string }>; nextPageToken?: string }>(
+        url.toString(),
+      );
       for (const item of page.items ?? []) {
         count++;
         totalBytes += Number(item.size ?? 0);
@@ -1414,5 +1708,4 @@ export class GcpClient implements PluginClient {
   private now(): string {
     return new Date().toISOString();
   }
-
 }

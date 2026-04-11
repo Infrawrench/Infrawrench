@@ -12,9 +12,7 @@ export const DNSZoneResourceType: ResourceTypeDefinition = {
     { key: "numberOfRecordSets", label: "Record Sets", kind: "number", required: false },
     { key: "maxNumberOfRecordSets", label: "Max Record Sets", kind: "number", required: false },
   ],
-  outputs: [
-    { key: "nameServers", label: "Name Servers", sensitive: false },
-  ],
+  outputs: [{ key: "nameServers", label: "Name Servers", sensitive: false }],
   dashboardPinnable: true,
   iconKey: "dns",
   supportsCreate: true,

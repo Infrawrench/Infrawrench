@@ -5,7 +5,14 @@
  * badge-color mapping, TTL formatting, and detail-view generation logic.
  */
 
-import type { BadgeNode, SectionNode, SchemaNode, DetailViewSchema, SidebarItemSchema, ResourceStatus } from "./schema.js";
+import type {
+  BadgeNode,
+  SectionNode,
+  SchemaNode,
+  DetailViewSchema,
+  SidebarItemSchema,
+  ResourceStatus,
+} from "./schema.js";
 import type { ResourceInstance } from "./instance.js";
 
 const DNS_RECORD_TYPE_COLORS: Record<string, BadgeNode["color"]> = {
@@ -60,13 +67,20 @@ export function formatDnsTtl(ttl: number): string {
  */
 export function dnsZoneStatus(status: string): ResourceStatus {
   switch (status) {
-    case "active": return "healthy";
-    case "pending": return "provisioning";
-    case "initializing": return "provisioning";
-    case "moved": return "degraded";
-    case "deleted": return "error";
-    case "deactivated": return "error";
-    default: return "unknown";
+    case "active":
+      return "healthy";
+    case "pending":
+      return "provisioning";
+    case "initializing":
+      return "provisioning";
+    case "moved":
+      return "degraded";
+    case "deleted":
+      return "error";
+    case "deactivated":
+      return "error";
+    default:
+      return "unknown";
   }
 }
 
@@ -118,9 +132,7 @@ export function renderDnsRecordDetail(
     infoItems.push(...options.extraInfoItems);
   }
 
-  const badges: SchemaNode[] = [
-    { kind: "badge", label: type, color: dnsRecordBadgeColor(type) },
-  ];
+  const badges: SchemaNode[] = [{ kind: "badge", label: type, color: dnsRecordBadgeColor(type) }];
   if (proxied) {
     badges.push({ kind: "badge", label: "Proxied", color: "green" });
   } else if (["A", "AAAA", "CNAME"].includes(type)) {
@@ -131,10 +143,7 @@ export function renderDnsRecordDetail(
     {
       kind: "section",
       title: "Record Details",
-      children: [
-        ...badges,
-        { kind: "key-value-list", items: infoItems },
-      ],
+      children: [...badges, { kind: "key-value-list", items: infoItems }],
     },
   ];
 
@@ -145,7 +154,8 @@ export function renderDnsRecordDetail(
       children: [
         {
           kind: "text",
-          content: "Traffic to this record is routed through Cloudflare's network, providing DDoS protection, SSL, and caching.",
+          content:
+            "Traffic to this record is routed through Cloudflare's network, providing DDoS protection, SSL, and caching.",
           variant: "muted",
         },
       ],
@@ -165,9 +175,7 @@ export function renderDnsRecordDetail(
       label: proxied ? "Proxied" : "DNS Only",
     },
     sections,
-    headerActions: [
-      { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
-    ],
+    headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
   };
 }
 

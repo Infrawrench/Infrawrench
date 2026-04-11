@@ -23,21 +23,37 @@ function parseTableName(sql: string): string | null {
 /** Map information_schema data_type → Postgres cast suffix for $n params */
 function pgCast(dataType: string): string {
   switch (dataType) {
-    case "timestamp without time zone": return "::timestamp";
-    case "timestamp with time zone":    return "::timestamptz";
-    case "date":                        return "::date";
-    case "time without time zone":      return "::time";
-    case "boolean":                     return "::boolean";
-    case "integer":                     return "::integer";
-    case "bigint":                      return "::bigint";
-    case "smallint":                    return "::smallint";
-    case "numeric": case "decimal":     return "::numeric";
-    case "double precision":            return "::float8";
-    case "real":                        return "::float4";
-    case "uuid":                        return "::uuid";
-    case "json":                        return "::json";
-    case "jsonb":                       return "::jsonb";
-    default:                            return "";
+    case "timestamp without time zone":
+      return "::timestamp";
+    case "timestamp with time zone":
+      return "::timestamptz";
+    case "date":
+      return "::date";
+    case "time without time zone":
+      return "::time";
+    case "boolean":
+      return "::boolean";
+    case "integer":
+      return "::integer";
+    case "bigint":
+      return "::bigint";
+    case "smallint":
+      return "::smallint";
+    case "numeric":
+    case "decimal":
+      return "::numeric";
+    case "double precision":
+      return "::float8";
+    case "real":
+      return "::float4";
+    case "uuid":
+      return "::uuid";
+    case "json":
+      return "::json";
+    case "jsonb":
+      return "::jsonb";
+    default:
+      return "";
   }
 }
 
@@ -57,22 +73,25 @@ export function SqlEditorView({ tables, defaultQuery, onRunQuery, onExecute }: P
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const runQuery = useCallback(async (sql: string) => {
-    if (!sql.trim()) return;
-    setRunning(true);
-    setError(null);
-    setResult(null);
-    setEditingRow(null);
-    setSaveError(null);
-    try {
-      const r = await onRunQuery(sql);
-      setResult(r);
-    } catch (e) {
-      setError(String(e));
-    } finally {
-      setRunning(false);
-    }
-  }, [onRunQuery]);
+  const runQuery = useCallback(
+    async (sql: string) => {
+      if (!sql.trim()) return;
+      setRunning(true);
+      setError(null);
+      setResult(null);
+      setEditingRow(null);
+      setSaveError(null);
+      try {
+        const r = await onRunQuery(sql);
+        setResult(r);
+      } catch (e) {
+        setError(String(e));
+      } finally {
+        setRunning(false);
+      }
+    },
+    [onRunQuery],
+  );
 
   useEffect(() => {
     runQuery(defaultQuery);
@@ -92,7 +111,9 @@ export function SqlEditorView({ tables, defaultQuery, onRunQuery, onExecute }: P
       const start = ta.selectionStart;
       const end = ta.selectionEnd;
       setQuery(query.slice(0, start) + "  " + query.slice(end));
-      requestAnimationFrame(() => { ta.selectionStart = ta.selectionEnd = start + 2; });
+      requestAnimationFrame(() => {
+        ta.selectionStart = ta.selectionEnd = start + 2;
+      });
     }
   }
 
@@ -106,7 +127,8 @@ export function SqlEditorView({ tables, defaultQuery, onRunQuery, onExecute }: P
   function toggleTableExpand(tableName: string) {
     setExpandedTables((prev) => {
       const next = new Set(prev);
-      if (next.has(tableName)) next.delete(tableName); else next.add(tableName);
+      if (next.has(tableName)) next.delete(tableName);
+      else next.add(tableName);
       return next;
     });
   }
@@ -136,9 +158,7 @@ export function SqlEditorView({ tables, defaultQuery, onRunQuery, onExecute }: P
     setSaving(true);
     setSaveError(null);
     try {
-      const colTypeMap = new Map(
-        (tableMeta?.columns ?? []).map((c) => [c.name, c.type]),
-      );
+      const colTypeMap = new Map((tableMeta?.columns ?? []).map((c) => [c.name, c.type]));
 
       // Only include columns whose value actually changed
       const changedCols = columns.filter((c) => {
@@ -210,8 +230,17 @@ export function SqlEditorView({ tables, defaultQuery, onRunQuery, onExecute }: P
                       className="w-4 h-6 flex items-center justify-center text-gray-600 hover:text-gray-400 shrink-0"
                     >
                       {table.columns.length > 0 && (
-                        <svg className={`w-2.5 h-2.5 transition-transform ${expanded ? "rotate-90" : ""}`} viewBox="0 0 6 10" fill="none">
-                          <path d="M1 1l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                        <svg
+                          className={`w-2.5 h-2.5 transition-transform ${expanded ? "rotate-90" : ""}`}
+                          viewBox="0 0 6 10"
+                          fill="none"
+                        >
+                          <path
+                            d="M1 1l4 4-4 4"
+                            stroke="currentColor"
+                            strokeWidth="1.5"
+                            strokeLinecap="round"
+                          />
                         </svg>
                       )}
                     </button>
@@ -227,10 +256,17 @@ export function SqlEditorView({ tables, defaultQuery, onRunQuery, onExecute }: P
                       {table.columns.map((col) => (
                         <div key={col.name} className="flex items-baseline gap-1.5 py-0.5">
                           {pks.has(col.name) && (
-                            <span className="text-yellow-500 text-xs leading-none" title="Primary key">⚿</span>
+                            <span
+                              className="text-yellow-500 text-xs leading-none"
+                              title="Primary key"
+                            >
+                              ⚿
+                            </span>
                           )}
                           <span className="text-xs text-gray-400 truncate">{col.name}</span>
-                          <span className="text-xs text-gray-600 truncate shrink-0">{col.type}</span>
+                          <span className="text-xs text-gray-600 truncate shrink-0">
+                            {col.type}
+                          </span>
                         </div>
                       ))}
                     </div>
@@ -245,13 +281,19 @@ export function SqlEditorView({ tables, defaultQuery, onRunQuery, onExecute }: P
       {/* Editor + results */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Editor */}
-        <div className="flex flex-col border-b border-gray-800" style={{ minHeight: "160px", maxHeight: "40%" }}>
+        <div
+          className="flex flex-col border-b border-gray-800"
+          style={{ minHeight: "160px", maxHeight: "40%" }}
+        >
           <div className="flex items-center gap-2 px-3 py-1.5 border-b border-gray-800 bg-gray-950">
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Query</span>
+            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              Query
+            </span>
             <div className="ml-auto flex items-center gap-2">
               {result && (
                 <span className="text-xs text-gray-600">
-                  {result.rows.length} row{result.rows.length !== 1 ? "s" : ""} · {result.durationMs}ms
+                  {result.rows.length} row{result.rows.length !== 1 ? "s" : ""} ·{" "}
+                  {result.durationMs}ms
                 </span>
               )}
               <button
@@ -276,15 +318,23 @@ export function SqlEditorView({ tables, defaultQuery, onRunQuery, onExecute }: P
 
         {/* Results */}
         <div className="flex-1 overflow-auto bg-gray-950">
-          {error && <div className="p-4 text-xs text-red-400 font-mono whitespace-pre-wrap">{error}</div>}
-          {!error && !result && !running && <div className="p-4 text-xs text-gray-600">Run a query to see results.</div>}
+          {error && (
+            <div className="p-4 text-xs text-red-400 font-mono whitespace-pre-wrap">{error}</div>
+          )}
+          {!error && !result && !running && (
+            <div className="p-4 text-xs text-gray-600">Run a query to see results.</div>
+          )}
           {running && <div className="p-4 text-xs text-gray-600">Running…</div>}
-          {result && result.rows.length === 0 && !error && <div className="p-4 text-xs text-gray-600">Query returned no rows.</div>}
+          {result && result.rows.length === 0 && !error && (
+            <div className="p-4 text-xs text-gray-600">Query returned no rows.</div>
+          )}
 
           {result && result.rows.length > 0 && (
             <>
               {saveError && (
-                <div className="px-3 py-2 text-xs text-red-400 font-mono border-b border-gray-800">{saveError}</div>
+                <div className="px-3 py-2 text-xs text-red-400 font-mono border-b border-gray-800">
+                  {saveError}
+                </div>
               )}
               <table className="w-full text-xs border-collapse">
                 <thead className="sticky top-0 bg-gray-900 z-10">
@@ -295,9 +345,17 @@ export function SqlEditorView({ tables, defaultQuery, onRunQuery, onExecute }: P
                         key={col}
                         className="px-3 py-2 text-left border-b border-gray-800 whitespace-nowrap"
                       >
-                        <span className={pkCols.includes(col) ? "text-yellow-400 font-semibold" : "text-gray-400 font-semibold"}>
+                        <span
+                          className={
+                            pkCols.includes(col)
+                              ? "text-yellow-400 font-semibold"
+                              : "text-gray-400 font-semibold"
+                          }
+                        >
                           {col}
-                          {pkCols.includes(col) && <span className="ml-1 text-yellow-600 text-xs">PK</span>}
+                          {pkCols.includes(col) && (
+                            <span className="ml-1 text-yellow-600 text-xs">PK</span>
+                          )}
                         </span>
                       </th>
                     ))}
@@ -350,9 +408,14 @@ export function SqlEditorView({ tables, defaultQuery, onRunQuery, onExecute }: P
                               <td key={col} className="px-1 py-0.5">
                                 <input
                                   value={editValues[col] ?? ""}
-                                  onChange={(e) => setEditValues((prev) => ({ ...prev, [col]: e.target.value }))}
+                                  onChange={(e) =>
+                                    setEditValues((prev) => ({ ...prev, [col]: e.target.value }))
+                                  }
                                   onKeyDown={(e) => {
-                                    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); saveEdit(row); }
+                                    if (e.key === "Enter" && !e.shiftKey) {
+                                      e.preventDefault();
+                                      saveEdit(row);
+                                    }
                                     if (e.key === "Escape") cancelEdit();
                                   }}
                                   className="w-full bg-gray-700 border border-gray-500 rounded px-2 py-0.5 text-xs font-mono text-gray-100 focus:outline-none focus:border-blue-400"

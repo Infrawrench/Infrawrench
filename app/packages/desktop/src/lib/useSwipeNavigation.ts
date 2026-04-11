@@ -26,7 +26,8 @@ function canScrollHorizontally(el: EventTarget | null, fingerDirection: "left" |
     const { scrollWidth, clientWidth, scrollLeft } = node;
     if (scrollWidth > clientWidth + 1) {
       if (fingerDirection === "right" && scrollLeft > 0) return true;
-      if (fingerDirection === "left" && Math.ceil(scrollLeft) + clientWidth < scrollWidth) return true;
+      if (fingerDirection === "left" && Math.ceil(scrollLeft) + clientWidth < scrollWidth)
+        return true;
     }
     node = node.parentElement;
   }
@@ -40,10 +41,7 @@ function canScrollHorizontally(el: EventTarget | null, fingerDirection: "left" |
  * Chromium's built-in overscroll history navigation must be disabled in the
  * main process (`--overscroll-history-navigation=0`) or it will double-fire.
  */
-export function useSwipeNavigation(
-  onBack: () => void,
-  onForward: () => void,
-): SwipeGestureState {
+export function useSwipeNavigation(onBack: () => void, onForward: () => void): SwipeGestureState {
   const stateRef = useRef<SwipeGestureState>(INITIAL_STATE);
   const [renderState, setRenderState] = useState<SwipeGestureState>(INITIAL_STATE);
 
@@ -56,8 +54,12 @@ export function useSwipeNavigation(
 
   const onBackRef = useRef(onBack);
   const onForwardRef = useRef(onForward);
-  useEffect(() => { onBackRef.current = onBack; }, [onBack]);
-  useEffect(() => { onForwardRef.current = onForward; }, [onForward]);
+  useEffect(() => {
+    onBackRef.current = onBack;
+  }, [onBack]);
+  useEffect(() => {
+    onForwardRef.current = onForward;
+  }, [onForward]);
 
   const pushState = useCallback((next: SwipeGestureState) => {
     stateRef.current = next;
@@ -68,8 +70,14 @@ export function useSwipeNavigation(
     accDeltaRef.current = 0;
     triggeredRef.current = false;
     lockRef.current = null;
-    if (idleTimerRef.current) { clearTimeout(idleTimerRef.current); idleTimerRef.current = null; }
-    if (triggerTimerRef.current) { clearTimeout(triggerTimerRef.current); triggerTimerRef.current = null; }
+    if (idleTimerRef.current) {
+      clearTimeout(idleTimerRef.current);
+      idleTimerRef.current = null;
+    }
+    if (triggerTimerRef.current) {
+      clearTimeout(triggerTimerRef.current);
+      triggerTimerRef.current = null;
+    }
     pushState(INITIAL_STATE);
   }, [pushState]);
 
@@ -116,7 +124,10 @@ export function useSwipeNavigation(
       if (abs >= TRIGGER_THRESHOLD) {
         triggeredRef.current = true;
         cooldownUntilRef.current = Date.now() + COOLDOWN_MS;
-        if (idleTimerRef.current) { clearTimeout(idleTimerRef.current); idleTimerRef.current = null; }
+        if (idleTimerRef.current) {
+          clearTimeout(idleTimerRef.current);
+          idleTimerRef.current = null;
+        }
         pushState({ active: true, direction, progress: 1, triggered: true });
         if (direction === "back") onBackRef.current();
         else onForwardRef.current();
@@ -149,7 +160,7 @@ export function useSwipeNavigation(
       if (triggerTimerRef.current) clearTimeout(triggerTimerRef.current);
       if (window.electronAPI) window.electronAPI.offAll("swipe-navigate");
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pushState, reset]);
 
   return renderState;

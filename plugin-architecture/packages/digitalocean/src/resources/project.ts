@@ -12,14 +12,7 @@ export const ProjectResourceType: ResourceTypeDefinition = {
       label: "Purpose",
       kind: "enum",
       required: false,
-      enumValues: [
-        "Web Application",
-        "API",
-        "Mobile Application",
-        "Website",
-        "CI/CD",
-        "Other",
-      ],
+      enumValues: ["Web Application", "API", "Mobile Application", "Website", "CI/CD", "Other"],
     },
     { key: "description", label: "Description", kind: "string", required: false },
     {

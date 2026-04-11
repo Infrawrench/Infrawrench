@@ -5,12 +5,8 @@ export const PostgresSchemaResourceType: ResourceTypeDefinition = {
   displayName: "Schema",
   pluralDisplayName: "Schemas",
   description: "A PostgreSQL schema within a database",
-  fields: [
-    { key: "name", label: "Schema Name", kind: "string", required: true },
-  ],
-  outputs: [
-    { key: "tableCount", label: "Table Count", sensitive: false },
-  ],
+  fields: [{ key: "name", label: "Schema Name", kind: "string", required: true }],
+  outputs: [{ key: "tableCount", label: "Table Count", sensitive: false }],
   parentTypeId: "pg-database",
   dashboardPinnable: false,
 };

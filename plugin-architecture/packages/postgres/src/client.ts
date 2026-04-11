@@ -62,9 +62,7 @@ export class PostgresClient implements PluginClient {
     if (typeId === "pg-database" && outputKey === "schemaNames") {
       return JSON.stringify(["public"]);
     }
-    throw new Error(
-      `Postgres plugin: cannot resolve output "${outputKey}" for type "${typeId}"`,
-    );
+    throw new Error(`Postgres plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
@@ -97,22 +95,29 @@ export class PostgresClient implements PluginClient {
                 {
                   key: "Connection String",
                   value: cs
-                    ? { kind: "secret-placeholder", fieldKey: "connectionString", resolution: cs.resolution }
+                    ? {
+                        kind: "secret-placeholder",
+                        fieldKey: "connectionString",
+                        resolution: cs.resolution,
+                      }
                     : "(not set)",
                   sensitive: true,
                 },
               ],
             },
-            { kind: "action", label: "Reroll Connection", action: { type: "reroll-secret", fieldKey: "connectionString" } },
+            {
+              kind: "action",
+              label: "Reroll Connection",
+              action: { type: "reroll-secret", fieldKey: "connectionString" },
+            },
           ],
         },
       ],
-      headerActions: [
-        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
-      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
       sqlEditor: {
         connectionStringOutputKey: "connectionString",
-        defaultQuery: "SELECT * FROM information_schema.tables WHERE table_schema = 'public' LIMIT 20;",
+        defaultQuery:
+          "SELECT * FROM information_schema.tables WHERE table_schema = 'public' LIMIT 20;",
         tables,
       },
     };
@@ -148,7 +153,11 @@ export class PostgresClient implements PluginClient {
     ]);
 
     const colsByTable = new Map<string, { name: string; type: string }[]>();
-    for (const col of columnRows as { table_name: string; column_name: string; data_type: string }[]) {
+    for (const col of columnRows as {
+      table_name: string;
+      column_name: string;
+      data_type: string;
+    }[]) {
       if (!colsByTable.has(col.table_name)) colsByTable.set(col.table_name, []);
       colsByTable.get(col.table_name)!.push({ name: col.column_name, type: col.data_type });
     }
@@ -172,10 +181,15 @@ export class PostgresClient implements PluginClient {
     const [versionRows, sizeRows, tableRows] = await Promise.all([
       sql.query("SELECT version()"),
       sql.query("SELECT pg_size_pretty(pg_database_size(current_database())) AS size"),
-      sql.query("SELECT COUNT(*) AS n FROM information_schema.tables WHERE table_schema = 'public'"),
+      sql.query(
+        "SELECT COUNT(*) AS n FROM information_schema.tables WHERE table_schema = 'public'",
+      ),
     ]);
 
-    const ver = String(versionRows[0]?.["version"] ?? "").split(" ").slice(0, 2).join(" ");
+    const ver = String(versionRows[0]?.["version"] ?? "")
+      .split(" ")
+      .slice(0, 2)
+      .join(" ");
     const size = String(sizeRows[0]?.["size"] ?? "");
     const tableCount = Number(tableRows[0]?.["n"] ?? 0);
     return { version: ver, size, tableCount };
@@ -193,7 +207,9 @@ export class PostgresClient implements PluginClient {
         let host = "unknown";
         try {
           host = new URL(this.connectionString).hostname;
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
         return (rows as { datname: string }[]).map((row) => ({
           id: `${accountId}:pg-database:${row.datname}`,
           pluginId: "postgres",
@@ -218,7 +234,9 @@ export class PostgresClient implements PluginClient {
       const url = new URL(this.connectionString);
       dbName = url.pathname.replace(/^\//, "") || "postgres";
       host = url.hostname;
-    } catch { /* connection string may not be a parseable URL */ }
+    } catch {
+      /* connection string may not be a parseable URL */
+    }
 
     return [
       {

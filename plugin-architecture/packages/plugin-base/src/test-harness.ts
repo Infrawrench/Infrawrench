@@ -10,11 +10,20 @@ import {
 
 const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   aws: { accessKeyId: "AKIATEST", secretAccessKey: "testsecret", region: "us-east-1" },
-  gcp: { serviceAccountJson: '{"type":"service_account","project_id":"test"}', project: "test-project" },
+  gcp: {
+    serviceAccountJson: '{"type":"service_account","project_id":"test"}',
+    project: "test-project",
+  },
   digitalocean: { apiToken: "dop_v1_test" },
   hetzner: { apiToken: "test-token" },
   scaleway: { accessKey: "SCWTEST", secretKey: "test-uuid", defaultProjectId: "test-project-id" },
-  ovh: { applicationKey: "test", applicationSecret: "test", consumerKey: "test", endpoint: "eu", projectId: "12345678-abcd-1234-abcd-1234567890ab" },
+  ovh: {
+    applicationKey: "test",
+    applicationSecret: "test",
+    consumerKey: "test",
+    endpoint: "eu",
+    projectId: "12345678-abcd-1234-abcd-1234567890ab",
+  },
   kubernetes: { kubeconfig: "apiVersion: v1\nkind: Config\nclusters: []\ncontexts: []\nusers: []" },
   postgres: { connectionString: "postgresql://user:pass@localhost:5432/db" },
   mysql: { connectionString: "mysql://user:pass@localhost:3306/db" },
@@ -22,13 +31,27 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   redis: { connectionString: "redis://localhost:6379" },
   memcached: { connectionString: "localhost:11211" },
   neon: { apiKey: "neon_test_key" },
-  planetscale: { serviceTokenId: "test-id", serviceTokenSecret: "test-secret", organizationName: "test-org" },
+  planetscale: {
+    serviceTokenId: "test-id",
+    serviceTokenSecret: "test-secret",
+    organizationName: "test-org",
+  },
   turso: { apiToken: "test-token", organizationName: "test-org" },
   docker: { dockerHost: "unix:///var/run/docker.sock" },
   cloudflare: { apiToken: "test-cf-token" },
-  ssh: { host: "192.168.1.1", port: "22", username: "root", privateKey: "-----BEGIN OPENSSH PRIVATE KEY-----\ntest\n-----END OPENSSH PRIVATE KEY-----" },
+  ssh: {
+    host: "192.168.1.1",
+    port: "22",
+    username: "root",
+    privateKey: "-----BEGIN OPENSSH PRIVATE KEY-----\ntest\n-----END OPENSSH PRIVATE KEY-----",
+  },
   databricks: { host: "https://adb-test.azuredatabricks.net", token: "dapi-test" },
-  azure: { tenantId: "test-tenant-id", clientId: "test-client-id", clientSecret: "test-client-secret", subscriptionId: "test-subscription-id" },
+  azure: {
+    tenantId: "test-tenant-id",
+    clientId: "test-client-id",
+    clientSecret: "test-client-secret",
+    subscriptionId: "test-subscription-id",
+  },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {
@@ -78,10 +101,7 @@ export function createMockResource(
   };
 }
 
-export function runPluginContractTests(
-  plugin: Plugin,
-  credentials?: Record<string, string>,
-) {
+export function runPluginContractTests(plugin: Plugin, credentials?: Record<string, string>) {
   const creds = credentials ?? makeMockCredentials(plugin.manifest.id);
 
   describe(`${plugin.manifest.displayName} contract`, () => {
@@ -224,7 +244,9 @@ export function runPluginContractTests(
         });
       }
 
-      const hasSupportsStorageBrowser = plugin.resourceTypes.some((rt) => rt.supportsStorageBrowser);
+      const hasSupportsStorageBrowser = plugin.resourceTypes.some(
+        (rt) => rt.supportsStorageBrowser,
+      );
       if (hasSupportsStorageBrowser && typeof client.listStorageObjects === "function") {
         it("resourceType.supportsStorageBrowser → client has listStorageObjects", () => {
           expect(typeof client.listStorageObjects).toBe("function");

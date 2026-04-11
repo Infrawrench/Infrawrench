@@ -20,7 +20,8 @@ const manifest: PluginManifest = {
     {
       key: "connectionString",
       label: "Connection String",
-      description: "PostgreSQL connection URI. You can also link this to a DigitalOcean Managed Database after adding.",
+      description:
+        "PostgreSQL connection URI. You can also link this to a DigitalOcean Managed Database after adding.",
       sensitive: true,
       placeholder: "postgresql://user:pass@host:5432/dbname",
     },

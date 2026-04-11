@@ -9,7 +9,12 @@ export const BigQueryDatasetResourceType: ResourceTypeDefinition = {
     { key: "name", label: "Dataset ID", kind: "string", required: true },
     { key: "location", label: "Location", kind: "string", required: false },
     { key: "description", label: "Description", kind: "string", required: false },
-    { key: "defaultTableExpirationMs", label: "Table Expiration (ms)", kind: "number", required: false },
+    {
+      key: "defaultTableExpirationMs",
+      label: "Table Expiration (ms)",
+      kind: "number",
+      required: false,
+    },
   ],
   outputs: [],
   dashboardPinnable: true,

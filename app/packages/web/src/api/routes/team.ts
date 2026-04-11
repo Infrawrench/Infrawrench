@@ -139,7 +139,13 @@ app.delete("/invitations/:id", async (c) => {
   const invitationId = c.req.param("id");
   await db
     .delete(invitations)
-    .where(and(eq(invitations.id, invitationId), eq(invitations.organizationId, organizationId), isNull(invitations.acceptedAt)));
+    .where(
+      and(
+        eq(invitations.id, invitationId),
+        eq(invitations.organizationId, organizationId),
+        isNull(invitations.acceptedAt),
+      ),
+    );
   return c.json({ ok: true });
 });
 

@@ -58,15 +58,11 @@ app.post("/pull", async (c) => {
         updatedAt: dashboards.updatedAt,
       })
       .from(dashboards)
-      .where(and(eq(dashboards.organizationId, orgId), gt(dashboards.syncVersion, lastSyncVersion))),
-    db
-      .select()
-      .from(dashboardPins)
-      .where(gt(dashboardPins.syncVersion, lastSyncVersion)),
-    db
-      .select()
-      .from(associations)
-      .where(gt(associations.syncVersion, lastSyncVersion)),
+      .where(
+        and(eq(dashboards.organizationId, orgId), gt(dashboards.syncVersion, lastSyncVersion)),
+      ),
+    db.select().from(dashboardPins).where(gt(dashboardPins.syncVersion, lastSyncVersion)),
+    db.select().from(associations).where(gt(associations.syncVersion, lastSyncVersion)),
   ]);
 
   return c.json({
@@ -243,10 +239,7 @@ app.get("/status", async (c) => {
     .from(resources)
     .where(eq(resources.organizationId, orgId));
 
-  const maxSyncVersion = Math.max(
-    maxVersions?.accounts ?? 0,
-    resourceVersions?.resources ?? 0,
-  );
+  const maxSyncVersion = Math.max(maxVersions?.accounts ?? 0, resourceVersions?.resources ?? 0);
 
   return c.json({ maxSyncVersion });
 });

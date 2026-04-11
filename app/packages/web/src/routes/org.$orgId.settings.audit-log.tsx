@@ -62,7 +62,9 @@ function AuditLogPage() {
     setLoading(true);
     const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
     if (entityTypeFilter) params.set("entityType", entityTypeFilter);
-    apiGet<{ entries: AuditLogEntry[]; total: number }>(`/api/org/${orgId}/audit-logs?${params}`).then((result) => {
+    apiGet<{ entries: AuditLogEntry[]; total: number }>(
+      `/api/org/${orgId}/audit-logs?${params}`,
+    ).then((result) => {
       setEntries(result.entries);
       setTotal(result.total);
       setLoading(false);
@@ -86,7 +88,9 @@ function AuditLogPage() {
         >
           <option value="">All types</option>
           {ENTITY_TYPES.map((t) => (
-            <option key={t} value={t}>{t}</option>
+            <option key={t} value={t}>
+              {t}
+            </option>
           ))}
         </select>
       </div>

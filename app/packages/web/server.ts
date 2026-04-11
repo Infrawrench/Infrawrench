@@ -90,44 +90,57 @@ async function start() {
     });
   });
 
-  wss.on("connection", (ws: WebSocket, _request: unknown, auth: { organizationId: string; userId: string }) => {
-    ws.on("message", (data) => {
-      try {
-        const msg = JSON.parse(data.toString()) as {
-          type: string;
-          channel?: string;
-          accountId?: string;
-          resourceId?: string;
-          data?: string;
-          cols?: number;
-          rows?: number;
-          sql?: string;
-          sshKeyId?: string;
-          sshHost?: string;
-          sshUsername?: string;
-        };
+  wss.on(
+    "connection",
+    (ws: WebSocket, _request: unknown, auth: { organizationId: string; userId: string }) => {
+      ws.on("message", (data) => {
+        try {
+          const msg = JSON.parse(data.toString()) as {
+            type: string;
+            channel?: string;
+            accountId?: string;
+            resourceId?: string;
+            data?: string;
+            cols?: number;
+            rows?: number;
+            sql?: string;
+            sshKeyId?: string;
+            sshHost?: string;
+            sshUsername?: string;
+          };
 
-        switch (msg.type) {
-          case "ssh:open":
-            if (msg.accountId) {
-              void handleSshSession(ws, auth.organizationId, msg.accountId, msg.resourceId, msg.sshKeyId ? { sshKeyId: msg.sshKeyId, host: msg.sshHost!, username: msg.sshUsername! } : undefined, msg.cols, msg.rows);
-            }
-            break;
-          case "ssh:data":
-            break;
-          case "ssh:resize":
-            break;
-          case "sql:query":
-            if (msg.accountId && msg.sql) {
-              void handleSqlSession(ws, auth.organizationId, msg.accountId, msg.sql);
-            }
-            break;
+          switch (msg.type) {
+            case "ssh:open":
+              if (msg.accountId) {
+                void handleSshSession(
+                  ws,
+                  auth.organizationId,
+                  msg.accountId,
+                  msg.resourceId,
+                  msg.sshKeyId
+                    ? { sshKeyId: msg.sshKeyId, host: msg.sshHost!, username: msg.sshUsername! }
+                    : undefined,
+                  msg.cols,
+                  msg.rows,
+                );
+              }
+              break;
+            case "ssh:data":
+              break;
+            case "ssh:resize":
+              break;
+            case "sql:query":
+              if (msg.accountId && msg.sql) {
+                void handleSqlSession(ws, auth.organizationId, msg.accountId, msg.sql);
+              }
+              break;
+          }
+        } catch (e) {
+          console.error("[ws] Invalid message:", e);
         }
-      } catch (e) {
-        console.error("[ws] Invalid message:", e);
-      }
-    });
-  });
+      });
+    },
+  );
 
   console.log(`> Ready on http://localhost:${port}`);
 }

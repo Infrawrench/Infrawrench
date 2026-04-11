@@ -57,15 +57,24 @@ export function buildPluginHostServices(
 ): HostServices | undefined {
   if (manifest.dockerDriver) {
     const dockerHost = credentials[manifest.dockerDriver.credentialKey] ?? "";
-    return { ...buildDockerHostServices(manifest.dockerDriver.driver, dockerHost), ...httpHostServices };
+    return {
+      ...buildDockerHostServices(manifest.dockerDriver.driver, dockerHost),
+      ...httpHostServices,
+    };
   }
   if (manifest.sqlDriver) {
     const connectionString = credentials[manifest.sqlDriver.credentialKey] ?? "";
-    return { ...buildHostServices(manifest.sqlDriver.driver, connectionString), ...httpHostServices };
+    return {
+      ...buildHostServices(manifest.sqlDriver.driver, connectionString),
+      ...httpHostServices,
+    };
   }
   if (manifest.kvDriver) {
     const connectionString = credentials[manifest.kvDriver.credentialKey] ?? "";
-    return { ...buildKvHostServices(manifest.kvDriver.driver, connectionString), ...httpHostServices };
+    return {
+      ...buildKvHostServices(manifest.kvDriver.driver, connectionString),
+      ...httpHostServices,
+    };
   }
   // Even without a specific driver, provide HTTP proxy for plugins like K8s
   return httpHostServices;

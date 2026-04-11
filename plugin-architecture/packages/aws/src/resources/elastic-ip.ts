@@ -13,9 +13,7 @@ export const ElasticIPResourceType: ResourceTypeDefinition = {
     { key: "networkInterfaceId", label: "Network Interface", kind: "string", required: false },
     { key: "domain", label: "Domain", kind: "string", required: false },
   ],
-  outputs: [
-    { key: "publicIp", label: "Public IP", sensitive: false },
-  ],
+  outputs: [{ key: "publicIp", label: "Public IP", sensitive: false }],
   dashboardPinnable: false,
   iconKey: "network",
 };

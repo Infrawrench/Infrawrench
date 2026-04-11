@@ -14,9 +14,7 @@ export const NSGResourceType: ResourceTypeDefinition = {
     { key: "subnetCount", label: "Associated Subnets", kind: "number", required: false },
     { key: "nicCount", label: "Associated NICs", kind: "number", required: false },
   ],
-  outputs: [
-    { key: "resourceId", label: "Resource ID", sensitive: false },
-  ],
+  outputs: [{ key: "resourceId", label: "Resource ID", sensitive: false }],
   dashboardPinnable: true,
   iconKey: "firewall",
   supportsCreate: true,

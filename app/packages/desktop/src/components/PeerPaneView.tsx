@@ -8,7 +8,12 @@ import type {
   PluginClient,
   ResourceStatus,
 } from "@infrawrench/plugin-base";
-import { StatusDotNodeRenderer, ManifestEditorView, type PeerPaneData, formatErrorMessage } from "@infrawrench/ui";
+import {
+  StatusDotNodeRenderer,
+  ManifestEditorView,
+  type PeerPaneData,
+  formatErrorMessage,
+} from "@infrawrench/ui";
 import type { DraggableResource } from "../lib/pins";
 import { invoke } from "../lib/invoke";
 import { getPlugin } from "../plugins/loader";
@@ -73,7 +78,9 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
         // non-critical — manifest tab just won't work
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [pane.credentials, pane.schema.resourceGroups]);
 
   const handleGetManifest = useCallback(async (): Promise<string> => {
@@ -83,12 +90,15 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
     return pluginClient.getManifest(manifestTarget.resource.id, accountId);
   }, [pluginClient, manifestTarget, accountId]);
 
-  const handleApplyManifest = useCallback(async (manifest: string): Promise<void> => {
-    if (!pluginClient?.applyManifest || !manifestTarget) {
-      throw new Error("Manifest editing not supported");
-    }
-    await pluginClient.applyManifest(manifestTarget.resource.id, accountId, manifest);
-  }, [pluginClient, manifestTarget, accountId]);
+  const handleApplyManifest = useCallback(
+    async (manifest: string): Promise<void> => {
+      if (!pluginClient?.applyManifest || !manifestTarget) {
+        throw new Error("Manifest editing not supported");
+      }
+      await pluginClient.applyManifest(manifestTarget.resource.id, accountId, manifest);
+    },
+    [pluginClient, manifestTarget, accountId],
+  );
 
   const [portForwards, setPortForwards] = useState<PortForwardEntry[]>([]);
   const [pfStarting, setPfStarting] = useState<string | null>(null); // resource ID currently starting
@@ -110,17 +120,14 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
     setPfStarting(resource.id);
     setPfError(null);
     try {
-      const result = await invoke<{ sessionId: string; localPort: number }>(
-        "k8s_pf_start",
-        {
-          kubeconfig,
-          namespace,
-          resourceType: "svc",
-          resourceName: resource.displayName,
-          remotePort: firstPort,
-          localPort: 0,
-        },
-      );
+      const result = await invoke<{ sessionId: string; localPort: number }>("k8s_pf_start", {
+        kubeconfig,
+        namespace,
+        resourceType: "svc",
+        resourceName: resource.displayName,
+        remotePort: firstPort,
+        localPort: 0,
+      });
 
       setPortForwards((prev) => [
         ...prev,
@@ -238,11 +245,7 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
   const showK9sAction = !!pane.schema.supportsK9s;
   const canOpenK9s = showK9sAction && !!kubeconfig;
   const k9sLabel =
-    k9sInstalled === null
-      ? "Checking k9s…"
-      : k9sInstalled
-        ? "Open in k9s"
-        : "k9s not installed";
+    k9sInstalled === null ? "Checking k9s…" : k9sInstalled ? "Open in k9s" : "k9s not installed";
 
   // Derive available namespaces from all resource groups (skip namespace group itself)
   const namespaces = useMemo(() => {
@@ -265,9 +268,7 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
         // Highlight the selected namespace in the namespace group
         return {
           ...group,
-          items: group.items.filter(
-            (item) => item.displayName === nsFilter,
-          ),
+          items: group.items.filter((item) => item.displayName === nsFilter),
         };
       }
       return {
@@ -281,9 +282,7 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
   }, [resourceGroups, nsFilter]);
 
   // Groups that have items after filtering (never hide empty groups with supportsCreate)
-  const visibleGroups = filteredGroups.filter(
-    (g) => g.items.length > 0 || g.supportsCreate,
-  );
+  const visibleGroups = filteredGroups.filter((g) => g.items.length > 0 || g.supportsCreate);
 
   const createClientFactory = useMemo(
     () =>
@@ -308,8 +307,7 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
   }
 
   const isProvisioning =
-    pane.schema.status?.status === "provisioning" &&
-    resourceGroups.length === 0;
+    pane.schema.status?.status === "provisioning" && resourceGroups.length === 0;
 
   if (isProvisioning) {
     return (
@@ -390,7 +388,9 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
               onClick={() => toggleGroupCollapsed(groupKey)}
             >
               <div className="flex items-center gap-2">
-                <span className={`text-gray-500 text-xs transition-transform ${isCollapsed ? "" : "rotate-90"}`}>
+                <span
+                  className={`text-gray-500 text-xs transition-transform ${isCollapsed ? "" : "rotate-90"}`}
+                >
                   ▶
                 </span>
                 <h3 className="text-sm font-semibold text-gray-100">
@@ -405,7 +405,10 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
               <div className="flex items-center gap-2">
                 {group.supportsCreate && (
                   <button
-                    onClick={(e) => { e.stopPropagation(); setCreateTarget(group); }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setCreateTarget(group);
+                    }}
                     className="px-2.5 py-1 rounded-lg border border-gray-700 bg-gray-800 text-xs text-gray-200 hover:border-gray-600 hover:bg-gray-700 transition-colors"
                   >
                     Create {getCreateLabel(group.title)}
@@ -433,14 +436,18 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
                         accountId={accountId}
                         onExec={() => setExecTarget({ resource, group })}
                         onClick={() => setManifestTarget({ resource, group })}
-                        {...(group.resourceTypeId === "k8s-service" && resource.fields["hasSelector"] === "true"
+                        {...(group.resourceTypeId === "k8s-service" &&
+                        resource.fields["hasSelector"] === "true"
                           ? { onPortForward: () => handleStartPortForward(resource) }
                           : {})}
                         isPortForwarding={pfStarting === resource.id}
                         {...(() => {
                           const pf = portForwards.find(
-                            (pf) => pf.resourceName === resource.displayName
-                              && pf.namespace === (resource.namespace ?? String(resource.fields["namespace"] ?? "default")),
+                            (pf) =>
+                              pf.resourceName === resource.displayName &&
+                              pf.namespace ===
+                                (resource.namespace ??
+                                  String(resource.fields["namespace"] ?? "default")),
                           );
                           return pf !== undefined ? { activePortForward: pf } : {};
                         })()}
@@ -481,13 +488,18 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
               const groupTypeId = execTarget.group.resourceTypeId;
               pluginClient
                 .deleteResource(execTarget.resource.resourceTypeId, resourceId, accountId)
-                .catch(() => { /* silently ignore cleanup errors */ });
+                .catch(() => {
+                  /* silently ignore cleanup errors */
+                });
               setResourceGroups((prev) =>
                 prev.map((group) =>
                   group.resourceTypeId === groupTypeId
                     ? {
                         ...group,
-                        title: replaceTrailingCount(group.title, Math.max(0, group.items.length - 1)),
+                        title: replaceTrailingCount(
+                          group.title,
+                          Math.max(0, group.items.length - 1),
+                        ),
                         items: group.items.filter((item) => item.id !== resourceId),
                       }
                     : group,
@@ -518,8 +530,7 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
           onCreated={(created) => {
             const peerResource = toPeerPaneResource(created);
             const isEphemeralPod =
-              createTarget.resourceTypeId === "k8s-pod" &&
-              created.fields["ephemeral"] === "true";
+              createTarget.resourceTypeId === "k8s-pod" && created.fields["ephemeral"] === "true";
 
             setResourceGroups((prev) =>
               prev.map((group) =>
@@ -555,7 +566,9 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
           <ManifestEditorView
             capability={{
               language: "yaml",
-              resourceKind: manifestTarget.group.title.replace(/\s*\(\d+\)$/, "").replace(/s$/i, ""),
+              resourceKind: manifestTarget.group.title
+                .replace(/\s*\(\d+\)$/, "")
+                .replace(/s$/i, ""),
             }}
             onGetManifest={handleGetManifest}
             {...(pluginClient.applyManifest ? { onApplyManifest: handleApplyManifest } : {})}
@@ -576,9 +589,7 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
                 <span className="text-sm text-gray-200 font-medium truncate">
                   {pf.resourceName}
                 </span>
-                <span className="text-xs text-gray-500">
-                  {pf.namespace}
-                </span>
+                <span className="text-xs text-gray-500">{pf.namespace}</span>
               </div>
               <div className="flex items-center gap-3 flex-shrink-0">
                 <button
@@ -623,7 +634,9 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
       {isOver && supportsSecretImport && (
         <div className="rounded-xl border-2 border-dashed border-blue-500/40 bg-blue-500/5 px-4 py-6 text-center">
           <p className="text-sm font-medium text-blue-300">Drop to create K8s Secret</p>
-          <p className="text-xs text-blue-400/60 mt-1">Secret keys will be created from the resource's outputs</p>
+          <p className="text-xs text-blue-400/60 mt-1">
+            Secret keys will be created from the resource's outputs
+          </p>
         </div>
       )}
     </div>
@@ -671,7 +684,8 @@ function NamespaceGrid({
             onClick={() => setShowSystem(!showSystem)}
             className="text-xs text-gray-600 hover:text-gray-400 transition-colors"
           >
-            {showSystem ? "Hide" : "Show"} {systemNs.length} system namespace{systemNs.length === 1 ? "" : "s"}
+            {showSystem ? "Hide" : "Show"} {systemNs.length} system namespace
+            {systemNs.length === 1 ? "" : "s"}
           </button>
           {showSystem && (
             <div className="flex flex-wrap gap-1.5 mt-1.5">
@@ -765,9 +779,7 @@ function ResourcePill({
             />
           )}
         </div>
-        {resource.subtitle && (
-          <p className="text-xs text-gray-500 truncate">{resource.subtitle}</p>
-        )}
+        {resource.subtitle && <p className="text-xs text-gray-500 truncate">{resource.subtitle}</p>}
         {activePortForward && (
           <p className="text-xs text-emerald-400 font-mono truncate">
             :{activePortForward.localPort} → :{activePortForward.remotePort}
@@ -786,7 +798,7 @@ function ResourcePill({
           className="ml-1 w-6 h-6 rounded-full bg-gray-800 hover:bg-gray-700 text-xs text-gray-200 transition-colors"
           title="View manifest"
         >
-          { /* code/braces icon */ }
+          {/* code/braces icon */}
           {"{ }"}
         </button>
       )}
@@ -873,9 +885,7 @@ function TerminalOverlay({
 }
 
 function replaceTrailingCount(title: string, count: number): string {
-  return /\(\d+\)$/.test(title)
-    ? title.replace(/\(\d+\)$/, `(${count})`)
-    : title;
+  return /\(\d+\)$/.test(title) ? title.replace(/\(\d+\)$/, `(${count})`) : title;
 }
 
 function getGroupDisplayTitle(title: string, itemCount: number): string {
@@ -923,9 +933,7 @@ function toPeerPaneResource(resource: ResourceInstance): PeerPaneResource {
   };
 }
 
-function mapPeerStatus(
-  status: string,
-): ResourceStatus {
+function mapPeerStatus(status: string): ResourceStatus {
   switch (status.toLowerCase()) {
     case "running":
     case "ready":

@@ -14,9 +14,7 @@ export const FirewallResourceType: ResourceTypeDefinition = {
     { key: "provisioningState", label: "Provisioning State", kind: "string", required: true },
     { key: "threatIntelMode", label: "Threat Intel Mode", kind: "string", required: false },
   ],
-  outputs: [
-    { key: "privateIp", label: "Private IP", sensitive: false },
-  ],
+  outputs: [{ key: "privateIp", label: "Private IP", sensitive: false }],
   dashboardPinnable: true,
   iconKey: "firewall",
 };

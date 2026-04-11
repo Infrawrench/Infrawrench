@@ -3,21 +3,35 @@ import type { KvNodeDriver } from "@infrawrench/plugin-base";
 
 type MemjsClient = InstanceType<typeof Memjs.Client>;
 
-function statsAll(client: MemjsClient): Promise<{ server: string; stats: Record<string, string> }[]> {
+function statsAll(
+  client: MemjsClient,
+): Promise<{ server: string; stats: Record<string, string> }[]> {
   return new Promise((resolve, reject) => {
     const rows: { server: string; stats: Record<string, string> }[] = [];
-    (client as any).stats((err: Error | null, server: string | null, stats: Record<string, string> | null) => {
-      if (err) { reject(err); return; }
-      if (server === null) { resolve(rows); return; }
-      rows.push({ server, stats: stats ?? {} });
-    });
+    (client as any).stats(
+      (err: Error | null, server: string | null, stats: Record<string, string> | null) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+        if (server === null) {
+          resolve(rows);
+          return;
+        }
+        rows.push({ server, stats: stats ?? {} });
+      },
+    );
   });
 }
 
 export const driver = {
   id: "memcached",
 
-  async command(connectionString: string, cmd: string, args: (string | number)[]): Promise<unknown> {
+  async command(
+    connectionString: string,
+    cmd: string,
+    args: (string | number)[],
+  ): Promise<unknown> {
     const servers = connectionString.replace(/^memcacheds?:\/\//, "");
     const client = Memjs.Client.create(servers, { timeout: 5, retries: 0 });
     try {
@@ -39,8 +53,12 @@ export const driver = {
         case "STATS": {
           const results = await statsAll(client);
           return results
-            .map(({ server, stats }) =>
-              `# ${server}\n` + Object.entries(stats).map(([k, v]) => `${k}: ${v}`).join("\n"),
+            .map(
+              ({ server, stats }) =>
+                `# ${server}\n` +
+                Object.entries(stats)
+                  .map(([k, v]) => `${k}: ${v}`)
+                  .join("\n"),
             )
             .join("\n\n");
         }

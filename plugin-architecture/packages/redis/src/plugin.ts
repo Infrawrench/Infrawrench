@@ -18,7 +18,8 @@ const manifest: PluginManifest = {
     {
       key: "connectionString",
       label: "Connection String",
-      description: "Redis connection URI (redis://[:password@]host[:port][/db] or rediss:// for TLS).",
+      description:
+        "Redis connection URI (redis://[:password@]host[:port][/db] or rediss:// for TLS).",
       sensitive: true,
       placeholder: "redis://localhost:6379",
     },
@@ -29,9 +30,7 @@ const manifest: PluginManifest = {
   },
 };
 
-const resourceTypes: ResourceTypeDefinition[] = [
-  RedisInstanceResourceType,
-];
+const resourceTypes: ResourceTypeDefinition[] = [RedisInstanceResourceType];
 
 export const plugin: Plugin = {
   manifest,

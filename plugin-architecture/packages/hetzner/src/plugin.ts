@@ -21,7 +21,8 @@ const manifest: PluginManifest = {
     {
       key: "apiToken",
       label: "API Token",
-      description: "A Hetzner Cloud API token. Generate one in the Hetzner Cloud Console under Security → API Tokens.",
+      description:
+        "A Hetzner Cloud API token. Generate one in the Hetzner Cloud Console under Security → API Tokens.",
       sensitive: true,
       placeholder: "",
     },

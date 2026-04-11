@@ -30,9 +30,7 @@ const manifest: PluginManifest = {
   },
 };
 
-const resourceTypes: ResourceTypeDefinition[] = [
-  DockerContainerResourceType,
-];
+const resourceTypes: ResourceTypeDefinition[] = [DockerContainerResourceType];
 
 export const plugin: Plugin = {
   manifest,

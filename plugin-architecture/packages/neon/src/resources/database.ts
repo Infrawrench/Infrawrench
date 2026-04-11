@@ -25,9 +25,7 @@ export const NeonDatabaseResourceType: ResourceTypeDefinition = {
       id: "connection-url",
       displayName: "Connection URL",
       description: "Single DATABASE_URL containing the full Neon connection string",
-      entries: [
-        { envKey: "DATABASE_URL", outputKey: "connectionString" },
-      ],
+      entries: [{ envKey: "DATABASE_URL", outputKey: "connectionString" }],
     },
   ],
   resourceSqlDriver: {

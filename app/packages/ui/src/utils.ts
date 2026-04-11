@@ -18,7 +18,9 @@ export const REFRESH_RESOURCE_EVENT = "iw:refresh-resource";
 
 /** Dispatch the resources-changed event with an optional accountId detail. */
 export function dispatchResourcesChanged(accountId?: string): void {
-  window.dispatchEvent(new CustomEvent(RESOURCES_CHANGED_EVENT, accountId ? { detail: { accountId } } : undefined));
+  window.dispatchEvent(
+    new CustomEvent(RESOURCES_CHANGED_EVENT, accountId ? { detail: { accountId } } : undefined),
+  );
 }
 
 /** Dispatch the refresh-resource event. */
@@ -44,8 +46,11 @@ export function formatSize(bytes: number): string {
 export function formatDate(iso: string): string {
   if (!iso) return "—";
   return new Date(iso).toLocaleDateString(undefined, {
-    year: "numeric", month: "short", day: "numeric",
-    hour: "2-digit", minute: "2-digit",
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
   });
 }
 
@@ -103,7 +108,7 @@ function tryParseJsonPayload(text: string): unknown | null {
 
 function getRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
-    ? value as Record<string, unknown>
+    ? (value as Record<string, unknown>)
     : null;
 }
 
@@ -125,9 +130,9 @@ function formatGoogleApiError(errorRecord: Record<string, unknown>): string | nu
     if (reason === "SERVICE_DISABLED") {
       const serviceTitle = getString(metadata.serviceTitle) ?? "This Google Cloud API";
       const project =
-        getString(metadata.containerInfo)
-        ?? getString(metadata.consumer)?.replace(/^projects\//, "")
-        ?? "this project";
+        getString(metadata.containerInfo) ??
+        getString(metadata.consumer)?.replace(/^projects\//, "") ??
+        "this project";
       const activationUrl = getString(metadata.activationUrl);
       return activationUrl
         ? `${serviceTitle} is not enabled for project ${project}. Enable it in Google Cloud Console, then retry in a few minutes.\n${activationUrl}`
@@ -147,7 +152,9 @@ function formatGoogleApiError(errorRecord: Record<string, unknown>): string | nu
  * Handles JSON payloads (Google Cloud API errors), connection errors, and auth errors.
  */
 export function formatErrorMessage(error: unknown): string {
-  const raw = rawErrorMessage(error).replace(/^Error:\s*/, "").trim();
+  const raw = rawErrorMessage(error)
+    .replace(/^Error:\s*/, "")
+    .trim();
   const parsed = tryParseJsonPayload(raw);
   const parsedRecord = getRecord(parsed);
 
@@ -172,14 +179,18 @@ export function formatErrorMessage(error: unknown): string {
   if (lowered.includes("enotfound") || lowered.includes("getaddrinfo")) {
     return "Host not found. Check the hostname or DNS settings.";
   }
-  if (lowered.includes("timed out") || lowered.includes("etimedout") || lowered.includes("timeout")) {
+  if (
+    lowered.includes("timed out") ||
+    lowered.includes("etimedout") ||
+    lowered.includes("timeout")
+  ) {
     return "Connection timed out. Check network access, firewall rules, and the remote service.";
   }
   if (
-    lowered.includes("unauthorized")
-    || lowered.includes("invalid credentials")
-    || lowered.includes("authentication failed")
-    || lowered.includes("permission denied")
+    lowered.includes("unauthorized") ||
+    lowered.includes("invalid credentials") ||
+    lowered.includes("authentication failed") ||
+    lowered.includes("permission denied")
   ) {
     return `Authentication or permission error. ${normalized}`;
   }
@@ -197,7 +208,13 @@ export function evaluateShowWhen(
 
 /** Build the initial field values from a CreateResourceConfig's field definitions. */
 export function buildDefaultFields(
-  configFields: Array<{ key: string; kind: string; defaultValue?: string; defaultGb?: number; minGb?: number }>,
+  configFields: Array<{
+    key: string;
+    kind: string;
+    defaultValue?: string;
+    defaultGb?: number;
+    minGb?: number;
+  }>,
 ): Record<string, string> {
   const init: Record<string, string> = {};
   for (const f of configFields) {
@@ -213,18 +230,12 @@ export function buildDefaultFields(
  * Child types with supportsCreate show only the create button (no resource
  * listing — those appear nested under their parent on the detail page).
  */
-export function getAccountResourceTypes<T extends ResourceTypeInfo>(
-  resourceTypes: T[],
-): T[] {
-  return resourceTypes.filter(
-    (typeDef) => !typeDef.parentTypeId || typeDef.supportsCreate,
-  );
+export function getAccountResourceTypes<T extends ResourceTypeInfo>(resourceTypes: T[]): T[] {
+  return resourceTypes.filter((typeDef) => !typeDef.parentTypeId || typeDef.supportsCreate);
 }
 
 /** Returns only top-level resource types (no parent) whose resources should be listed. */
-export function getListableResourceTypes<T extends ResourceTypeInfo>(
-  resourceTypes: T[],
-): T[] {
+export function getListableResourceTypes<T extends ResourceTypeInfo>(resourceTypes: T[]): T[] {
   return resourceTypes.filter((typeDef) => !typeDef.parentTypeId);
 }
 

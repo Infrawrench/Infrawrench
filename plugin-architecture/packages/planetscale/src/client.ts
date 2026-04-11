@@ -50,15 +50,15 @@ interface PsPassword {
 
 // PlanetScale regions
 const PS_REGIONS: Record<string, { location: string; flag: string }> = {
-  "us-east":     { location: "AWS us-east-1 (N. Virginia)",   flag: "\u{1F1FA}\u{1F1F8}" },
-  "us-west":     { location: "AWS us-west-2 (Oregon)",        flag: "\u{1F1FA}\u{1F1F8}" },
-  "eu-west":     { location: "AWS eu-west-1 (Ireland)",       flag: "\u{1F1EE}\u{1F1EA}" },
-  "eu-central":  { location: "AWS eu-central-1 (Frankfurt)",  flag: "\u{1F1E9}\u{1F1EA}" },
-  "ap-south":    { location: "AWS ap-south-1 (Mumbai)",       flag: "\u{1F1EE}\u{1F1F3}" },
-  "ap-southeast":{ location: "AWS ap-southeast-1 (Singapore)",flag: "\u{1F1F8}\u{1F1EC}" },
-  "ap-northeast":{ location: "AWS ap-northeast-1 (Tokyo)",    flag: "\u{1F1EF}\u{1F1F5}" },
-  "sa-east":     { location: "AWS sa-east-1 (S\u{00E3}o Paulo)",    flag: "\u{1F1E7}\u{1F1F7}" },
-  "ap-southeast-2":{ location: "AWS ap-southeast-2 (Sydney)", flag: "\u{1F1E6}\u{1F1FA}" },
+  "us-east": { location: "AWS us-east-1 (N. Virginia)", flag: "\u{1F1FA}\u{1F1F8}" },
+  "us-west": { location: "AWS us-west-2 (Oregon)", flag: "\u{1F1FA}\u{1F1F8}" },
+  "eu-west": { location: "AWS eu-west-1 (Ireland)", flag: "\u{1F1EE}\u{1F1EA}" },
+  "eu-central": { location: "AWS eu-central-1 (Frankfurt)", flag: "\u{1F1E9}\u{1F1EA}" },
+  "ap-south": { location: "AWS ap-south-1 (Mumbai)", flag: "\u{1F1EE}\u{1F1F3}" },
+  "ap-southeast": { location: "AWS ap-southeast-1 (Singapore)", flag: "\u{1F1F8}\u{1F1EC}" },
+  "ap-northeast": { location: "AWS ap-northeast-1 (Tokyo)", flag: "\u{1F1EF}\u{1F1F5}" },
+  "sa-east": { location: "AWS sa-east-1 (S\u{00E3}o Paulo)", flag: "\u{1F1E7}\u{1F1F7}" },
+  "ap-southeast-2": { location: "AWS ap-southeast-2 (Sydney)", flag: "\u{1F1E6}\u{1F1FA}" },
 };
 
 function formatRegion(slug: string): string {
@@ -147,7 +147,9 @@ export class PlanetScaleClient implements PluginClient {
       if (outputKey === "databaseName") return String(resource.fields["databaseName"] ?? "");
     }
 
-    throw new Error(`PlanetScale plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+    throw new Error(
+      `PlanetScale plugin: cannot resolve output "${outputKey}" for type "${typeId}"`,
+    );
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
@@ -175,7 +177,8 @@ export class PlanetScaleClient implements PluginClient {
         label: resource.displayName,
         status: {
           kind: "status-dot",
-          status: state === "ready" ? "healthy" : state === "awaiting_import" ? "provisioning" : "error",
+          status:
+            state === "ready" ? "healthy" : state === "awaiting_import" ? "provisioning" : "error",
         },
       };
     }
@@ -288,18 +291,13 @@ export class PlanetScaleClient implements PluginClient {
     throw new Error(`PlanetScale plugin: cannot create type "${typeId}"`);
   }
 
-  async deleteResource(
-    typeId: string,
-    resourceId: string,
-    _accountId: string,
-  ): Promise<void> {
+  async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
     const externalId = resourceId.split(":").slice(2).join(":");
 
     if (typeId === "ps-database") {
-      await this.fetch(
-        `/organizations/${enc(this.orgName)}/databases/${enc(externalId)}`,
-        { method: "DELETE" },
-      );
+      await this.fetch(`/organizations/${enc(this.orgName)}/databases/${enc(externalId)}`, {
+        method: "DELETE",
+      });
       return;
     }
 
@@ -501,7 +499,8 @@ export class PlanetScaleClient implements PluginClient {
       subtitle: `PlanetScale Database \u00B7 ${formatRegion(String(resource.fields["region"] ?? ""))}`,
       status: {
         kind: "status-dot",
-        status: state === "ready" ? "healthy" : state === "awaiting_import" ? "provisioning" : "error",
+        status:
+          state === "ready" ? "healthy" : state === "awaiting_import" ? "provisioning" : "error",
       },
       sections: [
         {
@@ -511,7 +510,10 @@ export class PlanetScaleClient implements PluginClient {
             {
               kind: "key-value-list",
               items: [
-                { key: "Region", value: formatRegion(String(resource.fields["region"] ?? "\u2014")) },
+                {
+                  key: "Region",
+                  value: formatRegion(String(resource.fields["region"] ?? "\u2014")),
+                },
                 { key: "State", value: state || "\u2014" },
                 ...(resource.fields["htmlUrl"]
                   ? [{ key: "Dashboard", value: String(resource.fields["htmlUrl"]) }]
@@ -523,9 +525,7 @@ export class PlanetScaleClient implements PluginClient {
           ],
         },
       ],
-      headerActions: [
-        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
-      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
   }
 
@@ -551,7 +551,10 @@ export class PlanetScaleClient implements PluginClient {
                 { key: "Database", value: String(resource.fields["databaseName"] ?? "\u2014") },
                 { key: "Production", value: production ? "Yes" : "No" },
                 { key: "Ready", value: ready ? "Yes" : "No" },
-                { key: "Safe Migrations", value: resource.fields["safeMigrations"] === true ? "Enabled" : "Disabled" },
+                {
+                  key: "Safe Migrations",
+                  value: resource.fields["safeMigrations"] === true ? "Enabled" : "Disabled",
+                },
                 ...(resource.fields["parentBranch"]
                   ? [{ key: "Branched From", value: String(resource.fields["parentBranch"]) }]
                   : []),
@@ -561,9 +564,7 @@ export class PlanetScaleClient implements PluginClient {
           ],
         },
       ],
-      headerActions: [
-        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
-      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
       sqlEditor: {
         connectionStringOutputKey: "connectionString",
         defaultQuery: "SHOW TABLES;",

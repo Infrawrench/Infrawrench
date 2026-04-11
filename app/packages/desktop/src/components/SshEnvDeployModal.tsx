@@ -18,7 +18,12 @@ interface SshEnvDeployModalProps {
   onDeployed: () => void;
 }
 
-export function SshEnvDeployModal({ source, sshHost, onClose, onDeployed }: SshEnvDeployModalProps) {
+export function SshEnvDeployModal({
+  source,
+  sshHost,
+  onClose,
+  onDeployed,
+}: SshEnvDeployModalProps) {
   const [sshUser, setSshUser] = useState("root");
   const [sshPort, setSshPort] = useState(22);
   const [privateKey, setPrivateKey] = useState("");
@@ -46,12 +51,18 @@ export function SshEnvDeployModal({ source, sshHost, onClose, onDeployed }: SshE
         if (!loaded || cancelled) return;
 
         let resourceType = loaded.plugin.resourceTypes.find((t) => t.id === source.resourceTypeId);
-        if (!resourceType?.secretExportTemplates?.length && source.resourceTypeId === "__account__") {
-          resourceType = loaded.plugin.resourceTypes.find((t) => (t.secretExportTemplates?.length ?? 0) > 0);
+        if (
+          !resourceType?.secretExportTemplates?.length &&
+          source.resourceTypeId === "__account__"
+        ) {
+          resourceType = loaded.plugin.resourceTypes.find(
+            (t) => (t.secretExportTemplates?.length ?? 0) > 0,
+          );
         }
         const tpls = resourceType?.secretExportTemplates ?? [];
         if (tpls.length === 0) {
-          if (!cancelled) setLoadError("This resource type doesn't have any exportable credentials.");
+          if (!cancelled)
+            setLoadError("This resource type doesn't have any exportable credentials.");
           return;
         }
         if (!cancelled && resourceType) setEffectiveTypeId(resourceType.id);
@@ -67,20 +78,25 @@ export function SshEnvDeployModal({ source, sshHost, onClose, onDeployed }: SshE
       }
     }
     void init();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [source]);
 
   const selectedTemplate = templates.find((t) => t.id === selectedTemplateId);
 
-  const handleTemplateChange = useCallback((id: string) => {
-    setSelectedTemplateId(id);
-    const tpl = templates.find((t) => t.id === id);
-    if (tpl) {
-      const keys: Record<string, string> = {};
-      for (const entry of tpl.entries) keys[entry.outputKey] = entry.envKey;
-      setEditableKeys(keys);
-    }
-  }, [templates]);
+  const handleTemplateChange = useCallback(
+    (id: string) => {
+      setSelectedTemplateId(id);
+      const tpl = templates.find((t) => t.id === id);
+      if (tpl) {
+        const keys: Record<string, string> = {};
+        for (const entry of tpl.entries) keys[entry.outputKey] = entry.envKey;
+        setEditableKeys(keys);
+      }
+    },
+    [templates],
+  );
 
   async function handleDeploy() {
     if (!selectedTemplate || !privateKey.trim()) return;
@@ -130,20 +146,20 @@ export function SshEnvDeployModal({ source, sshHost, onClose, onDeployed }: SshE
 
       let content: string;
       if (format === "dotenv") {
-        content = Object.entries(data)
-          .map(([k, v]) => `${k}=${shellQuote(v)}`)
-          .join("\n") + "\n";
+        content =
+          Object.entries(data)
+            .map(([k, v]) => `${k}=${shellQuote(v)}`)
+            .join("\n") + "\n";
       } else {
-        content = Object.entries(data)
-          .map(([k, v]) => `export ${k}=${shellQuote(v)}`)
-          .join("\n") + "\n";
+        content =
+          Object.entries(data)
+            .map(([k, v]) => `export ${k}=${shellQuote(v)}`)
+            .join("\n") + "\n";
       }
 
       const sshConfig = { sshHost, sshPort, sshUser, privateKey: privateKey.trim() };
       const operator = append ? ">>" : ">";
-      const expandedPath = filePath.startsWith("~/")
-        ? `$HOME/${filePath.slice(2)}`
-        : filePath;
+      const expandedPath = filePath.startsWith("~/") ? `$HOME/${filePath.slice(2)}` : filePath;
 
       // Use printf to avoid heredoc issues over SSH
       const escapedContent = content.replace(/\\/g, "\\\\").replace(/'/g, "'\\''");
@@ -169,8 +185,7 @@ export function SshEnvDeployModal({ source, sshHost, onClose, onDeployed }: SshE
         <div className="p-6 border-b border-gray-800">
           <h2 className="text-base font-semibold text-gray-100">Deploy credentials to VM</h2>
           <p className="text-xs text-gray-500 mt-1">
-            <span className="text-gray-300 font-medium">{source.displayName}</span>
-            {" "}→{" "}
+            <span className="text-gray-300 font-medium">{source.displayName}</span> →{" "}
             <span className="text-gray-300 font-mono">{sshHost}</span>
           </p>
         </div>
@@ -212,7 +227,9 @@ export function SshEnvDeployModal({ source, sshHost, onClose, onDeployed }: SshE
                         }`}
                       >
                         <div className="font-medium">{tpl.displayName}</div>
-                        {tpl.description && <div className="text-gray-600 mt-0.5">{tpl.description}</div>}
+                        {tpl.description && (
+                          <div className="text-gray-600 mt-0.5">{tpl.description}</div>
+                        )}
                       </button>
                     ))}
                   </div>
@@ -232,7 +249,10 @@ export function SshEnvDeployModal({ source, sshHost, onClose, onDeployed }: SshE
                           type="text"
                           value={editableKeys[entry.outputKey] ?? entry.envKey}
                           onChange={(e) =>
-                            setEditableKeys((prev) => ({ ...prev, [entry.outputKey]: e.target.value }))
+                            setEditableKeys((prev) => ({
+                              ...prev,
+                              [entry.outputKey]: e.target.value,
+                            }))
                           }
                           className="flex-1 bg-transparent text-sm font-mono text-gray-100 outline-none"
                         />
@@ -249,7 +269,10 @@ export function SshEnvDeployModal({ source, sshHost, onClose, onDeployed }: SshE
                 <label className="text-xs text-gray-500">Format</label>
                 <div className="flex gap-2">
                   <button
-                    onClick={() => { setFormat("dotenv"); if (filePath === "~/.profile") setFilePath("~/.env"); }}
+                    onClick={() => {
+                      setFormat("dotenv");
+                      if (filePath === "~/.profile") setFilePath("~/.env");
+                    }}
                     className={`flex-1 px-3 py-2 rounded-lg text-xs border transition-colors ${
                       format === "dotenv"
                         ? "border-blue-500 bg-blue-500/10 text-blue-300"
@@ -260,7 +283,10 @@ export function SshEnvDeployModal({ source, sshHost, onClose, onDeployed }: SshE
                     <div className="text-gray-600 mt-0.5">KEY=value</div>
                   </button>
                   <button
-                    onClick={() => { setFormat("profile"); if (filePath === "~/.env") setFilePath("~/.profile"); }}
+                    onClick={() => {
+                      setFormat("profile");
+                      if (filePath === "~/.env") setFilePath("~/.profile");
+                    }}
                     className={`flex-1 px-3 py-2 rounded-lg text-xs border transition-colors ${
                       format === "profile"
                         ? "border-blue-500 bg-blue-500/10 text-blue-300"

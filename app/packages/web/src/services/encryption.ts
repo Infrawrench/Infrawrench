@@ -7,7 +7,8 @@ function getMasterKey(): Buffer {
   const raw = process.env["ENCRYPTION_MASTER_KEY"];
   if (!raw) throw new Error("ENCRYPTION_MASTER_KEY environment variable is required");
   const buf = Buffer.from(raw, "base64");
-  if (buf.length !== 32) throw new Error("ENCRYPTION_MASTER_KEY must be exactly 32 bytes (256 bits)");
+  if (buf.length !== 32)
+    throw new Error("ENCRYPTION_MASTER_KEY must be exactly 32 bytes (256 bits)");
   return buf;
 }
 

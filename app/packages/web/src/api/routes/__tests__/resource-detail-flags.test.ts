@@ -29,7 +29,9 @@ vi.mock("@/db/client", () => ({
 
 vi.mock("@/services/encryption", () => ({
   encrypt: vi.fn().mockResolvedValue({ ciphertext: "enc", iv: "iv" }),
-  decrypt: vi.fn().mockResolvedValue(JSON.stringify({ host: "1.2.3.4", username: "root", privateKey: "key" })),
+  decrypt: vi
+    .fn()
+    .mockResolvedValue(JSON.stringify({ host: "1.2.3.4", username: "root", privateKey: "key" })),
 }));
 
 const mockGetPlugin = vi.fn();
@@ -90,7 +92,9 @@ const ACCOUNT = {
 
 interface SetupOpts {
   sshEndpoint?: { hostOutputKey: string };
-  getSshConfig?: (() => { host: string; port: number; username: string; privateKey: string }) | null;
+  getSshConfig?:
+    | (() => { host: string; port: number; username: string; privateKey: string })
+    | null;
   sqlDriver?: { driver: string; credentialKey: string } | null;
   kvDriver?: { driver: string; credentialKey: string } | null;
   dockerDriver?: { driver: string; credentialKey: string } | null;
@@ -107,7 +111,8 @@ function setupMocks(opts: SetupOpts = {}, resourceOverride?: typeof DB_RESOURCE)
     // Create a thenable object that resolves to result
     function makeThenable(extraMethods: Record<string, unknown> = {}) {
       return {
-        then: (fn: (v: unknown) => unknown, rej?: (e: unknown) => unknown) => Promise.resolve(result).then(fn, rej),
+        then: (fn: (v: unknown) => unknown, rej?: (e: unknown) => unknown) =>
+          Promise.resolve(result).then(fn, rej),
         catch: (fn: (e: unknown) => unknown) => Promise.resolve(result).catch(fn),
         limit: vi.fn().mockResolvedValue(result),
         ...extraMethods,
@@ -131,10 +136,10 @@ function setupMocks(opts: SetupOpts = {}, resourceOverride?: typeof DB_RESOURCE)
   let callCount = 0;
   mockSelect.mockImplementation(() => {
     callCount++;
-    if (callCount === 1) return makeChain([dbResource]);        // Resource lookup
-    if (callCount === 2) return makeChain([ACCOUNT]);            // Account lookup (getClientForAccount)
-    if (callCount === 3) return makeChain([]);                   // Secret field states
-    return makeChain([]);                                        // Any further calls
+    if (callCount === 1) return makeChain([dbResource]); // Resource lookup
+    if (callCount === 2) return makeChain([ACCOUNT]); // Account lookup (getClientForAccount)
+    if (callCount === 3) return makeChain([]); // Secret field states
+    return makeChain([]); // Any further calls
   });
 
   const detailSchema: Record<string, unknown> = {
@@ -194,7 +199,10 @@ function setupMocks(opts: SetupOpts = {}, resourceOverride?: typeof DB_RESOURCE)
 
   // Mock db.insert().values().onConflictDoUpdate() for background DB update
   const onConflictDoUpdate = vi.fn().mockReturnValue({ catch: vi.fn() });
-  const insertValues = vi.fn().mockReturnValue({ onConflictDoUpdate, onConflictDoNothing: vi.fn().mockResolvedValue(undefined) });
+  const insertValues = vi.fn().mockReturnValue({
+    onConflictDoUpdate,
+    onConflictDoNothing: vi.fn().mockResolvedValue(undefined),
+  });
   mockInsert.mockReturnValue({ values: insertValues });
 
   // Mock db.update().set().where() for background soft-delete
@@ -214,10 +222,9 @@ function setupMocks(opts: SetupOpts = {}, resourceOverride?: typeof DB_RESOURCE)
 }
 
 async function getDetail(app: Hono) {
-  const res = await app.request(
-    "/aws/ec2-instance/detail?resourceId=res-1&accountId=acct-1",
-    { method: "GET" },
-  );
+  const res = await app.request("/aws/ec2-instance/detail?resourceId=res-1&accountId=acct-1", {
+    method: "GET",
+  });
   if (res.status !== 200) {
     const body = await res.text();
     throw new Error(`Expected 200 but got ${res.status}: ${body}`);
@@ -261,11 +268,12 @@ describe("resource-detail feature flag parity with desktop", () => {
   });
 
   it("hasSshTerminal=false when sshEndpoint declared but host field is empty", async () => {
-    const emptyResource = { ...DB_RESOURCE, fieldsJson: { state: "running", publicIp: "" }, outputsJson: { publicIp: "" } };
-    setupMocks(
-      { getSshConfig: null, sshEndpoint: { hostOutputKey: "publicIp" } },
-      emptyResource,
-    );
+    const emptyResource = {
+      ...DB_RESOURCE,
+      fieldsJson: { state: "running", publicIp: "" },
+      outputsJson: { publicIp: "" },
+    };
+    setupMocks({ getSshConfig: null, sshEndpoint: { hostOutputKey: "publicIp" } }, emptyResource);
 
     const body = await getDetail(buildApp());
     expect(body.hasSshTerminal).toBe(false);

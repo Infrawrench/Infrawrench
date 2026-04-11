@@ -15,8 +15,6 @@ export const MemorystoreMemcachedResourceType: ResourceTypeDefinition = {
     { key: "memcacheVersion", label: "Memcached Version", kind: "string", required: false },
     { key: "discoveryEndpoint", label: "Discovery Endpoint", kind: "string", required: false },
   ],
-  outputs: [
-    { key: "discoveryEndpoint", label: "Discovery Endpoint", sensitive: false },
-  ],
+  outputs: [{ key: "discoveryEndpoint", label: "Discovery Endpoint", sensitive: false }],
   dashboardPinnable: true,
 };

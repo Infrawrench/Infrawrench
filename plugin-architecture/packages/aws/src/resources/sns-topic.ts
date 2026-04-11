@@ -11,9 +11,7 @@ export const SNSTopicResourceType: ResourceTypeDefinition = {
     { key: "subscriptionCount", label: "Subscriptions", kind: "number", required: false },
     { key: "isFifo", label: "FIFO", kind: "boolean", required: false },
   ],
-  outputs: [
-    { key: "topicArn", label: "Topic ARN", sensitive: false },
-  ],
+  outputs: [{ key: "topicArn", label: "Topic ARN", sensitive: false }],
   dashboardPinnable: true,
   iconKey: "topic",
   supportsCreate: true,
@@ -22,9 +20,7 @@ export const SNSTopicResourceType: ResourceTypeDefinition = {
       id: "sns-topic",
       displayName: "SNS Topic ARN",
       description: "Topic ARN for publishing messages",
-      entries: [
-        { envKey: "SNS_TOPIC_ARN", outputKey: "topicArn", description: "Topic ARN" },
-      ],
+      entries: [{ envKey: "SNS_TOPIC_ARN", outputKey: "topicArn", description: "Topic ARN" }],
     },
   ],
 };

@@ -13,14 +13,21 @@ export function Modal({ onClose, children, className }: ModalProps) {
     const dialog = ref.current;
     if (!dialog) return;
     if (!dialog.open) dialog.showModal();
-    return () => { if (dialog.open) dialog.close(); };
+    return () => {
+      if (dialog.open) dialog.close();
+    };
   }, []);
 
   return (
     <dialog
       ref={ref}
-      onCancel={(e) => { e.preventDefault(); onClose(); }}
-      onClick={(e) => { if (e.target === ref.current) onClose(); }}
+      onCancel={(e) => {
+        e.preventDefault();
+        onClose();
+      }}
+      onClick={(e) => {
+        if (e.target === ref.current) onClose();
+      }}
       className={className ?? ""}
       style={{
         position: "fixed",

@@ -64,9 +64,9 @@ describe("turso driver", () => {
     it("calls client.close() even on error", async () => {
       mockExecute.mockRejectedValue(new Error("connection refused"));
 
-      await expect(
-        driver.query("libsql://localhost", "SELECT 1"),
-      ).rejects.toThrow("connection refused");
+      await expect(driver.query("libsql://localhost", "SELECT 1")).rejects.toThrow(
+        "connection refused",
+      );
       expect(mockClose).toHaveBeenCalled();
     });
   });

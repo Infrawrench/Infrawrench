@@ -42,9 +42,25 @@ describe("plugin loader", () => {
     const plugins = await loadPlugins();
     const ids = plugins.map((p) => p.plugin.manifest.id);
     const expected = [
-      "aws", "gcp", "docker", "digitalocean", "hetzner", "kubernetes",
-      "memcached", "neon", "mongodb", "mysql", "postgres", "redis",
-      "scaleway", "ssh", "cloudflare", "ovh", "databricks", "turso", "planetscale",
+      "aws",
+      "gcp",
+      "docker",
+      "digitalocean",
+      "hetzner",
+      "kubernetes",
+      "memcached",
+      "neon",
+      "mongodb",
+      "mysql",
+      "postgres",
+      "redis",
+      "scaleway",
+      "ssh",
+      "cloudflare",
+      "ovh",
+      "databricks",
+      "turso",
+      "planetscale",
       "azure",
     ];
     for (const id of expected) {

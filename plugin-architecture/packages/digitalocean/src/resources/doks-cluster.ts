@@ -12,7 +12,19 @@ export const DOKSClusterResourceType: ResourceTypeDefinition = {
       label: "Region",
       kind: "enum",
       required: true,
-      enumValues: ["nyc1", "nyc3", "sfo2", "sfo3", "ams3", "fra1", "sgp1", "lon1", "tor1", "blr1", "syd1"],
+      enumValues: [
+        "nyc1",
+        "nyc3",
+        "sfo2",
+        "sfo3",
+        "ams3",
+        "fra1",
+        "sgp1",
+        "lon1",
+        "tor1",
+        "blr1",
+        "syd1",
+      ],
     },
     {
       key: "version",
@@ -56,9 +68,7 @@ export const DOKSClusterResourceType: ResourceTypeDefinition = {
   peerIntegrations: [
     {
       pluginId: "kubernetes",
-      credentialMappings: [
-        { outputKey: "kubeconfig", credentialKey: "kubeconfig" },
-      ],
+      credentialMappings: [{ outputKey: "kubeconfig", credentialKey: "kubeconfig" }],
       tabLabel: "Workloads",
     },
   ],

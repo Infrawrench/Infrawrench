@@ -29,7 +29,12 @@ export function ResourcePill({
   droppableId,
   isDropDisabled,
 }: ResourcePillProps) {
-  const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
+  const {
+    attributes,
+    listeners,
+    setNodeRef: setDragRef,
+    isDragging,
+  } = useDraggable({
     id: draggableId ?? resource.id,
     data: {
       resource,
@@ -66,9 +71,7 @@ export function ResourcePill({
           <span className="text-sm font-medium text-gray-200 leading-none">
             {resource.displayName}
           </span>
-          {subtitle && (
-            <span className="text-xs text-gray-500 leading-none">{subtitle}</span>
-          )}
+          {subtitle && <span className="text-xs text-gray-500 leading-none">{subtitle}</span>}
         </div>
 
         {showDropHint ? (
@@ -77,7 +80,10 @@ export function ResourcePill({
           <>
             {onPin && (
               <button
-                onClick={(e) => { e.stopPropagation(); onPin(); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onPin();
+                }}
                 title={pinned ? "Unpin" : "Pin to dashboard"}
                 className={`ml-1 p-1 rounded-full text-xs transition-all ${
                   pinned
@@ -90,7 +96,10 @@ export function ResourcePill({
             )}
 
             <button
-              onClick={(e) => { e.stopPropagation(); onOpen(); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpen();
+              }}
               title="Open detail view"
               className="p-1 rounded-full text-gray-700 hover:text-gray-300 opacity-0 group-hover:opacity-100 transition-all text-xs"
             >

@@ -6,7 +6,10 @@ interface DashboardGridProps {
   emptyMessage?: string;
 }
 
-export function DashboardGrid({ cards, emptyMessage = "Pin resources to see them here." }: DashboardGridProps) {
+export function DashboardGrid({
+  cards,
+  emptyMessage = "Pin resources to see them here.",
+}: DashboardGridProps) {
   if (cards.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center h-64 text-gray-600">

@@ -14,7 +14,12 @@ export const AccessApplicationResourceType: ResourceTypeDefinition = {
     { key: "updatedAt", label: "Updated", kind: "string", required: false },
   ],
   outputs: [
-    { key: "aud", label: "Application AUD", sensitive: false, description: "The AUD tag for this Access application" },
+    {
+      key: "aud",
+      label: "Application AUD",
+      sensitive: false,
+      description: "The AUD tag for this Access application",
+    },
   ],
   dashboardPinnable: true,
   iconKey: "access",

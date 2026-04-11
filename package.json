@@ -8,7 +8,9 @@
     "test": "turbo test",
     "lint": "turbo lint",
     "clean": "turbo clean && find . -name 'node_modules' -type d -prune -exec rm -rf '{}' +",
-    "test:integration": "pnpm --filter @infrawrench/integration-tests test:integration"
+    "test:integration": "pnpm --filter @infrawrench/integration-tests test:integration",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "devDependencies": {
     "@typescript/native-preview": "7.0.0-dev.20260411.1",

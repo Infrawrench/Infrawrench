@@ -4,7 +4,8 @@ export const PsBranchResourceType: ResourceTypeDefinition = {
   id: "ps-branch",
   displayName: "Branch",
   pluralDisplayName: "Branches",
-  description: "A PlanetScale database branch — isolated schema environment with its own connection endpoint",
+  description:
+    "A PlanetScale database branch — isolated schema environment with its own connection endpoint",
   fields: [
     { key: "name", label: "Name", kind: "string", required: true },
     { key: "databaseName", label: "Database", kind: "string", required: true },
@@ -28,9 +29,7 @@ export const PsBranchResourceType: ResourceTypeDefinition = {
       id: "connection-url",
       displayName: "Connection URL",
       description: "DATABASE_URL for MySQL-compatible connections to this branch",
-      entries: [
-        { envKey: "DATABASE_URL", outputKey: "connectionString" },
-      ],
+      entries: [{ envKey: "DATABASE_URL", outputKey: "connectionString" }],
     },
   ],
   resourceSqlDriver: {

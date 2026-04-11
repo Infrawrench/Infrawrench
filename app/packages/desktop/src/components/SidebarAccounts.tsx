@@ -3,7 +3,14 @@ import { useNavigate } from "@tanstack/react-router";
 import { invoke } from "../lib/invoke";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
-import { useUIStore, ConfirmDeleteModal, RESOURCES_CHANGED_EVENT, getListableResourceTypes, type DraggableResource, formatErrorMessage } from "@infrawrench/ui";
+import {
+  useUIStore,
+  ConfirmDeleteModal,
+  RESOURCES_CHANGED_EVENT,
+  getListableResourceTypes,
+  type DraggableResource,
+  formatErrorMessage,
+} from "@infrawrench/ui";
 import { getDb } from "../db/client";
 import { loadPlugins, getPlugin } from "../plugins/loader";
 import { buildPluginHostServices } from "../lib/sql-drivers";
@@ -11,7 +18,11 @@ import { SshTunnelModal, type PresetKey } from "./SshTunnelModal";
 import { DockerSetupModal } from "./DockerSetupModal";
 import { SecretExportModal } from "./SecretExportModal";
 import { SshEnvDeployModal } from "./SshEnvDeployModal";
-import { accountTabTarget, navigateToWorkspaceTarget, resourceTabTarget } from "../lib/workspace-tabs";
+import {
+  accountTabTarget,
+  navigateToWorkspaceTarget,
+  resourceTabTarget,
+} from "../lib/workspace-tabs";
 
 interface Account {
   id: string;
@@ -43,25 +54,35 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
   const [groups, setGroups] = useState<PluginGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [accountResources, setAccountResources] = useState<Record<string, AccountResourcesState>>({});
+  const [accountResources, setAccountResources] = useState<Record<string, AccountResourcesState>>(
+    {},
+  );
   // typeId → sshEndpoint config for resources with sshEndpoint
-  const [sshEndpointByTypeId, setSshEndpointByTypeId] = useState<Record<string, { hostOutputKey: string; runningWhen?: { fieldKey: string; value: string } }>>({});
+  const [sshEndpointByTypeId, setSshEndpointByTypeId] = useState<
+    Record<string, { hostOutputKey: string; runningWhen?: { fieldKey: string; value: string } }>
+  >({});
   // Resource type IDs that have a "kubeconfig" output — can be drop targets for secret import
   const [kubeconfigTypeIds, setKubeconfigTypeIds] = useState<Set<string>>(new Set());
   // resourceId → sshHost value
   const [resourceSshHosts, setResourceSshHosts] = useState<Record<string, string>>({});
   // context menu state
   const [contextMenu, setContextMenu] = useState<{
-    x: number; y: number;
-    resourceId: string; sshHost: string; accountId: string;
+    x: number;
+    y: number;
+    resourceId: string;
+    sshHost: string;
+    accountId: string;
   } | null>(null);
   // SSH tunnel modal target
   const [tunnelTarget, setTunnelTarget] = useState<{
-    sshHost: string; sourceAccountId: string; defaultService?: PresetKey;
+    sshHost: string;
+    sourceAccountId: string;
+    defaultService?: PresetKey;
   } | null>(null);
   // Docker setup modal target
   const [dockerSetupTarget, setDockerSetupTarget] = useState<{
-    sshHost: string; sourceAccountId: string;
+    sshHost: string;
+    sourceAccountId: string;
   } | null>(null);
   // Plugin IDs that support secret import (e.g. kubernetes)
   const [secretImportPluginIds, setSecretImportPluginIds] = useState<Set<string>>(new Set());
@@ -73,7 +94,8 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
   } | null>(null);
   // Env deploy modal state (triggered by dropping a non-tunnel resource onto a VM)
   const [envDeployDrop, setEnvDeployDrop] = useState<{
-    source: DraggableResource; sshHost: string;
+    source: DraggableResource;
+    sshHost: string;
   } | null>(null);
   // Account deletion state
   const [deleteTarget, setDeleteTarget] = useState<Account | null>(null);
@@ -90,13 +112,15 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
       setLoading(true);
       try {
         const [db, plugins] = await Promise.all([getDb(), loadPlugins()]);
-        const rows = await db.select<{
-          id: string;
-          plugin_id: string;
-          display_name: string;
-          encrypted_credentials: string;
-          credentials_iv: string;
-        }[]>(
+        const rows = await db.select<
+          {
+            id: string;
+            plugin_id: string;
+            display_name: string;
+            encrypted_credentials: string;
+            credentials_iv: string;
+          }[]
+        >(
           "SELECT id, plugin_id, display_name, encrypted_credentials, credentials_iv FROM accounts ORDER BY display_name",
         );
 
@@ -107,7 +131,10 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
           ]),
         );
 
-        const sshMap: Record<string, { hostOutputKey: string; runningWhen?: { fieldKey: string; value: string } }> = {};
+        const sshMap: Record<
+          string,
+          { hostOutputKey: string; runningWhen?: { fieldKey: string; value: string } }
+        > = {};
         for (const p of plugins) {
           for (const rt of p.plugin.resourceTypes) {
             if (rt.sshEndpoint) sshMap[rt.id] = rt.sshEndpoint;
@@ -149,7 +176,10 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
           });
         }
 
-        if (!cancelled) setGroups([...groupMap.values()].sort((a, b) => a.displayName.localeCompare(b.displayName)));
+        if (!cancelled)
+          setGroups(
+            [...groupMap.values()].sort((a, b) => a.displayName.localeCompare(b.displayName)),
+          );
       } catch (e) {
         console.error("SidebarAccounts load error:", e);
       } finally {
@@ -157,7 +187,9 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
       }
     }
     load();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [refreshKey]);
 
   async function loadAccountResources(account: Account, background = false) {
@@ -200,7 +232,9 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
             const fieldVal = String(r.fields[endpoint.runningWhen.fieldKey] ?? "");
             if (fieldVal.toLowerCase() !== endpoint.runningWhen.value.toLowerCase()) continue;
           }
-          const host = String(r.resolvedOutputs[endpoint.hostOutputKey] ?? r.fields[endpoint.hostOutputKey] ?? "");
+          const host = String(
+            r.resolvedOutputs[endpoint.hostOutputKey] ?? r.fields[endpoint.hostOutputKey] ?? "",
+          );
           if (host) sshHosts[r.id] = host;
         }
       }
@@ -211,7 +245,11 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
       if (background) return; // silently ignore errors during background refresh
       setAccountResources((prev) => ({
         ...prev,
-        [id]: { loading: false, error: formatErrorMessage(e), resources: prev[id]?.resources ?? [] },
+        [id]: {
+          loading: false,
+          error: formatErrorMessage(e),
+          resources: prev[id]?.resources ?? [],
+        },
       }));
     }
   }
@@ -235,11 +273,15 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
     const db = await getDb();
     // Cascade deletes resources, dashboard_pins, secret_field_states, ssh_tunnel_configs via FK
     await db.execute("DELETE FROM accounts WHERE id = $1", [account.id]);
-    const tabsToRemove = workspaceTabs.filter((tab) => {
-      const t = tab.target;
-      return (t.kind === "account" && t.accountId === account.id) ||
-             (t.kind === "resource" && t.accountId === account.id);
-    }).map((tab) => tab.id);
+    const tabsToRemove = workspaceTabs
+      .filter((tab) => {
+        const t = tab.target;
+        return (
+          (t.kind === "account" && t.accountId === account.id) ||
+          (t.kind === "resource" && t.accountId === account.id)
+        );
+      })
+      .map((tab) => tab.id);
     removeWorkspaceTabs(tabsToRemove);
     bumpAccounts();
     setDeleteTarget(null);
@@ -280,11 +322,13 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
   // Handle secret drops onto sidebar accounts and resources
   useEffect(() => {
     function handler(e: Event) {
-      const { source, targetId, kind } = (e as CustomEvent<{
-        source: DraggableResource;
-        targetId: string;
-        kind: "account" | "resource";
-      }>).detail;
+      const { source, targetId, kind } = (
+        e as CustomEvent<{
+          source: DraggableResource;
+          targetId: string;
+          kind: "account" | "resource";
+        }>
+      ).detail;
 
       if (kind === "account") {
         const allAccounts = groups.flatMap((g) => g.accounts);
@@ -314,17 +358,24 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
         const sshHost = resourceSshHosts[targetId];
         if (sshHost && !kubeconfigTypeIds.has(targetResource.resourceTypeId)) {
           const TUNNEL_PLUGINS = new Set(["docker", "postgres", "mysql", "redis", "memcached"]);
-          const sourcePlugin = source.pluginId === "__account__"
-            ? String(source.fields["pluginId"] ?? "") : source.pluginId;
+          const sourcePlugin =
+            source.pluginId === "__account__"
+              ? String(source.fields["pluginId"] ?? "")
+              : source.pluginId;
           if (TUNNEL_PLUGINS.has(sourcePlugin)) {
             const pluginToPreset: Record<string, PresetKey> = {
-              docker: "docker", postgres: "postgres", mysql: "mysql",
-              redis: "redis", memcached: "memcached",
+              docker: "docker",
+              postgres: "postgres",
+              mysql: "mysql",
+              redis: "redis",
+              memcached: "memcached",
             };
             setTunnelTarget({
               sshHost,
               sourceAccountId: targetResource.accountId,
-              ...(pluginToPreset[sourcePlugin] !== undefined ? { defaultService: pluginToPreset[sourcePlugin] } : {}),
+              ...(pluginToPreset[sourcePlugin] !== undefined
+                ? { defaultService: pluginToPreset[sourcePlugin] }
+                : {}),
             });
           } else {
             // Non-tunnel resources → deploy credentials via SSH
@@ -390,183 +441,196 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
 
   return (
     <>
-    <div className="py-1">
-      {groups.map((group) => (
-        <div key={group.pluginId} className="mb-3">
-          {/* Plugin header */}
-          <div className="flex items-center gap-2 px-3 py-1">
-            <div
-              className="w-4 h-4 flex-shrink-0"
-              dangerouslySetInnerHTML={{ __html: group.logoSvg }}
-            />
-            <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-              {group.displayName}
-            </span>
-          </div>
+      <div className="py-1">
+        {groups.map((group) => (
+          <div key={group.pluginId} className="mb-3">
+            {/* Plugin header */}
+            <div className="flex items-center gap-2 px-3 py-1">
+              <div
+                className="w-4 h-4 flex-shrink-0"
+                dangerouslySetInnerHTML={{ __html: group.logoSvg }}
+              />
+              <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                {group.displayName}
+              </span>
+            </div>
 
-          {/* Accounts under this plugin */}
-          {group.accounts.map((account) => {
-            const isExpanded = expanded.has(account.id);
-            const resourceState = accountResources[account.id];
+            {/* Accounts under this plugin */}
+            {group.accounts.map((account) => {
+              const isExpanded = expanded.has(account.id);
+              const resourceState = accountResources[account.id];
 
-            return (
-              <div key={account.id}>
-                {/* Account row — draggable */}
-                <AccountDraggableRow
-                  account={account}
-                  group={group}
-                  isExpanded={isExpanded}
-                  connected={connectedAccounts.has(account.id)}
-                  acceptsSecretImport={secretImportPluginIds.has(account.pluginId)}
-                  onToggleExpand={() => void toggleExpand(account)}
-                  onNavigate={() => void navigateToWorkspaceTarget(
-                    navigate,
-                    accountTabTarget(account.id),
-                    { label: account.displayName },
+              return (
+                <div key={account.id}>
+                  {/* Account row — draggable */}
+                  <AccountDraggableRow
+                    account={account}
+                    group={group}
+                    isExpanded={isExpanded}
+                    connected={connectedAccounts.has(account.id)}
+                    acceptsSecretImport={secretImportPluginIds.has(account.pluginId)}
+                    onToggleExpand={() => void toggleExpand(account)}
+                    onNavigate={() =>
+                      void navigateToWorkspaceTarget(navigate, accountTabTarget(account.id), {
+                        label: account.displayName,
+                      })
+                    }
+                    onDelete={() => setDeleteTarget(account)}
+                  />
+
+                  {/* Expanded resources */}
+                  {isExpanded && (
+                    <div className="pl-8 pb-1">
+                      {resourceState?.loading && (
+                        <div className="px-3 py-1 text-xs text-gray-600">Loading…</div>
+                      )}
+                      {resourceState?.error && (
+                        <div
+                          className="px-3 py-1 text-xs text-red-500 truncate"
+                          title={resourceState.error}
+                        >
+                          Error loading resources
+                        </div>
+                      )}
+                      {resourceState &&
+                        !resourceState.loading &&
+                        !resourceState.error &&
+                        resourceState.resources.length === 0 && (
+                          <div className="px-3 py-1 text-xs text-gray-600">No resources</div>
+                        )}
+                      {resourceState?.resources.map((resource) => {
+                        const draggable: DraggableResource = {
+                          id: resource.id,
+                          pluginId: resource.pluginId,
+                          resourceTypeId: resource.resourceTypeId,
+                          accountId: resource.accountId,
+                          displayName: resource.displayName,
+                          fields: resource.fields,
+                          externalId: resource.externalId,
+                        };
+                        return (
+                          <SidebarResourceItem
+                            key={resource.id}
+                            draggable={draggable}
+                            acceptsSecretImport={kubeconfigTypeIds.has(resource.resourceTypeId)}
+                            sshHostValue={resourceSshHosts[resource.id]}
+                            onContextMenuSsh={(e, sshHost) => {
+                              e.preventDefault();
+                              setContextMenu({
+                                x: e.clientX,
+                                y: e.clientY,
+                                resourceId: resource.id,
+                                sshHost,
+                                accountId: resource.accountId,
+                              });
+                            }}
+                          />
+                        );
+                      })}
+                    </div>
                   )}
-                  onDelete={() => setDeleteTarget(account)}
-                />
-
-                {/* Expanded resources */}
-                {isExpanded && (
-                  <div className="pl-8 pb-1">
-                    {resourceState?.loading && (
-                      <div className="px-3 py-1 text-xs text-gray-600">Loading…</div>
-                    )}
-                    {resourceState?.error && (
-                      <div className="px-3 py-1 text-xs text-red-500 truncate" title={resourceState.error}>
-                        Error loading resources
-                      </div>
-                    )}
-                    {resourceState && !resourceState.loading && !resourceState.error && resourceState.resources.length === 0 && (
-                      <div className="px-3 py-1 text-xs text-gray-600">No resources</div>
-                    )}
-                    {resourceState?.resources.map((resource) => {
-                      const draggable: DraggableResource = {
-                        id: resource.id,
-                        pluginId: resource.pluginId,
-                        resourceTypeId: resource.resourceTypeId,
-                        accountId: resource.accountId,
-                        displayName: resource.displayName,
-                        fields: resource.fields,
-                        externalId: resource.externalId,
-                      };
-                      return (
-                        <SidebarResourceItem
-                          key={resource.id}
-                          draggable={draggable}
-                          acceptsSecretImport={kubeconfigTypeIds.has(resource.resourceTypeId)}
-                          sshHostValue={resourceSshHosts[resource.id]}
-                          onContextMenuSsh={(e, sshHost) => {
-                            e.preventDefault();
-                            setContextMenu({
-                              x: e.clientX,
-                              y: e.clientY,
-                              resourceId: resource.id,
-                              sshHost,
-                              accountId: resource.accountId,
-                            });
-                          }}
-                        />
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      ))}
-    </div>
-
-    {/* Context menu for SSH-accessible resources */}
-    {contextMenu && (
-      <div
-        ref={contextMenuRef}
-        style={{ position: "fixed", left: contextMenu.x, top: contextMenu.y, zIndex: 9999 }}
-        className="bg-gray-800 border border-gray-700 rounded-lg shadow-xl py-1 min-w-[200px]"
-      >
-        <button
-          className="w-full px-3 py-2 text-xs text-gray-200 hover:bg-gray-700 text-left flex items-center gap-2"
-          onClick={() => {
-            setTunnelTarget({ sshHost: contextMenu.sshHost, sourceAccountId: contextMenu.accountId });
-            setContextMenu(null);
-          }}
-        >
-          <span>⇢</span>
-          Connect to service via SSH…
-        </button>
-        <button
-          className="w-full px-3 py-2 text-xs text-gray-200 hover:bg-gray-700 text-left flex items-center gap-2"
-          onClick={() => {
-            setDockerSetupTarget({ sshHost: contextMenu.sshHost, sourceAccountId: contextMenu.accountId });
-            setContextMenu(null);
-          }}
-        >
-          <span>🐳</span>
-          Setup Docker on VM…
-        </button>
+                </div>
+              );
+            })}
+          </div>
+        ))}
       </div>
-    )}
 
-    {/* SSH tunnel modal */}
-    {tunnelTarget && (
-      <SshTunnelModal
-        sshHost={tunnelTarget.sshHost}
-        sourceAccountId={tunnelTarget.sourceAccountId}
-        {...(tunnelTarget.defaultService !== undefined ? { defaultService: tunnelTarget.defaultService } : {})}
-        onClose={() => setTunnelTarget(null)}
-        onTunnelEstablished={(newAccountId) => {
-          setTunnelTarget(null);
-          void navigateToWorkspaceTarget(navigate, accountTabTarget(newAccountId));
-        }}
-      />
-    )}
+      {/* Context menu for SSH-accessible resources */}
+      {contextMenu && (
+        <div
+          ref={contextMenuRef}
+          style={{ position: "fixed", left: contextMenu.x, top: contextMenu.y, zIndex: 9999 }}
+          className="bg-gray-800 border border-gray-700 rounded-lg shadow-xl py-1 min-w-[200px]"
+        >
+          <button
+            className="w-full px-3 py-2 text-xs text-gray-200 hover:bg-gray-700 text-left flex items-center gap-2"
+            onClick={() => {
+              setTunnelTarget({
+                sshHost: contextMenu.sshHost,
+                sourceAccountId: contextMenu.accountId,
+              });
+              setContextMenu(null);
+            }}
+          >
+            <span>⇢</span>
+            Connect to service via SSH…
+          </button>
+          <button
+            className="w-full px-3 py-2 text-xs text-gray-200 hover:bg-gray-700 text-left flex items-center gap-2"
+            onClick={() => {
+              setDockerSetupTarget({
+                sshHost: contextMenu.sshHost,
+                sourceAccountId: contextMenu.accountId,
+              });
+              setContextMenu(null);
+            }}
+          >
+            <span>🐳</span>
+            Setup Docker on VM…
+          </button>
+        </div>
+      )}
 
-    {/* Docker setup modal */}
-    {dockerSetupTarget && (
-      <DockerSetupModal
-        sshHost={dockerSetupTarget.sshHost}
-        sourceAccountId={dockerSetupTarget.sourceAccountId}
-        onClose={() => setDockerSetupTarget(null)}
-        onComplete={(newAccountId) => {
-          setDockerSetupTarget(null);
-          void navigateToWorkspaceTarget(navigate, accountTabTarget(newAccountId));
-        }}
-      />
-    )}
+      {/* SSH tunnel modal */}
+      {tunnelTarget && (
+        <SshTunnelModal
+          sshHost={tunnelTarget.sshHost}
+          sourceAccountId={tunnelTarget.sourceAccountId}
+          {...(tunnelTarget.defaultService !== undefined
+            ? { defaultService: tunnelTarget.defaultService }
+            : {})}
+          onClose={() => setTunnelTarget(null)}
+          onTunnelEstablished={(newAccountId) => {
+            setTunnelTarget(null);
+            void navigateToWorkspaceTarget(navigate, accountTabTarget(newAccountId));
+          }}
+        />
+      )}
 
-    {/* Env deploy modal (triggered by dropping a non-tunnel resource onto a VM) */}
-    {envDeployDrop && (
-      <SshEnvDeployModal
-        source={envDeployDrop.source}
-        sshHost={envDeployDrop.sshHost}
-        onClose={() => setEnvDeployDrop(null)}
-        onDeployed={() => setEnvDeployDrop(null)}
-      />
-    )}
+      {/* Docker setup modal */}
+      {dockerSetupTarget && (
+        <DockerSetupModal
+          sshHost={dockerSetupTarget.sshHost}
+          sourceAccountId={dockerSetupTarget.sourceAccountId}
+          onClose={() => setDockerSetupTarget(null)}
+          onComplete={(newAccountId) => {
+            setDockerSetupTarget(null);
+            void navigateToWorkspaceTarget(navigate, accountTabTarget(newAccountId));
+          }}
+        />
+      )}
 
-    {/* Secret export modal (triggered by dropping onto a K8s account) */}
-    {secretExportDrop && (
-      <SecretExportModal
-        source={secretExportDrop.source}
-        targetPluginId={secretExportDrop.targetPluginId}
-        targetCredentials={secretExportDrop.targetCredentials}
-        onClose={() => setSecretExportDrop(null)}
-        onCreated={() => setSecretExportDrop(null)}
-      />
-    )}
+      {/* Env deploy modal (triggered by dropping a non-tunnel resource onto a VM) */}
+      {envDeployDrop && (
+        <SshEnvDeployModal
+          source={envDeployDrop.source}
+          sshHost={envDeployDrop.sshHost}
+          onClose={() => setEnvDeployDrop(null)}
+          onDeployed={() => setEnvDeployDrop(null)}
+        />
+      )}
 
-    {/* Account deletion modal */}
-    {deleteTarget && (
-      <ConfirmDeleteModal
-        kind="account"
-        name={deleteTarget.displayName}
-        onConfirm={() => handleDeleteAccount(deleteTarget)}
-        onClose={() => setDeleteTarget(null)}
-      />
-    )}
+      {/* Secret export modal (triggered by dropping onto a K8s account) */}
+      {secretExportDrop && (
+        <SecretExportModal
+          source={secretExportDrop.source}
+          targetPluginId={secretExportDrop.targetPluginId}
+          targetCredentials={secretExportDrop.targetCredentials}
+          onClose={() => setSecretExportDrop(null)}
+          onCreated={() => setSecretExportDrop(null)}
+        />
+      )}
 
+      {/* Account deletion modal */}
+      {deleteTarget && (
+        <ConfirmDeleteModal
+          kind="account"
+          name={deleteTarget.displayName}
+          onConfirm={() => handleDeleteAccount(deleteTarget)}
+          onClose={() => setDeleteTarget(null)}
+        />
+      )}
     </>
   );
 }
@@ -583,7 +647,12 @@ function SidebarResourceItem({
   onContextMenuSsh?: (e: React.MouseEvent, sshHost: string) => void;
 }) {
   const navigate = useNavigate();
-  const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
+  const {
+    attributes,
+    listeners,
+    setNodeRef: setDragRef,
+    isDragging,
+  } = useDraggable({
     id: `sidebar-${draggable.id}`,
     data: {
       resource: draggable,
@@ -615,20 +684,20 @@ function SidebarResourceItem({
           ? "bg-blue-500/20 text-blue-200 ring-1 ring-inset ring-blue-500"
           : "text-gray-400 hover:text-gray-200 hover:bg-gray-800"
       } ${isDragging ? "opacity-40" : ""}`}
-      onClick={() => void navigateToWorkspaceTarget(
-        navigate,
-        resourceTabTarget(draggable.accountId, draggable.id),
-        { label: draggable.displayName },
-      )}
-      onContextMenu={sshHostValue && onContextMenuSsh
-        ? (e) => onContextMenuSsh(e, sshHostValue)
-        : undefined}
+      onClick={() =>
+        void navigateToWorkspaceTarget(
+          navigate,
+          resourceTabTarget(draggable.accountId, draggable.id),
+          { label: draggable.displayName },
+        )
+      }
+      onContextMenu={
+        sshHostValue && onContextMenuSsh ? (e) => onContextMenuSsh(e, sshHostValue) : undefined
+      }
     >
       <span className="text-gray-700">⠿</span>
       <span className="truncate">{draggable.displayName}</span>
-      {showDropHint && (
-        <span className="ml-auto text-blue-400 flex-shrink-0">Drop</span>
-      )}
+      {showDropHint && <span className="ml-auto text-blue-400 flex-shrink-0">Drop</span>}
     </div>
   );
 }
@@ -661,7 +730,12 @@ function AccountDraggableRow({
     fields: { pluginId: account.pluginId, pluginDisplayName: group.displayName },
   };
 
-  const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
+  const {
+    attributes,
+    listeners,
+    setNodeRef: setDragRef,
+    isDragging,
+  } = useDraggable({
     id: `account-${account.id}`,
     data: {
       resource: draggableData,
@@ -695,7 +769,10 @@ function AccountDraggableRow({
     >
       <button
         draggable={false}
-        onClick={(e) => { e.stopPropagation(); onToggleExpand(); }}
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggleExpand();
+        }}
         title={isExpanded ? "Collapse" : "Expand resources"}
         className="w-4 h-4 flex items-center justify-center flex-shrink-0 text-gray-600 hover:text-gray-400 transition-colors mr-1"
       >
@@ -708,19 +785,25 @@ function AccountDraggableRow({
       </button>
       <button
         draggable={false}
-        onClick={(e) => { e.stopPropagation(); onNavigate(); }}
+        onClick={(e) => {
+          e.stopPropagation();
+          onNavigate();
+        }}
         className="flex items-center gap-2 flex-1 text-left min-w-0"
       >
-        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 transition-colors ${connected ? "bg-blue-400" : "bg-gray-600"}`} />
+        <span
+          className={`w-1.5 h-1.5 rounded-full flex-shrink-0 transition-colors ${connected ? "bg-blue-400" : "bg-gray-600"}`}
+        />
         <span className="truncate">{account.displayName}</span>
       </button>
-      {showDropHint && (
-        <span className="text-xs text-blue-400 flex-shrink-0">Drop</span>
-      )}
+      {showDropHint && <span className="text-xs text-blue-400 flex-shrink-0">Drop</span>}
       {!showDropHint && (
         <button
           draggable={false}
-          onClick={(e) => { e.stopPropagation(); onDelete(); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
           title="Delete account"
           className="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded text-gray-700 opacity-0 group-hover:opacity-100 hover:text-red-400 hover:bg-red-500/10 transition-all"
         >

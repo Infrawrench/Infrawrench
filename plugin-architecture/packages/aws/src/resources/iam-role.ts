@@ -13,9 +13,7 @@ export const IAMRoleResourceType: ResourceTypeDefinition = {
     { key: "description", label: "Description", kind: "string", required: false },
     { key: "maxSessionDuration", label: "Max Session (s)", kind: "number", required: false },
   ],
-  outputs: [
-    { key: "roleArn", label: "Role ARN", sensitive: false },
-  ],
+  outputs: [{ key: "roleArn", label: "Role ARN", sensitive: false }],
   dashboardPinnable: false,
   iconKey: "role",
 };

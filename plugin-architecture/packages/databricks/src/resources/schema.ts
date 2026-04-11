@@ -12,9 +12,7 @@ export const SchemaResourceType: ResourceTypeDefinition = {
     { key: "comment", label: "Comment", kind: "string", required: false },
     { key: "tableCount", label: "Tables", kind: "number", required: false },
   ],
-  outputs: [
-    { key: "fullName", label: "Full Name", sensitive: false },
-  ],
+  outputs: [{ key: "fullName", label: "Full Name", sensitive: false }],
   parentTypeId: "databricks-catalog",
   dashboardPinnable: false,
 };

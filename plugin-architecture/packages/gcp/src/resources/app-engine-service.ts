@@ -11,8 +11,6 @@ export const AppEngineServiceResourceType: ResourceTypeDefinition = {
     { key: "latestVersion", label: "Latest Version", kind: "string", required: false },
     { key: "trafficSplit", label: "Traffic Split", kind: "string", required: false },
   ],
-  outputs: [
-    { key: "url", label: "Service URL", sensitive: false },
-  ],
+  outputs: [{ key: "url", label: "Service URL", sensitive: false }],
   dashboardPinnable: true,
 };

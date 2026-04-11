@@ -10,13 +10,27 @@ interface SshKeyParams {
   sshUsername?: string;
 }
 
-export function SftpBrowser({ accountId, initialPath = "/", sshKeyId, sshHost, sshUsername }: { accountId: string; initialPath?: string; sshKeyId?: string; sshHost?: string; sshUsername?: string }) {
+export function SftpBrowser({
+  accountId,
+  initialPath = "/",
+  sshKeyId,
+  sshHost,
+  sshUsername,
+}: {
+  accountId: string;
+  initialPath?: string;
+  sshKeyId?: string;
+  sshHost?: string;
+  sshUsername?: string;
+}) {
   const orgId = useOrgId();
-  const sshParams: SshKeyParams = sshKeyId ? {
-    sshKeyId,
-    ...(sshHost !== undefined ? { sshHost } : {}),
-    ...(sshUsername !== undefined ? { sshUsername } : {}),
-  } : {};
+  const sshParams: SshKeyParams = sshKeyId
+    ? {
+        sshKeyId,
+        ...(sshHost !== undefined ? { sshHost } : {}),
+        ...(sshUsername !== undefined ? { sshUsername } : {}),
+      }
+    : {};
 
   const onList = useCallback(
     (path: string) =>
@@ -48,7 +62,12 @@ export function SftpBrowser({ accountId, initialPath = "/", sshKeyId, sshHost, s
 
   const onDelete = useCallback(
     async (_bucket: string, key: string, isDirectory?: boolean) => {
-      await apiPost(`/api/org/${orgId}/sftp/delete`, { accountId, path: key, isDir: isDirectory ?? false, ...sshParams });
+      await apiPost(`/api/org/${orgId}/sftp/delete`, {
+        accountId,
+        path: key,
+        isDir: isDirectory ?? false,
+        ...sshParams,
+      });
     },
     [accountId, orgId, sshKeyId, sshHost, sshUsername],
   );

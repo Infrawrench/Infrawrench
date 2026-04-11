@@ -14,9 +14,7 @@ interface ApiAuthResult {
  * Authenticate an API request via Bearer token.
  * Supports API keys (iwk_ prefix) and WorkOS access tokens.
  */
-export async function authenticateApiRequest(
-  request: Request,
-): Promise<ApiAuthResult | null> {
+export async function authenticateApiRequest(request: Request): Promise<ApiAuthResult | null> {
   const auth = request.headers.get("authorization");
   if (!auth?.startsWith("Bearer ")) return null;
 
@@ -33,10 +31,7 @@ export async function authenticateApiRequest(
 
     if (key.expiresAt && key.expiresAt < new Date()) return null;
 
-    await db
-      .update(apiKeys)
-      .set({ lastUsedAt: new Date() })
-      .where(eq(apiKeys.id, key.id));
+    await db.update(apiKeys).set({ lastUsedAt: new Date() }).where(eq(apiKeys.id, key.id));
 
     return {
       userId: key.userId,

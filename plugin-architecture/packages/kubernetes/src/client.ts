@@ -166,9 +166,7 @@ export class KubernetesClient implements PluginClient {
         return "unknown";
       }
     }
-    throw new Error(
-      `Kubernetes plugin: cannot resolve output "${outputKey}" for type "${typeId}"`,
-    );
+    throw new Error(`Kubernetes plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
@@ -235,18 +233,27 @@ export class KubernetesClient implements PluginClient {
   async renderPeerPane(_context: PeerPaneContext): Promise<PeerPaneSchema> {
     const syntheticAccountId = "peer";
 
-    const [namespaces, pods, deployments, services, statefulSets, daemonSets, jobs, cronJobs, ingresses] =
-      await Promise.all([
-        this.listNamespaces(syntheticAccountId),
-        this.listPods(syntheticAccountId),
-        this.listDeployments(syntheticAccountId),
-        this.listServices(syntheticAccountId),
-        this.listStatefulSets(syntheticAccountId),
-        this.listDaemonSets(syntheticAccountId),
-        this.listJobs(syntheticAccountId),
-        this.listCronJobs(syntheticAccountId),
-        this.listIngresses(syntheticAccountId),
-      ]);
+    const [
+      namespaces,
+      pods,
+      deployments,
+      services,
+      statefulSets,
+      daemonSets,
+      jobs,
+      cronJobs,
+      ingresses,
+    ] = await Promise.all([
+      this.listNamespaces(syntheticAccountId),
+      this.listPods(syntheticAccountId),
+      this.listDeployments(syntheticAccountId),
+      this.listServices(syntheticAccountId),
+      this.listStatefulSets(syntheticAccountId),
+      this.listDaemonSets(syntheticAccountId),
+      this.listJobs(syntheticAccountId),
+      this.listCronJobs(syntheticAccountId),
+      this.listIngresses(syntheticAccountId),
+    ]);
 
     const allGroups: PeerPaneResourceGroup[] = [
       namespacePeerGroup(namespaces),
@@ -271,16 +278,16 @@ export class KubernetesClient implements PluginClient {
   async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
     if (typeId === "k8s-pod") {
       // Fetch available namespaces for the namespace picker
-      let namespaceOptions: { id: string; label: string }[] = [
-        { id: "default", label: "default" },
-      ];
+      let namespaceOptions: { id: string; label: string }[] = [{ id: "default", label: "default" }];
       try {
         const nsData = await this.k8sFetch<K8sList<K8sNamespace>>("/api/v1/namespaces");
         namespaceOptions = nsData.items
           .filter((ns) => !SYSTEM_NAMESPACES.has(ns.metadata.name))
           .map((ns) => ({ id: ns.metadata.name, label: ns.metadata.name }))
           .sort((a, b) => a.label.localeCompare(b.label));
-      } catch { /* fall back to default */ }
+      } catch {
+        /* fall back to default */
+      }
 
       return {
         fields: [
@@ -352,7 +359,13 @@ export class KubernetesClient implements PluginClient {
       return {
         fields: [
           { key: "name", label: "Name", kind: "text", required: true },
-          { key: "namespace", label: "Namespace", kind: "text", required: true, defaultValue: "default" },
+          {
+            key: "namespace",
+            label: "Namespace",
+            kind: "text",
+            required: true,
+            defaultValue: "default",
+          },
         ],
       };
     }
@@ -370,7 +383,7 @@ export class KubernetesClient implements PluginClient {
 
     if (typeId === "k8s-pod") {
       const rawImage = fields["image"] || "ubuntu:24.04";
-      const image = rawImage === "custom" ? (fields["customImage"] || "ubuntu:24.04") : rawImage;
+      const image = rawImage === "custom" ? fields["customImage"] || "ubuntu:24.04" : rawImage;
       const ttlSeconds = parseInt(fields["ttl"] || "3600", 10);
       const expiresAt = new Date(Date.now() + ttlSeconds * 1000).toISOString();
 
@@ -473,18 +486,30 @@ export class KubernetesClient implements PluginClient {
    */
   private k8sApiPath(typeId: string): { prefix: string; plural: string; namespaced: boolean } {
     switch (typeId) {
-      case "k8s-pod":         return { prefix: "/api/v1",                     plural: "pods",         namespaced: true };
-      case "k8s-deployment":  return { prefix: "/apis/apps/v1",               plural: "deployments",  namespaced: true };
-      case "k8s-service":     return { prefix: "/api/v1",                     plural: "services",     namespaced: true };
-      case "k8s-statefulset": return { prefix: "/apis/apps/v1",               plural: "statefulsets", namespaced: true };
-      case "k8s-daemonset":   return { prefix: "/apis/apps/v1",               plural: "daemonsets",   namespaced: true };
-      case "k8s-job":         return { prefix: "/apis/batch/v1",              plural: "jobs",         namespaced: true };
-      case "k8s-cronjob":     return { prefix: "/apis/batch/v1",              plural: "cronjobs",     namespaced: true };
-      case "k8s-ingress":     return { prefix: "/apis/networking.k8s.io/v1",  plural: "ingresses",    namespaced: true };
-      case "k8s-configmap":   return { prefix: "/api/v1",                     plural: "configmaps",   namespaced: true };
-      case "k8s-secret":      return { prefix: "/api/v1",                     plural: "secrets",      namespaced: true };
-      case "k8s-namespace":   return { prefix: "/api/v1",                     plural: "namespaces",   namespaced: false };
-      default: throw new Error(`Unknown resource type for manifest: ${typeId}`);
+      case "k8s-pod":
+        return { prefix: "/api/v1", plural: "pods", namespaced: true };
+      case "k8s-deployment":
+        return { prefix: "/apis/apps/v1", plural: "deployments", namespaced: true };
+      case "k8s-service":
+        return { prefix: "/api/v1", plural: "services", namespaced: true };
+      case "k8s-statefulset":
+        return { prefix: "/apis/apps/v1", plural: "statefulsets", namespaced: true };
+      case "k8s-daemonset":
+        return { prefix: "/apis/apps/v1", plural: "daemonsets", namespaced: true };
+      case "k8s-job":
+        return { prefix: "/apis/batch/v1", plural: "jobs", namespaced: true };
+      case "k8s-cronjob":
+        return { prefix: "/apis/batch/v1", plural: "cronjobs", namespaced: true };
+      case "k8s-ingress":
+        return { prefix: "/apis/networking.k8s.io/v1", plural: "ingresses", namespaced: true };
+      case "k8s-configmap":
+        return { prefix: "/api/v1", plural: "configmaps", namespaced: true };
+      case "k8s-secret":
+        return { prefix: "/api/v1", plural: "secrets", namespaced: true };
+      case "k8s-namespace":
+        return { prefix: "/api/v1", plural: "namespaces", namespaced: false };
+      default:
+        throw new Error(`Unknown resource type for manifest: ${typeId}`);
     }
   }
 
@@ -542,7 +567,9 @@ export class KubernetesClient implements PluginClient {
     try {
       const ver = await this.k8sFetch<{ gitVersion: string }>("/version");
       name = `cluster (${ver.gitVersion})`;
-    } catch { /* use default name */ }
+    } catch {
+      /* use default name */
+    }
     return [
       {
         id: `${accountId}:k8s-cluster:default`,
@@ -603,14 +630,20 @@ export class KubernetesClient implements PluginClient {
           this.k8sFetch(
             `/api/v1/namespaces/${encodeURIComponent(ns)}/pods/${encodeURIComponent(pod.metadata.name)}`,
             { method: "DELETE" },
-          ).catch(() => { /* silently ignore cleanup errors */ });
+          ).catch(() => {
+            /* silently ignore cleanup errors */
+          });
           continue; // exclude terminated ephemeral pods from the list
         }
 
         const container = pod.spec.containers[0];
         const restarts = pod.status.containerStatuses?.[0]?.restartCount ?? 0;
-        const expiresAt = isEphemeral ? (pod.metadata.annotations?.["infrawrench.io/expires-at"] ?? "") : "";
-        const ttlSeconds = isEphemeral ? (pod.metadata.annotations?.["infrawrench.io/ttl-seconds"] ?? "") : "";
+        const expiresAt = isEphemeral
+          ? (pod.metadata.annotations?.["infrawrench.io/expires-at"] ?? "")
+          : "";
+        const ttlSeconds = isEphemeral
+          ? (pod.metadata.annotations?.["infrawrench.io/ttl-seconds"] ?? "")
+          : "";
 
         results.push({
           id: `${accountId}:k8s-pod:${pod.metadata.namespace}:${pod.metadata.name}`,
@@ -681,9 +714,7 @@ export class KubernetesClient implements PluginClient {
       return data.items
         .filter((s) => !SYSTEM_NAMESPACES.has(s.metadata.namespace ?? ""))
         .map((s) => {
-          const ports = (s.spec.ports ?? [])
-            .map((p) => `${p.port}/${p.protocol}`)
-            .join(", ");
+          const ports = (s.spec.ports ?? []).map((p) => `${p.port}/${p.protocol}`).join(", ");
           const hasSelector = !!s.spec.selector && Object.keys(s.spec.selector).length > 0;
           return {
             id: `${accountId}:k8s-service:${s.metadata.namespace}:${s.metadata.name}`,
@@ -856,11 +887,12 @@ export class KubernetesClient implements PluginClient {
       return data.items
         .filter((i) => !SYSTEM_NAMESPACES.has(i.metadata.namespace ?? ""))
         .map((i) => {
-          const hosts = (i.spec.rules ?? [])
-            .map((r) => r.host ?? "*")
-            .join(", ");
+          const hosts = (i.spec.rules ?? []).map((r) => r.host ?? "*").join(", ");
           const lbIngress = i.status?.loadBalancer?.ingress ?? [];
-          const address = lbIngress.map((lb) => lb.ip ?? lb.hostname ?? "").filter(Boolean).join(", ");
+          const address = lbIngress
+            .map((lb) => lb.ip ?? lb.hostname ?? "")
+            .filter(Boolean)
+            .join(", ");
           return {
             id: `${accountId}:k8s-ingress:${i.metadata.namespace}:${i.metadata.name}`,
             pluginId: "kubernetes",
@@ -922,32 +954,34 @@ export class KubernetesClient implements PluginClient {
     const now = new Date().toISOString();
     try {
       const data = await this.k8sFetch<K8sList<K8sSecret>>("/api/v1/secrets");
-      return data.items
-        .filter((s) => !SYSTEM_NAMESPACES.has(s.metadata.namespace ?? ""))
-        // Filter out service account tokens and other auto-generated secrets
-        .filter((s) => s.type !== "kubernetes.io/service-account-token")
-        .map((s) => {
-          const keys = Object.keys(s.data ?? {});
-          return {
-            id: `${accountId}:k8s-secret:${s.metadata.namespace}:${s.metadata.name}`,
-            pluginId: "kubernetes",
-            resourceTypeId: "k8s-secret",
-            accountId,
-            displayName: s.metadata.name,
-            fields: {
-              name: s.metadata.name,
-              namespace: s.metadata.namespace ?? "default",
-              type: s.type ?? "Opaque",
-              keys: keys.join(", "),
-              dataCount: keys.length,
-            },
-            resolvedOutputs: {},
-            secretStates: [],
-            parentResourceId: `${accountId}:k8s-namespace:${s.metadata.namespace ?? "default"}`,
-            createdAt: s.metadata.creationTimestamp,
-            updatedAt: now,
-          };
-        });
+      return (
+        data.items
+          .filter((s) => !SYSTEM_NAMESPACES.has(s.metadata.namespace ?? ""))
+          // Filter out service account tokens and other auto-generated secrets
+          .filter((s) => s.type !== "kubernetes.io/service-account-token")
+          .map((s) => {
+            const keys = Object.keys(s.data ?? {});
+            return {
+              id: `${accountId}:k8s-secret:${s.metadata.namespace}:${s.metadata.name}`,
+              pluginId: "kubernetes",
+              resourceTypeId: "k8s-secret",
+              accountId,
+              displayName: s.metadata.name,
+              fields: {
+                name: s.metadata.name,
+                namespace: s.metadata.namespace ?? "default",
+                type: s.type ?? "Opaque",
+                keys: keys.join(", "),
+                dataCount: keys.length,
+              },
+              resolvedOutputs: {},
+              secretStates: [],
+              parentResourceId: `${accountId}:k8s-namespace:${s.metadata.namespace ?? "default"}`,
+              createdAt: s.metadata.creationTimestamp,
+              updatedAt: now,
+            };
+          })
+      );
     } catch {
       return [];
     }

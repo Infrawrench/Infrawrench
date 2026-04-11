@@ -1,14 +1,23 @@
 import { useState, useMemo } from "react";
 
-export function RegionPicker({ regions, value, onChange }: { regions: { id: string; label: string; location?: string; flag?: string }[]; value: string; onChange: (v: string) => void }) {
+export function RegionPicker({
+  regions,
+  value,
+  onChange,
+}: {
+  regions: { id: string; label: string; location?: string; flag?: string }[];
+  value: string;
+  onChange: (v: string) => void;
+}) {
   const [search, setSearch] = useState("");
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     return q
-      ? regions.filter((r) =>
-          r.label.toLowerCase().includes(q) ||
-          r.id.toLowerCase().includes(q) ||
-          r.location?.toLowerCase().includes(q),
+      ? regions.filter(
+          (r) =>
+            r.label.toLowerCase().includes(q) ||
+            r.id.toLowerCase().includes(q) ||
+            r.location?.toLowerCase().includes(q),
         )
       : regions;
   }, [regions, search]);
@@ -42,19 +51,25 @@ export function RegionPicker({ regions, value, onChange }: { regions: { id: stri
               value === r.id ? "bg-blue-600/20" : "hover:bg-gray-800"
             }`}
           >
-            <span className={`w-2 h-2 rounded-full flex-shrink-0 ${value === r.id ? "bg-blue-400" : "bg-gray-700"}`} />
+            <span
+              className={`w-2 h-2 rounded-full flex-shrink-0 ${value === r.id ? "bg-blue-400" : "bg-gray-700"}`}
+            />
             {r.flag && <span className="text-base leading-none flex-shrink-0">{r.flag}</span>}
             <span className="min-w-0 flex-1">
-              <span className={`block text-sm ${value === r.id ? "text-blue-300" : "text-gray-300"}`}>
+              <span
+                className={`block text-sm ${value === r.id ? "text-blue-300" : "text-gray-300"}`}
+              >
                 {r.location ?? r.label}
               </span>
-              <span className={`block text-[11px] font-mono mt-0.5 ${value === r.id ? "text-blue-400/70" : "text-gray-600"}`}>{r.id}</span>
+              <span
+                className={`block text-[11px] font-mono mt-0.5 ${value === r.id ? "text-blue-400/70" : "text-gray-600"}`}
+              >
+                {r.id}
+              </span>
             </span>
           </button>
         ))}
-        {filtered.length === 0 && (
-          <p className="px-3 py-3 text-xs text-gray-600">No matches</p>
-        )}
+        {filtered.length === 0 && <p className="px-3 py-3 text-xs text-gray-600">No matches</p>}
       </div>
     </div>
   );

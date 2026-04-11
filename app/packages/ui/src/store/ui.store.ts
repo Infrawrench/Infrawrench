@@ -4,7 +4,14 @@ import { createJSONStorage, persist } from "zustand/middleware";
 export type WorkspaceTabTarget =
   | { kind: "dashboard"; dashboardId: string }
   | { kind: "account"; accountId: string }
-  | { kind: "resource"; accountId: string; resourceId: string; view?: "details" | "ssh" | "sftp"; pluginId?: string; resourceTypeId?: string };
+  | {
+      kind: "resource";
+      accountId: string;
+      resourceId: string;
+      view?: "details" | "ssh" | "sftp";
+      pluginId?: string;
+      resourceTypeId?: string;
+    };
 
 export interface WorkspaceTab {
   id: string;
@@ -29,8 +36,10 @@ export function getWorkspaceTabId(target: WorkspaceTabTarget): string {
     case "account":
       return `account:${target.accountId}`;
     case "resource":
-      if (target.view === "ssh") return `resource:${target.accountId}:${normalizeResourceId(target.resourceId)}:ssh`;
-      if (target.view === "sftp") return `resource:${target.accountId}:${normalizeResourceId(target.resourceId)}:sftp`;
+      if (target.view === "ssh")
+        return `resource:${target.accountId}:${normalizeResourceId(target.resourceId)}:ssh`;
+      if (target.view === "sftp")
+        return `resource:${target.accountId}:${normalizeResourceId(target.resourceId)}:sftp`;
       return `resource:${target.accountId}:${normalizeResourceId(target.resourceId)}`;
   }
 }
@@ -58,7 +67,8 @@ export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabT
     case "resource":
       return (
         a.accountId === (b as { accountId: string }).accountId &&
-        normalizeResourceId(a.resourceId) === normalizeResourceId((b as { resourceId: string }).resourceId) &&
+        normalizeResourceId(a.resourceId) ===
+          normalizeResourceId((b as { resourceId: string }).resourceId) &&
         (a.view ?? "details") === ((b as { view?: "details" | "ssh" | "sftp" }).view ?? "details")
       );
   }
@@ -67,9 +77,14 @@ export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabT
 function createWorkspaceTab(target: WorkspaceTabTarget, title?: string, id?: string): WorkspaceTab {
   return {
     id: id ?? getWorkspaceTabId(target),
-    target: target.kind === "resource"
-      ? { ...target, resourceId: normalizeResourceId(target.resourceId), view: target.view ?? "details" }
-      : target,
+    target:
+      target.kind === "resource"
+        ? {
+            ...target,
+            resourceId: normalizeResourceId(target.resourceId),
+            view: target.view ?? "details",
+          }
+        : target,
     title: title?.trim() || getWorkspaceTabFallbackTitle(target),
   };
 }
@@ -95,7 +110,9 @@ function applyWorkspaceNavigation(
 
   if (activeTab && workspaceTabTargetsEqual(activeTab.target, nextTab.target)) {
     return {
-      workspaceTabs: tabs.map((tab) => tab.id === activeTab.id ? upsertWorkspaceTabTitle(tab, title) : tab),
+      workspaceTabs: tabs.map((tab) =>
+        tab.id === activeTab.id ? upsertWorkspaceTabTitle(tab, title) : tab,
+      ),
       activeWorkspaceTabId: activeTab.id,
     };
   }
@@ -104,7 +121,9 @@ function applyWorkspaceNavigation(
 
   if (existing) {
     return {
-      workspaceTabs: tabs.map((tab) => tab.id === existing.id ? upsertWorkspaceTabTitle(tab, title) : tab),
+      workspaceTabs: tabs.map((tab) =>
+        tab.id === existing.id ? upsertWorkspaceTabTitle(tab, title) : tab,
+      ),
       activeWorkspaceTabId: existing.id,
     };
   }
@@ -128,7 +147,7 @@ function applyWorkspaceNavigation(
   }
 
   return {
-    workspaceTabs: tabs.map((tab, index) => index === activeIndex ? nextTab : tab),
+    workspaceTabs: tabs.map((tab, index) => (index === activeIndex ? nextTab : tab)),
     activeWorkspaceTabId: nextTab.id,
   };
 }
@@ -136,11 +155,7 @@ function applyWorkspaceNavigation(
 interface UIState {
   /** Currently selected resource for detail view */
   selectedResource: { pluginId: string; resourceTypeId: string; resourceId: string } | null;
-  selectResource: (
-    pluginId: string,
-    resourceTypeId: string,
-    resourceId: string,
-  ) => void;
+  selectResource: (pluginId: string, resourceTypeId: string, resourceId: string) => void;
   clearSelection: () => void;
 
   /** Sidebar collapsed state */
@@ -189,142 +204,158 @@ interface UIState {
   setTabsHydrated: (hydrated: boolean) => void;
 }
 
-export const useUIStore = create<UIState>()(persist((set) => ({
-  selectedResource: null,
-  selectResource: (pluginId, resourceTypeId, resourceId) =>
-    set({ selectedResource: { pluginId, resourceTypeId, resourceId } }),
-  clearSelection: () => set({ selectedResource: null }),
+export const useUIStore = create<UIState>()(
+  persist(
+    (set) => ({
+      selectedResource: null,
+      selectResource: (pluginId, resourceTypeId, resourceId) =>
+        set({ selectedResource: { pluginId, resourceTypeId, resourceId } }),
+      clearSelection: () => set({ selectedResource: null }),
 
-  sidebarCollapsed: false,
-  toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
+      sidebarCollapsed: false,
+      toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
 
-  activeDashboardId: null,
-  setActiveDashboard: (id) => set({ activeDashboardId: id }),
+      activeDashboardId: null,
+      setActiveDashboard: (id) => set({ activeDashboardId: id }),
 
-  activeCloudOrgId: null,
-  setActiveCloudOrgId: (id) => set({ activeCloudOrgId: id }),
+      activeCloudOrgId: null,
+      setActiveCloudOrgId: (id) => set({ activeCloudOrgId: id }),
 
-  rerollingField: null,
-  openReroll: (resourceId, fieldKey) => set({ rerollingField: { resourceId, fieldKey } }),
-  closeReroll: () => set({ rerollingField: null }),
+      rerollingField: null,
+      openReroll: (resourceId, fieldKey) => set({ rerollingField: { resourceId, fieldKey } }),
+      closeReroll: () => set({ rerollingField: null }),
 
-  connectedAccounts: new Set(),
-  setAccountConnected: (accountId, connected) =>
-    set((s) => {
-      const next = new Set(s.connectedAccounts);
-      if (connected) next.add(accountId);
-      else next.delete(accountId);
-      return { connectedAccounts: next };
+      connectedAccounts: new Set(),
+      setAccountConnected: (accountId, connected) =>
+        set((s) => {
+          const next = new Set(s.connectedAccounts);
+          if (connected) next.add(accountId);
+          else next.delete(accountId);
+          return { connectedAccounts: next };
+        }),
+
+      dashboardPinsVersion: 0,
+      bumpDashboardPins: () => set((s) => ({ dashboardPinsVersion: s.dashboardPinsVersion + 1 })),
+
+      accountsVersion: 0,
+      bumpAccounts: () => set((s) => ({ accountsVersion: s.accountsVersion + 1 })),
+
+      workspaceTabs: [],
+      activeWorkspaceTabId: null,
+      tabsHydrated: false,
+      openInActiveWorkspaceTab: (target, title) =>
+        set((state) =>
+          applyWorkspaceNavigation(
+            state.workspaceTabs,
+            state.activeWorkspaceTabId,
+            target,
+            title,
+            "reuse-active",
+          ),
+        ),
+      pinWorkspaceTab: (target, title) =>
+        set((state) =>
+          applyWorkspaceNavigation(
+            state.workspaceTabs,
+            state.activeWorkspaceTabId,
+            target,
+            title,
+            "pin",
+          ),
+        ),
+      createWorkspaceTabInstance: (target, title) =>
+        set((state) => {
+          const nextTab = createWorkspaceTabInstance(target, title);
+          const activeIndex = state.activeWorkspaceTabId
+            ? state.workspaceTabs.findIndex((tab) => tab.id === state.activeWorkspaceTabId)
+            : -1;
+          const insertAt = activeIndex >= 0 ? activeIndex + 1 : state.workspaceTabs.length;
+          return {
+            workspaceTabs: [
+              ...state.workspaceTabs.slice(0, insertAt),
+              nextTab,
+              ...state.workspaceTabs.slice(insertAt),
+            ],
+            activeWorkspaceTabId: nextTab.id,
+          };
+        }),
+      syncWorkspaceRoute: (target, title) =>
+        set((state) =>
+          applyWorkspaceNavigation(
+            state.workspaceTabs,
+            state.activeWorkspaceTabId,
+            target,
+            title,
+            "reuse-active",
+          ),
+        ),
+      activateWorkspaceTab: (tabId) => set({ activeWorkspaceTabId: tabId }),
+      closeWorkspaceTab: (tabId) =>
+        set((state) => {
+          const index = state.workspaceTabs.findIndex((tab) => tab.id === tabId);
+          if (index === -1) return state;
+          const nextTabs = state.workspaceTabs.filter((tab) => tab.id !== tabId);
+          const nextActiveTabId =
+            state.activeWorkspaceTabId === tabId
+              ? (nextTabs[index]?.id ?? nextTabs[index - 1]?.id ?? nextTabs[0]?.id ?? null)
+              : state.activeWorkspaceTabId;
+          return { workspaceTabs: nextTabs, activeWorkspaceTabId: nextActiveTabId };
+        }),
+      reorderWorkspaceTabs: (activeId, overId) =>
+        set((state) => {
+          if (activeId === overId) return state;
+          const fromIndex = state.workspaceTabs.findIndex((tab) => tab.id === activeId);
+          const toIndex = state.workspaceTabs.findIndex((tab) => tab.id === overId);
+          if (fromIndex === -1 || toIndex === -1) return state;
+          const nextTabs = [...state.workspaceTabs];
+          const [moved] = nextTabs.splice(fromIndex, 1);
+          if (!moved) return state;
+          nextTabs.splice(toIndex, 0, moved);
+          return { workspaceTabs: nextTabs };
+        }),
+      setWorkspaceTabTitle: (tabId, title) =>
+        set((state) => ({
+          workspaceTabs: state.workspaceTabs.map((tab) =>
+            tab.id === tabId ? upsertWorkspaceTabTitle(tab, title) : tab,
+          ),
+        })),
+      replaceWorkspaceTabs: (tabs, activeTabId) =>
+        set(() => {
+          const deduped = Array.from(
+            new Map(
+              tabs.map((tab) => [tab.id, createWorkspaceTab(tab.target, tab.title, tab.id)]),
+            ).values(),
+          );
+          return {
+            workspaceTabs: deduped,
+            activeWorkspaceTabId: deduped.some((tab) => tab.id === activeTabId)
+              ? (activeTabId ?? null)
+              : (deduped[0]?.id ?? null),
+          };
+        }),
+      removeWorkspaceTabs: (tabIds) =>
+        set((state) => {
+          if (tabIds.length === 0) return state;
+          const nextTabs = state.workspaceTabs.filter((tab) => !tabIds.includes(tab.id));
+          return {
+            workspaceTabs: nextTabs,
+            activeWorkspaceTabId: nextTabs.some((tab) => tab.id === state.activeWorkspaceTabId)
+              ? state.activeWorkspaceTabId
+              : (nextTabs[0]?.id ?? null),
+          };
+        }),
+      setTabsHydrated: (hydrated) => set({ tabsHydrated: hydrated }),
     }),
-
-  dashboardPinsVersion: 0,
-  bumpDashboardPins: () => set((s) => ({ dashboardPinsVersion: s.dashboardPinsVersion + 1 })),
-
-  accountsVersion: 0,
-  bumpAccounts: () => set((s) => ({ accountsVersion: s.accountsVersion + 1 })),
-
-  workspaceTabs: [],
-  activeWorkspaceTabId: null,
-  tabsHydrated: false,
-  openInActiveWorkspaceTab: (target, title) =>
-    set((state) => applyWorkspaceNavigation(
-      state.workspaceTabs,
-      state.activeWorkspaceTabId,
-      target,
-      title,
-      "reuse-active",
-    )),
-  pinWorkspaceTab: (target, title) =>
-    set((state) => applyWorkspaceNavigation(
-      state.workspaceTabs,
-      state.activeWorkspaceTabId,
-      target,
-      title,
-      "pin",
-    )),
-  createWorkspaceTabInstance: (target, title) =>
-    set((state) => {
-      const nextTab = createWorkspaceTabInstance(target, title);
-      const activeIndex = state.activeWorkspaceTabId
-        ? state.workspaceTabs.findIndex((tab) => tab.id === state.activeWorkspaceTabId)
-        : -1;
-      const insertAt = activeIndex >= 0 ? activeIndex + 1 : state.workspaceTabs.length;
-      return {
-        workspaceTabs: [
-          ...state.workspaceTabs.slice(0, insertAt),
-          nextTab,
-          ...state.workspaceTabs.slice(insertAt),
-        ],
-        activeWorkspaceTabId: nextTab.id,
-      };
-    }),
-  syncWorkspaceRoute: (target, title) =>
-    set((state) => applyWorkspaceNavigation(
-      state.workspaceTabs,
-      state.activeWorkspaceTabId,
-      target,
-      title,
-      "reuse-active",
-    )),
-  activateWorkspaceTab: (tabId) => set({ activeWorkspaceTabId: tabId }),
-  closeWorkspaceTab: (tabId) =>
-    set((state) => {
-      const index = state.workspaceTabs.findIndex((tab) => tab.id === tabId);
-      if (index === -1) return state;
-      const nextTabs = state.workspaceTabs.filter((tab) => tab.id !== tabId);
-      const nextActiveTabId = state.activeWorkspaceTabId === tabId
-        ? nextTabs[index]?.id ?? nextTabs[index - 1]?.id ?? nextTabs[0]?.id ?? null
-        : state.activeWorkspaceTabId;
-      return { workspaceTabs: nextTabs, activeWorkspaceTabId: nextActiveTabId };
-    }),
-  reorderWorkspaceTabs: (activeId, overId) =>
-    set((state) => {
-      if (activeId === overId) return state;
-      const fromIndex = state.workspaceTabs.findIndex((tab) => tab.id === activeId);
-      const toIndex = state.workspaceTabs.findIndex((tab) => tab.id === overId);
-      if (fromIndex === -1 || toIndex === -1) return state;
-      const nextTabs = [...state.workspaceTabs];
-      const [moved] = nextTabs.splice(fromIndex, 1);
-      if (!moved) return state;
-      nextTabs.splice(toIndex, 0, moved);
-      return { workspaceTabs: nextTabs };
-    }),
-  setWorkspaceTabTitle: (tabId, title) =>
-    set((state) => ({
-      workspaceTabs: state.workspaceTabs.map((tab) => tab.id === tabId ? upsertWorkspaceTabTitle(tab, title) : tab),
-    })),
-  replaceWorkspaceTabs: (tabs, activeTabId) =>
-    set(() => {
-      const deduped = Array.from(
-        new Map(tabs.map((tab) => [tab.id, createWorkspaceTab(tab.target, tab.title, tab.id)])).values(),
-      );
-      return {
-        workspaceTabs: deduped,
-        activeWorkspaceTabId: deduped.some((tab) => tab.id === activeTabId)
-          ? activeTabId ?? null
-          : deduped[0]?.id ?? null,
-      };
-    }),
-  removeWorkspaceTabs: (tabIds) =>
-    set((state) => {
-      if (tabIds.length === 0) return state;
-      const nextTabs = state.workspaceTabs.filter((tab) => !tabIds.includes(tab.id));
-      return {
-        workspaceTabs: nextTabs,
-        activeWorkspaceTabId: nextTabs.some((tab) => tab.id === state.activeWorkspaceTabId)
-          ? state.activeWorkspaceTabId
-          : nextTabs[0]?.id ?? null,
-      };
-    }),
-  setTabsHydrated: (hydrated) => set({ tabsHydrated: hydrated }),
-}), {
-  name: WORKSPACE_TABS_STORAGE_KEY,
-  storage: createJSONStorage(() => localStorage),
-  partialize: (state) => ({
-    workspaceTabs: state.workspaceTabs,
-    activeWorkspaceTabId: state.activeWorkspaceTabId,
-  }),
-  onRehydrateStorage: () => (state) => {
-    state?.setTabsHydrated(true);
-  },
-}));
+    {
+      name: WORKSPACE_TABS_STORAGE_KEY,
+      storage: createJSONStorage(() => localStorage),
+      partialize: (state) => ({
+        workspaceTabs: state.workspaceTabs,
+        activeWorkspaceTabId: state.activeWorkspaceTabId,
+      }),
+      onRehydrateStorage: () => (state) => {
+        state?.setTabsHydrated(true);
+      },
+    },
+  ),
+);

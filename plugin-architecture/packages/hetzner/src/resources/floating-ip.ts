@@ -41,9 +41,7 @@ export const FloatingIpResourceType: ResourceTypeDefinition = {
       required: false,
     },
   ],
-  outputs: [
-    { key: "ip", label: "IP Address", sensitive: false },
-  ],
+  outputs: [{ key: "ip", label: "IP Address", sensitive: false }],
   dashboardPinnable: true,
   iconKey: "network",
 };

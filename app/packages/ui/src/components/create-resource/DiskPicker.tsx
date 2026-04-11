@@ -1,11 +1,21 @@
 import { useState, useMemo } from "react";
 import type { DiskOption } from "@infrawrench/plugin-base";
 
-export function DiskPicker({ disks, value, onChange }: { disks: DiskOption[]; value: string; onChange: (v: string) => void }) {
+export function DiskPicker({
+  disks,
+  value,
+  onChange,
+}: {
+  disks: DiskOption[];
+  value: string;
+  onChange: (v: string) => void;
+}) {
   const [search, setSearch] = useState("");
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    return q ? disks.filter((d) => d.label.toLowerCase().includes(q) || d.zone?.toLowerCase().includes(q)) : disks;
+    return q
+      ? disks.filter((d) => d.label.toLowerCase().includes(q) || d.zone?.toLowerCase().includes(q))
+      : disks;
   }, [disks, search]);
 
   if (disks.length === 0) {
@@ -32,10 +42,15 @@ export function DiskPicker({ disks, value, onChange }: { disks: DiskOption[]; va
               value === d.id ? "bg-blue-600/20 text-blue-300" : "text-gray-300 hover:bg-gray-800"
             }`}
           >
-            <span className={`w-2 h-2 rounded-full flex-shrink-0 ${value === d.id ? "bg-blue-400" : "bg-gray-700"}`} />
+            <span
+              className={`w-2 h-2 rounded-full flex-shrink-0 ${value === d.id ? "bg-blue-400" : "bg-gray-700"}`}
+            />
             <span className="flex-1 min-w-0">
               <span className="font-medium truncate block">{d.label}</span>
-              <span className="text-[11px] text-gray-500">{d.sizeGb} GB{d.zone ? ` · ${d.zone}` : ""}{d.diskType ? ` · ${d.diskType}` : ""}</span>
+              <span className="text-[11px] text-gray-500">
+                {d.sizeGb} GB{d.zone ? ` · ${d.zone}` : ""}
+                {d.diskType ? ` · ${d.diskType}` : ""}
+              </span>
             </span>
           </button>
         ))}

@@ -79,7 +79,13 @@ app.post("/:id/revoke", async (c) => {
   await db
     .update(apiKeys)
     .set({ revokedAt: new Date() })
-    .where(and(eq(apiKeys.id, keyId), eq(apiKeys.organizationId, c.get("organizationId")), isNull(apiKeys.revokedAt)));
+    .where(
+      and(
+        eq(apiKeys.id, keyId),
+        eq(apiKeys.organizationId, c.get("organizationId")),
+        isNull(apiKeys.revokedAt),
+      ),
+    );
 
   void logAudit({
     organizationId: c.get("organizationId"),
@@ -105,7 +111,13 @@ app.post("/:id/rotate", async (c) => {
   await db
     .update(apiKeys)
     .set({ revokedAt: new Date() })
-    .where(and(eq(apiKeys.id, keyId), eq(apiKeys.organizationId, c.get("organizationId")), isNull(apiKeys.revokedAt)));
+    .where(
+      and(
+        eq(apiKeys.id, keyId),
+        eq(apiKeys.organizationId, c.get("organizationId")),
+        isNull(apiKeys.revokedAt),
+      ),
+    );
 
   const raw = randomBytes(32);
   const key = `iwk_${raw.toString("base64url")}`;

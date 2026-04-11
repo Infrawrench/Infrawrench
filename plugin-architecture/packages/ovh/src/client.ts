@@ -34,19 +34,19 @@ export class OvhClient implements PluginClient {
   };
 
   private static readonly REGION_INFO: Record<string, { location: string; flag: string }> = {
-    GRA1:  { location: "Gravelines, France",       flag: "🇫🇷" },
-    GRA3:  { location: "Gravelines, France",       flag: "🇫🇷" },
-    GRA5:  { location: "Gravelines, France",       flag: "🇫🇷" },
-    GRA7:  { location: "Gravelines, France",       flag: "🇫🇷" },
-    GRA9:  { location: "Gravelines, France",       flag: "🇫🇷" },
-    GRA11: { location: "Gravelines, France",       flag: "🇫🇷" },
-    SBG5:  { location: "Strasbourg, France",       flag: "🇫🇷" },
-    BHS5:  { location: "Beauharnois, Canada",      flag: "🇨🇦" },
-    WAW1:  { location: "Warsaw, Poland",           flag: "🇵🇱" },
-    DE1:   { location: "Frankfurt, Germany",       flag: "🇩🇪" },
-    UK1:   { location: "London, United Kingdom",   flag: "🇬🇧" },
-    SGP1:  { location: "Singapore",                flag: "🇸🇬" },
-    SYD1:  { location: "Sydney, Australia",        flag: "🇦🇺" },
+    GRA1: { location: "Gravelines, France", flag: "🇫🇷" },
+    GRA3: { location: "Gravelines, France", flag: "🇫🇷" },
+    GRA5: { location: "Gravelines, France", flag: "🇫🇷" },
+    GRA7: { location: "Gravelines, France", flag: "🇫🇷" },
+    GRA9: { location: "Gravelines, France", flag: "🇫🇷" },
+    GRA11: { location: "Gravelines, France", flag: "🇫🇷" },
+    SBG5: { location: "Strasbourg, France", flag: "🇫🇷" },
+    BHS5: { location: "Beauharnois, Canada", flag: "🇨🇦" },
+    WAW1: { location: "Warsaw, Poland", flag: "🇵🇱" },
+    DE1: { location: "Frankfurt, Germany", flag: "🇩🇪" },
+    UK1: { location: "London, United Kingdom", flag: "🇬🇧" },
+    SGP1: { location: "Singapore", flag: "🇸🇬" },
+    SYD1: { location: "Sydney, Australia", flag: "🇦🇺" },
   };
 
   constructor(credentials: Record<string, string>) {
@@ -79,7 +79,7 @@ export class OvhClient implements PluginClient {
     if (this.timeDelta === null) {
       try {
         const res = await fetch(`${this.baseUrl}/auth/time`);
-        const serverTime = await res.json() as number;
+        const serverTime = (await res.json()) as number;
         this.timeDelta = serverTime - Math.floor(Date.now() / 1000);
       } catch {
         this.timeDelta = 0;
@@ -213,9 +213,7 @@ export class OvhClient implements PluginClient {
       return resource.resolvedOutputs[outputKey] ?? "";
     }
 
-    throw new Error(
-      `OVH plugin: cannot resolve output "${outputKey}" for type "${typeId}"`,
-    );
+    throw new Error(`OVH plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
   }
 
   async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
@@ -271,7 +269,8 @@ export class OvhClient implements PluginClient {
         });
       }
       const images: ImageOption[] = [...imageMap.values()].flat();
-      const defaultImage = images.find((i) => i.label.toLowerCase().includes("ubuntu"))?.id ?? images[0]?.id;
+      const defaultImage =
+        images.find((i) => i.label.toLowerCase().includes("ubuntu"))?.id ?? images[0]?.id;
 
       const firstRegion = regions[0]?.id;
       const firstSize = sizes[0]?.id;
@@ -279,9 +278,30 @@ export class OvhClient implements PluginClient {
       return {
         fields: [
           { key: "name", label: "Name", kind: "text", required: true },
-          { key: "region", label: "Region", kind: "region-picker", required: true, regions, ...(firstRegion ? { defaultValue: firstRegion } : {}) },
-          { key: "flavorId", label: "Size", kind: "size-picker", required: true, sizes, ...(firstSize ? { defaultValue: firstSize } : {}) },
-          { key: "imageId", label: "Image", kind: "image-picker", required: true, images, ...(defaultImage ? { defaultValue: defaultImage } : {}) },
+          {
+            key: "region",
+            label: "Region",
+            kind: "region-picker",
+            required: true,
+            regions,
+            ...(firstRegion ? { defaultValue: firstRegion } : {}),
+          },
+          {
+            key: "flavorId",
+            label: "Size",
+            kind: "size-picker",
+            required: true,
+            sizes,
+            ...(firstSize ? { defaultValue: firstSize } : {}),
+          },
+          {
+            key: "imageId",
+            label: "Image",
+            kind: "image-picker",
+            required: true,
+            images,
+            ...(defaultImage ? { defaultValue: defaultImage } : {}),
+          },
           { key: "sshPublicKey", label: "SSH Key", kind: "ssh-key-picker", required: false },
         ],
       };
@@ -305,7 +325,14 @@ export class OvhClient implements PluginClient {
       return {
         fields: [
           { key: "name", label: "Name", kind: "text", required: true },
-          { key: "region", label: "Region", kind: "region-picker", required: true, regions, ...(defaultRegion ? { defaultValue: defaultRegion } : {}) },
+          {
+            key: "region",
+            label: "Region",
+            kind: "region-picker",
+            required: true,
+            regions,
+            ...(defaultRegion ? { defaultValue: defaultRegion } : {}),
+          },
           {
             key: "version",
             label: "Kubernetes Version",
@@ -335,7 +362,11 @@ export class OvhClient implements PluginClient {
     throw new Error(`No create config for type "${typeId}"`);
   }
 
-  async createResource(typeId: string, accountId: string, fields: Record<string, string>): Promise<ResourceInstance> {
+  async createResource(
+    typeId: string,
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
     if (typeId === "instance") {
       // Upload SSH key if provided
       let sshKeyId: string | undefined;
@@ -343,13 +374,10 @@ export class OvhClient implements PluginClient {
       if (sshPub) {
         try {
           const comment = sshPub.trim().split(" ")[2] ?? "infrawrench";
-          const keyData = await this.ovhFetch<{ id: string }>(
-            this.cloudPath("/sshkey"),
-            {
-              method: "POST",
-              body: JSON.stringify({ name: comment, publicKey: sshPub.trim() }),
-            },
-          ).catch(async () => {
+          const keyData = await this.ovhFetch<{ id: string }>(this.cloudPath("/sshkey"), {
+            method: "POST",
+            body: JSON.stringify({ name: comment, publicKey: sshPub.trim() }),
+          }).catch(async () => {
             // Key may already exist — find it
             const keys = await this.ovhFetch<Array<{ id: string; publicKey: string }>>(
               this.cloudPath("/sshkey"),
@@ -357,7 +385,9 @@ export class OvhClient implements PluginClient {
             return keys.find((k) => k.publicKey.trim() === sshPub.trim());
           });
           sshKeyId = keyData?.id;
-        } catch { /* skip SSH key if upload fails */ }
+        } catch {
+          /* skip SSH key if upload fails */
+        }
       }
 
       const body: Record<string, unknown> = {
@@ -368,13 +398,15 @@ export class OvhClient implements PluginClient {
         ...(sshKeyId ? { sshKeyId } : {}),
       };
 
-      const instance = await this.ovhFetch<OvhInstance>(
-        this.cloudPath("/instance"),
-        { method: "POST", body: JSON.stringify(body) },
-      );
+      const instance = await this.ovhFetch<OvhInstance>(this.cloudPath("/instance"), {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
 
-      const publicIp = instance.ipAddresses?.find((ip) => ip.type === "public" && ip.version === 4)?.ip ?? "";
-      const privateIp = instance.ipAddresses?.find((ip) => ip.type === "private" && ip.version === 4)?.ip ?? "";
+      const publicIp =
+        instance.ipAddresses?.find((ip) => ip.type === "public" && ip.version === 4)?.ip ?? "";
+      const privateIp =
+        instance.ipAddresses?.find((ip) => ip.type === "private" && ip.version === 4)?.ip ?? "";
 
       return {
         id: `${accountId}:instance:${instance.id}`,
@@ -399,9 +431,8 @@ export class OvhClient implements PluginClient {
 
     if (typeId === "managed-kube") {
       const requestedNodeCount = Number.parseInt(fields["nodeCount"] ?? "3", 10);
-      const nodeCount = Number.isFinite(requestedNodeCount) && requestedNodeCount > 0
-        ? requestedNodeCount
-        : 3;
+      const nodeCount =
+        Number.isFinite(requestedNodeCount) && requestedNodeCount > 0 ? requestedNodeCount : 3;
 
       const body = {
         name: fields["name"],
@@ -409,10 +440,10 @@ export class OvhClient implements PluginClient {
         version: fields["version"] ?? "1.31",
       };
 
-      const cluster = await this.ovhFetch<OvhKubeCluster>(
-        this.cloudPath("/kube"),
-        { method: "POST", body: JSON.stringify(body) },
-      );
+      const cluster = await this.ovhFetch<OvhKubeCluster>(this.cloudPath("/kube"), {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
 
       // nodeCount is used for reference but the node pool is created separately via the API
       // For simplicity, store it in fields
@@ -448,7 +479,9 @@ export class OvhClient implements PluginClient {
 
     switch (typeId) {
       case "instance":
-        await this.ovhFetch<unknown>(this.cloudPath(`/instance/${externalId}`), { method: "DELETE" });
+        await this.ovhFetch<unknown>(this.cloudPath(`/instance/${externalId}`), {
+          method: "DELETE",
+        });
         break;
       case "managed-kube":
         await this.ovhFetch<unknown>(this.cloudPath(`/kube/${externalId}`), { method: "DELETE" });
@@ -464,9 +497,11 @@ export class OvhClient implements PluginClient {
 
     const status = ((): ResourceStatus => {
       if (statusStr === "ACTIVE" || statusStr === "READY") return "healthy";
-      if (statusStr === "BUILD" || statusStr === "INSTALLING" || statusStr === "CREATING") return "provisioning";
+      if (statusStr === "BUILD" || statusStr === "INSTALLING" || statusStr === "CREATING")
+        return "provisioning";
       if (statusStr === "ERROR" || statusStr === "DELETED") return "error";
-      if (statusStr === "SUSPENDED" || statusStr === "SHUTOFF" || statusStr === "STOPPED") return "degraded";
+      if (statusStr === "SUSPENDED" || statusStr === "SHUTOFF" || statusStr === "STOPPED")
+        return "degraded";
       return "unknown";
     })();
 
@@ -491,9 +526,7 @@ export class OvhClient implements PluginClient {
           ],
         },
       ],
-      headerActions: [
-        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
-      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
   }
 
@@ -501,9 +534,11 @@ export class OvhClient implements PluginClient {
     const statusStr = String(resource.fields["status"] ?? "").toUpperCase();
     const status = ((): ResourceStatus => {
       if (statusStr === "ACTIVE" || statusStr === "READY") return "healthy";
-      if (statusStr === "BUILD" || statusStr === "INSTALLING" || statusStr === "CREATING") return "provisioning";
+      if (statusStr === "BUILD" || statusStr === "INSTALLING" || statusStr === "CREATING")
+        return "provisioning";
       if (statusStr === "ERROR" || statusStr === "DELETED") return "error";
-      if (statusStr === "SUSPENDED" || statusStr === "SHUTOFF" || statusStr === "STOPPED") return "degraded";
+      if (statusStr === "SUSPENDED" || statusStr === "SHUTOFF" || statusStr === "STOPPED")
+        return "degraded";
       return "unknown";
     })();
 
@@ -517,9 +552,12 @@ export class OvhClient implements PluginClient {
   private async listInstances(accountId: string): Promise<ResourceInstance[]> {
     const instances = await this.ovhFetch<OvhInstance[]>(this.cloudPath("/instance"));
     return instances.map((inst) => {
-      const publicIp = inst.ipAddresses?.find((ip) => ip.type === "public" && ip.version === 4)?.ip ?? "";
-      const publicIpv6 = inst.ipAddresses?.find((ip) => ip.type === "public" && ip.version === 6)?.ip ?? "";
-      const privateIp = inst.ipAddresses?.find((ip) => ip.type === "private" && ip.version === 4)?.ip ?? "";
+      const publicIp =
+        inst.ipAddresses?.find((ip) => ip.type === "public" && ip.version === 4)?.ip ?? "";
+      const publicIpv6 =
+        inst.ipAddresses?.find((ip) => ip.type === "public" && ip.version === 6)?.ip ?? "";
+      const privateIp =
+        inst.ipAddresses?.find((ip) => ip.type === "private" && ip.version === 4)?.ip ?? "";
       return {
         id: `${accountId}:instance:${inst.id}`,
         pluginId: "ovh",
@@ -546,9 +584,7 @@ export class OvhClient implements PluginClient {
     // OVH /kube returns an array of cluster IDs, need to fetch each
     const clusterIds = await this.ovhFetch<string[]>(this.cloudPath("/kube"));
     const clusters = await Promise.all(
-      clusterIds.map((id) =>
-        this.ovhFetch<OvhKubeCluster>(this.cloudPath(`/kube/${id}`)),
-      ),
+      clusterIds.map((id) => this.ovhFetch<OvhKubeCluster>(this.cloudPath(`/kube/${id}`))),
     );
     return clusters.map((c) => ({
       id: `${accountId}:managed-kube:${c.id}`,
@@ -574,9 +610,7 @@ export class OvhClient implements PluginClient {
   }
 
   private async listManagedDatabases(accountId: string): Promise<ResourceInstance[]> {
-    const services = await this.ovhFetch<OvhDatabaseService[]>(
-      this.cloudPath("/database/service"),
-    );
+    const services = await this.ovhFetch<OvhDatabaseService[]>(this.cloudPath("/database/service"));
     return services.map((svc) => ({
       id: `${accountId}:managed-db:${svc.id}`,
       pluginId: "ovh",

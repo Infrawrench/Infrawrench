@@ -14,9 +14,7 @@ export const ContainerRegistryResourceType: ResourceTypeDefinition = {
     { key: "adminEnabled", label: "Admin Enabled", kind: "boolean", required: false },
     { key: "publicNetworkAccess", label: "Public Access", kind: "string", required: false },
   ],
-  outputs: [
-    { key: "loginServer", label: "Login Server", sensitive: false },
-  ],
+  outputs: [{ key: "loginServer", label: "Login Server", sensitive: false }],
   dashboardPinnable: true,
   iconKey: "container-registry",
   supportsCreate: true,

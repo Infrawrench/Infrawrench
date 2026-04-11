@@ -36,9 +36,7 @@ const kvDrivers = new Map<string, KvNodeDriver>([
   [mongodbDriver.id, mongodbDriver],
 ]);
 
-const dockerDrivers = new Map<string, DockerNodeDriver>([
-  [dockerDriver.id, dockerDriver],
-]);
+const dockerDrivers = new Map<string, DockerNodeDriver>([[dockerDriver.id, dockerDriver]]);
 
 const httpHostServices: HostServices = {
   http: {

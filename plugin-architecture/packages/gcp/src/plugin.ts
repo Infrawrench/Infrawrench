@@ -65,7 +65,8 @@ const manifest: PluginManifest = {
     {
       key: "serviceAccountJson",
       label: "Service Account Key (JSON)",
-      description: "Paste the full contents of a GCP service account key JSON file. The account needs the Viewer role or equivalent read permissions.",
+      description:
+        "Paste the full contents of a GCP service account key JSON file. The account needs the Viewer role or equivalent read permissions.",
       sensitive: true,
       multiline: true,
       placeholder: '{"type":"service_account","project_id":"my-project",...}',
@@ -73,7 +74,8 @@ const manifest: PluginManifest = {
     {
       key: "project",
       label: "Project ID (optional)",
-      description: "Override the project ID from the service account JSON. Leave blank to use the project in the key file.",
+      description:
+        "Override the project ID from the service account JSON. Leave blank to use the project in the key file.",
       sensitive: false,
       placeholder: "my-gcp-project",
     },

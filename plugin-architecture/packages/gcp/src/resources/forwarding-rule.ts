@@ -15,8 +15,6 @@ export const ForwardingRuleResourceType: ResourceTypeDefinition = {
     { key: "loadBalancingScheme", label: "LB Scheme", kind: "string", required: false },
     { key: "networkTier", label: "Network Tier", kind: "string", required: false },
   ],
-  outputs: [
-    { key: "IPAddress", label: "IP Address", sensitive: false },
-  ],
+  outputs: [{ key: "IPAddress", label: "IP Address", sensitive: false }],
   dashboardPinnable: true,
 };

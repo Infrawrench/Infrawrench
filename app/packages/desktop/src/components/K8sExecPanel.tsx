@@ -11,12 +11,7 @@ interface K8sExecPanelProps {
   containerName?: string;
 }
 
-export function K8sExecPanel({
-  kubeconfig,
-  namespace,
-  podName,
-  containerName,
-}: K8sExecPanelProps) {
+export function K8sExecPanel({ kubeconfig, namespace, podName, containerName }: K8sExecPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -66,9 +61,7 @@ export function K8sExecPanel({
       if (disposed) return;
       fitAddon.fit();
 
-      term.write(
-        `\x1b[90mConnecting to ${podName} in ${namespace}…\x1b[0m\r\n`,
-      );
+      term.write(`\x1b[90mConnecting to ${podName} in ${namespace}…\x1b[0m\r\n`);
 
       const MAX_RETRIES = 15;
       const RETRY_DELAY_MS = 2_000;

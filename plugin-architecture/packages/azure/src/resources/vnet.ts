@@ -14,9 +14,7 @@ export const VNetResourceType: ResourceTypeDefinition = {
     { key: "subnetCount", label: "Subnets", kind: "number", required: false },
     { key: "enableDdosProtection", label: "DDoS Protection", kind: "boolean", required: false },
   ],
-  outputs: [
-    { key: "resourceId", label: "Resource ID", sensitive: false },
-  ],
+  outputs: [{ key: "resourceId", label: "Resource ID", sensitive: false }],
   dashboardPinnable: true,
   iconKey: "network",
   supportsCreate: true,

@@ -31,7 +31,8 @@ const manifest: PluginManifest = {
   id: "azure",
   version: "0.1.0",
   displayName: "Microsoft Azure",
-  description: "Manage Azure cloud infrastructure — VMs, AKS, SQL, Cosmos DB, Storage, Functions, and more",
+  description:
+    "Manage Azure cloud infrastructure — VMs, AKS, SQL, Cosmos DB, Storage, Functions, and more",
   logoSvg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     <rect width="100" height="100" rx="12" fill="#0078D4"/>
     <g transform="translate(10,6) scale(3.33)" fill="#fff">

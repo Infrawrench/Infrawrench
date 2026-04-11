@@ -12,9 +12,7 @@ export const IAMUserResourceType: ResourceTypeDefinition = {
     { key: "createDate", label: "Created", kind: "string", required: false },
     { key: "passwordLastUsed", label: "Password Last Used", kind: "string", required: false },
   ],
-  outputs: [
-    { key: "userArn", label: "User ARN", sensitive: false },
-  ],
+  outputs: [{ key: "userArn", label: "User ARN", sensitive: false }],
   dashboardPinnable: false,
   iconKey: "user",
 };

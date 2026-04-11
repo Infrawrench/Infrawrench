@@ -108,9 +108,7 @@ function getEncryptionKey(): Buffer {
   return _encryptionKey;
 }
 
-ipcMain.handle("get_or_create_encryption_key", () =>
-  getEncryptionKey().toString("base64"),
-);
+ipcMain.handle("get_or_create_encryption_key", () => getEncryptionKey().toString("base64"));
 
 ipcMain.handle("encrypt_value", (_e, { plaintext }: { plaintext: string }) => {
   const key = getEncryptionKey();
@@ -159,7 +157,10 @@ async function getSqlite(): Promise<SqlJsDb> {
   for (const migration of MIGRATIONS) {
     // Split multi-statement migrations and run each individually,
     // ignoring "duplicate column" errors from re-running ALTER TABLE
-    const statements = migration.split(";").map((s) => s.trim()).filter(Boolean);
+    const statements = migration
+      .split(";")
+      .map((s) => s.trim())
+      .filter(Boolean);
     for (const stmt of statements) {
       try {
         _sqlite.run(stmt);
@@ -222,9 +223,7 @@ ipcMain.handle("db_execute", async (_e, { sql, params }: { sql: string; params?:
 
 ipcMain.handle("show_open_dialog", async (_e, options: Electron.OpenDialogOptions) => {
   const win = BrowserWindow.getFocusedWindow();
-  return win
-    ? dialog.showOpenDialog(win, options)
-    : dialog.showOpenDialog(options);
+  return win ? dialog.showOpenDialog(win, options) : dialog.showOpenDialog(options);
 });
 
 ipcMain.handle("open_external_url", async (_e, { url }: { url: string }) => {

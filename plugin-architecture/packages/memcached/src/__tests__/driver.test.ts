@@ -58,7 +58,11 @@ describe("memcached driver", () => {
     it("handles SET and returns STORED", async () => {
       mockSet.mockResolvedValue(true);
 
-      const result = await driver.command("memcached://localhost:11211", "SET", ["key", "value", 0]);
+      const result = await driver.command("memcached://localhost:11211", "SET", [
+        "key",
+        "value",
+        0,
+      ]);
 
       expect(result).toBe("STORED");
       expect(mockSet).toHaveBeenCalledWith("key", "value", { expires: 0 });
@@ -128,17 +132,17 @@ describe("memcached driver", () => {
     });
 
     it("throws for unknown commands", async () => {
-      await expect(
-        driver.command("memcached://localhost:11211", "UNKNOWN", []),
-      ).rejects.toThrow("Unknown Memcached command: UNKNOWN");
+      await expect(driver.command("memcached://localhost:11211", "UNKNOWN", [])).rejects.toThrow(
+        "Unknown Memcached command: UNKNOWN",
+      );
     });
 
     it("calls quit() even on error", async () => {
       mockGet.mockRejectedValue(new Error("timeout"));
 
-      await expect(
-        driver.command("memcached://localhost:11211", "GET", ["key"]),
-      ).rejects.toThrow("timeout");
+      await expect(driver.command("memcached://localhost:11211", "GET", ["key"])).rejects.toThrow(
+        "timeout",
+      );
       expect(mockQuit).toHaveBeenCalled();
     });
 
@@ -147,9 +151,9 @@ describe("memcached driver", () => {
         cb(new Error("connection refused"), null, null);
       });
 
-      await expect(
-        driver.command("memcached://localhost:11211", "STATS", []),
-      ).rejects.toThrow("connection refused");
+      await expect(driver.command("memcached://localhost:11211", "STATS", [])).rejects.toThrow(
+        "connection refused",
+      );
     });
   });
 });

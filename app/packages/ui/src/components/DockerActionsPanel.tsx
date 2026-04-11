@@ -2,7 +2,10 @@ import { useState } from "react";
 
 interface DockerActionsPanelProps {
   containerId: string;
-  onCommand: (op: "startContainer" | "stopContainer" | "restartContainer", params: { id: string }) => Promise<unknown>;
+  onCommand: (
+    op: "startContainer" | "stopContainer" | "restartContainer",
+    params: { id: string },
+  ) => Promise<unknown>;
 }
 
 type ActionState = "idle" | "running" | "success" | "error";
@@ -28,7 +31,9 @@ export function DockerActionsPanel({ containerId, onCommand }: DockerActionsPane
 
   return (
     <div className="border-t border-gray-800 px-6 py-4">
-      <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">Container Actions</h3>
+      <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">
+        Container Actions
+      </h3>
       <div className="flex gap-2 flex-wrap">
         <button
           onClick={() => void run("startContainer", "Start")}
@@ -53,15 +58,9 @@ export function DockerActionsPanel({ containerId, onCommand }: DockerActionsPane
         </button>
       </div>
 
-      {state === "running" && (
-        <p className="text-xs text-gray-500 mt-2">{lastOp}…</p>
-      )}
-      {state === "success" && (
-        <p className="text-xs text-green-400 mt-2">{lastOp} succeeded</p>
-      )}
-      {state === "error" && error && (
-        <p className="text-xs text-red-400 mt-2">{error}</p>
-      )}
+      {state === "running" && <p className="text-xs text-gray-500 mt-2">{lastOp}…</p>}
+      {state === "success" && <p className="text-xs text-green-400 mt-2">{lastOp} succeeded</p>}
+      {state === "error" && error && <p className="text-xs text-red-400 mt-2">{error}</p>}
     </div>
   );
 }

@@ -8,7 +8,12 @@ export const PubSubTopicResourceType: ResourceTypeDefinition = {
   fields: [
     { key: "name", label: "Name", kind: "string", required: true },
     { key: "kmsKeyName", label: "KMS Key", kind: "string", required: false },
-    { key: "messageRetentionDuration", label: "Message Retention", kind: "string", required: false },
+    {
+      key: "messageRetentionDuration",
+      label: "Message Retention",
+      kind: "string",
+      required: false,
+    },
   ],
   outputs: [],
   dashboardPinnable: false,

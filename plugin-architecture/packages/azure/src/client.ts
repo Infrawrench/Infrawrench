@@ -23,22 +23,22 @@ function formatBytes(bytes: number): string {
 
 /** Static VM price lookup (East US pay-as-you-go Linux monthly) */
 const VM_SIZE_PRICES: Record<string, number> = {
-  "Standard_B1s": 7.59,
-  "Standard_B1ms": 15.18,
-  "Standard_B2s": 30.37,
-  "Standard_B2ms": 60.74,
-  "Standard_B4ms": 121.47,
-  "Standard_D2s_v5": 70.08,
-  "Standard_D4s_v5": 140.16,
-  "Standard_D8s_v5": 280.32,
-  "Standard_D16s_v5": 560.64,
-  "Standard_D32s_v5": 1121.28,
-  "Standard_E2s_v5": 91.98,
-  "Standard_E4s_v5": 183.96,
-  "Standard_E8s_v5": 367.92,
-  "Standard_F2s_v2": 61.32,
-  "Standard_F4s_v2": 122.64,
-  "Standard_F8s_v2": 245.28,
+  Standard_B1s: 7.59,
+  Standard_B1ms: 15.18,
+  Standard_B2s: 30.37,
+  Standard_B2ms: 60.74,
+  Standard_B4ms: 121.47,
+  Standard_D2s_v5: 70.08,
+  Standard_D4s_v5: 140.16,
+  Standard_D8s_v5: 280.32,
+  Standard_D16s_v5: 560.64,
+  Standard_D32s_v5: 1121.28,
+  Standard_E2s_v5: 91.98,
+  Standard_E4s_v5: 183.96,
+  Standard_E8s_v5: 367.92,
+  Standard_F2s_v2: 61.32,
+  Standard_F4s_v2: 122.64,
+  Standard_F8s_v2: 245.28,
 };
 
 interface TokenCache {
@@ -53,33 +53,123 @@ const AZURE_REGIONS = [
   { id: "westus2", label: "West US 2", location: "Washington, USA", flag: "\u{1F1FA}\u{1F1F8}" },
   { id: "westus3", label: "West US 3", location: "Arizona, USA", flag: "\u{1F1FA}\u{1F1F8}" },
   { id: "centralus", label: "Central US", location: "Iowa, USA", flag: "\u{1F1FA}\u{1F1F8}" },
-  { id: "northcentralus", label: "North Central US", location: "Illinois, USA", flag: "\u{1F1FA}\u{1F1F8}" },
-  { id: "southcentralus", label: "South Central US", location: "Texas, USA", flag: "\u{1F1FA}\u{1F1F8}" },
-  { id: "canadacentral", label: "Canada Central", location: "Toronto, Canada", flag: "\u{1F1E8}\u{1F1E6}" },
-  { id: "canadaeast", label: "Canada East", location: "Quebec, Canada", flag: "\u{1F1E8}\u{1F1E6}" },
+  {
+    id: "northcentralus",
+    label: "North Central US",
+    location: "Illinois, USA",
+    flag: "\u{1F1FA}\u{1F1F8}",
+  },
+  {
+    id: "southcentralus",
+    label: "South Central US",
+    location: "Texas, USA",
+    flag: "\u{1F1FA}\u{1F1F8}",
+  },
+  {
+    id: "canadacentral",
+    label: "Canada Central",
+    location: "Toronto, Canada",
+    flag: "\u{1F1E8}\u{1F1E6}",
+  },
+  {
+    id: "canadaeast",
+    label: "Canada East",
+    location: "Quebec, Canada",
+    flag: "\u{1F1E8}\u{1F1E6}",
+  },
   { id: "northeurope", label: "North Europe", location: "Ireland", flag: "\u{1F1EE}\u{1F1EA}" },
   { id: "westeurope", label: "West Europe", location: "Netherlands", flag: "\u{1F1F3}\u{1F1F1}" },
   { id: "uksouth", label: "UK South", location: "London, UK", flag: "\u{1F1EC}\u{1F1E7}" },
   { id: "ukwest", label: "UK West", location: "Cardiff, UK", flag: "\u{1F1EC}\u{1F1E7}" },
-  { id: "francecentral", label: "France Central", location: "Paris, France", flag: "\u{1F1EB}\u{1F1F7}" },
-  { id: "germanywestcentral", label: "Germany West Central", location: "Frankfurt, Germany", flag: "\u{1F1E9}\u{1F1EA}" },
-  { id: "swedencentral", label: "Sweden Central", location: "G\u00e4vle, Sweden", flag: "\u{1F1F8}\u{1F1EA}" },
+  {
+    id: "francecentral",
+    label: "France Central",
+    location: "Paris, France",
+    flag: "\u{1F1EB}\u{1F1F7}",
+  },
+  {
+    id: "germanywestcentral",
+    label: "Germany West Central",
+    location: "Frankfurt, Germany",
+    flag: "\u{1F1E9}\u{1F1EA}",
+  },
+  {
+    id: "swedencentral",
+    label: "Sweden Central",
+    location: "G\u00e4vle, Sweden",
+    flag: "\u{1F1F8}\u{1F1EA}",
+  },
   { id: "norwayeast", label: "Norway East", location: "Oslo, Norway", flag: "\u{1F1F3}\u{1F1F4}" },
-  { id: "switzerlandnorth", label: "Switzerland North", location: "Z\u00fcrich, Switzerland", flag: "\u{1F1E8}\u{1F1ED}" },
+  {
+    id: "switzerlandnorth",
+    label: "Switzerland North",
+    location: "Z\u00fcrich, Switzerland",
+    flag: "\u{1F1E8}\u{1F1ED}",
+  },
   { id: "eastasia", label: "East Asia", location: "Hong Kong", flag: "\u{1F1ED}\u{1F1F0}" },
-  { id: "southeastasia", label: "Southeast Asia", location: "Singapore", flag: "\u{1F1F8}\u{1F1EC}" },
+  {
+    id: "southeastasia",
+    label: "Southeast Asia",
+    location: "Singapore",
+    flag: "\u{1F1F8}\u{1F1EC}",
+  },
   { id: "japaneast", label: "Japan East", location: "Tokyo, Japan", flag: "\u{1F1EF}\u{1F1F5}" },
   { id: "japanwest", label: "Japan West", location: "Osaka, Japan", flag: "\u{1F1EF}\u{1F1F5}" },
-  { id: "australiaeast", label: "Australia East", location: "Sydney, Australia", flag: "\u{1F1E6}\u{1F1FA}" },
-  { id: "australiasoutheast", label: "Australia Southeast", location: "Melbourne, Australia", flag: "\u{1F1E6}\u{1F1FA}" },
-  { id: "koreacentral", label: "Korea Central", location: "Seoul, South Korea", flag: "\u{1F1F0}\u{1F1F7}" },
-  { id: "centralindia", label: "Central India", location: "Pune, India", flag: "\u{1F1EE}\u{1F1F3}" },
-  { id: "southindia", label: "South India", location: "Chennai, India", flag: "\u{1F1EE}\u{1F1F3}" },
-  { id: "brazilsouth", label: "Brazil South", location: "S\u00e3o Paulo, Brazil", flag: "\u{1F1E7}\u{1F1F7}" },
-  { id: "southafricanorth", label: "South Africa North", location: "Johannesburg, South Africa", flag: "\u{1F1FF}\u{1F1E6}" },
+  {
+    id: "australiaeast",
+    label: "Australia East",
+    location: "Sydney, Australia",
+    flag: "\u{1F1E6}\u{1F1FA}",
+  },
+  {
+    id: "australiasoutheast",
+    label: "Australia Southeast",
+    location: "Melbourne, Australia",
+    flag: "\u{1F1E6}\u{1F1FA}",
+  },
+  {
+    id: "koreacentral",
+    label: "Korea Central",
+    location: "Seoul, South Korea",
+    flag: "\u{1F1F0}\u{1F1F7}",
+  },
+  {
+    id: "centralindia",
+    label: "Central India",
+    location: "Pune, India",
+    flag: "\u{1F1EE}\u{1F1F3}",
+  },
+  {
+    id: "southindia",
+    label: "South India",
+    location: "Chennai, India",
+    flag: "\u{1F1EE}\u{1F1F3}",
+  },
+  {
+    id: "brazilsouth",
+    label: "Brazil South",
+    location: "S\u00e3o Paulo, Brazil",
+    flag: "\u{1F1E7}\u{1F1F7}",
+  },
+  {
+    id: "southafricanorth",
+    label: "South Africa North",
+    location: "Johannesburg, South Africa",
+    flag: "\u{1F1FF}\u{1F1E6}",
+  },
   { id: "uaenorth", label: "UAE North", location: "Dubai, UAE", flag: "\u{1F1E6}\u{1F1EA}" },
-  { id: "qatarcentral", label: "Qatar Central", location: "Doha, Qatar", flag: "\u{1F1F6}\u{1F1E6}" },
-  { id: "polandcentral", label: "Poland Central", location: "Warsaw, Poland", flag: "\u{1F1F5}\u{1F1F1}" },
+  {
+    id: "qatarcentral",
+    label: "Qatar Central",
+    location: "Doha, Qatar",
+    flag: "\u{1F1F6}\u{1F1E6}",
+  },
+  {
+    id: "polandcentral",
+    label: "Poland Central",
+    location: "Warsaw, Poland",
+    flag: "\u{1F1F5}\u{1F1F1}",
+  },
   { id: "italynorth", label: "Italy North", location: "Milan, Italy", flag: "\u{1F1EE}\u{1F1F9}" },
 ];
 
@@ -179,7 +269,10 @@ export class AzureClient implements PluginClient {
     };
   }
 
-  private static readonly LISTERS: Record<string, (ctx: ListerContext, accountId: string) => Promise<ResourceInstance[]>> = {
+  private static readonly LISTERS: Record<
+    string,
+    (ctx: ListerContext, accountId: string) => Promise<ResourceInstance[]>
+  > = {
     "azure-resource-group": listers.listResourceGroups,
     "azure-vm": listers.listVMs,
     "azure-disk": listers.listDisks,
@@ -214,7 +307,11 @@ export class AzureClient implements PluginClient {
     return lister(this.ctx, accountId);
   }
 
-  async getResource(typeId: string, resourceId: string, accountId: string): Promise<ResourceInstance> {
+  async getResource(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+  ): Promise<ResourceInstance> {
     const all = await this.listResources(typeId, accountId);
     const found = all.find((r) => r.id === resourceId);
     if (!found) throw new Error(`Azure plugin: resource ${typeId}/${resourceId} not found`);
@@ -240,7 +337,10 @@ export class AzureClient implements PluginClient {
     }
 
     // For Cosmos DB keys
-    if (typeId === "azure-cosmos-db" && (outputKey === "primaryKey" || outputKey === "connectionString")) {
+    if (
+      typeId === "azure-cosmos-db" &&
+      (outputKey === "primaryKey" || outputKey === "connectionString")
+    ) {
       const resource = await this.getResource(typeId, resourceId, accountId);
       const [rg, name] = (resource.externalId ?? "").split("/");
       if (outputKey === "primaryKey") {
@@ -250,7 +350,9 @@ export class AzureClient implements PluginClient {
         );
         return keys.primaryMasterKey ?? "";
       }
-      const connStrings = await this.post<{ connectionStrings?: Array<{ connectionString: string }> }>(
+      const connStrings = await this.post<{
+        connectionStrings?: Array<{ connectionString: string }>;
+      }>(
         `${ARM}/subscriptions/${this.creds.subscriptionId}/resourceGroups/${rg}/providers/Microsoft.DocumentDB/databaseAccounts/${name}/listConnectionStrings?api-version=2023-11-15`,
         {},
       );
@@ -258,7 +360,10 @@ export class AzureClient implements PluginClient {
     }
 
     // For Storage Account keys
-    if (typeId === "azure-storage-account" && (outputKey === "primaryKey" || outputKey === "connectionString")) {
+    if (
+      typeId === "azure-storage-account" &&
+      (outputKey === "primaryKey" || outputKey === "connectionString")
+    ) {
       const resource = await this.getResource(typeId, resourceId, accountId);
       const [rg, name] = (resource.externalId ?? "").split("/");
       const keys = await this.post<{ keys?: Array<{ keyName: string; value: string }> }>(
@@ -271,7 +376,10 @@ export class AzureClient implements PluginClient {
     }
 
     // For Redis Cache keys
-    if (typeId === "azure-redis-cache" && (outputKey === "primaryKey" || outputKey === "connectionString")) {
+    if (
+      typeId === "azure-redis-cache" &&
+      (outputKey === "primaryKey" || outputKey === "connectionString")
+    ) {
       const resource = await this.getResource(typeId, resourceId, accountId);
       const [rg, name] = (resource.externalId ?? "").split("/");
       const keys = await this.post<{ primaryKey?: string }>(
@@ -353,7 +461,11 @@ export class AzureClient implements PluginClient {
   renderDetail(resource: ResourceInstance): DetailViewSchema {
     const fields = resource.fields;
     const state = String(
-      fields["provisioningState"] ?? fields["state"] ?? fields["status"] ?? fields["powerState"] ?? "",
+      fields["provisioningState"] ??
+        fields["state"] ??
+        fields["status"] ??
+        fields["powerState"] ??
+        "",
     );
 
     const statusMap: Record<string, ResourceStatus> = {
@@ -426,9 +538,7 @@ export class AzureClient implements PluginClient {
         ? { kind: "status-dot", status: dotStatus, label: state }
         : { kind: "status-dot", status: dotStatus },
       sections,
-      headerActions: [
-        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
-      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
 
     // Add storage browser for storage accounts
@@ -441,7 +551,11 @@ export class AzureClient implements PluginClient {
 
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema {
     const state = String(
-      resource.fields["provisioningState"] ?? resource.fields["state"] ?? resource.fields["status"] ?? resource.fields["powerState"] ?? "",
+      resource.fields["provisioningState"] ??
+        resource.fields["state"] ??
+        resource.fields["status"] ??
+        resource.fields["powerState"] ??
+        "",
     );
     const statusMap: Record<string, ResourceStatus> = {
       succeeded: "healthy",
@@ -527,11 +641,7 @@ export class AzureClient implements PluginClient {
     return results;
   }
 
-  async uploadStorageObject(
-    bucket: string,
-    key: string,
-    file: File,
-  ): Promise<void> {
+  async uploadStorageObject(bucket: string, key: string, file: File): Promise<void> {
     const tok = await this.storageToken();
     // Find the first container, then upload blob
     const containerName = key.split("/")[0] ?? "$root";
@@ -657,7 +767,10 @@ export class AzureClient implements PluginClient {
     return { count, size: formatBytes(totalBytes) };
   }
 
-  async getCreateCostEstimate(typeId: string, fields: Record<string, string>): Promise<number | null> {
+  async getCreateCostEstimate(
+    typeId: string,
+    fields: Record<string, string>,
+  ): Promise<number | null> {
     if (typeId === "azure-vm") {
       const sizeId = fields["size"] ?? "";
       if (!sizeId) return null;
@@ -688,37 +801,58 @@ export class AzureClient implements PluginClient {
     }
     if (typeId === "azure-redis-cache") {
       const pricingMap: Record<string, number> = {
-        "C0": 16.37, "C1": 40.15, "C2": 67.74, "C3": 137.23,
-        "P1": 171.86, "P2": 343.72, "P3": 674.45,
+        C0: 16.37,
+        C1: 40.15,
+        C2: 67.74,
+        C3: 137.23,
+        P1: 171.86,
+        P2: 343.72,
+        P3: 674.45,
       };
       const capacity = fields["capacity"] ?? "C1";
       return pricingMap[capacity] ?? null;
     }
     if (typeId === "azure-app-service") {
       const skuPricing: Record<string, number> = {
-        "F1": 0, "B1": 13.14, "B2": 26.28, "S1": 69.35, "S2": 138.70,
-        "P1v3": 138.70, "P2v3": 277.40,
+        F1: 0,
+        B1: 13.14,
+        B2: 26.28,
+        S1: 69.35,
+        S2: 138.7,
+        P1v3: 138.7,
+        P2v3: 277.4,
       };
       return skuPricing[fields["sku"] ?? "B1"] ?? null;
     }
     if (typeId === "azure-function-app") {
       const skuPricing: Record<string, number> = {
-        "Y1": 0, "B1": 13.14, "S1": 69.35, "EP1": 171.55,
+        Y1: 0,
+        B1: 13.14,
+        S1: 69.35,
+        EP1: 171.55,
       };
       return skuPricing[fields["sku"] ?? "Y1"] ?? null;
     }
     if (typeId === "azure-sql-database") {
       const skuPricing: Record<string, number> = {
-        "Basic": 4.99, "S0": 15.03, "S1": 30.05, "S2": 75.13,
-        "P1": 465.00, "GP_S_Gen5_1": 35.00, "GP_Gen5_2": 380.00,
+        Basic: 4.99,
+        S0: 15.03,
+        S1: 30.05,
+        S2: 75.13,
+        P1: 465.0,
+        GP_S_Gen5_1: 35.0,
+        GP_Gen5_2: 380.0,
       };
       return skuPricing[fields["sku"] ?? "Basic"] ?? null;
     }
     if (typeId === "azure-disk") {
       const diskSizeGb = Number(fields["diskSizeGb"] ?? "128");
       const skuPricingPerGb: Record<string, number> = {
-        "Standard_LRS": 0.04, "StandardSSD_LRS": 0.075,
-        "Premium_LRS": 0.132, "PremiumV2_LRS": 0.10, "UltraSSD_LRS": 0.12,
+        Standard_LRS: 0.04,
+        StandardSSD_LRS: 0.075,
+        Premium_LRS: 0.132,
+        PremiumV2_LRS: 0.1,
+        UltraSSD_LRS: 0.12,
       };
       const pricePerGb = skuPricingPerGb[fields["sku"] ?? "Premium_LRS"] ?? 0.132;
       return diskSizeGb * pricePerGb;
@@ -752,10 +886,18 @@ export class AzureClient implements PluginClient {
       return this.getLogAnalyticsCreateConfig();
     }
     if (typeId === "azure-managed-identity") {
-      return this.getSimpleCreateConfig("Managed Identity Name", "Name for the user-assigned managed identity", "azure-managed-identity");
+      return this.getSimpleCreateConfig(
+        "Managed Identity Name",
+        "Name for the user-assigned managed identity",
+        "azure-managed-identity",
+      );
     }
     if (typeId === "azure-dns-zone") {
-      return this.getSimpleCreateConfig("DNS Zone Name", "DNS zone name (e.g. example.com)", "azure-dns-zone");
+      return this.getSimpleCreateConfig(
+        "DNS Zone Name",
+        "DNS zone name (e.g. example.com)",
+        "azure-dns-zone",
+      );
     }
     if (typeId === "azure-vnet") {
       return this.getVNetCreateConfig();
@@ -852,22 +994,134 @@ export class AzureClient implements PluginClient {
           kind: "size-picker",
           required: true,
           sizes: [
-            { id: "Standard_B1s", label: "B1s", vcpus: 1, memoryMb: 1024, category: "Burstable", priceMonthly: 7.59 },
-            { id: "Standard_B1ms", label: "B1ms", vcpus: 1, memoryMb: 2048, category: "Burstable", priceMonthly: 15.18 },
-            { id: "Standard_B2s", label: "B2s", vcpus: 2, memoryMb: 4096, category: "Burstable", priceMonthly: 30.37 },
-            { id: "Standard_B2ms", label: "B2ms", vcpus: 2, memoryMb: 8192, category: "Burstable", priceMonthly: 60.74 },
-            { id: "Standard_B4ms", label: "B4ms", vcpus: 4, memoryMb: 16384, category: "Burstable", priceMonthly: 121.47 },
-            { id: "Standard_D2s_v5", label: "D2s v5", vcpus: 2, memoryMb: 8192, category: "General purpose", priceMonthly: 70.08 },
-            { id: "Standard_D4s_v5", label: "D4s v5", vcpus: 4, memoryMb: 16384, category: "General purpose", priceMonthly: 140.16 },
-            { id: "Standard_D8s_v5", label: "D8s v5", vcpus: 8, memoryMb: 32768, category: "General purpose", priceMonthly: 280.32 },
-            { id: "Standard_D16s_v5", label: "D16s v5", vcpus: 16, memoryMb: 65536, category: "General purpose", priceMonthly: 560.64 },
-            { id: "Standard_D32s_v5", label: "D32s v5", vcpus: 32, memoryMb: 131072, category: "General purpose", priceMonthly: 1121.28 },
-            { id: "Standard_E2s_v5", label: "E2s v5", vcpus: 2, memoryMb: 16384, category: "Memory optimized", priceMonthly: 91.98 },
-            { id: "Standard_E4s_v5", label: "E4s v5", vcpus: 4, memoryMb: 32768, category: "Memory optimized", priceMonthly: 183.96 },
-            { id: "Standard_E8s_v5", label: "E8s v5", vcpus: 8, memoryMb: 65536, category: "Memory optimized", priceMonthly: 367.92 },
-            { id: "Standard_F2s_v2", label: "F2s v2", vcpus: 2, memoryMb: 4096, category: "Compute optimized", priceMonthly: 61.32 },
-            { id: "Standard_F4s_v2", label: "F4s v2", vcpus: 4, memoryMb: 8192, category: "Compute optimized", priceMonthly: 122.64 },
-            { id: "Standard_F8s_v2", label: "F8s v2", vcpus: 8, memoryMb: 16384, category: "Compute optimized", priceMonthly: 245.28 },
+            {
+              id: "Standard_B1s",
+              label: "B1s",
+              vcpus: 1,
+              memoryMb: 1024,
+              category: "Burstable",
+              priceMonthly: 7.59,
+            },
+            {
+              id: "Standard_B1ms",
+              label: "B1ms",
+              vcpus: 1,
+              memoryMb: 2048,
+              category: "Burstable",
+              priceMonthly: 15.18,
+            },
+            {
+              id: "Standard_B2s",
+              label: "B2s",
+              vcpus: 2,
+              memoryMb: 4096,
+              category: "Burstable",
+              priceMonthly: 30.37,
+            },
+            {
+              id: "Standard_B2ms",
+              label: "B2ms",
+              vcpus: 2,
+              memoryMb: 8192,
+              category: "Burstable",
+              priceMonthly: 60.74,
+            },
+            {
+              id: "Standard_B4ms",
+              label: "B4ms",
+              vcpus: 4,
+              memoryMb: 16384,
+              category: "Burstable",
+              priceMonthly: 121.47,
+            },
+            {
+              id: "Standard_D2s_v5",
+              label: "D2s v5",
+              vcpus: 2,
+              memoryMb: 8192,
+              category: "General purpose",
+              priceMonthly: 70.08,
+            },
+            {
+              id: "Standard_D4s_v5",
+              label: "D4s v5",
+              vcpus: 4,
+              memoryMb: 16384,
+              category: "General purpose",
+              priceMonthly: 140.16,
+            },
+            {
+              id: "Standard_D8s_v5",
+              label: "D8s v5",
+              vcpus: 8,
+              memoryMb: 32768,
+              category: "General purpose",
+              priceMonthly: 280.32,
+            },
+            {
+              id: "Standard_D16s_v5",
+              label: "D16s v5",
+              vcpus: 16,
+              memoryMb: 65536,
+              category: "General purpose",
+              priceMonthly: 560.64,
+            },
+            {
+              id: "Standard_D32s_v5",
+              label: "D32s v5",
+              vcpus: 32,
+              memoryMb: 131072,
+              category: "General purpose",
+              priceMonthly: 1121.28,
+            },
+            {
+              id: "Standard_E2s_v5",
+              label: "E2s v5",
+              vcpus: 2,
+              memoryMb: 16384,
+              category: "Memory optimized",
+              priceMonthly: 91.98,
+            },
+            {
+              id: "Standard_E4s_v5",
+              label: "E4s v5",
+              vcpus: 4,
+              memoryMb: 32768,
+              category: "Memory optimized",
+              priceMonthly: 183.96,
+            },
+            {
+              id: "Standard_E8s_v5",
+              label: "E8s v5",
+              vcpus: 8,
+              memoryMb: 65536,
+              category: "Memory optimized",
+              priceMonthly: 367.92,
+            },
+            {
+              id: "Standard_F2s_v2",
+              label: "F2s v2",
+              vcpus: 2,
+              memoryMb: 4096,
+              category: "Compute optimized",
+              priceMonthly: 61.32,
+            },
+            {
+              id: "Standard_F4s_v2",
+              label: "F4s v2",
+              vcpus: 4,
+              memoryMb: 8192,
+              category: "Compute optimized",
+              priceMonthly: 122.64,
+            },
+            {
+              id: "Standard_F8s_v2",
+              label: "F8s v2",
+              vcpus: 8,
+              memoryMb: 16384,
+              category: "Compute optimized",
+              priceMonthly: 245.28,
+            },
           ],
         },
         {
@@ -876,17 +1130,72 @@ export class AzureClient implements PluginClient {
           kind: "image-picker",
           required: true,
           images: [
-            { id: "Canonical:0001-com-ubuntu-server-jammy:22_04-lts:latest", label: "Ubuntu 22.04 LTS", family: "ubuntu", category: "Ubuntu" },
-            { id: "Canonical:ubuntu-24_04-lts:server:latest", label: "Ubuntu 24.04 LTS", family: "ubuntu", category: "Ubuntu" },
-            { id: "Canonical:0001-com-ubuntu-server-focal:20_04-lts:latest", label: "Ubuntu 20.04 LTS", family: "ubuntu", category: "Ubuntu" },
-            { id: "Debian:debian-12:12:latest", label: "Debian 12", family: "debian", category: "Debian" },
-            { id: "Debian:debian-11:11:latest", label: "Debian 11", family: "debian", category: "Debian" },
-            { id: "RedHat:RHEL:9-lvm:latest", label: "RHEL 9", family: "rhel", category: "Red Hat" },
-            { id: "RedHat:RHEL:8-lvm:latest", label: "RHEL 8", family: "rhel", category: "Red Hat" },
-            { id: "OpenLogic:CentOS:7_9:latest", label: "CentOS 7.9", family: "centos", category: "CentOS" },
-            { id: "SUSE:sles-15-sp5:gen2:latest", label: "SLES 15 SP5", family: "suse", category: "SUSE" },
-            { id: "MicrosoftWindowsServer:WindowsServer:2022-datacenter-g2:latest", label: "Windows Server 2022", family: "windows", category: "Windows" },
-            { id: "MicrosoftWindowsServer:WindowsServer:2019-datacenter-gensecond:latest", label: "Windows Server 2019", family: "windows", category: "Windows" },
+            {
+              id: "Canonical:0001-com-ubuntu-server-jammy:22_04-lts:latest",
+              label: "Ubuntu 22.04 LTS",
+              family: "ubuntu",
+              category: "Ubuntu",
+            },
+            {
+              id: "Canonical:ubuntu-24_04-lts:server:latest",
+              label: "Ubuntu 24.04 LTS",
+              family: "ubuntu",
+              category: "Ubuntu",
+            },
+            {
+              id: "Canonical:0001-com-ubuntu-server-focal:20_04-lts:latest",
+              label: "Ubuntu 20.04 LTS",
+              family: "ubuntu",
+              category: "Ubuntu",
+            },
+            {
+              id: "Debian:debian-12:12:latest",
+              label: "Debian 12",
+              family: "debian",
+              category: "Debian",
+            },
+            {
+              id: "Debian:debian-11:11:latest",
+              label: "Debian 11",
+              family: "debian",
+              category: "Debian",
+            },
+            {
+              id: "RedHat:RHEL:9-lvm:latest",
+              label: "RHEL 9",
+              family: "rhel",
+              category: "Red Hat",
+            },
+            {
+              id: "RedHat:RHEL:8-lvm:latest",
+              label: "RHEL 8",
+              family: "rhel",
+              category: "Red Hat",
+            },
+            {
+              id: "OpenLogic:CentOS:7_9:latest",
+              label: "CentOS 7.9",
+              family: "centos",
+              category: "CentOS",
+            },
+            {
+              id: "SUSE:sles-15-sp5:gen2:latest",
+              label: "SLES 15 SP5",
+              family: "suse",
+              category: "SUSE",
+            },
+            {
+              id: "MicrosoftWindowsServer:WindowsServer:2022-datacenter-g2:latest",
+              label: "Windows Server 2022",
+              family: "windows",
+              category: "Windows",
+            },
+            {
+              id: "MicrosoftWindowsServer:WindowsServer:2019-datacenter-gensecond:latest",
+              label: "Windows Server 2019",
+              family: "windows",
+              category: "Windows",
+            },
           ],
         },
         {
@@ -964,12 +1273,54 @@ export class AzureClient implements PluginClient {
           kind: "size-picker",
           required: true,
           sizes: [
-            { id: "Standard_B2s", label: "B2s", vcpus: 2, memoryMb: 4096, category: "Burstable", priceMonthly: 30.37 },
-            { id: "Standard_D2s_v5", label: "D2s v5", vcpus: 2, memoryMb: 8192, category: "General purpose", priceMonthly: 70.08 },
-            { id: "Standard_D4s_v5", label: "D4s v5", vcpus: 4, memoryMb: 16384, category: "General purpose", priceMonthly: 140.16 },
-            { id: "Standard_D8s_v5", label: "D8s v5", vcpus: 8, memoryMb: 32768, category: "General purpose", priceMonthly: 280.32 },
-            { id: "Standard_E2s_v5", label: "E2s v5", vcpus: 2, memoryMb: 16384, category: "Memory optimized", priceMonthly: 91.98 },
-            { id: "Standard_E4s_v5", label: "E4s v5", vcpus: 4, memoryMb: 32768, category: "Memory optimized", priceMonthly: 183.96 },
+            {
+              id: "Standard_B2s",
+              label: "B2s",
+              vcpus: 2,
+              memoryMb: 4096,
+              category: "Burstable",
+              priceMonthly: 30.37,
+            },
+            {
+              id: "Standard_D2s_v5",
+              label: "D2s v5",
+              vcpus: 2,
+              memoryMb: 8192,
+              category: "General purpose",
+              priceMonthly: 70.08,
+            },
+            {
+              id: "Standard_D4s_v5",
+              label: "D4s v5",
+              vcpus: 4,
+              memoryMb: 16384,
+              category: "General purpose",
+              priceMonthly: 140.16,
+            },
+            {
+              id: "Standard_D8s_v5",
+              label: "D8s v5",
+              vcpus: 8,
+              memoryMb: 32768,
+              category: "General purpose",
+              priceMonthly: 280.32,
+            },
+            {
+              id: "Standard_E2s_v5",
+              label: "E2s v5",
+              vcpus: 2,
+              memoryMb: 16384,
+              category: "Memory optimized",
+              priceMonthly: 91.98,
+            },
+            {
+              id: "Standard_E4s_v5",
+              label: "E4s v5",
+              vcpus: 4,
+              memoryMb: 32768,
+              category: "Memory optimized",
+              priceMonthly: 183.96,
+            },
           ],
         },
         {
@@ -993,11 +1344,33 @@ export class AzureClient implements PluginClient {
 
     return {
       fields: [
-        { key: "name", label: "Storage Account Name", kind: "text", required: true, description: "Globally unique name (3-24 lowercase letters/numbers)" },
-        { key: "resourceGroup", label: "Resource Group", kind: "select", required: true, options: rgOptions },
-        { key: "region", label: "Region", kind: "region-picker", required: true, regions: AZURE_REGIONS },
         {
-          key: "sku", label: "Performance / Replication", kind: "select", required: true, defaultValue: "Standard_LRS",
+          key: "name",
+          label: "Storage Account Name",
+          kind: "text",
+          required: true,
+          description: "Globally unique name (3-24 lowercase letters/numbers)",
+        },
+        {
+          key: "resourceGroup",
+          label: "Resource Group",
+          kind: "select",
+          required: true,
+          options: rgOptions,
+        },
+        {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AZURE_REGIONS,
+        },
+        {
+          key: "sku",
+          label: "Performance / Replication",
+          kind: "select",
+          required: true,
+          defaultValue: "Standard_LRS",
           options: [
             { id: "Standard_LRS", label: "Standard LRS" },
             { id: "Standard_GRS", label: "Standard GRS" },
@@ -1007,7 +1380,11 @@ export class AzureClient implements PluginClient {
           ],
         },
         {
-          key: "kind", label: "Kind", kind: "select", required: true, defaultValue: "StorageV2",
+          key: "kind",
+          label: "Kind",
+          kind: "select",
+          required: true,
+          defaultValue: "StorageV2",
           options: [
             { id: "StorageV2", label: "General Purpose v2" },
             { id: "BlobStorage", label: "Blob Storage" },
@@ -1026,18 +1403,44 @@ export class AzureClient implements PluginClient {
 
     return {
       fields: [
-        { key: "name", label: "Account Name", kind: "text", required: true, description: "Globally unique Cosmos DB account name" },
-        { key: "resourceGroup", label: "Resource Group", kind: "select", required: true, options: rgOptions },
-        { key: "region", label: "Region", kind: "region-picker", required: true, regions: AZURE_REGIONS },
         {
-          key: "kind", label: "API", kind: "select", required: true, defaultValue: "GlobalDocumentDB",
+          key: "name",
+          label: "Account Name",
+          kind: "text",
+          required: true,
+          description: "Globally unique Cosmos DB account name",
+        },
+        {
+          key: "resourceGroup",
+          label: "Resource Group",
+          kind: "select",
+          required: true,
+          options: rgOptions,
+        },
+        {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AZURE_REGIONS,
+        },
+        {
+          key: "kind",
+          label: "API",
+          kind: "select",
+          required: true,
+          defaultValue: "GlobalDocumentDB",
           options: [
             { id: "GlobalDocumentDB", label: "NoSQL (Core)" },
             { id: "MongoDB", label: "MongoDB" },
           ],
         },
         {
-          key: "consistencyLevel", label: "Consistency Level", kind: "select", required: true, defaultValue: "Session",
+          key: "consistencyLevel",
+          label: "Consistency Level",
+          kind: "select",
+          required: true,
+          defaultValue: "Session",
           options: [
             { id: "Strong", label: "Strong" },
             { id: "BoundedStaleness", label: "Bounded Staleness" },
@@ -1058,11 +1461,33 @@ export class AzureClient implements PluginClient {
 
     return {
       fields: [
-        { key: "name", label: "Redis Cache Name", kind: "text", required: true, description: "Globally unique DNS name" },
-        { key: "resourceGroup", label: "Resource Group", kind: "select", required: true, options: rgOptions },
-        { key: "region", label: "Region", kind: "region-picker", required: true, regions: AZURE_REGIONS },
         {
-          key: "sku", label: "Pricing Tier", kind: "select", required: true, defaultValue: "Basic",
+          key: "name",
+          label: "Redis Cache Name",
+          kind: "text",
+          required: true,
+          description: "Globally unique DNS name",
+        },
+        {
+          key: "resourceGroup",
+          label: "Resource Group",
+          kind: "select",
+          required: true,
+          options: rgOptions,
+        },
+        {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AZURE_REGIONS,
+        },
+        {
+          key: "sku",
+          label: "Pricing Tier",
+          kind: "select",
+          required: true,
+          defaultValue: "Basic",
           options: [
             { id: "Basic", label: "Basic" },
             { id: "Standard", label: "Standard" },
@@ -1070,7 +1495,11 @@ export class AzureClient implements PluginClient {
           ],
         },
         {
-          key: "capacity", label: "Cache Size", kind: "select", required: true, defaultValue: "0",
+          key: "capacity",
+          label: "Cache Size",
+          kind: "select",
+          required: true,
+          defaultValue: "0",
           options: [
             { id: "0", label: "C0 (250 MB)" },
             { id: "1", label: "C1 (1 GB)" },
@@ -1109,25 +1538,58 @@ export class AzureClient implements PluginClient {
       return this.createAKSCluster(accountId, fields);
     }
     if (typeId === "azure-postgres-flexible") {
-      return this.createFlexibleDB(accountId, fields, "azure-postgres-flexible", "Microsoft.DBforPostgreSQL/flexibleServers", "2023-06-01-preview");
+      return this.createFlexibleDB(
+        accountId,
+        fields,
+        "azure-postgres-flexible",
+        "Microsoft.DBforPostgreSQL/flexibleServers",
+        "2023-06-01-preview",
+      );
     }
     if (typeId === "azure-mysql-flexible") {
-      return this.createFlexibleDB(accountId, fields, "azure-mysql-flexible", "Microsoft.DBforMySQL/flexibleServers", "2023-06-30");
+      return this.createFlexibleDB(
+        accountId,
+        fields,
+        "azure-mysql-flexible",
+        "Microsoft.DBforMySQL/flexibleServers",
+        "2023-06-30",
+      );
     }
     if (typeId === "azure-log-analytics") {
       return this.createLogAnalyticsWorkspace(accountId, fields);
     }
     if (typeId === "azure-managed-identity") {
-      return this.createSimpleResource(accountId, typeId, fields, "Microsoft.ManagedIdentity/userAssignedIdentities", "2023-01-31", {});
+      return this.createSimpleResource(
+        accountId,
+        typeId,
+        fields,
+        "Microsoft.ManagedIdentity/userAssignedIdentities",
+        "2023-01-31",
+        {},
+      );
     }
     if (typeId === "azure-dns-zone") {
-      return this.createSimpleResource(accountId, typeId, fields, "Microsoft.Network/dnszones", "2023-07-01-preview", { zoneType: "Public" });
+      return this.createSimpleResource(
+        accountId,
+        typeId,
+        fields,
+        "Microsoft.Network/dnszones",
+        "2023-07-01-preview",
+        { zoneType: "Public" },
+      );
     }
     if (typeId === "azure-vnet") {
       return this.createVNet(accountId, fields);
     }
     if (typeId === "azure-nsg") {
-      return this.createSimpleResource(accountId, typeId, fields, "Microsoft.Network/networkSecurityGroups", "2023-09-01", {});
+      return this.createSimpleResource(
+        accountId,
+        typeId,
+        fields,
+        "Microsoft.Network/networkSecurityGroups",
+        "2023-09-01",
+        {},
+      );
     }
     if (typeId === "azure-key-vault") {
       return this.createKeyVault(accountId, fields);
@@ -1139,10 +1601,22 @@ export class AzureClient implements PluginClient {
       return this.createContainerInstance(accountId, fields);
     }
     if (typeId === "azure-service-bus") {
-      return this.createMessagingNamespace(accountId, fields, "azure-service-bus", "Microsoft.ServiceBus/namespaces", "2022-10-01-preview");
+      return this.createMessagingNamespace(
+        accountId,
+        fields,
+        "azure-service-bus",
+        "Microsoft.ServiceBus/namespaces",
+        "2022-10-01-preview",
+      );
     }
     if (typeId === "azure-event-hub") {
-      return this.createMessagingNamespace(accountId, fields, "azure-event-hub", "Microsoft.EventHub/namespaces", "2024-01-01");
+      return this.createMessagingNamespace(
+        accountId,
+        fields,
+        "azure-event-hub",
+        "Microsoft.EventHub/namespaces",
+        "2024-01-01",
+      );
     }
     if (typeId === "azure-public-ip") {
       return this.createPublicIP(accountId, fields);
@@ -1173,33 +1647,131 @@ export class AzureClient implements PluginClient {
 
     return {
       fields: [
-        { key: "name", label: `${dbEngine} Server Name`, kind: "text", required: true, description: `Globally unique ${dbEngine} server name` },
-        { key: "resourceGroup", label: "Resource Group", kind: "select", required: true, options: rgOptions },
-        { key: "region", label: "Region", kind: "region-picker", required: true, regions: AZURE_REGIONS },
         {
-          key: "version", label: `${dbEngine} Version`, kind: "select", required: true,
+          key: "name",
+          label: `${dbEngine} Server Name`,
+          kind: "text",
+          required: true,
+          description: `Globally unique ${dbEngine} server name`,
+        },
+        {
+          key: "resourceGroup",
+          label: "Resource Group",
+          kind: "select",
+          required: true,
+          options: rgOptions,
+        },
+        {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AZURE_REGIONS,
+        },
+        {
+          key: "version",
+          label: `${dbEngine} Version`,
+          kind: "select",
+          required: true,
           defaultValue: versions[0]!,
           options: versions.map((v) => ({ id: v, label: v })),
         },
         {
-          key: "sku", label: "Compute Tier", kind: "size-picker", required: true,
+          key: "sku",
+          label: "Compute Tier",
+          kind: "size-picker",
+          required: true,
           sizes: [
-            { id: "Standard_B1ms", label: "B1ms", vcpus: 1, memoryMb: 2048, category: "Burstable", priceMonthly: 12.41 },
-            { id: "Standard_B2s", label: "B2s", vcpus: 2, memoryMb: 4096, category: "Burstable", priceMonthly: 24.82 },
-            { id: "Standard_B2ms", label: "B2ms", vcpus: 2, memoryMb: 8192, category: "Burstable", priceMonthly: 49.64 },
-            { id: "Standard_D2ds_v4", label: "D2ds v4", vcpus: 2, memoryMb: 8192, category: "General Purpose", priceMonthly: 98.55 },
-            { id: "Standard_D4ds_v4", label: "D4ds v4", vcpus: 4, memoryMb: 16384, category: "General Purpose", priceMonthly: 197.10 },
-            { id: "Standard_D8ds_v4", label: "D8ds v4", vcpus: 8, memoryMb: 32768, category: "General Purpose", priceMonthly: 394.20 },
-            { id: "Standard_E2ds_v4", label: "E2ds v4", vcpus: 2, memoryMb: 16384, category: "Memory Optimized", priceMonthly: 131.40 },
-            { id: "Standard_E4ds_v4", label: "E4ds v4", vcpus: 4, memoryMb: 32768, category: "Memory Optimized", priceMonthly: 262.80 },
+            {
+              id: "Standard_B1ms",
+              label: "B1ms",
+              vcpus: 1,
+              memoryMb: 2048,
+              category: "Burstable",
+              priceMonthly: 12.41,
+            },
+            {
+              id: "Standard_B2s",
+              label: "B2s",
+              vcpus: 2,
+              memoryMb: 4096,
+              category: "Burstable",
+              priceMonthly: 24.82,
+            },
+            {
+              id: "Standard_B2ms",
+              label: "B2ms",
+              vcpus: 2,
+              memoryMb: 8192,
+              category: "Burstable",
+              priceMonthly: 49.64,
+            },
+            {
+              id: "Standard_D2ds_v4",
+              label: "D2ds v4",
+              vcpus: 2,
+              memoryMb: 8192,
+              category: "General Purpose",
+              priceMonthly: 98.55,
+            },
+            {
+              id: "Standard_D4ds_v4",
+              label: "D4ds v4",
+              vcpus: 4,
+              memoryMb: 16384,
+              category: "General Purpose",
+              priceMonthly: 197.1,
+            },
+            {
+              id: "Standard_D8ds_v4",
+              label: "D8ds v4",
+              vcpus: 8,
+              memoryMb: 32768,
+              category: "General Purpose",
+              priceMonthly: 394.2,
+            },
+            {
+              id: "Standard_E2ds_v4",
+              label: "E2ds v4",
+              vcpus: 2,
+              memoryMb: 16384,
+              category: "Memory Optimized",
+              priceMonthly: 131.4,
+            },
+            {
+              id: "Standard_E4ds_v4",
+              label: "E4ds v4",
+              vcpus: 4,
+              memoryMb: 32768,
+              category: "Memory Optimized",
+              priceMonthly: 262.8,
+            },
           ],
         },
         {
-          key: "storageSizeGb", label: "Storage Size", kind: "disk-slider", required: true,
-          minGb: 32, maxGb: 16384, defaultGb: 128, stepGb: 32,
+          key: "storageSizeGb",
+          label: "Storage Size",
+          kind: "disk-slider",
+          required: true,
+          minGb: 32,
+          maxGb: 16384,
+          defaultGb: 128,
+          stepGb: 32,
         },
-        { key: "adminUsername", label: "Admin Username", kind: "text", required: true, defaultValue: "adminuser" },
-        { key: "adminPassword", label: "Admin Password", kind: "text", required: true, description: "Must meet Azure password complexity requirements" },
+        {
+          key: "adminUsername",
+          label: "Admin Username",
+          kind: "text",
+          required: true,
+          defaultValue: "adminuser",
+        },
+        {
+          key: "adminPassword",
+          label: "Admin Password",
+          kind: "text",
+          required: true,
+          description: "Must meet Azure password complexity requirements",
+        },
       ],
     };
   }
@@ -1221,9 +1793,11 @@ export class AzureClient implements PluginClient {
     const adminPassword = fields["adminPassword"] ?? "";
 
     // Determine tier from SKU name
-    const tier = sku.startsWith("Standard_B") ? "Burstable"
-      : sku.startsWith("Standard_E") ? "MemoryOptimized"
-      : "GeneralPurpose";
+    const tier = sku.startsWith("Standard_B")
+      ? "Burstable"
+      : sku.startsWith("Standard_E")
+        ? "MemoryOptimized"
+        : "GeneralPurpose";
 
     const result = await this.put<Record<string, unknown>>(
       `${ARM}/subscriptions/${this.creds.subscriptionId}/resourceGroups/${rg}/providers/${resourceProvider}/${name}?api-version=${apiVersion}`,
@@ -1248,10 +1822,16 @@ export class AzureClient implements PluginClient {
       accountId,
       displayName: name,
       fields: {
-        name, resourceGroup: rg, location,
+        name,
+        resourceGroup: rg,
+        location,
         state: String(props?.["state"] ?? "Creating"),
-        version, sku, tier, storageSizeGb,
-        haEnabled: false, backupRetentionDays: 7,
+        version,
+        sku,
+        tier,
+        storageSizeGb,
+        haEnabled: false,
+        backupRetentionDays: 7,
       },
       resolvedOutputs: {
         fqdn: String(props?.["fullyQualifiedDomainName"] ?? ""),
@@ -1283,19 +1863,58 @@ export class AzureClient implements PluginClient {
       fields: [
         { key: "databaseName", label: "Database Name", kind: "text", required: true },
         ...(serverOptions.length > 0
-          ? [{
-              key: "existingServer" as const, label: "Existing SQL Server", kind: "select" as const, required: false,
-              options: [{ id: "", label: "(Create new server)" }, ...serverOptions],
-              description: "Select an existing server or create a new one",
-            }]
+          ? [
+              {
+                key: "existingServer" as const,
+                label: "Existing SQL Server",
+                kind: "select" as const,
+                required: false,
+                options: [{ id: "", label: "(Create new server)" }, ...serverOptions],
+                description: "Select an existing server or create a new one",
+              },
+            ]
           : []),
-        { key: "serverName", label: "New SQL Server Name", kind: "text", required: false, description: "Globally unique server name (only if creating new server)" },
-        { key: "resourceGroup", label: "Resource Group", kind: "select", required: true, options: rgOptions },
-        { key: "region", label: "Region", kind: "region-picker", required: true, regions: AZURE_REGIONS },
-        { key: "adminUsername", label: "Server Admin Username", kind: "text", required: false, defaultValue: "sqladmin", description: "Only for new server" },
-        { key: "adminPassword", label: "Server Admin Password", kind: "text", required: false, description: "Only for new server. Must meet complexity requirements." },
         {
-          key: "sku", label: "Pricing Tier", kind: "select", required: true,
+          key: "serverName",
+          label: "New SQL Server Name",
+          kind: "text",
+          required: false,
+          description: "Globally unique server name (only if creating new server)",
+        },
+        {
+          key: "resourceGroup",
+          label: "Resource Group",
+          kind: "select",
+          required: true,
+          options: rgOptions,
+        },
+        {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AZURE_REGIONS,
+        },
+        {
+          key: "adminUsername",
+          label: "Server Admin Username",
+          kind: "text",
+          required: false,
+          defaultValue: "sqladmin",
+          description: "Only for new server",
+        },
+        {
+          key: "adminPassword",
+          label: "Server Admin Password",
+          kind: "text",
+          required: false,
+          description: "Only for new server. Must meet complexity requirements.",
+        },
+        {
+          key: "sku",
+          label: "Pricing Tier",
+          kind: "select",
+          required: true,
           defaultValue: "Basic",
           options: [
             { id: "Basic", label: "Basic (5 DTU, ~$5/mo)" },
@@ -1308,7 +1927,10 @@ export class AzureClient implements PluginClient {
           ],
         },
         {
-          key: "maxSizeGb", label: "Max Size", kind: "select", required: true,
+          key: "maxSizeGb",
+          label: "Max Size",
+          kind: "select",
+          required: true,
           defaultValue: "2",
           options: [
             { id: "1", label: "1 GB" },
@@ -1324,7 +1946,10 @@ export class AzureClient implements PluginClient {
     };
   }
 
-  private async createSQLDatabase(accountId: string, fields: Record<string, string>): Promise<ResourceInstance> {
+  private async createSQLDatabase(
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
     const dbName = fields["databaseName"]!;
     const rg = fields["resourceGroup"]!;
     const location = fields["region"]!;
@@ -1359,13 +1984,20 @@ export class AzureClient implements PluginClient {
     }
 
     // Determine tier
-    const isVCoreBased = skuName.startsWith("GP_") || skuName.startsWith("BC_") || skuName.startsWith("HS_");
-    const tier = skuName === "Basic" ? "Basic"
-      : skuName.startsWith("S") ? "Standard"
-      : skuName.startsWith("P") ? "Premium"
-      : skuName.startsWith("GP_") ? "GeneralPurpose"
-      : skuName.startsWith("BC_") ? "BusinessCritical"
-      : "GeneralPurpose";
+    const isVCoreBased =
+      skuName.startsWith("GP_") || skuName.startsWith("BC_") || skuName.startsWith("HS_");
+    const tier =
+      skuName === "Basic"
+        ? "Basic"
+        : skuName.startsWith("S")
+          ? "Standard"
+          : skuName.startsWith("P")
+            ? "Premium"
+            : skuName.startsWith("GP_")
+              ? "GeneralPurpose"
+              : skuName.startsWith("BC_")
+                ? "BusinessCritical"
+                : "GeneralPurpose";
 
     const result = await this.put<Record<string, unknown>>(
       `${ARM}/subscriptions/${this.creds.subscriptionId}/resourceGroups/${serverRg}/providers/Microsoft.Sql/servers/${serverName}/databases/${dbName}?api-version=2023-05-01-preview`,
@@ -1415,10 +2047,25 @@ export class AzureClient implements PluginClient {
     return {
       fields: [
         { key: "name", label: "Disk Name", kind: "text", required: true },
-        { key: "resourceGroup", label: "Resource Group", kind: "select", required: true, options: rgOptions },
-        { key: "region", label: "Region", kind: "region-picker", required: true, regions: AZURE_REGIONS },
         {
-          key: "sku", label: "Disk Type", kind: "select", required: true,
+          key: "resourceGroup",
+          label: "Resource Group",
+          kind: "select",
+          required: true,
+          options: rgOptions,
+        },
+        {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AZURE_REGIONS,
+        },
+        {
+          key: "sku",
+          label: "Disk Type",
+          kind: "select",
+          required: true,
           defaultValue: "Premium_LRS",
           options: [
             { id: "Standard_LRS", label: "Standard HDD (LRS)" },
@@ -1429,14 +2076,23 @@ export class AzureClient implements PluginClient {
           ],
         },
         {
-          key: "diskSizeGb", label: "Size", kind: "disk-slider", required: true,
-          minGb: 1, maxGb: 32767, defaultGb: 128, stepGb: 1,
+          key: "diskSizeGb",
+          label: "Size",
+          kind: "disk-slider",
+          required: true,
+          minGb: 1,
+          maxGb: 32767,
+          defaultGb: 128,
+          stepGb: 1,
         },
       ],
     };
   }
 
-  private async createDisk(accountId: string, fields: Record<string, string>): Promise<ResourceInstance> {
+  private async createDisk(
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
     const name = fields["name"]!;
     const rg = fields["resourceGroup"]!;
     const location = fields["region"]!;
@@ -1462,7 +2118,9 @@ export class AzureClient implements PluginClient {
       accountId,
       displayName: name,
       fields: {
-        name, resourceGroup: rg, location,
+        name,
+        resourceGroup: rg,
+        location,
         diskSizeGb,
         diskState: "Unattached",
         sku,
@@ -1485,11 +2143,32 @@ export class AzureClient implements PluginClient {
     const rgOptions = (rgs.value ?? []).map((rg) => ({ id: rg.name, label: rg.name }));
     return {
       fields: [
-        { key: "name", label: "App Name", kind: "text", required: true, description: "Globally unique name (becomes <name>.azurewebsites.net)" },
-        { key: "resourceGroup", label: "Resource Group", kind: "select", required: true, options: rgOptions },
-        { key: "region", label: "Region", kind: "region-picker", required: true, regions: AZURE_REGIONS },
         {
-          key: "runtime", label: "Runtime Stack", kind: "select", required: true,
+          key: "name",
+          label: "App Name",
+          kind: "text",
+          required: true,
+          description: "Globally unique name (becomes <name>.azurewebsites.net)",
+        },
+        {
+          key: "resourceGroup",
+          label: "Resource Group",
+          kind: "select",
+          required: true,
+          options: rgOptions,
+        },
+        {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AZURE_REGIONS,
+        },
+        {
+          key: "runtime",
+          label: "Runtime Stack",
+          kind: "select",
+          required: true,
           defaultValue: "NODE|20-lts",
           options: [
             { id: "NODE|20-lts", label: "Node.js 20 LTS" },
@@ -1504,7 +2183,10 @@ export class AzureClient implements PluginClient {
           ],
         },
         {
-          key: "sku", label: "App Service Plan SKU", kind: "select", required: true,
+          key: "sku",
+          label: "App Service Plan SKU",
+          kind: "select",
+          required: true,
           defaultValue: "B1",
           options: [
             { id: "F1", label: "Free (F1)" },
@@ -1520,7 +2202,10 @@ export class AzureClient implements PluginClient {
     };
   }
 
-  private async createAppService(accountId: string, fields: Record<string, string>): Promise<ResourceInstance> {
+  private async createAppService(
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
     const name = fields["name"]!;
     const rg = fields["resourceGroup"]!;
     const location = fields["region"]!;
@@ -1562,7 +2247,9 @@ export class AzureClient implements PluginClient {
       accountId,
       displayName: name,
       fields: {
-        name, resourceGroup: rg, location,
+        name,
+        resourceGroup: rg,
+        location,
         state: String(props?.["state"] ?? "Running"),
         kind: "app,linux",
         appServicePlan: planName,
@@ -1597,11 +2284,32 @@ export class AzureClient implements PluginClient {
 
     return {
       fields: [
-        { key: "name", label: "Function App Name", kind: "text", required: true, description: "Globally unique name (becomes <name>.azurewebsites.net)" },
-        { key: "resourceGroup", label: "Resource Group", kind: "select", required: true, options: rgOptions },
-        { key: "region", label: "Region", kind: "region-picker", required: true, regions: AZURE_REGIONS },
         {
-          key: "runtime", label: "Runtime Stack", kind: "select", required: true,
+          key: "name",
+          label: "Function App Name",
+          kind: "text",
+          required: true,
+          description: "Globally unique name (becomes <name>.azurewebsites.net)",
+        },
+        {
+          key: "resourceGroup",
+          label: "Resource Group",
+          kind: "select",
+          required: true,
+          options: rgOptions,
+        },
+        {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AZURE_REGIONS,
+        },
+        {
+          key: "runtime",
+          label: "Runtime Stack",
+          kind: "select",
+          required: true,
           defaultValue: "node",
           options: [
             { id: "node", label: "Node.js" },
@@ -1612,15 +2320,26 @@ export class AzureClient implements PluginClient {
           ],
         },
         {
-          key: "runtimeVersion", label: "Runtime Version", kind: "select", required: true,
+          key: "runtimeVersion",
+          label: "Runtime Version",
+          kind: "select",
+          required: true,
           defaultValue: "~4",
-          options: [
-            { id: "~4", label: "Functions v4" },
-          ],
+          options: [{ id: "~4", label: "Functions v4" }],
         },
-        { key: "storageAccount", label: "Storage Account", kind: "select", required: true, options: saOptions, description: "Storage account required for function triggers and state" },
         {
-          key: "sku", label: "Hosting Plan", kind: "select", required: true,
+          key: "storageAccount",
+          label: "Storage Account",
+          kind: "select",
+          required: true,
+          options: saOptions,
+          description: "Storage account required for function triggers and state",
+        },
+        {
+          key: "sku",
+          label: "Hosting Plan",
+          kind: "select",
+          required: true,
           defaultValue: "Y1",
           options: [
             { id: "Y1", label: "Consumption (Serverless, pay per execution)" },
@@ -1633,7 +2352,10 @@ export class AzureClient implements PluginClient {
     };
   }
 
-  private async createFunctionApp(accountId: string, fields: Record<string, string>): Promise<ResourceInstance> {
+  private async createFunctionApp(
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
     const name = fields["name"]!;
     const rg = fields["resourceGroup"]!;
     const location = fields["region"]!;
@@ -1692,7 +2414,9 @@ export class AzureClient implements PluginClient {
       accountId,
       displayName: name,
       fields: {
-        name, resourceGroup: rg, location,
+        name,
+        resourceGroup: rg,
+        location,
         state: String(props?.["state"] ?? "Running"),
         kind: "functionapp,linux",
         runtime,
@@ -1719,11 +2443,32 @@ export class AzureClient implements PluginClient {
     return {
       fields: [
         { key: "name", label: "Container Group Name", kind: "text", required: true },
-        { key: "resourceGroup", label: "Resource Group", kind: "select", required: true, options: rgOptions },
-        { key: "region", label: "Region", kind: "region-picker", required: true, regions: AZURE_REGIONS },
-        { key: "image", label: "Container Image", kind: "text", required: true, description: "Docker image (e.g. mcr.microsoft.com/azuredocs/aci-helloworld:latest)" },
         {
-          key: "osType", label: "OS Type", kind: "select", required: true,
+          key: "resourceGroup",
+          label: "Resource Group",
+          kind: "select",
+          required: true,
+          options: rgOptions,
+        },
+        {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AZURE_REGIONS,
+        },
+        {
+          key: "image",
+          label: "Container Image",
+          kind: "text",
+          required: true,
+          description: "Docker image (e.g. mcr.microsoft.com/azuredocs/aci-helloworld:latest)",
+        },
+        {
+          key: "osType",
+          label: "OS Type",
+          kind: "select",
+          required: true,
           defaultValue: "Linux",
           options: [
             { id: "Linux", label: "Linux" },
@@ -1731,7 +2476,10 @@ export class AzureClient implements PluginClient {
           ],
         },
         {
-          key: "cpu", label: "CPU Cores", kind: "select", required: true,
+          key: "cpu",
+          label: "CPU Cores",
+          kind: "select",
+          required: true,
           defaultValue: "1",
           options: [
             { id: "0.5", label: "0.5 cores" },
@@ -1741,7 +2489,10 @@ export class AzureClient implements PluginClient {
           ],
         },
         {
-          key: "memoryGb", label: "Memory (GB)", kind: "select", required: true,
+          key: "memoryGb",
+          label: "Memory (GB)",
+          kind: "select",
+          required: true,
           defaultValue: "1.5",
           options: [
             { id: "0.5", label: "0.5 GB" },
@@ -1753,10 +2504,18 @@ export class AzureClient implements PluginClient {
           ],
         },
         {
-          key: "port", label: "Port", kind: "text", required: false, defaultValue: "80", description: "Container port to expose",
+          key: "port",
+          label: "Port",
+          kind: "text",
+          required: false,
+          defaultValue: "80",
+          description: "Container port to expose",
         },
         {
-          key: "restartPolicy", label: "Restart Policy", kind: "select", required: true,
+          key: "restartPolicy",
+          label: "Restart Policy",
+          kind: "select",
+          required: true,
           defaultValue: "Always",
           options: [
             { id: "Always", label: "Always" },
@@ -1768,7 +2527,10 @@ export class AzureClient implements PluginClient {
     };
   }
 
-  private async createContainerInstance(accountId: string, fields: Record<string, string>): Promise<ResourceInstance> {
+  private async createContainerInstance(
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
     const name = fields["name"]!;
     const rg = fields["resourceGroup"]!;
     const location = fields["region"]!;
@@ -1812,9 +2574,12 @@ export class AzureClient implements PluginClient {
       accountId,
       displayName: name,
       fields: {
-        name, resourceGroup: rg, location,
+        name,
+        resourceGroup: rg,
+        location,
         provisioningState: String(props?.["provisioningState"] ?? "Creating"),
-        osType, restartPolicy,
+        osType,
+        restartPolicy,
         containers: 1,
         ipAddress: String(ipAddr?.["ip"] ?? ""),
         fqdn: String(ipAddr?.["fqdn"] ?? ""),
@@ -1837,11 +2602,32 @@ export class AzureClient implements PluginClient {
     const rgOptions = (rgs.value ?? []).map((rg) => ({ id: rg.name, label: rg.name }));
     return {
       fields: [
-        { key: "name", label: `${label} Name`, kind: "text", required: true, description: "Globally unique namespace name" },
-        { key: "resourceGroup", label: "Resource Group", kind: "select", required: true, options: rgOptions },
-        { key: "region", label: "Region", kind: "region-picker", required: true, regions: AZURE_REGIONS },
         {
-          key: "sku", label: "Pricing Tier", kind: "select", required: true,
+          key: "name",
+          label: `${label} Name`,
+          kind: "text",
+          required: true,
+          description: "Globally unique namespace name",
+        },
+        {
+          key: "resourceGroup",
+          label: "Resource Group",
+          kind: "select",
+          required: true,
+          options: rgOptions,
+        },
+        {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AZURE_REGIONS,
+        },
+        {
+          key: "sku",
+          label: "Pricing Tier",
+          kind: "select",
+          required: true,
           defaultValue: "Standard",
           options: [
             { id: "Basic", label: "Basic" },
@@ -1881,7 +2667,10 @@ export class AzureClient implements PluginClient {
       accountId,
       displayName: name,
       fields: {
-        name, resourceGroup: rg, location, sku,
+        name,
+        resourceGroup: rg,
+        location,
+        sku,
         provisioningState: String(props?.["provisioningState"] ?? "Creating"),
         status: String(props?.["status"] ?? ""),
       },
@@ -1903,10 +2692,25 @@ export class AzureClient implements PluginClient {
     return {
       fields: [
         { key: "name", label: "Public IP Name", kind: "text", required: true },
-        { key: "resourceGroup", label: "Resource Group", kind: "select", required: true, options: rgOptions },
-        { key: "region", label: "Region", kind: "region-picker", required: true, regions: AZURE_REGIONS },
         {
-          key: "sku", label: "SKU", kind: "select", required: true,
+          key: "resourceGroup",
+          label: "Resource Group",
+          kind: "select",
+          required: true,
+          options: rgOptions,
+        },
+        {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AZURE_REGIONS,
+        },
+        {
+          key: "sku",
+          label: "SKU",
+          kind: "select",
+          required: true,
           defaultValue: "Standard",
           options: [
             { id: "Basic", label: "Basic" },
@@ -1914,7 +2718,10 @@ export class AzureClient implements PluginClient {
           ],
         },
         {
-          key: "allocationMethod", label: "Allocation", kind: "select", required: true,
+          key: "allocationMethod",
+          label: "Allocation",
+          kind: "select",
+          required: true,
           defaultValue: "Static",
           options: [
             { id: "Static", label: "Static" },
@@ -1922,7 +2729,10 @@ export class AzureClient implements PluginClient {
           ],
         },
         {
-          key: "ipVersion", label: "IP Version", kind: "select", required: true,
+          key: "ipVersion",
+          label: "IP Version",
+          kind: "select",
+          required: true,
           defaultValue: "IPv4",
           options: [
             { id: "IPv4", label: "IPv4" },
@@ -1933,7 +2743,10 @@ export class AzureClient implements PluginClient {
     };
   }
 
-  private async createPublicIP(accountId: string, fields: Record<string, string>): Promise<ResourceInstance> {
+  private async createPublicIP(
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
     const name = fields["name"]!;
     const rg = fields["resourceGroup"]!;
     const location = fields["region"]!;
@@ -1960,14 +2773,19 @@ export class AzureClient implements PluginClient {
       accountId,
       displayName: name,
       fields: {
-        name, resourceGroup: rg, location,
-        sku, allocationMethod,
+        name,
+        resourceGroup: rg,
+        location,
+        sku,
+        allocationMethod,
         provisioningState: String(props?.["provisioningState"] ?? "Creating"),
         ipVersion,
       },
       resolvedOutputs: {
         ipAddress: String(props?.["ipAddress"] ?? ""),
-        fqdn: String((props?.["dnsSettings"] as Record<string, unknown> | undefined)?.["fqdn"] ?? ""),
+        fqdn: String(
+          (props?.["dnsSettings"] as Record<string, unknown> | undefined)?.["fqdn"] ?? "",
+        ),
       },
       secretStates: [],
       externalId: `${rg}/${name}`,
@@ -1983,11 +2801,32 @@ export class AzureClient implements PluginClient {
     const rgOptions = (rgs.value ?? []).map((rg) => ({ id: rg.name, label: rg.name }));
     return {
       fields: [
-        { key: "name", label: "Workspace Name", kind: "text", required: true, description: "Name for the Log Analytics workspace" },
-        { key: "resourceGroup", label: "Resource Group", kind: "select", required: true, options: rgOptions },
-        { key: "region", label: "Region", kind: "region-picker", required: true, regions: AZURE_REGIONS },
         {
-          key: "sku", label: "Pricing Tier", kind: "select", required: true,
+          key: "name",
+          label: "Workspace Name",
+          kind: "text",
+          required: true,
+          description: "Name for the Log Analytics workspace",
+        },
+        {
+          key: "resourceGroup",
+          label: "Resource Group",
+          kind: "select",
+          required: true,
+          options: rgOptions,
+        },
+        {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AZURE_REGIONS,
+        },
+        {
+          key: "sku",
+          label: "Pricing Tier",
+          kind: "select",
+          required: true,
           defaultValue: "PerGB2018",
           options: [
             { id: "PerGB2018", label: "Pay-as-you-go (Per GB)" },
@@ -1997,7 +2836,10 @@ export class AzureClient implements PluginClient {
           ],
         },
         {
-          key: "retentionInDays", label: "Data Retention", kind: "select", required: true,
+          key: "retentionInDays",
+          label: "Data Retention",
+          kind: "select",
+          required: true,
           defaultValue: "30",
           options: [
             { id: "30", label: "30 days" },
@@ -2012,7 +2854,10 @@ export class AzureClient implements PluginClient {
     };
   }
 
-  private async createLogAnalyticsWorkspace(accountId: string, fields: Record<string, string>): Promise<ResourceInstance> {
+  private async createLogAnalyticsWorkspace(
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
     const name = fields["name"]!;
     const rg = fields["resourceGroup"]!;
     const location = fields["region"]!;
@@ -2037,7 +2882,10 @@ export class AzureClient implements PluginClient {
       accountId,
       displayName: name,
       fields: {
-        name, resourceGroup: rg, location, sku,
+        name,
+        resourceGroup: rg,
+        location,
+        sku,
         provisioningState: String(props?.["provisioningState"] ?? "Creating"),
         retentionInDays,
         dailyQuotaGb: -1,
@@ -2064,8 +2912,20 @@ export class AzureClient implements PluginClient {
     return {
       fields: [
         { key: "name", label: nameLabel, kind: "text", required: true, description },
-        { key: "resourceGroup", label: "Resource Group", kind: "select", required: true, options: rgOptions },
-        { key: "region", label: "Region", kind: "region-picker", required: true, regions: AZURE_REGIONS },
+        {
+          key: "resourceGroup",
+          label: "Resource Group",
+          kind: "select",
+          required: true,
+          options: rgOptions,
+        },
+        {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AZURE_REGIONS,
+        },
       ],
     };
   }
@@ -2093,7 +2953,9 @@ export class AzureClient implements PluginClient {
       accountId,
       displayName: name,
       fields: {
-        name, resourceGroup: rg, location,
+        name,
+        resourceGroup: rg,
+        location,
         provisioningState: String(props?.["provisioningState"] ?? "Creating"),
       },
       resolvedOutputs: {},
@@ -2111,17 +2973,57 @@ export class AzureClient implements PluginClient {
     const rgOptions = (rgs.value ?? []).map((rg) => ({ id: rg.name, label: rg.name }));
     return {
       fields: [
-        { key: "name", label: "VNet Name", kind: "text", required: true, description: "Name for the virtual network" },
-        { key: "resourceGroup", label: "Resource Group", kind: "select", required: true, options: rgOptions },
-        { key: "region", label: "Region", kind: "region-picker", required: true, regions: AZURE_REGIONS },
-        { key: "addressSpace", label: "Address Space (CIDR)", kind: "text", required: true, defaultValue: "10.0.0.0/16", description: "IPv4 address range in CIDR notation" },
-        { key: "subnetName", label: "Default Subnet Name", kind: "text", required: true, defaultValue: "default" },
-        { key: "subnetPrefix", label: "Subnet Address Prefix", kind: "text", required: true, defaultValue: "10.0.0.0/24" },
+        {
+          key: "name",
+          label: "VNet Name",
+          kind: "text",
+          required: true,
+          description: "Name for the virtual network",
+        },
+        {
+          key: "resourceGroup",
+          label: "Resource Group",
+          kind: "select",
+          required: true,
+          options: rgOptions,
+        },
+        {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AZURE_REGIONS,
+        },
+        {
+          key: "addressSpace",
+          label: "Address Space (CIDR)",
+          kind: "text",
+          required: true,
+          defaultValue: "10.0.0.0/16",
+          description: "IPv4 address range in CIDR notation",
+        },
+        {
+          key: "subnetName",
+          label: "Default Subnet Name",
+          kind: "text",
+          required: true,
+          defaultValue: "default",
+        },
+        {
+          key: "subnetPrefix",
+          label: "Subnet Address Prefix",
+          kind: "text",
+          required: true,
+          defaultValue: "10.0.0.0/24",
+        },
       ],
     };
   }
 
-  private async createVNet(accountId: string, fields: Record<string, string>): Promise<ResourceInstance> {
+  private async createVNet(
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
     const name = fields["name"]!;
     const rg = fields["resourceGroup"]!;
     const location = fields["region"]!;
@@ -2147,7 +3049,9 @@ export class AzureClient implements PluginClient {
       accountId,
       displayName: name,
       fields: {
-        name, resourceGroup: rg, location,
+        name,
+        resourceGroup: rg,
+        location,
         addressSpace,
         subnetCount: 1,
         provisioningState: String(props?.["provisioningState"] ?? "Creating"),
@@ -2167,11 +3071,32 @@ export class AzureClient implements PluginClient {
     const rgOptions = (rgs.value ?? []).map((rg) => ({ id: rg.name, label: rg.name }));
     return {
       fields: [
-        { key: "name", label: "Key Vault Name", kind: "text", required: true, description: "Globally unique name (3-24 alphanumeric characters and hyphens)" },
-        { key: "resourceGroup", label: "Resource Group", kind: "select", required: true, options: rgOptions },
-        { key: "region", label: "Region", kind: "region-picker", required: true, regions: AZURE_REGIONS },
         {
-          key: "sku", label: "SKU", kind: "select", required: true,
+          key: "name",
+          label: "Key Vault Name",
+          kind: "text",
+          required: true,
+          description: "Globally unique name (3-24 alphanumeric characters and hyphens)",
+        },
+        {
+          key: "resourceGroup",
+          label: "Resource Group",
+          kind: "select",
+          required: true,
+          options: rgOptions,
+        },
+        {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AZURE_REGIONS,
+        },
+        {
+          key: "sku",
+          label: "SKU",
+          kind: "select",
+          required: true,
           defaultValue: "standard",
           options: [
             { id: "standard", label: "Standard" },
@@ -2179,7 +3104,10 @@ export class AzureClient implements PluginClient {
           ],
         },
         {
-          key: "enableSoftDelete", label: "Soft Delete", kind: "select", required: true,
+          key: "enableSoftDelete",
+          label: "Soft Delete",
+          kind: "select",
+          required: true,
           defaultValue: "true",
           options: [
             { id: "true", label: "Enabled (recommended)" },
@@ -2190,7 +3118,10 @@ export class AzureClient implements PluginClient {
     };
   }
 
-  private async createKeyVault(accountId: string, fields: Record<string, string>): Promise<ResourceInstance> {
+  private async createKeyVault(
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
     const name = fields["name"]!;
     const rg = fields["resourceGroup"]!;
     const location = fields["region"]!;
@@ -2218,7 +3149,9 @@ export class AzureClient implements PluginClient {
       accountId,
       displayName: name,
       fields: {
-        name, resourceGroup: rg, location,
+        name,
+        resourceGroup: rg,
+        location,
         sku,
         provisioningState: String(props?.["provisioningState"] ?? "Creating"),
         vaultUri: String(props?.["vaultUri"] ?? `https://${name}.vault.azure.net/`),
@@ -2241,11 +3174,32 @@ export class AzureClient implements PluginClient {
     const rgOptions = (rgs.value ?? []).map((rg) => ({ id: rg.name, label: rg.name }));
     return {
       fields: [
-        { key: "name", label: "Registry Name", kind: "text", required: true, description: "Globally unique name (5-50 alphanumeric characters)" },
-        { key: "resourceGroup", label: "Resource Group", kind: "select", required: true, options: rgOptions },
-        { key: "region", label: "Region", kind: "region-picker", required: true, regions: AZURE_REGIONS },
         {
-          key: "sku", label: "SKU", kind: "select", required: true,
+          key: "name",
+          label: "Registry Name",
+          kind: "text",
+          required: true,
+          description: "Globally unique name (5-50 alphanumeric characters)",
+        },
+        {
+          key: "resourceGroup",
+          label: "Resource Group",
+          kind: "select",
+          required: true,
+          options: rgOptions,
+        },
+        {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AZURE_REGIONS,
+        },
+        {
+          key: "sku",
+          label: "SKU",
+          kind: "select",
+          required: true,
           defaultValue: "Basic",
           options: [
             { id: "Basic", label: "Basic (~$0.167/day)" },
@@ -2254,7 +3208,10 @@ export class AzureClient implements PluginClient {
           ],
         },
         {
-          key: "adminEnabled", label: "Admin User", kind: "select", required: true,
+          key: "adminEnabled",
+          label: "Admin User",
+          kind: "select",
+          required: true,
           defaultValue: "false",
           options: [
             { id: "false", label: "Disabled" },
@@ -2265,7 +3222,10 @@ export class AzureClient implements PluginClient {
     };
   }
 
-  private async createContainerRegistry(accountId: string, fields: Record<string, string>): Promise<ResourceInstance> {
+  private async createContainerRegistry(
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
     const name = fields["name"]!;
     const rg = fields["resourceGroup"]!;
     const location = fields["region"]!;
@@ -2288,7 +3248,9 @@ export class AzureClient implements PluginClient {
       accountId,
       displayName: name,
       fields: {
-        name, resourceGroup: rg, location,
+        name,
+        resourceGroup: rg,
+        location,
         sku,
         loginServer: String(props?.["loginServer"] ?? `${name.toLowerCase()}.azurecr.io`),
         adminEnabled,
@@ -2387,8 +3349,36 @@ export class AzureClient implements PluginClient {
     // Step 3: Create NSG with SSH rule for Linux VMs
     const nsgName = `${name}-nsg`;
     const nsgRules = isLinux
-      ? [{ name: "AllowSSH", properties: { protocol: "Tcp", sourceAddressPrefix: "*", destinationAddressPrefix: "*", sourcePortRange: "*", destinationPortRange: "22", access: "Allow", priority: 1000, direction: "Inbound" } }]
-      : [{ name: "AllowRDP", properties: { protocol: "Tcp", sourceAddressPrefix: "*", destinationAddressPrefix: "*", sourcePortRange: "*", destinationPortRange: "3389", access: "Allow", priority: 1000, direction: "Inbound" } }];
+      ? [
+          {
+            name: "AllowSSH",
+            properties: {
+              protocol: "Tcp",
+              sourceAddressPrefix: "*",
+              destinationAddressPrefix: "*",
+              sourcePortRange: "*",
+              destinationPortRange: "22",
+              access: "Allow",
+              priority: 1000,
+              direction: "Inbound",
+            },
+          },
+        ]
+      : [
+          {
+            name: "AllowRDP",
+            properties: {
+              protocol: "Tcp",
+              sourceAddressPrefix: "*",
+              destinationAddressPrefix: "*",
+              sourcePortRange: "*",
+              destinationPortRange: "3389",
+              access: "Allow",
+              priority: 1000,
+              direction: "Inbound",
+            },
+          },
+        ];
     const nsgResult = await this.put<Record<string, unknown>>(
       `${ARM}/subscriptions/${this.creds.subscriptionId}/resourceGroups/${rg}/providers/Microsoft.Network/networkSecurityGroups/${nsgName}?api-version=2023-09-01`,
       { location, properties: { securityRules: nsgRules } },
@@ -2564,7 +3554,12 @@ export class AzureClient implements PluginClient {
 
     const result = await this.put<Record<string, unknown>>(
       `${ARM}/subscriptions/${this.creds.subscriptionId}/resourceGroups/${rg}/providers/Microsoft.Storage/storageAccounts/${name}?api-version=2023-01-01`,
-      { location, kind, sku: { name: sku }, properties: { supportsHttpsTrafficOnly: true, accessTier: "Hot" } },
+      {
+        location,
+        kind,
+        sku: { name: sku },
+        properties: { supportsHttpsTrafficOnly: true, accessTier: "Hot" },
+      },
     );
     const props = result["properties"] as Record<string, unknown> | undefined;
     const primaryEndpoints = props?.["primaryEndpoints"] as Record<string, unknown> | undefined;
@@ -2575,11 +3570,22 @@ export class AzureClient implements PluginClient {
       accountId,
       displayName: name,
       fields: {
-        name, resourceGroup: rg, location, kind, sku,
+        name,
+        resourceGroup: rg,
+        location,
+        kind,
+        sku,
         provisioningState: String(props?.["provisioningState"] ?? "Succeeded"),
-        accessTier: "Hot", httpsOnly: true, primaryLocation: location, statusOfPrimary: "available",
+        accessTier: "Hot",
+        httpsOnly: true,
+        primaryLocation: location,
+        statusOfPrimary: "available",
       },
-      resolvedOutputs: { primaryBlobEndpoint: String(primaryEndpoints?.["blob"] ?? `https://${name}.blob.core.windows.net/`) },
+      resolvedOutputs: {
+        primaryBlobEndpoint: String(
+          primaryEndpoints?.["blob"] ?? `https://${name}.blob.core.windows.net/`,
+        ),
+      },
       secretStates: [],
       externalId: `${rg}/${name}`,
       createdAt: new Date().toISOString(),
@@ -2617,13 +3623,23 @@ export class AzureClient implements PluginClient {
       accountId,
       displayName: name,
       fields: {
-        name, resourceGroup: rg, location, kind,
+        name,
+        resourceGroup: rg,
+        location,
+        kind,
         databaseAccountOfferType: "Standard",
         provisioningState: String(props?.["provisioningState"] ?? "Creating"),
-        consistencyLevel, enableAutomaticFailover: false, enableMultipleWriteLocations: false,
-        readLocations: location, writeLocations: location,
+        consistencyLevel,
+        enableAutomaticFailover: false,
+        enableMultipleWriteLocations: false,
+        readLocations: location,
+        writeLocations: location,
       },
-      resolvedOutputs: { documentEndpoint: String(props?.["documentEndpoint"] ?? `https://${name}.documents.azure.com:443/`) },
+      resolvedOutputs: {
+        documentEndpoint: String(
+          props?.["documentEndpoint"] ?? `https://${name}.documents.azure.com:443/`,
+        ),
+      },
       secretStates: [],
       externalId: `${rg}/${name}`,
       createdAt: new Date().toISOString(),
@@ -2661,9 +3677,15 @@ export class AzureClient implements PluginClient {
       accountId,
       displayName: name,
       fields: {
-        name, resourceGroup: rg, location, sku: skuName, capacity,
+        name,
+        resourceGroup: rg,
+        location,
+        sku: skuName,
+        capacity,
         provisioningState: String(props?.["provisioningState"] ?? "Creating"),
-        redisVersion: "6", nonSslPort: false, shardCount: 0,
+        redisVersion: "6",
+        nonSslPort: false,
+        shardCount: 0,
       },
       resolvedOutputs: {
         hostName: String(props?.["hostName"] ?? `${name}.redis.cache.windows.net`),
@@ -2685,27 +3707,75 @@ export class AzureClient implements PluginClient {
       "azure-vm": { provider: "Microsoft.Compute/virtualMachines", apiVersion: "2024-03-01" },
       "azure-disk": { provider: "Microsoft.Compute/disks", apiVersion: "2023-10-02" },
       "azure-vnet": { provider: "Microsoft.Network/virtualNetworks", apiVersion: "2023-09-01" },
-      "azure-aks-cluster": { provider: "Microsoft.ContainerService/managedClusters", apiVersion: "2024-01-01" },
+      "azure-aks-cluster": {
+        provider: "Microsoft.ContainerService/managedClusters",
+        apiVersion: "2024-01-01",
+      },
       "azure-sql-database": { provider: "", apiVersion: "" }, // Special handling
-      "azure-cosmos-db": { provider: "Microsoft.DocumentDB/databaseAccounts", apiVersion: "2023-11-15" },
-      "azure-storage-account": { provider: "Microsoft.Storage/storageAccounts", apiVersion: "2023-01-01" },
+      "azure-cosmos-db": {
+        provider: "Microsoft.DocumentDB/databaseAccounts",
+        apiVersion: "2023-11-15",
+      },
+      "azure-storage-account": {
+        provider: "Microsoft.Storage/storageAccounts",
+        apiVersion: "2023-01-01",
+      },
       "azure-function-app": { provider: "Microsoft.Web/sites", apiVersion: "2023-01-01" },
       "azure-app-service": { provider: "Microsoft.Web/sites", apiVersion: "2023-01-01" },
-      "azure-container-instance": { provider: "Microsoft.ContainerInstance/containerGroups", apiVersion: "2023-05-01" },
+      "azure-container-instance": {
+        provider: "Microsoft.ContainerInstance/containerGroups",
+        apiVersion: "2023-05-01",
+      },
       "azure-key-vault": { provider: "Microsoft.KeyVault/vaults", apiVersion: "2023-07-01" },
       "azure-redis-cache": { provider: "Microsoft.Cache/redis", apiVersion: "2023-08-01" },
-      "azure-service-bus": { provider: "Microsoft.ServiceBus/namespaces", apiVersion: "2022-10-01-preview" },
-      "azure-container-registry": { provider: "Microsoft.ContainerRegistry/registries", apiVersion: "2023-07-01" },
-      "azure-load-balancer": { provider: "Microsoft.Network/loadBalancers", apiVersion: "2023-09-01" },
-      "azure-dns-zone": { provider: "Microsoft.Network/dnszones", apiVersion: "2023-07-01-preview" },
-      "azure-nsg": { provider: "Microsoft.Network/networkSecurityGroups", apiVersion: "2023-09-01" },
-      "azure-public-ip": { provider: "Microsoft.Network/publicIPAddresses", apiVersion: "2023-09-01" },
-      "azure-postgres-flexible": { provider: "Microsoft.DBforPostgreSQL/flexibleServers", apiVersion: "2023-06-01-preview" },
-      "azure-mysql-flexible": { provider: "Microsoft.DBforMySQL/flexibleServers", apiVersion: "2023-06-30" },
-      "azure-event-hub": { provider: "Microsoft.EventHub/namespaces", apiVersion: "2022-10-01-preview" },
-      "azure-app-gateway": { provider: "Microsoft.Network/applicationGateways", apiVersion: "2023-09-01" },
-      "azure-log-analytics": { provider: "Microsoft.OperationalInsights/workspaces", apiVersion: "2022-10-01" },
-      "azure-managed-identity": { provider: "Microsoft.ManagedIdentity/userAssignedIdentities", apiVersion: "2023-01-31" },
+      "azure-service-bus": {
+        provider: "Microsoft.ServiceBus/namespaces",
+        apiVersion: "2022-10-01-preview",
+      },
+      "azure-container-registry": {
+        provider: "Microsoft.ContainerRegistry/registries",
+        apiVersion: "2023-07-01",
+      },
+      "azure-load-balancer": {
+        provider: "Microsoft.Network/loadBalancers",
+        apiVersion: "2023-09-01",
+      },
+      "azure-dns-zone": {
+        provider: "Microsoft.Network/dnszones",
+        apiVersion: "2023-07-01-preview",
+      },
+      "azure-nsg": {
+        provider: "Microsoft.Network/networkSecurityGroups",
+        apiVersion: "2023-09-01",
+      },
+      "azure-public-ip": {
+        provider: "Microsoft.Network/publicIPAddresses",
+        apiVersion: "2023-09-01",
+      },
+      "azure-postgres-flexible": {
+        provider: "Microsoft.DBforPostgreSQL/flexibleServers",
+        apiVersion: "2023-06-01-preview",
+      },
+      "azure-mysql-flexible": {
+        provider: "Microsoft.DBforMySQL/flexibleServers",
+        apiVersion: "2023-06-30",
+      },
+      "azure-event-hub": {
+        provider: "Microsoft.EventHub/namespaces",
+        apiVersion: "2022-10-01-preview",
+      },
+      "azure-app-gateway": {
+        provider: "Microsoft.Network/applicationGateways",
+        apiVersion: "2023-09-01",
+      },
+      "azure-log-analytics": {
+        provider: "Microsoft.OperationalInsights/workspaces",
+        apiVersion: "2022-10-01",
+      },
+      "azure-managed-identity": {
+        provider: "Microsoft.ManagedIdentity/userAssignedIdentities",
+        apiVersion: "2023-01-31",
+      },
       "azure-firewall": { provider: "Microsoft.Network/azureFirewalls", apiVersion: "2023-09-01" },
     };
 
@@ -2743,27 +3813,75 @@ export class AzureClient implements PluginClient {
       "azure-vm": { provider: "Microsoft.Compute/virtualMachines", apiVersion: "2024-03-01" },
       "azure-disk": { provider: "Microsoft.Compute/disks", apiVersion: "2023-10-02" },
       "azure-vnet": { provider: "Microsoft.Network/virtualNetworks", apiVersion: "2023-09-01" },
-      "azure-aks-cluster": { provider: "Microsoft.ContainerService/managedClusters", apiVersion: "2024-01-01" },
+      "azure-aks-cluster": {
+        provider: "Microsoft.ContainerService/managedClusters",
+        apiVersion: "2024-01-01",
+      },
       "azure-sql-database": { provider: "Microsoft.Sql/servers", apiVersion: "2023-05-01-preview" },
-      "azure-cosmos-db": { provider: "Microsoft.DocumentDB/databaseAccounts", apiVersion: "2023-11-15" },
-      "azure-storage-account": { provider: "Microsoft.Storage/storageAccounts", apiVersion: "2023-01-01" },
+      "azure-cosmos-db": {
+        provider: "Microsoft.DocumentDB/databaseAccounts",
+        apiVersion: "2023-11-15",
+      },
+      "azure-storage-account": {
+        provider: "Microsoft.Storage/storageAccounts",
+        apiVersion: "2023-01-01",
+      },
       "azure-function-app": { provider: "Microsoft.Web/sites", apiVersion: "2023-01-01" },
       "azure-app-service": { provider: "Microsoft.Web/sites", apiVersion: "2023-01-01" },
-      "azure-container-instance": { provider: "Microsoft.ContainerInstance/containerGroups", apiVersion: "2023-05-01" },
+      "azure-container-instance": {
+        provider: "Microsoft.ContainerInstance/containerGroups",
+        apiVersion: "2023-05-01",
+      },
       "azure-key-vault": { provider: "Microsoft.KeyVault/vaults", apiVersion: "2023-07-01" },
       "azure-redis-cache": { provider: "Microsoft.Cache/redis", apiVersion: "2023-08-01" },
-      "azure-service-bus": { provider: "Microsoft.ServiceBus/namespaces", apiVersion: "2022-10-01-preview" },
-      "azure-container-registry": { provider: "Microsoft.ContainerRegistry/registries", apiVersion: "2023-07-01" },
-      "azure-load-balancer": { provider: "Microsoft.Network/loadBalancers", apiVersion: "2023-09-01" },
-      "azure-dns-zone": { provider: "Microsoft.Network/dnszones", apiVersion: "2023-07-01-preview" },
-      "azure-nsg": { provider: "Microsoft.Network/networkSecurityGroups", apiVersion: "2023-09-01" },
-      "azure-public-ip": { provider: "Microsoft.Network/publicIPAddresses", apiVersion: "2023-09-01" },
-      "azure-postgres-flexible": { provider: "Microsoft.DBforPostgreSQL/flexibleServers", apiVersion: "2023-06-01-preview" },
-      "azure-mysql-flexible": { provider: "Microsoft.DBforMySQL/flexibleServers", apiVersion: "2023-06-30" },
-      "azure-event-hub": { provider: "Microsoft.EventHub/namespaces", apiVersion: "2022-10-01-preview" },
-      "azure-app-gateway": { provider: "Microsoft.Network/applicationGateways", apiVersion: "2023-09-01" },
-      "azure-log-analytics": { provider: "Microsoft.OperationalInsights/workspaces", apiVersion: "2022-10-01" },
-      "azure-managed-identity": { provider: "Microsoft.ManagedIdentity/userAssignedIdentities", apiVersion: "2023-01-31" },
+      "azure-service-bus": {
+        provider: "Microsoft.ServiceBus/namespaces",
+        apiVersion: "2022-10-01-preview",
+      },
+      "azure-container-registry": {
+        provider: "Microsoft.ContainerRegistry/registries",
+        apiVersion: "2023-07-01",
+      },
+      "azure-load-balancer": {
+        provider: "Microsoft.Network/loadBalancers",
+        apiVersion: "2023-09-01",
+      },
+      "azure-dns-zone": {
+        provider: "Microsoft.Network/dnszones",
+        apiVersion: "2023-07-01-preview",
+      },
+      "azure-nsg": {
+        provider: "Microsoft.Network/networkSecurityGroups",
+        apiVersion: "2023-09-01",
+      },
+      "azure-public-ip": {
+        provider: "Microsoft.Network/publicIPAddresses",
+        apiVersion: "2023-09-01",
+      },
+      "azure-postgres-flexible": {
+        provider: "Microsoft.DBforPostgreSQL/flexibleServers",
+        apiVersion: "2023-06-01-preview",
+      },
+      "azure-mysql-flexible": {
+        provider: "Microsoft.DBforMySQL/flexibleServers",
+        apiVersion: "2023-06-30",
+      },
+      "azure-event-hub": {
+        provider: "Microsoft.EventHub/namespaces",
+        apiVersion: "2022-10-01-preview",
+      },
+      "azure-app-gateway": {
+        provider: "Microsoft.Network/applicationGateways",
+        apiVersion: "2023-09-01",
+      },
+      "azure-log-analytics": {
+        provider: "Microsoft.OperationalInsights/workspaces",
+        apiVersion: "2022-10-01",
+      },
+      "azure-managed-identity": {
+        provider: "Microsoft.ManagedIdentity/userAssignedIdentities",
+        apiVersion: "2023-01-31",
+      },
       "azure-firewall": { provider: "Microsoft.Network/azureFirewalls", apiVersion: "2023-09-01" },
     };
 

@@ -13,8 +13,8 @@ export function SelectPicker({
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
     return q
-      ? options.filter((opt) =>
-          opt.label.toLowerCase().includes(q) || opt.id.toLowerCase().includes(q),
+      ? options.filter(
+          (opt) => opt.label.toLowerCase().includes(q) || opt.id.toLowerCase().includes(q),
         )
       : options;
   }, [options, search]);
@@ -51,9 +51,11 @@ export function SelectPicker({
               >
                 <span className="block text-sm font-medium truncate">{opt.label}</span>
                 {showSecondary && (
-                  <span className={`block text-[11px] font-mono mt-1 truncate ${
-                    value === opt.id ? "text-blue-400/70" : "text-gray-600"
-                  }`}>
+                  <span
+                    className={`block text-[11px] font-mono mt-1 truncate ${
+                      value === opt.id ? "text-blue-400/70" : "text-gray-600"
+                    }`}
+                  >
                     {opt.id}
                   </span>
                 )}
@@ -61,9 +63,7 @@ export function SelectPicker({
             );
           })}
         </div>
-        {filtered.length === 0 && (
-          <p className="px-1 py-2 text-xs text-gray-600">No matches</p>
-        )}
+        {filtered.length === 0 && <p className="px-1 py-2 text-xs text-gray-600">No matches</p>}
       </div>
     </div>
   );

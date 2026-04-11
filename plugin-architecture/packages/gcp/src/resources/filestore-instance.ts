@@ -15,8 +15,6 @@ export const FilestoreInstanceResourceType: ResourceTypeDefinition = {
     { key: "fileShareName", label: "File Share Name", kind: "string", required: false },
     { key: "ipAddress", label: "IP Address", kind: "string", required: false },
   ],
-  outputs: [
-    { key: "ipAddress", label: "IP Address", sensitive: false },
-  ],
+  outputs: [{ key: "ipAddress", label: "IP Address", sensitive: false }],
   dashboardPinnable: true,
 };

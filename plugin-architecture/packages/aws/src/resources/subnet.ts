@@ -16,9 +16,7 @@ export const SubnetResourceType: ResourceTypeDefinition = {
     { key: "availableIps", label: "Available IPs", kind: "number", required: false },
     { key: "mapPublicIp", label: "Map Public IP", kind: "boolean", required: false },
   ],
-  outputs: [
-    { key: "subnetArn", label: "Subnet ARN", sensitive: false },
-  ],
+  outputs: [{ key: "subnetArn", label: "Subnet ARN", sensitive: false }],
   dashboardPinnable: false,
   iconKey: "network",
 };

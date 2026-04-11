@@ -122,7 +122,9 @@ export async function handleSshSession(
             } else if (msg.type === "ssh:resize" && msg.cols && msg.rows) {
               stream.setWindow(msg.rows, msg.cols, 0, 0);
             }
-          } catch { /* ignore malformed messages */ }
+          } catch {
+            /* ignore malformed messages */
+          }
         });
 
         ws.on("close", () => {

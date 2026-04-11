@@ -12,7 +12,17 @@ export const ManagedDbResourceType: ResourceTypeDefinition = {
       label: "Engine",
       kind: "enum",
       required: true,
-      enumValues: ["postgresql", "mysql", "mongodb", "redis", "kafka", "opensearch", "cassandra", "m3db", "grafana"],
+      enumValues: [
+        "postgresql",
+        "mysql",
+        "mongodb",
+        "redis",
+        "kafka",
+        "opensearch",
+        "cassandra",
+        "m3db",
+        "grafana",
+      ],
     },
     {
       key: "version",
@@ -75,7 +85,11 @@ export const ManagedDbResourceType: ResourceTypeDefinition = {
       displayName: "Connection URL",
       description: "Single DATABASE_URL containing the full connection string",
       entries: [
-        { envKey: "DATABASE_URL", outputKey: "connectionString", description: "Full connection URI" },
+        {
+          envKey: "DATABASE_URL",
+          outputKey: "connectionString",
+          description: "Full connection URI",
+        },
       ],
     },
     {

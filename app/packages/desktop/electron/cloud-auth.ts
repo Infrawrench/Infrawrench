@@ -33,10 +33,10 @@ async function getSyncState(key: string): Promise<string | null> {
 
 async function setSyncState(key: string, value: string): Promise<void> {
   const db = await getDb();
-  await db.execute(
-    "INSERT OR REPLACE INTO cloud_sync_state (key, value) VALUES ($1, $2)",
-    [key, value],
-  );
+  await db.execute("INSERT OR REPLACE INTO cloud_sync_state (key, value) VALUES ($1, $2)", [
+    key,
+    value,
+  ]);
 }
 
 async function deleteSyncState(key: string): Promise<void> {
@@ -50,9 +50,7 @@ let codeVerifier: string | null = null;
 export function startOAuthFlow(): void {
   // Generate PKCE code verifier and challenge
   codeVerifier = base64url(crypto.randomBytes(32));
-  const codeChallenge = base64url(
-    crypto.createHash("sha256").update(codeVerifier).digest(),
-  );
+  const codeChallenge = base64url(crypto.createHash("sha256").update(codeVerifier).digest());
 
   const params = new URLSearchParams({
     response_type: "code",
@@ -223,10 +221,15 @@ export async function getAuthStatus(): Promise<{
 export async function logout(): Promise<void> {
   currentTokens = null;
   for (const key of [
-    "access_token_encrypted", "access_token_iv",
-    "refresh_token_encrypted", "refresh_token_iv",
-    "token_expires_at", "email", "organization_id",
-    "last_sync_version", "last_push_at",
+    "access_token_encrypted",
+    "access_token_iv",
+    "refresh_token_encrypted",
+    "refresh_token_iv",
+    "token_expires_at",
+    "email",
+    "organization_id",
+    "last_sync_version",
+    "last_push_at",
   ]) {
     await deleteSyncState(key);
   }

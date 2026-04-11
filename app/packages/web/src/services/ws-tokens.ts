@@ -24,7 +24,9 @@ export function createWsToken(userId: string, organizationId: string): string {
   return rawToken;
 }
 
-export function validateWsToken(rawToken: string): { organizationId: string; userId: string } | null {
+export function validateWsToken(
+  rawToken: string,
+): { organizationId: string; userId: string } | null {
   const hashedToken = createHash("sha256").update(rawToken).digest("hex");
   const entry = tokenStore.get(hashedToken);
   if (!entry) return null;

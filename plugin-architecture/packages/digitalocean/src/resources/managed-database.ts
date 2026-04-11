@@ -26,7 +26,19 @@ export const ManagedDatabaseResourceType: ResourceTypeDefinition = {
       label: "Region",
       kind: "enum",
       required: true,
-      enumValues: ["nyc1", "nyc3", "sfo2", "sfo3", "ams3", "fra1", "sgp1", "lon1", "tor1", "blr1", "syd1"],
+      enumValues: [
+        "nyc1",
+        "nyc3",
+        "sfo2",
+        "sfo3",
+        "ams3",
+        "fra1",
+        "sgp1",
+        "lon1",
+        "tor1",
+        "blr1",
+        "syd1",
+      ],
     },
     {
       key: "size",
@@ -70,7 +82,11 @@ export const ManagedDatabaseResourceType: ResourceTypeDefinition = {
       displayName: "Connection URL",
       description: "Single DATABASE_URL containing the full connection string",
       entries: [
-        { envKey: "DATABASE_URL", outputKey: "connectionString", description: "Full connection URI" },
+        {
+          envKey: "DATABASE_URL",
+          outputKey: "connectionString",
+          description: "Full connection URI",
+        },
       ],
     },
     {

@@ -9,7 +9,10 @@ const db: DbClient = {
   select: <T>(sql: string, params?: unknown[]) =>
     invoke<T>("db_select", { sql, params: params ?? [] }),
   execute: (sql: string, params?: unknown[]) =>
-    invoke<{ rowsAffected: number; lastInsertId: number }>("db_execute", { sql, params: params ?? [] }),
+    invoke<{ rowsAffected: number; lastInsertId: number }>("db_execute", {
+      sql,
+      params: params ?? [],
+    }),
 };
 
 export async function getDb(): Promise<DbClient> {

@@ -11,7 +11,13 @@ import {
 } from "@infrawrench/ui";
 
 // Re-export shared target factories
-export { dashboardTabTarget, accountTabTarget, resourceTabTarget, resourceSshTabTarget, resourceSftpTabTarget };
+export {
+  dashboardTabTarget,
+  accountTabTarget,
+  resourceTabTarget,
+  resourceSshTabTarget,
+  resourceSftpTabTarget,
+};
 
 function getCurrentOrgId(): string {
   if (typeof window === "undefined") return "";
@@ -19,7 +25,10 @@ function getCurrentOrgId(): string {
   return match?.[1] ? decodeURIComponent(match[1]) : "";
 }
 
-export function getWorkspaceNavigateArgs(target: WorkspaceTabTarget, replace = false): {
+export function getWorkspaceNavigateArgs(
+  target: WorkspaceTabTarget,
+  replace = false,
+): {
   to: string;
   params?: Record<string, string>;
   search?: Record<string, string>;
@@ -29,16 +38,29 @@ export function getWorkspaceNavigateArgs(target: WorkspaceTabTarget, replace = f
   const orgId = getCurrentOrgId();
   switch (target.kind) {
     case "dashboard":
-      return { to: "/org/$orgId/dashboard/$dashboardId", params: { orgId, dashboardId: target.dashboardId }, ...(replace ? { replace: true } : {}) };
+      return {
+        to: "/org/$orgId/dashboard/$dashboardId",
+        params: { orgId, dashboardId: target.dashboardId },
+        ...(replace ? { replace: true } : {}),
+      };
     case "account":
-      return { to: "/org/$orgId/accounts/$accountId", params: { orgId, accountId: target.accountId }, ...(replace ? { replace: true } : {}) };
+      return {
+        to: "/org/$orgId/accounts/$accountId",
+        params: { orgId, accountId: target.accountId },
+        ...(replace ? { replace: true } : {}),
+      };
     case "resource": {
       const rid = normalizeResourceId(target.resourceId);
       const hash = target.view === "ssh" ? "ssh" : target.view === "sftp" ? "sftp" : undefined;
       if (target.pluginId && target.resourceTypeId) {
         return {
           to: "/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId",
-          params: { orgId, pluginId: target.pluginId, resourceTypeId: target.resourceTypeId, resourceId: rid },
+          params: {
+            orgId,
+            pluginId: target.pluginId,
+            resourceTypeId: target.resourceTypeId,
+            resourceId: rid,
+          },
           search: { accountId: target.accountId },
           ...(hash ? { hash } : {}),
           ...(replace ? { replace: true } : {}),
@@ -72,7 +94,10 @@ export function navigateToWorkspaceTarget(
   return navigate(getWorkspaceNavigateArgs(target, options?.replace));
 }
 
-export function syncWorkspaceRouteFromPath(pathname: string, hash?: string): WorkspaceTabTarget | null {
+export function syncWorkspaceRouteFromPath(
+  pathname: string,
+  hash?: string,
+): WorkspaceTabTarget | null {
   const normalizedHash = hash?.replace(/^#/, "");
   const segments = pathname.split("/").filter(Boolean);
 
@@ -98,8 +123,10 @@ export function syncWorkspaceRouteFromPath(pathname: string, hash?: string): Wor
     const resourceId = decodeURIComponent(s[3]);
     const params = new URLSearchParams(window.location.search);
     const accountId = params.get("accountId") ?? resourceId.split(":")[0] ?? "";
-    if (normalizedHash === "ssh") return resourceSshTabTarget(accountId, resourceId, pluginId, resourceTypeId);
-    if (normalizedHash === "sftp") return resourceSftpTabTarget(accountId, resourceId, pluginId, resourceTypeId);
+    if (normalizedHash === "ssh")
+      return resourceSshTabTarget(accountId, resourceId, pluginId, resourceTypeId);
+    if (normalizedHash === "sftp")
+      return resourceSftpTabTarget(accountId, resourceId, pluginId, resourceTypeId);
     return resourceTabTarget(accountId, resourceId, pluginId, resourceTypeId);
   }
   return null;

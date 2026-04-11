@@ -14,9 +14,7 @@ export const HyperdriveResourceType: ResourceTypeDefinition = {
     { key: "user", label: "User", kind: "string", required: false },
     { key: "cachingDisabled", label: "Caching Disabled", kind: "boolean", required: false },
   ],
-  outputs: [
-    { key: "hyperdriveId", label: "Hyperdrive ID", sensitive: false },
-  ],
+  outputs: [{ key: "hyperdriveId", label: "Hyperdrive ID", sensitive: false }],
   dashboardPinnable: true,
   supportsCreate: true,
   iconKey: "hyperdrive",

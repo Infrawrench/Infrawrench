@@ -11,7 +11,10 @@ export function DroppableDashboardArea({ dashboardId, children }: DroppableDashb
   });
 
   return (
-    <div ref={setNodeRef} className={`relative ${isOver ? "ring-2 ring-inset ring-blue-500/50 rounded-xl" : ""}`}>
+    <div
+      ref={setNodeRef}
+      className={`relative ${isOver ? "ring-2 ring-inset ring-blue-500/50 rounded-xl" : ""}`}
+    >
       {children}
       {isOver && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">

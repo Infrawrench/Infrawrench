@@ -9,9 +9,7 @@ export const KVNamespaceResourceType: ResourceTypeDefinition = {
     { key: "title", label: "Title", kind: "string", required: true },
     { key: "supportsUrlEncoding", label: "URL Encoding", kind: "boolean", required: false },
   ],
-  outputs: [
-    { key: "namespaceId", label: "Namespace ID", sensitive: false },
-  ],
+  outputs: [{ key: "namespaceId", label: "Namespace ID", sensitive: false }],
   dashboardPinnable: true,
   supportsCreate: true,
   iconKey: "kv",

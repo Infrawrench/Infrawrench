@@ -10,8 +10,6 @@ export const SecretManagerSecretResourceType: ResourceTypeDefinition = {
     { key: "replicationType", label: "Replication Type", kind: "string", required: false },
     { key: "versionCount", label: "Versions", kind: "number", required: false },
   ],
-  outputs: [
-    { key: "latestVersion", label: "Latest Version Value", sensitive: true },
-  ],
+  outputs: [{ key: "latestVersion", label: "Latest Version Value", sensitive: true }],
   dashboardPinnable: false,
 };

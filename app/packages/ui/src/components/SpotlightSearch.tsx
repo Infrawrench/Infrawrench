@@ -85,8 +85,12 @@ export function SpotlightSearch({
         }
       })
       .catch(() => {})
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [query, loadResults]);
 
   // Client-side filtering (desktop pattern)
@@ -109,7 +113,10 @@ export function SpotlightSearch({
   );
 
   function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "Escape") { onClose(); return; }
+    if (e.key === "Escape") {
+      onClose();
+      return;
+    }
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setSelectedIndex((i) => Math.min(i + 1, results.length - 1));
@@ -132,7 +139,9 @@ export function SpotlightSearch({
   return (
     <div
       className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh] bg-black/60 backdrop-blur-sm"
-      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
     >
       <div
         className="w-[640px] max-w-[90vw] bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col"
@@ -146,7 +155,9 @@ export function SpotlightSearch({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={mode === "navigate" ? "Jump to resource\u2026" : "Search resources to add\u2026"}
+            placeholder={
+              mode === "navigate" ? "Jump to resource\u2026" : "Search resources to add\u2026"
+            }
             className="flex-1 bg-transparent text-gray-100 placeholder-gray-600 text-sm focus:outline-none"
           />
           {loading && (
@@ -175,7 +186,9 @@ export function SpotlightSearch({
                         dangerouslySetInnerHTML={{ __html: first.pluginLogoSvg }}
                       />
                     ) : null}
-                    <span className="text-xs font-medium text-gray-500">{first.pluginDisplayName}</span>
+                    <span className="text-xs font-medium text-gray-500">
+                      {first.pluginDisplayName}
+                    </span>
                     <span className="text-xs text-gray-700">&middot; {first.accountName}</span>
                   </div>
 
@@ -189,7 +202,9 @@ export function SpotlightSearch({
                         onClick={() => handleSelect(result)}
                         onMouseEnter={() => setSelectedIndex(globalIdx)}
                         className={`flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors ${
-                          isSelected ? "bg-blue-600/20 text-gray-100" : "text-gray-300 hover:bg-gray-800"
+                          isSelected
+                            ? "bg-blue-600/20 text-gray-100"
+                            : "text-gray-300 hover:bg-gray-800"
                         }`}
                       >
                         <div className="flex-1 min-w-0">
@@ -198,11 +213,15 @@ export function SpotlightSearch({
                             <div className="text-xs text-gray-500 truncate">{result.subtitle}</div>
                           )}
                         </div>
-                        <span className={`text-xs flex-shrink-0 ${isSelected ? "text-blue-400" : "text-gray-600"}`}>
+                        <span
+                          className={`text-xs flex-shrink-0 ${isSelected ? "text-blue-400" : "text-gray-600"}`}
+                        >
                           {result.resourceTypeLabel}
                         </span>
                         {isSelected && (
-                          <kbd className="text-xs text-blue-400 flex-shrink-0">{mode === "navigate" ? "\u21b5 open" : "\u21b5 add"}</kbd>
+                          <kbd className="text-xs text-blue-400 flex-shrink-0">
+                            {mode === "navigate" ? "\u21b5 open" : "\u21b5 add"}
+                          </kbd>
                         )}
                       </div>
                     );

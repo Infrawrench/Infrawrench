@@ -1,7 +1,10 @@
 function getActionLabel(url: string): string {
   try {
     const { hostname } = new URL(url);
-    if (hostname.includes("console.developers.google.com") || hostname.includes("console.cloud.google.com")) {
+    if (
+      hostname.includes("console.developers.google.com") ||
+      hostname.includes("console.cloud.google.com")
+    ) {
       return "Open Google Cloud Console";
     }
     return `Open ${hostname}`;
@@ -35,7 +38,12 @@ export interface ErrorNoticeProps {
   onOpenLink?: (url: string) => void;
 }
 
-export function ErrorNotice({ message, className = "", textClassName = "", onOpenLink }: ErrorNoticeProps) {
+export function ErrorNotice({
+  message,
+  className = "",
+  textClassName = "",
+  onOpenLink,
+}: ErrorNoticeProps) {
   const { lines, links } = parseErrorContent(message);
 
   function openLink(url: string) {

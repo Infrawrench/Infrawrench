@@ -49,14 +49,14 @@ export interface DiskOption {
 }
 
 export type CreateFieldKind =
-  | "text"           // single-line text input
-  | "number"         // numeric input
-  | "select"         // simple dropdown with static options
-  | "size-picker"    // visual size selector with RAM/CPU bars
-  | "region-picker"  // searchable list of region/zone options
-  | "disk-slider"    // boot-disk GB slider
-  | "image-picker"   // OS image + account image picker
-  | "disk-picker"    // existing disk picker
+  | "text" // single-line text input
+  | "number" // numeric input
+  | "select" // simple dropdown with static options
+  | "size-picker" // visual size selector with RAM/CPU bars
+  | "region-picker" // searchable list of region/zone options
+  | "disk-slider" // boot-disk GB slider
+  | "image-picker" // OS image + account image picker
+  | "disk-picker" // existing disk picker
   | "ssh-key-picker"; // SSH public key — host resolves from ~/.ssh and app registry
 
 export interface CreateFieldConfig {

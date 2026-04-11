@@ -255,22 +255,24 @@ export class TursoClient implements PluginClient {
     throw new Error(`Turso plugin: cannot create type "${typeId}"`);
   }
 
-  async deleteResource(
-    typeId: string,
-    resourceId: string,
-    _accountId: string,
-  ): Promise<void> {
+  async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
     const externalId = resourceId.split(":").slice(2).join(":");
     if (typeId === "turso-database") {
-      await this.fetch(`/organizations/${encodeURIComponent(this.orgName)}/databases/${encodeURIComponent(externalId)}`, {
-        method: "DELETE",
-      });
+      await this.fetch(
+        `/organizations/${encodeURIComponent(this.orgName)}/databases/${encodeURIComponent(externalId)}`,
+        {
+          method: "DELETE",
+        },
+      );
       return;
     }
     if (typeId === "turso-group") {
-      await this.fetch(`/organizations/${encodeURIComponent(this.orgName)}/groups/${encodeURIComponent(externalId)}`, {
-        method: "DELETE",
-      });
+      await this.fetch(
+        `/organizations/${encodeURIComponent(this.orgName)}/groups/${encodeURIComponent(externalId)}`,
+        {
+          method: "DELETE",
+        },
+      );
       return;
     }
     throw new Error(`Turso plugin: cannot delete type "${typeId}"`);
@@ -483,7 +485,10 @@ export class TursoClient implements PluginClient {
               kind: "key-value-list",
               items: [
                 { key: "Group", value: String(resource.fields["group"] ?? "\u2014") },
-                { key: "Primary Region", value: formatLocation(String(resource.fields["primaryRegion"] ?? "")) },
+                {
+                  key: "Primary Region",
+                  value: formatLocation(String(resource.fields["primaryRegion"] ?? "")),
+                },
                 { key: "Regions", value: regions || "\u2014" },
                 { key: "Version", value: String(resource.fields["version"] ?? "\u2014") },
                 ...(resource.fields["isSchema"] === true
@@ -492,15 +497,16 @@ export class TursoClient implements PluginClient {
                 ...(resource.fields["schema"]
                   ? [{ key: "Parent Schema", value: String(resource.fields["schema"]) }]
                   : []),
-                { key: "Status", value: resource.fields["sleeping"] === true ? "Sleeping" : "Active" },
+                {
+                  key: "Status",
+                  value: resource.fields["sleeping"] === true ? "Sleeping" : "Active",
+                },
               ],
             },
           ],
         },
       ],
-      headerActions: [
-        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
-      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
       sqlEditor: {
         connectionStringOutputKey: "connectionString",
         defaultQuery: "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;",
@@ -528,7 +534,10 @@ export class TursoClient implements PluginClient {
             {
               kind: "key-value-list",
               items: [
-                { key: "Primary Location", value: formatLocation(String(resource.fields["primaryLocation"] ?? "")) },
+                {
+                  key: "Primary Location",
+                  value: formatLocation(String(resource.fields["primaryLocation"] ?? "")),
+                },
                 { key: "Locations", value: locations || "\u2014" },
                 { key: "Version", value: String(resource.fields["version"] ?? "\u2014") },
               ],
@@ -536,9 +545,7 @@ export class TursoClient implements PluginClient {
           ],
         },
       ],
-      headerActions: [
-        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
-      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
   }
 

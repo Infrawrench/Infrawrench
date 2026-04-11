@@ -62,18 +62,18 @@ interface NeonRole {
 }
 
 const NEON_REGIONS: Record<string, { location: string; flag: string }> = {
-  "aws-us-east-1":      { location: "Virginia, USA",         flag: "🇺🇸" },
-  "aws-us-east-2":      { location: "Ohio, USA",             flag: "🇺🇸" },
-  "aws-us-west-2":      { location: "Oregon, USA",           flag: "🇺🇸" },
-  "aws-eu-central-1":   { location: "Frankfurt, Germany",    flag: "🇩🇪" },
-  "aws-eu-west-1":      { location: "Ireland",               flag: "🇮🇪" },
-  "aws-eu-west-2":      { location: "London, UK",            flag: "🇬🇧" },
-  "aws-ap-southeast-1": { location: "Singapore",             flag: "🇸🇬" },
-  "aws-ap-southeast-2": { location: "Sydney, Australia",     flag: "🇦🇺" },
-  "aws-ap-northeast-1": { location: "Tokyo, Japan",          flag: "🇯🇵" },
-  "aws-sa-east-1":      { location: "São Paulo, Brazil",     flag: "🇧🇷" },
-  "azure-eastus2":      { location: "East US 2 (Azure)",     flag: "🇺🇸" },
-  "azure-westeurope":   { location: "West Europe (Azure)",   flag: "🇪🇺" },
+  "aws-us-east-1": { location: "Virginia, USA", flag: "🇺🇸" },
+  "aws-us-east-2": { location: "Ohio, USA", flag: "🇺🇸" },
+  "aws-us-west-2": { location: "Oregon, USA", flag: "🇺🇸" },
+  "aws-eu-central-1": { location: "Frankfurt, Germany", flag: "🇩🇪" },
+  "aws-eu-west-1": { location: "Ireland", flag: "🇮🇪" },
+  "aws-eu-west-2": { location: "London, UK", flag: "🇬🇧" },
+  "aws-ap-southeast-1": { location: "Singapore", flag: "🇸🇬" },
+  "aws-ap-southeast-2": { location: "Sydney, Australia", flag: "🇦🇺" },
+  "aws-ap-northeast-1": { location: "Tokyo, Japan", flag: "🇯🇵" },
+  "aws-sa-east-1": { location: "São Paulo, Brazil", flag: "🇧🇷" },
+  "azure-eastus2": { location: "East US 2 (Azure)", flag: "🇺🇸" },
+  "azure-westeurope": { location: "West Europe (Azure)", flag: "🇪🇺" },
 };
 
 /**
@@ -203,9 +203,7 @@ export class NeonClient implements PluginClient {
 
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema {
     const stateField = resource.fields["currentState"];
-    const status = typeof stateField === "string"
-      ? mapNeonState(stateField)
-      : "unknown" as const;
+    const status = typeof stateField === "string" ? mapNeonState(stateField) : ("unknown" as const);
 
     return {
       id: resource.id,
@@ -331,7 +329,10 @@ export class NeonClient implements PluginClient {
             label: "Owner Role",
             kind: "select",
             required: true,
-            options: roleOptions.length > 0 ? roleOptions : [{ id: "neondb_owner", label: "neondb_owner" }],
+            options:
+              roleOptions.length > 0
+                ? roleOptions
+                : [{ id: "neondb_owner", label: "neondb_owner" }],
             defaultValue: roleOptions[0]?.id ?? "neondb_owner",
           },
         ],
@@ -382,16 +383,13 @@ export class NeonClient implements PluginClient {
       const projectId = fields["projectId"];
       if (!projectId) throw new Error("Neon plugin: projectId is required to create a branch");
 
-      const data = await this.fetch<{ branch: NeonBranch }>(
-        `/projects/${projectId}/branches`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            branch: { name: fields["name"] },
-            endpoints: [{ type: "read_write" }],
-          }),
-        },
-      );
+      const data = await this.fetch<{ branch: NeonBranch }>(`/projects/${projectId}/branches`, {
+        method: "POST",
+        body: JSON.stringify({
+          branch: { name: fields["name"] },
+          endpoints: [{ type: "read_write" }],
+        }),
+      });
       const b = data.branch;
       return {
         id: `${accountId}:neon-branch:${projectId}/${b.id}`,
@@ -472,7 +470,9 @@ export class NeonClient implements PluginClient {
       if (!compound) throw new Error("Neon plugin: cannot parse branch ID");
       const [projectId, branchId] = compound.split("/");
       if (!projectId || !branchId) throw new Error("Neon plugin: cannot parse branch ID");
-      await this.fetch<unknown>(`/projects/${projectId}/branches/${branchId}`, { method: "DELETE" });
+      await this.fetch<unknown>(`/projects/${projectId}/branches/${branchId}`, {
+        method: "DELETE",
+      });
       return;
     }
 
@@ -521,9 +521,7 @@ export class NeonClient implements PluginClient {
     const results: ResourceInstance[] = [];
     for (const p of projects.projects) {
       try {
-        const data = await this.fetch<{ branches: NeonBranch[] }>(
-          `/projects/${p.id}/branches`,
-        );
+        const data = await this.fetch<{ branches: NeonBranch[] }>(`/projects/${p.id}/branches`);
         for (const b of data.branches) {
           results.push({
             id: `${accountId}:neon-branch:${p.id}/${b.id}`,
@@ -558,9 +556,7 @@ export class NeonClient implements PluginClient {
     const results: ResourceInstance[] = [];
     for (const p of projects.projects) {
       try {
-        const data = await this.fetch<{ endpoints: NeonEndpoint[] }>(
-          `/projects/${p.id}/endpoints`,
-        );
+        const data = await this.fetch<{ endpoints: NeonEndpoint[] }>(`/projects/${p.id}/endpoints`);
         for (const ep of data.endpoints) {
           results.push({
             id: `${accountId}:neon-endpoint:${p.id}/${ep.id}`,
@@ -760,10 +756,7 @@ export class NeonClient implements PluginClient {
     return data.uri;
   }
 
-  private async resolveRolePassword(
-    resourceId: string,
-    accountId: string,
-  ): Promise<string> {
+  private async resolveRolePassword(resourceId: string, accountId: string): Promise<string> {
     const resource = await this.getResource("neon-role", resourceId, accountId);
     const projectId = String(resource.fields["projectId"] ?? "");
     const branchId = String(resource.fields["branchId"] ?? "");
@@ -843,9 +836,7 @@ export class NeonClient implements PluginClient {
           ],
         },
       ],
-      headerActions: [
-        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
-      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
   }
 
@@ -884,15 +875,16 @@ export class NeonClient implements PluginClient {
               items: [
                 { key: "Min Compute Units", value: minCu },
                 { key: "Max Compute Units", value: maxCu },
-                { key: "Suspend Timeout", value: suspendTimeout === "—" ? "—" : `${suspendTimeout}s` },
+                {
+                  key: "Suspend Timeout",
+                  value: suspendTimeout === "—" ? "—" : `${suspendTimeout}s`,
+                },
               ],
             },
           ],
         },
       ],
-      headerActions: [
-        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
-      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
   }
 
@@ -929,7 +921,11 @@ export class NeonClient implements PluginClient {
                 {
                   key: "Connection String",
                   value: cs
-                    ? { kind: "secret-placeholder", fieldKey: "connectionString", resolution: cs.resolution }
+                    ? {
+                        kind: "secret-placeholder",
+                        fieldKey: "connectionString",
+                        resolution: cs.resolution,
+                      }
                     : "(resolve via output)",
                   sensitive: true,
                 },
@@ -938,9 +934,7 @@ export class NeonClient implements PluginClient {
           ],
         },
       ],
-      headerActions: [
-        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
-      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
   }
 
@@ -968,9 +962,7 @@ export class NeonClient implements PluginClient {
           ],
         },
       ],
-      headerActions: [
-        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
-      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
   }
 
@@ -994,16 +986,12 @@ export class NeonClient implements PluginClient {
           ],
         },
       ],
-      headerActions: [
-        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
-      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
   }
 }
 
-function mapNeonState(
-  state: string,
-): ResourceStatus {
+function mapNeonState(state: string): ResourceStatus {
   switch (state.toLowerCase()) {
     case "active":
     case "ready":

@@ -38,8 +38,7 @@ api.route("/callback", callbackRoutes);
 api.route("/api/v1/webhooks/stripe", stripeWebhookRoutes);
 
 api.get("/api/auth/sign-in", async (c) => {
-  const redirectUri =
-    process.env["WORKOS_REDIRECT_URI"] ?? "http://localhost:3000/callback";
+  const redirectUri = process.env["WORKOS_REDIRECT_URI"] ?? "http://localhost:3000/callback";
   const url = workos.userManagement.getAuthorizationUrl({
     provider: "authkit",
     clientId,

@@ -3,7 +3,17 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { invoke } from "../lib/invoke";
 import { useDraggable, useDroppable, useDndContext } from "@dnd-kit/core";
 import type { ResourceInstance, ResourceTypeDefinition } from "@infrawrench/plugin-base";
-import { useUIStore, ConfirmDeleteModal, RESOURCES_CHANGED_EVENT, dispatchResourcesChanged, getAccountResourceTypes, isCreateOnlyType, getListableResourceTypes, type DraggableResource, formatErrorMessage } from "@infrawrench/ui";
+import {
+  useUIStore,
+  ConfirmDeleteModal,
+  RESOURCES_CHANGED_EVENT,
+  dispatchResourcesChanged,
+  getAccountResourceTypes,
+  isCreateOnlyType,
+  getListableResourceTypes,
+  type DraggableResource,
+  formatErrorMessage,
+} from "@infrawrench/ui";
 import { getDb } from "../db/client";
 import { getPlugin } from "../plugins/loader";
 import { pinResource } from "../lib/pins";
@@ -13,7 +23,11 @@ import { SecretExportModal } from "../components/SecretExportModal";
 import { SshTunnelModal, type PresetKey } from "../components/SshTunnelModal";
 import { DockerSetupModal } from "../components/DockerSetupModal";
 import { SshEnvDeployModal } from "../components/SshEnvDeployModal";
-import { navigateToWorkspaceTarget, resourceTabTarget, accountTabTarget } from "../lib/workspace-tabs";
+import {
+  navigateToWorkspaceTarget,
+  resourceTabTarget,
+  accountTabTarget,
+} from "../lib/workspace-tabs";
 
 export const Route = createFileRoute("/accounts/$accountId")({
   component: AccountPage,
@@ -50,9 +64,14 @@ function AccountPage() {
   const backgroundLoadRef = useRef(false);
   const [kubeconfigTypeIds, setKubeconfigTypeIds] = useState<Set<string>>(new Set());
   const [contextMenu, setContextMenu] = useState<{
-    x: number; y: number; sshHost: string;
+    x: number;
+    y: number;
+    sshHost: string;
   } | null>(null);
-  const [tunnelTarget, setTunnelTarget] = useState<{ sshHost: string; defaultService?: PresetKey } | null>(null);
+  const [tunnelTarget, setTunnelTarget] = useState<{
+    sshHost: string;
+    defaultService?: PresetKey;
+  } | null>(null);
   const [dockerSetupTarget, setDockerSetupTarget] = useState<{ sshHost: string } | null>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
   const [secretExportDrop, setSecretExportDrop] = useState<{
@@ -61,13 +80,17 @@ function AccountPage() {
     targetCredentials: Record<string, string>;
   } | null>(null);
   const [envDeployDrop, setEnvDeployDrop] = useState<{
-    source: DraggableResource; sshHost: string;
+    source: DraggableResource;
+    sshHost: string;
   } | null>(null);
 
   useEffect(() => {
     function handler(e: Event) {
       const { accountId: changedId } = (e as CustomEvent<{ accountId: string }>).detail;
-      if (changedId === accountId) { backgroundLoadRef.current = true; setLoadVersion((v) => v + 1); }
+      if (changedId === accountId) {
+        backgroundLoadRef.current = true;
+        setLoadVersion((v) => v + 1);
+      }
     }
     window.addEventListener(RESOURCES_CHANGED_EVENT, handler);
     return () => window.removeEventListener(RESOURCES_CHANGED_EVENT, handler);
@@ -86,9 +109,13 @@ function AccountPage() {
 
   useEffect(() => {
     function handler(e: Event) {
-      const { source, targetId, kind } = (e as CustomEvent<{
-        source: DraggableResource; targetId: string; kind: string;
-      }>).detail;
+      const { source, targetId, kind } = (
+        e as CustomEvent<{
+          source: DraggableResource;
+          targetId: string;
+          kind: string;
+        }>
+      ).detail;
       if (kind !== "resource") return;
       const targetResource = categories.flatMap((c) => c.resources).find((r) => r.id === targetId);
       if (!targetResource) return;
@@ -102,17 +129,33 @@ function AccountPage() {
           const fieldVal = String(targetResource.fields[sshEndpoint.runningWhen.fieldKey] ?? "");
           vmRunning = fieldVal.toLowerCase() === sshEndpoint.runningWhen.value.toLowerCase();
         }
-        const sshHost = vmRunning ? String(targetResource.resolvedOutputs?.[sshEndpoint.hostOutputKey] ?? targetResource.fields[sshEndpoint.hostOutputKey] ?? "") : "";
+        const sshHost = vmRunning
+          ? String(
+              targetResource.resolvedOutputs?.[sshEndpoint.hostOutputKey] ??
+                targetResource.fields[sshEndpoint.hostOutputKey] ??
+                "",
+            )
+          : "";
         if (sshHost) {
           const TUNNEL_PLUGINS = new Set(["docker", "postgres", "mysql", "redis", "memcached"]);
-          const sourcePlugin = source.pluginId === "__account__"
-            ? String(source.fields["pluginId"] ?? "") : source.pluginId;
+          const sourcePlugin =
+            source.pluginId === "__account__"
+              ? String(source.fields["pluginId"] ?? "")
+              : source.pluginId;
           if (TUNNEL_PLUGINS.has(sourcePlugin)) {
             const pluginToPreset: Record<string, PresetKey> = {
-              docker: "docker", postgres: "postgres", mysql: "mysql",
-              redis: "redis", memcached: "memcached",
+              docker: "docker",
+              postgres: "postgres",
+              mysql: "mysql",
+              redis: "redis",
+              memcached: "memcached",
             };
-            setTunnelTarget({ sshHost, ...(pluginToPreset[sourcePlugin] !== undefined ? { defaultService: pluginToPreset[sourcePlugin] } : {}) });
+            setTunnelTarget({
+              sshHost,
+              ...(pluginToPreset[sourcePlugin] !== undefined
+                ? { defaultService: pluginToPreset[sourcePlugin] }
+                : {}),
+            });
           } else {
             setEnvDeployDrop({ source, sshHost });
           }
@@ -154,7 +197,10 @@ function AccountPage() {
   }, [categories, kubeconfigTypeIds, account]);
 
   useEffect(() => {
-    const id = setInterval(() => { backgroundLoadRef.current = true; setLoadVersion((v) => v + 1); }, 30_000);
+    const id = setInterval(() => {
+      backgroundLoadRef.current = true;
+      setLoadVersion((v) => v + 1);
+    }, 30_000);
     return () => clearInterval(id);
   }, []);
 
@@ -163,7 +209,10 @@ function AccountPage() {
     const isBackground = backgroundLoadRef.current;
     backgroundLoadRef.current = false;
     async function load() {
-      if (!isBackground) { setInitialLoading(true); setError(null); }
+      if (!isBackground) {
+        setInitialLoading(true);
+        setError(null);
+      }
       try {
         const db = await getDb();
         const rows = await db.select<AccountRow[]>(
@@ -199,12 +248,14 @@ function AccountPage() {
 
         // On foreground load, show category headers immediately with loading skeletons
         if (!isBackground && !cancelled) {
-          setCategories(topLevelTypes.map((t) => ({
-            typeDef: t,
-            loading: true,
-            error: null,
-            resources: [],
-          })));
+          setCategories(
+            topLevelTypes.map((t) => ({
+              typeDef: t,
+              loading: true,
+              error: null,
+              resources: [],
+            })),
+          );
           setInitialLoading(false);
         }
 
@@ -213,36 +264,43 @@ function AccountPage() {
         for (const typeDef of topLevelTypes) {
           if (!listableTypes.some((t) => t.id === typeDef.id)) {
             // Create-only child type — no resources to list, just mark as loaded
-            setCategories((prev) => prev.map((cat) =>
-              cat.typeDef.id === typeDef.id ? { ...cat, loading: false } : cat,
-            ));
+            setCategories((prev) =>
+              prev.map((cat) => (cat.typeDef.id === typeDef.id ? { ...cat, loading: false } : cat)),
+            );
             continue;
           }
-          client.listResources(typeDef.id, accountId).then((resources) => {
-            if (cancelled) return;
-            setCategories((prev) => prev.map((cat) =>
-              cat.typeDef.id === typeDef.id
-                ? { ...cat, loading: false, error: null, resources }
-                : cat,
-            ));
-          }).catch((err) => {
-            if (cancelled) return;
-            if (isBackground) {
-              // Background refresh: silently clear loading, keep stale data
-              setCategories((prev) => prev.map((cat) =>
-                cat.typeDef.id === typeDef.id
-                  ? { ...cat, loading: false }
-                  : cat,
-              ));
-            } else {
-              // Foreground: show error, but keep the category visible if it supports create
-              setCategories((prev) => prev.map((cat) =>
-                cat.typeDef.id === typeDef.id
-                  ? { ...cat, loading: false, error: formatErrorMessage(err) }
-                  : cat,
-              ));
-            }
-          });
+          client
+            .listResources(typeDef.id, accountId)
+            .then((resources) => {
+              if (cancelled) return;
+              setCategories((prev) =>
+                prev.map((cat) =>
+                  cat.typeDef.id === typeDef.id
+                    ? { ...cat, loading: false, error: null, resources }
+                    : cat,
+                ),
+              );
+            })
+            .catch((err) => {
+              if (cancelled) return;
+              if (isBackground) {
+                // Background refresh: silently clear loading, keep stale data
+                setCategories((prev) =>
+                  prev.map((cat) =>
+                    cat.typeDef.id === typeDef.id ? { ...cat, loading: false } : cat,
+                  ),
+                );
+              } else {
+                // Foreground: show error, but keep the category visible if it supports create
+                setCategories((prev) =>
+                  prev.map((cat) =>
+                    cat.typeDef.id === typeDef.id
+                      ? { ...cat, loading: false, error: formatErrorMessage(err) }
+                      : cat,
+                  ),
+                );
+              }
+            });
         }
 
         const pins = await db.select<{ resource_id: string }[]>(
@@ -257,7 +315,9 @@ function AccountPage() {
       }
     }
     load();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [accountId, loadVersion]);
 
   async function togglePin(resource: ResourceInstance, typeId: string) {
@@ -265,7 +325,11 @@ function AccountPage() {
     if (pinned.has(resource.id)) {
       await db.execute("DELETE FROM dashboard_pins WHERE resource_id = $1", [resource.id]);
       await db.execute("DELETE FROM resources WHERE id = $1", [resource.id]);
-      setPinned((prev) => { const s = new Set(prev); s.delete(resource.id); return s; });
+      setPinned((prev) => {
+        const s = new Set(prev);
+        s.delete(resource.id);
+        return s;
+      });
     } else {
       // Upsert resource so dashboard_pins FK is satisfied
       await db.execute(
@@ -292,10 +356,10 @@ function AccountPage() {
         dashId = dashboards[0].id;
       } else {
         dashId = crypto.randomUUID();
-        await db.execute(
-          "INSERT INTO dashboards (id, name, is_default) VALUES ($1, $2, 1)",
-          [dashId, "Home"],
-        );
+        await db.execute("INSERT INTO dashboards (id, name, is_default) VALUES ($1, $2, 1)", [
+          dashId,
+          "Home",
+        ]);
       }
 
       await db.execute(
@@ -311,10 +375,12 @@ function AccountPage() {
     // Cascade deletes resources, dashboard_pins, secret_field_states, ssh_tunnel_configs via FK
     await db.execute("DELETE FROM accounts WHERE id = $1", [accountId]);
     removeWorkspaceTabs(
-      useUIStore.getState().workspaceTabs
-        .filter((tab) =>
-          (tab.target.kind === "account" && tab.target.accountId === accountId) ||
-          (tab.target.kind === "resource" && tab.target.accountId === accountId),
+      useUIStore
+        .getState()
+        .workspaceTabs.filter(
+          (tab) =>
+            (tab.target.kind === "account" && tab.target.accountId === accountId) ||
+            (tab.target.kind === "resource" && tab.target.accountId === accountId),
         )
         .map((tab) => tab.id),
     );
@@ -323,15 +389,15 @@ function AccountPage() {
   }
 
   function openDetail(resource: ResourceInstance) {
-    void navigateToWorkspaceTarget(
-      navigate,
-      resourceTabTarget(accountId, resource.id),
-      { label: resource.displayName },
-    );
+    void navigateToWorkspaceTarget(navigate, resourceTabTarget(accountId, resource.id), {
+      label: resource.displayName,
+    });
   }
 
   if (initialLoading) {
-    return <div className="flex items-center justify-center h-full text-gray-600 text-sm">Loading…</div>;
+    return (
+      <div className="flex items-center justify-center h-full text-gray-600 text-sm">Loading…</div>
+    );
   }
   if (error) {
     return <div className="p-6 text-red-400 text-sm">{error}</div>;
@@ -381,7 +447,11 @@ function AccountPage() {
               /* Skeleton pills while this category is loading */
               <div className="flex flex-wrap gap-2">
                 {[1, 2, 3].map((i) => (
-                  <div key={i} className="h-8 rounded-full bg-gray-800 animate-pulse" style={{ width: `${5 + i * 1.5}rem` }} />
+                  <div
+                    key={i}
+                    className="h-8 rounded-full bg-gray-800 animate-pulse"
+                    style={{ width: `${5 + i * 1.5}rem` }}
+                  />
                 ))}
               </div>
             ) : cat.error ? (
@@ -395,7 +465,12 @@ function AccountPage() {
                     typeId={cat.typeDef.id}
                     pinned={pinned.has(resource.id)}
                     acceptsSecretImport={kubeconfigTypeIds.has(cat.typeDef.id)}
-                    {...(cat.typeDef.sshEndpoint ? { sshHostOutputKey: cat.typeDef.sshEndpoint.hostOutputKey, sshRunningWhen: cat.typeDef.sshEndpoint.runningWhen } : {})}
+                    {...(cat.typeDef.sshEndpoint
+                      ? {
+                          sshHostOutputKey: cat.typeDef.sshEndpoint.hostOutputKey,
+                          sshRunningWhen: cat.typeDef.sshEndpoint.runningWhen,
+                        }
+                      : {})}
                     onPin={() => togglePin(resource, cat.typeDef.id)}
                     onOpen={() => openDetail(resource)}
                     onContextMenuSsh={(e, sshHost) => {
@@ -419,9 +494,10 @@ function AccountPage() {
         );
       })}
 
-      {categories.length > 0 && categories.every((c) => !c.loading && c.resources.length === 0 && !c.typeDef.supportsCreate) && (
-        <p className="text-sm text-gray-600">No resources found.</p>
-      )}
+      {categories.length > 0 &&
+        categories.every(
+          (c) => !c.loading && c.resources.length === 0 && !c.typeDef.supportsCreate,
+        ) && <p className="text-sm text-gray-600">No resources found.</p>}
 
       {envDeployDrop && (
         <SshEnvDeployModal
@@ -451,11 +527,9 @@ function AccountPage() {
           onCreated={(resource) => {
             setCreateTarget(null);
             dispatchResourcesChanged(accountId);
-            void navigateToWorkspaceTarget(
-              navigate,
-              resourceTabTarget(accountId, resource.id),
-              { label: resource.displayName },
-            );
+            void navigateToWorkspaceTarget(navigate, resourceTabTarget(accountId, resource.id), {
+              label: resource.displayName,
+            });
           }}
         />
       )}
@@ -494,7 +568,9 @@ function AccountPage() {
         <SshTunnelModal
           sshHost={tunnelTarget.sshHost}
           sourceAccountId={accountId}
-          {...(tunnelTarget.defaultService !== undefined ? { defaultService: tunnelTarget.defaultService } : {})}
+          {...(tunnelTarget.defaultService !== undefined
+            ? { defaultService: tunnelTarget.defaultService }
+            : {})}
           onClose={() => setTunnelTarget(null)}
           onTunnelEstablished={(newAccountId) => {
             setTunnelTarget(null);
@@ -562,7 +638,12 @@ function ResourcePill({
     externalId: resource.externalId,
   };
 
-  const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
+  const {
+    attributes,
+    listeners,
+    setNodeRef: setDragRef,
+    isDragging,
+  } = useDraggable({
     id: resource.id,
     data: { resource: draggableData },
   });
@@ -575,7 +656,9 @@ function ResourcePill({
       isRunning = fieldVal.toLowerCase() === sshRunningWhen.value.toLowerCase();
     }
     if (isRunning) {
-      sshHost = String(resource.resolvedOutputs?.[sshHostOutputKey] ?? resource.fields[sshHostOutputKey] ?? "");
+      sshHost = String(
+        resource.resolvedOutputs?.[sshHostOutputKey] ?? resource.fields[sshHostOutputKey] ?? "",
+      );
     }
   }
 
@@ -595,51 +678,59 @@ function ResourcePill({
   const showDropHint = isOver && isDropTarget && !isDragging;
 
   return (
-      <div ref={setDropRef} className="inline-flex">
-        <div
-          ref={setDragRef}
-          {...listeners}
-          {...attributes}
-          onContextMenu={sshHost && onContextMenuSsh
-            ? (e) => onContextMenuSsh(e, sshHost)
-            : undefined}
-          className={`group flex items-center gap-1 pl-3 pr-1.5 py-1.5 rounded-full border transition-colors cursor-grab active:cursor-grabbing ${
-            showDropHint
-              ? "border-blue-500 bg-blue-500/20"
-              : "border-gray-700 bg-gray-900 hover:border-gray-600"
-          } ${isDragging ? "opacity-40" : ""}`}
-        >
-          <div onClick={onOpen} className="flex items-center gap-2 min-w-0">
-            <span className="text-sm font-medium text-gray-200 leading-none">{resource.displayName}</span>
-            {subtitle && <span className="text-xs text-gray-500 leading-none">{subtitle}</span>}
-          </div>
-
-          {showDropHint ? (
-            <span className="ml-1 text-xs text-blue-400">Drop</span>
-          ) : (
-            <>
-              <button
-                onClick={(e) => { e.stopPropagation(); onPin(); }}
-                title={pinned ? "Unpin" : "Pin to dashboard"}
-                className={`ml-1 p-1 rounded-full text-xs transition-all ${
-                  pinned
-                    ? "text-blue-400 hover:text-blue-300"
-                    : "text-gray-700 hover:text-gray-400 opacity-0 group-hover:opacity-100"
-                }`}
-              >
-                📌
-              </button>
-
-              <button
-                onClick={(e) => { e.stopPropagation(); onOpen(); }}
-                title="Open detail view"
-                className="p-1 rounded-full text-gray-700 hover:text-gray-300 opacity-0 group-hover:opacity-100 transition-all text-xs"
-              >
-                →
-              </button>
-            </>
-          )}
+    <div ref={setDropRef} className="inline-flex">
+      <div
+        ref={setDragRef}
+        {...listeners}
+        {...attributes}
+        onContextMenu={
+          sshHost && onContextMenuSsh ? (e) => onContextMenuSsh(e, sshHost) : undefined
+        }
+        className={`group flex items-center gap-1 pl-3 pr-1.5 py-1.5 rounded-full border transition-colors cursor-grab active:cursor-grabbing ${
+          showDropHint
+            ? "border-blue-500 bg-blue-500/20"
+            : "border-gray-700 bg-gray-900 hover:border-gray-600"
+        } ${isDragging ? "opacity-40" : ""}`}
+      >
+        <div onClick={onOpen} className="flex items-center gap-2 min-w-0">
+          <span className="text-sm font-medium text-gray-200 leading-none">
+            {resource.displayName}
+          </span>
+          {subtitle && <span className="text-xs text-gray-500 leading-none">{subtitle}</span>}
         </div>
+
+        {showDropHint ? (
+          <span className="ml-1 text-xs text-blue-400">Drop</span>
+        ) : (
+          <>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onPin();
+              }}
+              title={pinned ? "Unpin" : "Pin to dashboard"}
+              className={`ml-1 p-1 rounded-full text-xs transition-all ${
+                pinned
+                  ? "text-blue-400 hover:text-blue-300"
+                  : "text-gray-700 hover:text-gray-400 opacity-0 group-hover:opacity-100"
+              }`}
+            >
+              📌
+            </button>
+
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpen();
+              }}
+              title="Open detail view"
+              className="p-1 rounded-full text-gray-700 hover:text-gray-300 opacity-0 group-hover:opacity-100 transition-all text-xs"
+            >
+              →
+            </button>
+          </>
+        )}
       </div>
+    </div>
   );
 }

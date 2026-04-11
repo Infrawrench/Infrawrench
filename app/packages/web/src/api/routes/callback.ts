@@ -16,12 +16,11 @@ app.get("/", async (c) => {
     throw new Error("WORKOS_COOKIE_PASSWORD is required");
   }
 
-  const { sealedSession } =
-    await workos.userManagement.authenticateWithCode({
-      code,
-      clientId,
-      session: { sealSession: true, cookiePassword },
-    });
+  const { sealedSession } = await workos.userManagement.authenticateWithCode({
+    code,
+    clientId,
+    session: { sealSession: true, cookiePassword },
+  });
 
   if (!sealedSession) {
     return c.text("Failed to seal session", 500);

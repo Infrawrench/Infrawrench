@@ -12,9 +12,7 @@ export const CloudWatchLogGroupResourceType: ResourceTypeDefinition = {
     { key: "metricFilterCount", label: "Metric Filters", kind: "number", required: false },
     { key: "kmsKeyId", label: "KMS Key ID", kind: "string", required: false },
   ],
-  outputs: [
-    { key: "logGroupArn", label: "Log Group ARN", sensitive: false },
-  ],
+  outputs: [{ key: "logGroupArn", label: "Log Group ARN", sensitive: false }],
   dashboardPinnable: true,
   iconKey: "log",
 };

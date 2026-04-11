@@ -12,8 +12,6 @@ export const CloudRunServiceResourceType: ResourceTypeDefinition = {
     { key: "state", label: "State", kind: "string", required: false },
     { key: "ingress", label: "Ingress", kind: "string", required: false },
   ],
-  outputs: [
-    { key: "url", label: "Service URL", sensitive: false },
-  ],
+  outputs: [{ key: "url", label: "Service URL", sensitive: false }],
   dashboardPinnable: true,
 };

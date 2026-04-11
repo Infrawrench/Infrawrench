@@ -1,6 +1,12 @@
 import type { SizeOption } from "@infrawrench/plugin-base";
 
-export function SizeCard({ size, selected, maxMemory, maxCpu, onSelect }: {
+export function SizeCard({
+  size,
+  selected,
+  maxMemory,
+  maxCpu,
+  onSelect,
+}: {
   size: SizeOption;
   selected: boolean;
   maxMemory: number;
@@ -9,7 +15,10 @@ export function SizeCard({ size, selected, maxMemory, maxCpu, onSelect }: {
 }) {
   const memPct = Math.max(4, Math.round((size.memoryMb / maxMemory) * 100));
   const cpuPct = Math.max(4, Math.round((size.vcpus / maxCpu) * 100));
-  const memLabel = size.memoryMb >= 1024 ? `${(size.memoryMb / 1024).toFixed(size.memoryMb % 1024 === 0 ? 0 : 1)} GB` : `${size.memoryMb} MB`;
+  const memLabel =
+    size.memoryMb >= 1024
+      ? `${(size.memoryMb / 1024).toFixed(size.memoryMb % 1024 === 0 ? 0 : 1)} GB`
+      : `${size.memoryMb} MB`;
 
   return (
     <button
@@ -20,7 +29,9 @@ export function SizeCard({ size, selected, maxMemory, maxCpu, onSelect }: {
           : "border-gray-700 bg-gray-800/50 hover:border-gray-600"
       }`}
     >
-      <p className={`text-xs font-mono font-medium mb-2 truncate ${selected ? "text-blue-300" : "text-gray-300"}`}>
+      <p
+        className={`text-xs font-mono font-medium mb-2 truncate ${selected ? "text-blue-300" : "text-gray-300"}`}
+      >
         {size.label}
       </p>
 
@@ -28,7 +39,9 @@ export function SizeCard({ size, selected, maxMemory, maxCpu, onSelect }: {
       <div className="mb-1.5">
         <div className="flex justify-between mb-0.5">
           <span className="text-[10px] text-gray-600">CPU</span>
-          <span className="text-[10px] text-gray-500">{size.vcpus} vCPU{size.vcpus !== 1 ? "s" : ""}</span>
+          <span className="text-[10px] text-gray-500">
+            {size.vcpus} vCPU{size.vcpus !== 1 ? "s" : ""}
+          </span>
         </div>
         <div className="h-1 bg-gray-700 rounded-full overflow-hidden">
           <div

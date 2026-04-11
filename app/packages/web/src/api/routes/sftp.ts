@@ -44,7 +44,8 @@ async function resolveSshConfigForUpload(
     .limit(1);
   if (!keyRow) throw new Error("SSH key not found");
 
-  if (!keyRow.encryptedPrivateKey || !keyRow.privateKeyIv) throw new Error("SSH key has no private key data");
+  if (!keyRow.encryptedPrivateKey || !keyRow.privateKeyIv)
+    throw new Error("SSH key has no private key data");
   const privateKey = await decrypt(keyRow.encryptedPrivateKey, keyRow.privateKeyIv);
   const host = opts.sshHost;
   if (!host) throw new Error("SSH host is required");

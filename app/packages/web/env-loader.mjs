@@ -10,8 +10,13 @@ for (const name of [".env.local", ".env"]) {
       const eq = trimmed.indexOf("=");
       if (eq === -1) continue;
       const key = trimmed.slice(0, eq).trim();
-      const val = trimmed.slice(eq + 1).trim().replace(/^["']|["']$/g, "");
+      const val = trimmed
+        .slice(eq + 1)
+        .trim()
+        .replace(/^["']|["']$/g, "");
       if (!(key in process.env)) process.env[key] = val;
     }
-  } catch { /* file doesn't exist — skip */ }
+  } catch {
+    /* file doesn't exist — skip */
+  }
 }

@@ -12,7 +12,9 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
     credentials: "include",
     ...init,
     headers: {
-      ...(init?.body && typeof init.body === "string" ? { "Content-Type": "application/json" } : {}),
+      ...(init?.body && typeof init.body === "string"
+        ? { "Content-Type": "application/json" }
+        : {}),
       ...init?.headers,
     },
   });

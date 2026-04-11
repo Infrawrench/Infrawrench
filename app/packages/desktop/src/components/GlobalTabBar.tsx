@@ -9,13 +9,7 @@ interface GlobalTabBarProps {
   onNew: () => void;
 }
 
-export function GlobalTabBar({
-  tabs,
-  activeTabId,
-  onActivate,
-  onClose,
-  onNew,
-}: GlobalTabBarProps) {
+export function GlobalTabBar({ tabs, activeTabId, onActivate, onClose, onNew }: GlobalTabBarProps) {
   const { setNodeRef, isOver } = useDroppable({ id: "global-tabs-bar" });
 
   return (
@@ -39,7 +33,12 @@ export function GlobalTabBar({
 
 function DraggableTabWrapper({ tab, children }: { tab: WorkspaceTab; children: React.ReactNode }) {
   const { setNodeRef: setDropRef, isOver } = useDroppable({ id: `global-tab:${tab.id}` });
-  const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
+  const {
+    attributes,
+    listeners,
+    setNodeRef: setDragRef,
+    isDragging,
+  } = useDraggable({
     id: `workspace-tab:${tab.id}`,
     data: { workspaceTabId: tab.id, dragLabel: tab.title },
   });

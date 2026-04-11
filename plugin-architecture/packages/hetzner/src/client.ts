@@ -18,12 +18,12 @@ export class HetznerClient implements PluginClient {
   private readonly baseUrl = "https://api.hetzner.cloud/v1";
 
   private static readonly LOCATION_INFO: Record<string, { location: string; flag: string }> = {
-    fsn1: { location: "Falkenstein, Germany",  flag: "🇩🇪" },
-    nbg1: { location: "Nuremberg, Germany",    flag: "🇩🇪" },
-    hel1: { location: "Helsinki, Finland",     flag: "🇫🇮" },
-    ash:  { location: "Ashburn, USA",          flag: "🇺🇸" },
-    hil:  { location: "Hillsboro, USA",        flag: "🇺🇸" },
-    sin:  { location: "Singapore",             flag: "🇸🇬" },
+    fsn1: { location: "Falkenstein, Germany", flag: "🇩🇪" },
+    nbg1: { location: "Nuremberg, Germany", flag: "🇩🇪" },
+    hel1: { location: "Helsinki, Finland", flag: "🇫🇮" },
+    ash: { location: "Ashburn, USA", flag: "🇺🇸" },
+    hil: { location: "Hillsboro, USA", flag: "🇺🇸" },
+    sin: { location: "Singapore", flag: "🇸🇬" },
   };
 
   constructor(credentials: Record<string, string>) {
@@ -61,7 +61,8 @@ export class HetznerClient implements PluginClient {
       if (!batch || batch.length === 0) break;
       items.push(...batch);
       const meta = data["meta"] as { pagination?: { total_entries?: number } } | undefined;
-      if (meta?.pagination?.total_entries != null && items.length >= meta.pagination.total_entries) break;
+      if (meta?.pagination?.total_entries != null && items.length >= meta.pagination.total_entries)
+        break;
       if (batch.length < perPage) break;
       page++;
     }
@@ -130,14 +131,14 @@ export class HetznerClient implements PluginClient {
     if (typeId === "floating-ip") {
       const externalId = resourceId.split(":").pop();
       if (!externalId) throw new Error("Cannot parse floating IP ID");
-      const data = await this.fetch<{ floating_ip: HetznerFloatingIp }>(`/floating_ips/${externalId}`);
+      const data = await this.fetch<{ floating_ip: HetznerFloatingIp }>(
+        `/floating_ips/${externalId}`,
+      );
       if (outputKey === "ip") return data.floating_ip.ip;
       throw new Error(`Hetzner plugin: unknown output "${outputKey}" for floating-ip`);
     }
 
-    throw new Error(
-      `Hetzner plugin: cannot resolve output "${outputKey}" for type "${typeId}"`,
-    );
+    throw new Error(`Hetzner plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
   }
 
   async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
@@ -201,9 +202,30 @@ export class HetznerClient implements PluginClient {
       return {
         fields: [
           { key: "name", label: "Name", kind: "text", required: true },
-          { key: "location", label: "Location", kind: "region-picker", required: true, regions, ...(firstRegion ? { defaultValue: firstRegion } : {}) },
-          { key: "serverType", label: "Server Type", kind: "size-picker", required: true, sizes, ...(firstSize ? { defaultValue: firstSize } : {}) },
-          { key: "image", label: "Image", kind: "image-picker", required: true, images, ...(defaultImage ? { defaultValue: defaultImage } : {}) },
+          {
+            key: "location",
+            label: "Location",
+            kind: "region-picker",
+            required: true,
+            regions,
+            ...(firstRegion ? { defaultValue: firstRegion } : {}),
+          },
+          {
+            key: "serverType",
+            label: "Server Type",
+            kind: "size-picker",
+            required: true,
+            sizes,
+            ...(firstSize ? { defaultValue: firstSize } : {}),
+          },
+          {
+            key: "image",
+            label: "Image",
+            kind: "image-picker",
+            required: true,
+            images,
+            ...(defaultImage ? { defaultValue: defaultImage } : {}),
+          },
           { key: "sshPublicKey", label: "SSH Key", kind: "ssh-key-picker", required: false },
         ],
       };
@@ -231,14 +253,19 @@ export class HetznerClient implements PluginClient {
           }).catch(async (e: unknown) => {
             // If key already exists (uniqueness_error), find it
             if (String(e).includes("uniqueness_error") || String(e).includes("409")) {
-              const existing = await this.fetchAll<{ id: number; public_key: string }>("/ssh_keys", "ssh_keys");
+              const existing = await this.fetchAll<{ id: number; public_key: string }>(
+                "/ssh_keys",
+                "ssh_keys",
+              );
               const match = existing.find((k) => k.public_key.trim() === sshPub.trim());
               if (match) return { ssh_key: { id: match.id } } as KeyResponse;
             }
             throw e;
           });
           if (keyData.ssh_key.id) sshKeyIds.push(keyData.ssh_key.id);
-        } catch { /* skip SSH key if upload fails */ }
+        } catch {
+          /* skip SSH key if upload fails */
+        }
       }
 
       const body: Record<string, unknown> = {
@@ -271,9 +298,10 @@ export class HetznerClient implements PluginClient {
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
     const fields = resource.fields;
-    const status = resource.resourceTypeId === "server"
-      ? serverStatusToDot(String(fields["status"] ?? "unknown"))
-      : "unknown" as const;
+    const status =
+      resource.resourceTypeId === "server"
+        ? serverStatusToDot(String(fields["status"] ?? "unknown"))
+        : ("unknown" as const);
 
     return {
       title: resource.displayName,
@@ -294,16 +322,15 @@ export class HetznerClient implements PluginClient {
           ],
         },
       ],
-      headerActions: [
-        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
-      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
   }
 
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema {
-    const status = resource.resourceTypeId === "server"
-      ? serverStatusToDot(String(resource.fields["status"] ?? "unknown"))
-      : "unknown" as const;
+    const status =
+      resource.resourceTypeId === "server"
+        ? serverStatusToDot(String(resource.fields["status"] ?? "unknown"))
+        : ("unknown" as const);
 
     return {
       id: resource.id,

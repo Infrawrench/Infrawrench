@@ -1,5 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { SpotlightSearch as SharedSpotlightSearch, getListableResourceTypes, type SpotlightResult } from "@infrawrench/ui";
+import {
+  SpotlightSearch as SharedSpotlightSearch,
+  getListableResourceTypes,
+  type SpotlightResult,
+} from "@infrawrench/ui";
 import { invoke } from "../lib/invoke";
 import { getDb } from "../db/client";
 import { loadPlugins } from "../plugins/loader";
@@ -16,7 +20,13 @@ interface SpotlightSearchProps {
   onNavigate: (result: SpotlightResult) => void;
 }
 
-export function SpotlightSearch({ dashboardId, mode, onClose, onPinned, onNavigate }: SpotlightSearchProps) {
+export function SpotlightSearch({
+  dashboardId,
+  mode,
+  onClose,
+  onPinned,
+  onNavigate,
+}: SpotlightSearchProps) {
   const [allResults, setAllResults] = useState<SpotlightResult[]>([]);
   const [loading, setLoading] = useState(true);
   const loadedRef = useRef(false);
@@ -33,30 +43,42 @@ export function SpotlightSearch({ dashboardId, mode, onClose, onPinned, onNaviga
 
       const pluginMap = new Map(plugins.map((p) => [p.plugin.manifest.id, p.plugin]));
 
-      const accountRows = await db.select<{
-        id: string;
-        plugin_id: string;
-        display_name: string;
-        encrypted_credentials: string;
-        credentials_iv: string;
-      }[]>("SELECT id, plugin_id, display_name, encrypted_credentials, credentials_iv FROM accounts");
+      const accountRows = await db.select<
+        {
+          id: string;
+          plugin_id: string;
+          display_name: string;
+          encrypted_credentials: string;
+          credentials_iv: string;
+        }[]
+      >("SELECT id, plugin_id, display_name, encrypted_credentials, credentials_iv FROM accounts");
 
       const accountNames = new Map(accountRows.map((a) => [a.id, a.display_name]));
 
       // Step 1: SQLite cache (instant)
-      const sqliteRows = await db.select<{
-        id: string;
-        plugin_id: string;
-        resource_type_id: string;
-        account_id: string;
-        display_name: string;
-        fields_json: string;
-        external_id: string;
-      }[]>("SELECT id, plugin_id, resource_type_id, account_id, display_name, fields_json, external_id FROM resources WHERE resource_type_id != '__account__' ORDER BY display_name ASC");
+      const sqliteRows = await db.select<
+        {
+          id: string;
+          plugin_id: string;
+          resource_type_id: string;
+          account_id: string;
+          display_name: string;
+          fields_json: string;
+          external_id: string;
+        }[]
+      >(
+        "SELECT id, plugin_id, resource_type_id, account_id, display_name, fields_json, external_id FROM resources WHERE resource_type_id != '__account__' ORDER BY display_name ASC",
+      );
 
       const fromSqlite: SpotlightResult[] = sqliteRows.map((r) => {
         const plugin = pluginMap.get(r.plugin_id);
-        const fields = (() => { try { return JSON.parse(r.fields_json) as Record<string, unknown>; } catch { return {}; } })();
+        const fields = (() => {
+          try {
+            return JSON.parse(r.fields_json) as Record<string, unknown>;
+          } catch {
+            return {};
+          }
+        })();
         const rtDef = plugin?.resourceTypes.find((t) => t.id === r.resource_type_id);
         return {
           id: r.id,
@@ -82,47 +104,53 @@ export function SpotlightSearch({ dashboardId, mode, onClose, onPinned, onNaviga
       // Step 2: Live from plugins (background refresh)
       const liveResults = new Map<string, SpotlightResult>(fromSqlite.map((r) => [r.id, r]));
 
-      await Promise.allSettled(accountRows.map(async (account) => {
-        const plugin = pluginMap.get(account.plugin_id);
-        if (!plugin) return;
+      await Promise.allSettled(
+        accountRows.map(async (account) => {
+          const plugin = pluginMap.get(account.plugin_id);
+          if (!plugin) return;
 
-        let creds: Record<string, string>;
-        try {
-          const plaintext = await invoke<string>("decrypt_value", {
-            ciphertext: account.encrypted_credentials,
-            iv: account.credentials_iv,
-          });
-          creds = JSON.parse(plaintext) as Record<string, string>;
-        } catch { return; }
-
-        const sqlDecl = plugin.manifest.sqlDriver;
-        const hostServices = sqlDecl
-          ? buildHostServices(sqlDecl.driver, creds[sqlDecl.credentialKey] ?? "")
-          : undefined;
-        const client = plugin.createClient(creds, hostServices);
-
-        const topLevelTypes = getListableResourceTypes(plugin.resourceTypes);
-
-        await Promise.allSettled(topLevelTypes.map(async (rt) => {
-          const instances = await client.listResources(rt.id, account.id);
-          for (const inst of instances) {
-            liveResults.set(inst.id, {
-              id: inst.id,
-              pluginId: plugin.manifest.id,
-              pluginDisplayName: plugin.manifest.displayName,
-              pluginLogoSvg: plugin.manifest.logoSvg,
-              resourceTypeId: rt.id,
-              resourceTypeLabel: rt.displayName,
-              accountId: account.id,
-              accountName: account.display_name,
-              displayName: inst.displayName,
-              subtitle: subtitleFromFields(inst.fields),
-              fields: inst.fields,
-              ...(inst.externalId ? { externalId: inst.externalId } : {}),
+          let creds: Record<string, string>;
+          try {
+            const plaintext = await invoke<string>("decrypt_value", {
+              ciphertext: account.encrypted_credentials,
+              iv: account.credentials_iv,
             });
+            creds = JSON.parse(plaintext) as Record<string, string>;
+          } catch {
+            return;
           }
-        }));
-      }));
+
+          const sqlDecl = plugin.manifest.sqlDriver;
+          const hostServices = sqlDecl
+            ? buildHostServices(sqlDecl.driver, creds[sqlDecl.credentialKey] ?? "")
+            : undefined;
+          const client = plugin.createClient(creds, hostServices);
+
+          const topLevelTypes = getListableResourceTypes(plugin.resourceTypes);
+
+          await Promise.allSettled(
+            topLevelTypes.map(async (rt) => {
+              const instances = await client.listResources(rt.id, account.id);
+              for (const inst of instances) {
+                liveResults.set(inst.id, {
+                  id: inst.id,
+                  pluginId: plugin.manifest.id,
+                  pluginDisplayName: plugin.manifest.displayName,
+                  pluginLogoSvg: plugin.manifest.logoSvg,
+                  resourceTypeId: rt.id,
+                  resourceTypeLabel: rt.displayName,
+                  accountId: account.id,
+                  accountName: account.display_name,
+                  displayName: inst.displayName,
+                  subtitle: subtitleFromFields(inst.fields),
+                  fields: inst.fields,
+                  ...(inst.externalId ? { externalId: inst.externalId } : {}),
+                });
+              }
+            }),
+          );
+        }),
+      );
 
       if (!cancelled) {
         const merged = [...liveResults.values()].sort((a, b) =>
@@ -133,28 +161,33 @@ export function SpotlightSearch({ dashboardId, mode, onClose, onPinned, onNaviga
     }
 
     void loadAll();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [dashboardId]);
 
-  const handleSelect = useCallback(async (result: SpotlightResult) => {
-    if (mode === "navigate") {
-      onNavigate(result);
-      return;
-    }
-    const resource: DraggableResource = {
-      id: result.id,
-      pluginId: result.pluginId,
-      resourceTypeId: result.resourceTypeId,
-      accountId: result.accountId,
-      displayName: result.displayName,
-      fields: result.fields ?? {},
-      externalId: result.externalId,
-    };
-    const db = await getDb();
-    await pinResource(resource, db, dashboardId);
-    onPinned();
-    onClose();
-  }, [mode, dashboardId, onPinned, onClose, onNavigate]);
+  const handleSelect = useCallback(
+    async (result: SpotlightResult) => {
+      if (mode === "navigate") {
+        onNavigate(result);
+        return;
+      }
+      const resource: DraggableResource = {
+        id: result.id,
+        pluginId: result.pluginId,
+        resourceTypeId: result.resourceTypeId,
+        accountId: result.accountId,
+        displayName: result.displayName,
+        fields: result.fields ?? {},
+        externalId: result.externalId,
+      };
+      const db = await getDb();
+      await pinResource(resource, db, dashboardId);
+      onPinned();
+      onClose();
+    },
+    [mode, dashboardId, onPinned, onClose, onNavigate],
+  );
 
   return (
     <SharedSpotlightSearch

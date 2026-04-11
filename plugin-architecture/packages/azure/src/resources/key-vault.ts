@@ -15,9 +15,7 @@ export const KeyVaultResourceType: ResourceTypeDefinition = {
     { key: "enablePurgeProtection", label: "Purge Protection", kind: "boolean", required: false },
     { key: "enableRbacAuthorization", label: "RBAC Auth", kind: "boolean", required: false },
   ],
-  outputs: [
-    { key: "vaultUri", label: "Vault URI", sensitive: false },
-  ],
+  outputs: [{ key: "vaultUri", label: "Vault URI", sensitive: false }],
   dashboardPinnable: true,
   iconKey: "secret",
   supportsCreate: true,

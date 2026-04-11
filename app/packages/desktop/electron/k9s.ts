@@ -31,10 +31,7 @@ export async function checkK9sInstalled(): Promise<boolean> {
   }
 }
 
-export async function spawnK9s(
-  webContents: WebContents,
-  config: K9sConfig,
-): Promise<string> {
+export async function spawnK9s(webContents: WebContents, config: K9sConfig): Promise<string> {
   const id = randomUUID();
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "iw-k9s-"));
   const kubeconfigPath = path.join(tmpDir, "kubeconfig.yaml");
@@ -58,7 +55,9 @@ export async function spawnK9s(
     } catch {
       // Ignore temp cleanup failures.
     }
-    throw new Error(`Failed to launch k9s: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(
+      `Failed to launch k9s: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
 
   sessions.set(id, { proc, tmpDir, webContents: new WeakRef(webContents) });

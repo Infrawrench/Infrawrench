@@ -14,9 +14,7 @@ export const CloudFrontDistributionResourceType: ResourceTypeDefinition = {
     { key: "priceClass", label: "Price Class", kind: "string", required: false },
     { key: "httpVersion", label: "HTTP Version", kind: "string", required: false },
   ],
-  outputs: [
-    { key: "distributionArn", label: "Distribution ARN", sensitive: false },
-  ],
+  outputs: [{ key: "distributionArn", label: "Distribution ARN", sensitive: false }],
   dashboardPinnable: true,
   iconKey: "cdn",
 };

@@ -4,10 +4,7 @@
  */
 
 import type { Plugin, PluginClient, ResourceInstance } from "@infrawrench/plugin-base";
-import {
-  pluginManifestSchema,
-  detailViewSchema,
-} from "@infrawrench/plugin-base";
+import { pluginManifestSchema, detailViewSchema } from "@infrawrench/plugin-base";
 import { buildHostServices } from "./host-services.js";
 
 export interface TestResult {
@@ -28,7 +25,10 @@ async function runTest(pluginId: string, name: string, fn: () => Promise<void>):
     await Promise.race([
       fn(),
       new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error(`Timed out after ${TEST_TIMEOUT_MS}ms`)), TEST_TIMEOUT_MS),
+        setTimeout(
+          () => reject(new Error(`Timed out after ${TEST_TIMEOUT_MS}ms`)),
+          TEST_TIMEOUT_MS,
+        ),
       ),
     ]);
     const duration = performance.now() - start;
@@ -99,15 +99,25 @@ export async function runPluginIntegrationTests(
       const detail = client.renderDetail(first);
       assert(detail !== undefined, "renderDetail returned undefined");
       const validation = detailViewSchema.safeParse(detail);
-      assert(validation.success, `DetailView validation failed: ${JSON.stringify(validation.error?.issues?.slice(0, 3))}`);
+      assert(
+        validation.success,
+        `DetailView validation failed: ${JSON.stringify(validation.error?.issues?.slice(0, 3))}`,
+      );
     });
 
-    await runTest(pid, `renderSidebarItem for ${rt.id}/${first.id} returns {id, label}`, async () => {
-      const item = client.renderSidebarItem(first);
-      assert(item !== undefined, "renderSidebarItem returned undefined");
-      assert(typeof item.id === "string" && item.id.length > 0, "sidebar item.id is empty");
-      assert(typeof item.label === "string" && item.label.length > 0, "sidebar item.label is empty");
-    });
+    await runTest(
+      pid,
+      `renderSidebarItem for ${rt.id}/${first.id} returns {id, label}`,
+      async () => {
+        const item = client.renderSidebarItem(first);
+        assert(item !== undefined, "renderSidebarItem returned undefined");
+        assert(typeof item.id === "string" && item.id.length > 0, "sidebar item.id is empty");
+        assert(
+          typeof item.label === "string" && item.label.length > 0,
+          "sidebar item.label is empty",
+        );
+      },
+    );
   }
 
   // 5. resolveOutput — test on first available resource that has outputs defined
@@ -160,7 +170,10 @@ export async function runPluginIntegrationTests(
   }
 
   // 9. Optional: listNamespacesForImport (for secret-import-capable plugins)
-  if (plugin.manifest.supportsSecretImport && typeof client.listNamespacesForImport === "function") {
+  if (
+    plugin.manifest.supportsSecretImport &&
+    typeof client.listNamespacesForImport === "function"
+  ) {
     await runTest(pid, "listNamespacesForImport returns array", async () => {
       const namespaces = await client.listNamespacesForImport!(`integration-${pid}`);
       assert(Array.isArray(namespaces), `Expected array, got ${typeof namespaces}`);

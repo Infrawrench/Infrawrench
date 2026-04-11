@@ -59,7 +59,8 @@ app.post("/checkout", async (c) => {
     });
   }
 
-  const appUrl = process.env["APP_URL"] ?? process.env["NEXT_PUBLIC_APP_URL"] ?? "http://localhost:3000";
+  const appUrl =
+    process.env["APP_URL"] ?? process.env["NEXT_PUBLIC_APP_URL"] ?? "http://localhost:3000";
   const checkoutSession = await stripe.checkout.sessions.create({
     customer: customerId,
     mode: "subscription",
@@ -83,7 +84,8 @@ app.post("/portal", async (c) => {
     .where(eq(subscriptions.organizationId, c.get("organizationId")));
   if (!sub) return c.json({ error: "No subscription found" }, 404);
 
-  const appUrl = process.env["APP_URL"] ?? process.env["NEXT_PUBLIC_APP_URL"] ?? "http://localhost:3000";
+  const appUrl =
+    process.env["APP_URL"] ?? process.env["NEXT_PUBLIC_APP_URL"] ?? "http://localhost:3000";
   const portalSession = await stripe.billingPortal.sessions.create({
     customer: sub.stripeCustomerId,
     return_url: `${appUrl}/settings/billing`,

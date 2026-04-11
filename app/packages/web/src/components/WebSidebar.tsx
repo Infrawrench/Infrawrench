@@ -75,7 +75,10 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
   // Load orgs for the switcher — re-fetch when orgId changes (e.g. after creating a new org)
   useEffect(() => {
     apiGet<OrgEntry[]>("/api/auth/orgs")
-      .then((data) => { setOrgs(data); setOrgsLoaded(true); })
+      .then((data) => {
+        setOrgs(data);
+        setOrgsLoaded(true);
+      })
       .catch(console.error);
   }, [orgId]);
 
@@ -95,7 +98,9 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
       try {
         const [accts, pluginList] = await Promise.all([
           apiGet<AccountSummary[]>(`${apiBase}/accounts`),
-          apiGet<Array<{ id: string; displayName: string; logoSvg: string }>>(`${apiBase}/accounts/plugins`),
+          apiGet<Array<{ id: string; displayName: string; logoSvg: string }>>(
+            `${apiBase}/accounts/plugins`,
+          ),
         ]);
         if (cancelled) return;
 
@@ -123,7 +128,9 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
       }
     }
     load();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [apiBase, accountsVersion]);
 
   useEffect(() => {
@@ -152,10 +159,18 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
     setNewDashboardName("");
     if (!name) return;
     try {
-      const created = await apiPost<{ id: string; name: string }>(`${apiBase}/dashboards`, { name });
+      const created = await apiPost<{ id: string; name: string }>(`${apiBase}/dashboards`, {
+        name,
+      });
       if (created) {
-        setDashboardList((prev) => [...prev, { id: created.id, name: created.name, isDefault: false }]);
-        void navigate({ to: "/org/$orgId/dashboard/$dashboardId", params: { orgId: orgId!, dashboardId: created.id } });
+        setDashboardList((prev) => [
+          ...prev,
+          { id: created.id, name: created.name, isDefault: false },
+        ]);
+        void navigate({
+          to: "/org/$orgId/dashboard/$dashboardId",
+          params: { orgId: orgId!, dashboardId: created.id },
+        });
       }
     } catch (e) {
       console.error("Failed to create dashboard:", e);
@@ -171,9 +186,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
     if (!name || !id) return;
     try {
       await apiPost(`${apiBase}/dashboards/${id}/rename`, { name });
-      setDashboardList((prev) =>
-        prev.map((d) => (d.id === id ? { ...d, name } : d)),
-      );
+      setDashboardList((prev) => prev.map((d) => (d.id === id ? { ...d, name } : d)));
     } catch (e) {
       console.error("Failed to rename dashboard:", e);
     }
@@ -205,7 +218,11 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
       const [existing] = await Promise.all([
         apiGet<ResourceSummary[]>(`${apiBase}/accounts/${accountId}/resources?topLevelOnly=true`),
         apiPost(`${apiBase}/accounts/${accountId}/sync`)
-          .then(() => apiGet<ResourceSummary[]>(`${apiBase}/accounts/${accountId}/resources?topLevelOnly=true`))
+          .then(() =>
+            apiGet<ResourceSummary[]>(
+              `${apiBase}/accounts/${accountId}/resources?topLevelOnly=true`,
+            ),
+          )
           .then((fresh) => {
             setAccountResources((prev) => ({
               ...prev,
@@ -222,7 +239,11 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
       if (background) return;
       setAccountResources((prev) => ({
         ...prev,
-        [accountId]: { loading: false, resources: [], error: e instanceof Error ? e.message : "Failed to load resources" },
+        [accountId]: {
+          loading: false,
+          resources: [],
+          error: e instanceof Error ? e.message : "Failed to load resources",
+        },
       }));
     }
   }
@@ -421,7 +442,12 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                         </span>
                       </button>
                       <button
-                        onClick={() => void navigate({ to: "/org/$orgId/accounts/$accountId", params: { orgId: orgId!, accountId: account.id } })}
+                        onClick={() =>
+                          void navigate({
+                            to: "/org/$orgId/accounts/$accountId",
+                            params: { orgId: orgId!, accountId: account.id },
+                          })
+                        }
                         className="flex items-center gap-2 flex-1 text-left min-w-0"
                       >
                         <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-gray-600" />
@@ -436,11 +462,16 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                           <div className="px-3 py-1 text-xs text-gray-600">Loading...</div>
                         )}
                         {resourceState && !resourceState.loading && resourceState.error && (
-                          <div className="px-3 py-1 text-xs text-red-400">Error loading resources</div>
+                          <div className="px-3 py-1 text-xs text-red-400">
+                            Error loading resources
+                          </div>
                         )}
-                        {resourceState && !resourceState.loading && !resourceState.error && resourceState.resources.length === 0 && (
-                          <div className="px-3 py-1 text-xs text-gray-600">No resources</div>
-                        )}
+                        {resourceState &&
+                          !resourceState.loading &&
+                          !resourceState.error &&
+                          resourceState.resources.length === 0 && (
+                            <div className="px-3 py-1 text-xs text-gray-600">No resources</div>
+                          )}
                         {resourceState?.resources.map((resource) => (
                           <DraggableSidebarResource
                             key={resource.id}
@@ -452,10 +483,17 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                               displayName: resource.displayName,
                               fields: {},
                             }}
-                            onClick={() => void navigate({
-                              to: "/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId",
-                              params: { orgId: orgId!, pluginId: resource.pluginId, resourceTypeId: resource.resourceTypeId, resourceId: resource.id },
-                            })}
+                            onClick={() =>
+                              void navigate({
+                                to: "/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId",
+                                params: {
+                                  orgId: orgId!,
+                                  pluginId: resource.pluginId,
+                                  resourceTypeId: resource.resourceTypeId,
+                                  resourceId: resource.id,
+                                },
+                              })
+                            }
                           />
                         ))}
                       </div>

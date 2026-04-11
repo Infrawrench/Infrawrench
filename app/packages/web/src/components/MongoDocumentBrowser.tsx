@@ -1,7 +1,13 @@
 import { MongoDocumentBrowser as SharedMongoDocumentBrowser } from "@infrawrench/ui";
 import { apiPost } from "@/lib/api";
 
-export function MongoDocumentBrowser({ accountId, databaseName }: { accountId: string; databaseName: string }) {
+export function MongoDocumentBrowser({
+  accountId,
+  databaseName,
+}: {
+  accountId: string;
+  databaseName: string;
+}) {
   return (
     <SharedMongoDocumentBrowser
       databaseName={databaseName}

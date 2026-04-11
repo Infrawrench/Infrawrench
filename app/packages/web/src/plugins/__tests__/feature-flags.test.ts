@@ -9,9 +9,7 @@ import { makeMockCredentials } from "@infrawrench/plugin-base/test-harness";
  */
 function deriveFeatureFlags(loaded: LoadedPlugin) {
   const manifest = loaded.plugin.manifest;
-  const hasResourceSqlDriver = loaded.plugin.resourceTypes.some(
-    (rt) => rt.resourceSqlDriver,
-  );
+  const hasResourceSqlDriver = loaded.plugin.resourceTypes.some((rt) => rt.resourceSqlDriver);
   return {
     hasSqlEditor: !!manifest.sqlDriver || hasResourceSqlDriver,
     hasKvConsole: !!manifest.kvDriver,

@@ -36,7 +36,11 @@ export class SshClient implements PluginClient {
     ];
   }
 
-  async getResource(typeId: string, resourceId: string, accountId: string): Promise<ResourceInstance> {
+  async getResource(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+  ): Promise<ResourceInstance> {
     const resources = await this.listResources(typeId, accountId);
     const found = resources.find((r) => r.id === resourceId) ?? resources[0];
     if (!found) throw new Error("Resource not found");

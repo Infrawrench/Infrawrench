@@ -63,7 +63,9 @@ export function SshTerminal({ host, port, username, privateKey }: SshTerminalPro
       if (disposed) return;
       fitAddon.fit();
 
-      term.write("\x1b[90mConnecting to \x1b[0m" + `${username}@${host}:${port}` + "\x1b[90m…\x1b[0m\r\n");
+      term.write(
+        "\x1b[90mConnecting to \x1b[0m" + `${username}@${host}:${port}` + "\x1b[90m…\x1b[0m\r\n",
+      );
 
       invoke<string>("ssh_shell_spawn", {
         host,
@@ -72,23 +74,25 @@ export function SshTerminal({ host, port, username, privateKey }: SshTerminalPro
         privateKey,
         cols: term.cols,
         rows: term.rows,
-      }).then((id) => {
-        if (disposed) {
-          void invoke("ssh_shell_kill", { shellId: id });
-          return;
-        }
-        shellId = id;
+      })
+        .then((id) => {
+          if (disposed) {
+            void invoke("ssh_shell_kill", { shellId: id });
+            return;
+          }
+          shellId = id;
 
-        window.electronAPI.on(`ssh_shell_data_${id}`, (...args) => {
-          term.write(args[0] as Uint8Array);
-        });
+          window.electronAPI.on(`ssh_shell_data_${id}`, (...args) => {
+            term.write(args[0] as Uint8Array);
+          });
 
-        window.electronAPI.on(`ssh_shell_exit_${id}`, () => {
-          term.write("\r\n\x1b[90m[Connection closed]\x1b[0m\r\n");
+          window.electronAPI.on(`ssh_shell_exit_${id}`, () => {
+            term.write("\r\n\x1b[90m[Connection closed]\x1b[0m\r\n");
+          });
+        })
+        .catch((err: unknown) => {
+          term.write(`\r\n\x1b[31mFailed: ${String(err)}\x1b[0m\r\n`);
         });
-      }).catch((err: unknown) => {
-        term.write(`\r\n\x1b[31mFailed: ${String(err)}\x1b[0m\r\n`);
-      });
     }); // end requestAnimationFrame
 
     const onData = term.onData((data) => {
@@ -115,15 +119,12 @@ export function SshTerminal({ host, port, username, privateKey }: SshTerminalPro
       }
       term.dispose();
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [host, port, username, privateKey]);
 
   return (
     <div className="h-full w-full relative bg-[#0d0d0d] overflow-hidden">
-      <div
-        ref={containerRef}
-        className="absolute inset-0 p-2"
-      />
+      <div ref={containerRef} className="absolute inset-0 p-2" />
     </div>
   );
 }

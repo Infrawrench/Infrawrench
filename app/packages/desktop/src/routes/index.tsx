@@ -2,7 +2,11 @@ import { useEffect } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { getDb } from "../db/client";
 import { useUIStore } from "@infrawrench/ui";
-import { dashboardTabTarget, getWorkspaceNavigateArgs, navigateToWorkspaceTarget } from "../lib/workspace-tabs";
+import {
+  dashboardTabTarget,
+  getWorkspaceNavigateArgs,
+  navigateToWorkspaceTarget,
+} from "../lib/workspace-tabs";
 
 export const Route = createFileRoute("/")({
   component: IndexPage,
@@ -20,7 +24,8 @@ function IndexPage() {
     let cancelled = false;
     async function redirect() {
       try {
-        const activeTab = workspaceTabs.find((tab) => tab.id === activeWorkspaceTabId) ?? workspaceTabs[0];
+        const activeTab =
+          workspaceTabs.find((tab) => tab.id === activeWorkspaceTabId) ?? workspaceTabs[0];
         if (activeTab) {
           navigate({ ...getWorkspaceNavigateArgs(activeTab.target), replace: true });
           return;
@@ -39,10 +44,10 @@ function IndexPage() {
           // Fixed ID so concurrent StrictMode double-effect runs don't create duplicates
           homeId = "dashboard-home";
           try {
-            await db.execute(
-              "INSERT INTO dashboards (id, name, is_default) VALUES ($1, $2, 1)",
-              [homeId, "Home"],
-            );
+            await db.execute("INSERT INTO dashboards (id, name, is_default) VALUES ($1, $2, 1)", [
+              homeId,
+              "Home",
+            ]);
             bumpDashboardPins();
           } catch {
             // Already exists (e.g. from the parallel StrictMode run) — find the real id
@@ -54,23 +59,22 @@ function IndexPage() {
           }
         }
         if (!cancelled) {
-          void navigateToWorkspaceTarget(
-            navigate,
-            dashboardTabTarget(homeId),
-            { label: homeName, replace: true },
-          );
+          void navigateToWorkspaceTarget(navigate, dashboardTabTarget(homeId), {
+            label: homeName,
+            replace: true,
+          });
         }
       } catch {
         // If DB fails, just stay on the loading screen
       }
     }
     void redirect();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [activeWorkspaceTabId, navigate, tabsHydrated, workspaceTabs]);
 
   return (
-    <div className="flex items-center justify-center h-full text-gray-600 text-sm">
-      Loading…
-    </div>
+    <div className="flex items-center justify-center h-full text-gray-600 text-sm">Loading…</div>
   );
 }

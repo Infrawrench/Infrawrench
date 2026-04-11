@@ -25,7 +25,12 @@ export const AKSClusterResourceType: ResourceTypeDefinition = {
   ],
   outputs: [
     { key: "fqdn", label: "FQDN", sensitive: false, description: "API server FQDN" },
-    { key: "kubeconfig", label: "Kubeconfig", sensitive: true, description: "Cluster kubeconfig for kubectl access" },
+    {
+      key: "kubeconfig",
+      label: "Kubeconfig",
+      sensitive: true,
+      description: "Cluster kubeconfig for kubectl access",
+    },
   ],
   dashboardPinnable: true,
   iconKey: "kubernetes",
@@ -33,9 +38,7 @@ export const AKSClusterResourceType: ResourceTypeDefinition = {
   peerIntegrations: [
     {
       pluginId: "kubernetes",
-      credentialMappings: [
-        { outputKey: "kubeconfig", credentialKey: "kubeconfig" },
-      ],
+      credentialMappings: [{ outputKey: "kubeconfig", credentialKey: "kubeconfig" }],
       tabLabel: "Workloads",
     },
   ],

@@ -27,7 +27,12 @@ export function SpotlightSearch({ dashboardId, mode, onClose, onPinned }: Spotli
         onClose();
         void navigate({
           to: "/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId",
-          params: { orgId, pluginId: result.pluginId, resourceTypeId: result.resourceTypeId, resourceId: result.id },
+          params: {
+            orgId,
+            pluginId: result.pluginId,
+            resourceTypeId: result.resourceTypeId,
+            resourceId: result.id,
+          },
         });
         return;
       }

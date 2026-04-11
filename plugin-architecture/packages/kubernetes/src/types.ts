@@ -95,7 +95,9 @@ export interface K8sCronJob {
   spec: {
     schedule: string;
     suspend?: boolean;
-    jobTemplate: { spec: { template: { spec: { containers: Array<{ name: string; image: string }> } } } };
+    jobTemplate: {
+      spec: { template: { spec: { containers: Array<{ name: string; image: string }> } } };
+    };
   };
   status: { lastScheduleTime?: string; lastSuccessfulTime?: string };
 }

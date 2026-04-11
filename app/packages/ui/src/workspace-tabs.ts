@@ -95,4 +95,3 @@ export function navigateToWorkspaceTarget(
   }
   return navigate(getNavigateArgs(target, options?.replace));
 }
-

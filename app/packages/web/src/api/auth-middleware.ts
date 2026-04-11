@@ -111,9 +111,12 @@ export const orgMiddleware = createMiddleware(async (c, next) => {
   return next();
 });
 
-async function provisionUser(
-  user: { id: string; email: string; firstName?: string | null; lastName?: string | null },
-) {
+async function provisionUser(user: {
+  id: string;
+  email: string;
+  firstName?: string | null;
+  lastName?: string | null;
+}) {
   await db
     .insert(users)
     .values({

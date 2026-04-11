@@ -16,16 +16,18 @@ export interface DndShellProps {
   /** Called when a resource is dropped onto a dashboard target */
   onPinToDashboard?: (resource: DraggableResource, dashboardId: string) => Promise<void> | void;
   /** Called when a resource is dropped onto a sidebar account/resource (desktop: secret import) */
-  onSecretDrop?: (source: DraggableResource, targetId: string, kind: "account" | "resource") => void;
+  onSecretDrop?: (
+    source: DraggableResource,
+    targetId: string,
+    kind: "account" | "resource",
+  ) => void;
   /** Called for tab bar drops (desktop: tab reorder/pin) */
   onTabDrop?: (event: DragEndEvent) => void;
 }
 
 export function DndShell({ children, onPinToDashboard, onSecretDrop, onTabDrop }: DndShellProps) {
   const [dragPreview, setDragPreview] = useState<string | null>(null);
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-  );
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
   function handleDragStart(event: DragStartEvent) {
     const data = event.active.data.current;
@@ -58,7 +60,9 @@ export function DndShell({ children, onPinToDashboard, onSecretDrop, onTabDrop }
         ? overId.replace("sidebar-account:", "")
         : overId.replace("sidebar-resource:", "");
       if (resource.id === targetId) return;
-      const kind = overId.startsWith("sidebar-account:") ? "account" as const : "resource" as const;
+      const kind = overId.startsWith("sidebar-account:")
+        ? ("account" as const)
+        : ("resource" as const);
       onSecretDrop?.(resource, targetId, kind);
       return;
     }

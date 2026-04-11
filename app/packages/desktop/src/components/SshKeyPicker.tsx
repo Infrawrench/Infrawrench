@@ -12,9 +12,7 @@ interface AppKey {
   name: string;
 }
 
-type KeySource =
-  | { type: "system"; name: string }
-  | { type: "app"; id: string; name: string };
+type KeySource = { type: "system"; name: string } | { type: "app"; id: string; name: string };
 
 interface SshKeyPickerProps {
   username: string;
@@ -24,7 +22,12 @@ interface SshKeyPickerProps {
   selectedKeyRef?: (source: KeySource | null) => void;
 }
 
-export function SshKeyPicker({ username, onUsernameChange, onKeyResolved, selectedKeyRef }: SshKeyPickerProps) {
+export function SshKeyPicker({
+  username,
+  onUsernameChange,
+  onKeyResolved,
+  selectedKeyRef,
+}: SshKeyPickerProps) {
   const [systemKeys, setSystemKeys] = useState<SystemKey[]>([]);
   const [appKeys, setAppKeys] = useState<AppKey[]>([]);
   const [selectedKey, setSelectedKey] = useState<KeySource | null>(null);
@@ -34,13 +37,12 @@ export function SshKeyPicker({ username, onUsernameChange, onKeyResolved, select
   const [newKeyPem, setNewKeyPem] = useState("");
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => { void loadKeys(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    void loadKeys();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadKeys() {
-    const [sys, db] = await Promise.all([
-      invoke<SystemKey[]>("ssh_list_system_keys"),
-      getDb(),
-    ]);
+    const [sys, db] = await Promise.all([invoke<SystemKey[]>("ssh_list_system_keys"), getDb()]);
     setSystemKeys(sys);
     const rows = await db.select<{ id: string; name: string }[]>(
       "SELECT id, name FROM ssh_keys ORDER BY created_at ASC",
@@ -49,10 +51,11 @@ export function SshKeyPicker({ username, onUsernameChange, onKeyResolved, select
     setAppKeys(rows);
 
     // Auto-select first key
-    const first: KeySource | null =
-      sys[0] ? { type: "system", name: sys[0].name } :
-      rows[0] ? { type: "app", id: rows[0].id, name: rows[0].name } :
-      null;
+    const first: KeySource | null = sys[0]
+      ? { type: "system", name: sys[0].name }
+      : rows[0]
+        ? { type: "app", id: rows[0].id, name: rows[0].name }
+        : null;
 
     if (first) {
       setSelectedKey(first);
@@ -68,7 +71,9 @@ export function SshKeyPicker({ username, onUsernameChange, onKeyResolved, select
             const derived = deriveSSHUsername(comment);
             if (username === "root") onUsernameChange(derived);
           }
-        } catch { /* .pub might not exist */ }
+        } catch {
+          /* .pub might not exist */
+        }
       }
     }
   }
@@ -105,7 +110,9 @@ export function SshKeyPicker({ username, onUsernameChange, onKeyResolved, select
           const derived = deriveSSHUsername(comment);
           if (username === "root" || username === derived) onUsernameChange(derived);
         }
-      } catch { /* .pub might not exist */ }
+      } catch {
+        /* .pub might not exist */
+      }
     }
   }
 
@@ -113,10 +120,9 @@ export function SshKeyPicker({ username, onUsernameChange, onKeyResolved, select
     if (!newKeyName.trim() || !newKeyPem.trim()) return;
     setSaving(true);
     try {
-      const { ciphertext, iv } = await invoke<{ ciphertext: string; iv: string }>(
-        "encrypt_value",
-        { plaintext: newKeyPem.trim() },
-      );
+      const { ciphertext, iv } = await invoke<{ ciphertext: string; iv: string }>("encrypt_value", {
+        plaintext: newKeyPem.trim(),
+      });
       const db = await getDb();
       const id = crypto.randomUUID();
       await db.execute(
@@ -213,12 +219,18 @@ export function SshKeyPicker({ username, onUsernameChange, onKeyResolved, select
                 onChange={(e) => setNewKeyPem(e.target.value)}
                 className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-xs text-gray-200 font-mono focus:outline-none focus:border-gray-500 resize-none"
                 rows={5}
-                placeholder={"-----BEGIN OPENSSH PRIVATE KEY-----\n...\n-----END OPENSSH PRIVATE KEY-----"}
+                placeholder={
+                  "-----BEGIN OPENSSH PRIVATE KEY-----\n...\n-----END OPENSSH PRIVATE KEY-----"
+                }
                 spellCheck={false}
               />
               <div className="flex gap-2 justify-end">
                 <button
-                  onClick={() => { setShowAddKey(false); setNewKeyName(""); setNewKeyPem(""); }}
+                  onClick={() => {
+                    setShowAddKey(false);
+                    setNewKeyName("");
+                    setNewKeyPem("");
+                  }}
                   className="px-3 py-1 text-xs text-gray-500 hover:text-gray-300 transition-colors"
                 >
                   Cancel
@@ -275,7 +287,10 @@ function KeyRow({
       </span>
       {onDelete && (
         <button
-          onClick={(e) => { e.stopPropagation(); onDelete(); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
           className="opacity-0 group-hover:opacity-100 text-gray-600 hover:text-red-400 text-xs px-1 transition-all"
           title="Remove key"
         >

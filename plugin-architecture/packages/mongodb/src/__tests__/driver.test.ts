@@ -134,9 +134,9 @@ describe("mongodb driver", () => {
     });
 
     it("find throws when no collection name given", async () => {
-      await expect(
-        driver.command("mongodb://localhost/test", "find", ["test"]),
-      ).rejects.toThrow("find requires a collection name");
+      await expect(driver.command("mongodb://localhost/test", "find", ["test"])).rejects.toThrow(
+        "find requires a collection name",
+      );
     });
 
     it("countDocuments returns count", async () => {
@@ -217,9 +217,7 @@ describe("mongodb driver", () => {
         "users",
       ]);
 
-      expect(result).toEqual(
-        expect.objectContaining({ count: 100, nindexes: 2 }),
-      );
+      expect(result).toEqual(expect.objectContaining({ count: 100, nindexes: 2 }));
     });
 
     it("collectionStats throws when no collection name given", async () => {

@@ -53,9 +53,7 @@ export function DraggableChildPill({ child, onOpen, extraDragData }: DraggableCh
             }`}
           />
         )}
-        <span className="text-sm font-medium text-gray-200 leading-none">
-          {child.displayName}
-        </span>
+        <span className="text-sm font-medium text-gray-200 leading-none">{child.displayName}</span>
         {child.subtitle && (
           <span className="text-xs text-gray-500 leading-none">{child.subtitle}</span>
         )}

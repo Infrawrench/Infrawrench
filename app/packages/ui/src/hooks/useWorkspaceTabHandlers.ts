@@ -14,12 +14,8 @@ export function useWorkspaceTabHandlers(
   navigate: RouteNavigator,
   getNavigateArgs: (target: WorkspaceTabTarget, replace?: boolean) => NavigateArgs,
 ) {
-  const {
-    workspaceTabs,
-    activeWorkspaceTabId,
-    activateWorkspaceTab,
-    closeWorkspaceTab,
-  } = useUIStore();
+  const { workspaceTabs, activeWorkspaceTabId, activateWorkspaceTab, closeWorkspaceTab } =
+    useUIStore();
 
   const handleActivateTab = useCallback(
     (tabId: string) => {
@@ -37,7 +33,9 @@ export function useWorkspaceTabHandlers(
       closeWorkspaceTab(tabId);
       if (!wasActive) return;
       const nextState = useUIStore.getState();
-      const nextTab = nextState.workspaceTabs.find((tab) => tab.id === nextState.activeWorkspaceTabId);
+      const nextTab = nextState.workspaceTabs.find(
+        (tab) => tab.id === nextState.activeWorkspaceTabId,
+      );
       if (nextTab) {
         void navigate(getNavigateArgs(nextTab.target, true));
       } else {

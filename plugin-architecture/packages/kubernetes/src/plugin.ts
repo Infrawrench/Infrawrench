@@ -31,7 +31,8 @@ const manifest: PluginManifest = {
     {
       key: "kubeconfig",
       label: "Kubeconfig",
-      description: "Paste the contents of your kubeconfig YAML, or link this to a DOKS cluster after adding.",
+      description:
+        "Paste the contents of your kubeconfig YAML, or link this to a DOKS cluster after adding.",
       sensitive: true,
       multiline: true,
       placeholder: "apiVersion: v1\nkind: Config\n...",

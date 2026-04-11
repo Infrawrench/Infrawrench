@@ -19,9 +19,7 @@ interface SignRequest {
 }
 
 function toHex(buffer: ArrayBuffer): string {
-  return [...new Uint8Array(buffer)]
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
+  return [...new Uint8Array(buffer)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 async function sha256(data: string): Promise<string> {
@@ -30,13 +28,10 @@ async function sha256(data: string): Promise<string> {
   return toHex(hash);
 }
 
-async function hmac(
-  key: ArrayBuffer | Uint8Array,
-  data: string,
-): Promise<ArrayBuffer> {
+async function hmac(key: ArrayBuffer | Uint8Array, data: string): Promise<ArrayBuffer> {
   const cryptoKey = await crypto.subtle.importKey(
     "raw",
-    key instanceof Uint8Array ? new Uint8Array(key).buffer as ArrayBuffer : key,
+    key instanceof Uint8Array ? (new Uint8Array(key).buffer as ArrayBuffer) : key,
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["sign"],
@@ -57,10 +52,7 @@ async function deriveSigningKey(
   region: string,
   service: string,
 ): Promise<ArrayBuffer> {
-  const kDate = await hmac(
-    new TextEncoder().encode(`AWS4${secretKey}`),
-    dateStamp,
-  );
+  const kDate = await hmac(new TextEncoder().encode(`AWS4${secretKey}`), dateStamp);
   const kRegion = await hmac(kDate, region);
   const kService = await hmac(kRegion, service);
   return hmac(kService, "aws4_request");
@@ -75,29 +67,21 @@ export async function signRequest(req: SignRequest): Promise<Record<string, stri
   const canonicalUri = parsedUrl.pathname || "/";
 
   // Sort query params
-  const params = [...parsedUrl.searchParams.entries()].sort(([a], [b]) =>
-    a.localeCompare(b),
-  );
+  const params = [...parsedUrl.searchParams.entries()].sort(([a], [b]) => a.localeCompare(b));
   const canonicalQueryString = params
-    .map(
-      ([k, v]) =>
-        `${encodeURIComponent(k)}=${encodeURIComponent(v)}`,
-    )
+    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
     .join("&");
 
   // Headers to sign — must include host and x-amz-date at minimum
   const signedHeaders: Record<string, string> = {
     host: parsedUrl.host,
     "x-amz-date": amzDate,
-    ...Object.fromEntries(
-      Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v]),
-    ),
+    ...Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v])),
   };
 
   const sortedHeaderKeys = Object.keys(signedHeaders).sort();
-  const canonicalHeaders = sortedHeaderKeys
-    .map((k) => `${k}:${signedHeaders[k]!.trim()}`)
-    .join("\n") + "\n";
+  const canonicalHeaders =
+    sortedHeaderKeys.map((k) => `${k}:${signedHeaders[k]!.trim()}`).join("\n") + "\n";
   const signedHeadersStr = sortedHeaderKeys.join(";");
 
   const payloadHash = await sha256(body ?? "");
@@ -119,12 +103,7 @@ export async function signRequest(req: SignRequest): Promise<Record<string, stri
     await sha256(canonicalRequest),
   ].join("\n");
 
-  const signingKey = await deriveSigningKey(
-    secretAccessKey,
-    dateStamp,
-    region,
-    service,
-  );
+  const signingKey = await deriveSigningKey(secretAccessKey, dateStamp, region, service);
   const signature = toHex(await hmac(signingKey, stringToSign));
 
   const authorization =
@@ -157,16 +136,16 @@ function elementToObject(el: Element): Record<string, unknown> {
     if (obj[key] !== undefined) {
       if (!Array.isArray(obj[key])) obj[key] = [obj[key]];
       (obj[key] as unknown[]).push(
-        child.children.length > 0 ? elementToObject(child) : child.textContent ?? "",
+        child.children.length > 0 ? elementToObject(child) : (child.textContent ?? ""),
       );
     } else if (child.localName === "item" || child.localName === "member") {
       // AWS uses <item> or <member> for list elements — wrap parent as array
       if (!Array.isArray(obj[key])) obj[key] = [];
       (obj[key] as unknown[]).push(
-        child.children.length > 0 ? elementToObject(child) : child.textContent ?? "",
+        child.children.length > 0 ? elementToObject(child) : (child.textContent ?? ""),
       );
     } else {
-      obj[key] = child.children.length > 0 ? elementToObject(child) : child.textContent ?? "";
+      obj[key] = child.children.length > 0 ? elementToObject(child) : (child.textContent ?? "");
     }
   }
   return obj;

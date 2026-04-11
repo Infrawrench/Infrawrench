@@ -42,7 +42,9 @@ export function useCreateResourceForm(
   const [fields, setFields] = useState<Record<string, string>>({});
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [sizePricingByRegion, setSizePricingByRegion] = useState<Record<string, Record<string, number>>>({});
+  const [sizePricingByRegion, setSizePricingByRegion] = useState<
+    Record<string, Record<string, number>>
+  >({});
   const [costEstimateMonthly, setCostEstimateMonthly] = useState<number | null>(null);
   const pricingAttemptedRef = useRef<Map<string, Set<string>>>(new Map());
   const pricingInFlightRef = useRef<Set<string>>(new Set());
@@ -93,7 +95,10 @@ export function useCreateResourceForm(
     const attemptedForRegion = pricingAttemptedRef.current.get(regionKey) ?? new Set<string>();
     const pendingSizes = requestedSizes.filter((s) => !attemptedForRegion.has(s.id));
     if (!pendingSizes.length) return;
-    const requestKey = `${regionKey}|${pendingSizes.map((s) => s.id).sort().join(",")}`;
+    const requestKey = `${regionKey}|${pendingSizes
+      .map((s) => s.id)
+      .sort()
+      .join(",")}`;
     if (pricingInFlightRef.current.has(requestKey)) return;
 
     pricingInFlightRef.current.add(requestKey);
@@ -138,9 +143,13 @@ export function useCreateResourceForm(
         setFields(init);
 
         // Progressive pricing loading
-        const cfgRegionField = cfg.fields.find((f) => f.kind === "region-picker" && f.regions?.length);
+        const cfgRegionField = cfg.fields.find(
+          (f) => f.kind === "region-picker" && f.regions?.length,
+        );
         const defaultRegionId = cfgRegionField
-          ? (init[cfgRegionField.key] ?? cfgRegionField.defaultValue ?? cfgRegionField.regions?.[0]?.id)
+          ? (init[cfgRegionField.key] ??
+            cfgRegionField.defaultValue ??
+            cfgRegionField.regions?.[0]?.id)
           : undefined;
         const cfgSizeField = cfg.fields.find((f) => f.kind === "size-picker" && f.sizes?.length);
         const defaultSizeId = cfgSizeField
@@ -152,11 +161,19 @@ export function useCreateResourceForm(
             .map((r) => r.id)
             .filter((id) => id !== defaultRegionId);
           void (async () => {
-            await loadPricingForRegion(defaultRegionId, cfg, defaultSizeId ? [defaultSizeId] : undefined);
+            await loadPricingForRegion(
+              defaultRegionId,
+              cfg,
+              defaultSizeId ? [defaultSizeId] : undefined,
+            );
             if (cancelled) return;
             for (const regionId of remainingRegionIds) {
               if (cancelled) return;
-              await loadPricingForRegion(regionId, cfg, defaultSizeId ? [defaultSizeId] : undefined);
+              await loadPricingForRegion(
+                regionId,
+                cfg,
+                defaultSizeId ? [defaultSizeId] : undefined,
+              );
             }
             if (cancelled) return;
             await loadPricingForRegion(defaultRegionId, cfg);
@@ -167,7 +184,11 @@ export function useCreateResourceForm(
           })();
         } else {
           void (async () => {
-            await loadPricingForRegion(defaultRegionId, cfg, defaultSizeId ? [defaultSizeId] : undefined);
+            await loadPricingForRegion(
+              defaultRegionId,
+              cfg,
+              defaultSizeId ? [defaultSizeId] : undefined,
+            );
             await loadPricingForRegion(defaultRegionId, cfg);
           })();
         }
@@ -178,17 +199,23 @@ export function useCreateResourceForm(
       }
     }
     void load();
-    return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
 
   useEffect(() => {
     if (!config) return;
     void (async () => {
-      await loadPricingForRegion(selectedRegionId, undefined, selectedSizeId ? [selectedSizeId] : undefined);
+      await loadPricingForRegion(
+        selectedRegionId,
+        undefined,
+        selectedSizeId ? [selectedSizeId] : undefined,
+      );
       await loadPricingForRegion(selectedRegionId);
     })();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [config, selectedRegionId, selectedSizeId]);
 
   const configWithPricing = useMemo(() => {
@@ -233,7 +260,10 @@ export function useCreateResourceForm(
           if (!cancelled) setCostEstimateMonthly(null);
         });
     }, 220);
-    return () => { cancelled = true; clearTimeout(timer); };
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [configWithPricing, fields]);
 
   const estimatedMonthlyPrice = useMemo(() => {
@@ -270,7 +300,7 @@ export function useCreateResourceForm(
     try {
       const submitFields: Record<string, string> = {};
       const cfg = configWithPricing ?? config;
-      for (const f of (cfg?.fields ?? [])) {
+      for (const f of cfg?.fields ?? []) {
         if (!evaluateShowWhen(f, fields)) continue;
         if (fields[f.key] !== undefined) submitFields[f.key] = fields[f.key]!;
       }
@@ -280,7 +310,7 @@ export function useCreateResourceForm(
     } finally {
       setCreating(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [configWithPricing, config, fields]);
 
   return {

@@ -22,7 +22,12 @@ export function DraggableSidebarResource({
   droppableId,
   isDropDisabled,
 }: DraggableSidebarResourceProps) {
-  const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
+  const {
+    attributes,
+    listeners,
+    setNodeRef: setDragRef,
+    isDragging,
+  } = useDraggable({
     id: `sidebar-resource:${resource.id}`,
     data: {
       resource,

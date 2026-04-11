@@ -141,9 +141,9 @@ describe("docker driver", () => {
     it("propagates errors from docker operations", async () => {
       mockVersion.mockRejectedValue(new Error("connection refused"));
 
-      await expect(
-        driver.command("unix:///var/run/docker.sock", "version"),
-      ).rejects.toThrow("connection refused");
+      await expect(driver.command("unix:///var/run/docker.sock", "version")).rejects.toThrow(
+        "connection refused",
+      );
     });
   });
 });

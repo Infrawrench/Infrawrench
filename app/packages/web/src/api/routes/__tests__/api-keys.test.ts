@@ -137,7 +137,16 @@ describe("API Keys routes", () => {
 
     it("normalises null scopes to empty array", async () => {
       const rows = [
-        { id: "k1", name: "a", prefix: "iwk_x", scopes: null, lastUsedAt: null, expiresAt: null, revokedAt: null, createdAt: new Date() },
+        {
+          id: "k1",
+          name: "a",
+          prefix: "iwk_x",
+          scopes: null,
+          lastUsedAt: null,
+          expiresAt: null,
+          revokedAt: null,
+          createdAt: new Date(),
+        },
       ];
       const where = vi.fn().mockResolvedValue(rows);
       const from = vi.fn().mockReturnValue({ where });

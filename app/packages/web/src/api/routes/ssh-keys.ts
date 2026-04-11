@@ -58,11 +58,16 @@ function buildOpenSshPrivateKey(privSeed: Buffer, pubKey: Buffer, comment: strin
   commentLenBuf.writeUInt32BE(commentBuf.length);
 
   const privSection = Buffer.concat([
-    checkInt, checkInt, // two identical checkints
-    keyTypeLenBuf, keyType,
-    pubLenBuf, pubKey,
-    fullPrivLenBuf, fullPriv,
-    commentLenBuf, commentBuf,
+    checkInt,
+    checkInt, // two identical checkints
+    keyTypeLenBuf,
+    keyType,
+    pubLenBuf,
+    pubKey,
+    fullPrivLenBuf,
+    fullPriv,
+    commentLenBuf,
+    commentBuf,
   ]);
 
   // Pad to 8-byte boundary (cipher block size for "none")
@@ -89,12 +94,17 @@ function buildOpenSshPrivateKey(privSeed: Buffer, pubKey: Buffer, comment: strin
 
   const full = Buffer.concat([
     Buffer.from(AUTH_MAGIC),
-    cipherLenBuf, cipherBuf,
-    kdfLenBuf, kdfBuf,
-    kdfOptLenBuf, kdfOptions,
+    cipherLenBuf,
+    cipherBuf,
+    kdfLenBuf,
+    kdfBuf,
+    kdfOptLenBuf,
+    kdfOptions,
     keyCountBuf,
-    pubBlobLenBuf, pubBlob,
-    privLenBuf, paddedPriv,
+    pubBlobLenBuf,
+    pubBlob,
+    privLenBuf,
+    paddedPriv,
   ]);
 
   // Wrap in PEM-style armor with 70-char lines
@@ -168,8 +178,8 @@ app.post("/", async (c) => {
   // Extract raw key bytes from DER encodings
   const spkiDer = crypto.createPublicKey(pubPem).export({ type: "spki", format: "der" });
   const pkcs8Der = crypto.createPrivateKey(privPem).export({ type: "pkcs8", format: "der" });
-  const rawPubKey = spkiDer.subarray(12);        // 32 bytes after SPKI header
-  const rawPrivKey = pkcs8Der.subarray(16);       // 32 bytes after PKCS#8 header
+  const rawPubKey = spkiDer.subarray(12); // 32 bytes after SPKI header
+  const rawPrivKey = pkcs8Der.subarray(16); // 32 bytes after PKCS#8 header
 
   // Build OpenSSH public key wire format
   const sshPublicKey = `ssh-ed25519 ${sshWireString("ssh-ed25519", rawPubKey).toString("base64")} ${name.trim()}`;

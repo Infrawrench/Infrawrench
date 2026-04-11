@@ -16,7 +16,12 @@ export const GkeClusterResourceType: ResourceTypeDefinition = {
   ],
   outputs: [
     { key: "clusterEndpoint", label: "Cluster Endpoint", sensitive: false },
-    { key: "kubeconfig", label: "Kubeconfig", sensitive: true, description: "Full kubeconfig YAML for kubectl access" },
+    {
+      key: "kubeconfig",
+      label: "Kubeconfig",
+      sensitive: true,
+      description: "Full kubeconfig YAML for kubectl access",
+    },
   ],
   dashboardPinnable: true,
   supportsCreate: true,

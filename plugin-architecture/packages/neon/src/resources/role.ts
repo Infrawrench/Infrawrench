@@ -11,9 +11,7 @@ export const NeonRoleResourceType: ResourceTypeDefinition = {
     { key: "branchId", label: "Branch ID", kind: "string", required: true },
     { key: "protected", label: "Protected", kind: "boolean", required: false },
   ],
-  outputs: [
-    { key: "password", label: "Password", sensitive: true },
-  ],
+  outputs: [{ key: "password", label: "Password", sensitive: true }],
   parentTypeId: "neon-branch",
   dashboardPinnable: false,
   iconKey: "neon",

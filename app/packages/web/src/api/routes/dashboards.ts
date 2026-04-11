@@ -41,7 +41,10 @@ async function enrichPins(pins: Array<{ pluginId: string; [key: string]: unknown
       if (!meta) {
         const loaded = await getPlugin(pin.pluginId as string);
         meta = loaded
-          ? { logoSvg: loaded.plugin.manifest.logoSvg, displayName: loaded.plugin.manifest.displayName }
+          ? {
+              logoSvg: loaded.plugin.manifest.logoSvg,
+              displayName: loaded.plugin.manifest.displayName,
+            }
           : { logoSvg: "", displayName: pin.pluginId as string };
         pluginCache.set(pin.pluginId as string, meta);
       }
@@ -80,7 +83,13 @@ app.get("/:id", async (c) => {
   const [dashboard] = await db
     .select()
     .from(dashboards)
-    .where(and(eq(dashboards.id, dashboardId), eq(dashboards.organizationId, organizationId), isNull(dashboards.deletedAt)))
+    .where(
+      and(
+        eq(dashboards.id, dashboardId),
+        eq(dashboards.organizationId, organizationId),
+        isNull(dashboards.deletedAt),
+      ),
+    )
     .limit(1);
 
   if (!dashboard) return c.json({ error: "Not found" }, 404);
@@ -105,7 +114,13 @@ app.get("/:id", async (c) => {
     })
     .from(dashboardPins)
     .innerJoin(resources, eq(dashboardPins.resourceId, resources.id))
-    .where(and(eq(dashboardPins.dashboardId, dashboardId), isNull(dashboardPins.deletedAt), isNull(resources.deletedAt)));
+    .where(
+      and(
+        eq(dashboardPins.dashboardId, dashboardId),
+        isNull(dashboardPins.deletedAt),
+        isNull(resources.deletedAt),
+      ),
+    );
 
   const pins = await enrichPins(rawPins);
   return c.json({ dashboard, pins });
@@ -118,7 +133,13 @@ app.get("/default/full", async (c) => {
   let [defaultDashboard] = await db
     .select()
     .from(dashboards)
-    .where(and(eq(dashboards.organizationId, organizationId), eq(dashboards.isDefault, true), isNull(dashboards.deletedAt)))
+    .where(
+      and(
+        eq(dashboards.organizationId, organizationId),
+        eq(dashboards.isDefault, true),
+        isNull(dashboards.deletedAt),
+      ),
+    )
     .limit(1);
 
   if (!defaultDashboard) {
@@ -149,7 +170,13 @@ app.get("/default/full", async (c) => {
     })
     .from(dashboardPins)
     .innerJoin(resources, eq(dashboardPins.resourceId, resources.id))
-    .where(and(eq(dashboardPins.dashboardId, defaultDashboard.id), isNull(dashboardPins.deletedAt), isNull(resources.deletedAt)));
+    .where(
+      and(
+        eq(dashboardPins.dashboardId, defaultDashboard.id),
+        isNull(dashboardPins.deletedAt),
+        isNull(resources.deletedAt),
+      ),
+    );
 
   const pins = await enrichPins(rawPins);
   return c.json({ dashboard: defaultDashboard, pins });
@@ -182,7 +209,9 @@ app.delete("/:id", async (c) => {
   if (dash.isDefault) return c.json({ error: "Cannot delete the default dashboard" }, 400);
 
   await db.delete(dashboardPins).where(eq(dashboardPins.dashboardId, dashboardId));
-  await db.delete(dashboards).where(and(eq(dashboards.id, dashboardId), eq(dashboards.organizationId, organizationId)));
+  await db
+    .delete(dashboards)
+    .where(and(eq(dashboards.id, dashboardId), eq(dashboards.organizationId, organizationId)));
   return c.json({ ok: true });
 });
 
@@ -220,7 +249,10 @@ app.post("/pin", async (c) => {
 /** POST /api/dashboards/unpin */
 app.post("/unpin", async (c) => {
   const organizationId = c.get("organizationId");
-  const { dashboardId, resourceId } = await c.req.json<{ dashboardId: string; resourceId: string }>();
+  const { dashboardId, resourceId } = await c.req.json<{
+    dashboardId: string;
+    resourceId: string;
+  }>();
 
   const [dashboard] = await db
     .select({ id: dashboards.id })
@@ -229,7 +261,11 @@ app.post("/unpin", async (c) => {
     .limit(1);
   if (!dashboard) return c.json({ error: "Dashboard not found" }, 404);
 
-  await db.delete(dashboardPins).where(and(eq(dashboardPins.dashboardId, dashboardId), eq(dashboardPins.resourceId, resourceId)));
+  await db
+    .delete(dashboardPins)
+    .where(
+      and(eq(dashboardPins.dashboardId, dashboardId), eq(dashboardPins.resourceId, resourceId)),
+    );
   return c.json({ ok: true });
 });
 
@@ -256,21 +292,39 @@ app.post("/validate-tabs", async (c) => {
       const [row] = await db
         .select({ id: dashboards.id, name: dashboards.name })
         .from(dashboards)
-        .where(and(eq(dashboards.id, target.dashboardId), eq(dashboards.organizationId, organizationId), isNull(dashboards.deletedAt)))
+        .where(
+          and(
+            eq(dashboards.id, target.dashboardId),
+            eq(dashboards.organizationId, organizationId),
+            isNull(dashboards.deletedAt),
+          ),
+        )
         .limit(1);
       if (row) validIds.add(tab.id);
     } else if (target.kind === "account" && target.accountId) {
       const [row] = await db
         .select({ id: accounts.id })
         .from(accounts)
-        .where(and(eq(accounts.id, target.accountId), eq(accounts.organizationId, organizationId), isNull(accounts.deletedAt)))
+        .where(
+          and(
+            eq(accounts.id, target.accountId),
+            eq(accounts.organizationId, organizationId),
+            isNull(accounts.deletedAt),
+          ),
+        )
         .limit(1);
       if (row) validIds.add(tab.id);
     } else if (target.kind === "resource" && target.resourceId) {
       const [row] = await db
         .select({ id: resources.id })
         .from(resources)
-        .where(and(eq(resources.id, target.resourceId), eq(resources.organizationId, organizationId), isNull(resources.deletedAt)))
+        .where(
+          and(
+            eq(resources.id, target.resourceId),
+            eq(resources.organizationId, organizationId),
+            isNull(resources.deletedAt),
+          ),
+        )
         .limit(1);
       if (row) validIds.add(tab.id);
     }
@@ -291,15 +345,18 @@ app.post("/probe", async (c) => {
     }>;
   }>();
 
-  const results: Record<string, {
-    phase: "ok" | "error";
-    pgVersion?: string;
-    dbSize?: string;
-    tableCount?: number;
-    tableCountLabel?: string;
-    resourceCounts?: Array<{ typeLabel: string; count: number }>;
-    error?: string;
-  }> = {};
+  const results: Record<
+    string,
+    {
+      phase: "ok" | "error";
+      pgVersion?: string;
+      dbSize?: string;
+      tableCount?: number;
+      tableCountLabel?: string;
+      resourceCounts?: Array<{ typeLabel: string; count: number }>;
+      error?: string;
+    }
+  > = {};
 
   const credsByAccount = new Map<string, Record<string, string>>();
 
@@ -321,96 +378,105 @@ app.post("/probe", async (c) => {
     return creds;
   }
 
-  await Promise.allSettled(items.map(async (item) => {
-    const creds = await getCredentials(item.accountId);
-    if (!creds) {
-      results[item.resourceId] = { phase: "error", error: "Account not found" };
-      return;
-    }
+  await Promise.allSettled(
+    items.map(async (item) => {
+      const creds = await getCredentials(item.accountId);
+      if (!creds) {
+        results[item.resourceId] = { phase: "error", error: "Account not found" };
+        return;
+      }
 
-    const loaded = await getPlugin(item.pluginId);
-    if (!loaded) {
-      results[item.resourceId] = { phase: "error", error: `Plugin not found: ${item.pluginId}` };
-      return;
-    }
+      const loaded = await getPlugin(item.pluginId);
+      if (!loaded) {
+        results[item.resourceId] = { phase: "error", error: `Plugin not found: ${item.pluginId}` };
+        return;
+      }
 
-    const manifest = loaded.plugin.manifest;
+      const manifest = loaded.plugin.manifest;
 
-    if (item.resourceTypeId === "__account__") {
-      const topLevelTypes = getListableResourceTypes(loaded.plugin.resourceTypes);
-      const hostServices = buildPluginHostServices(manifest, creds);
-      const client = loaded.plugin.createClient(creds, hostServices);
-      const counts = await Promise.allSettled(
-        topLevelTypes.map(async (t) => ({
-          typeLabel: t.pluralDisplayName,
-          count: (await client.listResources(t.id, item.accountId)).length,
-        })),
+      if (item.resourceTypeId === "__account__") {
+        const topLevelTypes = getListableResourceTypes(loaded.plugin.resourceTypes);
+        const hostServices = buildPluginHostServices(manifest, creds);
+        const client = loaded.plugin.createClient(creds, hostServices);
+        const counts = await Promise.allSettled(
+          topLevelTypes.map(async (t) => ({
+            typeLabel: t.pluralDisplayName,
+            count: (await client.listResources(t.id, item.accountId)).length,
+          })),
+        );
+        const resourceCounts = counts
+          .filter((r) => r.status === "fulfilled" && r.value.count > 0)
+          .map((r) => (r as PromiseFulfilledResult<{ typeLabel: string; count: number }>).value);
+        results[item.resourceId] = { phase: "ok", resourceCounts };
+        return;
+      }
+
+      if (manifest.kvDriver) {
+        const cs = creds[manifest.kvDriver.credentialKey] ?? "";
+        const driver = kvDrivers.get(manifest.kvDriver.driver);
+        if (driver) {
+          const hostServices = buildPluginHostServices(manifest, creds);
+          const client = loaded.plugin.createClient(creds, hostServices);
+          const stats = await client.fetchStats?.();
+          const { version = "", size = "" } = stats ?? {};
+          results[item.resourceId] = { phase: "ok", pgVersion: version, dbSize: size };
+          return;
+        }
+      }
+
+      if (manifest.dockerDriver) {
+        const dockerHost = creds[manifest.dockerDriver.credentialKey] ?? "";
+        const driver = dockerDrivers.get(manifest.dockerDriver.driver);
+        if (driver) {
+          const hostServices = buildPluginHostServices(manifest, creds);
+          const client = loaded.plugin.createClient(creds, hostServices);
+          const stats = await client.fetchStats?.();
+          const { version = "", size = "", tableCount = 0 } = stats ?? {};
+          results[item.resourceId] = {
+            phase: "ok",
+            pgVersion: version,
+            dbSize: size,
+            tableCount,
+            tableCountLabel: "Running",
+          };
+          return;
+        }
+      }
+
+      const storageType = loaded.plugin.resourceTypes.find(
+        (t) => t.id === item.resourceTypeId && t.supportsStorageBrowser,
       );
-      const resourceCounts = counts
-        .filter((r) => r.status === "fulfilled" && r.value.count > 0)
-        .map((r) => (r as PromiseFulfilledResult<{ typeLabel: string; count: number }>).value);
-      results[item.resourceId] = { phase: "ok", resourceCounts };
-      return;
-    }
-
-    if (manifest.kvDriver) {
-      const cs = creds[manifest.kvDriver.credentialKey] ?? "";
-      const driver = kvDrivers.get(manifest.kvDriver.driver);
-      if (driver) {
-        const hostServices = buildPluginHostServices(manifest, creds);
-        const client = loaded.plugin.createClient(creds, hostServices);
-        const stats = await client.fetchStats?.();
-        const { version = "", size = "" } = stats ?? {};
-        results[item.resourceId] = { phase: "ok", pgVersion: version, dbSize: size };
+      if (storageType) {
+        const client = loaded.plugin.createClient(creds);
+        const bucketName = item.resourceId.split(":").slice(2).join(":");
+        const stats = await (
+          client as { fetchStorageStats?(b: string): Promise<{ count: number; size: string }> }
+        ).fetchStorageStats?.(bucketName);
+        results[item.resourceId] = {
+          phase: "ok",
+          ...(stats?.count !== undefined ? { tableCount: stats.count } : {}),
+          tableCountLabel: "Objects",
+          ...(stats?.size !== undefined ? { dbSize: stats.size } : {}),
+        };
         return;
       }
-    }
 
-    if (manifest.dockerDriver) {
-      const dockerHost = creds[manifest.dockerDriver.credentialKey] ?? "";
-      const driver = dockerDrivers.get(manifest.dockerDriver.driver);
-      if (driver) {
-        const hostServices = buildPluginHostServices(manifest, creds);
-        const client = loaded.plugin.createClient(creds, hostServices);
-        const stats = await client.fetchStats?.();
-        const { version = "", size = "", tableCount = 0 } = stats ?? {};
-        results[item.resourceId] = { phase: "ok", pgVersion: version, dbSize: size, tableCount, tableCountLabel: "Running" };
-        return;
+      if (manifest.sqlDriver) {
+        const cs = creds[manifest.sqlDriver.credentialKey] ?? "";
+        const driver = sqlDrivers.get(manifest.sqlDriver.driver);
+        if (driver) {
+          const hostServices = buildPluginHostServices(manifest, creds);
+          const client = loaded.plugin.createClient(creds, hostServices);
+          const stats = await client.fetchStats?.();
+          const { version = "", size = "", tableCount = 0 } = stats ?? {};
+          results[item.resourceId] = { phase: "ok", pgVersion: version, dbSize: size, tableCount };
+          return;
+        }
       }
-    }
 
-    const storageType = loaded.plugin.resourceTypes.find(
-      (t) => t.id === item.resourceTypeId && t.supportsStorageBrowser,
-    );
-    if (storageType) {
-      const client = loaded.plugin.createClient(creds);
-      const bucketName = item.resourceId.split(":").slice(2).join(":");
-      const stats = await (client as { fetchStorageStats?(b: string): Promise<{ count: number; size: string }> })
-        .fetchStorageStats?.(bucketName);
-      results[item.resourceId] = {
-        phase: "ok",
-        ...(stats?.count !== undefined ? { tableCount: stats.count } : {}),
-        tableCountLabel: "Objects",
-        ...(stats?.size !== undefined ? { dbSize: stats.size } : {}),
-      };
-      return;
-    }
-
-    if (manifest.sqlDriver) {
-      const cs = creds[manifest.sqlDriver.credentialKey] ?? "";
-      const driver = sqlDrivers.get(manifest.sqlDriver.driver);
-      if (driver) {
-        const hostServices = buildPluginHostServices(manifest, creds);
-        const client = loaded.plugin.createClient(creds, hostServices);
-        const stats = await client.fetchStats?.();
-        const { version = "", size = "", tableCount = 0 } = stats ?? {};
-        results[item.resourceId] = { phase: "ok", pgVersion: version, dbSize: size, tableCount };
-        return;
-      }
-    }
-
-    results[item.resourceId] = { phase: "ok" };
-  }));
+      results[item.resourceId] = { phase: "ok" };
+    }),
+  );
 
   for (const item of items) {
     if (!results[item.resourceId]) {

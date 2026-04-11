@@ -13,8 +13,6 @@ export const ComposerEnvironmentResourceType: ResourceTypeDefinition = {
     { key: "airflowUri", label: "Airflow URI", kind: "string", required: false },
     { key: "dagGcsPrefix", label: "DAG GCS Prefix", kind: "string", required: false },
   ],
-  outputs: [
-    { key: "airflowUri", label: "Airflow Web UI", sensitive: false },
-  ],
+  outputs: [{ key: "airflowUri", label: "Airflow Web UI", sensitive: false }],
   dashboardPinnable: true,
 };

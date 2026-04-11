@@ -24,7 +24,11 @@ export const TunnelResourceType: ResourceTypeDefinition = {
       displayName: "Tunnel Token",
       description: "Token for running cloudflared tunnel",
       entries: [
-        { envKey: "TUNNEL_TOKEN", outputKey: "tunnelToken", description: "Cloudflare Tunnel token" },
+        {
+          envKey: "TUNNEL_TOKEN",
+          outputKey: "tunnelToken",
+          description: "Cloudflare Tunnel token",
+        },
         { envKey: "TUNNEL_ID", outputKey: "tunnelId", description: "Cloudflare Tunnel ID" },
       ],
     },

@@ -10,8 +10,20 @@ import { ipcMain } from "electron";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { openTunnel, closeTunnel, getActiveTunnels, sshExecCommand, type SshTunnelConfig } from "./ssh-tunnel";
-import { spawnSshShell, writeSshShell, resizeSshShell, killSshShell, type SshShellConfig } from "./ssh-shell";
+import {
+  openTunnel,
+  closeTunnel,
+  getActiveTunnels,
+  sshExecCommand,
+  type SshTunnelConfig,
+} from "./ssh-tunnel";
+import {
+  spawnSshShell,
+  writeSshShell,
+  resizeSshShell,
+  killSshShell,
+  type SshShellConfig,
+} from "./ssh-shell";
 import { sftpList, sftpMkdir, sftpDelete, sftpUpload, sftpDownload, type SftpConfig } from "./sftp";
 
 ipcMain.handle("ssh_open_tunnel", (_e, config: SshTunnelConfig) => openTunnel(config));
@@ -23,10 +35,19 @@ ipcMain.handle("ssh_close_tunnel", (_e, { tunnelId }: { tunnelId: string }) => {
 
 ipcMain.handle("ssh_get_active_tunnels", () => getActiveTunnels());
 
-ipcMain.handle("ssh_exec_command", (_e, { config, command }: {
-  config: { sshHost: string; sshPort: number; sshUser: string; privateKey: string };
-  command: string;
-}) => sshExecCommand(config, command));
+ipcMain.handle(
+  "ssh_exec_command",
+  (
+    _e,
+    {
+      config,
+      command,
+    }: {
+      config: { sshHost: string; sshPort: number; sshUser: string; privateKey: string };
+      command: string;
+    },
+  ) => sshExecCommand(config, command),
+);
 
 ipcMain.handle("ssh_shell_spawn", (event, config: SshShellConfig) =>
   spawnSshShell(event.sender, config),
@@ -36,9 +57,12 @@ ipcMain.handle("ssh_shell_write", (_e, { shellId, data }: { shellId: string; dat
   writeSshShell(shellId, data);
 });
 
-ipcMain.handle("ssh_shell_resize", (_e, { shellId, cols, rows }: { shellId: string; cols: number; rows: number }) => {
-  resizeSshShell(shellId, cols, rows);
-});
+ipcMain.handle(
+  "ssh_shell_resize",
+  (_e, { shellId, cols, rows }: { shellId: string; cols: number; rows: number }) => {
+    resizeSshShell(shellId, cols, rows);
+  },
+);
 
 ipcMain.handle("ssh_shell_kill", (_e, { shellId }: { shellId: string }) => {
   killSshShell(shellId);
@@ -52,16 +76,28 @@ ipcMain.handle("sftp_mkdir", (_e, { config, path }: { config: SftpConfig; path: 
   sftpMkdir(config, path),
 );
 
-ipcMain.handle("sftp_delete", (_e, { config, path, isDir }: { config: SftpConfig; path: string; isDir: boolean }) =>
-  sftpDelete(config, path, isDir),
+ipcMain.handle(
+  "sftp_delete",
+  (_e, { config, path, isDir }: { config: SftpConfig; path: string; isDir: boolean }) =>
+    sftpDelete(config, path, isDir),
 );
 
-ipcMain.handle("sftp_upload", (_e, { config, remotePath, data }: { config: SftpConfig; remotePath: string; data: Buffer }) =>
-  sftpUpload(config, remotePath, data),
+ipcMain.handle(
+  "sftp_upload",
+  (_e, { config, remotePath, data }: { config: SftpConfig; remotePath: string; data: Buffer }) =>
+    sftpUpload(config, remotePath, data),
 );
 
-ipcMain.handle("sftp_download", (_e, { config, remotePath, localPath }: { config: SftpConfig; remotePath: string; localPath: string }) =>
-  sftpDownload(config, remotePath, localPath),
+ipcMain.handle(
+  "sftp_download",
+  (
+    _e,
+    {
+      config,
+      remotePath,
+      localPath,
+    }: { config: SftpConfig; remotePath: string; localPath: string },
+  ) => sftpDownload(config, remotePath, localPath),
 );
 
 const PRIVATE_KEY_HEADERS = [
@@ -84,7 +120,9 @@ ipcMain.handle("ssh_list_system_keys", () => {
       if (!fs.statSync(filePath).isFile()) continue;
       const head = fs.readFileSync(filePath, "utf8").slice(0, 100);
       if (PRIVATE_KEY_HEADERS.some((h) => head.includes(h))) results.push({ name: filename });
-    } catch { /* skip unreadable */ }
+    } catch {
+      /* skip unreadable */
+    }
   }
   return results;
 });

@@ -1,11 +1,20 @@
 import { invoke } from "../lib/invoke";
 import type { HostServices, PluginManifest } from "@infrawrench/plugin-base";
 
-export function sqlQuery(driverId: string, connectionString: string, sql: string): Promise<Record<string, unknown>[]> {
+export function sqlQuery(
+  driverId: string,
+  connectionString: string,
+  sql: string,
+): Promise<Record<string, unknown>[]> {
   return invoke<Record<string, unknown>[]>("plugin_sql_query", { driverId, connectionString, sql });
 }
 
-export function sqlExecute(driverId: string, connectionString: string, sql: string, params: unknown[]): Promise<number> {
+export function sqlExecute(
+  driverId: string,
+  connectionString: string,
+  sql: string,
+  params: unknown[],
+): Promise<number> {
   return invoke<number>("plugin_sql_execute", { driverId, connectionString, sql, params });
 }
 
@@ -18,7 +27,12 @@ export function buildHostServices(driverId: string, connectionString: string): H
   };
 }
 
-export function kvCommand(driverId: string, connectionString: string, command: string, ...args: (string | number)[]): Promise<unknown> {
+export function kvCommand(
+  driverId: string,
+  connectionString: string,
+  command: string,
+  ...args: (string | number)[]
+): Promise<unknown> {
   return invoke<unknown>("plugin_kv_command", { driverId, connectionString, command, args });
 }
 
@@ -69,15 +83,24 @@ export function buildPluginHostServices(
 ): HostServices | undefined {
   if (manifest.dockerDriver) {
     const dockerHost = credentials[manifest.dockerDriver.credentialKey] ?? "";
-    return { ...buildDockerHostServices(manifest.dockerDriver.driver, dockerHost), ...httpHostServices };
+    return {
+      ...buildDockerHostServices(manifest.dockerDriver.driver, dockerHost),
+      ...httpHostServices,
+    };
   }
   if (manifest.sqlDriver) {
     const connectionString = credentials[manifest.sqlDriver.credentialKey] ?? "";
-    return { ...buildHostServices(manifest.sqlDriver.driver, connectionString), ...httpHostServices };
+    return {
+      ...buildHostServices(manifest.sqlDriver.driver, connectionString),
+      ...httpHostServices,
+    };
   }
   if (manifest.kvDriver) {
     const connectionString = credentials[manifest.kvDriver.credentialKey] ?? "";
-    return { ...buildKvHostServices(manifest.kvDriver.driver, connectionString), ...httpHostServices };
+    return {
+      ...buildKvHostServices(manifest.kvDriver.driver, connectionString),
+      ...httpHostServices,
+    };
   }
   // Even without a specific driver, provide HTTP proxy for plugins like K8s
   return httpHostServices;

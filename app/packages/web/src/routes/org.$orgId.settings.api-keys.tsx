@@ -42,7 +42,9 @@ function ApiKeysPage() {
     setLoading(false);
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   async function handleRevoke(id: string) {
     await apiPost(`/api/org/${orgId}/api-keys/${id}/revoke`);
@@ -50,7 +52,9 @@ function ApiKeysPage() {
   }
 
   async function handleRotate(id: string) {
-    const result = await apiPost<{ id: string; key: string }>(`/api/org/${orgId}/api-keys/${id}/rotate`);
+    const result = await apiPost<{ id: string; key: string }>(
+      `/api/org/${orgId}/api-keys/${id}/rotate`,
+    );
     setNewKey(result.key);
     await load();
   }
@@ -93,9 +97,7 @@ function ApiKeysPage() {
                     {key.scopes.length} scope{key.scopes.length !== 1 ? "s" : ""}
                   </td>
                   <td className="px-4 py-2 text-xs text-gray-500">
-                    {key.lastUsedAt
-                      ? new Date(key.lastUsedAt).toLocaleDateString()
-                      : "Never"}
+                    {key.lastUsedAt ? new Date(key.lastUsedAt).toLocaleDateString() : "Never"}
                   </td>
                   <td className="px-4 py-2">
                     {key.revokedAt ? (

@@ -76,7 +76,12 @@ describe("gcp node-driver", () => {
         return req;
       });
 
-      const promise = nodeDriver.downloadFile("my-bucket", "path/to/file.txt", "token123", "/tmp/dest/file.txt");
+      const promise = nodeDriver.downloadFile(
+        "my-bucket",
+        "path/to/file.txt",
+        "token123",
+        "/tmp/dest/file.txt",
+      );
 
       await promise;
 

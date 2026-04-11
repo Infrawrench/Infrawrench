@@ -28,9 +28,7 @@ export const TursoDatabaseResourceType: ResourceTypeDefinition = {
       id: "connection-url",
       displayName: "Connection URL",
       description: "TURSO_DATABASE_URL for libsql client connections",
-      entries: [
-        { envKey: "TURSO_DATABASE_URL", outputKey: "connectionString" },
-      ],
+      entries: [{ envKey: "TURSO_DATABASE_URL", outputKey: "connectionString" }],
     },
   ],
   resourceSqlDriver: {

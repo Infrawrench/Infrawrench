@@ -100,7 +100,8 @@ function KVItemRenderer({ item, resourceId }: { item: KVItem; resourceId?: strin
         </span>
         <button
           onClick={() => {
-            const placeholder = item.value as import("@infrawrench/plugin-base").SecretValuePlaceholder;
+            const placeholder =
+              item.value as import("@infrawrench/plugin-base").SecretValuePlaceholder;
             dispatch({ type: "reroll-secret", fieldKey: placeholder.fieldKey }, resourceId);
           }}
           className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
@@ -127,7 +128,13 @@ function KVItemRenderer({ item, resourceId }: { item: KVItem; resourceId?: strin
   );
 }
 
-function KeyValueListNodeRenderer({ node, resourceId }: { node: KeyValueListNode; resourceId?: string }) {
+function KeyValueListNodeRenderer({
+  node,
+  resourceId,
+}: {
+  node: KeyValueListNode;
+  resourceId?: string;
+}) {
   return (
     <div className="divide-y divide-gray-800">
       {node.items.map((item, i) => (

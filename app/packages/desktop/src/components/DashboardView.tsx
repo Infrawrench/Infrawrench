@@ -3,13 +3,27 @@ import { useNavigate } from "@tanstack/react-router";
 import { SpotlightSearch } from "./SpotlightSearch";
 import { invoke } from "../lib/invoke";
 import { useDroppable } from "@dnd-kit/core";
-import { useUIStore, getListableResourceTypes, extractHostLabel, formatErrorMessage } from "@infrawrench/ui";
+import {
+  useUIStore,
+  getListableResourceTypes,
+  extractHostLabel,
+  formatErrorMessage,
+} from "@infrawrench/ui";
 import { getDb } from "../db/client";
 import { loadPlugins, getPlugin } from "../plugins/loader";
-import { buildHostServices, buildKvHostServices, buildMemcachedHostServices, buildDockerHostServices } from "../lib/sql-drivers";
+import {
+  buildHostServices,
+  buildKvHostServices,
+  buildMemcachedHostServices,
+  buildDockerHostServices,
+} from "../lib/sql-drivers";
 import { resolveTunneledHost } from "../lib/ssh-tunnel";
 import { getSqlSession, setSqlSession } from "../lib/sql-session";
-import { accountTabTarget, navigateToWorkspaceTarget, resourceTabTarget } from "../lib/workspace-tabs";
+import {
+  accountTabTarget,
+  navigateToWorkspaceTarget,
+  resourceTabTarget,
+} from "../lib/workspace-tabs";
 import type { SearchResult } from "./SpotlightSearch";
 
 interface PinnedRow {
@@ -56,7 +70,6 @@ interface DashboardViewProps {
   dashboardId: string;
 }
 
-
 export function DashboardView({ dashboardId }: DashboardViewProps) {
   const navigate = useNavigate();
   const [pinned, setPinned] = useState<PinnedRow[]>([]);
@@ -92,7 +105,11 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
           kvCredentialKey: m.kvDriver?.credentialKey,
           dockerDriverName: m.dockerDriver?.driver,
           dockerCredentialKey: m.dockerDriver?.credentialKey,
-          tableCountLabel: m.dockerDriver ? "Running" : m.kvDriver?.driver === "mongodb" ? "Collections" : "Tables",
+          tableCountLabel: m.dockerDriver
+            ? "Running"
+            : m.kvDriver?.driver === "mongodb"
+              ? "Collections"
+              : "Tables",
           storageResourceTypeIds: p.plugin.resourceTypes
             .filter((t) => t.supportsStorageBrowser)
             .map((t) => t.id),
@@ -119,7 +136,8 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
       const { activeWorkspaceTabId, setWorkspaceTabTitle } = useUIStore.getState();
       if (activeWorkspaceTabId) setWorkspaceTabTitle(activeWorkspaceTabId, loadedName);
 
-      const rows = await db.select<PinnedRow[]>(`
+      const rows = await db.select<PinnedRow[]>(
+        `
         SELECT r.id as resource_id, r.plugin_id, r.resource_type_id,
                r.account_id, r.display_name, r.fields_json, r.outputs_json
         FROM dashboard_pins dp
@@ -127,7 +145,9 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
         WHERE dp.dashboard_id = $1
         ORDER BY dp.created_at DESC
         LIMIT 50
-      `, [dashboardId]);
+      `,
+        [dashboardId],
+      );
 
       // Restore "ok" status from cache for cards that are already connected,
       // so re-loads (e.g. after pinning a new resource) don't flash "Connecting…"
@@ -140,11 +160,22 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
           } else if (row.resource_type_id !== "__account__" && getSqlSession(row.account_id)) {
             // Session alive — restore from cached outputs_json
             try {
-              const o = JSON.parse(row.outputs_json) as { pgVersion?: string; dbSize?: string; tableCount?: number };
+              const o = JSON.parse(row.outputs_json) as {
+                pgVersion?: string;
+                dbSize?: string;
+                tableCount?: number;
+              };
               if (o.pgVersion || o.tableCount != null) {
-                next[row.resource_id] = { phase: "ok", pgVersion: o.pgVersion, dbSize: o.dbSize, tableCount: o.tableCount };
+                next[row.resource_id] = {
+                  phase: "ok",
+                  pgVersion: o.pgVersion,
+                  dbSize: o.dbSize,
+                  tableCount: o.tableCount,
+                };
               }
-            } catch { /* will connect fresh */ }
+            } catch {
+              /* will connect fresh */
+            }
           }
         }
         return next;
@@ -184,32 +215,39 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
       const db = await getDb();
 
       const accountIds = [...new Set(pinned.map((r) => r.account_id))];
-      await Promise.all(accountIds.map(async (accountId) => {
-        try {
-          const rows = await db.select<{ encrypted_credentials: string; credentials_iv: string }[]>(
-            "SELECT encrypted_credentials, credentials_iv FROM accounts WHERE id = $1",
-            [accountId],
-          );
-          if (!rows[0]) return;
-          const plaintext = await invoke<string>("decrypt_value", {
-            ciphertext: rows[0].encrypted_credentials,
-            iv: rows[0].credentials_iv,
-          });
-          credsByAccount.set(accountId, JSON.parse(plaintext) as Record<string, string>);
-        } catch { /* skip this account */ }
-      }));
+      await Promise.all(
+        accountIds.map(async (accountId) => {
+          try {
+            const rows = await db.select<
+              { encrypted_credentials: string; credentials_iv: string }[]
+            >("SELECT encrypted_credentials, credentials_iv FROM accounts WHERE id = $1", [
+              accountId,
+            ]);
+            if (!rows[0]) return;
+            const plaintext = await invoke<string>("decrypt_value", {
+              ciphertext: rows[0].encrypted_credentials,
+              iv: rows[0].credentials_iv,
+            });
+            credsByAccount.set(accountId, JSON.parse(plaintext) as Record<string, string>);
+          } catch {
+            /* skip this account */
+          }
+        }),
+      );
 
       // Mark cards as "connecting" — but only those not already connected
       const connectableIds = pinned
         .filter((r) => {
           const m = pluginMeta[r.plugin_id];
-          return credsByAccount.has(r.account_id) &&
+          return (
+            credsByAccount.has(r.account_id) &&
             (r.resource_type_id === "__account__" ||
               (!!m?.sqlDriverName && !!m.sqlCredentialKey) ||
               (!!m?.kvDriverName && !!m.kvCredentialKey) ||
               (!!m?.dockerDriverName && !!m.dockerCredentialKey) ||
               (m?.storageResourceTypeIds.includes(r.resource_type_id) ?? false) ||
-              (m?.terminalResourceTypeIds.includes(r.resource_type_id) ?? false));
+              (m?.terminalResourceTypeIds.includes(r.resource_type_id) ?? false))
+          );
         })
         .map((r) => r.resource_id);
 
@@ -226,158 +264,233 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
       }
 
       // Connect each card in parallel — skip cards already showing "ok"
-      await Promise.all(pinned.map(async (row) => {
-        const creds = credsByAccount.get(row.account_id);
-        if (!creds) return;
-        // Read current status via functional pattern below; skip if already connected
-        let alreadyOk = false;
-        setCardStatus((prev) => { alreadyOk = prev[row.resource_id]?.phase === "ok"; return prev; });
-        if (alreadyOk) return;
+      await Promise.all(
+        pinned.map(async (row) => {
+          const creds = credsByAccount.get(row.account_id);
+          if (!creds) return;
+          // Read current status via functional pattern below; skip if already connected
+          let alreadyOk = false;
+          setCardStatus((prev) => {
+            alreadyOk = prev[row.resource_id]?.phase === "ok";
+            return prev;
+          });
+          if (alreadyOk) return;
 
-        if (row.resource_type_id === "__account__") {
-          try {
-            const loaded = await getPlugin(row.plugin_id);
-            if (!loaded) throw new Error(`Plugin not found: ${row.plugin_id}`);
-            const sqlDecl = loaded.plugin.manifest.sqlDriver;
-            const hostServices = sqlDecl
-              ? buildHostServices(sqlDecl.driver, creds[sqlDecl.credentialKey] ?? "")
-              : undefined;
-            const client = loaded.plugin.createClient(creds, hostServices);
-            const topLevelTypes = getListableResourceTypes(loaded.plugin.resourceTypes);
-            const results = await Promise.allSettled(
-              topLevelTypes.map(async (t) => ({
-                typeLabel: t.pluralDisplayName,
-                count: (await client.listResources(t.id, row.account_id)).length,
-              })),
-            );
-            const resourceCounts = results
-              .filter((r) => r.status === "fulfilled" && r.value.count > 0)
-              .map((r) => (r as PromiseFulfilledResult<{ typeLabel: string; count: number }>).value);
-
-            if (!cancelled) {
-              setAccountConnected(row.account_id, true);
-              setCardStatus((prev) => ({
-                ...prev,
-                [row.resource_id]: { phase: "ok", resourceCounts },
-              }));
-            }
-          } catch (e) {
-            if (!cancelled) {
-              setCardStatus((prev) => ({
-                ...prev,
-                [row.resource_id]: { phase: "error", error: formatErrorMessage(e) },
-              }));
-            }
-          }
-          return;
-        }
-
-        const meta = pluginMeta[row.plugin_id];
-        if (meta?.kvDriverName && meta.kvCredentialKey) {
-          const cs = creds[meta.kvCredentialKey];
-          if (!cs) return;
-          const hostServices = meta.kvDriverName === "memcached"
-            ? buildMemcachedHostServices(meta.kvDriverName!, cs)
-            : buildKvHostServices(meta.kvDriverName!, cs);
-          try {
-            const loaded = await getPlugin(row.plugin_id);
-            if (!loaded) throw new Error(`Plugin not found: ${row.plugin_id}`);
-            const client = loaded.plugin.createClient(creds, hostServices);
-            const stats = await client.fetchStats?.();
-            const { version = "", size = "" } = stats ?? {};
-
+          if (row.resource_type_id === "__account__") {
             try {
-              await db.execute(
-                "UPDATE resources SET outputs_json = $1 WHERE id = $2",
-                [JSON.stringify({ pgVersion: version, dbSize: size }), row.resource_id],
+              const loaded = await getPlugin(row.plugin_id);
+              if (!loaded) throw new Error(`Plugin not found: ${row.plugin_id}`);
+              const sqlDecl = loaded.plugin.manifest.sqlDriver;
+              const hostServices = sqlDecl
+                ? buildHostServices(sqlDecl.driver, creds[sqlDecl.credentialKey] ?? "")
+                : undefined;
+              const client = loaded.plugin.createClient(creds, hostServices);
+              const topLevelTypes = getListableResourceTypes(loaded.plugin.resourceTypes);
+              const results = await Promise.allSettled(
+                topLevelTypes.map(async (t) => ({
+                  typeLabel: t.pluralDisplayName,
+                  count: (await client.listResources(t.id, row.account_id)).length,
+                })),
               );
-            } catch { /* not critical */ }
+              const resourceCounts = results
+                .filter((r) => r.status === "fulfilled" && r.value.count > 0)
+                .map(
+                  (r) => (r as PromiseFulfilledResult<{ typeLabel: string; count: number }>).value,
+                );
 
-            if (!cancelled) {
-              setAccountConnected(row.account_id, true);
-              setCardStatus((prev) => ({
-                ...prev,
-                [row.resource_id]: { phase: "ok", pgVersion: version, dbSize: size },
-              }));
+              if (!cancelled) {
+                setAccountConnected(row.account_id, true);
+                setCardStatus((prev) => ({
+                  ...prev,
+                  [row.resource_id]: { phase: "ok", resourceCounts },
+                }));
+              }
+            } catch (e) {
+              if (!cancelled) {
+                setCardStatus((prev) => ({
+                  ...prev,
+                  [row.resource_id]: { phase: "error", error: formatErrorMessage(e) },
+                }));
+              }
             }
-          } catch (e) {
-            if (!cancelled) {
-              setCardStatus((prev) => ({
-                ...prev,
-                [row.resource_id]: { phase: "error", error: formatErrorMessage(e) },
-              }));
-            }
+            return;
           }
-          return;
-        }
 
-        if (meta?.dockerDriverName && meta.dockerCredentialKey) {
-          const rawDockerHost = creds[meta.dockerCredentialKey] ?? "";
-          try {
-            const effectiveDockerHost = await resolveTunneledHost(row.account_id, rawDockerHost);
-            const hostServices = buildDockerHostServices(meta.dockerDriverName, effectiveDockerHost);
-            const loaded = await getPlugin(row.plugin_id);
-            if (!loaded) throw new Error(`Plugin not found: ${row.plugin_id}`);
-            const client = loaded.plugin.createClient(creds, hostServices);
-            const stats = await client.fetchStats?.();
-            const { version = "", size = "", tableCount = 0 } = stats ?? {};
+          const meta = pluginMeta[row.plugin_id];
+          if (meta?.kvDriverName && meta.kvCredentialKey) {
+            const cs = creds[meta.kvCredentialKey];
+            if (!cs) return;
+            const hostServices =
+              meta.kvDriverName === "memcached"
+                ? buildMemcachedHostServices(meta.kvDriverName!, cs)
+                : buildKvHostServices(meta.kvDriverName!, cs);
+            try {
+              const loaded = await getPlugin(row.plugin_id);
+              if (!loaded) throw new Error(`Plugin not found: ${row.plugin_id}`);
+              const client = loaded.plugin.createClient(creds, hostServices);
+              const stats = await client.fetchStats?.();
+              const { version = "", size = "" } = stats ?? {};
 
-            if (!cancelled) {
-              setAccountConnected(row.account_id, true);
-              setCardStatus((prev) => ({
-                ...prev,
-                [row.resource_id]: { phase: "ok", pgVersion: version, dbSize: size, tableCount, tableCountLabel: "Running" },
-              }));
+              try {
+                await db.execute("UPDATE resources SET outputs_json = $1 WHERE id = $2", [
+                  JSON.stringify({ pgVersion: version, dbSize: size }),
+                  row.resource_id,
+                ]);
+              } catch {
+                /* not critical */
+              }
+
+              if (!cancelled) {
+                setAccountConnected(row.account_id, true);
+                setCardStatus((prev) => ({
+                  ...prev,
+                  [row.resource_id]: { phase: "ok", pgVersion: version, dbSize: size },
+                }));
+              }
+            } catch (e) {
+              if (!cancelled) {
+                setCardStatus((prev) => ({
+                  ...prev,
+                  [row.resource_id]: { phase: "error", error: formatErrorMessage(e) },
+                }));
+              }
             }
-          } catch (e) {
-            if (!cancelled) {
-              setCardStatus((prev) => ({
-                ...prev,
-                [row.resource_id]: { phase: "error", error: formatErrorMessage(e) },
-              }));
+            return;
+          }
+
+          if (meta?.dockerDriverName && meta.dockerCredentialKey) {
+            const rawDockerHost = creds[meta.dockerCredentialKey] ?? "";
+            try {
+              const effectiveDockerHost = await resolveTunneledHost(row.account_id, rawDockerHost);
+              const hostServices = buildDockerHostServices(
+                meta.dockerDriverName,
+                effectiveDockerHost,
+              );
+              const loaded = await getPlugin(row.plugin_id);
+              if (!loaded) throw new Error(`Plugin not found: ${row.plugin_id}`);
+              const client = loaded.plugin.createClient(creds, hostServices);
+              const stats = await client.fetchStats?.();
+              const { version = "", size = "", tableCount = 0 } = stats ?? {};
+
+              if (!cancelled) {
+                setAccountConnected(row.account_id, true);
+                setCardStatus((prev) => ({
+                  ...prev,
+                  [row.resource_id]: {
+                    phase: "ok",
+                    pgVersion: version,
+                    dbSize: size,
+                    tableCount,
+                    tableCountLabel: "Running",
+                  },
+                }));
+              }
+            } catch (e) {
+              if (!cancelled) {
+                setCardStatus((prev) => ({
+                  ...prev,
+                  [row.resource_id]: { phase: "error", error: formatErrorMessage(e) },
+                }));
+              }
             }
+            return;
           }
-          return;
-        }
 
-        if (meta?.terminalResourceTypeIds.includes(row.resource_type_id)) {
-          const host = String(creds["host"] ?? "");
-          const port = String(creds["port"] ?? "22");
-          if (!cancelled) {
-            setAccountConnected(row.account_id, true);
-            setCardStatus((prev) => ({
-              ...prev,
-              [row.resource_id]: {
-                phase: "ok",
-                pgVersion: `${host}:${port}`,
-                sshTarget: true,
-                resourceId: row.resource_id,
-                accountId: row.account_id,
-              },
-            }));
-          }
-          return;
-        }
-
-        if (meta?.storageResourceTypeIds.includes(row.resource_type_id)) {
-          try {
-            const loaded = await getPlugin(row.plugin_id);
-            if (!loaded) throw new Error(`Plugin not found: ${row.plugin_id}`);
-            const client = loaded.plugin.createClient(creds);
-            // bucket name is the last segment of the resource_id (accountId:typeId:bucketName)
-            const bucketName = row.resource_id.split(":").slice(2).join(":");
-            const stats = await (client as { fetchStorageStats?(b: string): Promise<{ count: number; size: string }> })
-              .fetchStorageStats?.(bucketName);
+          if (meta?.terminalResourceTypeIds.includes(row.resource_type_id)) {
+            const host = String(creds["host"] ?? "");
+            const port = String(creds["port"] ?? "22");
             if (!cancelled) {
               setAccountConnected(row.account_id, true);
               setCardStatus((prev) => ({
                 ...prev,
                 [row.resource_id]: {
                   phase: "ok",
-                  tableCount: stats?.count,
-                  tableCountLabel: "Objects",
-                  dbSize: stats?.size,
+                  pgVersion: `${host}:${port}`,
+                  sshTarget: true,
+                  resourceId: row.resource_id,
+                  accountId: row.account_id,
                 },
+              }));
+            }
+            return;
+          }
+
+          if (meta?.storageResourceTypeIds.includes(row.resource_type_id)) {
+            try {
+              const loaded = await getPlugin(row.plugin_id);
+              if (!loaded) throw new Error(`Plugin not found: ${row.plugin_id}`);
+              const client = loaded.plugin.createClient(creds);
+              // bucket name is the last segment of the resource_id (accountId:typeId:bucketName)
+              const bucketName = row.resource_id.split(":").slice(2).join(":");
+              const stats = await (
+                client as {
+                  fetchStorageStats?(b: string): Promise<{ count: number; size: string }>;
+                }
+              ).fetchStorageStats?.(bucketName);
+              if (!cancelled) {
+                setAccountConnected(row.account_id, true);
+                setCardStatus((prev) => ({
+                  ...prev,
+                  [row.resource_id]: {
+                    phase: "ok",
+                    tableCount: stats?.count,
+                    tableCountLabel: "Objects",
+                    dbSize: stats?.size,
+                  },
+                }));
+              }
+            } catch (e) {
+              if (!cancelled) {
+                setCardStatus((prev) => ({
+                  ...prev,
+                  [row.resource_id]: { phase: "error", error: formatErrorMessage(e) },
+                }));
+              }
+            }
+            return;
+          }
+
+          if (!meta?.sqlDriverName || !meta.sqlCredentialKey) return;
+          const cs = creds[meta.sqlCredentialKey];
+          if (!cs) return;
+          const hostServices = buildHostServices(meta.sqlDriverName!, cs);
+
+          try {
+            const loaded = await getPlugin(row.plugin_id);
+            if (!loaded) throw new Error(`Plugin not found: ${row.plugin_id}`);
+            const client = loaded.plugin.createClient(creds, hostServices);
+            const stats = await client.fetchStats?.();
+            const { version = "", size = "", tableCount = 0 } = stats ?? {};
+            // Cache the connection string immediately so the detail page can fast-path
+            setSqlSession(row.account_id, { connectionString: cs });
+
+            // Introspect in background and update the cache once done
+            void client
+              .introspect?.()
+              .then((tables) => {
+                if (tables && tables.length > 0) {
+                  setSqlSession(row.account_id, {
+                    connectionString: cs,
+                    tablesJson: JSON.stringify(tables),
+                  });
+                }
+              })
+              .catch(() => undefined);
+
+            try {
+              await db.execute("UPDATE resources SET outputs_json = $1 WHERE id = $2", [
+                JSON.stringify({ pgVersion: version, dbSize: size, tableCount }),
+                row.resource_id,
+              ]);
+            } catch {
+              /* not critical */
+            }
+
+            if (!cancelled) {
+              setAccountConnected(row.account_id, true);
+              setCardStatus((prev) => ({
+                ...prev,
+                [row.resource_id]: { phase: "ok", pgVersion: version, dbSize: size, tableCount },
               }));
             }
           } catch (e) {
@@ -388,67 +501,27 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
               }));
             }
           }
-          return;
-        }
-
-        if (!meta?.sqlDriverName || !meta.sqlCredentialKey) return;
-        const cs = creds[meta.sqlCredentialKey];
-        if (!cs) return;
-        const hostServices = buildHostServices(meta.sqlDriverName!, cs);
-
-        try {
-          const loaded = await getPlugin(row.plugin_id);
-          if (!loaded) throw new Error(`Plugin not found: ${row.plugin_id}`);
-          const client = loaded.plugin.createClient(creds, hostServices);
-          const stats = await client.fetchStats?.();
-          const { version = "", size = "", tableCount = 0 } = stats ?? {};
-          // Cache the connection string immediately so the detail page can fast-path
-          setSqlSession(row.account_id, { connectionString: cs });
-
-          // Introspect in background and update the cache once done
-          void client.introspect?.().then((tables) => {
-            if (tables && tables.length > 0) {
-              setSqlSession(row.account_id, { connectionString: cs, tablesJson: JSON.stringify(tables) });
-            }
-          }).catch(() => undefined);
-
-          try {
-            await db.execute(
-              "UPDATE resources SET outputs_json = $1 WHERE id = $2",
-              [JSON.stringify({ pgVersion: version, dbSize: size, tableCount }), row.resource_id],
-            );
-          } catch { /* not critical */ }
-
-          if (!cancelled) {
-            setAccountConnected(row.account_id, true);
-            setCardStatus((prev) => ({
-              ...prev,
-              [row.resource_id]: { phase: "ok", pgVersion: version, dbSize: size, tableCount },
-            }));
-          }
-        } catch (e) {
-          if (!cancelled) {
-            setCardStatus((prev) => ({
-              ...prev,
-              [row.resource_id]: { phase: "error", error: formatErrorMessage(e) },
-            }));
-          }
-        }
-      }));
+        }),
+      );
     }
 
     void connectAll();
 
-    const interval = setInterval(() => { void connectAll(); }, 30_000);
-    return () => { cancelled = true; clearInterval(interval); };
+    const interval = setInterval(() => {
+      void connectAll();
+    }, 30_000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
   }, [pinned]);
 
   async function unpin(resourceId: string) {
     const db = await getDb();
-    await db.execute(
-      "DELETE FROM dashboard_pins WHERE resource_id = $1 AND dashboard_id = $2",
-      [resourceId, dashboardId],
-    );
+    await db.execute("DELETE FROM dashboard_pins WHERE resource_id = $1 AND dashboard_id = $2", [
+      resourceId,
+      dashboardId,
+    ]);
     setPinned((prev) => prev.filter((r) => r.resource_id !== resourceId));
   }
 
@@ -458,8 +531,11 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
     setEditingName(false);
     const db = await getDb();
     await db.execute("UPDATE dashboards SET name = $1 WHERE id = $2", [trimmed, dashboardId]);
-    const tabsToRename = useUIStore.getState().workspaceTabs
-      .filter((tab) => tab.target.kind === "dashboard" && tab.target.dashboardId === dashboardId)
+    const tabsToRename = useUIStore
+      .getState()
+      .workspaceTabs.filter(
+        (tab) => tab.target.kind === "dashboard" && tab.target.dashboardId === dashboardId,
+      )
       .map((tab) => tab.id);
     for (const tabId of tabsToRename) {
       useUIStore.getState().setWorkspaceTabTitle(tabId, trimmed);
@@ -472,8 +548,11 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
     await db.execute("DELETE FROM dashboard_pins WHERE dashboard_id = $1", [dashboardId]);
     await db.execute("DELETE FROM dashboards WHERE id = $1", [dashboardId]);
     removeWorkspaceTabs(
-      useUIStore.getState().workspaceTabs
-        .filter((tab) => tab.target.kind === "dashboard" && tab.target.dashboardId === dashboardId)
+      useUIStore
+        .getState()
+        .workspaceTabs.filter(
+          (tab) => tab.target.kind === "dashboard" && tab.target.dashboardId === dashboardId,
+        )
         .map((tab) => tab.id),
     );
     navigate({ to: "/" });
@@ -481,25 +560,19 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
 
   function goToResource(row: PinnedRow) {
     if (row.resource_type_id === "__account__") {
-      void navigateToWorkspaceTarget(
-        navigate,
-        accountTabTarget(row.account_id),
-        { label: row.display_name },
-      );
+      void navigateToWorkspaceTarget(navigate, accountTabTarget(row.account_id), {
+        label: row.display_name,
+      });
     } else {
-      void navigateToWorkspaceTarget(
-        navigate,
-        resourceTabTarget(row.account_id, row.resource_id),
-        { label: row.display_name },
-      );
+      void navigateToWorkspaceTarget(navigate, resourceTabTarget(row.account_id, row.resource_id), {
+        label: row.display_name,
+      });
     }
   }
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-full text-gray-600 text-sm">
-        Loading…
-      </div>
+      <div className="flex items-center justify-center h-full text-gray-600 text-sm">Loading…</div>
     );
   }
 
@@ -564,7 +637,10 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
             <p className="text-xs mt-1 opacity-60">or drag one here</p>
           </button>
         ) : (
-          <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}>
+          <div
+            className="grid gap-4"
+            style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}
+          >
             {pinned.map((row) => (
               <ResourceCard
                 key={row.resource_id}
@@ -573,7 +649,9 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
                 status={cardStatus[row.resource_id]}
                 onOpen={() => goToResource(row)}
                 onUnpin={() => void unpin(row.resource_id)}
-                onConnect={cardStatus[row.resource_id]?.sshTarget ? () => goToResource(row) : undefined}
+                onConnect={
+                  cardStatus[row.resource_id]?.sshTarget ? () => goToResource(row) : undefined
+                }
               />
             ))}
 
@@ -592,7 +670,10 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
             dashboardId={dashboardId}
             mode={spotlightMode}
             onClose={() => setSpotlightMode(null)}
-            onPinned={() => { bumpDashboardPins(); setSpotlightMode(null); }}
+            onPinned={() => {
+              bumpDashboardPins();
+              setSpotlightMode(null);
+            }}
             onNavigate={(result) => {
               setSpotlightMode(null);
               void navigateToWorkspaceTarget(
@@ -624,8 +705,11 @@ function ResourceCard({
   onConnect?: (() => void) | undefined;
 }) {
   const fields = (() => {
-    try { return JSON.parse(row.fields_json) as Record<string, unknown>; }
-    catch { return {}; }
+    try {
+      return JSON.parse(row.fields_json) as Record<string, unknown>;
+    } catch {
+      return {};
+    }
   })();
 
   const host = extractHostLabel(fields);
@@ -634,7 +718,10 @@ function ResourceCard({
     <div className="group relative rounded-2xl border border-gray-800 bg-gray-900 hover:border-gray-700 transition-colors flex flex-col overflow-hidden">
       {/* Unpin button */}
       <button
-        onClick={(e) => { e.stopPropagation(); onUnpin(); }}
+        onClick={(e) => {
+          e.stopPropagation();
+          onUnpin();
+        }}
         title="Remove from dashboard"
         className="absolute top-2 right-2 w-5 h-5 rounded-full text-gray-700 hover:text-gray-300 hover:bg-gray-700 transition-all opacity-0 group-hover:opacity-100 text-xs flex items-center justify-center"
       >
@@ -668,7 +755,13 @@ function ResourceCard({
   );
 }
 
-function ConnectionFooter({ status, onConnect }: { status?: CardStatus | undefined; onConnect?: (() => void) | undefined }) {
+function ConnectionFooter({
+  status,
+  onConnect,
+}: {
+  status?: CardStatus | undefined;
+  onConnect?: (() => void) | undefined;
+}) {
   if (!status) return null;
 
   if (status.phase === "connecting") {
@@ -682,7 +775,10 @@ function ConnectionFooter({ status, onConnect }: { status?: CardStatus | undefin
 
   if (status.phase === "error") {
     return (
-      <div className="px-5 py-3 border-t border-gray-800 flex items-center gap-2" title={status.error}>
+      <div
+        className="px-5 py-3 border-t border-gray-800 flex items-center gap-2"
+        title={status.error}
+      >
         <span className="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0" />
         <span className="text-xs text-red-500 truncate">{status.error ?? "Connection failed"}</span>
       </div>
@@ -726,7 +822,10 @@ function ConnectionFooter({ status, onConnect }: { status?: CardStatus | undefin
       {/* SSH fast-connect button */}
       {status.sshTarget && onConnect && (
         <button
-          onClick={(e) => { e.stopPropagation(); onConnect(); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            onConnect();
+          }}
           className="mt-2 w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-950 border border-green-800 hover:bg-green-900 hover:border-green-700 text-green-400 hover:text-green-300 text-xs font-medium transition-colors"
         >
           <span>⌨</span>

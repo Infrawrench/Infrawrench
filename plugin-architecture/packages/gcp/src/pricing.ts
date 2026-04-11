@@ -40,7 +40,8 @@ export function geoFromRegion(region: string): GeoRegion {
     region.startsWith("us-") ||
     region.startsWith("northamerica-") ||
     region.startsWith("southamerica-")
-  ) return "Americas";
+  )
+    return "Americas";
   if (region.startsWith("asia-") || region.startsWith("australia-")) return "APAC";
   return "EMEA";
 }
@@ -114,8 +115,7 @@ export async function fetchPricingRatesForGeo(
     }
 
     const inTargetGeo =
-      description.includes(`running in ${geo}`) ||
-      description.includes(`in ${geo}`);
+      description.includes(`running in ${geo}`) || description.includes(`in ${geo}`);
     if (!inTargetGeo) continue;
 
     if (family !== "Compute") continue;
@@ -158,7 +158,7 @@ export function estimateMachineTypeMonthlyPrices(
     const familyRates = ratesByFamily[family];
     if (!familyRates) continue;
     const memoryGiB = m.memoryMb / 1024;
-    const hourly = (m.vcpus * familyRates.corePerHourUsd) + (memoryGiB * familyRates.ramPerGiBHourUsd);
+    const hourly = m.vcpus * familyRates.corePerHourUsd + memoryGiB * familyRates.ramPerGiBHourUsd;
     if (!hourly) continue;
     estimated[m.id] = Number((hourly * HOURS_PER_MONTH).toFixed(2));
   }

@@ -61,7 +61,9 @@ export async function listRoute53RecordSets(
         const name = String(record["Name"] ?? "");
         const type = String(record["Type"] ?? "");
         const recordId = `${zoneId}:${name}:${type}`;
-        const resourceRecords = record["ResourceRecords"] as Array<Record<string, string>> | undefined;
+        const resourceRecords = record["ResourceRecords"] as
+          | Array<Record<string, string>>
+          | undefined;
         const values = resourceRecords?.map((r) => String(r["Value"] ?? "")).join(", ") ?? "";
 
         results.push({
@@ -91,10 +93,7 @@ export async function listRoute53RecordSets(
   return results;
 }
 
-export async function listALBs(
-  ctx: ListerContext,
-  accountId: string,
-): Promise<ResourceInstance[]> {
+export async function listALBs(ctx: ListerContext, accountId: string): Promise<ResourceInstance[]> {
   const data = await ctx.ec2Query<Record<string, unknown>>(
     "elasticloadbalancing",
     "DescribeLoadBalancers",
@@ -547,11 +546,7 @@ export async function listKinesisStreams(
     try {
       const detail = await ctx.json<{
         StreamDescription: Record<string, unknown>;
-      }>(
-        "kinesis",
-        "Kinesis_20131202.DescribeStream",
-        { StreamName: streamName },
-      );
+      }>("kinesis", "Kinesis_20131202.DescribeStream", { StreamName: streamName });
       const s = detail.StreamDescription;
       const shards = s["Shards"] as unknown[] | undefined;
 
@@ -567,7 +562,8 @@ export async function listKinesisStreams(
           shardCount: shards?.length ?? 0,
           retentionPeriodHours: Number(s["RetentionPeriodHours"] ?? 24),
           streamModeDetails: String(
-            (s["StreamModeDetails"] as Record<string, unknown> | undefined)?.["StreamMode"] ?? "PROVISIONED",
+            (s["StreamModeDetails"] as Record<string, unknown> | undefined)?.["StreamMode"] ??
+              "PROVISIONED",
           ),
           encryptionType: String(s["EncryptionType"] ?? "NONE"),
         },
@@ -715,9 +711,7 @@ export async function listOpenSearchDomains(
         },
         resolvedOutputs: {
           endpoint: String(ds["Endpoint"] ?? ds["Endpoints"]?.toString() ?? ""),
-          dashboardEndpoint: ds["Endpoint"]
-            ? `${ds["Endpoint"]}/_dashboards`
-            : "",
+          dashboardEndpoint: ds["Endpoint"] ? `${ds["Endpoint"]}/_dashboards` : "",
           domainArn: String(ds["ARN"] ?? ""),
         },
         secretStates: [],
@@ -738,11 +732,7 @@ export async function listACMCertificates(
 ): Promise<ResourceInstance[]> {
   const data = await ctx.json<{
     CertificateSummaryList?: Record<string, unknown>[];
-  }>(
-    "acm",
-    "CertificateManager.ListCertificates",
-    {},
-  );
+  }>("acm", "CertificateManager.ListCertificates", {});
   const certs = data.CertificateSummaryList ?? [];
   const results: ResourceInstance[] = [];
 
@@ -751,11 +741,7 @@ export async function listACMCertificates(
     try {
       const detail = await ctx.json<{
         Certificate: Record<string, unknown>;
-      }>(
-        "acm",
-        "CertificateManager.DescribeCertificate",
-        { CertificateArn: arn },
-      );
+      }>("acm", "CertificateManager.DescribeCertificate", { CertificateArn: arn });
       const c = detail.Certificate;
       const sans = c["SubjectAlternativeNames"] as string[] | undefined;
       const inUseBy = c["InUseBy"] as string[] | undefined;
@@ -818,11 +804,7 @@ export async function listWAFWebACLs(
 ): Promise<ResourceInstance[]> {
   const data = await ctx.json<{
     WebACLs?: Record<string, unknown>[];
-  }>(
-    "wafv2",
-    "AWSWAF_20190729.ListWebACLs",
-    { Scope: "REGIONAL", Limit: 100 },
-  );
+  }>("wafv2", "AWSWAF_20190729.ListWebACLs", { Scope: "REGIONAL", Limit: 100 });
   const acls = data.WebACLs ?? [];
   const results: ResourceInstance[] = [];
 
@@ -834,11 +816,7 @@ export async function listWAFWebACLs(
     try {
       const detail = await ctx.json<{
         WebACL: Record<string, unknown>;
-      }>(
-        "wafv2",
-        "AWSWAF_20190729.GetWebACL",
-        { Name: name, Scope: "REGIONAL", Id: aclId },
-      );
+      }>("wafv2", "AWSWAF_20190729.GetWebACL", { Name: name, Scope: "REGIONAL", Id: aclId });
       const w = detail.WebACL;
       const rules = w["Rules"] as unknown[] | undefined;
       const defaultAction = w["DefaultAction"] as Record<string, unknown> | undefined;
@@ -948,11 +926,7 @@ export async function listCodePipelines(
 ): Promise<ResourceInstance[]> {
   const data = await ctx.json<{
     pipelines?: Record<string, unknown>[];
-  }>(
-    "codepipeline",
-    "CodePipeline_20150709.ListPipelines",
-    {},
-  );
+  }>("codepipeline", "CodePipeline_20150709.ListPipelines", {});
   const pipelines = data.pipelines ?? [];
 
   return pipelines.map((p) => {
@@ -1005,9 +979,11 @@ export async function listCloudFormationStacks(
         stackId: String(s["StackId"] ?? ""),
         status: String(s["StackStatus"] ?? ""),
         description: String(s["Description"] ?? ""),
-        driftStatus: String(s["DriftInformation"]
-          ? (s["DriftInformation"] as Record<string, unknown>)["StackDriftStatus"]
-          : ""),
+        driftStatus: String(
+          s["DriftInformation"]
+            ? (s["DriftInformation"] as Record<string, unknown>)["StackDriftStatus"]
+            : "",
+        ),
         enableTerminationProtection: s["EnableTerminationProtection"] === true,
       },
       resolvedOutputs: {
@@ -1072,7 +1048,7 @@ export async function listEFSFileSystems(
     const fsId = String(fs["FileSystemId"] ?? "");
     const tagSet = fs["Tags"] as Array<Record<string, string>> | undefined;
     const nameTag = tagSet?.find((t) => t["Key"] === "Name");
-    const name = nameTag ? nameTag["Value"] ?? "" : "";
+    const name = nameTag ? (nameTag["Value"] ?? "") : "";
     const sizeObj = fs["SizeInBytes"] as Record<string, unknown> | undefined;
 
     return {
@@ -1228,11 +1204,7 @@ export async function listAppRunnerServices(
 ): Promise<ResourceInstance[]> {
   const data = await ctx.json<{
     ServiceSummaryList?: Record<string, unknown>[];
-  }>(
-    "apprunner",
-    "AppRunner.ListServices",
-    {},
-  );
+  }>("apprunner", "AppRunner.ListServices", {});
   const services = data.ServiceSummaryList ?? [];
 
   return services.map((svc) => {
@@ -1269,11 +1241,7 @@ export async function listGlueDatabases(
 ): Promise<ResourceInstance[]> {
   const data = await ctx.json<{
     DatabaseList?: Record<string, unknown>[];
-  }>(
-    "glue",
-    "AWSGlue.GetDatabases",
-    {},
-  );
+  }>("glue", "AWSGlue.GetDatabases", {});
   const databases = data.DatabaseList ?? [];
 
   return databases.map((db) => {
@@ -1395,15 +1363,22 @@ export async function listMSKClusters(
       fields: {
         clusterName: name,
         state: String(c["State"] ?? ""),
-        kafkaVersion: String(c["CurrentBrokerSoftwareInfo"]
-          ? (c["CurrentBrokerSoftwareInfo"] as Record<string, unknown>)["KafkaVersion"]
-          : ""),
+        kafkaVersion: String(
+          c["CurrentBrokerSoftwareInfo"]
+            ? (c["CurrentBrokerSoftwareInfo"] as Record<string, unknown>)["KafkaVersion"]
+            : "",
+        ),
         numberOfBrokerNodes: Number(c["NumberOfBrokerNodes"] ?? 0),
         instanceType: String(brokerNodeGroupInfo?.["InstanceType"] ?? ""),
         storagePerBrokerGb: Number(
-          (brokerNodeGroupInfo?.["StorageInfo"] as Record<string, unknown> | undefined)
-            ?.["EbsStorageInfo"] as Record<string, unknown> | undefined
-            ? ((brokerNodeGroupInfo?.["StorageInfo"] as Record<string, unknown>)?.["EbsStorageInfo"] as Record<string, unknown>)?.["VolumeSize"] ?? 0
+          ((brokerNodeGroupInfo?.["StorageInfo"] as Record<string, unknown> | undefined)?.[
+            "EbsStorageInfo"
+          ] as Record<string, unknown> | undefined)
+            ? ((
+                (brokerNodeGroupInfo?.["StorageInfo"] as Record<string, unknown>)?.[
+                  "EbsStorageInfo"
+                ] as Record<string, unknown>
+              )?.["VolumeSize"] ?? 0)
             : 0,
         ),
       },

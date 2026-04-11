@@ -16,8 +16,13 @@ interface ActiveTunnelInfo {
   remotePort: number;
 }
 
-export function sshOpenTunnel(payload: SshOpenTunnelPayload): Promise<{ tunnelId: string; localPort: number }> {
-  return invoke<{ tunnelId: string; localPort: number }>("ssh_open_tunnel", payload as unknown as Record<string, unknown>);
+export function sshOpenTunnel(
+  payload: SshOpenTunnelPayload,
+): Promise<{ tunnelId: string; localPort: number }> {
+  return invoke<{ tunnelId: string; localPort: number }>(
+    "ssh_open_tunnel",
+    payload as unknown as Record<string, unknown>,
+  );
 }
 
 function sshGetActiveTunnels(): Promise<Record<string, ActiveTunnelInfo>> {
@@ -40,14 +45,17 @@ export function sshExecCommand(
  */
 export async function resolveTunneledHost(accountId: string, rawHost: string): Promise<string> {
   const db = await getDb();
-  const rows = await db.select<{
-    ssh_host: string; ssh_port: number; ssh_user: string;
-    remote_host: string; remote_port: number;
-    encrypted_private_key: string; private_key_iv: string;
-  }[]>(
-    "SELECT * FROM ssh_tunnel_configs WHERE account_id = $1 LIMIT 1",
-    [accountId],
-  );
+  const rows = await db.select<
+    {
+      ssh_host: string;
+      ssh_port: number;
+      ssh_user: string;
+      remote_host: string;
+      remote_port: number;
+      encrypted_private_key: string;
+      private_key_iv: string;
+    }[]
+  >("SELECT * FROM ssh_tunnel_configs WHERE account_id = $1 LIMIT 1", [accountId]);
   if (!rows[0]) return rawHost;
 
   const cfg = rows[0];

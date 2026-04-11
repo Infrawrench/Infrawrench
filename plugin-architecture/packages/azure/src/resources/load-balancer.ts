@@ -15,9 +15,7 @@ export const LoadBalancerResourceType: ResourceTypeDefinition = {
     { key: "backendPoolCount", label: "Backend Pools", kind: "number", required: false },
     { key: "ruleCount", label: "Rules", kind: "number", required: false },
   ],
-  outputs: [
-    { key: "frontendIp", label: "Frontend IP", sensitive: false },
-  ],
+  outputs: [{ key: "frontendIp", label: "Frontend IP", sensitive: false }],
   dashboardPinnable: true,
   iconKey: "network",
 };

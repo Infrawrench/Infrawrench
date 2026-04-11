@@ -30,7 +30,9 @@ app.post("/", async (c) => {
   const [consumer] = await db
     .select({ id: resources.id })
     .from(resources)
-    .where(and(eq(resources.id, input.consumerResourceId), eq(resources.organizationId, organizationId)))
+    .where(
+      and(eq(resources.id, input.consumerResourceId), eq(resources.organizationId, organizationId)),
+    )
     .limit(1);
   if (!consumer) return c.json({ error: "Resource not found" }, 404);
 

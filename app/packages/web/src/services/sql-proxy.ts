@@ -50,7 +50,9 @@ export async function handleSqlSession(
         }),
       );
     } else {
-      ws.send(JSON.stringify({ type: "sql:error", error: "Plugin does not support query execution" }));
+      ws.send(
+        JSON.stringify({ type: "sql:error", error: "Plugin does not support query execution" }),
+      );
     }
   } catch (e) {
     ws.send(

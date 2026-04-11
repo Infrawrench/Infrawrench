@@ -10,9 +10,7 @@ export const ResourceGroupResourceType: ResourceTypeDefinition = {
     { key: "location", label: "Location", kind: "string", required: true },
     { key: "provisioningState", label: "Provisioning State", kind: "string", required: true },
   ],
-  outputs: [
-    { key: "resourceId", label: "Resource ID", sensitive: false },
-  ],
+  outputs: [{ key: "resourceId", label: "Resource ID", sensitive: false }],
   dashboardPinnable: true,
   iconKey: "project",
   supportsCreate: true,

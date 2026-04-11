@@ -14,9 +14,11 @@ declare global {
 
 export function invoke<T>(channel: string, args?: Record<string, unknown>): Promise<T> {
   if (!window.electronAPI) {
-    return Promise.reject(new Error(
-      "Electron preload script not loaded — run `pnpm install && pnpm dev` from the desktop package"
-    ));
+    return Promise.reject(
+      new Error(
+        "Electron preload script not loaded — run `pnpm install && pnpm dev` from the desktop package",
+      ),
+    );
   }
   return window.electronAPI.invoke(channel, args) as Promise<T>;
 }

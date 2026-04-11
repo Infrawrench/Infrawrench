@@ -41,8 +41,12 @@ function EdgePill({
   // Slide in from off-screen edge. At progress 0 → mostly hidden, progress 1 → fully in.
   const edgeOffset = -14 + progress * 20;
   const translateX = triggered
-    ? (side === "left" ? edgeOffset + 4 : -(edgeOffset + 4))
-    : (side === "left" ? edgeOffset : -edgeOffset);
+    ? side === "left"
+      ? edgeOffset + 4
+      : -(edgeOffset + 4)
+    : side === "left"
+      ? edgeOffset
+      : -edgeOffset;
 
   return (
     <div
@@ -54,9 +58,7 @@ function EdgePill({
     >
       <div
         className={`flex items-center justify-center rounded-full ${
-          triggered
-            ? "bg-blue-500 shadow-lg shadow-blue-500/30"
-            : "bg-gray-400/60"
+          triggered ? "bg-blue-500 shadow-lg shadow-blue-500/30" : "bg-gray-400/60"
         }`}
         style={{
           width: size,

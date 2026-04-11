@@ -31,10 +31,9 @@ export function AddAccountModal({ onClose, onAdded }: Props) {
   const saveAccount = useCallback(
     async (pluginId: string, displayName: string, credentials: Record<string, string>) => {
       const credJson = JSON.stringify(credentials);
-      const { ciphertext, iv } = await invoke<{ ciphertext: string; iv: string }>(
-        "encrypt_value",
-        { plaintext: credJson },
-      );
+      const { ciphertext, iv } = await invoke<{ ciphertext: string; iv: string }>("encrypt_value", {
+        plaintext: credJson,
+      });
       const db = await getDb();
       const id = crypto.randomUUID();
       await db.execute(

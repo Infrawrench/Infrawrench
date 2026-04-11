@@ -25,9 +25,7 @@ export const NeonProjectResourceType: ResourceTypeDefinition = {
       id: "connection-url",
       displayName: "Connection URL",
       description: "DATABASE_URL for the default database on the primary branch",
-      entries: [
-        { envKey: "DATABASE_URL", outputKey: "connectionString" },
-      ],
+      entries: [{ envKey: "DATABASE_URL", outputKey: "connectionString" }],
     },
   ],
 };

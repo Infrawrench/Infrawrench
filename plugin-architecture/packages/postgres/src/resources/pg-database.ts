@@ -4,7 +4,8 @@ export const PostgresDatabaseResourceType: ResourceTypeDefinition = {
   id: "pg-database",
   displayName: "PostgreSQL Database",
   pluralDisplayName: "PostgreSQL Databases",
-  description: "A PostgreSQL database — connects via connection string (literal or from a DO Managed Database)",
+  description:
+    "A PostgreSQL database — connects via connection string (literal or from a DO Managed Database)",
   fields: [
     { key: "name", label: "Display Name", kind: "string", required: true },
     {
@@ -49,9 +50,7 @@ export const PostgresDatabaseResourceType: ResourceTypeDefinition = {
       id: "connection-url",
       displayName: "Connection URL",
       description: "Single DATABASE_URL containing the full PostgreSQL connection string",
-      entries: [
-        { envKey: "DATABASE_URL", outputKey: "connectionString" },
-      ],
+      entries: [{ envKey: "DATABASE_URL", outputKey: "connectionString" }],
     },
   ],
 };

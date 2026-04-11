@@ -13,9 +13,7 @@ export const SecurityGroupResourceType: ResourceTypeDefinition = {
     { key: "inboundRuleCount", label: "Inbound Rules", kind: "number", required: false },
     { key: "outboundRuleCount", label: "Outbound Rules", kind: "number", required: false },
   ],
-  outputs: [
-    { key: "groupId", label: "Security Group ID", sensitive: false },
-  ],
+  outputs: [{ key: "groupId", label: "Security Group ID", sensitive: false }],
   dashboardPinnable: false,
   iconKey: "firewall",
   supportsCreate: true,

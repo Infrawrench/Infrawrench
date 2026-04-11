@@ -13,7 +13,12 @@ export const InstanceResourceType: ResourceTypeDefinition = {
       kind: "enum",
       required: true,
       enumValues: [
-        "GRA1", "GRA3", "GRA5", "GRA7", "GRA9", "GRA11",
+        "GRA1",
+        "GRA3",
+        "GRA5",
+        "GRA7",
+        "GRA9",
+        "GRA11",
         "SBG5",
         "BHS5",
         "WAW1",

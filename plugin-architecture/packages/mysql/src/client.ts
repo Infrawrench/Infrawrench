@@ -27,7 +27,11 @@ export class MySQLClient implements PluginClient {
     }
   }
 
-  async getResource(typeId: string, resourceId: string, accountId: string): Promise<ResourceInstance> {
+  async getResource(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+  ): Promise<ResourceInstance> {
     const all = await this.listResources(typeId, accountId);
     const found = all.find((r) => r.id === resourceId);
     if (!found) throw new Error(`MySQL plugin: resource ${typeId}/${resourceId} not found`);
@@ -42,7 +46,11 @@ export class MySQLClient implements PluginClient {
     let tables: Array<{ name: string; columns: Array<{ name: string; type: string }> }> = [];
     const tablesJson = resource.resolvedOutputs["__tables__"];
     if (typeof tablesJson === "string" && tablesJson.length > 0) {
-      try { tables = JSON.parse(tablesJson) as typeof tables; } catch { /* ignore */ }
+      try {
+        tables = JSON.parse(tablesJson) as typeof tables;
+      } catch {
+        /* ignore */
+      }
     }
 
     return {
@@ -64,12 +72,11 @@ export class MySQLClient implements PluginClient {
           ],
         },
       ],
-      headerActions: [
-        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
-      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
       sqlEditor: {
         connectionStringOutputKey: "connectionString",
-        defaultQuery: "SELECT * FROM information_schema.tables WHERE table_schema = DATABASE() LIMIT 20;",
+        defaultQuery:
+          "SELECT * FROM information_schema.tables WHERE table_schema = DATABASE() LIMIT 20;",
         tables,
       },
     };
@@ -100,7 +107,11 @@ export class MySQLClient implements PluginClient {
     ]);
 
     const colsByTable = new Map<string, { name: string; type: string }[]>();
-    for (const col of columnRows as { table_name: string; column_name: string; data_type: string }[]) {
+    for (const col of columnRows as {
+      table_name: string;
+      column_name: string;
+      data_type: string;
+    }[]) {
       if (!colsByTable.has(col.table_name)) colsByTable.set(col.table_name, []);
       colsByTable.get(col.table_name)!.push({ name: col.column_name, type: col.data_type });
     }
@@ -148,9 +159,14 @@ export class MySQLClient implements PluginClient {
         let host = "unknown";
         try {
           host = new URL(this.connectionString).hostname;
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
         return (rows as { Database: string }[])
-          .filter((r) => !["information_schema", "performance_schema", "mysql", "sys"].includes(r.Database))
+          .filter(
+            (r) =>
+              !["information_schema", "performance_schema", "mysql", "sys"].includes(r.Database),
+          )
           .map((row) => ({
             id: `${accountId}:mysql-database:${row.Database}`,
             pluginId: "mysql",
@@ -175,7 +191,9 @@ export class MySQLClient implements PluginClient {
       const url = new URL(this.connectionString);
       dbName = url.pathname.replace(/^\//, "") || "mysql";
       host = url.hostname;
-    } catch { /* connection string may not be a parseable URL */ }
+    } catch {
+      /* connection string may not be a parseable URL */
+    }
 
     return [
       {

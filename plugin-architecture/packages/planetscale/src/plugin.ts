@@ -19,7 +19,8 @@ const manifest: PluginManifest = {
     {
       key: "serviceTokenId",
       label: "Service Token ID",
-      description: "Your PlanetScale service token ID. Create one at Settings > Service tokens in the PlanetScale dashboard.",
+      description:
+        "Your PlanetScale service token ID. Create one at Settings > Service tokens in the PlanetScale dashboard.",
       sensitive: false,
       placeholder: "psc_...",
     },
@@ -40,10 +41,7 @@ const manifest: PluginManifest = {
   ],
 };
 
-const resourceTypes: ResourceTypeDefinition[] = [
-  PsDatabaseResourceType,
-  PsBranchResourceType,
-];
+const resourceTypes: ResourceTypeDefinition[] = [PsDatabaseResourceType, PsBranchResourceType];
 
 export const plugin: Plugin = {
   manifest,

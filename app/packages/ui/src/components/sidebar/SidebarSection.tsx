@@ -49,11 +49,7 @@ export function SidebarSection({
       {expanded && (
         <div className="space-y-1">
           {resourceGroups.map((group) => (
-            <ResourceTypeGroup
-              key={group.resourceTypeId}
-              group={group}
-              pluginId={pluginId}
-            />
+            <ResourceTypeGroup key={group.resourceTypeId} group={group} pluginId={pluginId} />
           ))}
         </div>
       )}

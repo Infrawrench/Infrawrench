@@ -76,7 +76,9 @@ function InviteAcceptPage() {
             You're already a member of {invite.organizationName}.
           </p>
           <button
-            onClick={() => void navigate({ to: "/org/$orgId", params: { orgId: invite.organizationId } })}
+            onClick={() =>
+              void navigate({ to: "/org/$orgId", params: { orgId: invite.organizationId } })
+            }
             className="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
           >
             Go to {invite.organizationName}
@@ -93,8 +95,9 @@ function InviteAcceptPage() {
       <div className="w-full max-w-md px-6 text-center">
         <h1 className="text-2xl font-bold mb-2">You've been invited</h1>
         <p className="text-sm text-gray-400 mb-8">
-          You've been invited to join <span className="text-gray-200 font-medium">{invite.organizationName}</span> as
-          a <span className="text-gray-200 font-medium">{invite.role}</span>.
+          You've been invited to join{" "}
+          <span className="text-gray-200 font-medium">{invite.organizationName}</span> as a{" "}
+          <span className="text-gray-200 font-medium">{invite.role}</span>.
         </p>
 
         {error && <p className="text-xs text-red-400 mb-4">{error}</p>}

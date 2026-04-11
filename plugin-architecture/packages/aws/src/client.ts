@@ -161,7 +161,11 @@ export class AWSClient implements PluginClient {
   }
 
   /** Make a JSON API call (DynamoDB, ECS, etc.) */
-  private async json<T>(service: string, target: string, body: Record<string, unknown>): Promise<T> {
+  private async json<T>(
+    service: string,
+    target: string,
+    body: Record<string, unknown>,
+  ): Promise<T> {
     const host = this.hostForService(service);
     const url = `https://${host}/`;
     const bodyStr = JSON.stringify(body);
@@ -183,7 +187,12 @@ export class AWSClient implements PluginClient {
   }
 
   /** Make an XML Query API call for non-EC2 services */
-  private async ec2Query<T>(service: string, action: string, version: string, params?: Record<string, string>): Promise<T> {
+  private async ec2Query<T>(
+    service: string,
+    action: string,
+    version: string,
+    params?: Record<string, string>,
+  ): Promise<T> {
     const host = this.hostForService(service);
     const searchParams = new URLSearchParams({
       Action: action,
@@ -228,19 +237,28 @@ export class AWSClient implements PluginClient {
   private get ctx(): ListerContext {
     return {
       ec2: <T>(action: string, params?: Record<string, string>) => this.ec2<T>(action, params),
-      json: <T>(service: string, target: string, body: Record<string, unknown>) => this.json<T>(service, target, body),
+      json: <T>(service: string, target: string, body: Record<string, unknown>) =>
+        this.json<T>(service, target, body),
       jsonGet: <T>(service: string, path: string) => this.jsonGet<T>(service, path),
-      ec2Query: <T>(service: string, action: string, version: string, params?: Record<string, string>) => this.ec2Query<T>(service, action, version, params),
+      ec2Query: <T>(
+        service: string,
+        action: string,
+        version: string,
+        params?: Record<string, string>,
+      ) => this.ec2Query<T>(service, action, version, params),
       id: (accountId, typeId, externalId) => this.makeId(accountId, typeId, externalId),
       now: () => new Date().toISOString(),
       region: this.creds.region,
     };
   }
 
-  private static readonly LISTERS: Record<string, (ctx: ListerContext, accountId: string) => Promise<ResourceInstance[]>> = {
+  private static readonly LISTERS: Record<
+    string,
+    (ctx: ListerContext, accountId: string) => Promise<ResourceInstance[]>
+  > = {
     "ec2-instance": listEC2Instances,
     "ebs-volume": listEBSVolumes,
-    "vpc": listVPCs,
+    vpc: listVPCs,
     "eks-cluster": listEKSClusters,
     "rds-instance": listRDSInstances,
     "s3-bucket": listS3Buckets,
@@ -256,12 +274,12 @@ export class AWSClient implements PluginClient {
     "iam-user": listIAMUsers,
     "route53-hosted-zone": listRoute53HostedZones,
     "route53-record-set": listRoute53RecordSets,
-    "alb": listALBs,
+    alb: listALBs,
     "target-group": listTargetGroups,
     "auto-scaling-group": listAutoScalingGroups,
     "iam-role": listIAMRoles,
     "security-group": listSecurityGroups,
-    "subnet": listSubnets,
+    subnet: listSubnets,
     "nat-gateway": listNATGateways,
     "elastic-ip": listElasticIPs,
     "step-function": listStepFunctions,
@@ -298,7 +316,11 @@ export class AWSClient implements PluginClient {
     return lister(this.ctx, accountId);
   }
 
-  async getResource(typeId: string, resourceId: string, accountId: string): Promise<ResourceInstance> {
+  async getResource(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+  ): Promise<ResourceInstance> {
     const all = await this.listResources(typeId, accountId);
     const found = all.find((r) => r.id === resourceId);
     if (!found) throw new Error(`AWS plugin: resource ${typeId}/${resourceId} not found`);
@@ -343,26 +365,26 @@ export class AWSClient implements PluginClient {
       paused: "degraded",
       disabled: "degraded",
       inactive: "degraded",
-      "insufficient_data": "degraded",
+      insufficient_data: "degraded",
       // Provisioning / in-progress
       pending: "provisioning",
       creating: "provisioning",
       updating: "provisioning",
       provisioning: "provisioning",
-      "create_in_progress": "provisioning",
-      "update_in_progress": "provisioning",
-      "operation_in_progress": "provisioning",
-      "pending_validation": "provisioning",
+      create_in_progress: "provisioning",
+      update_in_progress: "provisioning",
+      operation_in_progress: "provisioning",
+      pending_validation: "provisioning",
       // Error
       "shutting-down": "error",
       terminated: "error",
       deleting: "error",
       deleted: "error",
       failed: "error",
-      "create_failed": "error",
-      "delete_failed": "error",
-      "rollback_complete": "error",
-      "rollback_failed": "error",
+      create_failed: "error",
+      delete_failed: "error",
+      rollback_complete: "error",
+      rollback_failed: "error",
       alarm: "error",
       revoked: "error",
       expired: "error",
@@ -408,9 +430,7 @@ export class AWSClient implements PluginClient {
             ]
           : []),
       ],
-      headerActions: [
-        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
-      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
   }
 
@@ -563,9 +583,8 @@ export class AWSClient implements PluginClient {
         });
       }
 
-      continuationToken = data["IsTruncated"] === "true"
-        ? String(data["NextContinuationToken"] ?? "")
-        : undefined;
+      continuationToken =
+        data["IsTruncated"] === "true" ? String(data["NextContinuationToken"] ?? "") : undefined;
     } while (continuationToken);
 
     return results;
@@ -613,42 +632,126 @@ export class AWSClient implements PluginClient {
         totalBytes += Number(obj["Size"] ?? 0);
       }
 
-      continuationToken = data["IsTruncated"] === "true"
-        ? String(data["NextContinuationToken"] ?? "")
-        : undefined;
+      continuationToken =
+        data["IsTruncated"] === "true" ? String(data["NextContinuationToken"] ?? "") : undefined;
     } while (continuationToken);
 
     return { count, size: formatBytes(totalBytes) };
   }
 
   private static readonly AWS_REGIONS: RegionOption[] = [
-    { id: "us-east-1", label: "us-east-1", location: "N. Virginia, USA", flag: "\u{1F1FA}\u{1F1F8}" },
+    {
+      id: "us-east-1",
+      label: "us-east-1",
+      location: "N. Virginia, USA",
+      flag: "\u{1F1FA}\u{1F1F8}",
+    },
     { id: "us-east-2", label: "us-east-2", location: "Ohio, USA", flag: "\u{1F1FA}\u{1F1F8}" },
-    { id: "us-west-1", label: "us-west-1", location: "N. California, USA", flag: "\u{1F1FA}\u{1F1F8}" },
+    {
+      id: "us-west-1",
+      label: "us-west-1",
+      location: "N. California, USA",
+      flag: "\u{1F1FA}\u{1F1F8}",
+    },
     { id: "us-west-2", label: "us-west-2", location: "Oregon, USA", flag: "\u{1F1FA}\u{1F1F8}" },
-    { id: "ca-central-1", label: "ca-central-1", location: "Montreal, Canada", flag: "\u{1F1E8}\u{1F1E6}" },
+    {
+      id: "ca-central-1",
+      label: "ca-central-1",
+      location: "Montreal, Canada",
+      flag: "\u{1F1E8}\u{1F1E6}",
+    },
     { id: "eu-west-1", label: "eu-west-1", location: "Ireland", flag: "\u{1F1EE}\u{1F1EA}" },
     { id: "eu-west-2", label: "eu-west-2", location: "London, UK", flag: "\u{1F1EC}\u{1F1E7}" },
     { id: "eu-west-3", label: "eu-west-3", location: "Paris, France", flag: "\u{1F1EB}\u{1F1F7}" },
-    { id: "eu-central-1", label: "eu-central-1", location: "Frankfurt, Germany", flag: "\u{1F1E9}\u{1F1EA}" },
-    { id: "eu-central-2", label: "eu-central-2", location: "Zurich, Switzerland", flag: "\u{1F1E8}\u{1F1ED}" },
-    { id: "eu-north-1", label: "eu-north-1", location: "Stockholm, Sweden", flag: "\u{1F1F8}\u{1F1EA}" },
+    {
+      id: "eu-central-1",
+      label: "eu-central-1",
+      location: "Frankfurt, Germany",
+      flag: "\u{1F1E9}\u{1F1EA}",
+    },
+    {
+      id: "eu-central-2",
+      label: "eu-central-2",
+      location: "Zurich, Switzerland",
+      flag: "\u{1F1E8}\u{1F1ED}",
+    },
+    {
+      id: "eu-north-1",
+      label: "eu-north-1",
+      location: "Stockholm, Sweden",
+      flag: "\u{1F1F8}\u{1F1EA}",
+    },
     { id: "eu-south-1", label: "eu-south-1", location: "Milan, Italy", flag: "\u{1F1EE}\u{1F1F9}" },
     { id: "eu-south-2", label: "eu-south-2", location: "Spain", flag: "\u{1F1EA}\u{1F1F8}" },
-    { id: "ap-southeast-1", label: "ap-southeast-1", location: "Singapore", flag: "\u{1F1F8}\u{1F1EC}" },
-    { id: "ap-southeast-2", label: "ap-southeast-2", location: "Sydney, Australia", flag: "\u{1F1E6}\u{1F1FA}" },
-    { id: "ap-southeast-3", label: "ap-southeast-3", location: "Jakarta, Indonesia", flag: "\u{1F1EE}\u{1F1E9}" },
-    { id: "ap-northeast-1", label: "ap-northeast-1", location: "Tokyo, Japan", flag: "\u{1F1EF}\u{1F1F5}" },
-    { id: "ap-northeast-2", label: "ap-northeast-2", location: "Seoul, South Korea", flag: "\u{1F1F0}\u{1F1F7}" },
-    { id: "ap-northeast-3", label: "ap-northeast-3", location: "Osaka, Japan", flag: "\u{1F1EF}\u{1F1F5}" },
-    { id: "ap-south-1", label: "ap-south-1", location: "Mumbai, India", flag: "\u{1F1EE}\u{1F1F3}" },
-    { id: "ap-south-2", label: "ap-south-2", location: "Hyderabad, India", flag: "\u{1F1EE}\u{1F1F3}" },
+    {
+      id: "ap-southeast-1",
+      label: "ap-southeast-1",
+      location: "Singapore",
+      flag: "\u{1F1F8}\u{1F1EC}",
+    },
+    {
+      id: "ap-southeast-2",
+      label: "ap-southeast-2",
+      location: "Sydney, Australia",
+      flag: "\u{1F1E6}\u{1F1FA}",
+    },
+    {
+      id: "ap-southeast-3",
+      label: "ap-southeast-3",
+      location: "Jakarta, Indonesia",
+      flag: "\u{1F1EE}\u{1F1E9}",
+    },
+    {
+      id: "ap-northeast-1",
+      label: "ap-northeast-1",
+      location: "Tokyo, Japan",
+      flag: "\u{1F1EF}\u{1F1F5}",
+    },
+    {
+      id: "ap-northeast-2",
+      label: "ap-northeast-2",
+      location: "Seoul, South Korea",
+      flag: "\u{1F1F0}\u{1F1F7}",
+    },
+    {
+      id: "ap-northeast-3",
+      label: "ap-northeast-3",
+      location: "Osaka, Japan",
+      flag: "\u{1F1EF}\u{1F1F5}",
+    },
+    {
+      id: "ap-south-1",
+      label: "ap-south-1",
+      location: "Mumbai, India",
+      flag: "\u{1F1EE}\u{1F1F3}",
+    },
+    {
+      id: "ap-south-2",
+      label: "ap-south-2",
+      location: "Hyderabad, India",
+      flag: "\u{1F1EE}\u{1F1F3}",
+    },
     { id: "ap-east-1", label: "ap-east-1", location: "Hong Kong", flag: "\u{1F1ED}\u{1F1F0}" },
-    { id: "sa-east-1", label: "sa-east-1", location: "São Paulo, Brazil", flag: "\u{1F1E7}\u{1F1F7}" },
+    {
+      id: "sa-east-1",
+      label: "sa-east-1",
+      location: "São Paulo, Brazil",
+      flag: "\u{1F1E7}\u{1F1F7}",
+    },
     { id: "me-south-1", label: "me-south-1", location: "Bahrain", flag: "\u{1F1E7}\u{1F1ED}" },
     { id: "me-central-1", label: "me-central-1", location: "UAE", flag: "\u{1F1E6}\u{1F1EA}" },
-    { id: "af-south-1", label: "af-south-1", location: "Cape Town, South Africa", flag: "\u{1F1FF}\u{1F1E6}" },
-    { id: "il-central-1", label: "il-central-1", location: "Tel Aviv, Israel", flag: "\u{1F1EE}\u{1F1F1}" },
+    {
+      id: "af-south-1",
+      label: "af-south-1",
+      location: "Cape Town, South Africa",
+      flag: "\u{1F1FF}\u{1F1E6}",
+    },
+    {
+      id: "il-central-1",
+      label: "il-central-1",
+      location: "Tel Aviv, Israel",
+      flag: "\u{1F1EE}\u{1F1F1}",
+    },
   ];
 
   private static readonly EC2_SIZES: SizeOption[] = [
@@ -659,46 +762,202 @@ export class AWSClient implements PluginClient {
     { id: "t3.medium", label: "t3.medium", vcpus: 2, memoryMb: 4096, category: "T3 · Burstable" },
     { id: "t3.large", label: "t3.large", vcpus: 2, memoryMb: 8192, category: "T3 · Burstable" },
     { id: "t3.xlarge", label: "t3.xlarge", vcpus: 4, memoryMb: 16384, category: "T3 · Burstable" },
-    { id: "t3.2xlarge", label: "t3.2xlarge", vcpus: 8, memoryMb: 32768, category: "T3 · Burstable" },
+    {
+      id: "t3.2xlarge",
+      label: "t3.2xlarge",
+      vcpus: 8,
+      memoryMb: 32768,
+      category: "T3 · Burstable",
+    },
     // M6i general purpose
-    { id: "m6i.large", label: "m6i.large", vcpus: 2, memoryMb: 8192, category: "M6i · General purpose" },
-    { id: "m6i.xlarge", label: "m6i.xlarge", vcpus: 4, memoryMb: 16384, category: "M6i · General purpose" },
-    { id: "m6i.2xlarge", label: "m6i.2xlarge", vcpus: 8, memoryMb: 32768, category: "M6i · General purpose" },
-    { id: "m6i.4xlarge", label: "m6i.4xlarge", vcpus: 16, memoryMb: 65536, category: "M6i · General purpose" },
-    { id: "m6i.8xlarge", label: "m6i.8xlarge", vcpus: 32, memoryMb: 131072, category: "M6i · General purpose" },
+    {
+      id: "m6i.large",
+      label: "m6i.large",
+      vcpus: 2,
+      memoryMb: 8192,
+      category: "M6i · General purpose",
+    },
+    {
+      id: "m6i.xlarge",
+      label: "m6i.xlarge",
+      vcpus: 4,
+      memoryMb: 16384,
+      category: "M6i · General purpose",
+    },
+    {
+      id: "m6i.2xlarge",
+      label: "m6i.2xlarge",
+      vcpus: 8,
+      memoryMb: 32768,
+      category: "M6i · General purpose",
+    },
+    {
+      id: "m6i.4xlarge",
+      label: "m6i.4xlarge",
+      vcpus: 16,
+      memoryMb: 65536,
+      category: "M6i · General purpose",
+    },
+    {
+      id: "m6i.8xlarge",
+      label: "m6i.8xlarge",
+      vcpus: 32,
+      memoryMb: 131072,
+      category: "M6i · General purpose",
+    },
     // C6i compute-optimized
-    { id: "c6i.large", label: "c6i.large", vcpus: 2, memoryMb: 4096, category: "C6i · Compute-optimized" },
-    { id: "c6i.xlarge", label: "c6i.xlarge", vcpus: 4, memoryMb: 8192, category: "C6i · Compute-optimized" },
-    { id: "c6i.2xlarge", label: "c6i.2xlarge", vcpus: 8, memoryMb: 16384, category: "C6i · Compute-optimized" },
-    { id: "c6i.4xlarge", label: "c6i.4xlarge", vcpus: 16, memoryMb: 32768, category: "C6i · Compute-optimized" },
+    {
+      id: "c6i.large",
+      label: "c6i.large",
+      vcpus: 2,
+      memoryMb: 4096,
+      category: "C6i · Compute-optimized",
+    },
+    {
+      id: "c6i.xlarge",
+      label: "c6i.xlarge",
+      vcpus: 4,
+      memoryMb: 8192,
+      category: "C6i · Compute-optimized",
+    },
+    {
+      id: "c6i.2xlarge",
+      label: "c6i.2xlarge",
+      vcpus: 8,
+      memoryMb: 16384,
+      category: "C6i · Compute-optimized",
+    },
+    {
+      id: "c6i.4xlarge",
+      label: "c6i.4xlarge",
+      vcpus: 16,
+      memoryMb: 32768,
+      category: "C6i · Compute-optimized",
+    },
     // R6i memory-optimized
-    { id: "r6i.large", label: "r6i.large", vcpus: 2, memoryMb: 16384, category: "R6i · Memory-optimized" },
-    { id: "r6i.xlarge", label: "r6i.xlarge", vcpus: 4, memoryMb: 32768, category: "R6i · Memory-optimized" },
-    { id: "r6i.2xlarge", label: "r6i.2xlarge", vcpus: 8, memoryMb: 65536, category: "R6i · Memory-optimized" },
-    { id: "r6i.4xlarge", label: "r6i.4xlarge", vcpus: 16, memoryMb: 131072, category: "R6i · Memory-optimized" },
+    {
+      id: "r6i.large",
+      label: "r6i.large",
+      vcpus: 2,
+      memoryMb: 16384,
+      category: "R6i · Memory-optimized",
+    },
+    {
+      id: "r6i.xlarge",
+      label: "r6i.xlarge",
+      vcpus: 4,
+      memoryMb: 32768,
+      category: "R6i · Memory-optimized",
+    },
+    {
+      id: "r6i.2xlarge",
+      label: "r6i.2xlarge",
+      vcpus: 8,
+      memoryMb: 65536,
+      category: "R6i · Memory-optimized",
+    },
+    {
+      id: "r6i.4xlarge",
+      label: "r6i.4xlarge",
+      vcpus: 16,
+      memoryMb: 131072,
+      category: "R6i · Memory-optimized",
+    },
   ];
 
   async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
     if (typeId === "ec2-instance") {
       return {
         fields: [
-          { key: "name", label: "Instance Name", kind: "text", required: true, description: "Name tag for the EC2 instance" },
-          { key: "region", label: "Region", kind: "region-picker", required: true, regions: AWSClient.AWS_REGIONS, defaultValue: this.creds.region },
-          { key: "instanceType", label: "Instance Type", kind: "size-picker", required: true, sizes: AWSClient.EC2_SIZES },
           {
-            key: "imageId", label: "AMI", kind: "image-picker", required: true,
+            key: "name",
+            label: "Instance Name",
+            kind: "text",
+            required: true,
+            description: "Name tag for the EC2 instance",
+          },
+          {
+            key: "region",
+            label: "Region",
+            kind: "region-picker",
+            required: true,
+            regions: AWSClient.AWS_REGIONS,
+            defaultValue: this.creds.region,
+          },
+          {
+            key: "instanceType",
+            label: "Instance Type",
+            kind: "size-picker",
+            required: true,
+            sizes: AWSClient.EC2_SIZES,
+          },
+          {
+            key: "imageId",
+            label: "AMI",
+            kind: "image-picker",
+            required: true,
             images: [
-              { id: "ami-0c02fb55956c7d316", label: "Amazon Linux 2023", category: "Amazon Linux", family: "al2023" },
-              { id: "ami-0261755bbcb8c4a84", label: "Amazon Linux 2", category: "Amazon Linux", family: "amzn2" },
-              { id: "ami-0c7217cdde317cfec", label: "Ubuntu 22.04 LTS", category: "Ubuntu", family: "ubuntu-2204" },
-              { id: "ami-0e001c9271cf7f3b9", label: "Ubuntu 24.04 LTS", category: "Ubuntu", family: "ubuntu-2404" },
-              { id: "ami-0b0dcb5067f052a63", label: "Debian 12", category: "Debian", family: "debian-12" },
-              { id: "ami-0dfcb1ef8fc5fd105", label: "Red Hat Enterprise Linux 9", category: "RHEL", family: "rhel-9" },
-              { id: "ami-0b5eea76982371e91", label: "SUSE Linux Enterprise Server 15", category: "SUSE", family: "sles-15" },
+              {
+                id: "ami-0c02fb55956c7d316",
+                label: "Amazon Linux 2023",
+                category: "Amazon Linux",
+                family: "al2023",
+              },
+              {
+                id: "ami-0261755bbcb8c4a84",
+                label: "Amazon Linux 2",
+                category: "Amazon Linux",
+                family: "amzn2",
+              },
+              {
+                id: "ami-0c7217cdde317cfec",
+                label: "Ubuntu 22.04 LTS",
+                category: "Ubuntu",
+                family: "ubuntu-2204",
+              },
+              {
+                id: "ami-0e001c9271cf7f3b9",
+                label: "Ubuntu 24.04 LTS",
+                category: "Ubuntu",
+                family: "ubuntu-2404",
+              },
+              {
+                id: "ami-0b0dcb5067f052a63",
+                label: "Debian 12",
+                category: "Debian",
+                family: "debian-12",
+              },
+              {
+                id: "ami-0dfcb1ef8fc5fd105",
+                label: "Red Hat Enterprise Linux 9",
+                category: "RHEL",
+                family: "rhel-9",
+              },
+              {
+                id: "ami-0b5eea76982371e91",
+                label: "SUSE Linux Enterprise Server 15",
+                category: "SUSE",
+                family: "sles-15",
+              },
             ],
           },
-          { key: "diskSizeGb", label: "Root Volume Size", kind: "disk-slider", required: false, minGb: 8, maxGb: 2048, defaultGb: 20, stepGb: 1 },
-          { key: "sshKey", label: "SSH Key", kind: "ssh-key-picker", required: false, description: "Key pair name for SSH access" },
+          {
+            key: "diskSizeGb",
+            label: "Root Volume Size",
+            kind: "disk-slider",
+            required: false,
+            minGb: 8,
+            maxGb: 2048,
+            defaultGb: 20,
+            stepGb: 1,
+          },
+          {
+            key: "sshKey",
+            label: "SSH Key",
+            kind: "ssh-key-picker",
+            required: false,
+            description: "Key pair name for SSH access",
+          },
         ],
       };
     }
@@ -706,9 +965,19 @@ export class AWSClient implements PluginClient {
       return {
         fields: [
           { key: "name", label: "Cluster Name", kind: "text", required: true },
-          { key: "region", label: "Region", kind: "region-picker", required: true, regions: AWSClient.AWS_REGIONS, defaultValue: this.creds.region },
           {
-            key: "version", label: "Kubernetes Version", kind: "select", required: true,
+            key: "region",
+            label: "Region",
+            kind: "region-picker",
+            required: true,
+            regions: AWSClient.AWS_REGIONS,
+            defaultValue: this.creds.region,
+          },
+          {
+            key: "version",
+            label: "Kubernetes Version",
+            kind: "select",
+            required: true,
             options: [
               { id: "1.32", label: "1.32" },
               { id: "1.31", label: "1.31" },
@@ -724,8 +993,21 @@ export class AWSClient implements PluginClient {
     if (typeId === "s3-bucket") {
       return {
         fields: [
-          { key: "name", label: "Bucket Name", kind: "text", required: true, description: "Globally unique S3 bucket name" },
-          { key: "region", label: "Region", kind: "region-picker", required: true, regions: AWSClient.AWS_REGIONS, defaultValue: this.creds.region },
+          {
+            key: "name",
+            label: "Bucket Name",
+            kind: "text",
+            required: true,
+            description: "Globally unique S3 bucket name",
+          },
+          {
+            key: "region",
+            label: "Region",
+            kind: "region-picker",
+            required: true,
+            regions: AWSClient.AWS_REGIONS,
+            defaultValue: this.creds.region,
+          },
         ],
       };
     }
@@ -733,7 +1015,14 @@ export class AWSClient implements PluginClient {
       return {
         fields: [
           { key: "name", label: "Name", kind: "text", required: true },
-          { key: "cidrBlock", label: "CIDR Block", kind: "text", required: true, defaultValue: "10.0.0.0/16", description: "IPv4 CIDR block (e.g. 10.0.0.0/16)" },
+          {
+            key: "cidrBlock",
+            label: "CIDR Block",
+            kind: "text",
+            required: true,
+            defaultValue: "10.0.0.0/16",
+            description: "IPv4 CIDR block (e.g. 10.0.0.0/16)",
+          },
         ],
       };
     }
@@ -742,7 +1031,13 @@ export class AWSClient implements PluginClient {
         fields: [
           { key: "groupName", label: "Group Name", kind: "text", required: true },
           { key: "description", label: "Description", kind: "text", required: true },
-          { key: "vpcId", label: "VPC ID", kind: "text", required: false, description: "VPC to create in (defaults to default VPC)" },
+          {
+            key: "vpcId",
+            label: "VPC ID",
+            kind: "text",
+            required: false,
+            description: "VPC to create in (defaults to default VPC)",
+          },
         ],
       };
     }
@@ -750,7 +1045,17 @@ export class AWSClient implements PluginClient {
       return {
         fields: [
           { key: "queueName", label: "Queue Name", kind: "text", required: true },
-          { key: "fifo", label: "FIFO Queue", kind: "select", required: false, options: [{ id: "false", label: "Standard" }, { id: "true", label: "FIFO" }], defaultValue: "false" },
+          {
+            key: "fifo",
+            label: "FIFO Queue",
+            kind: "select",
+            required: false,
+            options: [
+              { id: "false", label: "Standard" },
+              { id: "true", label: "FIFO" },
+            ],
+            defaultValue: "false",
+          },
         ],
       };
     }
@@ -758,7 +1063,17 @@ export class AWSClient implements PluginClient {
       return {
         fields: [
           { key: "topicName", label: "Topic Name", kind: "text", required: true },
-          { key: "fifo", label: "FIFO Topic", kind: "select", required: false, options: [{ id: "false", label: "Standard" }, { id: "true", label: "FIFO" }], defaultValue: "false" },
+          {
+            key: "fifo",
+            label: "FIFO Topic",
+            kind: "select",
+            required: false,
+            options: [
+              { id: "false", label: "Standard" },
+              { id: "true", label: "FIFO" },
+            ],
+            defaultValue: "false",
+          },
         ],
       };
     }
@@ -766,24 +1081,72 @@ export class AWSClient implements PluginClient {
       return {
         fields: [
           { key: "tableName", label: "Table Name", kind: "text", required: true },
-          { key: "partitionKey", label: "Partition Key", kind: "text", required: true, description: "Primary key attribute name" },
-          { key: "partitionKeyType", label: "Partition Key Type", kind: "select", required: true, options: [{ id: "S", label: "String" }, { id: "N", label: "Number" }, { id: "B", label: "Binary" }], defaultValue: "S" },
-          { key: "sortKey", label: "Sort Key", kind: "text", required: false, description: "Optional sort key attribute name" },
-          { key: "sortKeyType", label: "Sort Key Type", kind: "select", required: false, options: [{ id: "S", label: "String" }, { id: "N", label: "Number" }, { id: "B", label: "Binary" }], defaultValue: "S" },
-          { key: "billingMode", label: "Billing Mode", kind: "select", required: true, options: [{ id: "PAY_PER_REQUEST", label: "On-demand" }, { id: "PROVISIONED", label: "Provisioned" }], defaultValue: "PAY_PER_REQUEST" },
+          {
+            key: "partitionKey",
+            label: "Partition Key",
+            kind: "text",
+            required: true,
+            description: "Primary key attribute name",
+          },
+          {
+            key: "partitionKeyType",
+            label: "Partition Key Type",
+            kind: "select",
+            required: true,
+            options: [
+              { id: "S", label: "String" },
+              { id: "N", label: "Number" },
+              { id: "B", label: "Binary" },
+            ],
+            defaultValue: "S",
+          },
+          {
+            key: "sortKey",
+            label: "Sort Key",
+            kind: "text",
+            required: false,
+            description: "Optional sort key attribute name",
+          },
+          {
+            key: "sortKeyType",
+            label: "Sort Key Type",
+            kind: "select",
+            required: false,
+            options: [
+              { id: "S", label: "String" },
+              { id: "N", label: "Number" },
+              { id: "B", label: "Binary" },
+            ],
+            defaultValue: "S",
+          },
+          {
+            key: "billingMode",
+            label: "Billing Mode",
+            kind: "select",
+            required: true,
+            options: [
+              { id: "PAY_PER_REQUEST", label: "On-demand" },
+              { id: "PROVISIONED", label: "Provisioned" },
+            ],
+            defaultValue: "PAY_PER_REQUEST",
+          },
         ],
       };
     }
     throw new Error(`AWS plugin: getCreateConfig not supported for type "${typeId}"`);
   }
 
-  async createResource(typeId: string, accountId: string, fields: Record<string, string>): Promise<ResourceInstance> {
+  async createResource(
+    typeId: string,
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
     if (typeId === "ec2-instance") {
       const params: Record<string, string> = {
-        "ImageId": fields["imageId"] ?? "",
-        "InstanceType": fields["instanceType"] ?? "t3.micro",
-        "MinCount": "1",
-        "MaxCount": "1",
+        ImageId: fields["imageId"] ?? "",
+        InstanceType: fields["instanceType"] ?? "t3.micro",
+        MinCount: "1",
+        MaxCount: "1",
       };
       if (fields["sshKey"]) params["KeyName"] = fields["sshKey"];
       if (fields["diskSizeGb"]) {
@@ -842,9 +1205,10 @@ export class AWSClient implements PluginClient {
       const bucketName = fields["name"] ?? "";
       const host = `${bucketName}.s3.${this.creds.region}.amazonaws.com`;
       const url = `https://${host}/`;
-      const bodyXml = this.creds.region === "us-east-1"
-        ? ""
-        : `<CreateBucketConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><LocationConstraint>${this.creds.region}</LocationConstraint></CreateBucketConfiguration>`;
+      const bodyXml =
+        this.creds.region === "us-east-1"
+          ? ""
+          : `<CreateBucketConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><LocationConstraint>${this.creds.region}</LocationConstraint></CreateBucketConfiguration>`;
       const headers = await signRequest({
         method: "PUT",
         url,
@@ -853,7 +1217,11 @@ export class AWSClient implements PluginClient {
         service: "s3",
         credentials: this.creds,
       });
-      const res = await fetch(url, { method: "PUT", headers, ...(bodyXml ? { body: bodyXml } : {}) });
+      const res = await fetch(url, {
+        method: "PUT",
+        headers,
+        ...(bodyXml ? { body: bodyXml } : {}),
+      });
       if (!res.ok) throw new Error(`S3 CreateBucket failed: ${res.status} ${await res.text()}`);
 
       return {
@@ -862,7 +1230,11 @@ export class AWSClient implements PluginClient {
         resourceTypeId: "s3-bucket",
         accountId,
         displayName: bucketName,
-        fields: { name: bucketName, region: this.creds.region, creationDate: new Date().toISOString() },
+        fields: {
+          name: bucketName,
+          region: this.creds.region,
+          creationDate: new Date().toISOString(),
+        },
         resolvedOutputs: {
           bucketArn: `arn:aws:s3:::${bucketName}`,
           endpoint: `https://${bucketName}.s3.${this.creds.region}.amazonaws.com`,
@@ -938,18 +1310,15 @@ export class AWSClient implements PluginClient {
       };
     }
     if (typeId === "sqs-queue") {
-      const queueName = fields["fifo"] === "true"
-        ? (fields["queueName"] ?? "").replace(/\.fifo$/, "") + ".fifo"
-        : fields["queueName"] ?? "";
+      const queueName =
+        fields["fifo"] === "true"
+          ? (fields["queueName"] ?? "").replace(/\.fifo$/, "") + ".fifo"
+          : (fields["queueName"] ?? "");
       const body: Record<string, unknown> = { QueueName: queueName };
       if (fields["fifo"] === "true") {
         body["Attributes"] = { FifoQueue: "true" };
       }
-      const data = await this.json<{ QueueUrl?: string }>(
-        "sqs",
-        "AmazonSQS.CreateQueue",
-        body,
-      );
+      const data = await this.json<{ QueueUrl?: string }>("sqs", "AmazonSQS.CreateQueue", body);
       const queueUrl = data.QueueUrl ?? "";
       return {
         id: this.makeId(accountId, "sqs-queue", queueName),
@@ -973,18 +1342,15 @@ export class AWSClient implements PluginClient {
       };
     }
     if (typeId === "sns-topic") {
-      const topicName = fields["fifo"] === "true"
-        ? (fields["topicName"] ?? "").replace(/\.fifo$/, "") + ".fifo"
-        : fields["topicName"] ?? "";
+      const topicName =
+        fields["fifo"] === "true"
+          ? (fields["topicName"] ?? "").replace(/\.fifo$/, "") + ".fifo"
+          : (fields["topicName"] ?? "");
       const body: Record<string, unknown> = { Name: topicName };
       if (fields["fifo"] === "true") {
         body["Attributes"] = { FifoTopic: "true" };
       }
-      const data = await this.json<{ TopicArn?: string }>(
-        "sns",
-        "SNS.CreateTopic",
-        body,
-      );
+      const data = await this.json<{ TopicArn?: string }>("sns", "SNS.CreateTopic", body);
       const topicArn = data.TopicArn ?? "";
       return {
         id: this.makeId(accountId, "sns-topic", topicName),
@@ -1010,11 +1376,17 @@ export class AWSClient implements PluginClient {
         { AttributeName: fields["partitionKey"] ?? "id", KeyType: "HASH" },
       ];
       const attrDefs: Array<{ AttributeName: string; AttributeType: string }> = [
-        { AttributeName: fields["partitionKey"] ?? "id", AttributeType: fields["partitionKeyType"] ?? "S" },
+        {
+          AttributeName: fields["partitionKey"] ?? "id",
+          AttributeType: fields["partitionKeyType"] ?? "S",
+        },
       ];
       if (fields["sortKey"]) {
         keySchema.push({ AttributeName: fields["sortKey"], KeyType: "RANGE" });
-        attrDefs.push({ AttributeName: fields["sortKey"], AttributeType: fields["sortKeyType"] ?? "S" });
+        attrDefs.push({
+          AttributeName: fields["sortKey"],
+          AttributeType: fields["sortKeyType"] ?? "S",
+        });
       }
       const body: Record<string, unknown> = {
         TableName: fields["tableName"] ?? "",
@@ -1062,16 +1434,33 @@ export class AWSClient implements PluginClient {
     throw new Error(`AWS plugin: createResource not supported for type "${typeId}"`);
   }
 
-  async getCreateCostEstimate(typeId: string, fields: Record<string, string>): Promise<number | null> {
+  async getCreateCostEstimate(
+    typeId: string,
+    fields: Record<string, string>,
+  ): Promise<number | null> {
     if (typeId === "ec2-instance") {
       // Approximate monthly on-demand pricing (us-east-1, Linux)
       const ec2Pricing: Record<string, number> = {
-        "t3.nano": 3.80, "t3.micro": 7.59, "t3.small": 15.18, "t3.medium": 30.37,
-        "t3.large": 60.74, "t3.xlarge": 121.47, "t3.2xlarge": 242.94,
-        "m6i.large": 69.35, "m6i.xlarge": 138.70, "m6i.2xlarge": 277.40,
-        "m6i.4xlarge": 554.80, "m6i.8xlarge": 1109.60,
-        "c6i.large": 61.32, "c6i.xlarge": 122.64, "c6i.2xlarge": 245.28, "c6i.4xlarge": 490.56,
-        "r6i.large": 91.98, "r6i.xlarge": 183.96, "r6i.2xlarge": 367.92, "r6i.4xlarge": 735.84,
+        "t3.nano": 3.8,
+        "t3.micro": 7.59,
+        "t3.small": 15.18,
+        "t3.medium": 30.37,
+        "t3.large": 60.74,
+        "t3.xlarge": 121.47,
+        "t3.2xlarge": 242.94,
+        "m6i.large": 69.35,
+        "m6i.xlarge": 138.7,
+        "m6i.2xlarge": 277.4,
+        "m6i.4xlarge": 554.8,
+        "m6i.8xlarge": 1109.6,
+        "c6i.large": 61.32,
+        "c6i.xlarge": 122.64,
+        "c6i.2xlarge": 245.28,
+        "c6i.4xlarge": 490.56,
+        "r6i.large": 91.98,
+        "r6i.xlarge": 183.96,
+        "r6i.2xlarge": 367.92,
+        "r6i.4xlarge": 735.84,
       };
       const instanceType = fields["instanceType"] ?? "";
       const basePrice = ec2Pricing[instanceType];
@@ -1175,9 +1564,13 @@ export class AWSClient implements PluginClient {
         await this.ec2("DeleteInternetGateway", { InternetGatewayId: externalId });
         break;
       case "cloudtrail-trail":
-        await this.json("cloudtrail", "com.amazonaws.cloudtrail.v20131101.CloudTrail_20131101.DeleteTrail", {
-          Name: externalId,
-        });
+        await this.json(
+          "cloudtrail",
+          "com.amazonaws.cloudtrail.v20131101.CloudTrail_20131101.DeleteTrail",
+          {
+            Name: externalId,
+          },
+        );
         break;
       case "sagemaker-endpoint": {
         const host = this.hostForService("sagemaker");
@@ -1199,7 +1592,8 @@ export class AWSClient implements PluginClient {
           headers,
           body: JSON.stringify({ EndpointName: externalId }),
         });
-        if (!res.ok) throw new Error(`SageMaker delete endpoint ${externalId} failed: ${res.status}`);
+        if (!res.ok)
+          throw new Error(`SageMaker delete endpoint ${externalId} failed: ${res.status}`);
         break;
       }
       default:
@@ -1213,13 +1607,17 @@ export class AWSClient implements PluginClient {
     const typeId = parts[1] ?? "";
 
     const resource = await this.getResource(typeId, resourceId, accountId);
-    return JSON.stringify({
-      resourceTypeId: resource.resourceTypeId,
-      externalId: resource.externalId,
-      displayName: resource.displayName,
-      fields: resource.fields,
-      resolvedOutputs: resource.resolvedOutputs,
-    }, null, 2);
+    return JSON.stringify(
+      {
+        resourceTypeId: resource.resourceTypeId,
+        externalId: resource.externalId,
+        displayName: resource.displayName,
+        fields: resource.fields,
+        resolvedOutputs: resource.resolvedOutputs,
+      },
+      null,
+      2,
+    );
   }
 }
 

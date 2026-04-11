@@ -5,10 +5,7 @@ export type { DraggableResource };
 
 export async function createDashboard(name: string, db: DbClient): Promise<string> {
   const id = crypto.randomUUID();
-  await db.execute(
-    "INSERT INTO dashboards (id, name, is_default) VALUES ($1, $2, 0)",
-    [id, name],
-  );
+  await db.execute("INSERT INTO dashboards (id, name, is_default) VALUES ($1, $2, 0)", [id, name]);
   return id;
 }
 
@@ -43,10 +40,10 @@ export async function pinResource(
       dashId = dashboards[0].id;
     } else {
       dashId = crypto.randomUUID();
-      await db.execute(
-        "INSERT INTO dashboards (id, name, is_default) VALUES ($1, $2, 1)",
-        [dashId, "Home"],
-      );
+      await db.execute("INSERT INTO dashboards (id, name, is_default) VALUES ($1, $2, 1)", [
+        dashId,
+        "Home",
+      ]);
     }
   }
 

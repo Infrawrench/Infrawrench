@@ -15,7 +15,12 @@ export const MySQLFlexibleServerResourceType: ResourceTypeDefinition = {
     { key: "tier", label: "Tier", kind: "string", required: false },
     { key: "storageSizeGb", label: "Storage (GB)", kind: "number", required: false },
     { key: "haEnabled", label: "HA Enabled", kind: "boolean", required: false },
-    { key: "backupRetentionDays", label: "Backup Retention (Days)", kind: "number", required: false },
+    {
+      key: "backupRetentionDays",
+      label: "Backup Retention (Days)",
+      kind: "number",
+      required: false,
+    },
   ],
   outputs: [
     { key: "fqdn", label: "FQDN", sensitive: false },

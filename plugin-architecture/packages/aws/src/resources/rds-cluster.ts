@@ -7,7 +7,13 @@ export const RDSClusterResourceType: ResourceTypeDefinition = {
   description: "An Amazon Aurora DB cluster",
   fields: [
     { key: "clusterIdentifier", label: "Cluster ID", kind: "string", required: true },
-    { key: "engine", label: "Engine", kind: "enum", required: true, enumValues: ["aurora-mysql", "aurora-postgresql"] },
+    {
+      key: "engine",
+      label: "Engine",
+      kind: "enum",
+      required: true,
+      enumValues: ["aurora-mysql", "aurora-postgresql"],
+    },
     { key: "engineVersion", label: "Engine Version", kind: "string", required: true },
     { key: "status", label: "Status", kind: "string", required: true },
     { key: "multiAZ", label: "Multi-AZ", kind: "boolean", required: false },

@@ -13,7 +13,11 @@ function makeClient(dockerHost: string): Dockerode {
 export const driver = {
   id: "docker",
 
-  async command(dockerHost: string, op: string, params: Record<string, unknown> = {}): Promise<unknown> {
+  async command(
+    dockerHost: string,
+    op: string,
+    params: Record<string, unknown> = {},
+  ): Promise<unknown> {
     const docker = makeClient(dockerHost);
 
     switch (op) {

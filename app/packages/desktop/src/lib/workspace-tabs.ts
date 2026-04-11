@@ -11,9 +11,18 @@ import {
 } from "@infrawrench/ui";
 
 // Re-export shared target factories
-export { dashboardTabTarget, accountTabTarget, resourceTabTarget, resourceSshTabTarget, resourceSftpTabTarget };
+export {
+  dashboardTabTarget,
+  accountTabTarget,
+  resourceTabTarget,
+  resourceSshTabTarget,
+  resourceSftpTabTarget,
+};
 
-export function getWorkspaceNavigateArgs(target: WorkspaceTabTarget, replace = false): {
+export function getWorkspaceNavigateArgs(
+  target: WorkspaceTabTarget,
+  replace = false,
+): {
   to: string;
   params?: Record<string, string>;
   replace?: boolean;
@@ -21,14 +30,29 @@ export function getWorkspaceNavigateArgs(target: WorkspaceTabTarget, replace = f
 } {
   switch (target.kind) {
     case "dashboard":
-      return { to: "/dashboard/$dashboardId", params: { dashboardId: target.dashboardId }, ...(replace ? { replace: true } : {}) };
+      return {
+        to: "/dashboard/$dashboardId",
+        params: { dashboardId: target.dashboardId },
+        ...(replace ? { replace: true } : {}),
+      };
     case "account":
-      return { to: "/accounts/$accountId", params: { accountId: target.accountId }, ...(replace ? { replace: true } : {}) };
+      return {
+        to: "/accounts/$accountId",
+        params: { accountId: target.accountId },
+        ...(replace ? { replace: true } : {}),
+      };
     case "resource":
       return {
         to: "/resource/$accountId/$resourceId",
-        params: { accountId: target.accountId, resourceId: encodeURIComponent(normalizeResourceId(target.resourceId)) },
-        ...(target.view === "ssh" ? { hash: "ssh" } : target.view === "sftp" ? { hash: "sftp" } : {}),
+        params: {
+          accountId: target.accountId,
+          resourceId: encodeURIComponent(normalizeResourceId(target.resourceId)),
+        },
+        ...(target.view === "ssh"
+          ? { hash: "ssh" }
+          : target.view === "sftp"
+            ? { hash: "sftp" }
+            : {}),
         ...(replace ? { replace: true } : {}),
       };
   }
@@ -53,7 +77,10 @@ export function navigateToWorkspaceTarget(
   return navigate(getWorkspaceNavigateArgs(target, options?.replace));
 }
 
-export function syncWorkspaceRouteFromPath(pathname: string, hash?: string): WorkspaceTabTarget | null {
+export function syncWorkspaceRouteFromPath(
+  pathname: string,
+  hash?: string,
+): WorkspaceTabTarget | null {
   if (pathname === "/") return null;
   const normalizedHash = hash?.replace(/^#/, "");
   const segments = pathname.split("/").filter(Boolean);
@@ -64,8 +91,10 @@ export function syncWorkspaceRouteFromPath(pathname: string, hash?: string): Wor
     return accountTabTarget(segments[1]);
   }
   if (segments[0] === "resource" && segments[1] && segments[2]) {
-    if (normalizedHash === "ssh") return resourceSshTabTarget(segments[1], segments.slice(2).join("/"));
-    if (normalizedHash === "sftp") return resourceSftpTabTarget(segments[1], segments.slice(2).join("/"));
+    if (normalizedHash === "ssh")
+      return resourceSshTabTarget(segments[1], segments.slice(2).join("/"));
+    if (normalizedHash === "sftp")
+      return resourceSftpTabTarget(segments[1], segments.slice(2).join("/"));
     return resourceTabTarget(segments[1], segments.slice(2).join("/"));
   }
   return null;

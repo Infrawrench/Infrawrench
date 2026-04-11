@@ -1,6 +1,13 @@
 import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { ResourcePill, ConfirmDeleteModal, dispatchResourcesChanged, isCreateOnlyType, type DraggableResource, useUIStore } from "@infrawrench/ui";
+import {
+  ResourcePill,
+  ConfirmDeleteModal,
+  dispatchResourcesChanged,
+  isCreateOnlyType,
+  type DraggableResource,
+  useUIStore,
+} from "@infrawrench/ui";
 import { apiDelete } from "@/lib/api";
 import { useOrgId } from "@/lib/useOrgId";
 import { CreateResourceModal } from "./CreateResourceModal";
@@ -112,7 +119,11 @@ export function AccountDetailView({
             ) : cat.loading ? (
               <div className="flex flex-wrap gap-2">
                 {[1, 2, 3].map((i) => (
-                  <div key={i} className="h-8 rounded-full bg-gray-800 animate-pulse" style={{ width: `${5 + i * 1.5}rem` }} />
+                  <div
+                    key={i}
+                    className="h-8 rounded-full bg-gray-800 animate-pulse"
+                    style={{ width: `${5 + i * 1.5}rem` }}
+                  />
                 ))}
               </div>
             ) : cat.error ? (
@@ -121,10 +132,10 @@ export function AccountDetailView({
               <div className="flex flex-wrap gap-2">
                 {cat.resources.map((resource) => {
                   const subtitle = String(
-                    (resource.fieldsJson as Record<string, unknown>)?.["host"]
-                      ?? (resource.fieldsJson as Record<string, unknown>)?.["region"]
-                      ?? (resource.fieldsJson as Record<string, unknown>)?.["engine"]
-                      ?? "",
+                    (resource.fieldsJson as Record<string, unknown>)?.["host"] ??
+                      (resource.fieldsJson as Record<string, unknown>)?.["region"] ??
+                      (resource.fieldsJson as Record<string, unknown>)?.["engine"] ??
+                      "",
                   );
                   const draggable: DraggableResource = {
                     id: resource.id,
@@ -143,7 +154,12 @@ export function AccountDetailView({
                       onOpen={() =>
                         void navigate({
                           to: "/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId",
-                          params: { orgId, pluginId: resource.pluginId, resourceTypeId: resource.resourceTypeId, resourceId: resource.id },
+                          params: {
+                            orgId,
+                            pluginId: resource.pluginId,
+                            resourceTypeId: resource.resourceTypeId,
+                            resourceId: resource.id,
+                          },
                         })
                       }
                     />
@@ -164,14 +180,17 @@ export function AccountDetailView({
         );
       })}
 
-      {categories.length > 0 && categories.every((c) => !c.loading && c.resources.length === 0 && !c.typeDef.supportsCreate) && (
-        <div className="text-center py-12">
-          <p className="text-gray-500 text-sm">No resources synced yet.</p>
-          <p className="text-gray-600 text-xs mt-1">
-            Resources will appear after the first sync.
-          </p>
-        </div>
-      )}
+      {categories.length > 0 &&
+        categories.every(
+          (c) => !c.loading && c.resources.length === 0 && !c.typeDef.supportsCreate,
+        ) && (
+          <div className="text-center py-12">
+            <p className="text-gray-500 text-sm">No resources synced yet.</p>
+            <p className="text-gray-600 text-xs mt-1">
+              Resources will appear after the first sync.
+            </p>
+          </div>
+        )}
 
       {createTarget && (
         <CreateResourceModal
@@ -185,7 +204,12 @@ export function AccountDetailView({
             dispatchResourcesChanged();
             void navigate({
               to: "/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId",
-              params: { orgId, pluginId: account.pluginId, resourceTypeId: createTarget.id, resourceId: resource.id },
+              params: {
+                orgId,
+                pluginId: account.pluginId,
+                resourceTypeId: createTarget.id,
+                resourceId: resource.id,
+              },
               search: { accountId: account.id },
             });
           }}

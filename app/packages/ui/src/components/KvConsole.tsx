@@ -42,7 +42,10 @@ export function KvConsole({ driverName, connected = true, onCommand }: KvConsole
       const formatted = formatRedisResult(result);
       setLines((prev) => [...prev, { kind: "output", text: formatted }]);
     } catch (e) {
-      setLines((prev) => [...prev, { kind: "error", text: e instanceof Error ? e.message : String(e) }]);
+      setLines((prev) => [
+        ...prev,
+        { kind: "error", text: e instanceof Error ? e.message : String(e) },
+      ]);
     } finally {
       setRunning(false);
       inputRef.current?.focus();
@@ -72,13 +75,19 @@ export function KvConsole({ driverName, connected = true, onCommand }: KvConsole
     }
   }
 
-  const driverLabel = driverName === "memcached" ? "Memcached" : driverName === "mongodb" ? "MongoDB" : "Redis";
+  const driverLabel =
+    driverName === "memcached" ? "Memcached" : driverName === "mongodb" ? "MongoDB" : "Redis";
 
   return (
-    <div className="shrink-0 border-t border-gray-800 bg-gray-950 flex flex-col" style={{ height: "220px" }}>
+    <div
+      className="shrink-0 border-t border-gray-800 bg-gray-950 flex flex-col"
+      style={{ height: "220px" }}
+    >
       {/* Header */}
       <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-800/60">
-        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${connected ? "bg-blue-400" : "bg-gray-600"}`} />
+        <span
+          className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${connected ? "bg-blue-400" : "bg-gray-600"}`}
+        />
         <span className="text-xs text-gray-500 font-medium">{driverLabel} Console</span>
         {lines.length > 0 && (
           <button
@@ -91,10 +100,14 @@ export function KvConsole({ driverName, connected = true, onCommand }: KvConsole
       </div>
 
       {/* Output */}
-      <div ref={outputRef} className="flex-1 overflow-y-auto px-4 py-2 font-mono text-xs space-y-0.5">
+      <div
+        ref={outputRef}
+        className="flex-1 overflow-y-auto px-4 py-2 font-mono text-xs space-y-0.5"
+      >
         {lines.length === 0 && (
           <span className="text-gray-700">
-            Type a {driverName === "memcached" ? "Memcached" : "Redis"} command and press Enter — e.g. PING, KEYS *, GET mykey
+            Type a {driverName === "memcached" ? "Memcached" : "Redis"} command and press Enter —
+            e.g. PING, KEYS *, GET mykey
           </span>
         )}
         {lines.map((line, i) => (
@@ -140,13 +153,19 @@ export function tokenize(cmd: string): string[] {
   let quoteChar = "";
   for (const ch of cmd) {
     if (inQuote) {
-      if (ch === quoteChar) { inQuote = false; }
-      else { current += ch; }
+      if (ch === quoteChar) {
+        inQuote = false;
+      } else {
+        current += ch;
+      }
     } else if (ch === '"' || ch === "'") {
       inQuote = true;
       quoteChar = ch;
     } else if (ch === " ") {
-      if (current) { tokens.push(current); current = ""; }
+      if (current) {
+        tokens.push(current);
+        current = "";
+      }
     } else {
       current += ch;
     }
@@ -160,9 +179,7 @@ export function formatRedisResult(value: unknown): string {
   if (typeof value === "string") return value;
   if (typeof value === "number") return String(value);
   if (Array.isArray(value)) {
-    return value
-      .map((v, i) => `${i + 1}) ${formatRedisResult(v)}`)
-      .join("\n");
+    return value.map((v, i) => `${i + 1}) ${formatRedisResult(v)}`).join("\n");
   }
   return JSON.stringify(value);
 }

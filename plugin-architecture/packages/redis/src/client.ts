@@ -28,7 +28,9 @@ export class RedisClient implements PluginClient {
       const url = new URL(this.connectionString);
       host = url.hostname + (url.port && url.port !== "6379" ? `:${url.port}` : "");
       dbNum = parseInt(url.pathname.replace(/^\//, "") || "0", 10) || 0;
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
 
     return [
       {
@@ -46,7 +48,11 @@ export class RedisClient implements PluginClient {
     ];
   }
 
-  async getResource(typeId: string, resourceId: string, accountId: string): Promise<ResourceInstance> {
+  async getResource(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+  ): Promise<ResourceInstance> {
     const all = await this.listResources(typeId, accountId);
     const found = all.find((r) => r.id === resourceId);
     if (!found) throw new Error(`Redis plugin: resource ${typeId}/${resourceId} not found`);
@@ -86,7 +92,11 @@ export class RedisClient implements PluginClient {
                 {
                   key: "Connection String",
                   value: cs
-                    ? { kind: "secret-placeholder", fieldKey: "connectionString", resolution: cs.resolution }
+                    ? {
+                        kind: "secret-placeholder",
+                        fieldKey: "connectionString",
+                        resolution: cs.resolution,
+                      }
                     : "(not set)",
                   sensitive: true,
                 },
@@ -94,27 +104,29 @@ export class RedisClient implements PluginClient {
             },
           ],
         },
-        ...(version || usedMemory || dbCount || connectedClients ? [
-          {
-            kind: "section" as const,
-            title: "Stats",
-            children: [
+        ...(version || usedMemory || dbCount || connectedClients
+          ? [
               {
-                kind: "key-value-list" as const,
-                items: [
-                  ...(version ? [{ key: "Version", value: version }] : []),
-                  ...(usedMemory ? [{ key: "Used Memory", value: usedMemory }] : []),
-                  ...(dbCount ? [{ key: "Databases", value: dbCount }] : []),
-                  ...(connectedClients ? [{ key: "Connected Clients", value: connectedClients }] : []),
+                kind: "section" as const,
+                title: "Stats",
+                children: [
+                  {
+                    kind: "key-value-list" as const,
+                    items: [
+                      ...(version ? [{ key: "Version", value: version }] : []),
+                      ...(usedMemory ? [{ key: "Used Memory", value: usedMemory }] : []),
+                      ...(dbCount ? [{ key: "Databases", value: dbCount }] : []),
+                      ...(connectedClients
+                        ? [{ key: "Connected Clients", value: connectedClients }]
+                        : []),
+                    ],
+                  },
                 ],
               },
-            ],
-          },
-        ] : []),
+            ]
+          : []),
       ],
-      headerActions: [
-        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
-      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
   }
 

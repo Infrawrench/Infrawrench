@@ -25,7 +25,10 @@ describe("postgres driver", () => {
 
   describe("query", () => {
     it("returns rows from the query result", async () => {
-      const rows = [{ id: 1, name: "alice" }, { id: 2, name: "bob" }];
+      const rows = [
+        { id: 1, name: "alice" },
+        { id: 2, name: "bob" },
+      ];
       mockQuery.mockResolvedValue({ rows });
 
       const result = await driver.query("postgresql://localhost/test", "SELECT * FROM users");
@@ -49,10 +52,7 @@ describe("postgres driver", () => {
     it("strips channel_binding from connection string", async () => {
       mockQuery.mockResolvedValue({ rows: [] });
 
-      await driver.query(
-        "postgresql://localhost/test?channel_binding=require",
-        "SELECT 1",
-      );
+      await driver.query("postgresql://localhost/test?channel_binding=require", "SELECT 1");
 
       const call = vi.mocked(Pool).mock.calls[0]![0] as { connectionString: string };
       expect(call.connectionString).not.toContain("channel_binding");
@@ -63,7 +63,11 @@ describe("postgres driver", () => {
     it("returns rowCount from the query result", async () => {
       mockQuery.mockResolvedValue({ rowCount: 3 });
 
-      const result = await driver.execute("postgresql://localhost/test", "UPDATE users SET active = $1", [true]);
+      const result = await driver.execute(
+        "postgresql://localhost/test",
+        "UPDATE users SET active = $1",
+        [true],
+      );
 
       expect(result).toBe(3);
       expect(mockQuery).toHaveBeenCalledWith("UPDATE users SET active = $1", [true]);
@@ -72,7 +76,11 @@ describe("postgres driver", () => {
     it("returns 0 when rowCount is null", async () => {
       mockQuery.mockResolvedValue({ rowCount: null });
 
-      const result = await driver.execute("postgresql://localhost/test", "UPDATE users SET x = $1", [1]);
+      const result = await driver.execute(
+        "postgresql://localhost/test",
+        "UPDATE users SET x = $1",
+        [1],
+      );
 
       expect(result).toBe(0);
     });

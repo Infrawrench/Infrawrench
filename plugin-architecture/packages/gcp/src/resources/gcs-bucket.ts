@@ -15,13 +15,23 @@ export const GcsBucketResourceType: ResourceTypeDefinition = {
       required: false,
       enumValues: ["STANDARD", "NEARLINE", "COLDLINE", "ARCHIVE"],
     },
-    { key: "publicAccessPrevention", label: "Public Access Prevention", kind: "string", required: false },
+    {
+      key: "publicAccessPrevention",
+      label: "Public Access Prevention",
+      kind: "string",
+      required: false,
+    },
     { key: "versioning", label: "Versioning", kind: "boolean", required: false },
   ],
   outputs: [
     { key: "endpoint", label: "Endpoint URL", sensitive: false },
     { key: "bucketName", label: "Bucket Name", sensitive: false },
-    { key: "serviceAccountKey", label: "Service Account Key (JSON)", sensitive: true, description: "Created on demand via the IAM API" },
+    {
+      key: "serviceAccountKey",
+      label: "Service Account Key (JSON)",
+      sensitive: true,
+      description: "Created on demand via the IAM API",
+    },
   ],
   dashboardPinnable: true,
   supportsStorageBrowser: true,
@@ -29,9 +39,14 @@ export const GcsBucketResourceType: ResourceTypeDefinition = {
     {
       id: "gcs-full",
       displayName: "GCS Credentials",
-      description: "Service account key JSON and bucket name — a new key is created via the IAM API",
+      description:
+        "Service account key JSON and bucket name — a new key is created via the IAM API",
       entries: [
-        { envKey: "GOOGLE_APPLICATION_CREDENTIALS_JSON", outputKey: "serviceAccountKey", description: "Service account key JSON (created on demand)" },
+        {
+          envKey: "GOOGLE_APPLICATION_CREDENTIALS_JSON",
+          outputKey: "serviceAccountKey",
+          description: "Service account key JSON (created on demand)",
+        },
         { envKey: "GCS_BUCKET", outputKey: "bucketName" },
       ],
     },
@@ -39,9 +54,7 @@ export const GcsBucketResourceType: ResourceTypeDefinition = {
       id: "sa-key-only",
       displayName: "Service Account Key Only",
       description: "Just the service account key JSON — a new key is created via the IAM API",
-      entries: [
-        { envKey: "GOOGLE_APPLICATION_CREDENTIALS_JSON", outputKey: "serviceAccountKey" },
-      ],
+      entries: [{ envKey: "GOOGLE_APPLICATION_CREDENTIALS_JSON", outputKey: "serviceAccountKey" }],
     },
   ],
 };

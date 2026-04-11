@@ -1,10 +1,4 @@
-export type FieldKind =
-  | "string"
-  | "number"
-  | "boolean"
-  | "enum"
-  | "secret"
-  | "association";
+export type FieldKind = "string" | "number" | "boolean" | "enum" | "secret" | "association";
 
 /** Describes a specific plugin/resource-type/output that can provide a value */
 export interface AssociationSource {

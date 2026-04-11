@@ -6,7 +6,12 @@ import { decrypt } from "../../services/encryption";
 import { getPlugin } from "../../plugins/loader";
 import { buildPluginHostServices } from "../../services/host-services";
 import { sqlDrivers } from "../../services/drivers";
-import type { ResourceInstance, SecretFieldState, SecretResolution, DetailViewSchema } from "@infrawrench/plugin-base";
+import type {
+  ResourceInstance,
+  SecretFieldState,
+  SecretResolution,
+  DetailViewSchema,
+} from "@infrawrench/plugin-base";
 import type { AuthSession } from "../auth-middleware";
 
 declare module "hono" {
@@ -159,7 +164,9 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
                   sourceResourceId: s.sourceResourceId ?? "",
                   sourceAccountId: s.sourceAccountId ?? "",
                   outputKey: s.sourceOutputKey ?? "",
-                  ...(s.cachedEncryptedValue != null && { cachedEncryptedValue: s.cachedEncryptedValue }),
+                  ...(s.cachedEncryptedValue != null && {
+                    cachedEncryptedValue: s.cachedEncryptedValue,
+                  }),
                   ...(s.cachedValueIv != null && { cachedIv: s.cachedValueIv }),
                   ...(s.cachedAt != null && { cachedAt: s.cachedAt.toISOString() }),
                 } satisfies SecretResolution),
@@ -169,7 +176,9 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
       ...(dbResource.parentResourceId != null && { parentResourceId: dbResource.parentResourceId }),
       createdAt: dbResource.createdAt.toISOString(),
       updatedAt: dbResource.updatedAt.toISOString(),
-      ...(dbResource.lastSyncedAt != null && { lastSyncedAt: dbResource.lastSyncedAt.toISOString() }),
+      ...(dbResource.lastSyncedAt != null && {
+        lastSyncedAt: dbResource.lastSyncedAt.toISOString(),
+      }),
     };
   } else {
     return c.json({ error: "Resource not found" }, 404);
@@ -183,15 +192,21 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
 
   if (manifest.sqlDriver || client.executeQuery) {
     try {
-      const tables = await client.introspectResource?.(resourceId, accountId)
-        ?? await client.introspect?.()
-        ?? [];
+      const tables =
+        (await client.introspectResource?.(resourceId, accountId)) ??
+        (await client.introspect?.()) ??
+        [];
       enrichedInstance = {
         ...enrichedInstance,
-        resolvedOutputs: { ...enrichedInstance.resolvedOutputs, __tables__: JSON.stringify(tables) },
+        resolvedOutputs: {
+          ...enrichedInstance.resolvedOutputs,
+          __tables__: JSON.stringify(tables),
+        },
       };
       sqlOk = true;
-    } catch { /* introspection is non-critical */ }
+    } catch {
+      /* introspection is non-critical */
+    }
   }
 
   const rtSqlDriver = resourceTypeDef?.resourceSqlDriver;
@@ -208,50 +223,71 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
         if (driver) {
           try {
             const [tableRows, columnRows, pkRows] = await Promise.all([
-              driver.query(rtConnectionString,
-                "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name"),
-              driver.query(rtConnectionString,
-                "SELECT table_name, column_name, data_type FROM information_schema.columns WHERE table_schema = 'public' ORDER BY table_name, ordinal_position"),
-              driver.query(rtConnectionString,
-                "SELECT tc.table_name, kcu.column_name FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.table_schema = 'public'"),
+              driver.query(
+                rtConnectionString,
+                "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name",
+              ),
+              driver.query(
+                rtConnectionString,
+                "SELECT table_name, column_name, data_type FROM information_schema.columns WHERE table_schema = 'public' ORDER BY table_name, ordinal_position",
+              ),
+              driver.query(
+                rtConnectionString,
+                "SELECT tc.table_name, kcu.column_name FROM information_schema.table_constraints tc JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.table_schema = 'public'",
+              ),
             ]);
 
             const tables = (tableRows as Array<{ table_name: string }>).map((t) => {
-              const cols = (columnRows as Array<{ table_name: string; column_name: string; data_type: string }>)
+              const cols = (
+                columnRows as Array<{ table_name: string; column_name: string; data_type: string }>
+              )
                 .filter((col) => col.table_name === t.table_name)
                 .map((col) => ({ name: col.column_name, type: col.data_type }));
               const pks = (pkRows as Array<{ table_name: string; column_name: string }>)
                 .filter((p) => p.table_name === t.table_name)
                 .map((p) => p.column_name);
-              return { name: t.table_name, columns: cols, ...(pks.length > 0 ? { pkColumns: pks } : {}) };
+              return {
+                name: t.table_name,
+                columns: cols,
+                ...(pks.length > 0 ? { pkColumns: pks } : {}),
+              };
             });
 
             enrichedInstance = {
               ...enrichedInstance,
-              resolvedOutputs: { ...enrichedInstance.resolvedOutputs, __tables__: JSON.stringify(tables) },
+              resolvedOutputs: {
+                ...enrichedInstance.resolvedOutputs,
+                __tables__: JSON.stringify(tables),
+              },
             };
-          } catch { /* introspection failed — still enable SQL editor */ }
+          } catch {
+            /* introspection failed — still enable SQL editor */
+          }
           sqlOk = true;
         }
       }
-    } catch { /* resolveOutput failed */ }
+    } catch {
+      /* resolveOutput failed */
+    }
   }
 
   const detailSchema = client.renderDetail(enrichedInstance);
 
   // Inject sqlEditor if per-resource SQL driver is active but plugin didn't provide one
-  const finalSchema: DetailViewSchema = (rtSqlDriver && sqlOk && !detailSchema.sqlEditor)
-    ? {
-        ...detailSchema,
-        sqlEditor: {
-          connectionStringOutputKey: rtSqlDriver.connectionStringOutputKey,
-          defaultQuery: "SELECT * FROM information_schema.tables WHERE table_schema = 'public' LIMIT 20;",
-          ...(enrichedInstance.resolvedOutputs?.["__tables__"]
-            ? { tables: JSON.parse(enrichedInstance.resolvedOutputs["__tables__"]) }
-            : {}),
-        },
-      }
-    : detailSchema;
+  const finalSchema: DetailViewSchema =
+    rtSqlDriver && sqlOk && !detailSchema.sqlEditor
+      ? {
+          ...detailSchema,
+          sqlEditor: {
+            connectionStringOutputKey: rtSqlDriver.connectionStringOutputKey,
+            defaultQuery:
+              "SELECT * FROM information_schema.tables WHERE table_schema = 'public' LIMIT 20;",
+            ...(enrichedInstance.resolvedOutputs?.["__tables__"]
+              ? { tables: JSON.parse(enrichedInstance.resolvedOutputs["__tables__"]) }
+              : {}),
+          },
+        }
+      : detailSchema;
 
   const peerPanes: Array<{ tabLabel: string; pluginLogoSvg: string; schema: unknown }> = [];
 
@@ -273,7 +309,10 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
           const peerLoaded = await getPlugin(integration.pluginId);
           if (!peerLoaded) return;
 
-          const peerHostServices = buildPluginHostServices(peerLoaded.plugin.manifest, peerCredentials);
+          const peerHostServices = buildPluginHostServices(
+            peerLoaded.plugin.manifest,
+            peerCredentials,
+          );
           const peerClient = peerLoaded.plugin.createClient(peerCredentials, peerHostServices);
           if (!peerClient.renderPeerPane) return;
 
@@ -348,7 +387,11 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
   const hasManifestEditor = !!finalSchema.manifestEditor && !!client.getManifest;
   const resourceTypeLabel = resourceTypeDef?.displayName ?? "Resource";
 
-  const hasSqlEditor = !!finalSchema.sqlEditor || !!manifest.sqlDriver || !!resourceTypeDef?.resourceSqlDriver || !!client.executeQuery;
+  const hasSqlEditor =
+    !!finalSchema.sqlEditor ||
+    !!manifest.sqlDriver ||
+    !!resourceTypeDef?.resourceSqlDriver ||
+    !!client.executeQuery;
   const hasStorageBrowser = !!finalSchema.storageBrowser;
   const hasKvConsole = !!manifest.kvDriver;
   const kvDriverName = manifest.kvDriver?.driver;
@@ -370,8 +413,8 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
     if (isVmRunning) {
       const host = String(
         enrichedInstance.resolvedOutputs?.[hostOutputKey] ??
-        enrichedInstance.fields?.[hostOutputKey] ??
-        "",
+          enrichedInstance.fields?.[hostOutputKey] ??
+          "",
       );
       if (host) sshHost = host;
     }
@@ -380,7 +423,9 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
   const isRunning = finalSchema.status?.status === "healthy";
   const hasSshTerminal = isRunning && (!!sshConfig || !!sshHost);
   const hasSftpBrowser = isRunning && (!!sshConfig || !!sshHost);
-  const containerId = String(instance.resolvedOutputs?.["containerId"] ?? instance.externalId ?? "");
+  const containerId = String(
+    instance.resolvedOutputs?.["containerId"] ?? instance.externalId ?? "",
+  );
   const databaseName = String(instance.fields?.["database"] ?? "test");
   const storageBucketName = finalSchema.storageBrowser?.bucketName ?? "";
 
@@ -423,7 +468,8 @@ app.get("/:pluginId/:typeId/manifest", async (c) => {
 
   const ctx = await getClientForAccount(accountId, organizationId);
   if (!ctx) return c.json({ error: "Account not found" }, 404);
-  if (!ctx.client.getManifest) return c.json({ error: "Plugin does not support manifest viewing" }, 400);
+  if (!ctx.client.getManifest)
+    return c.json({ error: "Plugin does not support manifest viewing" }, 400);
 
   const manifest = await ctx.client.getManifest(resourceId, accountId);
   return c.json({ manifest });
@@ -432,11 +478,16 @@ app.get("/:pluginId/:typeId/manifest", async (c) => {
 /** POST /api/resources/:pluginId/:typeId/manifest */
 app.post("/:pluginId/:typeId/manifest", async (c) => {
   const organizationId = c.get("organizationId");
-  const { accountId, resourceId, manifest } = await c.req.json<{ accountId: string; resourceId: string; manifest: string }>();
+  const { accountId, resourceId, manifest } = await c.req.json<{
+    accountId: string;
+    resourceId: string;
+    manifest: string;
+  }>();
 
   const ctx = await getClientForAccount(accountId, organizationId);
   if (!ctx) return c.json({ error: "Account not found" }, 404);
-  if (!ctx.client.applyManifest) return c.json({ error: "Plugin does not support manifest editing" }, 400);
+  if (!ctx.client.applyManifest)
+    return c.json({ error: "Plugin does not support manifest editing" }, 400);
 
   await ctx.client.applyManifest(resourceId, accountId, manifest);
   return c.json({ ok: true });
@@ -456,9 +507,14 @@ app.delete("/:pluginId/:typeId", async (c) => {
   if (!ctx.client.deleteResource) return c.json({ error: "Plugin does not support deletion" }, 400);
 
   const all = await ctx.client.listResources(resourceTypeId, accountId);
-  console.log(`[DELETE] resourceId=${resourceId}, accountId=${accountId}, typeId=${resourceTypeId}, listed=${all.length}, match=${all.some((r) => r.id === resourceId)}`);
+  console.log(
+    `[DELETE] resourceId=${resourceId}, accountId=${accountId}, typeId=${resourceTypeId}, listed=${all.length}, match=${all.some((r) => r.id === resourceId)}`,
+  );
   if (!all.some((r) => r.id === resourceId)) {
-    console.log("[DELETE] IDs from listResources:", all.map((r) => r.id));
+    console.log(
+      "[DELETE] IDs from listResources:",
+      all.map((r) => r.id),
+    );
   }
 
   await ctx.client.deleteResource(resourceTypeId, resourceId, accountId);
@@ -479,7 +535,11 @@ app.post("/create", async (c) => {
   if (!ctx) return c.json({ error: "Account not found" }, 404);
   if (!ctx.client.createResource) return c.json({ error: "Plugin does not support creation" }, 400);
 
-  const created = await ctx.client.createResource(input.resourceTypeId, input.accountId, input.fields);
+  const created = await ctx.client.createResource(
+    input.resourceTypeId,
+    input.accountId,
+    input.fields,
+  );
 
   // Persist to DB immediately so the detail page can find it without
   // waiting for the next sync / provider propagation.
@@ -527,7 +587,8 @@ app.post("/create-config", async (c) => {
 
   const ctx = await getClientForAccount(input.accountId, organizationId);
   if (!ctx) return c.json({ error: "Account not found" }, 404);
-  if (!ctx.client.getCreateConfig) return c.json({ error: "Plugin does not support dynamic create config" }, 400);
+  if (!ctx.client.getCreateConfig)
+    return c.json({ error: "Plugin does not support dynamic create config" }, 400);
 
   const config = await ctx.client.getCreateConfig(input.resourceTypeId);
   return c.json(config);

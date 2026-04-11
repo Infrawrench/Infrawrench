@@ -88,7 +88,9 @@ export function SshQuickConnectPanel({ host, onConnect }: SshQuickConnectPanelPr
                     setSelectedKeyId(k.id);
                     if (k.ownerName) {
                       const derivedUsername = deriveSSHUsername(k.ownerName);
-                      setUsername((prev) => (prev === "root" || prev === derivedUsername ? derivedUsername : prev));
+                      setUsername((prev) =>
+                        prev === "root" || prev === derivedUsername ? derivedUsername : prev,
+                      );
                     }
                   }}
                   className={`group flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer transition-colors ${
@@ -97,7 +99,9 @@ export function SshQuickConnectPanel({ host, onConnect }: SshQuickConnectPanelPr
                       : "hover:bg-gray-800 border border-transparent text-gray-400"
                   }`}
                 >
-                  <span className="text-xs shrink-0">{selectedKeyId === k.id ? "\u25c9" : "\u25cb"}</span>
+                  <span className="text-xs shrink-0">
+                    {selectedKeyId === k.id ? "\u25c9" : "\u25cb"}
+                  </span>
                   <span className="text-xs font-mono flex-1 truncate">{k.name}</span>
                   <span className="text-xs text-gray-600">{k.ownerName}</span>
                 </div>

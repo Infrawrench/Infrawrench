@@ -32,13 +32,9 @@ async function main(): Promise<void> {
 
   // Filter to specific plugins if INTEGRATION_PLUGINS is set
   const filterEnv = process.env["INTEGRATION_PLUGINS"];
-  const allowedPlugins = filterEnv
-    ? new Set(filterEnv.split(",").map((s) => s.trim()))
-    : null;
+  const allowedPlugins = filterEnv ? new Set(filterEnv.split(",").map((s) => s.trim())) : null;
 
-  const toRun = allowedPlugins
-    ? resolved.filter((r) => allowedPlugins.has(r.pluginId))
-    : resolved;
+  const toRun = allowedPlugins ? resolved.filter((r) => allowedPlugins.has(r.pluginId)) : resolved;
 
   // Report skipped providers
   const allIds = allPluginIds();
@@ -55,7 +51,9 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
-  process.stdout.write(`\nTesting ${toRun.length} provider(s): ${toRun.map((r) => r.pluginId).join(", ")}\n`);
+  process.stdout.write(
+    `\nTesting ${toRun.length} provider(s): ${toRun.map((r) => r.pluginId).join(", ")}\n`,
+  );
 
   // Run tests sequentially per provider (parallel within a provider would be chaos)
   for (const { pluginId, credentials } of toRun) {

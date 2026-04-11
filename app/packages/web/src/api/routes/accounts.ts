@@ -87,7 +87,9 @@ app.post("/", async (c) => {
 app.delete("/:id", async (c) => {
   const organizationId = c.get("organizationId");
   const accountId = c.req.param("id");
-  await db.delete(accounts).where(and(eq(accounts.id, accountId), eq(accounts.organizationId, organizationId)));
+  await db
+    .delete(accounts)
+    .where(and(eq(accounts.id, accountId), eq(accounts.organizationId, organizationId)));
   return c.json({ ok: true });
 });
 
@@ -96,7 +98,10 @@ app.get("/:id/credentials", async (c) => {
   const organizationId = c.get("organizationId");
   const accountId = c.req.param("id");
   const [row] = await db
-    .select({ encryptedCredentials: accounts.encryptedCredentials, credentialsIv: accounts.credentialsIv })
+    .select({
+      encryptedCredentials: accounts.encryptedCredentials,
+      credentialsIv: accounts.credentialsIv,
+    })
     .from(accounts)
     .where(and(eq(accounts.id, accountId), eq(accounts.organizationId, organizationId)));
   if (!row) return c.json({ error: "Account not found" }, 404);
@@ -154,13 +159,14 @@ app.get("/:id/detail", async (c) => {
   if (!account) return c.json({ error: "Account not found" }, 404);
 
   const plugin = await getPlugin(account.pluginId);
-  const resourceTypes = plugin?.plugin.resourceTypes.map((rt) => ({
-    id: rt.id,
-    displayName: rt.displayName,
-    pluralDisplayName: rt.pluralDisplayName,
-    parentTypeId: rt.parentTypeId,
-    supportsCreate: rt.supportsCreate ?? false,
-  })) ?? [];
+  const resourceTypes =
+    plugin?.plugin.resourceTypes.map((rt) => ({
+      id: rt.id,
+      displayName: rt.displayName,
+      pluralDisplayName: rt.pluralDisplayName,
+      parentTypeId: rt.parentTypeId,
+      supportsCreate: rt.supportsCreate ?? false,
+    })) ?? [];
 
   return c.json({
     account: {
@@ -264,7 +270,10 @@ app.post("/:id/sync-type/:typeId", async (c) => {
   );
 });
 
-export async function syncAccountResources(accountId: string, organizationId: string): Promise<number> {
+export async function syncAccountResources(
+  accountId: string,
+  organizationId: string,
+): Promise<number> {
   const [account] = await db
     .select()
     .from(accounts)

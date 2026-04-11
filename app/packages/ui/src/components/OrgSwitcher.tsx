@@ -38,9 +38,10 @@ export function OrgSwitcher({
   }, [open]);
 
   const activeOrg = orgs.find((o) => o.id === activeOrgId);
-  const label = activeOrgId === null && showLocalOption
-    ? "Local"
-    : activeOrg?.displayName ?? (loading ? "Loading..." : "Select organization");
+  const label =
+    activeOrgId === null && showLocalOption
+      ? "Local"
+      : (activeOrg?.displayName ?? (loading ? "Loading..." : "Select organization"));
 
   return (
     <div ref={ref} className="relative">
@@ -56,7 +57,10 @@ export function OrgSwitcher({
         <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-gray-900 border border-gray-700 rounded-lg shadow-xl overflow-hidden">
           {showLocalOption && (
             <button
-              onClick={() => { onSwitch(null); setOpen(false); }}
+              onClick={() => {
+                onSwitch(null);
+                setOpen(false);
+              }}
               className={`w-full text-left px-3 py-2 text-sm transition-colors flex items-center gap-2 ${
                 activeOrgId === null
                   ? "bg-gray-800 text-gray-100"
@@ -68,14 +72,15 @@ export function OrgSwitcher({
             </button>
           )}
 
-          {(showLocalOption && orgs.length > 0) && (
-            <div className="border-t border-gray-800" />
-          )}
+          {showLocalOption && orgs.length > 0 && <div className="border-t border-gray-800" />}
 
           {orgs.map((org) => (
             <button
               key={org.id}
-              onClick={() => { onSwitch(org.id); setOpen(false); }}
+              onClick={() => {
+                onSwitch(org.id);
+                setOpen(false);
+              }}
               className={`w-full text-left px-3 py-2 text-sm transition-colors flex items-center gap-2 ${
                 org.id === activeOrgId
                   ? "bg-gray-800 text-gray-100"
@@ -92,7 +97,10 @@ export function OrgSwitcher({
             <>
               <div className="border-t border-gray-800" />
               <button
-                onClick={() => { onCreateOrg(); setOpen(false); }}
+                onClick={() => {
+                  onCreateOrg();
+                  setOpen(false);
+                }}
                 className="w-full text-left px-3 py-2 text-sm text-gray-500 hover:bg-gray-800 hover:text-gray-300 transition-colors"
               >
                 + Create organization

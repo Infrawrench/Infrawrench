@@ -29,9 +29,7 @@ export function SidebarItem({ item, pluginId, resourceTypeId, depth = 0 }: Sideb
         style={{ paddingLeft: `${12 + depth * 12}px` }}
       >
         {hasChildren && (
-          <span className="text-gray-600 w-3 flex-shrink-0 text-xs">
-            {expanded ? "▾" : "▸"}
-          </span>
+          <span className="text-gray-600 w-3 flex-shrink-0 text-xs">{expanded ? "▾" : "▸"}</span>
         )}
         {!hasChildren && <span className="w-3 flex-shrink-0" />}
         <span className="flex-1 truncate">{item.label}</span>

@@ -68,9 +68,7 @@ export async function loadPlugins(): Promise<LoadedPlugin[]> {
   for (const entry of blessedRegistry.entries) {
     const plugin = PLUGIN_MODULES[entry.packageName];
     if (!plugin) {
-      console.warn(
-        `[plugin-loader] No module registered for "${entry.packageName}" — skipping`,
-      );
+      console.warn(`[plugin-loader] No module registered for "${entry.packageName}" — skipping`);
       continue;
     }
 

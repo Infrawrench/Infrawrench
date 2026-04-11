@@ -21,34 +21,52 @@ import {
 
 function tunnelStatus(status: string): ResourceStatus {
   switch (status) {
-    case "healthy": return "healthy";
-    case "active": return "healthy";
-    case "degraded": return "degraded";
-    case "inactive": return "error";
-    case "down": return "error";
-    default: return "unknown";
+    case "healthy":
+      return "healthy";
+    case "active":
+      return "healthy";
+    case "degraded":
+      return "degraded";
+    case "inactive":
+      return "error";
+    case "down":
+      return "error";
+    default:
+      return "unknown";
   }
 }
 
 function deploymentStatus(status: string): ResourceStatus {
   switch (status) {
-    case "success": return "healthy";
-    case "active": return "healthy";
-    case "failure": return "error";
-    case "idle": return "unknown";
-    default: return "provisioning";
+    case "success":
+      return "healthy";
+    case "active":
+      return "healthy";
+    case "failure":
+      return "error";
+    case "idle":
+      return "unknown";
+    default:
+      return "provisioning";
   }
 }
 
 function sslStatus(status: string): ResourceStatus {
   switch (status) {
-    case "active": return "healthy";
-    case "pending_validation": return "provisioning";
-    case "pending_issuance": return "provisioning";
-    case "pending_deployment": return "provisioning";
-    case "expired": return "error";
-    case "deleted": return "error";
-    default: return "unknown";
+    case "active":
+      return "healthy";
+    case "pending_validation":
+      return "provisioning";
+    case "pending_issuance":
+      return "provisioning";
+    case "pending_deployment":
+      return "provisioning";
+    case "expired":
+      return "error";
+    case "deleted":
+      return "error";
+    default:
+      return "unknown";
   }
 }
 
@@ -75,7 +93,11 @@ export class CloudflareClient implements PluginClient {
       throw new Error(`Cloudflare API error ${res.status} for ${path}: ${await res.text()}`);
     }
     if (res.status === 204) return undefined as unknown as T;
-    const json = await res.json() as { success: boolean; result: T; errors?: Array<{ message: string }> };
+    const json = (await res.json()) as {
+      success: boolean;
+      result: T;
+      errors?: Array<{ message: string }>;
+    };
     if (!json.success) {
       const msgs = json.errors?.map((e) => e.message).join(", ") ?? "unknown error";
       throw new Error(`Cloudflare API error for ${path}: ${msgs}`);
@@ -96,7 +118,7 @@ export class CloudflareClient implements PluginClient {
         },
       });
       if (!res.ok) throw new Error(`Cloudflare API error ${res.status}: ${await res.text()}`);
-      const json = await res.json() as {
+      const json = (await res.json()) as {
         success: boolean;
         result: T[];
         result_info?: { total_pages: number; page: number };
@@ -115,44 +137,73 @@ export class CloudflareClient implements PluginClient {
     if (this.cfAccountId) return this.cfAccountId;
     const zones = await this.paginate<Record<string, unknown>>("/zones?per_page=1");
     const firstZone = zones[0];
-    if (!firstZone) throw new Error("Cloudflare plugin: no zones found — cannot determine account ID");
+    if (!firstZone)
+      throw new Error("Cloudflare plugin: no zones found — cannot determine account ID");
     const account = firstZone["account"] as Record<string, unknown> | undefined;
     this.cfAccountId = String(account?.["id"] ?? "");
-    if (!this.cfAccountId) throw new Error("Cloudflare plugin: could not determine account ID from zone");
+    if (!this.cfAccountId)
+      throw new Error("Cloudflare plugin: could not determine account ID from zone");
     return this.cfAccountId;
   }
 
   async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
     switch (typeId) {
-      case "zone": return this.listZones(accountId);
-      case "dns-record": return this.listAllDnsRecords(accountId);
-      case "worker": return this.listWorkers(accountId);
-      case "r2-bucket": return this.listR2Buckets(accountId);
-      case "pages-project": return this.listPagesProjects(accountId);
-      case "pages-deployment": return this.listAllPagesDeployments(accountId);
-      case "kv-namespace": return this.listKVNamespaces(accountId);
-      case "d1-database": return this.listD1Databases(accountId);
-      case "queue": return this.listQueues(accountId);
-      case "tunnel": return this.listTunnels(accountId);
-      case "ssl-certificate": return this.listAllSSLCertificates(accountId);
-      case "page-rule": return this.listAllPageRules(accountId);
-      case "firewall-rule": return this.listAllFirewallRules(accountId);
-      case "access-application": return this.listAccessApplications(accountId);
-      case "load-balancer": return this.listAllLoadBalancers(accountId);
-      case "worker-route": return this.listAllWorkerRoutes(accountId);
-      case "custom-hostname": return this.listAllCustomHostnames(accountId);
-      case "hyperdrive": return this.listHyperdrives(accountId);
-      case "email-routing-rule": return this.listAllEmailRoutingRules(accountId);
-      case "waiting-room": return this.listAllWaitingRooms(accountId);
-      case "access-policy": return this.listAllAccessPolicies(accountId);
-      case "spectrum-application": return this.listAllSpectrumApplications(accountId);
-      case "logpush-job": return this.listAllLogpushJobs(accountId);
+      case "zone":
+        return this.listZones(accountId);
+      case "dns-record":
+        return this.listAllDnsRecords(accountId);
+      case "worker":
+        return this.listWorkers(accountId);
+      case "r2-bucket":
+        return this.listR2Buckets(accountId);
+      case "pages-project":
+        return this.listPagesProjects(accountId);
+      case "pages-deployment":
+        return this.listAllPagesDeployments(accountId);
+      case "kv-namespace":
+        return this.listKVNamespaces(accountId);
+      case "d1-database":
+        return this.listD1Databases(accountId);
+      case "queue":
+        return this.listQueues(accountId);
+      case "tunnel":
+        return this.listTunnels(accountId);
+      case "ssl-certificate":
+        return this.listAllSSLCertificates(accountId);
+      case "page-rule":
+        return this.listAllPageRules(accountId);
+      case "firewall-rule":
+        return this.listAllFirewallRules(accountId);
+      case "access-application":
+        return this.listAccessApplications(accountId);
+      case "load-balancer":
+        return this.listAllLoadBalancers(accountId);
+      case "worker-route":
+        return this.listAllWorkerRoutes(accountId);
+      case "custom-hostname":
+        return this.listAllCustomHostnames(accountId);
+      case "hyperdrive":
+        return this.listHyperdrives(accountId);
+      case "email-routing-rule":
+        return this.listAllEmailRoutingRules(accountId);
+      case "waiting-room":
+        return this.listAllWaitingRooms(accountId);
+      case "access-policy":
+        return this.listAllAccessPolicies(accountId);
+      case "spectrum-application":
+        return this.listAllSpectrumApplications(accountId);
+      case "logpush-job":
+        return this.listAllLogpushJobs(accountId);
       default:
         throw new Error(`Cloudflare plugin: unknown resource type "${typeId}"`);
     }
   }
 
-  async getResource(typeId: string, resourceId: string, accountId: string): Promise<ResourceInstance> {
+  async getResource(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+  ): Promise<ResourceInstance> {
     const externalId = resourceId.split(":").slice(2).join(":");
 
     if (typeId === "zone") {
@@ -162,17 +213,23 @@ export class CloudflareClient implements PluginClient {
     if (typeId === "dns-record") {
       const [zoneId, recordId] = externalId.split("/");
       if (!zoneId || !recordId) throw new Error("Invalid DNS record ID");
-      const record = await this.fetch<Record<string, unknown>>(`/zones/${zoneId}/dns_records/${recordId}`);
+      const record = await this.fetch<Record<string, unknown>>(
+        `/zones/${zoneId}/dns_records/${recordId}`,
+      );
       return this.mapDnsRecord(record, accountId, zoneId);
     }
     if (typeId === "r2-bucket") {
       const cfAccountId = await this.getAccountId();
-      const bucket = await this.fetch<Record<string, unknown>>(`/accounts/${cfAccountId}/r2/buckets/${externalId}`);
+      const bucket = await this.fetch<Record<string, unknown>>(
+        `/accounts/${cfAccountId}/r2/buckets/${externalId}`,
+      );
       return this.mapR2Bucket(bucket, accountId, cfAccountId);
     }
     if (typeId === "d1-database") {
       const cfAccountId = await this.getAccountId();
-      const db = await this.fetch<Record<string, unknown>>(`/accounts/${cfAccountId}/d1/database/${externalId}`);
+      const db = await this.fetch<Record<string, unknown>>(
+        `/accounts/${cfAccountId}/d1/database/${externalId}`,
+      );
       return this.mapD1Database(db, accountId);
     }
 
@@ -215,7 +272,9 @@ export class CloudflareClient implements PluginClient {
       if (outputKey === "tunnelId") return resource.externalId ?? "";
       if (outputKey === "tunnelToken") {
         const cfAccountId = await this.getAccountId();
-        const token = await this.fetch<{ token: string }>(`/accounts/${cfAccountId}/cfd_tunnel/${resource.externalId}/token`);
+        const token = await this.fetch<{ token: string }>(
+          `/accounts/${cfAccountId}/cfd_tunnel/${resource.externalId}/token`,
+        );
         return String(token?.token ?? "");
       }
     }
@@ -234,45 +293,73 @@ export class CloudflareClient implements PluginClient {
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
     switch (resource.resourceTypeId) {
-      case "zone": return this.renderZoneDetail(resource);
+      case "zone":
+        return this.renderZoneDetail(resource);
       case "dns-record": {
         const opts = Boolean(resource.fields["proxied"])
           ? {
-              extraSections: [{
-                kind: "section" as const,
-                title: "Cloudflare Proxy",
-                children: [{
-                  kind: "text" as const,
-                  content: "Traffic to this record is routed through Cloudflare's network, providing DDoS protection, SSL, and caching.",
-                  variant: "muted" as const,
-                }],
-              }],
+              extraSections: [
+                {
+                  kind: "section" as const,
+                  title: "Cloudflare Proxy",
+                  children: [
+                    {
+                      kind: "text" as const,
+                      content:
+                        "Traffic to this record is routed through Cloudflare's network, providing DDoS protection, SSL, and caching.",
+                      variant: "muted" as const,
+                    },
+                  ],
+                },
+              ],
             }
           : {};
         return renderDnsRecordDetail(resource, opts);
       }
-      case "worker": return this.renderWorkerDetail(resource);
-      case "r2-bucket": return this.renderR2BucketDetail(resource);
-      case "pages-project": return this.renderPagesProjectDetail(resource);
-      case "pages-deployment": return this.renderPagesDeploymentDetail(resource);
-      case "kv-namespace": return this.renderKVNamespaceDetail(resource);
-      case "d1-database": return this.renderD1DatabaseDetail(resource);
-      case "queue": return this.renderQueueDetail(resource);
-      case "tunnel": return this.renderTunnelDetail(resource);
-      case "ssl-certificate": return this.renderSSLCertificateDetail(resource);
-      case "page-rule": return this.renderPageRuleDetail(resource);
-      case "firewall-rule": return this.renderFirewallRuleDetail(resource);
-      case "access-application": return this.renderAccessApplicationDetail(resource);
-      case "load-balancer": return this.renderLoadBalancerDetail(resource);
-      case "worker-route": return this.renderWorkerRouteDetail(resource);
-      case "custom-hostname": return this.renderCustomHostnameDetail(resource);
-      case "hyperdrive": return this.renderHyperdriveDetail(resource);
-      case "email-routing-rule": return this.renderEmailRoutingRuleDetail(resource);
-      case "waiting-room": return this.renderWaitingRoomDetail(resource);
-      case "access-policy": return this.renderAccessPolicyDetail(resource);
-      case "spectrum-application": return this.renderSpectrumApplicationDetail(resource);
-      case "logpush-job": return this.renderLogpushJobDetail(resource);
-      default: return this.renderGenericDetail(resource);
+      case "worker":
+        return this.renderWorkerDetail(resource);
+      case "r2-bucket":
+        return this.renderR2BucketDetail(resource);
+      case "pages-project":
+        return this.renderPagesProjectDetail(resource);
+      case "pages-deployment":
+        return this.renderPagesDeploymentDetail(resource);
+      case "kv-namespace":
+        return this.renderKVNamespaceDetail(resource);
+      case "d1-database":
+        return this.renderD1DatabaseDetail(resource);
+      case "queue":
+        return this.renderQueueDetail(resource);
+      case "tunnel":
+        return this.renderTunnelDetail(resource);
+      case "ssl-certificate":
+        return this.renderSSLCertificateDetail(resource);
+      case "page-rule":
+        return this.renderPageRuleDetail(resource);
+      case "firewall-rule":
+        return this.renderFirewallRuleDetail(resource);
+      case "access-application":
+        return this.renderAccessApplicationDetail(resource);
+      case "load-balancer":
+        return this.renderLoadBalancerDetail(resource);
+      case "worker-route":
+        return this.renderWorkerRouteDetail(resource);
+      case "custom-hostname":
+        return this.renderCustomHostnameDetail(resource);
+      case "hyperdrive":
+        return this.renderHyperdriveDetail(resource);
+      case "email-routing-rule":
+        return this.renderEmailRoutingRuleDetail(resource);
+      case "waiting-room":
+        return this.renderWaitingRoomDetail(resource);
+      case "access-policy":
+        return this.renderAccessPolicyDetail(resource);
+      case "spectrum-application":
+        return this.renderSpectrumApplicationDetail(resource);
+      case "logpush-job":
+        return this.renderLogpushJobDetail(resource);
+      default:
+        return this.renderGenericDetail(resource);
     }
   }
 
@@ -319,7 +406,11 @@ export class CloudflareClient implements PluginClient {
         return {
           id: resource.id,
           label: resource.displayName,
-          status: { kind: "status-dot", status: deploymentStatus(latestStatus), label: latestStatus },
+          status: {
+            kind: "status-dot",
+            status: deploymentStatus(latestStatus),
+            label: latestStatus,
+          },
         };
       }
       return {
@@ -332,7 +423,11 @@ export class CloudflareClient implements PluginClient {
       return {
         id: resource.id,
         label: resource.displayName,
-        status: { kind: "status-dot", status: enabled ? "healthy" : "error", label: enabled ? "Enabled" : "Disabled" },
+        status: {
+          kind: "status-dot",
+          status: enabled ? "healthy" : "error",
+          label: enabled ? "Enabled" : "Disabled",
+        },
       };
     }
     if (resource.resourceTypeId === "firewall-rule") {
@@ -340,7 +435,11 @@ export class CloudflareClient implements PluginClient {
       return {
         id: resource.id,
         label: String(resource.fields["description"] || resource.displayName),
-        status: { kind: "status-dot", status: enabled ? "healthy" : "unknown", label: enabled ? "Active" : "Disabled" },
+        status: {
+          kind: "status-dot",
+          status: enabled ? "healthy" : "unknown",
+          label: enabled ? "Active" : "Disabled",
+        },
       };
     }
     if (resource.resourceTypeId === "custom-hostname") {
@@ -348,7 +447,12 @@ export class CloudflareClient implements PluginClient {
       return {
         id: resource.id,
         label: String(resource.fields["hostname"] ?? resource.displayName),
-        status: { kind: "status-dot", status: status === "active" ? "healthy" : status === "pending" ? "provisioning" : "unknown", label: status },
+        status: {
+          kind: "status-dot",
+          status:
+            status === "active" ? "healthy" : status === "pending" ? "provisioning" : "unknown",
+          label: status,
+        },
       };
     }
     if (resource.resourceTypeId === "waiting-room") {
@@ -356,7 +460,11 @@ export class CloudflareClient implements PluginClient {
       return {
         id: resource.id,
         label: resource.displayName,
-        status: { kind: "status-dot", status: suspended ? "error" : "healthy", label: suspended ? "Suspended" : "Active" },
+        status: {
+          kind: "status-dot",
+          status: suspended ? "error" : "healthy",
+          label: suspended ? "Suspended" : "Active",
+        },
       };
     }
     if (resource.resourceTypeId === "access-policy") {
@@ -364,7 +472,11 @@ export class CloudflareClient implements PluginClient {
       return {
         id: resource.id,
         label: resource.displayName,
-        status: { kind: "status-dot", status: decision === "allow" ? "healthy" : decision === "deny" ? "error" : "unknown", label: decision },
+        status: {
+          kind: "status-dot",
+          status: decision === "allow" ? "healthy" : decision === "deny" ? "error" : "unknown",
+          label: decision,
+        },
       };
     }
     if (resource.resourceTypeId === "logpush-job") {
@@ -373,14 +485,22 @@ export class CloudflareClient implements PluginClient {
       return {
         id: resource.id,
         label: String(resource.fields["dataset"] ?? resource.displayName),
-        status: { kind: "status-dot", status: !enabled ? "unknown" : lastError ? "error" : "healthy", label: !enabled ? "Disabled" : lastError ? "Error" : "Active" },
+        status: {
+          kind: "status-dot",
+          status: !enabled ? "unknown" : lastError ? "error" : "healthy",
+          label: !enabled ? "Disabled" : lastError ? "Error" : "Active",
+        },
       };
     }
     if (resource.resourceTypeId === "spectrum-application") {
       return {
         id: resource.id,
         label: String(resource.fields["dns"] ?? resource.displayName),
-        status: { kind: "status-dot", status: "healthy", label: String(resource.fields["protocol"] ?? "") },
+        status: {
+          kind: "status-dot",
+          status: "healthy",
+          label: String(resource.fields["protocol"] ?? ""),
+        },
       };
     }
     return {
@@ -394,7 +514,13 @@ export class CloudflareClient implements PluginClient {
     if (typeId === "zone") {
       return {
         fields: [
-          { key: "name", label: "Domain Name", kind: "text", required: true, description: "The domain name to add to Cloudflare (e.g. example.com)" },
+          {
+            key: "name",
+            label: "Domain Name",
+            kind: "text",
+            required: true,
+            description: "The domain name to add to Cloudflare (e.g. example.com)",
+          },
         ],
       };
     }
@@ -402,11 +528,17 @@ export class CloudflareClient implements PluginClient {
       return {
         fields: [
           {
-            key: "zoneId", label: "Zone", kind: "select", required: true,
+            key: "zoneId",
+            label: "Zone",
+            kind: "select",
+            required: true,
             options: await this.getZoneOptions(),
           },
           {
-            key: "type", label: "Record Type", kind: "select", required: true,
+            key: "type",
+            label: "Record Type",
+            kind: "select",
+            required: true,
             options: [
               { id: "A", label: "A" },
               { id: "AAAA", label: "AAAA" },
@@ -418,10 +550,25 @@ export class CloudflareClient implements PluginClient {
               { id: "CAA", label: "CAA" },
             ],
           },
-          { key: "name", label: "Name", kind: "text", required: true, description: 'Record name (e.g. "@" for root, "www" for subdomain)' },
-          { key: "content", label: "Content", kind: "text", required: true, description: "Record value (e.g. IP address, hostname)" },
           {
-            key: "ttl", label: "TTL", kind: "select", required: false,
+            key: "name",
+            label: "Name",
+            kind: "text",
+            required: true,
+            description: 'Record name (e.g. "@" for root, "www" for subdomain)',
+          },
+          {
+            key: "content",
+            label: "Content",
+            kind: "text",
+            required: true,
+            description: "Record value (e.g. IP address, hostname)",
+          },
+          {
+            key: "ttl",
+            label: "TTL",
+            kind: "select",
+            required: false,
             defaultValue: "1",
             options: [
               { id: "1", label: "Auto" },
@@ -433,7 +580,10 @@ export class CloudflareClient implements PluginClient {
             ],
           },
           {
-            key: "proxied", label: "Proxied", kind: "select", required: false,
+            key: "proxied",
+            label: "Proxied",
+            kind: "select",
+            required: false,
             defaultValue: "false",
             options: [
               { id: "true", label: "Proxied (orange cloud)" },
@@ -441,10 +591,14 @@ export class CloudflareClient implements PluginClient {
             ],
           },
           {
-            key: "priority", label: "Priority", kind: "number", required: false,
+            key: "priority",
+            label: "Priority",
+            kind: "number",
+            required: false,
             description: "Required for MX and SRV records",
             showWhen: { fieldKey: "type", fieldValue: "MX" },
-            minValue: 0, maxValue: 65535,
+            minValue: 0,
+            maxValue: 65535,
           },
         ],
       };
@@ -452,9 +606,18 @@ export class CloudflareClient implements PluginClient {
     if (typeId === "r2-bucket") {
       return {
         fields: [
-          { key: "name", label: "Bucket Name", kind: "text", required: true, description: "Globally unique bucket name (lowercase, hyphens, 3-63 chars)" },
           {
-            key: "locationHint", label: "Location Hint", kind: "select", required: false,
+            key: "name",
+            label: "Bucket Name",
+            kind: "text",
+            required: true,
+            description: "Globally unique bucket name (lowercase, hyphens, 3-63 chars)",
+          },
+          {
+            key: "locationHint",
+            label: "Location Hint",
+            kind: "select",
+            required: false,
             options: [
               { id: "", label: "Automatic" },
               { id: "wnam", label: "Western North America" },
@@ -469,33 +632,45 @@ export class CloudflareClient implements PluginClient {
     }
     if (typeId === "kv-namespace") {
       return {
-        fields: [
-          { key: "title", label: "Namespace Title", kind: "text", required: true },
-        ],
+        fields: [{ key: "title", label: "Namespace Title", kind: "text", required: true }],
       };
     }
     if (typeId === "d1-database") {
       return {
-        fields: [
-          { key: "name", label: "Database Name", kind: "text", required: true },
-        ],
+        fields: [{ key: "name", label: "Database Name", kind: "text", required: true }],
       };
     }
     if (typeId === "queue") {
       return {
-        fields: [
-          { key: "queue_name", label: "Queue Name", kind: "text", required: true },
-        ],
+        fields: [{ key: "queue_name", label: "Queue Name", kind: "text", required: true }],
       };
     }
     if (typeId === "hyperdrive") {
       return {
         fields: [
           { key: "name", label: "Name", kind: "text", required: true },
-          { key: "host", label: "Origin Host", kind: "text", required: true, description: "Hostname of the database server" },
-          { key: "port", label: "Origin Port", kind: "number", required: true, defaultValue: "5432", minValue: 1, maxValue: 65535 },
           {
-            key: "scheme", label: "Protocol", kind: "select", required: true, defaultValue: "postgres",
+            key: "host",
+            label: "Origin Host",
+            kind: "text",
+            required: true,
+            description: "Hostname of the database server",
+          },
+          {
+            key: "port",
+            label: "Origin Port",
+            kind: "number",
+            required: true,
+            defaultValue: "5432",
+            minValue: 1,
+            maxValue: 65535,
+          },
+          {
+            key: "scheme",
+            label: "Protocol",
+            kind: "select",
+            required: true,
+            defaultValue: "postgres",
             options: [
               { id: "postgres", label: "PostgreSQL" },
               { id: "mysql", label: "MySQL" },
@@ -510,7 +685,11 @@ export class CloudflareClient implements PluginClient {
     throw new Error(`Cloudflare plugin: getCreateConfig not supported for type "${typeId}"`);
   }
 
-  async createResource(typeId: string, accountId: string, fields: Record<string, string>): Promise<ResourceInstance> {
+  async createResource(
+    typeId: string,
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
     if (typeId === "zone") {
       const zone = await this.fetch<Record<string, unknown>>("/zones", {
         method: "POST",
@@ -541,18 +720,24 @@ export class CloudflareClient implements PluginClient {
       const cfAccountId = await this.getAccountId();
       const body: Record<string, unknown> = { name: fields["name"] };
       if (fields["locationHint"]) body["locationHint"] = fields["locationHint"];
-      const bucket = await this.fetch<Record<string, unknown>>(`/accounts/${cfAccountId}/r2/buckets`, {
-        method: "POST",
-        body: JSON.stringify(body),
-      });
+      const bucket = await this.fetch<Record<string, unknown>>(
+        `/accounts/${cfAccountId}/r2/buckets`,
+        {
+          method: "POST",
+          body: JSON.stringify(body),
+        },
+      );
       return this.mapR2Bucket(bucket, accountId, cfAccountId);
     }
     if (typeId === "kv-namespace") {
       const cfAccountId = await this.getAccountId();
-      const ns = await this.fetch<Record<string, unknown>>(`/accounts/${cfAccountId}/storage/kv/namespaces`, {
-        method: "POST",
-        body: JSON.stringify({ title: fields["title"] }),
-      });
+      const ns = await this.fetch<Record<string, unknown>>(
+        `/accounts/${cfAccountId}/storage/kv/namespaces`,
+        {
+          method: "POST",
+          body: JSON.stringify({ title: fields["title"] }),
+        },
+      );
       return this.mapKVNamespace(ns, accountId);
     }
     if (typeId === "d1-database") {
@@ -573,20 +758,23 @@ export class CloudflareClient implements PluginClient {
     }
     if (typeId === "hyperdrive") {
       const cfAccountId = await this.getAccountId();
-      const hd = await this.fetch<Record<string, unknown>>(`/accounts/${cfAccountId}/hyperdrive/configs`, {
-        method: "POST",
-        body: JSON.stringify({
-          name: fields["name"],
-          origin: {
-            scheme: fields["scheme"] ?? "postgres",
-            host: fields["host"],
-            port: Number(fields["port"] ?? 5432),
-            database: fields["database"],
-            user: fields["user"],
-            password: fields["password"],
-          },
-        }),
-      });
+      const hd = await this.fetch<Record<string, unknown>>(
+        `/accounts/${cfAccountId}/hyperdrive/configs`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            name: fields["name"],
+            origin: {
+              scheme: fields["scheme"] ?? "postgres",
+              host: fields["host"],
+              port: Number(fields["port"] ?? 5432),
+              database: fields["database"],
+              user: fields["user"],
+              password: fields["password"],
+            },
+          }),
+        },
+      );
       return this.mapHyperdrive(hd, accountId);
     }
     throw new Error(`Cloudflare plugin: createResource not supported for type "${typeId}"`);
@@ -612,7 +800,9 @@ export class CloudflareClient implements PluginClient {
     }
     if (typeId === "kv-namespace") {
       const cfAccountId = await this.getAccountId();
-      await this.fetch(`/accounts/${cfAccountId}/storage/kv/namespaces/${externalId}`, { method: "DELETE" });
+      await this.fetch(`/accounts/${cfAccountId}/storage/kv/namespaces/${externalId}`, {
+        method: "DELETE",
+      });
       return;
     }
     if (typeId === "d1-database") {
@@ -627,12 +817,16 @@ export class CloudflareClient implements PluginClient {
     }
     if (typeId === "hyperdrive") {
       const cfAccountId = await this.getAccountId();
-      await this.fetch(`/accounts/${cfAccountId}/hyperdrive/configs/${externalId}`, { method: "DELETE" });
+      await this.fetch(`/accounts/${cfAccountId}/hyperdrive/configs/${externalId}`, {
+        method: "DELETE",
+      });
       return;
     }
     if (typeId === "worker") {
       const cfAccountId = await this.getAccountId();
-      await this.fetch(`/accounts/${cfAccountId}/workers/scripts/${externalId}`, { method: "DELETE" });
+      await this.fetch(`/accounts/${cfAccountId}/workers/scripts/${externalId}`, {
+        method: "DELETE",
+      });
       return;
     }
     throw new Error(`Cloudflare plugin: deleteResource not supported for type "${typeId}"`);
@@ -647,11 +841,13 @@ export class CloudflareClient implements PluginClient {
     const cfAccountId = await this.getAccountId();
     const start = Date.now();
 
-    const result = await this.fetch<Array<{
-      results?: Array<Record<string, unknown>>;
-      success?: boolean;
-      meta?: { duration?: number; changes?: number; rows_read?: number; rows_written?: number };
-    }>>(`/accounts/${cfAccountId}/d1/database/${externalId}/query`, {
+    const result = await this.fetch<
+      Array<{
+        results?: Array<Record<string, unknown>>;
+        success?: boolean;
+        meta?: { duration?: number; changes?: number; rows_read?: number; rows_written?: number };
+      }>
+    >(`/accounts/${cfAccountId}/d1/database/${externalId}/query`, {
       method: "POST",
       body: JSON.stringify({ sql }),
     });
@@ -662,19 +858,20 @@ export class CloudflareClient implements PluginClient {
     return { rows, durationMs };
   }
 
-  async introspectResource(
-    resourceId: string,
-    _accountId: string,
-  ): Promise<SqlTableMeta[]> {
+  async introspectResource(resourceId: string, _accountId: string): Promise<SqlTableMeta[]> {
     const externalId = resourceId.split(":").slice(2).join(":");
     const cfAccountId = await this.getAccountId();
 
     // Query sqlite_master for tables
-    const tablesResult = await this.fetch<Array<{
-      results?: Array<Record<string, unknown>>;
-    }>>(`/accounts/${cfAccountId}/d1/database/${externalId}/query`, {
+    const tablesResult = await this.fetch<
+      Array<{
+        results?: Array<Record<string, unknown>>;
+      }>
+    >(`/accounts/${cfAccountId}/d1/database/${externalId}/query`, {
       method: "POST",
-      body: JSON.stringify({ sql: "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' ORDER BY name" }),
+      body: JSON.stringify({
+        sql: "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' ORDER BY name",
+      }),
     });
 
     const first = Array.isArray(tablesResult) ? tablesResult[0] : tablesResult;
@@ -685,9 +882,11 @@ export class CloudflareClient implements PluginClient {
       const tableName = String(table["name"] ?? "");
       if (!tableName) continue;
 
-      const columnsResult = await this.fetch<Array<{
-        results?: Array<Record<string, unknown>>;
-      }>>(`/accounts/${cfAccountId}/d1/database/${externalId}/query`, {
+      const columnsResult = await this.fetch<
+        Array<{
+          results?: Array<Record<string, unknown>>;
+        }>
+      >(`/accounts/${cfAccountId}/d1/database/${externalId}/query`, {
         method: "POST",
         body: JSON.stringify({ sql: `PRAGMA table_info('${tableName.replace(/'/g, "''")}')` }),
       });
@@ -741,7 +940,8 @@ export class CloudflareClient implements PluginClient {
     if (typeId === "zone") {
       // Zone settings are applied per-setting via PATCH
       const settings = JSON.parse(manifest) as Array<{ id: string; value: unknown }>;
-      if (!Array.isArray(settings)) throw new Error("Zone settings must be an array of {id, value} objects");
+      if (!Array.isArray(settings))
+        throw new Error("Zone settings must be an array of {id, value} objects");
       for (const setting of settings) {
         await this.fetch(`/zones/${externalId}/settings/${setting.id}`, {
           method: "PATCH",
@@ -763,7 +963,8 @@ export class CloudflareClient implements PluginClient {
     const objects: StorageObject[] = [];
 
     // Directories (common prefixes)
-    const prefixes = (res as unknown as { delimited_prefixes?: string[] })?.delimited_prefixes ?? [];
+    const prefixes =
+      (res as unknown as { delimited_prefixes?: string[] })?.delimited_prefixes ?? [];
     for (const p of prefixes) {
       const name = p.endsWith("/") ? p.slice(prefix.length, -1) : p.slice(prefix.length);
       objects.push({
@@ -804,22 +1005,28 @@ export class CloudflareClient implements PluginClient {
         await this.deleteStorageObject(bucket, obj.key);
       }
     }
-    await this.fetch(`/accounts/${cfAccountId}/r2/buckets/${bucket}/objects/${encodeURIComponent(key)}`, {
-      method: "DELETE",
-    });
+    await this.fetch(
+      `/accounts/${cfAccountId}/r2/buckets/${bucket}/objects/${encodeURIComponent(key)}`,
+      {
+        method: "DELETE",
+      },
+    );
   }
 
   async uploadStorageObject(bucket: string, key: string, file: File): Promise<void> {
     const cfAccountId = await this.getAccountId();
     const arrayBuffer = await file.arrayBuffer();
-    const res = await fetch(`${this.baseUrl}/accounts/${cfAccountId}/r2/buckets/${bucket}/objects/${encodeURIComponent(key)}`, {
-      method: "PUT",
-      headers: {
-        Authorization: `Bearer ${this.apiToken}`,
-        "Content-Type": file.type || "application/octet-stream",
+    const res = await fetch(
+      `${this.baseUrl}/accounts/${cfAccountId}/r2/buckets/${bucket}/objects/${encodeURIComponent(key)}`,
+      {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${this.apiToken}`,
+          "Content-Type": file.type || "application/octet-stream",
+        },
+        body: arrayBuffer,
       },
-      body: arrayBuffer,
-    });
+    );
     if (!res.ok) {
       throw new Error(`R2 upload error ${res.status}: ${await res.text()}`);
     }
@@ -828,15 +1035,18 @@ export class CloudflareClient implements PluginClient {
   async makeStorageFolder(bucket: string, key: string): Promise<void> {
     const cfAccountId = await this.getAccountId();
     const folderKey = key.endsWith("/") ? key : `${key}/`;
-    const res = await fetch(`${this.baseUrl}/accounts/${cfAccountId}/r2/buckets/${bucket}/objects/${encodeURIComponent(folderKey)}`, {
-      method: "PUT",
-      headers: {
-        Authorization: `Bearer ${this.apiToken}`,
-        "Content-Type": "application/x-directory",
-        "Content-Length": "0",
+    const res = await fetch(
+      `${this.baseUrl}/accounts/${cfAccountId}/r2/buckets/${bucket}/objects/${encodeURIComponent(folderKey)}`,
+      {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${this.apiToken}`,
+          "Content-Type": "application/x-directory",
+          "Content-Length": "0",
+        },
+        body: null,
       },
-      body: null,
-    });
+    );
     if (!res.ok) {
       throw new Error(`R2 mkdir error ${res.status}: ${await res.text()}`);
     }
@@ -949,7 +1159,10 @@ export class CloudflareClient implements PluginClient {
         {
           kind: "action",
           label: "Open in Cloudflare",
-          action: { type: "open-url", url: `https://dash.cloudflare.com/${resource.externalId ?? ""}` },
+          action: {
+            type: "open-url",
+            url: `https://dash.cloudflare.com/${resource.externalId ?? ""}`,
+          },
         },
       ],
     };
@@ -970,9 +1183,15 @@ export class CloudflareClient implements PluginClient {
               kind: "key-value-list",
               items: [
                 { key: "Name", value: String(fields["name"] ?? ""), copyable: true },
-                ...(fields["compatibilityDate"] ? [{ key: "Compatibility Date", value: String(fields["compatibilityDate"]) }] : []),
-                ...(fields["createdOn"] ? [{ key: "Created", value: String(fields["createdOn"]) }] : []),
-                ...(fields["modifiedOn"] ? [{ key: "Modified", value: String(fields["modifiedOn"]) }] : []),
+                ...(fields["compatibilityDate"]
+                  ? [{ key: "Compatibility Date", value: String(fields["compatibilityDate"]) }]
+                  : []),
+                ...(fields["createdOn"]
+                  ? [{ key: "Created", value: String(fields["createdOn"]) }]
+                  : []),
+                ...(fields["modifiedOn"]
+                  ? [{ key: "Modified", value: String(fields["modifiedOn"]) }]
+                  : []),
                 ...(fields["routes"] ? [{ key: "Routes", value: String(fields["routes"]) }] : []),
               ],
             },
@@ -980,9 +1199,7 @@ export class CloudflareClient implements PluginClient {
         },
       ],
       manifestEditor: { language: "json", resourceKind: "Worker Settings", readOnly: true },
-      headerActions: [
-        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
-      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
   }
 
@@ -1001,17 +1218,19 @@ export class CloudflareClient implements PluginClient {
               kind: "key-value-list",
               items: [
                 { key: "Name", value: String(fields["name"] ?? ""), copyable: true },
-                ...(fields["location"] ? [{ key: "Location Hint", value: String(fields["location"]) }] : []),
-                ...(fields["createdOn"] ? [{ key: "Created", value: String(fields["createdOn"]) }] : []),
+                ...(fields["location"]
+                  ? [{ key: "Location Hint", value: String(fields["location"]) }]
+                  : []),
+                ...(fields["createdOn"]
+                  ? [{ key: "Created", value: String(fields["createdOn"]) }]
+                  : []),
               ],
             },
           ],
         },
       ],
       storageBrowser: { bucketName: String(fields["name"] ?? "") },
-      headerActions: [
-        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
-      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
   }
 
@@ -1029,9 +1248,15 @@ export class CloudflareClient implements PluginClient {
             items: [
               { key: "Name", value: String(fields["name"] ?? ""), copyable: true },
               { key: "Subdomain", value: String(fields["subdomain"] ?? ""), copyable: true },
-              ...(fields["productionBranch"] ? [{ key: "Production Branch", value: String(fields["productionBranch"]) }] : []),
-              ...(fields["framework"] ? [{ key: "Framework", value: String(fields["framework"]) }] : []),
-              ...(fields["domains"] ? [{ key: "Custom Domains", value: String(fields["domains"]) }] : []),
+              ...(fields["productionBranch"]
+                ? [{ key: "Production Branch", value: String(fields["productionBranch"]) }]
+                : []),
+              ...(fields["framework"]
+                ? [{ key: "Framework", value: String(fields["framework"]) }]
+                : []),
+              ...(fields["domains"]
+                ? [{ key: "Custom Domains", value: String(fields["domains"]) }]
+                : []),
             ],
           },
         ],
@@ -1047,7 +1272,9 @@ export class CloudflareClient implements PluginClient {
             kind: "key-value-list",
             items: [
               ...(latestStatus ? [{ key: "Status", value: latestStatus }] : []),
-              ...(fields["latestDeploymentUrl"] ? [{ key: "URL", value: String(fields["latestDeploymentUrl"]), copyable: true }] : []),
+              ...(fields["latestDeploymentUrl"]
+                ? [{ key: "URL", value: String(fields["latestDeploymentUrl"]), copyable: true }]
+                : []),
             ],
           },
         ],
@@ -1064,11 +1291,16 @@ export class CloudflareClient implements PluginClient {
       headerActions: [
         { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
         ...(fields["subdomain"]
-          ? [{
-              kind: "action" as const,
-              label: "Open Site",
-              action: { type: "open-url" as const, url: `https://${String(fields["subdomain"])}` },
-            }]
+          ? [
+              {
+                kind: "action" as const,
+                label: "Open Site",
+                action: {
+                  type: "open-url" as const,
+                  url: `https://${String(fields["subdomain"])}`,
+                },
+              },
+            ]
           : []),
       ],
     };
@@ -1092,10 +1324,24 @@ export class CloudflareClient implements PluginClient {
                 { key: "Environment", value: String(fields["environment"] ?? "") },
                 { key: "Status", value: status },
                 ...(fields["branch"] ? [{ key: "Branch", value: String(fields["branch"]) }] : []),
-                ...(fields["commitHash"] ? [{ key: "Commit", value: String(fields["commitHash"]).slice(0, 8), copyable: true }] : []),
-                ...(fields["commitMessage"] ? [{ key: "Message", value: String(fields["commitMessage"]) }] : []),
-                ...(fields["url"] ? [{ key: "URL", value: String(fields["url"]), copyable: true }] : []),
-                ...(fields["createdOn"] ? [{ key: "Created", value: String(fields["createdOn"]) }] : []),
+                ...(fields["commitHash"]
+                  ? [
+                      {
+                        key: "Commit",
+                        value: String(fields["commitHash"]).slice(0, 8),
+                        copyable: true,
+                      },
+                    ]
+                  : []),
+                ...(fields["commitMessage"]
+                  ? [{ key: "Message", value: String(fields["commitMessage"]) }]
+                  : []),
+                ...(fields["url"]
+                  ? [{ key: "URL", value: String(fields["url"]), copyable: true }]
+                  : []),
+                ...(fields["createdOn"]
+                  ? [{ key: "Created", value: String(fields["createdOn"]) }]
+                  : []),
               ],
             },
           ],
@@ -1104,11 +1350,13 @@ export class CloudflareClient implements PluginClient {
       headerActions: [
         { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
         ...(fields["url"]
-          ? [{
-              kind: "action" as const,
-              label: "Open",
-              action: { type: "open-url" as const, url: String(fields["url"]) },
-            }]
+          ? [
+              {
+                kind: "action" as const,
+                label: "Open",
+                action: { type: "open-url" as const, url: String(fields["url"]) },
+              },
+            ]
           : []),
       ],
     };
@@ -1135,9 +1383,7 @@ export class CloudflareClient implements PluginClient {
           ],
         },
       ],
-      headerActions: [
-        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
-      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
   }
 
@@ -1157,18 +1403,24 @@ export class CloudflareClient implements PluginClient {
               items: [
                 { key: "Name", value: String(fields["name"] ?? ""), copyable: true },
                 { key: "Database ID", value: resource.externalId ?? "", copyable: true },
-                ...(fields["version"] ? [{ key: "Version", value: String(fields["version"]) }] : []),
-                ...(fields["numTables"] !== undefined ? [{ key: "Tables", value: String(fields["numTables"]) }] : []),
-                ...(fields["fileSize"] ? [{ key: "File Size", value: String(fields["fileSize"]) }] : []),
-                ...(fields["createdAt"] ? [{ key: "Created", value: String(fields["createdAt"]) }] : []),
+                ...(fields["version"]
+                  ? [{ key: "Version", value: String(fields["version"]) }]
+                  : []),
+                ...(fields["numTables"] !== undefined
+                  ? [{ key: "Tables", value: String(fields["numTables"]) }]
+                  : []),
+                ...(fields["fileSize"]
+                  ? [{ key: "File Size", value: String(fields["fileSize"]) }]
+                  : []),
+                ...(fields["createdAt"]
+                  ? [{ key: "Created", value: String(fields["createdAt"]) }]
+                  : []),
               ],
             },
           ],
         },
       ],
-      headerActions: [
-        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
-      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
   }
 
@@ -1188,18 +1440,24 @@ export class CloudflareClient implements PluginClient {
               items: [
                 { key: "Name", value: String(fields["name"] ?? ""), copyable: true },
                 { key: "Queue ID", value: resource.externalId ?? "", copyable: true },
-                ...(fields["producersTotal"] !== undefined ? [{ key: "Producers", value: String(fields["producersTotal"]) }] : []),
-                ...(fields["consumersTotal"] !== undefined ? [{ key: "Consumers", value: String(fields["consumersTotal"]) }] : []),
-                ...(fields["createdOn"] ? [{ key: "Created", value: String(fields["createdOn"]) }] : []),
-                ...(fields["modifiedOn"] ? [{ key: "Modified", value: String(fields["modifiedOn"]) }] : []),
+                ...(fields["producersTotal"] !== undefined
+                  ? [{ key: "Producers", value: String(fields["producersTotal"]) }]
+                  : []),
+                ...(fields["consumersTotal"] !== undefined
+                  ? [{ key: "Consumers", value: String(fields["consumersTotal"]) }]
+                  : []),
+                ...(fields["createdOn"]
+                  ? [{ key: "Created", value: String(fields["createdOn"]) }]
+                  : []),
+                ...(fields["modifiedOn"]
+                  ? [{ key: "Modified", value: String(fields["modifiedOn"]) }]
+                  : []),
               ],
             },
           ],
         },
       ],
-      headerActions: [
-        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
-      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
   }
 
@@ -1221,18 +1479,24 @@ export class CloudflareClient implements PluginClient {
                 { key: "Name", value: String(fields["name"] ?? ""), copyable: true },
                 { key: "Tunnel ID", value: resource.externalId ?? "", copyable: true },
                 { key: "Status", value: status },
-                ...(fields["tunnelType"] ? [{ key: "Type", value: String(fields["tunnelType"]) }] : []),
-                ...(fields["remoteConfig"] !== undefined ? [{ key: "Remote Config", value: fields["remoteConfig"] ? "Yes" : "No" }] : []),
-                ...(fields["connectionsCount"] !== undefined ? [{ key: "Active Connections", value: String(fields["connectionsCount"]) }] : []),
-                ...(fields["createdAt"] ? [{ key: "Created", value: String(fields["createdAt"]) }] : []),
+                ...(fields["tunnelType"]
+                  ? [{ key: "Type", value: String(fields["tunnelType"]) }]
+                  : []),
+                ...(fields["remoteConfig"] !== undefined
+                  ? [{ key: "Remote Config", value: fields["remoteConfig"] ? "Yes" : "No" }]
+                  : []),
+                ...(fields["connectionsCount"] !== undefined
+                  ? [{ key: "Active Connections", value: String(fields["connectionsCount"]) }]
+                  : []),
+                ...(fields["createdAt"]
+                  ? [{ key: "Created", value: String(fields["createdAt"]) }]
+                  : []),
               ],
             },
           ],
         },
       ],
-      headerActions: [
-        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
-      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
   }
 
@@ -1255,16 +1519,16 @@ export class CloudflareClient implements PluginClient {
                 { key: "Status", value: status },
                 ...(fields["issuer"] ? [{ key: "Issuer", value: String(fields["issuer"]) }] : []),
                 ...(fields["type"] ? [{ key: "Type", value: String(fields["type"]) }] : []),
-                ...(fields["expiresOn"] ? [{ key: "Expires", value: String(fields["expiresOn"]) }] : []),
+                ...(fields["expiresOn"]
+                  ? [{ key: "Expires", value: String(fields["expiresOn"]) }]
+                  : []),
                 ...(fields["zoneName"] ? [{ key: "Zone", value: String(fields["zoneName"]) }] : []),
               ],
             },
           ],
         },
       ],
-      headerActions: [
-        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
-      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
   }
 
@@ -1274,7 +1538,11 @@ export class CloudflareClient implements PluginClient {
     return {
       title: resource.displayName,
       subtitle: "Page Rule",
-      status: { kind: "status-dot", status: status === "active" ? "healthy" : "unknown", label: status },
+      status: {
+        kind: "status-dot",
+        status: status === "active" ? "healthy" : "unknown",
+        label: status,
+      },
       sections: [
         {
           kind: "section",
@@ -1285,18 +1553,24 @@ export class CloudflareClient implements PluginClient {
               items: [
                 { key: "URL Pattern", value: String(fields["targets"] ?? ""), copyable: true },
                 { key: "Status", value: status },
-                ...(fields["actions"] ? [{ key: "Actions", value: String(fields["actions"]) }] : []),
-                ...(fields["priority"] !== undefined ? [{ key: "Priority", value: String(fields["priority"]) }] : []),
-                ...(fields["createdOn"] ? [{ key: "Created", value: String(fields["createdOn"]) }] : []),
-                ...(fields["modifiedOn"] ? [{ key: "Modified", value: String(fields["modifiedOn"]) }] : []),
+                ...(fields["actions"]
+                  ? [{ key: "Actions", value: String(fields["actions"]) }]
+                  : []),
+                ...(fields["priority"] !== undefined
+                  ? [{ key: "Priority", value: String(fields["priority"]) }]
+                  : []),
+                ...(fields["createdOn"]
+                  ? [{ key: "Created", value: String(fields["createdOn"]) }]
+                  : []),
+                ...(fields["modifiedOn"]
+                  ? [{ key: "Modified", value: String(fields["modifiedOn"]) }]
+                  : []),
               ],
             },
           ],
         },
       ],
-      headerActions: [
-        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
-      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
   }
 
@@ -1306,29 +1580,44 @@ export class CloudflareClient implements PluginClient {
     return {
       title: String(fields["description"] || resource.displayName),
       subtitle: "WAF Custom Rule",
-      status: { kind: "status-dot", status: enabled ? "healthy" : "unknown", label: enabled ? "Active" : "Disabled" },
+      status: {
+        kind: "status-dot",
+        status: enabled ? "healthy" : "unknown",
+        label: enabled ? "Active" : "Disabled",
+      },
       sections: [
         {
           kind: "section",
           title: "Rule Details",
           children: [
-            { kind: "badge", label: String(fields["action"] ?? ""), color: fields["action"] === "block" ? "red" : fields["action"] === "challenge" ? "yellow" : "blue" },
+            {
+              kind: "badge",
+              label: String(fields["action"] ?? ""),
+              color:
+                fields["action"] === "block"
+                  ? "red"
+                  : fields["action"] === "challenge"
+                    ? "yellow"
+                    : "blue",
+            },
             {
               kind: "key-value-list",
               items: [
                 { key: "Action", value: String(fields["action"] ?? "") },
                 { key: "Expression", value: String(fields["expression"] ?? ""), copyable: true },
                 { key: "Enabled", value: enabled ? "Yes" : "No" },
-                ...(fields["priority"] !== undefined ? [{ key: "Priority", value: String(fields["priority"]) }] : []),
-                ...(fields["description"] ? [{ key: "Description", value: String(fields["description"]) }] : []),
+                ...(fields["priority"] !== undefined
+                  ? [{ key: "Priority", value: String(fields["priority"]) }]
+                  : []),
+                ...(fields["description"]
+                  ? [{ key: "Description", value: String(fields["description"]) }]
+                  : []),
               ],
             },
           ],
         },
       ],
-      headerActions: [
-        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
-      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
   }
 
@@ -1349,17 +1638,21 @@ export class CloudflareClient implements PluginClient {
                 { key: "Name", value: String(fields["name"] ?? ""), copyable: true },
                 { key: "Domain", value: String(fields["domain"] ?? ""), copyable: true },
                 ...(fields["type"] ? [{ key: "Type", value: String(fields["type"]) }] : []),
-                ...(fields["sessionDuration"] ? [{ key: "Session Duration", value: String(fields["sessionDuration"]) }] : []),
-                ...(fields["createdAt"] ? [{ key: "Created", value: String(fields["createdAt"]) }] : []),
-                ...(fields["updatedAt"] ? [{ key: "Updated", value: String(fields["updatedAt"]) }] : []),
+                ...(fields["sessionDuration"]
+                  ? [{ key: "Session Duration", value: String(fields["sessionDuration"]) }]
+                  : []),
+                ...(fields["createdAt"]
+                  ? [{ key: "Created", value: String(fields["createdAt"]) }]
+                  : []),
+                ...(fields["updatedAt"]
+                  ? [{ key: "Updated", value: String(fields["updatedAt"]) }]
+                  : []),
               ],
             },
           ],
         },
       ],
-      headerActions: [
-        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
-      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
   }
 
@@ -1369,7 +1662,11 @@ export class CloudflareClient implements PluginClient {
     return {
       title: resource.displayName,
       subtitle: "Load Balancer",
-      status: { kind: "status-dot", status: enabled ? "healthy" : "error", label: enabled ? "Enabled" : "Disabled" },
+      status: {
+        kind: "status-dot",
+        status: enabled ? "healthy" : "error",
+        label: enabled ? "Enabled" : "Disabled",
+      },
       sections: [
         {
           kind: "section",
@@ -1380,21 +1677,33 @@ export class CloudflareClient implements PluginClient {
               items: [
                 { key: "Name", value: String(fields["name"] ?? ""), copyable: true },
                 { key: "Enabled", value: enabled ? "Yes" : "No" },
-                ...(fields["proxied"] !== undefined ? [{ key: "Proxied", value: fields["proxied"] ? "Yes" : "No" }] : []),
-                ...(fields["steeringPolicy"] ? [{ key: "Steering Policy", value: String(fields["steeringPolicy"]) }] : []),
-                ...(fields["fallbackPool"] ? [{ key: "Fallback Pool", value: String(fields["fallbackPool"]) }] : []),
-                ...(fields["defaultPools"] ? [{ key: "Default Pools", value: String(fields["defaultPools"]) }] : []),
-                ...(fields["ttl"] !== undefined ? [{ key: "TTL", value: formatDnsTtl(Number(fields["ttl"])) }] : []),
-                ...(fields["createdOn"] ? [{ key: "Created", value: String(fields["createdOn"]) }] : []),
-                ...(fields["modifiedOn"] ? [{ key: "Modified", value: String(fields["modifiedOn"]) }] : []),
+                ...(fields["proxied"] !== undefined
+                  ? [{ key: "Proxied", value: fields["proxied"] ? "Yes" : "No" }]
+                  : []),
+                ...(fields["steeringPolicy"]
+                  ? [{ key: "Steering Policy", value: String(fields["steeringPolicy"]) }]
+                  : []),
+                ...(fields["fallbackPool"]
+                  ? [{ key: "Fallback Pool", value: String(fields["fallbackPool"]) }]
+                  : []),
+                ...(fields["defaultPools"]
+                  ? [{ key: "Default Pools", value: String(fields["defaultPools"]) }]
+                  : []),
+                ...(fields["ttl"] !== undefined
+                  ? [{ key: "TTL", value: formatDnsTtl(Number(fields["ttl"])) }]
+                  : []),
+                ...(fields["createdOn"]
+                  ? [{ key: "Created", value: String(fields["createdOn"]) }]
+                  : []),
+                ...(fields["modifiedOn"]
+                  ? [{ key: "Modified", value: String(fields["modifiedOn"]) }]
+                  : []),
               ],
             },
           ],
         },
       ],
-      headerActions: [
-        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
-      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
   }
 
@@ -1403,7 +1712,11 @@ export class CloudflareClient implements PluginClient {
     return {
       title: resource.displayName,
       subtitle: "Worker Route",
-      status: { kind: "status-dot", status: fields["script"] ? "healthy" : "unknown", label: fields["script"] ? "Routed" : "No Script" },
+      status: {
+        kind: "status-dot",
+        status: fields["script"] ? "healthy" : "unknown",
+        label: fields["script"] ? "Routed" : "No Script",
+      },
       sections: [
         {
           kind: "section",
@@ -1413,15 +1726,15 @@ export class CloudflareClient implements PluginClient {
               kind: "key-value-list",
               items: [
                 { key: "Pattern", value: String(fields["pattern"] ?? ""), copyable: true },
-                ...(fields["script"] ? [{ key: "Worker Script", value: String(fields["script"]) }] : []),
+                ...(fields["script"]
+                  ? [{ key: "Worker Script", value: String(fields["script"]) }]
+                  : []),
               ],
             },
           ],
         },
       ],
-      headerActions: [
-        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
-      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
   }
 
@@ -1445,9 +1758,7 @@ export class CloudflareClient implements PluginClient {
           ],
         },
       ],
-      headerActions: [
-        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
-      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
   }
 
@@ -1580,13 +1891,19 @@ export class CloudflareClient implements PluginClient {
         `/accounts/${cfAccountId}/r2/buckets`,
       );
       const buckets = response?.buckets ?? (Array.isArray(response) ? response : []);
-      return (buckets as Array<Record<string, unknown>>).map((b) => this.mapR2Bucket(b, accountId, cfAccountId));
+      return (buckets as Array<Record<string, unknown>>).map((b) =>
+        this.mapR2Bucket(b, accountId, cfAccountId),
+      );
     } catch {
       return [];
     }
   }
 
-  private mapR2Bucket(b: Record<string, unknown>, accountId: string, cfAccountId: string): ResourceInstance {
+  private mapR2Bucket(
+    b: Record<string, unknown>,
+    accountId: string,
+    cfAccountId: string,
+  ): ResourceInstance {
     const name = String(b["name"] ?? "");
     return {
       id: `${accountId}:r2-bucket:${name}`,
@@ -1639,7 +1956,9 @@ export class CloudflareClient implements PluginClient {
         name,
         subdomain,
         productionBranch: String(p["production_branch"] ?? source?.["config"]?.toString() ?? ""),
-        latestDeploymentStatus: String(latestDeploy?.["latest_stage"]?.toString() ?? latestDeploy?.["environment"] ?? ""),
+        latestDeploymentStatus: String(
+          latestDeploy?.["latest_stage"]?.toString() ?? latestDeploy?.["environment"] ?? "",
+        ),
         latestDeploymentUrl: String(latestDeploy?.["url"] ?? ""),
         framework: String(buildConfig?.["framework"] ?? ""),
         domains: customDomains,
@@ -1682,7 +2001,11 @@ export class CloudflareClient implements PluginClient {
     }
   }
 
-  private mapPagesDeployment(d: Record<string, unknown>, accountId: string, projectName: string): ResourceInstance {
+  private mapPagesDeployment(
+    d: Record<string, unknown>,
+    accountId: string,
+    projectName: string,
+  ): ResourceInstance {
     const id = String(d["id"] ?? "");
     const env = String(d["environment"] ?? "production");
     const latestStage = d["latest_stage"] as Record<string, unknown> | undefined;
@@ -1836,7 +2159,7 @@ export class CloudflareClient implements PluginClient {
   private mapTunnel(t: Record<string, unknown>, accountId: string): ResourceInstance {
     const id = String(t["id"] ?? "");
     const name = String(t["name"] ?? "");
-    const connections = Array.isArray(t["connections"]) ? t["connections"] as Array<unknown> : [];
+    const connections = Array.isArray(t["connections"]) ? (t["connections"] as Array<unknown>) : [];
     const status = String(t["status"] ?? (connections.length > 0 ? "active" : "inactive"));
     return {
       id: `${accountId}:tunnel:${id}`,
@@ -1868,7 +2191,9 @@ export class CloudflareClient implements PluginClient {
         const zoneId = String(zone["id"]);
         const zoneName = String(zone["name"]);
         try {
-          const certs = await this.paginate<Record<string, unknown>>(`/zones/${zoneId}/ssl/certificate_packs`);
+          const certs = await this.paginate<Record<string, unknown>>(
+            `/zones/${zoneId}/ssl/certificate_packs`,
+          );
           for (const cert of certs) {
             results.push(this.mapSSLCertificate(cert, accountId, zoneId, zoneName));
           }
@@ -1882,9 +2207,16 @@ export class CloudflareClient implements PluginClient {
     }
   }
 
-  private mapSSLCertificate(cert: Record<string, unknown>, accountId: string, zoneId: string, zoneName: string): ResourceInstance {
+  private mapSSLCertificate(
+    cert: Record<string, unknown>,
+    accountId: string,
+    zoneId: string,
+    zoneName: string,
+  ): ResourceInstance {
     const id = String(cert["id"] ?? "");
-    const hosts = Array.isArray(cert["hosts"]) ? (cert["hosts"] as string[]).join(", ") : String(cert["hosts"] ?? "");
+    const hosts = Array.isArray(cert["hosts"])
+      ? (cert["hosts"] as string[]).join(", ")
+      : String(cert["hosts"] ?? "");
     const status = String(cert["status"] ?? "");
     const certificates = cert["certificates"] as Array<Record<string, unknown>> | undefined;
     const firstCert = certificates?.[0];
@@ -1932,7 +2264,11 @@ export class CloudflareClient implements PluginClient {
     }
   }
 
-  private mapPageRule(rule: Record<string, unknown>, accountId: string, zoneId: string): ResourceInstance {
+  private mapPageRule(
+    rule: Record<string, unknown>,
+    accountId: string,
+    zoneId: string,
+  ): ResourceInstance {
     const id = String(rule["id"] ?? "");
     const targets = Array.isArray(rule["targets"])
       ? (rule["targets"] as Array<Record<string, unknown>>)
@@ -1981,11 +2317,14 @@ export class CloudflareClient implements PluginClient {
           const rulesets = await this.fetch<{ rulesets?: Array<Record<string, unknown>> }>(
             `/zones/${zoneId}/rulesets`,
           );
-          const customRuleset = ((rulesets as unknown as Array<Record<string, unknown>>) ?? [])
-            .find((rs: Record<string, unknown>) => rs["phase"] === "http_request_firewall_custom");
+          const customRuleset = (
+            (rulesets as unknown as Array<Record<string, unknown>>) ?? []
+          ).find((rs: Record<string, unknown>) => rs["phase"] === "http_request_firewall_custom");
           if (customRuleset) {
             const rsId = String(customRuleset["id"]);
-            const fullRuleset = await this.fetch<Record<string, unknown>>(`/zones/${zoneId}/rulesets/${rsId}`);
+            const fullRuleset = await this.fetch<Record<string, unknown>>(
+              `/zones/${zoneId}/rulesets/${rsId}`,
+            );
             const rules = (fullRuleset["rules"] as Array<Record<string, unknown>>) ?? [];
             for (const rule of rules) {
               results.push(this.mapFirewallRule(rule, accountId, zoneId));
@@ -2001,7 +2340,11 @@ export class CloudflareClient implements PluginClient {
     }
   }
 
-  private mapFirewallRule(rule: Record<string, unknown>, accountId: string, zoneId: string): ResourceInstance {
+  private mapFirewallRule(
+    rule: Record<string, unknown>,
+    accountId: string,
+    zoneId: string,
+  ): ResourceInstance {
     const id = String(rule["id"] ?? "");
     const description = String(rule["description"] ?? "");
     return {
@@ -2073,7 +2416,9 @@ export class CloudflareClient implements PluginClient {
       for (const zone of zones) {
         const zoneId = String(zone["id"]);
         try {
-          const lbs = await this.paginate<Record<string, unknown>>(`/zones/${zoneId}/load_balancers`);
+          const lbs = await this.paginate<Record<string, unknown>>(
+            `/zones/${zoneId}/load_balancers`,
+          );
           for (const lb of lbs) {
             results.push(this.mapLoadBalancer(lb, accountId, zoneId));
           }
@@ -2087,10 +2432,16 @@ export class CloudflareClient implements PluginClient {
     }
   }
 
-  private mapLoadBalancer(lb: Record<string, unknown>, accountId: string, zoneId: string): ResourceInstance {
+  private mapLoadBalancer(
+    lb: Record<string, unknown>,
+    accountId: string,
+    zoneId: string,
+  ): ResourceInstance {
     const id = String(lb["id"] ?? "");
     const name = String(lb["name"] ?? "");
-    const defaultPools = Array.isArray(lb["default_pools"]) ? (lb["default_pools"] as string[]).join(", ") : "";
+    const defaultPools = Array.isArray(lb["default_pools"])
+      ? (lb["default_pools"] as string[]).join(", ")
+      : "";
     return {
       id: `${accountId}:load-balancer:${zoneId}/${id}`,
       pluginId: "cloudflare",
@@ -2124,8 +2475,10 @@ export class CloudflareClient implements PluginClient {
       for (const zone of zones) {
         const zoneId = String(zone["id"]);
         try {
-          const routes = await this.fetch<Array<Record<string, unknown>>>(`/zones/${zoneId}/workers/routes`);
-          for (const route of (routes ?? [])) {
+          const routes = await this.fetch<Array<Record<string, unknown>>>(
+            `/zones/${zoneId}/workers/routes`,
+          );
+          for (const route of routes ?? []) {
             results.push(this.mapWorkerRoute(route, accountId, zoneId));
           }
         } catch {
@@ -2138,7 +2491,11 @@ export class CloudflareClient implements PluginClient {
     }
   }
 
-  private mapWorkerRoute(route: Record<string, unknown>, accountId: string, zoneId: string): ResourceInstance {
+  private mapWorkerRoute(
+    route: Record<string, unknown>,
+    accountId: string,
+    zoneId: string,
+  ): ResourceInstance {
     const id = String(route["id"] ?? "");
     const pattern = String(route["pattern"] ?? "");
     const script = String(route["script"] ?? route["script_name"] ?? "");
@@ -2167,7 +2524,11 @@ export class CloudflareClient implements PluginClient {
     return {
       title: String(fields["hostname"] ?? resource.displayName),
       subtitle: "Custom Hostname (SSL for SaaS)",
-      status: { kind: "status-dot", status: status === "active" ? "healthy" : status === "pending" ? "provisioning" : "unknown", label: status },
+      status: {
+        kind: "status-dot",
+        status: status === "active" ? "healthy" : status === "pending" ? "provisioning" : "unknown",
+        label: status,
+      },
       sections: [
         {
           kind: "section",
@@ -2178,18 +2539,24 @@ export class CloudflareClient implements PluginClient {
               items: [
                 { key: "Hostname", value: String(fields["hostname"] ?? ""), copyable: true },
                 { key: "Status", value: status },
-                ...(fields["sslStatus"] ? [{ key: "SSL Status", value: String(fields["sslStatus"]) }] : []),
-                ...(fields["sslMethod"] ? [{ key: "SSL Method", value: String(fields["sslMethod"]) }] : []),
-                ...(fields["sslType"] ? [{ key: "SSL Type", value: String(fields["sslType"]) }] : []),
-                ...(fields["createdAt"] ? [{ key: "Created", value: String(fields["createdAt"]) }] : []),
+                ...(fields["sslStatus"]
+                  ? [{ key: "SSL Status", value: String(fields["sslStatus"]) }]
+                  : []),
+                ...(fields["sslMethod"]
+                  ? [{ key: "SSL Method", value: String(fields["sslMethod"]) }]
+                  : []),
+                ...(fields["sslType"]
+                  ? [{ key: "SSL Type", value: String(fields["sslType"]) }]
+                  : []),
+                ...(fields["createdAt"]
+                  ? [{ key: "Created", value: String(fields["createdAt"]) }]
+                  : []),
               ],
             },
           ],
         },
       ],
-      headerActions: [
-        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
-      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
   }
 
@@ -2200,7 +2567,9 @@ export class CloudflareClient implements PluginClient {
       for (const zone of zones) {
         const zoneId = String(zone["id"]);
         try {
-          const hostnames = await this.paginate<Record<string, unknown>>(`/zones/${zoneId}/custom_hostnames`);
+          const hostnames = await this.paginate<Record<string, unknown>>(
+            `/zones/${zoneId}/custom_hostnames`,
+          );
           for (const h of hostnames) {
             results.push(this.mapCustomHostname(h, accountId, zoneId));
           }
@@ -2214,7 +2583,11 @@ export class CloudflareClient implements PluginClient {
     }
   }
 
-  private mapCustomHostname(h: Record<string, unknown>, accountId: string, zoneId: string): ResourceInstance {
+  private mapCustomHostname(
+    h: Record<string, unknown>,
+    accountId: string,
+    zoneId: string,
+  ): ResourceInstance {
     const id = String(h["id"] ?? "");
     const hostname = String(h["hostname"] ?? "");
     const ssl = h["ssl"] as Record<string, unknown> | undefined;
@@ -2257,20 +2630,28 @@ export class CloudflareClient implements PluginClient {
               items: [
                 { key: "Name", value: String(fields["name"] ?? ""), copyable: true },
                 { key: "Config ID", value: resource.externalId ?? "", copyable: true },
-                ...(fields["originHost"] ? [{ key: "Origin Host", value: String(fields["originHost"]) }] : []),
-                ...(fields["originPort"] !== undefined ? [{ key: "Origin Port", value: String(fields["originPort"]) }] : []),
-                ...(fields["originScheme"] ? [{ key: "Scheme", value: String(fields["originScheme"]) }] : []),
-                ...(fields["database"] ? [{ key: "Database", value: String(fields["database"]) }] : []),
+                ...(fields["originHost"]
+                  ? [{ key: "Origin Host", value: String(fields["originHost"]) }]
+                  : []),
+                ...(fields["originPort"] !== undefined
+                  ? [{ key: "Origin Port", value: String(fields["originPort"]) }]
+                  : []),
+                ...(fields["originScheme"]
+                  ? [{ key: "Scheme", value: String(fields["originScheme"]) }]
+                  : []),
+                ...(fields["database"]
+                  ? [{ key: "Database", value: String(fields["database"]) }]
+                  : []),
                 ...(fields["user"] ? [{ key: "User", value: String(fields["user"]) }] : []),
-                ...(fields["cachingDisabled"] !== undefined ? [{ key: "Caching", value: fields["cachingDisabled"] ? "Disabled" : "Enabled" }] : []),
+                ...(fields["cachingDisabled"] !== undefined
+                  ? [{ key: "Caching", value: fields["cachingDisabled"] ? "Disabled" : "Enabled" }]
+                  : []),
               ],
             },
           ],
         },
       ],
-      headerActions: [
-        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
-      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
   }
 
@@ -2320,7 +2701,11 @@ export class CloudflareClient implements PluginClient {
     return {
       title: String(fields["name"] || resource.displayName),
       subtitle: "Email Routing Rule",
-      status: { kind: "status-dot", status: enabled ? "healthy" : "unknown", label: enabled ? "Enabled" : "Disabled" },
+      status: {
+        kind: "status-dot",
+        status: enabled ? "healthy" : "unknown",
+        label: enabled ? "Enabled" : "Disabled",
+      },
       sections: [
         {
           kind: "section",
@@ -2330,17 +2715,21 @@ export class CloudflareClient implements PluginClient {
               kind: "key-value-list",
               items: [
                 { key: "Enabled", value: enabled ? "Yes" : "No" },
-                ...(fields["matchers"] ? [{ key: "Matchers", value: String(fields["matchers"]) }] : []),
-                ...(fields["actions"] ? [{ key: "Actions", value: String(fields["actions"]) }] : []),
-                ...(fields["priority"] !== undefined ? [{ key: "Priority", value: String(fields["priority"]) }] : []),
+                ...(fields["matchers"]
+                  ? [{ key: "Matchers", value: String(fields["matchers"]) }]
+                  : []),
+                ...(fields["actions"]
+                  ? [{ key: "Actions", value: String(fields["actions"]) }]
+                  : []),
+                ...(fields["priority"] !== undefined
+                  ? [{ key: "Priority", value: String(fields["priority"]) }]
+                  : []),
               ],
             },
           ],
         },
       ],
-      headerActions: [
-        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
-      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
   }
 
@@ -2351,7 +2740,9 @@ export class CloudflareClient implements PluginClient {
       for (const zone of zones) {
         const zoneId = String(zone["id"]);
         try {
-          const rules = await this.paginate<Record<string, unknown>>(`/zones/${zoneId}/email/routing/rules`);
+          const rules = await this.paginate<Record<string, unknown>>(
+            `/zones/${zoneId}/email/routing/rules`,
+          );
           for (const rule of rules) {
             results.push(this.mapEmailRoutingRule(rule, accountId, zoneId));
           }
@@ -2365,18 +2756,27 @@ export class CloudflareClient implements PluginClient {
     }
   }
 
-  private mapEmailRoutingRule(rule: Record<string, unknown>, accountId: string, zoneId: string): ResourceInstance {
+  private mapEmailRoutingRule(
+    rule: Record<string, unknown>,
+    accountId: string,
+    zoneId: string,
+  ): ResourceInstance {
     const tag = String(rule["tag"] ?? rule["id"] ?? "");
     const name = String(rule["name"] ?? "");
     const matchers = Array.isArray(rule["matchers"])
       ? (rule["matchers"] as Array<Record<string, unknown>>)
-          .map((m) => `${String(m["type"] ?? "")}:${String(m["field"] ?? "")}=${String(m["value"] ?? "")}`)
+          .map(
+            (m) =>
+              `${String(m["type"] ?? "")}:${String(m["field"] ?? "")}=${String(m["value"] ?? "")}`,
+          )
           .join(", ")
       : "";
     const actions = Array.isArray(rule["actions"])
       ? (rule["actions"] as Array<Record<string, unknown>>)
           .map((a) => {
-            const vals = Array.isArray(a["value"]) ? (a["value"] as string[]).join(", ") : String(a["value"] ?? "");
+            const vals = Array.isArray(a["value"])
+              ? (a["value"] as string[]).join(", ")
+              : String(a["value"] ?? "");
             return `${String(a["type"] ?? "")}: ${vals}`;
           })
           .join("; ")
@@ -2409,7 +2809,11 @@ export class CloudflareClient implements PluginClient {
     return {
       title: resource.displayName,
       subtitle: "Waiting Room",
-      status: { kind: "status-dot", status: suspended ? "error" : "healthy", label: suspended ? "Suspended" : "Active" },
+      status: {
+        kind: "status-dot",
+        status: suspended ? "error" : "healthy",
+        label: suspended ? "Suspended" : "Active",
+      },
       sections: [
         {
           kind: "section",
@@ -2421,19 +2825,25 @@ export class CloudflareClient implements PluginClient {
                 { key: "Name", value: String(fields["name"] ?? ""), copyable: true },
                 { key: "Host", value: String(fields["host"] ?? ""), copyable: true },
                 ...(fields["path"] ? [{ key: "Path", value: String(fields["path"]) }] : []),
-                ...(fields["totalActiveUsers"] !== undefined ? [{ key: "Max Active Users", value: String(fields["totalActiveUsers"]) }] : []),
-                ...(fields["newUsersPerMinute"] !== undefined ? [{ key: "New Users/Minute", value: String(fields["newUsersPerMinute"]) }] : []),
-                ...(fields["queueingMethod"] ? [{ key: "Queueing Method", value: String(fields["queueingMethod"]) }] : []),
-                ...(fields["sessionDuration"] !== undefined ? [{ key: "Session Duration", value: `${String(fields["sessionDuration"])} min` }] : []),
+                ...(fields["totalActiveUsers"] !== undefined
+                  ? [{ key: "Max Active Users", value: String(fields["totalActiveUsers"]) }]
+                  : []),
+                ...(fields["newUsersPerMinute"] !== undefined
+                  ? [{ key: "New Users/Minute", value: String(fields["newUsersPerMinute"]) }]
+                  : []),
+                ...(fields["queueingMethod"]
+                  ? [{ key: "Queueing Method", value: String(fields["queueingMethod"]) }]
+                  : []),
+                ...(fields["sessionDuration"] !== undefined
+                  ? [{ key: "Session Duration", value: `${String(fields["sessionDuration"])} min` }]
+                  : []),
                 { key: "Suspended", value: suspended ? "Yes" : "No" },
               ],
             },
           ],
         },
       ],
-      headerActions: [
-        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
-      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
   }
 
@@ -2444,8 +2854,10 @@ export class CloudflareClient implements PluginClient {
       for (const zone of zones) {
         const zoneId = String(zone["id"]);
         try {
-          const rooms = await this.fetch<Array<Record<string, unknown>>>(`/zones/${zoneId}/waiting_rooms`);
-          for (const room of (rooms ?? [])) {
+          const rooms = await this.fetch<Array<Record<string, unknown>>>(
+            `/zones/${zoneId}/waiting_rooms`,
+          );
+          for (const room of rooms ?? []) {
             results.push(this.mapWaitingRoom(room, accountId, zoneId));
           }
         } catch {
@@ -2458,7 +2870,11 @@ export class CloudflareClient implements PluginClient {
     }
   }
 
-  private mapWaitingRoom(room: Record<string, unknown>, accountId: string, zoneId: string): ResourceInstance {
+  private mapWaitingRoom(
+    room: Record<string, unknown>,
+    accountId: string,
+    zoneId: string,
+  ): ResourceInstance {
     const id = String(room["id"] ?? "");
     const name = String(room["name"] ?? "");
     return {
@@ -2492,30 +2908,51 @@ export class CloudflareClient implements PluginClient {
     return {
       title: resource.displayName,
       subtitle: "Access Policy",
-      status: { kind: "status-dot", status: decision === "allow" ? "healthy" : decision === "deny" ? "error" : "unknown", label: decision },
+      status: {
+        kind: "status-dot",
+        status: decision === "allow" ? "healthy" : decision === "deny" ? "error" : "unknown",
+        label: decision,
+      },
       sections: [
         {
           kind: "section",
           title: "Policy Details",
           children: [
-            { kind: "badge", label: decision, color: decision === "allow" ? "green" : decision === "deny" ? "red" : decision === "bypass" ? "yellow" : "gray" },
+            {
+              kind: "badge",
+              label: decision,
+              color:
+                decision === "allow"
+                  ? "green"
+                  : decision === "deny"
+                    ? "red"
+                    : decision === "bypass"
+                      ? "yellow"
+                      : "gray",
+            },
             {
               kind: "key-value-list",
               items: [
                 { key: "Name", value: String(fields["name"] ?? "") },
                 { key: "Decision", value: decision },
-                ...(fields["precedence"] !== undefined ? [{ key: "Precedence", value: String(fields["precedence"]) }] : []),
-                ...(fields["includeRules"] ? [{ key: "Include", value: String(fields["includeRules"]) }] : []),
-                ...(fields["excludeRules"] ? [{ key: "Exclude", value: String(fields["excludeRules"]) }] : []),
-                ...(fields["requireRules"] ? [{ key: "Require", value: String(fields["requireRules"]) }] : []),
+                ...(fields["precedence"] !== undefined
+                  ? [{ key: "Precedence", value: String(fields["precedence"]) }]
+                  : []),
+                ...(fields["includeRules"]
+                  ? [{ key: "Include", value: String(fields["includeRules"]) }]
+                  : []),
+                ...(fields["excludeRules"]
+                  ? [{ key: "Exclude", value: String(fields["excludeRules"]) }]
+                  : []),
+                ...(fields["requireRules"]
+                  ? [{ key: "Require", value: String(fields["requireRules"]) }]
+                  : []),
               ],
             },
           ],
         },
       ],
-      headerActions: [
-        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
-      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
   }
 
@@ -2545,7 +2982,11 @@ export class CloudflareClient implements PluginClient {
     }
   }
 
-  private mapAccessPolicy(policy: Record<string, unknown>, accountId: string, appId: string): ResourceInstance {
+  private mapAccessPolicy(
+    policy: Record<string, unknown>,
+    accountId: string,
+    appId: string,
+  ): ResourceInstance {
     const id = String(policy["id"] ?? "");
     const name = String(policy["name"] ?? "");
     const decision = String(policy["decision"] ?? "");
@@ -2602,24 +3043,38 @@ export class CloudflareClient implements PluginClient {
             {
               kind: "key-value-list",
               items: [
-                ...(fields["dns"] ? [{ key: "DNS Name", value: String(fields["dns"]), copyable: true }] : []),
+                ...(fields["dns"]
+                  ? [{ key: "DNS Name", value: String(fields["dns"]), copyable: true }]
+                  : []),
                 { key: "Protocol", value: String(fields["protocol"] ?? "") },
-                ...(fields["originDirect"] ? [{ key: "Origin Direct", value: String(fields["originDirect"]) }] : []),
-                ...(fields["originDns"] ? [{ key: "Origin DNS", value: String(fields["originDns"]) }] : []),
-                ...(fields["originPort"] ? [{ key: "Origin Port", value: String(fields["originPort"]) }] : []),
+                ...(fields["originDirect"]
+                  ? [{ key: "Origin Direct", value: String(fields["originDirect"]) }]
+                  : []),
+                ...(fields["originDns"]
+                  ? [{ key: "Origin DNS", value: String(fields["originDns"]) }]
+                  : []),
+                ...(fields["originPort"]
+                  ? [{ key: "Origin Port", value: String(fields["originPort"]) }]
+                  : []),
                 ...(fields["tls"] ? [{ key: "TLS", value: String(fields["tls"]) }] : []),
-                ...(fields["proxyProtocol"] ? [{ key: "Proxy Protocol", value: String(fields["proxyProtocol"]) }] : []),
-                ...(fields["ipFirewall"] !== undefined ? [{ key: "IP Firewall", value: fields["ipFirewall"] ? "Enabled" : "Disabled" }] : []),
-                ...(fields["createdOn"] ? [{ key: "Created", value: String(fields["createdOn"]) }] : []),
-                ...(fields["modifiedOn"] ? [{ key: "Modified", value: String(fields["modifiedOn"]) }] : []),
+                ...(fields["proxyProtocol"]
+                  ? [{ key: "Proxy Protocol", value: String(fields["proxyProtocol"]) }]
+                  : []),
+                ...(fields["ipFirewall"] !== undefined
+                  ? [{ key: "IP Firewall", value: fields["ipFirewall"] ? "Enabled" : "Disabled" }]
+                  : []),
+                ...(fields["createdOn"]
+                  ? [{ key: "Created", value: String(fields["createdOn"]) }]
+                  : []),
+                ...(fields["modifiedOn"]
+                  ? [{ key: "Modified", value: String(fields["modifiedOn"]) }]
+                  : []),
               ],
             },
           ],
         },
       ],
-      headerActions: [
-        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
-      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
   }
 
@@ -2630,7 +3085,9 @@ export class CloudflareClient implements PluginClient {
       for (const zone of zones) {
         const zoneId = String(zone["id"]);
         try {
-          const apps = await this.paginate<Record<string, unknown>>(`/zones/${zoneId}/spectrum/apps`);
+          const apps = await this.paginate<Record<string, unknown>>(
+            `/zones/${zoneId}/spectrum/apps`,
+          );
           for (const app of apps) {
             results.push(this.mapSpectrumApplication(app, accountId, zoneId));
           }
@@ -2644,12 +3101,18 @@ export class CloudflareClient implements PluginClient {
     }
   }
 
-  private mapSpectrumApplication(app: Record<string, unknown>, accountId: string, zoneId: string): ResourceInstance {
+  private mapSpectrumApplication(
+    app: Record<string, unknown>,
+    accountId: string,
+    zoneId: string,
+  ): ResourceInstance {
     const id = String(app["id"] ?? "");
     const protocol = String(app["protocol"] ?? "");
     const dns = app["dns"] as Record<string, unknown> | undefined;
     const dnsName = String(dns?.["name"] ?? "");
-    const originDirect = Array.isArray(app["origin_direct"]) ? (app["origin_direct"] as string[]).join(", ") : "";
+    const originDirect = Array.isArray(app["origin_direct"])
+      ? (app["origin_direct"] as string[]).join(", ")
+      : "";
     const originDns = app["origin_dns"] as Record<string, unknown> | undefined;
     return {
       id: `${accountId}:spectrum-application:${zoneId}/${id}`,
@@ -2694,10 +3157,18 @@ export class CloudflareClient implements PluginClient {
               ...(fields["name"] ? [{ key: "Name", value: String(fields["name"]) }] : []),
               { key: "Dataset", value: String(fields["dataset"] ?? "") },
               { key: "Enabled", value: enabled ? "Yes" : "No" },
-              ...(fields["destinationType"] ? [{ key: "Destination", value: String(fields["destinationType"]) }] : []),
-              ...(fields["frequency"] ? [{ key: "Frequency", value: String(fields["frequency"]) }] : []),
-              ...(fields["logpullOptions"] ? [{ key: "Logpull Options", value: String(fields["logpullOptions"]) }] : []),
-              ...(fields["lastComplete"] ? [{ key: "Last Complete", value: String(fields["lastComplete"]) }] : []),
+              ...(fields["destinationType"]
+                ? [{ key: "Destination", value: String(fields["destinationType"]) }]
+                : []),
+              ...(fields["frequency"]
+                ? [{ key: "Frequency", value: String(fields["frequency"]) }]
+                : []),
+              ...(fields["logpullOptions"]
+                ? [{ key: "Logpull Options", value: String(fields["logpullOptions"]) }]
+                : []),
+              ...(fields["lastComplete"]
+                ? [{ key: "Last Complete", value: String(fields["lastComplete"]) }]
+                : []),
             ],
           },
         ],
@@ -2707,19 +3178,19 @@ export class CloudflareClient implements PluginClient {
       sections.push({
         kind: "section",
         title: "Last Error",
-        children: [
-          { kind: "text", content: lastError, variant: "mono" },
-        ],
+        children: [{ kind: "text", content: lastError, variant: "mono" }],
       });
     }
     return {
       title: String(fields["name"] || fields["dataset"] || resource.displayName),
       subtitle: "Logpush Job",
-      status: { kind: "status-dot", status: !enabled ? "unknown" : lastError ? "error" : "healthy", label: !enabled ? "Disabled" : lastError ? "Error" : "Active" },
+      status: {
+        kind: "status-dot",
+        status: !enabled ? "unknown" : lastError ? "error" : "healthy",
+        label: !enabled ? "Disabled" : lastError ? "Error" : "Active",
+      },
       sections,
-      headerActions: [
-        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
-      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
   }
 
@@ -2730,8 +3201,10 @@ export class CloudflareClient implements PluginClient {
       for (const zone of zones) {
         const zoneId = String(zone["id"]);
         try {
-          const jobs = await this.fetch<Array<Record<string, unknown>>>(`/zones/${zoneId}/logpush/jobs`);
-          for (const job of (jobs ?? [])) {
+          const jobs = await this.fetch<Array<Record<string, unknown>>>(
+            `/zones/${zoneId}/logpush/jobs`,
+          );
+          for (const job of jobs ?? []) {
             results.push(this.mapLogpushJob(job, accountId, zoneId));
           }
         } catch {
@@ -2744,7 +3217,11 @@ export class CloudflareClient implements PluginClient {
     }
   }
 
-  private mapLogpushJob(job: Record<string, unknown>, accountId: string, zoneId: string): ResourceInstance {
+  private mapLogpushJob(
+    job: Record<string, unknown>,
+    accountId: string,
+    zoneId: string,
+  ): ResourceInstance {
     const id = String(job["id"] ?? "");
     const name = String(job["name"] ?? "");
     const dataset = String(job["dataset"] ?? "");

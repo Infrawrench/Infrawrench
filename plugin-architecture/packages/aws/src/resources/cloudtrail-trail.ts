@@ -14,9 +14,7 @@ export const CloudTrailTrailResourceType: ResourceTypeDefinition = {
     { key: "includeGlobalServiceEvents", label: "Global Events", kind: "boolean", required: false },
     { key: "status", label: "Logging", kind: "boolean", required: false },
   ],
-  outputs: [
-    { key: "trailArn", label: "Trail ARN", sensitive: false },
-  ],
+  outputs: [{ key: "trailArn", label: "Trail ARN", sensitive: false }],
   dashboardPinnable: true,
   iconKey: "log",
 };

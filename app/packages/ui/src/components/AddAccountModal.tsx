@@ -20,12 +20,21 @@ interface AddAccountModalProps {
   onClose: () => void;
   onAdded: () => void;
   loadPlugins: () => Promise<PluginInfo[]>;
-  saveAccount: (pluginId: string, displayName: string, credentials: Record<string, string>) => Promise<void>;
+  saveAccount: (
+    pluginId: string,
+    displayName: string,
+    credentials: Record<string, string>,
+  ) => Promise<void>;
 }
 
 type Step = "pick-plugin" | "enter-credentials";
 
-export function AddAccountModal({ onClose, onAdded, loadPlugins, saveAccount }: AddAccountModalProps) {
+export function AddAccountModal({
+  onClose,
+  onAdded,
+  loadPlugins,
+  saveAccount,
+}: AddAccountModalProps) {
   const [step, setStep] = useState<Step>("pick-plugin");
   const [plugins, setPlugins] = useState<PluginInfo[]>([]);
   const [selected, setSelected] = useState<PluginInfo | null>(null);
@@ -150,15 +159,11 @@ export function AddAccountModal({ onClose, onAdded, loadPlugins, saveAccount }: 
               {selected.credentialFields.map((f) => (
                 <div key={f.key}>
                   <label className="block text-xs text-gray-400 mb-1">{f.label}</label>
-                  {f.description && (
-                    <p className="text-xs text-gray-600 mb-1">{f.description}</p>
-                  )}
+                  {f.description && <p className="text-xs text-gray-600 mb-1">{f.description}</p>}
                   {f.multiline ? (
                     <textarea
                       value={fieldValues[f.key] ?? ""}
-                      onChange={(e) =>
-                        setFieldValues((v) => ({ ...v, [f.key]: e.target.value }))
-                      }
+                      onChange={(e) => setFieldValues((v) => ({ ...v, [f.key]: e.target.value }))}
                       placeholder={f.placeholder}
                       rows={6}
                       className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-gray-500 font-mono resize-none"
@@ -167,9 +172,7 @@ export function AddAccountModal({ onClose, onAdded, loadPlugins, saveAccount }: 
                     <input
                       type={f.sensitive ? "password" : "text"}
                       value={fieldValues[f.key] ?? ""}
-                      onChange={(e) =>
-                        setFieldValues((v) => ({ ...v, [f.key]: e.target.value }))
-                      }
+                      onChange={(e) => setFieldValues((v) => ({ ...v, [f.key]: e.target.value }))}
                       placeholder={f.placeholder}
                       className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-gray-500"
                     />
@@ -177,9 +180,7 @@ export function AddAccountModal({ onClose, onAdded, loadPlugins, saveAccount }: 
                 </div>
               ))}
 
-              {error && (
-                <p className="text-xs text-red-400">{error}</p>
-              )}
+              {error && <p className="text-xs text-red-400">{error}</p>}
 
               <div className="flex gap-2 pt-1">
                 <button

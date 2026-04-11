@@ -1,6 +1,15 @@
 import { useState, useEffect } from "react";
 import { createRootRoute, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
-import { DndShell, GlobalTabBar, useUIStore, useWorkspaceTabHandlers, workspaceTabTargetsEqual, dispatchResourcesChanged, type DraggableResource, type WorkspaceTab } from "@infrawrench/ui";
+import {
+  DndShell,
+  GlobalTabBar,
+  useUIStore,
+  useWorkspaceTabHandlers,
+  workspaceTabTargetsEqual,
+  dispatchResourcesChanged,
+  type DraggableResource,
+  type WorkspaceTab,
+} from "@infrawrench/ui";
 import { WebSidebar } from "@/components/WebSidebar";
 import { SpotlightSearch } from "@/components/SpotlightSearch";
 import { apiGet, apiPost } from "@/lib/api";
@@ -31,7 +40,9 @@ function RootLayout() {
       // Still need auth check for these routes — but don't redirect to onboarding
       apiGet<AuthMe>("/api/auth/me")
         .then(() => setAuthChecked(true))
-        .catch(() => { /* apiFetch redirects on 401 */ });
+        .catch(() => {
+          /* apiFetch redirects on 401 */
+        });
       return;
     }
 
@@ -53,7 +64,9 @@ function RootLayout() {
 
         setAuthChecked(true);
       })
-      .catch(() => { /* apiFetch redirects on 401 */ });
+      .catch(() => {
+        /* apiFetch redirects on 401 */
+      });
   }, [navigate, pathname]);
 
   if (!authChecked) {
@@ -120,7 +133,10 @@ function AuthenticatedShell() {
     setActiveDashboard,
   } = useUIStore();
 
-  const { handleActivateTab, handleCloseTab } = useWorkspaceTabHandlers(navigate, getWorkspaceNavigateArgs);
+  const { handleActivateTab, handleCloseTab } = useWorkspaceTabHandlers(
+    navigate,
+    getWorkspaceNavigateArgs,
+  );
 
   useEffect(() => {
     if (!tabsHydrated) return;
@@ -133,7 +149,15 @@ function AuthenticatedShell() {
     const activeTab = workspaceTabs.find((tab) => tab.id === activeWorkspaceTabId);
     if (activeTab && workspaceTabTargetsEqual(activeTab.target, currentTarget)) return;
     syncWorkspaceRoute(currentTarget);
-  }, [hash, pathname, activeWorkspaceTabId, setActiveDashboard, syncWorkspaceRoute, tabsHydrated, workspaceTabs]);
+  }, [
+    hash,
+    pathname,
+    activeWorkspaceTabId,
+    setActiveDashboard,
+    syncWorkspaceRoute,
+    tabsHydrated,
+    workspaceTabs,
+  ]);
 
   useEffect(() => {
     if (!tabsHydrated || tabsValidated) return;
@@ -151,23 +175,29 @@ function AuthenticatedShell() {
     let cancelled = false;
     apiPost<{ validTabIds: string[] }>(`/api/org/${orgId}/dashboards/validate-tabs`, {
       tabs: tabsSnapshot.map((t) => ({ id: t.id, target: t.target })),
-    }).then(({ validTabIds }) => {
-      if (cancelled) return;
-      const validSet = new Set(validTabIds);
-      const nextTabs = tabsSnapshot.filter((t) => validSet.has(t.id));
-      replaceWorkspaceTabs(nextTabs, activeIdSnapshot);
-      setTabsValidated(true);
-    }).catch(() => {
-      if (!cancelled) setTabsValidated(true);
-    });
-    return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    })
+      .then(({ validTabIds }) => {
+        if (cancelled) return;
+        const validSet = new Set(validTabIds);
+        const nextTabs = tabsSnapshot.filter((t) => validSet.has(t.id));
+        replaceWorkspaceTabs(nextTabs, activeIdSnapshot);
+        setTabsValidated(true);
+      })
+      .catch(() => {
+        if (!cancelled) setTabsValidated(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tabsHydrated, tabsValidated, replaceWorkspaceTabs, orgId]);
 
   async function handleNewTab() {
     if (!orgId) return;
     try {
-      const data = await apiGet<{ dashboard: { id: string; name: string } }>(`/api/org/${orgId}/dashboards/default/full`);
+      const data = await apiGet<{ dashboard: { id: string; name: string } }>(
+        `/api/org/${orgId}/dashboards/default/full`,
+      );
       const target = dashboardTabTarget(data.dashboard.id);
       createWorkspaceTabInstance(target, data.dashboard.name);
       void navigate({ to: "/org/$orgId", params: { orgId } });
@@ -200,12 +230,7 @@ function AuthenticatedShell() {
           </main>
         </div>
       </div>
-      {spotlightOpen && (
-        <SpotlightSearch
-          mode="navigate"
-          onClose={() => setSpotlightOpen(false)}
-        />
-      )}
+      {spotlightOpen && <SpotlightSearch mode="navigate" onClose={() => setSpotlightOpen(false)} />}
     </DndShell>
   );
 }

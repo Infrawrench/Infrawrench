@@ -24,9 +24,7 @@ export const BatchJobQueueResourceType: ResourceTypeDefinition = {
     { key: "priority", label: "Priority", kind: "number", required: false },
     { key: "schedulingPolicyArn", label: "Scheduling Policy", kind: "string", required: false },
   ],
-  outputs: [
-    { key: "jobQueueArn", label: "Job Queue ARN", sensitive: false },
-  ],
+  outputs: [{ key: "jobQueueArn", label: "Job Queue ARN", sensitive: false }],
   dashboardPinnable: true,
   iconKey: "queue",
 };

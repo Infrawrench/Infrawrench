@@ -38,7 +38,11 @@ export class MongoDBClient implements PluginClient {
     }
   }
 
-  async getResource(typeId: string, resourceId: string, accountId: string): Promise<ResourceInstance> {
+  async getResource(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+  ): Promise<ResourceInstance> {
     const all = await this.listResources(typeId, accountId);
     const found = all.find((r) => r.id === resourceId);
     if (!found) throw new Error(`MongoDB plugin: resource ${typeId}/${resourceId} not found`);
@@ -72,9 +76,7 @@ export class MongoDBClient implements PluginClient {
           ],
         },
       ],
-      headerActions: [
-        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
-      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
   }
 
@@ -93,7 +95,13 @@ export class MongoDBClient implements PluginClient {
     const dbName = this.parseDatabaseName();
     try {
       const raw = await kv.command("dbStats", dbName);
-      const stats = raw as { db: string; collections: number; dataSize: number; storageSize: number; ok: number };
+      const stats = raw as {
+        db: string;
+        collections: number;
+        dataSize: number;
+        storageSize: number;
+        ok: number;
+      };
       const sizeMb = ((stats.storageSize ?? stats.dataSize ?? 0) / 1024 / 1024).toFixed(1);
 
       const versionRaw = await kv.command("serverVersion", dbName);
@@ -115,7 +123,9 @@ export class MongoDBClient implements PluginClient {
     try {
       const url = new URL(this.connectionString);
       host = url.hostname;
-    } catch { /* may not be parseable */ }
+    } catch {
+      /* may not be parseable */
+    }
 
     if (this.services?.kv) {
       try {
@@ -145,7 +155,9 @@ export class MongoDBClient implements PluginClient {
     try {
       const url = new URL(this.connectionString);
       dbName = url.pathname.replace(/^\//, "") || "test";
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
 
     return [
       {

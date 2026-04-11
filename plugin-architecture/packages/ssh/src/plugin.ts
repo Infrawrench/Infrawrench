@@ -52,5 +52,7 @@ export const plugin: Plugin = {
   manifest,
   resourceTypes,
   createClient: (credentials) =>
-    new SshClient(credentials as { host: string; port?: string; username?: string; privateKey?: string }),
+    new SshClient(
+      credentials as { host: string; port?: string; username?: string; privateKey?: string },
+    ),
 };

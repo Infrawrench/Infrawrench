@@ -15,7 +15,10 @@ export function getSqlSession(accountId: string): SqlSession | undefined {
   return sessions.get(accountId);
 }
 
-export function setSqlSession(accountId: string, data: Partial<SqlSession> & Pick<SqlSession, "connectionString">): void {
+export function setSqlSession(
+  accountId: string,
+  data: Partial<SqlSession> & Pick<SqlSession, "connectionString">,
+): void {
   const existing = sessions.get(accountId);
   sessions.set(accountId, { ...existing, ...data });
 }

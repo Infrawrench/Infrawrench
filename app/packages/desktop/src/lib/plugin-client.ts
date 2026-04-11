@@ -4,7 +4,10 @@ import { getPlugin } from "../plugins/loader";
 import { buildPluginHostServices } from "./sql-drivers";
 import type { PluginClient } from "@infrawrench/plugin-base";
 
-export async function createPluginClient(accountId: string, pluginId: string): Promise<PluginClient> {
+export async function createPluginClient(
+  accountId: string,
+  pluginId: string,
+): Promise<PluginClient> {
   const db = await getDb();
   const rows = await db.select<{ encrypted_credentials: string; credentials_iv: string }[]>(
     "SELECT encrypted_credentials, credentials_iv FROM accounts WHERE id = $1",

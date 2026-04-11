@@ -22,7 +22,8 @@ const manifest: PluginManifest = {
     {
       key: "apiKey",
       label: "API Key",
-      description: "A Neon API key. Generate one at https://console.neon.tech/app/settings/api-keys",
+      description:
+        "A Neon API key. Generate one at https://console.neon.tech/app/settings/api-keys",
       sensitive: true,
       placeholder: "neon_...",
     },

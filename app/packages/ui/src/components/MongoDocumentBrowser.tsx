@@ -15,7 +15,11 @@ interface CollectionStats {
 
 const PAGE_SIZE = 25;
 
-export function MongoDocumentBrowser({ databaseName, connected = true, onCommand }: MongoDocumentBrowserProps) {
+export function MongoDocumentBrowser({
+  databaseName,
+  connected = true,
+  onCommand,
+}: MongoDocumentBrowserProps) {
   const [collections, setCollections] = useState<string[]>([]);
   const [activeCollection, setActiveCollection] = useState<string | null>(null);
   const [collectionStats, setCollectionStats] = useState<CollectionStats | null>(null);
@@ -55,7 +59,9 @@ export function MongoDocumentBrowser({ databaseName, connected = true, onCommand
           setCollectionsLoading(false);
         }
       });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [connected, databaseName]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchDocuments = useCallback(async () => {
@@ -64,8 +70,18 @@ export function MongoDocumentBrowser({ databaseName, connected = true, onCommand
     setError(null);
     try {
       const [docs, count, stats] = await Promise.all([
-        onCommand("find", [databaseName, activeCollection, appliedFilter, page * PAGE_SIZE, PAGE_SIZE]) as Promise<Record<string, unknown>[]>,
-        onCommand("countDocuments", [databaseName, activeCollection, appliedFilter]) as Promise<number>,
+        onCommand("find", [
+          databaseName,
+          activeCollection,
+          appliedFilter,
+          page * PAGE_SIZE,
+          PAGE_SIZE,
+        ]) as Promise<Record<string, unknown>[]>,
+        onCommand("countDocuments", [
+          databaseName,
+          activeCollection,
+          appliedFilter,
+        ]) as Promise<number>,
         onCommand("collectionStats", [databaseName, activeCollection]) as Promise<CollectionStats>,
       ]);
       setDocuments(docs);
@@ -81,7 +97,9 @@ export function MongoDocumentBrowser({ databaseName, connected = true, onCommand
     }
   }, [activeCollection, connected, databaseName, appliedFilter, page, onCommand]);
 
-  useEffect(() => { void fetchDocuments(); }, [fetchDocuments]);
+  useEffect(() => {
+    void fetchDocuments();
+  }, [fetchDocuments]);
 
   function handleApplyFilter() {
     const trimmed = filterText.trim() || "{}";
@@ -117,7 +135,7 @@ export function MongoDocumentBrowser({ databaseName, connected = true, onCommand
       await onCommand("createCollection", [databaseName, name]);
       setNewCollectionName("");
       setShowNewCollection(false);
-      const cols = await onCommand("listCollections", [databaseName]) as string[];
+      const cols = (await onCommand("listCollections", [databaseName])) as string[];
       setCollections(cols);
       setActiveCollection(name);
       setPage(0);
@@ -176,7 +194,9 @@ export function MongoDocumentBrowser({ databaseName, connected = true, onCommand
       {/* Collection sidebar */}
       <div className="w-64 border-r border-gray-800 flex flex-col overflow-hidden flex-shrink-0 bg-gray-950">
         <div className="px-3 py-2 border-b border-gray-800/60 flex items-center justify-between">
-          <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Collections</span>
+          <span className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
+            Collections
+          </span>
           <button
             onClick={() => setShowNewCollection((v) => !v)}
             className="text-gray-600 hover:text-gray-300 transition-colors text-sm leading-none"
@@ -190,7 +210,9 @@ export function MongoDocumentBrowser({ databaseName, connected = true, onCommand
             <input
               value={newCollectionName}
               onChange={(e) => setNewCollectionName(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") void handleCreateCollection(); }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void handleCreateCollection();
+              }}
               placeholder="collection name"
               className="flex-1 min-w-0 bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 font-mono placeholder-gray-600 focus:outline-none focus:border-blue-500"
               autoFocus
@@ -226,7 +248,9 @@ export function MongoDocumentBrowser({ databaseName, connected = true, onCommand
         </div>
         {collectionStats && activeCollection && (
           <div className="px-3 py-2 border-t border-gray-800/60 space-y-0.5">
-            <div className="text-xs text-gray-600">{collectionStats.count.toLocaleString()} docs</div>
+            <div className="text-xs text-gray-600">
+              {collectionStats.count.toLocaleString()} docs
+            </div>
             <div className="text-xs text-gray-600">{collectionStats.nindexes} indexes</div>
             {collectionStats.size > 0 && (
               <div className="text-xs text-gray-600">
@@ -245,7 +269,9 @@ export function MongoDocumentBrowser({ databaseName, connected = true, onCommand
           <input
             value={filterText}
             onChange={(e) => setFilterText(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") handleApplyFilter(); }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleApplyFilter();
+            }}
             placeholder='{ "field": "value" }'
             className="flex-1 bg-gray-900 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 font-mono placeholder-gray-600 focus:outline-none focus:border-blue-500"
             spellCheck={false}
@@ -277,9 +303,14 @@ export function MongoDocumentBrowser({ databaseName, connected = true, onCommand
         {showInsertDoc && activeCollection && (
           <div className="px-3 py-3 border-b border-gray-800/60 bg-gray-950/80">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs text-gray-400 font-medium">Insert Document into <span className="text-gray-200">{activeCollection}</span></span>
+              <span className="text-xs text-gray-400 font-medium">
+                Insert Document into <span className="text-gray-200">{activeCollection}</span>
+              </span>
               <button
-                onClick={() => { setShowInsertDoc(false); setInsertError(null); }}
+                onClick={() => {
+                  setShowInsertDoc(false);
+                  setInsertError(null);
+                }}
                 className="text-xs text-gray-600 hover:text-gray-400 transition-colors"
               >
                 Cancel
@@ -293,9 +324,7 @@ export function MongoDocumentBrowser({ databaseName, connected = true, onCommand
               spellCheck={false}
               placeholder='{ "key": "value" }'
             />
-            {insertError && (
-              <div className="text-xs text-red-400 mt-1">{insertError}</div>
-            )}
+            {insertError && <div className="text-xs text-red-400 mt-1">{insertError}</div>}
             <div className="flex justify-end mt-2">
               <button
                 onClick={() => void handleInsertDocument()}
@@ -401,7 +430,9 @@ function DocumentRow({
         className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-gray-800/30 transition-colors"
         onClick={onToggle}
       >
-        <span className={`text-gray-600 text-xs transition-transform flex-shrink-0 ${expanded ? "rotate-90" : ""}`}>
+        <span
+          className={`text-gray-600 text-xs transition-transform flex-shrink-0 ${expanded ? "rotate-90" : ""}`}
+        >
           &#9654;
         </span>
         <span className="text-xs text-gray-500 w-8 flex-shrink-0 text-right font-mono">
@@ -421,7 +452,10 @@ function DocumentRow({
           ))}
         </div>
         <button
-          onClick={(e) => { e.stopPropagation(); onDelete(); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            onDelete();
+          }}
           className="opacity-0 group-hover:opacity-100 text-xs text-gray-700 hover:text-red-400 px-1 transition-all flex-shrink-0"
           title="Delete document"
         >
@@ -461,7 +495,8 @@ function formatPreview(val: unknown): string {
   if (typeof val === "object") {
     const keys = Object.keys(val as object);
     if (keys.length === 1 && keys[0] === "$oid") return formatValue(val);
-    if (keys.length === 1 && keys[0] === "$date") return String((val as Record<string, unknown>)["$date"]);
+    if (keys.length === 1 && keys[0] === "$date")
+      return String((val as Record<string, unknown>)["$date"]);
     return `{${keys.length}}`;
   }
   return String(val);

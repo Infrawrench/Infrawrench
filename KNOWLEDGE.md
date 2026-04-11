@@ -58,7 +58,7 @@ pnpm workspaces + Turborepo. All package references use `workspace:*`.
 
 - Plugins own all provider-specific logic (API calls, field shapes, SQL strings, Docker ops, GCS paths, etc.)
 - The host (Electron main + React renderer) dispatches to plugins via typed interfaces — it never hard-codes provider names or API endpoints
-- Plugins return typed *schema* for rendering (e.g. `DetailViewSchema`, `SidebarItemSchema`) — they never return React components or JSX
+- Plugins return typed _schema_ for rendering (e.g. `DetailViewSchema`, `SidebarItemSchema`) — they never return React components or JSX
 - Node.js-heavy work (native DB clients, Docker SDK, storage downloads) lives in plugin `./node-driver` exports, run in Electron main
 
 ---
@@ -68,6 +68,7 @@ pnpm workspaces + Turborepo. All package references use `workspace:*`.
 **`src/manifest.ts`** — `Plugin`, `PluginClient`, `PluginManifest`, driver declarations, host services
 
 Key manifest fields:
+
 - `credentialFields` — what the host asks the user for when adding an account
 - `sqlDriver?: SqlDriverDeclaration` — opts in to SQL editor; host routes IPC to the right SQL node driver
 - `kvDriver?: KvDriverDeclaration` — opts in to Redis-style KV console
@@ -75,6 +76,7 @@ Key manifest fields:
 - `peerPlugins?` — plugin IDs this plugin may receive association data from
 
 Key `PluginClient` methods (all optional except the four core ones):
+
 ```typescript
 // Required
 listResources(typeId, accountId): Promise<ResourceInstance[]>
@@ -103,6 +105,7 @@ applyManifest?(resourceId, accountId, manifest): Promise<void>  // apply edited 
 **`src/resource.ts`** — `ResourceTypeDefinition`
 
 Important flags:
+
 - `dashboardPinnable: boolean` — whether users can pin instances to dashboards
 - `supportsCreate?: boolean` — whether the host shows a "+ Create" button
 - `supportsStorageBrowser?: boolean` — whether the host renders the GCS browser panel
@@ -120,6 +123,7 @@ Field kinds: `text`, `select`, `size-picker`, `region-picker`, `disk-slider`, `i
 **`src/node-driver.ts`** — Node.js-side driver interfaces
 
 Each plugin that needs native Node.js capabilities exports from `./node-driver`:
+
 - `SqlNodeDriver` — `query()`, `execute()`
 - `KvNodeDriver` — `command()`
 - `DockerNodeDriver` — `command()`
@@ -128,6 +132,7 @@ Each plugin that needs native Node.js capabilities exports from `./node-driver`:
 **`src/dns.ts`** — Shared DNS record rendering helpers
 
 Plugins that expose DNS records import these to avoid duplicating badge-color mapping, TTL formatting, and detail-view rendering:
+
 - `dnsRecordBadgeColor(type)` — maps DNS record types (A, AAAA, CNAME, MX, etc.) to badge colors
 - `formatDnsTtl(ttl)` — formats TTL seconds to human-readable strings (Auto, 5m, 1h, etc.)
 - `dnsZoneStatus(status)` — maps zone statuses to ResourceStatus
@@ -141,6 +146,7 @@ Currently used by: Cloudflare (full), DigitalOcean (detail + sidebar), GCP (badg
 ## Electron host — how it works
 
 ### Main process (`electron/main.ts`)
+
 - Loads SQLite via sql.js (WASM), persists to `userData/infrawrench.db` on every write
 - Encryption: 32-byte AES-256-GCM key stored in `userData/master.key`; credentials encrypted at rest
 - IPC handlers: `db_select`, `db_execute`, `encrypt_value`, `decrypt_value`, `get_or_create_encryption_key`, `show_open_dialog`
@@ -149,6 +155,7 @@ Currently used by: Cloudflare (full), DigitalOcean (detail + sidebar), GCP (badg
 - CORS interceptor: `session.defaultSession.webRequest.onHeadersReceived` — injects CORS headers only when the server hasn't sent `Access-Control-Allow-Origin`; for OPTIONS preflights that return non-200, forces `statusLine: "HTTP/1.1 200 OK"` to allow cross-origin DELETE/PUT/PATCH from `file://`
 
 ### Driver registration (`electron/drivers.ts`)
+
 ```typescript
 sqlDrivers     → Map<string, SqlNodeDriver>    (postgres, mysql, libsql, mysql-planetscale)
 kvDrivers      → Map<string, KvNodeDriver>     (redis, memcached)
@@ -157,9 +164,11 @@ storageDrivers → Map<string, StorageNodeDriver> (gcp)
 ```
 
 ### Plugin host (`electron/plugin-host.ts`)
+
 Handles `plugin_*` IPC calls by looking up the right driver from `drivers.ts`.
 
 ### SSH layer (`electron/ssh-tunnel.ts`, `electron/ssh-shell.ts`)
+
 - Tunnels: ssh2 `Client` + Node.js `net.Server` on port 0 (OS-assigned); each TCP connection opens an SSH forward channel. `openTunnel()` returns `{ tunnelId, localPort }`.
 - Shells: ssh2 `Client.shell()` with `xterm-256color`; data piped to renderer via `webContents.send()`. Binary data encoded with `.toString("binary")`.
 - `closeAllTunnels()` and `killAllSshShells()` called on `app.before-quit`.
@@ -171,6 +180,7 @@ Handles `plugin_*` IPC calls by looking up the right driver from `drivers.ts`.
 Two migrations. Tables:
 
 **v1:**
+
 - `accounts` — `id, plugin_id, display_name, encrypted_credentials, credentials_iv`
 - `plugin_installations` — `id, plugin_id, package_name, version, enabled`
 - `resources` — `id, plugin_id, resource_type_id, account_id, display_name, external_id, fields_json, outputs_json, parent_resource_id`
@@ -180,6 +190,7 @@ Two migrations. Tables:
 - `dashboard_pins` — `dashboard_id, resource_id, grid_x/y/w/h`
 
 **v2:**
+
 - `ssh_tunnel_configs` — `account_id (UNIQUE), ssh_host, ssh_port, ssh_user, remote_host, remote_port, encrypted_private_key, private_key_iv`
 - `ssh_keys` — named encrypted private keys saved by the user
 
@@ -200,6 +211,7 @@ Currently blessed: `gcp`, `docker`, `digitalocean`, `hetzner`, `kubernetes`, `me
 ## React app structure (desktop renderer)
 
 ### Routes (`src/routes/`)
+
 - `__root.tsx` — layout: sidebar + main content area
 - `index.tsx` — redirect to default dashboard
 - `dashboard.$dashboardId.tsx` — renders `DashboardView`
@@ -207,6 +219,7 @@ Currently blessed: `gcp`, `docker`, `digitalocean`, `hetzner`, `kubernetes`, `me
 - `resource.$accountId.$resourceId.tsx` — resource detail: `DetailView` + SQL editor / KV console / Docker panel / storage browser / manifest editor / SSH terminal / delete bar
 
 ### Key components (`src/components/`)
+
 - `SidebarAccounts.tsx` — grouped by plugin, lazy-loaded per account on expand, auto-refresh every 30s, right-click SSH context menu
 - `SidebarDashboards.tsx` — dashboard list + create
 - `DashboardView.tsx` — pinned resource cards, drag-and-drop pin, auto-connect & refresh stats every 30s
@@ -220,6 +233,7 @@ Currently blessed: `gcp`, `docker`, `digitalocean`, `hetzner`, `kubernetes`, `me
 - `SpotlightSearch.tsx` — ⌘K search across all accounts/resources
 
 ### State & data flow
+
 - Credentials are always encrypted in SQLite; decrypted on demand via IPC
 - `getSqlSession(accountId)` / `setSqlSession()` — in-memory cache of active SQL connections in the renderer
 - `useUIStore` (Zustand) — `dashboardPinsVersion`, `bumpAccounts`, `accountConnected` map
@@ -228,7 +242,9 @@ Currently blessed: `gcp`, `docker`, `digitalocean`, `hetzner`, `kubernetes`, `me
   - `iw:refresh-resource` — fires from the "Refresh" action button; resource detail does a background re-fetch
 
 ### Background refresh pattern
-All polling is *background* (no loading flash):
+
+All polling is _background_ (no loading flash):
+
 - `backgroundRefreshRef.current = true` is set before bumping the version counter
 - The `useEffect` reads the ref, resets it, and skips `setLoading(true)` when true
 - Errors during background refresh are silenced (stale data stays visible)
@@ -239,6 +255,7 @@ All polling is *background* (no loading flash):
 ## Plugin-specific notes
 
 ### GCP (`@infrawrench/plugin-gcp`)
+
 - Auth: OAuth2 access token fetched client-side from `oauth2.googleapis.com/token`
 - Resource ID format: `{accountId}:gce-instance:{projectId}/{zone}/{instanceName}`
 - `externalId` for GCE instances = `{projectId}/{zone}/{instanceName}` — parse with `.split("/").pop()` to get the instance name for API calls
@@ -249,11 +266,13 @@ All polling is *background* (no loading flash):
 - `getCreateCostEstimate()` handles `gce-instance` (VM + boot disk) and `gke-cluster` (per-node VM + per-node disk × node count); machine type specs are cached in `machineTypeSpecCache` (populated during `getCreateConfig`) so cost recalculations from slider/field changes don't require API calls
 
 ### DigitalOcean (`@infrawrench/plugin-digitalocean`)
+
 - Resource ID format: `{accountId}:{typeId}:{externalId}`
 - SSH key upload: `POST /v2/account/keys` — handle 422 (duplicate) by listing existing keys and matching by `public_key`
 - `fetch` helper handles `204 No Content` explicitly to avoid JSON parse error on DELETE
 
 ### Neon (`@infrawrench/plugin-neon`)
+
 - Auth: Neon API key (`neon_...`), passed as `Bearer` token to `https://console.neon.tech/api/v2`
 - Resource hierarchy: Project → Branch → (Endpoint, Database, Role)
 - Resource ID formats: `{accountId}:neon-project:{projectId}`, `{accountId}:neon-branch:{projectId}/{branchId}`, `{accountId}:neon-database:{projectId}/{branchId}/{dbName}`
@@ -265,6 +284,7 @@ All polling is *background* (no loading flash):
 - Supports delete for projects, branches, and databases
 
 ### Hetzner Cloud (`@infrawrench/plugin-hetzner`)
+
 - Auth: Bearer token against `https://api.hetzner.cloud/v1`
 - Resource ID format: `{accountId}:{typeId}:{externalId}` (externalId is the Hetzner numeric ID)
 - Resource types: `server`, `volume`, `floating-ip`, `firewall`
@@ -274,6 +294,7 @@ All polling is *background* (no loading flash):
 - Server status mapping: running→healthy, initializing/starting/rebuilding→provisioning, stopping/migrating→degraded, off/deleting→error
 
 ### Scaleway (`@infrawrench/plugin-scaleway`)
+
 - Auth: `X-Auth-Token` header against `https://api.scaleway.com`
 - Credentials: `accessKey` (SCW...), `secretKey` (UUID), `defaultProjectId` (UUID)
 - Resource types: `instance`, `kapsule-cluster`, `rdb-instance`, `object-storage-bucket`
@@ -286,6 +307,7 @@ All polling is *background* (no loading flash):
 - Instance status mapping: running/ready→healthy, starting/stopping/provisioning/creating→provisioning, stopped/error/locked/deleting→error
 
 ### Kubernetes (`@infrawrench/plugin-kubernetes`)
+
 - Manifest editor: all namespaced resource types (Pod, Deployment, Service, StatefulSet, DaemonSet, Job, CronJob, Ingress, ConfigMap, Secret) declare `manifestEditor` on their `DetailViewSchema`. The host renders a Monaco-based JSON editor tab.
 - `getManifest(resourceId, accountId)` fetches the full resource JSON from the K8s API; `applyManifest()` PUTs it back.
 - Resource ID format: `{accountId}:k8s-{type}:{namespace}:{name}` (namespaced) or `{accountId}:k8s-{type}:{name}` (non-namespaced like namespaces).
@@ -294,13 +316,16 @@ All polling is *background* (no loading flash):
 - `deleteResource()` is implemented for all namespaced K8s resource types via `buildResourcePath()`.
 
 ### Docker (`@infrawrench/plugin-docker`)
+
 - `dockerHost` credential: `unix:///var/run/docker.sock` (default) or `tcp://host:port`
 - Dashboard card label uses `"Running"` instead of `"Tables"` for container count
 
 ### SSH (`@infrawrench/plugin-ssh`)
+
 - Generic SSH VM plugin; credential: `host`, `port`, `username`, `privateKeyName` (references a saved key)
 
 ### Databricks (`@infrawrench/plugin-databricks`)
+
 - Auth: Personal Access Token (PAT) as `Bearer` token against the workspace URL
 - Credentials: `host` (workspace URL, e.g. `https://adb-1234567890.7.azuredatabricks.net`), `token` (PAT starting with `dapi...`)
 - Resource types: `databricks-cluster`, `databricks-sql-warehouse`, `databricks-job`, `databricks-pipeline`, `databricks-catalog`, `databricks-schema` (child of catalog), `databricks-table` (child of schema)
@@ -313,6 +338,7 @@ All polling is *background* (no loading flash):
 - Resource ID format: `{accountId}:{typeId}:{externalId}` — externalId is cluster_id, warehouse_id, job_id, pipeline_id, or Unity Catalog full name (`catalog.schema.table`)
 
 ### Turso (`@infrawrench/plugin-turso`)
+
 - Auth: Bearer token (Platform API token) against `https://api.turso.tech/v1`
 - Credentials: `apiToken` (Platform API token), `organizationName` (org slug)
 - Resource types: `turso-group`, `turso-database`
@@ -328,6 +354,7 @@ All polling is *background* (no loading flash):
 - 30+ edge locations available for group placement (3-letter IATA codes: iad, fra, nrt, etc.)
 
 ### PlanetScale (`@infrawrench/plugin-planetscale`)
+
 - Auth: Service token — `Authorization: {serviceTokenId}:{serviceTokenSecret}` against `https://api.planetscale.com/v1`
 - Credentials: `serviceTokenId`, `serviceTokenSecret` (sensitive), `organizationName` (org slug)
 - Resource types: `ps-database`, `ps-branch` (child of ps-database)
@@ -342,6 +369,7 @@ All polling is *background* (no loading flash):
 - Regions: AWS regions (us-east, us-west, eu-west, eu-central, ap-south, ap-southeast, ap-northeast, sa-east, ap-southeast-2)
 
 ### Cloudflare (`@infrawrench/plugin-cloudflare`)
+
 - Auth: API Token (scoped, created at dash.cloudflare.com/profile/api-tokens), passed as `Bearer` token to `https://api.cloudflare.com/client/v4`
 - Account ID is lazy-resolved from the first zone's `account.id` field and cached for the session
 - 23 resource types: `zone`, `dns-record` (child of zone), `worker`, `r2-bucket`, `pages-project`, `pages-deployment` (child of pages-project), `kv-namespace`, `d1-database`, `queue`, `tunnel`, `ssl-certificate` (child of zone), `page-rule` (child of zone), `firewall-rule` (child of zone), `access-application`, `access-policy` (child of access-application), `load-balancer` (child of zone), `worker-route` (child of zone), `custom-hostname` (child of zone), `hyperdrive`, `email-routing-rule` (child of zone), `waiting-room` (child of zone), `spectrum-application` (child of zone), `logpush-job` (child of zone)
@@ -372,6 +400,7 @@ All polling is *background* (no loading flash):
 - Logpush Jobs show dataset, destination type (parsed from URL scheme), enable/error status, and last error in mono text
 
 ### Azure (`@infrawrench/plugin-azure`)
+
 - Auth: Azure AD service principal client credentials flow (tenant_id + client_id + client_secret)
 - Credentials: `tenantId`, `clientId`, `clientSecret` (sensitive), `subscriptionId`
 - All API calls go through Azure Resource Manager REST API (`management.azure.com`)
@@ -400,6 +429,7 @@ All polling is *background* (no loading flash):
 - 34 Azure regions configured for create form region picker
 
 ### AWS (`@infrawrench/plugin-aws`)
+
 - Auth: AWS Signature Version 4 (pure Web Crypto, no AWS SDK dependency)
 - Credentials: `accessKeyId`, `secretAccessKey` (sensitive), `region`
 - API calls use direct AWS REST APIs: EC2 Query API (XML), JSON Amz-Target APIs, REST JSON APIs
@@ -438,6 +468,7 @@ All polling is *background* (no loading flash):
 Electron's renderer runs from `file://` (or `http://localhost:5173` in dev). External APIs (GCP, DO) block cross-origin requests.
 
 **Solution:** `session.defaultSession.webRequest.onHeadersReceived` interceptor in `electron/main.ts`:
+
 1. For all responses: if no `Access-Control-Allow-Origin` header exists, inject `*` + methods + headers
 2. For OPTIONS preflights specifically: also force `statusLine: "HTTP/1.1 200 OK"` because GCP/DO return 403 to OPTIONS, which the browser rejects regardless of CORS headers
 
@@ -452,6 +483,7 @@ Electron's renderer runs from `file://` (or `http://localhost:5173` in dev). Ext
 The same generic flow also powers managed Kubernetes cluster creation for providers that implement it (currently DOKS and GKE). For account-level views, the desktop now loads all top-level resource types plus child resource types that set `supportsCreate`, so creatable provider resources can show up even when they are nested under a parent type like DigitalOcean `project`.
 
 Field rendering:
+
 - `region-picker` — searchable by zone ID, human-readable location name, or flag. Shows location as primary label, zone ID as secondary monospaced hint.
 - `size-picker` — collapsible categories, CPU/RAM bars per option
 - `image-picker` — grouped by OS family, searchable, "owned" badge for account images
@@ -459,6 +491,7 @@ Field rendering:
 - `ssh-key-picker` — system keys from `~/.ssh/` (private keys only); on selection, reads `.pub` file to auto-populate SSH username from comment
 
 Pricing UX:
+
 - Header can show an "Estimated cost" badge when the selected `size-picker` option includes `priceMonthly`; host reads generic `SizeOption.priceMonthly` metadata and does not hard-code provider pricing logic.
 - Host can call optional `getCreateSizePricing()` after initial form load to progressively fill `priceMonthly` for `size-picker` options (used for slow pricing APIs).
 - Host can call optional `getCreateCostEstimate()` for full monthly totals from provider logic (e.g. VM + boot disk) so storage is included in the estimate badge.
@@ -495,26 +528,29 @@ Resource detail pages now expose SSH as a route-local tab. The bottom-docked SSH
 
 ## Common pitfalls
 
-| Symptom | Cause | Fix |
-|---|---|---|
-| `Cannot read 'dimensions'` in xterm | `fitAddon.fit()` called before DOM layout | Defer to `requestAnimationFrame` |
-| Duplicate `Access-Control-Allow-Origin` header | CORS interceptor adding `*` when server already sent its own | Check `hasACAO` case-insensitively before injecting |
-| OPTIONS preflight blocked with 403 | Server rejects preflight; headers were added to 403 but browser still rejects | Force `statusLine: "HTTP/1.1 200 OK"` on OPTIONS when injecting |
-| GCP delete 404 with full resource ID in URL | `externalId` is `project/zone/name`; using it directly as instance name | Use `resource.fields["name"]` or `.split("/").pop()` |
-| `exactOptionalPropertyTypes` TS error | `field.defaultValue = x | undefined` not assignable | Use `...(x ? { defaultValue: x } : {})` spread pattern |
-| Plugin-base types missing after change | Dependent package built before plugin-base | Run `pnpm --filter @infrawrench/plugin-base build` first |
-| SSH auth fails despite correct key | Username defaults to `root`; GCP/DO use key comment as username | Read `.pub` file comment, use `comment.split("@")[0]` as username |
-| Sidebar shows deleted resource | Sidebar caches resource lists; `iw:resources-changed` event not fired | Dispatch event after delete; sidebar listener calls `loadAccountResources(..., true)` |
+| Symptom                                        | Cause                                                                         | Fix                                                                                   |
+| ---------------------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| `Cannot read 'dimensions'` in xterm            | `fitAddon.fit()` called before DOM layout                                     | Defer to `requestAnimationFrame`                                                      |
+| Duplicate `Access-Control-Allow-Origin` header | CORS interceptor adding `*` when server already sent its own                  | Check `hasACAO` case-insensitively before injecting                                   |
+| OPTIONS preflight blocked with 403             | Server rejects preflight; headers were added to 403 but browser still rejects | Force `statusLine: "HTTP/1.1 200 OK"` on OPTIONS when injecting                       |
+| GCP delete 404 with full resource ID in URL    | `externalId` is `project/zone/name`; using it directly as instance name       | Use `resource.fields["name"]` or `.split("/").pop()`                                  |
+| `exactOptionalPropertyTypes` TS error          | `field.defaultValue = x                                                       | undefined` not assignable                                                             | Use `...(x ? { defaultValue: x } : {})` spread pattern |
+| Plugin-base types missing after change         | Dependent package built before plugin-base                                    | Run `pnpm --filter @infrawrench/plugin-base build` first                              |
+| SSH auth fails despite correct key             | Username defaults to `root`; GCP/DO use key comment as username               | Read `.pub` file comment, use `comment.split("@")[0]` as username                     |
+| Sidebar shows deleted resource                 | Sidebar caches resource lists; `iw:resources-changed` event not fired         | Dispatch event after delete; sidebar listener calls `loadAccountResources(..., true)` |
 
 ---
 
 ## Web app architecture
 
 ### Auth
+
 WorkOS AuthKit — middleware-enforced on all `(app)/*` routes. Auto-provisions user/org on first login. `requireAuth()` returns `{ userId, organizationId, email }`.
 
 ### Database
+
 Drizzle ORM + Neon PostgreSQL. Schema at `web/src/db/schema.ts`. 13 tables total:
+
 - Core: organizations, users, plugin_installations, accounts, resources, secret_field_states, associations, dashboards, dashboard_pins
 - SaaS: audit_logs, api_keys, subscriptions, invitations
 
@@ -523,15 +559,19 @@ Sync columns on accounts/resources/dashboards/dashboard_pins/associations: `sync
 Migrations generated via `drizzle-kit generate` — never write SQL directly.
 
 ### Server Actions
+
 All mutations in `web/src/actions/`: accounts, resources, dashboard, associations, api-keys, billing, team, audit. Each calls `logAudit()` for the audit trail.
 
 ### WebSocket proxy
+
 Custom Next.js server (`web/server.ts`) handles WS upgrades at `/api/ws`. Auth via `?token=` query param (API key or OAuth token). Channels:
+
 - `ssh:open` → SSH terminal session via ssh2
 - `sql:query` → SQL execution via plugin drivers
 - `ssh:data` / `ssh:resize` → bidirectional terminal I/O
 
 ### Sync protocol
+
 - `POST /api/v1/sync/pull` — returns entities with `syncVersion > lastSyncVersion`
 - `POST /api/v1/sync/push` — upserts entities with last-write-wins by `updatedAt`
 - `GET /api/v1/sync/status` — returns max syncVersion
@@ -539,7 +579,9 @@ Custom Next.js server (`web/server.ts`) handles WS upgrades at `/api/ws`. Auth v
 Auth via `Authorization: Bearer <api_key_or_oauth_token>`. Scopes: `sync:read`, `sync:write`, `resources:read/write`, `dashboards:read/write`.
 
 ### Stripe billing
+
 $20/month per seat. Free tier: 1 user, 3 accounts, no audit/API keys/team.
+
 - `POST /api/v1/webhooks/stripe` — handles checkout.session.completed, invoice.paid/failed, subscription.updated/deleted
 - Server Actions: createCheckoutSession, createBillingPortalSession, getSubscriptionStatus
 
@@ -548,12 +590,15 @@ $20/month per seat. Free tier: 1 user, 3 accounts, no audit/API keys/team.
 ## Desktop cloud sync
 
 ### OAuth PKCE
+
 `desktop/electron/cloud-auth.ts` — WorkOS OAuth2 PKCE flow. Custom protocol `infrawrench://callback`. Tokens encrypted in `cloud_sync_state` SQLite table.
 
 ### Sync engine
+
 `desktop/electron/cloud-sync.ts` — 60-second interval. Push: modified rows since `lastPushAt`. Pull: entities with `syncVersion > lastSyncVersion`. Credentials decrypted locally, sent plaintext over TLS, re-encrypted on server.
 
 ### Desktop SQLite v3 migration
+
 Added `cloud_sync_state` table + `cloud_id`, `sync_version`, `deleted_at` columns to synced tables.
 
 ---
@@ -575,6 +620,7 @@ Live API integration tests live in `integration-tests/`. Completely separate fro
 **Filter:** `INTEGRATION_PLUGINS=neon,hetzner pnpm test:integration`
 
 **What's tested per provider (when credentials are present):**
+
 - Manifest Zod validation
 - `createClient` with real credentials + host services
 - `listResources` for every resource type

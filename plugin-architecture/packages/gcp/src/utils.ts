@@ -8,9 +8,7 @@ export function formatBytes(bytes: number): string {
   return `${(bytes / 1_073_741_824).toFixed(2)} GB`;
 }
 
-export function gcpStatus(
-  s: string | undefined,
-): ResourceStatus {
+export function gcpStatus(s: string | undefined): ResourceStatus {
   switch ((s ?? "").toUpperCase()) {
     case "RUNNING":
     case "ACTIVE":

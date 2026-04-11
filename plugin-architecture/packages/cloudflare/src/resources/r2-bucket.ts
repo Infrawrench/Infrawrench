@@ -24,7 +24,11 @@ export const R2BucketResourceType: ResourceTypeDefinition = {
       description: "S3-compatible endpoint and bucket name for connecting to R2",
       entries: [
         { envKey: "R2_BUCKET_NAME", outputKey: "bucketName", description: "R2 bucket name" },
-        { envKey: "R2_S3_ENDPOINT", outputKey: "s3Endpoint", description: "S3-compatible endpoint URL" },
+        {
+          envKey: "R2_S3_ENDPOINT",
+          outputKey: "s3Endpoint",
+          description: "S3-compatible endpoint URL",
+        },
       ],
     },
   ],

@@ -36,11 +36,14 @@ describe("redis driver", () => {
       const result = await driver.command("redis://localhost:6379", "GET", ["foo"]);
 
       expect(result).toBe("bar");
-      expect(Redis).toHaveBeenCalledWith("redis://localhost:6379", expect.objectContaining({
-        maxRetriesPerRequest: 1,
-        lazyConnect: true,
-        enableReadyCheck: false,
-      }));
+      expect(Redis).toHaveBeenCalledWith(
+        "redis://localhost:6379",
+        expect.objectContaining({
+          maxRetriesPerRequest: 1,
+          lazyConnect: true,
+          enableReadyCheck: false,
+        }),
+      );
       expect(mockConnect).toHaveBeenCalled();
       expect(mockGet).toHaveBeenCalledWith("foo");
     });
@@ -64,17 +67,17 @@ describe("redis driver", () => {
     });
 
     it("throws for unknown commands", async () => {
-      await expect(
-        driver.command("redis://localhost:6379", "UNKNOWNCMD", []),
-      ).rejects.toThrow("Unknown Redis command: UNKNOWNCMD");
+      await expect(driver.command("redis://localhost:6379", "UNKNOWNCMD", [])).rejects.toThrow(
+        "Unknown Redis command: UNKNOWNCMD",
+      );
     });
 
     it("disconnects even on error", async () => {
       mockConnect.mockRejectedValue(new Error("connection refused"));
 
-      await expect(
-        driver.command("redis://localhost:6379", "GET", ["foo"]),
-      ).rejects.toThrow("connection refused");
+      await expect(driver.command("redis://localhost:6379", "GET", ["foo"])).rejects.toThrow(
+        "connection refused",
+      );
       expect(mockDisconnect).toHaveBeenCalled();
     });
   });

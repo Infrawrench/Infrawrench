@@ -8,8 +8,15 @@ export interface CreateResourceModalProps {
   displayName: string;
   form: CreateResourceFormState;
   onClose: () => void;
-  renderField: (field: CreateFieldConfig, value: string, onChange: (v: string) => void) => ReactNode;
-  renderError?: (message: string, props?: { className?: string; textClassName?: string }) => ReactNode;
+  renderField: (
+    field: CreateFieldConfig,
+    value: string,
+    onChange: (v: string) => void,
+  ) => ReactNode;
+  renderError?: (
+    message: string,
+    props?: { className?: string; textClassName?: string },
+  ) => ReactNode;
 }
 
 export function CreateResourceModal({
@@ -26,17 +33,22 @@ export function CreateResourceModal({
     <Modal onClose={onClose}>
       <div className="bg-gray-900 border border-gray-700 rounded-xl shadow-2xl w-[560px] max-h-[72vh] flex flex-col">
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-800 flex-shrink-0">
-          <h2 className="text-base font-semibold text-gray-100">
-            Create {displayName}
-          </h2>
+          <h2 className="text-base font-semibold text-gray-100">Create {displayName}</h2>
           <div className="flex items-center gap-3">
             {form.estimatedMonthlyPriceLabel && (
               <div className="text-right px-3 py-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/10">
-                <p className="text-[10px] uppercase tracking-wide text-emerald-300/80">Estimated cost</p>
-                <p className="text-sm font-semibold text-emerald-200">{form.estimatedMonthlyPriceLabel}/mo</p>
+                <p className="text-[10px] uppercase tracking-wide text-emerald-300/80">
+                  Estimated cost
+                </p>
+                <p className="text-sm font-semibold text-emerald-200">
+                  {form.estimatedMonthlyPriceLabel}/mo
+                </p>
               </div>
             )}
-            <button onClick={onClose} className="text-gray-600 hover:text-gray-300 text-xl leading-none">
+            <button
+              onClick={onClose}
+              className="text-gray-600 hover:text-gray-300 text-xl leading-none"
+            >
               &times;
             </button>
           </div>
@@ -52,13 +64,19 @@ export function CreateResourceModal({
             errorEl(form.configError, { textClassName: "text-sm text-red-400" })
           ) : form.configWithPricing ? (
             <div className="space-y-6">
-              {form.visibleFields.map((f) => renderField(f, form.fields[f.key] ?? "", (v) => form.setField(f.key, v)))}
+              {form.visibleFields.map((f) =>
+                renderField(f, form.fields[f.key] ?? "", (v) => form.setField(f.key, v)),
+              )}
             </div>
           ) : null}
         </div>
 
         <div className="px-6 py-4 border-t border-gray-800 flex-shrink-0">
-          {form.error && errorEl(form.error, { className: "mb-3 rounded bg-red-900/20 px-3 py-2", textClassName: "text-xs text-red-400" })}
+          {form.error &&
+            errorEl(form.error, {
+              className: "mb-3 rounded bg-red-900/20 px-3 py-2",
+              textClassName: "text-xs text-red-400",
+            })}
           <div className="flex gap-3">
             <button
               onClick={onClose}

@@ -65,7 +65,9 @@ export function SidebarDashboards() {
     <div className="mb-2">
       {/* Section header */}
       <div className="flex items-center justify-between px-3 py-1">
-        <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Dashboards</span>
+        <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+          Dashboards
+        </span>
         <button
           onClick={() => setAddingNew(true)}
           title="New dashboard"
@@ -85,14 +87,19 @@ export function SidebarDashboards() {
               await db.execute("DELETE FROM dashboard_pins WHERE dashboard_id = $1", [dash.id]);
               await db.execute("DELETE FROM dashboards WHERE id = $1", [dash.id]);
               removeWorkspaceTabs(
-                useUIStore.getState().workspaceTabs
-                  .filter((tab) => tab.target.kind === "dashboard" && tab.target.dashboardId === dash.id)
+                useUIStore
+                  .getState()
+                  .workspaceTabs.filter(
+                    (tab) => tab.target.kind === "dashboard" && tab.target.dashboardId === dash.id,
+                  )
                   .map((tab) => tab.id),
               );
               setDashboards((prev) => prev.filter((d) => d.id !== dash.id));
               // Navigate home if we just deleted the active dashboard
               void navigate({ to: "/" });
-            } catch { /* ignore */ }
+            } catch {
+              /* ignore */
+            }
           }}
         />
       ))}
@@ -121,13 +128,7 @@ export function SidebarDashboards() {
   );
 }
 
-function DroppableDashboardLink({
-  dash,
-  onDelete,
-}: {
-  dash: DashboardRow;
-  onDelete: () => void;
-}) {
+function DroppableDashboardLink({ dash, onDelete }: { dash: DashboardRow; onDelete: () => void }) {
   const navigate = useNavigate();
   const { setNodeRef, isOver } = useDroppable({ id: `sidebar-dashboard:${dash.id}` });
   const {
@@ -153,7 +154,12 @@ function DroppableDashboardLink({
   }
 
   return (
-    <div ref={setRefs} className={`mx-2 ${isDragging ? "opacity-40" : ""}`} {...attributes} {...listeners}>
+    <div
+      ref={setRefs}
+      className={`mx-2 ${isDragging ? "opacity-40" : ""}`}
+      {...attributes}
+      {...listeners}
+    >
       <div
         className={`group flex items-center rounded-lg text-xs transition-colors ${
           isOver
@@ -166,7 +172,11 @@ function DroppableDashboardLink({
         <button
           type="button"
           draggable={false}
-          onClick={() => void navigateToWorkspaceTarget(navigate, dashboardTabTarget(dash.id), { label: dash.name })}
+          onClick={() =>
+            void navigateToWorkspaceTarget(navigate, dashboardTabTarget(dash.id), {
+              label: dash.name,
+            })
+          }
           className="flex flex-1 items-center gap-2 px-3 py-1.5 min-w-0"
         >
           <span className="opacity-50 flex-shrink-0">⊞</span>
@@ -175,7 +185,10 @@ function DroppableDashboardLink({
         </button>
         {!isHome && (
           <button
-            onClick={(e) => { e.stopPropagation(); onDelete(); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
             title="Delete dashboard"
             className="opacity-0 group-hover:opacity-100 mr-1.5 w-5 h-5 flex items-center justify-center rounded text-gray-600 hover:text-red-400 hover:bg-red-500/10 transition-all flex-shrink-0"
           >

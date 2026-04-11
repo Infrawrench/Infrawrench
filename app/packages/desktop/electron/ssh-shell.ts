@@ -21,10 +21,7 @@ interface ShellRecord {
 
 const shells = new Map<string, ShellRecord>();
 
-export function spawnSshShell(
-  webContents: WebContents,
-  config: SshShellConfig,
-): Promise<string> {
+export function spawnSshShell(webContents: WebContents, config: SshShellConfig): Promise<string> {
   return new Promise((resolve, reject) => {
     const client = new SshClient();
 
@@ -32,7 +29,11 @@ export function spawnSshShell(
       client.shell(
         { term: "xterm-256color", cols: config.cols, rows: config.rows },
         (err, stream) => {
-          if (err) { client.end(); reject(err); return; }
+          if (err) {
+            client.end();
+            reject(err);
+            return;
+          }
 
           const shellId = crypto.randomUUID();
           shells.set(shellId, { stream, client, webContents: new WeakRef(webContents) });
@@ -40,7 +41,10 @@ export function spawnSshShell(
           const send = (data: Buffer | string) => {
             const wc = shells.get(shellId)?.webContents.deref();
             if (wc && !wc.isDestroyed()) {
-              wc.send(`ssh_shell_data_${shellId}`, typeof data === "string" ? Buffer.from(data, "utf8") : data);
+              wc.send(
+                `ssh_shell_data_${shellId}`,
+                typeof data === "string" ? Buffer.from(data, "utf8") : data,
+              );
             }
           };
 
@@ -85,8 +89,16 @@ export function resizeSshShell(shellId: string, cols: number, rows: number): voi
 export function killSshShell(shellId: string): void {
   const s = shells.get(shellId);
   if (!s) return;
-  try { s.stream?.end?.(); } catch { /* ignore */ }
-  try { s.client.end(); } catch { /* ignore */ }
+  try {
+    s.stream?.end?.();
+  } catch {
+    /* ignore */
+  }
+  try {
+    s.client.end();
+  } catch {
+    /* ignore */
+  }
   shells.delete(shellId);
 }
 

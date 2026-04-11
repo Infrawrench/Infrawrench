@@ -1,5 +1,15 @@
-export function DiskSlider({ value, min, max, step, onChange }: {
-  value: number; min: number; max: number; step: number; onChange: (n: number) => void;
+export function DiskSlider({
+  value,
+  min,
+  max,
+  step,
+  onChange,
+}: {
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  onChange: (n: number) => void;
 }) {
   const pct = ((value - min) / (max - min)) * 100;
 
@@ -12,10 +22,7 @@ export function DiskSlider({ value, min, max, step, onChange }: {
       </div>
       <div className="relative h-6 flex items-center">
         <div className="absolute w-full h-1.5 bg-gray-700 rounded-full">
-          <div
-            className="absolute h-full bg-blue-500 rounded-full"
-            style={{ width: `${pct}%` }}
-          />
+          <div className="absolute h-full bg-blue-500 rounded-full" style={{ width: `${pct}%` }} />
         </div>
         <input
           type="range"

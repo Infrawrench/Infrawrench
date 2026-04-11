@@ -42,7 +42,11 @@ export class MemcachedClient implements PluginClient {
     ];
   }
 
-  async getResource(typeId: string, resourceId: string, accountId: string): Promise<ResourceInstance> {
+  async getResource(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+  ): Promise<ResourceInstance> {
     const all = await this.listResources(typeId, accountId);
     const found = all.find((r) => r.id === resourceId);
     if (!found) throw new Error(`Memcached plugin: resource ${typeId}/${resourceId} not found`);
@@ -68,16 +72,12 @@ export class MemcachedClient implements PluginClient {
           children: [
             {
               kind: "key-value-list",
-              items: [
-                { key: "Server(s)", value: host },
-              ],
+              items: [{ key: "Server(s)", value: host }],
             },
           ],
         },
       ],
-      headerActions: [
-        { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
-      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
   }
 

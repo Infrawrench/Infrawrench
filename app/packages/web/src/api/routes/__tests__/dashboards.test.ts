@@ -119,7 +119,12 @@ describe("Dashboard routes", () => {
         return selectCallCount === 1 ? selectChain1 : selectChain2;
       });
 
-      const defaultDash = { id: "dash-uuid-1", name: "Home", isDefault: true, organizationId: "org-1" };
+      const defaultDash = {
+        id: "dash-uuid-1",
+        name: "Home",
+        isDefault: true,
+        organizationId: "org-1",
+      };
       const returning = vi.fn().mockResolvedValue([defaultDash]);
       const values = vi.fn().mockReturnValue({ returning });
       mockInsert.mockReturnValue({ values });

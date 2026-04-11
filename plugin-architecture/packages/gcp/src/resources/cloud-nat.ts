@@ -10,7 +10,12 @@ export const CloudNatResourceType: ResourceTypeDefinition = {
     { key: "region", label: "Region", kind: "string", required: true },
     { key: "router", label: "Router", kind: "string", required: true },
     { key: "natIpAllocateOption", label: "IP Allocation", kind: "string", required: false },
-    { key: "sourceSubnetworkIpRangesToNat", label: "Subnet IP Ranges", kind: "string", required: false },
+    {
+      key: "sourceSubnetworkIpRangesToNat",
+      label: "Subnet IP Ranges",
+      kind: "string",
+      required: false,
+    },
     { key: "status", label: "Status", kind: "string", required: false },
   ],
   outputs: [],

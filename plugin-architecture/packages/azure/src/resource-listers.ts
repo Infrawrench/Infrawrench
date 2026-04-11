@@ -61,10 +61,7 @@ export async function listResourceGroups(
   });
 }
 
-export async function listVMs(
-  ctx: ListerContext,
-  accountId: string,
-): Promise<ResourceInstance[]> {
+export async function listVMs(ctx: ListerContext, accountId: string): Promise<ResourceInstance[]> {
   // Fetch VMs with instance view (includes power state)
   const data = await ctx.get<{ value: Record<string, unknown>[] }>(
     `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.Compute/virtualMachines?api-version=2024-03-01&$expand=instanceView`,
@@ -97,7 +94,9 @@ export async function listVMs(
     let privateIp = "";
     let fqdn = "";
     const networkProfile = props?.["networkProfile"] as Record<string, unknown> | undefined;
-    const nics = networkProfile?.["networkInterfaces"] as Array<Record<string, unknown>> | undefined;
+    const nics = networkProfile?.["networkInterfaces"] as
+      | Array<Record<string, unknown>>
+      | undefined;
     if (nics && nics.length > 0) {
       const firstNic = nics[0];
       const nicId = firstNic ? String(firstNic["id"] ?? "") : "";
@@ -107,12 +106,18 @@ export async function listVMs(
             `${ARM}${nicId}?api-version=2023-09-01`,
           );
           const nicProps = nic["properties"] as Record<string, unknown> | undefined;
-          const ipConfigs = nicProps?.["ipConfigurations"] as Array<Record<string, unknown>> | undefined;
+          const ipConfigs = nicProps?.["ipConfigurations"] as
+            | Array<Record<string, unknown>>
+            | undefined;
           const firstIpConfig = ipConfigs?.[0];
           if (firstIpConfig) {
-            const ipConfigProps = firstIpConfig["properties"] as Record<string, unknown> | undefined;
+            const ipConfigProps = firstIpConfig["properties"] as
+              | Record<string, unknown>
+              | undefined;
             privateIp = String(ipConfigProps?.["privateIPAddress"] ?? "");
-            const publicIpRef = ipConfigProps?.["publicIPAddress"] as Record<string, unknown> | undefined;
+            const publicIpRef = ipConfigProps?.["publicIPAddress"] as
+              | Record<string, unknown>
+              | undefined;
             const publicIpId = String(publicIpRef?.["id"] ?? "");
             if (publicIpId) {
               try {
@@ -121,7 +126,9 @@ export async function listVMs(
                 );
                 const pipProps = pip["properties"] as Record<string, unknown> | undefined;
                 publicIp = String(pipProps?.["ipAddress"] ?? "");
-                const dnsSettings = pipProps?.["dnsSettings"] as Record<string, unknown> | undefined;
+                const dnsSettings = pipProps?.["dnsSettings"] as
+                  | Record<string, unknown>
+                  | undefined;
                 fqdn = String(dnsSettings?.["fqdn"] ?? "");
               } catch {
                 // Public IP might not be accessible
@@ -326,7 +333,11 @@ export async function listSQLDatabases(
             location: String(db["location"] ?? ""),
             status: String(dbProps?.["status"] ?? ""),
             edition: String(dbProps?.["edition"] ?? dbProps?.["currentServiceObjectiveName"] ?? ""),
-            serviceLevelObjective: String(dbProps?.["requestedServiceObjectiveName"] ?? dbProps?.["currentServiceObjectiveName"] ?? ""),
+            serviceLevelObjective: String(
+              dbProps?.["requestedServiceObjectiveName"] ??
+                dbProps?.["currentServiceObjectiveName"] ??
+                "",
+            ),
             maxSizeBytes: Number(dbProps?.["maxSizeBytes"] ?? 0),
             collation: String(dbProps?.["collation"] ?? ""),
             zoneRedundant: (dbProps?.["zoneRedundant"] as boolean) ?? false,
@@ -381,7 +392,8 @@ export async function listCosmosDBAccounts(
         enableAutomaticFailover: (props?.["enableAutomaticFailover"] as boolean) ?? false,
         enableMultipleWriteLocations: (props?.["enableMultipleWriteLocations"] as boolean) ?? false,
         readLocations: readLocations?.map((l) => String(l["locationName"] ?? "")).join(", ") ?? "",
-        writeLocations: writeLocations?.map((l) => String(l["locationName"] ?? "")).join(", ") ?? "",
+        writeLocations:
+          writeLocations?.map((l) => String(l["locationName"] ?? "")).join(", ") ?? "",
       },
       resolvedOutputs: {
         documentEndpoint: String(props?.["documentEndpoint"] ?? ""),
@@ -830,10 +842,7 @@ export async function listDNSZones(
   });
 }
 
-export async function listNSGs(
-  ctx: ListerContext,
-  accountId: string,
-): Promise<ResourceInstance[]> {
+export async function listNSGs(ctx: ListerContext, accountId: string): Promise<ResourceInstance[]> {
   const data = await ctx.get<{ value: Record<string, unknown>[] }>(
     `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.Network/networkSecurityGroups?api-version=2023-09-01`,
   );
@@ -1062,7 +1071,9 @@ export async function listAppGateways(
     const sku = props?.["sku"] as Record<string, unknown> | undefined;
     const backendPools = props?.["backendAddressPools"] as unknown[] | undefined;
     const httpListeners = props?.["httpListeners"] as unknown[] | undefined;
-    const frontendIps = props?.["frontendIPConfigurations"] as Array<Record<string, unknown>> | undefined;
+    const frontendIps = props?.["frontendIPConfigurations"] as
+      | Array<Record<string, unknown>>
+      | undefined;
     const firstFrontend = frontendIps?.[0];
     const frontendProps = firstFrontend?.["properties"] as Record<string, unknown> | undefined;
 
@@ -1095,7 +1106,10 @@ export async function listAppGateways(
   });
 }
 
-export async function listLogAnalyticsWorkspaces(ctx: ListerContext, accountId: string): Promise<ResourceInstance[]> {
+export async function listLogAnalyticsWorkspaces(
+  ctx: ListerContext,
+  accountId: string,
+): Promise<ResourceInstance[]> {
   const data = await ctx.get<{
     value: Array<{
       id: string;
@@ -1109,7 +1123,9 @@ export async function listLogAnalyticsWorkspaces(ctx: ListerContext, accountId: 
         customerId?: string;
       };
     }>;
-  }>(`${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.OperationalInsights/workspaces?api-version=2022-10-01`);
+  }>(
+    `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.OperationalInsights/workspaces?api-version=2022-10-01`,
+  );
 
   return (data.value ?? []).map((ws) => {
     const rg = extractResourceGroup(ws.id);
@@ -1141,7 +1157,10 @@ export async function listLogAnalyticsWorkspaces(ctx: ListerContext, accountId: 
   });
 }
 
-export async function listManagedIdentities(ctx: ListerContext, accountId: string): Promise<ResourceInstance[]> {
+export async function listManagedIdentities(
+  ctx: ListerContext,
+  accountId: string,
+): Promise<ResourceInstance[]> {
   const data = await ctx.get<{
     value: Array<{
       id: string;
@@ -1153,7 +1172,9 @@ export async function listManagedIdentities(ctx: ListerContext, accountId: strin
         tenantId?: string;
       };
     }>;
-  }>(`${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.ManagedIdentity/userAssignedIdentities?api-version=2023-01-31`);
+  }>(
+    `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.ManagedIdentity/userAssignedIdentities?api-version=2023-01-31`,
+  );
 
   return (data.value ?? []).map((mi) => {
     const rg = extractResourceGroup(mi.id);
@@ -1183,7 +1204,10 @@ export async function listManagedIdentities(ctx: ListerContext, accountId: strin
   });
 }
 
-export async function listFirewalls(ctx: ListerContext, accountId: string): Promise<ResourceInstance[]> {
+export async function listFirewalls(
+  ctx: ListerContext,
+  accountId: string,
+): Promise<ResourceInstance[]> {
   const data = await ctx.get<{
     value: Array<{
       id: string;
@@ -1198,7 +1222,9 @@ export async function listFirewalls(ctx: ListerContext, accountId: string): Prom
         }>;
       };
     }>;
-  }>(`${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.Network/azureFirewalls?api-version=2023-09-01`);
+  }>(
+    `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.Network/azureFirewalls?api-version=2023-09-01`,
+  );
 
   return (data.value ?? []).map((fw) => {
     const rg = extractResourceGroup(fw.id);

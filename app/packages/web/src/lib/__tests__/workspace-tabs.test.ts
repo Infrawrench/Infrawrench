@@ -9,7 +9,12 @@ vi.mock("@infrawrench/ui", async (importOriginal) => {
   return {
     ...actual,
     normalizeResourceId: (id: string) => decodeURIComponent(id),
-    useUIStore: { getState: () => ({ pinWorkspaceTab: mockPinWorkspaceTab, openInActiveWorkspaceTab: mockOpenInActiveWorkspaceTab }) },
+    useUIStore: {
+      getState: () => ({
+        pinWorkspaceTab: mockPinWorkspaceTab,
+        openInActiveWorkspaceTab: mockOpenInActiveWorkspaceTab,
+      }),
+    },
   };
 });
 
@@ -79,12 +84,18 @@ describe("resourceSftpTabTarget", () => {
 describe("getWorkspaceNavigateArgs", () => {
   it("returns dashboard route args", () => {
     const args = getWorkspaceNavigateArgs({ kind: "dashboard", dashboardId: "d1" });
-    expect(args).toEqual({ to: "/org/$orgId/dashboard/$dashboardId", params: { orgId: "test-org", dashboardId: "d1" } });
+    expect(args).toEqual({
+      to: "/org/$orgId/dashboard/$dashboardId",
+      params: { orgId: "test-org", dashboardId: "d1" },
+    });
   });
 
   it("returns account route args", () => {
     const args = getWorkspaceNavigateArgs({ kind: "account", accountId: "a1" });
-    expect(args).toEqual({ to: "/org/$orgId/accounts/$accountId", params: { orgId: "test-org", accountId: "a1" } });
+    expect(args).toEqual({
+      to: "/org/$orgId/accounts/$accountId",
+      params: { orgId: "test-org", accountId: "a1" },
+    });
   });
 
   it("returns resource route args with ssh hash (fallback without pluginId)", () => {
@@ -94,7 +105,11 @@ describe("getWorkspaceNavigateArgs", () => {
       resourceId: "r1",
       view: "ssh",
     });
-    expect(args).toMatchObject({ to: "/org/$orgId/accounts/$accountId", params: { orgId: "test-org", accountId: "a1" }, hash: "ssh" });
+    expect(args).toMatchObject({
+      to: "/org/$orgId/accounts/$accountId",
+      params: { orgId: "test-org", accountId: "a1" },
+      hash: "ssh",
+    });
   });
 
   it("returns resource route args with ssh hash (with pluginId/resourceTypeId)", () => {
@@ -108,7 +123,12 @@ describe("getWorkspaceNavigateArgs", () => {
     });
     expect(args).toMatchObject({
       to: "/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId",
-      params: { orgId: "test-org", pluginId: "aws", resourceTypeId: "ec2-instance", resourceId: "r1" },
+      params: {
+        orgId: "test-org",
+        pluginId: "aws",
+        resourceTypeId: "ec2-instance",
+        resourceId: "r1",
+      },
       search: { accountId: "a1" },
       hash: "ssh",
     });
@@ -171,7 +191,14 @@ describe("navigateToWorkspaceTarget", () => {
 
     // Should pin a new tab with the SSH target
     expect(mockPinWorkspaceTab).toHaveBeenCalledWith(
-      { kind: "resource", accountId: "acct-1", resourceId: "res-1", view: "ssh", pluginId: "aws", resourceTypeId: "ec2-instance" },
+      {
+        kind: "resource",
+        accountId: "acct-1",
+        resourceId: "res-1",
+        view: "ssh",
+        pluginId: "aws",
+        resourceTypeId: "ec2-instance",
+      },
       "SSH: My EC2",
     );
 
@@ -179,7 +206,11 @@ describe("navigateToWorkspaceTarget", () => {
     expect(mockNavigate).toHaveBeenCalledWith(
       expect.objectContaining({
         to: "/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId",
-        params: expect.objectContaining({ pluginId: "aws", resourceTypeId: "ec2-instance", resourceId: "res-1" }),
+        params: expect.objectContaining({
+          pluginId: "aws",
+          resourceTypeId: "ec2-instance",
+          resourceId: "res-1",
+        }),
         hash: "ssh",
       }),
     );
@@ -196,7 +227,14 @@ describe("navigateToWorkspaceTarget", () => {
     );
 
     expect(mockPinWorkspaceTab).toHaveBeenCalledWith(
-      { kind: "resource", accountId: "acct-1", resourceId: "res-1", view: "sftp", pluginId: "aws", resourceTypeId: "ec2-instance" },
+      {
+        kind: "resource",
+        accountId: "acct-1",
+        resourceId: "res-1",
+        view: "sftp",
+        pluginId: "aws",
+        resourceTypeId: "ec2-instance",
+      },
       "SFTP: My EC2",
     );
 

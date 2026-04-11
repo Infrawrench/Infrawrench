@@ -63,9 +63,7 @@ export async function listClusters(
       },
       secretStates: [],
       externalId: clusterId,
-      createdAt: c["start_time"]
-        ? new Date(Number(c["start_time"])).toISOString()
-        : ctx.now(),
+      createdAt: c["start_time"] ? new Date(Number(c["start_time"])).toISOString() : ctx.now(),
       updatedAt: ctx.now(),
     };
   });
@@ -105,9 +103,7 @@ export async function listSqlWarehouses(
         warehouseType: String(w["warehouse_type"] ?? "PRO"),
         enablePhoton: w["enable_photon"] === true,
         numActiveSessions: Number(
-          (w["health"] as Record<string, unknown> | undefined)?.["details"]
-            ? 0
-            : 0,
+          (w["health"] as Record<string, unknown> | undefined)?.["details"] ? 0 : 0,
         ),
         numRunningQueries: Number(w["num_active_sessions"] ?? 0),
         creatorName: String(w["creator_name"] ?? ""),
@@ -125,10 +121,7 @@ export async function listSqlWarehouses(
   });
 }
 
-export async function listJobs(
-  ctx: ListerContext,
-  accountId: string,
-): Promise<ResourceInstance[]> {
+export async function listJobs(ctx: ListerContext, accountId: string): Promise<ResourceInstance[]> {
   const data = await ctx.api<{ jobs?: Record<string, unknown>[]; has_more?: boolean }>(
     "GET",
     "/api/2.1/jobs/list?limit=100&expand_tasks=false",
@@ -136,33 +129,27 @@ export async function listJobs(
   const jobs = data.jobs ?? [];
 
   return jobs.map((j) => {
-    const jobId = Number(
-      (j["job_id"] as number | undefined) ?? 0,
-    );
+    const jobId = Number((j["job_id"] as number | undefined) ?? 0);
     const settings = (j["settings"] as Record<string, unknown>) ?? {};
     const name = String(settings["name"] ?? `Job ${jobId}`);
 
     // Schedule info
     const schedule = settings["schedule"] as Record<string, unknown> | undefined;
-    const scheduleStr = schedule
-      ? String(schedule["quartz_cron_expression"] ?? "")
-      : "";
+    const scheduleStr = schedule ? String(schedule["quartz_cron_expression"] ?? "") : "";
 
     // Task count
     const tasks = settings["tasks"] as unknown[] | undefined;
     const taskCount = tasks?.length ?? 0;
 
     // Last run info from the run_as/recent_runs
-    const lastRun = (j["last_run"] as Record<string, unknown> | undefined);
+    const lastRun = j["last_run"] as Record<string, unknown> | undefined;
     const lastRunState = lastRun
       ? String(
           (lastRun["state"] as Record<string, unknown> | undefined)?.["life_cycle_state"] ?? "",
         )
       : "";
     const lastRunResult = lastRun
-      ? String(
-          (lastRun["state"] as Record<string, unknown> | undefined)?.["result_state"] ?? "",
-        )
+      ? String((lastRun["state"] as Record<string, unknown> | undefined)?.["result_state"] ?? "")
       : "";
 
     const host = ctx.host.replace(/^https?:\/\//, "");
@@ -190,9 +177,7 @@ export async function listJobs(
       },
       secretStates: [],
       externalId: String(jobId),
-      createdAt: j["created_time"]
-        ? new Date(Number(j["created_time"])).toISOString()
-        : ctx.now(),
+      createdAt: j["created_time"] ? new Date(Number(j["created_time"])).toISOString() : ctx.now(),
       updatedAt: ctx.now(),
     };
   });
@@ -225,24 +210,18 @@ export async function listPipelines(
         name,
         state,
         creatorUserName: String(p["creator_user_name"] ?? ""),
-        target: String(
-          (p["spec"] as Record<string, unknown> | undefined)?.["target"] ?? "",
-        ),
-        catalog: String(
-          (p["spec"] as Record<string, unknown> | undefined)?.["catalog"] ?? "",
-        ),
+        target: String((p["spec"] as Record<string, unknown> | undefined)?.["target"] ?? ""),
+        catalog: String((p["spec"] as Record<string, unknown> | undefined)?.["catalog"] ?? ""),
         channel: String(
           (p["spec"] as Record<string, unknown> | undefined)?.["channel"] ?? "CURRENT",
         ),
         continuous: (p["spec"] as Record<string, unknown> | undefined)?.["continuous"] === true,
         photon: (p["spec"] as Record<string, unknown> | undefined)?.["photon"] === true,
-        lastUpdateState: String(p["latest_updates"]
-          ? String(
-              (
-                (p["latest_updates"] as Record<string, unknown>[])
-              )?.[0]?.["state"] ?? "",
-            )
-          : ""),
+        lastUpdateState: String(
+          p["latest_updates"]
+            ? String((p["latest_updates"] as Record<string, unknown>[])?.[0]?.["state"] ?? "")
+            : "",
+        ),
       },
       resolvedOutputs: {
         pipelineId,
@@ -290,9 +269,7 @@ export async function listCatalogs(
       },
       secretStates: [],
       externalId: name,
-      createdAt: c["created_at"]
-        ? new Date(Number(c["created_at"])).toISOString()
-        : ctx.now(),
+      createdAt: c["created_at"] ? new Date(Number(c["created_at"])).toISOString() : ctx.now(),
       updatedAt: ctx.now(),
     };
   });
@@ -332,9 +309,7 @@ export async function listSchemas(
       },
       secretStates: [],
       externalId: fullName,
-      createdAt: s["created_at"]
-        ? new Date(Number(s["created_at"])).toISOString()
-        : ctx.now(),
+      createdAt: s["created_at"] ? new Date(Number(s["created_at"])).toISOString() : ctx.now(),
       updatedAt: ctx.now(),
     };
   });
@@ -381,9 +356,7 @@ export async function listTables(
       },
       secretStates: [],
       externalId: fullName,
-      createdAt: t["created_at"]
-        ? new Date(Number(t["created_at"])).toISOString()
-        : ctx.now(),
+      createdAt: t["created_at"] ? new Date(Number(t["created_at"])).toISOString() : ctx.now(),
       updatedAt: ctx.now(),
     };
   });

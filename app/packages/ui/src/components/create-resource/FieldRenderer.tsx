@@ -64,8 +64,10 @@ export function FieldRenderer({ field, value, onChange, sshKeyProps }: FieldRend
         />
       )}
 
-      {field.kind === "select" && field.options && (
-        field.options.length <= 4 && Math.max(...field.options.map((opt) => opt.label.length)) < 28 ? (
+      {field.kind === "select" &&
+        field.options &&
+        (field.options.length <= 4 &&
+        Math.max(...field.options.map((opt) => opt.label.length)) < 28 ? (
           <div className="flex gap-2 flex-wrap">
             {field.options.map((opt) => (
               <button
@@ -83,8 +85,7 @@ export function FieldRenderer({ field, value, onChange, sshKeyProps }: FieldRend
           </div>
         ) : (
           <SelectPicker options={field.options} value={value} onChange={onChange} />
-        )
-      )}
+        ))}
 
       {field.kind === "region-picker" && field.regions && (
         <RegionPicker regions={field.regions} value={value} onChange={onChange} />
@@ -112,8 +113,8 @@ export function FieldRenderer({ field, value, onChange, sshKeyProps }: FieldRend
         <DiskPicker disks={field.disks} value={value} onChange={onChange} />
       )}
 
-      {field.kind === "ssh-key-picker" && (
-        sshKeyProps ? (
+      {field.kind === "ssh-key-picker" &&
+        (sshKeyProps ? (
           <SshKeyPicker
             value={value}
             onChange={onChange}
@@ -134,8 +135,7 @@ export function FieldRenderer({ field, value, onChange, sshKeyProps }: FieldRend
             rows={3}
             className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500 font-mono resize-none"
           />
-        )
-      )}
+        ))}
     </div>
   );
 }

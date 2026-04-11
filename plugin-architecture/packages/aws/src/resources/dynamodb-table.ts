@@ -14,9 +14,7 @@ export const DynamoDBTableResourceType: ResourceTypeDefinition = {
     { key: "partitionKey", label: "Partition Key", kind: "string", required: false },
     { key: "sortKey", label: "Sort Key", kind: "string", required: false },
   ],
-  outputs: [
-    { key: "tableArn", label: "Table ARN", sensitive: false },
-  ],
+  outputs: [{ key: "tableArn", label: "Table ARN", sensitive: false }],
   dashboardPinnable: true,
   iconKey: "database",
   supportsCreate: true,
@@ -25,9 +23,7 @@ export const DynamoDBTableResourceType: ResourceTypeDefinition = {
       id: "dynamodb-table",
       displayName: "DynamoDB Table",
       description: "Table ARN for DynamoDB access",
-      entries: [
-        { envKey: "DYNAMODB_TABLE_ARN", outputKey: "tableArn", description: "Table ARN" },
-      ],
+      entries: [{ envKey: "DYNAMODB_TABLE_ARN", outputKey: "tableArn", description: "Table ARN" }],
     },
   ],
 };

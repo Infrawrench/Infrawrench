@@ -58,13 +58,22 @@ export function SshKeyPicker({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!cloudEnabled) { setLoading(false); return; }
+    if (!cloudEnabled) {
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     loadKeys()
-      .then((keys) => { if (!cancelled) setCloudKeys(keys); })
+      .then((keys) => {
+        if (!cancelled) setCloudKeys(keys);
+      })
       .catch(console.error)
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [loadKeys, cloudEnabled]);
 
   async function handleGenerate() {
@@ -122,20 +131,22 @@ export function SshKeyPicker({
           noneSelected ? "bg-blue-600/20 text-blue-300" : "text-gray-500 hover:bg-gray-800"
         }`}
       >
-        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${noneSelected ? "bg-blue-400" : "bg-gray-700"}`} />
+        <span
+          className={`w-2 h-2 rounded-full flex-shrink-0 ${noneSelected ? "bg-blue-400" : "bg-gray-700"}`}
+        />
         No SSH key
       </button>
 
       <div className="max-h-52 overflow-y-auto">
-        {loading && (
-          <p className="px-3 py-2 text-xs text-gray-600">Loading keys...</p>
-        )}
+        {loading && <p className="px-3 py-2 text-xs text-gray-600">Loading keys...</p>}
 
         {/* System keys section (desktop only) */}
         {systemKeys && systemKeys.length > 0 && (
           <div>
             <div className="px-3 py-1 bg-gray-800/30 border-b border-gray-700/40">
-              <span className="text-[10px] font-semibold text-gray-600 uppercase tracking-wide">System (~/.ssh)</span>
+              <span className="text-[10px] font-semibold text-gray-600 uppercase tracking-wide">
+                System (~/.ssh)
+              </span>
             </div>
             {systemKeys.map((k) => {
               const selected = value === k.publicKey;
@@ -148,10 +159,14 @@ export function SshKeyPicker({
                     selected ? "bg-blue-600/20 text-blue-300" : "text-gray-300 hover:bg-gray-800"
                   }`}
                 >
-                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${selected ? "bg-blue-400" : "bg-gray-700"}`} />
+                  <span
+                    className={`w-2 h-2 rounded-full flex-shrink-0 ${selected ? "bg-blue-400" : "bg-gray-700"}`}
+                  />
                   <span className="flex-1 min-w-0">
                     <span className="font-medium font-mono block text-xs">{k.name}</span>
-                    <span className="text-[11px] text-gray-600">~/.ssh/{k.name}.pub · {keyType}</span>
+                    <span className="text-[11px] text-gray-600">
+                      ~/.ssh/{k.name}.pub · {keyType}
+                    </span>
                   </span>
                 </button>
               );
@@ -163,7 +178,9 @@ export function SshKeyPicker({
         {!loading && showCloudSection && (
           <div>
             <div className="px-3 py-1 bg-gray-800/30 border-b border-gray-700/40 flex items-center justify-between">
-              <span className="text-[10px] font-semibold text-gray-600 uppercase tracking-wide">Cloud keys</span>
+              <span className="text-[10px] font-semibold text-gray-600 uppercase tracking-wide">
+                Cloud keys
+              </span>
               {cloudEnabled && cloudKeys.length > 0 && (
                 <span className="text-[10px] text-gray-700">{cloudKeys.length}</span>
               )}
@@ -193,10 +210,14 @@ export function SshKeyPicker({
                       key={k.id}
                       onClick={() => onChange(k.publicKey)}
                       className={`group w-full text-left px-3 py-2.5 text-sm transition-colors flex items-center gap-3 cursor-pointer ${
-                        selected ? "bg-blue-600/20 text-blue-300" : "text-gray-300 hover:bg-gray-800"
+                        selected
+                          ? "bg-blue-600/20 text-blue-300"
+                          : "text-gray-300 hover:bg-gray-800"
                       }`}
                     >
-                      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${selected ? "bg-blue-400" : "bg-gray-700"}`} />
+                      <span
+                        className={`w-2 h-2 rounded-full flex-shrink-0 ${selected ? "bg-blue-400" : "bg-gray-700"}`}
+                      />
                       <span className="flex-1 min-w-0">
                         <span className="font-medium block text-xs">{k.name}</span>
                         <span className="text-[11px] text-gray-600">
@@ -206,7 +227,10 @@ export function SshKeyPicker({
                       </span>
                       {isOwn && (
                         <button
-                          onClick={(e) => { e.stopPropagation(); void handleDelete(k.id); }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void handleDelete(k.id);
+                          }}
                           className="opacity-0 group-hover:opacity-100 text-gray-600 hover:text-red-400 text-xs px-1 transition-all flex-shrink-0"
                           title="Remove key"
                         >
@@ -249,8 +273,10 @@ export function SshKeyPicker({
       )}
 
       {/* Generate key form */}
-      {showCloudSection && cloudEnabled && !generatedPrivateKey && (
-        showGenerate ? (
+      {showCloudSection &&
+        cloudEnabled &&
+        !generatedPrivateKey &&
+        (showGenerate ? (
           <div className="border-t border-gray-700/40 p-3 space-y-2 bg-gray-900/50">
             <input
               value={newName}
@@ -263,7 +289,11 @@ export function SshKeyPicker({
             {error && <p className="text-xs text-red-400">{error}</p>}
             <div className="flex gap-2 justify-end">
               <button
-                onClick={() => { setShowGenerate(false); setNewName(""); setError(null); }}
+                onClick={() => {
+                  setShowGenerate(false);
+                  setNewName("");
+                  setError(null);
+                }}
                 className="px-3 py-1 text-xs text-gray-500 hover:text-gray-300 transition-colors"
               >
                 Cancel
@@ -284,8 +314,7 @@ export function SshKeyPicker({
           >
             + Generate SSH key
           </button>
-        )
-      )}
+        ))}
     </div>
   );
 }

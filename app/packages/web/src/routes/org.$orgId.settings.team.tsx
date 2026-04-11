@@ -44,14 +44,19 @@ function TeamPage() {
     setLoading(false);
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   async function handleInvite() {
     if (!inviteEmail.trim()) return;
     setInviting(true);
     setError(null);
     try {
-      await apiPost(`/api/org/${orgId}/team/invitations`, { email: inviteEmail.trim(), role: inviteRole });
+      await apiPost(`/api/org/${orgId}/team/invitations`, {
+        email: inviteEmail.trim(),
+        role: inviteRole,
+      });
       setInviteEmail("");
       await load();
     } catch (e) {
@@ -111,9 +116,7 @@ function TeamPage() {
       </div>
 
       {/* Members list */}
-      <h2 className="text-sm font-medium text-gray-300 mb-3">
-        Members ({members.length})
-      </h2>
+      <h2 className="text-sm font-medium text-gray-300 mb-3">Members ({members.length})</h2>
       {loading ? (
         <p className="text-sm text-gray-600">Loading...</p>
       ) : (
@@ -130,9 +133,7 @@ function TeamPage() {
             <tbody>
               {members.map((member) => (
                 <tr key={member.id} className="border-b border-gray-800/50 hover:bg-gray-900/50">
-                  <td className="px-4 py-2 text-sm text-gray-200">
-                    {member.displayName ?? "-"}
-                  </td>
+                  <td className="px-4 py-2 text-sm text-gray-200">{member.displayName ?? "-"}</td>
                   <td className="px-4 py-2 text-sm text-gray-400">{member.email}</td>
                   <td className="px-4 py-2">
                     <select
@@ -183,7 +184,10 @@ function TeamPage() {
                 {invites
                   .filter((i) => !i.acceptedAt)
                   .map((invite) => (
-                    <tr key={invite.id} className="border-b border-gray-800/50 hover:bg-gray-900/50">
+                    <tr
+                      key={invite.id}
+                      className="border-b border-gray-800/50 hover:bg-gray-900/50"
+                    >
                       <td className="px-4 py-2 text-sm text-gray-300">{invite.email}</td>
                       <td className="px-4 py-2 text-xs text-gray-400">{invite.role}</td>
                       <td className="px-4 py-2 text-xs text-gray-500">

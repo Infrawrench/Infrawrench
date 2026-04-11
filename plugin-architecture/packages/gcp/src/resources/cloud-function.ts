@@ -13,8 +13,6 @@ export const CloudFunctionResourceType: ResourceTypeDefinition = {
     { key: "availableMemory", label: "Memory", kind: "string", required: false },
     { key: "timeout", label: "Timeout", kind: "string", required: false },
   ],
-  outputs: [
-    { key: "url", label: "Trigger URL", sensitive: false },
-  ],
+  outputs: [{ key: "url", label: "Trigger URL", sensitive: false }],
   dashboardPinnable: true,
 };

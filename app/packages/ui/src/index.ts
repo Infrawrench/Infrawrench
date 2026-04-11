@@ -42,12 +42,21 @@ export type { MongoDocumentBrowserProps } from "./components/MongoDocumentBrowse
 
 export { DetailView } from "./components/detail/DetailView.js";
 export { AssociationPicker } from "./components/detail/AssociationPicker.js";
-export type { RerollSelection, ProviderResource, PeerPaneData, ChildResource, ChildResourceGroup } from "./components/detail/DetailView.js";
+export type {
+  RerollSelection,
+  ProviderResource,
+  PeerPaneData,
+  ChildResource,
+  ChildResourceGroup,
+} from "./components/detail/DetailView.js";
 export type { QueryResult } from "./components/detail/SqlEditorView.js";
 export { ManifestEditorView } from "./components/detail/ManifestEditorView.js";
 
 export { FieldRenderer } from "./components/create-resource/index.js";
-export type { FieldRendererProps, SshKeyPickerCallbacks } from "./components/create-resource/index.js";
+export type {
+  FieldRendererProps,
+  SshKeyPickerCallbacks,
+} from "./components/create-resource/index.js";
 export { SelectPicker } from "./components/create-resource/index.js";
 export { RegionPicker } from "./components/create-resource/index.js";
 export { SizePicker } from "./components/create-resource/index.js";
@@ -57,7 +66,11 @@ export { ImagePicker } from "./components/create-resource/index.js";
 export { ImageRow } from "./components/create-resource/index.js";
 export { DiskPicker } from "./components/create-resource/index.js";
 export { SshKeyPicker } from "./components/create-resource/index.js";
-export type { SshKeyPickerProps, SshKeyEntry, SystemSshKey } from "./components/create-resource/index.js";
+export type {
+  SshKeyPickerProps,
+  SshKeyEntry,
+  SystemSshKey,
+} from "./components/create-resource/index.js";
 
 export { DndShell } from "./dnd/DndShell.js";
 export type { DndShellProps } from "./dnd/DndShell.js";
@@ -87,11 +100,28 @@ export { CreateResourceModal } from "./components/CreateResourceModal.js";
 export type { CreateResourceModalProps } from "./components/CreateResourceModal.js";
 export { useCreateResourceForm } from "./hooks/useCreateResourceForm.js";
 export { useWorkspaceTabHandlers } from "./hooks/useWorkspaceTabHandlers.js";
-export type { CreateResourceCallbacks, CreateResourceFormState } from "./hooks/useCreateResourceForm.js";
+export type {
+  CreateResourceCallbacks,
+  CreateResourceFormState,
+} from "./hooks/useCreateResourceForm.js";
 
 export {
-  formatSize, formatDate, groupBy, formatErrorMessage, evaluateShowWhen, buildDefaultFields, deriveSSHUsername,
-  RESOURCES_CHANGED_EVENT, REFRESH_RESOURCE_EVENT, dispatchResourcesChanged, dispatchRefreshResource,
-  getAccountResourceTypes, getListableResourceTypes, isCreateOnlyType, extractHostLabel, buildChildResourceGroups, resourceTabTitle,
+  formatSize,
+  formatDate,
+  groupBy,
+  formatErrorMessage,
+  evaluateShowWhen,
+  buildDefaultFields,
+  deriveSSHUsername,
+  RESOURCES_CHANGED_EVENT,
+  REFRESH_RESOURCE_EVENT,
+  dispatchResourcesChanged,
+  dispatchRefreshResource,
+  getAccountResourceTypes,
+  getListableResourceTypes,
+  isCreateOnlyType,
+  extractHostLabel,
+  buildChildResourceGroups,
+  resourceTabTitle,
 } from "./utils.js";
 export type { TransferEntry, SftpConfig } from "./utils.js";
