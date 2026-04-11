@@ -83,6 +83,8 @@ export {
 } from "./workspace-tabs.js";
 export type { RouteNavigator } from "./workspace-tabs.js";
 
+export { CreateResourceModal } from "./components/CreateResourceModal.js";
+export type { CreateResourceModalProps } from "./components/CreateResourceModal.js";
 export { useCreateResourceForm } from "./hooks/useCreateResourceForm.js";
 export { useWorkspaceTabHandlers } from "./hooks/useWorkspaceTabHandlers.js";
 export type { CreateResourceCallbacks, CreateResourceFormState } from "./hooks/useCreateResourceForm.js";

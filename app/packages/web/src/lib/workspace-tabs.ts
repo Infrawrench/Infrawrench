@@ -54,6 +54,8 @@ export function getWorkspaceNavigateArgs(target: WorkspaceTabTarget, replace = f
   }
 }
 
+// Note: each platform re-implements this thin wrapper to enable test mocking
+// of useUIStore at the import boundary.
 export function navigateToWorkspaceTarget(
   navigate: RouteNavigator,
   target: WorkspaceTabTarget,

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatErrorMessage } from "../errors";
+import { formatErrorMessage } from "@infrawrench/ui";
 
 describe("formatErrorMessage", () => {
   it("returns the message from an Error instance", () => {

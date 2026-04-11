@@ -3,7 +3,7 @@ import { createFileRoute, useNavigate, useRouterState } from "@tanstack/react-ro
 // useDraggable now used inside shared DraggableChildPill from @infrawrench/ui
 import { invoke } from "../lib/invoke";
 import type { ResourceInstance, DetailViewSchema, ResourceTypeDefinition } from "@infrawrench/plugin-base";
-import { DetailView, DraggableChildPill, ConfirmDeleteModal, RESOURCES_CHANGED_EVENT, REFRESH_RESOURCE_EVENT, dispatchResourcesChanged, dispatchRefreshResource, resourceTabTitle, buildChildResourceGroups, type QueryResult, type ChildResource, type ChildResourceGroup, type DraggableResource, useUIStore } from "@infrawrench/ui";
+import { DetailView, DraggableChildPill, ConfirmDeleteModal, FileBrowser, RESOURCES_CHANGED_EVENT, REFRESH_RESOURCE_EVENT, dispatchResourcesChanged, dispatchRefreshResource, resourceTabTitle, buildChildResourceGroups, formatErrorMessage, type QueryResult, type ChildResource, type ChildResourceGroup, type DraggableResource, useUIStore } from "@infrawrench/ui";
 import { getDb } from "../db/client";
 import { getPlugin } from "../plugins/loader";
 import { getSqlSession, setSqlSession } from "../lib/sql-session";
@@ -11,7 +11,6 @@ import { sqlQuery, sqlExecute, buildHostServices, buildKvHostServices, buildDock
 import { resolveTunneledHost } from "../lib/ssh-tunnel";
 import { DockerActionsPanel } from "../components/DockerActionsPanel";
 import { MongoDocumentBrowser } from "../components/MongoDocumentBrowser";
-import { GcsBrowserPanel } from "../components/GcsBrowserPanel";
 import { SftpBrowserPanel } from "../components/SftpBrowserPanel";
 import { SshTerminal } from "../components/SshTerminal";
 import { SshQuickConnectPanel } from "../components/SshQuickConnectPanel";
@@ -24,7 +23,6 @@ import type { PluginClient, PeerPaneContext } from "@infrawrench/plugin-base";
 import type { PeerPaneData } from "@infrawrench/ui";
 import { accountTabTarget, navigateToWorkspaceTarget, resourceSshTabTarget, resourceSftpTabTarget, resourceTabTarget } from "../lib/workspace-tabs";
 // DraggableResource now imported from @infrawrench/ui above
-import { formatErrorMessage } from "../lib/errors";
 
 export const Route = createFileRoute("/resource/$accountId/$resourceId")({
   component: ResourceDetailPage,
@@ -856,7 +854,8 @@ function ResourceDetailPage() {
       )}
 
       {!isSshView && !isSftpView && hasStorageBrowser && (
-        <GcsBrowserPanel
+        <FileBrowser
+          formatError={formatErrorMessage}
           bucketName={schema.storageBrowser!.bucketName}
           onList={(prefix) => clientRef.current!.listStorageObjects!(schema.storageBrowser!.bucketName, prefix)}
           onUpload={(bucket, key, file, onProgress) => clientRef.current!.uploadStorageObject!(bucket, key, file, onProgress)}

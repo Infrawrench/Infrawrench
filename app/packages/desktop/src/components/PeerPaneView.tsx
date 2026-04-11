@@ -8,11 +8,10 @@ import type {
   PluginClient,
   ResourceStatus,
 } from "@infrawrench/plugin-base";
-import { StatusDotNodeRenderer, ManifestEditorView, type PeerPaneData } from "@infrawrench/ui";
+import { StatusDotNodeRenderer, ManifestEditorView, type PeerPaneData, formatErrorMessage } from "@infrawrench/ui";
 import type { DraggableResource } from "../lib/pins";
 import { invoke } from "../lib/invoke";
 import { getPlugin } from "../plugins/loader";
-import { formatErrorMessage } from "../lib/errors";
 import { CreateResourceModal } from "./CreateResourceModal";
 import { ErrorNotice } from "./ErrorNotice";
 import { K8sExecPanel } from "./K8sExecPanel";

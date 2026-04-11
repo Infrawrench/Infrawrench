@@ -35,6 +35,8 @@ export function getWorkspaceNavigateArgs(target: WorkspaceTabTarget, replace = f
   throw new Error(`Unsupported workspace tab target: ${JSON.stringify(target)}`);
 }
 
+// Note: each platform re-implements this thin wrapper to enable test mocking
+// of useUIStore at the import boundary.
 export function navigateToWorkspaceTarget(
   navigate: RouteNavigator,
   target: WorkspaceTabTarget,

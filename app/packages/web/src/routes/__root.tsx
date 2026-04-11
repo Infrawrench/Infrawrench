@@ -1,8 +1,7 @@
 import { useState, useEffect } from "react";
 import { createRootRoute, Outlet, useNavigate, useRouterState } from "@tanstack/react-router";
-import { DndShell, useUIStore, useWorkspaceTabHandlers, workspaceTabTargetsEqual, dispatchResourcesChanged, type DraggableResource, type WorkspaceTab } from "@infrawrench/ui";
+import { DndShell, GlobalTabBar, useUIStore, useWorkspaceTabHandlers, workspaceTabTargetsEqual, dispatchResourcesChanged, type DraggableResource, type WorkspaceTab } from "@infrawrench/ui";
 import { WebSidebar } from "@/components/WebSidebar";
-import { WebGlobalTabBar } from "@/components/WebGlobalTabBar";
 import { SpotlightSearch } from "@/components/SpotlightSearch";
 import { apiGet, apiPost } from "@/lib/api";
 import {
@@ -187,7 +186,7 @@ function AuthenticatedShell() {
   return (
     <DndShell onPinToDashboard={handlePinToDashboard}>
       <div className="flex flex-col h-screen bg-gray-950 text-gray-100">
-        <WebGlobalTabBar
+        <GlobalTabBar
           tabs={workspaceTabs}
           activeTabId={activeWorkspaceTabId}
           onActivate={handleActivateTab}

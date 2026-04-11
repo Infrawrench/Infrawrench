@@ -1,9 +1,8 @@
 import { useCallback } from "react";
-import { FileBrowser } from "@infrawrench/ui";
+import { FileBrowser, formatErrorMessage } from "@infrawrench/ui";
 import type { StorageObject } from "@infrawrench/plugin-base";
 import type { SftpConfig } from "@infrawrench/ui";
 import { invoke } from "../lib/invoke";
-import { formatErrorMessage } from "../lib/errors";
 
 interface SftpBrowserPanelProps {
   sftpConfig: SftpConfig;

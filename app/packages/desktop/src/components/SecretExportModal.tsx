@@ -4,8 +4,7 @@ import { getPlugin } from "../plugins/loader";
 import { getDb } from "../db/client";
 import { invoke } from "../lib/invoke";
 import type { DraggableResource } from "../lib/pins";
-import { formatErrorMessage } from "../lib/errors";
-import { Modal } from "@infrawrench/ui";
+import { Modal, formatErrorMessage } from "@infrawrench/ui";
 import { buildPluginHostServices } from "../lib/sql-drivers";
 
 interface AccountRow {

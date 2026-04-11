@@ -2,8 +2,7 @@ import { useState } from "react";
 import { invoke } from "../lib/invoke";
 import { getDb } from "../db/client";
 import { sshOpenTunnel } from "../lib/ssh-tunnel";
-import { useUIStore, Modal } from "@infrawrench/ui";
-import { formatErrorMessage } from "../lib/errors";
+import { useUIStore, Modal, formatErrorMessage } from "@infrawrench/ui";
 import { ErrorNotice } from "./ErrorNotice";
 import { SshKeyPicker } from "./SshKeyPicker";
 
