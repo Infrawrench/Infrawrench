@@ -8,9 +8,18 @@ on:
 
 jobs:
   lint:
-    runs-on: ubuntu-latest
+    name: Lint
+    runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v6
+
+      - name: Cache turbo build setup
+        uses: actions/cache@v4
+        with:
+          path: .turbo
+          key: ${{ runner.os }}-turbo-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-turbo-
 
       - uses: actions/setup-node@v6
         with:
