@@ -47,6 +47,7 @@ export const DropletResourceType: ResourceTypeDefinition = {
   ],
   parentTypeId: "project",
   dashboardPinnable: true,
+  supportsMetrics: true,
   iconKey: "droplet",
   sshEndpoint: { hostOutputKey: "ipv4" },
   supportsCreate: true,

@@ -9,6 +9,8 @@ import type {
   ImageOption,
   DiskOption,
   SqlTableMeta,
+  DashboardStat,
+  MetricSeries,
 } from "@infrawrench/plugin-base";
 import { dnsRecordBadgeColor, formatDnsTtl } from "@infrawrench/plugin-base";
 import { fetchAccessToken, type ServiceAccountKey } from "./auth.js";
@@ -1295,6 +1297,218 @@ export class GcpClient implements PluginClient {
     throw new Error(`GCP plugin: createResource not supported for type "${typeId}"`);
   }
 
+  async fetchDashboardStats(
+    resourceTypeId: string,
+    resourceId: string,
+    accountId: string,
+  ): Promise<DashboardStat[]> {
+    const resource = await this.getResource(resourceTypeId, resourceId, accountId);
+    const f = resource.fields;
+    const ro = resource.resolvedOutputs ?? {};
+
+    switch (resourceTypeId) {
+      case "gce-instance": {
+        const status = String(f.status ?? "unknown");
+        const stats: DashboardStat[] = [
+          {
+            label: "Status",
+            value: status,
+            variant:
+              status === "RUNNING"
+                ? "status-healthy"
+                : status === "TERMINATED"
+                  ? "status-error"
+                  : "status-degraded",
+          },
+          { label: "Machine Type", value: String(f.machineType ?? "") },
+          { label: "Zone", value: String(f.zone ?? "") },
+        ];
+        if (ro.publicIp) stats.push({ label: "Public IP", value: String(ro.publicIp) });
+        return stats;
+      }
+      case "cloud-sql-instance": {
+        const state = String(f.state ?? "unknown");
+        return [
+          {
+            label: "State",
+            value: state,
+            variant:
+              state === "RUNNABLE"
+                ? "status-healthy"
+                : state === "STOPPED"
+                  ? "status-error"
+                  : "status-degraded",
+          },
+          { label: "Engine", value: String(f.databaseVersion ?? "") },
+          { label: "Tier", value: String(f.tier ?? "") },
+          { label: "Region", value: String(f.region ?? "") },
+        ];
+      }
+      case "cloud-run-service": {
+        const stats: DashboardStat[] = [{ label: "Region", value: String(f.region ?? "") }];
+        if (f.url) stats.push({ label: "URL", value: String(f.url) });
+        return stats;
+      }
+      case "gke-cluster": {
+        const status = String(f.status ?? "unknown");
+        return [
+          {
+            label: "Status",
+            value: status,
+            variant: status === "RUNNING" ? "status-healthy" : "status-degraded",
+          },
+          { label: "Location", value: String(f.location ?? "") },
+          { label: "Nodes", value: String(f.nodeCount ?? 0) },
+        ];
+      }
+      default: {
+        // Generic fallback — show key fields from the resource
+        const stats: DashboardStat[] = [];
+        const statusVal = f.status ?? f.state ?? f.phase;
+        if (statusVal != null) {
+          const s = String(statusVal).toLowerCase();
+          stats.push({
+            label: "Status",
+            value: String(statusVal),
+            variant: [
+              "running",
+              "active",
+              "available",
+              "ready",
+              "enabled",
+              "healthy",
+              "succeeded",
+              "runnable",
+            ].some((v) => s.includes(v))
+              ? "status-healthy"
+              : ["error", "failed", "terminated", "deleted", "unhealthy"].some((v) => s.includes(v))
+                ? "status-error"
+                : ["pending", "creating", "updating", "stopping", "degraded", "warning"].some((v) =>
+                      s.includes(v),
+                    )
+                  ? "status-degraded"
+                  : "default",
+          });
+        }
+        const typeVal =
+          f.type ??
+          f.kind ??
+          f.engine ??
+          f.instanceType ??
+          f.tier ??
+          f.machineType ??
+          f.size ??
+          f.databaseVersion;
+        if (typeVal != null) stats.push({ label: "Type", value: String(typeVal) });
+        const regionVal = f.region ?? f.location ?? f.zone;
+        if (regionVal != null) stats.push({ label: "Region", value: String(regionVal) });
+        return stats;
+      }
+    }
+  }
+
+  async fetchMetricSeries(
+    resourceTypeId: string,
+    resourceId: string,
+    accountId: string,
+    timeRange?: { startMs: number; endMs: number },
+  ): Promise<MetricSeries[]> {
+    const now = Date.now();
+    const startTime = new Date(timeRange?.startMs ?? now - 3_600_000).toISOString();
+    const endTime = new Date(timeRange?.endMs ?? now).toISOString();
+
+    interface GcpTimeSeriesPoint {
+      interval: { startTime: string; endTime: string };
+      value: { doubleValue?: number; int64Value?: string };
+    }
+    interface GcpTimeSeries {
+      points: GcpTimeSeriesPoint[];
+    }
+    interface GcpTimeSeriesResponse {
+      timeSeries?: GcpTimeSeries[];
+    }
+
+    const fetchSeries = async (
+      metricType: string,
+      resourceLabel: string,
+      resourceValue: string,
+      label: string,
+      unit: string,
+    ): Promise<MetricSeries | null> => {
+      try {
+        const baseUrl = `https://monitoring.googleapis.com/v3/projects/${this.project}/timeSeries`;
+        const url = new URL(baseUrl);
+        url.searchParams.set(
+          "filter",
+          `metric.type="${metricType}" AND resource.labels.${resourceLabel}="${resourceValue}"`,
+        );
+        url.searchParams.set("interval.startTime", startTime);
+        url.searchParams.set("interval.endTime", endTime);
+        url.searchParams.set("aggregation.alignmentPeriod", "60s");
+        url.searchParams.set("aggregation.perSeriesAligner", "ALIGN_MEAN");
+
+        const resp = await this.get<GcpTimeSeriesResponse>(url.toString());
+        const points = resp.timeSeries?.[0]?.points ?? [];
+        if (points.length === 0) return null;
+        return {
+          label,
+          unit,
+          points: points.map((p) => ({
+            timestamp: new Date(p.interval.endTime).getTime(),
+            value: p.value.doubleValue ?? Number(p.value.int64Value ?? 0),
+          })),
+        };
+      } catch {
+        return null;
+      }
+    };
+
+    const resource = await this.getResource(resourceTypeId, resourceId, accountId);
+    const results: MetricSeries[] = [];
+
+    switch (resourceTypeId) {
+      case "gce-instance": {
+        // GCE monitoring uses the numeric instance_id resource label
+        const numericId = String(resource.fields["numericId"] ?? "");
+        if (!numericId) break;
+        const series = await Promise.all([
+          fetchSeries(
+            "compute.googleapis.com/instance/cpu/utilization",
+            "instance_id",
+            numericId,
+            "CPU Utilization",
+            "%",
+          ),
+          fetchSeries(
+            "compute.googleapis.com/instance/network/received_bytes_count",
+            "instance_id",
+            numericId,
+            "Network Received",
+            "bytes",
+          ),
+        ]);
+        for (const s of series) {
+          if (s) results.push(s);
+        }
+        break;
+      }
+      case "cloud-run-service": {
+        const serviceName = String(resource.fields["name"] ?? "");
+        const s = await fetchSeries(
+          "run.googleapis.com/container/request_count",
+          "service_name",
+          serviceName,
+          "Request Count",
+          "requests",
+        );
+        if (s) results.push(s);
+        break;
+      }
+    }
+
+    return results;
+  }
+
   renderDetail(resource: ResourceInstance): DetailViewSchema {
     const fields = resource.fields;
     const statusVal = String(fields["status"] ?? fields["state"] ?? "");
@@ -1664,32 +1878,6 @@ export class GcpClient implements PluginClient {
     } while (pageToken);
 
     return results;
-  }
-
-  async fetchStorageStats(bucketName: string): Promise<{ count: number; size: string }> {
-    const url = new URL(
-      `https://storage.googleapis.com/storage/v1/b/${encodeURIComponent(bucketName)}/o`,
-    );
-    url.searchParams.set("maxResults", "1000");
-    url.searchParams.set("fields", "nextPageToken,items/size");
-
-    let count = 0;
-    let totalBytes = 0;
-    let pageToken: string | undefined;
-
-    do {
-      if (pageToken) url.searchParams.set("pageToken", pageToken);
-      const page = await this.get<{ items?: Array<{ size?: string }>; nextPageToken?: string }>(
-        url.toString(),
-      );
-      for (const item of page.items ?? []) {
-        count++;
-        totalBytes += Number(item.size ?? 0);
-      }
-      pageToken = page.nextPageToken;
-    } while (pageToken);
-
-    return { count, size: formatBytes(totalBytes) };
   }
 
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema {

@@ -7,6 +7,7 @@ import type {
   SizeOption,
   ImageOption,
   ResourceStatus,
+  DashboardStat,
 } from "@infrawrench/plugin-base";
 
 /**
@@ -488,6 +489,68 @@ export class OvhClient implements PluginClient {
         break;
       default:
         throw new Error(`OVH plugin: deleteResource not supported for type "${typeId}"`);
+    }
+  }
+
+  async fetchDashboardStats(
+    resourceTypeId: string,
+    resourceId: string,
+    accountId: string,
+  ): Promise<DashboardStat[]> {
+    const resource = await this.getResource(resourceTypeId, resourceId, accountId);
+    const f = resource.fields;
+    const ro = resource.resolvedOutputs ?? {};
+
+    switch (resourceTypeId) {
+      case "instance": {
+        const status = String(f.status ?? "unknown");
+        const stats: DashboardStat[] = [
+          {
+            label: "Status",
+            value: status,
+            variant:
+              status === "ACTIVE" || status === "active" || status === "running"
+                ? "status-healthy"
+                : status === "STOPPED" || status === "stopped"
+                  ? "status-error"
+                  : "status-degraded",
+          },
+          { label: "Flavor", value: String(f.flavorName ?? "") },
+          { label: "Region", value: String(f.region ?? "") },
+        ];
+        if (ro.publicIp) stats.push({ label: "Public IP", value: String(ro.publicIp) });
+        return stats;
+      }
+      case "managed-kube": {
+        const status = String(f.status ?? "unknown");
+        return [
+          {
+            label: "Status",
+            value: status,
+            variant:
+              status === "READY" || status === "running" ? "status-healthy" : "status-degraded",
+          },
+          { label: "Version", value: String(f.version ?? "") },
+          { label: "Region", value: String(f.region ?? "") },
+          { label: "Nodes", value: String(f.nodeCount ?? 0) },
+        ];
+      }
+      case "managed-db": {
+        const status = String(f.status ?? "unknown");
+        return [
+          {
+            label: "Status",
+            value: status,
+            variant:
+              status === "READY" || status === "running" ? "status-healthy" : "status-degraded",
+          },
+          { label: "Engine", value: String(f.engine ?? "") },
+          { label: "Plan", value: String(f.plan ?? "") },
+          { label: "Region", value: String(f.region ?? "") },
+        ];
+      }
+      default:
+        return [];
     }
   }
 

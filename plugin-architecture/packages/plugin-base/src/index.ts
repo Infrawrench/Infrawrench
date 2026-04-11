@@ -50,6 +50,7 @@ export type {
   SectionNode,
   LinkNode,
   HostAction,
+  DashboardStat,
   DashboardCardSchema,
   DetailViewSchema,
   SidebarItemSchema,
@@ -61,6 +62,9 @@ export type {
   StorageObject,
   StorageBrowserCapability,
   ManifestEditorCapability,
+  MetricSeriesPoint,
+  MetricSeries,
+  MetricChartNode,
 } from "./schema.js";
 
 export type {

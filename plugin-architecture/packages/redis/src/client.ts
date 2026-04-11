@@ -4,6 +4,7 @@ import type {
   ResourceInstance,
   DetailViewSchema,
   SidebarItemSchema,
+  DashboardStat,
 } from "@infrawrench/plugin-base";
 
 export class RedisClient implements PluginClient {
@@ -138,9 +139,19 @@ export class RedisClient implements PluginClient {
     };
   }
 
-  async fetchStats(): Promise<{ version: string; size: string; tableCount: number }> {
+  async fetchDashboardStats(
+    _resourceTypeId: string,
+    _resourceId: string,
+    _accountId: string,
+  ): Promise<DashboardStat[]> {
     const kv = this.services?.kv;
-    if (!kv) return { version: "", size: "", tableCount: 0 };
+    if (!kv) {
+      return [
+        { label: "Version", value: "" },
+        { label: "Memory", value: "" },
+        { label: "Databases", value: "0" },
+      ];
+    }
 
     try {
       const infoRaw = await kv.command("INFO", "all");
@@ -151,9 +162,17 @@ export class RedisClient implements PluginClient {
       // Count databases that have keys
       const dbCount = Object.keys(info).filter((k) => k.startsWith("db")).length;
 
-      return { version, size: usedMemory, tableCount: dbCount };
+      return [
+        { label: "Version", value: version },
+        { label: "Memory", value: usedMemory },
+        { label: "Databases", value: String(dbCount) },
+      ];
     } catch {
-      return { version: "", size: "", tableCount: 0 };
+      return [
+        { label: "Version", value: "" },
+        { label: "Memory", value: "" },
+        { label: "Databases", value: "0" },
+      ];
     }
   }
 }

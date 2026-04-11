@@ -5,6 +5,7 @@ import type {
   DetailViewSchema,
   SidebarItemSchema,
   CreateResourceConfig,
+  DashboardStat,
 } from "@infrawrench/plugin-base";
 
 // PlanetScale API response types
@@ -316,13 +317,43 @@ export class PlanetScaleClient implements PluginClient {
     throw new Error(`PlanetScale plugin: cannot delete type "${typeId}"`);
   }
 
-  async fetchStats(): Promise<{ version: string; size: string; tableCount: number }> {
+  async fetchDashboardStats(
+    resourceTypeId: string,
+    resourceId: string,
+    accountId: string,
+  ): Promise<DashboardStat[]> {
+    if (resourceTypeId === "ps-database") {
+      const resource = await this.getResource(resourceTypeId, resourceId, accountId);
+      const region = String(resource.fields["region"] ?? "");
+      const state = String(resource.fields["state"] ?? "");
+      const variant: DashboardStat["variant"] =
+        state === "ready"
+          ? "status-healthy"
+          : state === "awaiting_import"
+            ? "status-degraded"
+            : "status-error";
+      return [
+        { label: "Region", value: region },
+        { label: "State", value: state, variant },
+      ];
+    }
+
+    if (resourceTypeId === "ps-branch") {
+      const resource = await this.getResource(resourceTypeId, resourceId, accountId);
+      const production = resource.fields["production"] === true;
+      const ready = resource.fields["ready"] === true;
+      return [
+        { label: "Production", value: production ? "Yes" : "No" },
+        { label: "Ready", value: ready ? "Yes" : "No" },
+      ];
+    }
+
+    // Default: count databases
     const databases = await this.fetchDatabases();
-    return {
-      version: "PlanetScale",
-      size: "\u2014",
-      tableCount: databases.length,
-    };
+    return [
+      { label: "Version", value: "PlanetScale" },
+      { label: "Databases", value: String(databases.length) },
+    ];
   }
 
   private async fetchDatabases(): Promise<PsDatabase[]> {

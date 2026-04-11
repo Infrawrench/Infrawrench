@@ -10,6 +10,7 @@ import type {
   CreateResourceConfig,
   StorageObject,
   SqlTableMeta,
+  DashboardStat,
 } from "@infrawrench/plugin-base";
 import {
   dnsRecordBadgeColor,
@@ -1052,26 +1053,159 @@ export class CloudflareClient implements PluginClient {
     }
   }
 
-  async fetchStorageStats(bucketName: string): Promise<{ count: number; size: string }> {
-    // R2 doesn't have a direct stats API, so list objects and sum
-    const objects = await this.listStorageObjects(bucketName, "");
-    let totalSize = 0;
-    let count = 0;
-    for (const obj of objects) {
-      if (!obj.isDirectory) {
-        count++;
-        totalSize += obj.size;
+  async fetchDashboardStats(
+    resourceTypeId: string,
+    resourceId: string,
+    accountId: string,
+  ): Promise<DashboardStat[]> {
+    if (resourceTypeId === "zone") {
+      const resource = await this.getResource(resourceTypeId, resourceId, accountId);
+      const status = String(resource.fields["status"] ?? "");
+      const plan = String(resource.fields["plan"] ?? "");
+      const variant: DashboardStat["variant"] =
+        status === "active"
+          ? "status-healthy"
+          : status === "pending"
+            ? "status-degraded"
+            : "default";
+      return [
+        { label: "Status", value: status, variant },
+        { label: "Plan", value: plan },
+      ];
+    }
+
+    if (resourceTypeId === "r2-bucket") {
+      const bucketName = resourceId.split(":").slice(2).join(":");
+      // R2 doesn't have a direct stats API, so list objects and sum
+      const objects = await this.listStorageObjects(bucketName, "");
+      let totalSize = 0;
+      let count = 0;
+      for (const obj of objects) {
+        if (!obj.isDirectory) {
+          count++;
+          totalSize += obj.size;
+        }
       }
+      // Format size
+      const units = ["B", "KB", "MB", "GB", "TB"];
+      let size = totalSize;
+      let unitIdx = 0;
+      while (size >= 1024 && unitIdx < units.length - 1) {
+        size /= 1024;
+        unitIdx++;
+      }
+      return [
+        { label: "Objects", value: String(count) },
+        { label: "Size", value: `${size.toFixed(1)} ${units[unitIdx]}` },
+      ];
     }
-    // Format size
-    const units = ["B", "KB", "MB", "GB", "TB"];
-    let size = totalSize;
-    let unitIdx = 0;
-    while (size >= 1024 && unitIdx < units.length - 1) {
-      size /= 1024;
-      unitIdx++;
+
+    if (resourceTypeId === "pages-project") {
+      const resource = await this.getResource(resourceTypeId, resourceId, accountId);
+      const subdomain = String(resource.fields["subdomain"] ?? "");
+      if (subdomain) {
+        return [{ label: "URL", value: subdomain }];
+      }
+      return [];
     }
-    return { count, size: `${size.toFixed(1)} ${units[unitIdx]}` };
+
+    if (resourceTypeId === "worker") {
+      const resource = await this.getResource(resourceTypeId, resourceId, accountId);
+      const f = resource.fields;
+      const stats: DashboardStat[] = [{ label: "Name", value: String(f["name"] ?? "") }];
+      if (f["compatibilityDate"])
+        stats.push({ label: "Compat Date", value: String(f["compatibilityDate"]) });
+      if (f["routes"]) stats.push({ label: "Routes", value: String(f["routes"]) });
+      return stats;
+    }
+
+    if (resourceTypeId === "kv-namespace") {
+      const resource = await this.getResource(resourceTypeId, resourceId, accountId);
+      return [{ label: "Title", value: String(resource.fields["title"] ?? "") }];
+    }
+
+    if (resourceTypeId === "d1-database") {
+      const resource = await this.getResource(resourceTypeId, resourceId, accountId);
+      const f = resource.fields;
+      const stats: DashboardStat[] = [{ label: "Name", value: String(f["name"] ?? "") }];
+      if (f["version"]) stats.push({ label: "Version", value: String(f["version"]) });
+      if (f["numTables"] != null) stats.push({ label: "Tables", value: String(f["numTables"]) });
+      if (f["fileSize"]) stats.push({ label: "Size", value: String(f["fileSize"]) });
+      return stats;
+    }
+
+    if (resourceTypeId === "tunnel") {
+      const resource = await this.getResource(resourceTypeId, resourceId, accountId);
+      const f = resource.fields;
+      const status = String(f["status"] ?? "unknown");
+      const variant: DashboardStat["variant"] =
+        status === "healthy" || status === "active"
+          ? "status-healthy"
+          : status === "inactive" || status === "down"
+            ? "status-error"
+            : "status-degraded";
+      return [
+        { label: "Status", value: status, variant },
+        { label: "Type", value: String(f["tunnelType"] ?? "") },
+        ...(f["connectionsCount"] != null
+          ? [{ label: "Connections", value: String(f["connectionsCount"]) }]
+          : []),
+      ];
+    }
+
+    if (resourceTypeId === "hyperdrive") {
+      const resource = await this.getResource(resourceTypeId, resourceId, accountId);
+      const f = resource.fields;
+      const stats: DashboardStat[] = [{ label: "Name", value: String(f["name"] ?? "") }];
+      if (f["originHost"]) stats.push({ label: "Origin", value: String(f["originHost"]) });
+      if (f["database"]) stats.push({ label: "Database", value: String(f["database"]) });
+      return stats;
+    }
+
+    if (resourceTypeId === "queue") {
+      const resource = await this.getResource(resourceTypeId, resourceId, accountId);
+      const f = resource.fields;
+      return [
+        { label: "Name", value: String(f["name"] ?? "") },
+        { label: "Producers", value: String(f["producersTotal"] ?? 0) },
+        { label: "Consumers", value: String(f["consumersTotal"] ?? 0) },
+      ];
+    }
+
+    if (resourceTypeId === "access-application") {
+      const resource = await this.getResource(resourceTypeId, resourceId, accountId);
+      const f = resource.fields;
+      const stats: DashboardStat[] = [{ label: "Domain", value: String(f["domain"] ?? "") }];
+      if (f["type"]) stats.push({ label: "Type", value: String(f["type"]) });
+      if (f["sessionDuration"])
+        stats.push({ label: "Session", value: String(f["sessionDuration"]) });
+      return stats;
+    }
+
+    // Generic fallback for any other resource type
+    {
+      const resource = await this.getResource(resourceTypeId, resourceId, accountId);
+      const f = resource.fields;
+      const stats: DashboardStat[] = [];
+      const statusVal = f["status"] ?? f["state"];
+      if (statusVal != null) {
+        const s = String(statusVal).toLowerCase();
+        stats.push({
+          label: "Status",
+          value: String(statusVal),
+          variant: ["active", "healthy", "enabled", "ready"].some((v) => s.includes(v))
+            ? "status-healthy"
+            : ["error", "failed", "deleted", "inactive"].some((v) => s.includes(v))
+              ? "status-error"
+              : ["pending", "creating", "updating", "degraded"].some((v) => s.includes(v))
+                ? "status-degraded"
+                : "default",
+        });
+      }
+      const typeVal = f["type"] ?? f["kind"];
+      if (typeVal != null) stats.push({ label: "Type", value: String(typeVal) });
+      return stats;
+    }
   }
 
   private async getZoneOptions(): Promise<Array<{ id: string; label: string }>> {

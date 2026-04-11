@@ -7,6 +7,8 @@ import type {
   SizeOption,
   ImageOption,
   SectionNode,
+  DashboardStat,
+  MetricSeries,
 } from "@infrawrench/plugin-base";
 import {
   dnsRecordBadgeColor,
@@ -510,6 +512,115 @@ export class DigitalOceanClient implements PluginClient {
     }
 
     throw new Error(`DigitalOcean plugin: createResource not supported for type "${typeId}"`);
+  }
+
+  async fetchDashboardStats(
+    resourceTypeId: string,
+    resourceId: string,
+    accountId: string,
+  ): Promise<DashboardStat[]> {
+    const resource = await this.getResource(resourceTypeId, resourceId, accountId);
+    const f = resource.fields;
+
+    switch (resourceTypeId) {
+      case "droplet":
+        return [
+          { label: "Region", value: String(f["region"] ?? "") },
+          { label: "Size", value: String(f["size"] ?? "") },
+          ...(resource.resolvedOutputs["ipv4"]
+            ? [{ label: "IPv4", value: resource.resolvedOutputs["ipv4"] }]
+            : []),
+        ];
+      case "doks-cluster":
+        return [
+          { label: "Version", value: String(f["version"] ?? "") },
+          { label: "Region", value: String(f["region"] ?? "") },
+          { label: "Nodes", value: String(f["nodeCount"] ?? 0) },
+        ];
+      case "managed-database":
+        return [
+          { label: "Engine", value: String(f["engine"] ?? "") },
+          { label: "Version", value: String(f["version"] ?? "") },
+          { label: "Region", value: String(f["region"] ?? "") },
+          { label: "Nodes", value: String(f["nodeCount"] ?? 1) },
+        ];
+      case "domain":
+        return [{ label: "TTL", value: String(f["ttl"] ?? 1800) }];
+      case "dns-record":
+        return [
+          { label: "Type", value: String(f["type"] ?? "") },
+          { label: "Name", value: String(f["name"] ?? "") },
+          { label: "Data", value: String(f["data"] ?? "") },
+          ...(f["ttl"] != null ? [{ label: "TTL", value: String(f["ttl"]) }] : []),
+        ];
+      case "project": {
+        const stats: DashboardStat[] = [{ label: "Name", value: String(f["name"] ?? "") }];
+        if (f["environment"]) stats.push({ label: "Environment", value: String(f["environment"]) });
+        if (f["purpose"]) stats.push({ label: "Purpose", value: String(f["purpose"]) });
+        return stats;
+      }
+      case "spaces-bucket":
+        return [
+          { label: "Name", value: String(f["name"] ?? "") },
+          { label: "Region", value: String(f["region"] ?? "") },
+          ...(f["accessControl"] ? [{ label: "Access", value: String(f["accessControl"]) }] : []),
+        ];
+      default:
+        return [];
+    }
+  }
+
+  async fetchMetricSeries(
+    resourceTypeId: string,
+    resourceId: string,
+    accountId: string,
+    timeRange?: { startMs: number; endMs: number },
+  ): Promise<MetricSeries[]> {
+    if (resourceTypeId !== "droplet") return [];
+
+    const resource = await this.getResource(resourceTypeId, resourceId, accountId);
+    const dropletId = resource.externalId ?? resourceId.split(":").pop();
+    if (!dropletId) return [];
+
+    const now = Date.now();
+    const startUnix = Math.floor((timeRange?.startMs ?? now - 3_600_000) / 1000);
+    const endUnix = Math.floor((timeRange?.endMs ?? now) / 1000);
+
+    const metricDefs: Array<{ name: string; label: string; unit: string }> = [
+      { name: "cpu", label: "CPU Utilization", unit: "%" },
+      { name: "memory_free", label: "Free Memory", unit: "bytes" },
+      { name: "bandwidth_public_inbound", label: "Public Inbound Bandwidth", unit: "bytes/sec" },
+    ];
+
+    interface MonitoringResult {
+      values: [number, string][];
+    }
+    interface MonitoringResponse {
+      data: { result: MonitoringResult[] };
+    }
+
+    const results: MetricSeries[] = [];
+
+    for (const metric of metricDefs) {
+      try {
+        const path = `/monitoring/metrics/droplet/${metric.name}?host_id=${dropletId}&start=${startUnix}&end=${endUnix}`;
+        const resp = await this.fetch<MonitoringResponse>(path);
+        const values = resp.data?.result?.[0]?.values ?? [];
+        if (values.length === 0) continue;
+        results.push({
+          label: metric.label,
+          unit: metric.unit,
+          points: values.map(([ts, val]) => ({
+            timestamp: ts * 1000,
+            value: Number(val),
+          })),
+        });
+      } catch {
+        // Skip metrics that fail to fetch
+      }
+    }
+
+    return results;
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {

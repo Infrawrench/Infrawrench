@@ -8,9 +8,11 @@ import type {
   GridNode,
   SectionNode,
   LinkNode,
+  MetricChartNode,
   KVItem,
   HostAction,
 } from "@infrawrench/plugin-base";
+import { MetricChart } from "../charts/MetricChart.js";
 import { useUIStore } from "../../store/ui.store.js";
 import { dispatchRefreshResource } from "../../utils.js";
 
@@ -232,6 +234,8 @@ export function SchemaRenderer({ node, resourceId }: SchemaRendererProps) {
       return <SectionNodeRenderer node={node} resourceId={resourceId} />;
     case "link":
       return <LinkNodeRenderer node={node} />;
+    case "metric-chart":
+      return <MetricChart node={node} />;
     default:
       return null;
   }

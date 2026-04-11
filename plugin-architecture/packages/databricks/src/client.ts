@@ -5,6 +5,7 @@ import type {
   SidebarItemSchema,
   SqlTableMeta,
   ResourceStatus,
+  DashboardStat,
 } from "@infrawrench/plugin-base";
 import type { ListerContext } from "./resource-listers.js";
 import {
@@ -163,6 +164,78 @@ export class DatabricksClient implements PluginClient {
       );
     }
     return String(value);
+  }
+
+  async fetchDashboardStats(
+    resourceTypeId: string,
+    resourceId: string,
+    accountId: string,
+  ): Promise<DashboardStat[]> {
+    const resource = await this.getResource(resourceTypeId, resourceId, accountId);
+    const f = resource.fields;
+
+    switch (resourceTypeId) {
+      case "databricks-sql-warehouse": {
+        const state = String(f.state ?? "unknown");
+        return [
+          {
+            label: "State",
+            value: state,
+            variant:
+              state === "RUNNING"
+                ? "status-healthy"
+                : state === "STOPPED"
+                  ? "status-error"
+                  : "status-degraded",
+          },
+        ];
+      }
+      case "databricks-job": {
+        return [{ label: "State", value: String(f.state ?? "unknown") }];
+      }
+      case "databricks-pipeline": {
+        return [{ label: "State", value: String(f.state ?? "unknown") }];
+      }
+      case "databricks-cluster": {
+        const state = String(f.state ?? "unknown");
+        return [
+          {
+            label: "State",
+            value: state,
+            variant:
+              state === "RUNNING"
+                ? "status-healthy"
+                : state === "TERMINATED" || state === "ERROR"
+                  ? "status-error"
+                  : "status-degraded",
+          },
+          { label: "Node Type", value: String(f.nodeTypeId ?? "") },
+          { label: "Workers", value: String(f.numWorkers ?? 0) },
+        ];
+      }
+      case "databricks-catalog": {
+        const stats: DashboardStat[] = [{ label: "Owner", value: String(f.owner ?? "") }];
+        if (f.catalogType) stats.push({ label: "Type", value: String(f.catalogType) });
+        if (f.schemaCount != null) stats.push({ label: "Schemas", value: String(f.schemaCount) });
+        return stats;
+      }
+      case "databricks-schema": {
+        const stats: DashboardStat[] = [{ label: "Catalog", value: String(f.catalogName ?? "") }];
+        if (f.owner) stats.push({ label: "Owner", value: String(f.owner) });
+        if (f.tableCount != null) stats.push({ label: "Tables", value: String(f.tableCount) });
+        return stats;
+      }
+      case "databricks-table": {
+        return [
+          { label: "Type", value: String(f.tableType ?? "") },
+          { label: "Schema", value: String(f.schemaName ?? "") },
+          ...(f.dataSourceFormat ? [{ label: "Format", value: String(f.dataSourceFormat) }] : []),
+          ...(f.columnCount != null ? [{ label: "Columns", value: String(f.columnCount) }] : []),
+        ];
+      }
+      default:
+        return [];
+    }
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {

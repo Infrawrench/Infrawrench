@@ -278,17 +278,6 @@ app.post("/storage/delete", async (c) => {
   return c.json({ ok: true });
 });
 
-/** POST /api/storage/stats */
-app.post("/storage/stats", async (c) => {
-  const organizationId = c.get("organizationId");
-  const input = await c.req.json<{ accountId: string; bucket: string }>();
-  const { client } = await getClientForAccount(input.accountId, organizationId);
-  if (!client.fetchStorageStats)
-    return c.json({ error: "Plugin does not support storage stats" }, 400);
-  const result = await client.fetchStorageStats(input.bucket);
-  return c.json(result);
-});
-
 /** POST /api/sftp/list */
 app.post("/sftp/list", async (c) => {
   const organizationId = c.get("organizationId");

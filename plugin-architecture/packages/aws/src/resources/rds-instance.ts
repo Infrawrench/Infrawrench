@@ -37,6 +37,7 @@ export const RDSInstanceResourceType: ResourceTypeDefinition = {
     { key: "masterUsername", label: "Master Username", sensitive: false },
   ],
   dashboardPinnable: true,
+  supportsMetrics: true,
   iconKey: "database",
   resourceSqlDriver: {
     driver: "postgres",

@@ -7,6 +7,7 @@ import type {
   SizeOption,
   ImageOption,
   ResourceStatus,
+  DashboardStat,
 } from "@infrawrench/plugin-base";
 
 /**
@@ -294,6 +295,56 @@ export class HetznerClient implements PluginClient {
     const externalId = resourceId.split(":").pop();
     if (!externalId) throw new Error("Cannot parse server ID");
     await this.fetch<unknown>(`/servers/${externalId}`, { method: "DELETE" });
+  }
+
+  async fetchDashboardStats(
+    resourceTypeId: string,
+    resourceId: string,
+    accountId: string,
+  ): Promise<DashboardStat[]> {
+    const resource = await this.getResource(resourceTypeId, resourceId, accountId);
+    const f = resource.fields;
+
+    if (resourceTypeId === "server") {
+      const statusVariant =
+        f["status"] === "running"
+          ? ("status-healthy" as const)
+          : f["status"] === "off"
+            ? ("status-error" as const)
+            : ("status-degraded" as const);
+      return [
+        { label: "Status", value: String(f["status"] ?? "unknown"), variant: statusVariant },
+        { label: "Type", value: String(f["serverType"] ?? "") },
+        { label: "Location", value: String(f["location"] ?? "") },
+        ...(resource.resolvedOutputs["ipv4"]
+          ? [{ label: "IPv4", value: resource.resolvedOutputs["ipv4"] }]
+          : []),
+      ];
+    }
+
+    if (resourceTypeId === "volume") {
+      return [
+        { label: "Size", value: `${String(f["sizeGb"])} GB` },
+        { label: "Location", value: String(f["location"] ?? "") },
+      ];
+    }
+
+    if (resourceTypeId === "floating-ip") {
+      return [
+        { label: "IP", value: String(f["ip"] ?? "") },
+        { label: "Type", value: String(f["type"] ?? "") },
+        { label: "Location", value: String(f["location"] ?? "") },
+      ];
+    }
+
+    if (resourceTypeId === "firewall") {
+      return [
+        { label: "Rules", value: String(f["rulesCount"] ?? 0) },
+        { label: "Applied To", value: String(f["appliedToCount"] ?? 0) },
+      ];
+    }
+
+    return [];
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {

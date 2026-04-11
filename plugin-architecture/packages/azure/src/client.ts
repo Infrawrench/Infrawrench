@@ -6,6 +6,7 @@ import type {
   ResourceStatus,
   StorageObject,
   CreateResourceConfig,
+  DashboardStat,
 } from "@infrawrench/plugin-base";
 import { fetchAccessToken, fetchStorageAccessToken, type AzureCredentials } from "./auth.js";
 import type { ListerContext } from "./resource-listers.js";
@@ -458,6 +459,103 @@ export class AzureClient implements PluginClient {
     return String(value);
   }
 
+  async fetchDashboardStats(
+    resourceTypeId: string,
+    resourceId: string,
+    accountId: string,
+  ): Promise<DashboardStat[]> {
+    const resource = await this.getResource(resourceTypeId, resourceId, accountId);
+    const f = resource.fields;
+    const ro = resource.resolvedOutputs ?? {};
+
+    switch (resourceTypeId) {
+      case "azure-vm": {
+        const state = String(f.state ?? "unknown");
+        const stats: DashboardStat[] = [
+          {
+            label: "State",
+            value: state,
+            variant:
+              state === "Running"
+                ? "status-healthy"
+                : state === "Deallocated" || state === "Stopped"
+                  ? "status-error"
+                  : "status-degraded",
+          },
+          { label: "Location", value: String(f.location ?? "") },
+        ];
+        if (ro.publicIp) stats.push({ label: "Public IP", value: String(ro.publicIp) });
+        return stats;
+      }
+      case "azure-aks-cluster": {
+        return [
+          { label: "Version", value: String(f.version ?? "") },
+          { label: "Location", value: String(f.location ?? "") },
+          { label: "Nodes", value: String(f.nodeCount ?? 0) },
+        ];
+      }
+      case "azure-sql-server":
+      case "azure-sql-database":
+      case "azure-cosmos-account": {
+        const stateVal = String(f.state ?? f.status ?? "unknown");
+        return [
+          {
+            label: "State",
+            value: stateVal,
+            variant:
+              stateVal === "Ready" || stateVal === "Online" || stateVal === "Running"
+                ? "status-healthy"
+                : "status-degraded",
+          },
+          { label: "Location", value: String(f.location ?? "") },
+        ];
+      }
+      default: {
+        // Generic fallback — show key fields from the resource
+        const stats: DashboardStat[] = [];
+        const statusVal = f.status ?? f.state ?? f.provisioningState ?? f.phase;
+        if (statusVal != null) {
+          const s = String(statusVal).toLowerCase();
+          stats.push({
+            label: "Status",
+            value: String(statusVal),
+            variant: [
+              "running",
+              "active",
+              "available",
+              "ready",
+              "enabled",
+              "healthy",
+              "succeeded",
+              "online",
+            ].some((v) => s.includes(v))
+              ? "status-healthy"
+              : ["error", "failed", "terminated", "deleted", "unhealthy"].some((v) => s.includes(v))
+                ? "status-error"
+                : ["pending", "creating", "updating", "stopping", "degraded", "warning"].some((v) =>
+                      s.includes(v),
+                    )
+                  ? "status-degraded"
+                  : "default",
+          });
+        }
+        const typeVal =
+          f.type ??
+          f.kind ??
+          f.engine ??
+          f.instanceType ??
+          f.tier ??
+          f.machineType ??
+          f.size ??
+          f.sku;
+        if (typeVal != null) stats.push({ label: "Type", value: String(typeVal) });
+        const regionVal = f.region ?? f.location ?? f.zone;
+        if (regionVal != null) stats.push({ label: "Region", value: String(regionVal) });
+        return stats;
+      }
+    }
+  }
+
   renderDetail(resource: ResourceInstance): DetailViewSchema {
     const fields = resource.fields;
     const state = String(
@@ -709,62 +807,6 @@ export class AzureClient implements PluginClient {
 
   async getStorageAccessToken(): Promise<string> {
     return this.storageToken();
-  }
-
-  async fetchStorageStats(bucketName: string): Promise<{ count: number; size: string }> {
-    // bucketName is the storage account name; we need to list containers then blobs
-    const tok = await this.storageToken();
-    let count = 0;
-    let totalBytes = 0;
-
-    // List containers first
-    const containerListUrl = `https://${bucketName}.blob.core.windows.net/?comp=list`;
-    const containerRes = await fetch(containerListUrl, {
-      headers: {
-        Authorization: `Bearer ${tok}`,
-        "x-ms-version": "2023-11-03",
-      },
-    });
-    if (!containerRes.ok) return { count: 0, size: "0 B" };
-
-    const containerXml = await containerRes.text();
-    const parser = new DOMParser();
-    const containerDoc = parser.parseFromString(containerXml, "text/xml");
-    const containers = containerDoc.querySelectorAll("Container > Name");
-
-    for (const containerEl of Array.from(containers)) {
-      const containerName = containerEl.textContent ?? "";
-      let marker: string | undefined;
-
-      do {
-        const params = new URLSearchParams({
-          restype: "container",
-          comp: "list",
-        });
-        if (marker) params.set("marker", marker);
-        const blobUrl = `https://${bucketName}.blob.core.windows.net/${containerName}?${params}`;
-        const blobRes = await fetch(blobUrl, {
-          headers: {
-            Authorization: `Bearer ${tok}`,
-            "x-ms-version": "2023-11-03",
-          },
-        });
-        if (!blobRes.ok) break;
-
-        const blobXml = await blobRes.text();
-        const blobDoc = parser.parseFromString(blobXml, "text/xml");
-        const blobs = blobDoc.querySelectorAll("Blobs > Blob");
-        for (const blob of Array.from(blobs)) {
-          count++;
-          const size = blob.querySelector("Properties > Content-Length")?.textContent;
-          if (size) totalBytes += Number(size);
-        }
-        const nextMarker = blobDoc.querySelector("NextMarker")?.textContent;
-        marker = nextMarker && nextMarker.length > 0 ? nextMarker : undefined;
-      } while (marker);
-    }
-
-    return { count, size: formatBytes(totalBytes) };
   }
 
   async getCreateCostEstimate(

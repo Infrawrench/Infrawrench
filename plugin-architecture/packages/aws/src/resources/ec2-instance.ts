@@ -27,6 +27,7 @@ export const EC2InstanceResourceType: ResourceTypeDefinition = {
     { key: "publicDns", label: "Public DNS", sensitive: false },
   ],
   dashboardPinnable: true,
+  supportsMetrics: true,
   sshEndpoint: {
     hostOutputKey: "publicIp",
     runningWhen: { fieldKey: "state", value: "running" },

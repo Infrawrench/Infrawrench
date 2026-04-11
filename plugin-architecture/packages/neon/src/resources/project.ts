@@ -19,6 +19,7 @@ export const NeonProjectResourceType: ResourceTypeDefinition = {
   ],
   dashboardPinnable: true,
   supportsCreate: true,
+  supportsMetrics: true,
   iconKey: "neon",
   secretExportTemplates: [
     {

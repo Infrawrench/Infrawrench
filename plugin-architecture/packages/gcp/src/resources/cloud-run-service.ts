@@ -14,4 +14,5 @@ export const CloudRunServiceResourceType: ResourceTypeDefinition = {
   ],
   outputs: [{ key: "url", label: "Service URL", sensitive: false }],
   dashboardPinnable: true,
+  supportsMetrics: true,
 };

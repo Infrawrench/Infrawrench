@@ -4,6 +4,7 @@ import type {
   ResourceInstance,
   DetailViewSchema,
   SidebarItemSchema,
+  DashboardStat,
 } from "@infrawrench/plugin-base";
 
 /**
@@ -88,9 +89,19 @@ export class MongoDBClient implements PluginClient {
     };
   }
 
-  async fetchStats(): Promise<{ version: string; size: string; tableCount: number }> {
+  async fetchDashboardStats(
+    _resourceTypeId: string,
+    _resourceId: string,
+    _accountId: string,
+  ): Promise<DashboardStat[]> {
     const kv = this.services?.kv;
-    if (!kv) return { version: "", size: "", tableCount: 0 };
+    if (!kv) {
+      return [
+        { label: "Version", value: "" },
+        { label: "Size", value: "" },
+        { label: "Collections", value: "0" },
+      ];
+    }
 
     const dbName = this.parseDatabaseName();
     try {
@@ -107,13 +118,17 @@ export class MongoDBClient implements PluginClient {
       const versionRaw = await kv.command("serverVersion", dbName);
       const version = String(versionRaw ?? "");
 
-      return {
-        version,
-        size: `${sizeMb} MB`,
-        tableCount: stats.collections ?? 0,
-      };
+      return [
+        { label: "Version", value: version },
+        { label: "Size", value: `${sizeMb} MB` },
+        { label: "Collections", value: String(stats.collections ?? 0) },
+      ];
     } catch {
-      return { version: "", size: "", tableCount: 0 };
+      return [
+        { label: "Version", value: "" },
+        { label: "Size", value: "" },
+        { label: "Collections", value: "0" },
+      ];
     }
   }
 

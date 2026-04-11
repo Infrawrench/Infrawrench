@@ -61,4 +61,5 @@ export const resourceTypeDefinitionSchema = z.object({
   iconKey: z.string().optional(),
   peerIntegrations: z.array(peerPluginIntegrationSchema).optional(),
   secretExportTemplates: z.array(secretExportTemplateSchema).optional(),
+  supportsMetrics: z.boolean().optional(),
 });

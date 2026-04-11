@@ -138,4 +138,6 @@ export interface ResourceTypeDefinition {
     /** The output key to resolve for the connection string */
     connectionStringOutputKey: string;
   };
+  /** If true, the host renders a Metrics tab and calls fetchMetricSeries */
+  supportsMetrics?: boolean;
 }

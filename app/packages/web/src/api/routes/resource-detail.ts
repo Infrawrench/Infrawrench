@@ -455,6 +455,7 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
     containerId,
     databaseName,
     storageBucketName,
+    supportsMetrics: (resourceTypeDef?.supportsMetrics ?? false) && !!client.fetchMetricSeries,
   });
 });
 
@@ -695,6 +696,32 @@ app.post("/:pluginId/:typeId/peer-panes", async (c) => {
   );
 
   return c.json(panes);
+});
+
+/** POST /api/resources/:pluginId/:typeId/metrics */
+app.post("/:pluginId/:typeId/metrics", async (c) => {
+  const organizationId = c.get("organizationId");
+  const { accountId, resourceId, startMs, endMs } = await c.req.json<{
+    accountId: string;
+    resourceId: string;
+    startMs?: number;
+    endMs?: number;
+  }>();
+  const resourceTypeId = c.req.param("typeId");
+
+  const ctx = await getClientForAccount(accountId, organizationId);
+  if (!ctx) return c.json({ error: "Account not found" }, 404);
+  if (!ctx.client.fetchMetricSeries)
+    return c.json({ error: "Plugin does not support metrics" }, 400);
+
+  const timeRange = startMs && endMs ? { startMs, endMs } : undefined;
+  const series = await ctx.client.fetchMetricSeries(
+    resourceTypeId,
+    resourceId,
+    accountId,
+    timeRange,
+  );
+  return c.json({ series });
 });
 
 export { app as resourceDetailRoutes };

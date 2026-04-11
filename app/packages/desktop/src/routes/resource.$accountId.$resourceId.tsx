@@ -5,6 +5,7 @@ import { invoke } from "../lib/invoke";
 import type {
   ResourceInstance,
   DetailViewSchema,
+  MetricSeries,
   ResourceTypeDefinition,
 } from "@infrawrench/plugin-base";
 import {
@@ -126,6 +127,7 @@ function ResourceDetailPage() {
   const [peerPanes, setPeerPanes] = useState<PeerPaneData[]>([]);
   const [childResourceGroups, setChildResourceGroups] = useState<ChildResourceGroup[]>([]);
   const [createChildTarget, setCreateChildTarget] = useState<ResourceTypeDefinition | null>(null);
+  const [metricSeries, setMetricSeries] = useState<MetricSeries[] | undefined>(undefined);
   const backgroundRefreshRef = useRef(false);
   const navigate = useNavigate();
 
@@ -613,6 +615,16 @@ function ResourceDetailPage() {
               setPeerPanes([]);
             }
           }
+
+          // Fetch time-series metrics if supported
+          if (resourceTypeDef?.supportsMetrics && client.fetchMetricSeries && !isBackground) {
+            client
+              .fetchMetricSeries(enrichedResource.resourceTypeId, enrichedResource.id, accountId)
+              .then((series) => {
+                if (!cancelled) setMetricSeries(series);
+              })
+              .catch(() => {});
+          }
         }
       } catch (e) {
         if (!cancelled && !isBackground) setError(formatErrorMessage(e));
@@ -859,6 +871,7 @@ function ResourceDetailPage() {
                   {...(schema.manifestEditor
                     ? { onGetManifest: handleGetManifest, onApplyManifest: handleApplyManifest }
                     : {})}
+                  metricSeries={metricSeries}
                 />
               </div>
             }

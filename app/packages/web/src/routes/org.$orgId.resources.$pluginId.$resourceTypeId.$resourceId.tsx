@@ -124,6 +124,7 @@ function ResourceDetailPage() {
       databaseName={data.databaseName}
       storageBucketName={data.storageBucketName}
       initialView={currentView === "ssh" || currentView === "sftp" ? currentView : undefined}
+      supportsMetrics={data.supportsMetrics}
     />
   );
 }

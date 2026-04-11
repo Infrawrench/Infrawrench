@@ -182,8 +182,19 @@ export interface PluginClient {
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema;
   /** Fetch table/column schema for the SQL editor — only when sql services are injected */
   introspect?(): Promise<SqlTableMeta[]>;
-  /** Fetch lightweight stats for dashboard cards (version, size, table count) */
-  fetchStats?(): Promise<{ version: string; size: string; tableCount: number }>;
+  /** Fetch generic labelled stats for a dashboard card. */
+  fetchDashboardStats?(
+    resourceTypeId: string,
+    resourceId: string,
+    accountId: string,
+  ): Promise<DashboardStat[]>;
+  /** Fetch time-series metric data for a resource (e.g. CPU, memory, request rate). */
+  fetchMetricSeries?(
+    resourceTypeId: string,
+    resourceId: string,
+    accountId: string,
+    timeRange?: { startMs: number; endMs: number },
+  ): Promise<MetricSeries[]>;
   /** List objects in a storage bucket at a given prefix (delimiter="/") */
   listStorageObjects?(bucket: string, prefix: string): Promise<StorageObject[]>;
   /** Upload a file to the given key within a bucket */
@@ -199,8 +210,6 @@ export interface PluginClient {
   deleteStorageObject?(bucket: string, key: string): Promise<void>;
   /** Return a short-lived bearer token the host can use for direct storage API calls (e.g. batch download via IPC). */
   getStorageAccessToken?(): Promise<string>;
-  /** Fetch lightweight stats for a storage bucket dashboard card (object count + total size). */
-  fetchStorageStats?(bucketName: string): Promise<{ count: number; size: string }>;
   /** Return SSH connection details for terminal access — only when the resource type declares supportsTerminal */
   getSshConfig?(): { host: string; port: number; username: string; privateKey: string };
   /** Fetch a fully-populated create form config for a resource type (regions, sizes, etc. from live API). */
@@ -276,7 +285,9 @@ export interface Plugin {
 // Forward declarations — defined in their own modules but used here
 import type { ResourceInstance } from "./instance.js";
 import type {
+  DashboardStat,
   DetailViewSchema,
+  MetricSeries,
   PeerPaneSchema,
   SidebarItemSchema,
   SqlTableMeta,

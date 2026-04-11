@@ -6,6 +6,8 @@ import type {
   SidebarItemSchema,
   CreateResourceConfig,
   ResourceStatus,
+  DashboardStat,
+  MetricSeries,
 } from "@infrawrench/plugin-base";
 
 /**
@@ -182,6 +184,132 @@ export class NeonClient implements PluginClient {
     }
 
     throw new Error(`Neon plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+  }
+
+  async fetchDashboardStats(
+    resourceTypeId: string,
+    resourceId: string,
+    accountId: string,
+  ): Promise<DashboardStat[]> {
+    const resource = await this.getResource(resourceTypeId, resourceId, accountId);
+    const f = resource.fields;
+
+    switch (resourceTypeId) {
+      case "neon-project": {
+        const regionInfo = NEON_REGIONS[String(f["region"] ?? "")];
+        return [
+          {
+            label: "Region",
+            value: regionInfo
+              ? `${regionInfo.flag} ${String(f["region"])}`
+              : String(f["region"] ?? ""),
+          },
+          { label: "PG Version", value: String(f["pgVersion"] ?? "") },
+        ];
+      }
+      case "neon-endpoint": {
+        const state = String(f["currentState"] ?? "unknown");
+        const variant =
+          state === "active" ? "status-healthy" : state === "idle" ? "status-degraded" : "default";
+        return [
+          { label: "State", value: state, variant },
+          { label: "Type", value: String(f["type"] ?? "") },
+          {
+            label: "Compute",
+            value: `${String(f["autoscalingMinCu"])}–${String(f["autoscalingMaxCu"])} CU`,
+          },
+        ];
+      }
+      case "neon-branch": {
+        const state = String(f["currentState"] ?? "unknown");
+        const variant = state === "ready" ? "status-healthy" : "status-degraded";
+        return [
+          { label: "State", value: state, variant },
+          ...(f["primary"] ? [{ label: "Primary", value: "Yes" }] : []),
+        ];
+      }
+      default:
+        return [];
+    }
+  }
+
+  async fetchMetricSeries(
+    resourceTypeId: string,
+    resourceId: string,
+    accountId: string,
+    timeRange?: { startMs: number; endMs: number },
+  ): Promise<MetricSeries[]> {
+    // Neon metrics are project-scoped — resolve the project ID
+    let projectId: string;
+    if (resourceTypeId === "neon-project") {
+      projectId = resourceId.split(":").pop() ?? "";
+    } else {
+      // For branches/endpoints/databases, extract project ID from the resource
+      const resource = await this.getResource(resourceTypeId, resourceId, accountId);
+      projectId = String(resource.fields["projectId"] ?? resourceId.split(":")[2] ?? "");
+    }
+    if (!projectId) return [];
+
+    const now = Date.now();
+    const startMs = timeRange?.startMs ?? now - 24 * 3_600_000; // last 24h
+    const endMs = timeRange?.endMs ?? now;
+    const from = new Date(startMs).toISOString();
+    const to = new Date(endMs).toISOString();
+
+    interface ConsumptionPeriod {
+      period_id: string;
+      active_time_seconds: number;
+      compute_time_seconds: number;
+      data_storage_bytes_hour: number;
+      written_data_bytes: number;
+      synthetic_storage_size: number;
+    }
+    interface ConsumptionResponse {
+      periods: ConsumptionPeriod[];
+    }
+
+    try {
+      const resp = await this.fetch<ConsumptionResponse>(
+        `/projects/${projectId}/consumption?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&granularity=hourly`,
+      );
+      const periods = resp.periods ?? [];
+      if (periods.length === 0) return [];
+
+      // Build time-series from hourly periods
+      const hourMs = 3_600_000;
+      const baseTime = new Date(from).getTime();
+
+      const activeTimeSeries: MetricSeries = {
+        label: "Active Time",
+        unit: "s",
+        points: periods.map((p, i) => ({
+          timestamp: baseTime + i * hourMs,
+          value: p.active_time_seconds,
+        })),
+      };
+
+      const storageSeries: MetricSeries = {
+        label: "Storage",
+        unit: "bytes",
+        points: periods.map((p, i) => ({
+          timestamp: baseTime + i * hourMs,
+          value: p.synthetic_storage_size,
+        })),
+      };
+
+      const writtenSeries: MetricSeries = {
+        label: "Data Written",
+        unit: "bytes",
+        points: periods.map((p, i) => ({
+          timestamp: baseTime + i * hourMs,
+          value: p.written_data_bytes,
+        })),
+      };
+
+      return [activeTimeSeries, storageSeries, writtenSeries];
+    } catch {
+      return [];
+    }
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {

@@ -91,6 +91,18 @@ export const schemaNodeSchema: z.ZodType<any> = z.lazy(() =>
       label: z.string(),
       url: z.string(),
     }),
+    z.object({
+      kind: z.literal("metric-chart"),
+      title: z.string(),
+      series: z.array(
+        z.object({
+          label: z.string(),
+          unit: z.string().optional(),
+          points: z.array(z.object({ timestamp: z.number(), value: z.number() })),
+        }),
+      ),
+      timeRangeLabel: z.string().optional(),
+    }),
   ]),
 );
 
@@ -100,6 +112,12 @@ const badgeSchema = z.object({
   color: z.enum(["green", "yellow", "red", "blue", "gray"]),
 });
 
+const dashboardStatSchema = z.object({
+  label: z.string(),
+  value: z.string(),
+  variant: z.enum(["default", "status-healthy", "status-degraded", "status-error"]).optional(),
+});
+
 export const dashboardCardSchema = z.object({
   pluginId: z.string(),
   resourceTypeId: z.string(),
@@ -107,6 +125,7 @@ export const dashboardCardSchema = z.object({
   displayName: z.string(),
   status: statusDotSchema.optional(),
   badges: z.array(badgeSchema).optional(),
+  stats: z.array(dashboardStatSchema).optional(),
 });
 
 const sectionNodeSchema = z.object({
@@ -129,4 +148,5 @@ export const detailViewSchema = z.object({
   sections: z.array(sectionNodeSchema),
   children: z.array(dashboardCardSchema).optional(),
   headerActions: z.array(actionNodeSchema).optional(),
+  metricsCapability: z.object({ defaultTimeRangeMs: z.number().optional() }).optional(),
 });

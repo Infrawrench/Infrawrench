@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import {
   DetailView,
@@ -12,7 +12,7 @@ import {
   type ChildResourceGroup,
   type PeerPaneData,
 } from "@infrawrench/ui";
-import type { DetailViewSchema, PeerPaneSchema } from "@infrawrench/plugin-base";
+import type { DetailViewSchema, MetricSeries, PeerPaneSchema } from "@infrawrench/plugin-base";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import { useOrgId } from "@/lib/useOrgId";
 import {
@@ -79,6 +79,7 @@ interface Props {
   databaseName?: string | undefined;
   storageBucketName?: string | undefined;
   initialView?: "ssh" | "sftp" | undefined;
+  supportsMetrics?: boolean | undefined;
 }
 
 export function ResourceDetailClient({
@@ -108,10 +109,28 @@ export function ResourceDetailClient({
   databaseName,
   storageBucketName,
   initialView,
+  supportsMetrics,
 }: Props) {
   const navigate = useNavigate();
   const orgId = useOrgId();
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [metricSeries, setMetricSeries] = useState<MetricSeries[] | undefined>(undefined);
+
+  useEffect(() => {
+    if (!supportsMetrics) return;
+    let cancelled = false;
+    apiPost<{ series: MetricSeries[] }>(
+      `/api/org/${orgId}/resources/${pluginId}/${resourceTypeId}/metrics`,
+      { accountId, resourceId },
+    )
+      .then((r) => {
+        if (!cancelled) setMetricSeries(r.series);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [supportsMetrics, orgId, pluginId, resourceTypeId, accountId, resourceId]);
   const [wsToken, setWsToken] = useState<string | null>(null);
   const [createTarget, setCreateTarget] = useState<ChildResourceGroup | null>(null);
   const [sshQuickConnect, setSshQuickConnect] = useState<{
@@ -340,6 +359,7 @@ export function ResourceDetailClient({
               {...(hasManifestEditor
                 ? { onGetManifest: handleGetManifest, onApplyManifest: handleApplyManifest }
                 : {})}
+              metricSeries={metricSeries}
             />
           </div>
         </div>

@@ -85,6 +85,24 @@ export interface LinkNode {
   url: string;
 }
 
+export interface MetricSeriesPoint {
+  timestamp: number;
+  value: number;
+}
+
+export interface MetricSeries {
+  label: string;
+  unit?: string;
+  points: MetricSeriesPoint[];
+}
+
+export interface MetricChartNode {
+  kind: "metric-chart";
+  title: string;
+  series: MetricSeries[];
+  timeRangeLabel?: string;
+}
+
 export type SchemaNode =
   | TextNode
   | BadgeNode
@@ -93,7 +111,15 @@ export type SchemaNode =
   | ActionNode
   | GridNode
   | SectionNode
-  | LinkNode;
+  | LinkNode
+  | MetricChartNode;
+
+/** A single labelled metric shown in dashboard card footers */
+export interface DashboardStat {
+  label: string;
+  value: string;
+  variant?: "default" | "status-healthy" | "status-degraded" | "status-error";
+}
 
 /**
  * Dashboard card — always rendered as:
@@ -112,6 +138,8 @@ export interface DashboardCardSchema {
   status?: StatusDotNode;
   /** Corner badges (e.g. "prod", "us-east-1") */
   badges?: BadgeNode[];
+  /** Generic stats shown in the card footer */
+  stats?: DashboardStat[];
 }
 
 /** Structured metadata the host can inject so the plugin can populate the SQL editor sidebar */
@@ -182,6 +210,8 @@ export interface DetailViewSchema {
   storageBrowser?: StorageBrowserCapability;
   /** If present, the host renders a Monaco manifest editor tab */
   manifestEditor?: ManifestEditorCapability;
+  /** If present, the host renders a Metrics tab with time-series charts */
+  metricsCapability?: { defaultTimeRangeMs?: number };
 }
 
 /** Sidebar tree node */

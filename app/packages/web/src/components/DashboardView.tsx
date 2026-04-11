@@ -2,6 +2,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useState, useEffect, useRef } from "react";
 import {
   DroppableDashboardArea,
+  SparklineChart,
   useUIStore,
   formatErrorMessage,
   extractHostLabel,
@@ -29,11 +30,10 @@ interface PinnedResource {
 
 interface CardStatus {
   phase: "connecting" | "ok" | "error";
-  pgVersion?: string;
-  dbSize?: string;
-  tableCount?: number;
-  tableCountLabel?: string;
   resourceCounts?: Array<{ typeLabel: string; count: number }>;
+  stats?: Array<{ label: string; value: string; variant?: string }>;
+  sparkline?: Array<{ timestamp: number; value: number }>;
+  sparklineLabel?: string;
   error?: string;
 }
 
@@ -336,19 +336,35 @@ function ConnectionFooter({ status }: { status?: CardStatus | undefined }) {
     );
   }
 
-  // DB/service stats
-  const parts: string[] = [];
-  if (status.pgVersion) parts.push(status.pgVersion);
-  if (status.dbSize) parts.push(status.dbSize);
-  if (status.tableCount !== undefined) {
-    parts.push(`${status.tableCount} ${status.tableCountLabel ?? "Tables"}`);
+  // Generic stats
+  if (status.stats && status.stats.length > 0) {
+    const variantColor = (v?: string) => {
+      if (v === "status-healthy") return "text-green-400";
+      if (v === "status-degraded") return "text-yellow-400";
+      if (v === "status-error") return "text-red-400";
+      return "text-gray-300";
+    };
+    return (
+      <div className="px-4 py-2 border-t border-gray-800/50">
+        <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+          {status.stats.map((stat) => (
+            <span key={stat.label} className="text-xs text-gray-500">
+              <span className={`font-medium ${variantColor(stat.variant)}`}>{stat.value}</span>{" "}
+              {stat.label}
+            </span>
+          ))}
+        </div>
+        {status.sparkline && status.sparkline.length >= 2 && (
+          <div className="mt-2.5 flex items-center gap-2">
+            <SparklineChart points={status.sparkline} width={120} height={24} />
+            {status.sparklineLabel && (
+              <span className="text-[10px] text-gray-600">{status.sparklineLabel}</span>
+            )}
+          </div>
+        )}
+      </div>
+    );
   }
 
-  if (parts.length === 0) return null;
-
-  return (
-    <div className="px-4 py-2 border-t border-gray-800/50">
-      <span className="text-xs text-gray-500">{parts.join(" · ")}</span>
-    </div>
-  );
+  return null;
 }

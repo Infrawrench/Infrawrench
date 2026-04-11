@@ -3,6 +3,7 @@ import type {
   ResourceInstance,
   DetailViewSchema,
   SidebarItemSchema,
+  DashboardStat,
 } from "@infrawrench/plugin-base";
 
 export interface SshCredentials {
@@ -49,6 +50,14 @@ export class SshClient implements PluginClient {
 
   async resolveOutput(): Promise<string> {
     return "";
+  }
+
+  async fetchDashboardStats(): Promise<DashboardStat[]> {
+    const { host, port = "22", username = "root" } = this.creds;
+    return [
+      { label: "Host", value: `${host}:${port}` },
+      { label: "User", value: String(username) },
+    ];
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {

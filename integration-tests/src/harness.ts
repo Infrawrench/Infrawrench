@@ -180,14 +180,22 @@ export async function runPluginIntegrationTests(
     });
   }
 
-  // 10. Optional: fetchStats (for driver-backed plugins)
-  if (typeof client.fetchStats === "function") {
-    await runTest(pid, "fetchStats returns { version, size, tableCount }", async () => {
-      const stats = await client.fetchStats!();
-      assert(typeof stats.version === "string", "stats.version is not a string");
-      assert(typeof stats.size === "string", "stats.size is not a string");
-      assert(typeof stats.tableCount === "number", "stats.tableCount is not a number");
-    });
+  // 10. Optional: fetchDashboardStats
+  if (typeof client.fetchDashboardStats === "function") {
+    for (const rt of plugin.resourceTypes) {
+      const resources = resourcesByType.get(rt.id) ?? [];
+      if (resources.length === 0) continue;
+      const first = resources[0]!;
+      await runTest(pid, `fetchDashboardStats("${rt.id}") returns DashboardStat[]`, async () => {
+        const stats = await client.fetchDashboardStats!(rt.id, first.id, `integration-${pid}`);
+        assert(Array.isArray(stats), `Expected array, got ${typeof stats}`);
+        for (const s of stats) {
+          assert(typeof s.label === "string", "stat.label is not a string");
+          assert(typeof s.value === "string", "stat.value is not a string");
+        }
+      });
+      break; // one type is enough
+    }
   }
 
   // 11. Optional: getSshConfig (for SSH-capable plugins)

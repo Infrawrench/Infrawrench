@@ -4,6 +4,7 @@ import type {
   ResourceInstance,
   DetailViewSchema,
   SidebarItemSchema,
+  DashboardStat,
 } from "@infrawrench/plugin-base";
 
 export class MemcachedClient implements PluginClient {
@@ -89,18 +90,36 @@ export class MemcachedClient implements PluginClient {
     };
   }
 
-  async fetchStats(): Promise<{ version: string; size: string; tableCount: number }> {
+  async fetchDashboardStats(
+    _resourceTypeId: string,
+    _resourceId: string,
+    _accountId: string,
+  ): Promise<DashboardStat[]> {
     const kv = this.services?.kv;
-    if (!kv) return { version: "", size: "", tableCount: 0 };
+    if (!kv) {
+      return [
+        { label: "Version", value: "" },
+        { label: "Memory", value: "" },
+        { label: "Items", value: "0" },
+      ];
+    }
 
     try {
       const raw = String(await kv.command("STATS"));
       const version = extractStat(raw, "version");
       const bytes = parseInt(extractStat(raw, "bytes") || "0", 10);
       const currItems = parseInt(extractStat(raw, "curr_items") || "0", 10);
-      return { version, size: formatBytes(bytes), tableCount: currItems };
+      return [
+        { label: "Version", value: version },
+        { label: "Memory", value: formatBytes(bytes) },
+        { label: "Items", value: String(currItems) },
+      ];
     } catch {
-      return { version: "", size: "", tableCount: 0 };
+      return [
+        { label: "Version", value: "" },
+        { label: "Memory", value: "" },
+        { label: "Items", value: "0" },
+      ];
     }
   }
 }

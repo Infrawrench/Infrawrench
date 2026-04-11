@@ -2,9 +2,11 @@ import React, { useState } from "react";
 import type {
   DetailViewSchema,
   ManifestEditorCapability,
+  MetricSeries,
   PeerPaneSchema,
   StatusDotNode,
 } from "@infrawrench/plugin-base";
+import { MetricChart } from "../charts/MetricChart.js";
 import { SchemaRenderer, StatusDotNodeRenderer } from "../renderer/SchemaRenderer.js";
 import { AssociationPicker } from "./AssociationPicker.js";
 import { SqlEditorView, type QueryResult } from "./SqlEditorView.js";
@@ -71,6 +73,8 @@ interface DetailViewProps {
   onChildCreate?: (group: ChildResourceGroup) => void;
   /** Custom renderer for child resource pills — allows the host to provide draggable pills */
   renderChildResource?: (child: ChildResource, group: ChildResourceGroup) => React.ReactNode;
+  /** Time-series metric data — rendered as charts in a Metrics tab when present */
+  metricSeries?: MetricSeries[] | undefined;
 }
 
 export interface RerollSelection {
@@ -92,7 +96,7 @@ export interface ProviderResource {
   pluginLogoSvg: string;
 }
 
-type Tab = "overview" | "sql" | "manifest" | `peer:${number}`;
+type Tab = "overview" | "sql" | "manifest" | "metrics" | `peer:${number}`;
 
 export function DetailView({
   schema,
@@ -110,11 +114,13 @@ export function DetailView({
   onChildClick,
   onChildCreate,
   renderChildResource,
+  metricSeries,
 }: DetailViewProps) {
   const { rerollingField, closeReroll } = useUIStore();
   const hasSqlEditor = !!schema.sqlEditor && !!onRunQuery;
   const hasManifestEditor = !!schema.manifestEditor && !!onGetManifest;
-  const hasTabs = hasSqlEditor || hasManifestEditor || peerPanes.length > 0;
+  const hasMetrics = !!metricSeries && metricSeries.length > 0;
+  const hasTabs = hasSqlEditor || hasManifestEditor || hasMetrics || peerPanes.length > 0;
   const [activeTab, setActiveTab] = useState<Tab>("overview");
 
   return (
@@ -150,6 +156,11 @@ export function DetailView({
                   onClick={() => setActiveTab("manifest")}
                 >
                   Manifest
+                </TabButton>
+              )}
+              {hasMetrics && (
+                <TabButton active={activeTab === "metrics"} onClick={() => setActiveTab("metrics")}>
+                  Metrics
                 </TabButton>
               )}
               {peerPanes.map((pane, i) => (
@@ -257,6 +268,24 @@ export function DetailView({
             onGetManifest={onGetManifest!}
             onApplyManifest={onApplyManifest}
           />
+        </div>
+      )}
+
+      {hasMetrics && activeTab === "metrics" && (
+        <div className="flex-1 overflow-auto p-6 space-y-6">
+          {metricSeries!.map((series, i) => (
+            <MetricChart
+              key={i}
+              node={{
+                kind: "metric-chart",
+                title: series.label,
+                series: [series],
+                timeRangeLabel: schema.metricsCapability?.defaultTimeRangeMs
+                  ? `Last ${Math.round(schema.metricsCapability.defaultTimeRangeMs / 60000)} min`
+                  : undefined,
+              }}
+            />
+          ))}
         </div>
       )}
 

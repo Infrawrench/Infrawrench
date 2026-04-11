@@ -23,6 +23,7 @@ export async function listGceInstances(
   for (const zone of Object.values(data.items ?? {})) {
     for (const inst of (zone.instances ?? []) as Record<string, unknown>[]) {
       const name = String(inst["name"]);
+      const numericId = String(inst["id"] ?? "");
       const zone_ = String(inst["zone"]).split("/").pop() ?? "";
       const machineType = String(inst["machineType"]).split("/").pop() ?? "";
       const status = String(inst["status"] ?? "");
@@ -38,7 +39,7 @@ export async function listGceInstances(
         resourceTypeId: "gce-instance",
         accountId,
         displayName: name,
-        fields: { name, zone: zone_, machineType, status },
+        fields: { name, numericId, zone: zone_, machineType, status },
         resolvedOutputs: { externalIp, internalIp },
         secretStates: [],
         externalId: `${p}/${zone_}/${name}`,

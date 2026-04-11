@@ -20,6 +20,7 @@ export const NeonBranchResourceType: ResourceTypeDefinition = {
   parentTypeId: "neon-project",
   dashboardPinnable: true,
   supportsCreate: true,
+  supportsMetrics: true,
   iconKey: "neon",
   secretExportTemplates: [
     {

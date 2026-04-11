@@ -5,6 +5,7 @@ import type {
   DetailViewSchema,
   SidebarItemSchema,
   ResourceStatus,
+  DashboardStat,
 } from "@infrawrench/plugin-base";
 
 interface ContainerInfo {
@@ -153,9 +154,38 @@ export class DockerClient implements PluginClient {
     };
   }
 
-  async fetchStats(): Promise<{ version: string; size: string; tableCount: number }> {
+  async fetchDashboardStats(
+    resourceTypeId: string,
+    resourceId: string,
+    accountId: string,
+  ): Promise<DashboardStat[]> {
+    if (resourceTypeId === "docker-container") {
+      try {
+        const resource = await this.getResource(resourceTypeId, resourceId, accountId);
+        const f = resource.fields;
+        const state = String(f["status"] ?? "unknown");
+        const s = state.toLowerCase();
+        const stats: DashboardStat[] = [
+          {
+            label: "Status",
+            value: state,
+            variant: s.includes("up")
+              ? "status-healthy"
+              : s.includes("exited") || s.includes("dead")
+                ? "status-error"
+                : "status-degraded",
+          },
+        ];
+        if (f["image"]) stats.push({ label: "Image", value: String(f["image"]) });
+        if (f["ports"]) stats.push({ label: "Ports", value: String(f["ports"]) });
+        return stats;
+      } catch {
+        return [];
+      }
+    }
+
     const docker = this.services?.docker;
-    if (!docker) return { version: "", size: "", tableCount: 0 };
+    if (!docker) return [];
 
     try {
       const [versionInfo, containers] = await Promise.all([
@@ -163,13 +193,11 @@ export class DockerClient implements PluginClient {
         docker.command("listContainers") as Promise<ContainerInfo[]>,
       ]);
       const runningCount = containers.filter((c) => c.State === "running").length;
-      return {
-        version: versionInfo.Version ?? "",
-        size: "",
-        tableCount: runningCount,
-      };
+      const result: DashboardStat[] = [{ label: "Version", value: versionInfo.Version ?? "" }];
+      result.push({ label: "Running", value: String(runningCount) });
+      return result;
     } catch {
-      return { version: "", size: "", tableCount: 0 };
+      return [];
     }
   }
 }

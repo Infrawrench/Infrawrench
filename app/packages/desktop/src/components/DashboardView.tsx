@@ -5,6 +5,7 @@ import { invoke } from "../lib/invoke";
 import { useDroppable } from "@dnd-kit/core";
 import {
   useUIStore,
+  SparklineChart,
   getListableResourceTypes,
   extractHostLabel,
   formatErrorMessage,
@@ -18,7 +19,7 @@ import {
   buildDockerHostServices,
 } from "../lib/sql-drivers";
 import { resolveTunneledHost } from "../lib/ssh-tunnel";
-import { getSqlSession, setSqlSession } from "../lib/sql-session";
+import { setSqlSession } from "../lib/sql-session";
 import {
   accountTabTarget,
   navigateToWorkspaceTarget,
@@ -39,26 +40,17 @@ interface PinnedRow {
 interface PluginMeta {
   logoSvg: string;
   displayName: string;
-  sqlDriverName?: string | undefined;
-  sqlCredentialKey?: string | undefined;
-  kvDriverName?: string | undefined;
-  kvCredentialKey?: string | undefined;
-  dockerDriverName?: string | undefined;
-  dockerCredentialKey?: string | undefined;
-  tableCountLabel: string;
-  storageResourceTypeIds: string[];
   terminalResourceTypeIds: string[];
 }
 
 interface CardStatus {
   phase: "connecting" | "ok" | "error";
-  // resource stats
-  pgVersion?: string | undefined;
-  dbSize?: string | undefined;
-  tableCount?: number | undefined;
-  tableCountLabel?: string | undefined;
   // account summary stats
   resourceCounts?: { typeLabel: string; count: number }[] | undefined;
+  // generic stats
+  stats?: Array<{ label: string; value: string; variant?: string }> | undefined;
+  sparkline?: Array<{ timestamp: number; value: number }> | undefined;
+  sparklineLabel?: string | undefined;
   error?: string | undefined;
   // SSH connect button
   sshTarget?: boolean;
@@ -99,20 +91,6 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
         meta[m.id] = {
           logoSvg: m.logoSvg,
           displayName: m.displayName,
-          sqlDriverName: m.sqlDriver?.driver,
-          sqlCredentialKey: m.sqlDriver?.credentialKey,
-          kvDriverName: m.kvDriver?.driver,
-          kvCredentialKey: m.kvDriver?.credentialKey,
-          dockerDriverName: m.dockerDriver?.driver,
-          dockerCredentialKey: m.dockerDriver?.credentialKey,
-          tableCountLabel: m.dockerDriver
-            ? "Running"
-            : m.kvDriver?.driver === "mongodb"
-              ? "Collections"
-              : "Tables",
-          storageResourceTypeIds: p.plugin.resourceTypes
-            .filter((t) => t.supportsStorageBrowser)
-            .map((t) => t.id),
           terminalResourceTypeIds: p.plugin.resourceTypes
             .filter((t) => t.supportsTerminal)
             .map((t) => t.id),
@@ -157,25 +135,6 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
           if (prev[row.resource_id]?.phase === "ok") {
             // Keep the existing connected status
             next[row.resource_id] = prev[row.resource_id]!;
-          } else if (row.resource_type_id !== "__account__" && getSqlSession(row.account_id)) {
-            // Session alive — restore from cached outputs_json
-            try {
-              const o = JSON.parse(row.outputs_json) as {
-                pgVersion?: string;
-                dbSize?: string;
-                tableCount?: number;
-              };
-              if (o.pgVersion || o.tableCount != null) {
-                next[row.resource_id] = {
-                  phase: "ok",
-                  pgVersion: o.pgVersion,
-                  dbSize: o.dbSize,
-                  tableCount: o.tableCount,
-                };
-              }
-            } catch {
-              /* will connect fresh */
-            }
           }
         }
         return next;
@@ -237,18 +196,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
 
       // Mark cards as "connecting" — but only those not already connected
       const connectableIds = pinned
-        .filter((r) => {
-          const m = pluginMeta[r.plugin_id];
-          return (
-            credsByAccount.has(r.account_id) &&
-            (r.resource_type_id === "__account__" ||
-              (!!m?.sqlDriverName && !!m.sqlCredentialKey) ||
-              (!!m?.kvDriverName && !!m.kvCredentialKey) ||
-              (!!m?.dockerDriverName && !!m.dockerCredentialKey) ||
-              (m?.storageResourceTypeIds.includes(r.resource_type_id) ?? false) ||
-              (m?.terminalResourceTypeIds.includes(r.resource_type_id) ?? false))
-          );
-        })
+        .filter((r) => credsByAccount.has(r.account_id))
         .map((r) => r.resource_id);
 
       if (connectableIds.length === 0) return;
@@ -317,156 +265,85 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
           }
 
           const meta = pluginMeta[row.plugin_id];
-          if (meta?.kvDriverName && meta.kvCredentialKey) {
-            const cs = creds[meta.kvCredentialKey];
-            if (!cs) return;
-            const hostServices =
-              meta.kvDriverName === "memcached"
-                ? buildMemcachedHostServices(meta.kvDriverName!, cs)
-                : buildKvHostServices(meta.kvDriverName!, cs);
-            try {
-              const loaded = await getPlugin(row.plugin_id);
-              if (!loaded) throw new Error(`Plugin not found: ${row.plugin_id}`);
-              const client = loaded.plugin.createClient(creds, hostServices);
-              const stats = await client.fetchStats?.();
-              const { version = "", size = "" } = stats ?? {};
 
-              try {
-                await db.execute("UPDATE resources SET outputs_json = $1 WHERE id = $2", [
-                  JSON.stringify({ pgVersion: version, dbSize: size }),
-                  row.resource_id,
-                ]);
-              } catch {
-                /* not critical */
-              }
-
-              if (!cancelled) {
-                setAccountConnected(row.account_id, true);
-                setCardStatus((prev) => ({
-                  ...prev,
-                  [row.resource_id]: { phase: "ok", pgVersion: version, dbSize: size },
-                }));
-              }
-            } catch (e) {
-              if (!cancelled) {
-                setCardStatus((prev) => ({
-                  ...prev,
-                  [row.resource_id]: { phase: "error", error: formatErrorMessage(e) },
-                }));
-              }
-            }
-            return;
-          }
-
-          if (meta?.dockerDriverName && meta.dockerCredentialKey) {
-            const rawDockerHost = creds[meta.dockerCredentialKey] ?? "";
-            try {
-              const effectiveDockerHost = await resolveTunneledHost(row.account_id, rawDockerHost);
-              const hostServices = buildDockerHostServices(
-                meta.dockerDriverName,
-                effectiveDockerHost,
-              );
-              const loaded = await getPlugin(row.plugin_id);
-              if (!loaded) throw new Error(`Plugin not found: ${row.plugin_id}`);
-              const client = loaded.plugin.createClient(creds, hostServices);
-              const stats = await client.fetchStats?.();
-              const { version = "", size = "", tableCount = 0 } = stats ?? {};
-
-              if (!cancelled) {
-                setAccountConnected(row.account_id, true);
-                setCardStatus((prev) => ({
-                  ...prev,
-                  [row.resource_id]: {
-                    phase: "ok",
-                    pgVersion: version,
-                    dbSize: size,
-                    tableCount,
-                    tableCountLabel: "Running",
-                  },
-                }));
-              }
-            } catch (e) {
-              if (!cancelled) {
-                setCardStatus((prev) => ({
-                  ...prev,
-                  [row.resource_id]: { phase: "error", error: formatErrorMessage(e) },
-                }));
-              }
-            }
-            return;
-          }
-
+          // SSH target — preserve sshTarget flag for the connect button
           if (meta?.terminalResourceTypeIds.includes(row.resource_type_id)) {
-            const host = String(creds["host"] ?? "");
-            const port = String(creds["port"] ?? "22");
-            if (!cancelled) {
-              setAccountConnected(row.account_id, true);
-              setCardStatus((prev) => ({
-                ...prev,
-                [row.resource_id]: {
-                  phase: "ok",
-                  pgVersion: `${host}:${port}`,
-                  sshTarget: true,
-                  resourceId: row.resource_id,
-                  accountId: row.account_id,
-                },
-              }));
-            }
-            return;
-          }
-
-          if (meta?.storageResourceTypeIds.includes(row.resource_type_id)) {
+            // Still fetch stats via fetchDashboardStats (ssh plugin returns host:port)
             try {
               const loaded = await getPlugin(row.plugin_id);
-              if (!loaded) throw new Error(`Plugin not found: ${row.plugin_id}`);
-              const client = loaded.plugin.createClient(creds);
-              // bucket name is the last segment of the resource_id (accountId:typeId:bucketName)
-              const bucketName = row.resource_id.split(":").slice(2).join(":");
-              const stats = await (
-                client as {
-                  fetchStorageStats?(b: string): Promise<{ count: number; size: string }>;
+              if (loaded) {
+                const client = loaded.plugin.createClient(creds);
+                const stats = client.fetchDashboardStats
+                  ? await client.fetchDashboardStats(
+                      row.resource_type_id,
+                      row.resource_id,
+                      row.account_id,
+                    )
+                  : undefined;
+                if (!cancelled) {
+                  setAccountConnected(row.account_id, true);
+                  setCardStatus((prev) => ({
+                    ...prev,
+                    [row.resource_id]: {
+                      phase: "ok",
+                      stats,
+                      sshTarget: true,
+                      resourceId: row.resource_id,
+                      accountId: row.account_id,
+                    },
+                  }));
                 }
-              ).fetchStorageStats?.(bucketName);
+              }
+            } catch {
               if (!cancelled) {
                 setAccountConnected(row.account_id, true);
                 setCardStatus((prev) => ({
                   ...prev,
                   [row.resource_id]: {
                     phase: "ok",
-                    tableCount: stats?.count,
-                    tableCountLabel: "Objects",
-                    dbSize: stats?.size,
+                    sshTarget: true,
+                    resourceId: row.resource_id,
+                    accountId: row.account_id,
                   },
-                }));
-              }
-            } catch (e) {
-              if (!cancelled) {
-                setCardStatus((prev) => ({
-                  ...prev,
-                  [row.resource_id]: { phase: "error", error: formatErrorMessage(e) },
                 }));
               }
             }
             return;
           }
 
-          if (!meta?.sqlDriverName || !meta.sqlCredentialKey) return;
-          const cs = creds[meta.sqlCredentialKey];
-          if (!cs) return;
-          const hostServices = buildHostServices(meta.sqlDriverName!, cs);
+          // Build host services for plugins that need them (SQL, KV, Docker)
+          const loaded = await getPlugin(row.plugin_id);
+          if (!loaded) return;
+          const manifest = loaded.plugin.manifest;
 
-          try {
-            const loaded = await getPlugin(row.plugin_id);
-            if (!loaded) throw new Error(`Plugin not found: ${row.plugin_id}`);
-            const client = loaded.plugin.createClient(creds, hostServices);
-            const stats = await client.fetchStats?.();
-            const { version = "", size = "", tableCount = 0 } = stats ?? {};
-            // Cache the connection string immediately so the detail page can fast-path
+          let hostServices: Parameters<typeof loaded.plugin.createClient>[1];
+          if (manifest.sqlDriver) {
+            const cs = creds[manifest.sqlDriver.credentialKey] ?? "";
+            hostServices = buildHostServices(manifest.sqlDriver.driver, cs);
+            // Cache SQL session for the detail page's SQL editor
             setSqlSession(row.account_id, { connectionString: cs });
+          } else if (manifest.kvDriver) {
+            const cs = creds[manifest.kvDriver.credentialKey] ?? "";
+            hostServices =
+              manifest.kvDriver.driver === "memcached"
+                ? buildMemcachedHostServices(manifest.kvDriver.driver, cs)
+                : buildKvHostServices(manifest.kvDriver.driver, cs);
+          } else if (manifest.dockerDriver) {
+            const rawDockerHost = creds[manifest.dockerDriver.credentialKey] ?? "";
+            const effectiveDockerHost = await resolveTunneledHost(row.account_id, rawDockerHost);
+            hostServices = buildDockerHostServices(
+              manifest.dockerDriver.driver,
+              effectiveDockerHost,
+            );
+          }
 
-            // Introspect in background and update the cache once done
+          const client = loaded.plugin.createClient(creds, hostServices);
+
+          // Introspect SQL schema in background for SQL editor autocomplete
+          if (manifest.sqlDriver && client.introspect) {
+            const cs = creds[manifest.sqlDriver.credentialKey] ?? "";
             void client
-              .introspect?.()
+              .introspect()
               .then((tables) => {
                 if (tables && tables.length > 0) {
                   setSqlSession(row.account_id, {
@@ -476,21 +353,45 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
                 }
               })
               .catch(() => undefined);
+          }
 
-            try {
-              await db.execute("UPDATE resources SET outputs_json = $1 WHERE id = $2", [
-                JSON.stringify({ pgVersion: version, dbSize: size, tableCount }),
-                row.resource_id,
-              ]);
-            } catch {
-              /* not critical */
+          // Unified stats path — all plugins implement fetchDashboardStats
+          try {
+            const stats = client.fetchDashboardStats
+              ? await client.fetchDashboardStats(
+                  row.resource_type_id,
+                  row.resource_id,
+                  row.account_id,
+                )
+              : undefined;
+
+            // Fetch sparkline if the resource type supports metrics
+            let sparkline: Array<{ timestamp: number; value: number }> | undefined;
+            let sparklineLabel: string | undefined;
+            const resourceTypeDef = loaded.plugin.resourceTypes.find(
+              (t) => t.id === row.resource_type_id,
+            );
+            if (resourceTypeDef?.supportsMetrics && client.fetchMetricSeries) {
+              try {
+                const series = await client.fetchMetricSeries(
+                  row.resource_type_id,
+                  row.resource_id,
+                  row.account_id,
+                );
+                if (series.length > 0 && series[0].points.length >= 2) {
+                  sparkline = series[0].points;
+                  sparklineLabel = series[0].label;
+                }
+              } catch {
+                /* sparkline is non-critical */
+              }
             }
 
             if (!cancelled) {
               setAccountConnected(row.account_id, true);
               setCardStatus((prev) => ({
                 ...prev,
-                [row.resource_id]: { phase: "ok", pgVersion: version, dbSize: size, tableCount },
+                [row.resource_id]: { phase: "ok", stats, sparkline, sparklineLabel },
               }));
             }
           } catch (e) {
@@ -792,23 +693,30 @@ function ConnectionFooter({
         <span className="w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0" />
         <span className="text-xs text-gray-600">Connected</span>
       </div>
-      {/* Postgres resource stats */}
-      {status.pgVersion && (
-        <div className="flex justify-between text-xs">
-          <span className="text-gray-600">Version</span>
-          <span className="text-gray-400">{status.pgVersion}</span>
-        </div>
-      )}
-      {status.tableCount != null && (
-        <div className="flex justify-between text-xs">
-          <span className="text-gray-600">{status.tableCountLabel ?? "Tables"}</span>
-          <span className="text-gray-400">{status.tableCount}</span>
-        </div>
-      )}
-      {status.dbSize && (
-        <div className="flex justify-between text-xs">
-          <span className="text-gray-600">Size</span>
-          <span className="text-gray-400">{status.dbSize}</span>
+      {/* Generic stats */}
+      {status.stats?.map((stat) => {
+        const color =
+          stat.variant === "status-healthy"
+            ? "text-green-400"
+            : stat.variant === "status-degraded"
+              ? "text-yellow-400"
+              : stat.variant === "status-error"
+                ? "text-red-400"
+                : "text-gray-400";
+        return (
+          <div key={stat.label} className="flex justify-between text-xs">
+            <span className="text-gray-600">{stat.label}</span>
+            <span className={color}>{stat.value}</span>
+          </div>
+        );
+      })}
+      {/* Sparkline chart */}
+      {status.sparkline && status.sparkline.length >= 2 && (
+        <div className="flex items-center gap-2 mt-2.5">
+          <SparklineChart points={status.sparkline} width={120} height={24} />
+          {status.sparklineLabel && (
+            <span className="text-[10px] text-gray-600">{status.sparklineLabel}</span>
+          )}
         </div>
       )}
       {/* Account summary stats */}

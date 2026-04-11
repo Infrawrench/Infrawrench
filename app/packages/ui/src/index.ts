@@ -9,6 +9,9 @@ export {
 
 export { SchemaRenderer, StatusDotNodeRenderer } from "./components/renderer/SchemaRenderer.js";
 
+export { MetricChart } from "./components/charts/MetricChart.js";
+export { SparklineChart } from "./components/charts/SparklineChart.js";
+
 export { SpotlightSearch } from "./components/SpotlightSearch.js";
 export type { SpotlightSearchProps, SpotlightResult } from "./components/SpotlightSearch.js";
 

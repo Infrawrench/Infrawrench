@@ -5,6 +5,7 @@ import type {
   DetailViewSchema,
   SidebarItemSchema,
   CreateResourceConfig,
+  DashboardStat,
 } from "@infrawrench/plugin-base";
 
 /**
@@ -151,6 +152,40 @@ export class TursoClient implements PluginClient {
     }
 
     throw new Error(`Turso plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+  }
+
+  async fetchDashboardStats(
+    resourceTypeId: string,
+    resourceId: string,
+    accountId: string,
+  ): Promise<DashboardStat[]> {
+    const resource = await this.getResource(resourceTypeId, resourceId, accountId);
+    const f = resource.fields;
+
+    if (resourceTypeId === "turso-database") {
+      const sleeping = f["sleeping"] === true || f["sleeping"] === "true";
+      return [
+        { label: "Group", value: String(f["group"] ?? "") },
+        {
+          label: "Region",
+          value: formatLocation(String(f["primaryRegion"] ?? "")),
+        },
+        { label: "Version", value: String(f["version"] ?? "") },
+        ...(sleeping
+          ? [{ label: "Status", value: "sleeping", variant: "status-degraded" as const }]
+          : []),
+      ];
+    }
+
+    if (resourceTypeId === "turso-group") {
+      return [
+        { label: "Primary", value: formatLocation(String(f["primaryLocation"] ?? "")) },
+        { label: "Locations", value: String(f["locations"] ?? "") },
+        { label: "Version", value: String(f["version"] ?? "") },
+      ];
+    }
+
+    return [];
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {

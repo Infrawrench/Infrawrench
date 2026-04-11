@@ -5,6 +5,7 @@ import type {
   DetailViewSchema,
   SidebarItemSchema,
   SqlTableMeta,
+  DashboardStat,
 } from "@infrawrench/plugin-base";
 
 /**
@@ -174,9 +175,19 @@ export class PostgresClient implements PluginClient {
     }));
   }
 
-  async fetchStats(): Promise<{ version: string; size: string; tableCount: number }> {
+  async fetchDashboardStats(
+    _resourceTypeId: string,
+    _resourceId: string,
+    _accountId: string,
+  ): Promise<DashboardStat[]> {
     const sql = this.services?.sql;
-    if (!sql) return { version: "", size: "", tableCount: 0 };
+    if (!sql) {
+      return [
+        { label: "Version", value: "" },
+        { label: "Size", value: "" },
+        { label: "Tables", value: "0" },
+      ];
+    }
 
     const [versionRows, sizeRows, tableRows] = await Promise.all([
       sql.query("SELECT version()"),
@@ -192,7 +203,11 @@ export class PostgresClient implements PluginClient {
       .join(" ");
     const size = String(sizeRows[0]?.["size"] ?? "");
     const tableCount = Number(tableRows[0]?.["n"] ?? 0);
-    return { version: ver, size, tableCount };
+    return [
+      { label: "Version", value: ver },
+      { label: "Size", value: size },
+      { label: "Tables", value: String(tableCount) },
+    ];
   }
 
   private async listDatabases(accountId: string): Promise<ResourceInstance[]> {

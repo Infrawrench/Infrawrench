@@ -8,7 +8,6 @@ import { getPlugin } from "../../plugins/loader";
 import { syncAccountResources } from "./accounts";
 import { decrypt } from "../../services/encryption";
 import { buildPluginHostServices } from "../../services/host-services";
-import { sqlDrivers, kvDrivers, dockerDrivers } from "../../services/drivers";
 import { getListableResourceTypes } from "@infrawrench/ui";
 
 declare module "hono" {
@@ -349,11 +348,10 @@ app.post("/probe", async (c) => {
     string,
     {
       phase: "ok" | "error";
-      pgVersion?: string;
-      dbSize?: string;
-      tableCount?: number;
-      tableCountLabel?: string;
       resourceCounts?: Array<{ typeLabel: string; count: number }>;
+      stats?: Array<{ label: string; value: string; variant?: string }>;
+      sparkline?: Array<{ timestamp: number; value: number }>;
+      sparklineLabel?: string;
       error?: string;
     }
   > = {};
@@ -411,70 +409,46 @@ app.post("/probe", async (c) => {
         return;
       }
 
-      if (manifest.kvDriver) {
-        const cs = creds[manifest.kvDriver.credentialKey] ?? "";
-        const driver = kvDrivers.get(manifest.kvDriver.driver);
-        if (driver) {
-          const hostServices = buildPluginHostServices(manifest, creds);
-          const client = loaded.plugin.createClient(creds, hostServices);
-          const stats = await client.fetchStats?.();
-          const { version = "", size = "" } = stats ?? {};
-          results[item.resourceId] = { phase: "ok", pgVersion: version, dbSize: size };
-          return;
+      // Unified stats path — all plugins implement fetchDashboardStats
+      const hostServices = buildPluginHostServices(manifest, creds);
+      const client = loaded.plugin.createClient(creds, hostServices);
+      if (client.fetchDashboardStats) {
+        try {
+          const stats = await client.fetchDashboardStats(
+            item.resourceTypeId,
+            item.resourceId,
+            item.accountId,
+          );
+          const result: (typeof results)[string] = { phase: "ok", stats };
+
+          // Fetch sparkline data if the resource type supports metrics
+          const resourceTypeDef = loaded.plugin.resourceTypes.find(
+            (t) => t.id === item.resourceTypeId,
+          );
+          if (resourceTypeDef?.supportsMetrics && client.fetchMetricSeries) {
+            try {
+              const series = await client.fetchMetricSeries(
+                item.resourceTypeId,
+                item.resourceId,
+                item.accountId,
+              );
+              const first = series[0];
+              if (first && first.points.length >= 2) {
+                result.sparkline = first.points;
+                result.sparklineLabel = first.label;
+              }
+            } catch {
+              /* sparkline is non-critical */
+            }
+          }
+
+          results[item.resourceId] = result;
+        } catch {
+          results[item.resourceId] = { phase: "ok" };
         }
+      } else {
+        results[item.resourceId] = { phase: "ok" };
       }
-
-      if (manifest.dockerDriver) {
-        const dockerHost = creds[manifest.dockerDriver.credentialKey] ?? "";
-        const driver = dockerDrivers.get(manifest.dockerDriver.driver);
-        if (driver) {
-          const hostServices = buildPluginHostServices(manifest, creds);
-          const client = loaded.plugin.createClient(creds, hostServices);
-          const stats = await client.fetchStats?.();
-          const { version = "", size = "", tableCount = 0 } = stats ?? {};
-          results[item.resourceId] = {
-            phase: "ok",
-            pgVersion: version,
-            dbSize: size,
-            tableCount,
-            tableCountLabel: "Running",
-          };
-          return;
-        }
-      }
-
-      const storageType = loaded.plugin.resourceTypes.find(
-        (t) => t.id === item.resourceTypeId && t.supportsStorageBrowser,
-      );
-      if (storageType) {
-        const client = loaded.plugin.createClient(creds);
-        const bucketName = item.resourceId.split(":").slice(2).join(":");
-        const stats = await (
-          client as { fetchStorageStats?(b: string): Promise<{ count: number; size: string }> }
-        ).fetchStorageStats?.(bucketName);
-        results[item.resourceId] = {
-          phase: "ok",
-          ...(stats?.count !== undefined ? { tableCount: stats.count } : {}),
-          tableCountLabel: "Objects",
-          ...(stats?.size !== undefined ? { dbSize: stats.size } : {}),
-        };
-        return;
-      }
-
-      if (manifest.sqlDriver) {
-        const cs = creds[manifest.sqlDriver.credentialKey] ?? "";
-        const driver = sqlDrivers.get(manifest.sqlDriver.driver);
-        if (driver) {
-          const hostServices = buildPluginHostServices(manifest, creds);
-          const client = loaded.plugin.createClient(creds, hostServices);
-          const stats = await client.fetchStats?.();
-          const { version = "", size = "", tableCount = 0 } = stats ?? {};
-          results[item.resourceId] = { phase: "ok", pgVersion: version, dbSize: size, tableCount };
-          return;
-        }
-      }
-
-      results[item.resourceId] = { phase: "ok" };
     }),
   );
 
