@@ -5,9 +5,9 @@
   "private": true,
   "scripts": {
     "dev": "tsx watch --import ./env-loader.mjs server.ts",
-    "build": "vite build && tsc -p tsconfig.server.json",
+    "build": "vite build && tsgo -p tsconfig.server.json",
     "start": "node dist/server.js",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsgo --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",

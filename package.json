@@ -11,9 +11,10 @@
     "test:integration": "pnpm --filter @infrawrench/integration-tests test:integration"
   },
   "devDependencies": {
+    "@typescript/native-preview": "7.0.0-dev.20260411.1",
+    "prettier": "^3.4.2",
     "turbo": "^2.3.3",
-    "typescript": "^5.7.3",
-    "prettier": "^3.4.2"
+    "typescript": "^5.7.3"
   },
   "engines": {
     "node": ">=20",
