@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { v4 as uuid } from "uuid";
-import { eq, and, isNull, isNotNull, notInArray, lt } from "drizzle-orm";
+import { eq, and, isNull, isNotNull, notInArray, inArray, lt } from "drizzle-orm";
 import { db } from "../../db/client";
 import { accounts, resources } from "../../db/schema";
 import { encrypt, decrypt } from "../../services/encryption";
@@ -212,13 +212,21 @@ export async function syncAccountResources(accountId: string, organizationId: st
   const hostServices = buildPluginHostServices(loaded.plugin.manifest, credentials);
   const client = loaded.plugin.createClient(credentials, hostServices);
 
-  // Fetch all resource types in parallel (like desktop)
+  // Fetch all resource types in parallel (like desktop).
+  // Track which resource types succeeded so we only soft-delete resources
+  // for types that were actually fetched — transient API failures (e.g. GCP
+  // service disabled, 500, permission denied) should not wipe existing data.
   const results = await Promise.allSettled(
     loaded.plugin.resourceTypes.map((typeDef) => client.listResources(typeDef.id, accountId)),
   );
   const allResources: ResourceInstance[] = [];
-  for (const r of results) {
-    if (r.status === "fulfilled") allResources.push(...r.value);
+  const succeededTypeIds = new Set<string>();
+  for (let i = 0; i < results.length; i++) {
+    const r = results[i];
+    if (r.status === "fulfilled") {
+      allResources.push(...r.value);
+      succeededTypeIds.add(loaded.plugin.resourceTypes[i].id);
+    }
   }
 
   await Promise.all(
@@ -255,37 +263,29 @@ export async function syncAccountResources(accountId: string, organizationId: st
   );
 
   // Soft-delete resources that no longer exist upstream.
+  // Only delete resources whose resource type was successfully fetched — if a
+  // type's API call failed, we keep existing resources to avoid flickering.
   // Skip resources that have never been synced (lastSyncedAt IS NULL) — these
   // were locally created and the provider may not list them yet (e.g. VM still
   // provisioning). They'll become eligible for cleanup once a future sync
   // confirms them (sets lastSyncedAt).
   const liveIds = allResources.map((r) => r.id);
-  if (liveIds.length > 0) {
+  const succeededTypeIdsArray = [...succeededTypeIds];
+  if (succeededTypeIdsArray.length > 0) {
+    const deleteConditions = [
+      eq(resources.accountId, accountId),
+      eq(resources.organizationId, organizationId),
+      isNull(resources.deletedAt),
+      isNotNull(resources.lastSyncedAt),
+      inArray(resources.resourceTypeId, succeededTypeIdsArray),
+    ];
+    if (liveIds.length > 0) {
+      deleteConditions.push(notInArray(resources.id, liveIds));
+    }
     await db
       .update(resources)
       .set({ deletedAt: new Date() })
-      .where(
-        and(
-          eq(resources.accountId, accountId),
-          eq(resources.organizationId, organizationId),
-          isNull(resources.deletedAt),
-          isNotNull(resources.lastSyncedAt),
-          notInArray(resources.id, liveIds),
-        ),
-      );
-  } else {
-    // If the plugin returned zero resources, soft-delete synced ones for this account
-    await db
-      .update(resources)
-      .set({ deletedAt: new Date() })
-      .where(
-        and(
-          eq(resources.accountId, accountId),
-          eq(resources.organizationId, organizationId),
-          isNull(resources.deletedAt),
-          isNotNull(resources.lastSyncedAt),
-        ),
-      );
+      .where(and(...deleteConditions));
   }
 
   // Clean up locally-created resources that were never confirmed by the
@@ -294,21 +294,25 @@ export async function syncAccountResources(accountId: string, organizationId: st
   // list them, they're ghost records — e.g. the VM was deleted externally
   // before a sync could confirm it, or the provider uses a different ID
   // format than createResource returned.
-  const staleThreshold = new Date(Date.now() - 5 * 60 * 1000);
-  const staleConditions = [
-    eq(resources.accountId, accountId),
-    eq(resources.organizationId, organizationId),
-    isNull(resources.deletedAt),
-    isNull(resources.lastSyncedAt),
-    lt(resources.createdAt, staleThreshold),
-  ];
-  if (liveIds.length > 0) {
-    staleConditions.push(notInArray(resources.id, liveIds));
+  // Only clean up types that were successfully fetched.
+  if (succeededTypeIdsArray.length > 0) {
+    const staleThreshold = new Date(Date.now() - 5 * 60 * 1000);
+    const staleConditions = [
+      eq(resources.accountId, accountId),
+      eq(resources.organizationId, organizationId),
+      isNull(resources.deletedAt),
+      isNull(resources.lastSyncedAt),
+      lt(resources.createdAt, staleThreshold),
+      inArray(resources.resourceTypeId, succeededTypeIdsArray),
+    ];
+    if (liveIds.length > 0) {
+      staleConditions.push(notInArray(resources.id, liveIds));
+    }
+    await db
+      .update(resources)
+      .set({ deletedAt: new Date() })
+      .where(and(...staleConditions));
   }
-  await db
-    .update(resources)
-    .set({ deletedAt: new Date() })
-    .where(and(...staleConditions));
 
   return allResources.length;
 }
