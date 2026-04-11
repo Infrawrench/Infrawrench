@@ -1,25 +1,26 @@
 import { createMiddleware } from "hono/factory";
 import { getCookie, setCookie } from "hono/cookie";
+import { eq, and } from "drizzle-orm";
 import { workos, clientId } from "../auth/workos";
 import { db } from "../db/client";
-import { organizations, users } from "../db/schema";
+import { organizations, users, organizationMembers } from "../db/schema";
+import { v4 as uuid } from "uuid";
 
 export interface AuthSession {
   userId: string;
-  organizationId: string;
   email: string;
 }
 
 declare module "hono" {
   interface ContextVariableMap {
     session: AuthSession;
+    organizationId: string;
   }
 }
 
 /**
- * Hono middleware that validates WorkOS session cookies and auto-provisions
- * users/orgs in the DB — direct replacement for the old
- * `@workos-inc/authkit-nextjs` `withAuth({ ensureSignedIn: true })` pattern.
+ * Validates WorkOS session cookie and auto-provisions users in the DB.
+ * Does NOT resolve an organization — use orgMiddleware for org-scoped routes.
  */
 export const sessionMiddleware = createMiddleware(async (c, next) => {
   const cookieValue = getCookie(c, "wos-session");
@@ -41,26 +42,26 @@ export const sessionMiddleware = createMiddleware(async (c, next) => {
     const authResult = await session.authenticate();
 
     if (!authResult.authenticated) {
-      // Try refreshing the session
       try {
         const refreshResult = await session.refresh();
         if (!refreshResult.authenticated) {
           return c.json({ error: "Unauthorized" }, 401);
         }
-        // Update the cookie with refreshed session data
         if (refreshResult.sealedSession) {
           setCookie(c, "wos-session", refreshResult.sealedSession, {
             httpOnly: true,
             secure: process.env["NODE_ENV"] === "production",
             sameSite: "lax",
             path: "/",
-            maxAge: 60 * 60 * 24 * 400, // ~13 months
+            maxAge: 60 * 60 * 24 * 400,
           });
         }
         const user = refreshResult.user;
-        const orgId = refreshResult.organizationId ?? `personal:${user.id}`;
-        await provisionUserAndOrg(user, orgId);
-        c.set("session", { userId: user.id, organizationId: orgId, email: user.email });
+        await provisionUser(user);
+        if (refreshResult.organizationId) {
+          await ensureMembership(user.id, refreshResult.organizationId);
+        }
+        c.set("session", { userId: user.id, email: user.email });
         return next();
       } catch {
         return c.json({ error: "Unauthorized" }, 401);
@@ -68,34 +69,79 @@ export const sessionMiddleware = createMiddleware(async (c, next) => {
     }
 
     const user = authResult.user;
-    const orgId = authResult.organizationId ?? `personal:${user.id}`;
-    await provisionUserAndOrg(user, orgId);
-    c.set("session", { userId: user.id, organizationId: orgId, email: user.email });
+    await provisionUser(user);
+    if (authResult.organizationId) {
+      await ensureMembership(user.id, authResult.organizationId);
+    }
+    c.set("session", { userId: user.id, email: user.email });
     return next();
   } catch {
     return c.json({ error: "Unauthorized" }, 401);
   }
 });
 
-async function provisionUserAndOrg(
-  user: { id: string; email: string; firstName?: string | null; lastName?: string | null },
-  orgId: string,
-) {
-  await db
-    .insert(organizations)
-    .values({
-      id: orgId,
-      displayName: orgId.startsWith("personal:") ? `${user.email}'s workspace` : orgId,
-    })
-    .onConflictDoNothing();
+/**
+ * Reads :orgId from the route path, validates the user is a member,
+ * and sets organizationId on the context.
+ * Must be used AFTER sessionMiddleware.
+ */
+export const orgMiddleware = createMiddleware(async (c, next) => {
+  const orgId = c.req.param("orgId");
+  if (!orgId) {
+    return c.json({ error: "Missing organization ID" }, 400);
+  }
 
+  const session = c.get("session");
+  const membership = await db
+    .select({ role: organizationMembers.role })
+    .from(organizationMembers)
+    .where(
+      and(
+        eq(organizationMembers.userId, session.userId),
+        eq(organizationMembers.organizationId, orgId),
+      ),
+    )
+    .limit(1);
+
+  if (membership.length === 0) {
+    return c.json({ error: "Forbidden" }, 403);
+  }
+
+  c.set("organizationId", orgId);
+  return next();
+});
+
+async function provisionUser(
+  user: { id: string; email: string; firstName?: string | null; lastName?: string | null },
+) {
   await db
     .insert(users)
     .values({
       id: user.id,
-      organizationId: orgId,
       email: user.email,
       displayName: `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() || null,
+    })
+    .onConflictDoNothing();
+}
+
+async function ensureMembership(userId: string, orgId: string) {
+  // Ensure the org exists
+  await db
+    .insert(organizations)
+    .values({
+      id: orgId,
+      displayName: orgId,
+    })
+    .onConflictDoNothing();
+
+  // Ensure membership
+  await db
+    .insert(organizationMembers)
+    .values({
+      id: uuid(),
+      userId,
+      organizationId: orgId,
+      role: "owner",
     })
     .onConflictDoNothing();
 }

@@ -1,29 +1,30 @@
 import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router";
 
-const NAV_ITEMS = [
-  { to: "/settings", label: "General" },
-  { to: "/settings/team", label: "Team" },
-  { to: "/settings/api-keys", label: "API Keys" },
-  { to: "/settings/billing", label: "Billing" },
-  { to: "/settings/audit-log", label: "Audit Log" },
-];
-
-export const Route = createFileRoute("/settings")({
+export const Route = createFileRoute("/org/$orgId/settings")({
   component: SettingsLayout,
 });
 
 function SettingsLayout() {
+  const { orgId } = Route.useParams();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+
+  const navItems = [
+    { to: `/org/${orgId}/settings`, label: "General" },
+    { to: `/org/${orgId}/settings/team`, label: "Team" },
+    { to: `/org/${orgId}/settings/api-keys`, label: "API Keys" },
+    { to: `/org/${orgId}/settings/billing`, label: "Billing" },
+    { to: `/org/${orgId}/settings/audit-log`, label: "Audit Log" },
+  ];
 
   return (
     <div className="flex h-full">
       <nav className="w-48 border-r border-gray-800 p-4 flex-shrink-0">
         <h2 className="text-sm font-semibold text-gray-300 mb-4">Settings</h2>
         <ul className="space-y-1">
-          {NAV_ITEMS.map((item) => {
+          {navItems.map((item) => {
             const isActive =
-              item.to === "/settings"
-                ? pathname === "/settings"
+              item.to === `/org/${orgId}/settings`
+                ? pathname === `/org/${orgId}/settings`
                 : pathname.startsWith(item.to);
             return (
               <li key={item.to}>

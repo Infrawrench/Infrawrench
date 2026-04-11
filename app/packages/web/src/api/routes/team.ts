@@ -3,37 +3,39 @@ import { v4 as uuid } from "uuid";
 import { randomBytes } from "node:crypto";
 import { eq, and, isNull } from "drizzle-orm";
 import { db } from "../../db/client";
-import { users, invitations } from "../../db/schema";
+import { users, invitations, organizationMembers } from "../../db/schema";
 import { logAudit } from "../../services/audit";
 import type { AuthSession } from "../auth-middleware";
 
 declare module "hono" {
   interface ContextVariableMap {
     session: AuthSession;
+    organizationId: string;
   }
 }
 
 const app = new Hono();
 
-/** GET /api/team/members */
+/** GET /api/org/:orgId/team/members */
 app.get("/members", async (c) => {
-  const session = c.get("session");
+  const organizationId = c.get("organizationId");
   const rows = await db
     .select({
       id: users.id,
       email: users.email,
       displayName: users.displayName,
-      role: users.role,
-      createdAt: users.createdAt,
+      role: organizationMembers.role,
+      createdAt: organizationMembers.createdAt,
     })
-    .from(users)
-    .where(eq(users.organizationId, session.organizationId));
+    .from(organizationMembers)
+    .innerJoin(users, eq(organizationMembers.userId, users.id))
+    .where(eq(organizationMembers.organizationId, organizationId));
   return c.json(rows);
 });
 
-/** GET /api/team/invitations */
+/** GET /api/org/:orgId/team/invitations */
 app.get("/invitations", async (c) => {
-  const session = c.get("session");
+  const organizationId = c.get("organizationId");
   const rows = await db
     .select({
       id: invitations.id,
@@ -44,20 +46,21 @@ app.get("/invitations", async (c) => {
       createdAt: invitations.createdAt,
     })
     .from(invitations)
-    .where(eq(invitations.organizationId, session.organizationId));
+    .where(eq(invitations.organizationId, organizationId));
   return c.json(rows);
 });
 
-/** POST /api/team/invitations */
+/** POST /api/org/:orgId/team/invitations */
 app.post("/invitations", async (c) => {
   const session = c.get("session");
+  const organizationId = c.get("organizationId");
   const { email, role } = await c.req.json<{ email: string; role: string }>();
   const token = randomBytes(32).toString("base64url");
   const id = uuid();
 
   await db.insert(invitations).values({
     id,
-    organizationId: session.organizationId,
+    organizationId,
     email,
     role,
     invitedByUserId: session.userId,
@@ -66,7 +69,7 @@ app.post("/invitations", async (c) => {
   });
 
   void logAudit({
-    organizationId: session.organizationId,
+    organizationId,
     userId: session.userId,
     action: "member.invite",
     entityType: "member",
@@ -77,14 +80,23 @@ app.post("/invitations", async (c) => {
   return c.json({ id, token });
 });
 
-/** DELETE /api/team/members/:id */
+/** DELETE /api/org/:orgId/team/members/:id */
 app.delete("/members/:id", async (c) => {
   const session = c.get("session");
+  const organizationId = c.get("organizationId");
   const userId = c.req.param("id");
-  await db.delete(users).where(and(eq(users.id, userId), eq(users.organizationId, session.organizationId)));
+
+  await db
+    .delete(organizationMembers)
+    .where(
+      and(
+        eq(organizationMembers.userId, userId),
+        eq(organizationMembers.organizationId, organizationId),
+      ),
+    );
 
   void logAudit({
-    organizationId: session.organizationId,
+    organizationId,
     userId: session.userId,
     action: "member.remove",
     entityType: "member",
@@ -93,18 +105,25 @@ app.delete("/members/:id", async (c) => {
   return c.json({ ok: true });
 });
 
-/** PATCH /api/team/members/:id/role */
+/** PATCH /api/org/:orgId/team/members/:id/role */
 app.patch("/members/:id/role", async (c) => {
   const session = c.get("session");
+  const organizationId = c.get("organizationId");
   const userId = c.req.param("id");
   const { role } = await c.req.json<{ role: string }>();
+
   await db
-    .update(users)
-    .set({ role, updatedAt: new Date() })
-    .where(and(eq(users.id, userId), eq(users.organizationId, session.organizationId)));
+    .update(organizationMembers)
+    .set({ role })
+    .where(
+      and(
+        eq(organizationMembers.userId, userId),
+        eq(organizationMembers.organizationId, organizationId),
+      ),
+    );
 
   void logAudit({
-    organizationId: session.organizationId,
+    organizationId,
     userId: session.userId,
     action: "member.role_change",
     entityType: "member",
@@ -114,13 +133,13 @@ app.patch("/members/:id/role", async (c) => {
   return c.json({ ok: true });
 });
 
-/** DELETE /api/team/invitations/:id */
+/** DELETE /api/org/:orgId/team/invitations/:id */
 app.delete("/invitations/:id", async (c) => {
-  const session = c.get("session");
+  const organizationId = c.get("organizationId");
   const invitationId = c.req.param("id");
   await db
     .delete(invitations)
-    .where(and(eq(invitations.id, invitationId), eq(invitations.organizationId, session.organizationId), isNull(invitations.acceptedAt)));
+    .where(and(eq(invitations.id, invitationId), eq(invitations.organizationId, organizationId), isNull(invitations.acceptedAt)));
   return c.json({ ok: true });
 });
 

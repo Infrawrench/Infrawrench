@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { ResourcePill, ConfirmDeleteModal, dispatchResourcesChanged, getAccountResourceTypes, isCreateOnlyType, type DraggableResource, useUIStore } from "@infrawrench/ui";
 import { apiDelete } from "@/lib/api";
+import { useOrgId } from "@/lib/useOrgId";
 import { CreateResourceModal } from "./CreateResourceModal";
 
 interface ResourceType {
@@ -39,14 +40,15 @@ export function AccountDetailView({
   pluginLogoSvg,
 }: Props) {
   const navigate = useNavigate();
+  const orgId = useOrgId();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [createTarget, setCreateTarget] = useState<ResourceType | null>(null);
 
   async function handleDeleteAccount() {
-    await apiDelete(`/api/accounts/${account.id}`);
+    await apiDelete(`/api/org/${orgId}/accounts/${account.id}`);
     useUIStore.getState().bumpAccounts();
     dispatchResourcesChanged();
-    void navigate({ to: "/" });
+    void navigate({ to: "/org/$orgId", params: { orgId } });
   }
 
   // Group ALL resources by type
@@ -140,8 +142,8 @@ export function AccountDetailView({
                       subtitle={subtitle || undefined}
                       onOpen={() =>
                         void navigate({
-                          to: "/resources/$pluginId/$resourceTypeId/$resourceId",
-                          params: { pluginId: resource.pluginId, resourceTypeId: resource.resourceTypeId, resourceId: resource.id },
+                          to: "/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId",
+                          params: { orgId, pluginId: resource.pluginId, resourceTypeId: resource.resourceTypeId, resourceId: resource.id },
                         })
                       }
                     />
@@ -185,8 +187,8 @@ export function AccountDetailView({
             setCreateTarget(null);
             dispatchResourcesChanged();
             void navigate({
-              to: "/resources/$pluginId/$resourceTypeId/$resourceId",
-              params: { pluginId: account.pluginId, resourceTypeId: createTarget.id, resourceId: resource.id },
+              to: "/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId",
+              params: { orgId, pluginId: account.pluginId, resourceTypeId: createTarget.id, resourceId: resource.id },
               search: { accountId: account.id },
             });
           }}

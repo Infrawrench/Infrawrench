@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { deriveSSHUsername } from "@infrawrench/ui";
 import { apiGet } from "@/lib/api";
+import { useOrgId } from "@/lib/useOrgId";
 
 interface SshKey {
   id: string;
@@ -16,13 +17,14 @@ interface SshQuickConnectPanelProps {
 }
 
 export function SshQuickConnectPanel({ host, onConnect }: SshQuickConnectPanelProps) {
+  const orgId = useOrgId();
   const [keys, setKeys] = useState<SshKey[]>([]);
   const [selectedKeyId, setSelectedKeyId] = useState<string | null>(null);
   const [username, setUsername] = useState("root");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    apiGet<SshKey[]>("/api/ssh-keys")
+    apiGet<SshKey[]>(`/api/org/${orgId}/ssh-keys`)
       .then((result) => {
         setKeys(result);
         if (result.length > 0) {

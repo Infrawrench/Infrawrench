@@ -4,12 +4,12 @@ import { useUIStore, RESOURCES_CHANGED_EVENT } from "@infrawrench/ui";
 import { AccountDetailView } from "@/components/AccountDetailView";
 import { apiGet } from "@/lib/api";
 
-export const Route = createFileRoute("/accounts/$accountId")({
+export const Route = createFileRoute("/org/$orgId/accounts/$accountId")({
   component: AccountPage,
 });
 
 function AccountPage() {
-  const { accountId } = Route.useParams();
+  const { orgId, accountId } = Route.useParams();
   const [data, setData] = useState<{
     account: { id: string; pluginId: string; displayName: string };
     resources: Array<{
@@ -34,7 +34,7 @@ function AccountPage() {
   } | null>(null);
 
   useEffect(() => {
-    apiGet<typeof data>(`/api/accounts/${accountId}/detail`).then(setData);
+    apiGet<typeof data>(`/api/org/${orgId}/accounts/${accountId}/detail`).then(setData);
   }, [accountId]);
 
   // Update tab title with real account name
@@ -47,7 +47,7 @@ function AccountPage() {
   // Auto-refresh every 30s + on resource-changed events
   useEffect(() => {
     function refresh() {
-      apiGet<typeof data>(`/api/accounts/${accountId}/detail`).then(setData).catch(() => {});
+      apiGet<typeof data>(`/api/org/${orgId}/accounts/${accountId}/detail`).then(setData).catch(() => {});
     }
     const id = setInterval(refresh, 30_000);
     window.addEventListener(RESOURCES_CHANGED_EVENT, refresh);

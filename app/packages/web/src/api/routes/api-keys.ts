@@ -32,7 +32,7 @@ app.post("/", async (c) => {
 
   await db.insert(apiKeys).values({
     id,
-    organizationId: session.organizationId,
+    organizationId: c.get("organizationId"),
     userId: session.userId,
     name,
     hashedKey,
@@ -42,7 +42,7 @@ app.post("/", async (c) => {
   });
 
   void logAudit({
-    organizationId: session.organizationId,
+    organizationId: c.get("organizationId"),
     userId: session.userId,
     action: "api_key.create",
     entityType: "api_key",
@@ -68,7 +68,7 @@ app.get("/", async (c) => {
       createdAt: apiKeys.createdAt,
     })
     .from(apiKeys)
-    .where(eq(apiKeys.organizationId, session.organizationId));
+    .where(eq(apiKeys.organizationId, c.get("organizationId")));
   return c.json(rows.map((r) => ({ ...r, scopes: (r.scopes as string[]) ?? [] })));
 });
 
@@ -79,10 +79,10 @@ app.post("/:id/revoke", async (c) => {
   await db
     .update(apiKeys)
     .set({ revokedAt: new Date() })
-    .where(and(eq(apiKeys.id, keyId), eq(apiKeys.organizationId, session.organizationId), isNull(apiKeys.revokedAt)));
+    .where(and(eq(apiKeys.id, keyId), eq(apiKeys.organizationId, c.get("organizationId")), isNull(apiKeys.revokedAt)));
 
   void logAudit({
-    organizationId: session.organizationId,
+    organizationId: c.get("organizationId"),
     userId: session.userId,
     action: "api_key.revoke",
     entityType: "api_key",
@@ -99,14 +99,14 @@ app.post("/:id/rotate", async (c) => {
   const [old] = await db
     .select({ name: apiKeys.name, scopes: apiKeys.scopes })
     .from(apiKeys)
-    .where(and(eq(apiKeys.id, keyId), eq(apiKeys.organizationId, session.organizationId)));
+    .where(and(eq(apiKeys.id, keyId), eq(apiKeys.organizationId, c.get("organizationId"))));
   if (!old) return c.json({ error: "API key not found" }, 404);
 
   // Revoke old
   await db
     .update(apiKeys)
     .set({ revokedAt: new Date() })
-    .where(and(eq(apiKeys.id, keyId), eq(apiKeys.organizationId, session.organizationId), isNull(apiKeys.revokedAt)));
+    .where(and(eq(apiKeys.id, keyId), eq(apiKeys.organizationId, c.get("organizationId")), isNull(apiKeys.revokedAt)));
 
   // Create new with same config
   const raw = randomBytes(32);
@@ -117,7 +117,7 @@ app.post("/:id/rotate", async (c) => {
 
   await db.insert(apiKeys).values({
     id,
-    organizationId: session.organizationId,
+    organizationId: c.get("organizationId"),
     userId: session.userId,
     name: old.name,
     hashedKey,

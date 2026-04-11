@@ -12,7 +12,8 @@ const app = new Hono();
 
 /** POST /api/ws-token */
 app.post("/", async (c) => {
-  const { userId, organizationId } = c.get("session");
+  const organizationId = c.get("organizationId");
+  const { userId } = c.get("session");
   const token = await createWsToken(userId, organizationId);
   return c.json({ token });
 });

@@ -40,7 +40,7 @@ app.get("/plugins", async (c) => {
 
 /** GET /api/accounts — list accounts */
 app.get("/", async (c) => {
-  const { organizationId } = c.get("session");
+  const organizationId = c.get("organizationId");
   const rows = await db
     .select({
       id: accounts.id,
@@ -55,7 +55,7 @@ app.get("/", async (c) => {
 
 /** POST /api/accounts — create an account */
 app.post("/", async (c) => {
-  const { organizationId } = c.get("session");
+  const organizationId = c.get("organizationId");
   const { pluginId, displayName, credentials } = await c.req.json<{
     pluginId: string;
     displayName: string;
@@ -85,7 +85,7 @@ app.post("/", async (c) => {
 
 /** DELETE /api/accounts/:id */
 app.delete("/:id", async (c) => {
-  const { organizationId } = c.get("session");
+  const organizationId = c.get("organizationId");
   const accountId = c.req.param("id");
   await db.delete(accounts).where(and(eq(accounts.id, accountId), eq(accounts.organizationId, organizationId)));
   return c.json({ ok: true });
@@ -93,7 +93,7 @@ app.delete("/:id", async (c) => {
 
 /** GET /api/accounts/:id/credentials — get decrypted credentials */
 app.get("/:id/credentials", async (c) => {
-  const { organizationId } = c.get("session");
+  const organizationId = c.get("organizationId");
   const accountId = c.req.param("id");
   const [row] = await db
     .select({ encryptedCredentials: accounts.encryptedCredentials, credentialsIv: accounts.credentialsIv })
@@ -106,7 +106,7 @@ app.get("/:id/credentials", async (c) => {
 
 /** GET /api/accounts/:id/resources — list resources for account */
 app.get("/:id/resources", async (c) => {
-  const { organizationId } = c.get("session");
+  const organizationId = c.get("organizationId");
   const accountId = c.req.param("id");
   const topLevelOnly = c.req.query("topLevelOnly") === "true";
 
@@ -136,7 +136,7 @@ app.get("/:id/resources", async (c) => {
 
 /** POST /api/accounts/:id/sync — sync resources from plugin API */
 app.post("/:id/sync", async (c) => {
-  const { organizationId } = c.get("session");
+  const organizationId = c.get("organizationId");
   const accountId = c.req.param("id");
   const count = await syncAccountResources(accountId, organizationId);
   return c.json({ synced: count });
@@ -144,7 +144,7 @@ app.post("/:id/sync", async (c) => {
 
 /** GET /api/accounts/:id/detail — full account detail for the account page */
 app.get("/:id/detail", async (c) => {
-  const { organizationId } = c.get("session");
+  const organizationId = c.get("organizationId");
   const accountId = c.req.param("id");
 
   const [account] = await db

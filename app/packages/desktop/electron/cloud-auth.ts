@@ -232,6 +232,23 @@ export async function logout(): Promise<void> {
   }
 }
 
+export async function fetchCloudOrgs(): Promise<
+  Array<{ id: string; displayName: string; role: string }>
+> {
+  const token = await getAccessToken();
+  if (!token) return [];
+
+  try {
+    const response = await fetch(`${CLOUD_URL}/api/auth/orgs`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) return [];
+    return (await response.json()) as Array<{ id: string; displayName: string; role: string }>;
+  } catch {
+    return [];
+  }
+}
+
 // Register IPC handlers
 ipcMain.handle("cloud_auth_start", () => {
   startOAuthFlow();
@@ -241,3 +258,4 @@ ipcMain.handle("cloud_auth_start", () => {
 ipcMain.handle("cloud_auth_status", () => getAuthStatus());
 ipcMain.handle("cloud_auth_logout", () => logout());
 ipcMain.handle("cloud_auth_get_token", () => getAccessToken());
+ipcMain.handle("cloud_auth_orgs", () => fetchCloudOrgs());

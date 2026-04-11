@@ -25,18 +25,35 @@ export const users = pgTable(
   "users",
   {
     id: text("id").primaryKey(),             // WorkOS user ID
-    organizationId: text("organization_id")
-      .notNull()
-      .references(() => organizations.id, { onDelete: "cascade" }),
     email: text("email").notNull(),
     displayName: text("display_name"),
-    role: text("role").notNull().default("member"),  // "owner" | "admin" | "member"
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
   (t) => ({
-    orgIdx: index("users_org_idx").on(t.organizationId),
     emailIdx: uniqueIndex("users_email_unique").on(t.email),
+  }),
+);
+
+// ─── Organization Members (junction table) ───────────────────────────────────
+
+export const organizationMembers = pgTable(
+  "organization_members",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    role: text("role").notNull().default("member"),  // "owner" | "admin" | "member"
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    userOrgUnique: uniqueIndex("org_members_user_org_unique").on(t.userId, t.organizationId),
+    orgIdx: index("org_members_org_idx").on(t.organizationId),
+    userIdx: index("org_members_user_idx").on(t.userId),
   }),
 );
 

@@ -20,7 +20,7 @@ const app = new Hono();
 
 /** POST /api/v1/storage/upload */
 app.post("/upload", async (c) => {
-  const { organizationId } = c.get("session");
+  const organizationId = c.get("organizationId");
   const formData = await c.req.parseBody();
 
   const accountId = formData["accountId"] as string | undefined;
@@ -62,7 +62,7 @@ app.post("/upload", async (c) => {
 
 /** GET /api/v1/storage/download */
 app.get("/download", async (c) => {
-  const { organizationId } = c.get("session");
+  const organizationId = c.get("organizationId");
   const accountId = c.req.query("accountId");
   const bucket = c.req.query("bucket");
   const keysParam = c.req.query("keys");

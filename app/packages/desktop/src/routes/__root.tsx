@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { createRootRoute, Outlet, useNavigate, useRouter, useRouterState } from "@tanstack/react-router";
 import type { DragEndEvent } from "@dnd-kit/core";
-import { DndShell, normalizeResourceId, resourceTabTitle, useUIStore, useWorkspaceTabHandlers, workspaceTabTargetsEqual, type DraggableResource, type WorkspaceTab, type WorkspaceTabTarget } from "@infrawrench/ui";
+import { DndShell, normalizeResourceId, resourceTabTitle, useUIStore, useWorkspaceTabHandlers, workspaceTabTargetsEqual, OrgSwitcher, type OrgEntry, type DraggableResource, type WorkspaceTab, type WorkspaceTabTarget } from "@infrawrench/ui";
 import { AddAccountModal } from "../components/AddAccountModal";
 import { GlobalTabBar } from "../components/GlobalTabBar";
 import { SwipeIndicator } from "../components/SwipeIndicator";
@@ -13,6 +13,7 @@ import { invoke } from "../lib/invoke";
 import { buildPluginHostServices } from "../lib/sql-drivers";
 import { getPlugin } from "../plugins/loader";
 import { useSwipeNavigation } from "../lib/useSwipeNavigation";
+import { getCloudOrgs, getCloudAuthStatus, startCloudAuth, type CloudOrg } from "../lib/cloud-api";
 import {
   dashboardTabTarget,
   getWorkspaceNavigateArgs,
@@ -114,6 +115,21 @@ function RootLayout() {
   const hash = useRouterState({ select: (state) => state.location.hash });
   const [showAddAccount, setShowAddAccount] = useState(false);
   const [tabsValidated, setTabsValidated] = useState(false);
+
+  // Org switcher state
+  const [cloudOrgs, setCloudOrgs] = useState<CloudOrg[]>([]);
+  const [activeOrgId, setActiveOrgId] = useState<string | null>(null); // null = Local
+  const [cloudAuthenticated, setCloudAuthenticated] = useState(false);
+
+  // Load cloud auth status and orgs on mount
+  useEffect(() => {
+    getCloudAuthStatus().then((status) => {
+      setCloudAuthenticated(status.authenticated);
+      if (status.authenticated) {
+        getCloudOrgs().then(setCloudOrgs).catch(console.error);
+      }
+    }).catch(console.error);
+  }, []);
 
   // Trackpad swipe gesture → browser-style back/forward
   const swipeBack = useCallback(() => router.history.back(), [router]);
@@ -266,15 +282,25 @@ function RootLayout() {
         {/* Sidebar */}
         {!sidebarCollapsed && (
           <aside className="w-60 border-r border-gray-800 flex flex-col overflow-hidden flex-shrink-0">
-            <div className="flex items-center justify-between px-3 py-2 border-b border-gray-800">
-              <span className="text-sm font-semibold text-gray-300">Infrawrench</span>
+            <div className="flex items-center justify-between px-1 py-1 border-b border-gray-800">
+              <div
+                className="flex-1 min-w-0"
+                style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+              >
+                <OrgSwitcher
+                  orgs={cloudOrgs}
+                  activeOrgId={activeOrgId}
+                  onSwitch={(orgId) => setActiveOrgId(orgId)}
+                  showLocalOption
+                />
+              </div>
               <button
                 onClick={toggleSidebar}
-                className="text-gray-700 hover:text-gray-400 transition-colors text-xs"
+                className="text-gray-700 hover:text-gray-400 transition-colors text-xs px-2"
                 style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
                 aria-label="Collapse sidebar"
               >
-                ◀
+                &#9664;
               </button>
             </div>
 
@@ -283,15 +309,41 @@ function RootLayout() {
               <SidebarAccounts refreshKey={accountsVersion} />
             </div>
 
-            {/* Add account button pinned to the bottom */}
+            {/* Bottom buttons */}
             <div className="border-t border-gray-800 p-2">
-              <button
-                onClick={() => setShowAddAccount(true)}
-                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-gray-500 hover:text-gray-300 hover:bg-gray-800 transition-colors"
-              >
-                <span className="text-base leading-none">+</span>
-                Add account
-              </button>
+              {activeOrgId === null && (
+                <button
+                  onClick={() => setShowAddAccount(true)}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-gray-500 hover:text-gray-300 hover:bg-gray-800 transition-colors"
+                >
+                  <span className="text-base leading-none">+</span>
+                  Add account
+                </button>
+              )}
+              {!cloudAuthenticated && (
+                <button
+                  onClick={() => {
+                    void startCloudAuth().then(() => {
+                      // Poll for auth status after opening browser
+                      const poll = setInterval(() => {
+                        getCloudAuthStatus().then((status) => {
+                          if (status.authenticated) {
+                            setCloudAuthenticated(true);
+                            getCloudOrgs().then(setCloudOrgs).catch(console.error);
+                            clearInterval(poll);
+                          }
+                        }).catch(console.error);
+                      }, 2000);
+                      // Stop polling after 2 minutes
+                      setTimeout(() => clearInterval(poll), 120_000);
+                    });
+                  }}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-gray-500 hover:text-gray-300 hover:bg-gray-800 transition-colors"
+                >
+                  <span className="text-base leading-none">&#9729;</span>
+                  Sign in to cloud
+                </button>
+              )}
             </div>
           </aside>
         )}

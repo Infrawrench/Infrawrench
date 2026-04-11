@@ -52,7 +52,7 @@ async function enrichPins(pins: Array<{ pluginId: string; [key: string]: unknown
 
 /** GET /api/dashboards — list all dashboards */
 app.get("/", async (c) => {
-  const { organizationId } = c.get("session");
+  const organizationId = c.get("organizationId");
   const rows = await db
     .select({ id: dashboards.id, name: dashboards.name, isDefault: dashboards.isDefault })
     .from(dashboards)
@@ -63,7 +63,7 @@ app.get("/", async (c) => {
 
 /** POST /api/dashboards — create a dashboard */
 app.post("/", async (c) => {
-  const { organizationId } = c.get("session");
+  const organizationId = c.get("organizationId");
   const { name } = await c.req.json<{ name: string }>();
   const [created] = await db
     .insert(dashboards)
@@ -74,7 +74,7 @@ app.post("/", async (c) => {
 
 /** GET /api/dashboards/:id — get dashboard with pins */
 app.get("/:id", async (c) => {
-  const { organizationId } = c.get("session");
+  const organizationId = c.get("organizationId");
   const dashboardId = c.req.param("id");
 
   const [dashboard] = await db
@@ -113,7 +113,7 @@ app.get("/:id", async (c) => {
 
 /** GET /api/dashboards/default/full — get-or-create default dashboard with pins */
 app.get("/default/full", async (c) => {
-  const { organizationId } = c.get("session");
+  const organizationId = c.get("organizationId");
 
   let [defaultDashboard] = await db
     .select()
@@ -157,7 +157,7 @@ app.get("/default/full", async (c) => {
 
 /** POST /api/dashboards/:id/rename */
 app.post("/:id/rename", async (c) => {
-  const { organizationId } = c.get("session");
+  const organizationId = c.get("organizationId");
   const dashboardId = c.req.param("id");
   const { name } = await c.req.json<{ name: string }>();
   await db
@@ -169,7 +169,7 @@ app.post("/:id/rename", async (c) => {
 
 /** DELETE /api/dashboards/:id */
 app.delete("/:id", async (c) => {
-  const { organizationId } = c.get("session");
+  const organizationId = c.get("organizationId");
   const dashboardId = c.req.param("id");
 
   const [dash] = await db
@@ -188,7 +188,7 @@ app.delete("/:id", async (c) => {
 
 /** POST /api/dashboards/pin */
 app.post("/pin", async (c) => {
-  const { organizationId } = c.get("session");
+  const organizationId = c.get("organizationId");
   const { dashboardId, resourceId, gridX, gridY } = await c.req.json<{
     dashboardId: string;
     resourceId: string;
@@ -219,7 +219,7 @@ app.post("/pin", async (c) => {
 
 /** POST /api/dashboards/unpin */
 app.post("/unpin", async (c) => {
-  const { organizationId } = c.get("session");
+  const organizationId = c.get("organizationId");
   const { dashboardId, resourceId } = await c.req.json<{ dashboardId: string; resourceId: string }>();
 
   const [dashboard] = await db
@@ -235,7 +235,7 @@ app.post("/unpin", async (c) => {
 
 /** POST /api/dashboards/validate-tabs — validate which workspace tab targets still exist */
 app.post("/validate-tabs", async (c) => {
-  const { organizationId } = c.get("session");
+  const organizationId = c.get("organizationId");
   const { tabs } = await c.req.json<{
     tabs: Array<{
       id: string;
@@ -282,7 +282,7 @@ app.post("/validate-tabs", async (c) => {
 
 /** POST /api/dashboards/probe — probe resource status for dashboard cards */
 app.post("/probe", async (c) => {
-  const { organizationId } = c.get("session");
+  const organizationId = c.get("organizationId");
   const { items } = await c.req.json<{
     items: Array<{
       resourceId: string;

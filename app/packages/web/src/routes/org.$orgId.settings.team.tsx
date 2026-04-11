@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useParams } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { apiGet, apiPost, apiDelete, apiPatch } from "@/lib/api";
 
@@ -19,11 +19,12 @@ interface InvitationSummary {
   createdAt: string;
 }
 
-export const Route = createFileRoute("/settings/team")({
+export const Route = createFileRoute("/org/$orgId/settings/team")({
   component: TeamPage,
 });
 
 function TeamPage() {
+  const { orgId } = useParams({ from: "/org/$orgId/settings/team" });
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [invites, setInvites] = useState<InvitationSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -35,8 +36,8 @@ function TeamPage() {
   async function load() {
     setLoading(true);
     const [m, i] = await Promise.all([
-      apiGet<TeamMember[]>("/api/team/members"),
-      apiGet<InvitationSummary[]>("/api/team/invitations"),
+      apiGet<TeamMember[]>(`/api/org/${orgId}/team/members`),
+      apiGet<InvitationSummary[]>(`/api/org/${orgId}/team/invitations`),
     ]);
     setMembers(m);
     setInvites(i);
@@ -50,7 +51,7 @@ function TeamPage() {
     setInviting(true);
     setError(null);
     try {
-      await apiPost("/api/team/invitations", { email: inviteEmail.trim(), role: inviteRole });
+      await apiPost(`/api/org/${orgId}/team/invitations`, { email: inviteEmail.trim(), role: inviteRole });
       setInviteEmail("");
       await load();
     } catch (e) {
@@ -61,17 +62,17 @@ function TeamPage() {
   }
 
   async function handleRemove(userId: string) {
-    await apiDelete(`/api/team/members/${userId}`);
+    await apiDelete(`/api/org/${orgId}/team/members/${userId}`);
     await load();
   }
 
   async function handleRoleChange(userId: string, role: string) {
-    await apiPatch(`/api/team/members/${userId}/role`, { role });
+    await apiPatch(`/api/org/${orgId}/team/members/${userId}/role`, { role });
     await load();
   }
 
   async function handleRevokeInvite(inviteId: string) {
-    await apiDelete(`/api/team/invitations/${inviteId}`);
+    await apiDelete(`/api/org/${orgId}/team/invitations/${inviteId}`);
     await load();
   }
 

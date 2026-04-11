@@ -16,7 +16,7 @@ const app = new Hono();
 
 /** POST /api/associations — create or update an association */
 app.post("/", async (c) => {
-  const { organizationId } = c.get("session");
+  const organizationId = c.get("organizationId");
   const input = await c.req.json<{
     consumerResourceId: string;
     consumerFieldKey: string;
@@ -92,7 +92,7 @@ app.post("/", async (c) => {
 
 /** POST /api/associations/literal — set a secret field to a literal value */
 app.post("/literal", async (c) => {
-  const { organizationId } = c.get("session");
+  const organizationId = c.get("organizationId");
   const input = await c.req.json<{
     resourceId: string;
     fieldKey: string;

@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { Modal, FieldRenderer, ErrorNotice, useCreateResourceForm, type SshKeyEntry } from "@infrawrench/ui";
 import type { CreateResourceConfig } from "@infrawrench/plugin-base";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
+import { useOrgId } from "@/lib/useOrgId";
 
 interface Props {
   accountId: string;
@@ -20,6 +21,7 @@ export function CreateResourceModal({
   onClose,
   onCreated,
 }: Props) {
+  const orgId = useOrgId();
   const [currentUserId, setCurrentUserId] = useState<string | undefined>();
 
   useEffect(() => {
@@ -27,37 +29,37 @@ export function CreateResourceModal({
   }, []);
 
   const loadSshKeys = useCallback(
-    () => apiGet<SshKeyEntry[]>("/api/ssh-keys"),
-    [],
+    () => apiGet<SshKeyEntry[]>(`/api/org/${orgId}/ssh-keys`),
+    [orgId],
   );
   const generateSshKey = useCallback(
     (name: string) =>
-      apiPost<SshKeyEntry & { privateKey?: string }>("/api/ssh-keys", { name }),
-    [],
+      apiPost<SshKeyEntry & { privateKey?: string }>(`/api/org/${orgId}/ssh-keys`, { name }),
+    [orgId],
   );
   const deleteSshKey = useCallback(
-    (id: string) => apiDelete<void>(`/api/ssh-keys/${id}`),
-    [],
+    (id: string) => apiDelete<void>(`/api/org/${orgId}/ssh-keys/${id}`),
+    [orgId],
   );
 
   const callbacks = useMemo(() => ({
     loadConfig: () =>
-      apiPost<CreateResourceConfig>("/api/resources/create-config", { accountId, resourceTypeId }),
+      apiPost<CreateResourceConfig>(`/api/org/${orgId}/resources/create-config`, { accountId, resourceTypeId }),
     loadSizePricing: (request: { regionId?: string; sizes: Array<{ id: string; vcpus: number; memoryMb: number }> }) =>
-      apiPost<Record<string, number>>("/api/resources/create-pricing", {
+      apiPost<Record<string, number>>(`/api/org/${orgId}/resources/create-pricing`, {
         accountId,
         resourceTypeId,
         ...(request.regionId ? { regionId: request.regionId } : {}),
         sizes: request.sizes,
       }),
     loadCostEstimate: (fields: Record<string, string>) =>
-      apiPost<{ estimate: number | null }>("/api/resources/create-cost-estimate", {
+      apiPost<{ estimate: number | null }>(`/api/org/${orgId}/resources/create-cost-estimate`, {
         accountId,
         resourceTypeId,
         fields,
       }).then(({ estimate }) => estimate),
     create: async (fields: Record<string, string>) => {
-      const created = await apiPost<{ id: string; displayName: string }>("/api/resources/create", {
+      const created = await apiPost<{ id: string; displayName: string }>(`/api/org/${orgId}/resources/create`, {
         accountId,
         pluginId,
         resourceTypeId,
@@ -65,7 +67,7 @@ export function CreateResourceModal({
       });
       onCreated(created);
     },
-  }), [accountId, pluginId, resourceTypeId, onCreated]);
+  }), [accountId, orgId, pluginId, resourceTypeId, onCreated]);
 
   const form = useCreateResourceForm(callbacks, [accountId, resourceTypeId]);
 

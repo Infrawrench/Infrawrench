@@ -27,6 +27,10 @@ export { DashboardGrid } from "./components/dashboard/DashboardGrid.js";
 export { SidebarItem } from "./components/sidebar/SidebarItem.js";
 export { SidebarSection } from "./components/sidebar/SidebarSection.js";
 
+// OrgSwitcher
+export { OrgSwitcher } from "./components/OrgSwitcher.js";
+export type { OrgSwitcherProps, OrgEntry } from "./components/OrgSwitcher.js";
+
 // FileBrowser
 export { FileBrowser } from "./components/FileBrowser.js";
 export type { FileBrowserProps } from "./components/FileBrowser.js";

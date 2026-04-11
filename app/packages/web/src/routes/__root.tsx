@@ -15,24 +15,64 @@ export const Route = createRootRoute({
   component: RootLayout,
 });
 
+interface AuthMe {
+  userId: string;
+  email: string;
+  needsOnboarding: boolean;
+}
+
 function RootLayout() {
   const [authChecked, setAuthChecked] = useState(false);
+  const navigate = useNavigate();
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   useEffect(() => {
-    // Auth check — on 401 the api client auto-redirects to sign-in
-    apiGet("/api/auth/me")
-      .then(() => setAuthChecked(true))
-      .catch(() => {
-        // apiFetch already redirects on 401
-      });
-  }, []);
+    // Skip auth/onboarding check for public-ish routes
+    if (pathname.startsWith("/onboarding") || pathname.startsWith("/invite/")) {
+      // Still need auth check for these routes — but don't redirect to onboarding
+      apiGet<AuthMe>("/api/auth/me")
+        .then(() => setAuthChecked(true))
+        .catch(() => { /* apiFetch redirects on 401 */ });
+      return;
+    }
+
+    apiGet<AuthMe>("/api/auth/me")
+      .then(async (me) => {
+        if (me.needsOnboarding) {
+          void navigate({ to: "/onboarding" });
+          return;
+        }
+
+        // If at root, redirect to default org
+        if (pathname === "/") {
+          const orgs = await apiGet<Array<{ id: string }>>("/api/auth/orgs");
+          if (orgs.length > 0) {
+            void navigate({ to: "/org/$orgId", params: { orgId: orgs[0]!.id }, replace: true });
+          }
+          return;
+        }
+
+        setAuthChecked(true);
+      })
+      .catch(() => { /* apiFetch redirects on 401 */ });
+  }, [navigate, pathname]);
 
   if (!authChecked) {
+    // Allow onboarding and invite routes to render while auth is checked
+    if (pathname.startsWith("/onboarding") || pathname.startsWith("/invite/")) {
+      return <Outlet />;
+    }
+
     return (
       <div className="flex h-screen items-center justify-center bg-gray-950 text-gray-400">
-        <div className="animate-pulse text-sm">Loading…</div>
+        <div className="animate-pulse text-sm">Loading...</div>
       </div>
     );
+  }
+
+  // Onboarding and invite routes render without the shell
+  if (pathname.startsWith("/onboarding") || pathname.startsWith("/invite/")) {
+    return <Outlet />;
   }
 
   return <AuthenticatedShell />;
@@ -45,7 +85,10 @@ function AuthenticatedShell() {
   const [spotlightOpen, setSpotlightOpen] = useState(false);
   const [tabsValidated, setTabsValidated] = useState(false);
 
-  // ⌘K / Ctrl+K to open spotlight search
+  // Extract orgId from path for API calls
+  const orgIdMatch = pathname.match(/^\/org\/([^/]+)/);
+  const orgId = orgIdMatch?.[1] ?? null;
+
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
@@ -69,7 +112,6 @@ function AuthenticatedShell() {
 
   const { handleActivateTab, handleCloseTab } = useWorkspaceTabHandlers(navigate, getWorkspaceNavigateArgs);
 
-  // Sync route changes → workspace tabs
   useEffect(() => {
     if (!tabsHydrated) return;
     const currentTarget = syncWorkspaceRouteFromPath(pathname, hash);
@@ -83,7 +125,6 @@ function AuthenticatedShell() {
     syncWorkspaceRoute(currentTarget);
   }, [hash, pathname, activeWorkspaceTabId, setActiveDashboard, syncWorkspaceRoute, tabsHydrated, workspaceTabs]);
 
-  // Validate persisted tabs on first hydration — prune stale references
   useEffect(() => {
     if (!tabsHydrated || tabsValidated) return;
     const tabsSnapshot = useUIStore.getState().workspaceTabs;
@@ -92,9 +133,13 @@ function AuthenticatedShell() {
       setTabsValidated(true);
       return;
     }
+    if (!orgId) {
+      setTabsValidated(true);
+      return;
+    }
 
     let cancelled = false;
-    apiPost<{ validTabIds: string[] }>("/api/dashboards/validate-tabs", {
+    apiPost<{ validTabIds: string[] }>(`/api/org/${orgId}/dashboards/validate-tabs`, {
       tabs: tabsSnapshot.map((t) => ({ id: t.id, target: t.target })),
     }).then(({ validTabIds }) => {
       if (cancelled) return;
@@ -103,26 +148,27 @@ function AuthenticatedShell() {
       replaceWorkspaceTabs(nextTabs, activeIdSnapshot);
       setTabsValidated(true);
     }).catch(() => {
-      // On failure, keep all tabs rather than losing them
       if (!cancelled) setTabsValidated(true);
     });
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tabsHydrated, tabsValidated, replaceWorkspaceTabs]);
+  }, [tabsHydrated, tabsValidated, replaceWorkspaceTabs, orgId]);
 
   async function handleNewTab() {
+    if (!orgId) return;
     try {
-      const data = await apiGet<{ dashboard: { id: string; name: string } }>("/api/dashboards/default/full");
+      const data = await apiGet<{ dashboard: { id: string; name: string } }>(`/api/org/${orgId}/dashboards/default/full`);
       const target = dashboardTabTarget(data.dashboard.id);
       createWorkspaceTabInstance(target, data.dashboard.name);
-      void navigate({ to: "/" });
+      void navigate({ to: "/org/$orgId", params: { orgId } });
     } catch {
-      void navigate({ to: "/" });
+      void navigate({ to: "/org/$orgId", params: { orgId } });
     }
   }
 
   async function handlePinToDashboard(resource: DraggableResource, dashboardId: string) {
-    await apiPost("/api/dashboards/pin", { dashboardId, resourceId: resource.id });
+    if (!orgId) return;
+    await apiPost(`/api/org/${orgId}/dashboards/pin`, { dashboardId, resourceId: resource.id });
     useUIStore.getState().bumpDashboardPins();
     dispatchResourcesChanged();
   }
@@ -138,7 +184,7 @@ function AuthenticatedShell() {
           onNew={handleNewTab}
         />
         <div className="flex flex-1 overflow-hidden">
-          <WebSidebar />
+          <WebSidebar orgId={orgId} />
           <main className="flex-1 overflow-auto">
             <Outlet />
           </main>

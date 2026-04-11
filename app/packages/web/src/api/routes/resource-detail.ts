@@ -44,7 +44,7 @@ async function getClientForAccount(accountId: string, organizationId: string) {
 
 /** GET /api/resources/:pluginId/:typeId/detail?resourceId=... — full resource detail payload */
 app.get("/:pluginId/:typeId/detail", async (c) => {
-  const { organizationId } = c.get("session");
+  const organizationId = c.get("organizationId");
   const pluginId = c.req.param("pluginId");
   const resourceTypeId = c.req.param("typeId");
   const resourceId = c.req.query("resourceId");
@@ -416,7 +416,7 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
 
 /** GET /api/resources/:pluginId/:typeId/manifest?resourceId=...&accountId=... */
 app.get("/:pluginId/:typeId/manifest", async (c) => {
-  const { organizationId } = c.get("session");
+  const organizationId = c.get("organizationId");
   const resourceId = c.req.query("resourceId");
   if (!resourceId) return c.json({ error: "Missing resourceId" }, 400);
   const accountId = c.req.query("accountId");
@@ -432,7 +432,7 @@ app.get("/:pluginId/:typeId/manifest", async (c) => {
 
 /** POST /api/resources/:pluginId/:typeId/manifest */
 app.post("/:pluginId/:typeId/manifest", async (c) => {
-  const { organizationId } = c.get("session");
+  const organizationId = c.get("organizationId");
   const { accountId, resourceId, manifest } = await c.req.json<{ accountId: string; resourceId: string; manifest: string }>();
 
   const ctx = await getClientForAccount(accountId, organizationId);
@@ -445,7 +445,7 @@ app.post("/:pluginId/:typeId/manifest", async (c) => {
 
 /** DELETE /api/resources/:pluginId/:typeId?resourceId=...&accountId=... */
 app.delete("/:pluginId/:typeId", async (c) => {
-  const { organizationId } = c.get("session");
+  const organizationId = c.get("organizationId");
   const resourceTypeId = c.req.param("typeId");
   const resourceId = c.req.query("resourceId");
   if (!resourceId) return c.json({ error: "Missing resourceId" }, 400);
@@ -469,7 +469,7 @@ app.delete("/:pluginId/:typeId", async (c) => {
 
 /** POST /api/resources/create */
 app.post("/create", async (c) => {
-  const { organizationId } = c.get("session");
+  const organizationId = c.get("organizationId");
   const input = await c.req.json<{
     accountId: string;
     pluginId: string;
@@ -521,7 +521,7 @@ app.post("/create", async (c) => {
 
 /** POST /api/resources/create-config */
 app.post("/create-config", async (c) => {
-  const { organizationId } = c.get("session");
+  const organizationId = c.get("organizationId");
   const input = await c.req.json<{
     accountId: string;
     resourceTypeId: string;
@@ -537,7 +537,7 @@ app.post("/create-config", async (c) => {
 
 /** POST /api/resources/create-pricing — get size pricing for create form */
 app.post("/create-pricing", async (c) => {
-  const { organizationId } = c.get("session");
+  const organizationId = c.get("organizationId");
   const input = await c.req.json<{
     accountId: string;
     resourceTypeId: string;
@@ -558,7 +558,7 @@ app.post("/create-pricing", async (c) => {
 
 /** POST /api/resources/create-cost-estimate — get cost estimate for create form */
 app.post("/create-cost-estimate", async (c) => {
-  const { organizationId } = c.get("session");
+  const organizationId = c.get("organizationId");
   const input = await c.req.json<{
     accountId: string;
     resourceTypeId: string;
@@ -575,7 +575,7 @@ app.post("/create-cost-estimate", async (c) => {
 
 /** POST /api/resources/:pluginId/:typeId/peer-panes */
 app.post("/:pluginId/:typeId/peer-panes", async (c) => {
-  const { organizationId } = c.get("session");
+  const organizationId = c.get("organizationId");
   const resourceTypeId = c.req.param("typeId");
   const { accountId, resourceId } = await c.req.json<{ accountId: string; resourceId: string }>();
 

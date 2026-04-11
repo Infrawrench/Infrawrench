@@ -98,7 +98,7 @@ async function resolveSshConfig(
 
 /** POST /api/sql/query */
 app.post("/sql/query", async (c) => {
-  const { organizationId } = c.get("session");
+  const organizationId = c.get("organizationId");
   const input = await c.req.json<{
     accountId: string;
     resourceId?: string;
@@ -149,7 +149,7 @@ app.post("/sql/query", async (c) => {
 
 /** POST /api/sql/execute */
 app.post("/sql/execute", async (c) => {
-  const { organizationId } = c.get("session");
+  const organizationId = c.get("organizationId");
   const input = await c.req.json<{
     accountId: string;
     resourceId?: string;
@@ -196,7 +196,7 @@ app.post("/sql/execute", async (c) => {
 
 /** POST /api/kv/command */
 app.post("/kv/command", async (c) => {
-  const { organizationId } = c.get("session");
+  const organizationId = c.get("organizationId");
   const input = await c.req.json<{
     accountId: string;
     command: string;
@@ -219,7 +219,7 @@ app.post("/kv/command", async (c) => {
 
 /** POST /api/docker/command */
 app.post("/docker/command", async (c) => {
-  const { organizationId } = c.get("session");
+  const organizationId = c.get("organizationId");
   const input = await c.req.json<{
     accountId: string;
     op: string;
@@ -242,7 +242,7 @@ app.post("/docker/command", async (c) => {
 
 /** POST /api/storage/list */
 app.post("/storage/list", async (c) => {
-  const { organizationId } = c.get("session");
+  const organizationId = c.get("organizationId");
   const input = await c.req.json<{ accountId: string; bucket: string; prefix: string }>();
   const { client } = await getClientForAccount(input.accountId, organizationId);
   if (!client.listStorageObjects) return c.json({ error: "Plugin does not support storage listing" }, 400);
@@ -252,7 +252,7 @@ app.post("/storage/list", async (c) => {
 
 /** POST /api/storage/mkdir */
 app.post("/storage/mkdir", async (c) => {
-  const { organizationId } = c.get("session");
+  const organizationId = c.get("organizationId");
   const input = await c.req.json<{ accountId: string; bucket: string; key: string }>();
   const { client } = await getClientForAccount(input.accountId, organizationId);
   if (!client.makeStorageFolder) return c.json({ error: "Plugin does not support folder creation" }, 400);
@@ -262,7 +262,7 @@ app.post("/storage/mkdir", async (c) => {
 
 /** POST /api/storage/delete */
 app.post("/storage/delete", async (c) => {
-  const { organizationId } = c.get("session");
+  const organizationId = c.get("organizationId");
   const input = await c.req.json<{ accountId: string; bucket: string; key: string }>();
   const { client } = await getClientForAccount(input.accountId, organizationId);
   if (!client.deleteStorageObject) return c.json({ error: "Plugin does not support object deletion" }, 400);
@@ -272,7 +272,7 @@ app.post("/storage/delete", async (c) => {
 
 /** POST /api/storage/stats */
 app.post("/storage/stats", async (c) => {
-  const { organizationId } = c.get("session");
+  const organizationId = c.get("organizationId");
   const input = await c.req.json<{ accountId: string; bucket: string }>();
   const { client } = await getClientForAccount(input.accountId, organizationId);
   if (!client.fetchStorageStats) return c.json({ error: "Plugin does not support storage stats" }, 400);
@@ -284,7 +284,7 @@ app.post("/storage/stats", async (c) => {
 
 /** POST /api/sftp/list */
 app.post("/sftp/list", async (c) => {
-  const { organizationId } = c.get("session");
+  const organizationId = c.get("organizationId");
   const input = await c.req.json<{ accountId: string; path: string; sshKeyId?: string; sshHost?: string; sshUsername?: string }>();
   try {
     const { client } = await getClientForAccount(input.accountId, organizationId);
@@ -298,7 +298,7 @@ app.post("/sftp/list", async (c) => {
 
 /** POST /api/sftp/mkdir */
 app.post("/sftp/mkdir", async (c) => {
-  const { organizationId } = c.get("session");
+  const organizationId = c.get("organizationId");
   const input = await c.req.json<{ accountId: string; path: string; sshKeyId?: string; sshHost?: string; sshUsername?: string }>();
   try {
     const { client } = await getClientForAccount(input.accountId, organizationId);
@@ -312,7 +312,7 @@ app.post("/sftp/mkdir", async (c) => {
 
 /** POST /api/sftp/delete */
 app.post("/sftp/delete", async (c) => {
-  const { organizationId } = c.get("session");
+  const organizationId = c.get("organizationId");
   const input = await c.req.json<{ accountId: string; path: string; isDir: boolean; sshKeyId?: string; sshHost?: string; sshUsername?: string }>();
   try {
     const { client } = await getClientForAccount(input.accountId, organizationId);

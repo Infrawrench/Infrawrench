@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { SpotlightSearch as SharedSpotlightSearch, type SpotlightResult } from "@infrawrench/ui";
 import { apiGet, apiPost } from "@/lib/api";
+import { useOrgId } from "@/lib/useOrgId";
 
 interface SpotlightSearchProps {
   dashboardId?: string;
@@ -12,11 +13,12 @@ interface SpotlightSearchProps {
 
 export function SpotlightSearch({ dashboardId, mode, onClose, onPinned }: SpotlightSearchProps) {
   const navigate = useNavigate();
+  const orgId = useOrgId();
 
   const loadResults = useCallback(
     (query: string) =>
-      apiGet<SpotlightResult[]>(`/api/search?q=${encodeURIComponent(query)}`),
-    [],
+      apiGet<SpotlightResult[]>(`/api/org/${orgId}/search?q=${encodeURIComponent(query)}`),
+    [orgId],
   );
 
   const handleSelect = useCallback(
@@ -24,13 +26,13 @@ export function SpotlightSearch({ dashboardId, mode, onClose, onPinned }: Spotli
       if (mode === "navigate") {
         onClose();
         void navigate({
-          to: "/resources/$pluginId/$resourceTypeId/$resourceId",
-          params: { pluginId: result.pluginId, resourceTypeId: result.resourceTypeId, resourceId: result.id },
+          to: "/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId",
+          params: { orgId, pluginId: result.pluginId, resourceTypeId: result.resourceTypeId, resourceId: result.id },
         });
         return;
       }
       if (dashboardId) {
-        await apiPost("/api/dashboards/pin", {
+        await apiPost(`/api/org/${orgId}/dashboards/pin`, {
           dashboardId,
           resourceId: result.id,
         });
@@ -38,7 +40,7 @@ export function SpotlightSearch({ dashboardId, mode, onClose, onPinned }: Spotli
       }
       onClose();
     },
-    [mode, dashboardId, onClose, onPinned, navigate],
+    [mode, dashboardId, onClose, onPinned, navigate, orgId],
   );
 
   return (

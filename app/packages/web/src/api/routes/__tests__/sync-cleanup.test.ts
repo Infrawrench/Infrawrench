@@ -57,11 +57,11 @@ function buildApp() {
   const app = new Hono();
   const session: AuthSession = {
     userId: "user-1",
-    organizationId: "org-1",
     email: "test@example.com",
   };
   app.use("*", async (c, next) => {
     c.set("session", session);
+    c.set("organizationId", "org-1");
     return next();
   });
   app.route("/", accountRoutes);

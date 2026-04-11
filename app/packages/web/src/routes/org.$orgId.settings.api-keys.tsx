@@ -1,7 +1,8 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useParams } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { Modal } from "@infrawrench/ui";
 import { apiGet, apiPost } from "@/lib/api";
+import { useOrgId } from "@/lib/useOrgId";
 
 interface ApiKeySummary {
   id: string;
@@ -23,11 +24,12 @@ const AVAILABLE_SCOPES = [
   { value: "dashboards:write", label: "Dashboards (write)" },
 ];
 
-export const Route = createFileRoute("/settings/api-keys")({
+export const Route = createFileRoute("/org/$orgId/settings/api-keys")({
   component: ApiKeysPage,
 });
 
 function ApiKeysPage() {
+  const { orgId } = useParams({ from: "/org/$orgId/settings/api-keys" });
   const [keys, setKeys] = useState<ApiKeySummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -35,7 +37,7 @@ function ApiKeysPage() {
 
   async function load() {
     setLoading(true);
-    const result = await apiGet<ApiKeySummary[]>("/api/api-keys");
+    const result = await apiGet<ApiKeySummary[]>(`/api/org/${orgId}/api-keys`);
     setKeys(result);
     setLoading(false);
   }
@@ -43,12 +45,12 @@ function ApiKeysPage() {
   useEffect(() => { load(); }, []);
 
   async function handleRevoke(id: string) {
-    await apiPost(`/api/api-keys/${id}/revoke`);
+    await apiPost(`/api/org/${orgId}/api-keys/${id}/revoke`);
     await load();
   }
 
   async function handleRotate(id: string) {
-    const result = await apiPost<{ id: string; key: string }>(`/api/api-keys/${id}/rotate`);
+    const result = await apiPost<{ id: string; key: string }>(`/api/org/${orgId}/api-keys/${id}/rotate`);
     setNewKey(result.key);
     await load();
   }
@@ -172,6 +174,7 @@ function CreateApiKeyModal({
   onClose: () => void;
   onCreated: (key: string) => void;
 }) {
+  const orgId = useOrgId();
   const [name, setName] = useState("");
   const [scopes, setScopes] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
@@ -189,7 +192,7 @@ function CreateApiKeyModal({
     setSaving(true);
     setError(null);
     try {
-      const result = await apiPost<{ id: string; key: string }>("/api/api-keys", {
+      const result = await apiPost<{ id: string; key: string }>(`/api/org/${orgId}/api-keys`, {
         name: name.trim(),
         scopes: [...scopes],
       });

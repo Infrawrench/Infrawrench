@@ -3,16 +3,16 @@ import { useState, useEffect } from "react";
 import { useUIStore, RESOURCES_CHANGED_EVENT } from "@infrawrench/ui";
 import { DashboardView } from "@/components/DashboardView";
 import { apiGet } from "@/lib/api";
-import { dashboardTabTarget } from "@/lib/workspace-tabs";
 
-export const Route = createFileRoute("/")({
-  component: HomePage,
+export const Route = createFileRoute("/org/$orgId/dashboard/$dashboardId")({
+  component: DashboardPage,
 });
 
-function HomePage() {
+function DashboardPage() {
+  const { orgId, dashboardId } = Route.useParams();
   const dashboardPinsVersion = useUIStore((s) => s.dashboardPinsVersion);
   const [data, setData] = useState<{
-    dashboard: { id: string; name: string };
+    dashboard: { id: string; name: string; isDefault: boolean };
     pins: Array<{
       pinId: string;
       resourceId: string;
@@ -30,24 +30,23 @@ function HomePage() {
   } | null>(null);
 
   useEffect(() => {
-    apiGet<typeof data>("/api/dashboards/default/full").then(setData);
-  }, [dashboardPinsVersion]);
+    apiGet<typeof data>(`/api/org/${orgId}/dashboards/${dashboardId}`).then(setData);
+  }, [dashboardId, dashboardPinsVersion]);
 
-  // Sync the active tab to show the default dashboard with its real name
+  // Update tab title with real dashboard name
   useEffect(() => {
     if (!data) return;
-    const { syncWorkspaceRoute, activeWorkspaceTabId, workspaceTabs } = useUIStore.getState();
-    const target = dashboardTabTarget(data.dashboard.id);
-    syncWorkspaceRoute(target, data.dashboard.name);
+    const { activeWorkspaceTabId, setWorkspaceTabTitle } = useUIStore.getState();
+    if (activeWorkspaceTabId) setWorkspaceTabTitle(activeWorkspaceTabId, data.dashboard.name);
   }, [data]);
 
   useEffect(() => {
     function onChanged() {
-      apiGet<typeof data>("/api/dashboards/default/full").then(setData);
+      apiGet<typeof data>(`/api/org/${orgId}/dashboards/${dashboardId}`).then(setData);
     }
     window.addEventListener(RESOURCES_CHANGED_EVENT, onChanged);
     return () => window.removeEventListener(RESOURCES_CHANGED_EVENT, onChanged);
-  }, []);
+  }, [dashboardId]);
 
   if (!data) return <div className="p-6 text-gray-500 text-sm animate-pulse">Loading…</div>;
 
@@ -55,7 +54,7 @@ function HomePage() {
     <DashboardView
       dashboardId={data.dashboard.id}
       dashboardName={data.dashboard.name}
-      isHome
+      isHome={data.dashboard.isDefault}
       pins={data.pins}
     />
   );

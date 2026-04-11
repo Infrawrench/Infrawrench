@@ -15,7 +15,7 @@ const app = new Hono();
 
 /** GET /api/search?q=... — search resources across all accounts */
 app.get("/", async (c) => {
-  const { organizationId } = c.get("session");
+  const organizationId = c.get("organizationId");
   const q = (c.req.query("q") ?? "").toLowerCase().trim();
 
   // Load all resources for the org

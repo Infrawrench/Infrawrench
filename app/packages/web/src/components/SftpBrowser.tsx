@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import { FileBrowser, formatErrorMessage } from "@infrawrench/ui";
 import type { StorageObject } from "@infrawrench/plugin-base";
 import { apiPost } from "@/lib/api";
+import { useOrgId } from "@/lib/useOrgId";
 
 interface SshKeyParams {
   sshKeyId?: string;
@@ -10,6 +11,7 @@ interface SshKeyParams {
 }
 
 export function SftpBrowser({ accountId, initialPath = "/", sshKeyId, sshHost, sshUsername }: { accountId: string; initialPath?: string; sshKeyId?: string; sshHost?: string; sshUsername?: string }) {
+  const orgId = useOrgId();
   const sshParams: SshKeyParams = sshKeyId ? {
     sshKeyId,
     ...(sshHost !== undefined ? { sshHost } : {}),
@@ -18,8 +20,8 @@ export function SftpBrowser({ accountId, initialPath = "/", sshKeyId, sshHost, s
 
   const onList = useCallback(
     (path: string) =>
-      apiPost<StorageObject[]>("/api/sftp/list", { accountId, path, ...sshParams }),
-    [accountId, sshKeyId, sshHost, sshUsername],
+      apiPost<StorageObject[]>(`/api/org/${orgId}/sftp/list`, { accountId, path, ...sshParams }),
+    [accountId, orgId, sshKeyId, sshHost, sshUsername],
   );
 
   const onUpload = useCallback(
@@ -31,24 +33,24 @@ export function SftpBrowser({ accountId, initialPath = "/", sshKeyId, sshHost, s
       if (sshKeyId) formData.append("sshKeyId", sshKeyId);
       if (sshHost) formData.append("sshHost", sshHost);
       if (sshUsername) formData.append("sshUsername", sshUsername);
-      const resp = await fetch("/api/v1/sftp/upload", { method: "POST", body: formData });
+      const resp = await fetch(`/api/org/${orgId}/sftp/upload`, { method: "POST", body: formData });
       if (!resp.ok) throw new Error(await resp.text());
     },
-    [accountId, sshKeyId, sshHost, sshUsername],
+    [accountId, orgId, sshKeyId, sshHost, sshUsername],
   );
 
   const onMakeFolder = useCallback(
     async (_bucket: string, key: string) => {
-      await apiPost("/api/sftp/mkdir", { accountId, path: key, ...sshParams });
+      await apiPost(`/api/org/${orgId}/sftp/mkdir`, { accountId, path: key, ...sshParams });
     },
-    [accountId, sshKeyId, sshHost, sshUsername],
+    [accountId, orgId, sshKeyId, sshHost, sshUsername],
   );
 
   const onDelete = useCallback(
     async (_bucket: string, key: string, isDirectory?: boolean) => {
-      await apiPost("/api/sftp/delete", { accountId, path: key, isDir: isDirectory ?? false, ...sshParams });
+      await apiPost(`/api/org/${orgId}/sftp/delete`, { accountId, path: key, isDir: isDirectory ?? false, ...sshParams });
     },
-    [accountId, sshKeyId, sshHost, sshUsername],
+    [accountId, orgId, sshKeyId, sshHost, sshUsername],
   );
 
   const onBatchDownload = useCallback(
@@ -57,9 +59,9 @@ export function SftpBrowser({ accountId, initialPath = "/", sshKeyId, sshHost, s
         accountId,
         paths: JSON.stringify(keys),
       });
-      window.open(`/api/v1/sftp/download?${params.toString()}`);
+      window.open(`/api/org/${orgId}/sftp/download?${params.toString()}`);
     },
-    [accountId],
+    [accountId, orgId],
   );
 
   return (

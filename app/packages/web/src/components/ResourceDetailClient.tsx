@@ -14,6 +14,7 @@ import {
 } from "@infrawrench/ui";
 import type { DetailViewSchema, PeerPaneSchema } from "@infrawrench/plugin-base";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
+import { useOrgId } from "@/lib/useOrgId";
 import { navigateToWorkspaceTarget, resourceSshTabTarget, resourceSftpTabTarget } from "@/lib/workspace-tabs";
 import { CreateResourceModal } from "./CreateResourceModal";
 import { KvConsole } from "@/components/KvConsole";
@@ -105,6 +106,7 @@ export function ResourceDetailClient({
   initialView,
 }: Props) {
   const navigate = useNavigate();
+  const orgId = useOrgId();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [wsToken, setWsToken] = useState<string | null>(null);
   const [createTarget, setCreateTarget] = useState<ChildResourceGroup | null>(null);
@@ -135,8 +137,8 @@ export function ResourceDetailClient({
   const handleChildClick = useCallback(
     (child: ChildResource) => {
       void navigate({
-        to: "/resources/$pluginId/$resourceTypeId/$resourceId",
-        params: { pluginId: child.pluginId, resourceTypeId: child.resourceTypeId, resourceId: child.id },
+        to: "/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId",
+        params: { orgId, pluginId: child.pluginId, resourceTypeId: child.resourceTypeId, resourceId: child.id },
       });
     },
     [navigate],
@@ -156,14 +158,14 @@ export function ResourceDetailClient({
   }, [accountId, resourceId, pluginId, resourceTypeId]);
 
   const handleApplyManifest = useCallback(async (manifest: string): Promise<void> => {
-    await apiPost(`/api/resources/${pluginId}/${resourceTypeId}/manifest`, { accountId, resourceId, manifest });
+    await apiPost(`/api/org/${orgId}/resources/${pluginId}/${resourceTypeId}/manifest`, { accountId, resourceId, manifest });
     dispatchResourcesChanged();
   }, [accountId, resourceId, pluginId, resourceTypeId]);
 
   // ── Delete resource ──────────────────────────────────────────────────────
   async function handleDelete() {
-    await apiDelete(`/api/resources/${pluginId}/${resourceTypeId}?resourceId=${encodeURIComponent(resourceId)}&accountId=${accountId}`);
-    void navigate({ to: "/accounts/$accountId", params: { accountId } });
+    await apiDelete(`/api/org/${orgId}/resources/${pluginId}/${resourceTypeId}?resourceId=${encodeURIComponent(resourceId)}&accountId=${accountId}`);
+    void navigate({ to: "/org/$orgId/accounts/$accountId", params: { orgId, accountId } });
     dispatchResourcesChanged();
   }
 
@@ -226,7 +228,7 @@ export function ResourceDetailClient({
           {sshHost && !sshQuickConnect ? (
             <SshQuickConnectPanel host={sshHost} onConnect={async (config) => {
               setSshQuickConnect(config);
-              const { token } = await apiPost<{ token: string }>("/api/ws-token");
+              const { token } = await apiPost<{ token: string }>(`/api/org/${orgId}/ws-token`);
               setWsToken(token);
             }} />
           ) : sshHost && sshQuickConnect && wsToken ? (
@@ -237,7 +239,7 @@ export function ResourceDetailClient({
             <div className="flex items-center justify-center h-full">
               <button
                 onClick={async () => {
-                  const { token } = await apiPost<{ token: string }>("/api/ws-token");
+                  const { token } = await apiPost<{ token: string }>(`/api/org/${orgId}/ws-token`);
                   setWsToken(token);
                 }}
                 className="px-4 py-2 text-sm text-gray-300 border border-gray-700 hover:border-gray-500 rounded-lg transition-colors"
@@ -372,8 +374,8 @@ export function ResourceDetailClient({
             setCreateTarget(null);
             dispatchResourcesChanged();
             void navigate({
-              to: "/resources/$pluginId/$resourceTypeId/$resourceId",
-              params: { pluginId, resourceTypeId: createTarget.typeId, resourceId: resource.id },
+              to: "/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId",
+              params: { orgId, pluginId, resourceTypeId: createTarget.typeId, resourceId: resource.id },
               search: { accountId },
             });
           }}

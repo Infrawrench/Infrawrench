@@ -9,253 +9,326 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as SettingsRouteImport } from './routes/settings'
-import { Route as IndexRouteImport } from './routes/index'
-import { Route as SettingsIndexRouteImport } from './routes/settings.index'
-import { Route as SettingsTeamRouteImport } from './routes/settings.team'
-import { Route as SettingsBillingRouteImport } from './routes/settings.billing'
-import { Route as SettingsAuditLogRouteImport } from './routes/settings.audit-log'
-import { Route as SettingsApiKeysRouteImport } from './routes/settings.api-keys'
-import { Route as DashboardDashboardIdRouteImport } from './routes/dashboard.$dashboardId'
-import { Route as AccountsAccountIdRouteImport } from './routes/accounts.$accountId'
-import { Route as ResourcesPluginIdResourceTypeIdResourceIdRouteImport } from './routes/resources.$pluginId.$resourceTypeId.$resourceId'
+import { Route as OnboardingRouteImport } from './routes/onboarding'
+import { Route as OrgOrgIdRouteImport } from './routes/org.$orgId'
+import { Route as InviteTokenRouteImport } from './routes/invite.$token'
+import { Route as OrgOrgIdIndexRouteImport } from './routes/org.$orgId.index'
+import { Route as OrgOrgIdSettingsRouteImport } from './routes/org.$orgId.settings'
+import { Route as OrgOrgIdSettingsIndexRouteImport } from './routes/org.$orgId.settings.index'
+import { Route as OrgOrgIdSettingsTeamRouteImport } from './routes/org.$orgId.settings.team'
+import { Route as OrgOrgIdSettingsBillingRouteImport } from './routes/org.$orgId.settings.billing'
+import { Route as OrgOrgIdSettingsAuditLogRouteImport } from './routes/org.$orgId.settings.audit-log'
+import { Route as OrgOrgIdSettingsApiKeysRouteImport } from './routes/org.$orgId.settings.api-keys'
+import { Route as OrgOrgIdDashboardDashboardIdRouteImport } from './routes/org.$orgId.dashboard.$dashboardId'
+import { Route as OrgOrgIdAccountsAccountIdRouteImport } from './routes/org.$orgId.accounts.$accountId'
+import { Route as OrgOrgIdResourcesPluginIdResourceTypeIdResourceIdRouteImport } from './routes/org.$orgId.resources.$pluginId.$resourceTypeId.$resourceId'
 
-const SettingsRoute = SettingsRouteImport.update({
+const OnboardingRoute = OnboardingRouteImport.update({
+  id: '/onboarding',
+  path: '/onboarding',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OrgOrgIdRoute = OrgOrgIdRouteImport.update({
+  id: '/org/$orgId',
+  path: '/org/$orgId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const InviteTokenRoute = InviteTokenRouteImport.update({
+  id: '/invite/$token',
+  path: '/invite/$token',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const OrgOrgIdIndexRoute = OrgOrgIdIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
+const OrgOrgIdSettingsRoute = OrgOrgIdSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => OrgOrgIdRoute,
 } as any)
-const IndexRoute = IndexRouteImport.update({
+const OrgOrgIdSettingsIndexRoute = OrgOrgIdSettingsIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => OrgOrgIdSettingsRoute,
 } as any)
-const SettingsIndexRoute = SettingsIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => SettingsRoute,
-} as any)
-const SettingsTeamRoute = SettingsTeamRouteImport.update({
+const OrgOrgIdSettingsTeamRoute = OrgOrgIdSettingsTeamRouteImport.update({
   id: '/team',
   path: '/team',
-  getParentRoute: () => SettingsRoute,
+  getParentRoute: () => OrgOrgIdSettingsRoute,
 } as any)
-const SettingsBillingRoute = SettingsBillingRouteImport.update({
+const OrgOrgIdSettingsBillingRoute = OrgOrgIdSettingsBillingRouteImport.update({
   id: '/billing',
   path: '/billing',
-  getParentRoute: () => SettingsRoute,
+  getParentRoute: () => OrgOrgIdSettingsRoute,
 } as any)
-const SettingsAuditLogRoute = SettingsAuditLogRouteImport.update({
-  id: '/audit-log',
-  path: '/audit-log',
-  getParentRoute: () => SettingsRoute,
-} as any)
-const SettingsApiKeysRoute = SettingsApiKeysRouteImport.update({
+const OrgOrgIdSettingsAuditLogRoute =
+  OrgOrgIdSettingsAuditLogRouteImport.update({
+    id: '/audit-log',
+    path: '/audit-log',
+    getParentRoute: () => OrgOrgIdSettingsRoute,
+  } as any)
+const OrgOrgIdSettingsApiKeysRoute = OrgOrgIdSettingsApiKeysRouteImport.update({
   id: '/api-keys',
   path: '/api-keys',
-  getParentRoute: () => SettingsRoute,
+  getParentRoute: () => OrgOrgIdSettingsRoute,
 } as any)
-const DashboardDashboardIdRoute = DashboardDashboardIdRouteImport.update({
-  id: '/dashboard/$dashboardId',
-  path: '/dashboard/$dashboardId',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AccountsAccountIdRoute = AccountsAccountIdRouteImport.update({
-  id: '/accounts/$accountId',
-  path: '/accounts/$accountId',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ResourcesPluginIdResourceTypeIdResourceIdRoute =
-  ResourcesPluginIdResourceTypeIdResourceIdRouteImport.update({
+const OrgOrgIdDashboardDashboardIdRoute =
+  OrgOrgIdDashboardDashboardIdRouteImport.update({
+    id: '/dashboard/$dashboardId',
+    path: '/dashboard/$dashboardId',
+    getParentRoute: () => OrgOrgIdRoute,
+  } as any)
+const OrgOrgIdAccountsAccountIdRoute =
+  OrgOrgIdAccountsAccountIdRouteImport.update({
+    id: '/accounts/$accountId',
+    path: '/accounts/$accountId',
+    getParentRoute: () => OrgOrgIdRoute,
+  } as any)
+const OrgOrgIdResourcesPluginIdResourceTypeIdResourceIdRoute =
+  OrgOrgIdResourcesPluginIdResourceTypeIdResourceIdRouteImport.update({
     id: '/resources/$pluginId/$resourceTypeId/$resourceId',
     path: '/resources/$pluginId/$resourceTypeId/$resourceId',
-    getParentRoute: () => rootRouteImport,
+    getParentRoute: () => OrgOrgIdRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute
-  '/settings': typeof SettingsRouteWithChildren
-  '/accounts/$accountId': typeof AccountsAccountIdRoute
-  '/dashboard/$dashboardId': typeof DashboardDashboardIdRoute
-  '/settings/api-keys': typeof SettingsApiKeysRoute
-  '/settings/audit-log': typeof SettingsAuditLogRoute
-  '/settings/billing': typeof SettingsBillingRoute
-  '/settings/team': typeof SettingsTeamRoute
-  '/settings/': typeof SettingsIndexRoute
-  '/resources/$pluginId/$resourceTypeId/$resourceId': typeof ResourcesPluginIdResourceTypeIdResourceIdRoute
+  '/onboarding': typeof OnboardingRoute
+  '/invite/$token': typeof InviteTokenRoute
+  '/org/$orgId': typeof OrgOrgIdRouteWithChildren
+  '/org/$orgId/settings': typeof OrgOrgIdSettingsRouteWithChildren
+  '/org/$orgId/': typeof OrgOrgIdIndexRoute
+  '/org/$orgId/accounts/$accountId': typeof OrgOrgIdAccountsAccountIdRoute
+  '/org/$orgId/dashboard/$dashboardId': typeof OrgOrgIdDashboardDashboardIdRoute
+  '/org/$orgId/settings/api-keys': typeof OrgOrgIdSettingsApiKeysRoute
+  '/org/$orgId/settings/audit-log': typeof OrgOrgIdSettingsAuditLogRoute
+  '/org/$orgId/settings/billing': typeof OrgOrgIdSettingsBillingRoute
+  '/org/$orgId/settings/team': typeof OrgOrgIdSettingsTeamRoute
+  '/org/$orgId/settings/': typeof OrgOrgIdSettingsIndexRoute
+  '/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId': typeof OrgOrgIdResourcesPluginIdResourceTypeIdResourceIdRoute
 }
 export interface FileRoutesByTo {
-  '/': typeof IndexRoute
-  '/accounts/$accountId': typeof AccountsAccountIdRoute
-  '/dashboard/$dashboardId': typeof DashboardDashboardIdRoute
-  '/settings/api-keys': typeof SettingsApiKeysRoute
-  '/settings/audit-log': typeof SettingsAuditLogRoute
-  '/settings/billing': typeof SettingsBillingRoute
-  '/settings/team': typeof SettingsTeamRoute
-  '/settings': typeof SettingsIndexRoute
-  '/resources/$pluginId/$resourceTypeId/$resourceId': typeof ResourcesPluginIdResourceTypeIdResourceIdRoute
+  '/onboarding': typeof OnboardingRoute
+  '/invite/$token': typeof InviteTokenRoute
+  '/org/$orgId': typeof OrgOrgIdIndexRoute
+  '/org/$orgId/accounts/$accountId': typeof OrgOrgIdAccountsAccountIdRoute
+  '/org/$orgId/dashboard/$dashboardId': typeof OrgOrgIdDashboardDashboardIdRoute
+  '/org/$orgId/settings/api-keys': typeof OrgOrgIdSettingsApiKeysRoute
+  '/org/$orgId/settings/audit-log': typeof OrgOrgIdSettingsAuditLogRoute
+  '/org/$orgId/settings/billing': typeof OrgOrgIdSettingsBillingRoute
+  '/org/$orgId/settings/team': typeof OrgOrgIdSettingsTeamRoute
+  '/org/$orgId/settings': typeof OrgOrgIdSettingsIndexRoute
+  '/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId': typeof OrgOrgIdResourcesPluginIdResourceTypeIdResourceIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
-  '/': typeof IndexRoute
-  '/settings': typeof SettingsRouteWithChildren
-  '/accounts/$accountId': typeof AccountsAccountIdRoute
-  '/dashboard/$dashboardId': typeof DashboardDashboardIdRoute
-  '/settings/api-keys': typeof SettingsApiKeysRoute
-  '/settings/audit-log': typeof SettingsAuditLogRoute
-  '/settings/billing': typeof SettingsBillingRoute
-  '/settings/team': typeof SettingsTeamRoute
-  '/settings/': typeof SettingsIndexRoute
-  '/resources/$pluginId/$resourceTypeId/$resourceId': typeof ResourcesPluginIdResourceTypeIdResourceIdRoute
+  '/onboarding': typeof OnboardingRoute
+  '/invite/$token': typeof InviteTokenRoute
+  '/org/$orgId': typeof OrgOrgIdRouteWithChildren
+  '/org/$orgId/settings': typeof OrgOrgIdSettingsRouteWithChildren
+  '/org/$orgId/': typeof OrgOrgIdIndexRoute
+  '/org/$orgId/accounts/$accountId': typeof OrgOrgIdAccountsAccountIdRoute
+  '/org/$orgId/dashboard/$dashboardId': typeof OrgOrgIdDashboardDashboardIdRoute
+  '/org/$orgId/settings/api-keys': typeof OrgOrgIdSettingsApiKeysRoute
+  '/org/$orgId/settings/audit-log': typeof OrgOrgIdSettingsAuditLogRoute
+  '/org/$orgId/settings/billing': typeof OrgOrgIdSettingsBillingRoute
+  '/org/$orgId/settings/team': typeof OrgOrgIdSettingsTeamRoute
+  '/org/$orgId/settings/': typeof OrgOrgIdSettingsIndexRoute
+  '/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId': typeof OrgOrgIdResourcesPluginIdResourceTypeIdResourceIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    | '/'
-    | '/settings'
-    | '/accounts/$accountId'
-    | '/dashboard/$dashboardId'
-    | '/settings/api-keys'
-    | '/settings/audit-log'
-    | '/settings/billing'
-    | '/settings/team'
-    | '/settings/'
-    | '/resources/$pluginId/$resourceTypeId/$resourceId'
+    | '/onboarding'
+    | '/invite/$token'
+    | '/org/$orgId'
+    | '/org/$orgId/settings'
+    | '/org/$orgId/'
+    | '/org/$orgId/accounts/$accountId'
+    | '/org/$orgId/dashboard/$dashboardId'
+    | '/org/$orgId/settings/api-keys'
+    | '/org/$orgId/settings/audit-log'
+    | '/org/$orgId/settings/billing'
+    | '/org/$orgId/settings/team'
+    | '/org/$orgId/settings/'
+    | '/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId'
   fileRoutesByTo: FileRoutesByTo
   to:
-    | '/'
-    | '/accounts/$accountId'
-    | '/dashboard/$dashboardId'
-    | '/settings/api-keys'
-    | '/settings/audit-log'
-    | '/settings/billing'
-    | '/settings/team'
-    | '/settings'
-    | '/resources/$pluginId/$resourceTypeId/$resourceId'
+    | '/onboarding'
+    | '/invite/$token'
+    | '/org/$orgId'
+    | '/org/$orgId/accounts/$accountId'
+    | '/org/$orgId/dashboard/$dashboardId'
+    | '/org/$orgId/settings/api-keys'
+    | '/org/$orgId/settings/audit-log'
+    | '/org/$orgId/settings/billing'
+    | '/org/$orgId/settings/team'
+    | '/org/$orgId/settings'
+    | '/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId'
   id:
     | '__root__'
-    | '/'
-    | '/settings'
-    | '/accounts/$accountId'
-    | '/dashboard/$dashboardId'
-    | '/settings/api-keys'
-    | '/settings/audit-log'
-    | '/settings/billing'
-    | '/settings/team'
-    | '/settings/'
-    | '/resources/$pluginId/$resourceTypeId/$resourceId'
+    | '/onboarding'
+    | '/invite/$token'
+    | '/org/$orgId'
+    | '/org/$orgId/settings'
+    | '/org/$orgId/'
+    | '/org/$orgId/accounts/$accountId'
+    | '/org/$orgId/dashboard/$dashboardId'
+    | '/org/$orgId/settings/api-keys'
+    | '/org/$orgId/settings/audit-log'
+    | '/org/$orgId/settings/billing'
+    | '/org/$orgId/settings/team'
+    | '/org/$orgId/settings/'
+    | '/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute
-  SettingsRoute: typeof SettingsRouteWithChildren
-  AccountsAccountIdRoute: typeof AccountsAccountIdRoute
-  DashboardDashboardIdRoute: typeof DashboardDashboardIdRoute
-  ResourcesPluginIdResourceTypeIdResourceIdRoute: typeof ResourcesPluginIdResourceTypeIdResourceIdRoute
+  OnboardingRoute: typeof OnboardingRoute
+  InviteTokenRoute: typeof InviteTokenRoute
+  OrgOrgIdRoute: typeof OrgOrgIdRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/settings': {
-      id: '/settings'
+    '/onboarding': {
+      id: '/onboarding'
+      path: '/onboarding'
+      fullPath: '/onboarding'
+      preLoaderRoute: typeof OnboardingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/org/$orgId': {
+      id: '/org/$orgId'
+      path: '/org/$orgId'
+      fullPath: '/org/$orgId'
+      preLoaderRoute: typeof OrgOrgIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/invite/$token': {
+      id: '/invite/$token'
+      path: '/invite/$token'
+      fullPath: '/invite/$token'
+      preLoaderRoute: typeof InviteTokenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/org/$orgId/': {
+      id: '/org/$orgId/'
+      path: '/'
+      fullPath: '/org/$orgId/'
+      preLoaderRoute: typeof OrgOrgIdIndexRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
+    '/org/$orgId/settings': {
+      id: '/org/$orgId/settings'
       path: '/settings'
-      fullPath: '/settings'
-      preLoaderRoute: typeof SettingsRouteImport
-      parentRoute: typeof rootRouteImport
+      fullPath: '/org/$orgId/settings'
+      preLoaderRoute: typeof OrgOrgIdSettingsRouteImport
+      parentRoute: typeof OrgOrgIdRoute
     }
-    '/': {
-      id: '/'
+    '/org/$orgId/settings/': {
+      id: '/org/$orgId/settings/'
       path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
+      fullPath: '/org/$orgId/settings/'
+      preLoaderRoute: typeof OrgOrgIdSettingsIndexRouteImport
+      parentRoute: typeof OrgOrgIdSettingsRoute
     }
-    '/settings/': {
-      id: '/settings/'
-      path: '/'
-      fullPath: '/settings/'
-      preLoaderRoute: typeof SettingsIndexRouteImport
-      parentRoute: typeof SettingsRoute
-    }
-    '/settings/team': {
-      id: '/settings/team'
+    '/org/$orgId/settings/team': {
+      id: '/org/$orgId/settings/team'
       path: '/team'
-      fullPath: '/settings/team'
-      preLoaderRoute: typeof SettingsTeamRouteImport
-      parentRoute: typeof SettingsRoute
+      fullPath: '/org/$orgId/settings/team'
+      preLoaderRoute: typeof OrgOrgIdSettingsTeamRouteImport
+      parentRoute: typeof OrgOrgIdSettingsRoute
     }
-    '/settings/billing': {
-      id: '/settings/billing'
+    '/org/$orgId/settings/billing': {
+      id: '/org/$orgId/settings/billing'
       path: '/billing'
-      fullPath: '/settings/billing'
-      preLoaderRoute: typeof SettingsBillingRouteImport
-      parentRoute: typeof SettingsRoute
+      fullPath: '/org/$orgId/settings/billing'
+      preLoaderRoute: typeof OrgOrgIdSettingsBillingRouteImport
+      parentRoute: typeof OrgOrgIdSettingsRoute
     }
-    '/settings/audit-log': {
-      id: '/settings/audit-log'
+    '/org/$orgId/settings/audit-log': {
+      id: '/org/$orgId/settings/audit-log'
       path: '/audit-log'
-      fullPath: '/settings/audit-log'
-      preLoaderRoute: typeof SettingsAuditLogRouteImport
-      parentRoute: typeof SettingsRoute
+      fullPath: '/org/$orgId/settings/audit-log'
+      preLoaderRoute: typeof OrgOrgIdSettingsAuditLogRouteImport
+      parentRoute: typeof OrgOrgIdSettingsRoute
     }
-    '/settings/api-keys': {
-      id: '/settings/api-keys'
+    '/org/$orgId/settings/api-keys': {
+      id: '/org/$orgId/settings/api-keys'
       path: '/api-keys'
-      fullPath: '/settings/api-keys'
-      preLoaderRoute: typeof SettingsApiKeysRouteImport
-      parentRoute: typeof SettingsRoute
+      fullPath: '/org/$orgId/settings/api-keys'
+      preLoaderRoute: typeof OrgOrgIdSettingsApiKeysRouteImport
+      parentRoute: typeof OrgOrgIdSettingsRoute
     }
-    '/dashboard/$dashboardId': {
-      id: '/dashboard/$dashboardId'
+    '/org/$orgId/dashboard/$dashboardId': {
+      id: '/org/$orgId/dashboard/$dashboardId'
       path: '/dashboard/$dashboardId'
-      fullPath: '/dashboard/$dashboardId'
-      preLoaderRoute: typeof DashboardDashboardIdRouteImport
-      parentRoute: typeof rootRouteImport
+      fullPath: '/org/$orgId/dashboard/$dashboardId'
+      preLoaderRoute: typeof OrgOrgIdDashboardDashboardIdRouteImport
+      parentRoute: typeof OrgOrgIdRoute
     }
-    '/accounts/$accountId': {
-      id: '/accounts/$accountId'
+    '/org/$orgId/accounts/$accountId': {
+      id: '/org/$orgId/accounts/$accountId'
       path: '/accounts/$accountId'
-      fullPath: '/accounts/$accountId'
-      preLoaderRoute: typeof AccountsAccountIdRouteImport
-      parentRoute: typeof rootRouteImport
+      fullPath: '/org/$orgId/accounts/$accountId'
+      preLoaderRoute: typeof OrgOrgIdAccountsAccountIdRouteImport
+      parentRoute: typeof OrgOrgIdRoute
     }
-    '/resources/$pluginId/$resourceTypeId/$resourceId': {
-      id: '/resources/$pluginId/$resourceTypeId/$resourceId'
+    '/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId': {
+      id: '/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId'
       path: '/resources/$pluginId/$resourceTypeId/$resourceId'
-      fullPath: '/resources/$pluginId/$resourceTypeId/$resourceId'
-      preLoaderRoute: typeof ResourcesPluginIdResourceTypeIdResourceIdRouteImport
-      parentRoute: typeof rootRouteImport
+      fullPath: '/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId'
+      preLoaderRoute: typeof OrgOrgIdResourcesPluginIdResourceTypeIdResourceIdRouteImport
+      parentRoute: typeof OrgOrgIdRoute
     }
   }
 }
 
-interface SettingsRouteChildren {
-  SettingsApiKeysRoute: typeof SettingsApiKeysRoute
-  SettingsAuditLogRoute: typeof SettingsAuditLogRoute
-  SettingsBillingRoute: typeof SettingsBillingRoute
-  SettingsTeamRoute: typeof SettingsTeamRoute
-  SettingsIndexRoute: typeof SettingsIndexRoute
+interface OrgOrgIdSettingsRouteChildren {
+  OrgOrgIdSettingsApiKeysRoute: typeof OrgOrgIdSettingsApiKeysRoute
+  OrgOrgIdSettingsAuditLogRoute: typeof OrgOrgIdSettingsAuditLogRoute
+  OrgOrgIdSettingsBillingRoute: typeof OrgOrgIdSettingsBillingRoute
+  OrgOrgIdSettingsTeamRoute: typeof OrgOrgIdSettingsTeamRoute
+  OrgOrgIdSettingsIndexRoute: typeof OrgOrgIdSettingsIndexRoute
 }
 
-const SettingsRouteChildren: SettingsRouteChildren = {
-  SettingsApiKeysRoute: SettingsApiKeysRoute,
-  SettingsAuditLogRoute: SettingsAuditLogRoute,
-  SettingsBillingRoute: SettingsBillingRoute,
-  SettingsTeamRoute: SettingsTeamRoute,
-  SettingsIndexRoute: SettingsIndexRoute,
+const OrgOrgIdSettingsRouteChildren: OrgOrgIdSettingsRouteChildren = {
+  OrgOrgIdSettingsApiKeysRoute: OrgOrgIdSettingsApiKeysRoute,
+  OrgOrgIdSettingsAuditLogRoute: OrgOrgIdSettingsAuditLogRoute,
+  OrgOrgIdSettingsBillingRoute: OrgOrgIdSettingsBillingRoute,
+  OrgOrgIdSettingsTeamRoute: OrgOrgIdSettingsTeamRoute,
+  OrgOrgIdSettingsIndexRoute: OrgOrgIdSettingsIndexRoute,
 }
 
-const SettingsRouteWithChildren = SettingsRoute._addFileChildren(
-  SettingsRouteChildren,
+const OrgOrgIdSettingsRouteWithChildren =
+  OrgOrgIdSettingsRoute._addFileChildren(OrgOrgIdSettingsRouteChildren)
+
+interface OrgOrgIdRouteChildren {
+  OrgOrgIdSettingsRoute: typeof OrgOrgIdSettingsRouteWithChildren
+  OrgOrgIdIndexRoute: typeof OrgOrgIdIndexRoute
+  OrgOrgIdAccountsAccountIdRoute: typeof OrgOrgIdAccountsAccountIdRoute
+  OrgOrgIdDashboardDashboardIdRoute: typeof OrgOrgIdDashboardDashboardIdRoute
+  OrgOrgIdResourcesPluginIdResourceTypeIdResourceIdRoute: typeof OrgOrgIdResourcesPluginIdResourceTypeIdResourceIdRoute
+}
+
+const OrgOrgIdRouteChildren: OrgOrgIdRouteChildren = {
+  OrgOrgIdSettingsRoute: OrgOrgIdSettingsRouteWithChildren,
+  OrgOrgIdIndexRoute: OrgOrgIdIndexRoute,
+  OrgOrgIdAccountsAccountIdRoute: OrgOrgIdAccountsAccountIdRoute,
+  OrgOrgIdDashboardDashboardIdRoute: OrgOrgIdDashboardDashboardIdRoute,
+  OrgOrgIdResourcesPluginIdResourceTypeIdResourceIdRoute:
+    OrgOrgIdResourcesPluginIdResourceTypeIdResourceIdRoute,
+}
+
+const OrgOrgIdRouteWithChildren = OrgOrgIdRoute._addFileChildren(
+  OrgOrgIdRouteChildren,
 )
 
 const rootRouteChildren: RootRouteChildren = {
-  IndexRoute: IndexRoute,
-  SettingsRoute: SettingsRouteWithChildren,
-  AccountsAccountIdRoute: AccountsAccountIdRoute,
-  DashboardDashboardIdRoute: DashboardDashboardIdRoute,
-  ResourcesPluginIdResourceTypeIdResourceIdRoute:
-    ResourcesPluginIdResourceTypeIdResourceIdRoute,
+  OnboardingRoute: OnboardingRoute,
+  InviteTokenRoute: InviteTokenRoute,
+  OrgOrgIdRoute: OrgOrgIdRouteWithChildren,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

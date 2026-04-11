@@ -2,6 +2,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useState, useEffect, useRef } from "react";
 import { DroppableDashboardArea, useUIStore, formatErrorMessage, extractHostLabel } from "@infrawrench/ui";
 import { apiPost, apiDelete } from "@/lib/api";
+import { useOrgId } from "@/lib/useOrgId";
 import { SpotlightSearch } from "./SpotlightSearch";
 
 interface PinnedResource {
@@ -40,6 +41,7 @@ interface DashboardViewProps {
 
 export function DashboardView({ dashboardId, dashboardName: initialName, isHome = false, pins: initialPins }: DashboardViewProps) {
   const navigate = useNavigate();
+  const orgId = useOrgId();
   const [pins, setPins] = useState(initialPins);
   const [unpinning, setUnpinning] = useState<string | null>(null);
   const [spotlightMode, setSpotlightMode] = useState<"pin" | "navigate" | null>(null);
@@ -68,7 +70,7 @@ export function DashboardView({ dashboardId, dashboardName: initialName, isHome 
     });
 
     apiPost<Record<string, Omit<CardStatus, "phase"> & { phase: "ok" | "error" }>>(
-      "/api/dashboards/probe",
+      `/api/org/${orgId}/dashboards/probe`,
       {
         items: pins.map((p) => ({
           resourceId: p.resourceId,
@@ -106,7 +108,7 @@ export function DashboardView({ dashboardId, dashboardName: initialName, isHome 
   async function handleUnpin(pinId: string, resourceId: string) {
     setUnpinning(pinId);
     try {
-      await apiPost("/api/dashboards/unpin", { dashboardId, resourceId });
+      await apiPost(`/api/org/${orgId}/dashboards/unpin`, { dashboardId, resourceId });
       setPins((prev) => prev.filter((p) => p.pinId !== pinId));
     } catch (e) {
       console.error("Failed to unpin:", e);
@@ -120,7 +122,7 @@ export function DashboardView({ dashboardId, dashboardName: initialName, isHome 
     setDashboardName(trimmed);
     setEditingName(false);
     try {
-      await apiPost(`/api/dashboards/${dashboardId}/rename`, { name: trimmed });
+      await apiPost(`/api/org/${orgId}/dashboards/${dashboardId}/rename`, { name: trimmed });
     } catch (e) {
       console.error("Failed to rename:", e);
     }
@@ -129,8 +131,8 @@ export function DashboardView({ dashboardId, dashboardName: initialName, isHome 
   async function deleteDashboard() {
     if (isHome) return;
     try {
-      await apiDelete(`/api/dashboards/${dashboardId}`);
-      void navigate({ to: "/" });
+      await apiDelete(`/api/org/${orgId}/dashboards/${dashboardId}`);
+      void navigate({ to: "/org/$orgId", params: { orgId } });
     } catch (e) {
       console.error("Failed to delete:", e);
     }
@@ -212,8 +214,8 @@ export function DashboardView({ dashboardId, dashboardName: initialName, isHome 
                     <button
                       onClick={() =>
                         void navigate({
-                          to: "/resources/$pluginId/$resourceTypeId/$resourceId",
-                          params: { pluginId: pin.pluginId, resourceTypeId: pin.resourceTypeId, resourceId: pin.resourceId },
+                          to: "/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId",
+                          params: { orgId, pluginId: pin.pluginId, resourceTypeId: pin.resourceTypeId, resourceId: pin.resourceId },
                         })
                       }
                       className="flex-1 flex flex-col p-5 text-left gap-3"

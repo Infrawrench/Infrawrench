@@ -23,7 +23,7 @@ app.get("/", async (c) => {
   const from = c.req.query("from");
   const to = c.req.query("to");
 
-  const conditions = [eq(auditLogs.organizationId, session.organizationId)];
+  const conditions = [eq(auditLogs.organizationId, c.get("organizationId"))];
   if (action) conditions.push(eq(auditLogs.action, action));
   if (entityType) conditions.push(eq(auditLogs.entityType, entityType));
   if (userId) conditions.push(eq(auditLogs.userId, userId));

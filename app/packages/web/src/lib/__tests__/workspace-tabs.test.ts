@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mockPinWorkspaceTab = vi.fn();
 const mockOpenInActiveWorkspaceTab = vi.fn();
@@ -23,6 +23,14 @@ import {
   navigateToWorkspaceTarget,
   syncWorkspaceRouteFromPath,
 } from "../workspace-tabs";
+
+// Mock window.location.pathname for getWorkspaceNavigateArgs (reads orgId from URL)
+beforeEach(() => {
+  Object.defineProperty(window, "location", {
+    value: { pathname: "/org/test-org/dashboard/d1", search: "" },
+    writable: true,
+  });
+});
 
 describe("dashboardTabTarget", () => {
   it("returns a dashboard target", () => {
@@ -72,12 +80,12 @@ describe("resourceSftpTabTarget", () => {
 describe("getWorkspaceNavigateArgs", () => {
   it("returns dashboard route args", () => {
     const args = getWorkspaceNavigateArgs({ kind: "dashboard", dashboardId: "d1" });
-    expect(args).toEqual({ to: "/dashboard/$dashboardId", params: { dashboardId: "d1" } });
+    expect(args).toEqual({ to: "/org/$orgId/dashboard/$dashboardId", params: { orgId: "test-org", dashboardId: "d1" } });
   });
 
   it("returns account route args", () => {
     const args = getWorkspaceNavigateArgs({ kind: "account", accountId: "a1" });
-    expect(args).toEqual({ to: "/accounts/$accountId", params: { accountId: "a1" } });
+    expect(args).toEqual({ to: "/org/$orgId/accounts/$accountId", params: { orgId: "test-org", accountId: "a1" } });
   });
 
   it("returns resource route args with ssh hash (fallback without pluginId)", () => {
@@ -87,7 +95,7 @@ describe("getWorkspaceNavigateArgs", () => {
       resourceId: "r1",
       view: "ssh",
     });
-    expect(args).toMatchObject({ to: "/accounts/$accountId", params: { accountId: "a1" }, hash: "ssh" });
+    expect(args).toMatchObject({ to: "/org/$orgId/accounts/$accountId", params: { orgId: "test-org", accountId: "a1" }, hash: "ssh" });
   });
 
   it("returns resource route args with ssh hash (with pluginId/resourceTypeId)", () => {
@@ -100,8 +108,8 @@ describe("getWorkspaceNavigateArgs", () => {
       resourceTypeId: "ec2-instance",
     });
     expect(args).toMatchObject({
-      to: "/resources/$pluginId/$resourceTypeId/$resourceId",
-      params: { pluginId: "aws", resourceTypeId: "ec2-instance", resourceId: "r1" },
+      to: "/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId",
+      params: { orgId: "test-org", pluginId: "aws", resourceTypeId: "ec2-instance", resourceId: "r1" },
       search: { accountId: "a1" },
       hash: "ssh",
     });
@@ -128,15 +136,15 @@ describe("syncWorkspaceRouteFromPath", () => {
     expect(syncWorkspaceRouteFromPath("/")).toBeNull();
   });
 
-  it("parses dashboard path", () => {
-    expect(syncWorkspaceRouteFromPath("/dashboard/d1")).toEqual({
+  it("parses org-scoped dashboard path", () => {
+    expect(syncWorkspaceRouteFromPath("/org/myorg/dashboard/d1")).toEqual({
       kind: "dashboard",
       dashboardId: "d1",
     });
   });
 
-  it("parses accounts path", () => {
-    expect(syncWorkspaceRouteFromPath("/accounts/a1")).toEqual({
+  it("parses org-scoped accounts path", () => {
+    expect(syncWorkspaceRouteFromPath("/org/myorg/accounts/a1")).toEqual({
       kind: "account",
       accountId: "a1",
     });
@@ -144,6 +152,10 @@ describe("syncWorkspaceRouteFromPath", () => {
 
   it("returns null for unknown paths", () => {
     expect(syncWorkspaceRouteFromPath("/settings")).toBeNull();
+  });
+
+  it("returns null for org path without sub-route", () => {
+    expect(syncWorkspaceRouteFromPath("/org/myorg")).toBeNull();
   });
 });
 
@@ -167,8 +179,8 @@ describe("navigateToWorkspaceTarget", () => {
     // Should navigate to the resource detail route with hash "ssh"
     expect(mockNavigate).toHaveBeenCalledWith(
       expect.objectContaining({
-        to: "/resources/$pluginId/$resourceTypeId/$resourceId",
-        params: { pluginId: "aws", resourceTypeId: "ec2-instance", resourceId: "res-1" },
+        to: "/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId",
+        params: expect.objectContaining({ pluginId: "aws", resourceTypeId: "ec2-instance", resourceId: "res-1" }),
         hash: "ssh",
       }),
     );
@@ -191,7 +203,7 @@ describe("navigateToWorkspaceTarget", () => {
 
     expect(mockNavigate).toHaveBeenCalledWith(
       expect.objectContaining({
-        to: "/resources/$pluginId/$resourceTypeId/$resourceId",
+        to: "/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId",
         hash: "sftp",
       }),
     );

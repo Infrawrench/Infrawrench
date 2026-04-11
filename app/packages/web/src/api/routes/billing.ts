@@ -20,7 +20,7 @@ app.get("/status", async (c) => {
   const [sub] = await db
     .select()
     .from(subscriptions)
-    .where(eq(subscriptions.organizationId, session.organizationId));
+    .where(eq(subscriptions.organizationId, c.get("organizationId")));
   if (!sub) return c.json(null);
   return c.json({
     status: sub.status,
@@ -39,7 +39,7 @@ app.post("/checkout", async (c) => {
   let [sub] = await db
     .select()
     .from(subscriptions)
-    .where(eq(subscriptions.organizationId, session.organizationId));
+    .where(eq(subscriptions.organizationId, c.get("organizationId")));
 
   let customerId: string;
   if (sub) {
@@ -47,12 +47,12 @@ app.post("/checkout", async (c) => {
   } else {
     const customer = await stripe.customers.create({
       email: session.email,
-      metadata: { organizationId: session.organizationId },
+      metadata: { organizationId: c.get("organizationId") },
     });
     customerId = customer.id;
     await db.insert(subscriptions).values({
       id: uuid(),
-      organizationId: session.organizationId,
+      organizationId: c.get("organizationId"),
       stripeCustomerId: customerId,
       status: "trialing",
       seatCount: 1,
@@ -80,7 +80,7 @@ app.post("/portal", async (c) => {
   const [sub] = await db
     .select()
     .from(subscriptions)
-    .where(eq(subscriptions.organizationId, session.organizationId));
+    .where(eq(subscriptions.organizationId, c.get("organizationId")));
   if (!sub) return c.json({ error: "No subscription found" }, 404);
 
   const appUrl = process.env["APP_URL"] ?? process.env["NEXT_PUBLIC_APP_URL"] ?? "http://localhost:3000";

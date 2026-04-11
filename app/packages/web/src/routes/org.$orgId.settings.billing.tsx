@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useParams } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { apiGet, apiPost } from "@/lib/api";
 
@@ -9,22 +9,23 @@ interface SubscriptionStatus {
   stripeCustomerId: string;
 }
 
-export const Route = createFileRoute("/settings/billing")({
+export const Route = createFileRoute("/org/$orgId/settings/billing")({
   component: BillingPage,
 });
 
 function BillingPage() {
+  const { orgId } = useParams({ from: "/org/$orgId/settings/billing" });
   const [sub, setSub] = useState<SubscriptionStatus | null | undefined>(undefined);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    apiGet<SubscriptionStatus | null>("/api/billing/status").then(setSub);
+    apiGet<SubscriptionStatus | null>(`/api/org/${orgId}/billing/status`).then(setSub);
   }, []);
 
   async function handleUpgrade() {
     setLoading(true);
     try {
-      const { url } = await apiPost<{ url: string }>("/api/billing/checkout");
+      const { url } = await apiPost<{ url: string }>(`/api/org/${orgId}/billing/checkout`);
       window.location.href = url;
     } catch (e) {
       console.error("Checkout error:", e);
@@ -35,7 +36,7 @@ function BillingPage() {
   async function handleManage() {
     setLoading(true);
     try {
-      const { url } = await apiPost<{ url: string }>("/api/billing/portal");
+      const { url } = await apiPost<{ url: string }>(`/api/org/${orgId}/billing/portal`);
       window.location.href = url;
     } catch (e) {
       console.error("Portal error:", e);

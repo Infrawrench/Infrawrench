@@ -21,11 +21,11 @@ function buildApp() {
   const app = new Hono();
   const session: AuthSession = {
     userId: "user-1",
-    organizationId: "org-1",
     email: "test@example.com",
   };
   app.use("*", async (c, next) => {
     c.set("session", session);
+    c.set("organizationId", "org-1");
     return next();
   });
   app.route("/", authRoutes);
@@ -65,9 +65,8 @@ describe("Auth routes", () => {
       const res = await app.request("/me", { method: "GET" });
       expect(res.status).toBe(200);
       const body = await res.json();
-      expect(body).toEqual({
+      expect(body).toMatchObject({
         userId: "user-1",
-        organizationId: "org-1",
         email: "test@example.com",
       });
     });

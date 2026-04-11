@@ -112,7 +112,7 @@ const app = new Hono();
  * Returns owner info so the UI can show who owns each key.
  */
 app.get("/", async (c) => {
-  const { organizationId } = c.get("session");
+  const organizationId = c.get("organizationId");
   const rows = await db
     .select({
       id: sshKeys.id,
@@ -155,7 +155,8 @@ app.get("/", async (c) => {
  * public key + private key to the caller (private key is only returned once).
  */
 app.post("/", async (c) => {
-  const { organizationId, userId } = c.get("session");
+  const organizationId = c.get("organizationId");
+  const { userId } = c.get("session");
   const { name } = await c.req.json<{ name: string }>();
 
   if (!name?.trim()) return c.json({ error: "Name is required" }, 400);
@@ -207,7 +208,8 @@ app.post("/", async (c) => {
 
 /** DELETE /api/ssh-keys/:id — delete a key (only the owner can delete their own) */
 app.delete("/:id", async (c) => {
-  const { organizationId, userId } = c.get("session");
+  const organizationId = c.get("organizationId");
+  const { userId } = c.get("session");
   const id = c.req.param("id");
 
   const result = await db

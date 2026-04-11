@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useParams } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { apiGet } from "@/lib/api";
 
@@ -45,11 +45,12 @@ const ACTION_LABELS: Record<string, string> = {
 
 const ENTITY_TYPES = ["account", "resource", "dashboard", "api_key", "member", "subscription"];
 
-export const Route = createFileRoute("/settings/audit-log")({
+export const Route = createFileRoute("/org/$orgId/settings/audit-log")({
   component: AuditLogPage,
 });
 
 function AuditLogPage() {
+  const { orgId } = useParams({ from: "/org/$orgId/settings/audit-log" });
   const [entries, setEntries] = useState<AuditLogEntry[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -61,7 +62,7 @@ function AuditLogPage() {
     setLoading(true);
     const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) });
     if (entityTypeFilter) params.set("entityType", entityTypeFilter);
-    apiGet<{ entries: AuditLogEntry[]; total: number }>(`/api/audit-logs?${params}`).then((result) => {
+    apiGet<{ entries: AuditLogEntry[]; total: number }>(`/api/org/${orgId}/audit-logs?${params}`).then((result) => {
       setEntries(result.entries);
       setTotal(result.total);
       setLoading(false);

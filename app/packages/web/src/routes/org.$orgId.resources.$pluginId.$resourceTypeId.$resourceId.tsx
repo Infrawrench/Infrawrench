@@ -5,7 +5,7 @@ import { ResourceDetailClient } from "@/components/ResourceDetailClient";
 import { apiGet } from "@/lib/api";
 
 export const Route = createFileRoute(
-  "/resources/$pluginId/$resourceTypeId/$resourceId",
+  "/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId",
 )({
   component: ResourceDetailPage,
   validateSearch: (search: Record<string, unknown>): { accountId?: string } => ({
@@ -14,7 +14,7 @@ export const Route = createFileRoute(
 });
 
 function ResourceDetailPage() {
-  const { pluginId, resourceTypeId, resourceId: rawResourceId } = Route.useParams();
+  const { orgId, pluginId, resourceTypeId, resourceId: rawResourceId } = Route.useParams();
   const decodedResourceId = decodeURIComponent(rawResourceId);
   const resourceId = decodedResourceId;
   const { accountId } = Route.useSearch();
@@ -24,7 +24,7 @@ function ResourceDetailPage() {
   const [data, setData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const detailUrl = `/api/resources/${pluginId}/${resourceTypeId}/detail?resourceId=${encodeURIComponent(resourceId)}${accountId ? `&accountId=${encodeURIComponent(accountId)}` : ""}`;
+  const detailUrl = `/api/org/${orgId}/resources/${pluginId}/${resourceTypeId}/detail?resourceId=${encodeURIComponent(resourceId)}${accountId ? `&accountId=${encodeURIComponent(accountId)}` : ""}`;
 
   useEffect(() => {
     setData(null);

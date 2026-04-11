@@ -5,6 +5,8 @@ import {
   DroppableDashboardItem,
   DraggableSidebarResource,
   RESOURCES_CHANGED_EVENT,
+  OrgSwitcher,
+  type OrgEntry,
 } from "@infrawrench/ui";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import { AddAccountModal } from "./AddAccountModal";
@@ -37,7 +39,11 @@ interface DashboardEntry {
   isDefault: boolean;
 }
 
-export function WebSidebar() {
+interface WebSidebarProps {
+  orgId: string | null;
+}
+
+export function WebSidebar({ orgId }: WebSidebarProps) {
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [groups, setGroups] = useState<PluginGroup[]>([]);
@@ -57,25 +63,38 @@ export function WebSidebar() {
   const newDashboardRef = useRef<HTMLInputElement>(null);
   const renameRef = useRef<HTMLInputElement>(null);
 
+  // Org switcher state
+  const [orgs, setOrgs] = useState<OrgEntry[]>([]);
+
   const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed);
   const toggleSidebar = useUIStore((s) => s.toggleSidebar);
   const accountsVersion = useUIStore((s) => s.accountsVersion);
   const dashboardPinsVersion = useUIStore((s) => s.dashboardPinsVersion);
 
+  // Load orgs for the switcher
+  useEffect(() => {
+    apiGet<OrgEntry[]>("/api/auth/orgs").then(setOrgs).catch(console.error);
+  }, []);
+
+  // API base path for org-scoped calls
+  const apiBase = orgId ? `/api/org/${orgId}` : null;
+
   // Load dashboards
   useEffect(() => {
-    apiGet<DashboardEntry[]>("/api/dashboards").then(setDashboardList).catch(console.error);
-  }, [dashboardPinsVersion]);
+    if (!apiBase) return;
+    apiGet<DashboardEntry[]>(`${apiBase}/dashboards`).then(setDashboardList).catch(console.error);
+  }, [apiBase, dashboardPinsVersion]);
 
   // Load accounts and plugins
   useEffect(() => {
+    if (!apiBase) return;
     let cancelled = false;
     async function load() {
       setLoading(true);
       try {
         const [accts, pluginList] = await Promise.all([
-          apiGet<AccountSummary[]>("/api/accounts"),
-          apiGet<Array<{ id: string; displayName: string; logoSvg: string }>>("/api/accounts/plugins"),
+          apiGet<AccountSummary[]>(`${apiBase}/accounts`),
+          apiGet<Array<{ id: string; displayName: string; logoSvg: string }>>(`${apiBase}/accounts/plugins`),
         ]);
         if (cancelled) return;
 
@@ -104,7 +123,13 @@ export function WebSidebar() {
     }
     load();
     return () => { cancelled = true; };
-  }, [accountsVersion]);
+  }, [apiBase, accountsVersion]);
+
+  // Reset expanded state when org changes
+  useEffect(() => {
+    setExpanded(new Set());
+    setAccountResources({});
+  }, [orgId]);
 
   // Focus inputs when they appear
   useEffect(() => {
@@ -115,16 +140,23 @@ export function WebSidebar() {
     if (renamingId) renameRef.current?.focus();
   }, [renamingId]);
 
+  function handleOrgSwitch(newOrgId: string | null) {
+    if (newOrgId && newOrgId !== orgId) {
+      void navigate({ to: "/org/$orgId", params: { orgId: newOrgId } });
+    }
+  }
+
   async function handleCreateDashboard() {
+    if (!apiBase) return;
     const name = newDashboardName.trim();
     setAddingDashboard(false);
     setNewDashboardName("");
     if (!name) return;
     try {
-      const created = await apiPost<{ id: string; name: string }>("/api/dashboards", { name });
+      const created = await apiPost<{ id: string; name: string }>(`${apiBase}/dashboards`, { name });
       if (created) {
         setDashboardList((prev) => [...prev, { id: created.id, name: created.name, isDefault: false }]);
-        void navigate({ to: "/dashboard/$dashboardId", params: { dashboardId: created.id } });
+        void navigate({ to: "/org/$orgId/dashboard/$dashboardId", params: { orgId: orgId!, dashboardId: created.id } });
       }
     } catch (e) {
       console.error("Failed to create dashboard:", e);
@@ -132,13 +164,14 @@ export function WebSidebar() {
   }
 
   async function handleRename() {
+    if (!apiBase) return;
     const name = renameValue.trim();
     const id = renamingId;
     setRenamingId(null);
     setRenameValue("");
     if (!name || !id) return;
     try {
-      await apiPost(`/api/dashboards/${id}/rename`, { name });
+      await apiPost(`${apiBase}/dashboards/${id}/rename`, { name });
       setDashboardList((prev) =>
         prev.map((d) => (d.id === id ? { ...d, name } : d)),
       );
@@ -148,11 +181,12 @@ export function WebSidebar() {
   }
 
   async function handleDelete(id: string) {
+    if (!apiBase) return;
     try {
-      await apiDelete(`/api/dashboards/${id}`);
+      await apiDelete(`${apiBase}/dashboards/${id}`);
       setDashboardList((prev) => prev.filter((d) => d.id !== id));
-      if (pathname === `/dashboard/${id}`) {
-        void navigate({ to: "/" });
+      if (pathname === `/org/${orgId}/dashboard/${id}`) {
+        void navigate({ to: "/org/$orgId", params: { orgId: orgId! } });
       }
     } catch (e) {
       console.error("Failed to delete dashboard:", e);
@@ -160,6 +194,7 @@ export function WebSidebar() {
   }
 
   async function loadResources(accountId: string, background = false) {
+    if (!apiBase) return;
     if (!background) {
       setAccountResources((prev) => ({
         ...prev,
@@ -168,11 +203,10 @@ export function WebSidebar() {
     }
 
     try {
-      // Load from DB and sync in parallel — show DB results immediately, refresh after sync
       const [existing] = await Promise.all([
-        apiGet<ResourceSummary[]>(`/api/accounts/${accountId}/resources?topLevelOnly=true`),
-        apiPost(`/api/accounts/${accountId}/sync`)
-          .then(() => apiGet<ResourceSummary[]>(`/api/accounts/${accountId}/resources?topLevelOnly=true`))
+        apiGet<ResourceSummary[]>(`${apiBase}/accounts/${accountId}/resources?topLevelOnly=true`),
+        apiPost(`${apiBase}/accounts/${accountId}/sync`)
+          .then(() => apiGet<ResourceSummary[]>(`${apiBase}/accounts/${accountId}/resources?topLevelOnly=true`))
           .then((fresh) => {
             setAccountResources((prev) => ({
               ...prev,
@@ -216,7 +250,7 @@ export function WebSidebar() {
     }
     window.addEventListener(RESOURCES_CHANGED_EVENT, handler);
     return () => window.removeEventListener(RESOURCES_CHANGED_EVENT, handler);
-  }, [expanded]);
+  }, [expanded, apiBase]);
 
   // Auto-refresh expanded accounts every 30s
   useEffect(() => {
@@ -227,7 +261,7 @@ export function WebSidebar() {
       }
     }, 30_000);
     return () => clearInterval(id);
-  }, [expanded]);
+  }, [expanded, apiBase]);
 
   if (sidebarCollapsed) {
     return (
@@ -244,11 +278,18 @@ export function WebSidebar() {
   return (
     <>
       <aside className="w-60 border-r border-gray-800 flex flex-col overflow-hidden flex-shrink-0">
-        <div className="flex items-center justify-between px-3 py-2 border-b border-gray-800">
-          <span className="text-sm font-semibold text-gray-300">Infrawrench</span>
+        <div className="flex items-center justify-between px-1 py-1 border-b border-gray-800">
+          <div className="flex-1 min-w-0">
+            <OrgSwitcher
+              orgs={orgs}
+              activeOrgId={orgId}
+              onSwitch={handleOrgSwitch}
+              onCreateOrg={() => void navigate({ to: "/onboarding" })}
+            />
+          </div>
           <button
             onClick={toggleSidebar}
-            className="text-gray-700 hover:text-gray-400 transition-colors text-xs"
+            className="text-gray-700 hover:text-gray-400 transition-colors text-xs px-2"
             aria-label="Collapse sidebar"
           >
             &#9664;
@@ -272,10 +313,12 @@ export function WebSidebar() {
             </div>
 
             {dashboardList.map((dash) => {
+              const dashHref = dash.isDefault
+                ? `/org/${orgId}`
+                : `/org/${orgId}/dashboard/${dash.id}`;
               const isActive = dash.isDefault
-                ? pathname === "/"
-                : pathname === `/dashboard/${dash.id}`;
-              const href = dash.isDefault ? "/" : `/dashboard/${dash.id}`;
+                ? pathname === `/org/${orgId}` || pathname === `/org/${orgId}/`
+                : pathname === `/org/${orgId}/dashboard/${dash.id}`;
 
               if (renamingId === dash.id) {
                 return (
@@ -305,7 +348,7 @@ export function WebSidebar() {
                   name={dash.name}
                   isActive={isActive}
                   isDefault={dash.isDefault}
-                  onClick={() => void navigate({ to: href })}
+                  onClick={() => void navigate({ to: dashHref })}
                   onDoubleClick={
                     !dash.isDefault
                       ? () => {
@@ -378,7 +421,7 @@ export function WebSidebar() {
                         </span>
                       </button>
                       <button
-                        onClick={() => void navigate({ to: "/accounts/$accountId", params: { accountId: account.id } })}
+                        onClick={() => void navigate({ to: "/org/$orgId/accounts/$accountId", params: { orgId: orgId!, accountId: account.id } })}
                         className="flex items-center gap-2 flex-1 text-left min-w-0"
                       >
                         <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-gray-600" />
@@ -410,8 +453,8 @@ export function WebSidebar() {
                               fields: {},
                             }}
                             onClick={() => void navigate({
-                              to: "/resources/$pluginId/$resourceTypeId/$resourceId",
-                              params: { pluginId: resource.pluginId, resourceTypeId: resource.resourceTypeId, resourceId: resource.id },
+                              to: "/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId",
+                              params: { orgId: orgId!, pluginId: resource.pluginId, resourceTypeId: resource.resourceTypeId, resourceId: resource.id },
                             })}
                           />
                         ))}
@@ -434,7 +477,7 @@ export function WebSidebar() {
             Add account
           </button>
           <button
-            onClick={() => void navigate({ to: "/settings" })}
+            onClick={() => void navigate({ to: "/org/$orgId/settings", params: { orgId: orgId! } })}
             className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-gray-500 hover:text-gray-300 hover:bg-gray-800 transition-colors"
           >
             <span className="text-base leading-none">&#9881;</span>
