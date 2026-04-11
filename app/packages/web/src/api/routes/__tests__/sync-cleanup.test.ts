@@ -13,8 +13,6 @@ import type { AuthSession } from "@/api/auth-middleware";
  * and never persists resource state in a DB.
  */
 
-// ── Mocks ──────────────────────────────────────────────────────────────────
-
 const insertCalls: Array<{ values: unknown; conflictSet: unknown }> = [];
 const updateCalls: Array<{ set: unknown }> = [];
 
@@ -50,8 +48,6 @@ vi.mock("@/services/host-services", () => ({
 vi.mock("uuid", () => ({ v4: () => "uuid-1" }));
 
 const { accountRoutes } = await import("@/api/routes/accounts");
-
-// ── Helpers ────────────────────────────────────────────────────────────────
 
 function buildApp() {
   const app = new Hono();
@@ -129,8 +125,6 @@ function setupSync(pluginResources: ReturnType<typeof makeResource>[]) {
 
   return { mockClient, updateWhere, updateSet };
 }
-
-// ── Tests ──────────────────────────────────────────────────────────────────
 
 describe("syncAccountResources stale resource cleanup", () => {
   beforeEach(() => {

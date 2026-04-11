@@ -108,7 +108,6 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
           ]),
         );
 
-        // Build sshEndpoint lookup from all resource types
         const sshMap: Record<string, { hostOutputKey: string; runningWhen?: { fieldKey: string; value: string } }> = {};
         for (const p of plugins) {
           for (const rt of p.plugin.resourceTypes) {
@@ -117,7 +116,6 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
         }
         if (!cancelled) setSshEndpointByTypeId(sshMap);
 
-        // Build set of plugin IDs that support secret import
         const importPlugins = new Set<string>();
         for (const p of plugins) {
           if (p.plugin.manifest.supportsSecretImport) importPlugins.add(p.plugin.manifest.id);
@@ -133,7 +131,6 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
         }
         if (!cancelled) setKubeconfigTypeIds(kcTypes);
 
-        // Group accounts by plugin
         const groupMap = new Map<string, PluginGroup>();
         for (const row of rows) {
           if (!groupMap.has(row.plugin_id)) {
@@ -195,7 +192,6 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
         ...prev,
         [id]: { loading: false, error: null, resources: allResources },
       }));
-      // Record SSH host values for resources with sshEndpoint
       const sshHosts: Record<string, string> = {};
       for (const r of allResources) {
         const endpoint = sshEndpointByTypeId[r.resourceTypeId];
@@ -292,7 +288,6 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
       }>).detail;
 
       if (kind === "account") {
-        // Drop onto a K8s account row — use account credentials directly
         const allAccounts = groups.flatMap((g) => g.accounts);
         const account = allAccounts.find((a) => a.id === targetId);
         if (!account || !secretImportPluginIds.has(account.pluginId)) return;
@@ -313,15 +308,12 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
           }
         })();
       } else {
-        // Drop onto a resource — could be a K8s cluster (secret import) or a VM (SSH tunnel)
         const allResources = Object.values(accountResources).flatMap((s) => s.resources);
         const targetResource = allResources.find((r) => r.id === targetId);
         if (!targetResource) return;
 
-        // Check if the target is a VM with an SSH endpoint
         const sshHost = resourceSshHosts[targetId];
         if (sshHost && !kubeconfigTypeIds.has(targetResource.resourceTypeId)) {
-          // Tunnel-able services open the SSH tunnel modal
           const TUNNEL_PLUGINS = new Set(["docker", "postgres", "mysql", "redis", "memcached"]);
           const sourcePlugin = source.pluginId === "__account__"
             ? String(source.fields["pluginId"] ?? "") : source.pluginId;
@@ -343,7 +335,6 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
         }
 
         if (!kubeconfigTypeIds.has(targetResource.resourceTypeId)) return;
-        // Find the account that owns this resource
         const allAccounts = groups.flatMap((g) => g.accounts);
         const ownerAccount = allAccounts.find((a) => a.id === targetResource.accountId);
         if (!ownerAccount) return;
@@ -379,7 +370,6 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
     return () => window.removeEventListener("iw:sidebar-secret-drop", handler);
   }, [groups, secretImportPluginIds, accountResources, kubeconfigTypeIds]);
 
-  // Close context menu on outside click
   useEffect(() => {
     if (!contextMenu) return;
     function handleClick(e: MouseEvent) {

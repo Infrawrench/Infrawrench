@@ -117,17 +117,14 @@ function RootLayout() {
   const [showAddAccount, setShowAddAccount] = useState(false);
   const [tabsValidated, setTabsValidated] = useState(false);
 
-  // Org switcher state
   const [cloudOrgs, setCloudOrgs] = useState<CloudOrg[]>([]);
   const [activeOrgId, setActiveOrgId] = useState<string | null>(null); // null = Local
   const [cloudAuthenticated, setCloudAuthenticated] = useState(false);
 
-  // Sync activeOrgId to the UI store so child components can check it
   useEffect(() => {
     setActiveCloudOrgId(activeOrgId);
   }, [activeOrgId, setActiveCloudOrgId]);
 
-  // Load cloud auth status and orgs on mount
   useEffect(() => {
     getCloudAuthStatus().then((status) => {
       setCloudAuthenticated(status.authenticated);

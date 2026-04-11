@@ -55,8 +55,6 @@ import {
   cronJobPeerGroup,
 } from "./peer-groups.js";
 
-// ── Helper: system namespaces to collapse/filter ────────────────────────────
-
 const SYSTEM_NAMESPACES = new Set([
   "kube-system",
   "kube-public",
@@ -72,8 +70,6 @@ const SYSTEM_NAMESPACES = new Set([
   "knative-serving",
   "gke-managed-filestorecsi",
 ]);
-
-// ── Client ──────────────────────────────────────────────────────────────────
 
 export class KubernetesClient implements PluginClient {
   private readonly parsed: ParsedKubeconfig;
@@ -113,8 +109,6 @@ export class KubernetesClient implements PluginClient {
     if (!res.ok) throw new Error(`K8s API error ${res.status}: ${await res.text()}`);
     return res.json() as Promise<T>;
   }
-
-  // ── listResources ───────────────────────────────────────────────────────
 
   async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
     switch (typeId) {
@@ -177,8 +171,6 @@ export class KubernetesClient implements PluginClient {
     );
   }
 
-  // ── Detail views ────────────────────────────────────────────────────────
-
   renderDetail(resource: ResourceInstance): DetailViewSchema {
     switch (resource.resourceTypeId) {
       case "k8s-pod":
@@ -205,8 +197,6 @@ export class KubernetesClient implements PluginClient {
         return renderGenericDetail(resource);
     }
   }
-
-  // ── Namespace import ────────────────────────────────────────────────────
 
   async listNamespacesForImport(_accountId: string): Promise<string[]> {
     try {
@@ -241,8 +231,6 @@ export class KubernetesClient implements PluginClient {
       }),
     });
   }
-
-  // ── Peer pane ───────────────────────────────────────────────────────────
 
   async renderPeerPane(_context: PeerPaneContext): Promise<PeerPaneSchema> {
     const syntheticAccountId = "peer";
@@ -279,8 +267,6 @@ export class KubernetesClient implements PluginClient {
       resourceGroups: groups,
     };
   }
-
-  // ── Create ──────────────────────────────────────────────────────────────
 
   async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
     if (typeId === "k8s-pod") {
@@ -473,14 +459,10 @@ export class KubernetesClient implements PluginClient {
     throw new Error(`Kubernetes plugin: createResource not supported for type "${typeId}"`);
   }
 
-  // ── Delete ──────────────────────────────────────────────────────────
-
   async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
     const path = this.buildResourcePath(resourceId);
     await this.k8sFetch(path, { method: "DELETE" });
   }
-
-  // ── Manifest editor ──────────────────────────────────────────────────
 
   /**
    * Map a resource type ID to its K8s API path components.
@@ -553,8 +535,6 @@ export class KubernetesClient implements PluginClient {
       status: { kind: "status-dot", status: "unknown" },
     };
   }
-
-  // ── Real K8s API list methods ───────────────────────────────────────────
 
   private async listClusters(accountId: string): Promise<ResourceInstance[]> {
     const now = new Date().toISOString();

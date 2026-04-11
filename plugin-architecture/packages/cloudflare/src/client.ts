@@ -19,8 +19,6 @@ import {
   renderDnsRecordSidebar,
 } from "@infrawrench/plugin-base";
 
-// ─── Status helpers ──────────────────────────────────────────────────────────
-
 function tunnelStatus(status: string): ResourceStatus {
   switch (status) {
     case "healthy": return "healthy";
@@ -53,8 +51,6 @@ function sslStatus(status: string): ResourceStatus {
     default: return "unknown";
   }
 }
-
-// ─── Client ──────────────────────────────────────────────────────────────────
 
 export class CloudflareClient implements PluginClient {
   private readonly apiToken: string;
@@ -125,8 +121,6 @@ export class CloudflareClient implements PluginClient {
     if (!this.cfAccountId) throw new Error("Cloudflare plugin: could not determine account ID from zone");
     return this.cfAccountId;
   }
-
-  // ─── Core interface ─────────────────────────────────────────────────────────
 
   async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
     switch (typeId) {
@@ -396,8 +390,6 @@ export class CloudflareClient implements PluginClient {
     };
   }
 
-  // ─── Create / Delete ────────────────────────────────────────────────────────
-
   async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
     if (typeId === "zone") {
       return {
@@ -646,8 +638,6 @@ export class CloudflareClient implements PluginClient {
     throw new Error(`Cloudflare plugin: deleteResource not supported for type "${typeId}"`);
   }
 
-  // ─── D1 SQL execution (REST-based) ──────────────────────────────────────────
-
   async executeQuery(
     resourceId: string,
     _accountId: string,
@@ -724,8 +714,6 @@ export class CloudflareClient implements PluginClient {
     return result;
   }
 
-  // ─── Manifest editor (Workers + Zones) ───────────────────────────────────────
-
   async getManifest(resourceId: string, _accountId: string): Promise<string> {
     const parts = resourceId.split(":");
     const typeId = parts[1];
@@ -764,8 +752,6 @@ export class CloudflareClient implements PluginClient {
     }
     throw new Error(`Cloudflare plugin: applyManifest not supported for type "${typeId}"`);
   }
-
-  // ─── R2 Storage Browser ─────────────────────────────────────────────────────
 
   async listStorageObjects(bucket: string, prefix: string): Promise<StorageObject[]> {
     const cfAccountId = await this.getAccountId();
@@ -878,8 +864,6 @@ export class CloudflareClient implements PluginClient {
     return { count, size: `${size.toFixed(1)} ${units[unitIdx]}` };
   }
 
-  // ─── Helpers for create form ─────────────────────────────────────────────────
-
   private async getZoneOptions(): Promise<Array<{ id: string; label: string }>> {
     try {
       const zones = await this.paginate<Record<string, unknown>>("/zones");
@@ -891,8 +875,6 @@ export class CloudflareClient implements PluginClient {
       return [];
     }
   }
-
-  // ─── Zone detail ────────────────────────────────────────────────────────────
 
   private renderZoneDetail(resource: ResourceInstance): DetailViewSchema {
     const fields = resource.fields;
@@ -973,8 +955,6 @@ export class CloudflareClient implements PluginClient {
     };
   }
 
-  // ─── Worker detail ──────────────────────────────────────────────────────────
-
   private renderWorkerDetail(resource: ResourceInstance): DetailViewSchema {
     const fields = resource.fields;
     return {
@@ -1006,8 +986,6 @@ export class CloudflareClient implements PluginClient {
     };
   }
 
-  // ─── R2 Bucket detail ───────────────────────────────────────────────────────
-
   private renderR2BucketDetail(resource: ResourceInstance): DetailViewSchema {
     const fields = resource.fields;
     return {
@@ -1036,8 +1014,6 @@ export class CloudflareClient implements PluginClient {
       ],
     };
   }
-
-  // ─── Pages Project detail ───────────────────────────────────────────────────
 
   private renderPagesProjectDetail(resource: ResourceInstance): DetailViewSchema {
     const fields = resource.fields;
@@ -1098,8 +1074,6 @@ export class CloudflareClient implements PluginClient {
     };
   }
 
-  // ─── Pages Deployment detail ────────────────────────────────────────────────
-
   private renderPagesDeploymentDetail(resource: ResourceInstance): DetailViewSchema {
     const fields = resource.fields;
     const status = String(fields["status"] ?? "");
@@ -1140,8 +1114,6 @@ export class CloudflareClient implements PluginClient {
     };
   }
 
-  // ─── KV Namespace detail ────────────────────────────────────────────────────
-
   private renderKVNamespaceDetail(resource: ResourceInstance): DetailViewSchema {
     const fields = resource.fields;
     return {
@@ -1168,8 +1140,6 @@ export class CloudflareClient implements PluginClient {
       ],
     };
   }
-
-  // ─── D1 Database detail ─────────────────────────────────────────────────────
 
   private renderD1DatabaseDetail(resource: ResourceInstance): DetailViewSchema {
     const fields = resource.fields;
@@ -1202,8 +1172,6 @@ export class CloudflareClient implements PluginClient {
     };
   }
 
-  // ─── Queue detail ───────────────────────────────────────────────────────────
-
   private renderQueueDetail(resource: ResourceInstance): DetailViewSchema {
     const fields = resource.fields;
     return {
@@ -1234,8 +1202,6 @@ export class CloudflareClient implements PluginClient {
       ],
     };
   }
-
-  // ─── Tunnel detail ──────────────────────────────────────────────────────────
 
   private renderTunnelDetail(resource: ResourceInstance): DetailViewSchema {
     const fields = resource.fields;
@@ -1270,8 +1236,6 @@ export class CloudflareClient implements PluginClient {
     };
   }
 
-  // ─── SSL Certificate detail ─────────────────────────────────────────────────
-
   private renderSSLCertificateDetail(resource: ResourceInstance): DetailViewSchema {
     const fields = resource.fields;
     const status = String(fields["status"] ?? "");
@@ -1303,8 +1267,6 @@ export class CloudflareClient implements PluginClient {
       ],
     };
   }
-
-  // ─── Page Rule detail ───────────────────────────────────────────────────────
 
   private renderPageRuleDetail(resource: ResourceInstance): DetailViewSchema {
     const fields = resource.fields;
@@ -1338,8 +1300,6 @@ export class CloudflareClient implements PluginClient {
     };
   }
 
-  // ─── Firewall Rule detail ───────────────────────────────────────────────────
-
   private renderFirewallRuleDetail(resource: ResourceInstance): DetailViewSchema {
     const fields = resource.fields;
     const enabled = Boolean(fields["enabled"]);
@@ -1372,8 +1332,6 @@ export class CloudflareClient implements PluginClient {
     };
   }
 
-  // ─── Access Application detail ──────────────────────────────────────────────
-
   private renderAccessApplicationDetail(resource: ResourceInstance): DetailViewSchema {
     const fields = resource.fields;
     return {
@@ -1404,8 +1362,6 @@ export class CloudflareClient implements PluginClient {
       ],
     };
   }
-
-  // ─── Load Balancer detail ───────────────────────────────────────────────────
 
   private renderLoadBalancerDetail(resource: ResourceInstance): DetailViewSchema {
     const fields = resource.fields;
@@ -1442,8 +1398,6 @@ export class CloudflareClient implements PluginClient {
     };
   }
 
-  // ─── Worker Route detail ────────────────────────────────────────────────────
-
   private renderWorkerRouteDetail(resource: ResourceInstance): DetailViewSchema {
     const fields = resource.fields;
     return {
@@ -1471,8 +1425,6 @@ export class CloudflareClient implements PluginClient {
     };
   }
 
-  // ─── Generic detail (fallback) ─────────────────────────────────────────────
-
   private renderGenericDetail(resource: ResourceInstance): DetailViewSchema {
     const fields = resource.fields;
     return {
@@ -1498,8 +1450,6 @@ export class CloudflareClient implements PluginClient {
       ],
     };
   }
-
-  // ─── List helpers ──────────────────────────────────────────────────────────
 
   private async listZones(accountId: string): Promise<ResourceInstance[]> {
     const zones = await this.paginate<Record<string, unknown>>("/zones");
@@ -2211,8 +2161,6 @@ export class CloudflareClient implements PluginClient {
     };
   }
 
-  // ─── Custom Hostnames ──────────────────────────────────────────────────────
-
   private renderCustomHostnameDetail(resource: ResourceInstance): DetailViewSchema {
     const fields = resource.fields;
     const status = String(fields["status"] ?? "");
@@ -2293,8 +2241,6 @@ export class CloudflareClient implements PluginClient {
     };
   }
 
-  // ─── Hyperdrive ────────────────────────────────────────────────────────────
-
   private renderHyperdriveDetail(resource: ResourceInstance): DetailViewSchema {
     const fields = resource.fields;
     return {
@@ -2367,8 +2313,6 @@ export class CloudflareClient implements PluginClient {
       updatedAt: new Date().toISOString(),
     };
   }
-
-  // ─── Email Routing Rules ───────────────────────────────────────────────────
 
   private renderEmailRoutingRuleDetail(resource: ResourceInstance): DetailViewSchema {
     const fields = resource.fields;
@@ -2459,8 +2403,6 @@ export class CloudflareClient implements PluginClient {
     };
   }
 
-  // ─── Waiting Rooms ─────────────────────────────────────────────────────────
-
   private renderWaitingRoomDetail(resource: ResourceInstance): DetailViewSchema {
     const fields = resource.fields;
     const suspended = Boolean(fields["suspended"]);
@@ -2543,8 +2485,6 @@ export class CloudflareClient implements PluginClient {
       updatedAt: String(room["modified_on"] ?? new Date().toISOString()),
     };
   }
-
-  // ─── Access Policies ───────────────────────────────────────────────────────
 
   private renderAccessPolicyDetail(resource: ResourceInstance): DetailViewSchema {
     const fields = resource.fields;
@@ -2647,8 +2587,6 @@ export class CloudflareClient implements PluginClient {
     };
   }
 
-  // ─── Spectrum Applications ─────────────────────────────────────────────────
-
   private renderSpectrumApplicationDetail(resource: ResourceInstance): DetailViewSchema {
     const fields = resource.fields;
     return {
@@ -2739,8 +2677,6 @@ export class CloudflareClient implements PluginClient {
       updatedAt: String(app["modified_on"] ?? new Date().toISOString()),
     };
   }
-
-  // ─── Logpush Jobs ──────────────────────────────────────────────────────────
 
   private renderLogpushJobDetail(resource: ResourceInstance): DetailViewSchema {
     const fields = resource.fields;

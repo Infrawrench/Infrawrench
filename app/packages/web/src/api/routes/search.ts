@@ -18,7 +18,6 @@ app.get("/", async (c) => {
   const organizationId = c.get("organizationId");
   const q = (c.req.query("q") ?? "").toLowerCase().trim();
 
-  // Load all resources for the org
   const allResources = await db
     .select({
       id: resources.id,
@@ -31,7 +30,6 @@ app.get("/", async (c) => {
     .from(resources)
     .where(and(eq(resources.organizationId, organizationId), isNull(resources.deletedAt)));
 
-  // Load account names
   const allAccounts = await db
     .select({ id: accounts.id, displayName: accounts.displayName, pluginId: accounts.pluginId })
     .from(accounts)
@@ -39,7 +37,6 @@ app.get("/", async (c) => {
 
   const accountMap = new Map(allAccounts.map((a) => [a.id, a]));
 
-  // Enrich with plugin metadata and filter
   const pluginCache = new Map<string, { logoSvg: string; displayName: string; resourceTypes: Map<string, string> }>();
 
   const results = [];
@@ -60,7 +57,6 @@ app.get("/", async (c) => {
     const accountName = account?.displayName ?? "";
     const resourceTypeLabel = pluginMeta.resourceTypes.get(r.resourceTypeId) ?? r.resourceTypeId;
 
-    // Filter by query
     if (q) {
       const searchable = `${r.displayName} ${accountName} ${pluginMeta.displayName} ${resourceTypeLabel}`.toLowerCase();
       if (!searchable.includes(q)) continue;

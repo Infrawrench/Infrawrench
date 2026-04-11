@@ -7,10 +7,7 @@ import type {
   CreateResourceConfig,
 } from "@infrawrench/plugin-base";
 
-// ---------------------------------------------------------------------------
 // PlanetScale API response types
-// ---------------------------------------------------------------------------
-
 interface PsRegion {
   slug: string;
   display_name: string;
@@ -51,10 +48,7 @@ interface PsPassword {
   created_at: string;
 }
 
-// ---------------------------------------------------------------------------
 // PlanetScale regions
-// ---------------------------------------------------------------------------
-
 const PS_REGIONS: Record<string, { location: string; flag: string }> = {
   "us-east":     { location: "AWS us-east-1 (N. Virginia)",   flag: "\u{1F1FA}\u{1F1F8}" },
   "us-west":     { location: "AWS us-west-2 (Oregon)",        flag: "\u{1F1FA}\u{1F1F8}" },
@@ -72,10 +66,7 @@ function formatRegion(slug: string): string {
   return info ? `${info.flag} ${info.location}` : slug;
 }
 
-// ---------------------------------------------------------------------------
 // Client
-// ---------------------------------------------------------------------------
-
 export class PlanetScaleClient implements PluginClient {
   private readonly tokenId: string;
   private readonly tokenSecret: string;
@@ -96,8 +87,6 @@ export class PlanetScaleClient implements PluginClient {
     this.orgName = org;
   }
 
-  // --- API helper ------------------------------------------------------------
-
   private async fetch<T>(path: string, options?: RequestInit): Promise<T> {
     const res = await fetch(`${this.baseUrl}${path}`, {
       headers: {
@@ -113,8 +102,6 @@ export class PlanetScaleClient implements PluginClient {
     if (res.status === 204) return undefined as unknown as T;
     return res.json() as Promise<T>;
   }
-
-  // --- PluginClient: core ----------------------------------------------------
 
   async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
     switch (typeId) {
@@ -162,8 +149,6 @@ export class PlanetScaleClient implements PluginClient {
 
     throw new Error(`PlanetScale plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
   }
-
-  // --- PluginClient: views ---------------------------------------------------
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
     switch (resource.resourceTypeId) {
@@ -214,8 +199,6 @@ export class PlanetScaleClient implements PluginClient {
       status: { kind: "status-dot", status: "unknown" },
     };
   }
-
-  // --- PluginClient: create --------------------------------------------------
 
   async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
     if (typeId === "ps-database") {
@@ -335,8 +318,6 @@ export class PlanetScaleClient implements PluginClient {
     throw new Error(`PlanetScale plugin: cannot delete type "${typeId}"`);
   }
 
-  // --- PluginClient: stats ---------------------------------------------------
-
   async fetchStats(): Promise<{ version: string; size: string; tableCount: number }> {
     const databases = await this.fetchDatabases();
     return {
@@ -345,8 +326,6 @@ export class PlanetScaleClient implements PluginClient {
       tableCount: databases.length,
     };
   }
-
-  // --- Private: database operations ------------------------------------------
 
   private async fetchDatabases(): Promise<PsDatabase[]> {
     const data = await this.fetch<{ data: PsDatabase[] }>(
@@ -419,8 +398,6 @@ export class PlanetScaleClient implements PluginClient {
       updatedAt: now,
     };
   }
-
-  // --- Private: branch operations --------------------------------------------
 
   private async fetchBranches(databaseName: string): Promise<PsBranch[]> {
     const data = await this.fetch<{ data: PsBranch[] }>(
@@ -517,8 +494,6 @@ export class PlanetScaleClient implements PluginClient {
     return `mysql://${user}:${pass}@${host}/${dbName}`;
   }
 
-  // --- Private: detail views -------------------------------------------------
-
   private renderDatabaseDetail(resource: ResourceInstance): DetailViewSchema {
     const state = String(resource.fields["state"] ?? "");
     return {
@@ -596,8 +571,6 @@ export class PlanetScaleClient implements PluginClient {
     };
   }
 }
-
-// --- Helpers ---------------------------------------------------------------
 
 function enc(s: string): string {
   return encodeURIComponent(s);

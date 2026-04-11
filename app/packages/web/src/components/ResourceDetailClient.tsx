@@ -116,7 +116,6 @@ export function ResourceDetailClient({
   const isSftpView = initialView === "sftp";
   const hasSshPanel = hasSshTerminal || !!sshHost;
 
-  // SQL queries via API
   const handleRunQuery = useCallback(
     async (sql: string): Promise<QueryResult> => {
       if (!hasSqlEditor) return { rows: [], durationMs: 0 };
@@ -151,7 +150,6 @@ export function ResourceDetailClient({
     [],
   );
 
-  // ── Manifest editor ──────────────────────────────────────────────────────
   const handleGetManifest = useCallback(async (): Promise<string> => {
     const result = await apiGet<{ manifest: string }>(`/api/resources/${pluginId}/${resourceTypeId}/manifest?resourceId=${encodeURIComponent(resourceId)}&accountId=${accountId}`);
     return result.manifest;
@@ -162,20 +160,17 @@ export function ResourceDetailClient({
     dispatchResourcesChanged();
   }, [accountId, resourceId, pluginId, resourceTypeId]);
 
-  // ── Delete resource ──────────────────────────────────────────────────────
   async function handleDelete() {
     await apiDelete(`/api/org/${orgId}/resources/${pluginId}/${resourceTypeId}?resourceId=${encodeURIComponent(resourceId)}&accountId=${accountId}`);
     void navigate({ to: "/org/$orgId/accounts/$accountId", params: { orgId, accountId } });
     dispatchResourcesChanged();
   }
 
-  // ── Child resource groups ────────────────────────────────────────────────
   const childResourceGroups = useMemo(
     () => buildChildResourceGroups(childTypes, childResources) as ChildResourceGroup[],
     [childResources, childTypes],
   );
 
-  // ── Peer panes ───────────────────────────────────────────────────────────
   const peerPanes = useMemo((): PeerPaneData[] => {
     return serverPeerPanes.map((p) => ({
       tabLabel: p.tabLabel,
@@ -385,7 +380,6 @@ export function ResourceDetailClient({
   );
 }
 
-// ── Peer pane renderer ─────────────────────────────────────────────────────
 // Renders the peer pane schema inline — desktop uses PeerPaneView which handles
 // K8s exec, k9s, etc. On web we render the schema groups as read-only.
 

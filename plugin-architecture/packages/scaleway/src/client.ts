@@ -46,8 +46,6 @@ export class ScalewayClient implements PluginClient {
     this.credentials = credentials;
   }
 
-  // ─── API helpers ──────────────────────────────────────────────────────────
-
   private async apiFetch<T>(url: string, options?: RequestInit): Promise<T> {
     const res = await fetch(url, {
       headers: {
@@ -74,8 +72,6 @@ export class ScalewayClient implements PluginClient {
   private rdbUrl(region: string, path: string): string {
     return `https://api.scaleway.com/rdb/v1/regions/${region}${path}`;
   }
-
-  // ─── Core interface ───────────────────────────────────────────────────────
 
   async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
     switch (typeId) {
@@ -267,13 +263,10 @@ export class ScalewayClient implements PluginClient {
     };
   }
 
-  // ─── Instance list / create ───────────────────────────────────────────────
-
   private async listInstances(accountId: string): Promise<ResourceInstance[]> {
     const zones = ["fr-par-1", "fr-par-2", "fr-par-3", "nl-ams-1", "nl-ams-2", "nl-ams-3", "pl-waw-1", "pl-waw-2", "pl-waw-3"];
     const results: ResourceInstance[] = [];
 
-    // Fetch from all zones in parallel
     const fetches = zones.map(async (zone) => {
       try {
         const data = await this.apiFetch<{
@@ -340,7 +333,6 @@ export class ScalewayClient implements PluginClient {
       };
     });
 
-    // Fetch commercial types from the first zone for size options
     let sizes: SizeOption[] = [];
     try {
       const data = await this.apiFetch<{
@@ -385,7 +377,6 @@ export class ScalewayClient implements PluginClient {
       ];
     }
 
-    // Fetch available images
     let images: ImageOption[] = [];
     try {
       const data = await this.apiFetch<{
@@ -491,8 +482,6 @@ export class ScalewayClient implements PluginClient {
     };
   }
 
-  // ─── Kapsule list / create ────────────────────────────────────────────────
-
   private async listKapsuleClusters(accountId: string): Promise<ResourceInstance[]> {
     const regions = ["fr-par", "nl-ams", "pl-waw"];
     const results: ResourceInstance[] = [];
@@ -557,7 +546,6 @@ export class ScalewayClient implements PluginClient {
       flag: info.flag,
     }));
 
-    // Fetch available K8s versions
     let versions: { id: string; label: string }[] = [];
     try {
       const data = await this.apiFetch<{
@@ -687,8 +675,6 @@ export class ScalewayClient implements PluginClient {
     };
   }
 
-  // ─── Managed Databases ────────────────────────────────────────────────────
-
   private async listManagedDatabases(accountId: string): Promise<ResourceInstance[]> {
     const regions = ["fr-par", "nl-ams", "pl-waw"];
     const results: ResourceInstance[] = [];
@@ -743,8 +729,6 @@ export class ScalewayClient implements PluginClient {
       updatedAt: String(db["created_at"] ?? new Date().toISOString()),
     };
   }
-
-  // ─── Object Storage ───────────────────────────────────────────────────────
 
   private async listObjectStorageBuckets(accountId: string): Promise<ResourceInstance[]> {
     // Scaleway Object Storage uses S3-compatible API — list via the Scaleway API

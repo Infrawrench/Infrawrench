@@ -36,8 +36,6 @@ export class DatabricksClient implements PluginClient {
     }
   }
 
-  // ─── HTTP helper ───────────────────────────────────────────────────────────
-
   private async api<T>(
     method: string,
     path: string,
@@ -68,8 +66,6 @@ export class DatabricksClient implements PluginClient {
     return JSON.parse(text) as T;
   }
 
-  // ─── Helpers ──────────────────────────────────────────────────────────────
-
   private makeId(accountId: string, typeId: string, externalId: string): string {
     return `${accountId}:${typeId}:${externalId}`;
   }
@@ -83,8 +79,6 @@ export class DatabricksClient implements PluginClient {
       host: this.host,
     };
   }
-
-  // ─── Resource listing ─────────────────────────────────────────────────────
 
   private static readonly LISTERS: Record<
     string,
@@ -183,8 +177,6 @@ export class DatabricksClient implements PluginClient {
     return String(value);
   }
 
-  // ─── Detail view ──────────────────────────────────────────────────────────
-
   renderDetail(resource: ResourceInstance): DetailViewSchema {
     const fields = resource.fields;
     const state = String(fields["state"] ?? fields["lastRunState"] ?? "");
@@ -273,8 +265,6 @@ export class DatabricksClient implements PluginClient {
     return detail;
   }
 
-  // ─── Sidebar item ─────────────────────────────────────────────────────────
-
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema {
     const state = String(
       resource.fields["state"] ?? resource.fields["lastRunState"] ?? "",
@@ -296,8 +286,6 @@ export class DatabricksClient implements PluginClient {
       },
     };
   }
-
-  // ─── SQL execution (REST-based, for SQL Warehouses) ───────────────────────
 
   async executeQuery(
     resourceId: string,
@@ -372,8 +360,6 @@ export class DatabricksClient implements PluginClient {
     return { rows, durationMs };
   }
 
-  // ─── SQL introspection (for SQL Warehouse autocomplete) ───────────────────
-
   async introspectResource(
     resourceId: string,
     accountId: string,
@@ -408,8 +394,6 @@ export class DatabricksClient implements PluginClient {
       return [];
     }
   }
-
-  // ─── Delete ───────────────────────────────────────────────────────────────
 
   async deleteResource(
     typeId: string,

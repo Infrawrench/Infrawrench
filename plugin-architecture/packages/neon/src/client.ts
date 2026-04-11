@@ -91,8 +91,6 @@ export class NeonClient implements PluginClient {
     this.apiKey = key;
   }
 
-  // ─── API helper ─────────────────────────────────────────────────────────────
-
   private async fetch<T>(path: string, options?: RequestInit): Promise<T> {
     const res = await fetch(`${this.baseUrl}${path}`, {
       headers: {
@@ -108,8 +106,6 @@ export class NeonClient implements PluginClient {
     if (res.status === 204) return undefined as unknown as T;
     return res.json() as Promise<T>;
   }
-
-  // ─── PluginClient: core ─────────────────────────────────────────────────────
 
   async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
     switch (typeId) {
@@ -188,8 +184,6 @@ export class NeonClient implements PluginClient {
     throw new Error(`Neon plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
   }
 
-  // ─── PluginClient: views ────────────────────────────────────────────────────
-
   renderDetail(resource: ResourceInstance): DetailViewSchema {
     switch (resource.resourceTypeId) {
       case "neon-project":
@@ -219,8 +213,6 @@ export class NeonClient implements PluginClient {
       status: { kind: "status-dot", status },
     };
   }
-
-  // ─── PluginClient: create ───────────────────────────────────────────────────
 
   async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
     if (typeId === "neon-project") {
@@ -466,8 +458,6 @@ export class NeonClient implements PluginClient {
     throw new Error(`Neon plugin: createResource not supported for type "${typeId}"`);
   }
 
-  // ─── PluginClient: delete ───────────────────────────────────────────────────
-
   async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
     if (typeId === "neon-project") {
       const projectId = resourceId.split(":").pop();
@@ -503,8 +493,6 @@ export class NeonClient implements PluginClient {
 
     throw new Error(`Neon plugin: deleteResource not supported for type "${typeId}"`);
   }
-
-  // ─── Private: list helpers ──────────────────────────────────────────────────
 
   private async listProjects(accountId: string): Promise<ResourceInstance[]> {
     const data = await this.fetch<{ projects: NeonProject[] }>("/projects");
@@ -695,8 +683,6 @@ export class NeonClient implements PluginClient {
     return results;
   }
 
-  // ─── Private: resolve helpers ───────────────────────────────────────────────
-
   private async resolveDatabaseConnectionString(
     resourceId: string,
     accountId: string,
@@ -788,8 +774,6 @@ export class NeonClient implements PluginClient {
     );
     return data.password;
   }
-
-  // ─── Private: detail renderers ──────────────────────────────────────────────
 
   private renderProjectDetail(resource: ResourceInstance): DetailViewSchema {
     const regionId = String(resource.fields["region"] ?? "");
@@ -1016,8 +1000,6 @@ export class NeonClient implements PluginClient {
     };
   }
 }
-
-// ─── Helpers ────────────────────────────────────────────────────────────────
 
 function mapNeonState(
   state: string,

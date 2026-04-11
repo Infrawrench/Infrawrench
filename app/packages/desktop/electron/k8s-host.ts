@@ -20,13 +20,10 @@ ipcMain.handle("k9s_resize", (_event, { sessionId, cols, rows }) =>
 );
 ipcMain.handle("k9s_kill", (_event, { sessionId }) => killK9s(sessionId));
 
-// ── Port forwarding ──────────────────────────────────────────────────────────
-
 ipcMain.handle("k8s_pf_start", (event, args) => startPortForward(event.sender, args));
 ipcMain.handle("k8s_pf_stop", (_event, { sessionId }) => stopPortForward(sessionId));
 ipcMain.handle("k8s_pf_list", () => listPortForwards());
 
-// ── K8s API proxy ────────────────────────────────────────────────────────────
 // Routes K8s API requests through Node so we can supply the cluster CA cert
 // that Chromium's fetch() refuses to trust.
 

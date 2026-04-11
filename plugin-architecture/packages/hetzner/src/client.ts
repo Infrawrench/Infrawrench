@@ -32,8 +32,6 @@ export class HetznerClient implements PluginClient {
     this.token = token;
   }
 
-  // ─── Generic fetch helper ─────────────────────────────────────────────────
-
   private async fetch<T>(path: string, options?: RequestInit): Promise<T> {
     const res = await fetch(`${this.baseUrl}${path}`, {
       headers: {
@@ -48,8 +46,6 @@ export class HetznerClient implements PluginClient {
     if (res.status === 204) return undefined as unknown as T;
     return res.json() as Promise<T>;
   }
-
-  // ─── Paginated fetch helper ───────────────────────────────────────────────
 
   private async fetchAll<T>(path: string, rootKey: string): Promise<T[]> {
     const items: T[] = [];
@@ -72,8 +68,6 @@ export class HetznerClient implements PluginClient {
 
     return items;
   }
-
-  // ─── PluginClient: core methods ───────────────────────────────────────────
 
   async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
     switch (typeId) {
@@ -145,8 +139,6 @@ export class HetznerClient implements PluginClient {
       `Hetzner plugin: cannot resolve output "${outputKey}" for type "${typeId}"`,
     );
   }
-
-  // ─── PluginClient: create / delete ────────────────────────────────────────
 
   async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
     if (typeId === "server") {
@@ -277,8 +269,6 @@ export class HetznerClient implements PluginClient {
     await this.fetch<unknown>(`/servers/${externalId}`, { method: "DELETE" });
   }
 
-  // ─── PluginClient: rendering ──────────────────────────────────────────────
-
   renderDetail(resource: ResourceInstance): DetailViewSchema {
     const fields = resource.fields;
     const status = resource.resourceTypeId === "server"
@@ -321,8 +311,6 @@ export class HetznerClient implements PluginClient {
       status: { kind: "status-dot", status },
     };
   }
-
-  // ─── Private list helpers ─────────────────────────────────────────────────
 
   private async listServers(accountId: string): Promise<ResourceInstance[]> {
     const servers = await this.fetchAll<HetznerServer>("/servers", "servers");
@@ -430,8 +418,6 @@ export class HetznerClient implements PluginClient {
   }
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
 function serverStatusToDot(status: string): ResourceStatus {
   switch (status) {
     case "running":
@@ -458,8 +444,6 @@ function categorizeServerType(name: string): string {
   if (name.startsWith("cax")) return "Dedicated vCPU (Arm64)";
   return "Other";
 }
-
-// ─── Hetzner API types ──────────────────────────────────────────────────────
 
 interface HetznerServer {
   id: number;

@@ -15,8 +15,6 @@ declare module "hono" {
   }
 }
 
-// ── OpenSSH key format helpers ───────────────────────────────────────────────
-
 /** Write a length-prefixed SSH wire string: uint32be(len) + data */
 function sshWireString(type: string, ...bufs: Uint8Array[]): Buffer {
   const typeLen = Buffer.alloc(4);

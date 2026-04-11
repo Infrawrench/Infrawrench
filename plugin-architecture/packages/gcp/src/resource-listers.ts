@@ -1,4 +1,3 @@
-// ─── Resource listing functions ─────────────────────────────────────────────
 //
 // Each function corresponds to a GCP resource type and returns ResourceInstance[].
 // They receive a context object with the helpers they need from the GcpClient.
@@ -781,8 +780,6 @@ export async function listDataflowJobs(
   });
 }
 
-// ─── Cloud DNS ──────────────────────────────────────────────────────────────
-
 export async function listCloudDnsZones(
   ctx: ListerContext,
   accountId: string,
@@ -879,8 +876,6 @@ export async function listCloudDnsRecordSets(
   return results;
 }
 
-// ─── Firewall Rules ───────────────────────────────────────────────────────
-
 export async function listFirewallRules(
   ctx: ListerContext,
   accountId: string,
@@ -937,8 +932,6 @@ export async function listFirewallRules(
   });
 }
 
-// ─── Subnets ──────────────────────────────────────────────────────────────
-
 export async function listSubnets(
   ctx: ListerContext,
   accountId: string,
@@ -980,8 +973,6 @@ export async function listSubnets(
   return results;
 }
 
-// ─── Static External IPs ──────────────────────────────────────────────────
-
 export async function listStaticIps(
   ctx: ListerContext,
   accountId: string,
@@ -1022,8 +1013,6 @@ export async function listStaticIps(
   return results;
 }
 
-// ─── Cloud Routers ────────────────────────────────────────────────────────
-
 export async function listCloudRouters(
   ctx: ListerContext,
   accountId: string,
@@ -1063,8 +1052,6 @@ export async function listCloudRouters(
   }
   return results;
 }
-
-// ─── Cloud NAT ────────────────────────────────────────────────────────────
 
 export async function listCloudNats(
   ctx: ListerContext,
@@ -1108,8 +1095,6 @@ export async function listCloudNats(
   }
   return results;
 }
-
-// ─── Cloud Scheduler Jobs ─────────────────────────────────────────────────
 
 export async function listCloudSchedulerJobs(
   ctx: ListerContext,
@@ -1176,8 +1161,6 @@ export async function listCloudSchedulerJobs(
   return results;
 }
 
-// ─── Cloud Tasks Queues ───────────────────────────────────────────────────
-
 export async function listCloudTasksQueues(
   ctx: ListerContext,
   accountId: string,
@@ -1233,8 +1216,6 @@ export async function listCloudTasksQueues(
   );
   return results;
 }
-
-// ─── Cloud Build Triggers ─────────────────────────────────────────────────
 
 export async function listCloudBuildTriggers(
   ctx: ListerContext,
@@ -1293,8 +1274,6 @@ export async function listCloudBuildTriggers(
   });
 }
 
-// ─── Cloud Logging Sinks ──────────────────────────────────────────────────
-
 export async function listLogSinks(
   ctx: ListerContext,
   accountId: string,
@@ -1332,8 +1311,6 @@ export async function listLogSinks(
     };
   });
 }
-
-// ─── Cloud Monitoring Alert Policies ──────────────────────────────────────
 
 export async function listAlertPolicies(
   ctx: ListerContext,
@@ -1376,8 +1353,6 @@ export async function listAlertPolicies(
     };
   });
 }
-
-// ─── Cloud KMS Key Rings ──────────────────────────────────────────────────
 
 export async function listKmsKeyRings(
   ctx: ListerContext,
@@ -1429,8 +1404,6 @@ export async function listKmsKeyRings(
   );
   return results;
 }
-
-// ─── Cloud KMS Keys ───────────────────────────────────────────────────────
 
 export async function listKmsKeys(
   ctx: ListerContext,
@@ -1502,8 +1475,6 @@ export async function listKmsKeys(
   return results;
 }
 
-// ─── Filestore Instances ──────────────────────────────────────────────────
-
 export async function listFilestoreInstances(
   ctx: ListerContext,
   accountId: string,
@@ -1553,8 +1524,6 @@ export async function listFilestoreInstances(
   });
 }
 
-// ─── Backend Services ─────────────────────────────────────────────────────
-
 export async function listBackendServices(
   ctx: ListerContext,
   accountId: string,
@@ -1597,8 +1566,6 @@ export async function listBackendServices(
   return results;
 }
 
-// ─── Forwarding Rules ─────────────────────────────────────────────────────
-
 export async function listForwardingRules(
   ctx: ListerContext,
   accountId: string,
@@ -1639,8 +1606,6 @@ export async function listForwardingRules(
   }
   return results;
 }
-
-// ─── Memorystore Memcached ────────────────────────────────────────────────
 
 export async function listMemorystoreMemcached(
   ctx: ListerContext,
@@ -1688,8 +1653,6 @@ export async function listMemorystoreMemcached(
     };
   });
 }
-
-// ─── Vertex AI Endpoints ──────────────────────────────────────────────────
 
 export async function listVertexAiEndpoints(
   ctx: ListerContext,
@@ -1740,8 +1703,6 @@ export async function listVertexAiEndpoints(
   return results;
 }
 
-// ─── Cloud Composer Environments ──────────────────────────────────────────
-
 export async function listComposerEnvironments(
   ctx: ListerContext,
   accountId: string,
@@ -1785,8 +1746,6 @@ export async function listComposerEnvironments(
   });
 }
 
-// ─── Workflows ────────────────────────────────────────────────────────────
-
 export async function listWorkflows(
   ctx: ListerContext,
   accountId: string,
@@ -1826,8 +1785,6 @@ export async function listWorkflows(
     };
   });
 }
-
-// ─── Cloud Deploy Pipelines ───────────────────────────────────────────────
 
 export async function listCloudDeployPipelines(
   ctx: ListerContext,
@@ -1870,8 +1827,6 @@ export async function listCloudDeployPipelines(
     };
   });
 }
-
-// ─── App Engine Services ──────────────────────────────────────────────────
 
 export async function listAppEngineServices(
   ctx: ListerContext,
@@ -1916,8 +1871,6 @@ export async function listAppEngineServices(
   });
 }
 
-// ─── Health Checks ────────────────────────────────────────────────────────
-
 export async function listHealthChecks(
   ctx: ListerContext,
   accountId: string,
@@ -1961,8 +1914,6 @@ export async function listHealthChecks(
   });
 }
 
-// ─── SSL Certificates ─────────────────────────────────────────────────────
-
 export async function listSslCertificates(
   ctx: ListerContext,
   accountId: string,
@@ -2003,8 +1954,6 @@ export async function listSslCertificates(
     };
   });
 }
-
-// ─── Instance Groups ──────────────────────────────────────────────────────
 
 export async function listInstanceGroups(
   ctx: ListerContext,

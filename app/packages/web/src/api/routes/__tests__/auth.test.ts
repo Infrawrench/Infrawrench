@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Hono } from "hono";
 import type { AuthSession } from "@/api/auth-middleware";
 
-// ── Mocks ──────────────────────────────────────────────────────────────────
 const mockGetAuthorizationUrl = vi.fn().mockReturnValue("https://workos.example.com/auth");
 const mockSelect = vi.fn();
 
@@ -28,7 +27,6 @@ vi.mock("@/db/schema", () => ({
 
 const { authRoutes } = await import("@/api/routes/auth");
 
-// ── Helper ────────────────────────────────────────────────────────────────
 function buildApp() {
   const app = new Hono();
   const session: AuthSession = {
@@ -54,7 +52,6 @@ describe("Auth routes", () => {
     mockSelect.mockReturnValue({ from });
   });
 
-  // ── GET /me — current user ────────────────────────────────────────────
   describe("GET /me — return current session", () => {
     it("returns the session as JSON", async () => {
       const app = buildApp();
@@ -68,7 +65,6 @@ describe("Auth routes", () => {
     });
   });
 
-  // ── POST /sign-out — clear session ────────────────────────────────────
   describe("POST /sign-out — clear session cookie", () => {
     it("returns ok and sets a cookie deletion header", async () => {
       const app = buildApp();

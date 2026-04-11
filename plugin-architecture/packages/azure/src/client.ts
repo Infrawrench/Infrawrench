@@ -41,14 +41,10 @@ const VM_SIZE_PRICES: Record<string, number> = {
   "Standard_F8s_v2": 245.28,
 };
 
-// ─── Token cache ────────────────────────────────────────────────────────────
-
 interface TokenCache {
   token: string;
   expiresAt: number;
 }
-
-// ─── Azure regions ──────────────────────────────────────────────────────────
 
 const AZURE_REGIONS = [
   { id: "eastus", label: "East US", location: "Virginia, USA", flag: "\u{1F1FA}\u{1F1F8}" },
@@ -86,8 +82,6 @@ const AZURE_REGIONS = [
   { id: "polandcentral", label: "Poland Central", location: "Warsaw, Poland", flag: "\u{1F1F5}\u{1F1F1}" },
   { id: "italynorth", label: "Italy North", location: "Milan, Italy", flag: "\u{1F1EE}\u{1F1F9}" },
 ];
-
-// ─── Client ─────────────────────────────────────────────────────────────────
 
 export class AzureClient implements PluginClient {
   private readonly creds: AzureCredentials;
@@ -470,8 +464,6 @@ export class AzureClient implements PluginClient {
     };
   }
 
-  // ─── Storage Browser (Azure Blob Storage) ─────────────────────────────────
-
   async listStorageObjects(bucket: string, prefix: string): Promise<StorageObject[]> {
     const tok = await this.storageToken();
     const delimiter = "/";
@@ -665,8 +657,6 @@ export class AzureClient implements PluginClient {
     return { count, size: formatBytes(totalBytes) };
   }
 
-  // ─── Cost Estimation ──────────────────────────────────────────────────────
-
   async getCreateCostEstimate(typeId: string, fields: Record<string, string>): Promise<number | null> {
     if (typeId === "azure-vm") {
       const sizeId = fields["size"] ?? "";
@@ -735,8 +725,6 @@ export class AzureClient implements PluginClient {
     }
     return null;
   }
-
-  // ─── Create Resource ──────────────────────────────────────────────────────
 
   async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
     if (typeId === "azure-vm") {
@@ -2687,8 +2675,6 @@ export class AzureClient implements PluginClient {
       updatedAt: new Date().toISOString(),
     };
   }
-
-  // ─── Delete Resource ──────────────────────────────────────────────────────
 
   async deleteResource(typeId: string, resourceId: string, accountId: string): Promise<void> {
     const resource = await this.getResource(typeId, resourceId, accountId);

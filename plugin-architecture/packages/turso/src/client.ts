@@ -91,8 +91,6 @@ export class TursoClient implements PluginClient {
     this.orgName = org;
   }
 
-  // --- API helper ---------------------------------------------------------------
-
   private async fetch<T>(path: string, options?: RequestInit): Promise<T> {
     const res = await fetch(`${this.baseUrl}${path}`, {
       headers: {
@@ -108,8 +106,6 @@ export class TursoClient implements PluginClient {
     if (res.status === 204) return undefined as unknown as T;
     return res.json() as Promise<T>;
   }
-
-  // --- PluginClient: core -------------------------------------------------------
 
   async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
     switch (typeId) {
@@ -157,8 +153,6 @@ export class TursoClient implements PluginClient {
     throw new Error(`Turso plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
   }
 
-  // --- PluginClient: views ------------------------------------------------------
-
   renderDetail(resource: ResourceInstance): DetailViewSchema {
     switch (resource.resourceTypeId) {
       case "turso-database":
@@ -186,8 +180,6 @@ export class TursoClient implements PluginClient {
       status: { kind: "status-dot", status: "unknown" },
     };
   }
-
-  // --- PluginClient: create -----------------------------------------------------
 
   async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
     if (typeId === "turso-database") {
@@ -283,8 +275,6 @@ export class TursoClient implements PluginClient {
     }
     throw new Error(`Turso plugin: cannot delete type "${typeId}"`);
   }
-
-  // --- Private: database operations ---------------------------------------------
 
   private async fetchDatabases(): Promise<TursoDatabase[]> {
     const data = await this.fetch<{ databases: TursoDatabase[] }>(
@@ -384,8 +374,6 @@ export class TursoClient implements PluginClient {
     };
   }
 
-  // --- Private: group operations ------------------------------------------------
-
   private async fetchGroups(): Promise<TursoGroup[]> {
     const data = await this.fetch<{ groups: TursoGroup[] }>(
       `/organizations/${encodeURIComponent(this.orgName)}/groups`,
@@ -453,8 +441,6 @@ export class TursoClient implements PluginClient {
       updatedAt: now,
     };
   }
-
-  // --- Private: detail views ----------------------------------------------------
 
   private renderDatabaseDetail(resource: ResourceInstance): DetailViewSchema {
     const regions = String(resource.fields["regions"] ?? "")

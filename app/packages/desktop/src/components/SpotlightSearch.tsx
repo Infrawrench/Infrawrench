@@ -167,8 +167,6 @@ export function SpotlightSearch({ dashboardId, mode, onClose, onPinned, onNaviga
   );
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
 function subtitleFromFields(fields: Record<string, unknown>): string {
   const host = fields["host"] ?? fields["region"] ?? fields["endpoint"];
   const db = fields["database"] ?? fields["name"];

@@ -14,8 +14,6 @@ import { openTunnel, closeTunnel, getActiveTunnels, sshExecCommand, type SshTunn
 import { spawnSshShell, writeSshShell, resizeSshShell, killSshShell, type SshShellConfig } from "./ssh-shell";
 import { sftpList, sftpMkdir, sftpDelete, sftpUpload, sftpDownload, type SftpConfig } from "./sftp";
 
-// ── Tunnels ───────────────────────────────────────────────────────────────────
-
 ipcMain.handle("ssh_open_tunnel", (_e, config: SshTunnelConfig) => openTunnel(config));
 
 ipcMain.handle("ssh_close_tunnel", (_e, { tunnelId }: { tunnelId: string }) => {
@@ -29,8 +27,6 @@ ipcMain.handle("ssh_exec_command", (_e, { config, command }: {
   config: { sshHost: string; sshPort: number; sshUser: string; privateKey: string };
   command: string;
 }) => sshExecCommand(config, command));
-
-// ── Shell sessions ────────────────────────────────────────────────────────────
 
 ipcMain.handle("ssh_shell_spawn", (event, config: SshShellConfig) =>
   spawnSshShell(event.sender, config),
@@ -47,8 +43,6 @@ ipcMain.handle("ssh_shell_resize", (_e, { shellId, cols, rows }: { shellId: stri
 ipcMain.handle("ssh_shell_kill", (_e, { shellId }: { shellId: string }) => {
   killSshShell(shellId);
 });
-
-// ── SFTP ─────────────────────────────────────────────────────────────────────
 
 ipcMain.handle("sftp_list", (_e, { config, path }: { config: SftpConfig; path: string }) =>
   sftpList(config, path),
@@ -69,8 +63,6 @@ ipcMain.handle("sftp_upload", (_e, { config, remotePath, data }: { config: SftpC
 ipcMain.handle("sftp_download", (_e, { config, remotePath, localPath }: { config: SftpConfig; remotePath: string; localPath: string }) =>
   sftpDownload(config, remotePath, localPath),
 );
-
-// ── System key discovery ──────────────────────────────────────────────────────
 
 const PRIVATE_KEY_HEADERS = [
   "-----BEGIN OPENSSH PRIVATE KEY-----",

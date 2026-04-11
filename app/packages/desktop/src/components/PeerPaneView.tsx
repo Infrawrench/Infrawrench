@@ -51,7 +51,6 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
   const [nsFilter, setNsFilter] = useState<string | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
-  // ── Manifest editor state ──────────────────────────────────────────────
   const [manifestTarget, setManifestTarget] = useState<{
     resource: PeerPaneResource;
     group: PeerPaneResourceGroup;
@@ -92,7 +91,6 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
     await pluginClient.applyManifest(manifestTarget.resource.id, accountId, manifest);
   }, [pluginClient, manifestTarget, accountId]);
 
-  // ── Port forward state ─────────────────────────────────────────────────
   const [portForwards, setPortForwards] = useState<PortForwardEntry[]>([]);
   const [pfStarting, setPfStarting] = useState<string | null>(null); // resource ID currently starting
   const [pfError, setPfError] = useState<string | null>(null);
@@ -154,7 +152,6 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
     window.electronAPI.offAll(`k8s_pf_exit_${sessionId}`);
   }
 
-  // Clean up port forwards on unmount
   useEffect(() => {
     return () => {
       for (const pf of portForwards) {
@@ -311,7 +308,6 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
     });
   }
 
-  // Provisioning state: no resource groups and status is provisioning
   const isProvisioning =
     pane.schema.status?.status === "provisioning" &&
     resourceGroups.length === 0;
@@ -635,8 +631,6 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
   );
 }
 
-// ── Namespace grid ────────────────────────────────────────────────────────
-
 function NamespaceGrid({
   items,
   activeNamespace,
@@ -702,8 +696,6 @@ function NamespaceGrid({
     </div>
   );
 }
-
-// ── Resource pill ─────────────────────────────────────────────────────────
 
 function ResourcePill({
   pane,
@@ -848,8 +840,6 @@ function ResourcePill({
   );
 }
 
-// ── Terminal overlay ──────────────────────────────────────────────────────
-
 function TerminalOverlay({
   title,
   onClose,
@@ -882,8 +872,6 @@ function TerminalOverlay({
     </div>
   );
 }
-
-// ── Helpers ───────────────────────────────────────────────────────────────
 
 function replaceTrailingCount(title: string, count: number): string {
   return /\(\d+\)$/.test(title)

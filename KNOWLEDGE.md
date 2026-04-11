@@ -43,6 +43,7 @@ infrawrench/
 │   ├── desktop/              # @infrawrench/desktop — Electron app
 │   ├── ui/                   # @infrawrench/ui — shared React components
 │   └── web/                  # @infrawrench/web — Next.js SaaS web app
+├── integration-tests/        # @infrawrench/integration-tests — live API integration tests
 ├── CLAUDE.md                 # Hard rules (keep short)
 └── KNOWLEDGE.md              # This file
 ```
@@ -560,3 +561,25 @@ Added `cloud_sync_state` table + `cloud_id`, `sync_version`, `deleted_at` column
 ## API key system
 
 Format: `iwk_` + 32 random bytes (base64url). Stored as SHA-256 hash. Prefix (first 12 chars) shown for identification. Scopes control access. Revokable, rotatable.
+
+---
+
+## Integration tests
+
+Live API integration tests live in `integration-tests/`. Completely separate from the vitest unit tests (`pnpm test`).
+
+**Run:** `pnpm test:integration` (requires env vars for credentials)
+
+**Credential flow:** Set env vars per provider (see `integration-tests/.env.example`). Providers with missing credentials are automatically skipped — add only the tokens you want to test.
+
+**Filter:** `INTEGRATION_PLUGINS=neon,hetzner pnpm test:integration`
+
+**What's tested per provider (when credentials are present):**
+- Manifest Zod validation
+- `createClient` with real credentials + host services
+- `listResources` for every resource type
+- `getResource`, `renderDetail`, `renderSidebarItem` on live resources
+- `resolveOutput` for types with outputs
+- Optional methods: `introspect`, `getCreateConfig`, `listStorageObjects`, `fetchStats`, `getSshConfig`, `getManifest`, `introspectResource`, `listNamespacesForImport`
+
+**Architecture:** `tsx` runner (no vitest), 30s timeout per test, sequential per provider. Host services (SQL/KV/Docker drivers) are wired up identically to the web app.

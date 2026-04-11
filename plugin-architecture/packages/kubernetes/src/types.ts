@@ -1,5 +1,3 @@
-// ── K8s API response shapes (minimal) ──────────────────────────────────────
-
 export interface K8sMeta {
   name: string;
   namespace?: string;
@@ -122,8 +120,6 @@ export interface K8sSecret {
   data?: Record<string, string>;
 }
 
-// ── Kubeconfig parsing ──────────────────────────────────────────────────────
-
 export interface ParsedKubeconfig {
   server: string;
   caCertData?: string;
@@ -150,8 +146,6 @@ export function parseKubeconfig(raw: string): ParsedKubeconfig {
     ...(key ? { clientKeyData: key } : {}),
   };
 }
-
-// ── Status mapping helpers ────────────────────────────────────────────────
 
 import type { ResourceStatus } from "@infrawrench/plugin-base";
 

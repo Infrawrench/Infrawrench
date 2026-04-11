@@ -17,7 +17,6 @@ export async function handleSqlSession(
   sql: string,
 ): Promise<void> {
   try {
-    // Get account credentials
     const [account] = await db
       .select()
       .from(accounts)

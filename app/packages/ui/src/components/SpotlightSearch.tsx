@@ -1,8 +1,6 @@
 import { useState, useEffect, useRef, useCallback, type ReactNode } from "react";
 import { groupBy } from "../utils.js";
 
-// ── Types ─────────────────────────────────────────────────────────────────────
-
 export interface SpotlightResult {
   id: string;
   pluginId: string;
@@ -40,8 +38,6 @@ export interface SpotlightSearchProps {
   footer?: ReactNode;
 }
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
-
 function defaultFilter(results: SpotlightResult[], query: string): SpotlightResult[] {
   if (!query.trim()) return results;
   const q = query.toLowerCase();
@@ -54,8 +50,6 @@ function defaultFilter(results: SpotlightResult[], query: string): SpotlightResu
       (r.subtitle?.toLowerCase().includes(q) ?? false),
   );
 }
-
-// ── Component ────────────────────────────────────────────────────────────────
 
 export function SpotlightSearch({
   mode,

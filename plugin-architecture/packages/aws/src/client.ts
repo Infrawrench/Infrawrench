@@ -454,8 +454,6 @@ export class AWSClient implements PluginClient {
     };
   }
 
-  // ─── S3 Storage Browser ─────────────────────────────────────────────────
-
   /** S3-specific XML GET for ListObjectsV2 */
   private async s3Xml<T>(bucket: string, params: Record<string, string>): Promise<T> {
     const host = `${bucket}.s3.${this.creds.region}.amazonaws.com`;
@@ -622,8 +620,6 @@ export class AWSClient implements PluginClient {
 
     return { count, size: formatBytes(totalBytes) };
   }
-
-  // ─── Create Resource ────────────────────────────────────────────────────
 
   private static readonly AWS_REGIONS: RegionOption[] = [
     { id: "us-east-1", label: "us-east-1", location: "N. Virginia, USA", flag: "\u{1F1FA}\u{1F1F8}" },
@@ -1210,8 +1206,6 @@ export class AWSClient implements PluginClient {
         throw new Error(`AWS plugin: deleteResource not supported for type "${typeId}"`);
     }
   }
-
-  // ─── Manifest Editor ────────────────────────────────────────────────────
 
   async getManifest(resourceId: string, accountId: string): Promise<string> {
     // Determine the type from the resourceId pattern (accountId:typeId:externalId)

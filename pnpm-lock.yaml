@@ -426,6 +426,82 @@ importers:
         specifier: ^3.0.5
         version: 3.2.4(@types/debug@4.1.13)(@types/node@22.19.17)(jiti@2.6.1)(lightningcss@1.32.0)(tsx@4.21.0)
 
+  integration-tests:
+    dependencies:
+      '@infrawrench/plugin-aws':
+        specifier: workspace:*
+        version: link:../plugin-architecture/packages/aws
+      '@infrawrench/plugin-azure':
+        specifier: workspace:*
+        version: link:../plugin-architecture/packages/azure
+      '@infrawrench/plugin-base':
+        specifier: workspace:*
+        version: link:../plugin-architecture/packages/plugin-base
+      '@infrawrench/plugin-cloudflare':
+        specifier: workspace:*
+        version: link:../plugin-architecture/packages/cloudflare
+      '@infrawrench/plugin-databricks':
+        specifier: workspace:*
+        version: link:../plugin-architecture/packages/databricks
+      '@infrawrench/plugin-digitalocean':
+        specifier: workspace:*
+        version: link:../plugin-architecture/packages/digitalocean
+      '@infrawrench/plugin-docker':
+        specifier: workspace:*
+        version: link:../plugin-architecture/packages/docker
+      '@infrawrench/plugin-gcp':
+        specifier: workspace:*
+        version: link:../plugin-architecture/packages/gcp
+      '@infrawrench/plugin-hetzner':
+        specifier: workspace:*
+        version: link:../plugin-architecture/packages/hetzner
+      '@infrawrench/plugin-kubernetes':
+        specifier: workspace:*
+        version: link:../plugin-architecture/packages/kubernetes
+      '@infrawrench/plugin-memcached':
+        specifier: workspace:*
+        version: link:../plugin-architecture/packages/memcached
+      '@infrawrench/plugin-mongodb':
+        specifier: workspace:*
+        version: link:../plugin-architecture/packages/mongodb
+      '@infrawrench/plugin-mysql':
+        specifier: workspace:*
+        version: link:../plugin-architecture/packages/mysql
+      '@infrawrench/plugin-neon':
+        specifier: workspace:*
+        version: link:../plugin-architecture/packages/neon
+      '@infrawrench/plugin-ovh':
+        specifier: workspace:*
+        version: link:../plugin-architecture/packages/ovh
+      '@infrawrench/plugin-planetscale':
+        specifier: workspace:*
+        version: link:../plugin-architecture/packages/planetscale
+      '@infrawrench/plugin-postgres':
+        specifier: workspace:*
+        version: link:../plugin-architecture/packages/postgres
+      '@infrawrench/plugin-redis':
+        specifier: workspace:*
+        version: link:../plugin-architecture/packages/redis
+      '@infrawrench/plugin-scaleway':
+        specifier: workspace:*
+        version: link:../plugin-architecture/packages/scaleway
+      '@infrawrench/plugin-ssh':
+        specifier: workspace:*
+        version: link:../plugin-architecture/packages/ssh
+      '@infrawrench/plugin-turso':
+        specifier: workspace:*
+        version: link:../plugin-architecture/packages/turso
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.17
+      tsx:
+        specifier: ^4.7.0
+        version: 4.21.0
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+
   plugin-architecture/packages/aws:
     dependencies:
       '@infrawrench/plugin-base':

@@ -120,8 +120,6 @@ export function FileBrowser({
   const files = filtered.filter((o) => !o.isDirectory);
   const allFiltered = [...dirs, ...files];
 
-  // ── Selection ──────────────────────────────────────────────────────────────
-
   function toggleSelect(key: string, idx: number, shiftHeld: boolean) {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -152,8 +150,6 @@ export function FileBrowser({
     }
   }
 
-  // ── Recursive list helper (for downloading folders) ───────────────────────
-
   const listAllFlat = useCallback(async (p: string): Promise<StorageObject[]> => {
     const items = await onList(p);
     const fileItems = items.filter((o) => !o.isDirectory);
@@ -161,8 +157,6 @@ export function FileBrowser({
     const nested = await Promise.all(dirItems.map((d) => listAllFlat(d.key)));
     return [...fileItems, ...nested.flat()];
   }, [onList]);
-
-  // ── Transfers (upload + download progress) ────────────────────────────────
 
   function addTransfer(name: string): string {
     const id = crypto.randomUUID();
@@ -181,8 +175,6 @@ export function FileBrowser({
     }));
     setTimeout(() => setTransfers((prev) => prev.filter((t) => t.id !== id)), 2500);
   }
-
-  // ── Upload ─────────────────────────────────────────────────────────────────
 
   async function handleFiles(fileList: FileList, isFolder = false) {
     if (!onUpload) return;
@@ -203,8 +195,6 @@ export function FileBrowser({
     reload();
   }
 
-  // ── Make folder ────────────────────────────────────────────────────────────
-
   async function handleMakeFolder() {
     const name = newFolderName.trim();
     if (!name || !onMakeFolder) return;
@@ -222,8 +212,6 @@ export function FileBrowser({
     }
   }
 
-  // ── Single delete ──────────────────────────────────────────────────────────
-
   async function handleDelete(key: string, isDirectory?: boolean) {
     if (!onDelete) return;
     setDeleting(true);
@@ -239,8 +227,6 @@ export function FileBrowser({
     }
   }
 
-  // ── Bulk delete ────────────────────────────────────────────────────────────
-
   async function handleBulkDelete() {
     if (!onDelete) return;
     setBulkWorking(true);
@@ -255,8 +241,6 @@ export function FileBrowser({
       setConfirmBulkDelete(false);
     }
   }
-
-  // ── Download ───────────────────────────────────────────────────────────────
 
   async function handleDownload(keys: string[]) {
     if (!onBatchDownload) return;
@@ -278,8 +262,6 @@ export function FileBrowser({
       setBulkWorking(false);
     }
   }
-
-  // ── Render ─────────────────────────────────────────────────────────────────
 
   const activeTransfers = transfers.filter((t) => !t.done);
   const canWrite = !!onUpload || !!onMakeFolder;

@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Hono } from "hono";
 import type { AuthSession } from "@/api/auth-middleware";
 
-// ── Mocks ──────────────────────────────────────────────────────────────────
 const mockSelect = vi.fn();
 
 vi.mock("@/db/client", () => ({
@@ -43,7 +42,6 @@ vi.mock("@/services/sftp", () => ({
 
 const { connectionFeatureRoutes } = await import("@/api/routes/connection-features");
 
-// ── Helper ────────────────────────────────────────────────────────────────
 function buildApp() {
   const app = new Hono();
   const session: AuthSession = {
@@ -77,7 +75,6 @@ describe("Connection feature routes", () => {
     vi.clearAllMocks();
   });
 
-  // ── SQL query proxying ────────────────────────────────────────────────
   describe("POST /sql/query — SQL query proxying", () => {
     it("executes an account-level SQL query and returns rows with duration", async () => {
       setupAccountSelect();
@@ -157,7 +154,6 @@ describe("Connection feature routes", () => {
     });
   });
 
-  // ── KV command proxying ───────────────────────────────────────────────
   describe("POST /kv/command — KV command proxying", () => {
     it("executes a KV command and returns the result", async () => {
       setupAccountSelect();
@@ -211,7 +207,6 @@ describe("Connection feature routes", () => {
     });
   });
 
-  // ── Docker command proxying ───────────────────────────────────────────
   describe("POST /docker/command — Docker command proxying", () => {
     it("executes a Docker command and returns the result", async () => {
       setupAccountSelect();

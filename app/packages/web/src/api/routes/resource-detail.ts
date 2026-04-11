@@ -50,7 +50,6 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
   const resourceId = c.req.query("resourceId");
   if (!resourceId) return c.json({ error: "Missing resourceId" }, 400);
 
-  // Try to find the resource in the database first
   const [dbResource] = await db
     .select()
     .from(resources)
@@ -80,7 +79,6 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
   // are reflected immediately.
   let instance: ResourceInstance;
 
-  // Fetch live from provider
   let liveResources: ResourceInstance[] = [];
   let liveFetchOk = false;
   try {
@@ -179,7 +177,6 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
 
   const resourceTypeDef = plugin.resourceTypes.find((t) => t.id === resourceTypeId);
 
-  // ── SQL introspection ───────────────────────────────────────────────────
   let sqlOk = false;
   let enrichedInstance = instance;
   const manifest = plugin.manifest;
@@ -256,7 +253,6 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
       }
     : detailSchema;
 
-  // ── Peer pane integrations ─────────────────────────────────────────────
   const peerPanes: Array<{ tabLabel: string; pluginLogoSvg: string; schema: unknown }> = [];
 
   if (resourceTypeDef?.peerIntegrations?.length) {
@@ -310,7 +306,6 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
     );
   }
 
-  // ── Child resources ────────────────────────────────────────────────────
   const childTypes = plugin.resourceTypes
     .filter((rt) => rt.parentTypeId === resourceTypeId)
     .map((rt) => ({
@@ -349,12 +344,10 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
     }
   }
 
-  // ── Capabilities ───────────────────────────────────────────────────────
   const canDelete = !!client.deleteResource;
   const hasManifestEditor = !!finalSchema.manifestEditor && !!client.getManifest;
   const resourceTypeLabel = resourceTypeDef?.displayName ?? "Resource";
 
-  // ── Connection feature flags ──────────────────────────────────────────
   const hasSqlEditor = !!finalSchema.sqlEditor || !!manifest.sqlDriver || !!resourceTypeDef?.resourceSqlDriver || !!client.executeQuery;
   const hasStorageBrowser = !!finalSchema.storageBrowser;
   const hasKvConsole = !!manifest.kvDriver;
@@ -420,8 +413,6 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
   });
 });
 
-// ── Manifest editor ──────────────────────────────────────────────────────────
-
 /** GET /api/resources/:pluginId/:typeId/manifest?resourceId=...&accountId=... */
 app.get("/:pluginId/:typeId/manifest", async (c) => {
   const organizationId = c.get("organizationId");
@@ -464,7 +455,6 @@ app.delete("/:pluginId/:typeId", async (c) => {
   if (!ctx) return c.json({ error: "Account not found" }, 404);
   if (!ctx.client.deleteResource) return c.json({ error: "Plugin does not support deletion" }, 400);
 
-  // Debug: verify the resource can be found before attempting delete
   const all = await ctx.client.listResources(resourceTypeId, accountId);
   console.log(`[DELETE] resourceId=${resourceId}, accountId=${accountId}, typeId=${resourceTypeId}, listed=${all.length}, match=${all.some((r) => r.id === resourceId)}`);
   if (!all.some((r) => r.id === resourceId)) {

@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Hono } from "hono";
 import type { AuthSession } from "@/api/auth-middleware";
 
-// ── Mocks ──────────────────────────────────────────────────────────────────
 const mockInsert = vi.fn().mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) });
 const mockSelect = vi.fn();
 const mockUpdate = vi.fn();
@@ -21,10 +20,8 @@ vi.mock("@/services/audit", () => ({
 
 vi.mock("uuid", () => ({ v4: () => "test-uuid-1234" }));
 
-// ── Import route after mocks ──────────────────────────────────────────────
 const { apiKeyRoutes } = await import("@/api/routes/api-keys");
 
-// ── Helper: build app with fake session ───────────────────────────────────
 function buildApp() {
   const app = new Hono();
   const session: AuthSession = {
@@ -45,7 +42,6 @@ describe("API Keys routes", () => {
     vi.clearAllMocks();
   });
 
-  // ── POST / — create key ───────────────────────────────────────────────
   describe("POST / — create a new API key", () => {
     it("returns an id and key where the key has iwk_ prefix", async () => {
       const values = vi.fn().mockResolvedValue(undefined);
@@ -108,7 +104,6 @@ describe("API Keys routes", () => {
     });
   });
 
-  // ── GET / — list keys ─────────────────────────────────────────────────
   describe("GET / — list API keys", () => {
     it("returns metadata without exposing hashedKey", async () => {
       const rows = [
@@ -154,7 +149,6 @@ describe("API Keys routes", () => {
     });
   });
 
-  // ── POST /:id/revoke ──────────────────────────────────────────────────
   describe("POST /:id/revoke — revoke an API key", () => {
     it("sets revokedAt to a date", async () => {
       let capturedSet: Record<string, unknown> | undefined;
@@ -172,7 +166,6 @@ describe("API Keys routes", () => {
     });
   });
 
-  // ── Status logic ──────────────────────────────────────────────────────
   describe("status derivation from list response fields", () => {
     it("active: revokedAt and expiresAt are both null", () => {
       const row = { revokedAt: null, expiresAt: null };

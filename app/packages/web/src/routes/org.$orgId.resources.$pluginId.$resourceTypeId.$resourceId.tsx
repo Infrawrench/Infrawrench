@@ -50,7 +50,6 @@ function ResourceDetailPage() {
     return () => { cancelled = true; };
   }, [detailUrl]);
 
-  // Update tab title with real resource name (prefix SSH/SFTP like desktop)
   useEffect(() => {
     if (!data) return;
     const { activeWorkspaceTabId, setWorkspaceTabTitle } = useUIStore.getState();
@@ -59,7 +58,6 @@ function ResourceDetailPage() {
     }
   }, [data, currentView]);
 
-  // Auto-refresh every 30s + on resource-changed events
   useEffect(() => {
     function refresh() {
       apiGet(detailUrl).then(setData).catch(() => {});

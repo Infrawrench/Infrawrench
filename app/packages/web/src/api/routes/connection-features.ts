@@ -94,8 +94,6 @@ async function resolveSshConfig(
   };
 }
 
-// ── SQL ─────────────────────────────────────────────────────────────────────
-
 /** POST /api/sql/query */
 app.post("/sql/query", async (c) => {
   const organizationId = c.get("organizationId");
@@ -192,8 +190,6 @@ app.post("/sql/execute", async (c) => {
   return c.json({ error: "No SQL driver available" }, 400);
 });
 
-// ── KV ──────────────────────────────────────────────────────────────────────
-
 /** POST /api/kv/command */
 app.post("/kv/command", async (c) => {
   const organizationId = c.get("organizationId");
@@ -215,8 +211,6 @@ app.post("/kv/command", async (c) => {
   return c.json({ result });
 });
 
-// ── Docker ──────────────────────────────────────────────────────────────────
-
 /** POST /api/docker/command */
 app.post("/docker/command", async (c) => {
   const organizationId = c.get("organizationId");
@@ -237,8 +231,6 @@ app.post("/docker/command", async (c) => {
   const result = await driver.command(dockerHost, input.op, input.params);
   return c.json({ result });
 });
-
-// ── Storage ─────────────────────────────────────────────────────────────────
 
 /** POST /api/storage/list */
 app.post("/storage/list", async (c) => {
@@ -279,8 +271,6 @@ app.post("/storage/stats", async (c) => {
   const result = await client.fetchStorageStats(input.bucket);
   return c.json(result);
 });
-
-// ── SFTP ────────────────────────────────────────────────────────────────────
 
 /** POST /api/sftp/list */
 app.post("/sftp/list", async (c) => {

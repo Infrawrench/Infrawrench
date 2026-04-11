@@ -102,13 +102,11 @@ app.post("/:id/rotate", async (c) => {
     .where(and(eq(apiKeys.id, keyId), eq(apiKeys.organizationId, c.get("organizationId"))));
   if (!old) return c.json({ error: "API key not found" }, 404);
 
-  // Revoke old
   await db
     .update(apiKeys)
     .set({ revokedAt: new Date() })
     .where(and(eq(apiKeys.id, keyId), eq(apiKeys.organizationId, c.get("organizationId")), isNull(apiKeys.revokedAt)));
 
-  // Create new with same config
   const raw = randomBytes(32);
   const key = `iwk_${raw.toString("base64url")}`;
   const hashedKey = createHash("sha256").update(key).digest("hex");

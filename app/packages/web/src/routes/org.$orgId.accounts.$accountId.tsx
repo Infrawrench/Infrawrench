@@ -37,14 +37,12 @@ function AccountPage() {
     apiGet<typeof data>(`/api/org/${orgId}/accounts/${accountId}/detail`).then(setData);
   }, [accountId]);
 
-  // Update tab title with real account name
   useEffect(() => {
     if (!data) return;
     const { activeWorkspaceTabId, setWorkspaceTabTitle } = useUIStore.getState();
     if (activeWorkspaceTabId) setWorkspaceTabTitle(activeWorkspaceTabId, data.account.displayName);
   }, [data]);
 
-  // Auto-refresh every 30s + on resource-changed events
   useEffect(() => {
     function refresh() {
       apiGet<typeof data>(`/api/org/${orgId}/accounts/${accountId}/detail`).then(setData).catch(() => {});

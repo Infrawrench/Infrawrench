@@ -248,7 +248,6 @@ app.post("/validate-tabs", async (c) => {
     }>;
   }>();
 
-  // Batch-check which dashboards/accounts/resources still exist
   const validIds = new Set<string>();
 
   for (const tab of tabs) {
@@ -302,7 +301,6 @@ app.post("/probe", async (c) => {
     error?: string;
   }> = {};
 
-  // Cache decrypted credentials per account
   const credsByAccount = new Map<string, Record<string, string>>();
 
   async function getCredentials(accountId: string) {
@@ -338,7 +336,6 @@ app.post("/probe", async (c) => {
 
     const manifest = loaded.plugin.manifest;
 
-    // Account summary card
     if (item.resourceTypeId === "__account__") {
       const topLevelTypes = getListableResourceTypes(loaded.plugin.resourceTypes);
       const hostServices = buildPluginHostServices(manifest, creds);
@@ -356,7 +353,6 @@ app.post("/probe", async (c) => {
       return;
     }
 
-    // KV driver (Redis, Memcached)
     if (manifest.kvDriver) {
       const cs = creds[manifest.kvDriver.credentialKey] ?? "";
       const driver = kvDrivers.get(manifest.kvDriver.driver);
@@ -370,7 +366,6 @@ app.post("/probe", async (c) => {
       }
     }
 
-    // Docker driver
     if (manifest.dockerDriver) {
       const dockerHost = creds[manifest.dockerDriver.credentialKey] ?? "";
       const driver = dockerDrivers.get(manifest.dockerDriver.driver);
@@ -384,7 +379,6 @@ app.post("/probe", async (c) => {
       }
     }
 
-    // Storage resource
     const storageType = loaded.plugin.resourceTypes.find(
       (t) => t.id === item.resourceTypeId && t.supportsStorageBrowser,
     );
@@ -402,7 +396,6 @@ app.post("/probe", async (c) => {
       return;
     }
 
-    // SQL driver
     if (manifest.sqlDriver) {
       const cs = creds[manifest.sqlDriver.credentialKey] ?? "";
       const driver = sqlDrivers.get(manifest.sqlDriver.driver);
@@ -416,11 +409,9 @@ app.post("/probe", async (c) => {
       }
     }
 
-    // No connectable driver — mark as ok with no stats
     results[item.resourceId] = { phase: "ok" };
   }));
 
-  // Convert unhandled rejections to errors
   for (const item of items) {
     if (!results[item.resourceId]) {
       results[item.resourceId] = { phase: "error", error: "Probe failed" };

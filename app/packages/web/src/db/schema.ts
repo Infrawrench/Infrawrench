@@ -10,16 +10,12 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
-// ─── Organizations (WorkOS org) ────────────────────────────────────────────────
-
 export const organizations = pgTable("organizations", {
   id: text("id").primaryKey(),               // WorkOS org ID
   displayName: text("display_name").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
-
-// ─── Users ────────────────────────────────────────────────────────────────────
 
 export const users = pgTable(
   "users",
@@ -34,8 +30,6 @@ export const users = pgTable(
     emailIdx: uniqueIndex("users_email_unique").on(t.email),
   }),
 );
-
-// ─── Organization Members (junction table) ───────────────────────────────────
 
 export const organizationMembers = pgTable(
   "organization_members",
@@ -56,8 +50,6 @@ export const organizationMembers = pgTable(
     userIdx: index("org_members_user_idx").on(t.userId),
   }),
 );
-
-// ─── Plugin Installations ─────────────────────────────────────────────────────
 
 export const pluginInstallations = pgTable(
   "plugin_installations",
@@ -81,8 +73,6 @@ export const pluginInstallations = pgTable(
   }),
 );
 
-// ─── Accounts (credentials per plugin per org) ────────────────────────────────
-
 export const accounts = pgTable(
   "accounts",
   {
@@ -104,8 +94,6 @@ export const accounts = pgTable(
     orgPluginIdx: index("accounts_org_plugin_idx").on(t.organizationId, t.pluginId),
   }),
 );
-
-// ─── Resources ────────────────────────────────────────────────────────────────
 
 export const resources = pgTable(
   "resources",
@@ -144,8 +132,6 @@ export const resources = pgTable(
   }),
 );
 
-// ─── Secret Field States ───────────────────────────────────────────────────────
-
 export const secretFieldStates = pgTable(
   "secret_field_states",
   {
@@ -181,8 +167,6 @@ export const secretFieldStates = pgTable(
   }),
 );
 
-// ─── Associations ─────────────────────────────────────────────────────────────
-
 export const associations = pgTable(
   "associations",
   {
@@ -210,8 +194,6 @@ export const associations = pgTable(
   }),
 );
 
-// ─── Dashboards ───────────────────────────────────────────────────────────────
-
 export const dashboards = pgTable(
   "dashboards",
   {
@@ -230,8 +212,6 @@ export const dashboards = pgTable(
     orgIdx: index("dashboards_org_idx").on(t.organizationId),
   }),
 );
-
-// ─── Dashboard Pins ───────────────────────────────────────────────────────────
 
 export const dashboardPins = pgTable(
   "dashboard_pins",
@@ -256,8 +236,6 @@ export const dashboardPins = pgTable(
     dashboardIdx: index("dashboard_pin_dashboard_idx").on(t.dashboardId),
   }),
 );
-
-// ─── SSH Keys (user-owned, org-visible public keys) ─────────────────────────
 
 export const sshKeys = pgTable(
   "ssh_keys",
@@ -288,8 +266,6 @@ export const sshKeys = pgTable(
   }),
 );
 
-// ─── Audit Logs ──────────────────────────────────────────────────────────────
-
 export const auditLogs = pgTable(
   "audit_logs",
   {
@@ -314,8 +290,6 @@ export const auditLogs = pgTable(
     ),
   }),
 );
-
-// ─── API Keys ────────────────────────────────────────────────────────────────
 
 export const apiKeys = pgTable(
   "api_keys",
@@ -342,8 +316,6 @@ export const apiKeys = pgTable(
   }),
 );
 
-// ─── Subscriptions (Stripe) ─────────────────────────────────────────────────
-
 export const subscriptions = pgTable(
   "subscriptions",
   {
@@ -368,8 +340,6 @@ export const subscriptions = pgTable(
     stripeSubIdx: index("subscriptions_stripe_sub_idx").on(t.stripeSubscriptionId),
   }),
 );
-
-// ─── Invitations ─────────────────────────────────────────────────────────────
 
 export const invitations = pgTable(
   "invitations",

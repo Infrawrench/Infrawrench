@@ -35,7 +35,6 @@ export function MongoDocumentBrowser({ databaseName, connected = true, onCommand
   const [insertError, setInsertError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Load collections on mount / when connected
   useEffect(() => {
     if (!connected) return;
     let cancelled = false;
@@ -59,7 +58,6 @@ export function MongoDocumentBrowser({ databaseName, connected = true, onCommand
     return () => { cancelled = true; };
   }, [connected, databaseName]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Fetch documents when collection, page, or filter changes
   const fetchDocuments = useCallback(async () => {
     if (!activeCollection || !connected) return;
     setLoading(true);
@@ -379,8 +377,6 @@ export function MongoDocumentBrowser({ databaseName, connected = true, onCommand
   );
 }
 
-// ── Document row ──────────────────────────────────────────────────────────
-
 function DocumentRow({
   doc,
   index,
@@ -442,8 +438,6 @@ function DocumentRow({
     </div>
   );
 }
-
-// ── Formatting helpers ────────────────────────────────────────────────────
 
 function formatValue(val: unknown): string {
   if (val === null) return "null";

@@ -146,7 +146,6 @@ app.get("/download", async (c) => {
     ...(sshUsername !== undefined ? { sshUsername } : {}),
   });
 
-  // Single file → direct download
   if (paths.length === 1) {
     const remotePath = paths[0]!;
     try {
@@ -163,7 +162,6 @@ app.get("/download", async (c) => {
     }
   }
 
-  // Multiple files → zip download
   const { PassThrough } = await import("node:stream");
   const passthrough = new PassThrough();
   const archive = archiver("zip", { zlib: { level: 6 } });

@@ -104,7 +104,6 @@ function ResourceDetailPage() {
         const db = await getDb();
         const session = getSqlSession(accountId);
 
-        // ── Fast path ─────────────────────────────────────────────────────
         // If we have a cached connection + the resource is in SQLite, show
         // the page immediately without waiting for listResources or pg queries.
         if (session) {
@@ -169,7 +168,6 @@ function ResourceDetailPage() {
           setLoading(true);
         }
 
-        // ── Full load (runs in background if fast path already showed the page) ──
         const accountRows = await db.select<AccountRow[]>(
           "SELECT id, plugin_id, display_name, encrypted_credentials, credentials_iv FROM accounts WHERE id = $1",
           [accountId],
@@ -308,7 +306,6 @@ function ResourceDetailPage() {
           }
         }
 
-        // ── Per-resource SQL driver ──────────────────────────────────────
         // When the resource type declares resourceSqlDriver, resolve the
         // connection string from the resource's outputs and enable SQL.
         const rtSqlDriver = resourceTypeDef?.resourceSqlDriver;
@@ -388,7 +385,6 @@ function ResourceDetailPage() {
           setSchema(finalSchema);
           setResource(enrichedResource);
 
-          // Update tab title with actual resource name
           const { activeWorkspaceTabId, setWorkspaceTabTitle } = useUIStore.getState();
           if (activeWorkspaceTabId) {
             const viewSuffix = resourceTabTitle(enrichedResource.displayName, locationHash);
@@ -424,7 +420,6 @@ function ResourceDetailPage() {
             setSshHost(null);
           }
 
-          // ── Child resource groups ────────────────────────────────────────
           const childTypes = plugin.resourceTypes.filter(
             (t) => t.parentTypeId === enrichedResource.resourceTypeId,
           );
@@ -460,7 +455,6 @@ function ResourceDetailPage() {
             setChildResourceGroups([]);
           }
 
-          // ── Peer plugin integrations ──────────────────────────────────────
           // Skip on background refreshes — resolveOutput() re-fetches credentials
           // (e.g. DOKS kubeconfig) from the provider API, returning a new token string
           // each time. That causes K9sTerminal to see a changed kubeconfig prop and
@@ -584,7 +578,6 @@ function ResourceDetailPage() {
     const client = clientRef.current;
     if (!client?.applyManifest) throw new Error("Plugin does not support manifest editing");
     await client.applyManifest(decodedResourceId, accountId, manifest);
-    // Trigger a refresh so the overview tab reflects changes
     dispatchRefreshResource();
   }, [decodedResourceId, accountId]);
 
@@ -593,7 +586,6 @@ function ResourceDetailPage() {
     const client = clientRef.current;
     if (!client?.deleteResource) throw new Error("Plugin does not support deletion");
     await client.deleteResource(resource.resourceTypeId, resource.id, accountId);
-    // Remove from local DB and navigate back to the account page
     const db = await getDb();
     await db.execute("DELETE FROM dashboard_pins WHERE resource_id = $1", [resource.id]);
     await db.execute("DELETE FROM resources WHERE id = $1", [resource.id]);

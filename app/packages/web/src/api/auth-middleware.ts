@@ -125,7 +125,6 @@ async function provisionUser(
 }
 
 async function ensureMembership(userId: string, orgId: string) {
-  // Ensure the org exists
   await db
     .insert(organizations)
     .values({
@@ -134,7 +133,6 @@ async function ensureMembership(userId: string, orgId: string) {
     })
     .onConflictDoNothing();
 
-  // Ensure membership
   await db
     .insert(organizationMembers)
     .values({

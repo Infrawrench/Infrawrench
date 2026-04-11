@@ -120,7 +120,6 @@ export function useCreateResourceForm(
     }
   }
 
-  // Load config on mount / deps change
   useEffect(() => {
     let cancelled = false;
     async function load() {
@@ -183,7 +182,6 @@ export function useCreateResourceForm(
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
 
-  // Reload pricing when region/size changes
   useEffect(() => {
     if (!config) return;
     void (async () => {
@@ -213,7 +211,6 @@ export function useCreateResourceForm(
     };
   }, [config, selectedRegionId, sizePricingByRegion]);
 
-  // Cost estimate
   useEffect(() => {
     if (!configWithPricing) return;
     const loadCostEstimate = callbacksRef.current.loadCostEstimate;

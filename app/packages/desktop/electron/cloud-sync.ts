@@ -36,7 +36,6 @@ async function pushChanges(token: string): Promise<void> {
   const lastPushAt = (await getSyncState("last_push_at")) ?? "1970-01-01T00:00:00Z";
   const encKey = getEncryptionKey();
 
-  // Fetch locally modified accounts
   const modifiedAccounts = await db.select<Array<{
     id: string;
     plugin_id: string;
@@ -68,7 +67,6 @@ async function pushChanges(token: string): Promise<void> {
     };
   });
 
-  // Fetch locally modified dashboards
   const modifiedDashboards = await db.select<Array<{
     id: string; name: string; is_default: number; updated_at: string; deleted_at: string | null;
   }>>(
@@ -129,7 +127,6 @@ async function pullChanges(token: string): Promise<void> {
 
   let maxVersion = lastSyncVersion;
 
-  // Track max sync version across all entities
   for (const acct of data.accounts ?? []) {
     if (acct.syncVersion > maxVersion) maxVersion = acct.syncVersion;
   }
@@ -182,7 +179,6 @@ export function startSyncTimer(): void {
   syncTimer = setInterval(() => {
     void runSyncCycle();
   }, SYNC_INTERVAL_MS);
-  // Run immediately on start
   void runSyncCycle();
 }
 
@@ -193,7 +189,6 @@ export function stopSyncTimer(): void {
   }
 }
 
-// IPC handlers
 ipcMain.handle("cloud_sync_now", async () => {
   await runSyncCycle();
   return { ok: true };

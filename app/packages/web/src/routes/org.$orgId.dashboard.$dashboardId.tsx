@@ -33,7 +33,6 @@ function DashboardPage() {
     apiGet<typeof data>(`/api/org/${orgId}/dashboards/${dashboardId}`).then(setData);
   }, [dashboardId, dashboardPinsVersion]);
 
-  // Update tab title with real dashboard name
   useEffect(() => {
     if (!data) return;
     const { activeWorkspaceTabId, setWorkspaceTabTitle } = useUIStore.getState();

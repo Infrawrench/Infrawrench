@@ -14,8 +14,6 @@ import type {
 import { useUIStore } from "../../store/ui.store.js";
 import { dispatchRefreshResource } from "../../utils.js";
 
-// ─── Action dispatcher ────────────────────────────────────────────────────────
-
 function useActionDispatch() {
   const { openReroll } = useUIStore();
   return (action: HostAction, resourceId?: string) => {
@@ -38,8 +36,6 @@ function useActionDispatch() {
     }
   };
 }
-
-// ─── Node renderers ───────────────────────────────────────────────────────────
 
 function TextNodeRenderer({ node }: { node: TextNode }) {
   const classes: Record<string, string> = {
@@ -205,8 +201,6 @@ function LinkNodeRenderer({ node }: { node: LinkNode }) {
     </a>
   );
 }
-
-// ─── Main dispatcher ──────────────────────────────────────────────────────────
 
 interface SchemaRendererProps {
   node: SchemaNode;

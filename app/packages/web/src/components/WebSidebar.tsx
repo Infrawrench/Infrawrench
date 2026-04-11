@@ -82,13 +82,11 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
   // API base path for org-scoped calls
   const apiBase = orgId ? `/api/org/${orgId}` : null;
 
-  // Load dashboards
   useEffect(() => {
     if (!apiBase) return;
     apiGet<DashboardEntry[]>(`${apiBase}/dashboards`).then(setDashboardList).catch(console.error);
   }, [apiBase, dashboardPinsVersion]);
 
-  // Load accounts and plugins
   useEffect(() => {
     if (!apiBase) return;
     let cancelled = false;
@@ -128,13 +126,11 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
     return () => { cancelled = true; };
   }, [apiBase, accountsVersion]);
 
-  // Reset expanded state when org changes
   useEffect(() => {
     setExpanded(new Set());
     setAccountResources({});
   }, [orgId]);
 
-  // Focus inputs when they appear
   useEffect(() => {
     if (addingDashboard) newDashboardRef.current?.focus();
   }, [addingDashboard]);

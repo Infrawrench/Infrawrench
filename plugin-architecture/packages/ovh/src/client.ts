@@ -68,8 +68,6 @@ export class OvhClient implements PluginClient {
     this.baseUrl = OvhClient.ENDPOINT_URLS[endpoint] ?? OvhClient.ENDPOINT_URLS["eu"]!;
   }
 
-  // ─── OVH API signature computation ───────────────────────────────────────────
-
   private async sha1(input: string): Promise<string> {
     const data = new TextEncoder().encode(input);
     const hashBuffer = await crypto.subtle.digest("SHA-1", data);
@@ -108,8 +106,6 @@ export class OvhClient implements PluginClient {
     return `$1$${hash}`;
   }
 
-  // ─── HTTP helper ──────────────────────────────────────────────────────────────
-
   private async ovhFetch<T>(path: string, options?: RequestInit): Promise<T> {
     const method = (options?.method ?? "GET").toUpperCase();
     const url = `${this.baseUrl}${path}`;
@@ -140,8 +136,6 @@ export class OvhClient implements PluginClient {
   private cloudPath(suffix: string): string {
     return `/cloud/project/${this.projectId}${suffix}`;
   }
-
-  // ─── PluginClient implementation ──────────────────────────────────────────────
 
   async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
     switch (typeId) {
@@ -520,8 +514,6 @@ export class OvhClient implements PluginClient {
     };
   }
 
-  // ─── Private list helpers ─────────────────────────────────────────────────────
-
   private async listInstances(accountId: string): Promise<ResourceInstance[]> {
     const instances = await this.ovhFetch<OvhInstance[]>(this.cloudPath("/instance"));
     return instances.map((inst) => {
@@ -609,8 +601,6 @@ export class OvhClient implements PluginClient {
     }));
   }
 }
-
-// ─── OVH API response types ──────────────────────────────────────────────────
 
 interface OvhIpAddress {
   ip: string;

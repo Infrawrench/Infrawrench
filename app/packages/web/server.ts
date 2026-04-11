@@ -53,7 +53,6 @@ async function start() {
     server.listen(port);
   }
 
-  // ── WebSocket support ──────────────────────────────────────────────────
   const wss = new WebSocketServer({ noServer: true });
 
   server.on("upgrade", async (request, socket, head) => {

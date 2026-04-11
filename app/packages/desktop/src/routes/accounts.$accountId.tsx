@@ -65,7 +65,6 @@ function AccountPage() {
     source: DraggableResource; sshHost: string;
   } | null>(null);
 
-  // Re-fetch when a resource is deleted (or otherwise changed) for this account
   useEffect(() => {
     function handler(e: Event) {
       const { accountId: changedId } = (e as CustomEvent<{ accountId: string }>).detail;
@@ -75,7 +74,6 @@ function AccountPage() {
     return () => window.removeEventListener(RESOURCES_CHANGED_EVENT, handler);
   }, [accountId]);
 
-  // Close context menu on outside click
   useEffect(() => {
     if (!contextMenu) return;
     function handleClick(e: MouseEvent) {
@@ -87,18 +85,15 @@ function AccountPage() {
     return () => document.removeEventListener("mousedown", handleClick);
   }, [contextMenu]);
 
-  // Handle secret drops onto resource pills on this page
   useEffect(() => {
     function handler(e: Event) {
       const { source, targetId, kind } = (e as CustomEvent<{
         source: DraggableResource; targetId: string; kind: string;
       }>).detail;
       if (kind !== "resource") return;
-      // Find the target in our categories
       const targetResource = categories.flatMap((c) => c.resources).find((r) => r.id === targetId);
       if (!targetResource) return;
 
-      // Check if dropped onto a VM with SSH endpoint
       const targetCategory = categories.find((c) => c.resources.some((r) => r.id === targetId));
       const sshEndpoint = targetCategory?.typeDef.sshEndpoint;
       if (sshEndpoint && !kubeconfigTypeIds.has(targetResource.resourceTypeId)) {
@@ -159,7 +154,6 @@ function AccountPage() {
     return () => window.removeEventListener("iw:sidebar-secret-drop", handler);
   }, [categories, kubeconfigTypeIds, account]);
 
-  // Auto-refresh every 30 s (background — no loading flash)
   useEffect(() => {
     const id = setInterval(() => { backgroundLoadRef.current = true; setLoadVersion((v) => v + 1); }, 30_000);
     return () => clearInterval(id);
@@ -181,7 +175,6 @@ function AccountPage() {
         if (!row) throw new Error("Account not found");
         if (!cancelled) {
           setAccount(row);
-          // Update tab title with actual account name
           const { activeWorkspaceTabId, setWorkspaceTabTitle } = useUIStore.getState();
           if (activeWorkspaceTabId) setWorkspaceTabTitle(activeWorkspaceTabId, row.display_name);
         }
@@ -199,7 +192,6 @@ function AccountPage() {
         const client = plugin.createClient(credentials, services);
         const topLevelTypes = getAccountResourceTypes(plugin.resourceTypes);
 
-        // Check which resource types have kubeconfig outputs (can accept secret drops)
         const kcTypes = new Set<string>();
         for (const rt of plugin.resourceTypes) {
           if (rt.outputs?.some((o) => o.key === "kubeconfig")) kcTypes.add(rt.id);
@@ -254,7 +246,6 @@ function AccountPage() {
           });
         }
 
-        // Which resources are already pinned?
         const pins = await db.select<{ resource_id: string }[]>(
           "SELECT resource_id FROM dashboard_pins",
         );

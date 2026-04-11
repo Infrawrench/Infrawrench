@@ -517,8 +517,6 @@ export class DigitalOceanClient implements PluginClient {
     };
   }
 
-  // ─── Private list helpers ─────────────────────────────────────────────────
-
   private async listProjects(accountId: string): Promise<ResourceInstance[]> {
     const data = await this.fetch<{ projects: Array<Record<string, unknown>> }>("/projects");
     return data.projects.map((p) => ({

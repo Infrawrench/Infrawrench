@@ -8,8 +8,6 @@
 import type { BadgeNode, SectionNode, SchemaNode, DetailViewSchema, SidebarItemSchema, ResourceStatus } from "./schema.js";
 import type { ResourceInstance } from "./instance.js";
 
-// ─── Badge colors by DNS record type ──────────────────────────────────────────
-
 const DNS_RECORD_TYPE_COLORS: Record<string, BadgeNode["color"]> = {
   A: "blue",
   AAAA: "blue",

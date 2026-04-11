@@ -52,14 +52,12 @@ export function DashboardView({ dashboardId, dashboardName: initialName, isHome 
 
   const bumpDashboardPins = useUIStore((s) => s.bumpDashboardPins);
 
-  // Probe resource status for dashboard cards
   useEffect(() => {
     if (pins.length === 0) return;
     probeAbortRef.current?.abort();
     const controller = new AbortController();
     probeAbortRef.current = controller;
 
-    // Set all cards to "connecting"
     setCardStatus((prev) => {
       const next: Record<string, CardStatus> = {};
       for (const pin of pins) {
@@ -93,7 +91,6 @@ export function DashboardView({ dashboardId, dashboardName: initialName, isHome 
     return () => controller.abort();
   }, [pins]);
 
-  // Cmd+K to open spotlight
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {

@@ -27,7 +27,6 @@ app.post("/", async (c) => {
     providerAccountId: string;
   }>();
 
-  // Verify consumer resource belongs to this org
   const [consumer] = await db
     .select({ id: resources.id })
     .from(resources)
@@ -38,7 +37,6 @@ app.post("/", async (c) => {
   const now = new Date();
   const assocId = uuidv4();
 
-  // Upsert association row
   await db
     .insert(associations)
     .values({
@@ -57,7 +55,6 @@ app.post("/", async (c) => {
       },
     });
 
-  // Upsert secret field state as output-ref
   await db
     .insert(secretFieldStates)
     .values({
@@ -136,7 +133,6 @@ app.post("/literal", async (c) => {
       },
     });
 
-  // Remove any existing association for this field
   await db
     .delete(associations)
     .where(

@@ -25,14 +25,10 @@ import {
 import type { ListerContext } from "./resource-listers.js";
 import * as listers from "./resource-listers.js";
 
-// ─── Token cache ─────────────────────────────────────────────────────────────
-
 interface TokenCache {
   token: string;
   expiresAt: number; // ms
 }
-
-// ─── Client ──────────────────────────────────────────────────────────────────
 
 export class GcpClient implements PluginClient {
   private readonly key: ServiceAccountKey;
@@ -1165,8 +1161,6 @@ export class GcpClient implements PluginClient {
     return base;
   }
 
-  // ─── BigQuery query execution ─────────────────────────────────────────────
-
   async executeQuery(resourceId: string, _accountId: string, sql: string): Promise<{ rows: Record<string, unknown>[]; durationMs: number }> {
     const externalId = resourceId.split(":").slice(2).join(":");
     const colonIdx = externalId.indexOf(":");
@@ -1412,8 +1406,6 @@ export class GcpClient implements PluginClient {
       status: { kind: "status-dot", status: gcpStatus(statusVal) },
     };
   }
-
-  // ─── Private list helpers ─────────────────────────────────────────────────
 
   private id(accountId: string, typeId: string, externalId: string): string {
     return `${accountId}:${typeId}:${externalId}`;

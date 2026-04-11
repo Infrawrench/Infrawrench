@@ -1,4 +1,3 @@
-// ─── Resource listing functions ─────────────────────────────────────────────
 //
 // Each function corresponds to an Azure resource type and returns ResourceInstance[].
 // They receive a context object with helpers from the AzureClient.
@@ -29,8 +28,6 @@ function extractResourceGroup(azureId: string): string {
 function extractName(azureId: string): string {
   return azureId.split("/").pop() ?? "";
 }
-
-// ─── Resource Groups ────────────────────────────────────────────────────────
 
 export async function listResourceGroups(
   ctx: ListerContext,
@@ -63,8 +60,6 @@ export async function listResourceGroups(
     };
   });
 }
-
-// ─── Virtual Machines ────────────────────────────────────────────────────────
 
 export async function listVMs(
   ctx: ListerContext,
@@ -167,8 +162,6 @@ export async function listVMs(
   return results;
 }
 
-// ─── Managed Disks ──────────────────────────────────────────────────────────
-
 export async function listDisks(
   ctx: ListerContext,
   accountId: string,
@@ -210,8 +203,6 @@ export async function listDisks(
   });
 }
 
-// ─── Virtual Networks ───────────────────────────────────────────────────────
-
 export async function listVNets(
   ctx: ListerContext,
   accountId: string,
@@ -250,8 +241,6 @@ export async function listVNets(
     };
   });
 }
-
-// ─── AKS Clusters ───────────────────────────────────────────────────────────
 
 export async function listAKSClusters(
   ctx: ListerContext,
@@ -298,8 +287,6 @@ export async function listAKSClusters(
     };
   });
 }
-
-// ─── SQL Databases ──────────────────────────────────────────────────────────
 
 export async function listSQLDatabases(
   ctx: ListerContext,
@@ -361,8 +348,6 @@ export async function listSQLDatabases(
   return results;
 }
 
-// ─── Cosmos DB Accounts ─────────────────────────────────────────────────────
-
 export async function listCosmosDBAccounts(
   ctx: ListerContext,
   accountId: string,
@@ -409,8 +394,6 @@ export async function listCosmosDBAccounts(
   });
 }
 
-// ─── Storage Accounts ───────────────────────────────────────────────────────
-
 export async function listStorageAccounts(
   ctx: ListerContext,
   accountId: string,
@@ -454,8 +437,6 @@ export async function listStorageAccounts(
     };
   });
 }
-
-// ─── Function Apps ──────────────────────────────────────────────────────────
 
 export async function listFunctionApps(
   ctx: ListerContext,
@@ -506,8 +487,6 @@ export async function listFunctionApps(
   });
 }
 
-// ─── App Services ───────────────────────────────────────────────────────────
-
 export async function listAppServices(
   ctx: ListerContext,
   accountId: string,
@@ -556,8 +535,6 @@ export async function listAppServices(
   });
 }
 
-// ─── Container Instances ────────────────────────────────────────────────────
-
 export async function listContainerInstances(
   ctx: ListerContext,
   accountId: string,
@@ -602,8 +579,6 @@ export async function listContainerInstances(
   });
 }
 
-// ─── Key Vaults ─────────────────────────────────────────────────────────────
-
 export async function listKeyVaults(
   ctx: ListerContext,
   accountId: string,
@@ -644,8 +619,6 @@ export async function listKeyVaults(
     };
   });
 }
-
-// ─── Redis Caches ───────────────────────────────────────────────────────────
 
 export async function listRedisCaches(
   ctx: ListerContext,
@@ -690,8 +663,6 @@ export async function listRedisCaches(
   });
 }
 
-// ─── Service Bus Namespaces ─────────────────────────────────────────────────
-
 export async function listServiceBusNamespaces(
   ctx: ListerContext,
   accountId: string,
@@ -732,8 +703,6 @@ export async function listServiceBusNamespaces(
   });
 }
 
-// ─── Container Registries ───────────────────────────────────────────────────
-
 export async function listContainerRegistries(
   ctx: ListerContext,
   accountId: string,
@@ -773,8 +742,6 @@ export async function listContainerRegistries(
     };
   });
 }
-
-// ─── Load Balancers ─────────────────────────────────────────────────────────
 
 export async function listLoadBalancers(
   ctx: ListerContext,
@@ -825,8 +792,6 @@ export async function listLoadBalancers(
   });
 }
 
-// ─── DNS Zones ──────────────────────────────────────────────────────────────
-
 export async function listDNSZones(
   ctx: ListerContext,
   accountId: string,
@@ -864,8 +829,6 @@ export async function listDNSZones(
     };
   });
 }
-
-// ─── Network Security Groups ────────────────────────────────────────────────
 
 export async function listNSGs(
   ctx: ListerContext,
@@ -906,8 +869,6 @@ export async function listNSGs(
     };
   });
 }
-
-// ─── Public IP Addresses ────────────────────────────────────────────────────
 
 export async function listPublicIPs(
   ctx: ListerContext,
@@ -950,8 +911,6 @@ export async function listPublicIPs(
     };
   });
 }
-
-// ─── PostgreSQL Flexible Servers ────────────────────────────────────────────
 
 export async function listPostgresFlexibleServers(
   ctx: ListerContext,
@@ -1000,8 +959,6 @@ export async function listPostgresFlexibleServers(
   });
 }
 
-// ─── MySQL Flexible Servers ─────────────────────────────────────────────────
-
 export async function listMySQLFlexibleServers(
   ctx: ListerContext,
   accountId: string,
@@ -1049,8 +1006,6 @@ export async function listMySQLFlexibleServers(
   });
 }
 
-// ─── Event Hub Namespaces ───────────────────────────────────────────────────
-
 export async function listEventHubNamespaces(
   ctx: ListerContext,
   accountId: string,
@@ -1091,8 +1046,6 @@ export async function listEventHubNamespaces(
     };
   });
 }
-
-// ─── Application Gateways ───────────────────────────────────────────────────
 
 export async function listAppGateways(
   ctx: ListerContext,
@@ -1142,8 +1095,6 @@ export async function listAppGateways(
   });
 }
 
-// ─── Log Analytics Workspace ────────────────────────────────────────────────
-
 export async function listLogAnalyticsWorkspaces(ctx: ListerContext, accountId: string): Promise<ResourceInstance[]> {
   const data = await ctx.get<{
     value: Array<{
@@ -1190,8 +1141,6 @@ export async function listLogAnalyticsWorkspaces(ctx: ListerContext, accountId: 
   });
 }
 
-// ─── Managed Identity ───────────────────────────────────────────────────────
-
 export async function listManagedIdentities(ctx: ListerContext, accountId: string): Promise<ResourceInstance[]> {
   const data = await ctx.get<{
     value: Array<{
@@ -1233,8 +1182,6 @@ export async function listManagedIdentities(ctx: ListerContext, accountId: strin
     };
   });
 }
-
-// ─── Azure Firewall ─────────────────────────────────────────────────────────
 
 export async function listFirewalls(ctx: ListerContext, accountId: string): Promise<ResourceInstance[]> {
   const data = await ctx.get<{

@@ -91,7 +91,6 @@ export async function handleSshSession(
 
         ws.send(JSON.stringify({ type: "ssh:connected" }));
 
-        // Stream stdout → WebSocket
         stream.on("data", (data: Buffer) => {
           if (ws.readyState === ws.OPEN) {
             ws.send(JSON.stringify({ type: "ssh:data", data: data.toString("base64") }));
@@ -109,7 +108,6 @@ export async function handleSshSession(
           conn.end();
         });
 
-        // WebSocket → stdin
         ws.on("message", (raw) => {
           try {
             const msg = JSON.parse(raw.toString()) as {

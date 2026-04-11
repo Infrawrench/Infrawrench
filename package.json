@@ -7,7 +7,8 @@
     "typecheck": "turbo typecheck",
     "test": "turbo test",
     "lint": "turbo lint",
-    "clean": "turbo clean && find . -name 'node_modules' -type d -prune -exec rm -rf '{}' +"
+    "clean": "turbo clean && find . -name 'node_modules' -type d -prune -exec rm -rf '{}' +",
+    "test:integration": "pnpm --filter @infrawrench/integration-tests test:integration"
   },
   "devDependencies": {
     "turbo": "^2.3.3",

@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Hono } from "hono";
 import type { AuthSession } from "@/api/auth-middleware";
 
-// ── Mocks ──────────────────────────────────────────────────────────────────
 const mockInsert = vi.fn();
 const mockSelect = vi.fn();
 const mockUpdate = vi.fn();
@@ -29,7 +28,6 @@ vi.mock("@/plugins/loader", () => ({
 
 const { dashboardRoutes } = await import("@/api/routes/dashboards");
 
-// ── Helper ────────────────────────────────────────────────────────────────
 function buildApp() {
   const app = new Hono();
   const session: AuthSession = {
@@ -63,7 +61,6 @@ describe("Dashboard routes", () => {
     vi.clearAllMocks();
   });
 
-  // ── GET / — list dashboards ───────────────────────────────────────────
   describe("GET / — list dashboards", () => {
     it("returns dashboards for the org", async () => {
       const rows = [
@@ -85,7 +82,6 @@ describe("Dashboard routes", () => {
     });
   });
 
-  // ── POST / — create dashboard ─────────────────────────────────────────
   describe("POST / — create a dashboard", () => {
     it("creates a dashboard with isDefault=false", async () => {
       const created = { id: "dash-uuid-1", name: "Staging", isDefault: false };
@@ -107,7 +103,6 @@ describe("Dashboard routes", () => {
     });
   });
 
-  // ── GET /default/full — auto-create default ───────────────────────────
   describe("GET /default/full — get-or-create default dashboard", () => {
     it("creates the default dashboard when none exists", async () => {
       // First select() for finding default dashboard returns empty
@@ -139,7 +134,6 @@ describe("Dashboard routes", () => {
     });
   });
 
-  // ── DELETE /:id — delete dashboard ────────────────────────────────────
   describe("DELETE /:id — delete a dashboard", () => {
     it("prevents deletion of the default dashboard", async () => {
       const chain = chainMock([{ isDefault: true }]);
@@ -178,7 +172,6 @@ describe("Dashboard routes", () => {
     });
   });
 
-  // ── POST /pin — pin a resource ────────────────────────────────────────
   describe("POST /pin — pin a resource to a dashboard", () => {
     it("inserts a pin with onConflictDoNothing", async () => {
       // select for dashboard check
@@ -221,7 +214,6 @@ describe("Dashboard routes", () => {
     });
   });
 
-  // ── POST /unpin — unpin a resource ────────────────────────────────────
   describe("POST /unpin — unpin a resource", () => {
     it("deletes the pin and returns ok", async () => {
       const dashChain = chainMock([{ id: "d1" }]);

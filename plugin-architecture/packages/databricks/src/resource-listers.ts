@@ -1,4 +1,3 @@
-// ─── Resource listing functions ─────────────────────────────────────────────
 //
 // Each function lists a Databricks resource type via the REST API.
 // They receive a context object with the authenticated fetch helper.
@@ -11,8 +10,6 @@ export interface ListerContext {
   now(): string;
   host: string;
 }
-
-// ─── Clusters ──────────────────────────────────────────────────────────────
 
 export async function listClusters(
   ctx: ListerContext,
@@ -74,8 +71,6 @@ export async function listClusters(
   });
 }
 
-// ─── SQL Warehouses ────────────────────────────────────────────────────────
-
 export async function listSqlWarehouses(
   ctx: ListerContext,
   accountId: string,
@@ -129,8 +124,6 @@ export async function listSqlWarehouses(
     };
   });
 }
-
-// ─── Jobs ──────────────────────────────────────────────────────────────────
 
 export async function listJobs(
   ctx: ListerContext,
@@ -205,8 +198,6 @@ export async function listJobs(
   });
 }
 
-// ─── Pipelines (Delta Live Tables) ─────────────────────────────────────────
-
 export async function listPipelines(
   ctx: ListerContext,
   accountId: string,
@@ -265,8 +256,6 @@ export async function listPipelines(
   });
 }
 
-// ─── Unity Catalog: Catalogs ───────────────────────────────────────────────
-
 export async function listCatalogs(
   ctx: ListerContext,
   accountId: string,
@@ -309,8 +298,6 @@ export async function listCatalogs(
   });
 }
 
-// ─── Unity Catalog: Schemas ────────────────────────────────────────────────
-
 export async function listSchemas(
   ctx: ListerContext,
   accountId: string,
@@ -352,8 +339,6 @@ export async function listSchemas(
     };
   });
 }
-
-// ─── Unity Catalog: Tables ─────────────────────────────────────────────────
 
 export async function listTables(
   ctx: ListerContext,

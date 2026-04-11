@@ -51,7 +51,6 @@ export function AccountDetailView({
     void navigate({ to: "/org/$orgId", params: { orgId } });
   }
 
-  // Group ALL resources by type
   const groupedResources = new Map<string, Resource[]>();
   for (const resource of resources) {
     const group = groupedResources.get(resource.resourceTypeId) ?? [];

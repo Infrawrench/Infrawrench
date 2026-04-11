@@ -74,7 +74,6 @@ app.post("/accept", async (c) => {
     return c.json({ error: "This invitation was sent to a different email address" }, 403);
   }
 
-  // Create membership
   await db
     .insert(organizationMembers)
     .values({
@@ -85,13 +84,11 @@ app.post("/accept", async (c) => {
     })
     .onConflictDoNothing();
 
-  // Mark invitation as accepted
   await db
     .update(invitations)
     .set({ acceptedAt: new Date() })
     .where(eq(invitations.id, invite.id));
 
-  // Return org details
   const orgRows = await db
     .select({ id: organizations.id, displayName: organizations.displayName })
     .from(organizations)

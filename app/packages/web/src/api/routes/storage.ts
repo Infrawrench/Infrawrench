@@ -110,7 +110,6 @@ app.get("/download", async (c) => {
   const storageDriver = storageDrivers.get(account.pluginId);
   if (!storageDriver) return c.json({ error: "No storage driver for this plugin" }, 400);
 
-  // Single file → direct download
   if (keys.length === 1) {
     const key = keys[0]!;
     const tmpPath = `/tmp/iw-download-${Date.now()}-${path.basename(key)}`;
@@ -133,7 +132,6 @@ app.get("/download", async (c) => {
     }
   }
 
-  // Multiple files → zip download
   const { PassThrough } = await import("node:stream");
   const passthrough = new PassThrough();
   const archive = archiver("zip", { zlib: { level: 6 } });

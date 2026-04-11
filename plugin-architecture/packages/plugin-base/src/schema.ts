@@ -9,8 +9,6 @@ import type { SecretResolution } from "./secrets.js";
  * Actions are typed host operations — plugins cannot inject arbitrary handlers.
  */
 
-// ─── Action types ─────────────────────────────────────────────────────────────
-
 export type HostAction =
   | { type: "reroll-secret"; fieldKey: string }
   | { type: "open-url"; url: string }
@@ -22,8 +20,6 @@ export type HostAction =
       resourceId: string;
     }
   | { type: "refresh-resource" };
-
-// ─── Schema nodes ─────────────────────────────────────────────────────────────
 
 export interface TextNode {
   kind: "text";
@@ -98,8 +94,6 @@ export type SchemaNode =
   | GridNode
   | SectionNode
   | LinkNode;
-
-// ─── View schemas ─────────────────────────────────────────────────────────────
 
 /**
  * Dashboard card — always rendered as:

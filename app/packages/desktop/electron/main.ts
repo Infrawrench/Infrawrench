@@ -22,8 +22,6 @@ import "./cloud-ssh-keys";
 // swipe-to-navigate ourselves in the renderer via wheel events.
 app.commandLine.appendSwitch("overscroll-history-navigation", "0");
 
-// ── Window ────────────────────────────────────────────────────────────────────
-
 function createWindow() {
   const win = new BrowserWindow({
     width: 1280,
@@ -95,8 +93,6 @@ app.on("before-quit", () => {
   killAllK9sSessions();
 });
 
-// ── Encryption ────────────────────────────────────────────────────────────────
-
 let _encryptionKey: Buffer | null = null;
 
 function getEncryptionKey(): Buffer {
@@ -138,8 +134,6 @@ ipcMain.handle("decrypt_value", (_e, { ciphertext, iv }: { ciphertext: string; i
   decipher.setAuthTag(tag);
   return decipher.update(encrypted).toString("utf8") + decipher.final("utf8");
 });
-
-// ── Local SQLite ──────────────────────────────────────────────────────────────
 
 let _sqlite: SqlJsDb | null = null;
 let _sqlitePath: string;
@@ -225,8 +219,6 @@ ipcMain.handle("db_execute", async (_e, { sql, params }: { sql: string; params?:
   persist();
   return { rowsAffected, lastInsertId: 0 };
 });
-
-// ── Native dialogs ────────────────────────────────────────────────────────────
 
 ipcMain.handle("show_open_dialog", async (_e, options: Electron.OpenDialogOptions) => {
   const win = BrowserWindow.getFocusedWindow();

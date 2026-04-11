@@ -66,12 +66,10 @@ export function SshTunnelModal({ sshHost, sourceAccountId, defaultService, onClo
     try {
       const db = await getDb();
 
-      // Encrypt private key
       const { ciphertext, iv } = await invoke<{ ciphertext: string; iv: string }>("encrypt_value", {
         plaintext: privateKey.trim(),
       });
 
-      // Open SSH tunnel to verify credentials + get local port
       // Open tunnel to verify credentials; it stays open and will be re-established via ssh_tunnel_configs on reconnect
       await sshOpenTunnel({
         sshHost,
@@ -82,7 +80,6 @@ export function SshTunnelModal({ sshHost, sourceAccountId, defaultService, onClo
         remotePort,
       });
 
-      // Create new account with original remote address credentials
       const newAccountId = crypto.randomUUID();
       const credentials = buildCredentials(pluginId, remotePort);
       const { ciphertext: credCiphertext, iv: credIv } = await invoke<{ ciphertext: string; iv: string }>(
@@ -95,7 +92,6 @@ export function SshTunnelModal({ sshHost, sourceAccountId, defaultService, onClo
         [newAccountId, pluginId, displayName, credCiphertext, credIv],
       );
 
-      // Save SSH tunnel config linked to the new account
       const tunnelId2 = crypto.randomUUID();
       await db.execute(
         `INSERT OR REPLACE INTO ssh_tunnel_configs

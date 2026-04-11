@@ -3,8 +3,6 @@ import { deriveSSHUsername } from "@infrawrench/ui";
 import { invoke } from "../lib/invoke";
 import { getDb } from "../db/client";
 
-// ── Types ─────────────────────────────────────────────────────────────────────
-
 interface SystemKey {
   name: string;
 }
@@ -17,8 +15,6 @@ interface AppKey {
 type KeySource =
   | { type: "system"; name: string }
   | { type: "app"; id: string; name: string };
-
-// ── Main component ────────────────────────────────────────────────────────────
 
 interface SshQuickConnectPanelProps {
   host: string;
@@ -125,8 +121,6 @@ export function SshQuickConnectPanel({ host, onConnect }: SshQuickConnectPanelPr
     }
     onConnect({ username, privateKey: key });
   }
-
-  // ── Connect form ───────────────────────────────────────────────────────────
 
   return (
     <div className="border-t border-gray-800 shrink-0">
@@ -258,8 +252,6 @@ export function SshQuickConnectPanel({ host, onConnect }: SshQuickConnectPanelPr
     </div>
   );
 }
-
-// ── Key row sub-component ─────────────────────────────────────────────────────
 
 function KeyRow({
   label,

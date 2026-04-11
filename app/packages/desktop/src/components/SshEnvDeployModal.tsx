@@ -90,11 +90,9 @@ export function SshEnvDeployModal({ source, sshHost, onClose, onDeployed }: SshE
     setError(null);
 
     try {
-      // Resolve source outputs
       const sourceLoaded = await getPlugin(source.pluginId);
       if (!sourceLoaded) throw new Error(`Plugin "${source.pluginId}" not loaded`);
 
-      // Get source account credentials
       const { getDb } = await import("../db/client");
       const db = await getDb();
       const rows = await db.select<{ encrypted_credentials: string; credentials_iv: string }[]>(
@@ -111,7 +109,6 @@ export function SshEnvDeployModal({ source, sshHost, onClose, onDeployed }: SshE
       const sourceServices = buildPluginHostServices(sourceLoaded.plugin.manifest, sourceCreds);
       const sourceClient = sourceLoaded.plugin.createClient(sourceCreds, sourceServices);
 
-      // Resolve each output key
       const data: Record<string, string> = {};
       for (const entry of selectedTemplate.entries) {
         const envKey = editableKeys[entry.outputKey] ?? entry.envKey;
@@ -132,7 +129,6 @@ export function SshEnvDeployModal({ source, sshHost, onClose, onDeployed }: SshE
       }
       setResolving(false);
 
-      // Build file content
       let content: string;
       if (format === "dotenv") {
         content = Object.entries(data)
@@ -144,7 +140,6 @@ export function SshEnvDeployModal({ source, sshHost, onClose, onDeployed }: SshE
           .join("\n") + "\n";
       }
 
-      // Write to VM via SSH
       const sshConfig = { sshHost, sshPort, sshUser, privateKey: privateKey.trim() };
       const operator = append ? ">>" : ">";
       const expandedPath = filePath.startsWith("~/")

@@ -18,8 +18,6 @@ interface SignRequest {
   credentials: AwsCredentials;
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
 function toHex(buffer: ArrayBuffer): string {
   return [...new Uint8Array(buffer)]
     .map((b) => b.toString(16).padStart(2, "0"))
@@ -53,8 +51,6 @@ function getAmzDate(): { amzDate: string; dateStamp: string } {
   return { amzDate, dateStamp };
 }
 
-// ─── Signing key derivation ─────────────────────────────────────────────────
-
 async function deriveSigningKey(
   secretKey: string,
   dateStamp: string,
@@ -69,8 +65,6 @@ async function deriveSigningKey(
   const kService = await hmac(kRegion, service);
   return hmac(kService, "aws4_request");
 }
-
-// ─── Public: sign a request ─────────────────────────────────────────────────
 
 export async function signRequest(req: SignRequest): Promise<Record<string, string>> {
   const { method, url: rawUrl, headers, body, service, credentials } = req;

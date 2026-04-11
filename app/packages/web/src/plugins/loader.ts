@@ -74,7 +74,6 @@ export async function loadPlugins(): Promise<LoadedPlugin[]> {
       continue;
     }
 
-    // Validate manifest with Zod
     const result = pluginManifestSchema.safeParse(plugin.manifest);
     if (!result.success) {
       console.error(
@@ -84,7 +83,6 @@ export async function loadPlugins(): Promise<LoadedPlugin[]> {
       continue;
     }
 
-    // Verify plugin ID matches the registry
     if (plugin.manifest.id !== entry.id) {
       console.error(
         `[plugin-loader] Plugin manifest id "${plugin.manifest.id}" does not match registry id "${entry.id}" — refusing to load`,

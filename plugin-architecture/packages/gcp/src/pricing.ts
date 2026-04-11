@@ -1,5 +1,3 @@
-// ─── GCP Billing / Pricing logic ────────────────────────────────────────────
-
 interface CloudBillingSku {
   description?: string;
   serviceRegions?: string[];

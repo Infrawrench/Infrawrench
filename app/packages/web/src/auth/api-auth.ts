@@ -22,7 +22,6 @@ export async function authenticateApiRequest(
 
   const token = auth.slice(7);
 
-  // API key auth
   if (token.startsWith("iwk_")) {
     const hashedKey = createHash("sha256").update(token).digest("hex");
     const [key] = await db
@@ -32,10 +31,8 @@ export async function authenticateApiRequest(
 
     if (!key) return null;
 
-    // Check expiration
     if (key.expiresAt && key.expiresAt < new Date()) return null;
 
-    // Update last used
     await db
       .update(apiKeys)
       .set({ lastUsedAt: new Date() })

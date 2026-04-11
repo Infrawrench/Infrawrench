@@ -1,4 +1,3 @@
-// Core plugin interfaces
 export type {
   Plugin,
   PluginClient,
@@ -15,7 +14,6 @@ export type {
   PeerPaneContext,
 } from "./manifest.js";
 
-// Resource type definitions
 export type {
   ResourceTypeDefinition,
   FieldDefinition,
@@ -27,10 +25,8 @@ export type {
   SecretExportEntry,
 } from "./resource.js";
 
-// Resource instances
 export type { ResourceInstance } from "./instance.js";
 
-// Secret and association resolution
 export type {
   SecretResolution,
   LiteralSecretResolution,
@@ -38,10 +34,8 @@ export type {
   SecretFieldState,
 } from "./secrets.js";
 
-// Structural associations
 export type { Association } from "./association.js";
 
-// Component schema (rendering primitives)
 export type {
   SchemaNode,
   TextNode,
@@ -69,7 +63,6 @@ export type {
   ManifestEditorCapability,
 } from "./schema.js";
 
-// Node.js-side driver interfaces (for Electron main / server hosts)
 export type {
   SqlNodeDriver,
   KvNodeDriver,
@@ -78,7 +71,6 @@ export type {
   PluginNodeDriver,
 } from "./node-driver.js";
 
-// Create-resource config (dynamic form schema)
 export type {
   CreateResourceConfig,
   CreateSizePricingRequest,
@@ -90,10 +82,8 @@ export type {
   DiskOption,
 } from "./create.js";
 
-// Plugin registry
 export type { PluginRegistry, PluginRegistryEntry } from "./registry.js";
 
-// Shared DNS helpers
 export {
   dnsRecordBadgeColor,
   formatDnsTtl,
@@ -103,7 +93,6 @@ export {
 } from "./dns.js";
 export type { DnsRecordDetailOptions } from "./dns.js";
 
-// Zod validators
 export {
   pluginManifestSchema,
   resourceTypeDefinitionSchema,

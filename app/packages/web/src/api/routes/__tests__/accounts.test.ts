@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Hono } from "hono";
 import type { AuthSession } from "@/api/auth-middleware";
 
-// ── Mocks ──────────────────────────────────────────────────────────────────
 const mockInsert = vi.fn();
 const mockSelect = vi.fn();
 const mockDelete = vi.fn();
@@ -37,7 +36,6 @@ vi.mock("uuid", () => ({ v4: () => "acct-uuid-1" }));
 
 const { accountRoutes } = await import("@/api/routes/accounts");
 
-// ── Helper ────────────────────────────────────────────────────────────────
 function buildApp() {
   const app = new Hono();
   const session: AuthSession = {
@@ -66,7 +64,6 @@ describe("Account routes", () => {
     vi.clearAllMocks();
   });
 
-  // ── GET /plugins — list plugins ───────────────────────────────────────
   describe("GET /plugins — list available plugins", () => {
     it("returns plugin manifests with credential field metadata", async () => {
       mockLoadPlugins.mockResolvedValue([
@@ -95,7 +92,6 @@ describe("Account routes", () => {
     });
   });
 
-  // ── GET / — list accounts ─────────────────────────────────────────────
   describe("GET / — list accounts", () => {
     it("returns accounts without encrypted fields", async () => {
       const rows = [
@@ -115,7 +111,6 @@ describe("Account routes", () => {
     });
   });
 
-  // ── POST / — create account ───────────────────────────────────────────
   describe("POST / — create an account", () => {
     it("encrypts credentials and returns the new id", async () => {
       const values = vi.fn().mockResolvedValue(undefined);
@@ -148,7 +143,6 @@ describe("Account routes", () => {
     });
   });
 
-  // ── DELETE /:id — delete account ──────────────────────────────────────
   describe("DELETE /:id — delete an account", () => {
     it("deletes the account and returns ok", async () => {
       const where = vi.fn().mockResolvedValue(undefined);
@@ -162,7 +156,6 @@ describe("Account routes", () => {
     });
   });
 
-  // ── POST /:id/sync — trigger sync ────────────────────────────────────
   describe("POST /:id/sync — trigger resource sync", () => {
     const account = {
       id: "a1",

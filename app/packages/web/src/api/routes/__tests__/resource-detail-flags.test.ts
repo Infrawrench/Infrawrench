@@ -13,8 +13,6 @@ import type { AuthSession } from "@/api/auth-middleware";
  * Hetzner servers, etc.
  */
 
-// ── Mocks ──────────────────────────────────────────────────────────────────
-
 const mockSelect = vi.fn();
 const mockInsert = vi.fn();
 const mockDelete = vi.fn();
@@ -50,8 +48,6 @@ vi.mock("@/services/drivers", () => ({
 }));
 
 const { resourceDetailRoutes } = await import("@/api/routes/resource-detail");
-
-// ── Helpers ────────────────────────────────────────────────────────────────
 
 function buildApp() {
   const app = new Hono();
@@ -229,14 +225,10 @@ async function getDetail(app: Hono) {
   return res.json();
 }
 
-// ── Tests ──────────────────────────────────────────────────────────────────
-
 describe("resource-detail feature flag parity with desktop", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
-
-  // ── SSH via plugin's getSshConfig() ─────────────────────────────────────
 
   it("hasSshTerminal=true when client.getSshConfig() returns config (SSH plugin)", async () => {
     setupMocks({
@@ -255,8 +247,6 @@ describe("resource-detail feature flag parity with desktop", () => {
     expect(body.hasSshTerminal).toBe(false);
     expect(body.hasSftpBrowser).toBe(false);
   });
-
-  // ── SSH via sshEndpoint (the parity fix) ────────────────────────────────
 
   it("hasSshTerminal=true when resourceType has sshEndpoint and resource has the host field", async () => {
     setupMocks({
@@ -282,8 +272,6 @@ describe("resource-detail feature flag parity with desktop", () => {
     expect(body.hasSftpBrowser).toBe(false);
     expect(body.sshHost).toBeNull();
   });
-
-  // ── SQL Editor ──────────────────────────────────────────────────────────
 
   it("hasSqlEditor=true when manifest has sqlDriver", async () => {
     setupMocks({
@@ -322,8 +310,6 @@ describe("resource-detail feature flag parity with desktop", () => {
     expect(body.hasSqlEditor).toBe(false);
   });
 
-  // ── KV Console ──────────────────────────────────────────────────────────
-
   it("hasKvConsole=true when manifest has kvDriver", async () => {
     setupMocks({
       getSshConfig: null,
@@ -347,8 +333,6 @@ describe("resource-detail feature flag parity with desktop", () => {
     expect(body.isMongoDb).toBe(true);
   });
 
-  // ── Docker ──────────────────────────────────────────────────────────────
-
   it("hasDockerActions=true when manifest has dockerDriver", async () => {
     setupMocks({
       getSshConfig: null,
@@ -358,8 +342,6 @@ describe("resource-detail feature flag parity with desktop", () => {
     const body = await getDetail(buildApp());
     expect(body.hasDockerActions).toBe(true);
   });
-
-  // ── Storage Browser ─────────────────────────────────────────────────────
 
   it("hasStorageBrowser=true when detailSchema has storageBrowser", async () => {
     setupMocks({
@@ -378,8 +360,6 @@ describe("resource-detail feature flag parity with desktop", () => {
     const body = await getDetail(buildApp());
     expect(body.hasStorageBrowser).toBe(false);
   });
-
-  // ── Combined flags (real-world scenarios) ──────────────────────────────
 
   it("SSH plugin: has SSH+SFTP via getSshConfig, no SQL/KV/Docker", async () => {
     setupMocks({

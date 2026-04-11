@@ -1,12 +1,9 @@
-// ─── Extended resource listing functions ────────────────────────────────────
 //
 // Additional AWS resource types beyond the original set.
 
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { ensureArray } from "./auth.js";
 import type { ListerContext } from "./resource-listers.js";
-
-// ─── Route 53 Hosted Zones ────────────────────────────────────────────────
 
 export async function listRoute53HostedZones(
   ctx: ListerContext,
@@ -44,8 +41,6 @@ export async function listRoute53HostedZones(
     };
   });
 }
-
-// ─── Route 53 Record Sets ─────────────────────────────────────────────────
 
 export async function listRoute53RecordSets(
   ctx: ListerContext,
@@ -96,8 +91,6 @@ export async function listRoute53RecordSets(
   return results;
 }
 
-// ─── Elastic Load Balancers (ELBv2) ───────────────────────────────────────
-
 export async function listALBs(
   ctx: ListerContext,
   accountId: string,
@@ -147,8 +140,6 @@ export async function listALBs(
   });
 }
 
-// ─── Target Groups ────────────────────────────────────────────────────────
-
 export async function listTargetGroups(
   ctx: ListerContext,
   accountId: string,
@@ -190,8 +181,6 @@ export async function listTargetGroups(
     };
   });
 }
-
-// ─── Auto Scaling Groups ──────────────────────────────────────────────────
 
 export async function listAutoScalingGroups(
   ctx: ListerContext,
@@ -246,8 +235,6 @@ export async function listAutoScalingGroups(
   });
 }
 
-// ─── IAM Roles ────────────────────────────────────────────────────────────
-
 export async function listIAMRoles(
   ctx: ListerContext,
   accountId: string,
@@ -284,8 +271,6 @@ export async function listIAMRoles(
     };
   });
 }
-
-// ─── Security Groups ──────────────────────────────────────────────────────
 
 export async function listSecurityGroups(
   ctx: ListerContext,
@@ -327,8 +312,6 @@ export async function listSecurityGroups(
     };
   });
 }
-
-// ─── Subnets ──────────────────────────────────────────────────────────────
 
 export async function listSubnets(
   ctx: ListerContext,
@@ -373,8 +356,6 @@ export async function listSubnets(
   });
 }
 
-// ─── NAT Gateways ─────────────────────────────────────────────────────────
-
 export async function listNATGateways(
   ctx: ListerContext,
   accountId: string,
@@ -415,8 +396,6 @@ export async function listNATGateways(
   });
 }
 
-// ─── Elastic IPs ──────────────────────────────────────────────────────────
-
 export async function listElasticIPs(
   ctx: ListerContext,
   accountId: string,
@@ -452,8 +431,6 @@ export async function listElasticIPs(
     };
   });
 }
-
-// ─── Step Functions ───────────────────────────────────────────────────────
 
 export async function listStepFunctions(
   ctx: ListerContext,
@@ -518,8 +495,6 @@ export async function listStepFunctions(
   return results;
 }
 
-// ─── EventBridge Rules ────────────────────────────────────────────────────
-
 export async function listEventBridgeRules(
   ctx: ListerContext,
   accountId: string,
@@ -555,8 +530,6 @@ export async function listEventBridgeRules(
     };
   });
 }
-
-// ─── Kinesis Streams ──────────────────────────────────────────────────────
 
 export async function listKinesisStreams(
   ctx: ListerContext,
@@ -613,8 +586,6 @@ export async function listKinesisStreams(
   return results;
 }
 
-// ─── Redshift Clusters ────────────────────────────────────────────────────
-
 export async function listRedshiftClusters(
   ctx: ListerContext,
   accountId: string,
@@ -661,8 +632,6 @@ export async function listRedshiftClusters(
   });
 }
 
-// ─── Aurora (RDS) Clusters ────────────────────────────────────────────────
-
 export async function listRDSClusters(
   ctx: ListerContext,
   accountId: string,
@@ -706,8 +675,6 @@ export async function listRDSClusters(
     };
   });
 }
-
-// ─── OpenSearch Domains ───────────────────────────────────────────────────
 
 export async function listOpenSearchDomains(
   ctx: ListerContext,
@@ -764,8 +731,6 @@ export async function listOpenSearchDomains(
   }
   return results;
 }
-
-// ─── ACM Certificates ─────────────────────────────────────────────────────
 
 export async function listACMCertificates(
   ctx: ListerContext,
@@ -847,8 +812,6 @@ export async function listACMCertificates(
   return results;
 }
 
-// ─── WAF Web ACLs ─────────────────────────────────────────────────────────
-
 export async function listWAFWebACLs(
   ctx: ListerContext,
   accountId: string,
@@ -929,8 +892,6 @@ export async function listWAFWebACLs(
   return results;
 }
 
-// ─── CodeBuild Projects ───────────────────────────────────────────────────
-
 export async function listCodeBuildProjects(
   ctx: ListerContext,
   accountId: string,
@@ -981,8 +942,6 @@ export async function listCodeBuildProjects(
   });
 }
 
-// ─── CodePipeline Pipelines ───────────────────────────────────────────────
-
 export async function listCodePipelines(
   ctx: ListerContext,
   accountId: string,
@@ -1023,8 +982,6 @@ export async function listCodePipelines(
   });
 }
 
-// ─── CloudFormation Stacks ────────────────────────────────────────────────
-
 export async function listCloudFormationStacks(
   ctx: ListerContext,
   accountId: string,
@@ -1064,8 +1021,6 @@ export async function listCloudFormationStacks(
   });
 }
 
-// ─── SSM Parameters ───────────────────────────────────────────────────────
-
 export async function listSSMParameters(
   ctx: ListerContext,
   accountId: string,
@@ -1103,8 +1058,6 @@ export async function listSSMParameters(
     };
   });
 }
-
-// ─── EFS File Systems ─────────────────────────────────────────────────────
 
 export async function listEFSFileSystems(
   ctx: ListerContext,
@@ -1150,8 +1103,6 @@ export async function listEFSFileSystems(
   });
 }
 
-// ─── API Gateway (v2 HTTP/WebSocket APIs) ─────────────────────────────────
-
 export async function listAPIGateways(
   ctx: ListerContext,
   accountId: string,
@@ -1191,8 +1142,6 @@ export async function listAPIGateways(
     };
   });
 }
-
-// ─── CloudWatch Alarms ────────────────────────────────────────────────────
 
 export async function listCloudWatchAlarms(
   ctx: ListerContext,
@@ -1234,8 +1183,6 @@ export async function listCloudWatchAlarms(
   });
 }
 
-// ─── CloudWatch Log Groups ────────────────────────────────────────────────
-
 export async function listCloudWatchLogGroups(
   ctx: ListerContext,
   accountId: string,
@@ -1274,8 +1221,6 @@ export async function listCloudWatchLogGroups(
     };
   });
 }
-
-// ─── App Runner Services ──────────────────────────────────────────────────
 
 export async function listAppRunnerServices(
   ctx: ListerContext,
@@ -1318,8 +1263,6 @@ export async function listAppRunnerServices(
   });
 }
 
-// ─── Glue Databases ───────────────────────────────────────────────────────
-
 export async function listGlueDatabases(
   ctx: ListerContext,
   accountId: string,
@@ -1357,8 +1300,6 @@ export async function listGlueDatabases(
   });
 }
 
-// ─── Internet Gateways ────────────────────────────────────────────────────
-
 export async function listInternetGateways(
   ctx: ListerContext,
   accountId: string,
@@ -1394,8 +1335,6 @@ export async function listInternetGateways(
     };
   });
 }
-
-// ─── CloudTrail Trails ────────────────────────────────────────────────────
 
 export async function listCloudTrailTrails(
   ctx: ListerContext,
@@ -1434,8 +1373,6 @@ export async function listCloudTrailTrails(
     };
   });
 }
-
-// ─── MSK Clusters ─────────────────────────────────────────────────────────
 
 export async function listMSKClusters(
   ctx: ListerContext,
@@ -1482,8 +1419,6 @@ export async function listMSKClusters(
   });
 }
 
-// ─── Neptune Clusters ─────────────────────────────────────────────────────
-
 export async function listNeptuneClusters(
   ctx: ListerContext,
   accountId: string,
@@ -1527,8 +1462,6 @@ export async function listNeptuneClusters(
       };
     });
 }
-
-// ─── DocumentDB Clusters ──────────────────────────────────────────────────
 
 export async function listDocumentDBClusters(
   ctx: ListerContext,
@@ -1575,8 +1508,6 @@ export async function listDocumentDBClusters(
     });
 }
 
-// ─── MQ Brokers ───────────────────────────────────────────────────────────
-
 export async function listMQBrokers(
   ctx: ListerContext,
   accountId: string,
@@ -1616,8 +1547,6 @@ export async function listMQBrokers(
   });
 }
 
-// ─── Batch Job Queues ─────────────────────────────────────────────────────
-
 export async function listBatchJobQueues(
   ctx: ListerContext,
   accountId: string,
@@ -1654,8 +1583,6 @@ export async function listBatchJobQueues(
     };
   });
 }
-
-// ─── SageMaker Endpoints ──────────────────────────────────────────────────
 
 export async function listSageMakerEndpoints(
   ctx: ListerContext,

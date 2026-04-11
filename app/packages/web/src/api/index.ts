@@ -34,11 +34,9 @@ import { syncRoutes } from "./routes/sync";
 
 const api = new Hono();
 
-// ── Public routes (no auth middleware) ──────────────────────────────────────
 api.route("/callback", callbackRoutes);
 api.route("/api/v1/webhooks/stripe", stripeWebhookRoutes);
 
-// ── Auth routes — sign-in is public (no session middleware) ───────────────
 api.get("/api/auth/sign-in", async (c) => {
   const redirectUri =
     process.env["WORKOS_REDIRECT_URI"] ?? "http://localhost:3000/callback";
@@ -50,10 +48,8 @@ api.get("/api/auth/sign-in", async (c) => {
   return c.redirect(url);
 });
 
-// ── API-key-authed routes (handle their own auth internally) ────────────────
 api.route("/api/v1/sync", syncRoutes);
 
-// ── Session-authed routes (no org context) ────────────────────────────────
 const authed = new Hono();
 authed.use("*", sessionMiddleware);
 
@@ -63,7 +59,6 @@ authed.route("/invitations", invitationAcceptRoutes);
 
 api.route("/api", authed);
 
-// ── Org-scoped routes (session + org membership) ──────────────────────────
 const orgScoped = new Hono();
 orgScoped.use("*", sessionMiddleware);
 orgScoped.use("*", orgMiddleware);

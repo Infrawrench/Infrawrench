@@ -221,7 +221,6 @@ export async function syncAccountResources(accountId: string, organizationId: st
     if (r.status === "fulfilled") allResources.push(...r.value);
   }
 
-  // Upsert all resources in parallel
   await Promise.all(
     allResources.map((r) =>
       db

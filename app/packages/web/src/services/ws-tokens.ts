@@ -6,7 +6,6 @@ import { randomBytes, createHash } from "node:crypto";
  */
 const tokenStore = new Map<string, { organizationId: string; userId: string; expiresAt: number }>();
 
-// Periodically clean up expired tokens
 setInterval(() => {
   const now = Date.now();
   for (const [key, value] of tokenStore) {

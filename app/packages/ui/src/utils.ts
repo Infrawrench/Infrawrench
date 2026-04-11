@@ -10,8 +10,6 @@ interface ResourceTypeInfo {
   supportsCreate?: boolean | undefined;
 }
 
-// ─── Event constants ────────────────────────────────────────────────────────
-
 /** Custom DOM event name dispatched when resources are created or deleted. */
 export const RESOURCES_CHANGED_EVENT = "iw:resources-changed";
 
@@ -27,8 +25,6 @@ export function dispatchResourcesChanged(accountId?: string): void {
 export function dispatchRefreshResource(): void {
   window.dispatchEvent(new CustomEvent(REFRESH_RESOURCE_EVENT));
 }
-
-// ─── SSH helpers ────────────────────────────────────────────────────────────
 
 /** Derive an SSH username from a key comment (e.g. "user@host" → "user"). Defaults to "root". */
 export function deriveSSHUsername(comment: string): string {
@@ -78,8 +74,6 @@ export interface SftpConfig {
   username: string;
   privateKey: string;
 }
-
-// ─── Error formatting ───────────────────────────────────────────────────────
 
 function rawErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message || String(error);
@@ -193,8 +187,6 @@ export function formatErrorMessage(error: unknown): string {
   return normalized;
 }
 
-// ─── Create resource helpers ────────────────────────────────────────────────
-
 /** Evaluate whether a create-form field should be visible based on showWhen conditions. */
 export function evaluateShowWhen(
   field: { showWhen?: { fieldKey: string; fieldValue: string } },
@@ -214,8 +206,6 @@ export function buildDefaultFields(
   }
   return init;
 }
-
-// ─── Account resource type helpers ──────────────────────────────────────────
 
 /**
  * Returns resource types to show on the account page.

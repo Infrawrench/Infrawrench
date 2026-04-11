@@ -1,4 +1,3 @@
-// ─── Resource listing functions ─────────────────────────────────────────────
 //
 // Each function corresponds to an AWS resource type and returns ResourceInstance[].
 // They receive a context object with helpers from the AWSClient.
@@ -16,8 +15,6 @@ export interface ListerContext {
   now(): string;
   region: string;
 }
-
-// ─── EC2 Instances ──────────────────────────────────────────────────────────
 
 export async function listEC2Instances(
   ctx: ListerContext,
@@ -80,8 +77,6 @@ export async function listEC2Instances(
   return results;
 }
 
-// ─── EBS Volumes ────────────────────────────────────────────────────────────
-
 export async function listEBSVolumes(
   ctx: ListerContext,
   accountId: string,
@@ -128,8 +123,6 @@ export async function listEBSVolumes(
   });
 }
 
-// ─── VPCs ───────────────────────────────────────────────────────────────────
-
 export async function listVPCs(
   ctx: ListerContext,
   accountId: string,
@@ -168,8 +161,6 @@ export async function listVPCs(
     };
   });
 }
-
-// ─── EKS Clusters ───────────────────────────────────────────────────────────
 
 export async function listEKSClusters(
   ctx: ListerContext,
@@ -253,8 +244,6 @@ export async function listEKSClusters(
   return results;
 }
 
-// ─── RDS Instances ──────────────────────────────────────────────────────────
-
 export async function listRDSInstances(
   ctx: ListerContext,
   accountId: string,
@@ -297,8 +286,6 @@ export async function listRDSInstances(
   });
 }
 
-// ─── S3 Buckets ─────────────────────────────────────────────────────────────
-
 export async function listS3Buckets(
   ctx: ListerContext,
   accountId: string,
@@ -337,8 +324,6 @@ export async function listS3Buckets(
   });
 }
 
-// ─── Lambda Functions ───────────────────────────────────────────────────────
-
 export async function listLambdaFunctions(
   ctx: ListerContext,
   accountId: string,
@@ -376,8 +361,6 @@ export async function listLambdaFunctions(
     };
   });
 }
-
-// ─── ECS Services ───────────────────────────────────────────────────────────
 
 export async function listECSServices(
   ctx: ListerContext,
@@ -441,8 +424,6 @@ export async function listECSServices(
   return results;
 }
 
-// ─── DynamoDB Tables ────────────────────────────────────────────────────────
-
 export async function listDynamoDBTables(
   ctx: ListerContext,
   accountId: string,
@@ -500,8 +481,6 @@ export async function listDynamoDBTables(
   return results;
 }
 
-// ─── ElastiCache Clusters ───────────────────────────────────────────────────
-
 export async function listElastiCacheClusters(
   ctx: ListerContext,
   accountId: string,
@@ -543,8 +522,6 @@ export async function listElastiCacheClusters(
     };
   });
 }
-
-// ─── SQS Queues ─────────────────────────────────────────────────────────────
 
 export async function listSQSQueues(
   ctx: ListerContext,
@@ -599,8 +576,6 @@ export async function listSQSQueues(
   }
   return results;
 }
-
-// ─── SNS Topics ─────────────────────────────────────────────────────────────
 
 export async function listSNSTopics(
   ctx: ListerContext,
@@ -661,8 +636,6 @@ export async function listSNSTopics(
   return results;
 }
 
-// ─── ECR Repositories ───────────────────────────────────────────────────────
-
 export async function listECRRepositories(
   ctx: ListerContext,
   accountId: string,
@@ -702,8 +675,6 @@ export async function listECRRepositories(
   });
 }
 
-// ─── Secrets Manager Secrets ────────────────────────────────────────────────
-
 export async function listSecretsManagerSecrets(
   ctx: ListerContext,
   accountId: string,
@@ -739,8 +710,6 @@ export async function listSecretsManagerSecrets(
     };
   });
 }
-
-// ─── CloudFront Distributions ───────────────────────────────────────────────
 
 export async function listCloudFrontDistributions(
   ctx: ListerContext,
@@ -778,8 +747,6 @@ export async function listCloudFrontDistributions(
     };
   });
 }
-
-// ─── IAM Users ──────────────────────────────────────────────────────────────
 
 export async function listIAMUsers(
   ctx: ListerContext,

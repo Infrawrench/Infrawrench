@@ -163,7 +163,6 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
     void load();
   }, [load, dashboardPinsVersion]);
 
-  // ⌘K to open spotlight in navigate mode
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
@@ -236,7 +235,6 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
         setCardStatus((prev) => { alreadyOk = prev[row.resource_id]?.phase === "ok"; return prev; });
         if (alreadyOk) return;
 
-        // ── Account summary card ─────────────────────────────────────────
         if (row.resource_type_id === "__account__") {
           try {
             const loaded = await getPlugin(row.plugin_id);
@@ -275,7 +273,6 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
           return;
         }
 
-        // ── KV resource card (e.g. Redis) ─────────────────────────────────
         const meta = pluginMeta[row.plugin_id];
         if (meta?.kvDriverName && meta.kvCredentialKey) {
           const cs = creds[meta.kvCredentialKey];
@@ -315,7 +312,6 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
           return;
         }
 
-        // ── Docker resource card ──────────────────────────────────────────
         if (meta?.dockerDriverName && meta.dockerCredentialKey) {
           const rawDockerHost = creds[meta.dockerCredentialKey] ?? "";
           try {
@@ -345,7 +341,6 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
           return;
         }
 
-        // ── SSH terminal card ─────────────────────────────────────────────
         if (meta?.terminalResourceTypeIds.includes(row.resource_type_id)) {
           const host = String(creds["host"] ?? "");
           const port = String(creds["port"] ?? "22");
@@ -365,7 +360,6 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
           return;
         }
 
-        // ── Storage resource card (e.g. GCS bucket) ──────────────────────
         if (meta?.storageResourceTypeIds.includes(row.resource_type_id)) {
           try {
             const loaded = await getPlugin(row.plugin_id);
@@ -398,7 +392,6 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
           return;
         }
 
-        // ── SQL resource card (any plugin with sqlDriver declared) ────────
         if (!meta?.sqlDriverName || !meta.sqlCredentialKey) return;
         const cs = creds[meta.sqlCredentialKey];
         if (!cs) return;
