@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
 import type { CreateFieldConfig } from "@infrawrench/plugin-base";
-import { FieldRenderer as SharedFieldRenderer, type SshKeyEntry, type SystemSshKey } from "@infrawrench/ui";
+import { FieldRenderer as SharedFieldRenderer, useUIStore, type SshKeyEntry, type SystemSshKey } from "@infrawrench/ui";
 import { invoke } from "../../lib/invoke";
 
 export function FieldRenderer({ field, value, onChange }: { field: CreateFieldConfig; value: string; onChange: (v: string) => void }) {
   const [systemKeys, setSystemKeys] = useState<SystemSshKey[]>([]);
   const [cloudAuthed, setCloudAuthed] = useState(false);
+  const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
 
   useEffect(() => {
     if (field.kind !== "ssh-key-picker") return;
@@ -63,7 +64,8 @@ export function FieldRenderer({ field, value, onChange }: { field: CreateFieldCo
         generateKey,
         deleteKey,
         systemKeys,
-        cloudEnabled: cloudAuthed,
+        cloudEnabled: cloudAuthed && activeCloudOrgId !== null,
+        showCloudSection: activeCloudOrgId !== null,
         onCloudSignIn: () => {
           void invoke("cloud_auth_start").then(() => {
             // Poll until authenticated, then flip the flag

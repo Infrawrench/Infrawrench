@@ -17,6 +17,9 @@ export const GceInstanceResourceType: ResourceTypeDefinition = {
     { key: "internalIp", label: "Internal IP", sensitive: false },
   ],
   dashboardPinnable: true,
-  sshEndpoint: { hostOutputKey: "externalIp" },
+  sshEndpoint: {
+    hostOutputKey: "externalIp",
+    runningWhen: { fieldKey: "status", value: "RUNNING" },
+  },
   supportsCreate: true,
 };

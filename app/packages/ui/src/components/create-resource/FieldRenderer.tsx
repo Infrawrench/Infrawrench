@@ -17,6 +17,8 @@ export interface SshKeyPickerCallbacks {
   systemKeys?: SystemSshKey[];
   /** When false, shows a sign-in prompt instead of cloud keys. Defaults to true. */
   cloudEnabled?: boolean;
+  /** When false, hides the cloud keys section entirely (e.g. desktop in local-only mode). Defaults to true. */
+  showCloudSection?: boolean;
   /** Called when the user clicks "Sign in" in the cloud keys section. */
   onCloudSignIn?: () => void;
 }
@@ -121,6 +123,7 @@ export function FieldRenderer({ field, value, onChange, sshKeyProps }: FieldRend
             currentUserId={sshKeyProps.currentUserId}
             systemKeys={sshKeyProps.systemKeys}
             cloudEnabled={sshKeyProps.cloudEnabled}
+            showCloudSection={sshKeyProps.showCloudSection}
             onCloudSignIn={sshKeyProps.onCloudSignIn}
           />
         ) : (

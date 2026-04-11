@@ -106,6 +106,7 @@ function RootLayout() {
     reorderWorkspaceTabs,
     replaceWorkspaceTabs,
     setActiveDashboard,
+    setActiveCloudOrgId,
   } = useUIStore();
   const navigate = useNavigate();
 
@@ -120,6 +121,11 @@ function RootLayout() {
   const [cloudOrgs, setCloudOrgs] = useState<CloudOrg[]>([]);
   const [activeOrgId, setActiveOrgId] = useState<string | null>(null); // null = Local
   const [cloudAuthenticated, setCloudAuthenticated] = useState(false);
+
+  // Sync activeOrgId to the UI store so child components can check it
+  useEffect(() => {
+    setActiveCloudOrgId(activeOrgId);
+  }, [activeOrgId, setActiveCloudOrgId]);
 
   // Load cloud auth status and orgs on mount
   useEffect(() => {

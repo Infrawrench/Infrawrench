@@ -51,6 +51,9 @@ export const InstanceResourceType: ResourceTypeDefinition = {
   ],
   dashboardPinnable: true,
   iconKey: "instance",
-  sshEndpoint: { hostOutputKey: "ipv4" },
+  sshEndpoint: {
+    hostOutputKey: "ipv4",
+    runningWhen: { fieldKey: "status", value: "ACTIVE" },
+  },
   supportsCreate: true,
 };

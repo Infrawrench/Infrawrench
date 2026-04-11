@@ -45,8 +45,8 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [accountResources, setAccountResources] = useState<Record<string, AccountResourcesState>>({});
-  // typeId → hostOutputKey for resources with sshEndpoint
-  const [sshEndpointByTypeId, setSshEndpointByTypeId] = useState<Record<string, string>>({});
+  // typeId → sshEndpoint config for resources with sshEndpoint
+  const [sshEndpointByTypeId, setSshEndpointByTypeId] = useState<Record<string, { hostOutputKey: string; runningWhen?: { fieldKey: string; value: string } }>>({});
   // Resource type IDs that have a "kubeconfig" output — can be drop targets for secret import
   const [kubeconfigTypeIds, setKubeconfigTypeIds] = useState<Set<string>>(new Set());
   // resourceId → sshHost value
@@ -109,10 +109,10 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
         );
 
         // Build sshEndpoint lookup from all resource types
-        const sshMap: Record<string, string> = {};
+        const sshMap: Record<string, { hostOutputKey: string; runningWhen?: { fieldKey: string; value: string } }> = {};
         for (const p of plugins) {
           for (const rt of p.plugin.resourceTypes) {
-            if (rt.sshEndpoint) sshMap[rt.id] = rt.sshEndpoint.hostOutputKey;
+            if (rt.sshEndpoint) sshMap[rt.id] = rt.sshEndpoint;
           }
         }
         if (!cancelled) setSshEndpointByTypeId(sshMap);
@@ -198,9 +198,14 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
       // Record SSH host values for resources with sshEndpoint
       const sshHosts: Record<string, string> = {};
       for (const r of allResources) {
-        const hostOutputKey = sshEndpointByTypeId[r.resourceTypeId];
-        if (hostOutputKey) {
-          const host = String(r.resolvedOutputs[hostOutputKey] ?? r.fields[hostOutputKey] ?? "");
+        const endpoint = sshEndpointByTypeId[r.resourceTypeId];
+        if (endpoint) {
+          // Check runningWhen guard
+          if (endpoint.runningWhen) {
+            const fieldVal = String(r.fields[endpoint.runningWhen.fieldKey] ?? "");
+            if (fieldVal.toLowerCase() !== endpoint.runningWhen.value.toLowerCase()) continue;
+          }
+          const host = String(r.resolvedOutputs[endpoint.hostOutputKey] ?? r.fields[endpoint.hostOutputKey] ?? "");
           if (host) sshHosts[r.id] = host;
         }
       }

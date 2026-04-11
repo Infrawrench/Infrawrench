@@ -100,9 +100,15 @@ function AccountPage() {
 
       // Check if dropped onto a VM with SSH endpoint
       const targetCategory = categories.find((c) => c.resources.some((r) => r.id === targetId));
-      const sshHostKey = targetCategory?.typeDef.sshEndpoint?.hostOutputKey;
-      if (sshHostKey && !kubeconfigTypeIds.has(targetResource.resourceTypeId)) {
-        const sshHost = String(targetResource.resolvedOutputs?.[sshHostKey] ?? targetResource.fields[sshHostKey] ?? "");
+      const sshEndpoint = targetCategory?.typeDef.sshEndpoint;
+      if (sshEndpoint && !kubeconfigTypeIds.has(targetResource.resourceTypeId)) {
+        // Check runningWhen guard
+        let vmRunning = true;
+        if (sshEndpoint.runningWhen) {
+          const fieldVal = String(targetResource.fields[sshEndpoint.runningWhen.fieldKey] ?? "");
+          vmRunning = fieldVal.toLowerCase() === sshEndpoint.runningWhen.value.toLowerCase();
+        }
+        const sshHost = vmRunning ? String(targetResource.resolvedOutputs?.[sshEndpoint.hostOutputKey] ?? targetResource.fields[sshEndpoint.hostOutputKey] ?? "") : "";
         if (sshHost) {
           const TUNNEL_PLUGINS = new Set(["docker", "postgres", "mysql", "redis", "memcached"]);
           const sourcePlugin = source.pluginId === "__account__"
@@ -399,7 +405,7 @@ function AccountPage() {
                     typeId={cat.typeDef.id}
                     pinned={pinned.has(resource.id)}
                     acceptsSecretImport={kubeconfigTypeIds.has(cat.typeDef.id)}
-                    {...(cat.typeDef.sshEndpoint?.hostOutputKey !== undefined ? { sshHostOutputKey: cat.typeDef.sshEndpoint.hostOutputKey } : {})}
+                    {...(cat.typeDef.sshEndpoint ? { sshHostOutputKey: cat.typeDef.sshEndpoint.hostOutputKey, sshRunningWhen: cat.typeDef.sshEndpoint.runningWhen } : {})}
                     onPin={() => togglePin(resource, cat.typeDef.id)}
                     onOpen={() => openDetail(resource)}
                     onContextMenuSsh={(e, sshHost) => {
@@ -537,6 +543,7 @@ function ResourcePill({
   pinned,
   acceptsSecretImport,
   sshHostOutputKey,
+  sshRunningWhen,
   onPin,
   onOpen,
   onContextMenuSsh,
@@ -546,6 +553,7 @@ function ResourcePill({
   pinned: boolean;
   acceptsSecretImport?: boolean;
   sshHostOutputKey?: string;
+  sshRunningWhen?: { fieldKey: string; value: string };
   onPin: () => void;
   onOpen: () => void;
   onContextMenuSsh?: (e: React.MouseEvent, sshHost: string) => void;
@@ -569,9 +577,17 @@ function ResourcePill({
     data: { resource: draggableData },
   });
 
-  const sshHost = sshHostOutputKey
-    ? String(resource.resolvedOutputs?.[sshHostOutputKey] ?? resource.fields[sshHostOutputKey] ?? "")
-    : "";
+  let sshHost = "";
+  if (sshHostOutputKey) {
+    let isRunning = true;
+    if (sshRunningWhen) {
+      const fieldVal = String(resource.fields[sshRunningWhen.fieldKey] ?? "");
+      isRunning = fieldVal.toLowerCase() === sshRunningWhen.value.toLowerCase();
+    }
+    if (isRunning) {
+      sshHost = String(resource.resolvedOutputs?.[sshHostOutputKey] ?? resource.fields[sshHostOutputKey] ?? "");
+    }
+  }
 
   // Separate droppable from draggable — combining refs on the same node in a
   // flex-wrap layout causes @dnd-kit to lose rect measurements during drag.

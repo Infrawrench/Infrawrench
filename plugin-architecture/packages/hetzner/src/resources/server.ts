@@ -60,6 +60,9 @@ export const ServerResourceType: ResourceTypeDefinition = {
   ],
   dashboardPinnable: true,
   iconKey: "server",
-  sshEndpoint: { hostOutputKey: "ipv4" },
+  sshEndpoint: {
+    hostOutputKey: "ipv4",
+    runningWhen: { fieldKey: "status", value: "running" },
+  },
   supportsCreate: true,
 };

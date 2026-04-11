@@ -31,6 +31,8 @@ export interface SshKeyPickerProps {
   systemKeys?: SystemSshKey[];
   /** When false, shows a sign-in prompt instead of cloud keys. Defaults to true. */
   cloudEnabled?: boolean;
+  /** When false, hides the cloud keys section entirely (e.g. desktop in local-only mode). Defaults to true. */
+  showCloudSection?: boolean;
   /** Called when the user clicks "Sign in" in the cloud keys section. Omit on web (always authed). */
   onCloudSignIn?: () => void;
 }
@@ -44,6 +46,7 @@ export function SshKeyPicker({
   currentUserId,
   systemKeys,
   cloudEnabled = true,
+  showCloudSection = true,
   onCloudSignIn,
 }: SshKeyPickerProps) {
   const [cloudKeys, setCloudKeys] = useState<SshKeyEntry[]>([]);
@@ -157,7 +160,7 @@ export function SshKeyPicker({
         )}
 
         {/* Cloud-managed keys section */}
-        {!loading && (
+        {!loading && showCloudSection && (
           <div>
             <div className="px-3 py-1 bg-gray-800/30 border-b border-gray-700/40 flex items-center justify-between">
               <span className="text-[10px] font-semibold text-gray-600 uppercase tracking-wide">Cloud keys</span>
@@ -220,7 +223,7 @@ export function SshKeyPicker({
       </div>
 
       {/* Private key display (shown once after generation) */}
-      {cloudEnabled && generatedPrivateKey && (
+      {showCloudSection && cloudEnabled && generatedPrivateKey && (
         <div className="border-t border-gray-700/40 p-3 space-y-2 bg-yellow-900/10">
           <p className="text-xs text-yellow-400 font-medium">
             Save this private key now — it won't be shown again.
@@ -246,7 +249,7 @@ export function SshKeyPicker({
       )}
 
       {/* Generate key form */}
-      {cloudEnabled && !generatedPrivateKey && (
+      {showCloudSection && cloudEnabled && !generatedPrivateKey && (
         showGenerate ? (
           <div className="border-t border-gray-700/40 p-3 space-y-2 bg-gray-900/50">
             <input

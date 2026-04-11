@@ -151,6 +151,10 @@ interface UIState {
   activeDashboardId: string | null;
   setActiveDashboard: (id: string | null) => void;
 
+  /** Active cloud org ID — null means local-only mode (desktop) */
+  activeCloudOrgId: string | null;
+  setActiveCloudOrgId: (id: string | null) => void;
+
   /** The field key being "rerolled" — triggers AssociationPicker modal */
   rerollingField: { resourceId: string; fieldKey: string } | null;
   openReroll: (resourceId: string, fieldKey: string) => void;
@@ -196,6 +200,9 @@ export const useUIStore = create<UIState>()(persist((set) => ({
 
   activeDashboardId: null,
   setActiveDashboard: (id) => set({ activeDashboardId: id }),
+
+  activeCloudOrgId: null,
+  setActiveCloudOrgId: (id) => set({ activeCloudOrgId: id }),
 
   rerollingField: null,
   openReroll: (resourceId, fieldKey) => set({ rerollingField: { resourceId, fieldKey } }),

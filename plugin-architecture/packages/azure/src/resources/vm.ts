@@ -29,6 +29,9 @@ export const VMResourceType: ResourceTypeDefinition = {
   ],
   dashboardPinnable: true,
   iconKey: "instance",
-  sshEndpoint: { hostOutputKey: "publicIp" },
+  sshEndpoint: {
+    hostOutputKey: "publicIp",
+    runningWhen: { fieldKey: "powerState", value: "VM running" },
+  },
   supportsCreate: true,
 };

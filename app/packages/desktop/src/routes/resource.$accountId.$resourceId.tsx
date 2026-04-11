@@ -398,13 +398,28 @@ function ResourceDetailPage() {
           // Resolve SSH host if this resource type declares an sshEndpoint
           setResourceTypeLabel(resourceTypeDef?.displayName ?? "Resource");
           if (resourceTypeDef?.sshEndpoint) {
-            const { hostOutputKey } = resourceTypeDef.sshEndpoint;
-            const host = String(
-              enrichedResource.resolvedOutputs[hostOutputKey] ??
-              enrichedResource.fields[hostOutputKey] ??
-              "",
-            );
-            if (!cancelled) setSshHost(host || null);
+            const { hostOutputKey, runningWhen } = resourceTypeDef.sshEndpoint;
+            // If runningWhen is specified, only enable SSH when the field matches
+            if (runningWhen) {
+              const fieldVal = String(enrichedResource.fields[runningWhen.fieldKey] ?? "");
+              if (fieldVal.toLowerCase() !== runningWhen.value.toLowerCase()) {
+                if (!cancelled) setSshHost(null);
+              } else {
+                const host = String(
+                  enrichedResource.resolvedOutputs[hostOutputKey] ??
+                  enrichedResource.fields[hostOutputKey] ??
+                  "",
+                );
+                if (!cancelled) setSshHost(host || null);
+              }
+            } else {
+              const host = String(
+                enrichedResource.resolvedOutputs[hostOutputKey] ??
+                enrichedResource.fields[hostOutputKey] ??
+                "",
+              );
+              if (!cancelled) setSshHost(host || null);
+            }
           } else if (!cancelled) {
             setSshHost(null);
           }

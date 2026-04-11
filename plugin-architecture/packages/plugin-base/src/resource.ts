@@ -108,7 +108,16 @@ export interface ResourceTypeDefinition {
    * for instances of this type. `hostOutputKey` names the output key whose resolved
    * value is used as the SSH server address (e.g. "ipv4").
    */
-  sshEndpoint?: { hostOutputKey: string };
+  sshEndpoint?: {
+    hostOutputKey: string;
+    /**
+     * Optional guard: SSH/SFTP buttons are only shown when the resource field
+     * named by `fieldKey` equals `value` (case-insensitive).
+     * For example `{ fieldKey: "status", value: "RUNNING" }` hides buttons
+     * while a GCE instance is still staging.
+     */
+    runningWhen?: { fieldKey: string; value: string };
+  };
   /** If true, the host will show a storage browser and fetch storage stats for dashboard cards of this type */
   supportsStorageBrowser?: boolean;
   /** If true, the host will offer a "Create" button for this resource type */

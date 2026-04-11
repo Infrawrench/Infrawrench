@@ -367,13 +367,21 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
   // This enables SSH/SFTP for cloud VMs (AWS EC2, DO droplets, Hetzner servers, etc.)
   let sshHost: string | null = null;
   if (resourceTypeDef?.sshEndpoint) {
-    const { hostOutputKey } = resourceTypeDef.sshEndpoint;
-    const host = String(
-      enrichedInstance.resolvedOutputs?.[hostOutputKey] ??
-      enrichedInstance.fields?.[hostOutputKey] ??
-      "",
-    );
-    if (host) sshHost = host;
+    const { hostOutputKey, runningWhen } = resourceTypeDef.sshEndpoint;
+    // If runningWhen is specified, only enable SSH when the field matches
+    let isVmRunning = true;
+    if (runningWhen) {
+      const fieldVal = String(enrichedInstance.fields?.[runningWhen.fieldKey] ?? "");
+      isVmRunning = fieldVal.toLowerCase() === runningWhen.value.toLowerCase();
+    }
+    if (isVmRunning) {
+      const host = String(
+        enrichedInstance.resolvedOutputs?.[hostOutputKey] ??
+        enrichedInstance.fields?.[hostOutputKey] ??
+        "",
+      );
+      if (host) sshHost = host;
+    }
   }
 
   const isRunning = finalSchema.status?.status === "healthy";
