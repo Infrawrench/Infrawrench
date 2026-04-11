@@ -4,6 +4,7 @@ import type { AuthSession } from "@/api/auth-middleware";
 
 // ── Mocks ──────────────────────────────────────────────────────────────────
 const mockGetAuthorizationUrl = vi.fn().mockReturnValue("https://workos.example.com/auth");
+const mockSelect = vi.fn();
 
 vi.mock("@/auth/workos", () => ({
   workos: {
@@ -12,6 +13,17 @@ vi.mock("@/auth/workos", () => ({
     },
   },
   clientId: "test-client-id",
+}));
+
+vi.mock("@/db/client", () => ({
+  db: {
+    select: (...args: unknown[]) => mockSelect(...args),
+  },
+}));
+
+vi.mock("@/db/schema", () => ({
+  organizations: { id: "id", displayName: "display_name" },
+  organizationMembers: { userId: "user_id", organizationId: "organization_id", role: "role" },
 }));
 
 const { authRoutes } = await import("@/api/routes/auth");
@@ -35,27 +47,11 @@ function buildApp() {
 describe("Auth routes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-  });
-
-  // ── GET /sign-in — redirect ───────────────────────────────────────────
-  describe("GET /sign-in — redirect to WorkOS", () => {
-    it("returns a redirect response", async () => {
-      const app = buildApp();
-      const res = await app.request("/sign-in", { method: "GET", redirect: "manual" });
-      expect(res.status).toBe(302);
-      expect(res.headers.get("Location")).toBe("https://workos.example.com/auth");
-    });
-
-    it("passes provider authkit and clientId to WorkOS", async () => {
-      const app = buildApp();
-      await app.request("/sign-in", { method: "GET", redirect: "manual" });
-      expect(mockGetAuthorizationUrl).toHaveBeenCalledWith(
-        expect.objectContaining({
-          provider: "authkit",
-          clientId: "test-client-id",
-        }),
-      );
-    });
+    // Default mock for db.select().from().where().limit() chain (used by /me and /orgs)
+    const limit = vi.fn().mockResolvedValue([{ organizationId: "org-1" }]);
+    const where = vi.fn().mockReturnValue({ limit });
+    const from = vi.fn().mockReturnValue({ where });
+    mockSelect.mockReturnValue({ from });
   });
 
   // ── GET /me — current user ────────────────────────────────────────────

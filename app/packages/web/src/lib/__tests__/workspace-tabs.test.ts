@@ -24,12 +24,11 @@ import {
   syncWorkspaceRouteFromPath,
 } from "../workspace-tabs";
 
-// Mock window.location.pathname for getWorkspaceNavigateArgs (reads orgId from URL)
+// Mock window.location for getWorkspaceNavigateArgs (reads orgId from URL)
 beforeEach(() => {
-  Object.defineProperty(window, "location", {
-    value: { pathname: "/org/test-org/dashboard/d1", search: "" },
-    writable: true,
-  });
+  (globalThis as Record<string, unknown>).window = {
+    location: { pathname: "/org/test-org/dashboard/d1", search: "" },
+  };
 });
 
 describe("dashboardTabTarget", () => {

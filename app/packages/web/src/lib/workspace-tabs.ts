@@ -14,6 +14,7 @@ import {
 export { dashboardTabTarget, accountTabTarget, resourceTabTarget, resourceSshTabTarget, resourceSftpTabTarget };
 
 function getCurrentOrgId(): string {
+  if (typeof window === "undefined") return "";
   const match = window.location.pathname.match(/^\/org\/([^/]+)/);
   return match?.[1] ?? "";
 }
