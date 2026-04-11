@@ -9,7 +9,6 @@ export const pluginManifestSchema = z.object({
   description: z.string().optional(),
   logoSvg: z.string().min(1),
   author: z.string().min(1),
-  license: z.literal("MIT"),
   minHostVersion: z.string().regex(/^\d+\.\d+\.\d+/),
   peerPlugins: z.array(z.string()).optional(),
   credentialFields: z.array(z.object({

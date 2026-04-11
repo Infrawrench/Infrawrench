@@ -1,7 +1,7 @@
 {
   "name": "@infrawrench/plugin-postgres",
   "version": "0.1.0",
-  "license": "MIT",
+  "license": "UNLICENSED",
   "type": "module",
   "exports": {
     ".": {

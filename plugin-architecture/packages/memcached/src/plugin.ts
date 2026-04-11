@@ -11,7 +11,6 @@ const manifest: PluginManifest = {
     <text x="50" y="65" font-size="42" text-anchor="middle" fill="white" font-family="monospace" font-weight="bold">MC</text>
   </svg>`,
   author: "Infrawrench",
-  license: "MIT",
   minHostVersion: "0.1.0",
   credentialFields: [
     {

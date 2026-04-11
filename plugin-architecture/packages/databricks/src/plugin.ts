@@ -20,7 +20,6 @@ const manifest: PluginManifest = {
     </g>
   </svg>`,
   author: "Infrawrench",
-  license: "MIT",
   minHostVersion: "0.1.0",
   credentialFields: [
     {

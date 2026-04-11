@@ -15,7 +15,6 @@ const validManifest = {
   description: "Manage DigitalOcean resources",
   logoSvg: "<svg/>",
   author: "Infrawrench",
-  license: "MIT" as const,
   minHostVersion: "0.1.0",
 };
 
@@ -37,10 +36,6 @@ describe("pluginManifestSchema", () => {
       supportsSecretImport: true,
     });
     expect(result.success).toBe(true);
-  });
-
-  it("rejects non-MIT license", () => {
-    expect(pluginManifestSchema.safeParse({ ...validManifest, license: "Apache-2.0" }).success).toBe(false);
   });
 
   it("rejects non-kebab-case id", () => {

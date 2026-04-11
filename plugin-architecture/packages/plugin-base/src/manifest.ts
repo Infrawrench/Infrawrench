@@ -59,7 +59,6 @@ export interface PluginManifest {
   /** Raw SVG string — injected by the host into dashboard cards */
   logoSvg: string;
   author: string;
-  license: "MIT";
   /** Minimum infrawrench host version required (semver) */
   minHostVersion: string;
   /** Plugin IDs this plugin may receive associations from */
