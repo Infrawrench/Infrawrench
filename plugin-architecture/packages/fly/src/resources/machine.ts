@@ -1,0 +1,60 @@
+import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+
+export const MachineResourceType: ResourceTypeDefinition = {
+  id: "machine",
+  displayName: "Machine",
+  pluralDisplayName: "Machines",
+  description: "A Fly Machine — a fast-launching microVM",
+  parentTypeId: "app",
+  fields: [
+    { key: "name", label: "Name", kind: "string", required: false },
+    {
+      key: "state",
+      label: "State",
+      kind: "enum",
+      required: true,
+      enumValues: [
+        "created",
+        "started",
+        "stopped",
+        "suspended",
+        "destroyed",
+        "starting",
+        "stopping",
+        "replacing",
+      ],
+    },
+    {
+      key: "region",
+      label: "Region",
+      kind: "string",
+      required: true,
+      description: "Fly.io region code (e.g. iad, cdg, nrt)",
+    },
+    {
+      key: "image",
+      label: "Image",
+      kind: "string",
+      required: false,
+      description: "Container image used by this machine",
+    },
+    {
+      key: "appName",
+      label: "App",
+      kind: "string",
+      required: true,
+      description: "Name of the parent app",
+    },
+    {
+      key: "instanceId",
+      label: "Instance ID",
+      kind: "string",
+      required: false,
+      description: "Current instance version identifier",
+    },
+  ],
+  outputs: [{ key: "privateIp", label: "Private IPv6 (6PN)", sensitive: false }],
+  dashboardPinnable: true,
+  iconKey: "server",
+  supportsCreate: true,
+};

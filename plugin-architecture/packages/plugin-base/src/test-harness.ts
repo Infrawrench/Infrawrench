@@ -52,6 +52,8 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
     clientSecret: "test-client-secret",
     subscriptionId: "test-subscription-id",
   },
+  fly: { apiToken: "test-fly-token", orgSlug: "personal" },
+  vercel: { accessToken: "test-vercel-token", teamId: "" },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {

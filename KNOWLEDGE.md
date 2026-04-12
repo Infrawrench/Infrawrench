@@ -38,7 +38,9 @@ infrawrench/
 │   ├── azure/                # @infrawrench/plugin-azure
 │   ├── databricks/           # @infrawrench/plugin-databricks
 │   ├── turso/                # @infrawrench/plugin-turso
-│   └── ssh/                  # @infrawrench/plugin-ssh
+│   ├── ssh/                  # @infrawrench/plugin-ssh
+│   ├── fly/                  # @infrawrench/plugin-fly
+│   └── vercel/               # @infrawrench/plugin-vercel
 ├── app/packages/
 │   ├── desktop/              # @infrawrench/desktop — Electron app
 │   ├── ui/                   # @infrawrench/ui — shared React components
@@ -204,7 +206,7 @@ Resource IDs follow the convention `{accountId}:{resourceTypeId}:{externalId}`. 
 
 The loader (`app/packages/desktop/src/plugins/loader.ts`) validates each plugin's manifest against the Zod schema and checks the manifest `id` matches the registry `id` before mounting. Unknown packages are refused.
 
-Currently blessed: `gcp`, `docker`, `digitalocean`, `hetzner`, `kubernetes`, `memcached`, `mongodb`, `mysql`, `neon`, `postgres`, `redis`, `scaleway`, `ssh`, `cloudflare`, `ovh`, `aws`, `azure`, `databricks`, `turso`, `planetscale`.
+Currently blessed: `gcp`, `docker`, `digitalocean`, `hetzner`, `kubernetes`, `memcached`, `mongodb`, `mysql`, `neon`, `postgres`, `redis`, `scaleway`, `ssh`, `cloudflare`, `ovh`, `aws`, `azure`, `databricks`, `turso`, `planetscale`, `fly`.
 
 ---
 
@@ -460,6 +462,21 @@ All polling is _background_ (no loading flash):
 - Secret export templates on 17 resource types: RDS Instance, Aurora Cluster, Redshift Cluster, OpenSearch Domain, ElastiCache, S3 Bucket, Lambda, SQS, SNS, DynamoDB, EKS Cluster, ECR Repository, MSK Cluster, Neptune Cluster, DocumentDB Cluster, MQ Broker
 - `getManifest` for read-only manifest viewer (all resource types)
 - Status mapping: running/active/available/issued/ok → healthy; stopped/paused/disabled → degraded; pending/creating/updating → provisioning; terminated/failed/deleted/alarm → error
+
+### Fly.io (`@infrawrench/plugin-fly`)
+
+- Auth: Bearer token against `https://api.machines.dev` (Fly Machines REST API)
+- Credentials: `apiToken` (Fly.io API token, generated via `fly tokens create`), `orgSlug` (organization slug, defaults to `"personal"`)
+- Resource types: `app`, `machine` (child of app), `volume` (child of app)
+- Apps are the top-level grouping; machines and volumes belong to apps and are fetched per-app
+- Resource ID format: `{accountId}:app:{appName}`, `{accountId}:machine:{appName}/{machineId}`, `{accountId}:volume:{appName}/{volumeId}`
+- Machine states: created/starting/replacing→provisioning, started→healthy, stopping/suspended→degraded, stopped/destroyed→error
+- Volume states: created→healthy, destroyed/restoring→error
+- Supports create for apps (name only) and machines (app name, region, Docker image)
+- Supports delete for apps, machines, and volumes
+- 36 regions available (IATA codes: iad, cdg, nrt, lhr, sin, syd, fra, etc.)
+- Machine output: `privateIp` (6PN IPv6 address)
+- Listing machines/volumes requires iterating all apps — batched in parallel with error isolation per app
 
 ---
 

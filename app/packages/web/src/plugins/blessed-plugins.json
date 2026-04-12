@@ -160,6 +160,22 @@
       "checksum": "sha256-placeholder-replace-with-real-checksum",
       "blessedAt": "2026-04-10T00:00:00Z",
       "blessedBy": "astrid"
+    },
+    {
+      "id": "fly",
+      "packageName": "@infrawrench/plugin-fly",
+      "version": "0.1.0",
+      "checksum": "sha256-placeholder-replace-with-real-checksum",
+      "blessedAt": "2026-04-12T00:00:00Z",
+      "blessedBy": "astrid"
+    },
+    {
+      "id": "vercel",
+      "packageName": "@infrawrench/plugin-vercel",
+      "version": "0.1.0",
+      "checksum": "sha256-placeholder-replace-with-real-checksum",
+      "blessedAt": "2026-04-12T00:00:00Z",
+      "blessedBy": "astrid"
     }
   ]
 }
