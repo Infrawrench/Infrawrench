@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Hono } from "hono";
 import type { AuthSession } from "@/api/auth-middleware";
+import { getPlugin } from "@/plugins/loader";
+import { decrypt } from "@/services/encryption";
 
 const mockInsert = vi.fn();
 const mockSelect = vi.fn();
@@ -22,8 +24,14 @@ vi.mock("@/plugins/loader", () => ({
   getPlugin: vi.fn().mockResolvedValue({
     plugin: {
       manifest: { logoSvg: "<svg/>", displayName: "Mock Plugin" },
+      resourceTypes: [],
+      createClient: () => ({}),
     },
   }),
+}));
+
+vi.mock("@/services/encryption", () => ({
+  decrypt: vi.fn().mockResolvedValue("{}"),
 }));
 
 const { dashboardRoutes } = await import("@/api/routes/dashboards");
@@ -59,6 +67,7 @@ function chainMock(result: unknown) {
 describe("Dashboard routes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(decrypt).mockResolvedValue("{}");
   });
 
   describe("GET / — list dashboards", () => {
@@ -243,6 +252,63 @@ describe("Dashboard routes", () => {
       expect(res.status).toBe(200);
       const body = await res.json();
       expect(body.ok).toBe(true);
+    });
+  });
+
+  describe("POST /probe — probe dashboard cards", () => {
+    it("loads probe items concurrently and deduplicates shared account/plugin setup", async () => {
+      const chain = chainMock([{ encryptedCredentials: "enc", credentialsIv: "iv" }]);
+      mockSelect.mockReturnValue(chain);
+
+      let inFlightStats = 0;
+      let maxInFlightStats = 0;
+      const fetchDashboardStats = vi.fn(async () => {
+        inFlightStats++;
+        maxInFlightStats = Math.max(maxInFlightStats, inFlightStats);
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        inFlightStats--;
+        return [{ label: "Status", value: "Healthy", variant: "status-healthy" }];
+      });
+
+      vi.mocked(getPlugin).mockResolvedValue({
+        plugin: {
+          manifest: { logoSvg: "<svg/>", displayName: "Mock Plugin" },
+          resourceTypes: [{ id: "mock-type" }],
+          createClient: () => ({ fetchDashboardStats }),
+        },
+      } as Awaited<ReturnType<typeof getPlugin>>);
+      vi.mocked(decrypt).mockResolvedValue('{"token":"abc"}');
+
+      const app = buildApp();
+      const res = await app.request("/probe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: [
+            {
+              resourceId: "res-1",
+              accountId: "acct-1",
+              pluginId: "plugin-1",
+              resourceTypeId: "mock-type",
+            },
+            {
+              resourceId: "res-2",
+              accountId: "acct-1",
+              pluginId: "plugin-1",
+              resourceTypeId: "mock-type",
+            },
+          ],
+        }),
+      });
+
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body["res-1"]?.phase).toBe("ok");
+      expect(body["res-2"]?.phase).toBe("ok");
+      expect(mockSelect).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(getPlugin)).toHaveBeenCalledTimes(1);
+      expect(fetchDashboardStats).toHaveBeenCalledTimes(2);
+      expect(maxInFlightStats).toBeGreaterThan(1);
     });
   });
 });

@@ -396,24 +396,35 @@ app.post("/probe", async (c) => {
     }
   > = {};
 
-  const credsByAccount = new Map<string, Record<string, string>>();
+  const credsByAccount = new Map<string, Promise<Record<string, string> | null>>();
+  const pluginsById = new Map<string, ReturnType<typeof getPlugin>>();
 
   async function getCredentials(accountId: string) {
     const cached = credsByAccount.get(accountId);
     if (cached) return cached;
-    const [account] = await db
-      .select({
-        encryptedCredentials: accounts.encryptedCredentials,
-        credentialsIv: accounts.credentialsIv,
-      })
-      .from(accounts)
-      .where(and(eq(accounts.id, accountId), eq(accounts.organizationId, organizationId)))
-      .limit(1);
-    if (!account) return null;
-    const plaintext = await decrypt(account.encryptedCredentials, account.credentialsIv);
-    const creds = JSON.parse(plaintext) as Record<string, string>;
-    credsByAccount.set(accountId, creds);
-    return creds;
+    const pending = (async () => {
+      const [account] = await db
+        .select({
+          encryptedCredentials: accounts.encryptedCredentials,
+          credentialsIv: accounts.credentialsIv,
+        })
+        .from(accounts)
+        .where(and(eq(accounts.id, accountId), eq(accounts.organizationId, organizationId)))
+        .limit(1);
+      if (!account) return null;
+      const plaintext = await decrypt(account.encryptedCredentials, account.credentialsIv);
+      return JSON.parse(plaintext) as Record<string, string>;
+    })();
+    credsByAccount.set(accountId, pending);
+    return pending;
+  }
+
+  function getCachedPlugin(pluginId: string) {
+    const cached = pluginsById.get(pluginId);
+    if (cached) return cached;
+    const pending = getPlugin(pluginId);
+    pluginsById.set(pluginId, pending);
+    return pending;
   }
 
   await Promise.allSettled(
@@ -424,7 +435,7 @@ app.post("/probe", async (c) => {
         return;
       }
 
-      const loaded = await getPlugin(item.pluginId);
+      const loaded = await getCachedPlugin(item.pluginId);
       if (!loaded) {
         results[item.resourceId] = { phase: "error", error: `Plugin not found: ${item.pluginId}` };
         return;
@@ -453,39 +464,32 @@ app.post("/probe", async (c) => {
       const hostServices = buildPluginHostServices(manifest, creds);
       const client = loaded.plugin.createClient(creds, hostServices);
       if (client.fetchDashboardStats) {
-        try {
-          const stats = await client.fetchDashboardStats(
-            item.resourceTypeId,
-            item.resourceId,
-            item.accountId,
-          );
-          const result: (typeof results)[string] = { phase: "ok", stats };
-
-          // Fetch sparkline data if the resource type supports metrics
-          const resourceTypeDef = loaded.plugin.resourceTypes.find(
-            (t) => t.id === item.resourceTypeId,
-          );
-          if (resourceTypeDef?.supportsMetrics && client.fetchMetricSeries) {
-            try {
-              const series = await client.fetchMetricSeries(
+        const resourceTypeDef = loaded.plugin.resourceTypes.find((t) => t.id === item.resourceTypeId);
+        const [statsResult, metricResult] = await Promise.allSettled([
+          client.fetchDashboardStats(item.resourceTypeId, item.resourceId, item.accountId),
+          resourceTypeDef?.supportsMetrics && client.fetchMetricSeries
+            ? client.fetchMetricSeries(
                 item.resourceTypeId,
                 item.resourceId,
                 item.accountId,
-              );
-              const first = series[0];
-              if (first && first.points.length >= 2) {
-                result.sparkline = first.points;
-                result.sparklineLabel = first.label;
-              }
-            } catch {
-              /* sparkline is non-critical */
-            }
-          }
+              )
+            : Promise.resolve(null),
+        ]);
+        const result: (typeof results)[string] = { phase: "ok" };
 
-          results[item.resourceId] = result;
-        } catch {
-          results[item.resourceId] = { phase: "ok" };
+        if (statsResult.status === "fulfilled") {
+          result.stats = statsResult.value;
         }
+
+        if (metricResult.status === "fulfilled") {
+          const first = metricResult.value?.[0];
+          if (first && first.points.length >= 2) {
+            result.sparkline = first.points;
+            result.sparklineLabel = first.label;
+          }
+        }
+
+        results[item.resourceId] = result;
       } else {
         results[item.resourceId] = { phase: "ok" };
       }

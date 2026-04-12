@@ -254,6 +254,7 @@ All polling is _background_ (no loading flash):
 - The `useEffect` reads the ref, resets it, and skips `setLoading(true)` when true
 - Errors during background refresh are silenced (stale data stays visible)
 - Intervals: 30s for sidebar, account page, resource detail; 30s for dashboard `connectAll`
+- Web dashboard card probing (`POST /api/org/:orgId/dashboards/probe`) runs item probes in parallel and now deduplicates shared account decrypt + plugin load work with in-flight promise caches, so multiple cards from the same account/plugin don't queue behind repeated setup.
 
 ---
 
