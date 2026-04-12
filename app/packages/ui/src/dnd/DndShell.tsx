@@ -44,6 +44,20 @@ export function DndShell({ children, onPinToDashboard, onSecretDrop, onTabDrop }
     const data = active.data.current;
     const resource = data?.resource as DraggableResource | undefined;
 
+    // Dashboard card reorder — both active and over are cards within the grid
+    if (String(active.id).startsWith("dashboard-card:") && overId.startsWith("dashboard-card:")) {
+      const activeResourceId = String(active.id).replace("dashboard-card:", "");
+      const overResourceId = overId.replace("dashboard-card:", "");
+      if (activeResourceId !== overResourceId) {
+        window.dispatchEvent(
+          new CustomEvent("iw:dashboard-card-reorder", {
+            detail: { activeResourceId, overResourceId },
+          }),
+        );
+      }
+      return;
+    }
+
     // Tab bar drops — delegate entirely to host
     if (overId === "global-tabs-bar" || overId.startsWith("global-tab:")) {
       onTabDrop?.(event);

@@ -1,7 +1,11 @@
 import { useNavigate } from "@tanstack/react-router";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import {
   DroppableDashboardArea,
+  SortableDashboardCard,
+  SortableContext,
+  rectSortingStrategy,
+  arrayMove,
   SparklineChart,
   useUIStore,
   formatErrorMessage,
@@ -61,6 +65,33 @@ export function DashboardView({
   const probeAbortRef = useRef<AbortController | null>(null);
 
   const bumpDashboardPins = useUIStore((s) => s.bumpDashboardPins);
+
+  // Listen for card reorder events from DndShell
+  const handleReorder = useCallback(
+    (e: Event) => {
+      const { activeResourceId, overResourceId } = (e as CustomEvent).detail as {
+        activeResourceId: string;
+        overResourceId: string;
+      };
+      setPins((prev) => {
+        const oldIndex = prev.findIndex((p) => p.resourceId === activeResourceId);
+        const newIndex = prev.findIndex((p) => p.resourceId === overResourceId);
+        if (oldIndex === -1 || newIndex === -1) return prev;
+        const next = arrayMove(prev, oldIndex, newIndex);
+        // Persist the new order in the background
+        void apiPost(`/api/org/${orgId}/dashboards/${dashboardId}/reorder`, {
+          resourceIds: next.map((p) => p.resourceId),
+        });
+        return next;
+      });
+    },
+    [dashboardId, orgId],
+  );
+
+  useEffect(() => {
+    window.addEventListener("iw:dashboard-card-reorder", handleReorder);
+    return () => window.removeEventListener("iw:dashboard-card-reorder", handleReorder);
+  }, [handleReorder]);
 
   useEffect(() => {
     if (pins.length === 0) return;
@@ -198,91 +229,99 @@ export function DashboardView({
               <p className="text-xs mt-1 opacity-60">or drag one here</p>
             </button>
           ) : (
-            <div
-              className="grid gap-4"
-              style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}
+            <SortableContext
+              items={pins.map((p) => `dashboard-card:${p.resourceId}`)}
+              strategy={rectSortingStrategy}
             >
-              {pins.map((pin) => {
-                const fields =
-                  typeof pin.fieldsJson === "string"
-                    ? (() => {
-                        try {
-                          return JSON.parse(pin.fieldsJson) as Record<string, unknown>;
-                        } catch {
-                          return {};
-                        }
-                      })()
-                    : ((pin.fieldsJson as Record<string, unknown>) ?? {});
-                const host = extractHostLabel(fields);
-
-                return (
-                  <div
-                    key={pin.pinId}
-                    className="group relative rounded-2xl border border-gray-800 bg-gray-900 hover:border-gray-700 transition-colors flex flex-col overflow-hidden"
-                  >
-                    {/* Unpin button */}
-                    <button
-                      onClick={() => void handleUnpin(pin.pinId, pin.resourceId)}
-                      disabled={unpinning === pin.pinId}
-                      title="Remove from dashboard"
-                      className="absolute top-2 right-2 w-5 h-5 rounded-full text-gray-700 hover:text-gray-300 hover:bg-gray-700 transition-all opacity-0 group-hover:opacity-100 text-xs flex items-center justify-center"
-                    >
-                      &#10005;
-                    </button>
-
-                    <button
-                      onClick={() =>
-                        void navigate({
-                          to: "/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId",
-                          params: {
-                            orgId,
-                            pluginId: pin.pluginId,
-                            resourceTypeId: pin.resourceTypeId,
-                            resourceId: pin.resourceId,
-                          },
-                        })
-                      }
-                      className="flex-1 flex flex-col p-5 text-left gap-3"
-                    >
-                      {/* Plugin logo + name */}
-                      <div className="flex items-center gap-2">
-                        {pin.pluginLogoSvg ? (
-                          <div
-                            className="w-6 h-6 flex-shrink-0"
-                            dangerouslySetInnerHTML={{ __html: pin.pluginLogoSvg }}
-                          />
-                        ) : (
-                          <span className="text-xs text-gray-600 font-mono">{pin.pluginId}</span>
-                        )}
-                        <span className="text-xs text-gray-500">
-                          {pin.pluginDisplayName ?? pin.pluginId}
-                        </span>
-                      </div>
-
-                      {/* Resource name */}
-                      <div>
-                        <p className="text-base font-semibold text-gray-100 leading-tight">
-                          {pin.displayName}
-                        </p>
-                        {host && <p className="text-xs text-gray-500 mt-0.5 truncate">{host}</p>}
-                      </div>
-                    </button>
-
-                    {/* Status footer */}
-                    <ConnectionFooter status={cardStatus[pin.resourceId]} />
-                  </div>
-                );
-              })}
-
-              {/* Add resource button */}
-              <button
-                onClick={() => setSpotlightMode("pin")}
-                className="rounded-2xl border-2 border-dashed border-gray-800 text-gray-700 hover:border-gray-600 hover:text-gray-500 flex flex-col items-center justify-center gap-1.5 transition-colors min-h-[140px]"
+              <div
+                className="grid gap-4"
+                style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}
               >
-                <span className="text-2xl">+</span>
-                <span className="text-xs">Add resource</span>
-              </button>
-            </div>
+                {pins.map((pin) => {
+                  const fields =
+                    typeof pin.fieldsJson === "string"
+                      ? (() => {
+                          try {
+                            return JSON.parse(pin.fieldsJson) as Record<string, unknown>;
+                          } catch {
+                            return {};
+                          }
+                        })()
+                      : ((pin.fieldsJson as Record<string, unknown>) ?? {});
+                  const host = extractHostLabel(fields);
+
+                  return (
+                    <SortableDashboardCard key={pin.pinId} id={pin.resourceId}>
+                      <div className="group relative rounded-2xl border border-gray-800 bg-gray-900 hover:border-gray-700 transition-colors flex flex-col overflow-hidden">
+                        {/* Unpin button */}
+                        <button
+                          onClick={() => void handleUnpin(pin.pinId, pin.resourceId)}
+                          disabled={unpinning === pin.pinId}
+                          title="Remove from dashboard"
+                          className="absolute top-2 right-2 w-5 h-5 rounded-full text-gray-700 hover:text-gray-300 hover:bg-gray-700 transition-all opacity-0 group-hover:opacity-100 text-xs flex items-center justify-center z-10"
+                        >
+                          &#10005;
+                        </button>
+
+                        <button
+                          onClick={() =>
+                            void navigate({
+                              to: "/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId",
+                              params: {
+                                orgId,
+                                pluginId: pin.pluginId,
+                                resourceTypeId: pin.resourceTypeId,
+                                resourceId: pin.resourceId,
+                              },
+                            })
+                          }
+                          className="flex-1 flex flex-col p-5 text-left gap-3"
+                        >
+                          {/* Plugin logo + name */}
+                          <div className="flex items-center gap-2">
+                            {pin.pluginLogoSvg ? (
+                              <div
+                                className="w-6 h-6 flex-shrink-0"
+                                dangerouslySetInnerHTML={{ __html: pin.pluginLogoSvg }}
+                              />
+                            ) : (
+                              <span className="text-xs text-gray-600 font-mono">
+                                {pin.pluginId}
+                              </span>
+                            )}
+                            <span className="text-xs text-gray-500">
+                              {pin.pluginDisplayName ?? pin.pluginId}
+                            </span>
+                          </div>
+
+                          {/* Resource name */}
+                          <div>
+                            <p className="text-base font-semibold text-gray-100 leading-tight">
+                              {pin.displayName}
+                            </p>
+                            {host && (
+                              <p className="text-xs text-gray-500 mt-0.5 truncate">{host}</p>
+                            )}
+                          </div>
+                        </button>
+
+                        {/* Status footer */}
+                        <ConnectionFooter status={cardStatus[pin.resourceId]} />
+                      </div>
+                    </SortableDashboardCard>
+                  );
+                })}
+
+                {/* Add resource button */}
+                <button
+                  onClick={() => setSpotlightMode("pin")}
+                  className="rounded-2xl border-2 border-dashed border-gray-800 text-gray-700 hover:border-gray-600 hover:text-gray-500 flex flex-col items-center justify-center gap-1.5 transition-colors min-h-[140px]"
+                >
+                  <span className="text-2xl">+</span>
+                  <span className="text-xs">Add resource</span>
+                </button>
+              </div>
+            </SortableContext>
           )}
         </DroppableDashboardArea>
 
