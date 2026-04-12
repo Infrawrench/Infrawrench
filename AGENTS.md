@@ -21,16 +21,16 @@ The web app needs these secrets injected or placed in `app/packages/web/.env`:
 
 See `package.json` scripts. Summary:
 
-| Task | Command |
-|---|---|
-| Install deps | `pnpm install` |
-| Build all | `pnpm build` |
-| Dev (web) | `pnpm --filter @infrawrench/web dev` (port 3000) |
-| Dev (desktop) | `pnpm --filter @infrawrench/desktop dev` (Electron) |
-| Unit tests | `pnpm test` (vitest across all packages) |
-| Typecheck | `pnpm typecheck` (tsgo across all packages) |
-| Format check | `pnpm format:check` / `pnpm format` |
-| DB migrations | `pnpm --filter @infrawrench/web db:migrate` |
+| Task              | Command                                                  |
+| ----------------- | -------------------------------------------------------- |
+| Install deps      | `pnpm install`                                           |
+| Build all         | `pnpm build`                                             |
+| Dev (web)         | `pnpm --filter @infrawrench/web dev` (port 3000)         |
+| Dev (desktop)     | `pnpm --filter @infrawrench/desktop dev` (Electron)      |
+| Unit tests        | `pnpm test` (vitest across all packages)                 |
+| Typecheck         | `pnpm typecheck` (tsgo across all packages)              |
+| Format check      | `pnpm format:check` / `pnpm format`                      |
+| DB migrations     | `pnpm --filter @infrawrench/web db:migrate`              |
 | Integration tests | `pnpm test:integration` (needs provider API credentials) |
 
 ### Non-obvious caveats
