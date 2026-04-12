@@ -23,6 +23,10 @@ import { plugin as databricksPlugin } from "@infrawrench/plugin-databricks";
 import { plugin as tursoPlugin } from "@infrawrench/plugin-turso";
 import { plugin as planetscalePlugin } from "@infrawrench/plugin-planetscale";
 import { plugin as azurePlugin } from "@infrawrench/plugin-azure";
+import { plugin as flyPlugin } from "@infrawrench/plugin-fly";
+import { plugin as vercelPlugin } from "@infrawrench/plugin-vercel";
+import { plugin as netlifyPlugin } from "@infrawrench/plugin-netlify";
+import { plugin as cloudinaryPlugin } from "@infrawrench/plugin-cloudinary";
 import { plugin as clickhousePlugin } from "@infrawrench/plugin-clickhouse";
 
 const blessedRegistry = registry as PluginRegistry;
@@ -48,6 +52,10 @@ const PLUGIN_MODULES: Record<string, Plugin> = {
   "@infrawrench/plugin-turso": tursoPlugin,
   "@infrawrench/plugin-planetscale": planetscalePlugin,
   "@infrawrench/plugin-azure": azurePlugin,
+  "@infrawrench/plugin-fly": flyPlugin,
+  "@infrawrench/plugin-vercel": vercelPlugin,
+  "@infrawrench/plugin-netlify": netlifyPlugin,
+  "@infrawrench/plugin-cloudinary": cloudinaryPlugin,
   "@infrawrench/plugin-clickhouse": clickhousePlugin,
 };
 

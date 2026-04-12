@@ -268,6 +268,9 @@ importers:
       '@infrawrench/plugin-cloudflare':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/cloudflare
+      '@infrawrench/plugin-cloudinary':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/cloudinary
       '@infrawrench/plugin-databricks':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/databricks
@@ -277,6 +280,9 @@ importers:
       '@infrawrench/plugin-docker':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/docker
+      '@infrawrench/plugin-fly':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/fly
       '@infrawrench/plugin-gcp':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/gcp
@@ -298,6 +304,9 @@ importers:
       '@infrawrench/plugin-neon':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/neon
+      '@infrawrench/plugin-netlify':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/netlify
       '@infrawrench/plugin-ovh':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/ovh
@@ -319,6 +328,9 @@ importers:
       '@infrawrench/plugin-turso':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/turso
+      '@infrawrench/plugin-vercel':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/vercel
       '@infrawrench/ui':
         specifier: workspace:*
         version: link:../ui

@@ -182,6 +182,8 @@ export interface PluginClient {
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema;
   /** Fetch table/column schema for the SQL editor — only when sql services are injected */
   introspect?(): Promise<SqlTableMeta[]>;
+  /** Fetch connection stats (version, size) for SQL/KV/Docker resources. */
+  fetchStats?(): Promise<{ version: string; size: string }>;
   /** Fetch generic labelled stats for a dashboard card. */
   fetchDashboardStats?(
     resourceTypeId: string,

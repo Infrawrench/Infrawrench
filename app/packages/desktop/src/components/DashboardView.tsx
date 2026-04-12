@@ -417,9 +417,10 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
                   row.resource_id,
                   row.account_id,
                 );
-                if (series.length > 0 && series[0].points.length >= 2) {
-                  sparkline = series[0].points;
-                  sparklineLabel = series[0].label;
+                const first = series[0];
+                if (first && first.points.length >= 2) {
+                  sparkline = first.points;
+                  sparklineLabel = first.label;
                 }
               } catch {
                 /* sparkline is non-critical */

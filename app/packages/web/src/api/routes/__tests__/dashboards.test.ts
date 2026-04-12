@@ -107,8 +107,9 @@ describe("Dashboard routes", () => {
     it("creates the default dashboard when none exists", async () => {
       // First select() for finding default dashboard returns empty
       const selectChain1 = chainMock([]);
-      // Second select() for pins — uses innerJoin().where() which resolves directly
-      const pinsWhere = vi.fn().mockResolvedValue([]);
+      // Second select() for pins — uses innerJoin().where().orderBy()
+      const pinsOrderBy = vi.fn().mockResolvedValue([]);
+      const pinsWhere = vi.fn().mockReturnValue({ orderBy: pinsOrderBy });
       const pinsInnerJoin = vi.fn().mockReturnValue({ where: pinsWhere });
       const pinsFrom = vi.fn().mockReturnValue({ innerJoin: pinsInnerJoin });
       const selectChain2 = { from: pinsFrom };
@@ -183,11 +184,17 @@ describe("Dashboard routes", () => {
       const dashChain = chainMock([{ id: "d1" }]);
       // select for resource check
       const resChain = chainMock([{ id: "r1" }]);
+      // select for max(gridX) query — where() is awaited directly (no .limit())
+      const maxWhere = vi.fn().mockResolvedValue([{ maxX: 0 }]);
+      const maxFrom = vi.fn().mockReturnValue({ where: maxWhere });
+      const maxChain = { from: maxFrom };
 
       let selectCallCount = 0;
       mockSelect.mockImplementation(() => {
         selectCallCount++;
-        return selectCallCount === 1 ? dashChain : resChain;
+        if (selectCallCount === 1) return dashChain;
+        if (selectCallCount === 2) return resChain;
+        return maxChain;
       });
 
       const onConflictDoNothing = vi.fn().mockResolvedValue(undefined);
