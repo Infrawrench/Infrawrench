@@ -12,7 +12,7 @@ import {
   arrayMove,
   getListableResourceTypes,
   extractHostLabel,
-  humanizeIdentifier,
+  pluginLabelFromId,
   formatErrorMessage,
 } from "@infrawrench/ui";
 import { getDb } from "../db/client";
@@ -184,7 +184,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
 
       const normalizedRows: PinnedRow[] = rows.map((row) => ({
         ...row,
-        plugin_label: humanizeIdentifier(row.plugin_id),
+        plugin_label: pluginLabelFromId(row.plugin_id),
       }));
       setPinned(normalizedRows);
     } catch {

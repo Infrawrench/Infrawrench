@@ -8,7 +8,7 @@ import { getPlugin } from "../../plugins/loader";
 import { syncAccountResources } from "./accounts";
 import { decrypt } from "../../services/encryption";
 import { buildPluginHostServices } from "../../services/host-services";
-import { getListableResourceTypes, humanizeIdentifier } from "@infrawrench/ui";
+import { getListableResourceTypes, pluginLabelFromId } from "@infrawrench/ui";
 
 declare module "hono" {
   interface ContextVariableMap {
@@ -44,7 +44,7 @@ async function enrichPins(pins: Array<{ pluginId: string; [key: string]: unknown
               logoSvg: loaded.plugin.manifest.logoSvg,
               displayName: loaded.plugin.manifest.displayName,
             }
-          : { logoSvg: "", displayName: humanizeIdentifier(pin.pluginId as string) };
+          : { logoSvg: "", displayName: pluginLabelFromId(pin.pluginId as string) };
         pluginCache.set(pin.pluginId as string, meta);
       }
       return { ...pin, pluginLogoSvg: meta.logoSvg, pluginLabel: meta.displayName };

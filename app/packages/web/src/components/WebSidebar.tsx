@@ -5,7 +5,7 @@ import {
   DroppableDashboardItem,
   DraggableSidebarResource,
   RESOURCES_CHANGED_EVENT,
-  humanizeIdentifier,
+  pluginLabelFromId,
   OrgSwitcher,
   type OrgEntry,
 } from "@infrawrench/ui";
@@ -115,9 +115,9 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
           if (!groupMap.has(acct.pluginId)) {
             groupMap.set(acct.pluginId, {
               pluginId: acct.pluginId,
-              pluginLabel: humanizeIdentifier(acct.pluginId),
+              pluginLabel: pluginLabelFromId(acct.pluginId),
               displayName:
-                pluginMeta[acct.pluginId]?.displayName ?? humanizeIdentifier(acct.pluginId),
+                pluginMeta[acct.pluginId]?.displayName ?? pluginLabelFromId(acct.pluginId),
               logoSvg: pluginMeta[acct.pluginId]?.logoSvg ?? "",
               accounts: [],
             });

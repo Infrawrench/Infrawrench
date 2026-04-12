@@ -74,6 +74,45 @@ export function humanizeIdentifier(value: string): string {
     .join(" ");
 }
 
+const KNOWN_PLUGIN_LABELS: Record<string, string> = {
+  aws: "Amazon Web Services",
+  azure: "Microsoft Azure",
+  clickhouse: "ClickHouse",
+  cloudflare: "Cloudflare",
+  cloudinary: "Cloudinary",
+  databricks: "Databricks",
+  digitalocean: "DigitalOcean",
+  docker: "Docker",
+  fly: "Fly.io",
+  gcp: "Google Cloud",
+  hetzner: "Hetzner Cloud",
+  kubernetes: "Kubernetes",
+  memcached: "Memcached",
+  mongodb: "MongoDB",
+  mysql: "MySQL",
+  neon: "Neon",
+  netlify: "Netlify",
+  ovh: "OVHcloud",
+  planetscale: "PlanetScale",
+  postgres: "PostgreSQL",
+  redis: "Redis",
+  scaleway: "Scaleway",
+  ssh: "SSH",
+  turso: "Turso",
+  vercel: "Vercel",
+};
+
+/** Returns a consistent human-friendly label for a plugin ID. */
+export function pluginLabelFromId(pluginId: string): string {
+  const trimmed = pluginId.trim();
+  if (!trimmed) return "";
+  const normalized = trimmed
+    .toLowerCase()
+    .replace(/^@infrawrench\/plugin-/, "")
+    .replace(/^plugin-/, "");
+  return KNOWN_PLUGIN_LABELS[normalized] ?? humanizeIdentifier(trimmed);
+}
+
 /** Group an array of items by a key derived from each item. */
 export function groupBy<T>(arr: T[], key: (item: T) => string): Record<string, T[]> {
   return arr.reduce<Record<string, T[]>>((acc, item) => {

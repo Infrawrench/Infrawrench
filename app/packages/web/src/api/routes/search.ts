@@ -3,7 +3,7 @@ import { eq, and, isNull } from "drizzle-orm";
 import { db } from "../../db/client";
 import { accounts, resources } from "../../db/schema";
 import { getPlugin } from "../../plugins/loader";
-import { humanizeIdentifier } from "@infrawrench/ui";
+import { humanizeIdentifier, pluginLabelFromId } from "@infrawrench/ui";
 import type { AuthSession } from "../auth-middleware";
 
 declare module "hono" {
@@ -58,7 +58,7 @@ app.get("/", async (c) => {
       } else {
         pluginMeta = {
           logoSvg: "",
-          displayName: humanizeIdentifier(r.pluginId),
+          displayName: pluginLabelFromId(r.pluginId),
           resourceTypes: new Map(),
         };
       }

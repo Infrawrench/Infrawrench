@@ -3,6 +3,7 @@ import {
   SpotlightSearch as SharedSpotlightSearch,
   getListableResourceTypes,
   humanizeIdentifier,
+  pluginLabelFromId,
   type SpotlightResult,
 } from "@infrawrench/ui";
 import { invoke } from "../lib/invoke";
@@ -84,7 +85,7 @@ export function SpotlightSearch({
         return {
           id: r.id,
           pluginId: r.plugin_id,
-          pluginLabel: plugin?.manifest.displayName ?? humanizeIdentifier(r.plugin_id),
+          pluginLabel: plugin?.manifest.displayName ?? pluginLabelFromId(r.plugin_id),
           pluginLogoSvg: plugin?.manifest.logoSvg ?? "",
           resourceTypeId: r.resource_type_id,
           resourceTypeLabel: rtDef?.displayName ?? humanizeIdentifier(r.resource_type_id),

@@ -8,7 +8,7 @@ import {
   ConfirmDeleteModal,
   RESOURCES_CHANGED_EVENT,
   getListableResourceTypes,
-  humanizeIdentifier,
+  pluginLabelFromId,
   type DraggableResource,
   formatErrorMessage,
 } from "@infrawrench/ui";
@@ -162,7 +162,7 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
         const groupMap = new Map<string, PluginGroup>();
         for (const row of rows) {
           if (!groupMap.has(row.plugin_id)) {
-            const pluginLabel = humanizeIdentifier(row.plugin_id);
+            const pluginLabel = pluginLabelFromId(row.plugin_id);
             groupMap.set(row.plugin_id, {
               pluginId: row.plugin_id,
               pluginLabel,

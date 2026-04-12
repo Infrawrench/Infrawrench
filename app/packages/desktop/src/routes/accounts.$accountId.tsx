@@ -11,7 +11,7 @@ import {
   getAccountResourceTypes,
   isCreateOnlyType,
   getListableResourceTypes,
-  humanizeIdentifier,
+  pluginLabelFromId,
   type DraggableResource,
   formatErrorMessage,
 } from "@infrawrench/ui";
@@ -410,7 +410,7 @@ function AccountPage() {
         <div>
           <h1 className="text-lg font-semibold text-gray-100">{account?.display_name}</h1>
           <p className="text-xs text-gray-500 mt-0.5">
-            {account?.plugin_id ? humanizeIdentifier(account.plugin_id) : ""}
+            {account?.plugin_id ? pluginLabelFromId(account.plugin_id) : ""}
           </p>
         </div>
         <button

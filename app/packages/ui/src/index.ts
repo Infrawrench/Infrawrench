@@ -115,6 +115,7 @@ export {
   formatSize,
   formatDate,
   humanizeIdentifier,
+  pluginLabelFromId,
   groupBy,
   formatErrorMessage,
   evaluateShowWhen,
