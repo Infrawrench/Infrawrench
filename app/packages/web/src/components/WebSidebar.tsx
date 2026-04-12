@@ -6,6 +6,7 @@ import {
   DraggableSidebarResource,
   RESOURCES_CHANGED_EVENT,
   OrgSwitcher,
+  Modal,
   type OrgEntry,
 } from "@infrawrench/ui";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
@@ -56,16 +57,21 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
 
   // Dashboard state
   const [dashboardList, setDashboardList] = useState<DashboardEntry[]>([]);
-  const [addingDashboard, setAddingDashboard] = useState(false);
+  const [showCreateDashboardModal, setShowCreateDashboardModal] = useState(false);
   const [newDashboardName, setNewDashboardName] = useState("");
+  const [creatingDashboard, setCreatingDashboard] = useState(false);
+  const [dashboardError, setDashboardError] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
-  const newDashboardRef = useRef<HTMLInputElement>(null);
   const renameRef = useRef<HTMLInputElement>(null);
 
   // Org switcher state
   const [orgs, setOrgs] = useState<OrgEntry[]>([]);
   const [orgsLoaded, setOrgsLoaded] = useState(false);
+  const [showCreateOrgModal, setShowCreateOrgModal] = useState(false);
+  const [newOrgName, setNewOrgName] = useState("");
+  const [creatingOrg, setCreatingOrg] = useState(false);
+  const [orgError, setOrgError] = useState<string | null>(null);
 
   const sidebarCollapsed = useUIStore((s) => s.sidebarCollapsed);
   const toggleSidebar = useUIStore((s) => s.toggleSidebar);
@@ -139,10 +145,6 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
   }, [orgId]);
 
   useEffect(() => {
-    if (addingDashboard) newDashboardRef.current?.focus();
-  }, [addingDashboard]);
-
-  useEffect(() => {
     if (renamingId) renameRef.current?.focus();
   }, [renamingId]);
 
@@ -155,14 +157,19 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
   async function handleCreateDashboard() {
     if (!apiBase) return;
     const name = newDashboardName.trim();
-    setAddingDashboard(false);
-    setNewDashboardName("");
-    if (!name) return;
+    if (!name) {
+      setDashboardError("Name is required");
+      return;
+    }
+    setCreatingDashboard(true);
+    setDashboardError(null);
     try {
       const created = await apiPost<{ id: string; name: string }>(`${apiBase}/dashboards`, {
         name,
       });
       if (created) {
+        setShowCreateDashboardModal(false);
+        setNewDashboardName("");
         setDashboardList((prev) => [
           ...prev,
           { id: created.id, name: created.name, isDefault: false },
@@ -173,7 +180,31 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
         });
       }
     } catch (e) {
-      console.error("Failed to create dashboard:", e);
+      setDashboardError(e instanceof Error ? e.message : "Failed to create dashboard");
+    } finally {
+      setCreatingDashboard(false);
+    }
+  }
+
+  async function handleCreateOrganization() {
+    const name = newOrgName.trim();
+    if (!name) {
+      setOrgError("Organization name is required");
+      return;
+    }
+    setCreatingOrg(true);
+    setOrgError(null);
+    try {
+      const org = await apiPost<{ id: string; displayName: string }>("/api/orgs", {
+        displayName: name,
+      });
+      setShowCreateOrgModal(false);
+      setNewOrgName("");
+      void navigate({ to: "/org/$orgId", params: { orgId: org.id } });
+    } catch (e) {
+      setOrgError(e instanceof Error ? e.message : "Failed to create organization");
+    } finally {
+      setCreatingOrg(false);
     }
   }
 
@@ -304,7 +335,11 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
               orgs={orgs}
               activeOrgId={orgId}
               onSwitch={handleOrgSwitch}
-              onCreateOrg={() => void navigate({ to: "/onboarding" })}
+              onCreateOrg={() => {
+                setOrgError(null);
+                setNewOrgName("");
+                setShowCreateOrgModal(true);
+              }}
               loading={!orgsLoaded}
             />
           </div>
@@ -325,7 +360,11 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                 Dashboards
               </span>
               <button
-                onClick={() => setAddingDashboard(true)}
+                onClick={() => {
+                  setDashboardError(null);
+                  setNewDashboardName("");
+                  setShowCreateDashboardModal(true);
+                }}
                 title="New dashboard"
                 className="text-gray-600 hover:text-gray-300 text-sm leading-none w-5 h-5 flex items-center justify-center rounded hover:bg-gray-800 transition-colors"
               >
@@ -382,27 +421,6 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                 />
               );
             })}
-
-            {/* New dashboard inline input */}
-            {addingDashboard && (
-              <div className="mx-2 px-3 py-1.5">
-                <input
-                  ref={newDashboardRef}
-                  value={newDashboardName}
-                  onChange={(e) => setNewDashboardName(e.target.value)}
-                  placeholder="Dashboard name..."
-                  onBlur={() => void handleCreateDashboard()}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") void handleCreateDashboard();
-                    if (e.key === "Escape") {
-                      setAddingDashboard(false);
-                      setNewDashboardName("");
-                    }
-                  }}
-                  className="w-full bg-gray-800 border border-gray-700 rounded px-2 py-1 text-xs text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500"
-                />
-              </div>
-            )}
           </div>
 
           {/* Plugin groups */}
@@ -529,6 +547,112 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
           onClose={() => setShowAddAccount(false)}
           onAdded={() => useUIStore.getState().bumpAccounts()}
         />
+      )}
+
+      {showCreateDashboardModal && (
+        <Modal
+          onClose={() => {
+            if (creatingDashboard) return;
+            setShowCreateDashboardModal(false);
+            setDashboardError(null);
+          }}
+        >
+          <div className="bg-gray-900 border border-gray-700 rounded-xl w-full max-w-md shadow-2xl">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800">
+              <h2 className="text-sm font-semibold text-gray-200">Create dashboard</h2>
+              <button
+                onClick={() => {
+                  if (creatingDashboard) return;
+                  setShowCreateDashboardModal(false);
+                  setDashboardError(null);
+                }}
+                className="text-gray-600 hover:text-gray-400 text-lg"
+              >
+                &#215;
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Name</label>
+                <input
+                  value={newDashboardName}
+                  onChange={(e) => setNewDashboardName(e.target.value)}
+                  placeholder="Operations dashboard"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void handleCreateDashboard();
+                    if (e.key === "Escape" && !creatingDashboard) {
+                      setShowCreateDashboardModal(false);
+                      setDashboardError(null);
+                    }
+                  }}
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-gray-500"
+                />
+              </div>
+              {dashboardError && <p className="text-xs text-red-400">{dashboardError}</p>}
+              <button
+                onClick={() => void handleCreateDashboard()}
+                disabled={creatingDashboard}
+                className="w-full px-3 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
+              >
+                {creatingDashboard ? "Creating..." : "Create dashboard"}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {showCreateOrgModal && (
+        <Modal
+          onClose={() => {
+            if (creatingOrg) return;
+            setShowCreateOrgModal(false);
+            setOrgError(null);
+          }}
+        >
+          <div className="bg-gray-900 border border-gray-700 rounded-xl w-full max-w-md shadow-2xl">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800">
+              <h2 className="text-sm font-semibold text-gray-200">Create organization</h2>
+              <button
+                onClick={() => {
+                  if (creatingOrg) return;
+                  setShowCreateOrgModal(false);
+                  setOrgError(null);
+                }}
+                className="text-gray-600 hover:text-gray-400 text-lg"
+              >
+                &#215;
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Organization name</label>
+                <input
+                  value={newOrgName}
+                  onChange={(e) => setNewOrgName(e.target.value)}
+                  placeholder="My Company"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void handleCreateOrganization();
+                    if (e.key === "Escape" && !creatingOrg) {
+                      setShowCreateOrgModal(false);
+                      setOrgError(null);
+                    }
+                  }}
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-gray-500"
+                />
+              </div>
+              {orgError && <p className="text-xs text-red-400">{orgError}</p>}
+              <button
+                onClick={() => void handleCreateOrganization()}
+                disabled={creatingOrg}
+                className="w-full px-3 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
+              >
+                {creatingOrg ? "Creating..." : "Create organization"}
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
     </>
   );

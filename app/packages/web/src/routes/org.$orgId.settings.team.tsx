@@ -1,5 +1,6 @@
 import { createFileRoute, useParams } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
+import { Modal } from "@infrawrench/ui";
 import { apiGet, apiPost, apiDelete, apiPatch } from "@/lib/api";
 
 interface TeamMember {
@@ -32,6 +33,7 @@ function TeamPage() {
   const [inviteRole, setInviteRole] = useState("member");
   const [inviting, setInviting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showInviteModal, setShowInviteModal] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -58,6 +60,8 @@ function TeamPage() {
         role: inviteRole,
       });
       setInviteEmail("");
+      setInviteRole("member");
+      setShowInviteModal(false);
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to send invitation");
@@ -83,36 +87,17 @@ function TeamPage() {
 
   return (
     <div>
-      <h1 className="text-xl font-semibold mb-6">Team</h1>
-
-      {/* Invite form */}
-      <div className="border border-gray-800 rounded-xl p-4 mb-6">
-        <h2 className="text-sm font-medium text-gray-300 mb-3">Invite a member</h2>
-        <div className="flex gap-3">
-          <input
-            type="email"
-            value={inviteEmail}
-            onChange={(e) => setInviteEmail(e.target.value)}
-            placeholder="email@example.com"
-            className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-gray-500"
-          />
-          <select
-            value={inviteRole}
-            onChange={(e) => setInviteRole(e.target.value)}
-            className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200"
-          >
-            <option value="member">Member</option>
-            <option value="admin">Admin</option>
-          </select>
-          <button
-            onClick={() => void handleInvite()}
-            disabled={inviting}
-            className="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
-          >
-            {inviting ? "Inviting..." : "Invite"}
-          </button>
-        </div>
-        {error && <p className="text-xs text-red-400 mt-2">{error}</p>}
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-xl font-semibold">Team</h1>
+        <button
+          onClick={() => {
+            setError(null);
+            setShowInviteModal(true);
+          }}
+          className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
+        >
+          Invite member
+        </button>
       </div>
 
       {/* Members list */}
@@ -207,6 +192,71 @@ function TeamPage() {
             </table>
           </div>
         </>
+      )}
+
+      {showInviteModal && (
+        <Modal
+          onClose={() => {
+            if (inviting) return;
+            setShowInviteModal(false);
+            setError(null);
+          }}
+        >
+          <div className="bg-gray-900 border border-gray-700 rounded-xl w-full max-w-md shadow-2xl">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800">
+              <h2 className="text-sm font-semibold text-gray-200">Invite a member</h2>
+              <button
+                onClick={() => {
+                  if (inviting) return;
+                  setShowInviteModal(false);
+                  setError(null);
+                }}
+                className="text-gray-600 hover:text-gray-400 text-lg"
+              >
+                &#215;
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Email</label>
+                <input
+                  type="email"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  placeholder="email@example.com"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") void handleInvite();
+                    if (e.key === "Escape" && !inviting) {
+                      setShowInviteModal(false);
+                      setError(null);
+                    }
+                  }}
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-gray-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-400 mb-1">Role</label>
+                <select
+                  value={inviteRole}
+                  onChange={(e) => setInviteRole(e.target.value)}
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200"
+                >
+                  <option value="member">Member</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              {error && <p className="text-xs text-red-400">{error}</p>}
+              <button
+                onClick={() => void handleInvite()}
+                disabled={inviting}
+                className="w-full px-3 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
+              >
+                {inviting ? "Inviting..." : "Send invitation"}
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
     </div>
   );
