@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import {
   ResourcePill,
@@ -38,6 +38,63 @@ export interface CategoryState {
   resources: Resource[];
 }
 
+export function getVisibleAccountCategories(
+  categories: CategoryState[],
+  normalizedQuery: string,
+): CategoryState[] {
+  return categories
+    .filter((cat) => {
+      const createOnly = isCreateOnlyType(cat.typeDef);
+      if (!cat.loading && cat.resources.length === 0 && !cat.typeDef.supportsCreate) return false;
+      if (createOnly && !cat.typeDef.supportsCreate) return false;
+      return true;
+    })
+    .map((cat) => {
+      const filteredResources =
+        normalizedQuery.length === 0
+          ? cat.resources
+          : cat.resources.filter((resource) => {
+              const fields = (resource.fieldsJson as Record<string, unknown>) ?? {};
+              const searchText = [
+                cat.typeDef.displayName,
+                cat.typeDef.pluralDisplayName,
+                resource.displayName,
+                String(fields["host"] ?? ""),
+                String(fields["region"] ?? ""),
+                String(fields["engine"] ?? ""),
+              ]
+                .join(" ")
+                .toLowerCase();
+              return searchText.includes(normalizedQuery);
+            });
+      const sectionMatches = [
+        cat.typeDef.displayName,
+        cat.typeDef.pluralDisplayName,
+        cat.typeDef.id,
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(normalizedQuery);
+
+      if (normalizedQuery.length > 0 && filteredResources.length === 0 && !sectionMatches) {
+        return null;
+      }
+
+      return {
+        ...cat,
+        resources: filteredResources,
+      };
+    })
+    .filter((cat): cat is CategoryState => cat !== null)
+    .sort((a, b) => a.typeDef.pluralDisplayName.localeCompare(b.typeDef.pluralDisplayName));
+}
+
+export function pickDefaultAccountSectionId(categories: CategoryState[]): string | null {
+  const fallbackSectionId = categories[0]?.typeDef.id ?? null;
+  const firstWithItems = categories.find((cat) => cat.resources.length > 0);
+  return firstWithItems?.typeDef.id ?? fallbackSectionId;
+}
+
 interface Props {
   account: { id: string; pluginId: string; displayName: string };
   categories: CategoryState[];
@@ -55,6 +112,38 @@ export function AccountDetailView({
   const orgId = useOrgId();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [createTarget, setCreateTarget] = useState<ResourceTypeInfo | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
+  const initializedSectionRef = useRef(false);
+
+  const normalizedQuery = searchQuery.trim().toLowerCase();
+
+  const visibleCategories = useMemo(
+    () => getVisibleAccountCategories(categories, normalizedQuery),
+    [categories, normalizedQuery],
+  );
+
+  useEffect(() => {
+    if (visibleCategories.length === 0) {
+      setActiveSectionId(null);
+      initializedSectionRef.current = false;
+      return;
+    }
+
+    if (!initializedSectionRef.current) {
+      setActiveSectionId(pickDefaultAccountSectionId(visibleCategories));
+      initializedSectionRef.current = true;
+      return;
+    }
+
+    if (activeSectionId && visibleCategories.some((cat) => cat.typeDef.id === activeSectionId)) {
+      return;
+    }
+    setActiveSectionId(pickDefaultAccountSectionId(visibleCategories));
+  }, [activeSectionId, visibleCategories]);
+
+  const activeCategory =
+    visibleCategories.find((cat) => cat.typeDef.id === activeSectionId) ?? null;
 
   async function handleDeleteAccount() {
     await apiDelete(`/api/org/${orgId}/accounts/${account.id}`);
@@ -94,93 +183,117 @@ export function AccountDetailView({
         />
       )}
 
-      {/* Resource categories — per-type loading like desktop */}
-      {categories.map((cat) => {
-        const createOnly = isCreateOnlyType(cat.typeDef);
-        if (!cat.loading && cat.resources.length === 0 && !cat.typeDef.supportsCreate) return null;
-        if (createOnly && !cat.typeDef.supportsCreate) return null;
+      {/* Section search + top scrollable section bar */}
+      <div className="mb-6 space-y-3">
+        <input
+          value={searchQuery}
+          onChange={(event) => setSearchQuery(event.target.value)}
+          placeholder="Search sections or resources..."
+          className="w-full md:max-w-sm bg-gray-900 border border-gray-800 rounded-md px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-blue-500"
+        />
+        {visibleCategories.length > 0 && (
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {visibleCategories.map((cat) => (
+              <button
+                key={cat.typeDef.id}
+                onClick={() => setActiveSectionId(cat.typeDef.id)}
+                className={`px-3 py-1.5 rounded-full border text-xs font-medium whitespace-nowrap transition-colors ${
+                  activeSectionId === cat.typeDef.id
+                    ? "border-blue-500 bg-blue-500/15 text-blue-300"
+                    : "border-gray-800 text-gray-400 hover:border-gray-700 hover:text-gray-200"
+                }`}
+              >
+                {cat.typeDef.pluralDisplayName}
+                {cat.resources.length > 0 && (
+                  <span className="ml-1 text-[11px] text-gray-500">({cat.resources.length})</span>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
 
-        return (
-          <div key={cat.typeDef.id} className="mb-8">
-            <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
-              {cat.typeDef.pluralDisplayName}
-            </h2>
+      {activeCategory && (
+        <div key={activeCategory.typeDef.id} className="mb-8">
+          <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+            {activeCategory.typeDef.pluralDisplayName}
+          </h2>
 
-            {createOnly ? (
-              <div className="flex flex-wrap gap-2">
+          {isCreateOnlyType(activeCategory.typeDef) ? (
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => setCreateTarget(activeCategory.typeDef)}
+                className="flex items-center gap-1.5 pl-3 pr-3 py-1.5 rounded-full border border-dashed border-gray-700 text-gray-600 hover:border-blue-600 hover:text-blue-400 transition-colors text-sm"
+              >
+                <span className="text-base leading-none">+</span>
+                <span>Create {activeCategory.typeDef.displayName}</span>
+              </button>
+            </div>
+          ) : activeCategory.loading ? (
+            <div className="flex flex-wrap gap-2">
+              {[1, 2, 3].map((i) => (
+                <div
+                  key={i}
+                  className="h-8 rounded-full bg-gray-800 animate-pulse"
+                  style={{ width: `${5 + i * 1.5}rem` }}
+                />
+              ))}
+            </div>
+          ) : activeCategory.error ? (
+            <div className="text-xs text-red-400">{activeCategory.error}</div>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {activeCategory.resources.map((resource) => {
+                const subtitle = String(
+                  (resource.fieldsJson as Record<string, unknown>)?.["host"] ??
+                    (resource.fieldsJson as Record<string, unknown>)?.["region"] ??
+                    (resource.fieldsJson as Record<string, unknown>)?.["engine"] ??
+                    "",
+                );
+                const draggable: DraggableResource = {
+                  id: resource.id,
+                  pluginId: resource.pluginId,
+                  resourceTypeId: resource.resourceTypeId,
+                  accountId: account.id,
+                  displayName: resource.displayName,
+                  fields: (resource.fieldsJson as Record<string, unknown>) ?? {},
+                  ...(resource.externalId != null ? { externalId: resource.externalId } : {}),
+                };
+                return (
+                  <ResourcePill
+                    key={resource.id}
+                    resource={draggable}
+                    subtitle={subtitle || undefined}
+                    onOpen={() =>
+                      void navigate({
+                        to: "/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId",
+                        params: {
+                          orgId,
+                          pluginId: resource.pluginId,
+                          resourceTypeId: resource.resourceTypeId,
+                          resourceId: resource.id,
+                        },
+                      })
+                    }
+                  />
+                );
+              })}
+              {activeCategory.typeDef.supportsCreate && (
                 <button
-                  onClick={() => setCreateTarget(cat.typeDef)}
+                  onClick={() => setCreateTarget(activeCategory.typeDef)}
                   className="flex items-center gap-1.5 pl-3 pr-3 py-1.5 rounded-full border border-dashed border-gray-700 text-gray-600 hover:border-blue-600 hover:text-blue-400 transition-colors text-sm"
                 >
                   <span className="text-base leading-none">+</span>
-                  <span>Create {cat.typeDef.displayName}</span>
+                  <span>Create {activeCategory.typeDef.displayName}</span>
                 </button>
-              </div>
-            ) : cat.loading ? (
-              <div className="flex flex-wrap gap-2">
-                {[1, 2, 3].map((i) => (
-                  <div
-                    key={i}
-                    className="h-8 rounded-full bg-gray-800 animate-pulse"
-                    style={{ width: `${5 + i * 1.5}rem` }}
-                  />
-                ))}
-              </div>
-            ) : cat.error ? (
-              <div className="text-xs text-red-400">{cat.error}</div>
-            ) : (
-              <div className="flex flex-wrap gap-2">
-                {cat.resources.map((resource) => {
-                  const subtitle = String(
-                    (resource.fieldsJson as Record<string, unknown>)?.["host"] ??
-                      (resource.fieldsJson as Record<string, unknown>)?.["region"] ??
-                      (resource.fieldsJson as Record<string, unknown>)?.["engine"] ??
-                      "",
-                  );
-                  const draggable: DraggableResource = {
-                    id: resource.id,
-                    pluginId: resource.pluginId,
-                    resourceTypeId: resource.resourceTypeId,
-                    accountId: account.id,
-                    displayName: resource.displayName,
-                    fields: (resource.fieldsJson as Record<string, unknown>) ?? {},
-                    ...(resource.externalId != null ? { externalId: resource.externalId } : {}),
-                  };
-                  return (
-                    <ResourcePill
-                      key={resource.id}
-                      resource={draggable}
-                      subtitle={subtitle || undefined}
-                      onOpen={() =>
-                        void navigate({
-                          to: "/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId",
-                          params: {
-                            orgId,
-                            pluginId: resource.pluginId,
-                            resourceTypeId: resource.resourceTypeId,
-                            resourceId: resource.id,
-                          },
-                        })
-                      }
-                    />
-                  );
-                })}
-                {cat.typeDef.supportsCreate && (
-                  <button
-                    onClick={() => setCreateTarget(cat.typeDef)}
-                    className="flex items-center gap-1.5 pl-3 pr-3 py-1.5 rounded-full border border-dashed border-gray-700 text-gray-600 hover:border-blue-600 hover:text-blue-400 transition-colors text-sm"
-                  >
-                    <span className="text-base leading-none">+</span>
-                    <span>Create {cat.typeDef.displayName}</span>
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-        );
-      })}
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
-      {categories.length > 0 &&
+      {visibleCategories.length === 0 &&
+        categories.length > 0 &&
         categories.every(
           (c) => !c.loading && c.resources.length === 0 && !c.typeDef.supportsCreate,
         ) && (
@@ -191,6 +304,14 @@ export function AccountDetailView({
             </p>
           </div>
         )}
+
+      {visibleCategories.length === 0 && normalizedQuery.length > 0 && (
+        <div className="py-8">
+          <p className="text-sm text-gray-500">
+            No sections or resources match “{searchQuery.trim()}”.
+          </p>
+        </div>
+      )}
 
       {createTarget && (
         <CreateResourceModal
