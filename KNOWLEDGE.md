@@ -226,7 +226,7 @@ Currently blessed: `gcp`, `docker`, `digitalocean`, `hetzner`, `kubernetes`, `me
 ### Key components (`src/components/`)
 
 - `SidebarAccounts.tsx` — grouped by plugin, lazy-loaded per account on expand, auto-refresh every 30s, right-click SSH context menu
-- `SidebarDashboards.tsx` — dashboard list + create
+- `SidebarDashboards.tsx` — dashboard list + create; dashboard sidebar pill/drop/drag visuals are canonicalized in shared `@infrawrench/ui` `DroppableDashboardItem` so desktop and web stay in sync
 - `DashboardView.tsx` — pinned resource cards, drag-and-drop pin, auto-connect & refresh stats every 30s
 - `CreateResourceModal.tsx` — calls `getCreateConfig` on mount, renders region/size/image/disk/ssh-key pickers, navigates to new resource on success
 - `AddAccountModal.tsx` — collects credential fields, encrypts, saves to DB
