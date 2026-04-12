@@ -251,7 +251,7 @@ export function SshQuickConnectPanel({ host, onConnect }: SshQuickConnectPanelPr
             disabled={!selectedKey}
             className="px-4 py-1.5 rounded-lg bg-green-900 border border-green-700 hover:bg-green-800 hover:border-green-600 text-green-300 hover:text-green-200 text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            ⌨ Connect
+            Connect
           </button>
         </div>
       </div>
