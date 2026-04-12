@@ -464,15 +464,13 @@ app.post("/probe", async (c) => {
       const hostServices = buildPluginHostServices(manifest, creds);
       const client = loaded.plugin.createClient(creds, hostServices);
       if (client.fetchDashboardStats) {
-        const resourceTypeDef = loaded.plugin.resourceTypes.find((t) => t.id === item.resourceTypeId);
+        const resourceTypeDef = loaded.plugin.resourceTypes.find(
+          (t) => t.id === item.resourceTypeId,
+        );
         const [statsResult, metricResult] = await Promise.allSettled([
           client.fetchDashboardStats(item.resourceTypeId, item.resourceId, item.accountId),
           resourceTypeDef?.supportsMetrics && client.fetchMetricSeries
-            ? client.fetchMetricSeries(
-                item.resourceTypeId,
-                item.resourceId,
-                item.accountId,
-              )
+            ? client.fetchMetricSeries(item.resourceTypeId, item.resourceId, item.accountId)
             : Promise.resolve(null),
         ]);
         const result: (typeof results)[string] = { phase: "ok" };
