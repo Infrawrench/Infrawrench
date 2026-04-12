@@ -42,7 +42,8 @@ infrawrench/
 │   ├── fly/                  # @infrawrench/plugin-fly
 │   ├── vercel/               # @infrawrench/plugin-vercel
 │   ├── netlify/              # @infrawrench/plugin-netlify
-│   └── cloudinary/           # @infrawrench/plugin-cloudinary
+│   ├── cloudinary/           # @infrawrench/plugin-cloudinary
+│   └── clickhouse/           # @infrawrench/plugin-clickhouse
 ├── app/packages/
 │   ├── desktop/              # @infrawrench/desktop — Electron app
 │   ├── ui/                   # @infrawrench/ui — shared React components
@@ -208,7 +209,7 @@ Resource IDs follow the convention `{accountId}:{resourceTypeId}:{externalId}`. 
 
 The loader (`app/packages/desktop/src/plugins/loader.ts`) validates each plugin's manifest against the Zod schema and checks the manifest `id` matches the registry `id` before mounting. Unknown packages are refused.
 
-Currently blessed: `gcp`, `docker`, `digitalocean`, `hetzner`, `kubernetes`, `memcached`, `mongodb`, `mysql`, `neon`, `postgres`, `redis`, `scaleway`, `ssh`, `cloudflare`, `ovh`, `aws`, `azure`, `databricks`, `turso`, `planetscale`, `fly`, `vercel`, `netlify`, `cloudinary`.
+Currently blessed: `gcp`, `docker`, `digitalocean`, `hetzner`, `kubernetes`, `memcached`, `mongodb`, `mysql`, `neon`, `postgres`, `redis`, `scaleway`, `ssh`, `cloudflare`, `ovh`, `aws`, `azure`, `databricks`, `turso`, `planetscale`, `fly`, `vercel`, `netlify`, `cloudinary`, `clickhouse`.
 
 ---
 
@@ -496,6 +497,29 @@ All polling is _background_ (no loading flash):
 - Secret export templates on: sites (deploy hook URL), build hooks (hook URL)
 - Env vars show deployment contexts (production, deploy-preview, branch-deploy, general) and scopes (builds, functions, runtime, post-processing)
 - Rate limits: 500 requests/minute general, 3 deploys/minute
+
+### ClickHouse (`@infrawrench/plugin-clickhouse`)
+
+- Two API surfaces: ClickHouse **Cloud API** (service management) + **HTTP Interface** (SQL queries)
+- Cloud API auth: HTTP Basic Auth (`apiKeyId:apiKeySecret`) against `https://api.clickhouse.cloud/v1`
+- Credentials: `apiKeyId`, `apiKeySecret` (sensitive), `organizationId`, `chHost` (SQL endpoint), `chUser`, `chPassword` (sensitive)
+- Resource types: `ch-service` (Cloud service), `ch-database` (child of service — queried from `system.databases`)
+- Cloud API endpoints:
+  - `GET /v1/organizations/{orgId}/services` — list services
+  - `POST /v1/organizations/{orgId}/services` — create service (name, provider, region, replicas, memory scaling)
+  - `DELETE /v1/organizations/{orgId}/services/{serviceId}` — delete service
+  - `PATCH /v1/organizations/{orgId}/services/{serviceId}/state` — start/stop service
+- Service state mapping: running→healthy, idle→degraded, stopped→error, starting/provisioning→provisioning, stopping→degraded
+- SQL queries via ClickHouse HTTP Interface: `POST https://{host}:8443/?default_format=JSON` with `X-ClickHouse-User` / `X-ClickHouse-Key` headers
+- `executeQuery()` and `introspectResource()` implemented — REST-based query execution (like Databricks), no native SQL driver needed
+- `resourceSqlDriver` declared on `ch-service` with driver `"clickhouse"` and `connectionStringOutputKey: "connectionString"`
+- SQL introspection queries `system.columns` for autocomplete metadata
+- Create supported for services: name, provider (aws/gcp/azure), region, min/max replica memory (8-356 GB), replicas (1-20), idle scaling
+- Delete stops the service first if running/idle (Cloud API requires stopped state), then deletes
+- Service endpoints: `https` (port 8443) for HTTP interface, `native`/`nativesecure` (port 9440) for native protocol
+- Secret export templates: HTTP Connection URL, Host + Port
+- Resource ID format: `{accountId}:ch-service:{serviceId}` or `{accountId}:ch-database:{serviceId}/{dbName}`
+- Rate limit: 10 requests per 10 seconds per API key; max 100 API keys per org
 
 ---
 

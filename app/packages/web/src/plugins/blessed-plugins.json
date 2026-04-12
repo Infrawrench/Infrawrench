@@ -192,6 +192,14 @@
       "checksum": "sha256-placeholder-replace-with-real-checksum",
       "blessedAt": "2026-04-12T00:00:00Z",
       "blessedBy": "astrid"
+    },
+    {
+      "id": "clickhouse",
+      "packageName": "@infrawrench/plugin-clickhouse",
+      "version": "0.1.0",
+      "checksum": "sha256-placeholder-replace-with-real-checksum",
+      "blessedAt": "2026-04-12T00:00:00Z",
+      "blessedBy": "astrid"
     }
   ]
 }

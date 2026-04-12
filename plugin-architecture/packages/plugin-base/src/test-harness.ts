@@ -60,6 +60,14 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
     apiKey: "123456789012345",
     apiSecret: "test-api-secret",
   },
+  clickhouse: {
+    apiKeyId: "test-key-id",
+    apiKeySecret: "test-key-secret",
+    organizationId: "12345678-1234-1234-1234-123456789abc",
+    chHost: "test.us-east-1.aws.clickhouse.cloud",
+    chUser: "default",
+    chPassword: "test-password",
+  },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {

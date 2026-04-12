@@ -16,6 +16,7 @@
     "@infrawrench/plugin-base": "workspace:*",
     "@infrawrench/plugin-aws": "workspace:*",
     "@infrawrench/plugin-azure": "workspace:*",
+    "@infrawrench/plugin-clickhouse": "workspace:*",
     "@infrawrench/plugin-cloudflare": "workspace:*",
     "@infrawrench/plugin-databricks": "workspace:*",
     "@infrawrench/plugin-digitalocean": "workspace:*",
