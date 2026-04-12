@@ -10,6 +10,7 @@ import {
 import {
   AccountDetailView,
   type CategoryState,
+  type ResourceMetricStatus,
   type ResourceTypeInfo,
 } from "@/components/AccountDetailView";
 import { apiGet, apiPost } from "@/lib/api";
@@ -40,6 +41,9 @@ function AccountPage() {
   const { orgId, accountId } = Route.useParams();
   const [meta, setMeta] = useState<AccountMeta | null>(null);
   const [categories, setCategories] = useState<CategoryState[]>([]);
+  const [resourceStatusById, setResourceStatusById] = useState<
+    Record<string, ResourceMetricStatus>
+  >({});
   const [initialLoading, setInitialLoading] = useState(true);
   const backgroundLoadRef = useRef(false);
   const [loadVersion, setLoadVersion] = useState(0);
@@ -154,6 +158,52 @@ function AccountPage() {
     };
   }, [accountId, loadVersion]);
 
+  useEffect(() => {
+    const probeItems = categories.flatMap((cat) =>
+      cat.resources.map((resource) => ({
+        resourceId: resource.id,
+        accountId,
+        pluginId: resource.pluginId,
+        resourceTypeId: resource.resourceTypeId,
+      })),
+    );
+    if (probeItems.length === 0) {
+      setResourceStatusById({});
+      return;
+    }
+
+    let cancelled = false;
+
+    setResourceStatusById((prev) => {
+      const next: Record<string, ResourceMetricStatus> = {};
+      for (const item of probeItems) {
+        const existing = prev[item.resourceId];
+        next[item.resourceId] = existing?.phase === "ok" ? existing : { phase: "connecting" };
+      }
+      return next;
+    });
+
+    apiPost<Record<string, ResourceMetricStatus>>(`/api/org/${orgId}/dashboards/probe`, {
+      items: probeItems,
+    })
+      .then((results) => {
+        if (!cancelled) setResourceStatusById(results);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        const error = err instanceof Error ? err.message : "Failed to load metrics";
+        setResourceStatusById(
+          Object.fromEntries(
+            probeItems.map((item) => [item.resourceId, { phase: "error" as const, error }]),
+          ),
+        );
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [accountId, categories, orgId]);
+
   if (initialLoading)
     return <div className="p-6 text-gray-500 text-sm animate-pulse">Loading…</div>;
   if (!meta) return <div className="p-6 text-red-400 text-sm">Failed to load account.</div>;
@@ -162,6 +212,7 @@ function AccountPage() {
     <AccountDetailView
       account={meta.account}
       categories={categories}
+      resourceStatusById={resourceStatusById}
       pluginDisplayName={meta.pluginDisplayName}
       pluginLogoSvg={meta.pluginLogoSvg}
     />

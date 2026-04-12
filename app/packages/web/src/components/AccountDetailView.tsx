@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import {
   ResourcePill,
+  SparklineChart,
   ConfirmDeleteModal,
   dispatchResourcesChanged,
   isCreateOnlyType,
@@ -38,9 +39,19 @@ export interface CategoryState {
   resources: Resource[];
 }
 
+export interface ResourceMetricStatus {
+  phase: "connecting" | "ok" | "error";
+  resourceCounts?: Array<{ typeLabel: string; count: number }>;
+  stats?: Array<{ label: string; value: string; variant?: string }>;
+  sparkline?: Array<{ timestamp: number; value: number }>;
+  sparklineLabel?: string;
+  error?: string;
+}
+
 interface Props {
   account: { id: string; pluginId: string; displayName: string };
   categories: CategoryState[];
+  resourceStatusById: Record<string, ResourceMetricStatus>;
   pluginDisplayName: string;
   pluginLogoSvg: string;
 }
@@ -48,6 +59,7 @@ interface Props {
 export function AccountDetailView({
   account,
   categories,
+  resourceStatusById,
   pluginDisplayName,
   pluginLogoSvg,
 }: Props) {
@@ -147,22 +159,24 @@ export function AccountDetailView({
                     ...(resource.externalId != null ? { externalId: resource.externalId } : {}),
                   };
                   return (
-                    <ResourcePill
-                      key={resource.id}
-                      resource={draggable}
-                      subtitle={subtitle || undefined}
-                      onOpen={() =>
-                        void navigate({
-                          to: "/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId",
-                          params: {
-                            orgId,
-                            pluginId: resource.pluginId,
-                            resourceTypeId: resource.resourceTypeId,
-                            resourceId: resource.id,
-                          },
-                        })
-                      }
-                    />
+                    <div key={resource.id} className="inline-flex flex-col gap-1">
+                      <ResourcePill
+                        resource={draggable}
+                        subtitle={subtitle || undefined}
+                        onOpen={() =>
+                          void navigate({
+                            to: "/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId",
+                            params: {
+                              orgId,
+                              pluginId: resource.pluginId,
+                              resourceTypeId: resource.resourceTypeId,
+                              resourceId: resource.id,
+                            },
+                          })
+                        }
+                      />
+                      <ResourceMetricFooter status={resourceStatusById[resource.id]} />
+                    </div>
                   );
                 })}
                 {cat.typeDef.supportsCreate && (
@@ -217,4 +231,64 @@ export function AccountDetailView({
       )}
     </div>
   );
+}
+
+function ResourceMetricFooter({ status }: { status?: ResourceMetricStatus | undefined }) {
+  if (!status) return null;
+
+  if (status.phase === "connecting") {
+    return <span className="pl-2 text-[10px] text-gray-600 animate-pulse">Connecting…</span>;
+  }
+
+  if (status.phase === "error") {
+    return (
+      <span className="pl-2 text-[10px] text-red-400 truncate max-w-[220px]" title={status.error}>
+        {status.error}
+      </span>
+    );
+  }
+
+  if (status.resourceCounts && status.resourceCounts.length > 0) {
+    return (
+      <div className="pl-2 flex flex-wrap gap-x-2 gap-y-0.5 max-w-[320px]">
+        {status.resourceCounts.map((rc) => (
+          <span key={rc.typeLabel} className="text-[10px] text-gray-500">
+            <span className="text-gray-300 font-medium">{rc.count}</span> {rc.typeLabel}
+          </span>
+        ))}
+      </div>
+    );
+  }
+
+  if (status.stats && status.stats.length > 0) {
+    const variantColor = (variant?: string) => {
+      if (variant === "status-healthy") return "text-green-400";
+      if (variant === "status-degraded") return "text-yellow-400";
+      if (variant === "status-error") return "text-red-400";
+      return "text-gray-300";
+    };
+
+    return (
+      <div className="pl-2 flex flex-col gap-1.5 max-w-[320px]">
+        <div className="flex flex-wrap gap-x-2 gap-y-0.5">
+          {status.stats.map((stat) => (
+            <span key={stat.label} className="text-[10px] text-gray-500">
+              <span className={`font-medium ${variantColor(stat.variant)}`}>{stat.value}</span>{" "}
+              {stat.label}
+            </span>
+          ))}
+        </div>
+        {status.sparkline && status.sparkline.length >= 2 && (
+          <div className="flex items-center gap-2">
+            <SparklineChart points={status.sparkline} width={100} height={22} />
+            {status.sparklineLabel && (
+              <span className="text-[10px] text-gray-600">{status.sparklineLabel}</span>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return null;
 }
