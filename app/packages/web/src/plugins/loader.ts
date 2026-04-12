@@ -23,6 +23,7 @@ import { plugin as databricksPlugin } from "@infrawrench/plugin-databricks";
 import { plugin as tursoPlugin } from "@infrawrench/plugin-turso";
 import { plugin as planetscalePlugin } from "@infrawrench/plugin-planetscale";
 import { plugin as azurePlugin } from "@infrawrench/plugin-azure";
+import { plugin as clickhousePlugin } from "@infrawrench/plugin-clickhouse";
 
 const blessedRegistry = registry as PluginRegistry;
 
@@ -47,6 +48,7 @@ const PLUGIN_MODULES: Record<string, Plugin> = {
   "@infrawrench/plugin-turso": tursoPlugin,
   "@infrawrench/plugin-planetscale": planetscalePlugin,
   "@infrawrench/plugin-azure": azurePlugin,
+  "@infrawrench/plugin-clickhouse": clickhousePlugin,
 };
 
 export interface LoadedPlugin {

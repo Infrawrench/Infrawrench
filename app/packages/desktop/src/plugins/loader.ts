@@ -32,6 +32,7 @@ const PLUGIN_MODULES: Record<string, () => Promise<{ plugin: Plugin }>> = {
   "@infrawrench/plugin-turso": () => import("@infrawrench/plugin-turso"),
   "@infrawrench/plugin-planetscale": () => import("@infrawrench/plugin-planetscale"),
   "@infrawrench/plugin-azure": () => import("@infrawrench/plugin-azure"),
+  "@infrawrench/plugin-clickhouse": () => import("@infrawrench/plugin-clickhouse"),
 };
 
 interface LoadedPlugin {
