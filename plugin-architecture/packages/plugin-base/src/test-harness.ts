@@ -55,6 +55,11 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   fly: { apiToken: "test-fly-token", orgSlug: "personal" },
   vercel: { accessToken: "test-vercel-token", teamId: "" },
   netlify: { accessToken: "nfp_test_token" },
+  cloudinary: {
+    cloudName: "test-cloud",
+    apiKey: "123456789012345",
+    apiSecret: "test-api-secret",
+  },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {

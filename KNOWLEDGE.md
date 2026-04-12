@@ -41,7 +41,8 @@ infrawrench/
 │   ├── ssh/                  # @infrawrench/plugin-ssh
 │   ├── fly/                  # @infrawrench/plugin-fly
 │   ├── vercel/               # @infrawrench/plugin-vercel
-│   └── netlify/              # @infrawrench/plugin-netlify
+│   ├── netlify/              # @infrawrench/plugin-netlify
+│   └── cloudinary/           # @infrawrench/plugin-cloudinary
 ├── app/packages/
 │   ├── desktop/              # @infrawrench/desktop — Electron app
 │   ├── ui/                   # @infrawrench/ui — shared React components
@@ -207,7 +208,7 @@ Resource IDs follow the convention `{accountId}:{resourceTypeId}:{externalId}`. 
 
 The loader (`app/packages/desktop/src/plugins/loader.ts`) validates each plugin's manifest against the Zod schema and checks the manifest `id` matches the registry `id` before mounting. Unknown packages are refused.
 
-Currently blessed: `gcp`, `docker`, `digitalocean`, `hetzner`, `kubernetes`, `memcached`, `mongodb`, `mysql`, `neon`, `postgres`, `redis`, `scaleway`, `ssh`, `cloudflare`, `ovh`, `aws`, `azure`, `databricks`, `turso`, `planetscale`, `fly`, `vercel`, `netlify`.
+Currently blessed: `gcp`, `docker`, `digitalocean`, `hetzner`, `kubernetes`, `memcached`, `mongodb`, `mysql`, `neon`, `postgres`, `redis`, `scaleway`, `ssh`, `cloudflare`, `ovh`, `aws`, `azure`, `databricks`, `turso`, `planetscale`, `fly`, `vercel`, `netlify`, `cloudinary`.
 
 ---
 
