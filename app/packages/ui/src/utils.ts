@@ -54,6 +54,26 @@ export function formatDate(iso: string): string {
   });
 }
 
+/**
+ * Converts identifier-like strings (camelCase, snake_case, kebab-case) into
+ * user-friendly title text for UI fallbacks.
+ */
+export function humanizeIdentifier(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+  const normalized = trimmed
+    .replace(/[_-]+/g, " ")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized) return trimmed;
+  return normalized
+    .split(" ")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
 /** Group an array of items by a key derived from each item. */
 export function groupBy<T>(arr: T[], key: (item: T) => string): Record<string, T[]> {
   return arr.reduce<Record<string, T[]>>((acc, item) => {

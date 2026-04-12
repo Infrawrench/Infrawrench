@@ -10,6 +10,7 @@ import {
   useUIStore,
   formatErrorMessage,
   extractHostLabel,
+  humanizeIdentifier,
 } from "@infrawrench/ui";
 import { apiPost, apiDelete } from "@/lib/api";
 import { useOrgId } from "@/lib/useOrgId";
@@ -286,11 +287,11 @@ export function DashboardView({
                               />
                             ) : (
                               <span className="text-xs text-gray-600 font-mono">
-                                {pin.pluginId}
+                                {humanizeIdentifier(pin.pluginId)}
                               </span>
                             )}
                             <span className="text-xs text-gray-500">
-                              {pin.pluginDisplayName ?? pin.pluginId}
+                              {pin.pluginDisplayName || humanizeIdentifier(pin.pluginId)}
                             </span>
                           </div>
 

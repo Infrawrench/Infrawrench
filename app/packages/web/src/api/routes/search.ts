@@ -3,6 +3,7 @@ import { eq, and, isNull } from "drizzle-orm";
 import { db } from "../../db/client";
 import { accounts, resources } from "../../db/schema";
 import { getPlugin } from "../../plugins/loader";
+import { humanizeIdentifier } from "@infrawrench/ui";
 import type { AuthSession } from "../auth-middleware";
 
 declare module "hono" {
@@ -55,14 +56,19 @@ app.get("/", async (c) => {
           resourceTypes: rtMap,
         };
       } else {
-        pluginMeta = { logoSvg: "", displayName: r.pluginId, resourceTypes: new Map() };
+        pluginMeta = {
+          logoSvg: "",
+          displayName: humanizeIdentifier(r.pluginId),
+          resourceTypes: new Map(),
+        };
       }
       pluginCache.set(r.pluginId, pluginMeta);
     }
 
     const account = accountMap.get(r.accountId);
     const accountName = account?.displayName ?? "";
-    const resourceTypeLabel = pluginMeta.resourceTypes.get(r.resourceTypeId) ?? r.resourceTypeId;
+    const resourceTypeLabel =
+      pluginMeta.resourceTypes.get(r.resourceTypeId) ?? humanizeIdentifier(r.resourceTypeId);
 
     if (q) {
       const searchable =

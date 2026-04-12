@@ -114,6 +114,7 @@ export type {
 export {
   formatSize,
   formatDate,
+  humanizeIdentifier,
   groupBy,
   formatErrorMessage,
   evaluateShowWhen,

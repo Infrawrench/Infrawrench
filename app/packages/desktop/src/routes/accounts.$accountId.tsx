@@ -11,6 +11,7 @@ import {
   getAccountResourceTypes,
   isCreateOnlyType,
   getListableResourceTypes,
+  humanizeIdentifier,
   type DraggableResource,
   formatErrorMessage,
 } from "@infrawrench/ui";
@@ -408,7 +409,9 @@ function AccountPage() {
       <div className="mb-6 flex items-start justify-between">
         <div>
           <h1 className="text-lg font-semibold text-gray-100">{account?.display_name}</h1>
-          <p className="text-xs text-gray-500 mt-0.5">{account?.plugin_id}</p>
+          <p className="text-xs text-gray-500 mt-0.5">
+            {account?.plugin_id ? humanizeIdentifier(account.plugin_id) : ""}
+          </p>
         </div>
         <button
           onClick={() => setConfirmDelete(true)}

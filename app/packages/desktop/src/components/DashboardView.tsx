@@ -12,6 +12,7 @@ import {
   arrayMove,
   getListableResourceTypes,
   extractHostLabel,
+  humanizeIdentifier,
   formatErrorMessage,
 } from "@infrawrench/ui";
 import { getDb } from "../db/client";
@@ -684,9 +685,13 @@ function ResourceCard({
               dangerouslySetInnerHTML={{ __html: pluginMeta.logoSvg }}
             />
           ) : (
-            <span className="text-xs text-gray-600 font-mono">{row.plugin_id}</span>
+            <span className="text-xs text-gray-600 font-mono">
+              {humanizeIdentifier(row.plugin_id)}
+            </span>
           )}
-          <span className="text-xs text-gray-500">{pluginMeta?.displayName ?? row.plugin_id}</span>
+          <span className="text-xs text-gray-500">
+            {pluginMeta?.displayName ?? humanizeIdentifier(row.plugin_id)}
+          </span>
         </div>
 
         {/* Resource name */}

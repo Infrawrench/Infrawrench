@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import {
   SpotlightSearch as SharedSpotlightSearch,
   getListableResourceTypes,
+  humanizeIdentifier,
   type SpotlightResult,
 } from "@infrawrench/ui";
 import { invoke } from "../lib/invoke";
@@ -83,10 +84,10 @@ export function SpotlightSearch({
         return {
           id: r.id,
           pluginId: r.plugin_id,
-          pluginDisplayName: plugin?.manifest.displayName ?? r.plugin_id,
+          pluginDisplayName: plugin?.manifest.displayName ?? humanizeIdentifier(r.plugin_id),
           pluginLogoSvg: plugin?.manifest.logoSvg ?? "",
           resourceTypeId: r.resource_type_id,
-          resourceTypeLabel: rtDef?.displayName ?? r.resource_type_id,
+          resourceTypeLabel: rtDef?.displayName ?? humanizeIdentifier(r.resource_type_id),
           accountId: r.account_id,
           accountName: accountNames.get(r.account_id) ?? r.account_id,
           displayName: r.display_name,

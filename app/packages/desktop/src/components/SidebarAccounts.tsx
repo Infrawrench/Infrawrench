@@ -8,6 +8,7 @@ import {
   ConfirmDeleteModal,
   RESOURCES_CHANGED_EVENT,
   getListableResourceTypes,
+  humanizeIdentifier,
   type DraggableResource,
   formatErrorMessage,
 } from "@infrawrench/ui";
@@ -162,7 +163,8 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
           if (!groupMap.has(row.plugin_id)) {
             groupMap.set(row.plugin_id, {
               pluginId: row.plugin_id,
-              displayName: pluginMeta[row.plugin_id]?.displayName ?? row.plugin_id,
+              displayName:
+                pluginMeta[row.plugin_id]?.displayName ?? humanizeIdentifier(row.plugin_id),
               logoSvg: pluginMeta[row.plugin_id]?.logoSvg ?? "",
               accounts: [],
             });
