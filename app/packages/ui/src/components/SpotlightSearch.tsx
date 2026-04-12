@@ -4,7 +4,7 @@ import { groupBy } from "../utils.js";
 export interface SpotlightResult {
   id: string;
   pluginId: string;
-  pluginDisplayName: string;
+  pluginLabel: string;
   pluginLogoSvg: string;
   resourceTypeId: string;
   resourceTypeLabel: string;
@@ -45,7 +45,7 @@ function defaultFilter(results: SpotlightResult[], query: string): SpotlightResu
     (r) =>
       r.displayName.toLowerCase().includes(q) ||
       r.resourceTypeLabel.toLowerCase().includes(q) ||
-      r.pluginDisplayName.toLowerCase().includes(q) ||
+      r.pluginLabel.toLowerCase().includes(q) ||
       r.accountName.toLowerCase().includes(q) ||
       (r.subtitle?.toLowerCase().includes(q) ?? false),
   );
@@ -186,9 +186,7 @@ export function SpotlightSearch({
                         dangerouslySetInnerHTML={{ __html: first.pluginLogoSvg }}
                       />
                     ) : null}
-                    <span className="text-xs font-medium text-gray-500">
-                      {first.pluginDisplayName}
-                    </span>
+                    <span className="text-xs font-medium text-gray-500">{first.pluginLabel}</span>
                     <span className="text-xs text-gray-700">&middot; {first.accountName}</span>
                   </div>
 

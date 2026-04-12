@@ -19,9 +19,9 @@ export const Route = createFileRoute("/org/$orgId/accounts/$accountId")({
 });
 
 interface AccountMeta {
-  account: { id: string; pluginId: string; displayName: string };
+  account: { id: string; pluginId: string; pluginLabel: string; displayName: string };
   resourceTypes: ResourceTypeInfo[];
-  pluginDisplayName: string;
+  pluginLabel: string;
   pluginLogoSvg: string;
 }
 
@@ -162,7 +162,7 @@ function AccountPage() {
     <AccountDetailView
       account={meta.account}
       categories={categories}
-      pluginDisplayName={meta.pluginDisplayName}
+      pluginLabel={meta.pluginLabel}
       pluginLogoSvg={meta.pluginLogoSvg}
     />
   );

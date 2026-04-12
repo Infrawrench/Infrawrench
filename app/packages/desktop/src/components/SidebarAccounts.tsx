@@ -35,6 +35,7 @@ interface Account {
 
 interface PluginGroup {
   pluginId: string;
+  pluginLabel: string;
   displayName: string;
   logoSvg: string;
   accounts: Account[];
@@ -161,10 +162,11 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
         const groupMap = new Map<string, PluginGroup>();
         for (const row of rows) {
           if (!groupMap.has(row.plugin_id)) {
+            const pluginLabel = humanizeIdentifier(row.plugin_id);
             groupMap.set(row.plugin_id, {
               pluginId: row.plugin_id,
-              displayName:
-                pluginMeta[row.plugin_id]?.displayName ?? humanizeIdentifier(row.plugin_id),
+              pluginLabel,
+              displayName: pluginMeta[row.plugin_id]?.displayName ?? pluginLabel,
               logoSvg: pluginMeta[row.plugin_id]?.logoSvg ?? "",
               accounts: [],
             });
@@ -453,7 +455,7 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
                 dangerouslySetInnerHTML={{ __html: group.logoSvg }}
               />
               <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                {group.displayName}
+                {group.pluginLabel}
               </span>
             </div>
 

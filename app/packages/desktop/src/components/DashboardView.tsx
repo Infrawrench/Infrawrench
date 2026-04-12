@@ -35,6 +35,7 @@ import type { SearchResult } from "./SpotlightSearch";
 interface PinnedRow {
   resource_id: string;
   plugin_id: string;
+  plugin_label: string;
   resource_type_id: string;
   account_id: string;
   display_name: string;
@@ -154,9 +155,10 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
       const { activeWorkspaceTabId, setWorkspaceTabTitle } = useUIStore.getState();
       if (activeWorkspaceTabId) setWorkspaceTabTitle(activeWorkspaceTabId, loadedName);
 
-      const rows = await db.select<PinnedRow[]>(
+      const rows = await db.select<Omit<PinnedRow, "plugin_label">[]>(
         `
-        SELECT r.id as resource_id, r.plugin_id, r.resource_type_id,
+        SELECT r.id as resource_id, r.plugin_id,
+               r.resource_type_id,
                r.account_id, r.display_name, r.fields_json, r.outputs_json
         FROM dashboard_pins dp
         JOIN resources r ON r.id = dp.resource_id
@@ -180,7 +182,11 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
         return next;
       });
 
-      setPinned(rows);
+      const normalizedRows: PinnedRow[] = rows.map((row) => ({
+        ...row,
+        plugin_label: humanizeIdentifier(row.plugin_id),
+      }));
+      setPinned(normalizedRows);
     } catch {
       // empty dashboard is fine
     } finally {
@@ -685,12 +691,10 @@ function ResourceCard({
               dangerouslySetInnerHTML={{ __html: pluginMeta.logoSvg }}
             />
           ) : (
-            <span className="text-xs text-gray-600 font-mono">
-              {humanizeIdentifier(row.plugin_id)}
-            </span>
+            <span className="text-xs text-gray-600 font-mono">{row.plugin_label}</span>
           )}
           <span className="text-xs text-gray-500">
-            {pluginMeta?.displayName ?? humanizeIdentifier(row.plugin_id)}
+            {pluginMeta?.displayName ?? row.plugin_label}
           </span>
         </div>
 

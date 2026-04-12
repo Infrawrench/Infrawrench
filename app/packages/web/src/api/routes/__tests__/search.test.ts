@@ -67,7 +67,9 @@ describe("Search routes", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body).toHaveLength(1);
-    expect(body[0].pluginDisplayName).toBe("Unknown Plugin");
+    expect(body[0].pluginLabel).toBe("Unknown Plugin");
     expect(body[0].resourceTypeLabel).toBe("Database Instance");
+    expect(body[0]).not.toHaveProperty("pluginDisplayName");
+    expect(body[0]).not.toHaveProperty("resourceTypeDisplayLabel");
   });
 });

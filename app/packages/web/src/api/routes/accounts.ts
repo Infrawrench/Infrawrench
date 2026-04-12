@@ -5,6 +5,7 @@ import { db } from "../../db/client";
 import { accounts, resources } from "../../db/schema";
 import { encrypt, decrypt } from "../../services/encryption";
 import { loadPlugins, getPlugin } from "../../plugins/loader";
+import { humanizeIdentifier } from "@infrawrench/ui";
 import { buildPluginHostServices } from "../../services/host-services";
 import type { AuthSession } from "../auth-middleware";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
@@ -175,7 +176,7 @@ app.get("/:id/detail", async (c) => {
       displayName: account.displayName,
     },
     resourceTypes,
-    pluginDisplayName: plugin?.plugin.manifest.displayName ?? "",
+    pluginLabel: plugin?.plugin.manifest.displayName ?? humanizeIdentifier(account.pluginId),
     pluginLogoSvg: plugin?.plugin.manifest.logoSvg ?? "",
   });
 });

@@ -119,6 +119,30 @@ describe("Account routes", () => {
     });
   });
 
+  describe("GET /:id/detail — account detail metadata", () => {
+    it("returns a separate pluginLabel attribute", async () => {
+      const accountRow = {
+        id: "a1",
+        organizationId: "org-1",
+        pluginId: "unknownPlugin",
+        displayName: "Prod Account",
+        encryptedCredentials: "enc",
+        credentialsIv: "iv",
+      };
+      const accountWhere = vi.fn().mockResolvedValue([accountRow]);
+      const accountFrom = vi.fn().mockReturnValue({ where: accountWhere });
+      mockSelect.mockReturnValue({ from: accountFrom });
+      mockGetPlugin.mockResolvedValue(null);
+
+      const app = buildApp();
+      const res = await app.request("/a1/detail", { method: "GET" });
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.account.pluginId).toBe("unknownPlugin");
+      expect(body.pluginLabel).toBe("Unknown Plugin");
+    });
+  });
+
   describe("POST / — create an account", () => {
     it("encrypts credentials and returns the new id", async () => {
       const values = vi.fn().mockResolvedValue(undefined);

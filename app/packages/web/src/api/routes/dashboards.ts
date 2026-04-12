@@ -47,7 +47,7 @@ async function enrichPins(pins: Array<{ pluginId: string; [key: string]: unknown
           : { logoSvg: "", displayName: humanizeIdentifier(pin.pluginId as string) };
         pluginCache.set(pin.pluginId as string, meta);
       }
-      return { ...pin, pluginLogoSvg: meta.logoSvg, pluginDisplayName: meta.displayName };
+      return { ...pin, pluginLogoSvg: meta.logoSvg, pluginLabel: meta.displayName };
     }),
   );
 }

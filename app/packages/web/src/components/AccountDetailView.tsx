@@ -39,18 +39,13 @@ export interface CategoryState {
 }
 
 interface Props {
-  account: { id: string; pluginId: string; displayName: string };
+  account: { id: string; pluginId: string; pluginLabel: string; displayName: string };
   categories: CategoryState[];
-  pluginDisplayName: string;
+  pluginLabel: string;
   pluginLogoSvg: string;
 }
 
-export function AccountDetailView({
-  account,
-  categories,
-  pluginDisplayName,
-  pluginLogoSvg,
-}: Props) {
+export function AccountDetailView({ account, categories, pluginLabel, pluginLogoSvg }: Props) {
   const navigate = useNavigate();
   const orgId = useOrgId();
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -75,7 +70,7 @@ export function AccountDetailView({
         )}
         <div className="flex-1">
           <h1 className="text-xl font-semibold">{account.displayName}</h1>
-          <p className="text-xs text-gray-500">{pluginDisplayName}</p>
+          <p className="text-xs text-gray-500">{pluginLabel}</p>
         </div>
         <button
           onClick={() => setConfirmDelete(true)}

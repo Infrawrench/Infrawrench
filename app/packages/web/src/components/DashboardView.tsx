@@ -25,8 +25,8 @@ interface PinnedResource {
   gridH: number;
   displayName: string;
   pluginId: string;
+  pluginLabel?: string | undefined;
   pluginLogoSvg?: string | undefined;
-  pluginDisplayName?: string | undefined;
   resourceTypeId: string;
   accountId: string;
   fieldsJson: unknown;
@@ -287,11 +287,11 @@ export function DashboardView({
                               />
                             ) : (
                               <span className="text-xs text-gray-600 font-mono">
-                                {humanizeIdentifier(pin.pluginId)}
+                                {pin.pluginLabel || humanizeIdentifier(pin.pluginId)}
                               </span>
                             )}
                             <span className="text-xs text-gray-500">
-                              {pin.pluginDisplayName || humanizeIdentifier(pin.pluginId)}
+                              {pin.pluginLabel || humanizeIdentifier(pin.pluginId)}
                             </span>
                           </div>
 

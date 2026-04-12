@@ -29,6 +29,7 @@ interface ResourceSummary {
 
 interface PluginGroup {
   pluginId: string;
+  pluginLabel: string;
   displayName: string;
   logoSvg: string;
   accounts: AccountSummary[];
@@ -114,6 +115,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
           if (!groupMap.has(acct.pluginId)) {
             groupMap.set(acct.pluginId, {
               pluginId: acct.pluginId,
+              pluginLabel: humanizeIdentifier(acct.pluginId),
               displayName:
                 pluginMeta[acct.pluginId]?.displayName ?? humanizeIdentifier(acct.pluginId),
               logoSvg: pluginMeta[acct.pluginId]?.logoSvg ?? "",

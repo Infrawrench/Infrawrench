@@ -84,7 +84,7 @@ export function SpotlightSearch({
         return {
           id: r.id,
           pluginId: r.plugin_id,
-          pluginDisplayName: plugin?.manifest.displayName ?? humanizeIdentifier(r.plugin_id),
+          pluginLabel: plugin?.manifest.displayName ?? humanizeIdentifier(r.plugin_id),
           pluginLogoSvg: plugin?.manifest.logoSvg ?? "",
           resourceTypeId: r.resource_type_id,
           resourceTypeLabel: rtDef?.displayName ?? humanizeIdentifier(r.resource_type_id),
@@ -136,7 +136,7 @@ export function SpotlightSearch({
                 liveResults.set(inst.id, {
                   id: inst.id,
                   pluginId: plugin.manifest.id,
-                  pluginDisplayName: plugin.manifest.displayName,
+                  pluginLabel: plugin.manifest.displayName,
                   pluginLogoSvg: plugin.manifest.logoSvg,
                   resourceTypeId: rt.id,
                   resourceTypeLabel: rt.displayName,
@@ -179,7 +179,11 @@ export function SpotlightSearch({
         resourceTypeId: result.resourceTypeId,
         accountId: result.accountId,
         displayName: result.displayName,
-        fields: result.fields ?? {},
+        fields: {
+          ...(result.fields ?? {}),
+          pluginLabel: result.pluginLabel,
+          resourceTypeLabel: result.resourceTypeLabel,
+        },
         externalId: result.externalId,
       };
       const db = await getDb();

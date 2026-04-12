@@ -79,7 +79,7 @@ app.get("/", async (c) => {
     results.push({
       id: r.id,
       pluginId: r.pluginId,
-      pluginDisplayName: pluginMeta.displayName,
+      pluginLabel: pluginMeta.displayName,
       pluginLogoSvg: pluginMeta.logoSvg,
       resourceTypeId: r.resourceTypeId,
       resourceTypeLabel,
