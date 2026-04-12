@@ -38,6 +38,63 @@ export interface CategoryState {
   resources: Resource[];
 }
 
+export function getVisibleAccountCategories(
+  categories: CategoryState[],
+  normalizedQuery: string,
+): CategoryState[] {
+  return categories
+    .filter((cat) => {
+      const createOnly = isCreateOnlyType(cat.typeDef);
+      if (!cat.loading && cat.resources.length === 0 && !cat.typeDef.supportsCreate) return false;
+      if (createOnly && !cat.typeDef.supportsCreate) return false;
+      return true;
+    })
+    .map((cat) => {
+      const filteredResources =
+        normalizedQuery.length === 0
+          ? cat.resources
+          : cat.resources.filter((resource) => {
+              const fields = (resource.fieldsJson as Record<string, unknown>) ?? {};
+              const searchText = [
+                cat.typeDef.displayName,
+                cat.typeDef.pluralDisplayName,
+                resource.displayName,
+                String(fields["host"] ?? ""),
+                String(fields["region"] ?? ""),
+                String(fields["engine"] ?? ""),
+              ]
+                .join(" ")
+                .toLowerCase();
+              return searchText.includes(normalizedQuery);
+            });
+      const sectionMatches = [
+        cat.typeDef.displayName,
+        cat.typeDef.pluralDisplayName,
+        cat.typeDef.id,
+      ]
+        .join(" ")
+        .toLowerCase()
+        .includes(normalizedQuery);
+
+      if (normalizedQuery.length > 0 && filteredResources.length === 0 && !sectionMatches) {
+        return null;
+      }
+
+      return {
+        ...cat,
+        resources: filteredResources,
+      };
+    })
+    .filter((cat): cat is CategoryState => cat !== null)
+    .sort((a, b) => a.typeDef.pluralDisplayName.localeCompare(b.typeDef.pluralDisplayName));
+}
+
+export function pickDefaultAccountSectionId(categories: CategoryState[]): string | null {
+  const fallbackSectionId = categories[0]?.typeDef.id ?? null;
+  const firstWithItems = categories.find((cat) => cat.resources.length > 0);
+  return firstWithItems?.typeDef.id ?? fallbackSectionId;
+}
+
 interface Props {
   account: { id: string; pluginId: string; displayName: string };
   categories: CategoryState[];
@@ -62,53 +119,7 @@ export function AccountDetailView({
   const normalizedQuery = searchQuery.trim().toLowerCase();
 
   const visibleCategories = useMemo(
-    () =>
-      categories
-        .filter((cat) => {
-          const createOnly = isCreateOnlyType(cat.typeDef);
-          if (!cat.loading && cat.resources.length === 0 && !cat.typeDef.supportsCreate)
-            return false;
-          if (createOnly && !cat.typeDef.supportsCreate) return false;
-          return true;
-        })
-        .map((cat) => {
-          const filteredResources =
-            normalizedQuery.length === 0
-              ? cat.resources
-              : cat.resources.filter((resource) => {
-                  const fields = (resource.fieldsJson as Record<string, unknown>) ?? {};
-                  const searchText = [
-                    cat.typeDef.displayName,
-                    cat.typeDef.pluralDisplayName,
-                    resource.displayName,
-                    String(fields["host"] ?? ""),
-                    String(fields["region"] ?? ""),
-                    String(fields["engine"] ?? ""),
-                  ]
-                    .join(" ")
-                    .toLowerCase();
-                  return searchText.includes(normalizedQuery);
-                });
-          const sectionMatches = [
-            cat.typeDef.displayName,
-            cat.typeDef.pluralDisplayName,
-            cat.typeDef.id,
-          ]
-            .join(" ")
-            .toLowerCase()
-            .includes(normalizedQuery);
-
-          if (normalizedQuery.length > 0 && filteredResources.length === 0 && !sectionMatches) {
-            return null;
-          }
-
-          return {
-            ...cat,
-            resources: filteredResources,
-          };
-        })
-        .filter((cat): cat is CategoryState => cat !== null)
-        .sort((a, b) => a.typeDef.pluralDisplayName.localeCompare(b.typeDef.pluralDisplayName)),
+    () => getVisibleAccountCategories(categories, normalizedQuery),
     [categories, normalizedQuery],
   );
 
@@ -120,8 +131,7 @@ export function AccountDetailView({
     }
 
     if (!initializedSectionRef.current) {
-      const firstWithItems = visibleCategories.find((cat) => cat.resources.length > 0);
-      setActiveSectionId(firstWithItems?.typeDef.id ?? visibleCategories[0].typeDef.id);
+      setActiveSectionId(pickDefaultAccountSectionId(visibleCategories));
       initializedSectionRef.current = true;
       return;
     }
@@ -129,8 +139,7 @@ export function AccountDetailView({
     if (activeSectionId && visibleCategories.some((cat) => cat.typeDef.id === activeSectionId)) {
       return;
     }
-    const firstWithItems = visibleCategories.find((cat) => cat.resources.length > 0);
-    setActiveSectionId(firstWithItems?.typeDef.id ?? visibleCategories[0].typeDef.id);
+    setActiveSectionId(pickDefaultAccountSectionId(visibleCategories));
   }, [activeSectionId, visibleCategories]);
 
   const activeCategory =
