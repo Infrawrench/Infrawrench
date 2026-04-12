@@ -6,6 +6,10 @@ import { useDroppable } from "@dnd-kit/core";
 import {
   useUIStore,
   SparklineChart,
+  SortableDashboardCard,
+  SortableContext,
+  rectSortingStrategy,
+  arrayMove,
   getListableResourceTypes,
   extractHostLabel,
   formatErrorMessage,
@@ -80,6 +84,41 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
   const removeWorkspaceTabs = useUIStore((s) => s.removeWorkspaceTabs);
   const { setNodeRef, isOver } = useDroppable({ id: `dashboard:${dashboardId}` });
 
+  // Listen for card reorder events from DndShell
+  const handleReorder = useCallback(
+    (e: Event) => {
+      const { activeResourceId, overResourceId } = (e as CustomEvent).detail as {
+        activeResourceId: string;
+        overResourceId: string;
+      };
+      setPinned((prev) => {
+        const oldIndex = prev.findIndex((p) => p.resource_id === activeResourceId);
+        const newIndex = prev.findIndex((p) => p.resource_id === overResourceId);
+        if (oldIndex === -1 || newIndex === -1) return prev;
+        const next = arrayMove(prev, oldIndex, newIndex);
+        // Persist the new order in the background
+        void (async () => {
+          const db = await getDb();
+          await Promise.all(
+            next.map((row, i) =>
+              db.execute(
+                "UPDATE dashboard_pins SET grid_x = $1 WHERE dashboard_id = $2 AND resource_id = $3",
+                [i, dashboardId, row.resource_id],
+              ),
+            ),
+          );
+        })();
+        return next;
+      });
+    },
+    [dashboardId],
+  );
+
+  useEffect(() => {
+    window.addEventListener("iw:dashboard-card-reorder", handleReorder);
+    return () => window.removeEventListener("iw:dashboard-card-reorder", handleReorder);
+  }, [handleReorder]);
+
   const load = useCallback(async () => {
     setLoading(true);
     setNotFound(false);
@@ -121,7 +160,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
         FROM dashboard_pins dp
         JOIN resources r ON r.id = dp.resource_id
         WHERE dp.dashboard_id = $1
-        ORDER BY dp.created_at DESC
+        ORDER BY dp.grid_x ASC, dp.created_at DESC
         LIMIT 50
       `,
         [dashboardId],
@@ -538,32 +577,38 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
             <p className="text-xs mt-1 opacity-60">or drag one here</p>
           </button>
         ) : (
-          <div
-            className="grid gap-4"
-            style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}
+          <SortableContext
+            items={pinned.map((r) => `dashboard-card:${r.resource_id}`)}
+            strategy={rectSortingStrategy}
           >
-            {pinned.map((row) => (
-              <ResourceCard
-                key={row.resource_id}
-                row={row}
-                pluginMeta={pluginMeta[row.plugin_id]}
-                status={cardStatus[row.resource_id]}
-                onOpen={() => goToResource(row)}
-                onUnpin={() => void unpin(row.resource_id)}
-                onConnect={
-                  cardStatus[row.resource_id]?.sshTarget ? () => goToResource(row) : undefined
-                }
-              />
-            ))}
-
-            <button
-              onClick={() => setSpotlightMode("pin")}
-              className={`rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-1.5 transition-colors min-h-[140px] ${isOver ? "border-blue-500 text-blue-400 bg-blue-500/5" : "border-gray-800 text-gray-700 hover:border-gray-600 hover:text-gray-500"}`}
+            <div
+              className="grid gap-4"
+              style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}
             >
-              <span className="text-2xl">+</span>
-              <span className="text-xs">Add resource</span>
-            </button>
-          </div>
+              {pinned.map((row) => (
+                <SortableDashboardCard key={row.resource_id} id={row.resource_id}>
+                  <ResourceCard
+                    row={row}
+                    pluginMeta={pluginMeta[row.plugin_id]}
+                    status={cardStatus[row.resource_id]}
+                    onOpen={() => goToResource(row)}
+                    onUnpin={() => void unpin(row.resource_id)}
+                    onConnect={
+                      cardStatus[row.resource_id]?.sshTarget ? () => goToResource(row) : undefined
+                    }
+                  />
+                </SortableDashboardCard>
+              ))}
+
+              <button
+                onClick={() => setSpotlightMode("pin")}
+                className={`rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-1.5 transition-colors min-h-[140px] ${isOver ? "border-blue-500 text-blue-400 bg-blue-500/5" : "border-gray-800 text-gray-700 hover:border-gray-600 hover:text-gray-500"}`}
+              >
+                <span className="text-2xl">+</span>
+                <span className="text-xs">Add resource</span>
+              </button>
+            </div>
+          </SortableContext>
         )}
 
         {spotlightMode && (

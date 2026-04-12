@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { eq, and, isNull, desc } from "drizzle-orm";
+import { eq, and, isNull, desc, max } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import { db } from "../../db/client";
 import { dashboards, dashboardPins, resources, accounts } from "../../db/schema";
@@ -119,7 +119,8 @@ app.get("/:id", async (c) => {
         isNull(dashboardPins.deletedAt),
         isNull(resources.deletedAt),
       ),
-    );
+    )
+    .orderBy(dashboardPins.gridX, dashboardPins.createdAt);
 
   const pins = await enrichPins(rawPins);
   return c.json({ dashboard, pins });
@@ -175,7 +176,8 @@ app.get("/default/full", async (c) => {
         isNull(dashboardPins.deletedAt),
         isNull(resources.deletedAt),
       ),
-    );
+    )
+    .orderBy(dashboardPins.gridX, dashboardPins.createdAt);
 
   const pins = await enrichPins(rawPins);
   return c.json({ dashboard: defaultDashboard, pins });
@@ -238,10 +240,48 @@ app.post("/pin", async (c) => {
     .limit(1);
   if (!resource) return c.json({ error: "Resource not found" }, 404);
 
+  // When no explicit position, place at the end
+  let effectiveGridX = gridX ?? 0;
+  if (gridX == null) {
+    const [maxRow] = await db
+      .select({ maxX: max(dashboardPins.gridX) })
+      .from(dashboardPins)
+      .where(eq(dashboardPins.dashboardId, dashboardId));
+    effectiveGridX = (maxRow?.maxX ?? -1) + 1;
+  }
+
   await db
     .insert(dashboardPins)
-    .values({ id: uuidv4(), dashboardId, resourceId, gridX: gridX ?? 0, gridY: gridY ?? 0 })
+    .values({ id: uuidv4(), dashboardId, resourceId, gridX: effectiveGridX, gridY: gridY ?? 0 })
     .onConflictDoNothing();
+  return c.json({ ok: true });
+});
+
+/** POST /api/dashboards/:id/reorder — persist card order */
+app.post("/:id/reorder", async (c) => {
+  const organizationId = c.get("organizationId");
+  const dashboardId = c.req.param("id");
+  const { resourceIds } = await c.req.json<{ resourceIds: string[] }>();
+
+  const [dashboard] = await db
+    .select({ id: dashboards.id })
+    .from(dashboards)
+    .where(and(eq(dashboards.id, dashboardId), eq(dashboards.organizationId, organizationId)))
+    .limit(1);
+  if (!dashboard) return c.json({ error: "Dashboard not found" }, 404);
+
+  // Update grid_x for each pin to reflect the new order
+  await Promise.all(
+    resourceIds.map((resourceId, index) =>
+      db
+        .update(dashboardPins)
+        .set({ gridX: index })
+        .where(
+          and(eq(dashboardPins.dashboardId, dashboardId), eq(dashboardPins.resourceId, resourceId)),
+        ),
+    ),
+  );
+
   return c.json({ ok: true });
 });
 

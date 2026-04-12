@@ -47,8 +47,15 @@ export async function pinResource(
     }
   }
 
+  // Place at the end of the grid
+  const maxRows = await db.select<{ max_x: number | null }[]>(
+    "SELECT MAX(grid_x) as max_x FROM dashboard_pins WHERE dashboard_id = $1",
+    [dashId],
+  );
+  const nextX = (maxRows[0]?.max_x ?? -1) + 1;
+
   await db.execute(
-    "INSERT OR IGNORE INTO dashboard_pins (id, dashboard_id, resource_id) VALUES ($1, $2, $3)",
-    [crypto.randomUUID(), dashId, resource.id],
+    "INSERT OR IGNORE INTO dashboard_pins (id, dashboard_id, resource_id, grid_x) VALUES ($1, $2, $3, $4)",
+    [crypto.randomUUID(), dashId, resource.id, nextX],
   );
 }
