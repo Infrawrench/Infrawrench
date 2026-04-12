@@ -40,7 +40,8 @@ infrawrench/
 │   ├── turso/                # @infrawrench/plugin-turso
 │   ├── ssh/                  # @infrawrench/plugin-ssh
 │   ├── fly/                  # @infrawrench/plugin-fly
-│   └── vercel/               # @infrawrench/plugin-vercel
+│   ├── vercel/               # @infrawrench/plugin-vercel
+│   └── netlify/              # @infrawrench/plugin-netlify
 ├── app/packages/
 │   ├── desktop/              # @infrawrench/desktop — Electron app
 │   ├── ui/                   # @infrawrench/ui — shared React components
@@ -206,7 +207,7 @@ Resource IDs follow the convention `{accountId}:{resourceTypeId}:{externalId}`. 
 
 The loader (`app/packages/desktop/src/plugins/loader.ts`) validates each plugin's manifest against the Zod schema and checks the manifest `id` matches the registry `id` before mounting. Unknown packages are refused.
 
-Currently blessed: `gcp`, `docker`, `digitalocean`, `hetzner`, `kubernetes`, `memcached`, `mongodb`, `mysql`, `neon`, `postgres`, `redis`, `scaleway`, `ssh`, `cloudflare`, `ovh`, `aws`, `azure`, `databricks`, `turso`, `planetscale`, `fly`.
+Currently blessed: `gcp`, `docker`, `digitalocean`, `hetzner`, `kubernetes`, `memcached`, `mongodb`, `mysql`, `neon`, `postgres`, `redis`, `scaleway`, `ssh`, `cloudflare`, `ovh`, `aws`, `azure`, `databricks`, `turso`, `planetscale`, `fly`, `vercel`, `netlify`.
 
 ---
 
@@ -477,6 +478,23 @@ All polling is _background_ (no loading flash):
 - 36 regions available (IATA codes: iad, cdg, nrt, lhr, sin, syd, fra, etc.)
 - Machine output: `privateIp` (6PN IPv6 address)
 - Listing machines/volumes requires iterating all apps — batched in parallel with error isolation per app
+
+### Netlify (`@infrawrench/plugin-netlify`)
+
+- Auth: Personal Access Token (PAT), passed as `Bearer` token to `https://api.netlify.com/api/v1`
+- Credentials: `accessToken` (PAT from app.netlify.com → User Settings → Applications)
+- 7 resource types: `netlify-site`, `netlify-deploy` (child of site), `netlify-form` (child of site), `netlify-dns-zone`, `netlify-dns-record` (child of DNS zone), `netlify-build-hook` (child of site), `netlify-env-var` (child of site)
+- Resource ID format: `{accountId}:{typeId}:{externalId}` — compound IDs use `{siteId}/{itemId}` for child resources, `{zoneId}/{recordId}` for DNS records
+- Paginated fetch uses Netlify's `page` + `per_page` query params (100 per page, up to 10 pages)
+- DNS records use shared `@infrawrench/plugin-base` DNS helpers (`renderDnsRecordDetail`, `renderDnsRecordSidebar`)
+- Site state mapping: current→healthy, building/enqueued→provisioning, error→error
+- Deploy state mapping: ready→healthy, building/enqueued/uploading/uploaded/preparing/prepared/processing→provisioning, error→error, skipped→degraded
+- Deploys capped at 5 per site to avoid excessive API calls
+- Create supported for: sites, DNS zones, DNS records, build hooks
+- Delete supported for all 7 resource types
+- Secret export templates on: sites (deploy hook URL), build hooks (hook URL)
+- Env vars show deployment contexts (production, deploy-preview, branch-deploy, general) and scopes (builds, functions, runtime, post-processing)
+- Rate limits: 500 requests/minute general, 3 deploys/minute
 
 ---
 
