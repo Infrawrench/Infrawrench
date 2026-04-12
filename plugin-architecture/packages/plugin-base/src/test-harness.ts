@@ -52,6 +52,11 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
     clientSecret: "test-client-secret",
     subscriptionId: "test-subscription-id",
   },
+  cloudinary: {
+    cloudName: "test-cloud",
+    apiKey: "123456789012345",
+    apiSecret: "test-api-secret",
+  },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {

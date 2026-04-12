@@ -38,7 +38,8 @@ infrawrench/
 │   ├── azure/                # @infrawrench/plugin-azure
 │   ├── databricks/           # @infrawrench/plugin-databricks
 │   ├── turso/                # @infrawrench/plugin-turso
-│   └── ssh/                  # @infrawrench/plugin-ssh
+│   ├── ssh/                  # @infrawrench/plugin-ssh
+│   └── cloudinary/           # @infrawrench/plugin-cloudinary
 ├── app/packages/
 │   ├── desktop/              # @infrawrench/desktop — Electron app
 │   ├── ui/                   # @infrawrench/ui — shared React components
@@ -204,7 +205,7 @@ Resource IDs follow the convention `{accountId}:{resourceTypeId}:{externalId}`. 
 
 The loader (`app/packages/desktop/src/plugins/loader.ts`) validates each plugin's manifest against the Zod schema and checks the manifest `id` matches the registry `id` before mounting. Unknown packages are refused.
 
-Currently blessed: `gcp`, `docker`, `digitalocean`, `hetzner`, `kubernetes`, `memcached`, `mongodb`, `mysql`, `neon`, `postgres`, `redis`, `scaleway`, `ssh`, `cloudflare`, `ovh`, `aws`, `azure`, `databricks`, `turso`, `planetscale`.
+Currently blessed: `gcp`, `docker`, `digitalocean`, `hetzner`, `kubernetes`, `memcached`, `mongodb`, `mysql`, `neon`, `postgres`, `redis`, `scaleway`, `ssh`, `cloudflare`, `ovh`, `aws`, `azure`, `databricks`, `turso`, `planetscale`, `cloudinary`.
 
 ---
 
