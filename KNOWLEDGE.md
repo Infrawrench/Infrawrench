@@ -14,6 +14,8 @@ Infrawrench is an infrastructure management platform with both a desktop app and
 
 **Shared UI** — `@infrawrench/ui` React component library used by both apps. Plugins return schema data, both hosts render via SchemaRenderer/DetailView.
 
+User-facing fallback labels for identifier-like values (plugin IDs, resource type IDs) should use `humanizeIdentifier()` from `@infrawrench/ui` utils so raw camelCase/snake_case/kebab-case IDs are not shown directly in UI.
+
 **Cloud features** — Desktop syncs to cloud via OAuth PKCE (WorkOS) + bidirectional sync protocol. Stripe billing at $20/seat/month with free tier (1 user, 3 accounts, no audit). API key system for programmatic access. Audit trail, team management, invitations.
 
 ---
