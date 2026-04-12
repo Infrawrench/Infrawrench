@@ -52,6 +52,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
     clientSecret: "test-client-secret",
     subscriptionId: "test-subscription-id",
   },
+  netlify: { accessToken: "nfp_test_token" },
 };
 
 export function makeMockCredentials(pluginId: string): Record<string, string> {

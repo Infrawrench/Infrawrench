@@ -38,6 +38,7 @@ infrawrench/
 │   ├── azure/                # @infrawrench/plugin-azure
 │   ├── databricks/           # @infrawrench/plugin-databricks
 │   ├── turso/                # @infrawrench/plugin-turso
+│   ├── netlify/              # @infrawrench/plugin-netlify
 │   └── ssh/                  # @infrawrench/plugin-ssh
 ├── app/packages/
 │   ├── desktop/              # @infrawrench/desktop — Electron app
@@ -204,7 +205,7 @@ Resource IDs follow the convention `{accountId}:{resourceTypeId}:{externalId}`. 
 
 The loader (`app/packages/desktop/src/plugins/loader.ts`) validates each plugin's manifest against the Zod schema and checks the manifest `id` matches the registry `id` before mounting. Unknown packages are refused.
 
-Currently blessed: `gcp`, `docker`, `digitalocean`, `hetzner`, `kubernetes`, `memcached`, `mongodb`, `mysql`, `neon`, `postgres`, `redis`, `scaleway`, `ssh`, `cloudflare`, `ovh`, `aws`, `azure`, `databricks`, `turso`, `planetscale`.
+Currently blessed: `gcp`, `docker`, `digitalocean`, `hetzner`, `kubernetes`, `memcached`, `mongodb`, `mysql`, `neon`, `postgres`, `redis`, `scaleway`, `ssh`, `cloudflare`, `ovh`, `aws`, `azure`, `databricks`, `turso`, `planetscale`, `netlify`.
 
 ---
 
@@ -460,6 +461,23 @@ All polling is _background_ (no loading flash):
 - Secret export templates on 17 resource types: RDS Instance, Aurora Cluster, Redshift Cluster, OpenSearch Domain, ElastiCache, S3 Bucket, Lambda, SQS, SNS, DynamoDB, EKS Cluster, ECR Repository, MSK Cluster, Neptune Cluster, DocumentDB Cluster, MQ Broker
 - `getManifest` for read-only manifest viewer (all resource types)
 - Status mapping: running/active/available/issued/ok → healthy; stopped/paused/disabled → degraded; pending/creating/updating → provisioning; terminated/failed/deleted/alarm → error
+
+### Netlify (`@infrawrench/plugin-netlify`)
+
+- Auth: Personal Access Token (PAT), passed as `Bearer` token to `https://api.netlify.com/api/v1`
+- Credentials: `accessToken` (PAT from app.netlify.com → User Settings → Applications)
+- 7 resource types: `netlify-site`, `netlify-deploy` (child of site), `netlify-form` (child of site), `netlify-dns-zone`, `netlify-dns-record` (child of DNS zone), `netlify-build-hook` (child of site), `netlify-env-var` (child of site)
+- Resource ID format: `{accountId}:{typeId}:{externalId}` — compound IDs use `{siteId}/{itemId}` for child resources, `{zoneId}/{recordId}` for DNS records
+- Paginated fetch uses Netlify's `page` + `per_page` query params (100 per page, up to 10 pages)
+- DNS records use shared `@infrawrench/plugin-base` DNS helpers (`renderDnsRecordDetail`, `renderDnsRecordSidebar`)
+- Site state mapping: current→healthy, building/enqueued→provisioning, error→error
+- Deploy state mapping: ready→healthy, building/enqueued/uploading/uploaded/preparing/prepared/processing→provisioning, error→error, skipped→degraded
+- Deploys capped at 5 per site to avoid excessive API calls
+- Create supported for: sites, DNS zones, DNS records, build hooks
+- Delete supported for all 7 resource types
+- Secret export templates on: sites (deploy hook URL), build hooks (hook URL)
+- Env vars show deployment contexts (production, deploy-preview, branch-deploy, general) and scopes (builds, functions, runtime, post-processing)
+- Rate limits: 500 requests/minute general, 3 deploys/minute
 
 ---
 

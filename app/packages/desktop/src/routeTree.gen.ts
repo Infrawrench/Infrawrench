@@ -8,111 +8,106 @@
 // You should NOT make any changes in this file as it will be overwritten.
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
-import { Route as rootRouteImport } from './routes/__root'
-import { Route as IndexRouteImport } from './routes/index'
-import { Route as DashboardDashboardIdRouteImport } from './routes/dashboard.$dashboardId'
-import { Route as AccountsAccountIdRouteImport } from './routes/accounts.$accountId'
-import { Route as ResourceAccountIdResourceIdRouteImport } from './routes/resource.$accountId.$resourceId'
+import { Route as rootRouteImport } from "./routes/__root";
+import { Route as IndexRouteImport } from "./routes/index";
+import { Route as DashboardDashboardIdRouteImport } from "./routes/dashboard.$dashboardId";
+import { Route as AccountsAccountIdRouteImport } from "./routes/accounts.$accountId";
+import { Route as ResourceAccountIdResourceIdRouteImport } from "./routes/resource.$accountId.$resourceId";
 
 const IndexRoute = IndexRouteImport.update({
-  id: '/',
-  path: '/',
+  id: "/",
+  path: "/",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const DashboardDashboardIdRoute = DashboardDashboardIdRouteImport.update({
-  id: '/dashboard/$dashboardId',
-  path: '/dashboard/$dashboardId',
+  id: "/dashboard/$dashboardId",
+  path: "/dashboard/$dashboardId",
   getParentRoute: () => rootRouteImport,
-} as any)
+} as any);
 const AccountsAccountIdRoute = AccountsAccountIdRouteImport.update({
-  id: '/accounts/$accountId',
-  path: '/accounts/$accountId',
+  id: "/accounts/$accountId",
+  path: "/accounts/$accountId",
   getParentRoute: () => rootRouteImport,
-} as any)
-const ResourceAccountIdResourceIdRoute =
-  ResourceAccountIdResourceIdRouteImport.update({
-    id: '/resource/$accountId/$resourceId',
-    path: '/resource/$accountId/$resourceId',
-    getParentRoute: () => rootRouteImport,
-  } as any)
+} as any);
+const ResourceAccountIdResourceIdRoute = ResourceAccountIdResourceIdRouteImport.update({
+  id: "/resource/$accountId/$resourceId",
+  path: "/resource/$accountId/$resourceId",
+  getParentRoute: () => rootRouteImport,
+} as any);
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute
-  '/accounts/$accountId': typeof AccountsAccountIdRoute
-  '/dashboard/$dashboardId': typeof DashboardDashboardIdRoute
-  '/resource/$accountId/$resourceId': typeof ResourceAccountIdResourceIdRoute
+  "/": typeof IndexRoute;
+  "/accounts/$accountId": typeof AccountsAccountIdRoute;
+  "/dashboard/$dashboardId": typeof DashboardDashboardIdRoute;
+  "/resource/$accountId/$resourceId": typeof ResourceAccountIdResourceIdRoute;
 }
 export interface FileRoutesByTo {
-  '/': typeof IndexRoute
-  '/accounts/$accountId': typeof AccountsAccountIdRoute
-  '/dashboard/$dashboardId': typeof DashboardDashboardIdRoute
-  '/resource/$accountId/$resourceId': typeof ResourceAccountIdResourceIdRoute
+  "/": typeof IndexRoute;
+  "/accounts/$accountId": typeof AccountsAccountIdRoute;
+  "/dashboard/$dashboardId": typeof DashboardDashboardIdRoute;
+  "/resource/$accountId/$resourceId": typeof ResourceAccountIdResourceIdRoute;
 }
 export interface FileRoutesById {
-  __root__: typeof rootRouteImport
-  '/': typeof IndexRoute
-  '/accounts/$accountId': typeof AccountsAccountIdRoute
-  '/dashboard/$dashboardId': typeof DashboardDashboardIdRoute
-  '/resource/$accountId/$resourceId': typeof ResourceAccountIdResourceIdRoute
+  __root__: typeof rootRouteImport;
+  "/": typeof IndexRoute;
+  "/accounts/$accountId": typeof AccountsAccountIdRoute;
+  "/dashboard/$dashboardId": typeof DashboardDashboardIdRoute;
+  "/resource/$accountId/$resourceId": typeof ResourceAccountIdResourceIdRoute;
 }
 export interface FileRouteTypes {
-  fileRoutesByFullPath: FileRoutesByFullPath
+  fileRoutesByFullPath: FileRoutesByFullPath;
   fullPaths:
-    | '/'
-    | '/accounts/$accountId'
-    | '/dashboard/$dashboardId'
-    | '/resource/$accountId/$resourceId'
-  fileRoutesByTo: FileRoutesByTo
-  to:
-    | '/'
-    | '/accounts/$accountId'
-    | '/dashboard/$dashboardId'
-    | '/resource/$accountId/$resourceId'
+    | "/"
+    | "/accounts/$accountId"
+    | "/dashboard/$dashboardId"
+    | "/resource/$accountId/$resourceId";
+  fileRoutesByTo: FileRoutesByTo;
+  to: "/" | "/accounts/$accountId" | "/dashboard/$dashboardId" | "/resource/$accountId/$resourceId";
   id:
-    | '__root__'
-    | '/'
-    | '/accounts/$accountId'
-    | '/dashboard/$dashboardId'
-    | '/resource/$accountId/$resourceId'
-  fileRoutesById: FileRoutesById
+    | "__root__"
+    | "/"
+    | "/accounts/$accountId"
+    | "/dashboard/$dashboardId"
+    | "/resource/$accountId/$resourceId";
+  fileRoutesById: FileRoutesById;
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute
-  AccountsAccountIdRoute: typeof AccountsAccountIdRoute
-  DashboardDashboardIdRoute: typeof DashboardDashboardIdRoute
-  ResourceAccountIdResourceIdRoute: typeof ResourceAccountIdResourceIdRoute
+  IndexRoute: typeof IndexRoute;
+  AccountsAccountIdRoute: typeof AccountsAccountIdRoute;
+  DashboardDashboardIdRoute: typeof DashboardDashboardIdRoute;
+  ResourceAccountIdResourceIdRoute: typeof ResourceAccountIdResourceIdRoute;
 }
 
-declare module '@tanstack/react-router' {
+declare module "@tanstack/react-router" {
   interface FileRoutesByPath {
-    '/': {
-      id: '/'
-      path: '/'
-      fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/dashboard/$dashboardId': {
-      id: '/dashboard/$dashboardId'
-      path: '/dashboard/$dashboardId'
-      fullPath: '/dashboard/$dashboardId'
-      preLoaderRoute: typeof DashboardDashboardIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/accounts/$accountId': {
-      id: '/accounts/$accountId'
-      path: '/accounts/$accountId'
-      fullPath: '/accounts/$accountId'
-      preLoaderRoute: typeof AccountsAccountIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/resource/$accountId/$resourceId': {
-      id: '/resource/$accountId/$resourceId'
-      path: '/resource/$accountId/$resourceId'
-      fullPath: '/resource/$accountId/$resourceId'
-      preLoaderRoute: typeof ResourceAccountIdResourceIdRouteImport
-      parentRoute: typeof rootRouteImport
-    }
+    "/": {
+      id: "/";
+      path: "/";
+      fullPath: "/";
+      preLoaderRoute: typeof IndexRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/dashboard/$dashboardId": {
+      id: "/dashboard/$dashboardId";
+      path: "/dashboard/$dashboardId";
+      fullPath: "/dashboard/$dashboardId";
+      preLoaderRoute: typeof DashboardDashboardIdRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/accounts/$accountId": {
+      id: "/accounts/$accountId";
+      path: "/accounts/$accountId";
+      fullPath: "/accounts/$accountId";
+      preLoaderRoute: typeof AccountsAccountIdRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
+    "/resource/$accountId/$resourceId": {
+      id: "/resource/$accountId/$resourceId";
+      path: "/resource/$accountId/$resourceId";
+      fullPath: "/resource/$accountId/$resourceId";
+      preLoaderRoute: typeof ResourceAccountIdResourceIdRouteImport;
+      parentRoute: typeof rootRouteImport;
+    };
   }
 }
 
@@ -121,7 +116,7 @@ const rootRouteChildren: RootRouteChildren = {
   AccountsAccountIdRoute: AccountsAccountIdRoute,
   DashboardDashboardIdRoute: DashboardDashboardIdRoute,
   ResourceAccountIdResourceIdRoute: ResourceAccountIdResourceIdRoute,
-}
+};
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
-  ._addFileTypes<FileRouteTypes>()
+  ._addFileTypes<FileRouteTypes>();
