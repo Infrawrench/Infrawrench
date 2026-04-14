@@ -276,7 +276,7 @@ describe("Dashboard routes", () => {
           resourceTypes: [{ id: "mock-type" }],
           createClient: () => ({ fetchDashboardStats }),
         },
-      } as Awaited<ReturnType<typeof getPlugin>>);
+      } as unknown as Awaited<ReturnType<typeof getPlugin>>);
       vi.mocked(decrypt).mockResolvedValue('{"token":"abc"}');
 
       const app = buildApp();
