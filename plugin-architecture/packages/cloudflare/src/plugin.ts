@@ -77,5 +77,5 @@ const resourceTypes: ResourceTypeDefinition[] = [
 export const plugin: Plugin = {
   manifest,
   resourceTypes,
-  createClient: (credentials) => new CloudflareClient(credentials),
+  createClient: (credentials) => new CloudflareClient(credentials, resourceTypes),
 };

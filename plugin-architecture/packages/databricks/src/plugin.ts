@@ -54,5 +54,5 @@ const resourceTypes: ResourceTypeDefinition[] = [
 export const plugin: Plugin = {
   manifest,
   resourceTypes,
-  createClient: (credentials) => new DatabricksClient(credentials),
+  createClient: (credentials) => new DatabricksClient(credentials, resourceTypes),
 };

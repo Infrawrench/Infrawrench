@@ -5,8 +5,10 @@ import type {
   SidebarItemSchema,
   CreateResourceConfig,
   ResourceStatus,
+  ResourceTypeDefinition,
   DashboardStat,
 } from "@infrawrench/plugin-base";
+import { labeledFieldItems, labeledOutputItems } from "@infrawrench/plugin-base";
 
 /**
  * Fly.io plugin client.
@@ -15,6 +17,7 @@ import type {
 export class FlyClient implements PluginClient {
   private readonly token: string;
   private readonly orgSlug: string;
+  private readonly resourceTypes: ResourceTypeDefinition[];
   private readonly baseUrl = "https://api.machines.dev";
 
   private static readonly REGION_INFO: Record<string, { location: string; flag: string }> = {
@@ -55,11 +58,12 @@ export class FlyClient implements PluginClient {
     yyz: { location: "Toronto, Canada", flag: "\u{1F1E8}\u{1F1E6}" },
   };
 
-  constructor(credentials: Record<string, string>) {
+  constructor(credentials: Record<string, string>, resourceTypes: ResourceTypeDefinition[] = []) {
     const token = credentials["apiToken"];
     if (!token) throw new Error("Fly plugin: missing apiToken credential");
     this.token = token;
     this.orgSlug = credentials["orgSlug"] ?? "personal";
+    this.resourceTypes = resourceTypes;
   }
 
   /* ------------------------------------------------------------------ */
@@ -382,10 +386,7 @@ export class FlyClient implements PluginClient {
           children: [
             {
               kind: "key-value-list",
-              items: Object.entries(fields).map(([key, value]) => ({
-                key,
-                value: String(value),
-              })),
+              items: labeledFieldItems(fields, this.resourceTypes, resource.resourceTypeId),
             },
           ],
         },

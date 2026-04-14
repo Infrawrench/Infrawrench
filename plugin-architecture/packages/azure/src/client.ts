@@ -4,9 +4,15 @@ import type {
   DetailViewSchema,
   SidebarItemSchema,
   ResourceStatus,
+  ResourceTypeDefinition,
   StorageObject,
   CreateResourceConfig,
   DashboardStat,
+} from "@infrawrench/plugin-base";
+import {
+  labeledFieldItems,
+  labeledOutputItems,
+  resourceTypeDisplayName,
 } from "@infrawrench/plugin-base";
 import { fetchAccessToken, fetchStorageAccessToken, type AzureCredentials } from "./auth.js";
 import type { ListerContext } from "./resource-listers.js";
@@ -176,10 +182,12 @@ const AZURE_REGIONS = [
 
 export class AzureClient implements PluginClient {
   private readonly creds: AzureCredentials;
+  private readonly resourceTypes: ResourceTypeDefinition[];
   private tokenCache: TokenCache | null = null;
   private storageTokenCache: TokenCache | null = null;
 
-  constructor(credentials: Record<string, string>) {
+  constructor(credentials: Record<string, string>, resourceTypes: ResourceTypeDefinition[] = []) {
+    this.resourceTypes = resourceTypes;
     const tenantId = credentials["tenantId"];
     const clientId = credentials["clientId"];
     const clientSecret = credentials["clientSecret"];
@@ -603,10 +611,7 @@ export class AzureClient implements PluginClient {
         children: [
           {
             kind: "key-value-list",
-            items: Object.entries(fields).map(([key, value]) => ({
-              key,
-              value: String(value),
-            })),
+            items: labeledFieldItems(fields, this.resourceTypes, resource.resourceTypeId),
           },
         ],
       },
@@ -619,11 +624,11 @@ export class AzureClient implements PluginClient {
         children: [
           {
             kind: "key-value-list",
-            items: Object.entries(resource.resolvedOutputs).map(([key, value]) => ({
-              key,
-              value: String(value),
-              copyable: true,
-            })),
+            items: labeledOutputItems(
+              resource.resolvedOutputs,
+              this.resourceTypes,
+              resource.resourceTypeId,
+            ),
           },
         ],
       });
@@ -631,7 +636,7 @@ export class AzureClient implements PluginClient {
 
     const detail: DetailViewSchema = {
       title: resource.displayName,
-      subtitle: `${resource.resourceTypeId} \u00B7 ${String(fields["location"] ?? fields["resourceGroup"] ?? "")}`,
+      subtitle: `${resourceTypeDisplayName(this.resourceTypes, resource.resourceTypeId)} \u00B7 ${String(fields["location"] ?? fields["resourceGroup"] ?? "")}`,
       status: state
         ? { kind: "status-dot", status: dotStatus, label: state }
         : { kind: "status-dot", status: dotStatus },

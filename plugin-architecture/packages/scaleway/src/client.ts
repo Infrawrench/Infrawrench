@@ -7,8 +7,10 @@ import type {
   SizeOption,
   ImageOption,
   ResourceStatus,
+  ResourceTypeDefinition,
   DashboardStat,
 } from "@infrawrench/plugin-base";
+import { labeledFieldItems } from "@infrawrench/plugin-base";
 
 /**
  * Scaleway plugin client.
@@ -19,6 +21,7 @@ export class ScalewayClient implements PluginClient {
   private readonly accessKey: string;
   private readonly defaultProjectId: string;
   private readonly credentials: Record<string, string>;
+  private readonly resourceTypes: ResourceTypeDefinition[];
 
   private static readonly ZONE_INFO: Record<
     string,
@@ -53,13 +56,14 @@ export class ScalewayClient implements PluginClient {
     "pl-waw": { location: "Warsaw, Poland", flag: "\u{1F1F5}\u{1F1F1}" },
   };
 
-  constructor(credentials: Record<string, string>) {
+  constructor(credentials: Record<string, string>, resourceTypes: ResourceTypeDefinition[] = []) {
     const secretKey = credentials["secretKey"];
     if (!secretKey) throw new Error("Scaleway plugin: missing secretKey credential");
     this.secretKey = secretKey;
     this.accessKey = credentials["accessKey"] ?? "";
     this.defaultProjectId = credentials["defaultProjectId"] ?? "";
     this.credentials = credentials;
+    this.resourceTypes = resourceTypes;
   }
 
   private async apiFetch<T>(url: string, options?: RequestInit): Promise<T> {
@@ -324,10 +328,7 @@ export class ScalewayClient implements PluginClient {
           children: [
             {
               kind: "key-value-list",
-              items: Object.entries(fields).map(([key, value]) => ({
-                key,
-                value: String(value),
-              })),
+              items: labeledFieldItems(fields, this.resourceTypes, resource.resourceTypeId),
             },
           ],
         },

@@ -7,6 +7,7 @@ import { ErrorNotice } from "./ErrorNotice";
 import { SshKeyPicker } from "./SshKeyPicker";
 import type { DraggableResource } from "../lib/pins";
 import type { SecretExportTemplate } from "@infrawrench/plugin-base";
+import { camelToTitle } from "@infrawrench/plugin-base";
 import { buildPluginHostServices } from "../lib/sql-drivers";
 
 type Format = "dotenv" | "profile";
@@ -257,7 +258,9 @@ export function SshEnvDeployModal({
                           className="flex-1 bg-transparent text-sm font-mono text-gray-100 outline-none"
                         />
                         <span className="text-xs text-gray-600">from</span>
-                        <span className="text-xs text-gray-500 font-mono">{entry.outputKey}</span>
+                        <span className="text-xs text-gray-500 font-mono">
+                          {camelToTitle(entry.outputKey)}
+                        </span>
                       </div>
                     ))}
                   </div>

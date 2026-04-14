@@ -68,5 +68,5 @@ const resourceTypes: ResourceTypeDefinition[] = [
 export const plugin: Plugin = {
   manifest,
   resourceTypes,
-  createClient: (credentials) => new OvhClient(credentials),
+  createClient: (credentials) => new OvhClient(credentials, resourceTypes),
 };

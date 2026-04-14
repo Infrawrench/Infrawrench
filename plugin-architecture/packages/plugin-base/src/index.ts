@@ -89,6 +89,13 @@ export type {
 export type { PluginRegistry, PluginRegistryEntry } from "./registry.js";
 
 export {
+  camelToTitle,
+  labeledFieldItems,
+  labeledOutputItems,
+  resourceTypeDisplayName,
+} from "./render-helpers.js";
+
+export {
   dnsRecordBadgeColor,
   formatDnsTtl,
   dnsZoneStatus,

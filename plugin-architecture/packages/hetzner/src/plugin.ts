@@ -39,5 +39,5 @@ const resourceTypes: ResourceTypeDefinition[] = [
 export const plugin: Plugin = {
   manifest,
   resourceTypes,
-  createClient: (credentials) => new HetznerClient(credentials),
+  createClient: (credentials) => new HetznerClient(credentials, resourceTypes),
 };

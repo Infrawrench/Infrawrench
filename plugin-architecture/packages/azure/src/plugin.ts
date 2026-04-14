@@ -105,5 +105,5 @@ const resourceTypes: ResourceTypeDefinition[] = [
 export const plugin: Plugin = {
   manifest,
   resourceTypes,
-  createClient: (credentials) => new AzureClient(credentials),
+  createClient: (credentials) => new AzureClient(credentials, resourceTypes),
 };

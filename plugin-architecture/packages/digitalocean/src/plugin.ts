@@ -44,5 +44,5 @@ const resourceTypes: ResourceTypeDefinition[] = [
 export const plugin: Plugin = {
   manifest,
   resourceTypes,
-  createClient: (credentials) => new DigitalOceanClient(credentials),
+  createClient: (credentials) => new DigitalOceanClient(credentials, resourceTypes),
 };

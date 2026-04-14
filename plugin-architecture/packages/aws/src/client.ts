@@ -4,6 +4,7 @@ import type {
   DetailViewSchema,
   SidebarItemSchema,
   ResourceStatus,
+  ResourceTypeDefinition,
   StorageObject,
   CreateResourceConfig,
   RegionOption,
@@ -15,6 +16,9 @@ import {
   renderDnsRecordDetail,
   renderDnsRecordSidebar,
   dnsZoneStatus,
+  labeledFieldItems,
+  labeledOutputItems,
+  resourceTypeDisplayName,
 } from "@infrawrench/plugin-base";
 import { signRequest, parseXml, ensureArray } from "./auth.js";
 import type { AwsCredentials } from "./auth.js";
@@ -124,8 +128,10 @@ const GLOBAL_SERVICES = new Set(["cloudfront", "iam", "route53"]);
 
 export class AWSClient implements PluginClient {
   private readonly creds: AwsCredentials;
+  private readonly resourceTypes: ResourceTypeDefinition[];
 
-  constructor(credentials: Record<string, string>) {
+  constructor(credentials: Record<string, string>, resourceTypes: ResourceTypeDefinition[] = []) {
+    this.resourceTypes = resourceTypes;
     const accessKeyId = credentials["accessKeyId"];
     const secretAccessKey = credentials["secretAccessKey"];
     const region = credentials["region"] ?? "us-east-1";
@@ -608,7 +614,7 @@ export class AWSClient implements PluginClient {
 
     return {
       title: resource.displayName,
-      subtitle: `${resource.resourceTypeId} \u00B7 ${this.creds.region}`,
+      subtitle: `${resourceTypeDisplayName(this.resourceTypes, resource.resourceTypeId)} \u00B7 ${this.creds.region}`,
       status: state
         ? { kind: "status-dot", status: dotStatus, label: state }
         : { kind: "status-dot", status: dotStatus },
@@ -619,10 +625,7 @@ export class AWSClient implements PluginClient {
           children: [
             {
               kind: "key-value-list",
-              items: Object.entries(fields).map(([key, value]) => ({
-                key,
-                value: String(value),
-              })),
+              items: labeledFieldItems(fields, this.resourceTypes, resource.resourceTypeId),
             },
           ],
         },
@@ -634,11 +637,11 @@ export class AWSClient implements PluginClient {
                 children: [
                   {
                     kind: "key-value-list" as const,
-                    items: Object.entries(resource.resolvedOutputs).map(([key, value]) => ({
-                      key,
-                      value: String(value),
-                      copyable: true,
-                    })),
+                    items: labeledOutputItems(
+                      resource.resolvedOutputs,
+                      this.resourceTypes,
+                      resource.resourceTypeId,
+                    ),
                   },
                 ],
               },

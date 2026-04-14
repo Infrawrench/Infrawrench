@@ -7,12 +7,15 @@ import type {
   SizeOption,
   ImageOption,
   SectionNode,
+  ResourceTypeDefinition,
   DashboardStat,
   MetricSeries,
 } from "@infrawrench/plugin-base";
 import {
   dnsRecordBadgeColor,
   formatDnsTtl,
+  labeledFieldItems,
+  resourceTypeDisplayName,
   renderDnsRecordDetail as sharedRenderDnsRecordDetail,
   renderDnsRecordSidebar,
 } from "@infrawrench/plugin-base";
@@ -27,6 +30,7 @@ import { ManagedDatabaseResourceType } from "./resources/managed-database.js";
 export class DigitalOceanClient implements PluginClient {
   private readonly token: string;
   private readonly credentials: Record<string, string>;
+  private readonly resourceTypes: ResourceTypeDefinition[];
   private readonly baseUrl = "https://api.digitalocean.com/v2";
 
   private static readonly REGION_INFO: Record<string, { location: string; flag: string }> = {
@@ -43,11 +47,12 @@ export class DigitalOceanClient implements PluginClient {
     syd1: { location: "Sydney, Australia", flag: "🇦🇺" },
   };
 
-  constructor(credentials: Record<string, string>) {
+  constructor(credentials: Record<string, string>, resourceTypes: ResourceTypeDefinition[] = []) {
     const token = credentials["apiToken"];
     if (!token) throw new Error("DigitalOcean plugin: missing apiToken credential");
     this.token = token;
     this.credentials = credentials;
+    this.resourceTypes = resourceTypes;
   }
 
   private async fetch<T>(path: string, options?: RequestInit): Promise<T> {
@@ -633,7 +638,7 @@ export class DigitalOceanClient implements PluginClient {
     const fields = resource.fields;
     return {
       title: resource.displayName,
-      subtitle: `${resource.resourceTypeId} \u00B7 ${String(fields["region"] ?? "")}`,
+      subtitle: `${resourceTypeDisplayName(this.resourceTypes, resource.resourceTypeId)} \u00B7 ${String(fields["region"] ?? "")}`,
       status: { kind: "status-dot", status: "unknown" },
       sections: [
         {
@@ -642,10 +647,7 @@ export class DigitalOceanClient implements PluginClient {
           children: [
             {
               kind: "key-value-list",
-              items: Object.entries(fields).map(([key, value]) => ({
-                key,
-                value: String(value),
-              })),
+              items: labeledFieldItems(fields, this.resourceTypes, resource.resourceTypeId),
             },
           ],
         },

@@ -7,8 +7,10 @@ import type {
   SizeOption,
   ImageOption,
   ResourceStatus,
+  ResourceTypeDefinition,
   DashboardStat,
 } from "@infrawrench/plugin-base";
+import { labeledFieldItems, resourceTypeDisplayName } from "@infrawrench/plugin-base";
 
 /**
  * Hetzner Cloud plugin client.
@@ -16,6 +18,7 @@ import type {
  */
 export class HetznerClient implements PluginClient {
   private readonly token: string;
+  private readonly resourceTypes: ResourceTypeDefinition[];
   private readonly baseUrl = "https://api.hetzner.cloud/v1";
 
   private static readonly LOCATION_INFO: Record<string, { location: string; flag: string }> = {
@@ -27,10 +30,11 @@ export class HetznerClient implements PluginClient {
     sin: { location: "Singapore", flag: "🇸🇬" },
   };
 
-  constructor(credentials: Record<string, string>) {
+  constructor(credentials: Record<string, string>, resourceTypes: ResourceTypeDefinition[] = []) {
     const token = credentials["apiToken"];
     if (!token) throw new Error("Hetzner plugin: missing apiToken credential");
     this.token = token;
+    this.resourceTypes = resourceTypes;
   }
 
   private async fetch<T>(path: string, options?: RequestInit): Promise<T> {
@@ -356,7 +360,7 @@ export class HetznerClient implements PluginClient {
 
     return {
       title: resource.displayName,
-      subtitle: `${resource.resourceTypeId} · ${String(fields["location"] ?? "")}`,
+      subtitle: `${resourceTypeDisplayName(this.resourceTypes, resource.resourceTypeId)} · ${String(fields["location"] ?? "")}`,
       status: { kind: "status-dot", status },
       sections: [
         {
@@ -365,10 +369,7 @@ export class HetznerClient implements PluginClient {
           children: [
             {
               kind: "key-value-list",
-              items: Object.entries(fields).map(([key, value]) => ({
-                key,
-                value: String(value),
-              })),
+              items: labeledFieldItems(fields, this.resourceTypes, resource.resourceTypeId),
             },
           ],
         },

@@ -7,8 +7,10 @@ import type {
   SizeOption,
   ImageOption,
   ResourceStatus,
+  ResourceTypeDefinition,
   DashboardStat,
 } from "@infrawrench/plugin-base";
+import { labeledFieldItems, resourceTypeDisplayName } from "@infrawrench/plugin-base";
 
 /**
  * OVHcloud plugin client.
@@ -50,7 +52,9 @@ export class OvhClient implements PluginClient {
     SYD1: { location: "Sydney, Australia", flag: "🇦🇺" },
   };
 
-  constructor(credentials: Record<string, string>) {
+  private readonly resourceTypes: ResourceTypeDefinition[];
+
+  constructor(credentials: Record<string, string>, resourceTypes: ResourceTypeDefinition[] = []) {
     const ak = credentials["applicationKey"];
     const as = credentials["applicationSecret"];
     const ck = credentials["consumerKey"];
@@ -64,6 +68,7 @@ export class OvhClient implements PluginClient {
     this.applicationSecret = as;
     this.consumerKey = ck;
     this.projectId = pid;
+    this.resourceTypes = resourceTypes;
 
     const endpoint = (credentials["endpoint"] ?? "eu").toLowerCase();
     this.baseUrl = OvhClient.ENDPOINT_URLS[endpoint] ?? OvhClient.ENDPOINT_URLS["eu"]!;
@@ -570,7 +575,7 @@ export class OvhClient implements PluginClient {
 
     return {
       title: resource.displayName,
-      subtitle: `${resource.resourceTypeId} · ${String(fields["region"] ?? "")}`,
+      subtitle: `${resourceTypeDisplayName(this.resourceTypes, resource.resourceTypeId)} · ${String(fields["region"] ?? "")}`,
       status: { kind: "status-dot", status, ...(statusStr ? { label: statusStr } : {}) },
       sections: [
         {
@@ -579,12 +584,7 @@ export class OvhClient implements PluginClient {
           children: [
             {
               kind: "key-value-list",
-              items: Object.entries(fields)
-                .filter(([, v]) => v !== "" && v !== undefined)
-                .map(([key, value]) => ({
-                  key,
-                  value: String(value),
-                })),
+              items: labeledFieldItems(fields, this.resourceTypes, resource.resourceTypeId),
             },
           ],
         },

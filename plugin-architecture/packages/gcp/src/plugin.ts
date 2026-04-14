@@ -150,5 +150,5 @@ const resourceTypes: ResourceTypeDefinition[] = [
 export const plugin: Plugin = {
   manifest,
   resourceTypes,
-  createClient: (credentials) => new GcpClient(credentials),
+  createClient: (credentials) => new GcpClient(credentials, resourceTypes),
 };

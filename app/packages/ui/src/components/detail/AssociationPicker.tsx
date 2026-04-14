@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { ProviderResource, RerollSelection } from "./DetailView.js";
 import { Modal } from "../Modal.js";
+import { camelToTitle } from "@infrawrench/plugin-base";
 
 interface AssociationPickerProps {
   fieldKey: string;
@@ -114,7 +115,7 @@ export function AssociationPicker({
                     <div className="flex-1 min-w-0">
                       <p className="text-sm text-gray-200 truncate">{resource.displayName}</p>
                       <p className="text-xs text-gray-500">
-                        {resource.resourceTypeId} · {resource.outputKey}
+                        {camelToTitle(resource.resourceTypeId)} · {camelToTitle(resource.outputKey)}
                       </p>
                     </div>
                     {selectedProviderId === resource.resourceId && (

@@ -9,10 +9,11 @@ import type {
   ImageOption,
   DiskOption,
   SqlTableMeta,
+  ResourceTypeDefinition,
   DashboardStat,
   MetricSeries,
 } from "@infrawrench/plugin-base";
-import { dnsRecordBadgeColor, formatDnsTtl } from "@infrawrench/plugin-base";
+import { dnsRecordBadgeColor, formatDnsTtl, labeledFieldItems } from "@infrawrench/plugin-base";
 import { fetchAccessToken, type ServiceAccountKey } from "./auth.js";
 import { formatBytes, gcpStatus } from "./utils.js";
 import {
@@ -35,13 +36,15 @@ interface TokenCache {
 export class GcpClient implements PluginClient {
   private readonly key: ServiceAccountKey;
   private readonly project: string;
+  private readonly resourceTypes: ResourceTypeDefinition[];
   private tokenCache: TokenCache | null = null;
   private machineTypeFamilyRateCache = new Map<string, PricingCacheEntry>();
   private pricingRatesInFlightByGeo = new Map<string, Promise<PricingRates>>();
   /** Cached machine type specs (vcpus + memoryMb) keyed by machine type name, populated during getCreateConfig. */
   private machineTypeSpecCache = new Map<string, { guestCpus: number; memoryMb: number }>();
 
-  constructor(credentials: Record<string, string>) {
+  constructor(credentials: Record<string, string>, resourceTypes: ResourceTypeDefinition[] = []) {
+    this.resourceTypes = resourceTypes;
     const raw = credentials["serviceAccountJson"];
     if (!raw) throw new Error("GCP plugin: missing serviceAccountJson credential");
     this.key = JSON.parse(raw) as ServiceAccountKey;
@@ -1530,9 +1533,7 @@ export class GcpClient implements PluginClient {
           children: [
             {
               kind: "key-value-list",
-              items: Object.entries(fields)
-                .filter(([, v]) => v !== "" && v !== undefined)
-                .map(([key, value]) => ({ key, value: String(value) })),
+              items: labeledFieldItems(fields, this.resourceTypes, resource.resourceTypeId),
             },
           ],
         },

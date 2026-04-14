@@ -48,5 +48,5 @@ const resourceTypes: ResourceTypeDefinition[] = [
 export const plugin: Plugin = {
   manifest,
   resourceTypes,
-  createClient: (credentials) => new FlyClient(credentials),
+  createClient: (credentials) => new FlyClient(credentials, resourceTypes),
 };

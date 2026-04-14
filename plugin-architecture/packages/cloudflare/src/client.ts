@@ -7,6 +7,7 @@ import type {
   SchemaNode,
   BadgeNode,
   ResourceStatus,
+  ResourceTypeDefinition,
   CreateResourceConfig,
   StorageObject,
   SqlTableMeta,
@@ -18,6 +19,7 @@ import {
   dnsZoneStatus,
   renderDnsRecordDetail,
   renderDnsRecordSidebar,
+  labeledFieldItems,
 } from "@infrawrench/plugin-base";
 
 function tunnelStatus(status: string): ResourceStatus {
@@ -73,13 +75,15 @@ function sslStatus(status: string): ResourceStatus {
 
 export class CloudflareClient implements PluginClient {
   private readonly apiToken: string;
+  private readonly resourceTypes: ResourceTypeDefinition[];
   private readonly baseUrl = "https://api.cloudflare.com/client/v4";
   private cfAccountId: string | null = null;
 
-  constructor(credentials: Record<string, string>) {
+  constructor(credentials: Record<string, string>, resourceTypes: ResourceTypeDefinition[] = []) {
     const token = credentials["apiToken"];
     if (!token) throw new Error("Cloudflare plugin: missing apiToken credential");
     this.apiToken = token;
+    this.resourceTypes = resourceTypes;
   }
 
   private async fetch<T>(path: string, options?: RequestInit): Promise<T> {
@@ -1885,9 +1889,7 @@ export class CloudflareClient implements PluginClient {
           children: [
             {
               kind: "key-value-list",
-              items: Object.entries(fields)
-                .filter(([, v]) => v !== "" && v !== undefined)
-                .map(([key, value]) => ({ key, value: String(value) })),
+              items: labeledFieldItems(fields, this.resourceTypes, resource.resourceTypeId),
             },
           ],
         },

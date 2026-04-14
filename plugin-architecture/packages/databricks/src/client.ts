@@ -5,8 +5,10 @@ import type {
   SidebarItemSchema,
   SqlTableMeta,
   ResourceStatus,
+  ResourceTypeDefinition,
   DashboardStat,
 } from "@infrawrench/plugin-base";
+import { labeledFieldItems, labeledOutputItems } from "@infrawrench/plugin-base";
 import type { ListerContext } from "./resource-listers.js";
 import {
   listClusters,
@@ -21,8 +23,10 @@ import {
 export class DatabricksClient implements PluginClient {
   private readonly host: string;
   private readonly token: string;
+  private readonly resourceTypes: ResourceTypeDefinition[];
 
-  constructor(credentials: Record<string, string>) {
+  constructor(credentials: Record<string, string>, resourceTypes: ResourceTypeDefinition[] = []) {
+    this.resourceTypes = resourceTypes;
     let host = credentials["host"] ?? "";
     // Normalize: ensure https:// prefix, strip trailing slash
     if (!host.startsWith("https://") && !host.startsWith("http://")) {
@@ -288,12 +292,7 @@ export class DatabricksClient implements PluginClient {
           children: [
             {
               kind: "key-value-list",
-              items: Object.entries(fields)
-                .filter(([, v]) => v !== "" && v !== 0 && v !== false)
-                .map(([key, value]) => ({
-                  key,
-                  value: String(value),
-                })),
+              items: labeledFieldItems(fields, this.resourceTypes, resource.resourceTypeId),
             },
           ],
         },
@@ -305,11 +304,11 @@ export class DatabricksClient implements PluginClient {
                 children: [
                   {
                     kind: "key-value-list" as const,
-                    items: Object.entries(resource.resolvedOutputs).map(([key, value]) => ({
-                      key,
-                      value: String(value),
-                      copyable: true,
-                    })),
+                    items: labeledOutputItems(
+                      resource.resolvedOutputs,
+                      this.resourceTypes,
+                      resource.resourceTypeId,
+                    ),
                   },
                 ],
               },

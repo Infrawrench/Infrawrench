@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { SecretExportTemplate, PluginClient } from "@infrawrench/plugin-base";
+import { camelToTitle } from "@infrawrench/plugin-base";
 import { getPlugin } from "../plugins/loader";
 import { getDb } from "../db/client";
 import { invoke } from "../lib/invoke";
@@ -295,7 +296,9 @@ export function SecretExportModal({
                           className="flex-1 bg-transparent text-sm font-mono text-gray-100 outline-none"
                         />
                         <span className="text-xs text-gray-600">from</span>
-                        <span className="text-xs text-gray-500 font-mono">{entry.outputKey}</span>
+                        <span className="text-xs text-gray-500 font-mono">
+                          {camelToTitle(entry.outputKey)}
+                        </span>
                       </div>
                     ))}
                   </div>
