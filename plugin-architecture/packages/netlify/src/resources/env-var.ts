@@ -15,5 +15,6 @@ export const NetlifyEnvVarResourceType: ResourceTypeDefinition = {
   outputs: [{ key: "envKey", label: "Variable Key", sensitive: false }],
   parentTypeId: "netlify-site",
   dashboardPinnable: false,
+  supportsCreate: true,
   iconKey: "env",
 };

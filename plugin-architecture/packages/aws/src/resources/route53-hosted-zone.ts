@@ -17,5 +17,6 @@ export const Route53HostedZoneResourceType: ResourceTypeDefinition = {
     { key: "nameServers", label: "Name Servers", sensitive: false },
   ],
   dashboardPinnable: true,
+  supportsCreate: true,
   iconKey: "dns",
 };

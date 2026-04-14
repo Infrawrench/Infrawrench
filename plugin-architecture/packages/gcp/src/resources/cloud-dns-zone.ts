@@ -23,5 +23,6 @@ export const CloudDnsZoneResourceType: ResourceTypeDefinition = {
     },
   ],
   dashboardPinnable: true,
+  supportsCreate: true,
   iconKey: "dns",
 };

@@ -15,4 +15,5 @@ export const ServiceResourceType: ResourceTypeDefinition = {
   outputs: [],
   parentTypeId: "k8s-namespace",
   dashboardPinnable: false,
+  supportsCreate: true,
 };

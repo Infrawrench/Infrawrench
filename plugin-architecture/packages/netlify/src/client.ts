@@ -546,6 +546,55 @@ export class NetlifyClient implements PluginClient {
       };
     }
 
+    if (typeId === "netlify-env-var") {
+      // Fetch sites for site selector
+      const sites = await this.paginate<NetlifySite>("/sites");
+      const siteOptions = sites.map((s) => ({
+        id: String(s.id),
+        label: s.name || String(s.id),
+      }));
+
+      return {
+        fields: [
+          {
+            key: "siteId",
+            label: "Site",
+            kind: "select",
+            required: true,
+            options: siteOptions,
+            ...(siteOptions[0] ? { defaultValue: siteOptions[0].id } : {}),
+          },
+          {
+            key: "key",
+            label: "Variable Key",
+            kind: "text",
+            required: true,
+            description: "e.g. DATABASE_URL or API_KEY",
+          },
+          {
+            key: "value",
+            label: "Value",
+            kind: "text",
+            required: true,
+          },
+          {
+            key: "context",
+            label: "Context",
+            kind: "select",
+            required: true,
+            options: [
+              { id: "all", label: "All contexts" },
+              { id: "production", label: "Production only" },
+              { id: "deploy-preview", label: "Deploy previews only" },
+              { id: "branch-deploy", label: "Branch deploys only" },
+              { id: "dev", label: "Local development only" },
+            ],
+            defaultValue: "all",
+          },
+        ],
+      };
+    }
+
     throw new Error(`Netlify plugin: no create config for type "${typeId}"`);
   }
 
@@ -600,6 +649,45 @@ export class NetlifyClient implements PluginClient {
         }),
       });
       return this.mapBuildHook(hook, accountId, siteId);
+    }
+
+    if (typeId === "netlify-env-var") {
+      const siteId = fields["siteId"];
+      if (!siteId) throw new Error("Netlify plugin: siteId is required to create an env var");
+      const context = fields["context"] || "all";
+      const values = [{ context, value: fields["value"] }];
+
+      await this.fetch<NetlifyEnvVar[]>(`/sites/${siteId}/env`, {
+        method: "POST",
+        body: JSON.stringify([
+          {
+            key: fields["key"],
+            scopes: ["builds", "functions", "runtime", "post-processing"],
+            values,
+          },
+        ]),
+      });
+
+      const now = new Date().toISOString();
+      return {
+        id: `${accountId}:netlify-env-var:${siteId}/${fields["key"]}`,
+        pluginId: "netlify",
+        resourceTypeId: "netlify-env-var",
+        accountId,
+        displayName: fields["key"] ?? "",
+        fields: {
+          key: fields["key"] ?? "",
+          scopes: "builds, functions, runtime, post-processing",
+          contexts: context,
+          isSecret: false,
+          updatedAt: now,
+        },
+        resolvedOutputs: { envKey: fields["key"] ?? "" },
+        secretStates: [],
+        parentResourceId: `${accountId}:netlify-site:${siteId}`,
+        createdAt: now,
+        updatedAt: now,
+      };
     }
 
     throw new Error(`Netlify plugin: createResource not supported for type "${typeId}"`);

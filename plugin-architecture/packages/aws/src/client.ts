@@ -1325,6 +1325,224 @@ export class AWSClient implements PluginClient {
         ],
       };
     }
+    if (typeId === "rds-instance") {
+      return {
+        fields: [
+          { key: "dbInstanceId", label: "DB Instance Identifier", kind: "text", required: true },
+          {
+            key: "engine",
+            label: "Engine",
+            kind: "select",
+            required: true,
+            options: [
+              { id: "postgres", label: "PostgreSQL" },
+              { id: "mysql", label: "MySQL" },
+              { id: "mariadb", label: "MariaDB" },
+              { id: "aurora-postgresql", label: "Aurora PostgreSQL" },
+              { id: "aurora-mysql", label: "Aurora MySQL" },
+            ],
+            defaultValue: "postgres",
+          },
+          {
+            key: "instanceClass",
+            label: "Instance Class",
+            kind: "select",
+            required: true,
+            options: [
+              { id: "db.t3.micro", label: "db.t3.micro (2 vCPU, 1 GB)" },
+              { id: "db.t3.small", label: "db.t3.small (2 vCPU, 2 GB)" },
+              { id: "db.t3.medium", label: "db.t3.medium (2 vCPU, 4 GB)" },
+              { id: "db.t3.large", label: "db.t3.large (2 vCPU, 8 GB)" },
+              { id: "db.r6g.large", label: "db.r6g.large (2 vCPU, 16 GB)" },
+              { id: "db.r6g.xlarge", label: "db.r6g.xlarge (4 vCPU, 32 GB)" },
+            ],
+            defaultValue: "db.t3.micro",
+          },
+          {
+            key: "allocatedStorage",
+            label: "Storage (GB)",
+            kind: "number",
+            required: true,
+            defaultValue: "20",
+            minValue: 20,
+            maxValue: 65536,
+          },
+          {
+            key: "masterUsername",
+            label: "Master Username",
+            kind: "text",
+            required: true,
+            defaultValue: "admin",
+          },
+          { key: "masterPassword", label: "Master Password", kind: "text", required: true },
+        ],
+      };
+    }
+    if (typeId === "ebs-volume") {
+      return {
+        fields: [
+          { key: "name", label: "Name (Tag)", kind: "text", required: false },
+          {
+            key: "volumeType",
+            label: "Volume Type",
+            kind: "select",
+            required: true,
+            options: [
+              { id: "gp3", label: "gp3 (General Purpose SSD)" },
+              { id: "gp2", label: "gp2 (General Purpose SSD)" },
+              { id: "io2", label: "io2 (Provisioned IOPS SSD)" },
+              { id: "st1", label: "st1 (Throughput Optimized HDD)" },
+              { id: "sc1", label: "sc1 (Cold HDD)" },
+            ],
+            defaultValue: "gp3",
+          },
+          {
+            key: "sizeGb",
+            label: "Size (GB)",
+            kind: "number",
+            required: true,
+            defaultValue: "20",
+            minValue: 1,
+            maxValue: 16384,
+          },
+          {
+            key: "availabilityZone",
+            label: "Availability Zone",
+            kind: "text",
+            required: true,
+            description: "e.g. us-east-1a",
+          },
+        ],
+      };
+    }
+    if (typeId === "ecr-repository") {
+      return {
+        fields: [
+          { key: "repositoryName", label: "Repository Name", kind: "text", required: true },
+          {
+            key: "imageTagMutability",
+            label: "Image Tag Mutability",
+            kind: "select",
+            required: true,
+            options: [
+              { id: "MUTABLE", label: "Mutable" },
+              { id: "IMMUTABLE", label: "Immutable" },
+            ],
+            defaultValue: "MUTABLE",
+          },
+          {
+            key: "scanOnPush",
+            label: "Scan on Push",
+            kind: "select",
+            required: true,
+            options: [
+              { id: "true", label: "Enabled" },
+              { id: "false", label: "Disabled" },
+            ],
+            defaultValue: "true",
+          },
+        ],
+      };
+    }
+    if (typeId === "efs-file-system") {
+      return {
+        fields: [
+          { key: "name", label: "Name", kind: "text", required: false },
+          {
+            key: "performanceMode",
+            label: "Performance Mode",
+            kind: "select",
+            required: true,
+            options: [
+              { id: "generalPurpose", label: "General Purpose" },
+              { id: "maxIO", label: "Max I/O" },
+            ],
+            defaultValue: "generalPurpose",
+          },
+          {
+            key: "throughputMode",
+            label: "Throughput Mode",
+            kind: "select",
+            required: true,
+            options: [
+              { id: "elastic", label: "Elastic" },
+              { id: "bursting", label: "Bursting" },
+            ],
+            defaultValue: "elastic",
+          },
+          {
+            key: "encrypted",
+            label: "Encrypted",
+            kind: "select",
+            required: true,
+            options: [
+              { id: "true", label: "Yes" },
+              { id: "false", label: "No" },
+            ],
+            defaultValue: "true",
+          },
+        ],
+      };
+    }
+    if (typeId === "route53-hosted-zone") {
+      return {
+        fields: [
+          {
+            key: "name",
+            label: "Domain Name",
+            kind: "text",
+            required: true,
+            description: "e.g. example.com",
+          },
+          { key: "comment", label: "Comment", kind: "text", required: false },
+        ],
+      };
+    }
+    if (typeId === "cloudwatch-log-group") {
+      return {
+        fields: [
+          {
+            key: "logGroupName",
+            label: "Log Group Name",
+            kind: "text",
+            required: true,
+            description: "e.g. /aws/lambda/my-function",
+          },
+          {
+            key: "retentionInDays",
+            label: "Retention (days)",
+            kind: "select",
+            required: false,
+            options: [
+              { id: "0", label: "Never expire" },
+              { id: "1", label: "1 day" },
+              { id: "7", label: "7 days" },
+              { id: "14", label: "14 days" },
+              { id: "30", label: "30 days" },
+              { id: "60", label: "60 days" },
+              { id: "90", label: "90 days" },
+              { id: "180", label: "6 months" },
+              { id: "365", label: "1 year" },
+            ],
+            defaultValue: "0",
+          },
+        ],
+      };
+    }
+    if (typeId === "elastic-ip") {
+      return {
+        fields: [{ key: "name", label: "Name (Tag)", kind: "text", required: false }],
+      };
+    }
+    if (typeId === "secrets-manager-secret") {
+      return {
+        fields: [
+          { key: "name", label: "Secret Name", kind: "text", required: true },
+          { key: "description", label: "Description", kind: "text", required: false },
+          { key: "secretValue", label: "Secret Value", kind: "text", required: true },
+        ],
+      };
+    }
     throw new Error(`AWS plugin: getCreateConfig not supported for type "${typeId}"`);
   }
 
@@ -1619,6 +1837,326 @@ export class AWSClient implements PluginClient {
         },
         secretStates: [],
         externalId: tableName,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+    }
+    if (typeId === "rds-instance") {
+      const dbId = fields["dbInstanceId"] ?? "";
+      const data = await this.json<{
+        CreateDBInstanceResponse?: {
+          CreateDBInstanceResult?: { DBInstance?: Record<string, unknown> };
+        };
+      }>("rds", "AmazonRDSv19.CreateDBInstance", {
+        DBInstanceIdentifier: dbId,
+        Engine: fields["engine"] ?? "postgres",
+        DBInstanceClass: fields["instanceClass"] ?? "db.t3.micro",
+        AllocatedStorage: Number(fields["allocatedStorage"] ?? "20"),
+        MasterUsername: fields["masterUsername"] ?? "admin",
+        MasterUserPassword: fields["masterPassword"] ?? "",
+      });
+      const inst = data.CreateDBInstanceResponse?.CreateDBInstanceResult?.DBInstance ?? {};
+      return {
+        id: this.makeId(accountId, "rds-instance", dbId),
+        pluginId: "aws",
+        resourceTypeId: "rds-instance",
+        accountId,
+        displayName: dbId,
+        fields: {
+          dbInstanceId: dbId,
+          engine: fields["engine"] ?? "postgres",
+          engineVersion: "",
+          instanceClass: fields["instanceClass"] ?? "db.t3.micro",
+          status: String(inst["DBInstanceStatus"] ?? "creating"),
+          allocatedStorage: Number(fields["allocatedStorage"] ?? 20),
+          availabilityZone: String(inst["AvailabilityZone"] ?? ""),
+          multiAZ: false,
+        },
+        resolvedOutputs: {
+          endpoint: "",
+          port: "",
+          masterUsername: fields["masterUsername"] ?? "admin",
+        },
+        secretStates: [],
+        externalId: dbId,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+    }
+    if (typeId === "ebs-volume") {
+      const params: Record<string, string> = {
+        VolumeType: fields["volumeType"] ?? "gp3",
+        Size: fields["sizeGb"] ?? "20",
+        AvailabilityZone: fields["availabilityZone"] ?? "",
+      };
+      const data = await this.ec2<Record<string, unknown>>("CreateVolume", params);
+      const volumeId = String(data["volumeId"] ?? "");
+      if (fields["name"]) {
+        await this.ec2("CreateTags", {
+          "ResourceId.1": volumeId,
+          "Tag.1.Key": "Name",
+          "Tag.1.Value": fields["name"],
+        });
+      }
+      return {
+        id: this.makeId(accountId, "ebs-volume", volumeId),
+        pluginId: "aws",
+        resourceTypeId: "ebs-volume",
+        accountId,
+        displayName: fields["name"] || volumeId,
+        fields: {
+          volumeId,
+          availabilityZone: fields["availabilityZone"] ?? "",
+          sizeGb: Number(fields["sizeGb"] ?? 20),
+          volumeType: fields["volumeType"] ?? "gp3",
+          state: "creating",
+          encrypted: false,
+          attachedTo: "",
+        },
+        resolvedOutputs: {},
+        secretStates: [],
+        externalId: volumeId,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+    }
+    if (typeId === "ecr-repository") {
+      const repoName = fields["repositoryName"] ?? "";
+      const data = await this.json<{ repository?: Record<string, unknown> }>(
+        "ecr",
+        "AmazonEC2ContainerRegistry_V20150921.CreateRepository",
+        {
+          repositoryName: repoName,
+          imageTagMutability: fields["imageTagMutability"] ?? "MUTABLE",
+          imageScanningConfiguration: {
+            scanOnPush: fields["scanOnPush"] === "true",
+          },
+        },
+      );
+      const repo = data.repository ?? {};
+      return {
+        id: this.makeId(accountId, "ecr-repository", repoName),
+        pluginId: "aws",
+        resourceTypeId: "ecr-repository",
+        accountId,
+        displayName: repoName,
+        fields: {
+          repositoryName: repoName,
+          registryId: String(repo["registryId"] ?? ""),
+          imageCount: 0,
+          imageScanOnPush: fields["scanOnPush"] === "true",
+          encryptionType: "AES256",
+        },
+        resolvedOutputs: {
+          repositoryUri: String(repo["repositoryUri"] ?? ""),
+          repositoryArn: String(repo["repositoryArn"] ?? ""),
+        },
+        secretStates: [],
+        externalId: repoName,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+    }
+    if (typeId === "efs-file-system") {
+      const host = this.hostForService("elasticfilesystem");
+      const url = `https://${host}/2015-02-01/file-systems`;
+      const bodyObj: Record<string, unknown> = {
+        CreationToken: `iw-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        PerformanceMode: fields["performanceMode"] ?? "generalPurpose",
+        ThroughputMode: fields["throughputMode"] ?? "elastic",
+        Encrypted: fields["encrypted"] !== "false",
+      };
+      if (fields["name"]) {
+        bodyObj["Tags"] = [{ Key: "Name", Value: fields["name"] }];
+      }
+      const bodyStr = JSON.stringify(bodyObj);
+      const headers = await signRequest({
+        method: "POST",
+        url,
+        headers: { Host: host, "Content-Type": "application/json" },
+        body: bodyStr,
+        service: "elasticfilesystem",
+        credentials: this.creds,
+      });
+      const res = await fetch(url, { method: "POST", headers, body: bodyStr });
+      if (!res.ok)
+        throw new Error(`EFS CreateFileSystem failed: ${res.status} ${await res.text()}`);
+      const fs = (await res.json()) as Record<string, unknown>;
+      const fsId = String(fs["FileSystemId"] ?? "");
+      return {
+        id: this.makeId(accountId, "efs-file-system", fsId),
+        pluginId: "aws",
+        resourceTypeId: "efs-file-system",
+        accountId,
+        displayName: fields["name"] || fsId,
+        fields: {
+          name: fields["name"] ?? "",
+          fileSystemId: fsId,
+          lifeCycleState: String(fs["LifeCycleState"] ?? "creating"),
+          performanceMode: fields["performanceMode"] ?? "generalPurpose",
+          throughputMode: fields["throughputMode"] ?? "elastic",
+          sizeInBytes: 0,
+          encrypted: fields["encrypted"] !== "false",
+          numberOfMountTargets: 0,
+        },
+        resolvedOutputs: {
+          fileSystemArn: String(fs["FileSystemArn"] ?? ""),
+          fileSystemId: fsId,
+        },
+        secretStates: [],
+        externalId: fsId,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+    }
+    if (typeId === "route53-hosted-zone") {
+      const domainName = fields["name"] ?? "";
+      const host = this.hostForService("route53");
+      const url = `https://${host}/2013-04-01/hostedzone`;
+      const bodyXml = [
+        `<?xml version="1.0" encoding="UTF-8"?>`,
+        `<CreateHostedZoneRequest xmlns="https://route53.amazonaws.com/doc/2013-04-01/">`,
+        `<Name>${domainName}</Name>`,
+        `<CallerReference>${Date.now()}</CallerReference>`,
+        fields["comment"]
+          ? `<HostedZoneConfig><Comment>${fields["comment"]}</Comment></HostedZoneConfig>`
+          : "",
+        `</CreateHostedZoneRequest>`,
+      ].join("");
+      const headers = await signRequest({
+        method: "POST",
+        url,
+        headers: { Host: host, "Content-Type": "application/xml" },
+        body: bodyXml,
+        service: "route53",
+        credentials: this.creds,
+      });
+      const res = await fetch(url, { method: "POST", headers, body: bodyXml });
+      if (!res.ok)
+        throw new Error(`Route53 CreateHostedZone failed: ${res.status} ${await res.text()}`);
+      const xml = await res.text();
+      const parsed = parseXml(xml) as Record<string, unknown>;
+      const hz = (parsed["HostedZone"] ?? {}) as Record<string, unknown>;
+      const zoneId = String(hz["Id"] ?? "").replace("/hostedzone/", "");
+      return {
+        id: this.makeId(accountId, "route53-hosted-zone", zoneId),
+        pluginId: "aws",
+        resourceTypeId: "route53-hosted-zone",
+        accountId,
+        displayName: domainName,
+        fields: {
+          name: domainName,
+          hostedZoneId: zoneId,
+          recordCount: 0,
+          isPrivate: false,
+          comment: fields["comment"] ?? "",
+        },
+        resolvedOutputs: {
+          hostedZoneId: zoneId,
+          nameServers: "",
+        },
+        secretStates: [],
+        externalId: zoneId,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+    }
+    if (typeId === "cloudwatch-log-group") {
+      const logGroupName = fields["logGroupName"] ?? "";
+      const body: Record<string, unknown> = { logGroupName };
+      await this.json<Record<string, unknown>>("logs", "Logs_20140328.CreateLogGroup", body);
+      const retention = Number(fields["retentionInDays"] ?? "0");
+      if (retention > 0) {
+        await this.json<Record<string, unknown>>("logs", "Logs_20140328.PutRetentionPolicy", {
+          logGroupName,
+          retentionInDays: retention,
+        });
+      }
+      return {
+        id: this.makeId(accountId, "cloudwatch-log-group", logGroupName),
+        pluginId: "aws",
+        resourceTypeId: "cloudwatch-log-group",
+        accountId,
+        displayName: logGroupName,
+        fields: {
+          logGroupName,
+          storedBytes: 0,
+          retentionInDays: retention,
+          metricFilterCount: 0,
+          kmsKeyId: "",
+        },
+        resolvedOutputs: {
+          logGroupArn: "",
+        },
+        secretStates: [],
+        externalId: logGroupName,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+    }
+    if (typeId === "elastic-ip") {
+      const data = await this.ec2<Record<string, unknown>>("AllocateAddress", {
+        Domain: "vpc",
+      });
+      const allocationId = String(data["allocationId"] ?? "");
+      const publicIp = String(data["publicIp"] ?? "");
+      if (fields["name"]) {
+        await this.ec2("CreateTags", {
+          "ResourceId.1": allocationId,
+          "Tag.1.Key": "Name",
+          "Tag.1.Value": fields["name"],
+        });
+      }
+      return {
+        id: this.makeId(accountId, "elastic-ip", allocationId),
+        pluginId: "aws",
+        resourceTypeId: "elastic-ip",
+        accountId,
+        displayName: publicIp || allocationId,
+        fields: {
+          allocationId,
+          publicIp,
+          associationId: "",
+          instanceId: "",
+          networkInterfaceId: "",
+          domain: "vpc",
+        },
+        resolvedOutputs: { publicIp },
+        secretStates: [],
+        externalId: allocationId,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+    }
+    if (typeId === "secrets-manager-secret") {
+      const name = fields["name"] ?? "";
+      const data = await this.json<{ ARN?: string; Name?: string }>(
+        "secretsmanager",
+        "secretsmanager.CreateSecret",
+        {
+          Name: name,
+          ...(fields["description"] ? { Description: fields["description"] } : {}),
+          SecretString: fields["secretValue"] ?? "",
+        },
+      );
+      return {
+        id: this.makeId(accountId, "secrets-manager-secret", name),
+        pluginId: "aws",
+        resourceTypeId: "secrets-manager-secret",
+        accountId,
+        displayName: name,
+        fields: {
+          name,
+          description: fields["description"] ?? "",
+          lastAccessedDate: "",
+          lastChangedDate: "",
+          rotationEnabled: false,
+        },
+        resolvedOutputs: {
+          secretArn: String(data.ARN ?? ""),
+        },
+        secretStates: [],
+        externalId: name,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };

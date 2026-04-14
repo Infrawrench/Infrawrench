@@ -17,6 +17,7 @@ export const ECRRepositoryResourceType: ResourceTypeDefinition = {
     { key: "repositoryArn", label: "Repository ARN", sensitive: false },
   ],
   dashboardPinnable: true,
+  supportsCreate: true,
   iconKey: "container-registry",
   secretExportTemplates: [
     {

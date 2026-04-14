@@ -408,6 +408,20 @@ export class VercelClient implements PluginClient {
       };
     }
 
+    if (typeId === "vercel-domain") {
+      return {
+        fields: [
+          {
+            key: "name",
+            label: "Domain Name",
+            kind: "text",
+            required: true,
+            description: "e.g. example.com or sub.example.com",
+          },
+        ],
+      };
+    }
+
     throw new Error(`Vercel plugin: no create config for type "${typeId}"`);
   }
 
@@ -429,6 +443,39 @@ export class VercelClient implements PluginClient {
       });
 
       return this.mapProject(project, accountId);
+    }
+
+    if (typeId === "vercel-domain") {
+      const data = await this.fetch<Record<string, unknown>>("/v5/domains", {
+        method: "POST",
+        body: JSON.stringify({ name: fields["name"] }),
+      });
+      const domain = (data["domain"] ?? data) as Record<string, unknown>;
+      const name = String(domain["name"] ?? fields["name"]);
+      const now = new Date().toISOString();
+      return {
+        id: `${accountId}:vercel-domain:${name}`,
+        pluginId: "vercel",
+        resourceTypeId: "vercel-domain",
+        accountId,
+        displayName: name,
+        fields: {
+          name,
+          verified: String(domain["verified"] ?? false),
+          serviceType: String(domain["serviceType"] ?? ""),
+          nameservers: "",
+          intendedNameservers: "",
+          renew: String(domain["renew"] ?? false),
+          expiresAt: String(domain["expiresAt"] ?? ""),
+          boughtAt: String(domain["boughtAt"] ?? ""),
+          createdAt: String(domain["createdAt"] ?? now),
+        },
+        resolvedOutputs: { domainName: name, nameservers: "" },
+        secretStates: [],
+        externalId: name,
+        createdAt: String(domain["createdAt"] ?? now),
+        updatedAt: now,
+      };
     }
 
     throw new Error(`Vercel plugin: createResource not supported for type "${typeId}"`);

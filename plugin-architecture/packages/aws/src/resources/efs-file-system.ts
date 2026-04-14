@@ -38,5 +38,6 @@ export const EFSFileSystemResourceType: ResourceTypeDefinition = {
     { key: "fileSystemId", label: "File System ID", sensitive: false },
   ],
   dashboardPinnable: true,
+  supportsCreate: true,
   iconKey: "storage",
 };

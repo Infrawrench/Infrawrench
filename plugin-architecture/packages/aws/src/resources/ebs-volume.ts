@@ -22,5 +22,6 @@ export const EBSVolumeResourceType: ResourceTypeDefinition = {
   ],
   outputs: [],
   dashboardPinnable: true,
+  supportsCreate: true,
   iconKey: "volume",
 };

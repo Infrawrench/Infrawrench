@@ -14,5 +14,6 @@ export const CloudWatchLogGroupResourceType: ResourceTypeDefinition = {
   ],
   outputs: [{ key: "logGroupArn", label: "Log Group ARN", sensitive: false }],
   dashboardPinnable: true,
+  supportsCreate: true,
   iconKey: "log",
 };

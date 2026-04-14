@@ -9,4 +9,5 @@ export const NamespaceResourceType: ResourceTypeDefinition = {
   outputs: [],
   parentTypeId: "k8s-cluster",
   dashboardPinnable: false,
+  supportsCreate: true,
 };

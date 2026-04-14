@@ -16,5 +16,6 @@ export const DeploymentResourceType: ResourceTypeDefinition = {
   ],
   parentTypeId: "k8s-namespace",
   dashboardPinnable: true,
+  supportsCreate: true,
   iconKey: "deployment",
 };

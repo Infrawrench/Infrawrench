@@ -17,4 +17,5 @@ export const PubSubTopicResourceType: ResourceTypeDefinition = {
   ],
   outputs: [],
   dashboardPinnable: false,
+  supportsCreate: true,
 };

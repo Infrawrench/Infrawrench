@@ -22,5 +22,6 @@ export const SecretsManagerSecretResourceType: ResourceTypeDefinition = {
     { key: "secretArn", label: "Secret ARN", sensitive: false },
   ],
   dashboardPinnable: true,
+  supportsCreate: true,
   iconKey: "secret",
 };

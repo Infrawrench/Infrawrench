@@ -12,4 +12,5 @@ export const SecretManagerSecretResourceType: ResourceTypeDefinition = {
   ],
   outputs: [{ key: "latestVersion", label: "Latest Version Value", sensitive: true }],
   dashboardPinnable: false,
+  supportsCreate: true,
 };

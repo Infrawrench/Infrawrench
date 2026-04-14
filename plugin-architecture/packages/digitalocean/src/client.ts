@@ -382,6 +382,215 @@ export class DigitalOceanClient implements PluginClient {
       };
     }
 
+    if (typeId === "spaces-bucket") {
+      const regionsData = await this.fetch<{
+        regions: Array<{ slug: string; name: string; available: boolean }>;
+      }>("/regions");
+      const spacesRegions = regionsData.regions
+        .filter((r) => r.available)
+        .filter((r) => ["nyc3", "sfo3", "ams3", "fra1", "sgp1", "syd1"].includes(r.slug))
+        .map((r) => {
+          const info = DigitalOceanClient.REGION_INFO[r.slug];
+          return {
+            id: r.slug,
+            label: r.name,
+            ...(info ? { location: info.location, flag: info.flag } : {}),
+          };
+        });
+
+      return {
+        fields: [
+          {
+            key: "name",
+            label: "Bucket Name",
+            kind: "text",
+            required: true,
+            description: "Globally unique bucket name (lowercase, hyphens, 3-63 characters)",
+          },
+          {
+            key: "region",
+            label: "Region",
+            kind: "region-picker",
+            required: true,
+            regions: spacesRegions,
+            ...(spacesRegions[0] ? { defaultValue: spacesRegions[0].id } : {}),
+          },
+        ],
+      };
+    }
+
+    if (typeId === "managed-database") {
+      const [regionsData, sizesData] = await Promise.all([
+        this.fetch<{
+          regions: Array<{ slug: string; name: string; available: boolean }>;
+        }>("/regions"),
+        this.fetch<{
+          sizes: Array<{
+            slug: string;
+            memory: number;
+            vcpus: number;
+            disk: number;
+            price_monthly: number;
+            available: boolean;
+            description: string;
+          }>;
+        }>("/sizes"),
+      ]);
+
+      const regions = regionsData.regions
+        .filter((r) => r.available)
+        .map((r) => {
+          const info = DigitalOceanClient.REGION_INFO[r.slug];
+          return {
+            id: r.slug,
+            label: r.name,
+            ...(info ? { location: info.location, flag: info.flag } : {}),
+          };
+        });
+
+      const dbSizes = sizesData.sizes
+        .filter((s) => s.available && s.slug.startsWith("db-"))
+        .map((s) => ({
+          id: s.slug,
+          label: s.slug,
+          vcpus: s.vcpus,
+          memoryMb: s.memory,
+          diskGb: s.disk,
+          priceMonthly: s.price_monthly,
+          category: s.description || "Database",
+        }));
+
+      return {
+        fields: [
+          { key: "name", label: "Name", kind: "text", required: true },
+          {
+            key: "engine",
+            label: "Engine",
+            kind: "select",
+            required: true,
+            options: [
+              { id: "pg", label: "PostgreSQL" },
+              { id: "mysql", label: "MySQL" },
+              { id: "redis", label: "Redis" },
+              { id: "mongodb", label: "MongoDB" },
+              { id: "kafka", label: "Kafka" },
+              { id: "opensearch", label: "OpenSearch" },
+            ],
+            defaultValue: "pg",
+          },
+          {
+            key: "region",
+            label: "Region",
+            kind: "region-picker",
+            required: true,
+            regions,
+            ...(regions[0] ? { defaultValue: regions[0].id } : {}),
+          },
+          {
+            key: "size",
+            label: "Node Size",
+            kind: "size-picker",
+            required: true,
+            sizes: dbSizes,
+            ...(dbSizes[0] ? { defaultValue: dbSizes[0].id } : {}),
+          },
+          {
+            key: "nodeCount",
+            label: "Node Count",
+            kind: "number",
+            required: true,
+            defaultValue: "1",
+            minValue: 1,
+            maxValue: 5,
+            stepValue: 1,
+          },
+        ],
+      };
+    }
+
+    if (typeId === "domain") {
+      return {
+        fields: [
+          {
+            key: "name",
+            label: "Domain Name",
+            kind: "text",
+            required: true,
+            description: "Root domain name, e.g. example.com",
+          },
+        ],
+      };
+    }
+
+    if (typeId === "dns-record") {
+      const domains = await this.fetch<{ domains: Array<Record<string, unknown>> }>("/domains");
+      const domainOptions = (domains.domains ?? []).map((d) => ({
+        id: String(d["name"]),
+        label: String(d["name"]),
+      }));
+
+      return {
+        fields: [
+          {
+            key: "domainName",
+            label: "Domain",
+            kind: "select",
+            required: true,
+            options: domainOptions,
+            ...(domainOptions[0] ? { defaultValue: domainOptions[0].id } : {}),
+          },
+          {
+            key: "type",
+            label: "Record Type",
+            kind: "select",
+            required: true,
+            options: [
+              { id: "A", label: "A" },
+              { id: "AAAA", label: "AAAA" },
+              { id: "CNAME", label: "CNAME" },
+              { id: "MX", label: "MX" },
+              { id: "TXT", label: "TXT" },
+              { id: "NS", label: "NS" },
+              { id: "SRV", label: "SRV" },
+              { id: "CAA", label: "CAA" },
+            ],
+            defaultValue: "A",
+          },
+          {
+            key: "name",
+            label: "Hostname",
+            kind: "text",
+            required: true,
+            description: "e.g. www or @ for the root",
+          },
+          {
+            key: "data",
+            label: "Value",
+            kind: "text",
+            required: true,
+            description: "e.g. 192.168.1.1 for A records",
+          },
+          {
+            key: "ttl",
+            label: "TTL",
+            kind: "number",
+            required: false,
+            defaultValue: "1800",
+            minValue: 30,
+            description: "Time to live in seconds",
+          },
+          {
+            key: "priority",
+            label: "Priority",
+            kind: "number",
+            required: false,
+            showWhen: { fieldKey: "type", fieldValue: "MX" },
+            description: "Priority for MX records",
+          },
+        ],
+      };
+    }
+
     throw new Error(`No create config for type "${typeId}"`);
   }
 
@@ -513,6 +722,141 @@ export class DigitalOceanClient implements PluginClient {
         updatedAt: String(
           cluster["updated_at"] ?? cluster["created_at"] ?? new Date().toISOString(),
         ),
+      };
+    }
+
+    if (typeId === "spaces-bucket") {
+      // Spaces creation uses the DO API v2 endpoint (not S3)
+      const data = await this.fetch<{ space: Record<string, unknown> }>("/spaces", {
+        method: "POST",
+        body: JSON.stringify({
+          name: fields["name"],
+          region: fields["region"],
+        }),
+      });
+      const space = data.space ?? {};
+      const region = fields["region"] ?? "";
+      return {
+        id: `${accountId}:spaces-bucket:${fields["name"]}`,
+        pluginId: "digitalocean",
+        resourceTypeId: "spaces-bucket",
+        accountId,
+        displayName: String(fields["name"]),
+        fields: {
+          name: String(fields["name"]),
+          region,
+          accessControl: "private",
+        },
+        resolvedOutputs: {
+          endpoint: `https://${fields["name"]}.${region}.digitaloceanspaces.com`,
+        },
+        secretStates: [],
+        externalId: String(fields["name"]),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+    }
+
+    if (typeId === "managed-database") {
+      const data = await this.fetch<{ database: Record<string, unknown> }>("/databases", {
+        method: "POST",
+        body: JSON.stringify({
+          name: fields["name"],
+          engine: fields["engine"],
+          region: fields["region"],
+          size: fields["size"],
+          num_nodes: Number(fields["nodeCount"] || 1),
+        }),
+      });
+      const db = data.database;
+      return {
+        id: `${accountId}:managed-database:${String(db["id"])}`,
+        pluginId: "digitalocean",
+        resourceTypeId: "managed-database",
+        accountId,
+        displayName: String(db["name"]),
+        fields: {
+          name: String(db["name"]),
+          engine: String(db["engine"] ?? ""),
+          version: String(db["version"] ?? ""),
+          region: String(db["region"] ?? ""),
+          size: String(db["size"] ?? ""),
+          nodeCount: Number(db["num_nodes"] ?? 1),
+        },
+        resolvedOutputs: {},
+        secretStates: [],
+        externalId: String(db["id"]),
+        createdAt: String(db["created_at"] ?? new Date().toISOString()),
+        updatedAt: String(db["created_at"] ?? new Date().toISOString()),
+      };
+    }
+
+    if (typeId === "domain") {
+      const data = await this.fetch<{ domain: Record<string, unknown> }>("/domains", {
+        method: "POST",
+        body: JSON.stringify({ name: fields["name"] }),
+      });
+      const d = data.domain;
+      return {
+        id: `${accountId}:domain:${String(d["name"])}`,
+        pluginId: "digitalocean",
+        resourceTypeId: "domain",
+        accountId,
+        displayName: String(d["name"]),
+        fields: {
+          name: String(d["name"]),
+          ttl: Number(d["ttl"] ?? 1800),
+          zoneFile: String(d["zone_file"] ?? ""),
+        },
+        resolvedOutputs: {
+          nameservers: "ns1.digitalocean.com, ns2.digitalocean.com, ns3.digitalocean.com",
+        },
+        secretStates: [],
+        externalId: String(d["name"]),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+    }
+
+    if (typeId === "dns-record") {
+      const domainName = fields["domainName"];
+      if (!domainName)
+        throw new Error("DigitalOcean plugin: domainName is required to create a DNS record");
+      const body: Record<string, unknown> = {
+        type: fields["type"],
+        name: fields["name"],
+        data: fields["data"],
+        ...(fields["ttl"] ? { ttl: Number(fields["ttl"]) } : {}),
+        ...(fields["priority"] ? { priority: Number(fields["priority"]) } : {}),
+      };
+      const data = await this.fetch<{ domain_record: Record<string, unknown> }>(
+        `/domains/${domainName}/records`,
+        { method: "POST", body: JSON.stringify(body) },
+      );
+      const r = data.domain_record;
+      const type = String(r["type"] ?? "");
+      const name = String(r["name"] ?? "@");
+      const displayName = name === "@" ? domainName : `${name}.${domainName}`;
+      return {
+        id: `${accountId}:dns-record:${domainName}/${String(r["id"])}`,
+        pluginId: "digitalocean",
+        resourceTypeId: "dns-record",
+        accountId,
+        displayName: `${type} ${displayName}`,
+        fields: {
+          type,
+          name: displayName,
+          data: String(r["data"] ?? ""),
+          ttl: Number(r["ttl"] ?? 1800),
+          ...(r["priority"] != null ? { priority: Number(r["priority"]) } : {}),
+          domainName,
+        },
+        resolvedOutputs: {},
+        secretStates: [],
+        externalId: `${domainName}/${String(r["id"])}`,
+        parentResourceId: `${accountId}:domain:${domainName}`,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       };
     }
 

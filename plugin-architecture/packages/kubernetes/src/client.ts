@@ -467,6 +467,174 @@ export class KubernetesClient implements PluginClient {
         ],
       };
     }
+    if (typeId === "k8s-namespace") {
+      return {
+        fields: [
+          {
+            key: "name",
+            label: "Namespace Name",
+            kind: "text",
+            required: true,
+            description: "Lowercase letters, numbers, and hyphens",
+          },
+        ],
+      };
+    }
+
+    if (typeId === "k8s-secret") {
+      let namespaceOptions: { id: string; label: string }[] = [{ id: "default", label: "default" }];
+      try {
+        const nsData = await this.k8sFetch<K8sList<K8sNamespace>>("/api/v1/namespaces");
+        namespaceOptions = nsData.items
+          .filter((ns) => !SYSTEM_NAMESPACES.has(ns.metadata.name))
+          .map((ns) => ({ id: ns.metadata.name, label: ns.metadata.name }))
+          .sort((a, b) => a.label.localeCompare(b.label));
+      } catch {
+        /* fall back to default */
+      }
+
+      return {
+        fields: [
+          { key: "name", label: "Secret Name", kind: "text", required: true },
+          {
+            key: "namespace",
+            label: "Namespace",
+            kind: "select",
+            required: true,
+            defaultValue: "default",
+            options: namespaceOptions,
+          },
+          {
+            key: "type",
+            label: "Secret Type",
+            kind: "select",
+            required: true,
+            defaultValue: "Opaque",
+            options: [
+              { id: "Opaque", label: "Opaque (generic)" },
+              { id: "kubernetes.io/dockerconfigjson", label: "Docker Registry" },
+              { id: "kubernetes.io/tls", label: "TLS Certificate" },
+              { id: "kubernetes.io/basic-auth", label: "Basic Auth" },
+            ],
+          },
+        ],
+      };
+    }
+
+    if (typeId === "k8s-deployment") {
+      let namespaceOptions: { id: string; label: string }[] = [{ id: "default", label: "default" }];
+      try {
+        const nsData = await this.k8sFetch<K8sList<K8sNamespace>>("/api/v1/namespaces");
+        namespaceOptions = nsData.items
+          .filter((ns) => !SYSTEM_NAMESPACES.has(ns.metadata.name))
+          .map((ns) => ({ id: ns.metadata.name, label: ns.metadata.name }))
+          .sort((a, b) => a.label.localeCompare(b.label));
+      } catch {
+        /* fall back to default */
+      }
+
+      return {
+        fields: [
+          { key: "name", label: "Deployment Name", kind: "text", required: true },
+          {
+            key: "namespace",
+            label: "Namespace",
+            kind: "select",
+            required: true,
+            defaultValue: "default",
+            options: namespaceOptions,
+          },
+          {
+            key: "image",
+            label: "Container Image",
+            kind: "text",
+            required: true,
+            description: "e.g. nginx:latest or myregistry.io/myapp:v1",
+          },
+          {
+            key: "replicas",
+            label: "Replicas",
+            kind: "number",
+            required: true,
+            defaultValue: "1",
+            minValue: 1,
+            maxValue: 100,
+            stepValue: 1,
+          },
+          {
+            key: "containerPort",
+            label: "Container Port",
+            kind: "number",
+            required: false,
+            description: "Port the container listens on",
+            defaultValue: "80",
+          },
+        ],
+      };
+    }
+
+    if (typeId === "k8s-service") {
+      let namespaceOptions: { id: string; label: string }[] = [{ id: "default", label: "default" }];
+      try {
+        const nsData = await this.k8sFetch<K8sList<K8sNamespace>>("/api/v1/namespaces");
+        namespaceOptions = nsData.items
+          .filter((ns) => !SYSTEM_NAMESPACES.has(ns.metadata.name))
+          .map((ns) => ({ id: ns.metadata.name, label: ns.metadata.name }))
+          .sort((a, b) => a.label.localeCompare(b.label));
+      } catch {
+        /* fall back to default */
+      }
+
+      return {
+        fields: [
+          { key: "name", label: "Service Name", kind: "text", required: true },
+          {
+            key: "namespace",
+            label: "Namespace",
+            kind: "select",
+            required: true,
+            defaultValue: "default",
+            options: namespaceOptions,
+          },
+          {
+            key: "type",
+            label: "Service Type",
+            kind: "select",
+            required: true,
+            defaultValue: "ClusterIP",
+            options: [
+              { id: "ClusterIP", label: "ClusterIP" },
+              { id: "NodePort", label: "NodePort" },
+              { id: "LoadBalancer", label: "LoadBalancer" },
+            ],
+          },
+          {
+            key: "port",
+            label: "Port",
+            kind: "number",
+            required: true,
+            defaultValue: "80",
+            description: "Port the service exposes",
+          },
+          {
+            key: "targetPort",
+            label: "Target Port",
+            kind: "number",
+            required: true,
+            defaultValue: "80",
+            description: "Port on the target pods",
+          },
+          {
+            key: "selector",
+            label: "Selector (app label)",
+            kind: "text",
+            required: true,
+            description: "Value of the app label to select pods, e.g. my-app",
+          },
+        ],
+      };
+    }
+
     throw new Error(`No create config for type "${typeId}"`);
   }
 
@@ -559,6 +727,156 @@ export class KubernetesClient implements PluginClient {
         accountId,
         displayName: name,
         fields: { name, namespace, dataCount: 0, keys: "" },
+        resolvedOutputs: {},
+        secretStates: [],
+        parentResourceId: `${accountId}:k8s-namespace:${namespace}`,
+        createdAt: now,
+        updatedAt: now,
+      };
+    }
+
+    if (typeId === "k8s-namespace") {
+      await this.k8sFetch("/api/v1/namespaces", {
+        method: "POST",
+        body: JSON.stringify({
+          apiVersion: "v1",
+          kind: "Namespace",
+          metadata: {
+            name,
+            labels: { "app.kubernetes.io/managed-by": "infrawrench" },
+          },
+        }),
+      });
+      return {
+        id: `${accountId}:k8s-namespace:${name}`,
+        pluginId: "kubernetes",
+        resourceTypeId: "k8s-namespace",
+        accountId,
+        displayName: name,
+        fields: { name },
+        resolvedOutputs: {},
+        secretStates: [],
+        parentResourceId: `${accountId}:k8s-cluster:cluster`,
+        createdAt: now,
+        updatedAt: now,
+      };
+    }
+
+    if (typeId === "k8s-secret") {
+      const secretType = fields["type"] || "Opaque";
+      await this.k8sFetch(`/api/v1/namespaces/${encodeURIComponent(namespace)}/secrets`, {
+        method: "POST",
+        body: JSON.stringify({
+          apiVersion: "v1",
+          kind: "Secret",
+          metadata: {
+            name,
+            namespace,
+            labels: { "app.kubernetes.io/managed-by": "infrawrench" },
+          },
+          type: secretType,
+          data: {},
+        }),
+      });
+      return {
+        id: `${accountId}:k8s-secret:${namespace}:${name}`,
+        pluginId: "kubernetes",
+        resourceTypeId: "k8s-secret",
+        accountId,
+        displayName: name,
+        fields: { name, namespace, type: secretType, keys: "", dataCount: 0 },
+        resolvedOutputs: {},
+        secretStates: [],
+        parentResourceId: `${accountId}:k8s-namespace:${namespace}`,
+        createdAt: now,
+        updatedAt: now,
+      };
+    }
+
+    if (typeId === "k8s-deployment") {
+      const image = fields["image"] || "nginx:latest";
+      const replicas = parseInt(fields["replicas"] || "1", 10);
+      const containerPort = fields["containerPort"] ? parseInt(fields["containerPort"], 10) : 80;
+
+      await this.k8sFetch(`/apis/apps/v1/namespaces/${encodeURIComponent(namespace)}/deployments`, {
+        method: "POST",
+        body: JSON.stringify({
+          apiVersion: "apps/v1",
+          kind: "Deployment",
+          metadata: {
+            name,
+            namespace,
+            labels: { "app.kubernetes.io/managed-by": "infrawrench", app: name },
+          },
+          spec: {
+            replicas,
+            selector: { matchLabels: { app: name } },
+            template: {
+              metadata: { labels: { app: name } },
+              spec: {
+                containers: [
+                  {
+                    name,
+                    image,
+                    ports: [{ containerPort }],
+                  },
+                ],
+              },
+            },
+          },
+        }),
+      });
+      return {
+        id: `${accountId}:k8s-deployment:${namespace}:${name}`,
+        pluginId: "kubernetes",
+        resourceTypeId: "k8s-deployment",
+        accountId,
+        displayName: name,
+        fields: { name, namespace, replicas },
+        resolvedOutputs: { readyReplicas: "0", image },
+        secretStates: [],
+        parentResourceId: `${accountId}:k8s-namespace:${namespace}`,
+        createdAt: now,
+        updatedAt: now,
+      };
+    }
+
+    if (typeId === "k8s-service") {
+      const svcType = fields["type"] || "ClusterIP";
+      const port = parseInt(fields["port"] || "80", 10);
+      const targetPort = parseInt(fields["targetPort"] || "80", 10);
+      const selector = fields["selector"] || name;
+
+      await this.k8sFetch(`/api/v1/namespaces/${encodeURIComponent(namespace)}/services`, {
+        method: "POST",
+        body: JSON.stringify({
+          apiVersion: "v1",
+          kind: "Service",
+          metadata: {
+            name,
+            namespace,
+            labels: { "app.kubernetes.io/managed-by": "infrawrench" },
+          },
+          spec: {
+            type: svcType,
+            selector: { app: selector },
+            ports: [{ port, targetPort, protocol: "TCP" }],
+          },
+        }),
+      });
+      return {
+        id: `${accountId}:k8s-service:${namespace}:${name}`,
+        pluginId: "kubernetes",
+        resourceTypeId: "k8s-service",
+        accountId,
+        displayName: name,
+        fields: {
+          name,
+          namespace,
+          type: svcType,
+          clusterIP: "",
+          ports: `${port}→${targetPort}/TCP`,
+        },
         resolvedOutputs: {},
         secretStates: [],
         parentResourceId: `${accountId}:k8s-namespace:${namespace}`,

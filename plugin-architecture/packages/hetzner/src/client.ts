@@ -236,6 +236,97 @@ export class HetznerClient implements PluginClient {
       };
     }
 
+    if (typeId === "volume") {
+      const locationsData = await this.fetchAll<HetznerLocation>("/locations", "locations");
+      const regions = locationsData.map((loc) => {
+        const info = HetznerClient.LOCATION_INFO[loc.name];
+        return {
+          id: loc.name,
+          label: loc.city,
+          ...(info ? { location: info.location, flag: info.flag } : {}),
+        };
+      });
+      const firstRegion = regions[0]?.id;
+
+      return {
+        fields: [
+          { key: "name", label: "Name", kind: "text", required: true },
+          {
+            key: "sizeGb",
+            label: "Size (GB)",
+            kind: "number",
+            required: true,
+            minValue: 10,
+            maxValue: 10240,
+            defaultValue: "10",
+          },
+          {
+            key: "location",
+            label: "Location",
+            kind: "region-picker",
+            required: true,
+            regions,
+            ...(firstRegion ? { defaultValue: firstRegion } : {}),
+          },
+          {
+            key: "format",
+            label: "Filesystem",
+            kind: "select",
+            required: false,
+            options: [
+              { id: "ext4", label: "ext4" },
+              { id: "xfs", label: "xfs" },
+            ],
+            defaultValue: "ext4",
+          },
+        ],
+      };
+    }
+
+    if (typeId === "floating-ip") {
+      const locationsData = await this.fetchAll<HetznerLocation>("/locations", "locations");
+      const regions = locationsData.map((loc) => {
+        const info = HetznerClient.LOCATION_INFO[loc.name];
+        return {
+          id: loc.name,
+          label: loc.city,
+          ...(info ? { location: info.location, flag: info.flag } : {}),
+        };
+      });
+      const firstRegion = regions[0]?.id;
+
+      return {
+        fields: [
+          { key: "name", label: "Name", kind: "text", required: false },
+          {
+            key: "type",
+            label: "Type",
+            kind: "select",
+            required: true,
+            options: [
+              { id: "ipv4", label: "IPv4" },
+              { id: "ipv6", label: "IPv6" },
+            ],
+            defaultValue: "ipv4",
+          },
+          {
+            key: "homeLocation",
+            label: "Location",
+            kind: "region-picker",
+            required: true,
+            regions,
+            ...(firstRegion ? { defaultValue: firstRegion } : {}),
+          },
+        ],
+      };
+    }
+
+    if (typeId === "firewall") {
+      return {
+        fields: [{ key: "name", label: "Name", kind: "text", required: true }],
+      };
+    }
+
     throw new Error(`No create config for type "${typeId}"`);
   }
 
@@ -287,6 +378,99 @@ export class HetznerClient implements PluginClient {
       });
 
       return this.mapServer(data.server, accountId);
+    }
+
+    if (typeId === "volume") {
+      const body: Record<string, unknown> = {
+        name: fields["name"],
+        size: Number(fields["sizeGb"] || 10),
+        location: fields["location"],
+        automount: false,
+        ...(fields["format"] ? { format: fields["format"] } : {}),
+      };
+      const data = await this.fetch<{ volume: HetznerVolume }>("/volumes", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      const v = data.volume;
+      return {
+        id: `${accountId}:volume:${v.id}`,
+        pluginId: "hetzner",
+        resourceTypeId: "volume",
+        accountId,
+        displayName: v.name,
+        fields: {
+          name: v.name,
+          sizeGb: v.size,
+          location: v.location?.name ?? "",
+          format: v.format ?? "",
+          serverId: "",
+          linuxDevice: v.linux_device ?? "",
+        },
+        resolvedOutputs: {},
+        secretStates: [],
+        externalId: String(v.id),
+        createdAt: v.created ?? new Date().toISOString(),
+        updatedAt: v.created ?? new Date().toISOString(),
+      };
+    }
+
+    if (typeId === "floating-ip") {
+      const body: Record<string, unknown> = {
+        type: fields["type"] || "ipv4",
+        home_location: fields["homeLocation"],
+        ...(fields["name"] ? { name: fields["name"] } : {}),
+      };
+      const data = await this.fetch<{ floating_ip: HetznerFloatingIp }>("/floating_ips", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      const fip = data.floating_ip;
+      return {
+        id: `${accountId}:floating-ip:${fip.id}`,
+        pluginId: "hetzner",
+        resourceTypeId: "floating-ip",
+        accountId,
+        displayName: fip.name || fip.ip,
+        fields: {
+          name: fip.name || "",
+          ip: fip.ip,
+          type: fip.type,
+          location: fip.home_location?.name ?? "",
+          serverId: "",
+          blocked: false,
+        },
+        resolvedOutputs: { ip: fip.ip },
+        secretStates: [],
+        externalId: String(fip.id),
+        createdAt: fip.created ?? new Date().toISOString(),
+        updatedAt: fip.created ?? new Date().toISOString(),
+      };
+    }
+
+    if (typeId === "firewall") {
+      const data = await this.fetch<{ firewall: HetznerFirewall }>("/firewalls", {
+        method: "POST",
+        body: JSON.stringify({ name: fields["name"], rules: [] }),
+      });
+      const fw = data.firewall;
+      return {
+        id: `${accountId}:firewall:${fw.id}`,
+        pluginId: "hetzner",
+        resourceTypeId: "firewall",
+        accountId,
+        displayName: fw.name,
+        fields: {
+          name: fw.name,
+          rulesCount: 0,
+          appliedToCount: 0,
+        },
+        resolvedOutputs: {},
+        secretStates: [],
+        externalId: String(fw.id),
+        createdAt: fw.created ?? new Date().toISOString(),
+        updatedAt: fw.created ?? new Date().toISOString(),
+      };
     }
 
     throw new Error(`Hetzner plugin: createResource not supported for type "${typeId}"`);

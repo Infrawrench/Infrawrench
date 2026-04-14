@@ -26,5 +26,6 @@ export const VercelDomainResourceType: ResourceTypeDefinition = {
     { key: "nameservers", label: "Nameservers", sensitive: false },
   ],
   dashboardPinnable: true,
+  supportsCreate: true,
   iconKey: "domain",
 };

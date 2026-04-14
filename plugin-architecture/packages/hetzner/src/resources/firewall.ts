@@ -23,5 +23,6 @@ export const FirewallResourceType: ResourceTypeDefinition = {
   ],
   outputs: [],
   dashboardPinnable: true,
+  supportsCreate: true,
   iconKey: "firewall",
 };

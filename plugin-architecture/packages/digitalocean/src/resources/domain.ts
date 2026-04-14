@@ -19,5 +19,6 @@ export const DomainResourceType: ResourceTypeDefinition = {
     },
   ],
   dashboardPinnable: true,
+  supportsCreate: true,
   iconKey: "dns",
 };

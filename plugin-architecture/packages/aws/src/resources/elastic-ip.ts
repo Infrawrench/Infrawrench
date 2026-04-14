@@ -15,5 +15,6 @@ export const ElasticIPResourceType: ResourceTypeDefinition = {
   ],
   outputs: [{ key: "publicIp", label: "Public IP", sensitive: false }],
   dashboardPinnable: false,
+  supportsCreate: true,
   iconKey: "network",
 };

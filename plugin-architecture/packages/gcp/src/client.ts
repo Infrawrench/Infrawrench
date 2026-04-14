@@ -1053,6 +1053,212 @@ export class GcpClient implements PluginClient {
       };
     }
 
+    if (typeId === "gcs-bucket") {
+      return {
+        fields: [
+          {
+            key: "name",
+            label: "Bucket Name",
+            kind: "text",
+            required: true,
+            description: "Globally unique bucket name",
+          },
+          {
+            key: "location",
+            label: "Location",
+            kind: "select",
+            required: true,
+            options: [
+              { id: "US", label: "US (multi-region)" },
+              { id: "EU", label: "EU (multi-region)" },
+              { id: "ASIA", label: "Asia (multi-region)" },
+              { id: "us-central1", label: "Iowa (us-central1)" },
+              { id: "us-east1", label: "South Carolina (us-east1)" },
+              { id: "us-west1", label: "Oregon (us-west1)" },
+              { id: "europe-west1", label: "Belgium (europe-west1)" },
+              { id: "europe-west4", label: "Netherlands (europe-west4)" },
+              { id: "asia-east1", label: "Taiwan (asia-east1)" },
+              { id: "asia-southeast1", label: "Singapore (asia-southeast1)" },
+            ],
+            defaultValue: "US",
+          },
+          {
+            key: "storageClass",
+            label: "Storage Class",
+            kind: "select",
+            required: true,
+            options: [
+              { id: "STANDARD", label: "Standard" },
+              { id: "NEARLINE", label: "Nearline" },
+              { id: "COLDLINE", label: "Coldline" },
+              { id: "ARCHIVE", label: "Archive" },
+            ],
+            defaultValue: "STANDARD",
+          },
+        ],
+      };
+    }
+
+    if (typeId === "cloudsql-instance") {
+      return {
+        fields: [
+          { key: "name", label: "Instance Name", kind: "text", required: true },
+          {
+            key: "databaseVersion",
+            label: "Database Version",
+            kind: "select",
+            required: true,
+            options: [
+              { id: "POSTGRES_16", label: "PostgreSQL 16" },
+              { id: "POSTGRES_15", label: "PostgreSQL 15" },
+              { id: "POSTGRES_14", label: "PostgreSQL 14" },
+              { id: "MYSQL_8_0", label: "MySQL 8.0" },
+              { id: "MYSQL_5_7", label: "MySQL 5.7" },
+              { id: "SQLSERVER_2022_STANDARD", label: "SQL Server 2022 Standard" },
+              { id: "SQLSERVER_2019_STANDARD", label: "SQL Server 2019 Standard" },
+            ],
+            defaultValue: "POSTGRES_16",
+          },
+          {
+            key: "region",
+            label: "Region",
+            kind: "select",
+            required: true,
+            options: [
+              { id: "us-central1", label: "Iowa (us-central1)" },
+              { id: "us-east1", label: "South Carolina (us-east1)" },
+              { id: "us-west1", label: "Oregon (us-west1)" },
+              { id: "europe-west1", label: "Belgium (europe-west1)" },
+              { id: "europe-west4", label: "Netherlands (europe-west4)" },
+              { id: "asia-east1", label: "Taiwan (asia-east1)" },
+              { id: "asia-southeast1", label: "Singapore (asia-southeast1)" },
+            ],
+            defaultValue: "us-central1",
+          },
+          {
+            key: "tier",
+            label: "Machine Tier",
+            kind: "select",
+            required: true,
+            options: [
+              { id: "db-f1-micro", label: "db-f1-micro (shared, 0.6 GB)" },
+              { id: "db-g1-small", label: "db-g1-small (shared, 1.7 GB)" },
+              { id: "db-n1-standard-1", label: "db-n1-standard-1 (1 vCPU, 3.75 GB)" },
+              { id: "db-n1-standard-2", label: "db-n1-standard-2 (2 vCPU, 7.5 GB)" },
+              { id: "db-n1-standard-4", label: "db-n1-standard-4 (4 vCPU, 15 GB)" },
+              { id: "db-n1-highmem-2", label: "db-n1-highmem-2 (2 vCPU, 13 GB)" },
+            ],
+            defaultValue: "db-f1-micro",
+          },
+          {
+            key: "diskSizeGb",
+            label: "Disk Size (GB)",
+            kind: "number",
+            required: false,
+            defaultValue: "10",
+            minValue: 10,
+            maxValue: 65536,
+          },
+        ],
+      };
+    }
+
+    if (typeId === "pubsub-topic") {
+      return {
+        fields: [
+          {
+            key: "name",
+            label: "Topic Name",
+            kind: "text",
+            required: true,
+            description: "Topic ID (letters, numbers, hyphens, underscores)",
+          },
+        ],
+      };
+    }
+
+    if (typeId === "pubsub-subscription") {
+      const p = this.project;
+      const topics = await this.paginate<Record<string, unknown>>(
+        `https://pubsub.googleapis.com/v1/projects/${p}/topics`,
+        "topics",
+      );
+      const topicOptions = topics.map((t) => {
+        const fullName = String(t["name"] ?? "");
+        const shortName = fullName.split("/").pop() ?? fullName;
+        return { id: fullName, label: shortName };
+      });
+
+      return {
+        fields: [
+          {
+            key: "name",
+            label: "Subscription Name",
+            kind: "text",
+            required: true,
+          },
+          {
+            key: "topic",
+            label: "Topic",
+            kind: "select",
+            required: true,
+            options: topicOptions,
+            ...(topicOptions[0] ? { defaultValue: topicOptions[0].id } : {}),
+          },
+          {
+            key: "ackDeadlineSeconds",
+            label: "Ack Deadline (seconds)",
+            kind: "number",
+            required: false,
+            defaultValue: "10",
+            minValue: 10,
+            maxValue: 600,
+          },
+        ],
+      };
+    }
+
+    if (typeId === "cloud-dns-zone") {
+      return {
+        fields: [
+          {
+            key: "name",
+            label: "Zone Name",
+            kind: "text",
+            required: true,
+            description: "Internal name (letters, numbers, hyphens)",
+          },
+          {
+            key: "dnsName",
+            label: "DNS Name",
+            kind: "text",
+            required: true,
+            description: "Domain name with trailing dot, e.g. example.com.",
+          },
+          {
+            key: "description",
+            label: "Description",
+            kind: "text",
+            required: false,
+          },
+        ],
+      };
+    }
+
+    if (typeId === "secret-manager-secret") {
+      return {
+        fields: [
+          {
+            key: "name",
+            label: "Secret Name",
+            kind: "text",
+            required: true,
+            description: "Secret ID (letters, numbers, hyphens, underscores)",
+          },
+        ],
+      };
+    }
+
     throw new Error(`No create config for type "${typeId}"`);
   }
 
@@ -1289,6 +1495,228 @@ export class GcpClient implements PluginClient {
           nodeCount: initialNodeCount,
           status: "PROVISIONING",
         },
+        resolvedOutputs: {},
+        secretStates: [],
+        externalId: name,
+        createdAt: now,
+        updatedAt: now,
+      };
+    }
+
+    if (typeId === "gcs-bucket") {
+      const p = this.project;
+      const tok = await this.token();
+      const name = fields["name"] ?? "";
+      const location = fields["location"] ?? "US";
+      const storageClass = fields["storageClass"] ?? "STANDARD";
+
+      const res = await fetch(`https://storage.googleapis.com/storage/v1/b?project=${p}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ name, location, storageClass }),
+      });
+      if (!res.ok) throw new Error(`GCS API ${res.status}: ${await res.text()}`);
+      const bucket = (await res.json()) as Record<string, unknown>;
+      const now = this.now();
+      return {
+        id: this.id(accountId, "gcs-bucket", name),
+        pluginId: "gcp",
+        resourceTypeId: "gcs-bucket",
+        accountId,
+        displayName: name,
+        fields: {
+          name,
+          location: String(bucket["location"] ?? location),
+          storageClass: String(bucket["storageClass"] ?? storageClass),
+          publicAccessPrevention: "",
+          versioning: false,
+        },
+        resolvedOutputs: {
+          endpoint: `https://storage.googleapis.com/${name}`,
+          bucketName: name,
+        },
+        secretStates: [],
+        externalId: name,
+        createdAt: String(bucket["timeCreated"] ?? now),
+        updatedAt: now,
+      };
+    }
+
+    if (typeId === "cloudsql-instance") {
+      const p = this.project;
+      const tok = await this.token();
+      const name = fields["name"] ?? "";
+      const databaseVersion = fields["databaseVersion"] ?? "POSTGRES_16";
+      const region = fields["region"] ?? "us-central1";
+      const tier = fields["tier"] ?? "db-f1-micro";
+      const diskSizeGb = fields["diskSizeGb"] ?? "10";
+
+      const res = await fetch(`https://sqladmin.googleapis.com/v1/projects/${p}/instances`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          databaseVersion,
+          region,
+          settings: {
+            tier,
+            dataDiskSizeGb: diskSizeGb,
+            ipConfiguration: { ipv4Enabled: true },
+          },
+        }),
+      });
+      if (!res.ok) throw new Error(`Cloud SQL API ${res.status}: ${await res.text()}`);
+      const now = this.now();
+      return {
+        id: this.id(accountId, "cloudsql-instance", name),
+        pluginId: "gcp",
+        resourceTypeId: "cloudsql-instance",
+        accountId,
+        displayName: name,
+        fields: {
+          name,
+          databaseVersion,
+          region,
+          tier,
+          state: "PENDING_CREATE",
+          availabilityType: "ZONAL",
+        },
+        resolvedOutputs: {
+          connectionName: `${p}:${region}:${name}`,
+          ipAddress: "",
+        },
+        secretStates: [],
+        externalId: name,
+        createdAt: now,
+        updatedAt: now,
+      };
+    }
+
+    if (typeId === "pubsub-topic") {
+      const p = this.project;
+      const tok = await this.token();
+      const name = fields["name"] ?? "";
+      const fullName = `projects/${p}/topics/${name}`;
+
+      const res = await fetch(`https://pubsub.googleapis.com/v1/${fullName}`, {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) throw new Error(`Pub/Sub API ${res.status}: ${await res.text()}`);
+      const now = this.now();
+      return {
+        id: this.id(accountId, "pubsub-topic", name),
+        pluginId: "gcp",
+        resourceTypeId: "pubsub-topic",
+        accountId,
+        displayName: name,
+        fields: { name, kmsKeyName: "", messageRetentionDuration: "" },
+        resolvedOutputs: {},
+        secretStates: [],
+        externalId: name,
+        createdAt: now,
+        updatedAt: now,
+      };
+    }
+
+    if (typeId === "pubsub-subscription") {
+      const p = this.project;
+      const tok = await this.token();
+      const name = fields["name"] ?? "";
+      const topic = fields["topic"] ?? "";
+      const ackDeadlineSeconds = Number(fields["ackDeadlineSeconds"] || 10);
+      const fullName = `projects/${p}/subscriptions/${name}`;
+
+      const res = await fetch(`https://pubsub.googleapis.com/v1/${fullName}`, {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ topic, ackDeadlineSeconds }),
+      });
+      if (!res.ok) throw new Error(`Pub/Sub API ${res.status}: ${await res.text()}`);
+      const now = this.now();
+      return {
+        id: this.id(accountId, "pubsub-subscription", name),
+        pluginId: "gcp",
+        resourceTypeId: "pubsub-subscription",
+        accountId,
+        displayName: name,
+        fields: {
+          name,
+          topic: topic.split("/").pop() ?? topic,
+          ackDeadlineSeconds,
+          messageRetentionDuration: "",
+          filter: "",
+        },
+        resolvedOutputs: {},
+        secretStates: [],
+        externalId: name,
+        createdAt: now,
+        updatedAt: now,
+      };
+    }
+
+    if (typeId === "cloud-dns-zone") {
+      const p = this.project;
+      const tok = await this.token();
+      const name = fields["name"] ?? "";
+      const dnsName = fields["dnsName"] ?? "";
+      const description = fields["description"] ?? "";
+
+      const res = await fetch(`https://dns.googleapis.com/dns/v1/projects/${p}/managedZones`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ name, dnsName, description, visibility: "public" }),
+      });
+      if (!res.ok) throw new Error(`Cloud DNS API ${res.status}: ${await res.text()}`);
+      const zone = (await res.json()) as Record<string, unknown>;
+      const now = this.now();
+      const ns = (zone["nameServers"] as string[]) ?? [];
+      return {
+        id: this.id(accountId, "cloud-dns-zone", name),
+        pluginId: "gcp",
+        resourceTypeId: "cloud-dns-zone",
+        accountId,
+        displayName: dnsName,
+        fields: {
+          name,
+          dnsName,
+          description,
+          visibility: "public",
+          nameservers: ns.join(", "),
+          dnssecState: "",
+          recordCount: 0,
+        },
+        resolvedOutputs: { nameservers: ns.join(", ") },
+        secretStates: [],
+        externalId: name,
+        createdAt: String(zone["creationTime"] ?? now),
+        updatedAt: now,
+      };
+    }
+
+    if (typeId === "secret-manager-secret") {
+      const p = this.project;
+      const tok = await this.token();
+      const name = fields["name"] ?? "";
+
+      const res = await fetch(
+        `https://secretmanager.googleapis.com/v1/projects/${p}/secrets?secretId=${name}`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ replication: { automatic: {} } }),
+        },
+      );
+      if (!res.ok) throw new Error(`Secret Manager API ${res.status}: ${await res.text()}`);
+      const now = this.now();
+      return {
+        id: this.id(accountId, "secret-manager-secret", name),
+        pluginId: "gcp",
+        resourceTypeId: "secret-manager-secret",
+        accountId,
+        displayName: name,
+        fields: { name, replicationType: "AUTOMATIC", versionCount: 0 },
         resolvedOutputs: {},
         secretStates: [],
         externalId: name,

@@ -29,6 +29,7 @@ export const SpacesResourceType: ResourceTypeDefinition = {
   ],
   parentTypeId: "project",
   dashboardPinnable: true,
+  supportsCreate: true,
   iconKey: "spaces",
   secretExportTemplates: [
     {

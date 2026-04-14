@@ -187,6 +187,66 @@ export class FlyClient implements PluginClient {
       };
     }
 
+    if (typeId === "volume") {
+      const regions = Object.entries(FlyClient.REGION_INFO).map(([code, info]) => ({
+        id: code,
+        label: code.toUpperCase(),
+        location: info.location,
+        flag: info.flag,
+      }));
+
+      // Fetch apps for the app selector
+      let appOptions: { id: string; label: string }[] = [];
+      try {
+        const apps = await this.fetch<FlyApp[]>("/v1/apps?org_slug=" + this.orgSlug);
+        appOptions = apps.map((a) => ({ id: a.name, label: a.name }));
+      } catch {
+        /* fall back to text input */
+      }
+
+      return {
+        fields: [
+          ...(appOptions.length > 0
+            ? [
+                {
+                  key: "appName" as const,
+                  label: "App",
+                  kind: "select" as const,
+                  required: true,
+                  options: appOptions,
+                  ...(appOptions[0] ? { defaultValue: appOptions[0].id } : {}),
+                },
+              ]
+            : [
+                {
+                  key: "appName" as const,
+                  label: "App Name",
+                  kind: "text" as const,
+                  required: true,
+                },
+              ]),
+          { key: "name", label: "Volume Name", kind: "text", required: true },
+          {
+            key: "region",
+            label: "Region",
+            kind: "region-picker",
+            required: true,
+            regions,
+            defaultValue: "iad",
+          },
+          {
+            key: "sizeGb",
+            label: "Size (GB)",
+            kind: "number",
+            required: true,
+            defaultValue: "1",
+            minValue: 1,
+            maxValue: 500,
+          },
+        ],
+      };
+    }
+
     throw new Error(`No create config for type "${typeId}"`);
   }
 
@@ -225,6 +285,42 @@ export class FlyClient implements PluginClient {
         body: JSON.stringify(body),
       });
       return this.mapMachine(data, appName, accountId);
+    }
+
+    if (typeId === "volume") {
+      const appName = fields["appName"];
+      if (!appName) throw new Error("Fly plugin: appName is required to create a volume");
+      const data = await this.fetch<Record<string, unknown>>(`/v1/apps/${appName}/volumes`, {
+        method: "POST",
+        body: JSON.stringify({
+          name: fields["name"],
+          region: fields["region"],
+          size_gb: Number(fields["sizeGb"] || 1),
+        }),
+      });
+      const now = new Date().toISOString();
+      return {
+        id: `${accountId}:volume:${appName}/${String(data["id"])}`,
+        pluginId: "fly",
+        resourceTypeId: "volume",
+        accountId,
+        displayName: String(data["name"] ?? fields["name"]),
+        fields: {
+          name: String(data["name"] ?? fields["name"]),
+          state: String(data["state"] ?? "created"),
+          sizeGb: Number(data["size_gb"] ?? fields["sizeGb"]),
+          region: String(data["region"] ?? fields["region"]),
+          encrypted: data["encrypted"] === true,
+          attachedMachineId: "",
+          appName,
+        },
+        resolvedOutputs: {},
+        secretStates: [],
+        externalId: `${appName}/${String(data["id"])}`,
+        parentResourceId: `${accountId}:app:${appName}`,
+        createdAt: String(data["created_at"] ?? now),
+        updatedAt: now,
+      };
     }
 
     throw new Error(`Fly plugin: createResource not supported for type "${typeId}"`);

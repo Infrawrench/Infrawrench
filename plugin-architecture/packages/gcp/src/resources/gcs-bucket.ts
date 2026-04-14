@@ -34,6 +34,7 @@ export const GcsBucketResourceType: ResourceTypeDefinition = {
     },
   ],
   dashboardPinnable: true,
+  supportsCreate: true,
   supportsStorageBrowser: true,
   secretExportTemplates: [
     {

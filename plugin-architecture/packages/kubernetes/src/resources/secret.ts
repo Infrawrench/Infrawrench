@@ -15,4 +15,5 @@ export const SecretResourceType: ResourceTypeDefinition = {
   outputs: [],
   parentTypeId: "k8s-namespace",
   dashboardPinnable: false,
+  supportsCreate: true,
 };

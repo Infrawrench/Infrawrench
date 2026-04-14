@@ -38,6 +38,7 @@ export const RDSInstanceResourceType: ResourceTypeDefinition = {
   ],
   dashboardPinnable: true,
   supportsMetrics: true,
+  supportsCreate: true,
   iconKey: "database",
   resourceSqlDriver: {
     driver: "postgres",

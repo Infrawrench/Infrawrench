@@ -23,6 +23,7 @@ export const CloudSqlInstanceResourceType: ResourceTypeDefinition = {
     { key: "ipAddress", label: "IP Address", sensitive: false },
   ],
   dashboardPinnable: true,
+  supportsCreate: true,
   secretExportTemplates: [
     {
       id: "cloudsql-connection",

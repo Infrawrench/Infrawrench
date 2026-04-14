@@ -19,4 +19,5 @@ export const PubSubSubscriptionResourceType: ResourceTypeDefinition = {
   ],
   outputs: [],
   dashboardPinnable: false,
+  supportsCreate: true,
 };

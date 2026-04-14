@@ -44,5 +44,6 @@ export const VolumeResourceType: ResourceTypeDefinition = {
   ],
   outputs: [],
   dashboardPinnable: true,
+  supportsCreate: true,
   iconKey: "volume",
 };
