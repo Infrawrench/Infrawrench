@@ -1,0 +1,25 @@
+{
+  "name": "@infrawrench/poller",
+  "version": "0.1.0",
+  "license": "UNLICENSED",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch --import ./env-loader.mjs src/index.ts",
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/index.mjs --external:ssh2 --external:cpu-features --external:dockerode --external:@libsql/client --external:libsql --banner:js=\"import{createRequire}from'node:module';const require=createRequire(import.meta.url);\"",
+    "start": "node dist/index.mjs",
+    "typecheck": "tsgo --noEmit"
+  },
+  "dependencies": {
+    "@infrawrench/server-core": "workspace:*",
+    "@libsql/client": "^0.14.0",
+    "drizzle-orm": "^0.40.0",
+    "postgres": "^3.4.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "esbuild": "^0.25.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.3"
+  }
+}
