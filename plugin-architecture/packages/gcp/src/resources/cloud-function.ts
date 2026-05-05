@@ -1,0 +1,36 @@
+import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+
+export const CloudFunctionResourceType: ResourceTypeDefinition = {
+  id: "cloud-function",
+  displayName: "Cloud Function",
+  pluralDisplayName: "Cloud Functions",
+  description: "A Google Cloud Function (2nd gen)",
+  fields: [
+    { key: "name", label: "Name", kind: "string", required: true },
+    { key: "region", label: "Region", kind: "string", required: true },
+    { key: "runtime", label: "Runtime", kind: "string", required: false },
+    { key: "state", label: "State", kind: "string", required: false },
+    { key: "stateMessage", label: "State Message", kind: "string", required: false },
+    { key: "availableMemory", label: "Memory", kind: "string", required: false },
+    { key: "timeout", label: "Timeout", kind: "string", required: false },
+    { key: "ingress", label: "Ingress", kind: "string", required: false },
+    { key: "image", label: "Image", kind: "string", required: false },
+    { key: "lastModifier", label: "Last Modifier", kind: "string", required: false },
+    { key: "latestRevision", label: "Latest Revision", kind: "string", required: false },
+    { key: "serviceAccount", label: "Service Account", kind: "string", required: false },
+    { key: "entryPoint", label: "Entry Point", kind: "string", required: false },
+    { key: "sourceLocation", label: "Source Location", kind: "string", required: false },
+    { key: "environment", label: "Environment", kind: "string", required: false },
+    { key: "buildId", label: "Build ID", kind: "string", required: false },
+    { key: "minInstances", label: "Min Instances", kind: "string", required: false },
+    { key: "maxInstances", label: "Max Instances", kind: "string", required: false },
+    { key: "concurrency", label: "Concurrency", kind: "string", required: false },
+  ],
+  outputs: [
+    { key: "url", label: "Trigger URL", sensitive: false },
+    { key: "serviceUrl", label: "Cloud Run Service URL", sensitive: false },
+    { key: "cloudRunServiceName", label: "Cloud Run Service Name", sensitive: false },
+  ],
+  dashboardPinnable: true,
+  supportsCreate: true,
+};
