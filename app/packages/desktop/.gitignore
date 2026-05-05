@@ -1,0 +1,6 @@
+src-tauri/target
+out
+release
+dist
+*.tsbuildinfo
+env.ts
