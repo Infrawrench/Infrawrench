@@ -1,19 +1,19 @@
 import { describe, it, expect, vi } from "vitest";
 
-vi.mock("../drivers", () => {
-  const mockSqlQuery = vi.fn();
-  const mockSqlExecute = vi.fn();
-  const mockKvCommand = vi.fn();
-  const mockDockerCommand = vi.fn();
+const { driversMock } = vi.hoisted(() => ({
+  driversMock: {
+    sqlDrivers: new Map([["postgres", { id: "postgres", query: vi.fn(), execute: vi.fn() }]]),
+    kvDrivers: new Map([["redis", { id: "redis", command: vi.fn() }]]),
+    dockerDrivers: new Map([["docker", { id: "docker", command: vi.fn() }]]),
+    storageDrivers: new Map(),
+  },
+}));
+vi.mock("../drivers", () => driversMock);
+vi.mock("@infrawrench/server-core/drivers", () => driversMock);
 
-  return {
-    sqlDrivers: new Map([
-      ["postgres", { id: "postgres", query: mockSqlQuery, execute: mockSqlExecute }],
-    ]),
-    kvDrivers: new Map([["redis", { id: "redis", command: mockKvCommand }]]),
-    dockerDrivers: new Map([["docker", { id: "docker", command: mockDockerCommand }]]),
-  };
-});
+vi.mock("@infrawrench/server-core/db/client", () => ({
+  db: {},
+}));
 
 import {
   buildHostServices,

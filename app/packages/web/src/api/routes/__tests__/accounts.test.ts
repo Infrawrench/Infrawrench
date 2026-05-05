@@ -8,7 +8,7 @@ const mockSelectDistinct = vi.fn();
 const mockDelete = vi.fn();
 const mockUpdate = vi.fn();
 
-vi.mock("@/db/client", () => ({
+const dbMock = {
   db: {
     insert: (...args: unknown[]) => mockInsert(...args),
     select: (...args: unknown[]) => mockSelect(...args),
@@ -16,22 +16,37 @@ vi.mock("@/db/client", () => ({
     delete: (...args: unknown[]) => mockDelete(...args),
     update: (...args: unknown[]) => mockUpdate(...args),
   },
-}));
+};
+vi.mock("@/db/client", () => dbMock);
+vi.mock("@infrawrench/server-core/db/client", () => dbMock);
 
-vi.mock("@/services/encryption", () => ({
+const encryptionMock = {
   encrypt: vi.fn().mockResolvedValue({ ciphertext: "enc-blob", iv: "iv-123" }),
   decrypt: vi.fn().mockResolvedValue(JSON.stringify({ token: "secret-val" })),
-}));
+};
+vi.mock("@/services/encryption", () => encryptionMock);
+vi.mock("@infrawrench/server-core/encryption", () => encryptionMock);
 
 const mockLoadPlugins = vi.fn();
 const mockGetPlugin = vi.fn();
-vi.mock("@/plugins/loader", () => ({
+const pluginLoaderMock = {
   loadPlugins: (...args: unknown[]) => mockLoadPlugins(...args),
   getPlugin: (...args: unknown[]) => mockGetPlugin(...args),
-}));
+};
+vi.mock("@/plugins/loader", () => pluginLoaderMock);
+vi.mock("@infrawrench/server-core/plugin-loader", () => pluginLoaderMock);
 
-vi.mock("@/services/host-services", () => ({
+const hostServicesMock = {
   buildPluginHostServices: vi.fn().mockReturnValue({}),
+  buildHostServices: vi.fn().mockReturnValue({}),
+  buildKvHostServices: vi.fn().mockReturnValue({}),
+  buildDockerHostServices: vi.fn().mockReturnValue({}),
+};
+vi.mock("@/services/host-services", () => hostServicesMock);
+vi.mock("@infrawrench/server-core/host-services", () => hostServicesMock);
+
+vi.mock("@infrawrench/server-core/tunnel-resolver", () => ({
+  rewriteCredentialsThroughTunnel: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("uuid", () => ({ v4: () => "acct-uuid-1" }));

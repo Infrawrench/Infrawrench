@@ -22,7 +22,7 @@ const mockSelect = vi.fn();
 const mockSelectDistinct = vi.fn();
 const mockDelete = vi.fn();
 
-vi.mock("@/db/client", () => ({
+const dbMock = {
   db: {
     insert: (...args: unknown[]) => mockInsert(...args),
     select: (...args: unknown[]) => mockSelect(...args),
@@ -30,21 +30,36 @@ vi.mock("@/db/client", () => ({
     delete: (...args: unknown[]) => mockDelete(...args),
     update: (...args: unknown[]) => mockUpdate(...args),
   },
-}));
+};
+vi.mock("@/db/client", () => dbMock);
+vi.mock("@infrawrench/server-core/db/client", () => dbMock);
 
-vi.mock("@/services/encryption", () => ({
+const encryptionMock = {
   encrypt: vi.fn().mockResolvedValue({ ciphertext: "enc", iv: "iv" }),
   decrypt: vi.fn().mockResolvedValue(JSON.stringify({ token: "secret" })),
-}));
+};
+vi.mock("@/services/encryption", () => encryptionMock);
+vi.mock("@infrawrench/server-core/encryption", () => encryptionMock);
 
 const mockGetPlugin = vi.fn();
-vi.mock("@/plugins/loader", () => ({
+const pluginLoaderMock = {
   loadPlugins: vi.fn().mockResolvedValue([]),
   getPlugin: (...args: unknown[]) => mockGetPlugin(...args),
-}));
+};
+vi.mock("@/plugins/loader", () => pluginLoaderMock);
+vi.mock("@infrawrench/server-core/plugin-loader", () => pluginLoaderMock);
 
-vi.mock("@/services/host-services", () => ({
+const hostServicesMock = {
   buildPluginHostServices: vi.fn().mockReturnValue({}),
+  buildHostServices: vi.fn().mockReturnValue({}),
+  buildKvHostServices: vi.fn().mockReturnValue({}),
+  buildDockerHostServices: vi.fn().mockReturnValue({}),
+};
+vi.mock("@/services/host-services", () => hostServicesMock);
+vi.mock("@infrawrench/server-core/host-services", () => hostServicesMock);
+
+vi.mock("@infrawrench/server-core/tunnel-resolver", () => ({
+  rewriteCredentialsThroughTunnel: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("uuid", () => ({ v4: () => "uuid-1" }));
@@ -205,9 +220,11 @@ describe("syncAccountResources stale resource cleanup", () => {
       displayName: "Updated Name",
       fieldsJson: { state: "running" },
     });
+    // conflictSet uses a SQL fragment to merge fields json (preserves
+    // user-supplied keys not returned by the plugin), so just verify
+    // displayName is overwritten on conflict.
     expect(insertCalls[0]!.conflictSet).toMatchObject({
       displayName: "Updated Name",
-      fieldsJson: { state: "running" },
     });
   });
 

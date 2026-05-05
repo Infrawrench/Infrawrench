@@ -11,7 +11,16 @@ import {
 const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   aws: { accessKeyId: "AKIATEST", secretAccessKey: "testsecret", region: "us-east-1" },
   gcp: {
-    serviceAccountJson: '{"type":"service_account","project_id":"test"}',
+    serviceAccountJson: JSON.stringify({
+      type: "service_account",
+      project_id: "test",
+      private_key_id: "test-key-id",
+      private_key: "-----BEGIN PRIVATE KEY-----\ntest\n-----END PRIVATE KEY-----\n",
+      client_email: "test@test.iam.gserviceaccount.com",
+      client_id: "1234567890",
+      auth_uri: "https://accounts.google.com/o/oauth2/auth",
+      token_uri: "https://oauth2.googleapis.com/token",
+    }),
     project: "test-project",
   },
   digitalocean: { apiToken: "dop_v1_test" },

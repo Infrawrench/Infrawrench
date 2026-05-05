@@ -2,13 +2,14 @@ import { describe, it, expect } from "vitest";
 import { sqlDrivers, kvDrivers, dockerDrivers, storageDrivers } from "../drivers";
 
 describe("driver registry", () => {
-  it("sqlDrivers contains postgres, mysql, libsql, and mysql-planetscale", () => {
+  it("sqlDrivers contains postgres, mysql, mssql, libsql, and mysql-planetscale", () => {
     const ids = [...sqlDrivers.keys()];
     expect(ids).toContain("postgres");
     expect(ids).toContain("mysql");
+    expect(ids).toContain("mssql");
     expect(ids).toContain("libsql");
     expect(ids).toContain("mysql-planetscale");
-    expect(sqlDrivers.size).toBe(4);
+    expect(sqlDrivers.size).toBe(5);
   });
 
   it("kvDrivers contains redis, memcached, and mongodb", () => {

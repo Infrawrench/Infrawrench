@@ -18,35 +18,54 @@ const mockInsert = vi.fn();
 const mockDelete = vi.fn();
 const mockUpdate = vi.fn();
 
-vi.mock("@/db/client", () => ({
+const dbMock = {
   db: {
     select: (...args: unknown[]) => mockSelect(...args),
     insert: (...args: unknown[]) => mockInsert(...args),
     delete: (...args: unknown[]) => mockDelete(...args),
     update: (...args: unknown[]) => mockUpdate(...args),
   },
-}));
+};
+vi.mock("@/db/client", () => dbMock);
+vi.mock("@infrawrench/server-core/db/client", () => dbMock);
 
-vi.mock("@/services/encryption", () => ({
+const encryptionMock = {
   encrypt: vi.fn().mockResolvedValue({ ciphertext: "enc", iv: "iv" }),
   decrypt: vi
     .fn()
     .mockResolvedValue(JSON.stringify({ host: "1.2.3.4", username: "root", privateKey: "key" })),
-}));
+};
+vi.mock("@/services/encryption", () => encryptionMock);
+vi.mock("@infrawrench/server-core/encryption", () => encryptionMock);
 
 const mockGetPlugin = vi.fn();
-vi.mock("@/plugins/loader", () => ({
+const pluginLoaderMock = {
   getPlugin: (...args: unknown[]) => mockGetPlugin(...args),
-}));
+  loadPlugins: vi.fn().mockResolvedValue([]),
+};
+vi.mock("@/plugins/loader", () => pluginLoaderMock);
+vi.mock("@infrawrench/server-core/plugin-loader", () => pluginLoaderMock);
 
-vi.mock("@/services/host-services", () => ({
+const hostServicesMock = {
   buildPluginHostServices: vi.fn().mockReturnValue({}),
-}));
+  buildHostServices: vi.fn().mockReturnValue({}),
+  buildKvHostServices: vi.fn().mockReturnValue({}),
+  buildDockerHostServices: vi.fn().mockReturnValue({}),
+};
+vi.mock("@/services/host-services", () => hostServicesMock);
+vi.mock("@infrawrench/server-core/host-services", () => hostServicesMock);
 
-vi.mock("@/services/drivers", () => ({
+const driversMock = {
   sqlDrivers: new Map(),
   kvDrivers: new Map(),
   dockerDrivers: new Map(),
+  storageDrivers: new Map(),
+};
+vi.mock("@/services/drivers", () => driversMock);
+vi.mock("@infrawrench/server-core/drivers", () => driversMock);
+
+vi.mock("@infrawrench/server-core/tunnel-resolver", () => ({
+  rewriteCredentialsThroughTunnel: vi.fn().mockResolvedValue(undefined),
 }));
 
 const { resourceDetailRoutes } = await import("@/api/routes/resource-detail");
