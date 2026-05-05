@@ -1,0 +1,9 @@
+export { plugin } from "./plugin.js";
+export { DatabricksClient } from "./client.js";
+export { ClusterResourceType } from "./resources/cluster.js";
+export { SqlWarehouseResourceType } from "./resources/sql-warehouse.js";
+export { JobResourceType } from "./resources/job.js";
+export { PipelineResourceType } from "./resources/pipeline.js";
+export { CatalogResourceType } from "./resources/catalog.js";
+export { SchemaResourceType } from "./resources/schema.js";
+export { TableResourceType } from "./resources/table.js";
