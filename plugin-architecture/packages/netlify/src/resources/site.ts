@@ -1,0 +1,52 @@
+import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+
+export const NetlifySiteResourceType: ResourceTypeDefinition = {
+  id: "netlify-site",
+  displayName: "Site",
+  pluralDisplayName: "Sites",
+  description: "A Netlify site — static hosting with CI/CD, serverless functions, and edge network",
+  fields: [
+    { key: "name", label: "Name", kind: "string", required: true },
+    { key: "url", label: "URL", kind: "string", required: false },
+    { key: "sslUrl", label: "SSL URL", kind: "string", required: false },
+    { key: "customDomain", label: "Custom Domain", kind: "string", required: false },
+    { key: "state", label: "State", kind: "string", required: false },
+    { key: "plan", label: "Plan", kind: "string", required: false },
+    { key: "repoUrl", label: "Repository", kind: "string", required: false },
+    { key: "repoBranch", label: "Production Branch", kind: "string", required: false },
+    { key: "buildCommand", label: "Build Command", kind: "string", required: false },
+    { key: "publishDir", label: "Publish Directory", kind: "string", required: false },
+    { key: "framework", label: "Framework", kind: "string", required: false },
+    { key: "functionsRegion", label: "Functions Region", kind: "string", required: false },
+    { key: "ssl", label: "SSL", kind: "boolean", required: false },
+    { key: "forceSsl", label: "Force SSL", kind: "boolean", required: false },
+    { key: "managedDns", label: "Managed DNS", kind: "boolean", required: false },
+    { key: "accountName", label: "Team", kind: "string", required: false },
+    { key: "createdAt", label: "Created At", kind: "string", required: false },
+    { key: "updatedAt", label: "Updated At", kind: "string", required: false },
+  ],
+  outputs: [
+    { key: "siteId", label: "Site ID", sensitive: false },
+    { key: "siteName", label: "Site Name", sensitive: false },
+    { key: "url", label: "Site URL", sensitive: false },
+    { key: "sslUrl", label: "SSL URL", sensitive: false },
+    { key: "deployHook", label: "Deploy Hook URL", sensitive: true },
+  ],
+  dashboardPinnable: true,
+  supportsCreate: true,
+  iconKey: "site",
+  secretExportTemplates: [
+    {
+      id: "site-url",
+      displayName: "Site URL",
+      description: "The production URL for this Netlify site",
+      entries: [{ envKey: "SITE_URL", outputKey: "sslUrl" }],
+    },
+    {
+      id: "deploy-hook",
+      displayName: "Deploy Hook",
+      description: "Webhook URL to trigger a new deploy",
+      entries: [{ envKey: "NETLIFY_DEPLOY_HOOK", outputKey: "deployHook" }],
+    },
+  ],
+};
