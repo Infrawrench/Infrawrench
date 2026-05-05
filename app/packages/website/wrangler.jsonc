@@ -1,0 +1,13 @@
+{
+  "$schema": "https://unpkg.com/wrangler/config-schema.json",
+  "name": "infrawrench-website",
+  "compatibility_date": "2026-05-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "GITHUB_OWNER": "Infrawrench",
+    "GITHUB_REPO": "Infrawrench",
+  },
+  "observability": {
+    "enabled": true,
+  },
+}

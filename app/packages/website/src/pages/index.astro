@@ -1,0 +1,59 @@
+---
+export const prerender = false;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Infrawrench</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family:
+          system-ui,
+          -apple-system,
+          "Segoe UI",
+          sans-serif;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: #0b0d10;
+        color: #e8edf2;
+      }
+      main {
+        max-width: 36rem;
+        padding: 2rem;
+        text-align: center;
+      }
+      h1 {
+        font-size: clamp(2.5rem, 6vw, 4rem);
+        margin: 0 0 0.5rem;
+        letter-spacing: -0.02em;
+      }
+      p {
+        opacity: 0.75;
+        margin: 0 0 2rem;
+      }
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        background: rgba(255, 255, 255, 0.06);
+        padding: 0.15rem 0.4rem;
+        border-radius: 0.35rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Infrawrench</h1>
+      <p>A tool for managing infrastructure.</p>
+      <p>
+        Releases API: <code>GET /api/latest</code>
+      </p>
+    </main>
+  </body>
+</html>
