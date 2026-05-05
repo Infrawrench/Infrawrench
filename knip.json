@@ -1,0 +1,57 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "workspaces": {
+    "plugin-architecture/packages/plugin-base": {
+      "entry": ["src/index.ts", "src/test-harness.ts", "src/**/*.test.ts"],
+      "project": ["src/**/*.ts"]
+    },
+    "plugin-architecture/packages/*": {
+      "entry": [
+        "src/index.ts",
+        "src/node-driver.ts",
+        "src/node-driver/index.ts",
+        "src/**/*.test.ts"
+      ],
+      "project": ["src/**/*.{ts,tsx}"]
+    },
+    "app/packages/ui": {
+      "entry": ["src/index.ts", "src/**/*.test.{ts,tsx}"],
+      "project": ["src/**/*.{ts,tsx}"]
+    },
+    "app/packages/web": {
+      "entry": [
+        "server.ts",
+        "env-loader.mjs",
+        "drizzle.config.ts",
+        "vite.config.ts",
+        "vitest.config.ts",
+        "src/main.tsx",
+        "src/routeTree.gen.ts",
+        "src/routes/**/*.{ts,tsx}",
+        "src/**/*.test.{ts,tsx}"
+      ],
+      "project": ["src/**/*.{ts,tsx}"]
+    },
+    "app/packages/desktop": {
+      "entry": [
+        "electron/main.ts",
+        "electron/preload.ts",
+        "electron.vite.config.ts",
+        "vitest.config.ts",
+        "src/main.tsx",
+        "src/routeTree.gen.ts",
+        "src/routes/**/*.{ts,tsx}",
+        "src/**/*.test.{ts,tsx}"
+      ],
+      "project": ["src/**/*.{ts,tsx}", "electron/**/*.ts"]
+    },
+    "app/packages/server-core": {
+      "entry": ["src/**/*.ts"],
+      "project": ["src/**/*.ts"]
+    },
+    "app/packages/poller": {
+      "entry": ["src/index.ts", "src/**/*.test.ts"],
+      "project": ["src/**/*.ts"]
+    }
+  }
+}

@@ -1,0 +1,10 @@
+node_modules
+dist
+.turbo
+.next
+.tanstack
+out
+coverage
+pnpm-lock.yaml
+*.generated.*
+routeTree.gen.ts
