@@ -1,0 +1,99 @@
+/*
+ * Infrawrench semantic colour tokens.
+ *
+ * @theme defines light-mode values (and emits :root custom properties).
+ * The dark media query overrides those properties for dark mode.
+ * Tailwind generates utility classes (bg-surface, text-on-surface, etc.).
+ */
+
+@theme {
+  /* ── Surfaces ── */
+  --color-surface: #ffffff;
+  --color-surface-raised: #f9fafb;
+  --color-surface-overlay: #f3f4f6;
+  --color-surface-sunken: #e5e7eb;
+  --color-surface-inset: #f9fafb;
+
+  /* ── Text (on-surface) ── */
+  --color-on-surface: #111827;
+  --color-on-surface-secondary: #374151;
+  --color-on-surface-tertiary: #6b7280;
+  --color-on-surface-muted: #6b7280;
+  --color-on-surface-faint: #9ca3af;
+
+  /* ── Borders ── */
+  --color-border: #e5e7eb;
+  --color-border-strong: #d1d5db;
+
+  /* ── Accent (blue) ── */
+  --color-accent: #2563eb;
+  --color-accent-hover: #1d4ed8;
+  --color-accent-strong: #1e40af;
+  --color-accent-subtle: #3b82f6;
+  --color-accent-muted: #eff6ff;
+  --color-accent-muted-border: #bfdbfe;
+  --color-accent-on-muted: #1e40af;
+}
+
+:root {
+  color-scheme: light dark;
+
+  /* ── Charts (not used by Tailwind utilities, just CSS vars) ── */
+  --color-chart-grid: #e5e7eb;
+  --color-chart-axis: #6b7280;
+  --color-chart-tick: #6b7280;
+  --color-chart-tooltip-bg: #ffffff;
+  --color-chart-tooltip-border: #e5e7eb;
+
+  /* ── Terminal ── */
+  --color-terminal-bg: #ffffff;
+  --color-terminal-fg: #1e1e1e;
+  --color-terminal-cursor: #1e1e1e;
+  --color-terminal-cursor-accent: #ffffff;
+  --color-terminal-selection: #add6ff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* ── Surfaces ── */
+    --color-surface: #030712;
+    --color-surface-raised: #111827;
+    --color-surface-overlay: #1f2937;
+    --color-surface-sunken: #374151;
+    --color-surface-inset: #030712;
+
+    /* ── Text (on-surface) ── */
+    --color-on-surface: #f3f4f6;
+    --color-on-surface-secondary: #e5e7eb;
+    --color-on-surface-tertiary: #9ca3af;
+    --color-on-surface-muted: #6b7280;
+    --color-on-surface-faint: #4b5563;
+
+    /* ── Borders ── */
+    --color-border: #1f2937;
+    --color-border-strong: #374151;
+
+    /* ── Accent (blue) ── */
+    --color-accent: #60a5fa;
+    --color-accent-hover: #93c5fd;
+    --color-accent-strong: #93c5fd;
+    --color-accent-subtle: #60a5fa;
+    --color-accent-muted: #172554;
+    --color-accent-muted-border: #1e3a5f;
+    --color-accent-on-muted: #93c5fd;
+
+    /* ── Charts ── */
+    --color-chart-grid: #374151;
+    --color-chart-axis: #4b5563;
+    --color-chart-tick: #9ca3af;
+    --color-chart-tooltip-bg: #1f2937;
+    --color-chart-tooltip-border: #374151;
+
+    /* ── Terminal ── */
+    --color-terminal-bg: #0d0d0d;
+    --color-terminal-fg: #d4d4d4;
+    --color-terminal-cursor: #d4d4d4;
+    --color-terminal-cursor-accent: #0d0d0d;
+    --color-terminal-selection: #264f78;
+  }
+}

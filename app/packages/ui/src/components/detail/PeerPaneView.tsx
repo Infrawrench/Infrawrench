@@ -1,0 +1,631 @@
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useDraggable, useDndContext, useDndMonitor, useDroppable } from "@dnd-kit/core";
+import type {
+  PeerPaneResource,
+  PeerPaneResourceGroup,
+  ResourceStatus,
+} from "@infrawrench/plugin-base";
+import type { DraggableResource } from "../../dnd/types.js";
+import { ErrorNotice } from "../ErrorNotice.js";
+import { ImportYamlModal } from "../ImportYamlModal.js";
+import type { PeerPaneData } from "./detail-types.js";
+
+export interface PeerPanePortForwardEntry {
+  sessionId: string;
+  localPort: number;
+  remotePort: number;
+  resourceName: string;
+  namespace: string;
+}
+
+export interface PeerPaneViewProps {
+  pane: PeerPaneData;
+  accountId: string;
+  parentResourceId: string;
+
+  /** Navigate to a pill's resource detail. */
+  onOpenPill: (resource: PeerPaneResource, group: PeerPaneResourceGroup) => void;
+
+  /** Optional: enables "Import YAML" header action. */
+  onImportYaml?: (yaml: string) => Promise<{ applied: number }>;
+
+  /** Optional: opens host-provided k9s/terminal overlay. If omitted, button is hidden. */
+  k9s?: {
+    label: string;
+    disabled?: boolean;
+    onOpen: () => void;
+  };
+
+  /** Optional: host-provided "Create" handler. If omitted, create buttons are hidden. */
+  onCreate?: (group: PeerPaneResourceGroup) => void;
+
+  /** Optional: enables per-pod exec button in pills. */
+  onExec?: (resource: PeerPaneResource, group: PeerPaneResourceGroup) => void;
+
+  /** Optional: enables port-forward button on services. */
+  portForward?: {
+    entries: PeerPanePortForwardEntry[];
+    /** Resource id currently being started */
+    starting: string | null;
+    error: string | null;
+    onStart: (resource: PeerPaneResource) => void;
+    onStop: (sessionId: string) => void;
+  };
+
+  /** Optional: enables secret-import drop target. */
+  onSecretDrop?: (source: DraggableResource) => void;
+}
+
+export function PeerPaneView({
+  pane,
+  accountId,
+  parentResourceId,
+  onOpenPill,
+  onImportYaml,
+  k9s,
+  onCreate,
+  onExec,
+  portForward,
+  onSecretDrop,
+}: PeerPaneViewProps) {
+  const [resourceGroups, setResourceGroups] = useState(pane.schema.resourceGroups);
+  const [importYamlOpen, setImportYamlOpen] = useState(false);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [nsFilter, setNsFilter] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return new URLSearchParams(window.location.search).get("ns");
+  });
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    if (nsFilter) url.searchParams.set("ns", nsFilter);
+    else url.searchParams.delete("ns");
+    window.history.replaceState(window.history.state, "", url.toString());
+  }, [nsFilter]);
+
+  useEffect(() => {
+    setResourceGroups(pane.schema.resourceGroups);
+  }, [pane]);
+
+  const supportsSecretImport = !!pane.schema.supportsSecretImport && !!onSecretDrop;
+  const droppableId = `secret-import:${accountId}:${parentResourceId}`;
+  const { active } = useDndContext();
+  const activeResource = active?.data.current?.resource as DraggableResource | undefined;
+  const dragFromSameCluster = activeResource?.accountId === accountId;
+  const { setNodeRef: setDropRef, isOver } = useDroppable({
+    id: droppableId,
+    disabled: dragFromSameCluster || !supportsSecretImport,
+  });
+
+  useDndMonitor({
+    onDragEnd(event) {
+      if (!supportsSecretImport) return;
+      if (String(event.over?.id) !== droppableId) return;
+      const resource = event.active.data.current?.resource as DraggableResource | undefined;
+      if (!resource) return;
+      if (resource.accountId === accountId) return;
+      onSecretDrop?.(resource);
+    },
+  });
+
+  const namespaces = useMemo(() => {
+    const nsSet = new Set<string>();
+    for (const group of resourceGroups) {
+      if (group.resourceTypeId === "k8s-namespace") continue;
+      for (const item of group.items) {
+        const ns = item.namespace ?? String(item.fields["namespace"] ?? "");
+        if (ns) nsSet.add(ns);
+      }
+    }
+    return Array.from(nsSet).sort();
+  }, [resourceGroups]);
+
+  const filteredGroups = useMemo(() => {
+    if (!nsFilter) return resourceGroups;
+    return resourceGroups.map((group) => {
+      if (group.resourceTypeId === "k8s-namespace") {
+        return {
+          ...group,
+          items: group.items.filter((item) => item.displayName === nsFilter),
+        };
+      }
+      return {
+        ...group,
+        items: group.items.filter((item) => {
+          const ns = item.namespace ?? String(item.fields["namespace"] ?? "");
+          return ns === nsFilter;
+        }),
+      };
+    });
+  }, [resourceGroups, nsFilter]);
+
+  const visibleGroups = filteredGroups.filter((g) => g.items.length > 0 || g.supportsCreate);
+
+  function toggleGroupCollapsed(key: string) {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  const isProvisioning =
+    pane.schema.status?.status === "provisioning" && resourceGroups.length === 0;
+  const paneError =
+    pane.schema.status?.status === "error" && resourceGroups.length === 0
+      ? (pane.schema.status.label ?? "Failed to load workloads")
+      : null;
+
+  if (isProvisioning) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 px-6 text-center space-y-4">
+        <div className="w-10 h-10 rounded-full border-2 border-blue-400/30 border-t-blue-400 animate-spin" />
+        <div className="space-y-1.5">
+          <p className="text-sm font-medium text-on-surface-secondary">Cluster is provisioning</p>
+          <p className="text-xs text-on-surface-muted max-w-xs">
+            Workloads will appear here once the cluster is ready. This usually takes a few minutes.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (paneError) {
+    return (
+      <div className="py-16 px-6">
+        <ErrorNotice message={paneError} />
+      </div>
+    );
+  }
+
+  return (
+    <div
+      ref={setDropRef}
+      className={`space-y-3 transition-colors rounded-xl ${isOver && supportsSecretImport ? "ring-2 ring-blue-500/50 bg-accent-muted" : ""}`}
+      data-parent-resource-id={parentResourceId}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          {namespaces.length > 1 && (
+            <select
+              value={nsFilter ?? ""}
+              onChange={(e) => setNsFilter(e.target.value || null)}
+              className="text-xs bg-surface-overlay border border-border-strong text-on-surface-secondary rounded-lg px-2 py-1.5 focus:outline-none focus:border-blue-500 transition-colors"
+            >
+              <option value="">All namespaces ({namespaces.length})</option>
+              {namespaces.map((ns) => (
+                <option key={ns} value={ns}>
+                  {ns}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {onImportYaml && (
+            <button
+              type="button"
+              onClick={() => setImportYamlOpen(true)}
+              className="px-3 py-1.5 rounded-lg border border-border-strong bg-surface-overlay hover:bg-surface-sunken text-sm text-on-surface-secondary transition-colors"
+            >
+              Import YAML
+            </button>
+          )}
+          {k9s && (
+            <button
+              onClick={() => {
+                if (!k9s.disabled) k9s.onOpen();
+              }}
+              disabled={k9s.disabled}
+              className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:bg-surface-overlay disabled:text-on-surface-tertiary disabled:hover:bg-surface-overlay text-sm font-medium text-white transition-colors"
+            >
+              {k9s.label}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {visibleGroups.map((group) => {
+        const groupKey = `${group.pluginId}:${group.resourceTypeId}`;
+        const isNamespaceGroup = group.resourceTypeId === "k8s-namespace";
+        const isCollapsed = collapsedGroups.has(groupKey);
+        const itemCount = group.items.length;
+
+        if (isNamespaceGroup && nsFilter) return null;
+
+        return (
+          <section
+            key={groupKey}
+            className="rounded-2xl border border-border bg-surface-raised/40 overflow-hidden"
+          >
+            <div
+              className="flex items-center justify-between gap-3 px-4 py-3 cursor-pointer select-none hover:bg-surface-overlay/30 transition-colors"
+              onClick={() => toggleGroupCollapsed(groupKey)}
+            >
+              <div className="flex items-center gap-2">
+                <span
+                  className={`text-on-surface-muted text-xs transition-transform ${isCollapsed ? "" : "rotate-90"}`}
+                >
+                  ▶
+                </span>
+                <h3 className="text-sm font-semibold text-on-surface">
+                  {getGroupDisplayTitle(group.title, itemCount)}
+                </h3>
+                {isNamespaceGroup && (
+                  <span className="text-xs text-on-surface-muted">
+                    {
+                      group.items.filter(
+                        (ns) =>
+                          ns.fields["system"] !== "true" && namespaces.includes(ns.displayName),
+                      ).length
+                    }{" "}
+                    user
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {group.supportsCreate && onCreate && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onCreate(group);
+                    }}
+                    className="px-2.5 py-1 rounded-lg border border-border-strong bg-surface-overlay text-xs text-on-surface-secondary hover:border-border-strong hover:bg-surface-sunken transition-colors"
+                  >
+                    Create {getCreateLabel(group.title)}
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {!isCollapsed && itemCount > 0 && (
+              <div className="px-4 pb-3">
+                {isNamespaceGroup ? (
+                  <NamespaceGrid
+                    items={group.items.filter((ns) => namespaces.includes(ns.displayName))}
+                    activeNamespace={nsFilter}
+                    onSelect={(ns) => setNsFilter(nsFilter === ns ? null : ns)}
+                  />
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {group.items.map((resource) => {
+                      const isService = group.resourceTypeId === "k8s-service";
+                      const hasSelector = resource.fields["hasSelector"] === "true";
+                      const pfEntry = portForward?.entries.find(
+                        (pf) =>
+                          pf.resourceName === resource.displayName &&
+                          pf.namespace ===
+                            (resource.namespace ??
+                              String(resource.fields["namespace"] ?? "default")),
+                      );
+                      return (
+                        <PeerResourcePill
+                          key={resource.id}
+                          pane={pane}
+                          group={group}
+                          resource={resource}
+                          accountId={accountId}
+                          onClick={() => onOpenPill(resource, group)}
+                          {...(portForward && isService && hasSelector
+                            ? { onPortForward: () => portForward.onStart(resource) }
+                            : {})}
+                          isPortForwarding={portForward?.starting === resource.id}
+                          {...(pfEntry ? { activePortForward: pfEntry } : {})}
+                          {...(portForward ? { onStopPortForward: portForward.onStop } : {})}
+                          {...(onExec && resource.supportsExec
+                            ? { onExec: () => onExec(resource, group) }
+                            : {})}
+                        />
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {!isCollapsed && itemCount === 0 && (
+              <div className="px-4 pb-3">
+                <p className="text-sm text-on-surface-muted">No resources found.</p>
+              </div>
+            )}
+          </section>
+        );
+      })}
+
+      {portForward && portForward.entries.length > 0 && (
+        <div className="space-y-1.5">
+          {portForward.entries.map((pf) => (
+            <div
+              key={pf.sessionId}
+              className="flex items-center justify-between gap-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-2.5"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse flex-shrink-0" />
+                <span className="text-sm text-on-surface-secondary font-medium truncate">
+                  {pf.resourceName}
+                </span>
+                <span className="text-xs text-on-surface-muted">{pf.namespace}</span>
+              </div>
+              <div className="flex items-center gap-3 flex-shrink-0">
+                <button
+                  onClick={() => {
+                    void navigator.clipboard.writeText(`localhost:${pf.localPort}`);
+                  }}
+                  className="text-xs font-mono text-emerald-700 dark:text-emerald-300 hover:text-emerald-600 dark:hover:text-emerald-200 transition-colors"
+                  title="Click to copy"
+                >
+                  localhost:{pf.localPort} → {pf.remotePort}
+                </button>
+                <button
+                  onClick={() => portForward.onStop(pf.sessionId)}
+                  className="px-2 py-0.5 rounded text-xs text-red-400 hover:text-red-500 dark:text-red-300 hover:bg-red-500/10 transition-colors"
+                >
+                  Stop
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {portForward?.error && (
+        <ErrorNotice
+          message={portForward.error}
+          className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2"
+          textClassName="text-sm text-red-600 dark:text-red-200"
+        />
+      )}
+
+      {isOver && supportsSecretImport && (
+        <div className="rounded-xl border-2 border-dashed border-blue-500/40 bg-accent-muted px-4 py-6 text-center">
+          <p className="text-sm font-medium text-accent-on-muted">Drop to create K8s Secret</p>
+          <p className="text-xs text-accent/60 mt-1">
+            Secret keys will be created from the resource's outputs
+          </p>
+        </div>
+      )}
+
+      {importYamlOpen && onImportYaml && (
+        <ImportYamlModal onClose={() => setImportYamlOpen(false)} onSubmit={onImportYaml} />
+      )}
+    </div>
+  );
+}
+
+function NamespaceGrid({
+  items,
+  activeNamespace,
+  onSelect,
+}: {
+  items: PeerPaneResource[];
+  activeNamespace: string | null;
+  onSelect: (ns: string) => void;
+}) {
+  const userNs = items.filter((ns) => ns.fields["system"] !== "true");
+  const systemNs = items.filter((ns) => ns.fields["system"] === "true");
+  const [showSystem, setShowSystem] = useState(false);
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-1.5">
+        {userNs.map((ns) => (
+          <button
+            key={ns.id}
+            onClick={() => onSelect(ns.displayName)}
+            className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
+              activeNamespace === ns.displayName
+                ? "bg-blue-600 text-white"
+                : "bg-surface-overlay text-on-surface-secondary hover:bg-surface-sunken hover:text-on-surface"
+            }`}
+          >
+            {ns.displayName}
+            {ns.status && (
+              <span
+                className={`ml-1.5 inline-block w-1.5 h-1.5 rounded-full ${statusClassName(ns.status)}`}
+              />
+            )}
+          </button>
+        ))}
+      </div>
+      {systemNs.length > 0 && (
+        <div>
+          <button
+            onClick={() => setShowSystem(!showSystem)}
+            className="text-xs text-on-surface-faint hover:text-on-surface-tertiary transition-colors"
+          >
+            {showSystem ? "Hide" : "Show"} {systemNs.length} system namespace
+            {systemNs.length === 1 ? "" : "s"}
+          </button>
+          {showSystem && (
+            <div className="flex flex-wrap gap-1.5 mt-1.5">
+              {systemNs.map((ns) => (
+                <button
+                  key={ns.id}
+                  onClick={() => onSelect(ns.displayName)}
+                  className={`px-2.5 py-1 rounded-lg text-xs transition-colors ${
+                    activeNamespace === ns.displayName
+                      ? "bg-blue-600/60 text-accent-on-muted"
+                      : "bg-surface-overlay/50 text-on-surface-muted hover:bg-surface-sunken/50 hover:text-on-surface-tertiary"
+                  }`}
+                >
+                  {ns.displayName}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PeerResourcePill({
+  pane,
+  group,
+  resource,
+  accountId,
+  onClick,
+  onPortForward,
+  isPortForwarding,
+  activePortForward,
+  onStopPortForward,
+  onExec,
+}: {
+  pane: PeerPaneData;
+  group: PeerPaneResourceGroup;
+  resource: PeerPaneResource;
+  accountId: string;
+  onClick?: () => void;
+  onPortForward?: () => void;
+  isPortForwarding?: boolean;
+  activePortForward?: PeerPanePortForwardEntry;
+  onStopPortForward?: (sessionId: string) => void;
+  onExec?: () => void;
+}): ReactNode {
+  const draggableResource: DraggableResource = {
+    id: resource.id,
+    pluginId: resource.pluginId,
+    resourceTypeId: group.resourceTypeId,
+    accountId,
+    displayName: resource.displayName,
+    fields: resource.fields,
+    ...(resource.externalId ? { externalId: resource.externalId } : {}),
+  };
+
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: resource.id,
+    data: {
+      resource: draggableResource,
+      dragLabel: resource.displayName,
+    },
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      {...listeners}
+      {...attributes}
+      onClick={
+        onClick
+          ? (event) => {
+              if ((event.target as HTMLElement).closest("button")) return;
+              onClick();
+            }
+          : undefined
+      }
+      className={`group flex items-center gap-2 rounded-full border bg-surface-raised px-3 py-2 ${onClick ? "cursor-pointer hover:bg-surface-sunken" : "cursor-grab"} active:cursor-grabbing transition-colors ${
+        activePortForward
+          ? "border-emerald-500/40"
+          : isDragging
+            ? "opacity-40 border-border-strong"
+            : "border-border-strong hover:border-border-strong"
+      }`}
+    >
+      <span
+        className="w-4 h-4 flex-shrink-0"
+        dangerouslySetInnerHTML={{ __html: pane.pluginLogoSvg }}
+        aria-hidden
+      />
+      <div className="min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-on-surface truncate">
+            {resource.displayName}
+          </span>
+          {resource.status && (
+            <span
+              className={`w-2 h-2 rounded-full flex-shrink-0 ${statusClassName(resource.status)}`}
+              aria-hidden
+            />
+          )}
+        </div>
+        {resource.subtitle && (
+          <p className="text-xs text-on-surface-muted truncate">{resource.subtitle}</p>
+        )}
+        {activePortForward && (
+          <p className="text-xs text-emerald-400 font-mono truncate">
+            :{activePortForward.localPort} → :{activePortForward.remotePort}
+          </p>
+        )}
+      </div>
+      {onExec && (
+        <button
+          type="button"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation();
+            onExec();
+          }}
+          className="ml-1 h-6 px-2 rounded-full bg-surface-overlay hover:bg-surface-sunken text-xs text-on-surface-secondary transition-colors whitespace-nowrap"
+          title="Exec shell"
+        >
+          ⌨
+        </button>
+      )}
+      {onPortForward && !activePortForward && (
+        <button
+          type="button"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation();
+            onPortForward();
+          }}
+          disabled={isPortForwarding}
+          className="ml-1 h-6 px-2 rounded-full bg-surface-overlay hover:bg-surface-sunken disabled:opacity-50 text-xs text-on-surface-secondary transition-colors whitespace-nowrap"
+          title="Port forward"
+        >
+          {isPortForwarding ? "…" : "⇌"}
+        </button>
+      )}
+      {activePortForward && onStopPortForward && (
+        <button
+          type="button"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={(event) => {
+            event.stopPropagation();
+            onStopPortForward(activePortForward.sessionId);
+          }}
+          className="ml-1 w-6 h-6 rounded-full bg-red-100 dark:bg-red-900/50 hover:bg-red-200 dark:hover:bg-red-800/50 text-xs text-red-500 dark:text-red-300 transition-colors"
+          title="Stop port forward"
+        >
+          ■
+        </button>
+      )}
+    </div>
+  );
+}
+
+export function replacePeerPaneTrailingCount(title: string, count: number): string {
+  return /\(\d+\)$/.test(title) ? title.replace(/\(\d+\)$/, `(${count})`) : title;
+}
+
+function getGroupDisplayTitle(title: string, itemCount: number): string {
+  if (/\(\d+\)$/.test(title)) {
+    return title.replace(/\(\d+\)$/, `(${itemCount})`);
+  }
+  return `${title} (${itemCount})`;
+}
+
+function getCreateLabel(title: string): string {
+  return title
+    .replace(/\(\d+\)$/, "")
+    .trim()
+    .replace(/s$/i, "");
+}
+
+function statusClassName(status: ResourceStatus): string {
+  switch (status) {
+    case "healthy":
+      return "bg-emerald-400";
+    case "degraded":
+      return "bg-amber-400";
+    case "error":
+      return "bg-red-400";
+    case "provisioning":
+      return "bg-blue-400";
+    case "unknown":
+    default:
+      return "bg-surface-sunken";
+  }
+}
