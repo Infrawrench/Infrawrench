@@ -1,0 +1,212 @@
+export type FieldKind = "string" | "number" | "boolean" | "enum" | "secret" | "association";
+
+/** Describes a specific plugin/resource-type/output that can provide a value */
+export interface AssociationSource {
+  pluginId: string;
+  resourceTypeId: string;
+  outputKey: string;
+}
+
+export interface FieldDefinition {
+  key: string;
+  label: string;
+  kind: FieldKind;
+  required: boolean;
+  description?: string;
+  /** For "enum" fields */
+  enumValues?: string[];
+  /**
+   * For "secret" fields — which output keys from other resources can resolve this.
+   * e.g. ["connectionString"] means any resource that outputs "connectionString" can fill this.
+   */
+  resolvableOutputKeys?: string[];
+  /**
+   * For "association" fields — explicit list of plugin/type/output combos that can provide this.
+   * Also supports literal string input (user pastes a value directly).
+   */
+  resolvableFrom?: AssociationSource[];
+  /** Whether the field supports a literal string value in addition to output-ref resolution */
+  allowLiteral?: boolean;
+}
+
+export interface ResourceOutput {
+  key: string;
+  label: string;
+  /** Sensitive outputs are encrypted at rest and masked in the UI */
+  sensitive: boolean;
+  description?: string;
+}
+
+/**
+ * Declares that another plugin can be instantiated from this resource's outputs
+ * and rendered as additional tabs in the resource detail view.
+ *
+ * Example: A GKE cluster declares a Kubernetes peer integration, mapping its
+ * `kubeconfig` output to the Kubernetes plugin's `kubeconfig` credential.
+ */
+export interface PeerPluginIntegration {
+  /** ID of the peer plugin to instantiate */
+  pluginId: string;
+  /**
+   * Maps output keys from this resource to credential keys on the peer plugin.
+   * All listed outputs are resolved and passed as credentials to the peer plugin's client.
+   */
+  credentialMappings: { outputKey: string; credentialKey: string }[];
+  /** Label shown on the tab in the detail view */
+  tabLabel: string;
+  /**
+   * Optional gate. The tab only renders when the named field on the resource
+   * exists and matches one of the conditions. Use `equals` for exact match or
+   * `prefix` for "starts with" — useful for engine-conditional integrations
+   * (e.g. only show the PostgreSQL tab when `databaseVersion` starts with
+   * `POSTGRES_`).
+   */
+  showWhen?: { fieldKey: string; equals?: string; prefix?: string };
+}
+
+/** A single key-value entry in a secret export (e.g. DATABASE_URL → connectionString output) */
+export interface SecretExportEntry {
+  /** The key in the K8s secret / env var name */
+  envKey: string;
+  /** The output key on the source resource to resolve */
+  outputKey: string;
+  /** Human-readable description */
+  description?: string;
+}
+
+/**
+ * Declares a set of secrets that can be created from a resource's outputs.
+ * Shown when the user drags a resource onto a K8s cluster or SSH target.
+ * Multiple templates allow different shapes (e.g. single URL vs individual fields).
+ */
+export interface SecretExportTemplate {
+  id: string;
+  displayName: string;
+  description?: string;
+  entries: SecretExportEntry[];
+}
+
+export interface ResourceTypeDefinition {
+  id: string;
+  displayName: string;
+  pluralDisplayName: string;
+  description: string;
+  fields: FieldDefinition[];
+  outputs: ResourceOutput[];
+  /** Set on child resource types — points to the parent type's id */
+  parentTypeId?: string;
+  /** Whether instances of this type can be pinned directly to a dashboard */
+  dashboardPinnable: boolean;
+  /** Named icon key within the plugin's icon set, falls back to the plugin logo */
+  iconKey?: string;
+  /**
+   * Peer plugin integrations — other plugins whose panes are shown as extra tabs
+   * when viewing a resource of this type. The host resolves the listed outputs and
+   * passes them as credentials to the peer plugin's client.
+   */
+  peerIntegrations?: PeerPluginIntegration[];
+  /**
+   * When present, the host renders a "Connect to service via SSH…" context menu item
+   * for instances of this type. `hostOutputKey` names the output key whose resolved
+   * value is used as the SSH server address (e.g. "ipv4").
+   */
+  sshEndpoint?: {
+    hostOutputKey: string;
+    /**
+     * Optional guard: SSH/SFTP buttons are only shown when the resource field
+     * named by `fieldKey` equals `value` (case-insensitive).
+     * For example `{ fieldKey: "status", value: "RUNNING" }` hides buttons
+     * while a GCE instance is still staging.
+     */
+    runningWhen?: { fieldKey: string; value: string };
+    /** Static default SSH username for this resource type (e.g. "root" for Hetzner). */
+    defaultUsername?: string;
+    /**
+     * Field key storing the per-instance SSH username (e.g. "sshUsername").
+     * Resolved from the resource's `fields` map. When present and non-empty,
+     * takes precedence over `defaultUsername`.
+     */
+    usernameFieldKey?: string;
+  };
+  /** If true, the host will show a storage browser and fetch storage stats for dashboard cards of this type */
+  supportsStorageBrowser?: boolean;
+  /** If true, the host will offer a "Create" button for this resource type */
+  supportsCreate?: boolean;
+  /**
+   * Whether instances of this type can be deleted via the host's delete button.
+   * Undefined/true → button shown (caller is expected to implement `deleteResource`).
+   * Set `false` on types whose provider API doesn't support deletion (e.g. GCP KMS key rings).
+   */
+  supportsDelete?: boolean;
+  /** If true, the host will open a built-in SSH terminal for instances of this type */
+  supportsTerminal?: boolean;
+  /** If true, the host will open a built-in SFTP file browser for instances of this type */
+  supportsSftpBrowser?: boolean;
+  /**
+   * Secret export templates — declares what secrets this resource can produce
+   * when dragged onto a K8s cluster or SSH target. Each template maps output keys
+   * to env-var-style secret keys.
+   */
+  secretExportTemplates?: SecretExportTemplate[];
+  /**
+   * Per-resource SQL driver — when present, the host resolves a connection string
+   * from this resource's outputs and enables a SQL editor tab in the detail view.
+   * Unlike the manifest-level sqlDriver (which uses account credentials), this
+   * resolves the connection per-resource via client.resolveOutput().
+   */
+  resourceSqlDriver?: {
+    /** Identifier for the SQL engine (e.g. "postgres", "mysql") */
+    driver: string;
+    /** The output key to resolve for the connection string */
+    connectionStringOutputKey: string;
+  };
+  /** If true, the host renders a Metrics tab and calls fetchMetricSeries */
+  supportsMetrics?: boolean;
+  /**
+   * Declare downloadable credentials this resource can generate (e.g. AWS IAM access keys,
+   * GCP service-account JSON keys). When non-empty, the host shows a "Get credentials" button
+   * on the resource detail page and calls `client.exportCredential(typeId, resourceId, accountId, formatId)`.
+   */
+  credentialFormats?: CredentialFormat[];
+  /**
+   * Resource types this resource can be attached onto via drag-drop — e.g. a
+   * gce-disk declares gce-instance here. Drops are only accepted when the target
+   * belongs to the same account; when `matchField` is set, the named field must
+   * also match between source and target (e.g. matching zone).
+   */
+  attachTargets?: AttachTarget[];
+}
+
+/**
+ * Declares that this resource type can be dragged onto a resource of `resourceTypeId`
+ * within the same account to trigger `client.attachResource`.
+ */
+export interface AttachTarget {
+  pluginId: string;
+  resourceTypeId: string;
+  /** If set, a field with this key must match between source and target. */
+  matchField?: string;
+  /** Short verb shown on the drop hint, e.g. "Attach". Defaults to "Attach". */
+  verb?: string;
+}
+
+/**
+ * Declares one way a resource can produce credentials for external use. A resource type
+ * can declare multiple formats (e.g. GCP service accounts offer JSON and PKCS#12 keys).
+ * The plugin is responsible for the actual credential-creation API call in `exportCredential`.
+ */
+export interface CredentialFormat {
+  /** Stable identifier passed back to `exportCredential`. */
+  id: string;
+  /** Short label shown in the format picker, e.g. "Access Key", "JSON Key File". */
+  label: string;
+  /** Longer description shown alongside the label. */
+  description?: string;
+  /**
+   * Presentation hint for the credential body. Affects the download extension and
+   * whether the UI renders it as a code block or as base64-decoded binary.
+   */
+  mediaType: "json" | "text" | "ini" | "binary-base64";
+  /** Suggested filename (without path). `{resource}` is replaced with the resource external id. */
+  filenameTemplate?: string;
+}
