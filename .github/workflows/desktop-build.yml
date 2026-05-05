@@ -1,0 +1,311 @@
+name: Build Desktop App
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux-arm64-build:
+    runs-on: ubuntu-24.04-arm
+    name: Build on ubuntu-24.04-arm
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+      - name: Install Linux dependencies
+        run: sudo apt-get update && sudo apt-get install -y build-essential flatpak flatpak-builder
+      - name: Setup cache
+        uses: actions/cache@v5
+        with:
+          key: ${{ matrix.platform }}-cache-${{ hashFiles('pnpm-lock.yaml') }}
+          path: |
+            ${{ runner.temp }}/electron-cache
+            ${{ runner.temp }}/electron-builder-cache
+            .turbo
+            node_modules
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - name: Copy env.production.ts to env.ts for desktop package
+        run: cp app/packages/desktop/env.production.ts app/packages/desktop/env.ts
+      - name: Build plugin dependencies
+        run: pnpm turbo build --filter='@infrawrench/desktop^...'
+      - name: Build
+        run: pnpm --filter @infrawrench/desktop dist --linux deb appimage
+        env:
+          ELECTRON_CACHE: ${{ runner.temp }}/electron-cache
+          ELECTRON_BUILDER_CACHE: ${{ runner.temp }}/electron-builder-cache
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: dist-linux-arm64
+          path: app/packages/desktop/dist/*
+
+  check-if-release:
+    runs-on: ubuntu-24.04-arm
+    name: Check if this is a new tag and get the release notes if it is
+    outputs:
+      package-version: ${{ steps.check-if-release.outputs.PACKAGE_VERSION }}
+      release-notes: ${{ steps.check-if-release.outputs.RELEASE_NOTES }}
+    steps:
+      - name: Install git-cliff
+        run: |
+          set -eo pipefail
+          wget https://github.com/orhun/git-cliff/releases/download/v2.12.0/git-cliff-2.12.0-aarch64-unknown-linux-gnu.tar.gz
+          tar -xvzf git-cliff-2.12.0-aarch64-unknown-linux-gnu.tar.gz
+          sudo mv ./git-cliff-2.12.0/git-cliff /usr/local/bin/git-cliff
+          sudo chmod +x /usr/local/bin/git-cliff
+          rm git-cliff-2.12.0-aarch64-unknown-linux-gnu.tar.gz
+          rm -rf git-cliff-2.12.0
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Check if this is a new tag
+        id: check-if-release
+        run: |
+          set -eo pipefail
+          PACKAGE_VERSION=$(jq -r '.version' app/packages/desktop/package.json)
+          if [ -n "$(git tag -l "v${PACKAGE_VERSION}")" ]; then
+            echo "PACKAGE_VERSION=" >> $GITHUB_OUTPUT
+            echo "RELEASE_NOTES=" >> $GITHUB_OUTPUT
+          else
+            echo "PACKAGE_VERSION=${PACKAGE_VERSION}" >> $GITHUB_OUTPUT
+            git-cliff --unreleased --output CHANGELOG.md
+            echo "RELEASE_NOTES=$(base64 -w 0 CHANGELOG.md)" >> $GITHUB_OUTPUT
+            rm CHANGELOG.md
+          fi
+
+  linux-x64-build:
+    runs-on: ubuntu-24.04
+    name: Build on ubuntu-24.04
+    needs: check-if-release
+    if: needs.check-if-release.outputs.package-version != ''
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+      - name: Install Linux dependencies
+        run: sudo apt-get update && sudo apt-get install -y build-essential flatpak flatpak-builder
+      - name: Setup cache
+        uses: actions/cache@v5
+        with:
+          key: ${{ matrix.platform }}-electron-cache-${{ hashFiles('pnpm-lock.yaml') }}
+          path: |
+            ${{ runner.temp }}/electron-cache
+            ${{ runner.temp }}/electron-builder-cache
+            .turbo
+            node_modules
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - name: Copy env.production.ts to env.ts for desktop package
+        run: cp app/packages/desktop/env.production.ts app/packages/desktop/env.ts
+      - name: Build plugin dependencies
+        run: sudo env "PATH=$PATH" pnpm turbo build --filter='@infrawrench/desktop^...'
+      - name: Build
+        run: sudo env "PATH=$PATH" pnpm --filter @infrawrench/desktop dist --linux deb appimage snap
+        env:
+          ELECTRON_CACHE: ${{ runner.temp }}/electron-cache
+          ELECTRON_BUILDER_CACHE: ${{ runner.temp }}/electron-builder-cache
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: dist-linux-x64
+          path: app/packages/desktop/dist/*
+
+  macos-build:
+    strategy:
+      matrix:
+        platform: [macos-15-intel, macos-15]
+    runs-on: ${{ matrix.platform }}
+    name: Build on ${{ matrix.platform }}
+    needs: check-if-release
+    if: needs.check-if-release.outputs.package-version != ''
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+      - name: Setup cache
+        uses: actions/cache@v5
+        with:
+          key: ${{ matrix.platform }}-electron-cache-${{ hashFiles('pnpm-lock.yaml') }}
+          path: |
+            ${{ runner.temp }}/electron-cache
+            ${{ runner.temp }}/electron-builder-cache
+            .turbo
+            node_modules
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - name: Copy env.production.ts to env.ts for desktop package
+        run: cp app/packages/desktop/env.production.ts app/packages/desktop/env.ts
+      - name: Setup Keychain
+        env:
+          MACOS_APP_CERTIFICATE_BASE64: ${{ secrets.MACOS_APP_CERTIFICATE_BASE64 }}
+          MACOS_APP_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_APP_CERTIFICATE_PASSWORD }}
+          MACOS_INSTALLER_CERTIFICATE_BASE64: ${{ secrets.MACOS_INSTALLER_CERTIFICATE_BASE64 }}
+          MACOS_INSTALLER_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_INSTALLER_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          set -eo pipefail
+
+          APP_CERT_PATH="$RUNNER_TEMP/developer_id_application.p12"
+          INSTALLER_CERT_PATH="$RUNNER_TEMP/developer_id_installer.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+
+          echo "$MACOS_APP_CERTIFICATE_BASE64" | base64 --decode > "$APP_CERT_PATH"
+          echo "$MACOS_INSTALLER_CERTIFICATE_BASE64" | base64 --decode > "$INSTALLER_CERT_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          security import "$APP_CERT_PATH" \
+            -P "$MACOS_APP_CERTIFICATE_PASSWORD" \
+            -A \
+            -t cert \
+            -f pkcs12 \
+            -k "$KEYCHAIN_PATH"
+
+          security import "$INSTALLER_CERT_PATH" \
+            -P "$MACOS_INSTALLER_CERTIFICATE_PASSWORD" \
+            -A \
+            -t cert \
+            -f pkcs12 \
+            -k "$KEYCHAIN_PATH"
+
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+          security default-keychain -d user -s "$KEYCHAIN_PATH"
+
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s \
+            -k "$KEYCHAIN_PASSWORD" \
+            "$KEYCHAIN_PATH"
+
+          echo "Available code signing identities:"
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+      - name: Build plugin dependencies
+        run: pnpm turbo build --filter='@infrawrench/desktop^...'
+      - name: Build
+        run: pnpm --filter @infrawrench/desktop dist
+        env:
+          ELECTRON_CACHE: ${{ runner.temp }}/electron-cache
+          ELECTRON_BUILDER_CACHE: ${{ runner.temp }}/electron-builder-cache
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: dist-${{ matrix.platform }}
+          path: app/packages/desktop/dist/*
+
+  windows-build:
+    strategy:
+      matrix:
+        platform: [windows-2025-vs2026, windows-11-arm]
+    runs-on: ${{ matrix.platform }}
+    name: Build on ${{ matrix.platform }}
+    needs: check-if-release
+    if: needs.check-if-release.outputs.package-version != ''
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+      - name: Setup cache
+        uses: actions/cache@v5
+        with:
+          key: ${{ matrix.platform }}-electron-cache-${{ hashFiles('pnpm-lock.yaml') }}
+          path: |
+            ${{ runner.temp }}/electron-cache
+            ${{ runner.temp }}/electron-builder-cache
+            .turbo
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - name: Copy env.production.ts to env.ts for desktop package
+        run: cp app/packages/desktop/env.production.ts app/packages/desktop/env.ts
+      - name: Build plugin dependencies
+        run: pnpm turbo build --filter='@infrawrench/desktop^...'
+      - name: Build
+        run: pnpm --filter @infrawrench/desktop dist
+        env:
+          ELECTRON_CACHE: ${{ runner.temp }}/electron-cache
+          ELECTRON_BUILDER_CACHE: ${{ runner.temp }}/electron-builder-cache
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: dist-${{ matrix.platform }}
+          path: app/packages/desktop/dist/*
+
+  publish-release:
+    runs-on: ubuntu-24.04-arm
+    name: Publish release
+    needs: [check-if-release, linux-arm64-build, linux-x64-build, macos-build, windows-build]
+    if: needs.check-if-release.outputs.package-version != ''
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v6
+      - name: Decode release notes
+        run: |
+          set -eo pipefail
+          echo "${{ needs.check-if-release.outputs.release-notes }}" | base64 --decode > CHANGELOG.md
+      - name: Checkout (for merge script)
+        uses: actions/checkout@v6
+        with:
+          path: repo
+      - name: Stage release artifacts
+        run: |
+          set -eo pipefail
+          mkdir dist
+
+          # macOS — dmg + zip per arch (zip is electron-updater's payload).
+          mv dist-macos-15/*.dmg dist-macos-15/*.zip dist/
+          mv dist-macos-15-intel/*.dmg dist-macos-15-intel/*.zip dist/
+
+          # Linux — AppImage/deb already named via artifactName / electron-builder defaults.
+          mv dist-linux-arm64/*.AppImage dist-linux-arm64/*.deb dist/
+          mv dist-linux-x64/*.AppImage dist-linux-x64/*.deb dist-linux-x64/*.snap dist/
+
+          # Windows — installers already named correctly via win.artifactName.
+          mv dist-windows-2025-vs2026/*.exe dist/
+          mv dist-windows-11-arm/*.exe dist/
+      - name: Merge updater metadata
+        run: |
+          set -eo pipefail
+          # Mac: union arm64 + x64 latest-mac.yml into a single file.
+          node repo/app/packages/desktop/scripts/merge-update-yml.mjs \
+            dist-macos-15/latest-mac.yml \
+            dist-macos-15-intel/latest-mac.yml \
+            dist/latest-mac.yml
+          # Windows: union x64 + arm64 latest.yml into a single file.
+          node repo/app/packages/desktop/scripts/merge-update-yml.mjs \
+            dist-windows-2025-vs2026/latest.yml \
+            dist-windows-11-arm/latest.yml \
+            dist/latest.yml
+          # Linux YMLs are already arch-suffixed by electron-builder; ship as-is.
+          mv dist-linux-x64/latest-linux.yml dist/
+          mv dist-linux-arm64/latest-linux-arm64.yml dist/
+      - name: Clean staging dirs
+        run: rm -rf dist-macos-15 dist-macos-15-intel dist-linux-arm64 dist-linux-x64 dist-windows-2025-vs2026 dist-windows-11-arm repo
+      - name: Create release
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: dist/*
+          bodyFile: CHANGELOG.md
+          tag: v${{ needs.check-if-release.outputs.package-version }}
+          name: Infrawrench v${{ needs.check-if-release.outputs.package-version }}
