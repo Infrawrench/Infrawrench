@@ -49,6 +49,7 @@ import {
   navigateToWorkspaceTarget,
   syncWorkspaceRouteFromPath,
 } from "../lib/workspace-tabs";
+import { SHOW_SIGN_IN_BUTTON } from "../../env";
 
 export const Route = createRootRoute({
   component: RootLayout,
@@ -443,7 +444,7 @@ function RootLayout() {
                   <span className="text-base leading-none">+</span>
                   Add account
                 </button>
-                {!cloudAuthenticated && (
+                {SHOW_SIGN_IN_BUTTON && !cloudAuthenticated && (
                   <button
                     onClick={() => {
                       void startCloudAuth().then(() => {

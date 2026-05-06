@@ -6,12 +6,12 @@
     "moduleResolution": "Bundler",
     "jsx": "react-jsx",
     "outDir": "dist",
-    "rootDir": "src",
+    "rootDir": ".",
     "paths": {
       "@/*": ["./src/*"],
       "@blessed-plugins": ["../web/src/plugins/blessed-plugins.json"]
     }
   },
-  "include": ["src"],
+  "include": ["src", "env.ts"],
   "exclude": ["node_modules"]
 }
