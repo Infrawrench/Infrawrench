@@ -45,10 +45,24 @@ export async function listArtifactRegistryRepos(
   accountId: string,
   p: string,
 ): Promise<ResourceInstance[]> {
-  const items = await ctx.paginate<Record<string, unknown>>(
-    `https://artifactregistry.googleapis.com/v1/projects/${p}/locations/-/repositories`,
-    "repositories",
+  // Artifact Registry rejects the `locations/-` wildcard, so enumerate
+  // locations first then list repositories in each.
+  const locations = await ctx.paginate<{ locationId?: string }>(
+    `https://artifactregistry.googleapis.com/v1/projects/${p}/locations`,
+    "locations",
   );
+  const perLocation = await Promise.all(
+    locations
+      .map((l) => l.locationId)
+      .filter((id): id is string => !!id)
+      .map((loc) =>
+        ctx.paginate<Record<string, unknown>>(
+          `https://artifactregistry.googleapis.com/v1/projects/${p}/locations/${loc}/repositories`,
+          "repositories",
+        ),
+      ),
+  );
+  const items = perLocation.flat();
   return items.map((repo) => {
     const fullName = String(repo["name"]);
     const name = fullName.split("/").pop() ?? "";

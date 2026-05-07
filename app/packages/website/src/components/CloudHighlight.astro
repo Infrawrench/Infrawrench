@@ -1,0 +1,49 @@
+---
+import { Check } from 'lucide-astro';
+---
+
+<div class="cloud-panel">
+  <div class="cloud-panel-inner">
+    <div>
+      <p class="section-eyebrow">Cloud-native access</p>
+      <h2 class="section-title" style="text-align: left; font-size: 34px;">
+        SSH and Kubernetes exec<br />from your browser
+      </h2>
+      <p class="section-subtitle" style="text-align: left; margin: 0; font-size: 15px;">
+        In the cloud web app, terminal sessions are proxied securely through our WebSocket server.
+        No VPN, no local SSH client, no kubeconfig file required. Just sign in and connect.
+      </p>
+      <div class="check-list">
+        <div class="check-item">
+          <Check size={14} class="check-item-mark" />
+          SSH to EC2, GCE, Droplets, Hetzner servers, and any VM
+        </div>
+        <div class="check-item">
+          <Check size={14} class="check-item-mark" />
+          kubectl exec / interactive pod shells via WebSocket proxy
+        </div>
+        <div class="check-item">
+          <Check size={14} class="check-item-mark" />
+          Real-time pod log streaming directly in the browser
+        </div>
+        <div class="check-item">
+          <Check size={14} class="check-item-mark" />
+          SSH tunnels for proxying databases through a bastion host
+        </div>
+        <div class="check-item">
+          <Check size={14} class="check-item-mark" />
+          All sessions authenticated via your Infrawrench account
+        </div>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 14px;">
+      <div class="screenshot">
+        <img src="/screenshots/cloud-ssh.png" alt="Cloud SSH terminal in the web app" class="screenshot-img" />
+      </div>
+      <div class="screenshot">
+        <img src="/screenshots/cloud-k8s-exec.png" alt="K8s pod exec via WebSocket proxy" class="screenshot-img" />
+      </div>
+    </div>
+  </div>
+</div>

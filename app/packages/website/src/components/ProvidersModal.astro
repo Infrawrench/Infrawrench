@@ -1,0 +1,121 @@
+---
+import { providerGroups } from '../data/content';
+
+const totalProviders = providerGroups.reduce((sum, g) => sum + g.providers.length, 0);
+const totalResources = providerGroups.reduce(
+  (sum, g) => sum + g.providers.reduce((s, p) => s + p.resources.length, 0),
+  0,
+);
+---
+
+<!-- Trigger bar -->
+<div class="providers-bar">
+  <p class="section-eyebrow" style="margin-bottom: 16px;">Supported providers</p>
+  <p class="section-subtitle" style="margin-bottom: 24px;">
+    {totalProviders} providers · {totalResources}+ resource types across cloud, infrastructure, databases, and more.
+  </p>
+  <button class="btn-secondary" id="open-providers-modal" style="margin: 0 auto;">
+    View all supported providers &amp; resource types →
+  </button>
+</div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="providers-modal" role="dialog" aria-modal="true" aria-label="Supported providers">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div>
+        <h2 class="modal-title">Supported providers &amp; resource types</h2>
+        <p class="modal-subtitle">{totalProviders} providers · {totalResources}+ resource types</p>
+      </div>
+      <button class="modal-close" id="close-providers-modal" aria-label="Close">✕</button>
+    </div>
+
+    <div class="modal-search">
+      <input
+        type="text"
+        id="provider-search"
+        placeholder="Search providers or resource types…"
+        autocomplete="off"
+        spellcheck="false"
+      />
+    </div>
+
+    <div class="modal-body" id="modal-body">
+      {
+        providerGroups.map((group) => (
+          <div data-modal-group>
+            <p class="modal-group-name">{group.name}</p>
+            <div class="modal-provider-grid">
+              {group.providers.map((provider) => (
+                <div
+                  class="modal-provider-card"
+                  data-provider-name={provider.name.toLowerCase()}
+                  data-provider-resources={provider.resources.join(' ').toLowerCase()}
+                >
+                  <p class="modal-provider-name">{provider.name}</p>
+                  <p class="modal-provider-detail">{provider.detail}</p>
+                  <div class="modal-resource-tags">
+                    {provider.resources.slice(0, 8).map((r) => (
+                      <span class="modal-resource-tag">{r}</span>
+                    ))}
+                    {provider.resources.length > 8 && (
+                      <span class="modal-resource-tag" style="color: #374151;">
+                        +{provider.resources.length - 8} more
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))
+      }
+    </div>
+  </div>
+</div>
+
+<script>
+  const modal = document.getElementById('providers-modal')!;
+  const openBtn = document.getElementById('open-providers-modal')!;
+  const navBtn = document.getElementById('nav-providers-btn');
+  const closeBtn = document.getElementById('close-providers-modal')!;
+  const searchInput = document.getElementById('provider-search') as HTMLInputElement;
+  const providerCards = document.querySelectorAll<HTMLElement>('[data-provider-name]');
+
+  function openModal() {
+    modal.setAttribute('data-open', '');
+    document.body.style.overflow = 'hidden';
+    searchInput.value = '';
+    filterProviders('');
+    setTimeout(() => searchInput.focus(), 100);
+  }
+
+  function closeModal() {
+    modal.removeAttribute('data-open');
+    document.body.style.overflow = '';
+  }
+
+  function filterProviders(query: string) {
+    const q = query.toLowerCase().trim();
+    providerCards.forEach((card) => {
+      const name = card.dataset.providerName ?? '';
+      const resources = card.dataset.providerResources ?? '';
+      const match = !q || name.includes(q) || resources.includes(q);
+      match ? card.removeAttribute('data-hidden') : card.setAttribute('data-hidden', '');
+    });
+  }
+
+  openBtn.addEventListener('click', openModal);
+  navBtn?.addEventListener('click', openModal);
+  closeBtn.addEventListener('click', closeModal);
+
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) closeModal();
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && modal.hasAttribute('data-open')) closeModal();
+  });
+
+  searchInput.addEventListener('input', () => filterProviders(searchInput.value));
+</script>

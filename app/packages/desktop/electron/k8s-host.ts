@@ -67,6 +67,9 @@ ipcMain.handle(
       });
 
       nodeReq.on("error", (err) => reject(err));
+      nodeReq.setTimeout(30_000, () => {
+        nodeReq.destroy(new Error("K8s API request timed out (30s)"));
+      });
 
       if (req.body) nodeReq.write(req.body);
       nodeReq.end();

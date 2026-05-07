@@ -101,6 +101,23 @@ ipcMain.handle(
   },
 );
 
+ipcMain.handle(
+  "cloud_rename_account",
+  async (
+    _e,
+    { orgId, accountId, displayName }: { orgId: string; accountId: string; displayName: string },
+  ) => {
+    return cloudFetch<{ id: string; displayName: string }>(
+      orgId,
+      `/accounts/${encodeURIComponent(accountId)}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ displayName }),
+      },
+    );
+  },
+);
+
 // ──────────────────────────────────────────────────────────────
 // Dashboards
 // ──────────────────────────────────────────────────────────────

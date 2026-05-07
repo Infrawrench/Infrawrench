@@ -135,6 +135,14 @@ export async function deleteCloudAccount(orgId: string, accountId: string): Prom
   await invoke("cloud_delete_account", { orgId, accountId });
 }
 
+export async function renameCloudAccount(
+  orgId: string,
+  accountId: string,
+  displayName: string,
+): Promise<{ id: string; displayName: string }> {
+  return invoke("cloud_rename_account", { orgId, accountId, displayName });
+}
+
 export async function listCloudDashboards(orgId: string): Promise<CloudDashboard[]> {
   return invoke("cloud_list_dashboards", { orgId });
 }

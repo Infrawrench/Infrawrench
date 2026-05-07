@@ -965,14 +965,24 @@ function ResourceDetailPage() {
           // stash the context needed for the lazy fetch. Preserve hydrated
           // panes across background refreshes so the user doesn't lose state.
           if (resourceTypeDef?.peerIntegrations?.length) {
+            const integrationFields = enrichedResource.fields ?? {};
+            const visibleIntegrations = resourceTypeDef.peerIntegrations.filter((i) => {
+              if (!i.showWhen) return true;
+              const v = integrationFields[i.showWhen.fieldKey];
+              if (v == null || v === "") return false;
+              const s = String(v);
+              if (i.showWhen.equals != null) return s === i.showWhen.equals;
+              if (i.showWhen.prefix != null) return s.startsWith(i.showWhen.prefix);
+              return true;
+            });
             localPeerCtxRef.current = {
-              peerIntegrations: resourceTypeDef.peerIntegrations,
+              peerIntegrations: visibleIntegrations,
               parentPluginId: plugin.manifest.id,
               parentResourceTypeId: enrichedResource.resourceTypeId,
               parentResourceId: enrichedResource.id,
             };
             const stubPanes: PeerPaneData[] = [];
-            for (const integration of resourceTypeDef.peerIntegrations) {
+            for (const integration of visibleIntegrations) {
               const peerLoaded = await getPlugin(integration.pluginId);
               if (!peerLoaded) continue;
               stubPanes.push({
@@ -1588,15 +1598,16 @@ function ResourceDetailPage() {
               credentials: peerCredentials,
               schema: { ...peerSchema, supportsYamlImport: !!peerClient.importYaml },
             });
-          } catch {
+          } catch (err) {
             const peerLoaded = await getPlugin(integration.pluginId);
             if (!peerLoaded) return;
+            const message = err instanceof Error ? err.message : String(err);
             resolved.push({
               tabLabel: integration.tabLabel,
               pluginLogoSvg: peerLoaded.plugin.manifest.logoSvg,
               credentials: {},
               schema: {
-                status: { kind: "status-dot", status: "provisioning", label: "Provisioning" },
+                status: { kind: "status-dot", status: "error", label: message },
                 resourceGroups: [],
               },
             });

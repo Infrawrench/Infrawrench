@@ -192,6 +192,11 @@ function AccountPage() {
       onSearchQueryChange={setSearchQuery}
       activeSectionId={activeType}
       onActiveSectionIdChange={setActiveType}
+      onAccountUpdated={(displayName) => {
+        setMeta((prev) => (prev ? { ...prev, account: { ...prev.account, displayName } } : prev));
+        const { setWorkspaceTabTitle, activeWorkspaceTabId } = useUIStore.getState();
+        if (activeWorkspaceTabId) setWorkspaceTabTitle(activeWorkspaceTabId, displayName);
+      }}
     />
   );
 }

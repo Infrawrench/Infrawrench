@@ -1,5 +1,25 @@
 /// <reference types="astro/client" />
 
+declare module "typewriter-effect/dist/core" {
+  interface TypewriterOptions {
+    strings?: string[];
+    autoStart?: boolean;
+    loop?: boolean;
+    delay?: number;
+    deleteSpeed?: number;
+    cursor?: string;
+    wrapperClassName?: string;
+    cursorClassName?: string;
+    stringSplitter?: (text: string) => string[];
+    onCreateTextNode?: (character: string) => Text | null;
+    onRemoveNode?: (args: { node?: Node; charater?: string }) => void;
+  }
+  class Typewriter {
+    constructor(element: string | HTMLElement, options?: TypewriterOptions);
+  }
+  export default Typewriter;
+}
+
 declare namespace Cloudflare {
   interface Env {
     GITHUB_TOKEN: string;

@@ -313,18 +313,14 @@ export async function listAlloyDbClusters(
   accountId: string,
   p: string,
 ): Promise<ResourceInstance[]> {
-  const items = await ctx.paginate<Record<string, unknown>>(
+  const clusters = await ctx.paginate<Record<string, unknown>>(
     `https://alloydb.googleapis.com/v1/projects/${p}/locations/-/clusters`,
     "clusters",
   );
-  return items.map((c) => {
+  return clusters.map((c) => {
     const fullName = String(c["name"]);
     const name = fullName.split("/").pop() ?? "";
     const location = fullName.split("/")[3] ?? "";
-    const primary = c["primaryConfig"] as Record<string, unknown> | undefined;
-    const endpoint = String(
-      (primary?.["nodes"] as Array<Record<string, unknown>> | undefined)?.[0]?.["ipAddress"] ?? "",
-    );
     return {
       id: ctx.id(accountId, "alloydb-cluster", fullName),
       pluginId: "gcp",
@@ -338,11 +334,65 @@ export async function listAlloyDbClusters(
         state: String(c["state"] ?? ""),
         clusterType: String(c["clusterType"] ?? ""),
       },
-      resolvedOutputs: { primaryEndpoint: endpoint },
+      resolvedOutputs: {},
       secretStates: [],
       externalId: fullName,
       createdAt: String(c["createTime"] ?? ctx.now()),
       updatedAt: String(c["updateTime"] ?? ctx.now()),
+    };
+  });
+}
+
+export async function listAlloyDbInstances(
+  ctx: ListerContext,
+  accountId: string,
+  p: string,
+): Promise<ResourceInstance[]> {
+  // Enumerate clusters first, then list instances under each.
+  const clusters = await ctx.paginate<Record<string, unknown>>(
+    `https://alloydb.googleapis.com/v1/projects/${p}/locations/-/clusters`,
+    "clusters",
+  );
+  const perCluster = await Promise.all(
+    clusters.map(async (c) => {
+      const fullName = String(c["name"]);
+      try {
+        const instances = await ctx.paginate<Record<string, unknown>>(
+          `https://alloydb.googleapis.com/v1/${fullName}/instances`,
+          "instances",
+        );
+        return instances.map((inst) => ({ inst, parentFullName: fullName }));
+      } catch {
+        return [];
+      }
+    }),
+  );
+  return perCluster.flat().map(({ inst, parentFullName }) => {
+    const fullName = String(inst["name"]);
+    const name = fullName.split("/").pop() ?? "";
+    const ipAddress = String(inst["ipAddress"] ?? "");
+    const machineConfig = inst["machineConfig"] as Record<string, unknown> | undefined;
+    const cpuCount = Number(machineConfig?.["cpuCount"] ?? 0);
+    return {
+      id: ctx.id(accountId, "alloydb-instance", fullName),
+      pluginId: "gcp",
+      resourceTypeId: "alloydb-instance",
+      accountId,
+      parentResourceId: ctx.id(accountId, "alloydb-cluster", parentFullName),
+      displayName: name,
+      fields: {
+        name,
+        instanceType: String(inst["instanceType"] ?? ""),
+        state: String(inst["state"] ?? ""),
+        cpuCount,
+        ipAddress,
+        availabilityType: String(inst["availabilityType"] ?? ""),
+      },
+      resolvedOutputs: { ipAddress },
+      secretStates: [],
+      externalId: fullName,
+      createdAt: String(inst["createTime"] ?? ctx.now()),
+      updatedAt: String(inst["updateTime"] ?? ctx.now()),
     };
   });
 }

@@ -26,7 +26,12 @@ import type {
 } from "@infrawrench/plugin-base";
 import { dnsRecordBadgeColor, formatDnsTtl, labeledFieldItems } from "@infrawrench/plugin-base";
 import type { HostServices } from "@infrawrench/plugin-base";
-import { fetchAccessToken, serviceAccountKeySchema, type ServiceAccountKey } from "./auth.js";
+import {
+  fetchAccessToken,
+  invalidateAccessToken,
+  serviceAccountKeySchema,
+  type ServiceAccountKey,
+} from "./auth.js";
 import { formatBytes, formatGcpError, gcpStatus } from "./utils.js";
 import { buildConnectionUrl, engineInfoFromVersion } from "./cloudsql-engine.js";
 import {
@@ -105,11 +110,6 @@ import {
   executeCloudArmorCommand,
 } from "./cloud-armor-handlers.js";
 
-interface TokenCache {
-  token: string;
-  expiresAt: number; // ms
-}
-
 function mapSecretVersion(v: Record<string, unknown>): SecretVersion {
   const fullName = String(v["name"] ?? "");
   const id = fullName.split("/").pop() ?? "";
@@ -154,7 +154,6 @@ export class GcpClient implements PluginClient {
   private readonly project: string;
   private readonly resourceTypes: ResourceTypeDefinition[];
   private readonly hostServices: HostServices | undefined;
-  private tokenCache: TokenCache | null = null;
   private machineTypeFamilyRateCache = new Map<string, PricingCacheEntry>();
   private pricingRatesInFlightByGeo = new Map<string, Promise<PricingRates>>();
   /** Cached machine type specs (vcpus + memoryMb) keyed by machine type name, populated during getCreateConfig. */
@@ -174,21 +173,19 @@ export class GcpClient implements PluginClient {
     if (!this.project) throw new Error("GCP plugin: could not determine project ID");
   }
 
-  private async token(): Promise<string> {
-    const now = Date.now();
-    if (this.tokenCache && this.tokenCache.expiresAt > now + 60_000) {
-      return this.tokenCache.token;
-    }
-    const t = await fetchAccessToken(this.key);
-    this.tokenCache = { token: t, expiresAt: now + 3_600_000 };
-    return t;
+  private token(): Promise<string> {
+    return fetchAccessToken(this.key);
   }
 
   private async get<T>(url: string): Promise<T> {
-    const tok = await this.token();
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${tok}` },
-    });
+    let tok = await this.token();
+    let res = await fetch(url, { headers: { Authorization: `Bearer ${tok}` } });
+    if (res.status === 401) {
+      // Cached token may have been revoked early — invalidate and retry once.
+      invalidateAccessToken(this.key);
+      tok = await this.token();
+      res = await fetch(url, { headers: { Authorization: `Bearer ${tok}` } });
+    }
     if (!res.ok) {
       throw new Error(`GCP API ${res.status} for ${url}: ${await res.text()}`);
     }
@@ -299,6 +296,8 @@ export class GcpClient implements PluginClient {
         return listers.listMemorystoreRedis(ctx, accountId, p);
       case "alloydb-cluster":
         return listers.listAlloyDbClusters(ctx, accountId, p);
+      case "alloydb-instance":
+        return listers.listAlloyDbInstances(ctx, accountId, p);
       case "gcs-bucket":
         return listers.listGcsBuckets(ctx, accountId, p);
       case "pubsub-topic":
@@ -974,6 +973,31 @@ export class GcpClient implements PluginClient {
         return buildConnectionUrl(databaseVersion, ipAddress, password);
     }
 
+    if (typeId === "alloydb-instance") {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      const ipAddress = String(resource.resolvedOutputs["ipAddress"] ?? "");
+      // Password lives on the parent cluster (AlloyDB's initialUser is set
+      // at cluster creation). Derive the cluster's resourceId from the
+      // instance's external name and look the secret up there.
+      const clusterFullName = (resource.externalId ?? "").split("/instances/")[0] ?? "";
+      const clusterResourceId = clusterFullName
+        ? this.id(accountId, "alloydb-cluster", clusterFullName)
+        : "";
+      const password = clusterResourceId
+        ? ((await this.hostServices?.secrets?.getPlaintext(clusterResourceId, "rootPassword")) ??
+          "")
+        : "";
+      if (outputKey === "ipAddress") return ipAddress;
+      if (outputKey === "username") return "postgres";
+      if (outputKey === "port") return "5432";
+      if (outputKey === "password") return password;
+      if (outputKey === "connectionUrl") {
+        if (!ipAddress) return "";
+        const pw = encodeURIComponent(password);
+        return `postgres://postgres:${pw}@${ipAddress}:5432/postgres`;
+      }
+    }
+
     if (typeId === "ssl-certificate") {
       const resource = await this.getResource(typeId, resourceId, accountId);
       const fields = resource.fields;
@@ -1550,6 +1574,18 @@ export class GcpClient implements PluginClient {
       const fullName = resource.externalId ?? "";
       if (!fullName) throw new Error("Cannot determine AlloyDB cluster name for deletion");
       const res = await fetch(`https://alloydb.googleapis.com/v1/${fullName}?force=true`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${tok}` },
+      });
+      if (!res.ok) throw new Error(`AlloyDB API ${res.status}: ${await res.text()}`);
+      return;
+    }
+
+    if (typeId === "alloydb-instance") {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      const fullName = resource.externalId ?? "";
+      if (!fullName) throw new Error("Cannot determine AlloyDB instance name for deletion");
+      const res = await fetch(`https://alloydb.googleapis.com/v1/${fullName}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${tok}` },
       });

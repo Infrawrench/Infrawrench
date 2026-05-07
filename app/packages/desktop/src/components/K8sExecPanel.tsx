@@ -77,6 +77,20 @@ export function K8sExecPanel({
 
       const MAX_RETRIES = 15;
       const RETRY_DELAY_MS = 2_000;
+      // Transient errors from kubectl that are safe to retry.
+      const RETRYABLE_PATTERNS = [
+        "no agent available",
+        "error dialing backend",
+        "container not found",
+        "containerCreating",
+        "waiting to start",
+        "pod not running",
+      ];
+
+      function isRetryableOutput(output: string): boolean {
+        const lower = output.toLowerCase();
+        return RETRYABLE_PATTERNS.some((p) => lower.includes(p.toLowerCase()));
+      }
 
       function attemptConnect(retriesLeft: number) {
         if (disposed) return;
@@ -110,8 +124,29 @@ export function K8sExecPanel({
               return;
             }
             session = handle;
-            handle.onData((data) => term.write(data));
-            handle.onExit(() => term.write("\r\n\x1b[90m[Session closed]\x1b[0m\r\n"));
+
+            let outputBuffer = "";
+            const connectTime = Date.now();
+
+            handle.onData((data) => {
+              term.write(data);
+              outputBuffer += new TextDecoder().decode(data);
+            });
+
+            handle.onExit(() => {
+              session = null;
+              const elapsed = Date.now() - connectTime;
+              // Retry if kubectl exited very quickly with a known transient error.
+              if (retriesLeft > 0 && elapsed < 8_000 && isRetryableOutput(outputBuffer) && !disposed) {
+                term.write(
+                  `\x1b[90mWaiting for pod to be ready… (retrying in ${RETRY_DELAY_MS / 1000}s)\x1b[0m\r\n`,
+                );
+                setTimeout(() => attemptConnect(retriesLeft - 1), RETRY_DELAY_MS);
+              } else {
+                term.write("\r\n\x1b[90m[Session closed]\x1b[0m\r\n");
+              }
+            });
+
             handle.onError((err) => term.write(`\r\n\x1b[31m${err}\x1b[0m\r\n`));
           })
           .catch((err: unknown) => {

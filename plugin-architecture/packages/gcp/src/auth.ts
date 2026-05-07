@@ -15,6 +15,7 @@ export type ServiceAccountKey = z.infer<typeof serviceAccountKeySchema>;
 
 const accessTokenResponseSchema = z.object({
   access_token: z.string(),
+  expires_in: z.number().optional(),
 });
 
 const GCP_SCOPE = "https://www.googleapis.com/auth/cloud-platform";
@@ -72,7 +73,24 @@ async function makeJwt(key: ServiceAccountKey): Promise<string> {
   return `${unsigned}.${sigB64}`;
 }
 
-export async function fetchAccessToken(key: ServiceAccountKey): Promise<string> {
+interface CachedToken {
+  token: string;
+  expiresAt: number;
+}
+
+// Process-wide token cache + in-flight dedup, keyed by service account.
+// Persisting across GcpClient instances avoids hammering the OAuth endpoint
+// on every request, since a fresh client is constructed per API call.
+const tokenCache = new Map<string, CachedToken>();
+const tokenInFlight = new Map<string, Promise<string>>();
+
+function cacheKey(key: ServiceAccountKey): string {
+  return `${key.client_email}:${key.private_key_id}`;
+}
+
+async function fetchAccessTokenRaw(
+  key: ServiceAccountKey,
+): Promise<{ token: string; expiresInSec: number }> {
   const jwt = await makeJwt(key);
   const res = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
@@ -86,5 +104,31 @@ export async function fetchAccessToken(key: ServiceAccountKey): Promise<string> 
     throw new Error(`GCP auth error ${res.status}: ${await res.text()}`);
   }
   const data = accessTokenResponseSchema.parse(await res.json());
-  return data.access_token;
+  return { token: data.access_token, expiresInSec: data.expires_in ?? 3600 };
+}
+
+export async function fetchAccessToken(key: ServiceAccountKey): Promise<string> {
+  const k = cacheKey(key);
+  const now = Date.now();
+  const cached = tokenCache.get(k);
+  if (cached && cached.expiresAt > now + 60_000) return cached.token;
+
+  const pending = tokenInFlight.get(k);
+  if (pending) return pending;
+
+  const promise = (async () => {
+    try {
+      const { token, expiresInSec } = await fetchAccessTokenRaw(key);
+      tokenCache.set(k, { token, expiresAt: Date.now() + expiresInSec * 1000 });
+      return token;
+    } finally {
+      tokenInFlight.delete(k);
+    }
+  })();
+  tokenInFlight.set(k, promise);
+  return promise;
+}
+
+export function invalidateAccessToken(key: ServiceAccountKey): void {
+  tokenCache.delete(cacheKey(key));
 }

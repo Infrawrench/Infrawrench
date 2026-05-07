@@ -281,7 +281,11 @@ export class KubernetesClient implements PluginClient {
 
     let res;
     try {
-      res = await fetch(`${server}${path}`, { ...options, headers });
+      res = await fetch(`${server}${path}`, {
+        ...options,
+        headers,
+        signal: AbortSignal.timeout(30_000),
+      });
     } catch (err) {
       throw new Error(`Kubernetes API unreachable at ${server}${path}: ${describeFetchError(err)}`);
     }
@@ -553,7 +557,8 @@ export class KubernetesClient implements PluginClient {
   }
 
   async getCreateConfig(typeId: string, parentResourceId?: string): Promise<CreateResourceConfig> {
-    const hasParent = !!parentResourceId;
+    const parentTypeId = parentResourceId?.split(":")[1] ?? "";
+    const parentIsNamespace = parentTypeId === "k8s-namespace";
     const namespaceField = async (): Promise<CreateResourceConfig["fields"][number]> => {
       let namespaceOptions: { id: string; label: string }[] = [{ id: "default", label: "default" }];
       try {
@@ -586,7 +591,7 @@ export class KubernetesClient implements PluginClient {
           description: "A unique name for your scratch pod",
         },
       ];
-      if (!hasParent) fields.push(await namespaceField());
+      if (!parentIsNamespace) fields.push(await namespaceField());
       fields.push(
         {
           key: "image",
@@ -640,7 +645,7 @@ export class KubernetesClient implements PluginClient {
       const fields: CreateResourceConfig["fields"] = [
         { key: "name", label: "Name", kind: "text", required: true },
       ];
-      if (!hasParent) {
+      if (!parentIsNamespace) {
         fields.push({
           key: "namespace",
           label: "Namespace",
@@ -669,7 +674,7 @@ export class KubernetesClient implements PluginClient {
       const fields: CreateResourceConfig["fields"] = [
         { key: "name", label: "Secret Name", kind: "text", required: true },
       ];
-      if (!hasParent) fields.push(await namespaceField());
+      if (!parentIsNamespace) fields.push(await namespaceField());
       fields.push({
         key: "type",
         label: "Secret Type",
@@ -690,7 +695,7 @@ export class KubernetesClient implements PluginClient {
       const fields: CreateResourceConfig["fields"] = [
         { key: "name", label: "Deployment Name", kind: "text", required: true },
       ];
-      if (!hasParent) fields.push(await namespaceField());
+      if (!parentIsNamespace) fields.push(await namespaceField());
       fields.push(
         {
           key: "image",
@@ -725,7 +730,7 @@ export class KubernetesClient implements PluginClient {
       const fields: CreateResourceConfig["fields"] = [
         { key: "name", label: "Service Name", kind: "text", required: true },
       ];
-      if (!hasParent) fields.push(await namespaceField());
+      if (!parentIsNamespace) fields.push(await namespaceField());
       fields.push(
         {
           key: "type",
@@ -770,7 +775,7 @@ export class KubernetesClient implements PluginClient {
       const fields: CreateResourceConfig["fields"] = [
         { key: "name", label: "Ingress Name", kind: "text", required: true },
       ];
-      if (!hasParent) fields.push(await namespaceField());
+      if (!parentIsNamespace) fields.push(await namespaceField());
       fields.push(
         {
           key: "ingressClassName",
@@ -808,7 +813,7 @@ export class KubernetesClient implements PluginClient {
       const fields: CreateResourceConfig["fields"] = [
         { key: "name", label: "Job Name", kind: "text", required: true },
       ];
-      if (!hasParent) fields.push(await namespaceField());
+      if (!parentIsNamespace) fields.push(await namespaceField());
       fields.push(
         {
           key: "image",
@@ -839,7 +844,7 @@ export class KubernetesClient implements PluginClient {
       const fields: CreateResourceConfig["fields"] = [
         { key: "name", label: "CronJob Name", kind: "text", required: true },
       ];
-      if (!hasParent) fields.push(await namespaceField());
+      if (!parentIsNamespace) fields.push(await namespaceField());
       fields.push(
         {
           key: "schedule",
@@ -870,7 +875,7 @@ export class KubernetesClient implements PluginClient {
       const fields: CreateResourceConfig["fields"] = [
         { key: "name", label: "StatefulSet Name", kind: "text", required: true },
       ];
-      if (!hasParent) fields.push(await namespaceField());
+      if (!parentIsNamespace) fields.push(await namespaceField());
       fields.push(
         {
           key: "image",
@@ -910,7 +915,7 @@ export class KubernetesClient implements PluginClient {
       const fields: CreateResourceConfig["fields"] = [
         { key: "name", label: "DaemonSet Name", kind: "text", required: true },
       ];
-      if (!hasParent) fields.push(await namespaceField());
+      if (!parentIsNamespace) fields.push(await namespaceField());
       fields.push(
         {
           key: "image",
@@ -939,7 +944,11 @@ export class KubernetesClient implements PluginClient {
     parentResourceId?: string,
   ): Promise<ResourceInstance> {
     const now = new Date().toISOString();
-    const parentNamespace = parentResourceId ? parentResourceId.split(":").slice(2).join(":") : "";
+    const parentTypeId = parentResourceId?.split(":")[1] ?? "";
+    const parentNamespace =
+      parentResourceId && parentTypeId === "k8s-namespace"
+        ? parentResourceId.split(":").slice(2).join(":")
+        : "";
     const namespace = fields["namespace"] || parentNamespace || "default";
     const name = fields["name"] || "unnamed";
 

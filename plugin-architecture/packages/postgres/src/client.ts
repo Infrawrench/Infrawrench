@@ -6,6 +6,9 @@ import type {
   SidebarItemSchema,
   SqlTableMeta,
   DashboardStat,
+  PeerPaneContext,
+  PeerPaneSchema,
+  PeerPaneResource,
 } from "@infrawrench/plugin-base";
 
 /**
@@ -20,10 +23,21 @@ export class PostgresClient implements PluginClient {
   private readonly services: HostServices | undefined;
 
   constructor(credentials: Record<string, string>, services?: HostServices) {
-    const cs = credentials["connectionString"];
-    if (!cs) throw new Error("Postgres plugin: missing connectionString credential");
-    this.connectionString = cs;
+    // Tolerate a missing/empty connectionString — peer-plugin flows resolve
+    // credentials lazily, and the parent may not yet have an endpoint
+    // (e.g. AlloyDB cluster without a primary instance). Methods that
+    // actually need the connection surface a friendly error themselves.
+    this.connectionString = credentials["connectionString"] ?? "";
     this.services = services;
+  }
+
+  private requireConnection(): string {
+    if (!this.connectionString) {
+      throw new Error(
+        "PostgreSQL connection is not available yet. The parent resource hasn't published a connection endpoint — provision a primary instance or wait for the database to come online.",
+      );
+    }
+    return this.connectionString;
   }
 
   async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
@@ -158,6 +172,69 @@ export class PostgresClient implements PluginClient {
       id: resource.id,
       label: resource.displayName,
       status: { kind: "status-dot", status: "info" },
+    };
+  }
+
+  async renderPeerPane(context: PeerPaneContext): Promise<PeerPaneSchema> {
+    this.requireConnection();
+    const sql = this.services?.sql;
+    let host = "";
+    try {
+      host = new URL(this.connectionString).hostname;
+    } catch {
+      /* connectionString may not be a parseable URL */
+    }
+
+    const databases: PeerPaneResource[] = [];
+    if (sql) {
+      const rows = (await sql.query(
+        "SELECT datname FROM pg_catalog.pg_database WHERE datistemplate = false ORDER BY datname",
+      )) as { datname: string }[];
+      for (const row of rows) {
+        databases.push({
+          id: `${context.accountId}:pg-database:${row.datname}`,
+          pluginId: "postgres",
+          resourceTypeId: "pg-database",
+          displayName: row.datname,
+          subtitle: host,
+          status: "healthy",
+          fields: { host, database: row.datname },
+        });
+      }
+    }
+
+    const schemas: PeerPaneResource[] = [];
+    if (sql) {
+      const rows = (await sql.query(
+        "SELECT schema_name FROM information_schema.schemata WHERE schema_name NOT IN ('pg_catalog', 'information_schema', 'pg_toast') ORDER BY schema_name",
+      )) as { schema_name: string }[];
+      for (const row of rows) {
+        schemas.push({
+          id: `${context.accountId}:pg-schema:${row.schema_name}`,
+          pluginId: "postgres",
+          resourceTypeId: "pg-schema",
+          displayName: row.schema_name,
+          status: "healthy",
+          fields: { name: row.schema_name },
+        });
+      }
+    }
+
+    return {
+      resourceGroups: [
+        {
+          title: `Databases (${databases.length})`,
+          resourceTypeId: "pg-database",
+          pluginId: "postgres",
+          items: databases,
+        },
+        {
+          title: `Schemas (${schemas.length})`,
+          resourceTypeId: "pg-schema",
+          pluginId: "postgres",
+          items: schemas,
+        },
+      ],
     };
   }
 

@@ -143,26 +143,38 @@ export interface ParsedKubeconfig {
   clientKeyData?: string;
 }
 
+import yaml from "js-yaml";
+import type { ResourceStatus } from "@infrawrench/plugin-base";
+
 export function parseKubeconfig(raw: string): ParsedKubeconfig {
-  const getVal = (key: string): string => {
-    const re = new RegExp(`^\\s*${key}:\\s*(.+)$`, "m");
-    const m = raw.match(re);
-    return m?.[1]?.trim() ?? "";
-  };
-  const ca = getVal("certificate-authority-data");
-  const tok = getVal("token");
-  const cert = getVal("client-certificate-data");
-  const key = getVal("client-key-data");
+  const doc = yaml.load(raw) as Record<string, unknown> | null;
+  if (!doc) throw new Error("Invalid kubeconfig: empty or unparseable YAML");
+
+  const clusters = (doc["clusters"] ?? []) as Array<{
+    cluster?: { server?: string; "certificate-authority-data"?: string };
+  }>;
+  const cluster = clusters[0]?.cluster;
+  const users = (doc["users"] ?? []) as Array<{
+    user?: {
+      token?: string;
+      "client-certificate-data"?: string;
+      "client-key-data"?: string;
+    };
+  }>;
+  const user = users[0]?.user;
+
   return {
-    server: getVal("server"),
-    ...(ca ? { caCertData: ca } : {}),
-    ...(tok ? { token: tok } : {}),
-    ...(cert ? { clientCertData: cert } : {}),
-    ...(key ? { clientKeyData: key } : {}),
+    server: (cluster?.server ?? "").replace(/\/$/, ""),
+    ...(cluster?.["certificate-authority-data"]
+      ? { caCertData: cluster["certificate-authority-data"] }
+      : {}),
+    ...(user?.token ? { token: user.token } : {}),
+    ...(user?.["client-certificate-data"]
+      ? { clientCertData: user["client-certificate-data"] }
+      : {}),
+    ...(user?.["client-key-data"] ? { clientKeyData: user["client-key-data"] } : {}),
   };
 }
-
-import type { ResourceStatus } from "@infrawrench/plugin-base";
 
 export function mapPeerStatus(status: string): ResourceStatus {
   switch (status.toLowerCase()) {

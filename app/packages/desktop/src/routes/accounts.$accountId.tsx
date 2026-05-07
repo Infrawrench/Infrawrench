@@ -23,6 +23,7 @@ import {
   getCloudAccountDetail,
   listCloudAccountResources,
   deleteCloudAccount,
+  renameCloudAccount,
   pinCloudResource,
   unpinCloudResource,
   listCloudDashboards,
@@ -64,6 +65,9 @@ function AccountPage() {
   const [pinned, setPinned] = useState<Set<string>>(new Set());
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [createTarget, setCreateTarget] = useState<ResourceTypeDefinition | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editName, setEditName] = useState(account?.display_name ?? "");
+  const [isSaving, setIsSaving] = useState(false);
   const [loadVersion, setLoadVersion] = useState(0);
   const backgroundLoadRef = useRef(false);
   const [kubeconfigTypeIds, setKubeconfigTypeIds] = useState<Set<string>>(new Set());
@@ -116,6 +120,10 @@ function AccountPage() {
     window.addEventListener(RESOURCES_CHANGED_EVENT, handler);
     return () => window.removeEventListener(RESOURCES_CHANGED_EVENT, handler);
   }, [accountId]);
+
+  useEffect(() => {
+    if (account) setEditName(account.display_name);
+  }, [account]);
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -585,6 +593,35 @@ function AccountPage() {
     navigate({ to: "/" });
   }
 
+  async function handleRename() {
+    if (!editName.trim() || editName === account?.display_name) {
+      setIsEditing(false);
+      return;
+    }
+    setIsSaving(true);
+    try {
+      if (activeCloudOrgId) {
+        const result = await renameCloudAccount(activeCloudOrgId, accountId, editName.trim());
+        setAccount((prev) => (prev ? { ...prev, display_name: result.displayName } : prev));
+      } else {
+        const db = await getDb();
+        await db.execute("UPDATE accounts SET display_name = $1 WHERE id = $2", [
+          editName.trim(),
+          accountId,
+        ]);
+        setAccount((prev) => (prev ? { ...prev, display_name: editName.trim() } : prev));
+      }
+      const { activeWorkspaceTabId, setWorkspaceTabTitle } = useUIStore.getState();
+      if (activeWorkspaceTabId) setWorkspaceTabTitle(activeWorkspaceTabId, editName.trim());
+      bumpAccounts();
+      setIsEditing(false);
+    } catch (e) {
+      console.error("Failed to rename account:", e);
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   function openDetail(resource: ResourceInstance) {
     void navigateToWorkspaceTarget(navigate, resourceTabTarget(accountId, resource.id), {
       label: resource.displayName,
@@ -604,17 +641,64 @@ function AccountPage() {
 
   return (
     <div className="p-6 h-full overflow-auto">
-      <div className="mb-6 flex items-start justify-between">
+      <div className="mb-6 flex items-start justify-between gap-2">
         <div>
-          <h1 className="text-lg font-semibold text-on-surface">{account?.display_name}</h1>
+          {isEditing ? (
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleRename();
+                  if (e.key === "Escape") {
+                    setEditName(account?.display_name ?? "");
+                    setIsEditing(false);
+                  }
+                }}
+                className="px-2 py-1 text-lg font-semibold bg-transparent border border-border rounded focus:outline-none focus:border-accent"
+                autoFocus
+                disabled={isSaving}
+              />
+              <button
+                onClick={handleRename}
+                disabled={isSaving}
+                className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+              >
+                Save
+              </button>
+              <button
+                onClick={() => {
+                  setEditName(account?.display_name ?? "");
+                  setIsEditing(false);
+                }}
+                disabled={isSaving}
+                className="px-2 py-1 text-xs text-on-surface-muted hover:text-on-surface hover:bg-surface-overlay rounded"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <h1 className="text-lg font-semibold text-on-surface">{account?.display_name}</h1>
+          )}
           <p className="text-xs text-on-surface-muted mt-0.5">{account?.plugin_id}</p>
         </div>
-        <button
-          onClick={() => setConfirmDelete(true)}
-          className="text-xs text-on-surface-faint hover:text-red-400 transition-colors px-2 py-1 rounded hover:bg-red-500/10"
-        >
-          Remove account
-        </button>
+        <div className="flex items-center gap-1">
+          {!isEditing && (
+            <button
+              onClick={() => setIsEditing(true)}
+              className="text-xs text-on-surface-faint hover:text-on-surface transition-colors px-2 py-1 rounded hover:bg-surface-overlay"
+            >
+              Rename
+            </button>
+          )}
+          <button
+            onClick={() => setConfirmDelete(true)}
+            className="text-xs text-on-surface-faint hover:text-red-400 transition-colors px-2 py-1 rounded hover:bg-red-500/10"
+          >
+            Remove
+          </button>
+        </div>
       </div>
 
       <AccountResourceSections

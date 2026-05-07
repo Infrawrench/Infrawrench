@@ -96,6 +96,26 @@ app.delete("/:id", async (c) => {
   return c.json({ ok: true });
 });
 
+/** PATCH /api/accounts/:id — rename account */
+app.patch("/:id", async (c) => {
+  const organizationId = c.get("organizationId");
+  const accountId = c.req.param("id");
+  const { displayName } = await c.req.json<{ displayName: string }>();
+
+  if (!displayName || typeof displayName !== "string") {
+    return c.json({ error: "displayName is required" }, 400);
+  }
+
+  const [updated] = await db
+    .update(accounts)
+    .set({ displayName })
+    .where(and(eq(accounts.id, accountId), eq(accounts.organizationId, organizationId)))
+    .returning({ id: accounts.id, displayName: accounts.displayName });
+
+  if (!updated) return c.json({ error: "Account not found" }, 404);
+  return c.json(updated);
+});
+
 /** GET /api/accounts/:id/credentials — get decrypted credentials */
 app.get("/:id/credentials", async (c) => {
   const organizationId = c.get("organizationId");

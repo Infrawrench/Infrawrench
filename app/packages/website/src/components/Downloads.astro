@@ -1,0 +1,63 @@
+---
+import { Apple, Monitor, MessageSquare } from 'lucide-astro';
+---
+
+<section style="padding: 28px 28px 80px; text-align: center;" id="download">
+  <p class="section-eyebrow" style="margin-bottom: 28px;">Download</p>
+
+  <div class="download-grid">
+    <div class="download-card">
+      <Apple size={32} color="#9ca3af" />
+      <div class="download-card-name">macOS</div>
+      <div class="download-card-sub">Apple Silicon (M-series)</div>
+      <div class="coming-soon-badge">Coming Soon</div>
+    </div>
+
+    <div class="download-card">
+      <Apple size={32} color="#9ca3af" />
+      <div class="download-card-name">macOS</div>
+      <div class="download-card-sub">Intel (x64)</div>
+      <div class="coming-soon-badge">Coming Soon</div>
+    </div>
+
+    <div class="download-card">
+      <!-- Windows logo: four-square flag -->
+      <svg width="30" height="30" viewBox="0 0 88 88" fill="none" aria-hidden="true">
+        <path
+          d="M0 12.4L35.7 7.5l.1 34.4-35.7.2zm35.7 33.5l.1 34.5L.1 75.5.1 45.7zm4.3-39L87.3 0v41.5l-47.3.4zm47.3 39.4L87.3 88 40 81.1l-.1-34z"
+          fill="#9ca3af"></path>
+      </svg>
+      <div class="download-card-name">Windows</div>
+      <div class="download-card-sub">x64 · Installer</div>
+      <div class="coming-soon-badge">Coming Soon</div>
+    </div>
+
+    <div class="download-card">
+      <Monitor size={32} color="#9ca3af" />
+      <div class="download-card-name">Linux</div>
+      <div class="download-card-sub">AppImage · x64</div>
+      <div class="coming-soon-badge">Coming Soon</div>
+    </div>
+  </div>
+
+  <div
+    style="margin: 32px auto 0; max-width: 480px; background: #090909; border: 1px solid #151515; border-radius: 10px; padding: 18px 24px; text-align: left; display: flex; align-items: flex-start; gap: 14px;"
+  >
+    <MessageSquare size={20} color="#4b5563" style="margin-top: 2px; flex-shrink: 0;" />
+    <div>
+      <p style="font-size: 14px; font-weight: 600; color: #e5e7eb; margin: 0 0 4px;">
+        Want early access?
+      </p>
+      <p style="font-size: 13px; color: #6b7280; margin: 0;">
+        Join the Slack community to get notified when the first build drops and share feedback with
+        the team.
+      </p>
+      <a
+        href="https://join.slack.com/t/infrawrenchllc/shared_invite/zt-3x6hs7pyf-riCnQeurmX_EDkv5Nan_Ig"
+        style="display: inline-block; margin-top: 12px; font-size: 13px; font-weight: 600; color: #60a5fa; text-decoration: none;"
+      >
+        Join Slack →
+      </a>
+    </div>
+  </div>
+</section>

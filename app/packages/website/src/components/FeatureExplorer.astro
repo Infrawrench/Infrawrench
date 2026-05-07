@@ -1,0 +1,111 @@
+---
+import { featureSections } from '../data/content';
+import {
+  Globe,
+  Terminal,
+  Layers,
+  Database,
+  FolderOpen,
+  LayoutDashboard,
+  KeyRound,
+  PlusCircle,
+  CloudUpload,
+  Image,
+} from 'lucide-astro';
+
+const iconMap: Record<string, typeof Globe> = {
+  Globe,
+  Terminal,
+  Layers,
+  Database,
+  FolderOpen,
+  LayoutDashboard,
+  KeyRound,
+  PlusCircle,
+  CloudUpload,
+};
+---
+
+<div style="background: #060606; padding: 80px 0;">
+  <div class="section" style="padding-top: 0; padding-bottom: 0;">
+    <div class="section-header">
+      <p class="section-eyebrow">Feature tour</p>
+      <h2 class="section-title">Everything your agents and infra team needs</h2>
+      <p class="section-subtitle">
+        Click a feature to explore. Infrawrench brings together the tools you'd normally need a
+        dozen different apps for.
+      </p>
+    </div>
+
+    <div class="feature-explorer">
+      <nav class="feature-nav" aria-label="Feature navigation">
+        {
+          featureSections.map((f) => {
+            const Icon = iconMap[f.icon] ?? Image;
+            return (
+              <button class="feature-nav-item" data-feature-nav={f.id} aria-label={f.label}>
+                <span class="feature-nav-icon">
+                  <Icon size={15} />
+                </span>
+                {f.label}
+              </button>
+            );
+          })
+        }
+      </nav>
+
+      <div class="feature-content">
+        {
+          featureSections.map((f) => (
+            <div class="feature-section" data-feature-section={f.id}>
+              <h3 class="feature-content-title">{f.heading}</h3>
+              <p class="feature-content-desc">{f.description}</p>
+              <ul class="feature-bullets">
+                {f.bullets.map((b) => (
+                  <li>{b}</li>
+                ))}
+              </ul>
+              <div class={`feature-screenshots${f.screenshots.length > 1 ? ' two-col' : ''}`}>
+                {f.screenshots.map((s) => (
+                  <div class="screenshot">
+                    <img
+                      src={`/screenshots/${s.filename}`}
+                      alt={s.label}
+                      class="screenshot-img"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))
+        }
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const navItems = document.querySelectorAll<HTMLElement>('[data-feature-nav]');
+  const sections = document.querySelectorAll<HTMLElement>('[data-feature-section]');
+
+  function activateFeature(id: string) {
+    navItems.forEach((item) => {
+      item.dataset.featureNav === id
+        ? item.setAttribute('data-active', '')
+        : item.removeAttribute('data-active');
+    });
+    sections.forEach((section) => {
+      section.dataset.featureSection === id
+        ? section.setAttribute('data-active', '')
+        : section.removeAttribute('data-active');
+    });
+  }
+
+  navItems.forEach((item) => {
+    item.addEventListener('click', () => {
+      if (item.dataset.featureNav) activateFeature(item.dataset.featureNav);
+    });
+  });
+
+  activateFeature('overview');
+</script>

@@ -11,6 +11,7 @@ import { BigtableInstanceResourceType } from "./resources/bigtable-instance.js";
 import { FirestoreDatabaseResourceType } from "./resources/firestore-database.js";
 import { MemorystoreRedisResourceType } from "./resources/memorystore-redis.js";
 import { AlloyDbClusterResourceType } from "./resources/alloydb-cluster.js";
+import { AlloyDbInstanceResourceType } from "./resources/alloydb-instance.js";
 import { GcsBucketResourceType } from "./resources/gcs-bucket.js";
 import { PubSubTopicResourceType } from "./resources/pubsub-topic.js";
 import { PubSubSubscriptionResourceType } from "./resources/pubsub-subscription.js";
@@ -104,6 +105,7 @@ const resourceTypes: ResourceTypeDefinition[] = [
   MemorystoreRedisResourceType,
   MemorystoreMemcachedResourceType,
   AlloyDbClusterResourceType,
+  AlloyDbInstanceResourceType,
   // Storage & Messaging
   GcsBucketResourceType,
   PubSubTopicResourceType,

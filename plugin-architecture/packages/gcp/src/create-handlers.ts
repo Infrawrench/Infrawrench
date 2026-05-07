@@ -1836,10 +1836,61 @@ export async function gcpGetCreateConfig(
         },
         {
           key: "network",
-          label: "Network",
+          label: "VPC Network",
+          kind: "resource-picker",
+          required: true,
+          description: "VPC network for private service access",
+          associationSources: [
+            { pluginId: "gcp", resourceTypeId: "vpc-network", outputKey: "selfLink" },
+          ],
+        },
+        {
+          key: "rootPassword",
+          label: "Postgres Password",
+          kind: "password",
+          required: true,
+          description: "Password for the default 'postgres' user",
+        },
+      ],
+    };
+  }
+
+  if (typeId === "alloydb-instance") {
+    return {
+      fields: [
+        {
+          key: "instanceId",
+          label: "Instance ID",
           kind: "text",
           required: true,
-          description: "Full network path (e.g. projects/my-project/global/networks/default)",
+        },
+        {
+          key: "instanceType",
+          label: "Instance Type",
+          kind: "select",
+          required: true,
+          options: [
+            { id: "PRIMARY", label: "Primary" },
+            { id: "READ_POOL", label: "Read pool" },
+          ],
+          defaultValue: "PRIMARY",
+          description:
+            "A cluster needs exactly one PRIMARY before it can be reached. Add READ_POOL instances for read scaling.",
+        },
+        {
+          key: "cpuCount",
+          label: "vCPU Count",
+          kind: "select",
+          required: true,
+          options: [
+            { id: "2", label: "2 vCPU" },
+            { id: "4", label: "4 vCPU" },
+            { id: "8", label: "8 vCPU" },
+            { id: "16", label: "16 vCPU" },
+            { id: "32", label: "32 vCPU" },
+            { id: "64", label: "64 vCPU" },
+          ],
+          defaultValue: "2",
         },
       ],
     };
@@ -3169,7 +3220,14 @@ export async function gcpCreateResource(
           machineType,
           diskSizeGb,
         },
-        ...(network ? { network: `projects/${p}/global/networks/${network}` } : {}),
+        ...(network
+          ? {
+              network:
+                network.indexOf("projects/") >= 0
+                  ? network.slice(network.indexOf("projects/"))
+                  : `projects/${p}/global/networks/${network}`,
+            }
+          : {}),
       },
     };
     const res = await fetch(
@@ -3260,7 +3318,9 @@ export async function gcpCreateResource(
 
     const ipConfig: Record<string, unknown> = {};
     if (network) {
-      ipConfig.privateNetwork = `projects/${p}/global/networks/${network}`;
+      const projectsIdx = network.indexOf("projects/");
+      ipConfig.privateNetwork =
+        projectsIdx >= 0 ? network.slice(projectsIdx) : `projects/${p}/global/networks/${network}`;
       ipConfig.ipv4Enabled = false;
     } else {
       ipConfig.ipv4Enabled = true;
@@ -4674,6 +4734,10 @@ export async function gcpCreateResource(
     const clusterId = fields["clusterId"] ?? "";
     const location = fields["location"] ?? "";
     const network = fields["network"] ?? "";
+    const rootPassword = fields["rootPassword"] ?? "";
+    const projectsIdx = network.indexOf("projects/");
+    const networkPath =
+      projectsIdx >= 0 ? network.slice(projectsIdx) : `projects/${p}/global/networks/${network}`;
 
     const res = await fetch(
       `https://alloydb.googleapis.com/v1/projects/${p}/locations/${location}/clusters?clusterId=${clusterId}`,
@@ -4681,7 +4745,8 @@ export async function gcpCreateResource(
         method: "POST",
         headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
         body: JSON.stringify({
-          network,
+          network: networkPath,
+          initialUser: { user: "postgres", password: rootPassword },
         }),
       },
     );
@@ -4701,7 +4766,63 @@ export async function gcpCreateResource(
         state: "CREATING",
         clusterType: "",
       },
-      resolvedOutputs: { primaryEndpoint: "" },
+      resolvedOutputs: {},
+      secretStates: [
+        {
+          fieldKey: "rootPassword",
+          resolution: { kind: "plaintext", value: rootPassword },
+        },
+      ],
+      externalId: fullName,
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
+
+  if (typeId === "alloydb-instance") {
+    const tok = await ctx.token();
+    const instanceId = fields["instanceId"] ?? "";
+    const instanceType = fields["instanceType"] || "PRIMARY";
+    const cpuCount = Number.parseInt(fields["cpuCount"] ?? "2", 10) || 2;
+    if (!parentResourceId) {
+      throw new Error("AlloyDB instance creation requires a parent cluster");
+    }
+    // parentResourceId format: "{accountId}:alloydb-cluster:projects/{p}/locations/{l}/clusters/{c}"
+    const clusterFullName = parentResourceId.split(":").slice(2).join(":");
+    if (!clusterFullName.startsWith("projects/")) {
+      throw new Error(`Invalid AlloyDB cluster reference: ${parentResourceId}`);
+    }
+
+    const res = await fetch(
+      `https://alloydb.googleapis.com/v1/${clusterFullName}/instances?instanceId=${instanceId}`,
+      {
+        method: "POST",
+        headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          instanceType,
+          machineConfig: { cpuCount },
+        }),
+      },
+    );
+    if (!res.ok) throw new Error(`AlloyDB API ${res.status}: ${await res.text()}`);
+    const now = ctx.now();
+    const fullName = `${clusterFullName}/instances/${instanceId}`;
+    return {
+      id: ctx.id(accountId, "alloydb-instance", fullName),
+      pluginId: "gcp",
+      resourceTypeId: "alloydb-instance",
+      accountId,
+      parentResourceId,
+      displayName: instanceId,
+      fields: {
+        name: instanceId,
+        instanceType,
+        state: "CREATING",
+        cpuCount,
+        ipAddress: "",
+        availabilityType: "",
+      },
+      resolvedOutputs: { ipAddress: "" },
       secretStates: [],
       externalId: fullName,
       createdAt: now,

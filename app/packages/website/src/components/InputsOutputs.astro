@@ -1,0 +1,67 @@
+---
+---
+
+<div style="background: #060606; padding: 80px 28px;">
+  <div style="max-width: 1100px; margin: 0 auto;">
+    <div class="section-header">
+      <p class="section-eyebrow">Resource wiring</p>
+      <h2 class="section-title">Inputs &amp; outputs connect your cloud</h2>
+      <p class="section-subtitle">
+        Every resource exposes typed outputs: IPs, connection strings, tokens, kubeconfigs, and
+        more. Wire them as inputs to other resources so everything stays resolved automatically.
+      </p>
+    </div>
+
+    <div class="io-grid">
+      <div class="io-card">
+        <p class="io-card-title">Connection string outputs</p>
+        <p class="io-card-body">
+          Databases expose a connectionString output. Link it directly to the SQL editor and it
+          connects automatically. No copy-pasting credentials.
+        </p>
+      </div>
+
+      <div class="io-card">
+        <p class="io-card-title">IP address outputs</p>
+        <p class="io-card-body">
+          Compute resources expose publicIp and privateIp outputs. Infrawrench uses these to open
+          an SSH terminal with one click. No manual host entry.
+        </p>
+      </div>
+
+      <div class="io-card">
+        <p class="io-card-title">Kubernetes peer outputs</p>
+        <p class="io-card-body">
+          Managed K8s clusters (EKS, GKE, AKS, DOKS) expose a kubeconfig output that automatically
+          links to the Kubernetes plugin, so pods, services, and deployments appear without any
+          manual setup.
+        </p>
+      </div>
+
+      <div class="io-card">
+        <p class="io-card-title">Secret outputs</p>
+        <p class="io-card-body">
+          IAM users, service accounts, and app registrations expose credential outputs. Download as
+          JSON, env files, or Kubernetes secrets, or reference them directly from other resources.
+        </p>
+      </div>
+
+      <div class="io-card">
+        <p class="io-card-title">Cross-cloud resource wiring</p>
+        <p class="io-card-body">
+          Connect outputs from any AWS resource into another context. An RDS endpoint drives the
+          SQL editor directly, or feed an EKS kubeconfig to the Kubernetes plugin, without touching
+          config files.
+        </p>
+      </div>
+
+      <div class="io-card">
+        <p class="io-card-title">Storage access tokens</p>
+        <p class="io-card-body">
+          Object storage resources (S3, R2, GCS, Azure Blob) generate scoped access tokens on
+          demand so the in-app file browser operates without storing long-lived credentials.
+        </p>
+      </div>
+    </div>
+  </div>
+</div>

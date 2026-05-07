@@ -9,7 +9,7 @@ import {
   type SectionCategoryState,
   useUIStore,
 } from "@infrawrench/ui";
-import { apiDelete } from "@/lib/api";
+import { apiDelete, apiPatch } from "@/lib/api";
 import { useOrgId } from "@/lib/useOrgId";
 import { CreateResourceModal } from "./CreateResourceModal";
 
@@ -44,6 +44,7 @@ interface Props {
   onSearchQueryChange?: (query: string) => void;
   activeSectionId?: string | null;
   onActiveSectionIdChange?: (id: string | null) => void;
+  onAccountUpdated?: (displayName: string) => void;
 }
 
 export function AccountDetailView({
@@ -55,17 +56,42 @@ export function AccountDetailView({
   onSearchQueryChange,
   activeSectionId,
   onActiveSectionIdChange,
+  onAccountUpdated,
 }: Props) {
   const navigate = useNavigate();
   const orgId = useOrgId();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [createTarget, setCreateTarget] = useState<ResourceTypeInfo | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editName, setEditName] = useState(account.displayName);
+  const [isSaving, setIsSaving] = useState(false);
 
   async function handleDeleteAccount() {
     await apiDelete(`/api/org/${orgId}/accounts/${account.id}`);
     useUIStore.getState().bumpAccounts();
     dispatchResourcesChanged();
     void navigate({ to: "/org/$orgId", params: { orgId } });
+  }
+
+  async function handleRename() {
+    if (!editName.trim() || editName === account.displayName) {
+      setIsEditing(false);
+      return;
+    }
+    setIsSaving(true);
+    try {
+      const result = await apiPatch<{ id: string; displayName: string }>(
+        `/api/org/${orgId}/accounts/${account.id}`,
+        { displayName: editName.trim() },
+      );
+      useUIStore.getState().bumpAccounts();
+      onAccountUpdated?.(result.displayName);
+      setIsEditing(false);
+    } catch (e) {
+      console.error("Failed to rename account:", e);
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   return (
@@ -79,15 +105,62 @@ export function AccountDetailView({
           />
         )}
         <div className="flex-1">
-          <h1 className="text-xl font-semibold">{account.displayName}</h1>
+          {isEditing ? (
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleRename();
+                  if (e.key === "Escape") {
+                    setEditName(account.displayName);
+                    setIsEditing(false);
+                  }
+                }}
+                className="px-2 py-1 text-lg font-semibold bg-transparent border border-border rounded focus:outline-none focus:border-accent"
+                autoFocus
+                disabled={isSaving}
+              />
+              <button
+                onClick={handleRename}
+                disabled={isSaving}
+                className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+              >
+                Save
+              </button>
+              <button
+                onClick={() => {
+                  setEditName(account.displayName);
+                  setIsEditing(false);
+                }}
+                disabled={isSaving}
+                className="px-2 py-1 text-xs text-on-surface-muted hover:text-on-surface hover:bg-surface-overlay rounded"
+              >
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <h1 className="text-xl font-semibold">{account.displayName}</h1>
+          )}
           <p className="text-xs text-on-surface-muted">{pluginDisplayName}</p>
         </div>
-        <button
-          onClick={() => setConfirmDelete(true)}
-          className="px-3 py-1.5 text-xs text-red-500 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 hover:bg-red-100 dark:hover:bg-red-950/50 rounded transition-colors"
-        >
-          Delete
-        </button>
+        <div className="flex items-center gap-1">
+          {!isEditing && (
+            <button
+              onClick={() => setIsEditing(true)}
+              className="px-3 py-1.5 text-xs text-on-surface-muted hover:text-on-surface hover:bg-surface-overlay rounded transition-colors"
+            >
+              Rename
+            </button>
+          )}
+          <button
+            onClick={() => setConfirmDelete(true)}
+            className="px-3 py-1.5 text-xs text-red-500 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 hover:bg-red-100 dark:hover:bg-red-950/50 rounded transition-colors"
+          >
+            Delete
+          </button>
+        </div>
       </div>
 
       {confirmDelete && (
