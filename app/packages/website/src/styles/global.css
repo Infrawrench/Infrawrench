@@ -473,12 +473,12 @@ body {
 }
 
 .cloud-panel-inner {
-  max-width: 1100px;
+  max-width: 680px;
   margin: 0 auto;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 56px;
+  display: flex;
+  flex-direction: column;
   align-items: center;
+  text-align: center;
 }
 
 .check-list {
@@ -486,6 +486,7 @@ body {
   flex-direction: column;
   gap: 10px;
   margin-top: 24px;
+  text-align: left;
 }
 
 .check-item {
@@ -831,11 +832,6 @@ footer {
   .feature-nav-item[data-active] {
     border-left: none;
     border-bottom: 2px solid #3b82f6;
-  }
-
-  .cloud-panel-inner {
-    grid-template-columns: 1fr;
-    gap: 32px;
   }
 
   .io-grid {
