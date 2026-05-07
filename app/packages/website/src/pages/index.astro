@@ -1,5 +1,5 @@
 ---
-export const prerender = false;
+import '../styles/global.css';
 ---
 
 <!doctype html>
@@ -8,52 +8,39 @@ export const prerender = false;
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Infrawrench</title>
-    <style>
-      :root {
-        color-scheme: light dark;
-        font-family:
-          system-ui,
-          -apple-system,
-          "Segoe UI",
-          sans-serif;
-      }
-      body {
-        margin: 0;
-        min-height: 100vh;
-        display: grid;
-        place-items: center;
-        background: #0b0d10;
-        color: #e8edf2;
-      }
-      main {
-        max-width: 36rem;
-        padding: 2rem;
-        text-align: center;
-      }
-      h1 {
-        font-size: clamp(2.5rem, 6vw, 4rem);
-        margin: 0 0 0.5rem;
-        letter-spacing: -0.02em;
-      }
-      p {
-        opacity: 0.75;
-        margin: 0 0 2rem;
-      }
-      code {
-        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-        background: rgba(255, 255, 255, 0.06);
-        padding: 0.15rem 0.4rem;
-        border-radius: 0.35rem;
-      }
-    </style>
   </head>
-  <body>
-    <main>
-      <h1>Infrawrench</h1>
-      <p>A tool for managing infrastructure.</p>
-      <p>
-        Releases API: <code>GET /api/latest</code>
+  <body class="dark:bg-black dark:text-white">
+    <header class="text-center">
+      <h1 class="text-4xl font-semibold">
+        Infrawrench
+      </h1>
+      <h2 class="text-md max-w-3xl mx-auto">
+        The tool for managing and multi-cloud connecting <span id="typewriter" />.
+      </h2>
+      <p class="mt-4">
+        <a class="border border-border rounded-md px-2 py-2" href="https://join.slack.com/t/infrawrenchllc/shared_invite/zt-3x6hs7pyf-riCnQeurmX_EDkv5Nan_Ig">
+          Join the Slack community
+        </a>
       </p>
+    </header>
+    <main>
+      hello
     </main>
+
+    <script>
+      import Typewriter from 'typewriter-effect/dist/core';
+
+      const typewriterStrings = [
+        'Kubernetes Deployments', 'AWS S3 Buckets', 'Azure AKS Clusters', 'GCP Cloud Run Services', 'Cloudflare Workers', 'DigitalOcean Droplets', 'AWS RDS Instances', 'Azure Virtual Machines', 'GCP GKE Clusters', 'Cloudflare R2 Buckets', 'AWS Lambda Functions', 'PostgreSQL Databases', 'AWS EC2 Instances', 'Kubernetes Namespaces', 'GCP VPC Networks', 'Azure SQL Databases', 'AWS EKS Clusters', 'AWS Secrets Manager Secrets', 'Cloudflare D1 Databases', 'AWS CloudFront Distributions', 'Azure Cosmos DB Accounts', 'GCP BigQuery Datasets', 'Azure Key Vaults', 'AWS IAM Users', 'AWS VPCs', 'Azure Storage Accounts', 'GCP Cloud Functions', 'AWS SQS Queues', 'Azure Function Apps', 'AWS DynamoDB Tables', 'Kubernetes Clusters', 'GCP Cloud Storage Buckets', 'Cloudflare Zones', 'AWS EBS Volumes', 'Azure Load Balancers', 'AWS SNS Topics', 'GCP PubSub Topics', 'AWS ElastiCache Clusters', 'Docker Containers', 'Azure Container Instances', 'GCP Cloud SQL Instances', 'Vercel Projects', 'AWS Route53 Hosted Zones', 'Azure App Services', 'GCP Firewall Rules', 'AWS IAM Roles', 'AWS Security Groups', 'Azure Resource Groups', 'AWS Subnets', 'GCP Service Accounts', 'Cloudflare KV Namespaces', 'AWS NAT Gateways', 'Azure Virtual Networks', 'GCP Cloud NATs', 'AWS Load Balancers', 'Azure DNS Zones', 'AWS Elastic IPs', 'GCP Static IPs', 'Azure Public IP Addresses', 'AWS Target Groups', 'Azure Network Security Groups', 'AWS Auto Scaling Groups', 'GCP Cloud Router', 'AWS Internet Gateway', 'GCP Subnet', 'Azure Managed Disks', 'GCP GCE Disk', 'AWS EFS File Systems', 'Hetzner Servers', 'Scaleway Instances', 'OVH Instances', 'Netlify Sites', 'Fly Apps', 'Databricks Clusters', 'Databricks SQL Warehouses', 'Neon Projects', 'PlanetScale Databases', 'Turso Databases', 'MSSQL Databases', 'Redis Instances', 'Memcached Instances', 'MySQL Databases', 'Cloudinary Folders', 'Cloudinary Media Assets', 'AWS Step Functions', 'AWS EventBridge Rules', 'AWS Kinesis Streams', 'AWS Redshift Clusters', 'AWS Aurora Clusters', 'AWS OpenSearch Domains', 'AWS ACM Certificates', 'AWS WAF Web ACLs', 'AWS CodeBuild Projects', 'AWS CodePipelines', 'AWS CloudFormation Stacks', 'AWS SSM Parameters', 'AWS API Gateway', 'AWS CloudWatch Alarms', 'AWS CloudWatch Log Groups', 'AWS App Runner Services', 'AWS Glue Databases', 'AWS CloudTrail Trail', 'AWS MSK Cluster', 'AWS Neptune Cluster', 'AWS DocumentDB Cluster', 'AWS MQ Broker', 'AWS Batch Job Queue', 'AWS SageMaker Endpoint', 'Azure PostgreSQL Flexible Server', 'Azure MySQL Flexible Server', 'Azure Event Hub Namespace', 'Azure Application Gateway', 'Azure Log Analytics Workspace', 'Azure Managed Identity', 'Azure Firewall', 'Azure Service Bus Namespace', 'Azure Container Registry', 'Azure Redis Cache', 'GCP PubSub Subscription', 'GCP Cloud Run Revision', 'GCP Cloud Build Trigger', 'GCP Instance Group', 'GCP Forwarding Rule', 'GCP Backend Service', 'GCP Cloud Armor Policy', 'GCP Cloud DNS Zone', 'GCP Cloud DNS Record', 'GCP Cloud Scheduler Job', 'GCP Cloud Tasks Queue', 'GCP Artifact Registry', 'GCP Cloud Run Job', 'GCP Filestore Instance', 'GCP Bigtable Instance', 'GCP Spanner Instance', 'GCP Memorystore Redis', 'GCP Memorystore Memcached', 'GCP AlloyDB Instance', 'GCP AlloyDB Cluster', 'GCP Firestore Database', 'GCP Spanner Database', 'GCP Spanner Backup', 'GCP KMS Key Ring', 'GCP KMS Key', 'GCP Cloud Logging Sink', 'GCP Alert Policy', 'GCP Health Check', 'GCP Workflow', 'DigitalOcean Kubernetes Cluster', 'DigitalOcean Managed Database', 'DigitalOcean Spaces', 'DigitalOcean Domain', 'DigitalOcean DNS Record', 'Hetzner Volume', 'Hetzner Floating IP', 'Hetzner Firewall', 'Scaleway Kubernetes Cluster', 'Scaleway Managed Database', 'Scaleway Object Storage', 'OVH Kubernetes Cluster', 'OVH Managed Database', 'Cloudflare DNS Record', 'Cloudflare Pages Project', 'Cloudflare Pages Deployment', 'Cloudflare Queue', 'Cloudflare Tunnel', 'Cloudflare SSL Certificate', 'Cloudflare Page Rule', 'Cloudflare Firewall Rule', 'Cloudflare Access Application', 'Cloudflare Access Policy', 'Cloudflare Load Balancer', 'Cloudflare Worker Route', 'Cloudflare Custom Hostname', 'Cloudflare Hyperdrive', 'Cloudflare Email Routing Rule', 'Cloudflare Waiting Room', 'Cloudflare Spectrum Application', 'Cloudflare Logpush Job', 'Kubernetes StatefulSets', 'Kubernetes DaemonSets', 'Kubernetes Jobs', 'Kubernetes CronJobs', 'Kubernetes Ingresses', 'Kubernetes Services', 'PostgreSQL Schemas', 'Vercel Deployments', 'Vercel Domains', 'Vercel Environment Variables', 'Vercel Teams', 'Netlify Deploys', 'Netlify Forms', 'Netlify DNS Zone', 'Netlify DNS Record', 'Netlify Build Hook', 'Netlify Environment Variable', 'Fly Machines', 'Fly Volumes', 'Databricks Jobs', 'Databricks Pipelines', 'Databricks Catalogs', 'Databricks Schemas', 'Databricks Tables', 'Cloudinary Upload Preset', 'Cloudinary Transformation', 'ClickHouse Service', 'ClickHouse Database', 'Neon Branch', 'Neon Endpoint', 'Neon Database', 'Neon Role', 'PlanetScale Branch', 'Turso Group',
+      ];
+
+      new Typewriter('#typewriter', {
+        strings: typewriterStrings,
+        autoStart: true,
+        loop: true,
+        delay: 60,
+        deleteSpeed: 40,
+      });
+    </script>
   </body>
 </html>
