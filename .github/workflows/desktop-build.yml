@@ -9,9 +9,41 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  r2-setup:
+    runs-on: ubuntu-24.04-arm
+    name: Ensure R2 lifecycle policy
+    steps:
+      - name: Apply lifecycle rule (7-day TTL on desktop-builds/)
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+        run: |
+          set -eo pipefail
+          cat > lifecycle.json <<'EOF'
+          {
+            "Rules": [
+              {
+                "ID": "expire-desktop-builds",
+                "Status": "Enabled",
+                "Filter": { "Prefix": "desktop-builds/" },
+                "Expiration": { "Days": 7 },
+                "AbortIncompleteMultipartUpload": { "DaysAfterInitiation": 1 }
+              }
+            ]
+          }
+          EOF
+          aws s3api put-bucket-lifecycle-configuration \
+            --bucket "${R2_BUCKET}" \
+            --lifecycle-configuration file://lifecycle.json \
+            --endpoint-url "${R2_ENDPOINT}"
+
   linux-arm64-build:
     runs-on: ubuntu-24.04-arm
     name: Build on ubuntu-24.04-arm
+    needs: r2-setup
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -50,9 +82,10 @@ jobs:
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
         run: |
-          aws s3 cp app/packages/desktop/dist/ \
-            "s3://${R2_BUCKET}/desktop-builds/${GITHUB_RUN_ID}/dist-linux-arm64/" \
-            --recursive \
+          set -eo pipefail
+          tar -czf "${RUNNER_TEMP}/dist-linux-arm64.tar.gz" -C app/packages/desktop/dist .
+          aws s3 cp "${RUNNER_TEMP}/dist-linux-arm64.tar.gz" \
+            "s3://${R2_BUCKET}/desktop-builds/${GITHUB_RUN_ID}/dist-linux-arm64.tar.gz" \
             --endpoint-url "${R2_ENDPOINT}"
 
   check-if-release:
@@ -93,7 +126,7 @@ jobs:
   linux-x64-build:
     runs-on: ubuntu-24.04
     name: Build on ubuntu-24.04
-    needs: check-if-release
+    needs: [check-if-release, r2-setup]
     if: needs.check-if-release.outputs.package-version != ''
     steps:
       - name: Checkout code
@@ -133,9 +166,11 @@ jobs:
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
         run: |
-          aws s3 cp app/packages/desktop/dist/ \
-            "s3://${R2_BUCKET}/desktop-builds/${GITHUB_RUN_ID}/dist-linux-x64/" \
-            --recursive \
+          set -eo pipefail
+          sudo tar -czf "${RUNNER_TEMP}/dist-linux-x64.tar.gz" -C app/packages/desktop/dist .
+          sudo chown "$(id -u):$(id -g)" "${RUNNER_TEMP}/dist-linux-x64.tar.gz"
+          aws s3 cp "${RUNNER_TEMP}/dist-linux-x64.tar.gz" \
+            "s3://${R2_BUCKET}/desktop-builds/${GITHUB_RUN_ID}/dist-linux-x64.tar.gz" \
             --endpoint-url "${R2_ENDPOINT}"
 
   macos-build:
@@ -144,7 +179,7 @@ jobs:
         platform: [macos-15-intel, macos-15]
     runs-on: ${{ matrix.platform }}
     name: Build on ${{ matrix.platform }}
-    needs: check-if-release
+    needs: [check-if-release, r2-setup]
     if: needs.check-if-release.outputs.package-version != ''
     steps:
       - name: Checkout code
@@ -231,9 +266,10 @@ jobs:
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
         run: |
-          aws s3 cp app/packages/desktop/dist/ \
-            "s3://${R2_BUCKET}/desktop-builds/${GITHUB_RUN_ID}/dist-${{ matrix.platform }}/" \
-            --recursive \
+          set -eo pipefail
+          tar -czf "${RUNNER_TEMP}/dist-${{ matrix.platform }}.tar.gz" -C app/packages/desktop/dist .
+          aws s3 cp "${RUNNER_TEMP}/dist-${{ matrix.platform }}.tar.gz" \
+            "s3://${R2_BUCKET}/desktop-builds/${GITHUB_RUN_ID}/dist-${{ matrix.platform }}.tar.gz" \
             --endpoint-url "${R2_ENDPOINT}"
 
   windows-build:
@@ -242,7 +278,7 @@ jobs:
         platform: [windows-2025-vs2026, windows-11-arm]
     runs-on: ${{ matrix.platform }}
     name: Build on ${{ matrix.platform }}
-    needs: check-if-release
+    needs: [check-if-release, r2-setup]
     if: needs.check-if-release.outputs.package-version != ''
     steps:
       - name: Checkout code
@@ -288,9 +324,10 @@ jobs:
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
         run: |
-          aws s3 cp app/packages/desktop/dist/ \
-            "s3://${R2_BUCKET}/desktop-builds/${GITHUB_RUN_ID}/dist-${{ matrix.platform }}/" \
-            --recursive \
+          set -eo pipefail
+          tar -czf "${RUNNER_TEMP}/dist-${{ matrix.platform }}.tar.gz" -C app/packages/desktop/dist .
+          aws s3 cp "${RUNNER_TEMP}/dist-${{ matrix.platform }}.tar.gz" \
+            "s3://${R2_BUCKET}/desktop-builds/${GITHUB_RUN_ID}/dist-${{ matrix.platform }}.tar.gz" \
             --endpoint-url "${R2_ENDPOINT}"
 
   publish-release:
@@ -307,9 +344,16 @@ jobs:
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
         run: |
+          set -eo pipefail
           aws s3 cp "s3://${R2_BUCKET}/desktop-builds/${GITHUB_RUN_ID}/" . \
             --recursive \
             --endpoint-url "${R2_ENDPOINT}"
+          for archive in dist-*.tar.gz; do
+            name="${archive%.tar.gz}"
+            mkdir -p "${name}"
+            tar -xzf "${archive}" -C "${name}"
+            rm "${archive}"
+          done
       - name: Decode release notes
         run: |
           set -eo pipefail
