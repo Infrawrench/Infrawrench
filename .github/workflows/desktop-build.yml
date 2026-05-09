@@ -309,3 +309,5 @@ jobs:
           bodyFile: CHANGELOG.md
           tag: v${{ needs.check-if-release.outputs.package-version }}
           name: Infrawrench v${{ needs.check-if-release.outputs.package-version }}
+      - name: Upload to apt
+        run: npx workerapt-upload --repo infrawrench --dist desktop --cat stable --url https://apt.infrawrench.com/ --key ${{ secrets.APT_KEY }}
