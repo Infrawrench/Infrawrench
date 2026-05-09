@@ -1,7 +1,7 @@
 {
   "name": "@infrawrench/server-core",
   "version": "0.1.0",
-  "license": "UNLICENSED",
+  "license": "BUSL-1.1",
   "private": true,
   "type": "module",
   "exports": {

@@ -137,7 +137,12 @@ export function K8sExecPanel({
               session = null;
               const elapsed = Date.now() - connectTime;
               // Retry if kubectl exited very quickly with a known transient error.
-              if (retriesLeft > 0 && elapsed < 8_000 && isRetryableOutput(outputBuffer) && !disposed) {
+              if (
+                retriesLeft > 0 &&
+                elapsed < 8_000 &&
+                isRetryableOutput(outputBuffer) &&
+                !disposed
+              ) {
                 term.write(
                   `\x1b[90mWaiting for pod to be ready… (retrying in ${RETRY_DELAY_MS / 1000}s)\x1b[0m\r\n`,
                 );
