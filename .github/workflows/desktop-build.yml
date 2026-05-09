@@ -41,11 +41,19 @@ jobs:
         env:
           ELECTRON_CACHE: ${{ runner.temp }}/electron-cache
           ELECTRON_BUILDER_CACHE: ${{ runner.temp }}/electron-builder-cache
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v6
-        with:
-          name: dist-linux-arm64
-          path: app/packages/desktop/dist/*
+      - name: Upload artifacts to R2
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+        run: |
+          aws s3 cp app/packages/desktop/dist/ \
+            "s3://${R2_BUCKET}/desktop-builds/${GITHUB_RUN_ID}/dist-linux-arm64/" \
+            --recursive \
+            --endpoint-url "${R2_ENDPOINT}"
 
   check-if-release:
     runs-on: ubuntu-24.04-arm
@@ -116,11 +124,19 @@ jobs:
         env:
           ELECTRON_CACHE: ${{ runner.temp }}/electron-cache
           ELECTRON_BUILDER_CACHE: ${{ runner.temp }}/electron-builder-cache
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v6
-        with:
-          name: dist-linux-x64
-          path: app/packages/desktop/dist/*
+      - name: Upload artifacts to R2
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+        run: |
+          aws s3 cp app/packages/desktop/dist/ \
+            "s3://${R2_BUCKET}/desktop-builds/${GITHUB_RUN_ID}/dist-linux-x64/" \
+            --recursive \
+            --endpoint-url "${R2_ENDPOINT}"
 
   macos-build:
     strategy:
@@ -206,11 +222,19 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v6
-        with:
-          name: dist-${{ matrix.platform }}
-          path: app/packages/desktop/dist/*
+      - name: Upload artifacts to R2
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+        run: |
+          aws s3 cp app/packages/desktop/dist/ \
+            "s3://${R2_BUCKET}/desktop-builds/${GITHUB_RUN_ID}/dist-${{ matrix.platform }}/" \
+            --recursive \
+            --endpoint-url "${R2_ENDPOINT}"
 
   windows-build:
     strategy:
@@ -255,11 +279,19 @@ jobs:
         env:
           ELECTRON_CACHE: ${{ runner.temp }}/electron-cache
           ELECTRON_BUILDER_CACHE: ${{ runner.temp }}/electron-builder-cache
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v6
-        with:
-          name: dist-${{ matrix.platform }}
-          path: app/packages/desktop/dist/*
+      - name: Upload artifacts to R2
+        shell: bash
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+        run: |
+          aws s3 cp app/packages/desktop/dist/ \
+            "s3://${R2_BUCKET}/desktop-builds/${GITHUB_RUN_ID}/dist-${{ matrix.platform }}/" \
+            --recursive \
+            --endpoint-url "${R2_ENDPOINT}"
 
   publish-release:
     runs-on: ubuntu-24.04-arm
@@ -267,8 +299,17 @@ jobs:
     needs: [check-if-release, linux-arm64-build, linux-x64-build, macos-build, windows-build]
     if: needs.check-if-release.outputs.package-version != ''
     steps:
-      - name: Download artifacts
-        uses: actions/download-artifact@v6
+      - name: Download artifacts from R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+        run: |
+          aws s3 cp "s3://${R2_BUCKET}/desktop-builds/${GITHUB_RUN_ID}/" . \
+            --recursive \
+            --endpoint-url "${R2_ENDPOINT}"
       - name: Decode release notes
         run: |
           set -eo pipefail
