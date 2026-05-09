@@ -325,7 +325,8 @@ jobs:
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
         run: |
           set -eo pipefail
-          tar -czf "${RUNNER_TEMP}/dist-${{ matrix.platform }}.tar.gz" -C app/packages/desktop/dist .
+          # --force-local: GNU tar in Git Bash otherwise treats `D:` as host:path.
+          tar --force-local -czf "${RUNNER_TEMP}/dist-${{ matrix.platform }}.tar.gz" -C app/packages/desktop/dist .
           aws s3 cp "${RUNNER_TEMP}/dist-${{ matrix.platform }}.tar.gz" \
             "s3://${R2_BUCKET}/desktop-builds/${GITHUB_RUN_ID}/dist-${{ matrix.platform }}.tar.gz" \
             --endpoint-url "${R2_ENDPOINT}"
