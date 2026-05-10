@@ -27,7 +27,7 @@ Send it as a bearer token:
 Authorization: Bearer ik_live_...
 ```
 
-See the API reference for endpoints. Everything the UI does, the API does.
+See the [API reference](./openapi.md) for endpoints. Everything the UI does, the API does.
 
 ## Revoke
 

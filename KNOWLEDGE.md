@@ -810,6 +810,23 @@ Format: `iwk_` + 32 random bytes (base64url). Stored as SHA-256 hash. Prefix (fi
 
 ---
 
+## OpenAPI spec
+
+`app/packages/web/src/api/openapi/` builds an OpenAPI 3.1 document from hand-written Zod schemas plus enums sourced live from `loadPlugins()`. So `pluginId` and `typeId` path params are typed as enums of the actually-installed plugin / resource-type IDs — adding a plugin extends the spec automatically.
+
+- `index.ts` — `buildOpenApiDocument()` orchestrates registration; `getOpenApiDocument()` caches the result for runtime serving. Auto-injects `operationId` for every op (method + path → camelCase) so generated SDKs have stable function names.
+- `dynamic.ts` — calls `loadPlugins()` and emits `PluginId` / `ResourceTypeId` / `CredentialFormatId` Zod enums.
+- `common.ts` — shared schemas (`Uuid`, `Email`, `IsoDateTime`, `Ok`, `ErrorResponse`, `ResourceId`, `JsonObject`). `strict()` helper wraps `z.object().strict()` so `additionalProperties: false` is the default.
+- `paths/*.ts` — one file per route module (`auth.ts`, `accounts.ts`, `resources.ts`, `connection-features.ts`, etc.). Each exports a `register*Paths(ctx)` function that registers operations against `ctx.registry`.
+
+Runtime serving: `GET /openapi.json` returns the cached document, `GET /docs` renders the Scalar reference UI. Both are public.
+
+Build artifact: `pnpm --filter @infrawrench/web generate:openapi` writes `app/packages/web/openapi.json`. Commit it so PR diffs show API surface changes.
+
+When you add a new HTTP route, also register it under `paths/`. The spec validates with Redocly (`npx @redocly/cli lint openapi.json`); CI doesn't run this yet but it's a useful local sanity check.
+
+---
+
 ## BigQuery plugin
 
 BigQuery has two-level hierarchy exposed as parent/child resources:
