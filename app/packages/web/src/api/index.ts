@@ -35,6 +35,9 @@ import { sshTunnelRoutes } from "./routes/ssh-tunnels";
 // API-key-authed routes (handle their own auth)
 import { syncRoutes } from "./routes/sync";
 
+// Public MCP discovery (no auth)
+import { wellKnownRoutes } from "../mcp/well-known";
+
 const api = new Hono();
 
 api.onError((err, c) => {
@@ -46,6 +49,7 @@ api.onError((err, c) => {
 
 api.route("/callback", callbackRoutes);
 api.route("/api/v1/webhooks/stripe", stripeWebhookRoutes);
+api.route("/.well-known", wellKnownRoutes);
 
 api.get("/api/auth/sign-in", async (c) => {
   const redirectUri = process.env["WORKOS_REDIRECT_URI"] ?? "http://localhost:3000/callback";

@@ -15,6 +15,7 @@ import { handleK8sPfSession } from "./src/services/k8s-pf-proxy";
 import { resolveKubeconfig } from "./src/services/k8s-kubeconfig-resolver";
 import { authenticateApiRequest } from "./src/auth/api-auth";
 import { validateWsToken } from "./src/services/ws-tokens";
+import { handleMcpHttp } from "./src/mcp/http-handler";
 
 const dev = process.env["NODE_ENV"] !== "production";
 const port = parseInt(process.env["PORT"] ?? "3000", 10);
@@ -31,10 +32,25 @@ async function start() {
       appType: "spa",
     });
 
-    // Route at the Node.js HTTP level: API/callback → Hono, everything else → Vite
+    // Route at the Node.js HTTP level: API/callback/well-known → Hono,
+    // /api/mcp → MCP transport, everything else → Vite
     server = createHttpServer((req, res) => {
       const url = req.url ?? "";
-      if (url.startsWith("/api/") || url.startsWith("/callback")) {
+      const path = url.split("?", 1)[0] ?? "";
+      if (path === "/api/mcp") {
+        void handleMcpHttp(req, res).catch((e) => {
+          console.error("[mcp] handler error:", e);
+          if (!res.headersSent) {
+            res.statusCode = 500;
+            res.setHeader("content-type", "application/json");
+            res.end(JSON.stringify({ error: "Internal MCP error" }));
+          }
+        });
+      } else if (
+        url.startsWith("/api/") ||
+        url.startsWith("/callback") ||
+        url.startsWith("/.well-known/")
+      ) {
         honoListener(req, res);
       } else {
         vite.middlewares(req, res);
@@ -53,7 +69,22 @@ async function start() {
     prodApp.use("*", serveStatic({ root: "./dist/client", path: "index.html" }));
 
     const prodListener = getRequestListener(prodApp.fetch);
-    server = createHttpServer(prodListener);
+    server = createHttpServer((req, res) => {
+      const url = req.url ?? "";
+      const path = url.split("?", 1)[0] ?? "";
+      if (path === "/api/mcp") {
+        void handleMcpHttp(req, res).catch((e) => {
+          console.error("[mcp] handler error:", e);
+          if (!res.headersSent) {
+            res.statusCode = 500;
+            res.setHeader("content-type", "application/json");
+            res.end(JSON.stringify({ error: "Internal MCP error" }));
+          }
+        });
+        return;
+      }
+      prodListener(req, res);
+    });
     server.listen(port);
   }
 

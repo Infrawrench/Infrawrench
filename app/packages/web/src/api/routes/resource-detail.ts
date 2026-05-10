@@ -6,14 +6,10 @@ import { resources, secretFieldStates } from "../../db/schema";
 import { getPlugin } from "../../plugins/loader";
 import { buildPluginHostServices } from "../../services/host-services";
 import { sqlDrivers } from "../../services/drivers";
-import { encrypt, decrypt } from "../../services/encryption";
+import { encrypt } from "../../services/encryption";
 import { getClientForAccount, getClientForResource } from "../../services/plugin-clients";
-import type {
-  ResourceInstance,
-  SecretFieldState,
-  SecretResolution,
-  DetailViewSchema,
-} from "@infrawrench/plugin-base";
+import { loadSecretStatesForResource } from "../../services/secret-states";
+import type { ResourceInstance, DetailViewSchema } from "@infrawrench/plugin-base";
 import { normalizeResourceCreateResult } from "@infrawrench/plugin-base";
 import type { AuthSession } from "../auth-middleware";
 
@@ -24,54 +20,6 @@ declare module "hono" {
 }
 
 const app = new Hono();
-
-/**
- * Loads any persisted secretStates for a resource and decrypts each literal
- * row into a `plaintext` resolution. Plugins receive plaintext or output-ref
- * shapes — they never see ciphertext or master-key-derived values.
- */
-async function loadSecretStatesForResource(resourceId: string): Promise<SecretFieldState[]> {
-  const rows = await db
-    .select()
-    .from(secretFieldStates)
-    .where(eq(secretFieldStates.resourceId, resourceId));
-  const result: SecretFieldState[] = [];
-  for (const s of rows) {
-    if (s.resolutionKind === "literal") {
-      let value = "";
-      if (s.encryptedValue && s.valueIv) {
-        try {
-          value = await decrypt(s.encryptedValue, s.valueIv);
-        } catch {
-          // If decryption fails, surface an empty plaintext rather than throwing
-          // — peer panes/secret exports can degrade gracefully.
-        }
-      }
-      result.push({
-        fieldKey: s.fieldKey,
-        resolution: { kind: "plaintext", value },
-      });
-    } else {
-      result.push({
-        fieldKey: s.fieldKey,
-        resolution: {
-          kind: "output-ref",
-          sourcePluginId: s.sourcePluginId ?? "",
-          sourceResourceTypeId: s.sourceResourceTypeId ?? "",
-          sourceResourceId: s.sourceResourceId ?? "",
-          sourceAccountId: s.sourceAccountId ?? "",
-          outputKey: s.sourceOutputKey ?? "",
-          ...(s.cachedEncryptedValue != null && {
-            cachedEncryptedValue: s.cachedEncryptedValue,
-          }),
-          ...(s.cachedValueIv != null && { cachedIv: s.cachedValueIv }),
-          ...(s.cachedAt != null && { cachedAt: s.cachedAt.toISOString() }),
-        } satisfies SecretResolution,
-      });
-    }
-  }
-  return result;
-}
 
 /** GET /api/resources/:pluginId/:typeId/detail?resourceId=...&parentResourceId=... — full resource detail payload */
 app.get("/:pluginId/:typeId/detail", async (c) => {

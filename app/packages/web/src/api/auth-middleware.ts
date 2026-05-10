@@ -128,7 +128,7 @@ export const orgMiddleware = createMiddleware(async (c, next) => {
   return next();
 });
 
-async function ensureUserFromClaims(
+export async function ensureUserFromClaims(
   userId: string,
   claimEmail: string | undefined,
 ): Promise<{ id: string; email: string } | null> {
@@ -160,7 +160,7 @@ async function ensureUserFromClaims(
   return { id: userId, email };
 }
 
-async function provisionUser(user: {
+export async function provisionUser(user: {
   id: string;
   email: string;
   firstName?: string | null;
@@ -176,7 +176,7 @@ async function provisionUser(user: {
     .onConflictDoNothing();
 }
 
-async function ensureMembership(userId: string, orgId: string) {
+export async function ensureMembership(userId: string, orgId: string) {
   await db
     .insert(organizations)
     .values({

@@ -31,8 +31,8 @@
     "@infrawrench/plugin-kubernetes": "workspace:*",
     "@infrawrench/plugin-memcached": "workspace:*",
     "@infrawrench/plugin-mongodb": "workspace:*",
-    "@infrawrench/plugin-mysql": "workspace:*",
     "@infrawrench/plugin-mssql": "workspace:*",
+    "@infrawrench/plugin-mysql": "workspace:*",
     "@infrawrench/plugin-neon": "workspace:*",
     "@infrawrench/plugin-netlify": "workspace:*",
     "@infrawrench/plugin-ovh": "workspace:*",
@@ -48,6 +48,7 @@
     "@infrawrench/ssh-tunnel-core": "workspace:*",
     "@infrawrench/ui": "workspace:*",
     "@libsql/client": "^0.14.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@tanstack/react-router": "^1.114.7",
     "@workos-inc/node": "^8.0.0",
     "@xterm/addon-fit": "^0.10.0",
@@ -69,7 +70,8 @@
     "ssh2": "^1.16.0",
     "stripe": "^17.7.0",
     "uuid": "^11.1.0",
-    "ws": "^8.18.0"
+    "ws": "^8.18.0",
+    "zod": "^3.24.1"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.2.2",
