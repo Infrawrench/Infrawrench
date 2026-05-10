@@ -10,7 +10,7 @@ Infrawrench is an infrastructure management platform with both a desktop app and
 
 **Desktop app** — Electron + Vite + React, local SQLite, works offline. All 16 provider plugins loaded. SSH terminals, SQL editors, K8s exec, SFTP browsers run locally.
 
-**Web app** — Next.js 15 App Router, Neon PostgreSQL via Drizzle ORM, WorkOS auth. All 16 plugins loaded server-side. SSH/SQL/K8s proxied through a custom WebSocket server (`server.ts`).
+**Web app** — Hono server (Node) + Vite/React frontend with TanStack Router, Neon PostgreSQL via Drizzle ORM, WorkOS auth. All 16 plugins loaded server-side. SSH/SQL/K8s proxied through a custom WebSocket server (`server.ts`).
 
 **Shared UI** — `@infrawrench/ui` React component library used by both apps. Plugins return schema data, both hosts render via SchemaRenderer/DetailView.
 
@@ -50,7 +50,7 @@ infrawrench/
 │   ├── desktop/              # @infrawrench/desktop — Electron app
 │   ├── ui/                   # @infrawrench/ui — shared React components (incl. Toast feature)
 │   ├── server-core/          # @infrawrench/server-core — db client, schema, plugin loader, sync, host services (shared by web + poller)
-│   ├── web/                  # @infrawrench/web — Next.js SaaS web app
+│   ├── web/                  # @infrawrench/web — Hono + Vite/React SaaS web app
 │   ├── poller/               # @infrawrench/poller — background resource poller microservice
 │   └── website/              # @infrawrench/website — Astro on Cloudflare Workers; landing + releases API
 ├── CLAUDE.md                 # Hard rules (keep short)

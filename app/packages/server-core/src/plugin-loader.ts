@@ -2,7 +2,7 @@ import type { Plugin, PluginRegistry } from "@infrawrench/plugin-base";
 import { pluginManifestSchema } from "@infrawrench/plugin-base";
 import registry from "./blessed-plugins.json";
 
-// Static imports — avoids dynamic import() issues in Next.js server action bundles
+// Static imports — keep plugin registration eager so esbuild bundles them all
 import { plugin as awsPlugin } from "@infrawrench/plugin-aws";
 import { plugin as cloudflarePlugin } from "@infrawrench/plugin-cloudflare";
 import { plugin as digitaloceanPlugin } from "@infrawrench/plugin-digitalocean";
