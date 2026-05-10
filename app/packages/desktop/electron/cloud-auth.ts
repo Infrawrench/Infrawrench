@@ -16,6 +16,25 @@ interface TokenPair {
 }
 
 let currentTokens: TokenPair | null = null;
+let refreshInFlight: Promise<boolean> | null = null;
+let proactiveRefreshTimer: NodeJS.Timeout | null = null;
+
+// Refresh ~60s before access-token expiry, but never sooner than 30s from now
+// (prevents tight-loop refreshes if exp is in the past or very near).
+function scheduleProactiveRefresh(expiresAt: number): void {
+  if (proactiveRefreshTimer) clearTimeout(proactiveRefreshTimer);
+  const delay = Math.max(30_000, expiresAt - Date.now() - 60_000);
+  proactiveRefreshTimer = setTimeout(() => {
+    void refreshAccessToken();
+  }, delay);
+}
+
+function clearProactiveRefresh(): void {
+  if (proactiveRefreshTimer) {
+    clearTimeout(proactiveRefreshTimer);
+    proactiveRefreshTimer = null;
+  }
+}
 
 // Register custom protocol handler
 app.setAsDefaultProtocolClient(PROTOCOL);
@@ -162,6 +181,8 @@ async function handleOAuthCallback(callbackUrl: string): Promise<void> {
     if (data.organization_id) {
       await setSyncState("organization_id", data.organization_id);
     }
+
+    scheduleProactiveRefresh(tokens.expiresAt);
   } catch (e) {
     console.error("[cloud-auth] Token exchange error:", e);
     notifyAuthError("token-exchange", e instanceof Error ? e.message : String(e));
@@ -170,11 +191,35 @@ async function handleOAuthCallback(callbackUrl: string): Promise<void> {
   }
 }
 
+async function clearStoredTokens(): Promise<void> {
+  for (const key of [
+    "access_token_encrypted",
+    "access_token_iv",
+    "refresh_token_encrypted",
+    "refresh_token_iv",
+    "token_expires_at",
+  ]) {
+    await deleteSyncState(key);
+  }
+}
+
+// Singleflight: concurrent callers share one in-flight refresh. Without this,
+// multiple callers race to spend the same refresh token and all but one get
+// invalid_grant from WorkOS (which rotates refresh tokens on every use).
 async function refreshAccessToken(): Promise<boolean> {
+  if (refreshInFlight) return refreshInFlight;
+  refreshInFlight = doRefresh().finally(() => {
+    refreshInFlight = null;
+  });
+  return refreshInFlight;
+}
+
+async function doRefresh(): Promise<boolean> {
   if (!currentTokens?.refreshToken) return false;
 
+  let response: Response;
   try {
-    const response = await fetch(`${WORKOS_API_URL}/user_management/authenticate`, {
+    response = await fetch(`${WORKOS_API_URL}/user_management/authenticate`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -183,33 +228,66 @@ async function refreshAccessToken(): Promise<boolean> {
         refresh_token: currentTokens.refreshToken,
       }),
     });
-
-    if (!response.ok) return false;
-
-    const data = (await response.json()) as {
-      access_token: string;
-      refresh_token: string;
-    };
-
-    currentTokens = {
-      accessToken: data.access_token,
-      refreshToken: data.refresh_token,
-      expiresAt: jwtExpMillis(data.access_token),
-    };
-
-    const encKey = await getEncryptionKey();
-    const { ciphertext: atCipher, iv: atIv } = encryptValue(currentTokens.accessToken, encKey);
-    const { ciphertext: rtCipher, iv: rtIv } = encryptValue(currentTokens.refreshToken, encKey);
-    await setSyncState("access_token_encrypted", atCipher);
-    await setSyncState("access_token_iv", atIv);
-    await setSyncState("refresh_token_encrypted", rtCipher);
-    await setSyncState("refresh_token_iv", rtIv);
-    await setSyncState("token_expires_at", String(currentTokens.expiresAt));
-
-    return true;
-  } catch {
+  } catch (e) {
+    // Network error — keep tokens so a later attempt can succeed.
+    console.warn("[cloud-auth] Refresh network error, will retry:", e);
     return false;
   }
+
+  if (!response.ok) {
+    // 4xx with invalid_grant → refresh token is dead, sign the user out fully.
+    // Other statuses (5xx, transient) → keep tokens for a later attempt.
+    const text = await response.text().catch(() => "");
+    let isHardFailure = false;
+    if (response.status >= 400 && response.status < 500) {
+      try {
+        const body = JSON.parse(text) as { error?: string };
+        isHardFailure = body.error === "invalid_grant";
+      } catch {
+        isHardFailure = response.status === 400 || response.status === 401;
+      }
+    }
+    if (isHardFailure) {
+      console.warn("[cloud-auth] Refresh rejected by server, signing out:", text);
+      currentTokens = null;
+      clearProactiveRefresh();
+      await clearStoredTokens();
+      notifyAuthError("refresh-revoked", "Sign-in expired, please sign in again");
+    } else {
+      console.warn("[cloud-auth] Refresh failed (transient), will retry:", response.status, text);
+    }
+    return false;
+  }
+
+  const data = (await response.json()) as {
+    access_token: string;
+    refresh_token: string;
+  };
+
+  currentTokens = {
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token,
+    expiresAt: jwtExpMillis(data.access_token),
+  };
+
+  const encKey = await getEncryptionKey();
+  const { ciphertext: atCipher, iv: atIv } = encryptValue(currentTokens.accessToken, encKey);
+  const { ciphertext: rtCipher, iv: rtIv } = encryptValue(currentTokens.refreshToken, encKey);
+  await setSyncState("access_token_encrypted", atCipher);
+  await setSyncState("access_token_iv", atIv);
+  await setSyncState("refresh_token_encrypted", rtCipher);
+  await setSyncState("refresh_token_iv", rtIv);
+  await setSyncState("token_expires_at", String(currentTokens.expiresAt));
+
+  scheduleProactiveRefresh(currentTokens.expiresAt);
+  return true;
+}
+
+// Force a refresh even if the current access token isn't yet expired. Used by
+// cloudFetch on 401 to recover from server-side token rejection.
+export async function forceRefreshAccessToken(): Promise<string | null> {
+  const ok = await refreshAccessToken();
+  return ok && currentTokens ? currentTokens.accessToken : null;
 }
 
 export async function getAccessToken(): Promise<string | null> {
@@ -228,18 +306,17 @@ export async function getAccessToken(): Promise<string | null> {
       refreshToken: decryptValue(rtCipher, rtIv, encKey),
       expiresAt: Number(expiresAt ?? 0),
     };
+    scheduleProactiveRefresh(currentTokens.expiresAt);
   }
 
-  // Refresh if expired
+  // Refresh if within 60s of expiry. On transient failure, keep currentTokens
+  // so the next caller can retry; only invalid_grant clears them (handled above).
   if (currentTokens.expiresAt < Date.now() + 60_000) {
     const refreshed = await refreshAccessToken();
-    if (!refreshed) {
-      currentTokens = null;
-      return null;
-    }
+    if (!refreshed) return null;
   }
 
-  return currentTokens.accessToken;
+  return currentTokens?.accessToken ?? null;
 }
 
 export async function getAuthStatus(): Promise<{
@@ -262,6 +339,7 @@ export async function getAuthStatus(): Promise<{
 
 async function logout(): Promise<void> {
   currentTokens = null;
+  clearProactiveRefresh();
   for (const key of [
     "access_token_encrypted",
     "access_token_iv",
@@ -278,13 +356,21 @@ async function logout(): Promise<void> {
 }
 
 async function fetchCloudOrgs(): Promise<Array<{ id: string; displayName: string; role: string }>> {
-  const token = await getAccessToken();
+  let token = await getAccessToken();
   if (!token) return [];
 
   try {
-    const response = await fetch(`${CLOUD_URL}/api/auth/orgs`, {
+    let response = await fetch(`${CLOUD_URL}/api/auth/orgs`, {
       headers: { Authorization: `Bearer ${token}` },
     });
+    if (response.status === 401) {
+      const refreshed = await forceRefreshAccessToken();
+      if (!refreshed) return [];
+      token = refreshed;
+      response = await fetch(`${CLOUD_URL}/api/auth/orgs`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    }
     if (!response.ok) return [];
     return (await response.json()) as Array<{ id: string; displayName: string; role: string }>;
   } catch {
@@ -311,15 +397,20 @@ ipcMain.handle("cloud_get_url", () => CLOUD_URL);
 ipcMain.handle(
   "cloud_auth_get_ws_token",
   async (_e, { orgId }: { orgId: string }): Promise<string | null> => {
-    const accessToken = await getAccessToken();
+    let accessToken = await getAccessToken();
     if (!accessToken) return null;
-    const res = await fetch(`${CLOUD_URL}/api/org/${encodeURIComponent(orgId)}/ws-token`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
+    const url = `${CLOUD_URL}/api/org/${encodeURIComponent(orgId)}/ws-token`;
+    const headers = (t: string) => ({
+      Authorization: `Bearer ${t}`,
+      "Content-Type": "application/json",
     });
+    let res = await fetch(url, { method: "POST", headers: headers(accessToken) });
+    if (res.status === 401) {
+      const refreshed = await forceRefreshAccessToken();
+      if (!refreshed) return null;
+      accessToken = refreshed;
+      res = await fetch(url, { method: "POST", headers: headers(accessToken) });
+    }
     if (!res.ok) return null;
     const body = (await res.json()) as { token?: string };
     return body.token ?? null;

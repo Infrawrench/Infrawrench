@@ -1,5 +1,5 @@
 import { ipcMain } from "electron";
-import { getAccessToken } from "./cloud-auth";
+import { getAccessToken, forceRefreshAccessToken } from "./cloud-auth";
 import { CLOUD_URL } from "../env";
 
 async function cloudFetch<T>(
@@ -7,16 +7,24 @@ async function cloudFetch<T>(
   path: string,
   init: RequestInit = {},
 ): Promise<T | null> {
-  const token = await getAccessToken();
+  let token = await getAccessToken();
   if (!token) return null;
-  const res = await fetch(`${CLOUD_URL}/api/org/${encodeURIComponent(orgId)}${path}`, {
+  const url = `${CLOUD_URL}/api/org/${encodeURIComponent(orgId)}${path}`;
+  const buildInit = (t: string): RequestInit => ({
     ...init,
     headers: {
       ...(init.headers ?? {}),
-      Authorization: `Bearer ${token}`,
+      Authorization: `Bearer ${t}`,
       ...(init.body ? { "Content-Type": "application/json" } : {}),
     },
   });
+  let res = await fetch(url, buildInit(token));
+  if (res.status === 401) {
+    const refreshed = await forceRefreshAccessToken();
+    if (!refreshed) return null;
+    token = refreshed;
+    res = await fetch(url, buildInit(token));
+  }
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(`Cloud request failed: ${res.status} ${path} ${text}`);
