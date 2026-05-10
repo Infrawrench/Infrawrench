@@ -10,6 +10,8 @@ import {
   useUIStore,
   PeerPaneView,
   NAVIGATE_TO_RESOURCE_EVENT,
+  formatErrorMessage,
+  toast,
   type QueryResult,
   type ChildResource,
   type ChildResourceGroup,
@@ -182,7 +184,9 @@ export function ResourceDetailClient({
       .then((r) => {
         if (!cancelled) setMetricSeries(r.series);
       })
-      .catch(() => {});
+      .catch((err) => {
+        if (!cancelled) toast.error(`Couldn't load metrics: ${formatErrorMessage(err)}`);
+      });
     return () => {
       cancelled = true;
     };

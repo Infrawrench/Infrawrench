@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Modal, useUIStore, formatErrorMessage, deriveSSHUsername } from "@infrawrench/ui";
+import { Modal, useUIStore, formatErrorMessage, deriveSSHUsername, toast } from "@infrawrench/ui";
 import { apiGet, apiPost } from "@/lib/api";
 import type { SshKey } from "@/lib/api-types";
 import { useOrgId } from "@/lib/useOrgId";
@@ -43,7 +43,7 @@ export function DockerSetupModal({
           }
         }
       })
-      .catch(() => {})
+      .catch((err) => toast.error(`Couldn't load SSH keys: ${formatErrorMessage(err)}`))
       .finally(() => setLoadingKeys(false));
   }, []);
 

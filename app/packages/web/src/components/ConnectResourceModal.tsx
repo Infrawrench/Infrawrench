@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Modal, formatErrorMessage } from "@infrawrench/ui";
+import { Modal, formatErrorMessage, toast } from "@infrawrench/ui";
 import type { SpotlightResult } from "@infrawrench/ui";
 import type { SecretExportTemplate } from "@infrawrench/plugin-base";
 import { camelToTitle } from "@infrawrench/plugin-base";
@@ -140,7 +140,7 @@ export function ConnectResourceModal({
         setSshKeys(keys);
         if (keys.length > 0) setSelectedKeyId(keys[0]!.id);
       })
-      .catch(() => {});
+      .catch((err) => toast.error(`Couldn't load SSH keys: ${formatErrorMessage(err)}`));
   }, [mode, orgId]);
 
   const selectedTemplate = templates.find((t) => t.id === selectedTemplateId);

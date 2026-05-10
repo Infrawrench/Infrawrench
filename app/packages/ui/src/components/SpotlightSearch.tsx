@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, type ReactNode } from "react";
-import { groupBy } from "../utils.js";
+import { groupBy, formatErrorMessage } from "../utils.js";
+import { toast } from "./Toast/index.js";
 
 export interface SpotlightResult {
   id: string;
@@ -97,7 +98,9 @@ export function SpotlightSearch({
           setSelectedIndex(0);
         }
       })
-      .catch(() => {})
+      .catch((err) => {
+        if (!cancelled) toast.error(`Search failed: ${formatErrorMessage(err)}`);
+      })
       .finally(() => {
         if (!cancelled) setLoading(false);
       });

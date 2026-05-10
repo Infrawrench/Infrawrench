@@ -61,6 +61,7 @@ import {
   resourceTabTitle,
   buildChildResourceGroups,
   formatErrorMessage,
+  toast,
   type QueryResult,
   type ChildResource,
   type ChildResourceGroup,
@@ -415,7 +416,9 @@ function ResourceDetailPage() {
             if (!cancelled)
               setMetricSeries(z.array(metricSeriesSchema).parse(series) as MetricSeries[]);
           })
-          .catch(() => {});
+          .catch((err) => {
+            if (!cancelled) toast.error(`Couldn't load metrics: ${formatErrorMessage(err)}`);
+          });
       }
     }
 
@@ -1012,7 +1015,9 @@ function ResourceDetailPage() {
               .then((series) => {
                 if (!cancelled) setMetricSeries(series);
               })
-              .catch(() => {});
+              .catch((err) => {
+                if (!cancelled) toast.error(`Couldn't load metrics: ${formatErrorMessage(err)}`);
+              });
           }
         }
       } catch (e) {

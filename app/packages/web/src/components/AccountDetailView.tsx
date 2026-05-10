@@ -8,6 +8,8 @@ import {
   type DraggableResource,
   type SectionCategoryState,
   useUIStore,
+  formatErrorMessage,
+  toast,
 } from "@infrawrench/ui";
 import { apiDelete, apiPatch } from "@/lib/api";
 import { useOrgId } from "@/lib/useOrgId";
@@ -88,7 +90,7 @@ export function AccountDetailView({
       onAccountUpdated?.(result.displayName);
       setIsEditing(false);
     } catch (e) {
-      console.error("Failed to rename account:", e);
+      toast.error(`Couldn't rename account: ${formatErrorMessage(e)}`);
     } finally {
       setIsSaving(false);
     }

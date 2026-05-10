@@ -493,32 +493,33 @@ function AccountPage() {
 
   async function togglePin(resource: ResourceInstance, typeId: string) {
     if (activeCloudOrgId) {
-      if (pinned.has(resource.id)) {
-        // Unpin from all dashboards in this org (best-effort per-dashboard).
-        const dashboards = await listCloudDashboards(activeCloudOrgId).catch(() => []);
-        await Promise.all(
-          dashboards.map((d) =>
-            unpinCloudResource(activeCloudOrgId, d.id, resource.id).catch(() => undefined),
-          ),
-        );
-        setPinned((prev) => {
-          const s = new Set(prev);
-          s.delete(resource.id);
-          return s;
-        });
-      } else {
-        let dashboards = await listCloudDashboards(activeCloudOrgId).catch(() => []);
-        let home = dashboards.find((d) => d.isDefault);
-        if (!home) {
-          const created = await createCloudDashboard(activeCloudOrgId, "Home").catch(() => null);
-          if (created) home = { ...created, isDefault: true };
-          else dashboards = await listCloudDashboards(activeCloudOrgId).catch(() => []);
-          home = home ?? dashboards[0];
-        }
-        if (home) {
+      try {
+        if (pinned.has(resource.id)) {
+          // Unpin from all dashboards in this org (best-effort per-dashboard).
+          const dashboards = await listCloudDashboards(activeCloudOrgId);
+          await Promise.all(
+            dashboards.map((d) =>
+              unpinCloudResource(activeCloudOrgId, d.id, resource.id).catch(() => undefined),
+            ),
+          );
+          setPinned((prev) => {
+            const s = new Set(prev);
+            s.delete(resource.id);
+            return s;
+          });
+        } else {
+          const dashboards = await listCloudDashboards(activeCloudOrgId);
+          let home = dashboards.find((d) => d.isDefault);
+          if (!home) {
+            const created = await createCloudDashboard(activeCloudOrgId, "Home");
+            if (!created) throw new Error("Failed to create Home dashboard");
+            home = { ...created, isDefault: true };
+          }
           await pinCloudResource(activeCloudOrgId, home.id, resource.id);
           setPinned((prev) => new Set(prev).add(resource.id));
         }
+      } catch (err) {
+        toast.error(`Couldn't update pin: ${formatErrorMessage(err)}`);
       }
       return;
     }
@@ -616,7 +617,7 @@ function AccountPage() {
       bumpAccounts();
       setIsEditing(false);
     } catch (e) {
-      console.error("Failed to rename account:", e);
+      toast.error(`Couldn't rename account: ${formatErrorMessage(e)}`);
     } finally {
       setIsSaving(false);
     }

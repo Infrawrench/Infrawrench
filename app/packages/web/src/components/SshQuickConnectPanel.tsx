@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { deriveSSHUsername } from "@infrawrench/ui";
+import { deriveSSHUsername, formatErrorMessage, toast } from "@infrawrench/ui";
 import { apiGet } from "@/lib/api";
 import type { SshKey } from "@/lib/api-types";
 import { useOrgId } from "@/lib/useOrgId";
@@ -37,7 +37,7 @@ export function SshQuickConnectPanel({
           }
         }
       })
-      .catch(() => {})
+      .catch((err) => toast.error(`Couldn't load SSH keys: ${formatErrorMessage(err)}`))
       .finally(() => setLoading(false));
   }, []);
 
