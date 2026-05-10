@@ -675,5 +675,4 @@ export function registerGenericTools(server: McpServer, auth: McpAuthContext): v
   );
 }
 
-// Re-exports kept for tests/diagnostics.
 export { getClientForAccount, getClientForResource, loadSecretStatesForResource };

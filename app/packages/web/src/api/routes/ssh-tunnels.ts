@@ -79,13 +79,11 @@ app.post("/create-account", async (c) => {
     );
   }
 
-  // Encrypt credentials and SSH key for storage
   const { ciphertext: credCiphertext, iv: credIv } = await encrypt(
     JSON.stringify(input.credentials),
   );
   const { ciphertext: keyCiphertext, iv: keyIv } = await encrypt(privateKey);
 
-  // Create the account
   await db.insert(accounts).values({
     id: newAccountId,
     organizationId,
@@ -95,7 +93,6 @@ app.post("/create-account", async (c) => {
     credentialsIv: credIv,
   });
 
-  // Create the tunnel config
   await db.insert(sshTunnelConfigs).values({
     id: uuid(),
     accountId: newAccountId,
