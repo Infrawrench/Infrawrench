@@ -1,7 +1,9 @@
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
+import { apiReference } from "@scalar/hono-api-reference";
 import { sessionMiddleware, orgMiddleware } from "./auth-middleware";
 import { workos, clientId } from "../auth/workos";
+import { getOpenApiDocument } from "./openapi/index";
 
 // Public routes (no auth)
 import { callbackRoutes } from "./routes/callback";
@@ -50,6 +52,18 @@ api.onError((err, c) => {
 api.route("/callback", callbackRoutes);
 api.route("/api/v1/webhooks/stripe", stripeWebhookRoutes);
 api.route("/.well-known", wellKnownRoutes);
+
+// OpenAPI spec + Scalar reference UI. Public — they document the API surface
+// itself, not any private data. The doc is built once and cached.
+api.get("/openapi.json", async (c) => c.json(await getOpenApiDocument()));
+api.get(
+  "/docs",
+  apiReference({
+    spec: { url: "/openapi.json" },
+    pageTitle: "Infrawrench API",
+    theme: "default",
+  }),
+);
 
 api.get("/api/auth/sign-in", async (c) => {
   const redirectUri = process.env["WORKOS_REDIRECT_URI"] ?? "http://localhost:3000/callback";

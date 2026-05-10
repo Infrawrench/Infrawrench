@@ -12,10 +12,13 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
+    "generate:openapi": "tsx --import ./env-loader.mjs scripts/generate-openapi.ts",
     "test": "vitest run"
   },
   "dependencies": {
+    "@asteasolutions/zod-to-openapi": "^7.3.0",
     "@hono/node-server": "^1.19.13",
+    "@scalar/hono-api-reference": "^0.5.172",
     "@infrawrench/plugin-aws": "workspace:*",
     "@infrawrench/plugin-azure": "workspace:*",
     "@infrawrench/plugin-base": "workspace:*",

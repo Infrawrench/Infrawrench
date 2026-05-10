@@ -1,0 +1,303 @@
+import { z } from "../zod";
+import {
+  strict,
+  ErrorResponses,
+  Uuid,
+  Ok,
+  OrgIdParam,
+  JsonObject,
+  ResourceId,
+  IsoDateTime,
+} from "../common";
+import type { BuildContext } from "../index";
+
+const Dashboard = strict({
+  id: Uuid,
+  name: z.string(),
+  isDefault: z.boolean(),
+}).openapi("Dashboard");
+
+const DashboardFull = strict({
+  id: Uuid,
+  organizationId: Uuid,
+  name: z.string(),
+  isDefault: z.boolean(),
+  createdAt: IsoDateTime,
+  updatedAt: IsoDateTime,
+  deletedAt: IsoDateTime.nullable(),
+  syncVersion: z.number().int(),
+}).openapi("DashboardFull");
+
+const Pin = strict({
+  pinId: Uuid,
+  resourceId: ResourceId,
+  gridX: z.number().int(),
+  gridY: z.number().int(),
+  gridW: z.number().int(),
+  gridH: z.number().int(),
+}).openapi("DashboardPin");
+
+const DashboardWithPins = strict({
+  dashboard: DashboardFull,
+  pins: z.array(Pin),
+}).openapi("DashboardWithPins");
+
+const ProbeStatus = strict({
+  phase: z.enum(["ok", "loading", "error"]),
+  error: z.string().optional(),
+  stats: z.array(JsonObject).optional(),
+  sparkline: z.array(strict({ ts: z.number(), value: z.number() })).optional(),
+  sparklineLabel: z.string().optional(),
+  resourceCounts: z.array(strict({ typeId: z.string(), count: z.number().int() })).optional(),
+}).openapi("ProbeStatus");
+
+const PinFullResponse = strict({
+  pinId: Uuid,
+  resourceId: ResourceId,
+  gridX: z.number().int(),
+  gridY: z.number().int(),
+  gridW: z.number().int(),
+  gridH: z.number().int(),
+  displayName: z.string(),
+  pluginId: z.string(),
+  resourceTypeId: z.string(),
+  accountId: Uuid,
+  fieldsJson: JsonObject,
+  outputsJson: JsonObject,
+  pluginLogoSvg: z.string(),
+  pluginDisplayName: z.string(),
+  status: ProbeStatus,
+}).openapi("PinFull");
+
+const PinRequest = strict({
+  dashboardId: Uuid,
+  resourceId: ResourceId,
+  gridX: z.number().int().optional(),
+  gridY: z.number().int().optional(),
+}).openapi("PinRequest");
+
+const UnpinRequest = strict({
+  dashboardId: Uuid,
+  resourceId: ResourceId,
+}).openapi("UnpinRequest");
+
+const ReorderRequest = strict({
+  resourceIds: z.array(ResourceId),
+}).openapi("ReorderRequest");
+
+const TabTarget = strict({
+  kind: z.enum(["dashboard", "account", "resource"]),
+  dashboardId: Uuid.optional(),
+  accountId: Uuid.optional(),
+  resourceId: ResourceId.optional(),
+}).openapi("TabTarget");
+
+const ValidateTabsRequest = strict({
+  tabs: z.array(strict({ id: z.string(), target: TabTarget })),
+}).openapi("ValidateTabsRequest");
+
+const ValidateTabsResponse = strict({
+  validTabIds: z.array(z.string()),
+}).openapi("ValidateTabsResponse");
+
+const ProbeRequest = strict({
+  items: z.array(
+    strict({
+      resourceId: ResourceId,
+      accountId: Uuid,
+      pluginId: z.string(),
+      resourceTypeId: z.string(),
+    }),
+  ),
+}).openapi("ProbeRequest");
+
+export function registerDashboardPaths(ctx: BuildContext) {
+  const { registry } = ctx;
+  const params = (extra: Record<string, z.ZodType>) => OrgIdParam.extend(extra);
+
+  registry.registerPath({
+    method: "get",
+    path: "/api/org/{orgId}/dashboards",
+    tags: ["Dashboards"],
+    summary: "List dashboards",
+    request: { params: OrgIdParam },
+    responses: {
+      200: {
+        description: "Dashboards",
+        content: { "application/json": { schema: z.array(Dashboard) } },
+      },
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/dashboards",
+    tags: ["Dashboards"],
+    summary: "Create a dashboard",
+    request: {
+      params: OrgIdParam,
+      body: {
+        content: { "application/json": { schema: strict({ name: z.string().min(1) }) } },
+        required: true,
+      },
+    },
+    responses: {
+      200: { description: "Created", content: { "application/json": { schema: DashboardFull } } },
+    },
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/api/org/{orgId}/dashboards/default/full",
+    tags: ["Dashboards"],
+    summary: "Get-or-create the default dashboard with its pins",
+    request: { params: OrgIdParam },
+    responses: {
+      200: {
+        description: "Default dashboard",
+        content: { "application/json": { schema: DashboardWithPins } },
+      },
+    },
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/api/org/{orgId}/dashboards/{id}",
+    tags: ["Dashboards"],
+    summary: "Get a dashboard with its pins",
+    request: {
+      params: params({ id: Uuid.openapi({ param: { name: "id", in: "path" } }) }),
+    },
+    responses: {
+      200: {
+        description: "Dashboard",
+        content: { "application/json": { schema: DashboardWithPins } },
+      },
+      404: ErrorResponses[404],
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/dashboards/{id}/rename",
+    tags: ["Dashboards"],
+    summary: "Rename a dashboard",
+    request: {
+      params: params({ id: Uuid.openapi({ param: { name: "id", in: "path" } }) }),
+      body: {
+        content: { "application/json": { schema: strict({ name: z.string().min(1) }) } },
+        required: true,
+      },
+    },
+    responses: { 200: { description: "Renamed", content: { "application/json": { schema: Ok } } } },
+  });
+
+  registry.registerPath({
+    method: "delete",
+    path: "/api/org/{orgId}/dashboards/{id}",
+    tags: ["Dashboards"],
+    summary: "Delete a dashboard",
+    description: "Cannot delete the default dashboard.",
+    request: {
+      params: params({ id: Uuid.openapi({ param: { name: "id", in: "path" } }) }),
+    },
+    responses: {
+      200: { description: "Deleted", content: { "application/json": { schema: Ok } } },
+      400: ErrorResponses[400],
+      404: ErrorResponses[404],
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/dashboards/pin",
+    tags: ["Dashboards"],
+    summary: "Pin a resource to a dashboard",
+    request: {
+      params: OrgIdParam,
+      body: { content: { "application/json": { schema: PinRequest } }, required: true },
+    },
+    responses: {
+      200: { description: "Pinned", content: { "application/json": { schema: Ok } } },
+      404: ErrorResponses[404],
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/dashboards/{id}/reorder",
+    tags: ["Dashboards"],
+    summary: "Reorder dashboard pins",
+    request: {
+      params: params({ id: Uuid.openapi({ param: { name: "id", in: "path" } }) }),
+      body: { content: { "application/json": { schema: ReorderRequest } }, required: true },
+    },
+    responses: {
+      200: { description: "Reordered", content: { "application/json": { schema: Ok } } },
+      404: ErrorResponses[404],
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/dashboards/unpin",
+    tags: ["Dashboards"],
+    summary: "Unpin a resource",
+    request: {
+      params: OrgIdParam,
+      body: { content: { "application/json": { schema: UnpinRequest } }, required: true },
+    },
+    responses: {
+      200: { description: "Unpinned", content: { "application/json": { schema: Ok } } },
+      404: ErrorResponses[404],
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/dashboards/validate-tabs",
+    tags: ["Dashboards"],
+    summary: "Validate workspace tab targets still exist",
+    request: {
+      params: OrgIdParam,
+      body: { content: { "application/json": { schema: ValidateTabsRequest } }, required: true },
+    },
+    responses: {
+      200: {
+        description: "Result",
+        content: { "application/json": { schema: ValidateTabsResponse } },
+      },
+    },
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/api/org/{orgId}/dashboards/pin/{pinId}",
+    tags: ["Dashboards"],
+    summary: "Full enriched pin data + cached probe status",
+    request: {
+      params: params({ pinId: Uuid.openapi({ param: { name: "pinId", in: "path" } }) }),
+    },
+    responses: {
+      200: { description: "Pin", content: { "application/json": { schema: PinFullResponse } } },
+      404: ErrorResponses[404],
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/dashboards/probe",
+    tags: ["Dashboards"],
+    summary: "Read cached stats/metrics for dashboard cards",
+    request: {
+      params: OrgIdParam,
+      body: { content: { "application/json": { schema: ProbeRequest } }, required: true },
+    },
+    responses: {
+      200: {
+        description: "Probe statuses keyed by resource id",
+        content: { "application/json": { schema: z.record(ProbeStatus) } },
+      },
+    },
+  });
+}
