@@ -37,7 +37,7 @@ app.get("/oauth-protected-resource", (c) => {
     authorization_servers: [authServer],
     scopes_supported: ["mcp"],
     bearer_methods_supported: ["header"],
-    resource_documentation: `${baseUrl}/docs/mcp`,
+    resource_documentation: `${baseUrl}/docs/features/mcp`,
   });
 });
 

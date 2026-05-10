@@ -13,9 +13,12 @@ sidebar_order: 14
 
 ## Credentials
 
-Turso dashboard → **Settings → API Tokens → Create Token**.
+Turso dashboard → **Settings → API Tokens → Create Token**. You also need to tell infrawrench which Turso organization to use.
 
-<insert [Turso Add-account form with API token field] here>
+- **API Token** — the token from the Turso dashboard.
+- **Organization** — your Turso organization slug (shown in your dashboard URL).
+
+<insert [Turso Add-account form with API token and organization fields] here>
 
 ## Notable flows
 

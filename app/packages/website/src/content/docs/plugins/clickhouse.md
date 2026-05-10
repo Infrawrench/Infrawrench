@@ -11,12 +11,19 @@ sidebar_order: 19
 
 ## Credentials
 
-Two separate flows:
+ClickHouse accounts hold two complementary credential sets in a single record — the Cloud API for service management plus a direct connection for SQL queries:
 
-- **ClickHouse Cloud** — API key ID + secret from the ClickHouse Cloud console.
-- **Direct HTTP** — host, port, username, password for any ClickHouse server.
+**Cloud API** (for create / start / stop on ClickHouse Cloud)
 
-<insert [ClickHouse Add-account form with the two modes side by side] here>
+- **Cloud API Key ID** and **Cloud API Key Secret** — generate at ClickHouse Cloud → API Keys.
+- **Organization ID** — your ClickHouse Cloud organization.
+
+**SQL connection** (for the SQL editor — works against Cloud or self-hosted)
+
+- **Service Hostname (for SQL)** — the HTTPS host of the ClickHouse service.
+- **SQL Username** and **SQL Password**.
+
+<insert [ClickHouse Add-account form showing the Cloud API and SQL connection field groups] here>
 
 ## Notable flows
 

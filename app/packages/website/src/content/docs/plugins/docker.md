@@ -13,12 +13,12 @@ See [Docker controls](../features/docker-controls.md) for the feature page. This
 
 ## Credentials
 
-Two modes:
+A single **Docker Host** field — the address of the Docker daemon to talk to. Two common shapes:
 
-- **Local Unix socket** — desktop only. Defaults to `/var/run/docker.sock`.
-- **Remote TCP** — host + port, optional TLS client certs. Works on desktop and web.
+- **Local Unix socket** (desktop only): `unix:///var/run/docker.sock`
+- **Remote TCP**: `tcp://host:2376` (TLS) or `tcp://host:2375` (plaintext, insecure)
 
-<insert [Docker Add-account form with mode toggle and TLS fields] here>
+<insert [Docker Add-account form with the single Docker Host field] here>
 
 ## Notable flows
 

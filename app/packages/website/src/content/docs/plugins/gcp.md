@@ -15,12 +15,11 @@ sidebar_order: 3
 
 ## Credentials
 
-Two ways to connect:
+Paste a **Service account key (JSON)** — download from GCP Console → IAM & Admin → Service Accounts → Keys → Add key. The service account needs the Viewer role (or equivalent read permissions) on the project, plus any roles required for the resources you want to manage (Compute Admin, Cloud SQL Admin, etc.).
 
-1. **OAuth browser flow** (recommended for humans). Click **Sign in with Google** in the add-account form. Pick the project.
-2. **Service account JSON** (for automation). Paste the JSON key downloaded from IAM → Service Accounts.
+You can optionally set a **Project ID** to override the project embedded in the key. Leave blank to use the project from the key file.
 
-<insert [GCP Add-account form with OAuth button and service account textarea] here>
+<insert [GCP Add-account form with service account JSON textarea and optional project ID field] here>
 
 ## Notable flows
 
@@ -31,6 +30,6 @@ Two ways to connect:
 
 ## Tips & limits
 
-- OAuth tokens refresh automatically. If you revoke the grant from your Google account, reconnect the plugin.
+- Service account keys never expire on Google's side, but rotating them is good hygiene — paste a new key any time.
 - VM pricing is shown at creation time. It is an estimate — actual billing depends on sustained-use discounts and committed-use contracts.
 - BigQuery results are paged; very large queries stream into the grid.

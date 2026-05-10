@@ -10,9 +10,9 @@ sidebar_order: 16
 
 ## Credentials
 
-Host + port (default `11211`). Memcached has no auth by default — do not expose it publicly. Use an [SSH tunnel](../features/ssh-tunnels.md) or a private network.
+A single **Server(s)** field — `host:port` (default port `11211`), or a comma-separated list for multiple servers. Memcached has no auth by default — do not expose it publicly. Use an [SSH tunnel](../features/ssh-tunnels.md) or a private network.
 
-<insert [Memcached Add-account form with host and port fields] here>
+<insert [Memcached Add-account form with the Server(s) field] here>
 
 ## Notable flows
 

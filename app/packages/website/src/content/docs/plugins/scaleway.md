@@ -13,9 +13,12 @@ sidebar_order: 6
 
 ## Credentials
 
-Scaleway Console → **Identity and Access Management → API keys → Generate API key**. You will need the **Access key**, **Secret key**, and your **Organization ID** and default **Project ID**.
+Scaleway Console → **Identity and Access Management → API keys → Generate API key**. Paste:
 
-<insert [Scaleway Add-account form with access / secret / org / project fields] here>
+- **Access Key** and **Secret Key** — from the generated API key.
+- **Default Project ID** — the project resources will be scoped to.
+
+<insert [Scaleway Add-account form with access / secret / project fields] here>
 
 ## Notable flows
 

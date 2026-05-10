@@ -12,9 +12,13 @@ sidebar_order: 13
 
 ## Credentials
 
-PlanetScale dashboard → **Settings → Service tokens → New service token**. Grant the roles needed for your databases.
+PlanetScale dashboard → **Settings → Service tokens → New service token**. Grant the roles needed for your databases, then paste:
 
-<insert [PlanetScale Add-account form with token + service-token-name fields] here>
+- **Service Token ID** — the public ID (shown next to the token in the dashboard).
+- **Service Token Secret** — the secret value (shown once at creation).
+- **Organization** — your PlanetScale org slug.
+
+<insert [PlanetScale Add-account form with service token ID, secret, and organization fields] here>
 
 ## Notable flows
 

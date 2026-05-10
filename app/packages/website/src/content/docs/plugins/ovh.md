@@ -13,9 +13,14 @@ sidebar_order: 7
 
 ## Credentials
 
-OVH uses a three-part credential: **Application Key**, **Application Secret**, and **Consumer Key**. Generate them at the [OVH API token page](https://www.ovh.com/auth/api/createToken) with the scopes you need.
+Generate API credentials at the [OVH API token page](https://www.ovh.com/auth/api/createToken) with the scopes you need, then paste:
 
-<insert [OVH Add-account form with the three credential fields] here>
+- **Application Key** and **Application Secret** — identify your app to the OVH API.
+- **Consumer Key** — the per-user grant returned when the token is validated.
+- **API Endpoint** — region: `eu` (Europe), `ca` (Canada), or `us` (United States).
+- **Public Cloud Project ID** — the project to manage.
+
+<insert [OVH Add-account form with application key / secret / consumer key / endpoint / project fields] here>
 
 ## Notable flows
 
