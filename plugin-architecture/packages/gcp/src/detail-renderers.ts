@@ -179,7 +179,7 @@ export interface CloudRunDetailInput {
 }
 
 /** Build the "Service info" section shown above the tabs. */
-export function buildCloudRunServiceInfoSection(input: CloudRunDetailInput): SectionNode {
+function buildCloudRunServiceInfoSection(input: CloudRunDetailInput): SectionNode {
   const { url, region, latestRevision, lastModifier, image, serviceAccount } = input;
   return {
     kind: "section",
@@ -201,7 +201,7 @@ export function buildCloudRunServiceInfoSection(input: CloudRunDetailInput): Sec
 }
 
 /** Build the "Revisions" tab listing every revision in a table. */
-export function buildCloudRunRevisionsTab(input: CloudRunDetailInput): DetailViewTab {
+function buildCloudRunRevisionsTab(input: CloudRunDetailInput): DetailViewTab {
   const { revisions } = input;
   return {
     id: "cloud-run-revisions",
@@ -259,7 +259,7 @@ export function buildCloudRunRevisionsTab(input: CloudRunDetailInput): DetailVie
 }
 
 /** Build the "Networking" tab (ingress, endpoints, custom domains, VPC, mesh). */
-export function buildCloudRunNetworkingTab(input: CloudRunDetailInput): DetailViewTab {
+function buildCloudRunNetworkingTab(input: CloudRunDetailInput): DetailViewTab {
   const { ingress, url, domainMappings, fullService } = input;
   const template = (fullService["template"] as Record<string, unknown> | undefined) ?? {};
   const vpcAccess = template["vpcAccess"] as Record<string, unknown> | undefined;
@@ -557,7 +557,7 @@ export function buildCloudRunNetworkingTab(input: CloudRunDetailInput): DetailVi
  * Build the "Security" tab (Authentication, IAM bindings, Binary Authorization,
  * Threat Detection).
  */
-export function buildCloudRunSecurityTab(input: CloudRunDetailInput): DetailViewTab {
+function buildCloudRunSecurityTab(input: CloudRunDetailInput): DetailViewTab {
   const { iam, fullService } = input;
 
   const addBindingAction: HostAction = {
@@ -829,7 +829,7 @@ export function buildCloudRunSecurityTab(input: CloudRunDetailInput): DetailView
 }
 
 /** Build the "Source" tab (deployment metadata: image, modifier, build ID). */
-export function buildCloudRunSourceTab(input: CloudRunDetailInput): DetailViewTab {
+function buildCloudRunSourceTab(input: CloudRunDetailInput): DetailViewTab {
   const { image, lastModifier, deployClient, deployClientVersion, sourceLocation, fullService } =
     input;
   const annotations = (fullService["annotations"] as Record<string, unknown> | undefined) ?? {};
@@ -862,7 +862,7 @@ export function buildCloudRunSourceTab(input: CloudRunDetailInput): DetailViewTa
 }
 
 /** Build the "Triggers" tab listing Eventarc triggers pointed at the service. */
-export function buildCloudRunTriggersTab(input: CloudRunDetailInput): DetailViewTab {
+function buildCloudRunTriggersTab(input: CloudRunDetailInput): DetailViewTab {
   const { triggers } = input;
 
   const createTriggerAction: HostAction = {

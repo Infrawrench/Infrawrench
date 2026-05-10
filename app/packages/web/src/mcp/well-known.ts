@@ -51,4 +51,4 @@ app.get("/oauth-authorization-server", (c) => {
   return c.redirect(`${authServer}/.well-known/oauth-authorization-server`, 302);
 });
 
-export { app as wellKnownRoutes, getAuthorizationServerUrl };
+export { app as wellKnownRoutes };

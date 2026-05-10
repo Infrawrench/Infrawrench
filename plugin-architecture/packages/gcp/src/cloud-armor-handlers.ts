@@ -190,7 +190,7 @@ function buildRuleBody(opts: AddRuleOpts): Record<string, unknown> {
   return body;
 }
 
-export async function addCloudArmorRule(
+async function addCloudArmorRule(
   ctx: CloudArmorContext,
   resource: ResourceInstance,
   opts: AddRuleOpts,
@@ -207,7 +207,7 @@ export async function addCloudArmorRule(
   }
 }
 
-export async function deleteCloudArmorRule(
+async function deleteCloudArmorRule(
   ctx: CloudArmorContext,
   resource: ResourceInstance,
   priority: number,
@@ -242,7 +242,7 @@ async function setBackendServiceSecurityPolicy(
   }
 }
 
-export async function attachCloudArmorTarget(
+async function attachCloudArmorTarget(
   ctx: CloudArmorContext,
   resource: ResourceInstance,
   backendName: string,
@@ -253,7 +253,7 @@ export async function attachCloudArmorTarget(
   await setBackendServiceSecurityPolicy(ctx, backendName, region, policyUrl);
 }
 
-export async function detachCloudArmorTarget(
+async function detachCloudArmorTarget(
   ctx: CloudArmorContext,
   backendName: string,
   region: string,

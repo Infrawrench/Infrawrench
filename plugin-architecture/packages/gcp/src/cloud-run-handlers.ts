@@ -350,7 +350,7 @@ export async function listCloudRunDomainMappings(
   return { mappings, error: "" };
 }
 
-export async function createCloudRunDomainMapping(
+async function createCloudRunDomainMapping(
   ctx: CloudRunContext,
   resource: ResourceInstance,
   domain: string,
@@ -379,7 +379,7 @@ export async function createCloudRunDomainMapping(
   }
 }
 
-export async function deleteCloudRunDomainMapping(
+async function deleteCloudRunDomainMapping(
   ctx: CloudRunContext,
   resource: ResourceInstance,
   domain: string,
@@ -408,7 +408,7 @@ export interface CreateEventarcTriggerOpts {
   serviceAccount?: string;
 }
 
-export async function createEventarcTrigger(
+async function createEventarcTrigger(
   ctx: CloudRunContext,
   resource: ResourceInstance,
   opts: CreateEventarcTriggerOpts,
@@ -508,7 +508,7 @@ export async function createEventarcTrigger(
   }
 }
 
-export async function deleteEventarcTrigger(
+async function deleteEventarcTrigger(
   ctx: CloudRunContext,
   resource: ResourceInstance,
   triggerName: string,
@@ -569,7 +569,7 @@ async function mutateCloudRunIamPolicy(
   }
 }
 
-export async function setCloudRunAuthMode(
+async function setCloudRunAuthMode(
   ctx: CloudRunContext,
   resource: ResourceInstance,
   mode: string, // "public" | "authenticated"
@@ -587,7 +587,7 @@ export async function setCloudRunAuthMode(
   });
 }
 
-export async function addCloudRunIamBinding(
+async function addCloudRunIamBinding(
   ctx: CloudRunContext,
   resource: ResourceInstance,
   role: string,
@@ -606,7 +606,7 @@ export async function addCloudRunIamBinding(
   });
 }
 
-export async function removeCloudRunIamBinding(
+async function removeCloudRunIamBinding(
   ctx: CloudRunContext,
   resource: ResourceInstance,
   role: string,
@@ -619,7 +619,7 @@ export async function removeCloudRunIamBinding(
   });
 }
 
-export async function setCloudRunBinaryAuthorization(
+async function setCloudRunBinaryAuthorization(
   ctx: CloudRunContext,
   resource: ResourceInstance,
   enabled: boolean,
@@ -665,7 +665,7 @@ export async function setCloudRunBinaryAuthorization(
  * connector + egress, and the mesh annotation. Annotations are merged with
  * what's on the service so we don't clobber unrelated keys.
  */
-export async function editCloudRunNetworking(
+async function editCloudRunNetworking(
   ctx: CloudRunContext,
   resource: ResourceInstance,
   vals: {
