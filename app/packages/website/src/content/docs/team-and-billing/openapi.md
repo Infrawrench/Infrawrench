@@ -63,7 +63,3 @@ Commit the resulting `openapi.json` so PR diffs show API surface changes.
 - `pluginId` and `typeId` path parameters are typed as enums of the live plugin / resource-type IDs.
 - `resourceId` follows the host's composite shape `pluginId:accountId:externalId` and is regex-validated in the schema.
 - Error responses share a single `Error` schema (`{ error: string }`).
-
-## 📸 Screenshots needed
-
-_None — listed inline in this page._
