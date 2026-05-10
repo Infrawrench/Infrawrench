@@ -59,6 +59,8 @@ When you finish a response that adds or modifies docs, end the response with a c
 - `app/packages/website/src/content/docs/<path>.md` — <description copied from the placeholder>
 ```
 
+NEVER EVER EVER add this into files.
+
 Rules:
 
 - **Always include this section, even if zero new screenshots were added** — in that case write `_None — no new screenshot placeholders in this change._` so the user knows you checked.
