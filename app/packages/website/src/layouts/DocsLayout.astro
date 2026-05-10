@@ -1,0 +1,72 @@
+---
+import "../styles/global.css";
+import Nav from "../components/Nav.astro";
+import Footer from "../components/Footer.astro";
+import ProvidersModal from "../components/ProvidersModal.astro";
+import { getDocsNav } from "../lib/docs-nav";
+
+interface Props {
+  title: string;
+  description?: string;
+  activeSlug?: string;
+}
+
+const { title, description, activeSlug } = Astro.props;
+const sections = await getDocsNav();
+const pageTitle = `${title} · Infrawrench docs`;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{pageTitle}</title>
+    {description && <meta name="description" content={description} />}
+    <link rel="icon" href="/icon.png" type="image/png" />
+
+    <meta property="og:type" content="article" />
+    <meta property="og:site_name" content="Infrawrench" />
+    <meta property="og:title" content={title} />
+    {description && <meta property="og:description" content={description} />}
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content={title} />
+    {description && <meta name="twitter:description" content={description} />}
+  </head>
+  <body>
+    <Nav />
+    <div class="docs-shell">
+      <aside class="docs-sidebar" aria-label="Documentation navigation">
+        <nav class="docs-sidebar-inner">
+          {
+            sections.map((section) => (
+              <div class="docs-sidebar-group">
+                <div class="docs-sidebar-group-title">{section.label}</div>
+                <ul class="docs-sidebar-list">
+                  {section.pages.map((page) => (
+                    <li>
+                      <a
+                        href={page.href}
+                        class="docs-sidebar-link"
+                        data-active={activeSlug === page.slug ? "" : undefined}
+                      >
+                        {page.title}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))
+          }
+        </nav>
+      </aside>
+      <main class="docs-main">
+        <article class="docs-article">
+          <slot />
+        </article>
+      </main>
+    </div>
+    <ProvidersModal />
+    <Footer />
+  </body>
+</html>
