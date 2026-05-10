@@ -61,7 +61,7 @@ describe("gcp node-driver", () => {
           mockRes.pipe = vi.fn(() => {
             setTimeout(() => mockWs.emit("finish"), 0);
             return mockWs;
-          }) as any;
+          }) as unknown as Readable["pipe"];
           cb(mockRes);
         }, 0);
         return req;
@@ -74,7 +74,7 @@ describe("gcp node-driver", () => {
         res.pipe = vi.fn(() => {
           process.nextTick(() => mockWs.emit("finish"));
           return mockWs;
-        }) as any;
+        }) as unknown as Readable["pipe"];
         process.nextTick(() => cb(res));
         return req;
       });
@@ -129,7 +129,7 @@ describe("gcp node-driver", () => {
         res.pipe = vi.fn(() => {
           process.nextTick(() => mockWs.emit("error", new Error("disk full")));
           return mockWs;
-        }) as any;
+        }) as unknown as Readable["pipe"];
         process.nextTick(() => cb(res));
         return req;
       });
@@ -150,7 +150,7 @@ describe("gcp node-driver", () => {
         res.pipe = vi.fn(() => {
           process.nextTick(() => mockWs.emit("finish"));
           return mockWs;
-        }) as any;
+        }) as unknown as Readable["pipe"];
         process.nextTick(() => cb(res));
         return req;
       });
@@ -173,7 +173,7 @@ describe("gcp node-driver", () => {
         res.pipe = vi.fn(() => {
           process.nextTick(() => mockWs.emit("finish"));
           return mockWs;
-        }) as any;
+        }) as unknown as Readable["pipe"];
         process.nextTick(() => cb(res));
         return req;
       });
