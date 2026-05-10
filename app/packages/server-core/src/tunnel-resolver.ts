@@ -5,15 +5,14 @@
  * connection string to route through a server-side tunnel.
  */
 import { eq } from "drizzle-orm";
-import { openTunnel as coreOpenTunnel, findTunnel } from "@infrawrench/ssh-tunnel-core";
+import {
+  openTunnel as coreOpenTunnel,
+  findTunnel,
+  type TunnelExtras,
+} from "@infrawrench/ssh-tunnel-core";
 import { db } from "./db/client";
 import { sshTunnelConfigs } from "./db/schema";
 import { decrypt } from "./encryption";
-
-interface TunnelExtras {
-  organizationId: string;
-  accountId: string;
-}
 
 function findTunnelForAccount(accountId: string): { localPort: number } | null {
   const r = findTunnel<TunnelExtras>((rec) => rec.extras.accountId === accountId);

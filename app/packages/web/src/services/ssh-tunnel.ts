@@ -6,13 +6,9 @@ import {
   openTunnel as coreOpenTunnel,
   closeTunnel as coreCloseTunnel,
   getTunnelEntries,
+  type TunnelExtras,
 } from "@infrawrench/ssh-tunnel-core";
 import type { SshTunnelConfig } from "@infrawrench/plugin-base";
-
-interface TunnelExtras {
-  organizationId: string;
-  accountId: string;
-}
 
 export function openTunnel(
   config: SshTunnelConfig,

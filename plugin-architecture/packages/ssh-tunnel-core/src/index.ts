@@ -21,6 +21,16 @@ export interface TunnelRecord<E = undefined> {
   extras: E;
 }
 
+/**
+ * Standard `extras` payload used by both the web service and server-core for
+ * cross-tenant tunnel scoping. Adapters that need additional context can
+ * still extend this (or use a different `E` type entirely).
+ */
+export interface TunnelExtras {
+  organizationId: string;
+  accountId: string;
+}
+
 export interface OpenTunnelOptions {
   /**
    * Hook called just before the SSH client connects. Receives the default
