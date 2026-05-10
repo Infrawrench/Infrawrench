@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { Hono } from "hono";
-import type { AuthSession } from "@/api/auth-middleware";
+import { buildTestApp } from "./test-utils";
 
 const mockGetAuthorizationUrl = vi.fn().mockReturnValue("https://workos.example.com/auth");
 const mockSelect = vi.fn();
@@ -27,20 +26,7 @@ vi.mock("@/db/schema", () => ({
 
 const { authRoutes } = await import("@/api/routes/auth");
 
-function buildApp() {
-  const app = new Hono();
-  const session: AuthSession = {
-    userId: "user-1",
-    email: "test@example.com",
-  };
-  app.use("*", async (c, next) => {
-    c.set("session", session);
-    c.set("organizationId", "org-1");
-    return next();
-  });
-  app.route("/", authRoutes);
-  return app;
-}
+const buildApp = () => buildTestApp(authRoutes);
 
 describe("Auth routes", () => {
   beforeEach(() => {

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { Hono } from "hono";
-import type { AuthSession } from "@/api/auth-middleware";
+import type { Hono } from "hono";
+import { buildTestApp } from "./test-utils";
 
 /**
  * Tests that the web resource-detail API route derives feature flags
@@ -70,20 +70,7 @@ vi.mock("@infrawrench/server-core/tunnel-resolver", () => ({
 
 const { resourceDetailRoutes } = await import("@/api/routes/resource-detail");
 
-function buildApp() {
-  const app = new Hono();
-  const session: AuthSession = {
-    userId: "user-1",
-    email: "test@example.com",
-  };
-  app.use("*", async (c, next) => {
-    c.set("session", session);
-    c.set("organizationId", "org-1");
-    return next();
-  });
-  app.route("/", resourceDetailRoutes);
-  return app;
-}
+const buildApp = () => buildTestApp(resourceDetailRoutes);
 
 const DB_RESOURCE = {
   id: "res-1",

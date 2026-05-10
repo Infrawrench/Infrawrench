@@ -1,8 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { Hono } from "hono";
-import type { AuthSession } from "@/api/auth-middleware";
 import { getPlugin } from "@/plugins/loader";
 import { decrypt } from "@/services/encryption";
+import { buildTestApp } from "./test-utils";
 
 const mockInsert = vi.fn();
 const mockSelect = vi.fn();
@@ -36,20 +35,7 @@ vi.mock("@/services/encryption", () => ({
 
 const { dashboardRoutes } = await import("@/api/routes/dashboards");
 
-function buildApp() {
-  const app = new Hono();
-  const session: AuthSession = {
-    userId: "user-1",
-    email: "test@example.com",
-  };
-  app.use("*", async (c, next) => {
-    c.set("session", session);
-    c.set("organizationId", "org-1");
-    return next();
-  });
-  app.route("/", dashboardRoutes);
-  return app;
-}
+const buildApp = () => buildTestApp(dashboardRoutes);
 
 /** Builds a drizzle-style chained query mock: select().from().where().orderBy().limit() */
 function chainMock(result: unknown) {

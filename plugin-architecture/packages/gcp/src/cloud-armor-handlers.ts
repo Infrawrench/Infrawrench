@@ -1,4 +1,5 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
+import { parseFormArg } from "./utils.js";
 
 export interface CloudArmorContext {
   project: string;
@@ -258,18 +259,6 @@ export async function detachCloudArmorTarget(
   region: string,
 ): Promise<void> {
   await setBackendServiceSecurityPolicy(ctx, backendName, region, null);
-}
-
-function parseFormArg(raw: string | number | undefined): Record<string, string> {
-  if (typeof raw !== "string") return {};
-  try {
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    const out: Record<string, string> = {};
-    for (const [k, v] of Object.entries(parsed)) out[k] = String(v ?? "");
-    return out;
-  } catch {
-    return {};
-  }
 }
 
 export async function executeCloudArmorCommand(

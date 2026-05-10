@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { Hono } from "hono";
-import type { AuthSession } from "@/api/auth-middleware";
+import { buildTestApp } from "./test-utils";
 
 const mockInsert = vi.fn().mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) });
 const mockSelect = vi.fn();
@@ -22,20 +21,7 @@ vi.mock("uuid", () => ({ v4: () => "test-uuid-1234" }));
 
 const { apiKeyRoutes } = await import("@/api/routes/api-keys");
 
-function buildApp() {
-  const app = new Hono();
-  const session: AuthSession = {
-    userId: "user-1",
-    email: "test@example.com",
-  };
-  app.use("*", async (c, next) => {
-    c.set("session", session);
-    c.set("organizationId", "org-1");
-    return next();
-  });
-  app.route("/", apiKeyRoutes);
-  return app;
-}
+const buildApp = () => buildTestApp(apiKeyRoutes);
 
 describe("API Keys routes", () => {
   beforeEach(() => {

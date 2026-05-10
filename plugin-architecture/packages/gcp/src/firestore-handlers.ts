@@ -1,5 +1,5 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
-import { formatGcpError } from "./utils.js";
+import { formatGcpError, parseFormArg } from "./utils.js";
 
 export interface FirestoreContext {
   project: string;
@@ -104,18 +104,6 @@ function isFirestoreIamRole(role: string): boolean {
     role.startsWith("roles/firestore.") ||
     role.startsWith("roles/firebaserules.")
   );
-}
-
-function parseFormArg(raw: string | number | undefined): Record<string, string> {
-  if (typeof raw !== "string") return {};
-  try {
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    const out: Record<string, string> = {};
-    for (const [k, v] of Object.entries(parsed)) out[k] = String(v ?? "");
-    return out;
-  } catch {
-    return {};
-  }
 }
 
 /**

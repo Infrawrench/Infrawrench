@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { Hono } from "hono";
-import type { AuthSession } from "@/api/auth-middleware";
+import { buildTestApp } from "./test-utils";
 
 const mockInsert = vi.fn();
 const mockSelect = vi.fn();
@@ -53,20 +52,7 @@ vi.mock("uuid", () => ({ v4: () => "acct-uuid-1" }));
 
 const { accountRoutes } = await import("@/api/routes/accounts");
 
-function buildApp() {
-  const app = new Hono();
-  const session: AuthSession = {
-    userId: "user-1",
-    email: "test@example.com",
-  };
-  app.use("*", async (c, next) => {
-    c.set("session", session);
-    c.set("organizationId", "org-1");
-    return next();
-  });
-  app.route("/", accountRoutes);
-  return app;
-}
+const buildApp = () => buildTestApp(accountRoutes);
 
 function chainMock(result: unknown) {
   const push = vi.fn();

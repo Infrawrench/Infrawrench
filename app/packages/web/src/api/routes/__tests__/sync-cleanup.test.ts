@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { Hono } from "hono";
-import type { AuthSession } from "@/api/auth-middleware";
+import { buildTestApp } from "./test-utils";
 
 /**
  * Tests that the web resource sync correctly removes stale resources,
@@ -66,20 +65,7 @@ vi.mock("uuid", () => ({ v4: () => "uuid-1" }));
 
 const { accountRoutes } = await import("@/api/routes/accounts");
 
-function buildApp() {
-  const app = new Hono();
-  const session: AuthSession = {
-    userId: "user-1",
-    email: "test@example.com",
-  };
-  app.use("*", async (c, next) => {
-    c.set("session", session);
-    c.set("organizationId", "org-1");
-    return next();
-  });
-  app.route("/", accountRoutes);
-  return app;
-}
+const buildApp = () => buildTestApp(accountRoutes);
 
 const ACCOUNT = {
   id: "acct-1",

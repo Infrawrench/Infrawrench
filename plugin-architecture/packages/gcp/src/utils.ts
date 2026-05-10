@@ -36,6 +36,24 @@ export async function formatGcpError(operation: string, res: Response): Promise<
   return `${operation} failed (${res.status}): ${truncated}`;
 }
 
+/**
+ * Parse a JSON-encoded form-args blob (as passed by host actions) into a
+ * `Record<string, string>`. Values are coerced to strings; nullish values
+ * become empty strings. Returns `{}` when the input isn't a string or fails
+ * to parse — matches the lenient behaviour callers rely on.
+ */
+export function parseFormArg(raw: string | number | undefined): Record<string, string> {
+  if (typeof raw !== "string") return {};
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(parsed)) out[k] = String(v ?? "");
+    return out;
+  } catch {
+    return {};
+  }
+}
+
 export function gcpStatus(s: string | undefined): ResourceStatus {
   switch ((s ?? "").toUpperCase()) {
     case "RUNNING":

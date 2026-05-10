@@ -1,5 +1,6 @@
 import yaml from "js-yaml";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
+import { parseFormArg } from "./utils.js";
 
 export interface CloudRunContext {
   project: string;
@@ -392,18 +393,6 @@ export async function deleteCloudRunDomainMapping(
   const res = await gcpFetch(ctx, url, { method: "DELETE" });
   if (!res.ok && res.status !== 404) {
     throw new Error(`Cloud Run domain mapping delete failed: ${res.status} ${await res.text()}`);
-  }
-}
-
-function parseFormArg(raw: string | number | undefined): Record<string, string> {
-  if (typeof raw !== "string") return {};
-  try {
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    const out: Record<string, string> = {};
-    for (const [k, v] of Object.entries(parsed)) out[k] = String(v ?? "");
-    return out;
-  } catch {
-    return {};
   }
 }
 
