@@ -36,6 +36,11 @@ export interface OpenTunnelOptions {
    * Hook called just before the SSH client connects. Receives the default
    * ConnectConfig assembled from the SshTunnelConfig and may return a modified
    * config (e.g. swap privateKey for `agent: "pageant"`).
+   *
+   * The default ConnectConfig fails closed — its `hostVerifier` rejects every
+   * key with a clear error — so callers MUST provide a verifier here. The
+   * web service supplies one backed by an in-memory pin map; the desktop
+   * supplies one backed by the local sql.js `ssh_host_keys` table.
    */
   configureConnect?: (opts: ConnectConfig) => ConnectConfig;
 }
@@ -89,7 +94,13 @@ export function openTunnel<E = undefined>(
       port: config.sshPort,
       username: config.sshUser,
       privateKey: config.privateKey,
-      hostVerifier: () => true,
+      hostVerifier: () => {
+        throw new Error(
+          "ssh-tunnel-core: no SSH host-key verifier configured. Pass " +
+            "options.configureConnect to install one (see the web and desktop " +
+            "ssh-host-keys modules for TOFU verifiers).",
+        );
+      },
     };
     sshClient.connect(options?.configureConnect ? options.configureConnect(baseOpts) : baseOpts);
   });
