@@ -39,7 +39,7 @@ function entrySection(entry: CollectionEntry<"docs">): { section: string; leaf: 
   return { section: parts[0]!, leaf: parts.slice(1).join("/") };
 }
 
-export function entryHref(entry: CollectionEntry<"docs">): string {
+function entryHref(entry: CollectionEntry<"docs">): string {
   return `/docs/${entry.id}`;
 }
 

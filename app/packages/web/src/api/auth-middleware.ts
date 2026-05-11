@@ -186,7 +186,7 @@ export async function ensureUserFromClaims(
   return { id: userId, email };
 }
 
-export async function provisionUser(user: {
+async function provisionUser(user: {
   id: string;
   email: string;
   firstName?: string | null;

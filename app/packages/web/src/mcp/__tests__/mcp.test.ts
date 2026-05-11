@@ -24,7 +24,6 @@ vi.mock("@/auth/api-auth", () => ({
 vi.mock("@/api/auth-middleware", () => ({
   ensureUserFromClaims: vi.fn(),
   ensureMembership: vi.fn(),
-  provisionUser: vi.fn(),
   sessionMiddleware: vi.fn(),
   orgMiddleware: vi.fn(),
 }));
