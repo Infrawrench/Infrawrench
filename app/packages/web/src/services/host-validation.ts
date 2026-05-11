@@ -35,7 +35,7 @@ function inCidr(ipInt: number, cidrStart: string, prefix: number): boolean {
  * loopback, link-local, multicast, broadcast, or otherwise reserved range
  * that the server should not be connecting outbound to.
  */
-export function isBlockedIp(ip: string): boolean {
+function isBlockedIp(ip: string): boolean {
   // IPv6: block loopback, link-local, unique-local, mapped-IPv4 to blocked v4.
   if (net.isIPv6(ip)) {
     const lower = ip.toLowerCase();

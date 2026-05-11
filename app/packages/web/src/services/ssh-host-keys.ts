@@ -64,7 +64,7 @@ export class HostKeyMismatchError extends HostKeyTrustRequiredError {
   }
 }
 
-export function fingerprint(hostKey: Buffer): string {
+function fingerprint(hostKey: Buffer): string {
   return (
     "SHA256:" + crypto.createHash("sha256").update(hostKey).digest("base64").replace(/=+$/, "")
   );

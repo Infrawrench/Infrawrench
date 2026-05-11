@@ -42,14 +42,14 @@ function cacheKey(host: string, port: number): string {
   return `${host}:${port}`;
 }
 
-export function fingerprint(hostKey: Buffer): string {
+function fingerprint(hostKey: Buffer): string {
   return (
     "SHA256:" + crypto.createHash("sha256").update(hostKey).digest("base64").replace(/=+$/, "")
   );
 }
 
 /** Hydrate the in-memory cache from sql.js. Safe to call repeatedly. */
-export async function loadHostKeyPins(): Promise<void> {
+async function loadHostKeyPins(): Promise<void> {
   const db = await getDb();
   const rows = await db.select<HostKeyRow[]>(
     `SELECT id, host, port, fingerprint FROM ssh_host_keys`,

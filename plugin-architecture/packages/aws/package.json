@@ -66,7 +66,6 @@
     "@aws-sdk/client-sqs": "^3.1045.0",
     "@aws-sdk/client-ssm": "^3.1045.0",
     "@aws-sdk/client-wafv2": "^3.1045.0",
-    "@aws-sdk/credential-providers": "^3.1045.0",
     "@aws-crypto/sha256-js": "^5.2.0",
     "@infrawrench/plugin-base": "workspace:*",
     "@smithy/protocol-http": "^5.3.14",
@@ -74,7 +73,6 @@
     "fast-xml-parser": "^5.7.0"
   },
   "devDependencies": {
-    "aws-sdk-client-mock": "^4.1.0",
     "tsup": "^8.3.5",
     "typescript": "^5.7.3",
     "vitest": "^3.0.5"

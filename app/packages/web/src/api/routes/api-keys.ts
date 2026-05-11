@@ -11,7 +11,7 @@ import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
 import type { AuthSession } from "../auth-middleware";
 
 /** Domain label for HMAC sub-key derivation when hashing API keys. */
-export const API_KEY_HASH_DOMAIN = "api-key";
+const API_KEY_HASH_DOMAIN = "api-key";
 
 declare module "hono" {
   interface ContextVariableMap {

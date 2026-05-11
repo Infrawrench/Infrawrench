@@ -64,7 +64,7 @@ export function buildDockerHostServices(driverId: string, dockerHost: string): H
   };
 }
 
-export function k8sCommand(
+function k8sCommand(
   driverId: string,
   kubeconfig: string,
   op: string,
@@ -73,7 +73,7 @@ export function k8sCommand(
   return invoke<unknown>("plugin_k8s_command", { driverId, kubeconfig, op, params });
 }
 
-export function buildK8sHostServices(driverId: string, kubeconfig: string): HostServices {
+function buildK8sHostServices(driverId: string, kubeconfig: string): HostServices {
   return {
     k8s: {
       command: (op, params) => k8sCommand(driverId, kubeconfig, op, params),

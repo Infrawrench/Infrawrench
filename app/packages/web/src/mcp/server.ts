@@ -3,8 +3,8 @@ import { registerGenericTools } from "./tools/generic";
 import { registerPerPluginCreateTools } from "./tools/per-plugin-create";
 import type { McpAuthContext } from "./auth";
 
-export const SERVER_NAME = "infrawrench";
-export const SERVER_VERSION = "0.1.0";
+const SERVER_NAME = "infrawrench";
+const SERVER_VERSION = "0.1.0";
 
 /**
  * Builds a fresh McpServer instance scoped to a single authenticated caller.
