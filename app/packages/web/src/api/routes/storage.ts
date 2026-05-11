@@ -1,12 +1,6 @@
 import { Hono } from "hono";
 import path from "node:path";
-import { eq, and } from "drizzle-orm";
-import { db } from "../../db/client";
-import { accounts } from "../../db/schema";
-import { decrypt } from "../../services/encryption";
-import { getPlugin } from "../../plugins/loader";
-import { buildPluginHostServices } from "../../services/host-services";
-import { rewriteCredentialsThroughTunnel } from "../../services/tunnel-resolver";
+import { getClientForAccount } from "../../services/plugin-clients";
 import { storageDrivers } from "../../services/drivers";
 import archiver from "archiver";
 import { requirePermission } from "../../auth/permissions";
@@ -35,32 +29,13 @@ app.post("/upload", async (c) => {
     return c.json({ error: "Missing accountId, bucket, key, or file" }, 400);
   }
 
-  const [account] = await db
-    .select({
-      id: accounts.id,
-      pluginId: accounts.pluginId,
-      encryptedCredentials: accounts.encryptedCredentials,
-      credentialsIv: accounts.credentialsIv,
-    })
-    .from(accounts)
-    .where(and(eq(accounts.id, accountId), eq(accounts.organizationId, organizationId)))
-    .limit(1);
+  const ctx = await getClientForAccount(accountId, organizationId);
+  if (!ctx) return c.json({ error: "Account or plugin not found" }, 404);
 
-  if (!account) return c.json({ error: "Account not found" }, 404);
+  if (!ctx.client.uploadStorageObject)
+    return c.json({ error: "Plugin does not support upload" }, 400);
 
-  const plaintext = await decrypt(account.encryptedCredentials, account.credentialsIv);
-  const credentials = JSON.parse(plaintext) as Record<string, string>;
-  await rewriteCredentialsThroughTunnel(accountId, credentials);
-
-  const loaded = await getPlugin(account.pluginId);
-  if (!loaded) return c.json({ error: "Plugin not found" }, 404);
-
-  const hostServices = buildPluginHostServices(loaded.plugin.manifest, credentials);
-  const client = loaded.plugin.createClient(credentials, hostServices);
-
-  if (!client.uploadStorageObject) return c.json({ error: "Plugin does not support upload" }, 400);
-
-  await client.uploadStorageObject(bucket, key, file);
+  await ctx.client.uploadStorageObject(bucket, key, file);
   return c.json({ ok: true });
 });
 
@@ -85,35 +60,15 @@ app.get("/download", async (c) => {
 
   if (keys.length === 0) return c.json({ error: "No keys specified" }, 400);
 
-  const [account] = await db
-    .select({
-      id: accounts.id,
-      pluginId: accounts.pluginId,
-      encryptedCredentials: accounts.encryptedCredentials,
-      credentialsIv: accounts.credentialsIv,
-    })
-    .from(accounts)
-    .where(and(eq(accounts.id, accountId), eq(accounts.organizationId, organizationId)))
-    .limit(1);
+  const ctx = await getClientForAccount(accountId, organizationId);
+  if (!ctx) return c.json({ error: "Account or plugin not found" }, 404);
 
-  if (!account) return c.json({ error: "Account not found" }, 404);
-
-  const plaintext = await decrypt(account.encryptedCredentials, account.credentialsIv);
-  const credentials = JSON.parse(plaintext) as Record<string, string>;
-  await rewriteCredentialsThroughTunnel(accountId, credentials);
-
-  const loaded = await getPlugin(account.pluginId);
-  if (!loaded) return c.json({ error: "Plugin not found" }, 404);
-
-  const hostServices = buildPluginHostServices(loaded.plugin.manifest, credentials);
-  const client = loaded.plugin.createClient(credentials, hostServices);
-
-  if (!client.getStorageAccessToken) {
+  if (!ctx.client.getStorageAccessToken) {
     return c.json({ error: "Plugin does not support storage access tokens" }, 400);
   }
 
-  const accessToken = await client.getStorageAccessToken();
-  const storageDriver = storageDrivers.get(account.pluginId);
+  const accessToken = await ctx.client.getStorageAccessToken();
+  const storageDriver = storageDrivers.get(ctx.account.pluginId);
   if (!storageDriver) return c.json({ error: "No storage driver for this plugin" }, 400);
 
   if (keys.length === 1) {

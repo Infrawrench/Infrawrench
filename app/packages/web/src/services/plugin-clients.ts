@@ -1,10 +1,92 @@
 import { eq, and, isNull } from "drizzle-orm";
+import type { PeerPluginIntegration, Plugin, PluginClient } from "@infrawrench/plugin-base";
 import { db } from "../db/client";
 import { accounts, resources } from "../db/schema";
 import { decrypt } from "./encryption";
 import { getPlugin } from "../plugins/loader";
 import { buildPluginHostServices } from "./host-services";
 import { rewriteCredentialsThroughTunnel } from "./tunnel-resolver";
+
+export interface PeerPaneResult {
+  tabLabel: string;
+  pluginLogoSvg: string;
+  schema: unknown;
+  peerPluginId: string;
+}
+
+/**
+ * For each peer integration, resolve peer credentials via the parent client's
+ * outputs, build the peer plugin's client, and call `renderPeerPane`. Errors
+ * for individual integrations are captured as error-status panes — one bad
+ * peer never poisons the others. Used by both the eager (GET /detail) and
+ * lazy (POST /peer-panes) endpoints.
+ */
+export async function buildPeerPanes(
+  parentClient: PluginClient,
+  parentPlugin: Plugin,
+  integrations: PeerPluginIntegration[],
+  resourceTypeId: string,
+  resourceId: string,
+  accountId: string,
+): Promise<PeerPaneResult[]> {
+  const panes: PeerPaneResult[] = [];
+  await Promise.allSettled(
+    integrations.map(async (integration) => {
+      try {
+        const peerCredentials: Record<string, string> = {};
+        for (const mapping of integration.credentialMappings) {
+          const value = await parentClient.resolveOutput(
+            resourceTypeId,
+            resourceId,
+            mapping.outputKey,
+            accountId,
+          );
+          peerCredentials[mapping.credentialKey] = value;
+        }
+
+        const peerLoaded = await getPlugin(integration.pluginId);
+        if (!peerLoaded) return;
+
+        const peerHostServices = buildPluginHostServices(
+          peerLoaded.plugin.manifest,
+          peerCredentials,
+        );
+        const peerClient = peerLoaded.plugin.createClient(peerCredentials, peerHostServices);
+        if (!peerClient.renderPeerPane) return;
+
+        const context = {
+          tabLabel: integration.tabLabel,
+          parentPluginId: parentPlugin.manifest.id,
+          parentResourceTypeId: resourceTypeId,
+          parentResourceId: resourceId,
+          accountId,
+        };
+        const peerSchema = await peerClient.renderPeerPane(context);
+
+        panes.push({
+          tabLabel: integration.tabLabel,
+          pluginLogoSvg: peerLoaded.plugin.manifest.logoSvg,
+          schema: { ...peerSchema, supportsYamlImport: !!peerClient.importYaml },
+          peerPluginId: integration.pluginId,
+        });
+      } catch (err) {
+        const peerLoaded = await getPlugin(integration.pluginId);
+        if (!peerLoaded) return;
+        const message = err instanceof Error ? err.message : String(err);
+        panes.push({
+          tabLabel: integration.tabLabel,
+          pluginLogoSvg: peerLoaded.plugin.manifest.logoSvg,
+          schema: {
+            status: { kind: "status-dot", status: "error", label: message },
+            resourceGroups: [],
+          },
+          peerPluginId: integration.pluginId,
+        });
+      }
+    }),
+  );
+  return panes;
+}
 
 export async function getClientForAccount(accountId: string, organizationId: string) {
   const [account] = await db

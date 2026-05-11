@@ -4,10 +4,13 @@ import { v4 as uuidv4 } from "uuid";
 import { db } from "../../db/client";
 import { resources, secretFieldStates } from "../../db/schema";
 import { getPlugin } from "../../plugins/loader";
-import { buildPluginHostServices } from "../../services/host-services";
 import { sqlDrivers } from "../../services/drivers";
 import { encrypt } from "../../services/encryption";
-import { getClientForAccount, getClientForResource } from "../../services/plugin-clients";
+import {
+  getClientForAccount,
+  getClientForResource,
+  buildPeerPanes,
+} from "../../services/plugin-clients";
 import { loadSecretStatesForResource } from "../../services/secret-states";
 import type { ResourceInstance, DetailViewSchema } from "@infrawrench/plugin-base";
 import { normalizeResourceCreateResult } from "@infrawrench/plugin-base";
@@ -297,61 +300,15 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
       return true;
     });
     if (includePeerPanes) {
-      await Promise.allSettled(
-        visibleIntegrations.map(async (integration) => {
-          try {
-            const peerCredentials: Record<string, string> = {};
-            for (const mapping of integration.credentialMappings) {
-              const value = await client.resolveOutput(
-                resourceTypeId,
-                resourceId,
-                mapping.outputKey,
-                accountId,
-              );
-              peerCredentials[mapping.credentialKey] = value;
-            }
-
-            const peerLoaded = await getPlugin(integration.pluginId);
-            if (!peerLoaded) return;
-
-            const peerHostServices = buildPluginHostServices(
-              peerLoaded.plugin.manifest,
-              peerCredentials,
-            );
-            const peerClient = peerLoaded.plugin.createClient(peerCredentials, peerHostServices);
-            if (!peerClient.renderPeerPane) return;
-
-            const context = {
-              tabLabel: integration.tabLabel,
-              parentPluginId: plugin.manifest.id,
-              parentResourceTypeId: resourceTypeId,
-              parentResourceId: resourceId,
-              accountId,
-            };
-            const peerSchema = await peerClient.renderPeerPane(context);
-
-            peerPanes.push({
-              tabLabel: integration.tabLabel,
-              pluginLogoSvg: peerLoaded.plugin.manifest.logoSvg,
-              schema: { ...peerSchema, supportsYamlImport: !!peerClient.importYaml },
-              peerPluginId: integration.pluginId,
-            });
-          } catch (err) {
-            const peerLoaded = await getPlugin(integration.pluginId);
-            if (!peerLoaded) return;
-            const message = err instanceof Error ? err.message : String(err);
-            peerPanes.push({
-              tabLabel: integration.tabLabel,
-              pluginLogoSvg: peerLoaded.plugin.manifest.logoSvg,
-              schema: {
-                status: { kind: "status-dot", status: "error", label: message },
-                resourceGroups: [],
-              },
-              peerPluginId: integration.pluginId,
-            });
-          }
-        }),
+      const builtPanes = await buildPeerPanes(
+        client,
+        plugin,
+        visibleIntegrations,
+        resourceTypeId,
+        resourceId,
+        accountId,
       );
+      peerPanes.push(...builtPanes);
     } else {
       for (const integration of visibleIntegrations) {
         const peerLoaded = await getPlugin(integration.pluginId);
@@ -1153,67 +1110,13 @@ app.post("/:pluginId/:typeId/peer-panes", async (c) => {
   const resourceTypeDef = ctx.plugin.resourceTypes.find((t) => t.id === resourceTypeId);
   if (!resourceTypeDef?.peerIntegrations?.length) return c.json([]);
 
-  const panes: Array<{
-    tabLabel: string;
-    pluginLogoSvg: string;
-    schema: unknown;
-    peerPluginId: string;
-  }> = [];
-
-  await Promise.allSettled(
-    resourceTypeDef.peerIntegrations.map(async (integration) => {
-      try {
-        const peerCredentials: Record<string, string> = {};
-        for (const mapping of integration.credentialMappings) {
-          const value = await ctx.client.resolveOutput(
-            resourceTypeId,
-            resourceId,
-            mapping.outputKey,
-            accountId,
-          );
-          peerCredentials[mapping.credentialKey] = value;
-        }
-
-        const peerLoaded = await getPlugin(integration.pluginId);
-        if (!peerLoaded) return;
-
-        const peerHostServices = buildPluginHostServices(
-          peerLoaded.plugin.manifest,
-          peerCredentials,
-        );
-        const peerClient = peerLoaded.plugin.createClient(peerCredentials, peerHostServices);
-        if (!peerClient.renderPeerPane) return;
-
-        const context = {
-          tabLabel: integration.tabLabel,
-          parentPluginId: ctx.plugin.manifest.id,
-          parentResourceTypeId: resourceTypeId,
-          parentResourceId: resourceId,
-          accountId,
-        };
-        const peerSchema = await peerClient.renderPeerPane(context);
-
-        panes.push({
-          tabLabel: integration.tabLabel,
-          pluginLogoSvg: peerLoaded.plugin.manifest.logoSvg,
-          schema: { ...peerSchema, supportsYamlImport: !!peerClient.importYaml },
-          peerPluginId: integration.pluginId,
-        });
-      } catch (err) {
-        const peerLoaded = await getPlugin(integration.pluginId);
-        if (!peerLoaded) return;
-        const message = err instanceof Error ? err.message : String(err);
-        panes.push({
-          tabLabel: integration.tabLabel,
-          pluginLogoSvg: peerLoaded.plugin.manifest.logoSvg,
-          schema: {
-            status: { kind: "status-dot", status: "error", label: message },
-            resourceGroups: [],
-          },
-          peerPluginId: integration.pluginId,
-        });
-      }
-    }),
+  const panes = await buildPeerPanes(
+    ctx.client,
+    ctx.plugin,
+    resourceTypeDef.peerIntegrations,
+    resourceTypeId,
+    resourceId,
+    accountId,
   );
 
   return c.json(panes);
