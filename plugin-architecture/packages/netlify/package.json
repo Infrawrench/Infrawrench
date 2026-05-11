@@ -24,7 +24,8 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@infrawrench/plugin-base": "workspace:*"
+    "@infrawrench/plugin-base": "workspace:*",
+    "@netlify/api": "^14.0.18"
   },
   "devDependencies": {
     "tsup": "^8.3.5",

@@ -14,135 +14,150 @@ import {
   renderDnsRecordDetail,
   renderDnsRecordSidebar,
 } from "@infrawrench/plugin-base";
+import { NetlifyAPI } from "@netlify/api";
+
+// The `@netlify/api` SDK is OpenAPI-generated and exposes weakly-typed
+// dynamic methods (each response type is inferred via `any` in the runtime
+// methods table). We derive narrow, ergonomic shapes from the swagger
+// schema below to keep the rest of the plugin strongly typed without
+// reaching into the SDK's internal `operations` table.
+//
+// These match the OpenAPI `site`, `deploy`, `form`, `dnsZone`, `dnsRecord`,
+// `buildHook`, and `envVar` definitions used by api.netlify.com.
+
+interface NetlifyRepoInfo {
+  provider?: string;
+  repo_path?: string;
+  repo_branch?: string;
+  dir?: string;
+  functions_dir?: string;
+  cmd?: string;
+  repo_url?: string;
+  public_repo?: boolean;
+  stop_builds?: boolean;
+}
+
+interface NetlifyDeployLite {
+  framework?: string;
+  state?: string;
+}
 
 interface NetlifySite {
   id: string;
-  state: string;
-  plan: string;
+  state?: string;
+  plan?: string;
   name: string;
-  custom_domain: string | null;
-  domain_aliases: string[];
-  url: string;
-  ssl_url: string;
-  admin_url: string;
-  screenshot_url: string | null;
+  custom_domain?: string | null;
+  domain_aliases?: string[];
+  url?: string;
+  ssl_url?: string;
+  admin_url?: string;
+  screenshot_url?: string | null;
   created_at: string;
   updated_at: string;
-  ssl: boolean;
-  force_ssl: boolean;
-  managed_dns: boolean;
-  deploy_url: string;
-  deploy_hook: string;
-  account_id: string;
-  account_name: string;
-  account_slug: string;
-  git_provider: string;
-  build_image: string;
-  functions_region: string;
-  id_domain: string;
-  build_settings: NetlifyRepoInfo | null;
-  published_deploy: NetlifyDeploy | null;
-}
-
-interface NetlifyRepoInfo {
-  provider: string;
-  repo_path: string;
-  repo_branch: string;
-  dir: string;
-  functions_dir: string;
-  cmd: string;
-  repo_url: string;
-  public_repo: boolean;
-  stop_builds: boolean;
+  ssl?: boolean;
+  force_ssl?: boolean;
+  managed_dns?: boolean;
+  deploy_url?: string;
+  deploy_hook?: string;
+  account_id?: string;
+  account_name?: string;
+  account_slug?: string;
+  git_provider?: string;
+  build_image?: string;
+  functions_region?: string;
+  id_domain?: string;
+  build_settings?: NetlifyRepoInfo | null;
+  published_deploy?: NetlifyDeployLite | null;
 }
 
 interface NetlifyDeploy {
   id: string;
-  site_id: string;
-  build_id: string;
-  state: string;
-  name: string;
-  url: string;
-  ssl_url: string;
-  admin_url: string;
-  deploy_url: string;
-  deploy_ssl_url: string;
-  error_message: string;
-  branch: string;
-  commit_ref: string;
-  commit_url: string;
-  skipped: boolean;
+  site_id?: string;
+  build_id?: string;
+  state?: string;
+  name?: string;
+  url?: string;
+  ssl_url?: string;
+  admin_url?: string;
+  deploy_url?: string;
+  deploy_ssl_url?: string;
+  error_message?: string;
+  branch?: string;
+  commit_ref?: string;
+  commit_url?: string;
+  skipped?: boolean;
   created_at: string;
   updated_at: string;
-  published_at: string | null;
-  title: string;
-  context: string;
-  locked: boolean;
-  review_url: string;
-  framework: string;
-  draft: boolean;
+  published_at?: string | null;
+  title?: string;
+  context?: string;
+  locked?: boolean;
+  review_url?: string;
+  framework?: string;
+  draft?: boolean;
 }
 
 interface NetlifyForm {
   id: string;
-  site_id: string;
+  site_id?: string;
   name: string;
-  paths: string[];
-  submission_count: number;
-  fields: unknown[];
+  paths?: string[];
+  submission_count?: number;
+  fields?: unknown[];
   created_at: string;
 }
 
 interface NetlifyDnsZone {
   id: string;
   name: string;
-  errors: string[];
-  supported_record_types: string[];
-  user_id: string;
+  errors?: string[];
+  supported_record_types?: string[];
+  user_id?: string;
   created_at: string;
   updated_at: string;
-  dns_servers: string[];
-  account_id: string;
-  site_id: string;
-  account_slug: string;
-  account_name: string;
-  domain: string;
-  ipv6_enabled: boolean;
-  dedicated: boolean;
+  dns_servers?: string[];
+  account_id?: string;
+  site_id?: string;
+  account_slug?: string;
+  account_name?: string;
+  domain?: string;
+  ipv6_enabled?: boolean;
+  dedicated?: boolean;
 }
 
 interface NetlifyDnsRecord {
   id: string;
-  hostname: string;
-  type: string;
-  value: string;
-  ttl: number;
-  priority: number;
-  dns_zone_id: string;
-  site_id: string;
-  flag: number;
-  tag: string;
-  managed: boolean;
+  hostname?: string;
+  type?: string;
+  value?: string;
+  ttl?: number;
+  priority?: number;
+  dns_zone_id?: string;
+  site_id?: string;
+  flag?: number;
+  tag?: string;
+  managed?: boolean;
 }
 
 interface NetlifyBuildHook {
   id: string;
-  title: string;
-  branch: string;
-  url: string;
-  site_id: string;
-  created_at: string;
+  title?: string;
+  branch?: string;
+  url?: string;
+  site_id?: string;
+  created_at?: string;
 }
 
 interface NetlifyEnvVar {
   key: string;
-  scopes: string[];
-  values: Array<{
-    value: string;
-    context: string;
+  scopes?: string[];
+  values?: Array<{
+    value?: string;
+    context?: string;
   }>;
-  is_secret: boolean;
-  updated_at: string;
+  is_secret?: boolean;
+  updated_at?: string;
 }
 
 function mapSiteState(state: string): ResourceStatus {
@@ -182,37 +197,30 @@ function mapDeployState(state: string): ResourceStatus {
 
 export class NetlifyClient implements PluginClient {
   private readonly token: string;
-  private readonly baseUrl = "https://api.netlify.com/api/v1";
+  private readonly api: NetlifyAPI;
+  // Legacy site-level env var endpoints (POST/DELETE on
+  // /sites/{site_id}/env[/{key}]) are not part of the SDK's typed methods.
+  // We use jsonRestFetch as a narrow escape hatch for those two calls.
+  private readonly legacyEnvBaseUrl = "https://api.netlify.com/api/v1";
 
   constructor(credentials: Record<string, string>, _services?: HostServices) {
     const token = credentials["accessToken"];
     if (!token) throw new Error("Netlify plugin: missing accessToken credential");
     this.token = token;
-  }
-
-  private async fetch<T>(path: string, options?: RequestInit): Promise<T> {
-    return jsonRestFetch<T>({
-      vendor: "Netlify",
-      url: `${this.baseUrl}${path}`,
-      errorPath: path,
-      headers: {
-        Authorization: `Bearer ${this.token}`,
-        Accept: "application/json",
-        "User-Agent": "Infrawrench/0.1.0",
-      },
-      ...(options ? { init: options } : {}),
-    });
+    this.api = new NetlifyAPI(token, { userAgent: "Infrawrench/0.1.0" });
   }
 
   /**
-   * Paginate through all pages of a list endpoint.
-   * Netlify uses `page` + `per_page` query params and a Link header.
+   * Paginate through all pages of an SDK list endpoint that supports
+   * `page` + `per_page`. Netlify uses 100 items per page by convention.
    */
-  private async paginate<T>(path: string, maxPages = 10): Promise<T[]> {
+  private async paginateAll<T>(
+    list: (params: { page: number; per_page: number }) => Promise<T[]>,
+    maxPages = 10,
+  ): Promise<T[]> {
     const results: T[] = [];
-    const separator = path.includes("?") ? "&" : "?";
     for (let page = 1; page <= maxPages; page++) {
-      const items = await this.fetch<T[]>(`${path}${separator}page=${page}&per_page=100`);
+      const items = (await list({ page, per_page: 100 })) ?? [];
       results.push(...items);
       if (items.length < 100) break;
     }
@@ -248,7 +256,7 @@ export class NetlifyClient implements PluginClient {
     // For sites we can fetch directly for freshness
     if (typeId === "netlify-site") {
       const siteId = resourceId.split(":").pop() ?? "";
-      const site = await this.fetch<NetlifySite>(`/sites/${siteId}`);
+      const site = (await this.api.getSite({ siteId })) as NetlifySite;
       return this.mapSite(site, accountId);
     }
     // For others, look up in the full list
@@ -266,11 +274,11 @@ export class NetlifyClient implements PluginClient {
   ): Promise<string> {
     if (typeId === "netlify-site") {
       const siteId = resourceId.split(":").pop() ?? "";
-      const site = await this.fetch<NetlifySite>(`/sites/${siteId}`);
+      const site = (await this.api.getSite({ siteId })) as NetlifySite;
       if (outputKey === "siteId") return site.id;
       if (outputKey === "siteName") return site.name;
-      if (outputKey === "url") return site.url;
-      if (outputKey === "sslUrl") return site.ssl_url;
+      if (outputKey === "url") return site.url ?? "";
+      if (outputKey === "sslUrl") return site.ssl_url ?? "";
       if (outputKey === "deployHook") return site.deploy_hook ?? "";
     }
 
@@ -433,10 +441,10 @@ export class NetlifyClient implements PluginClient {
     if (typeId === "netlify-dns-record") {
       const zoneField = !parentResourceId
         ? await (async () => {
-            const zones = await this.fetch<NetlifyDnsZone[]>("/dns_zones");
+            const zones = ((await this.api.getDnsZones()) ?? []) as NetlifyDnsZone[];
             const zoneOptions = zones.map((z) => ({
               id: z.id,
-              label: z.name || z.domain,
+              label: z.name || z.domain || z.id,
             }));
             return [
               {
@@ -500,7 +508,10 @@ export class NetlifyClient implements PluginClient {
     if (typeId === "netlify-build-hook") {
       const siteField = !parentResourceId
         ? await (async () => {
-            const sites = await this.paginate<NetlifySite>("/sites");
+            const sites = await this.paginateAll<NetlifySite>(
+              async (params) =>
+                ((await this.api.listSites(params)) ?? []) as unknown as NetlifySite[],
+            );
             const siteOptions = sites.map((s) => ({
               id: s.id,
               label: s.name || s.id,
@@ -542,7 +553,10 @@ export class NetlifyClient implements PluginClient {
     if (typeId === "netlify-env-var") {
       const siteField = !parentResourceId
         ? await (async () => {
-            const sites = await this.paginate<NetlifySite>("/sites");
+            const sites = await this.paginateAll<NetlifySite>(
+              async (params) =>
+                ((await this.api.listSites(params)) ?? []) as unknown as NetlifySite[],
+            );
             const siteOptions = sites.map((s) => ({
               id: String(s.id),
               label: s.name || String(s.id),
@@ -605,50 +619,50 @@ export class NetlifyClient implements PluginClient {
   ): Promise<ResourceInstance> {
     const parentExternalId = parentResourceId ? parentResourceId.split(":").slice(2).join(":") : "";
     if (typeId === "netlify-site") {
-      const site = await this.fetch<NetlifySite>("/sites", {
-        method: "POST",
-        body: JSON.stringify({
-          name: fields["name"],
-        }),
-      });
+      const site = (await this.api.createSite({
+        body: { name: fields["name"] ?? "" },
+      })) as NetlifySite;
       return this.mapSite(site, accountId);
     }
 
     if (typeId === "netlify-dns-zone") {
-      const zone = await this.fetch<NetlifyDnsZone>("/dns_zones", {
-        method: "POST",
-        body: JSON.stringify({
-          name: fields["name"],
-        }),
-      });
+      // The SDK's type for createDnsZone resolves request body to `never`
+      // because the operation has no path/query parameters (a quirk of the
+      // OpenAPI-derived dynamic methods). We pass the body via a cast.
+      const createDnsZone = this.api.createDnsZone as unknown as (p: {
+        body: { name: string };
+      }) => Promise<unknown>;
+      const zone = (await createDnsZone({
+        body: { name: fields["name"] ?? "" },
+      })) as NetlifyDnsZone;
       return this.mapDnsZone(zone, accountId);
     }
 
     if (typeId === "netlify-dns-record") {
       const zoneId = fields["zoneId"] || parentExternalId;
       if (!zoneId) throw new Error("Netlify plugin: zoneId is required to create a DNS record");
-      const record = await this.fetch<NetlifyDnsRecord>(`/dns_zones/${zoneId}/dns_records`, {
-        method: "POST",
-        body: JSON.stringify({
-          type: fields["type"],
-          hostname: fields["hostname"],
-          value: fields["value"],
+      const record = (await this.api.createDnsRecord({
+        zoneId,
+        body: {
+          type: fields["type"] ?? "",
+          hostname: fields["hostname"] ?? "",
+          value: fields["value"] ?? "",
           ...(fields["ttl"] ? { ttl: Number(fields["ttl"]) } : {}),
-        }),
-      });
+        },
+      })) as NetlifyDnsRecord;
       return this.mapDnsRecord(record, accountId, zoneId);
     }
 
     if (typeId === "netlify-build-hook") {
       const siteId = fields["siteId"] || parentExternalId;
       if (!siteId) throw new Error("Netlify plugin: siteId is required to create a build hook");
-      const hook = await this.fetch<NetlifyBuildHook>(`/sites/${siteId}/build_hooks`, {
-        method: "POST",
-        body: JSON.stringify({
-          title: fields["title"],
+      const hook = (await this.api.createSiteBuildHook({
+        siteId,
+        body: {
+          title: fields["title"] ?? "",
           ...(fields["branch"] ? { branch: fields["branch"] } : {}),
-        }),
-      });
+        },
+      })) as NetlifyBuildHook;
       return this.mapBuildHook(hook, accountId, siteId);
     }
 
@@ -658,7 +672,9 @@ export class NetlifyClient implements PluginClient {
       const context = fields["context"] || "all";
       const values = [{ context, value: fields["value"] }];
 
-      await this.fetch<NetlifyEnvVar[]>(`/sites/${siteId}/env`, {
+      // The legacy site-level env var POST endpoint is not part of the
+      // OpenAPI-generated SDK, so we issue it directly.
+      await this.legacyFetch<NetlifyEnvVar[]>(`/sites/${siteId}/env`, {
         method: "POST",
         body: JSON.stringify([
           {
@@ -698,14 +714,14 @@ export class NetlifyClient implements PluginClient {
     if (typeId === "netlify-site") {
       const siteId = resourceId.split(":").pop();
       if (!siteId) throw new Error("Netlify plugin: cannot parse site ID");
-      await this.fetch<unknown>(`/sites/${siteId}`, { method: "DELETE" });
+      await this.api.deleteSite({ siteId });
       return;
     }
 
     if (typeId === "netlify-deploy") {
       const deployId = resourceId.split(":").pop();
       if (!deployId) throw new Error("Netlify plugin: cannot parse deploy ID");
-      await this.fetch<unknown>(`/deploys/${deployId}`, { method: "DELETE" });
+      await this.api.deleteDeploy({ deployId });
       return;
     }
 
@@ -715,14 +731,14 @@ export class NetlifyClient implements PluginClient {
       if (!compound) throw new Error("Netlify plugin: cannot parse form ID");
       const [siteId, formId] = compound.split("/");
       if (!siteId || !formId) throw new Error("Netlify plugin: cannot parse form ID");
-      await this.fetch<unknown>(`/sites/${siteId}/forms/${formId}`, { method: "DELETE" });
+      await this.api.deleteSiteForm({ siteId, formId });
       return;
     }
 
     if (typeId === "netlify-dns-zone") {
       const zoneId = resourceId.split(":").pop();
       if (!zoneId) throw new Error("Netlify plugin: cannot parse DNS zone ID");
-      await this.fetch<unknown>(`/dns_zones/${zoneId}`, { method: "DELETE" });
+      await this.api.deleteDnsZone({ zoneId });
       return;
     }
 
@@ -732,9 +748,7 @@ export class NetlifyClient implements PluginClient {
       if (!compound) throw new Error("Netlify plugin: cannot parse DNS record ID");
       const [zoneId, recordId] = compound.split("/");
       if (!zoneId || !recordId) throw new Error("Netlify plugin: cannot parse DNS record ID");
-      await this.fetch<unknown>(`/dns_zones/${zoneId}/dns_records/${recordId}`, {
-        method: "DELETE",
-      });
+      await this.api.deleteDnsRecord({ zoneId, dnsRecordId: recordId });
       return;
     }
 
@@ -744,7 +758,7 @@ export class NetlifyClient implements PluginClient {
       if (!compound) throw new Error("Netlify plugin: cannot parse build hook ID");
       const [siteId, hookId] = compound.split("/");
       if (!siteId || !hookId) throw new Error("Netlify plugin: cannot parse build hook ID");
-      await this.fetch<unknown>(`/sites/${siteId}/build_hooks/${hookId}`, { method: "DELETE" });
+      await this.api.deleteSiteBuildHook({ siteId, id: hookId });
       return;
     }
 
@@ -756,7 +770,9 @@ export class NetlifyClient implements PluginClient {
       if (slashIdx < 0) throw new Error("Netlify plugin: cannot parse env var");
       const siteId = compound.slice(0, slashIdx);
       const key = compound.slice(slashIdx + 1);
-      await this.fetch<unknown>(`/sites/${siteId}/env/${encodeURIComponent(key)}`, {
+      // The legacy site-level env var DELETE endpoint is not part of the
+      // OpenAPI-generated SDK, so we issue it directly.
+      await this.legacyFetch<unknown>(`/sites/${siteId}/env/${encodeURIComponent(key)}`, {
         method: "DELETE",
       });
       return;
@@ -765,8 +781,28 @@ export class NetlifyClient implements PluginClient {
     throw new Error(`Netlify plugin: deleteResource not supported for type "${typeId}"`);
   }
 
+  /**
+   * Direct REST call to api.netlify.com for endpoints not exposed by the
+   * @netlify/api SDK (currently the legacy site-level env-var POST/DELETE).
+   */
+  private async legacyFetch<T>(path: string, init: RequestInit): Promise<T> {
+    return jsonRestFetch<T>({
+      vendor: "Netlify",
+      url: `${this.legacyEnvBaseUrl}${path}`,
+      errorPath: path,
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+        Accept: "application/json",
+        "User-Agent": "Infrawrench/0.1.0",
+      },
+      init,
+    });
+  }
+
   private async listSites(accountId: string): Promise<ResourceInstance[]> {
-    const sites = await this.paginate<NetlifySite>("/sites");
+    const sites = await this.paginateAll<NetlifySite>(
+      async (params) => ((await this.api.listSites(params)) ?? []) as unknown as NetlifySite[],
+    );
     return sites.map((s) => this.mapSite(s, accountId));
   }
 
@@ -781,8 +817,8 @@ export class NetlifyClient implements PluginClient {
       displayName: s.name || s.id,
       fields: {
         name: s.name,
-        url: s.url,
-        sslUrl: s.ssl_url,
+        url: s.url ?? "",
+        sslUrl: s.ssl_url ?? "",
         customDomain: s.custom_domain ?? "",
         state: pubDeploy?.state ?? s.state ?? "",
         plan: s.plan ?? "",
@@ -802,8 +838,8 @@ export class NetlifyClient implements PluginClient {
       resolvedOutputs: {
         siteId: s.id,
         siteName: s.name,
-        url: s.url,
-        sslUrl: s.ssl_url,
+        url: s.url ?? "",
+        sslUrl: s.ssl_url ?? "",
       },
       secretStates: [],
       externalId: s.id,
@@ -813,11 +849,16 @@ export class NetlifyClient implements PluginClient {
   }
 
   private async listAllDeploys(accountId: string): Promise<ResourceInstance[]> {
-    const sites = await this.paginate<NetlifySite>("/sites");
+    const sites = await this.paginateAll<NetlifySite>(
+      async (params) => ((await this.api.listSites(params)) ?? []) as unknown as NetlifySite[],
+    );
     const results: ResourceInstance[] = [];
     for (const site of sites) {
       try {
-        const deploys = await this.fetch<NetlifyDeploy[]>(`/sites/${site.id}/deploys?per_page=5`);
+        const deploys = ((await this.api.listSiteDeploys({
+          siteId: site.id,
+          per_page: 5,
+        })) ?? []) as unknown as NetlifyDeploy[];
         for (const d of deploys) {
           results.push(this.mapDeploy(d, accountId, site.id));
         }
@@ -838,7 +879,7 @@ export class NetlifyClient implements PluginClient {
       accountId,
       displayName: label,
       fields: {
-        state: d.state,
+        state: d.state ?? "",
         context: d.context ?? "",
         branch: d.branch ?? "",
         commitRef: d.commit_ref ?? "",
@@ -867,11 +908,14 @@ export class NetlifyClient implements PluginClient {
   }
 
   private async listAllForms(accountId: string): Promise<ResourceInstance[]> {
-    const sites = await this.paginate<NetlifySite>("/sites");
+    const sites = await this.paginateAll<NetlifySite>(
+      async (params) => ((await this.api.listSites(params)) ?? []) as unknown as NetlifySite[],
+    );
     const results: ResourceInstance[] = [];
     for (const site of sites) {
       try {
-        const forms = await this.fetch<NetlifyForm[]>(`/sites/${site.id}/forms`);
+        const forms = ((await this.api.listSiteForms({ siteId: site.id })) ??
+          []) as unknown as NetlifyForm[];
         for (const f of forms) {
           results.push(this.mapForm(f, accountId, site.id));
         }
@@ -908,7 +952,7 @@ export class NetlifyClient implements PluginClient {
   }
 
   private async listDnsZones(accountId: string): Promise<ResourceInstance[]> {
-    const zones = await this.fetch<NetlifyDnsZone[]>("/dns_zones");
+    const zones = ((await this.api.getDnsZones()) ?? []) as NetlifyDnsZone[];
     return zones.map((z) => this.mapDnsZone(z, accountId));
   }
 
@@ -918,7 +962,7 @@ export class NetlifyClient implements PluginClient {
       pluginId: "netlify",
       resourceTypeId: "netlify-dns-zone",
       accountId,
-      displayName: z.name || z.domain,
+      displayName: z.name || z.domain || z.id,
       fields: {
         name: z.name,
         domain: z.domain ?? "",
@@ -944,11 +988,12 @@ export class NetlifyClient implements PluginClient {
   }
 
   private async listAllDnsRecords(accountId: string): Promise<ResourceInstance[]> {
-    const zones = await this.fetch<NetlifyDnsZone[]>("/dns_zones");
+    const zones = ((await this.api.getDnsZones()) ?? []) as NetlifyDnsZone[];
     const results: ResourceInstance[] = [];
     for (const zone of zones) {
       try {
-        const records = await this.fetch<NetlifyDnsRecord[]>(`/dns_zones/${zone.id}/dns_records`);
+        const records = ((await this.api.getDnsRecords({ zoneId: zone.id })) ??
+          []) as unknown as NetlifyDnsRecord[];
         for (const r of records) {
           results.push(this.mapDnsRecord(r, accountId, zone.id));
         }
@@ -965,7 +1010,7 @@ export class NetlifyClient implements PluginClient {
       pluginId: "netlify",
       resourceTypeId: "netlify-dns-record",
       accountId,
-      displayName: `${r.type} ${r.hostname}`,
+      displayName: `${r.type ?? ""} ${r.hostname ?? ""}`.trim() || r.id,
       fields: {
         name: r.hostname ?? "",
         type: r.type ?? "",
@@ -989,11 +1034,14 @@ export class NetlifyClient implements PluginClient {
   }
 
   private async listAllBuildHooks(accountId: string): Promise<ResourceInstance[]> {
-    const sites = await this.paginate<NetlifySite>("/sites");
+    const sites = await this.paginateAll<NetlifySite>(
+      async (params) => ((await this.api.listSites(params)) ?? []) as unknown as NetlifySite[],
+    );
     const results: ResourceInstance[] = [];
     for (const site of sites) {
       try {
-        const hooks = await this.fetch<NetlifyBuildHook[]>(`/sites/${site.id}/build_hooks`);
+        const hooks = ((await this.api.listSiteBuildHooks({ siteId: site.id })) ??
+          []) as unknown as NetlifyBuildHook[];
         for (const h of hooks) {
           results.push(this.mapBuildHook(h, accountId, site.id));
         }
@@ -1030,11 +1078,14 @@ export class NetlifyClient implements PluginClient {
   }
 
   private async listAllEnvVars(accountId: string): Promise<ResourceInstance[]> {
-    const sites = await this.paginate<NetlifySite>("/sites");
+    const sites = await this.paginateAll<NetlifySite>(
+      async (params) => ((await this.api.listSites(params)) ?? []) as unknown as NetlifySite[],
+    );
     const results: ResourceInstance[] = [];
     for (const site of sites) {
       try {
-        const envVars = await this.fetch<NetlifyEnvVar[]>(`/sites/${site.id}/env`);
+        const envVars = ((await this.api.getSiteEnvVars({ siteId: site.id })) ??
+          []) as unknown as NetlifyEnvVar[];
         for (const ev of envVars) {
           results.push(this.mapEnvVar(ev, accountId, site.id));
         }
@@ -1047,7 +1098,7 @@ export class NetlifyClient implements PluginClient {
 
   private mapEnvVar(ev: NetlifyEnvVar, accountId: string, siteId: string): ResourceInstance {
     const contexts = Array.isArray(ev.values)
-      ? [...new Set(ev.values.map((v) => v.context))].join(", ")
+      ? [...new Set(ev.values.map((v) => v.context ?? ""))].join(", ")
       : "";
     return {
       id: `${accountId}:netlify-env-var:${siteId}/${ev.key}`,
