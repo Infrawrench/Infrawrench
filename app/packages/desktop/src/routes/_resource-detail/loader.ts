@@ -328,11 +328,9 @@ export async function loadLocalPeerResource(params: LoaderParams): Promise<void>
   const accountRow = accountRows[0];
   if (!accountRow) throw new Error("Account not found");
 
-  const plaintext = await invoke<string>("decrypt_value", {
-    ciphertext: accountRow.encrypted_credentials,
-    iv: accountRow.credentials_iv,
+  const parentCredentials = await invoke<Record<string, string>>("account_get_credentials", {
+    accountId: accountRow.id,
   });
-  const parentCredentials = JSON.parse(plaintext) as Record<string, string>;
 
   const parentLoaded = await getPlugin(accountRow.plugin_id);
   if (!parentLoaded) throw new Error(`Plugin "${accountRow.plugin_id}" not loaded`);
@@ -502,11 +500,9 @@ export async function loadLocalResource(params: LoaderParams): Promise<void> {
   if (!accountRow) throw new Error("Account not found");
   if (!isCancelled()) setters.setAccount(accountRow);
 
-  const plaintext = await invoke<string>("decrypt_value", {
-    ciphertext: accountRow.encrypted_credentials,
-    iv: accountRow.credentials_iv,
+  const credentials = await invoke<Record<string, string>>("account_get_credentials", {
+    accountId: accountRow.id,
   });
-  const credentials = JSON.parse(plaintext) as Record<string, string>;
 
   const loaded = await getPlugin(accountRow.plugin_id);
   if (!loaded) throw new Error(`Plugin "${accountRow.plugin_id}" not loaded`);

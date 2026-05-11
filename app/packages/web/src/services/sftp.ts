@@ -15,48 +15,72 @@ import {
 import type { SftpConfig } from "@infrawrench/plugin-base";
 import { HostKeyMismatchError, verifyOrPinHostKey } from "./ssh-host-keys";
 
-function withHostKeyVerifier(opts: ConnectConfig): ConnectConfig {
-  const host = String(opts.host);
-  const port = Number(opts.port);
+function makeTofuOptions(organizationId: string): WithSftpOptions {
   return {
-    ...opts,
-    hostVerifier: (hostKey: Buffer) => {
-      try {
-        verifyOrPinHostKey(host, port, hostKey);
-        return true;
-      } catch (e) {
-        if (e instanceof HostKeyMismatchError) {
-          console.error(
-            `[sftp] host key mismatch for ${e.host}:${e.port} ` +
-              `(stored=${e.storedFingerprint}, presented=${e.presentedFingerprint})`,
+    configureConnect: (opts: ConnectConfig): ConnectConfig => {
+      const host = String(opts.host);
+      const port = Number(opts.port);
+      return {
+        ...opts,
+        hostVerifier: (hostKey: Buffer, verify: (valid: boolean) => void) => {
+          verifyOrPinHostKey(organizationId, host, port, hostKey).then(
+            () => verify(true),
+            (e: unknown) => {
+              if (e instanceof HostKeyMismatchError) {
+                console.error(
+                  `[sftp] host key mismatch for ${e.host}:${e.port} ` +
+                    `(stored=${e.storedFingerprint}, presented=${e.presentedFingerprint})`,
+                );
+              }
+              verify(false);
+            },
           );
-        }
-        return false;
-      }
+        },
+      };
     },
   };
 }
 
-const tofuOptions: WithSftpOptions = { configureConnect: withHostKeyVerifier };
-
-export function sftpList(config: SftpConfig, dirPath: string): Promise<SftpEntry[]> {
-  return sftpListImpl(config, dirPath, tofuOptions);
+export function sftpList(
+  organizationId: string,
+  config: SftpConfig,
+  dirPath: string,
+): Promise<SftpEntry[]> {
+  return sftpListImpl(config, dirPath, makeTofuOptions(organizationId));
 }
 
-export function sftpMkdir(config: SftpConfig, dirPath: string): Promise<void> {
-  return sftpMkdirImpl(config, dirPath, tofuOptions);
+export function sftpMkdir(
+  organizationId: string,
+  config: SftpConfig,
+  dirPath: string,
+): Promise<void> {
+  return sftpMkdirImpl(config, dirPath, makeTofuOptions(organizationId));
 }
 
-export function sftpDelete(config: SftpConfig, remotePath: string, isDir: boolean): Promise<void> {
-  return sftpDeleteImpl(config, remotePath, isDir, tofuOptions);
+export function sftpDelete(
+  organizationId: string,
+  config: SftpConfig,
+  remotePath: string,
+  isDir: boolean,
+): Promise<void> {
+  return sftpDeleteImpl(config, remotePath, isDir, makeTofuOptions(organizationId));
 }
 
-export function sftpUpload(config: SftpConfig, remotePath: string, data: Buffer): Promise<void> {
-  return sftpUploadImpl(config, remotePath, data, tofuOptions);
+export function sftpUpload(
+  organizationId: string,
+  config: SftpConfig,
+  remotePath: string,
+  data: Buffer,
+): Promise<void> {
+  return sftpUploadImpl(config, remotePath, data, makeTofuOptions(organizationId));
 }
 
-export function sftpDownloadToBuffer(config: SftpConfig, remotePath: string): Promise<Buffer> {
-  return sftpDownloadToBufferImpl(config, remotePath, tofuOptions);
+export function sftpDownloadToBuffer(
+  organizationId: string,
+  config: SftpConfig,
+  remotePath: string,
+): Promise<Buffer> {
+  return sftpDownloadToBufferImpl(config, remotePath, makeTofuOptions(organizationId));
 }
 
 export type { SftpEntry };

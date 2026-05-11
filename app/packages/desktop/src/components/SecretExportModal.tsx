@@ -3,7 +3,6 @@ import type { SecretExportTemplate, PluginClient } from "@infrawrench/plugin-bas
 import { camelToTitle } from "@infrawrench/plugin-base";
 import { getPlugin } from "../plugins/loader";
 import { getDb } from "../db/client";
-import type { AccountPluginCredsRow } from "../db/rows";
 import { invoke } from "../lib/invoke";
 import type { DraggableResource } from "../lib/pins";
 import { Modal, formatErrorMessage } from "@infrawrench/ui";
@@ -140,18 +139,16 @@ export function SecretExportModal({
     try {
       // 1. Resolve source outputs
       const db = await getDb();
-      const sourceRows = await db.select<AccountPluginCredsRow[]>(
-        "SELECT id, plugin_id, encrypted_credentials, credentials_iv FROM accounts WHERE id = $1",
+      const sourceRows = await db.select<{ id: string; plugin_id: string }[]>(
+        "SELECT id, plugin_id FROM accounts WHERE id = $1",
         [source.accountId],
       );
       const sourceRow = sourceRows[0];
       if (!sourceRow) throw new Error("Source account not found");
 
-      const sourcePlaintext = await invoke<string>("decrypt_value", {
-        ciphertext: sourceRow.encrypted_credentials,
-        iv: sourceRow.credentials_iv,
+      const sourceCreds = await invoke<Record<string, string>>("account_get_credentials", {
+        accountId: sourceRow.id,
       });
-      const sourceCreds = JSON.parse(sourcePlaintext) as Record<string, string>;
       const sourcePlugin = await getPlugin(sourceRow.plugin_id);
       if (!sourcePlugin) throw new Error(`Source plugin "${sourceRow.plugin_id}" not loaded`);
 

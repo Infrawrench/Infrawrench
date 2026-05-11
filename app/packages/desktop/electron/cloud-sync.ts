@@ -1,6 +1,6 @@
 import { ipcMain, BrowserWindow } from "electron";
 import { getAccessToken, getAuthStatus } from "./cloud-auth";
-import { getDb, getEncryptionKey, decryptValue } from "./main-utils";
+import { getDb, getEncryptionKey, decryptValue, buildAad } from "./main-utils";
 import { CLOUD_URL } from "../env";
 
 let isSyncing = false;
@@ -52,7 +52,12 @@ async function pushChanges(token: string): Promise<void> {
     // Decrypt credentials locally, send plaintext over TLS
     let credentials: Record<string, string> = {};
     try {
-      const plain = decryptValue(a.encrypted_credentials, a.credentials_iv, encKey);
+      const plain = decryptValue(
+        a.encrypted_credentials,
+        a.credentials_iv,
+        encKey,
+        buildAad("account", a.id, "credentials"),
+      );
       credentials = JSON.parse(plain) as Record<string, string>;
     } catch {
       /* skip if can't decrypt */

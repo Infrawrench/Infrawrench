@@ -84,11 +84,9 @@ async function validateWorkspaceTab(tab: WorkspaceTab): Promise<WorkspaceTab | n
   if (!account) return null;
 
   try {
-    const plaintext = await invoke<string>("decrypt_value", {
-      ciphertext: account.encrypted_credentials,
-      iv: account.credentials_iv,
+    const credentials = await invoke<Record<string, string>>("account_get_credentials", {
+      accountId: account.id,
     });
-    const credentials = JSON.parse(plaintext) as Record<string, string>;
     const loaded = await getPlugin(account.plugin_id);
     if (!loaded) return tab;
     const services = buildPluginHostServices(loaded.plugin.manifest, credentials);

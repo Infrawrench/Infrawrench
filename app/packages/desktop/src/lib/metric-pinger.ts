@@ -1,6 +1,5 @@
 import { invoke } from "./invoke";
 import { getDb } from "../db/client";
-import type { AccountCredsRow } from "../db/rows";
 import { getPlugin } from "../plugins/loader";
 import { buildPluginHostServices } from "./sql-drivers";
 import { METRIC_PINGS_CHANGED_EVENT } from "./metric-pings";
@@ -64,18 +63,14 @@ async function tick() {
 
     await Promise.allSettled(
       [...byAccount.entries()].map(async ([accountId, accountPings]) => {
-        const accountRows = await db.select<AccountCredsRow[]>(
-          "SELECT id, encrypted_credentials, credentials_iv FROM accounts WHERE id = $1 LIMIT 1",
-          [accountId],
-        );
-        const account = accountRows[0];
-        if (!account) return;
-
-        const plaintext = await invoke<string>("decrypt_value", {
-          ciphertext: account.encrypted_credentials,
-          iv: account.credentials_iv,
-        });
-        const credentials = JSON.parse(plaintext) as Record<string, string>;
+        let credentials: Record<string, string>;
+        try {
+          credentials = await invoke<Record<string, string>>("account_get_credentials", {
+            accountId,
+          });
+        } catch {
+          return;
+        }
 
         // Group by pluginId+resourceTypeId+resourceId so we only fetch the
         // metric series once per resource. The user explicitly asked us not

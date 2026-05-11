@@ -1,0 +1,1 @@
+ALTER TABLE "api_keys" ADD COLUMN "legacy_hash_sunset_at" timestamp;

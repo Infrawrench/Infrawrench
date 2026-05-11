@@ -17,6 +17,14 @@ const ApiKey = strict({
   lastUsedAt: IsoDateTime.nullable(),
   expiresAt: IsoDateTime.nullable(),
   revokedAt: IsoDateTime.nullable(),
+  legacyHashSunsetAt: IsoDateTime.nullable().openapi({
+    description:
+      "Cutover date past which a key still on the legacy SHA-256 hash will be refused. Null once rehashed to HMAC.",
+  }),
+  needsRotation: z.boolean().openapi({
+    description:
+      "True when this key is still hashed with the legacy SHA-256 scheme and should be rotated before `legacyHashSunsetAt`.",
+  }),
   createdAt: IsoDateTime,
 }).openapi("ApiKey");
 

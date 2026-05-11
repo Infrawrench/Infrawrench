@@ -60,6 +60,7 @@ export async function resolveTunneledHost(accountId: string, rawHost: string): P
   const db = await getDb();
   const rows = await db.select<
     {
+      id: string;
       ssh_host: string;
       ssh_port: number;
       ssh_user: string;
@@ -78,7 +79,8 @@ export async function resolveTunneledHost(accountId: string, rawHost: string): P
   );
   if (existing) return `tcp://127.0.0.1:${existing.localPort}`;
 
-  const privateKey = await invoke<string>("decrypt_value", {
+  const privateKey = await invoke<string>("ssh_tunnel_config_get_private_key", {
+    tunnelConfigId: cfg.id,
     ciphertext: cfg.encrypted_private_key,
     iv: cfg.private_key_iv,
   });

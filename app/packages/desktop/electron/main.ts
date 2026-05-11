@@ -17,10 +17,12 @@ import { killAllSshShells } from "./ssh-shell";
 import { killAllK8sExecs } from "./k8s-exec";
 import { killAllK9sSessions } from "./k9s";
 import { MIGRATIONS } from "../src/db/schema";
+import { validateSql, validateParams, classifyMutation } from "./db-guard";
 import {
   getEncryptionKey,
   encryptValue,
   decryptValue,
+  buildAad,
   setDbGetter,
   registerDialogBlessedPath,
 } from "./main-utils";
@@ -178,42 +180,164 @@ ipcMain.handle("show_notification", (_e, { title, body }: { title: string; body:
 //
 // The `get_or_create_encryption_key` handler that previously returned the raw
 // master key to the renderer has been removed entirely. The renderer no
-// longer has any way to obtain the key — it must use `encrypt_value` /
-// `decrypt_value` below, which run in the main process.
+// longer has any way to obtain the key.
 //
-// `encrypt_value` and `decrypt_value` still expose an encryption oracle to
-// the renderer, which we'd like to remove eventually. For now, every caller
-// in the codebase uses them to read/write SSH private keys or
-// service-credential JSON stored in the desktop sql.js DB — replacing them
-// outright would require moving every credential-display flow into main.
-// Inputs are size-bounded below to make the oracle less useful, but this is
-// still an architectural weakness — see the FIX_FLAG comment.
-
-// FIX_FLAG: encrypt_value / decrypt_value remain a per-blob encryption oracle
-// for any renderer code (and therefore any XSS). Long-term, replace each
-// caller with a typed main-process operation (e.g. `open_account_connection`)
-// that performs the decrypt + use inside main.
+// The previous `encrypt_value` / `decrypt_value` handlers exposed a generic
+// per-blob encryption oracle — any renderer caller (and therefore any XSS)
+// could decrypt arbitrary stored ciphertext, or have anything encrypted
+// under the master key. They've been replaced with the narrow typed
+// channels below; each one binds its plaintext to a specific row + field
+// via AAD, so a ciphertext from one row cannot be swapped into another.
 
 const MAX_PLAINTEXT_BYTES = 64 * 1024; // 64 KiB — fits PEM keys + credential JSON
 const MAX_CIPHERTEXT_BYTES = 96 * 1024;
 
-const EncryptArgs = z.object({
-  plaintext: z.string().max(MAX_PLAINTEXT_BYTES),
+const AccountIdArgs = z.object({ accountId: z.string().min(1).max(128) });
+const AccountSaveArgs = z.object({
+  accountId: z.string().min(1).max(128),
+  credentials: z.record(z.string(), z.string().max(MAX_PLAINTEXT_BYTES)),
 });
-
-const DecryptArgs = z.object({
+const AccountCreateArgs = z.object({
+  accountId: z.string().min(1).max(128),
+  pluginId: z.string().min(1).max(128),
+  displayName: z.string().min(1).max(256),
+  credentials: z.record(z.string(), z.string().max(MAX_PLAINTEXT_BYTES)),
+});
+const SshKeyIdArgs = z.object({ keyId: z.string().min(1).max(128) });
+const SshKeyCreateArgs = z.object({
+  keyId: z.string().min(1).max(128),
+  name: z.string().min(1).max(256),
+  privateKey: z.string().min(1).max(MAX_PLAINTEXT_BYTES),
+});
+const SshTunnelConfigDecryptArgs = z.object({
+  tunnelConfigId: z.string().min(1).max(128),
   ciphertext: z.string().max(MAX_CIPHERTEXT_BYTES),
   iv: z.string().max(64),
 });
-
-ipcMain.handle("encrypt_value", (_e, raw: unknown) => {
-  const { plaintext } = EncryptArgs.parse(raw);
-  return encryptValue(plaintext, getEncryptionKey());
+const SshTunnelConfigEncryptArgs = z.object({
+  tunnelConfigId: z.string().min(1).max(128),
+  privateKey: z.string().min(1).max(MAX_PLAINTEXT_BYTES),
+});
+const SecretFieldDecryptArgs = z.object({
+  resourceId: z.string().min(1).max(256),
+  fieldKey: z.string().min(1).max(128),
+  ciphertext: z.string().max(MAX_CIPHERTEXT_BYTES),
+  iv: z.string().max(64),
+});
+const SecretFieldEncryptArgs = z.object({
+  resourceId: z.string().min(1).max(256),
+  fieldKey: z.string().min(1).max(128),
+  plaintext: z.string().max(MAX_PLAINTEXT_BYTES),
 });
 
-ipcMain.handle("decrypt_value", (_e, raw: unknown) => {
-  const { ciphertext, iv } = DecryptArgs.parse(raw);
-  return decryptValue(ciphertext, iv, getEncryptionKey());
+ipcMain.handle("account_get_credentials", async (_e, raw: unknown) => {
+  const { accountId } = AccountIdArgs.parse(raw);
+  const db = await getSqlite();
+  const stmt = db.prepare(
+    "SELECT encrypted_credentials, credentials_iv FROM accounts WHERE id = ? LIMIT 1",
+  );
+  stmt.bind([accountId]);
+  const row = stmt.step() ? (stmt.getAsObject() as Record<string, unknown>) : null;
+  stmt.free();
+  if (!row) throw new Error("Account not found");
+  const ciphertext = String(row["encrypted_credentials"] ?? "");
+  const iv = String(row["credentials_iv"] ?? "");
+  const aad = buildAad("account", accountId, "credentials");
+  const plaintext = decryptValue(ciphertext, iv, getEncryptionKey(), aad);
+  return JSON.parse(plaintext) as Record<string, string>;
+});
+
+ipcMain.handle("account_save_credentials", async (_e, raw: unknown) => {
+  const { accountId, credentials } = AccountSaveArgs.parse(raw);
+  const plaintext = JSON.stringify(credentials);
+  if (plaintext.length > MAX_PLAINTEXT_BYTES) {
+    throw new Error("account_save_credentials: credentials too large");
+  }
+  const aad = buildAad("account", accountId, "credentials");
+  const { ciphertext, iv } = encryptValue(plaintext, getEncryptionKey(), aad);
+  const db = await getSqlite();
+  db.run("UPDATE accounts SET encrypted_credentials = ?, credentials_iv = ? WHERE id = ?", [
+    ciphertext,
+    iv,
+    accountId,
+  ]);
+  if (db.getRowsModified() === 0) {
+    throw new Error("Account not found");
+  }
+  persist();
+});
+
+ipcMain.handle("account_create", async (_e, raw: unknown) => {
+  const { accountId, pluginId, displayName, credentials } = AccountCreateArgs.parse(raw);
+  const plaintext = JSON.stringify(credentials);
+  if (plaintext.length > MAX_PLAINTEXT_BYTES) {
+    throw new Error("account_create: credentials too large");
+  }
+  const aad = buildAad("account", accountId, "credentials");
+  const { ciphertext, iv } = encryptValue(plaintext, getEncryptionKey(), aad);
+  const db = await getSqlite();
+  db.run(
+    `INSERT INTO accounts (id, plugin_id, display_name, encrypted_credentials, credentials_iv)
+     VALUES (?, ?, ?, ?, ?)`,
+    [accountId, pluginId, displayName, ciphertext, iv],
+  );
+  persist();
+});
+
+ipcMain.handle("ssh_key_get_private_key", async (_e, raw: unknown) => {
+  const { keyId } = SshKeyIdArgs.parse(raw);
+  const db = await getSqlite();
+  const stmt = db.prepare("SELECT encrypted_key, key_iv FROM ssh_keys WHERE id = ? LIMIT 1");
+  stmt.bind([keyId]);
+  const row = stmt.step() ? (stmt.getAsObject() as Record<string, unknown>) : null;
+  stmt.free();
+  if (!row) throw new Error("SSH key not found");
+  const ciphertext = String(row["encrypted_key"] ?? "");
+  const iv = String(row["key_iv"] ?? "");
+  const aad = buildAad("sshKey", keyId, "privateKey");
+  return decryptValue(ciphertext, iv, getEncryptionKey(), aad);
+});
+
+ipcMain.handle("ssh_key_save_private_key", async (_e, raw: unknown) => {
+  const { keyId, name, privateKey } = SshKeyCreateArgs.parse(raw);
+  const aad = buildAad("sshKey", keyId, "privateKey");
+  const { ciphertext, iv } = encryptValue(privateKey, getEncryptionKey(), aad);
+  const db = await getSqlite();
+  db.run("INSERT INTO ssh_keys (id, name, encrypted_key, key_iv) VALUES (?, ?, ?, ?)", [
+    keyId,
+    name,
+    ciphertext,
+    iv,
+  ]);
+  persist();
+});
+
+ipcMain.handle("ssh_tunnel_config_get_private_key", (_e, raw: unknown) => {
+  const { tunnelConfigId, ciphertext, iv } = SshTunnelConfigDecryptArgs.parse(raw);
+  const aad = buildAad("sshTunnelConfig", tunnelConfigId, "privateKey");
+  return decryptValue(ciphertext, iv, getEncryptionKey(), aad);
+});
+
+ipcMain.handle("ssh_tunnel_config_encrypt_private_key", (_e, raw: unknown) => {
+  const { tunnelConfigId, privateKey } = SshTunnelConfigEncryptArgs.parse(raw);
+  const aad = buildAad("sshTunnelConfig", tunnelConfigId, "privateKey");
+  return encryptValue(privateKey, getEncryptionKey(), aad);
+});
+
+// Generic per-resource secret field. Still oracle-shaped (the renderer
+// supplies the ciphertext/iv on decrypt) but the AAD binds each call to a
+// specific (resourceId, fieldKey), so an attacker cannot swap ciphertexts
+// across fields or rows.
+ipcMain.handle("secret_field_decrypt", (_e, raw: unknown) => {
+  const { resourceId, fieldKey, ciphertext, iv } = SecretFieldDecryptArgs.parse(raw);
+  const aad = buildAad("secretField", `${resourceId}:${fieldKey}`, "value");
+  return decryptValue(ciphertext, iv, getEncryptionKey(), aad);
+});
+
+ipcMain.handle("secret_field_encrypt", (_e, raw: unknown) => {
+  const { resourceId, fieldKey, plaintext } = SecretFieldEncryptArgs.parse(raw);
+  const aad = buildAad("secretField", `${resourceId}:${fieldKey}`, "value");
+  return encryptValue(plaintext, getEncryptionKey(), aad);
 });
 
 let _sqlite: SqlJsDb | null = null;
@@ -286,26 +410,45 @@ function normalizeSql(sql: string): string {
   return sql.replace(/\$\d+/g, "?");
 }
 
-// FIX_FLAG: db_select / db_execute let the renderer run arbitrary SQL against
-// the local sql.js DB. The bundled renderer JS is the only thing that should
-// invoke them, and access is now gated through the typed preload bridge
-// (electron/preload.ts) — there's no raw `invoke(channel, args)` path for an
-// XSS payload to reach an unexpected channel. A future change should replace
-// these with typed query helpers (per-table CRUD) so a renderer compromise
-// can't pivot through arbitrary SQL.
+// db_select / db_execute let the renderer run SQL against the local sql.js
+// DB. The bundled renderer JS is the only thing that should invoke them, and
+// access is gated through the typed preload bridge (electron/preload.ts) —
+// there's no raw `invoke(channel, args)` path for an XSS payload to reach
+// an unexpected channel. In addition, `validateSql` / `validateParams`
+// (db-guard.ts) reject multi-statement strings, banned statement types
+// (ATTACH/DETACH/PRAGMA/VACUUM/LOAD_EXTENSION), oversized SQL or param
+// arrays, and non-primitive parameter values.
+//
+// Residual risk: even with these guards, a compromised renderer can still
+// issue any SELECT/INSERT/UPDATE/DELETE on user-owned tables and exfiltrate
+// or tamper with encrypted blobs — the surface is narrowed, not eliminated.
+// The remaining mitigation is moving SQL to typed main-process operations,
+// which is tracked as a separate task.
 ipcMain.handle("db_select", async (_e, { sql, params }: { sql: string; params?: unknown[] }) => {
+  validateSql(sql);
+  const safeParams = validateParams(params);
   const db = await getSqlite();
   const stmt = db.prepare(normalizeSql(sql));
   const rows: Record<string, unknown>[] = [];
-  stmt.bind((params ?? []) as SqlValue[]);
+  stmt.bind(safeParams as SqlValue[]);
   while (stmt.step()) rows.push(stmt.getAsObject() as Record<string, unknown>);
   stmt.free();
   return rows;
 });
 
 ipcMain.handle("db_execute", async (_e, { sql, params }: { sql: string; params?: unknown[] }) => {
+  validateSql(sql);
+  const safeParams = validateParams(params);
+  const audit = classifyMutation(sql);
+  if (audit) {
+    // Truncate the SQL prefix so we don't dump huge strings into the log.
+    const preview = sql.length > 200 ? `${sql.slice(0, 200)}…` : sql;
+    console.log(
+      `[db-audit] ${audit.op} on ${audit.table} (params=${safeParams.length}) :: ${preview}`,
+    );
+  }
   const db = await getSqlite();
-  db.run(normalizeSql(sql), (params ?? []) as SqlValue[]);
+  db.run(normalizeSql(sql), safeParams as SqlValue[]);
   const rowsAffected = db.getRowsModified();
   persist();
   return { rowsAffected, lastInsertId: 0 };

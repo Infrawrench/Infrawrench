@@ -72,11 +72,12 @@ export function FirestoreMongoPeerBrowser({
     let cancelled = false;
     async function loadCreds(id: string) {
       try {
-        const db = await getDb();
-        const rows = await db.select<
-          Array<{ encrypted_credentials: string; credentials_iv: string }>
-        >("SELECT encrypted_credentials, credentials_iv FROM accounts WHERE id = $1 LIMIT 1", [id]);
-        if (!rows[0]) {
+        let creds: Record<string, string>;
+        try {
+          creds = await invoke<Record<string, string>>("account_get_credentials", {
+            accountId: id,
+          });
+        } catch {
           if (!cancelled) {
             setError("Linked MongoDB account not found");
             setLinkedAccountId(null);
@@ -84,11 +85,6 @@ export function FirestoreMongoPeerBrowser({
           }
           return;
         }
-        const plaintext = await invoke<string>("decrypt_value", {
-          ciphertext: rows[0].encrypted_credentials,
-          iv: rows[0].credentials_iv,
-        });
-        const creds = JSON.parse(plaintext) as Record<string, string>;
         const cs = creds["connectionString"] ?? "";
         if (!cs) {
           if (!cancelled) setError("MongoDB account has no connection string set");

@@ -351,6 +351,12 @@ export const apiKeys = pgTable(
     lastUsedAt: timestamp("last_used_at"),
     expiresAt: timestamp("expires_at"),
     revokedAt: timestamp("revoked_at"),
+    /**
+     * For keys still on the legacy SHA-256 hash scheme, the cutover date past
+     * which authentication is refused. Set on first legacy-hash auth hit;
+     * cleared once the row has been rehashed with HMAC.
+     */
+    legacyHashSunsetAt: timestamp("legacy_hash_sunset_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (t) => ({
@@ -414,6 +420,29 @@ export const invitations = pgTable(
     hashedTokenUnique: uniqueIndex("invitations_hashed_token_unique").on(t.hashedToken),
     orgIdx: index("invitations_org_idx").on(t.organizationId),
     emailOrgIdx: index("invitations_email_org_idx").on(t.email, t.organizationId),
+  }),
+);
+
+export const sshHostKeys = pgTable(
+  "ssh_host_keys",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    host: text("host").notNull(),
+    port: integer("port").notNull(),
+    /** SHA-256 fingerprint of the host key, "SHA256:..." format */
+    fingerprint: text("fingerprint").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgHostPortUnique: uniqueIndex("ssh_host_keys_org_host_port_unique").on(
+      t.organizationId,
+      t.host,
+      t.port,
+    ),
   }),
 );
 

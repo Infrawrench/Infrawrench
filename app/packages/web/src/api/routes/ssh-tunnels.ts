@@ -314,6 +314,7 @@ app.post("/exec", async (c) => {
 
   try {
     const stdout = await sshExec(
+      organizationId,
       { host: input.sshHost, port: input.sshPort, username: input.sshUser, privateKey },
       input.command,
     );

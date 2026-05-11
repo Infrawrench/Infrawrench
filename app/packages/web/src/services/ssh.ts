@@ -52,7 +52,11 @@ export async function resolveSshConfig(
 }
 
 /** Execute a single command over SSH and return stdout. Throws on non-zero exit or SSH error. */
-export function sshExec(config: SshConfig, command: string): Promise<string> {
+export function sshExec(
+  organizationId: string,
+  config: SshConfig,
+  command: string,
+): Promise<string> {
   return new Promise((resolve, reject) => {
     const client = new SshClient();
     let hostKeyError: Error | null = null;
@@ -95,20 +99,22 @@ export function sshExec(config: SshConfig, command: string): Promise<string> {
       port: config.port,
       username: config.username,
       privateKey: config.privateKey,
-      hostVerifier: (hostKey: Buffer) => {
-        try {
-          verifyOrPinHostKey(config.host, config.port, hostKey);
-          return true;
-        } catch (e) {
-          if (e instanceof HostKeyMismatchError) {
-            console.error(
-              `[ssh] host key mismatch for ${e.host}:${e.port} ` +
-                `(stored=${e.storedFingerprint}, presented=${e.presentedFingerprint})`,
-            );
-            hostKeyError = e;
-          }
-          return false;
-        }
+      hostVerifier: (hostKey: Buffer, verify: (valid: boolean) => void) => {
+        verifyOrPinHostKey(organizationId, config.host, config.port, hostKey).then(
+          () => verify(true),
+          (e: unknown) => {
+            if (e instanceof HostKeyMismatchError) {
+              console.error(
+                `[ssh] host key mismatch for ${e.host}:${e.port} ` +
+                  `(stored=${e.storedFingerprint}, presented=${e.presentedFingerprint})`,
+              );
+              hostKeyError = e;
+            } else if (e instanceof Error) {
+              hostKeyError = e;
+            }
+            verify(false);
+          },
+        );
       },
     });
   });

@@ -292,11 +292,9 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
           updatedAt: "",
         }));
       } else {
-        const plaintext = await invoke<string>("decrypt_value", {
-          ciphertext: account.encrypted_credentials,
-          iv: account.credentials_iv,
+        const credentials = await invoke<Record<string, string>>("account_get_credentials", {
+          accountId: account.id,
         });
-        const credentials = JSON.parse(plaintext) as Record<string, string>;
         const loaded = await getPlugin(account.pluginId);
         if (!loaded) throw new Error(`Plugin "${account.pluginId}" not loaded`);
         const { plugin } = loaded;
@@ -475,11 +473,9 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
         if (account.cloudManaged) return;
         void (async () => {
           try {
-            const plaintext = await invoke<string>("decrypt_value", {
-              ciphertext: account.encrypted_credentials,
-              iv: account.credentials_iv,
+            const creds = await invoke<Record<string, string>>("account_get_credentials", {
+              accountId: account.id,
             });
-            const creds = JSON.parse(plaintext) as Record<string, string>;
             setSecretExportDrop({
               source,
               targetPluginId: "kubernetes",
@@ -539,11 +535,9 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
         if (ownerAccount.cloudManaged) return;
         void (async () => {
           try {
-            const plaintext = await invoke<string>("decrypt_value", {
-              ciphertext: ownerAccount.encrypted_credentials,
-              iv: ownerAccount.credentials_iv,
+            const ownerCreds = await invoke<Record<string, string>>("account_get_credentials", {
+              accountId: ownerAccount.id,
             });
-            const ownerCreds = JSON.parse(plaintext) as Record<string, string>;
             const loaded = await getPlugin(ownerAccount.pluginId);
             if (!loaded) return;
             const services = buildPluginHostServices(loaded.plugin.manifest, ownerCreds);

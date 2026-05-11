@@ -4,6 +4,10 @@ import { buildTestApp } from "./test-utils";
 // `keyedHash` reads ENCRYPTION_MASTER_KEY when invoked. Set a fixed 32-byte
 // test key so the hashing path runs deterministically.
 process.env["ENCRYPTION_MASTER_KEY"] = Buffer.alloc(32, 1).toString("base64");
+// The WorkOS client module throws at import time if these aren't set.
+// `authenticateApiRequest` imports it transitively for JWT verification.
+process.env["WORKOS_API_KEY"] = "test_workos_api_key";
+process.env["WORKOS_CLIENT_ID"] = "test_workos_client_id";
 
 const mockInsert = vi.fn().mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) });
 const mockSelect = vi.fn();
@@ -135,6 +139,7 @@ describe("API Keys routes", () => {
           lastUsedAt: null,
           expiresAt: null,
           revokedAt: null,
+          legacyHashSunsetAt: null,
           createdAt: new Date(),
         },
       ];
@@ -145,6 +150,52 @@ describe("API Keys routes", () => {
       const app = buildApp();
       const body = await (await app.request("/", { method: "GET" })).json();
       expect(body[0].scopes).toEqual([]);
+    });
+
+    it("derives needsRotation=false when legacyHashSunsetAt is null", async () => {
+      const rows = [
+        {
+          id: "k1",
+          name: "a",
+          prefix: "iwk_x",
+          scopes: [],
+          lastUsedAt: null,
+          expiresAt: null,
+          revokedAt: null,
+          legacyHashSunsetAt: null,
+          createdAt: new Date(),
+        },
+      ];
+      const where = vi.fn().mockResolvedValue(rows);
+      const from = vi.fn().mockReturnValue({ where });
+      mockSelect.mockReturnValue({ from });
+
+      const app = buildApp();
+      const body = await (await app.request("/", { method: "GET" })).json();
+      expect(body[0].needsRotation).toBe(false);
+    });
+
+    it("derives needsRotation=true when legacyHashSunsetAt is set", async () => {
+      const rows = [
+        {
+          id: "k1",
+          name: "a",
+          prefix: "iwk_x",
+          scopes: [],
+          lastUsedAt: null,
+          expiresAt: null,
+          revokedAt: null,
+          legacyHashSunsetAt: new Date("2026-11-01"),
+          createdAt: new Date(),
+        },
+      ];
+      const where = vi.fn().mockResolvedValue(rows);
+      const from = vi.fn().mockReturnValue({ where });
+      mockSelect.mockReturnValue({ from });
+
+      const app = buildApp();
+      const body = await (await app.request("/", { method: "GET" })).json();
+      expect(body[0].needsRotation).toBe(true);
     });
   });
 
@@ -198,3 +249,124 @@ function deriveStatus(row: { revokedAt: Date | null; expiresAt: Date | null }): 
   if (row.expiresAt && row.expiresAt < new Date()) return "expired";
   return "active";
 }
+
+describe("authenticateApiRequest — legacy hash sunset", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  /**
+   * Builds a select() mock that returns `firstRows` on the first call (HMAC
+   * lookup) and `secondRows` on the second (legacy lookup). Returns the chain
+   * so the assertions can inspect it.
+   */
+  function mockTwoStageSelect(firstRows: unknown[], secondRows: unknown[]) {
+    const calls = [firstRows, secondRows];
+    mockSelect.mockImplementation(() => {
+      const rows = calls.shift() ?? [];
+      const where = vi.fn().mockResolvedValue(rows);
+      const from = vi.fn().mockReturnValue({ where });
+      return { from };
+    });
+  }
+
+  async function callAuth(token: string) {
+    const { authenticateApiRequest } = await import("@/auth/api-auth");
+    const req = new Request("http://x/", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    return authenticateApiRequest(req);
+  }
+
+  it("accepts a key that matches the HMAC hash without rehashing or touching sunset", async () => {
+    const row = {
+      id: "k1",
+      userId: "user-1",
+      organizationId: "org-1",
+      scopes: [],
+      expiresAt: null,
+      revokedAt: null,
+      legacyHashSunsetAt: null,
+      hashedKey: "irrelevant",
+    };
+    mockTwoStageSelect([row], []);
+
+    let capturedSet: Record<string, unknown> | undefined;
+    const where = vi.fn().mockResolvedValue(undefined);
+    const set = vi.fn().mockImplementation((v) => {
+      capturedSet = v;
+      return { where };
+    });
+    mockUpdate.mockReturnValue({ set });
+
+    const result = await callAuth("iwk_newkey");
+    expect(result).not.toBeNull();
+    expect(result?.apiKeyId).toBe("k1");
+    // HMAC hit: no rehash, no sunset touch.
+    expect(capturedSet).toBeDefined();
+    expect(capturedSet).not.toHaveProperty("hashedKey");
+    expect(capturedSet).not.toHaveProperty("legacyHashSunsetAt");
+  });
+
+  it("rehashes and clears legacyHashSunsetAt on legacy hash hit within window", async () => {
+    const row = {
+      id: "k2",
+      userId: "user-1",
+      organizationId: "org-1",
+      scopes: [],
+      expiresAt: null,
+      revokedAt: null,
+      legacyHashSunsetAt: null,
+      hashedKey: "legacy-digest",
+    };
+    // HMAC lookup misses, legacy lookup hits.
+    mockTwoStageSelect([], [row]);
+
+    let capturedSet: Record<string, unknown> | undefined;
+    const where = vi.fn().mockResolvedValue(undefined);
+    const set = vi.fn().mockImplementation((v) => {
+      capturedSet = v;
+      return { where };
+    });
+    mockUpdate.mockReturnValue({ set });
+
+    const result = await callAuth("iwk_legacykey");
+    expect(result).not.toBeNull();
+    expect(capturedSet?.["hashedKey"]).toMatch(/^[0-9a-f]{64}$/);
+    expect(capturedSet?.["legacyHashSunsetAt"]).toBeNull();
+  });
+
+  it("rejects authentication when legacy hash matches but sunset is in the past", async () => {
+    const row = {
+      id: "k3",
+      userId: "user-1",
+      organizationId: "org-1",
+      scopes: [],
+      expiresAt: null,
+      revokedAt: null,
+      // Sunset fired in 2020 — well before now. The row must be refused even
+      // though the legacy hash still matches.
+      legacyHashSunsetAt: new Date("2020-01-01"),
+      hashedKey: "legacy-digest",
+    };
+    mockTwoStageSelect([], [row]);
+
+    const set = vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) });
+    mockUpdate.mockReturnValue({ set });
+
+    const result = await callAuth("iwk_expiredlegacy");
+    expect(result).toBeNull();
+    // We must not have written anything for a refused key.
+    expect(set).not.toHaveBeenCalled();
+  });
+
+  it("returns null when neither HMAC nor legacy lookup finds a row", async () => {
+    mockTwoStageSelect([], []);
+    const set = vi.fn().mockReturnValue({ where: vi.fn().mockResolvedValue(undefined) });
+    mockUpdate.mockReturnValue({ set });
+
+    const result = await callAuth("iwk_unknown");
+    expect(result).toBeNull();
+    expect(set).not.toHaveBeenCalled();
+  });
+});

@@ -367,23 +367,15 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
       }
       // Decrypt credentials once per unique account
       const credsByAccount = new Map<string, Record<string, string>>();
-      const db = await getDb();
 
       const accountIds = [...new Set(pinned.map((r) => r.account_id))];
       await Promise.all(
         accountIds.map(async (accountId) => {
           try {
-            const rows = await db.select<
-              { encrypted_credentials: string; credentials_iv: string }[]
-            >("SELECT encrypted_credentials, credentials_iv FROM accounts WHERE id = $1", [
+            const creds = await invoke<Record<string, string>>("account_get_credentials", {
               accountId,
-            ]);
-            if (!rows[0]) return;
-            const plaintext = await invoke<string>("decrypt_value", {
-              ciphertext: rows[0].encrypted_credentials,
-              iv: rows[0].credentials_iv,
             });
-            credsByAccount.set(accountId, JSON.parse(plaintext) as Record<string, string>);
+            credsByAccount.set(accountId, creds);
           } catch {
             /* skip this account */
           }

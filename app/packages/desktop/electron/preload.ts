@@ -23,9 +23,18 @@ const INVOKE_CHANNELS = [
   "show_open_dialog",
   "show_save_dialog",
   "open_external_url",
-  // narrowed credential encryption helpers (raw key is never exposed)
-  "encrypt_value",
-  "decrypt_value",
+  // narrowed credential encryption helpers (raw key is never exposed and the
+  // renderer cannot ask main to encrypt or decrypt arbitrary blobs — each
+  // channel binds plaintext to a specific row + field via AAD).
+  "account_get_credentials",
+  "account_save_credentials",
+  "account_create",
+  "ssh_key_get_private_key",
+  "ssh_key_save_private_key",
+  "ssh_tunnel_config_get_private_key",
+  "ssh_tunnel_config_encrypt_private_key",
+  "secret_field_decrypt",
+  "secret_field_encrypt",
   // sql.js local desktop DB (renderer-bundled SQL strings only)
   "db_select",
   "db_execute",

@@ -211,11 +211,9 @@ function AccountPage() {
       if (!account) return;
       void (async () => {
         try {
-          const plaintext = await invoke<string>("decrypt_value", {
-            ciphertext: account.encrypted_credentials,
-            iv: account.credentials_iv,
+          const ownerCreds = await invoke<Record<string, string>>("account_get_credentials", {
+            accountId: account.id,
           });
-          const ownerCreds = JSON.parse(plaintext) as Record<string, string>;
           const loaded = await getPlugin(account.plugin_id);
           if (!loaded) return;
           const services = buildPluginHostServices(loaded.plugin.manifest, ownerCreds);
@@ -406,11 +404,9 @@ function AccountPage() {
           if (activeWorkspaceTabId) setWorkspaceTabTitle(activeWorkspaceTabId, row.display_name);
         }
 
-        const plaintext = await invoke<string>("decrypt_value", {
-          ciphertext: row.encrypted_credentials,
-          iv: row.credentials_iv,
+        const credentials = await invoke<Record<string, string>>("account_get_credentials", {
+          accountId: row.id,
         });
-        const credentials = JSON.parse(plaintext) as Record<string, string>;
 
         const loaded = await getPlugin(row.plugin_id);
         if (!loaded) throw new Error(`Plugin "${row.plugin_id}" not loaded`);

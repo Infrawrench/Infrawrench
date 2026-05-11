@@ -100,23 +100,76 @@ export function getEncryptionKey(): Buffer {
   return _encryptionKey;
 }
 
-export function encryptValue(plaintext: string, key: Buffer): { ciphertext: string; iv: string } {
+/**
+ * Build a context-binding AAD string of the form
+ * `<resourceType>:<resourceId>:<fieldName>`. Mirrors the helper in
+ * `server-core/src/encryption.ts` so the desktop and web encryption layers
+ * stay AAD-compatible.
+ */
+export function buildAad(resourceType: string, resourceId: string, fieldName: string): string {
+  return `${resourceType}:${resourceId}:${fieldName}`;
+}
+
+const V2_PREFIX = "v2:";
+
+/**
+ * Encrypt `plaintext` under `key`. When `aad` is supplied, the ciphertext is
+ * prefixed with `v2:` and AAD-bound (matching server-core's wire format); the
+ * caller must reproduce the same AAD at decrypt time. Without `aad` we emit
+ * the legacy unprefixed v1 format used by older callers (cloud-auth tokens,
+ * pre-existing rows).
+ */
+export function encryptValue(
+  plaintext: string,
+  key: Buffer,
+  aad?: string | Buffer,
+): { ciphertext: string; iv: string } {
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
+  if (aad != null) {
+    cipher.setAAD(Buffer.isBuffer(aad) ? aad : Buffer.from(aad, "utf8"));
+  }
   const encrypted = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
   const tag = cipher.getAuthTag();
+  const payload = Buffer.concat([encrypted, tag]).toString("base64");
   return {
-    ciphertext: Buffer.concat([encrypted, tag]).toString("base64"),
+    ciphertext: aad != null ? V2_PREFIX + payload : payload,
     iv: iv.toString("base64"),
   };
 }
 
-export function decryptValue(ciphertext: string, ivBase64: string, key: Buffer): string {
-  const data = Buffer.from(ciphertext, "base64");
+/**
+ * Decrypt a stored ciphertext. Branches on the wire-format version:
+ *   - `v2:<base64>` — AAD-bound. Caller MUST supply `aad`; mismatched or
+ *     missing AAD fails the GCM auth tag check.
+ *   - bare `<base64>` — legacy v1 record with no AAD. Any supplied `aad` is
+ *     ignored for back-compat with rows written before AAD existed.
+ */
+export function decryptValue(
+  ciphertext: string,
+  ivBase64: string,
+  key: Buffer,
+  aad?: string | Buffer,
+): string {
   const iv = Buffer.from(ivBase64, "base64");
-  const tag = data.subarray(-16);
-  const encrypted = data.subarray(0, -16);
+  let payload: Buffer;
+  let isV2: boolean;
+  if (ciphertext.startsWith(V2_PREFIX)) {
+    payload = Buffer.from(ciphertext.slice(V2_PREFIX.length), "base64");
+    isV2 = true;
+  } else {
+    payload = Buffer.from(ciphertext, "base64");
+    isV2 = false;
+  }
+  const tag = payload.subarray(-16);
+  const encrypted = payload.subarray(0, -16);
   const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
+  if (isV2) {
+    if (aad == null) {
+      throw new Error("AAD is required to decrypt v2 ciphertext");
+    }
+    decipher.setAAD(Buffer.isBuffer(aad) ? aad : Buffer.from(aad, "utf8"));
+  }
   decipher.setAuthTag(tag);
   return decipher.update(encrypted).toString("utf8") + decipher.final("utf8");
 }

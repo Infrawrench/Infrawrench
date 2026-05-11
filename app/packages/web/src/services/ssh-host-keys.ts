@@ -1,19 +1,21 @@
 /**
  * Trust-on-first-use (TOFU) SSH host-key pinning.
  *
- * On the first connection to a given (host, port) we record the server's
- * host-key fingerprint. On subsequent connections we reject the handshake if
- * the fingerprint has changed — which would indicate a man-in-the-middle or
- * a rebuilt host that has not been re-pinned.
+ * On the first connection to a given (organization, host, port) we record the
+ * server's host-key fingerprint in the `ssh_host_keys` Postgres table. On
+ * subsequent connections we reject the handshake if the fingerprint has
+ * changed — which would indicate a man-in-the-middle or a rebuilt host that
+ * has not been re-pinned.
  *
- * TODO(security): pins are kept in an in-memory `Map` and reset every time
- * the process restarts (e.g. on deploy, crash, or instance autoscale). That
- * effectively reduces this to "trust any key after each restart" — a real
- * persistent store keyed by `(organization_id, host, port)` should be added
- * (e.g. an `ssh_host_keys` table) so a swapped key forces the operator to
- * acknowledge the change. See ssh.ts:hostVerifier for the call site.
+ * Pins are persisted across process restarts so a swapped key forces the
+ * operator to acknowledge the change (by deleting the row) rather than being
+ * silently re-trusted on the next deploy.
  */
 import * as crypto from "node:crypto";
+import { v4 as uuid } from "uuid";
+import { and, eq } from "drizzle-orm";
+import { db } from "../db/client";
+import { sshHostKeys } from "../db/schema";
 
 export class HostKeyMismatchError extends Error {
   readonly host: string;
@@ -34,14 +36,6 @@ export class HostKeyMismatchError extends Error {
   }
 }
 
-const pins = new Map<string, string>();
-
-let warnedAboutVolatility = false;
-
-function key(host: string, port: number): string {
-  return `${host}:${port}`;
-}
-
 export function fingerprint(hostKey: Buffer): string {
   return (
     "SHA256:" + crypto.createHash("sha256").update(hostKey).digest("base64").replace(/=+$/, "")
@@ -49,33 +43,62 @@ export function fingerprint(hostKey: Buffer): string {
 }
 
 /**
- * Verify a presented host key for `(host, port)` against the in-memory pin.
- * Returns the (possibly new) stored fingerprint. Throws `HostKeyMismatchError`
- * on a mismatch.
+ * Verify a presented host key for `(orgId, host, port)` against the persisted
+ * pin. If no pin exists, record one (TOFU) and return the new fingerprint.
+ * Throws `HostKeyMismatchError` on a mismatch.
  */
-export function verifyOrPinHostKey(host: string, port: number, hostKey: Buffer): string {
-  if (!warnedAboutVolatility) {
-    warnedAboutVolatility = true;
-    console.warn(
-      "[ssh] SSH host-key pins are stored in memory and will be lost on process restart. " +
-        "See app/packages/web/src/services/ssh-host-keys.ts for the TODO.",
-    );
-  }
-
+export async function verifyOrPinHostKey(
+  orgId: string,
+  host: string,
+  port: number,
+  hostKey: Buffer,
+): Promise<string> {
   const fp = fingerprint(hostKey);
-  const k = key(host, port);
-  const existing = pins.get(k);
-  if (existing === undefined) {
-    pins.set(k, fp);
+
+  const [existing] = await db
+    .select({ id: sshHostKeys.id, fingerprint: sshHostKeys.fingerprint })
+    .from(sshHostKeys)
+    .where(
+      and(
+        eq(sshHostKeys.organizationId, orgId),
+        eq(sshHostKeys.host, host),
+        eq(sshHostKeys.port, port),
+      ),
+    )
+    .limit(1);
+
+  if (!existing) {
+    try {
+      await db.insert(sshHostKeys).values({
+        id: uuid(),
+        organizationId: orgId,
+        host,
+        port,
+        fingerprint: fp,
+      });
+    } catch {
+      // A concurrent connection may have inserted the same pin first. Re-read
+      // and treat as if we found it on the first lookup.
+      const [raced] = await db
+        .select({ fingerprint: sshHostKeys.fingerprint })
+        .from(sshHostKeys)
+        .where(
+          and(
+            eq(sshHostKeys.organizationId, orgId),
+            eq(sshHostKeys.host, host),
+            eq(sshHostKeys.port, port),
+          ),
+        )
+        .limit(1);
+      if (raced && raced.fingerprint !== fp) {
+        throw new HostKeyMismatchError(host, port, raced.fingerprint, fp);
+      }
+    }
     return fp;
   }
-  if (existing !== fp) {
-    throw new HostKeyMismatchError(host, port, existing, fp);
-  }
-  return existing;
-}
 
-/** Test/debug helper — clears the in-memory pin store. */
-export function _resetHostKeyPinsForTests(): void {
-  pins.clear();
+  if (existing.fingerprint !== fp) {
+    throw new HostKeyMismatchError(host, port, existing.fingerprint, fp);
+  }
+  return existing.fingerprint;
 }

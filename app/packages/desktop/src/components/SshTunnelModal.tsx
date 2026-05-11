@@ -112,10 +112,6 @@ export function SshTunnelModal({
 
       const db = await getDb();
 
-      const { ciphertext, iv } = await invoke<{ ciphertext: string; iv: string }>("encrypt_value", {
-        plaintext: privateKey.trim(),
-      });
-
       // Open tunnel to verify credentials; it stays open and will be re-established via ssh_tunnel_configs on reconnect
       await sshOpenTunnel({
         sshHost,
@@ -128,17 +124,19 @@ export function SshTunnelModal({
 
       const newAccountId = crypto.randomUUID();
       const credentials = buildCredentials(pluginId, remotePort);
-      const { ciphertext: credCiphertext, iv: credIv } = await invoke<{
-        ciphertext: string;
-        iv: string;
-      }>("encrypt_value", { plaintext: JSON.stringify(credentials) });
       const displayName = `${preset.label} on ${sshHost}`;
-      await db.execute(
-        "INSERT INTO accounts (id, plugin_id, display_name, encrypted_credentials, credentials_iv) VALUES ($1, $2, $3, $4, $5)",
-        [newAccountId, pluginId, displayName, credCiphertext, credIv],
-      );
+      await invoke<void>("account_create", {
+        accountId: newAccountId,
+        pluginId,
+        displayName,
+        credentials,
+      });
 
       const tunnelId2 = crypto.randomUUID();
+      const { ciphertext, iv } = await invoke<{ ciphertext: string; iv: string }>(
+        "ssh_tunnel_config_encrypt_private_key",
+        { tunnelConfigId: tunnelId2, privateKey: privateKey.trim() },
+      );
       await db.execute(
         `INSERT OR REPLACE INTO ssh_tunnel_configs
          (id, account_id, ssh_host, ssh_port, ssh_user, remote_host, remote_port, encrypted_private_key, private_key_iv)

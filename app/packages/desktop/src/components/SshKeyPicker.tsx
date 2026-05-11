@@ -102,16 +102,7 @@ export function SshKeyPicker({
       const key = await invoke<string>("ssh_read_system_key", { name: source.name });
       onKeyResolved(key);
     } else if (source.type === "app") {
-      const db = await getDb();
-      const rows = await db.select<{ encrypted_key: string; key_iv: string }[]>(
-        "SELECT encrypted_key, key_iv FROM ssh_keys WHERE id = $1",
-        [source.id],
-      );
-      if (!rows[0]) return;
-      const key = await invoke<string>("decrypt_value", {
-        ciphertext: rows[0].encrypted_key,
-        iv: rows[0].key_iv,
-      });
+      const key = await invoke<string>("ssh_key_get_private_key", { keyId: source.id });
       onKeyResolved(key);
     } else {
       // Cloud key — private key lives server-side, so pass an empty PEM.
@@ -143,15 +134,12 @@ export function SshKeyPicker({
     if (!newKeyName.trim() || !newKeyPem.trim()) return;
     setSaving(true);
     try {
-      const { ciphertext, iv } = await invoke<{ ciphertext: string; iv: string }>("encrypt_value", {
-        plaintext: newKeyPem.trim(),
-      });
-      const db = await getDb();
       const id = crypto.randomUUID();
-      await db.execute(
-        "INSERT INTO ssh_keys (id, name, encrypted_key, key_iv) VALUES ($1, $2, $3, $4)",
-        [id, newKeyName.trim(), ciphertext, iv],
-      );
+      await invoke<void>("ssh_key_save_private_key", {
+        keyId: id,
+        name: newKeyName.trim(),
+        privateKey: newKeyPem.trim(),
+      });
       const newSource: KeySource = { type: "app", id, name: newKeyName.trim() };
       setAppKeys((prev) => [...prev, { id, name: newKeyName.trim() }]);
       setSelectedKey(newSource);

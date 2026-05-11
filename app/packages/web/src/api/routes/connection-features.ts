@@ -313,7 +313,7 @@ app.post("/sftp/list", async (c) => {
     const ctx = await getClientForAccount(input.accountId, organizationId);
     if (!ctx) return c.json({ error: "Account not found" }, 404);
     const config = await resolveSshConfig(ctx.client, organizationId, input);
-    const result = await sftpListImpl(config, input.path);
+    const result = await sftpListImpl(organizationId, config, input.path);
     return c.json(result);
   } catch (err) {
     return c.json({ error: err instanceof Error ? err.message : "SFTP list failed" }, 500);
@@ -335,7 +335,7 @@ app.post("/sftp/mkdir", async (c) => {
     const ctx = await getClientForAccount(input.accountId, organizationId);
     if (!ctx) return c.json({ error: "Account not found" }, 404);
     const config = await resolveSshConfig(ctx.client, organizationId, input);
-    await sftpMkdirImpl(config, input.path);
+    await sftpMkdirImpl(organizationId, config, input.path);
     return c.json({ ok: true });
   } catch (err) {
     return c.json({ error: err instanceof Error ? err.message : "SFTP mkdir failed" }, 500);
@@ -358,7 +358,7 @@ app.post("/sftp/delete", async (c) => {
     const ctx = await getClientForAccount(input.accountId, organizationId);
     if (!ctx) return c.json({ error: "Account not found" }, 404);
     const config = await resolveSshConfig(ctx.client, organizationId, input);
-    await sftpDeleteImpl(config, input.path, input.isDir);
+    await sftpDeleteImpl(organizationId, config, input.path, input.isDir);
     return c.json({ ok: true });
   } catch (err) {
     return c.json({ error: err instanceof Error ? err.message : "SFTP delete failed" }, 500);

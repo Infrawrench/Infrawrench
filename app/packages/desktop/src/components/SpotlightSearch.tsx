@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { SpotlightSearch as SharedSpotlightSearch, type SpotlightResult } from "@infrawrench/ui";
 import { invoke } from "../lib/invoke";
 import { getDb } from "../db/client";
-import type { AccountRow } from "../db/rows";
+type AccountRow = { id: string; plugin_id: string; display_name: string };
 import { loadPlugins } from "../plugins/loader";
 import { buildHostServices } from "../lib/sql-drivers";
 import { pinResource, type DraggableResource } from "../lib/pins";
@@ -61,7 +61,7 @@ export function SpotlightSearch({
 
       try {
         accountRows = await db.select<AccountRow[]>(
-          "SELECT id, plugin_id, display_name, encrypted_credentials, credentials_iv FROM accounts",
+          "SELECT id, plugin_id, display_name FROM accounts",
         );
       } catch (err) {
         console.error("[spotlight] Failed to query accounts:", err);
@@ -139,11 +139,9 @@ export function SpotlightSearch({
 
             let creds: Record<string, string>;
             try {
-              const plaintext = await invoke<string>("decrypt_value", {
-                ciphertext: account.encrypted_credentials,
-                iv: account.credentials_iv,
+              creds = await invoke<Record<string, string>>("account_get_credentials", {
+                accountId: account.id,
               });
-              creds = JSON.parse(plaintext) as Record<string, string>;
             } catch {
               return;
             }

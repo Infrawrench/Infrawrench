@@ -192,21 +192,21 @@ export function DockerSetupModal({
         newAccountId = crypto.randomUUID();
 
         const credentials = { dockerHost: "tcp://localhost:2375" };
-        const { ciphertext: credCiphertext, iv: credIv } = await invoke<{
-          ciphertext: string;
-          iv: string;
-        }>("encrypt_value", { plaintext: JSON.stringify(credentials) });
+        await invoke<void>("account_create", {
+          accountId: newAccountId,
+          pluginId: "docker",
+          displayName: accountName,
+          credentials,
+        });
+
+        const tunnelConfigId = crypto.randomUUID();
         const { ciphertext: keyCiphertext, iv: keyIv } = await invoke<{
           ciphertext: string;
           iv: string;
-        }>("encrypt_value", { plaintext: privateKey.trim() });
-
-        await db.execute(
-          "INSERT INTO accounts (id, plugin_id, display_name, encrypted_credentials, credentials_iv) VALUES ($1, $2, $3, $4, $5)",
-          [newAccountId, "docker", accountName, credCiphertext, credIv],
-        );
-
-        const tunnelConfigId = crypto.randomUUID();
+        }>("ssh_tunnel_config_encrypt_private_key", {
+          tunnelConfigId,
+          privateKey: privateKey.trim(),
+        });
         await db.execute(
           `INSERT OR REPLACE INTO ssh_tunnel_configs
            (id, account_id, ssh_host, ssh_port, ssh_user, remote_host, remote_port, encrypted_private_key, private_key_iv)

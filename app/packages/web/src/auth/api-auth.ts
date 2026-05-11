@@ -79,7 +79,9 @@ export async function authenticateApiRequest(request: Request): Promise<ApiAuthR
     // Try the keyed hash first (current scheme). Fall back to the legacy
     // plain SHA-256 hash for rows that pre-date HMAC migration. When a
     // legacy match is found, opportunistically rehash so the row converges
-    // to the new scheme on next use.
+    // to the new scheme on next use — but only if we are still inside the
+    // legacy-hash sunset window. Past sunset, the row is dead: an attacker
+    // holding a leaked SHA-256 digest must not be able to use it.
     // TODO: drop the legacy lookup once all rows have been rehashed.
     const newHash = await keyedHash(token, API_KEY_HASH_DOMAIN);
     let [key] = await db
@@ -94,7 +96,14 @@ export async function authenticateApiRequest(request: Request): Promise<ApiAuthR
         .select()
         .from(apiKeys)
         .where(and(eq(apiKeys.hashedKey, legacyHash), isNull(apiKeys.revokedAt)));
-      if (key) rehash = true;
+      if (key) {
+        // Hard cutover: if a sunset has already been recorded and is in the
+        // past, refuse authentication regardless of hash match.
+        if (key.legacyHashSunsetAt && key.legacyHashSunsetAt < new Date()) {
+          return null;
+        }
+        rehash = true;
+      }
     }
 
     if (!key) return null;
@@ -111,7 +120,13 @@ export async function authenticateApiRequest(request: Request): Promise<ApiAuthR
       .set({
         lastUsedAt: new Date(),
         ...(scopesChanged ? { scopes: migrated } : {}),
-        ...(rehash ? { hashedKey: newHash } : {}),
+        // On legacy-hash hit we rehash to HMAC and clear the sunset on the
+        // same UPDATE. The 180-day sunset is recorded only on legacy rows that
+        // didn't already have one set — informational, since we're about to
+        // rehash and clear it. It exists so an admin running a one-off query
+        // (or the list endpoint below) sees the cutover for any keys still on
+        // the legacy hash that never authenticated after the migration.
+        ...(rehash ? { hashedKey: newHash, legacyHashSunsetAt: null } : {}),
       })
       .where(eq(apiKeys.id, key.id));
 

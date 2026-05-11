@@ -87,15 +87,12 @@ export function SshQuickConnectPanel({
     if (!newKeyName.trim() || !newKeyPem.trim()) return;
     setSaving(true);
     try {
-      const { ciphertext, iv } = await invoke<{ ciphertext: string; iv: string }>("encrypt_value", {
-        plaintext: newKeyPem.trim(),
-      });
-      const db = await getDb();
       const id = crypto.randomUUID();
-      await db.execute(
-        "INSERT INTO ssh_keys (id, name, encrypted_key, key_iv) VALUES ($1, $2, $3, $4)",
-        [id, newKeyName.trim(), ciphertext, iv],
-      );
+      await invoke<void>("ssh_key_save_private_key", {
+        keyId: id,
+        name: newKeyName.trim(),
+        privateKey: newKeyPem.trim(),
+      });
       const newKey: AppKey = { id, name: newKeyName.trim() };
       setAppKeys((prev) => [...prev, newKey]);
       setSelectedKey({ type: "app", id, name: newKey.name });
@@ -122,16 +119,7 @@ export function SshQuickConnectPanel({
     } else if (selectedKey.type === "system") {
       key = await invoke<string>("ssh_read_system_key", { name: selectedKey.name });
     } else if (selectedKey.type === "app") {
-      const db = await getDb();
-      const rows = await db.select<{ encrypted_key: string; key_iv: string }[]>(
-        "SELECT encrypted_key, key_iv FROM ssh_keys WHERE id = $1",
-        [selectedKey.id],
-      );
-      if (!rows[0]) throw new Error("Key not found");
-      key = await invoke<string>("decrypt_value", {
-        ciphertext: rows[0].encrypted_key,
-        iv: rows[0].key_iv,
-      });
+      key = await invoke<string>("ssh_key_get_private_key", { keyId: selectedKey.id });
     } else {
       // Cloud key — private key stays server-side; SshTerminal uses keySource to dispatch.
       key = "";

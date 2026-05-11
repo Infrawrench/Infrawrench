@@ -111,19 +111,9 @@ export function SshEnvDeployModal({
       const sourceLoaded = await getPlugin(source.pluginId);
       if (!sourceLoaded) throw new Error(`Plugin "${source.pluginId}" not loaded`);
 
-      const { getDb } = await import("../db/client");
-      const db = await getDb();
-      const rows = await db.select<{ encrypted_credentials: string; credentials_iv: string }[]>(
-        "SELECT encrypted_credentials, credentials_iv FROM accounts WHERE id = $1",
-        [source.accountId],
-      );
-      if (!rows[0]) throw new Error("Source account not found");
-
-      const plaintext = await invoke<string>("decrypt_value", {
-        ciphertext: rows[0].encrypted_credentials,
-        iv: rows[0].credentials_iv,
+      const sourceCreds = await invoke<Record<string, string>>("account_get_credentials", {
+        accountId: source.accountId,
       });
-      const sourceCreds = JSON.parse(plaintext) as Record<string, string>;
       const sourceServices = buildPluginHostServices(sourceLoaded.plugin.manifest, sourceCreds);
       const sourceClient = sourceLoaded.plugin.createClient(sourceCreds, sourceServices);
 

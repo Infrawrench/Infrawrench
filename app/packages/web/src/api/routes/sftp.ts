@@ -41,7 +41,7 @@ app.post("/upload", async (c) => {
   });
 
   const arrayBuffer = await file.arrayBuffer();
-  await sftpUpload(sshConfig, remotePath, Buffer.from(arrayBuffer));
+  await sftpUpload(organizationId, sshConfig, remotePath, Buffer.from(arrayBuffer));
   return c.json({ ok: true });
 });
 
@@ -87,7 +87,7 @@ app.get("/download", async (c) => {
   if (paths.length === 1) {
     const remotePath = paths[0]!;
     try {
-      const data = await sftpDownloadToBuffer(sshConfig, remotePath);
+      const data = await sftpDownloadToBuffer(organizationId, sshConfig, remotePath);
       return new Response(new Uint8Array(data), {
         headers: {
           "Content-Type": "application/octet-stream",
@@ -110,7 +110,7 @@ app.get("/download", async (c) => {
     try {
       for (const remotePath of paths) {
         if (remotePath.endsWith("/")) continue;
-        const data = await sftpDownloadToBuffer(sshConfig, remotePath);
+        const data = await sftpDownloadToBuffer(organizationId, sshConfig, remotePath);
         const rel =
           normalizedBase && remotePath.startsWith(normalizedBase)
             ? remotePath.slice(normalizedBase.length)

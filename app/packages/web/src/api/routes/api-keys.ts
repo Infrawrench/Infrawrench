@@ -84,11 +84,22 @@ app.get("/", async (c) => {
       lastUsedAt: apiKeys.lastUsedAt,
       expiresAt: apiKeys.expiresAt,
       revokedAt: apiKeys.revokedAt,
+      legacyHashSunsetAt: apiKeys.legacyHashSunsetAt,
       createdAt: apiKeys.createdAt,
     })
     .from(apiKeys)
     .where(whereClause);
-  return c.json(rows.map((r) => ({ ...r, scopes: (r.scopes as string[]) ?? [] })));
+  return c.json(
+    rows.map((r) => ({
+      ...r,
+      scopes: (r.scopes as string[]) ?? [],
+      // Surface whether this row is still on the legacy SHA-256 hash. The
+      // sunset column is only ever non-null while a row carries the legacy
+      // hash — on rehash it's cleared. UIs can use this plus the timestamp
+      // to warn admins to rotate before the cutover.
+      needsRotation: r.legacyHashSunsetAt !== null,
+    })),
+  );
 });
 
 /** POST /api/api-keys/:id/revoke */

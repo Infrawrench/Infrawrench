@@ -273,6 +273,7 @@ app.post("/env-deploy", async (c) => {
   const quotedFilePath = escapeSingleQuoted(safeFilePath);
   try {
     await sshExec(
+      organizationId,
       {
         host: input.targetSshHost,
         port: 22,

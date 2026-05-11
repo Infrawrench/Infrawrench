@@ -4,7 +4,6 @@ import { Modal, formatErrorMessage } from "@infrawrench/ui";
 import { invoke } from "../lib/invoke";
 import { getPlugin } from "../plugins/loader";
 import { getDb } from "../db/client";
-import type { AccountCredsRow } from "../db/rows";
 import { buildPluginHostServices } from "../lib/sql-drivers";
 import { notifyMetricPingsChanged } from "../lib/metric-pings";
 
@@ -62,18 +61,9 @@ export function MetricPingModal({
     let cancelled = false;
     async function load() {
       try {
-        const db = await getDb();
-        const rows = await db.select<AccountCredsRow[]>(
-          "SELECT id, encrypted_credentials, credentials_iv FROM accounts WHERE id = $1 LIMIT 1",
-          [accountId],
-        );
-        const account = rows[0];
-        if (!account) throw new Error("Account not found");
-        const plaintext = await invoke<string>("decrypt_value", {
-          ciphertext: account.encrypted_credentials,
-          iv: account.credentials_iv,
+        const credentials = await invoke<Record<string, string>>("account_get_credentials", {
+          accountId,
         });
-        const credentials = JSON.parse(plaintext) as Record<string, string>;
         const loaded = await getPlugin(pluginId);
         if (!loaded) throw new Error(`Plugin "${pluginId}" not loaded`);
         const services = buildPluginHostServices(loaded.plugin.manifest, credentials);
