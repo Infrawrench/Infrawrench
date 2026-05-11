@@ -24,6 +24,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@clickhouse/client": "^1.18.4",
     "@infrawrench/plugin-base": "workspace:*"
   },
   "devDependencies": {

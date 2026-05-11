@@ -1,3 +1,4 @@
+import { createClient, type ClickHouseClient as ClickHouseSdkClient } from "@clickhouse/client";
 import type {
   PluginClient,
   ResourceInstance,
@@ -10,6 +11,8 @@ import type {
 } from "@infrawrench/plugin-base";
 import type { ListerContext } from "./resource-listers.js";
 import { listServices, listDatabases } from "./resource-listers.js";
+
+const SQL_REQUEST_TIMEOUT_MS = 30_000;
 
 /**
  * ClickHouse Cloud plugin client.
@@ -76,38 +79,68 @@ export class ClickHouseClient implements PluginClient {
     return JSON.parse(text) as T;
   }
 
+  private normalizeChUrl(rawHost: string): string {
+    const trimmed = rawHost.replace(/\/+$/, "");
+    if (!trimmed) return "";
+    return trimmed.startsWith("http://") || trimmed.startsWith("https://")
+      ? trimmed
+      : `https://${trimmed}`;
+  }
+
+  private makeSdkClient(rawHost: string): ClickHouseSdkClient | null {
+    const url = this.normalizeChUrl(rawHost);
+    if (!url) return null;
+    return createClient({
+      url,
+      username: this.chUser,
+      password: this.chPassword,
+      request_timeout: SQL_REQUEST_TIMEOUT_MS,
+    });
+  }
+
   private async chQuery(sql: string): Promise<Record<string, unknown>[]> {
     return this.chQueryAt(this.chHost, sql);
   }
 
   private async chQueryAt(rawHost: string, sql: string): Promise<Record<string, unknown>[]> {
-    if (!rawHost) return [];
+    const client = this.makeSdkClient(rawHost);
+    if (!client) return [];
 
-    const trimmed = rawHost.replace(/\/+$/, "");
-    const host = trimmed.startsWith("https://") ? trimmed : `https://${trimmed}`;
-    const url = `${host}/?default_format=JSON`;
+    try {
+      const result = await client.query({
+        query: sql,
+        format: "JSONEachRow",
+      });
+      return await result.json<Record<string, unknown>>();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new Error(`ClickHouse query failed: ${message}`);
+    } finally {
+      await client.close();
+    }
+  }
 
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "X-ClickHouse-User": this.chUser,
-        "X-ClickHouse-Key": this.chPassword,
-        "Content-Type": "text/plain",
-      },
-      body: sql,
-    });
-
-    if (!res.ok) {
-      const text = await res.text().catch(() => "");
-      throw new Error(`ClickHouse query failed: ${res.status} ${text}`);
+  private async chCommandAt(
+    rawHost: string,
+    sql: string,
+    queryParams?: Record<string, unknown>,
+  ): Promise<void> {
+    const client = this.makeSdkClient(rawHost);
+    if (!client) {
+      throw new Error("ClickHouse query failed: no host configured");
     }
 
-    const json = (await res.json()) as {
-      data?: Record<string, unknown>[];
-      rows?: number;
-      statistics?: Record<string, unknown>;
-    };
-    return json.data ?? [];
+    try {
+      await client.command({
+        query: sql,
+        ...(queryParams ? { query_params: queryParams } : {}),
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new Error(`ClickHouse query failed: ${message}`);
+    } finally {
+      await client.close();
+    }
   }
 
   private makeId(accountId: string, typeId: string, externalId: string): string {
@@ -671,9 +704,10 @@ export class ClickHouseClient implements PluginClient {
       }
 
       const sql = comment
-        ? `CREATE DATABASE \`${name}\` COMMENT '${comment.replace(/'/g, "\\'")}'`
-        : `CREATE DATABASE \`${name}\``;
-      await this.chQueryAt(targetHost, sql);
+        ? `CREATE DATABASE {name:Identifier} COMMENT {comment:String}`
+        : `CREATE DATABASE {name:Identifier}`;
+      const params: Record<string, unknown> = comment ? { name, comment } : { name };
+      await this.chCommandAt(targetHost, sql, params);
       const now = new Date().toISOString();
       const externalId = `${serviceId}/${name}`;
       return {
@@ -790,7 +824,7 @@ export class ClickHouseClient implements PluginClient {
           targetHost = String(target.resolvedOutputs["host"] ?? this.chHost);
         }
       }
-      await this.chQueryAt(targetHost, `DROP DATABASE \`${name}\``);
+      await this.chCommandAt(targetHost, `DROP DATABASE {name:Identifier}`, { name });
       return;
     }
 
