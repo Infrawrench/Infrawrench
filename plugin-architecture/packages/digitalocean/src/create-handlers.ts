@@ -7,19 +7,12 @@ import type {
   ImageOption,
   SectionNode,
 } from "@infrawrench/plugin-base";
+import { signedS3Fetch } from "@infrawrench/plugin-base";
 import { SPACES_REGIONS, REGION_INFO } from "./constants.js";
 
 export interface DoCreateContext {
   fetch<T>(path: string, options?: RequestInit): Promise<T>;
   credentials: Record<string, string>;
-  buildSpacesHeaders(
-    method: string,
-    host: string,
-    path: string,
-    region: string,
-    accessKeyId: string,
-    secretAccessKey: string,
-  ): Promise<Record<string, string>>;
 }
 
 export async function doGetCreateConfig(
@@ -779,9 +772,12 @@ async function doCreateResourceImpl(
     const host = `${bucketName}.${region}.digitaloceanspaces.com`;
     const endpoint = `https://${host}`;
 
-    const res = await fetch(`${endpoint}/`, {
+    const res = await signedS3Fetch({
+      accessKey: accessKeyId,
+      secretKey: secretAccessKey,
+      region,
       method: "PUT",
-      headers: await ctx.buildSpacesHeaders("PUT", host, "/", region, accessKeyId, secretAccessKey),
+      url: `${endpoint}/`,
     });
     if (!res.ok) {
       throw new Error(

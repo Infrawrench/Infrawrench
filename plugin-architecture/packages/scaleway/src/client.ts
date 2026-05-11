@@ -10,7 +10,7 @@ import type {
   ResourceTypeDefinition,
   DashboardStat,
 } from "@infrawrench/plugin-base";
-import { labeledFieldItems } from "@infrawrench/plugin-base";
+import { labeledFieldItems, signedS3Fetch } from "@infrawrench/plugin-base";
 import type { Client, Region, Zone } from "@scaleway/sdk-client";
 import { createClient } from "@scaleway/sdk-client";
 import { Instancev1 } from "@scaleway/sdk-instance";
@@ -129,113 +129,31 @@ export class ScalewayClient implements PluginClient {
   }
 
   /**
-   * Perform an S3-compatible request signed with AWS Signature V4.
-   * Only SHA-256 via WebCrypto is used so it works in Node 18+ and browsers.
-   *
-   * Scaleway Object Storage exposes an S3-compatible API; the official
-   * per-API SDKs do not cover it, so we keep this minimal SigV4 path
-   * instead of pulling in @aws-sdk/client-s3 for two operations.
+   * Perform an unparsed S3-compatible request against Scaleway Object
+   * Storage, signed with AWS SigV4 via the shared `signedS3Fetch` helper.
+   * Throws on non-2xx with a Scaleway-flavoured error message.
    */
-  private async s3Fetch<T>(
+  private async objectStorageFetch(
     method: string,
     host: string,
     path: string,
     region: string,
-    parseXml?: (text: string) => T,
-  ): Promise<T> {
+  ): Promise<Response> {
     this.assertS3Credentials();
 
     const url = `https://${host}${path}`;
-    const now = new Date();
-    const amzDate = now
-      .toISOString()
-      .replace(/[-:]/g, "")
-      .replace(/\.\d+Z$/, "Z"); // 20260415T120000Z
-    const dateStamp = amzDate.slice(0, 8); // 20260415
-
-    const service = "s3";
-    const credentialScope = `${dateStamp}/${region}/${service}/aws4_request`;
-
-    const payloadHash = await this.sha256Hex("");
-    const headers: Record<string, string> = {
-      host,
-      "x-amz-content-sha256": payloadHash,
-      "x-amz-date": amzDate,
-    };
-
-    // Canonical request
-    const signedHeaderKeys = Object.keys(headers).sort();
-    const signedHeaders = signedHeaderKeys.join(";");
-    const canonicalHeaders = signedHeaderKeys.map((k) => `${k}:${headers[k]}\n`).join("");
-    const canonicalRequest = [
+    const res = await signedS3Fetch({
+      accessKey: this.accessKey,
+      secretKey: this.secretKey,
+      region,
       method,
-      path || "/",
-      "", // query string (none)
-      canonicalHeaders,
-      signedHeaders,
-      payloadHash,
-    ].join("\n");
-
-    const stringToSign = [
-      "AWS4-HMAC-SHA256",
-      amzDate,
-      credentialScope,
-      await this.sha256Hex(canonicalRequest),
-    ].join("\n");
-
-    // Signing key
-    const kDate = await this.hmacSha256(
-      new TextEncoder().encode("AWS4" + this.secretKey),
-      dateStamp,
-    );
-    const kRegion = await this.hmacSha256(kDate, region);
-    const kService = await this.hmacSha256(kRegion, service);
-    const signingKey = await this.hmacSha256(kService, "aws4_request");
-
-    const signature = await this.hmacSha256Hex(signingKey, stringToSign);
-
-    const authorization = `AWS4-HMAC-SHA256 Credential=${this.accessKey}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
-
-    const res = await fetch(url, {
-      method,
-      headers: {
-        ...headers,
-        Authorization: authorization,
-      },
+      url,
     });
 
     if (!res.ok) {
       throw new Error(`Scaleway S3 error ${res.status} for ${method} ${url}: ${await res.text()}`);
     }
-    if (res.status === 204 || !parseXml) return undefined as unknown as T;
-    const text = await res.text();
-    return parseXml(text);
-  }
-
-  private async sha256Hex(data: string): Promise<string> {
-    const hash = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(data));
-    return this.bufToHex(hash);
-  }
-
-  private async hmacSha256(key: BufferSource, data: string): Promise<ArrayBuffer> {
-    const cryptoKey = await crypto.subtle.importKey(
-      "raw",
-      key,
-      { name: "HMAC", hash: "SHA-256" },
-      false,
-      ["sign"],
-    );
-    return crypto.subtle.sign("HMAC", cryptoKey, new TextEncoder().encode(data));
-  }
-
-  private async hmacSha256Hex(key: BufferSource, data: string): Promise<string> {
-    return this.bufToHex(await this.hmacSha256(key, data));
-  }
-
-  private bufToHex(buf: ArrayBuffer): string {
-    return Array.from(new Uint8Array(buf))
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join("");
+    return res;
   }
 
   async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
@@ -507,7 +425,7 @@ export class ScalewayClient implements PluginClient {
       const region = parts[0]!;
       const bucketName = parts[1]!;
       // S3-compatible DeleteBucket: DELETE https://<bucket>.s3.<region>.scw.cloud/
-      await this.s3Fetch("DELETE", `${bucketName}.s3.${region}.scw.cloud`, "/", region);
+      await this.objectStorageFetch("DELETE", `${bucketName}.s3.${region}.scw.cloud`, "/", region);
       return;
     }
 
@@ -624,7 +542,7 @@ export class ScalewayClient implements PluginClient {
       const region = fields["region"] ?? "fr-par";
       const bucketName = fields["name"] ?? "";
       // S3-compatible CreateBucket: PUT https://<bucket>.s3.<region>.scw.cloud/
-      await this.s3Fetch("PUT", `${bucketName}.s3.${region}.scw.cloud`, "/", region);
+      await this.objectStorageFetch("PUT", `${bucketName}.s3.${region}.scw.cloud`, "/", region);
       const now = new Date().toISOString();
       return {
         id: `${accountId}:object-storage-bucket:${region}/${bucketName}`,
@@ -1353,23 +1271,16 @@ export class ScalewayClient implements PluginClient {
 
     for (const region of regions) {
       try {
-        const buckets = await this.s3Fetch<Array<{ name: string; creationDate: string }>>(
-          "GET",
-          `s3.${region}.scw.cloud`,
-          "/",
-          region,
-          (xml) => {
-            // Minimal XML parsing for <Bucket><Name>…</Name><CreationDate>…</CreationDate></Bucket>
-            const out: Array<{ name: string; creationDate: string }> = [];
-            const bucketRegex =
-              /<Bucket>\s*<Name>([^<]+)<\/Name>\s*<CreationDate>([^<]+)<\/CreationDate>\s*<\/Bucket>/g;
-            let m: RegExpExecArray | null;
-            while ((m = bucketRegex.exec(xml)) !== null) {
-              out.push({ name: m[1]!, creationDate: m[2]! });
-            }
-            return out;
-          },
-        );
+        const res = await this.objectStorageFetch("GET", `s3.${region}.scw.cloud`, "/", region);
+        const xml = await res.text();
+        // Minimal XML parsing for <Bucket><Name>…</Name><CreationDate>…</CreationDate></Bucket>
+        const buckets: Array<{ name: string; creationDate: string }> = [];
+        const bucketRegex =
+          /<Bucket>\s*<Name>([^<]+)<\/Name>\s*<CreationDate>([^<]+)<\/CreationDate>\s*<\/Bucket>/g;
+        let m: RegExpExecArray | null;
+        while ((m = bucketRegex.exec(xml)) !== null) {
+          buckets.push({ name: m[1]!, creationDate: m[2]! });
+        }
         for (const b of buckets) {
           results.push({
             id: `${accountId}:object-storage-bucket:${region}/${b.name}`,

@@ -27,6 +27,9 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@aws-crypto/sha256-js": "^5.2.0",
+    "@smithy/protocol-http": "^5.3.14",
+    "@smithy/signature-v4": "^5.3.14",
     "zod": "^3.24.1"
   },
   "devDependencies": {

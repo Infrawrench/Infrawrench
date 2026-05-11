@@ -19,6 +19,7 @@ import {
   resourceTypeDisplayName,
   renderDnsRecordDetail as sharedRenderDnsRecordDetail,
   renderDnsRecordSidebar,
+  signedS3Fetch,
 } from "@infrawrench/plugin-base";
 import { DOKSClusterResourceType } from "./resources/doks-cluster.js";
 import { ManagedDatabaseResourceType } from "./resources/managed-database.js";
@@ -155,7 +156,6 @@ export class DigitalOceanClient implements PluginClient {
     return {
       fetch: this.fetch.bind(this),
       credentials: this.credentials,
-      buildSpacesHeaders: this.buildSpacesHeaders.bind(this),
     };
   }
 
@@ -264,16 +264,12 @@ export class DigitalOceanClient implements PluginClient {
           // Fall back to default region
         }
         const deleteHost = `${bucketName}.${bucketRegion}.digitaloceanspaces.com`;
-        const delRes = await fetch(`https://${deleteHost}/`, {
+        const delRes = await signedS3Fetch({
+          accessKey: accessKeyId,
+          secretKey: secretAccessKey,
+          region: bucketRegion,
           method: "DELETE",
-          headers: await this.buildSpacesHeaders(
-            "DELETE",
-            deleteHost,
-            "/",
-            bucketRegion,
-            accessKeyId,
-            secretAccessKey,
-          ),
+          url: `https://${deleteHost}/`,
         });
         if (!delRes.ok) {
           throw new Error(
@@ -674,15 +670,12 @@ export class DigitalOceanClient implements PluginClient {
     const perRegion = await Promise.all(
       SPACES_REGIONS.map(async (region) => {
         const host = `${region}.digitaloceanspaces.com`;
-        const res = await fetch(`https://${host}/`, {
-          headers: await this.buildSpacesHeaders(
-            "GET",
-            host,
-            "/",
-            region,
-            accessKeyId,
-            secretAccessKey,
-          ),
+        const res = await signedS3Fetch({
+          accessKey: accessKeyId,
+          secretKey: secretAccessKey,
+          region,
+          method: "GET",
+          url: `https://${host}/`,
         });
         if (!res.ok) {
           throw new Error(
@@ -828,84 +821,6 @@ export class DigitalOceanClient implements PluginClient {
       createdAt: String(v["created_at"] ?? new Date().toISOString()),
       updatedAt: String(v["created_at"] ?? new Date().toISOString()),
     }));
-  }
-
-  /**
-   * Build minimal AWS Signature v4 headers for Spaces S3-compatible API.
-   * DigitalOcean Spaces accepts AWS Signature Version 4 for authentication.
-   */
-  private async buildSpacesHeaders(
-    method: string,
-    host: string,
-    path: string,
-    region: string,
-    accessKeyId: string,
-    secretAccessKey: string,
-  ): Promise<Record<string, string>> {
-    const enc = new TextEncoder();
-
-    const sha256Hex = async (data: string): Promise<string> => {
-      const digest = await crypto.subtle.digest("SHA-256", enc.encode(data));
-      return Array.from(new Uint8Array(digest))
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join("");
-    };
-
-    const hmacSign = async (key: BufferSource, data: string): Promise<ArrayBuffer> => {
-      const cryptoKey = await crypto.subtle.importKey(
-        "raw",
-        key,
-        { name: "HMAC", hash: "SHA-256" },
-        false,
-        ["sign"],
-      );
-      return crypto.subtle.sign("HMAC", cryptoKey, enc.encode(data));
-    };
-
-    const hmacHex = async (key: BufferSource, data: string): Promise<string> => {
-      const sig = await hmacSign(key, data);
-      return Array.from(new Uint8Array(sig))
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join("");
-    };
-
-    const now = new Date();
-    const dateStamp = now.toISOString().replace(/[-:]/g, "").slice(0, 8);
-    const amzDate = `${dateStamp}T${now.toISOString().replace(/[-:]/g, "").slice(9, 15)}Z`;
-    const service = "s3";
-
-    const payloadHash = await sha256Hex("");
-    const canonicalHeaders = `host:${host}\nx-amz-content-sha256:${payloadHash}\nx-amz-date:${amzDate}\n`;
-    const signedHeaders = "host;x-amz-content-sha256;x-amz-date";
-
-    const canonicalRequest = [method, path, "", canonicalHeaders, signedHeaders, payloadHash].join(
-      "\n",
-    );
-
-    const credentialScope = `${dateStamp}/${region}/${service}/aws4_request`;
-    const stringToSign = [
-      "AWS4-HMAC-SHA256",
-      amzDate,
-      credentialScope,
-      await sha256Hex(canonicalRequest),
-    ].join("\n");
-
-    const kDate = await hmacSign(enc.encode(`AWS4${secretAccessKey}`), dateStamp);
-    const kRegion = await hmacSign(kDate, region);
-    const kService = await hmacSign(kRegion, service);
-    const signingKey = await hmacSign(kService, "aws4_request");
-    const signature = await hmacHex(signingKey, stringToSign);
-
-    const authHeader =
-      `AWS4-HMAC-SHA256 Credential=${accessKeyId}/${credentialScope}, ` +
-      `SignedHeaders=${signedHeaders}, Signature=${signature}`;
-
-    return {
-      Host: host,
-      "x-amz-date": amzDate,
-      "x-amz-content-sha256": payloadHash,
-      Authorization: authHeader,
-    };
   }
 
   // Satisfy the required fields from DOKSClusterResourceType and ManagedDatabaseResourceType
