@@ -22,6 +22,7 @@ vi.mock("@infrawrench/server-core/db/client", () => dbMock);
 const encryptionMock = {
   encrypt: vi.fn().mockResolvedValue({ ciphertext: "enc-blob", iv: "iv-123" }),
   decrypt: vi.fn().mockResolvedValue(JSON.stringify({ token: "secret-val" })),
+  buildAad: vi.fn().mockReturnValue("aad"),
 };
 vi.mock("@/services/encryption", () => encryptionMock);
 vi.mock("@infrawrench/server-core/encryption", () => encryptionMock);

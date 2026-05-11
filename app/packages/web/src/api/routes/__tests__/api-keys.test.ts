@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { buildTestApp } from "./test-utils";
 
+// `keyedHash` reads ENCRYPTION_MASTER_KEY when invoked. Set a fixed 32-byte
+// test key so the hashing path runs deterministically.
+process.env["ENCRYPTION_MASTER_KEY"] = Buffer.alloc(32, 1).toString("base64");
+
 const mockInsert = vi.fn().mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) });
 const mockSelect = vi.fn();
 const mockUpdate = vi.fn();

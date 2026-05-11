@@ -34,6 +34,7 @@ const encryptionMock = {
   decrypt: vi
     .fn()
     .mockResolvedValue(JSON.stringify({ host: "1.2.3.4", username: "root", privateKey: "key" })),
+  buildAad: vi.fn().mockReturnValue("aad"),
 };
 vi.mock("@/services/encryption", () => encryptionMock);
 vi.mock("@infrawrench/server-core/encryption", () => encryptionMock);

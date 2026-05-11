@@ -7,7 +7,7 @@ import { apiKeys } from "../../db/schema";
 import { logAudit } from "../../services/audit";
 import { keyedHash } from "../../services/encryption";
 import { requirePermission } from "../../auth/permissions";
-import { hasPermission } from "@infrawrench/server-core/permissions";
+import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
 import type { AuthSession } from "../auth-middleware";
 
 /** Domain label for HMAC sub-key derivation when hashing API keys. */

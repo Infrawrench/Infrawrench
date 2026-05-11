@@ -17,6 +17,7 @@ vi.mock("@/services/encryption", () => ({
       dockerHost: "tcp://localhost:2375",
     }),
   ),
+  buildAad: vi.fn().mockReturnValue("aad"),
 }));
 
 const mockGetPlugin = vi.fn();
