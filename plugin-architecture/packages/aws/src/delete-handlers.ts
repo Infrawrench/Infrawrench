@@ -359,7 +359,10 @@ export async function deleteResource(
       break;
     }
     case "neptune-cluster":
-      await queryPostCall(creds, "rds", "DeleteDBCluster", "2014-10-31", {
+      // Route through Neptune's own endpoint (fixed in this migration);
+      // the action name matches RDS's because Neptune shares the API
+      // surface, but it must hit neptune.<region>.amazonaws.com.
+      await queryPostCall(creds, "neptune", "DeleteDBCluster", "2014-10-31", {
         DBClusterIdentifier: externalId,
         SkipFinalSnapshot: "true",
       });
