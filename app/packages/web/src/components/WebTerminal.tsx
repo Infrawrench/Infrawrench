@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import "@xterm/xterm/css/xterm.css";
-import { getTerminalTheme } from "@infrawrench/ui";
+import { getXtermTerminalOptions } from "@infrawrench/ui";
 
 interface WebTerminalProps {
   accountId: string;
@@ -32,35 +32,7 @@ export function WebTerminal({
       const { FitAddon } = await import("@xterm/addon-fit");
       if (!containerRef.current || disposed) return;
 
-      const termTheme = getTerminalTheme();
-      term = new Terminal({
-        theme: {
-          ...termTheme,
-          black: "#1e1e1e",
-          red: "#f44747",
-          green: "#4ec9b0",
-          yellow: "#dcdcaa",
-          blue: "#569cd6",
-          magenta: "#c586c0",
-          cyan: "#9cdcfe",
-          white: "#d4d4d4",
-          brightBlack: "#808080",
-          brightRed: "#f44747",
-          brightGreen: "#4ec9b0",
-          brightYellow: "#dcdcaa",
-          brightBlue: "#569cd6",
-          brightMagenta: "#c586c0",
-          brightCyan: "#9cdcfe",
-          brightWhite: "#ffffff",
-        },
-        fontFamily: '"JetBrains Mono", "Fira Code", "Cascadia Code", Menlo, Monaco, monospace',
-        fontSize: 13,
-        lineHeight: 1.2,
-        cursorBlink: true,
-        cursorStyle: "block",
-        allowTransparency: true,
-        convertEol: false,
-      });
+      term = new Terminal(getXtermTerminalOptions());
 
       const fitAddon = new FitAddon();
       term.loadAddon(fitAddon);

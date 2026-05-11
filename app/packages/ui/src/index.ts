@@ -186,6 +186,23 @@ export type {
 export { useChartTheme } from "./chart-theme.js";
 export { getTerminalTheme } from "./terminal-theme.js";
 export type { TerminalThemeColors } from "./terminal-theme.js";
+export { getXtermTerminalOptions } from "./xterm-options.js";
+
+export { SSH_TUNNEL_PRESETS, buildSshTunnelCredentials } from "./ssh-tunnel-presets.js";
+export type { SshTunnelPresetKey } from "./ssh-tunnel-presets.js";
+
+export { runDockerSetupScript } from "./docker-setup-script.js";
+export type {
+  DockerSetupStep,
+  DockerSetupResult,
+  DockerSetupContext,
+} from "./docker-setup-script.js";
+
+export { FirestoreMongoPeerShell } from "./components/FirestoreMongoPeerShell.js";
+export type {
+  FirestoreMongoPeerShellProps,
+  MongoPeerAccount,
+} from "./components/FirestoreMongoPeerShell.js";
 
 export { Toaster, ToastRow, toast, useToast, useToastStore } from "./components/Toast/index.js";
 export type { Toast, ToastAction, ToastOptions, ToastVariant } from "./components/Toast/index.js";

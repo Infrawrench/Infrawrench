@@ -1,37 +1,20 @@
 import { useState, useEffect } from "react";
-import { Modal, useUIStore, formatErrorMessage, deriveSSHUsername, toast } from "@infrawrench/ui";
+import {
+  Modal,
+  useUIStore,
+  formatErrorMessage,
+  deriveSSHUsername,
+  toast,
+  SSH_TUNNEL_PRESETS,
+  buildSshTunnelCredentials,
+  type SshTunnelPresetKey,
+} from "@infrawrench/ui";
 import { apiGet, apiPost } from "@/lib/api";
 import type { SshKey } from "@/lib/api-types";
 import { useOrgId } from "@/lib/useOrgId";
 import { useHostKeyTrust } from "@/lib/useHostKeyTrust";
 
-const PRESETS = {
-  docker: { label: "Docker", pluginId: "docker", port: 2375 },
-  postgres: { label: "PostgreSQL", pluginId: "postgres", port: 5432 },
-  mysql: { label: "MySQL", pluginId: "mysql", port: 3306 },
-  redis: { label: "Redis", pluginId: "redis", port: 6379 },
-  memcached: { label: "Memcached", pluginId: "memcached", port: 11211 },
-  custom: { label: "Custom...", pluginId: null, port: 0 },
-} as const;
-
-type PresetKey = keyof typeof PRESETS;
-
-function buildCredentials(pluginId: string, remotePort: number): Record<string, string> {
-  switch (pluginId) {
-    case "docker":
-      return { dockerHost: `tcp://localhost:${remotePort}` };
-    case "postgres":
-      return { connectionString: `postgresql://localhost:${remotePort}/postgres` };
-    case "mysql":
-      return { connectionString: `mysql://localhost:${remotePort}/mysql` };
-    case "redis":
-      return { connectionString: `redis://localhost:${remotePort}` };
-    case "memcached":
-      return { connectionString: `memcached://localhost:${remotePort}` };
-    default:
-      return { host: `localhost:${remotePort}` };
-  }
-}
+type PresetKey = SshTunnelPresetKey;
 
 interface SshTunnelModalProps {
   sshHost: string;
@@ -60,7 +43,7 @@ export function SshTunnelModal({
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const preset = PRESETS[service];
+  const preset = SSH_TUNNEL_PRESETS[service];
   const remotePort = service === "custom" ? customPort : preset.port;
 
   useEffect(() => {
@@ -96,7 +79,7 @@ export function SshTunnelModal({
     setConnecting(true);
     setError(null);
     try {
-      const credentials = buildCredentials(pluginId, remotePort);
+      const credentials = buildSshTunnelCredentials(pluginId, remotePort);
       const displayName = `${preset.label} on ${sshHost}`;
 
       const result = await withTrustPrompt(() =>
@@ -199,24 +182,27 @@ export function SshTunnelModal({
             <div>
               <label className="block text-xs text-on-surface-muted mb-2">Target Service</label>
               <div className="grid grid-cols-3 gap-2">
-                {(Object.entries(PRESETS) as [PresetKey, (typeof PRESETS)[PresetKey]][]).map(
-                  ([key, p]) => (
-                    <button
-                      key={key}
-                      onClick={() => setService(key)}
-                      className={`px-3 py-2 rounded-lg text-xs border transition-colors ${
-                        service === key
-                          ? "border-blue-500 bg-accent-muted text-accent-on-muted"
-                          : "border-border-strong bg-surface-overlay text-on-surface-tertiary hover:border-border-strong hover:text-on-surface-secondary"
-                      }`}
-                    >
-                      <div className="font-medium">{p.label}</div>
-                      {key !== "custom" && (
-                        <div className="text-on-surface-muted mt-0.5">:{p.port}</div>
-                      )}
-                    </button>
-                  ),
-                )}
+                {(
+                  Object.entries(SSH_TUNNEL_PRESETS) as [
+                    PresetKey,
+                    (typeof SSH_TUNNEL_PRESETS)[PresetKey],
+                  ][]
+                ).map(([key, p]) => (
+                  <button
+                    key={key}
+                    onClick={() => setService(key)}
+                    className={`px-3 py-2 rounded-lg text-xs border transition-colors ${
+                      service === key
+                        ? "border-blue-500 bg-accent-muted text-accent-on-muted"
+                        : "border-border-strong bg-surface-overlay text-on-surface-tertiary hover:border-border-strong hover:text-on-surface-secondary"
+                    }`}
+                  >
+                    <div className="font-medium">{p.label}</div>
+                    {key !== "custom" && (
+                      <div className="text-on-surface-muted mt-0.5">:{p.port}</div>
+                    )}
+                  </button>
+                ))}
               </div>
             </div>
 

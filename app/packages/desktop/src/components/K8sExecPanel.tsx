@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
-import { getTerminalTheme } from "@infrawrench/ui";
+import { getXtermTerminalOptions } from "@infrawrench/ui";
 import { openK8sExec, type K8sSessionHandle } from "../lib/k8s-dispatch";
 
 interface K8sExecCloudContext {
@@ -33,35 +33,7 @@ export function K8sExecPanel({
   useEffect(() => {
     if (!containerRef.current) return;
 
-    const termTheme = getTerminalTheme();
-    const term = new Terminal({
-      theme: {
-        ...termTheme,
-        black: "#1e1e1e",
-        red: "#f44747",
-        green: "#4ec9b0",
-        yellow: "#dcdcaa",
-        blue: "#569cd6",
-        magenta: "#c586c0",
-        cyan: "#9cdcfe",
-        white: "#d4d4d4",
-        brightBlack: "#808080",
-        brightRed: "#f44747",
-        brightGreen: "#4ec9b0",
-        brightYellow: "#dcdcaa",
-        brightBlue: "#569cd6",
-        brightMagenta: "#c586c0",
-        brightCyan: "#9cdcfe",
-        brightWhite: "#ffffff",
-      },
-      fontFamily: '"JetBrains Mono", "Fira Code", "Cascadia Code", Menlo, Monaco, monospace',
-      fontSize: 13,
-      lineHeight: 1.2,
-      cursorBlink: true,
-      cursorStyle: "block",
-      allowTransparency: true,
-      convertEol: false,
-    });
+    const term = new Terminal(getXtermTerminalOptions());
 
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);

@@ -1,5 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
-import { Modal, useUIStore, formatErrorMessage, deriveSSHUsername, toast } from "@infrawrench/ui";
+import {
+  Modal,
+  useUIStore,
+  formatErrorMessage,
+  deriveSSHUsername,
+  toast,
+  runDockerSetupScript,
+} from "@infrawrench/ui";
 import { apiGet, apiPost } from "@/lib/api";
 import type { SshKey } from "@/lib/api-types";
 import { useOrgId } from "@/lib/useOrgId";
@@ -86,76 +93,14 @@ export function DockerSetupModal({
     setStep("checking");
 
     try {
-      // Step 1: Check if Docker is installed
-      appendLog("Connecting to " + sshHost + "...");
-      const versionResult = await exec("docker --version 2>/dev/null");
-
-      if (versionResult.code === 0 && versionResult.stdout.includes("Docker")) {
-        const ver = versionResult.stdout.trim();
-        setDockerVersion(ver);
-        appendLog("Docker found: " + ver);
-      } else {
-        appendLog("Docker not found. Installing...");
-        setStep("installing");
-
-        const installResult = await exec(`curl -fsSL https://get.docker.com | ${sudo("sh")} 2>&1`);
-        if (installResult.code !== 0) {
-          throw new Error(
-            "Docker installation failed:\n" +
-              (installResult.stderr || installResult.stdout).slice(0, 500),
-          );
-        }
-        appendLog("Docker installed successfully.");
-
-        const verifyResult = await exec("docker --version");
-        if (verifyResult.code !== 0) {
-          throw new Error("Docker installed but not accessible: " + verifyResult.stderr);
-        }
-        setDockerVersion(verifyResult.stdout.trim());
-        appendLog("Verified: " + verifyResult.stdout.trim());
-      }
-
-      // Step 2: Ensure Docker is running
-      appendLog("Ensuring Docker service is running...");
-      await exec(sudo("systemctl start docker 2>/dev/null || service docker start 2>/dev/null"));
-
-      // Step 3: Check if Docker is listening on TCP
-      setStep("configuring");
-      appendLog("Checking Docker TCP configuration...");
-
-      const tcpCheck = await exec("curl -s --max-time 2 http://127.0.0.1:2375/version 2>/dev/null");
-
-      if (tcpCheck.code !== 0 || !tcpCheck.stdout.includes("ApiVersion")) {
-        appendLog("Configuring Docker to listen on TCP 127.0.0.1:2375...");
-
-        const confContent =
-          "[Service]\\nExecStart=\\nExecStart=/usr/bin/dockerd -H fd:// -H tcp://127.0.0.1:2375";
-        const overrideCmd = [
-          sudo("mkdir -p /etc/systemd/system/docker.service.d"),
-          `printf '${confContent}\\n' | ${sudo("tee /etc/systemd/system/docker.service.d/tcp.conf > /dev/null")}`,
-          sudo("systemctl daemon-reload"),
-          sudo("systemctl restart docker"),
-        ].join(" && ");
-
-        const configResult = await exec(overrideCmd);
-        if (configResult.code !== 0) {
-          throw new Error(
-            "Failed to configure Docker TCP:\n" +
-              (configResult.stderr || configResult.stdout).slice(0, 500),
-          );
-        }
-        appendLog("Docker TCP listener configured on 127.0.0.1:2375.");
-
-        await exec("sleep 2");
-
-        const verifyTcp = await exec("curl -s --max-time 5 http://127.0.0.1:2375/version");
-        if (verifyTcp.code !== 0 || !verifyTcp.stdout.includes("ApiVersion")) {
-          throw new Error("Docker TCP listener not responding after configuration");
-        }
-        appendLog("TCP listener verified.");
-      } else {
-        appendLog("Docker already listening on TCP 127.0.0.1:2375.");
-      }
+      const { dockerVersion: ver } = await runDockerSetupScript({
+        exec,
+        sudo,
+        sshHost,
+        appendLog,
+        setStep,
+      });
+      setDockerVersion(ver);
 
       // Step 4: Create tunneled Docker account
       appendLog("Creating SSH tunnel to Docker...");
