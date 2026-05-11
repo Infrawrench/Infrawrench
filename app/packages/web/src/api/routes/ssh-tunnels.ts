@@ -12,6 +12,8 @@ import { encrypt, decrypt, buildAad } from "../../services/encryption";
 import { openTunnel, closeTunnel, getActiveTunnels } from "../../services/ssh-tunnel";
 import type { SshTunnelConfig } from "@infrawrench/plugin-base";
 import { sshExec } from "../../services/ssh";
+import { HostKeyTrustRequiredError } from "../../services/ssh-host-keys";
+import { hostKeyTrustResponse } from "./ssh-host-keys";
 import { requirePermission } from "../../auth/permissions";
 import { assertHostNotInternal } from "../../services/host-validation";
 import { logAudit } from "../../services/audit";
@@ -98,6 +100,7 @@ app.post("/create-account", async (c) => {
   try {
     await openTunnel(tunnelConfig, organizationId, newAccountId);
   } catch (e) {
+    if (e instanceof HostKeyTrustRequiredError) return hostKeyTrustResponse(c, e);
     return c.json(
       { error: `SSH tunnel failed: ${e instanceof Error ? e.message : "Unknown error"}` },
       400,
@@ -174,18 +177,24 @@ app.post("/open", async (c) => {
     config.privateKeyIv,
     buildAad("sshTunnelConfig", config.id, "privateKey"),
   );
-  const result = await openTunnel(
-    {
-      sshHost: config.sshHost,
-      sshPort: config.sshPort,
-      sshUser: config.sshUser,
-      privateKey,
-      remoteHost: config.remoteHost,
-      remotePort: config.remotePort,
-    },
-    organizationId,
-    input.accountId,
-  );
+  let result;
+  try {
+    result = await openTunnel(
+      {
+        sshHost: config.sshHost,
+        sshPort: config.sshPort,
+        sshUser: config.sshUser,
+        privateKey,
+        remoteHost: config.remoteHost,
+        remotePort: config.remotePort,
+      },
+      organizationId,
+      input.accountId,
+    );
+  } catch (e) {
+    if (e instanceof HostKeyTrustRequiredError) return hostKeyTrustResponse(c, e);
+    throw e;
+  }
 
   return c.json(result);
 });
@@ -331,7 +340,23 @@ app.post("/exec", async (c) => {
     });
     return c.json({ stdout, code: 0 });
   } catch (e) {
-    // sshExec throws on non-zero exit; extract info from message
+    // sshExec throws on non-zero exit OR a host-key trust failure. The
+    // latter needs the structured 409 so the client can prompt.
+    if (e instanceof HostKeyTrustRequiredError) {
+      void logAudit({
+        ...auditBase,
+        action: "ssh.exec.host_key_trust_required",
+        metadata: {
+          sshHost: input.sshHost,
+          sshUser: input.sshUser,
+          sshKeyId: input.sshKeyId,
+          commandSnippet,
+          kind: e.kind,
+          presentedFingerprint: e.presentedFingerprint,
+        },
+      });
+      return hostKeyTrustResponse(c, e);
+    }
     const message = e instanceof Error ? e.message : "Command failed";
     void logAudit({
       ...auditBase,

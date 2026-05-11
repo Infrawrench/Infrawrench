@@ -1,15 +1,16 @@
 /**
- * Trust-on-first-use (TOFU) SSH host-key pinning.
+ * SSH host-key pinning with explicit user consent.
  *
- * On the first connection to a given (organization, host, port) we record the
- * server's host-key fingerprint in the `ssh_host_keys` Postgres table. On
- * subsequent connections we reject the handshake if the fingerprint has
- * changed — which would indicate a man-in-the-middle or a rebuilt host that
- * has not been re-pinned.
+ * Pins are persisted per (organization, host, port) in the `ssh_host_keys`
+ * Postgres table. Unlike the older TOFU-on-first-use behavior, we do NOT
+ * auto-pin: connecting to an unknown host throws `HostKeyTrustRequiredError`,
+ * which the API surfaces as a 409 so the caller can prompt the operator and
+ * call `trustHostKey()` to record the decision before retrying.
  *
- * Pins are persisted across process restarts so a swapped key forces the
- * operator to acknowledge the change (by deleting the row) rather than being
- * silently re-trusted on the next deploy.
+ * A swapped key on a known host throws `HostKeyMismatchError` (a subclass of
+ * `HostKeyTrustRequiredError`) with both the stored and presented
+ * fingerprints — the operator can compare them and explicitly accept the new
+ * key.
  */
 import * as crypto from "node:crypto";
 import { v4 as uuid } from "uuid";
@@ -17,22 +18,49 @@ import { and, eq } from "drizzle-orm";
 import { db } from "../db/client";
 import { sshHostKeys } from "../db/schema";
 
-export class HostKeyMismatchError extends Error {
+/**
+ * Thrown when an SSH connection cannot proceed because the host's key has not
+ * been trusted (or no longer matches a previously-trusted key). Routes
+ * translate this to a 409 with a structured body so the client can prompt the
+ * user and call the trust endpoint.
+ */
+export class HostKeyTrustRequiredError extends Error {
   readonly host: string;
   readonly port: number;
-  readonly storedFingerprint: string;
+  readonly kind: "unknown" | "mismatch";
   readonly presentedFingerprint: string;
+  readonly storedFingerprint: string | null;
 
-  constructor(host: string, port: number, stored: string, presented: string) {
+  constructor(
+    host: string,
+    port: number,
+    kind: "unknown" | "mismatch",
+    presentedFingerprint: string,
+    storedFingerprint: string | null,
+  ) {
     super(
-      `SSH host key for ${host}:${port} changed (stored=${stored}, presented=${presented}). ` +
-        `Refusing to connect — remove the pin to accept the new key.`,
+      kind === "unknown"
+        ? `SSH host ${host}:${port} has not been trusted yet (fingerprint=${presentedFingerprint}).`
+        : `SSH host key for ${host}:${port} changed (stored=${storedFingerprint}, presented=${presentedFingerprint}). Confirm the new key before connecting.`,
     );
-    this.name = "HostKeyMismatchError";
+    this.name = "HostKeyTrustRequiredError";
     this.host = host;
     this.port = port;
-    this.storedFingerprint = stored;
-    this.presentedFingerprint = presented;
+    this.kind = kind;
+    this.presentedFingerprint = presentedFingerprint;
+    this.storedFingerprint = storedFingerprint;
+  }
+}
+
+/**
+ * Kept as a subclass of `HostKeyTrustRequiredError` (kind="mismatch") so
+ * existing handlers that branch on `instanceof HostKeyMismatchError` keep
+ * working, while the new flow can treat both cases uniformly.
+ */
+export class HostKeyMismatchError extends HostKeyTrustRequiredError {
+  constructor(host: string, port: number, stored: string, presented: string) {
+    super(host, port, "mismatch", presented, stored);
+    this.name = "HostKeyMismatchError";
   }
 }
 
@@ -43,11 +71,11 @@ export function fingerprint(hostKey: Buffer): string {
 }
 
 /**
- * Verify a presented host key for `(orgId, host, port)` against the persisted
- * pin. If no pin exists, record one (TOFU) and return the new fingerprint.
- * Throws `HostKeyMismatchError` on a mismatch.
+ * Read-only check: compare a presented host key against the persisted pin.
+ * Never writes. Throws `HostKeyTrustRequiredError` when the host is unknown
+ * or when the key has changed.
  */
-export async function verifyOrPinHostKey(
+export async function verifyHostKey(
   orgId: string,
   host: string,
   port: number,
@@ -55,6 +83,38 @@ export async function verifyOrPinHostKey(
 ): Promise<string> {
   const fp = fingerprint(hostKey);
 
+  const [existing] = await db
+    .select({ fingerprint: sshHostKeys.fingerprint })
+    .from(sshHostKeys)
+    .where(
+      and(
+        eq(sshHostKeys.organizationId, orgId),
+        eq(sshHostKeys.host, host),
+        eq(sshHostKeys.port, port),
+      ),
+    )
+    .limit(1);
+
+  if (!existing) {
+    throw new HostKeyTrustRequiredError(host, port, "unknown", fp, null);
+  }
+  if (existing.fingerprint !== fp) {
+    throw new HostKeyMismatchError(host, port, existing.fingerprint, fp);
+  }
+  return existing.fingerprint;
+}
+
+/**
+ * Record (or replace) a pin after the user has explicitly accepted the
+ * presented fingerprint. Idempotent — re-pinning the same fingerprint is a
+ * no-op; pinning a different fingerprint replaces the existing row.
+ */
+export async function trustHostKey(
+  orgId: string,
+  host: string,
+  port: number,
+  presentedFingerprint: string,
+): Promise<void> {
   const [existing] = await db
     .select({ id: sshHostKeys.id, fingerprint: sshHostKeys.fingerprint })
     .from(sshHostKeys)
@@ -74,11 +134,10 @@ export async function verifyOrPinHostKey(
         organizationId: orgId,
         host,
         port,
-        fingerprint: fp,
+        fingerprint: presentedFingerprint,
       });
     } catch {
-      // A concurrent connection may have inserted the same pin first. Re-read
-      // and treat as if we found it on the first lookup.
+      // Concurrent insert — re-read and check fingerprint matches.
       const [raced] = await db
         .select({ fingerprint: sshHostKeys.fingerprint })
         .from(sshHostKeys)
@@ -90,15 +149,16 @@ export async function verifyOrPinHostKey(
           ),
         )
         .limit(1);
-      if (raced && raced.fingerprint !== fp) {
-        throw new HostKeyMismatchError(host, port, raced.fingerprint, fp);
+      if (raced && raced.fingerprint !== presentedFingerprint) {
+        throw new HostKeyMismatchError(host, port, raced.fingerprint, presentedFingerprint);
       }
     }
-    return fp;
+    return;
   }
 
-  if (existing.fingerprint !== fp) {
-    throw new HostKeyMismatchError(host, port, existing.fingerprint, fp);
-  }
-  return existing.fingerprint;
+  if (existing.fingerprint === presentedFingerprint) return;
+  await db
+    .update(sshHostKeys)
+    .set({ fingerprint: presentedFingerprint })
+    .where(eq(sshHostKeys.id, existing.id));
 }

@@ -8,7 +8,8 @@ import { getPlugin } from "../../plugins/loader";
 import { getClientForAccount } from "../../services/plugin-clients";
 import type { SecretExportTemplate } from "@infrawrench/plugin-base";
 import { sshExec } from "../../services/ssh";
-import { HostKeyMismatchError } from "../../services/ssh-host-keys";
+import { HostKeyTrustRequiredError } from "../../services/ssh-host-keys";
+import { hostKeyTrustResponse } from "./ssh-host-keys";
 import { requirePermission } from "../../auth/permissions";
 import type { AuthSession } from "../auth-middleware";
 
@@ -283,18 +284,8 @@ app.post("/env-deploy", async (c) => {
       `printf '%s' ${quotedContent} ${operator} ${quotedFilePath}`,
     );
   } catch (err) {
-    if (err instanceof HostKeyMismatchError) {
-      return c.json(
-        {
-          error: "ssh_host_key_mismatch",
-          message: err.message,
-          host: err.host,
-          port: err.port,
-          storedFingerprint: err.storedFingerprint,
-          presentedFingerprint: err.presentedFingerprint,
-        },
-        409,
-      );
+    if (err instanceof HostKeyTrustRequiredError) {
+      return hostKeyTrustResponse(c, err);
     }
     throw err;
   }

@@ -1,7 +1,10 @@
 /**
  * Web adapter over @infrawrench/ssh-tunnel-core. Tags every tunnel with
- * organizationId + accountId so cross-tenant lookups stay scoped.
+ * organizationId + accountId so cross-tenant lookups stay scoped, and wires
+ * the SSH host-key verifier through `verifyHostKey` so any unknown / mismatch
+ * surfaces as `HostKeyTrustRequiredError` instead of a silent TOFU pin.
  */
+import type { ConnectConfig } from "ssh2";
 import {
   openTunnel as coreOpenTunnel,
   closeTunnel as coreCloseTunnel,
@@ -9,13 +12,52 @@ import {
   type TunnelExtras,
 } from "@infrawrench/ssh-tunnel-core";
 import type { SshTunnelConfig } from "@infrawrench/plugin-base";
+import { HostKeyTrustRequiredError, verifyHostKey } from "./ssh-host-keys";
 
-export function openTunnel(
+function makeHostKeyConfigureConnect(
+  organizationId: string,
+  hostKeyErrorRef: { value: HostKeyTrustRequiredError | null },
+) {
+  return (opts: ConnectConfig): ConnectConfig => {
+    const host = String(opts.host);
+    const port = Number(opts.port);
+    return {
+      ...opts,
+      hostVerifier: (hostKey: Buffer, verify: (valid: boolean) => void) => {
+        verifyHostKey(organizationId, host, port, hostKey).then(
+          () => verify(true),
+          (e: unknown) => {
+            if (e instanceof HostKeyTrustRequiredError) {
+              console.warn(
+                `[ssh-tunnel] host key ${e.kind} for ${e.host}:${e.port} ` +
+                  `(stored=${e.storedFingerprint ?? "(none)"}, presented=${e.presentedFingerprint})`,
+              );
+              hostKeyErrorRef.value = e;
+            }
+            verify(false);
+          },
+        );
+      },
+    };
+  };
+}
+
+export async function openTunnel(
   config: SshTunnelConfig,
   organizationId: string,
   accountId: string,
 ): Promise<{ tunnelId: string; localPort: number }> {
-  return coreOpenTunnel<TunnelExtras>(config, { organizationId, accountId });
+  const hostKeyErrorRef = { value: null as HostKeyTrustRequiredError | null };
+  try {
+    return await coreOpenTunnel<TunnelExtras>(
+      config,
+      { organizationId, accountId },
+      { configureConnect: makeHostKeyConfigureConnect(organizationId, hostKeyErrorRef) },
+    );
+  } catch (e) {
+    if (hostKeyErrorRef.value) throw hostKeyErrorRef.value;
+    throw e;
+  }
 }
 
 export function closeTunnel(tunnelId: string): void {

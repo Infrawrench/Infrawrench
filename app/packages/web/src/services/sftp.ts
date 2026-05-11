@@ -13,9 +13,18 @@ import {
   type WithSftpOptions,
 } from "@infrawrench/sftp-host";
 import type { SftpConfig } from "@infrawrench/plugin-base";
-import { HostKeyMismatchError, verifyOrPinHostKey } from "./ssh-host-keys";
+import { HostKeyTrustRequiredError, verifyHostKey } from "./ssh-host-keys";
 
-function makeTofuOptions(organizationId: string): WithSftpOptions {
+/**
+ * Build SFTP connection options that route the host-key check through
+ * `verifyHostKey`. Captures any trust-required error on `hostKeyErrorRef.value`
+ * so the calling route can surface it as a 409 instead of the generic ssh2
+ * "connection failed" message.
+ */
+function makeHostKeyOptions(
+  organizationId: string,
+  hostKeyErrorRef: { value: HostKeyTrustRequiredError | null },
+): WithSftpOptions {
   return {
     configureConnect: (opts: ConnectConfig): ConnectConfig => {
       const host = String(opts.host);
@@ -23,14 +32,15 @@ function makeTofuOptions(organizationId: string): WithSftpOptions {
       return {
         ...opts,
         hostVerifier: (hostKey: Buffer, verify: (valid: boolean) => void) => {
-          verifyOrPinHostKey(organizationId, host, port, hostKey).then(
+          verifyHostKey(organizationId, host, port, hostKey).then(
             () => verify(true),
             (e: unknown) => {
-              if (e instanceof HostKeyMismatchError) {
-                console.error(
-                  `[sftp] host key mismatch for ${e.host}:${e.port} ` +
-                    `(stored=${e.storedFingerprint}, presented=${e.presentedFingerprint})`,
+              if (e instanceof HostKeyTrustRequiredError) {
+                console.warn(
+                  `[sftp] host key ${e.kind} for ${e.host}:${e.port} ` +
+                    `(stored=${e.storedFingerprint ?? "(none)"}, presented=${e.presentedFingerprint})`,
                 );
+                hostKeyErrorRef.value = e;
               }
               verify(false);
             },
@@ -41,12 +51,29 @@ function makeTofuOptions(organizationId: string): WithSftpOptions {
   };
 }
 
+/**
+ * Wrap an SFTP call so any host-key trust failure surfaces as a typed
+ * `HostKeyTrustRequiredError` instead of the underlying ssh2 connect error.
+ */
+async function withHostKeyCapture<T>(
+  organizationId: string,
+  run: (opts: WithSftpOptions) => Promise<T>,
+): Promise<T> {
+  const hostKeyErrorRef = { value: null as HostKeyTrustRequiredError | null };
+  try {
+    return await run(makeHostKeyOptions(organizationId, hostKeyErrorRef));
+  } catch (e) {
+    if (hostKeyErrorRef.value) throw hostKeyErrorRef.value;
+    throw e;
+  }
+}
+
 export function sftpList(
   organizationId: string,
   config: SftpConfig,
   dirPath: string,
 ): Promise<SftpEntry[]> {
-  return sftpListImpl(config, dirPath, makeTofuOptions(organizationId));
+  return withHostKeyCapture(organizationId, (opts) => sftpListImpl(config, dirPath, opts));
 }
 
 export function sftpMkdir(
@@ -54,7 +81,7 @@ export function sftpMkdir(
   config: SftpConfig,
   dirPath: string,
 ): Promise<void> {
-  return sftpMkdirImpl(config, dirPath, makeTofuOptions(organizationId));
+  return withHostKeyCapture(organizationId, (opts) => sftpMkdirImpl(config, dirPath, opts));
 }
 
 export function sftpDelete(
@@ -63,7 +90,9 @@ export function sftpDelete(
   remotePath: string,
   isDir: boolean,
 ): Promise<void> {
-  return sftpDeleteImpl(config, remotePath, isDir, makeTofuOptions(organizationId));
+  return withHostKeyCapture(organizationId, (opts) =>
+    sftpDeleteImpl(config, remotePath, isDir, opts),
+  );
 }
 
 export function sftpUpload(
@@ -72,7 +101,9 @@ export function sftpUpload(
   remotePath: string,
   data: Buffer,
 ): Promise<void> {
-  return sftpUploadImpl(config, remotePath, data, makeTofuOptions(organizationId));
+  return withHostKeyCapture(organizationId, (opts) =>
+    sftpUploadImpl(config, remotePath, data, opts),
+  );
 }
 
 export function sftpDownloadToBuffer(
@@ -80,7 +111,9 @@ export function sftpDownloadToBuffer(
   config: SftpConfig,
   remotePath: string,
 ): Promise<Buffer> {
-  return sftpDownloadToBufferImpl(config, remotePath, makeTofuOptions(organizationId));
+  return withHostKeyCapture(organizationId, (opts) =>
+    sftpDownloadToBufferImpl(config, remotePath, opts),
+  );
 }
 
 export type { SftpEntry };

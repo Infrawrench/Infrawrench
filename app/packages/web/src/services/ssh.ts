@@ -7,7 +7,7 @@ import type { PluginClient, SshConfig } from "@infrawrench/plugin-base";
 import { db } from "../db/client";
 import { sshKeys } from "../db/schema";
 import { decrypt, buildAad } from "./encryption";
-import { HostKeyMismatchError, verifyOrPinHostKey } from "./ssh-host-keys";
+import { HostKeyTrustRequiredError, verifyHostKey } from "./ssh-host-keys";
 
 /**
  * Resolve an SSH config for an SFTP/SSH-exec request:
@@ -100,13 +100,13 @@ export function sshExec(
       username: config.username,
       privateKey: config.privateKey,
       hostVerifier: (hostKey: Buffer, verify: (valid: boolean) => void) => {
-        verifyOrPinHostKey(organizationId, config.host, config.port, hostKey).then(
+        verifyHostKey(organizationId, config.host, config.port, hostKey).then(
           () => verify(true),
           (e: unknown) => {
-            if (e instanceof HostKeyMismatchError) {
-              console.error(
-                `[ssh] host key mismatch for ${e.host}:${e.port} ` +
-                  `(stored=${e.storedFingerprint}, presented=${e.presentedFingerprint})`,
+            if (e instanceof HostKeyTrustRequiredError) {
+              console.warn(
+                `[ssh] host key ${e.kind} for ${e.host}:${e.port} ` +
+                  `(stored=${e.storedFingerprint ?? "(none)"}, presented=${e.presentedFingerprint})`,
               );
               hostKeyError = e;
             } else if (e instanceof Error) {

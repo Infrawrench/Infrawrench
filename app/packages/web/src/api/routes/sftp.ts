@@ -3,6 +3,8 @@ import path from "node:path";
 import { sftpUpload, sftpDownloadToBuffer } from "../../services/sftp";
 import { getClientForAccount } from "../../services/plugin-clients";
 import { resolveSshConfig } from "../../services/ssh";
+import { HostKeyTrustRequiredError } from "../../services/ssh-host-keys";
+import { hostKeyTrustResponse } from "./ssh-host-keys";
 import archiver from "archiver";
 import { requirePermission } from "../../auth/permissions";
 import type { AuthSession } from "../auth-middleware";
@@ -41,7 +43,12 @@ app.post("/upload", async (c) => {
   });
 
   const arrayBuffer = await file.arrayBuffer();
-  await sftpUpload(organizationId, sshConfig, remotePath, Buffer.from(arrayBuffer));
+  try {
+    await sftpUpload(organizationId, sshConfig, remotePath, Buffer.from(arrayBuffer));
+  } catch (err) {
+    if (err instanceof HostKeyTrustRequiredError) return hostKeyTrustResponse(c, err);
+    throw err;
+  }
   return c.json({ ok: true });
 });
 
@@ -96,8 +103,23 @@ app.get("/download", async (c) => {
         },
       });
     } catch (err) {
+      if (err instanceof HostKeyTrustRequiredError) return hostKeyTrustResponse(c, err);
       return c.json({ error: err instanceof Error ? err.message : "Download failed" }, 500);
     }
+  }
+
+  // Pre-flight the first file synchronously so a host-key trust failure
+  // surfaces as a 409 before we commit to a `Content-Type: application/zip`
+  // response. Once the zip stream is open, the client only sees a truncated
+  // archive on error.
+  const firstPath = paths.find((p) => !p.endsWith("/"));
+  if (!firstPath) return c.json({ error: "No file paths in selection" }, 400);
+  let firstBuffer: Buffer;
+  try {
+    firstBuffer = await sftpDownloadToBuffer(organizationId, sshConfig, firstPath);
+  } catch (err) {
+    if (err instanceof HostKeyTrustRequiredError) return hostKeyTrustResponse(c, err);
+    return c.json({ error: err instanceof Error ? err.message : "Download failed" }, 500);
   }
 
   const { PassThrough } = await import("node:stream");
@@ -106,16 +128,15 @@ app.get("/download", async (c) => {
   archive.pipe(passthrough);
 
   const normalizedBase = basePath.endsWith("/") ? basePath : basePath ? `${basePath}/` : "";
+  const relPath = (p: string): string =>
+    normalizedBase && p.startsWith(normalizedBase) ? p.slice(normalizedBase.length) : path.basename(p);
+  archive.append(firstBuffer, { name: relPath(firstPath) });
   (async () => {
     try {
       for (const remotePath of paths) {
-        if (remotePath.endsWith("/")) continue;
+        if (remotePath === firstPath || remotePath.endsWith("/")) continue;
         const data = await sftpDownloadToBuffer(organizationId, sshConfig, remotePath);
-        const rel =
-          normalizedBase && remotePath.startsWith(normalizedBase)
-            ? remotePath.slice(normalizedBase.length)
-            : path.basename(remotePath);
-        archive.append(data, { name: rel });
+        archive.append(data, { name: relPath(remotePath) });
       }
       await archive.finalize();
     } catch {
