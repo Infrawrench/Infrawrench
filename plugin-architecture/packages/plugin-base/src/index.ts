@@ -143,7 +143,14 @@ export type { JsonRestFetchOptions } from "./http.js";
 export { signedS3Fetch } from "./signed-s3-request.js";
 export type { SignedS3FetchOptions } from "./signed-s3-request.js";
 
-export type { SftpConfig, SshConfig, SshTunnelConfig, ProbeStatus } from "./host-types.js";
+export type {
+  SftpConfig,
+  SshConfig,
+  SshTunnelConfig,
+  ProbeStatus,
+  HostKeyPromptKind,
+  HostKeyPromptPayload,
+} from "./host-types.js";
 
 export {
   pluginManifestSchema,

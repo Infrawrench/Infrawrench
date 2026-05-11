@@ -1,4 +1,7 @@
+import type { SshConfig } from "@infrawrench/plugin-base";
 import type { KeySource } from "../../lib/ssh-key-source";
+
+export type { SshConfig };
 
 export interface SqliteResourceRow {
   id: string;
@@ -15,13 +18,6 @@ export interface CloudCtx {
   pluginId: string;
   resourceTypeId: string;
   parentResourceId?: string;
-}
-
-export interface SshConfig {
-  host: string;
-  port: number;
-  username: string;
-  privateKey: string;
 }
 
 export interface QuickSshConnection {

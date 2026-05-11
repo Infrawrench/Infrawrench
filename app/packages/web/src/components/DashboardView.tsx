@@ -12,6 +12,7 @@ import {
   extractHostLabel,
   toast,
 } from "@infrawrench/ui";
+import type { ProbeStatus } from "@infrawrench/plugin-base";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import { useOrgId } from "@/lib/useOrgId";
 import { SpotlightSearch } from "./SpotlightSearch";
@@ -23,15 +24,6 @@ interface PinnedResource {
   gridY: number;
   gridW: number;
   gridH: number;
-}
-
-interface CardStatus {
-  phase: "ok" | "error";
-  resourceCounts?: Array<{ typeLabel: string; count: number }>;
-  stats?: Array<{ label: string; value: string; variant?: string }>;
-  sparkline?: Array<{ timestamp: number; value: number }>;
-  sparklineLabel?: string;
-  error?: string;
 }
 
 interface PinDetail {
@@ -49,7 +41,7 @@ interface PinDetail {
   accountId: string;
   fieldsJson: unknown;
   outputsJson: unknown;
-  status: CardStatus;
+  status: ProbeStatus;
 }
 
 interface DashboardViewProps {
@@ -366,7 +358,7 @@ function PinCard({
   );
 }
 
-function ConnectionFooter({ status }: { status: CardStatus }) {
+function ConnectionFooter({ status }: { status: ProbeStatus }) {
   if (status.phase === "error") {
     return (
       <div

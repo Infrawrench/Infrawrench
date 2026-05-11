@@ -9,18 +9,11 @@
  */
 import * as crypto from "node:crypto";
 import { BrowserWindow, ipcMain } from "electron";
+import type { HostKeyPromptKind, HostKeyPromptPayload } from "@infrawrench/plugin-base" with {
+  "resolution-mode": "import",
+};
 
-export type HostKeyPromptKind = "first-connect" | "mismatch";
-
-export interface HostKeyPromptPayload {
-  requestId: string;
-  host: string;
-  port: number;
-  kind: HostKeyPromptKind;
-  presentedFingerprint: string;
-  /** Set when `kind === "mismatch"`. */
-  storedFingerprint?: string;
-}
+export type { HostKeyPromptKind, HostKeyPromptPayload };
 
 interface Pending {
   resolve: (accept: boolean) => void;

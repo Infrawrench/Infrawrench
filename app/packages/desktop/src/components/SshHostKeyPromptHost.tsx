@@ -1,15 +1,7 @@
 import { useEffect, useState } from "react";
 import { Modal } from "@infrawrench/ui";
+import type { HostKeyPromptPayload } from "@infrawrench/plugin-base";
 import { invoke } from "../lib/invoke";
-
-interface HostKeyPromptPayload {
-  requestId: string;
-  host: string;
-  port: number;
-  kind: "first-connect" | "mismatch";
-  presentedFingerprint: string;
-  storedFingerprint?: string;
-}
 
 /**
  * Mount once at the root. Listens for `ssh_host_key_prompt` events from the

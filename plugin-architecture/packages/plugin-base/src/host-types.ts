@@ -47,3 +47,22 @@ export interface ProbeStatus {
   sparklineLabel?: string;
   error?: string;
 }
+
+/** Why an interactive SSH host-key prompt is being raised. */
+export type HostKeyPromptKind = "first-connect" | "mismatch";
+
+/**
+ * Payload sent over the `ssh_host_key_prompt` IPC channel from the desktop
+ * Electron main process to the renderer, asking the user to accept or deny
+ * an unknown or changed SSH host key. The renderer replies on the
+ * `ssh_host_key_decide` channel keyed by `requestId`.
+ */
+export interface HostKeyPromptPayload {
+  requestId: string;
+  host: string;
+  port: number;
+  kind: HostKeyPromptKind;
+  presentedFingerprint: string;
+  /** Set when `kind === "mismatch"`. */
+  storedFingerprint?: string;
+}
