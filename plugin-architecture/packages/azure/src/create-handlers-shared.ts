@@ -1,0 +1,27 @@
+export const ARM = "https://management.azure.com";
+
+export interface AzureCreateContext {
+  get<T>(url: string): Promise<T>;
+  post<T>(url: string, body: unknown): Promise<T>;
+  put<T>(url: string, body: unknown): Promise<T>;
+  patch<T>(url: string, body: unknown): Promise<T>;
+  del(url: string): Promise<void>;
+  makeId(accountId: string, typeId: string, externalId: string): string;
+  graphRequest<T>(
+    method: "GET" | "POST" | "DELETE" | "PATCH",
+    path: string,
+    body?: unknown,
+    extraHeaders?: Record<string, string>,
+  ): Promise<T>;
+  subscriptionId: string;
+  tenantId: string;
+  clientId: string;
+  clientSecret: string;
+}
+
+export async function fetchResourceGroups(ctx: AzureCreateContext) {
+  const rgs = await ctx.get<{ value: Array<{ name: string }> }>(
+    `${ARM}/subscriptions/${ctx.subscriptionId}/resourcegroups?api-version=2022-09-01`,
+  );
+  return (rgs.value ?? []).map((rg) => ({ id: rg.name, label: rg.name }));
+}
