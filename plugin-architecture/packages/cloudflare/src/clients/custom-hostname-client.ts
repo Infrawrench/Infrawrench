@@ -1,5 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
+import type { CustomHostnameCreateParams } from "cloudflare/resources/custom-hostnames/custom-hostnames";
 
 export function mapCustomHostname(
   h: Record<string, unknown>,
@@ -36,16 +37,12 @@ export async function listAllCustomHostnames(
   api: CloudflareApi,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const zones = await api.paginate<Record<string, unknown>>("/zones");
   const results: ResourceInstance[] = [];
-  for (const zone of zones) {
-    const zoneId = String(zone["id"]);
+  for await (const zone of api.cf.zones.list()) {
+    const zoneId = zone.id;
     try {
-      const hostnames = await api.paginate<Record<string, unknown>>(
-        `/zones/${zoneId}/custom_hostnames`,
-      );
-      for (const h of hostnames) {
-        results.push(mapCustomHostname(h, accountId, zoneId));
+      for await (const h of api.cf.customHostnames.list({ zone_id: zoneId })) {
+        results.push(mapCustomHostname(h as unknown as Record<string, unknown>, accountId, zoneId));
       }
     } catch {
       // Skip zones where we can't read custom hostnames
@@ -62,21 +59,20 @@ export async function createCustomHostname(
 ): Promise<ResourceInstance> {
   const zoneId = fields["zoneId"] || parentExternalId;
   if (!zoneId) throw new Error("Cloudflare plugin: zoneId is required to create a custom hostname");
-  const ch = await api.fetch<Record<string, unknown>>(`/zones/${zoneId}/custom_hostnames`, {
-    method: "POST",
-    body: JSON.stringify({
-      hostname: fields["hostname"] ?? "",
-      ssl: {
-        method: fields["sslMethod"] ?? "http",
-        type: "dv",
-      },
-    }),
-  });
-  return mapCustomHostname(ch, accountId, zoneId);
+  const body: Record<string, unknown> = {
+    zone_id: zoneId,
+    hostname: fields["hostname"] ?? "",
+    ssl: {
+      method: fields["sslMethod"] ?? "http",
+      type: "dv",
+    },
+  };
+  const ch = await api.cf.customHostnames.create(body as unknown as CustomHostnameCreateParams);
+  return mapCustomHostname(ch as unknown as Record<string, unknown>, accountId, zoneId);
 }
 
 export async function deleteCustomHostname(api: CloudflareApi, externalId: string): Promise<void> {
   const [zoneId, hostnameId] = externalId.split("/");
   if (!zoneId || !hostnameId) throw new Error("Invalid custom hostname ID");
-  await api.fetch(`/zones/${zoneId}/custom_hostnames/${hostnameId}`, { method: "DELETE" });
+  await api.cf.customHostnames.delete(hostnameId, { zone_id: zoneId });
 }

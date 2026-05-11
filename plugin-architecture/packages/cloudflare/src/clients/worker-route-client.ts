@@ -32,16 +32,14 @@ export async function listAllWorkerRoutes(
   api: CloudflareApi,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const zones = await api.paginate<Record<string, unknown>>("/zones");
   const results: ResourceInstance[] = [];
-  for (const zone of zones) {
-    const zoneId = String(zone["id"]);
+  for await (const zone of api.cf.zones.list()) {
+    const zoneId = zone.id;
     try {
-      const routes = await api.fetch<Array<Record<string, unknown>>>(
-        `/zones/${zoneId}/workers/routes`,
-      );
-      for (const route of routes ?? []) {
-        results.push(mapWorkerRoute(route, accountId, zoneId));
+      for await (const route of api.cf.workers.routes.list({ zone_id: zoneId })) {
+        results.push(
+          mapWorkerRoute(route as unknown as Record<string, unknown>, accountId, zoneId),
+        );
       }
     } catch {
       // Skip zones where we can't read worker routes
@@ -58,18 +56,16 @@ export async function createWorkerRoute(
 ): Promise<ResourceInstance> {
   const zoneId = fields["zoneId"] || parentExternalId;
   if (!zoneId) throw new Error("Cloudflare plugin: zoneId is required to create a worker route");
-  const route = await api.fetch<Record<string, unknown>>(`/zones/${zoneId}/workers/routes`, {
-    method: "POST",
-    body: JSON.stringify({
-      pattern: fields["pattern"] ?? "",
-      script: fields["scriptName"] ?? "",
-    }),
+  const route = await api.cf.workers.routes.create({
+    zone_id: zoneId,
+    pattern: fields["pattern"] ?? "",
+    script: fields["scriptName"] ?? "",
   });
-  return mapWorkerRoute(route, accountId, zoneId);
+  return mapWorkerRoute(route as unknown as Record<string, unknown>, accountId, zoneId);
 }
 
 export async function deleteWorkerRoute(api: CloudflareApi, externalId: string): Promise<void> {
   const [zoneId, routeId] = externalId.split("/");
   if (!zoneId || !routeId) throw new Error("Invalid worker route ID");
-  await api.fetch(`/zones/${zoneId}/workers/routes/${routeId}`, { method: "DELETE" });
+  await api.cf.workers.routes.delete(routeId, { zone_id: zoneId });
 }

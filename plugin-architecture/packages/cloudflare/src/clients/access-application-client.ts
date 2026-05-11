@@ -1,5 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
+import type { ApplicationCreateParams } from "cloudflare/resources/zero-trust/access/applications/applications";
 
 export function mapAccessApplication(
   app: Record<string, unknown>,
@@ -36,9 +37,12 @@ export async function listAccessApplications(
   api: CloudflareApi,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const cfAccountId = await api.getAccountId();
-  const apps = await api.paginate<Record<string, unknown>>(`/accounts/${cfAccountId}/access/apps`);
-  return apps.map((app) => mapAccessApplication(app, accountId));
+  const account_id = await api.getAccountId();
+  const results: ResourceInstance[] = [];
+  for await (const app of api.cf.zeroTrust.access.applications.list({ account_id })) {
+    results.push(mapAccessApplication(app as unknown as Record<string, unknown>, accountId));
+  }
+  return results;
 }
 
 export async function createAccessApplication(
@@ -46,24 +50,25 @@ export async function createAccessApplication(
   accountId: string,
   fields: Record<string, string>,
 ): Promise<ResourceInstance> {
-  const cfAccountId = await api.getAccountId();
-  const app = await api.fetch<Record<string, unknown>>(`/accounts/${cfAccountId}/access/apps`, {
-    method: "POST",
-    body: JSON.stringify({
-      name: fields["name"] ?? "",
-      domain: fields["domain"] ?? "",
-      type: fields["type"] ?? "self_hosted",
-    }),
-  });
-  return mapAccessApplication(app, accountId);
+  const account_id = await api.getAccountId();
+  // ApplicationCreateParams is a large discriminated union (per app type). Build
+  // a generic payload and cast through unknown to satisfy the SDK signature.
+  const body: Record<string, unknown> = {
+    account_id,
+    name: fields["name"] ?? "",
+    domain: fields["domain"] ?? "",
+    type: fields["type"] ?? "self_hosted",
+  };
+  const app = await api.cf.zeroTrust.access.applications.create(
+    body as unknown as ApplicationCreateParams,
+  );
+  return mapAccessApplication(app as unknown as Record<string, unknown>, accountId);
 }
 
 export async function deleteAccessApplication(
   api: CloudflareApi,
   externalId: string,
 ): Promise<void> {
-  const cfAccountId = await api.getAccountId();
-  await api.fetch(`/accounts/${cfAccountId}/access/apps/${externalId}`, {
-    method: "DELETE",
-  });
+  const account_id = await api.getAccountId();
+  await api.cf.zeroTrust.access.applications.delete(externalId, { account_id });
 }

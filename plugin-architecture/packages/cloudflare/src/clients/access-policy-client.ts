@@ -1,5 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
+import type { PolicyCreateParams } from "cloudflare/resources/zero-trust/access/applications/policies";
 
 export function mapAccessPolicy(
   policy: Record<string, unknown>,
@@ -51,17 +52,17 @@ export async function listAllAccessPolicies(
   api: CloudflareApi,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const cfAccountId = await api.getAccountId();
-  const apps = await api.paginate<Record<string, unknown>>(`/accounts/${cfAccountId}/access/apps`);
+  const account_id = await api.getAccountId();
   const results: ResourceInstance[] = [];
-  for (const app of apps) {
-    const appId = String(app["id"] ?? "");
+  for await (const app of api.cf.zeroTrust.access.applications.list({ account_id })) {
+    const appId = String((app as unknown as { id: string }).id ?? "");
     try {
-      const policies = await api.paginate<Record<string, unknown>>(
-        `/accounts/${cfAccountId}/access/apps/${appId}/policies`,
-      );
-      for (const policy of policies) {
-        results.push(mapAccessPolicy(policy, accountId, appId));
+      for await (const policy of api.cf.zeroTrust.access.applications.policies.list(appId, {
+        account_id,
+      })) {
+        results.push(
+          mapAccessPolicy(policy as unknown as Record<string, unknown>, accountId, appId),
+        );
       }
     } catch {
       // Skip apps where we can't read policies
@@ -76,23 +77,22 @@ export async function createAccessPolicy(
   fields: Record<string, string>,
   parentExternalId: string,
 ): Promise<ResourceInstance> {
-  const cfAccountId = await api.getAccountId();
+  const account_id = await api.getAccountId();
   const appId = fields["appId"] || parentExternalId;
   if (!appId) throw new Error("Cloudflare plugin: appId is required to create an access policy");
   const includeEmail = fields["includeEmail"] ?? "";
   const includeRule: Record<string, unknown> = includeEmail.startsWith("@")
     ? { email_domain: { domain: includeEmail.slice(1) } }
     : { email: { email: includeEmail } };
-  const policy = await api.fetch<Record<string, unknown>>(
-    `/accounts/${cfAccountId}/access/apps/${appId}/policies`,
-    {
-      method: "POST",
-      body: JSON.stringify({
-        name: fields["name"] ?? "",
-        decision: fields["decision"] ?? "allow",
-        include: [includeRule],
-      }),
-    },
+  const body: Record<string, unknown> = {
+    account_id,
+    name: fields["name"] ?? "",
+    decision: fields["decision"] ?? "allow",
+    include: [includeRule],
+  };
+  const policy = await api.cf.zeroTrust.access.applications.policies.create(
+    appId,
+    body as unknown as PolicyCreateParams,
   );
-  return mapAccessPolicy(policy, accountId, appId);
+  return mapAccessPolicy(policy as unknown as Record<string, unknown>, accountId, appId);
 }

@@ -1,5 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
+import type { LoadBalancerCreateParams } from "cloudflare/resources/load-balancers/load-balancers";
 
 export function mapLoadBalancer(
   lb: Record<string, unknown>,
@@ -41,14 +42,12 @@ export async function listAllLoadBalancers(
   api: CloudflareApi,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const zones = await api.paginate<Record<string, unknown>>("/zones");
   const results: ResourceInstance[] = [];
-  for (const zone of zones) {
-    const zoneId = String(zone["id"]);
+  for await (const zone of api.cf.zones.list()) {
+    const zoneId = zone.id;
     try {
-      const lbs = await api.paginate<Record<string, unknown>>(`/zones/${zoneId}/load_balancers`);
-      for (const lb of lbs) {
-        results.push(mapLoadBalancer(lb, accountId, zoneId));
+      for await (const lb of api.cf.loadBalancers.list({ zone_id: zoneId })) {
+        results.push(mapLoadBalancer(lb as unknown as Record<string, unknown>, accountId, zoneId));
       }
     } catch {
       // Skip zones where we can't read load balancers
@@ -69,19 +68,18 @@ export async function createLoadBalancer(
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
-  const lb = await api.fetch<Record<string, unknown>>(`/zones/${zoneId}/load_balancers`, {
-    method: "POST",
-    body: JSON.stringify({
-      name: fields["name"] ?? "",
-      fallback_pool: fields["fallbackPool"] ?? "",
-      default_pools: defaultPoolIds,
-    }),
-  });
-  return mapLoadBalancer(lb, accountId, zoneId);
+  const params: LoadBalancerCreateParams = {
+    zone_id: zoneId,
+    name: fields["name"] ?? "",
+    fallback_pool: fields["fallbackPool"] ?? "",
+    default_pools: defaultPoolIds,
+  } as LoadBalancerCreateParams;
+  const lb = await api.cf.loadBalancers.create(params);
+  return mapLoadBalancer(lb as unknown as Record<string, unknown>, accountId, zoneId);
 }
 
 export async function deleteLoadBalancer(api: CloudflareApi, externalId: string): Promise<void> {
   const [zoneId, lbId] = externalId.split("/");
   if (!zoneId || !lbId) throw new Error("Invalid load balancer ID");
-  await api.fetch(`/zones/${zoneId}/load_balancers/${lbId}`, { method: "DELETE" });
+  await api.cf.loadBalancers.delete(lbId, { zone_id: zoneId });
 }

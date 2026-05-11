@@ -1,5 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
+import type { ProjectCreateParams } from "cloudflare/resources/pages/projects/projects";
 
 export function mapPagesProject(p: Record<string, unknown>, accountId: string): ResourceInstance {
   const name = String(p["name"] ?? "");
@@ -40,11 +41,12 @@ export async function listPagesProjects(
   api: CloudflareApi,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const cfAccountId = await api.getAccountId();
-  const projects = await api.paginate<Record<string, unknown>>(
-    `/accounts/${cfAccountId}/pages/projects`,
-  );
-  return projects.map((p) => mapPagesProject(p, accountId));
+  const account_id = await api.getAccountId();
+  const results: ResourceInstance[] = [];
+  for await (const p of api.cf.pages.projects.list({ account_id })) {
+    results.push(mapPagesProject(p as unknown as Record<string, unknown>, accountId));
+  }
+  return results;
 }
 
 export async function createPagesProject(
@@ -52,25 +54,19 @@ export async function createPagesProject(
   accountId: string,
   fields: Record<string, string>,
 ): Promise<ResourceInstance> {
-  const cfAccountId = await api.getAccountId();
-  const project = await api.fetch<Record<string, unknown>>(
-    `/accounts/${cfAccountId}/pages/projects`,
-    {
-      method: "POST",
-      body: JSON.stringify({
-        name: fields["name"] ?? "",
-        production_branch: fields["productionBranch"] ?? "main",
-      }),
-    },
-  );
-  return mapPagesProject(project, accountId);
+  const account_id = await api.getAccountId();
+  const params: ProjectCreateParams = {
+    account_id,
+    name: fields["name"] ?? "",
+    production_branch: fields["productionBranch"] ?? "main",
+  } as ProjectCreateParams;
+  const project = await api.cf.pages.projects.create(params);
+  return mapPagesProject(project as unknown as Record<string, unknown>, accountId);
 }
 
 export async function deletePagesProject(api: CloudflareApi, externalId: string): Promise<void> {
-  const cfAccountId = await api.getAccountId();
-  await api.fetch(`/accounts/${cfAccountId}/pages/projects/${externalId}`, {
-    method: "DELETE",
-  });
+  const account_id = await api.getAccountId();
+  await api.cf.pages.projects.delete(externalId, { account_id });
 }
 
 export function mapPagesDeployment(
@@ -111,20 +107,18 @@ export async function listAllPagesDeployments(
   api: CloudflareApi,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const cfAccountId = await api.getAccountId();
-  const projects = await api.paginate<Record<string, unknown>>(
-    `/accounts/${cfAccountId}/pages/projects`,
-  );
+  const account_id = await api.getAccountId();
   const results: ResourceInstance[] = [];
-  for (const project of projects) {
-    const projectName = String(project["name"] ?? "");
+  for await (const project of api.cf.pages.projects.list({ account_id })) {
+    const projectName = String((project as unknown as { name?: string }).name ?? "");
     try {
-      const deployments = await api.paginate<Record<string, unknown>>(
-        `/accounts/${cfAccountId}/pages/projects/${projectName}/deployments`,
-      );
-      // Only include the latest 5 deployments per project
-      for (const d of deployments.slice(0, 5)) {
-        results.push(mapPagesDeployment(d, accountId, projectName));
+      let count = 0;
+      for await (const d of api.cf.pages.projects.deployments.list(projectName, { account_id })) {
+        if (count >= 5) break;
+        results.push(
+          mapPagesDeployment(d as unknown as Record<string, unknown>, accountId, projectName),
+        );
+        count++;
       }
     } catch {
       // Skip projects we can't read deployments for
@@ -134,11 +128,8 @@ export async function listAllPagesDeployments(
 }
 
 export async function deletePagesDeployment(api: CloudflareApi, externalId: string): Promise<void> {
-  const cfAccountId = await api.getAccountId();
+  const account_id = await api.getAccountId();
   const [project, deploymentId] = externalId.split("/");
   if (!project || !deploymentId) throw new Error("Invalid pages deployment ID");
-  await api.fetch(
-    `/accounts/${cfAccountId}/pages/projects/${project}/deployments/${deploymentId}`,
-    { method: "DELETE" },
-  );
+  await api.cf.pages.projects.deployments.delete(project, deploymentId, { account_id });
 }

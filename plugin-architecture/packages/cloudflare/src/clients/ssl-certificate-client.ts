@@ -41,17 +41,20 @@ export async function listAllSSLCertificates(
   api: CloudflareApi,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const zones = await api.paginate<Record<string, unknown>>("/zones");
   const results: ResourceInstance[] = [];
-  for (const zone of zones) {
-    const zoneId = String(zone["id"]);
-    const zoneName = String(zone["name"]);
+  for await (const zone of api.cf.zones.list()) {
+    const zoneId = zone.id;
+    const zoneName = zone.name;
     try {
-      const certs = await api.paginate<Record<string, unknown>>(
-        `/zones/${zoneId}/custom_certificates`,
-      );
-      for (const cert of certs) {
-        results.push(mapSSLCertificate(cert, accountId, zoneId, zoneName));
+      for await (const cert of api.cf.customCertificates.list({ zone_id: zoneId })) {
+        results.push(
+          mapSSLCertificate(
+            cert as unknown as Record<string, unknown>,
+            accountId,
+            zoneId,
+            zoneName,
+          ),
+        );
       }
     } catch {
       // Skip zones where we can't read certificates
@@ -69,22 +72,24 @@ export async function createSSLCertificate(
   const zoneId = fields["zoneId"] || parentExternalId;
   if (!zoneId)
     throw new Error("Cloudflare plugin: zoneId is required to create an SSL certificate");
-  const cert = await api.fetch<Record<string, unknown>>(`/zones/${zoneId}/custom_certificates`, {
-    method: "POST",
-    body: JSON.stringify({
-      certificate: fields["certificate"] ?? "",
-      private_key: fields["privateKey"] ?? "",
-    }),
+  const cert = await api.cf.customCertificates.create({
+    zone_id: zoneId,
+    certificate: fields["certificate"] ?? "",
+    private_key: fields["privateKey"] ?? "",
   });
-  // Map using the zone name from the zone lookup
-  const zones = await api.paginate<Record<string, unknown>>("/zones");
-  const zone = zones.find((z) => String(z["id"]) === zoneId);
-  const zoneName = zone ? String(zone["name"]) : "";
-  return mapSSLCertificate(cert, accountId, zoneId, zoneName);
+  // Look up the zone name for display purposes.
+  let zoneName = "";
+  for await (const z of api.cf.zones.list()) {
+    if (z.id === zoneId) {
+      zoneName = z.name;
+      break;
+    }
+  }
+  return mapSSLCertificate(cert as unknown as Record<string, unknown>, accountId, zoneId, zoneName);
 }
 
 export async function deleteSSLCertificate(api: CloudflareApi, externalId: string): Promise<void> {
   const [zoneId, certId] = externalId.split("/");
   if (!zoneId || !certId) throw new Error("Invalid SSL certificate ID");
-  await api.fetch(`/zones/${zoneId}/custom_certificates/${certId}`, { method: "DELETE" });
+  await api.cf.customCertificates.delete(certId, { zone_id: zoneId });
 }

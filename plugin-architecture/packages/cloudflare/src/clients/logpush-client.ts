@@ -41,14 +41,13 @@ export async function listAllLogpushJobs(
   api: CloudflareApi,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const zones = await api.paginate<Record<string, unknown>>("/zones");
   const results: ResourceInstance[] = [];
-  for (const zone of zones) {
-    const zoneId = String(zone["id"]);
+  for await (const zone of api.cf.zones.list()) {
+    const zoneId = zone.id;
     try {
-      const jobs = await api.fetch<Array<Record<string, unknown>>>(`/zones/${zoneId}/logpush/jobs`);
-      for (const job of jobs ?? []) {
-        results.push(mapLogpushJob(job, accountId, zoneId));
+      for await (const job of api.cf.logpush.jobs.list({ zone_id: zoneId })) {
+        if (!job) continue;
+        results.push(mapLogpushJob(job as unknown as Record<string, unknown>, accountId, zoneId));
       }
     } catch {
       // Skip zones where logpush is not available
@@ -66,20 +65,23 @@ export async function createLogpushJob(
   const zoneId = fields["zoneId"] || parentExternalId;
   if (!zoneId) throw new Error("Cloudflare plugin: zoneId is required to create a logpush job");
   const body: Record<string, unknown> = {
+    zone_id: zoneId,
     destination_conf: fields["destinationConf"] ?? "",
     dataset: fields["dataset"] ?? "",
     enabled: true,
   };
   if (fields["name"]) body["name"] = fields["name"];
-  const job = await api.fetch<Record<string, unknown>>(`/zones/${zoneId}/logpush/jobs`, {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
-  return mapLogpushJob(job, accountId, zoneId);
+  const job = await api.cf.logpush.jobs.create(
+    body as unknown as Parameters<typeof api.cf.logpush.jobs.create>[0],
+  );
+  if (!job) throw new Error("Cloudflare plugin: failed to create logpush job (null response)");
+  return mapLogpushJob(job as unknown as Record<string, unknown>, accountId, zoneId);
 }
 
 export async function deleteLogpushJob(api: CloudflareApi, externalId: string): Promise<void> {
   const [zoneId, jobId] = externalId.split("/");
   if (!zoneId || !jobId) throw new Error("Invalid logpush job ID");
-  await api.fetch(`/zones/${zoneId}/logpush/jobs/${jobId}`, { method: "DELETE" });
+  // The SDK types JobDelete as taking `jobId: number` but the v4 API accepts
+  // both. Cast through unknown to preserve the existing string-id contract.
+  await api.cf.logpush.jobs.delete(jobId as unknown as number, { zone_id: zoneId });
 }

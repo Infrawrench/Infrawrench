@@ -1,33 +1,37 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
+import { toFile } from "cloudflare";
 
 export async function listWorkers(
   api: CloudflareApi,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const cfAccountId = await api.getAccountId();
-  const scripts = await api.fetch<Array<Record<string, unknown>>>(
-    `/accounts/${cfAccountId}/workers/scripts`,
-  );
-  return (scripts ?? []).map((s) => ({
-    id: `${accountId}:worker:${String(s["id"] ?? s["script_name"] ?? "")}`,
-    pluginId: "cloudflare",
-    resourceTypeId: "worker",
-    accountId,
-    displayName: String(s["id"] ?? s["script_name"] ?? ""),
-    fields: {
-      name: String(s["id"] ?? s["script_name"] ?? ""),
-      createdOn: String(s["created_on"] ?? ""),
-      modifiedOn: String(s["modified_on"] ?? ""),
-      compatibilityDate: String(s["compatibility_date"] ?? ""),
-      routes: "",
-    },
-    resolvedOutputs: {},
-    secretStates: [],
-    externalId: String(s["id"] ?? s["script_name"] ?? ""),
-    createdAt: String(s["created_on"] ?? new Date().toISOString()),
-    updatedAt: String(s["modified_on"] ?? new Date().toISOString()),
-  }));
+  const account_id = await api.getAccountId();
+  const out: ResourceInstance[] = [];
+  for await (const s of api.cf.workers.scripts.list({ account_id })) {
+    const raw = s as unknown as Record<string, unknown>;
+    const name = String(raw["id"] ?? raw["script_name"] ?? "");
+    out.push({
+      id: `${accountId}:worker:${name}`,
+      pluginId: "cloudflare",
+      resourceTypeId: "worker",
+      accountId,
+      displayName: name,
+      fields: {
+        name,
+        createdOn: String(raw["created_on"] ?? ""),
+        modifiedOn: String(raw["modified_on"] ?? ""),
+        compatibilityDate: String(raw["compatibility_date"] ?? ""),
+        routes: "",
+      },
+      resolvedOutputs: {},
+      secretStates: [],
+      externalId: name,
+      createdAt: String(raw["created_on"] ?? new Date().toISOString()),
+      updatedAt: String(raw["modified_on"] ?? new Date().toISOString()),
+    });
+  }
+  return out;
 }
 
 export async function createWorker(
@@ -35,32 +39,25 @@ export async function createWorker(
   accountId: string,
   fields: Record<string, string>,
 ): Promise<ResourceInstance> {
-  const cfAccountId = await api.getAccountId();
+  const account_id = await api.getAccountId();
   const name = fields["name"] ?? "";
   const script =
     fields["script"] ?? 'export default { async fetch() { return new Response("Hello"); } };';
   const compatibilityDate =
     fields["compatibilityDate"] ?? new Date().toISOString().split("T")[0] ?? "";
-  // Workers API requires multipart form data for module workers
-  const formData = new FormData();
-  formData.append(
-    "metadata",
-    JSON.stringify({
+
+  const file = await toFile(Buffer.from(script), "worker.js", {
+    type: "application/javascript+module",
+  });
+  await api.cf.workers.scripts.update(name, {
+    account_id,
+    metadata: {
       main_module: "worker.js",
       compatibility_date: compatibilityDate,
-    }),
-  );
-  formData.append(
-    "worker.js",
-    new Blob([script], { type: "application/javascript+module" }),
-    "worker.js",
-  );
-  const res = await fetch(`${api.baseUrl}/accounts/${cfAccountId}/workers/scripts/${name}`, {
-    method: "PUT",
-    headers: { Authorization: `Bearer ${api.apiToken}` },
-    body: formData,
+    },
+    files: [file],
   });
-  if (!res.ok) throw new Error(`Worker create failed: ${res.status}: ${await res.text()}`);
+
   const now = new Date().toISOString();
   return {
     id: `${accountId}:worker:${name}`,
@@ -84,14 +81,12 @@ export async function createWorker(
 }
 
 export async function deleteWorker(api: CloudflareApi, externalId: string): Promise<void> {
-  const cfAccountId = await api.getAccountId();
-  await api.fetch(`/accounts/${cfAccountId}/workers/scripts/${externalId}`, { method: "DELETE" });
+  const account_id = await api.getAccountId();
+  await api.cf.workers.scripts.delete(externalId, { account_id });
 }
 
 export async function getWorkerManifest(api: CloudflareApi, externalId: string): Promise<string> {
-  const cfAccountId = await api.getAccountId();
-  const settings = await api.fetch<Record<string, unknown>>(
-    `/accounts/${cfAccountId}/workers/scripts/${externalId}/settings`,
-  );
+  const account_id = await api.getAccountId();
+  const settings = await api.cf.workers.scripts.settings.get(externalId, { account_id });
   return JSON.stringify(settings, null, 2);
 }

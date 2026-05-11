@@ -1,5 +1,7 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
+import type { RulesetCreateParams } from "cloudflare/resources/rulesets/rulesets";
+import type { RuleCreateParams } from "cloudflare/resources/rulesets/rules";
 
 export function mapFirewallRule(
   rule: Record<string, unknown>,
@@ -32,28 +34,31 @@ export function mapFirewallRule(
   };
 }
 
+async function findCustomRuleset(
+  api: CloudflareApi,
+  zoneId: string,
+): Promise<Record<string, unknown> | null> {
+  for await (const rs of api.cf.rulesets.list({ zone_id: zoneId })) {
+    const raw = rs as unknown as Record<string, unknown>;
+    if (raw["phase"] === "http_request_firewall_custom") return raw;
+  }
+  return null;
+}
+
 export async function listAllFirewallRules(
   api: CloudflareApi,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const zones = await api.paginate<Record<string, unknown>>("/zones");
   const results: ResourceInstance[] = [];
-  for (const zone of zones) {
-    const zoneId = String(zone["id"]);
+  for await (const zone of api.cf.zones.list()) {
+    const zoneId = zone.id;
     try {
-      // Use the WAF custom rules endpoint (rulesets)
-      const rulesets = await api.fetch<{ rulesets?: Array<Record<string, unknown>> }>(
-        `/zones/${zoneId}/rulesets`,
-      );
-      const customRuleset = ((rulesets as unknown as Array<Record<string, unknown>>) ?? []).find(
-        (rs: Record<string, unknown>) => rs["phase"] === "http_request_firewall_custom",
-      );
+      const customRuleset = await findCustomRuleset(api, zoneId);
       if (customRuleset) {
         const rsId = String(customRuleset["id"]);
-        const fullRuleset = await api.fetch<Record<string, unknown>>(
-          `/zones/${zoneId}/rulesets/${rsId}`,
-        );
-        const rules = (fullRuleset["rules"] as Array<Record<string, unknown>>) ?? [];
+        const fullRuleset = await api.cf.rulesets.get(rsId, { zone_id: zoneId });
+        const full = fullRuleset as unknown as Record<string, unknown>;
+        const rules = (full["rules"] as Array<Record<string, unknown>>) ?? [];
         for (const rule of rules) {
           results.push(mapFirewallRule(rule, accountId, zoneId, rsId));
         }
@@ -73,49 +78,44 @@ export async function createFirewallRule(
 ): Promise<ResourceInstance> {
   const zoneId = fields["zoneId"] || parentExternalId;
   if (!zoneId) throw new Error("Cloudflare plugin: zoneId is required to create a firewall rule");
-  // Get or create the http_request_firewall_custom phase ruleset
+
+  // Find an existing http_request_firewall_custom ruleset to attach to.
   let rulesetId = "";
   try {
-    const rulesets = await api.fetch<Array<Record<string, unknown>>>(`/zones/${zoneId}/rulesets`);
-    const customRuleset = (rulesets ?? []).find(
-      (rs: Record<string, unknown>) => rs["phase"] === "http_request_firewall_custom",
-    );
-    if (customRuleset) {
-      rulesetId = String(customRuleset["id"]);
-    }
+    const existing = await findCustomRuleset(api, zoneId);
+    if (existing) rulesetId = String(existing["id"] ?? "");
   } catch {
-    // Ignore - we'll create via the phase entrypoint
+    // Ignore — we'll create via the phase entrypoint below.
   }
-  const ruleBody = {
+
+  const ruleBody: Record<string, unknown> = {
     description: fields["description"] ?? "",
     expression: fields["expression"] ?? "",
     action: fields["action"] ?? "",
     enabled: true,
   };
+
   let result: Record<string, unknown>;
   if (rulesetId) {
-    const ruleset = await api.fetch<Record<string, unknown>>(
-      `/zones/${zoneId}/rulesets/${rulesetId}/rules`,
-      {
-        method: "POST",
-        body: JSON.stringify(ruleBody),
-      },
-    );
-    const rules = (ruleset["rules"] as Array<Record<string, unknown>>) ?? [];
-    result = rules[rules.length - 1] ?? ruleset;
+    const ruleset = await api.cf.rulesets.rules.create(rulesetId, {
+      zone_id: zoneId,
+      ...ruleBody,
+    } as unknown as RuleCreateParams);
+    const full = ruleset as unknown as Record<string, unknown>;
+    const rules = (full["rules"] as Array<Record<string, unknown>>) ?? [];
+    result = rules[rules.length - 1] ?? full;
   } else {
-    const ruleset = await api.fetch<Record<string, unknown>>(`/zones/${zoneId}/rulesets`, {
-      method: "POST",
-      body: JSON.stringify({
-        name: "Custom Firewall Rules",
-        kind: "zone",
-        phase: "http_request_firewall_custom",
-        rules: [ruleBody],
-      }),
-    });
-    rulesetId = String(ruleset["id"] ?? "");
-    const rules = (ruleset["rules"] as Array<Record<string, unknown>>) ?? [];
-    result = rules[0] ?? ruleset;
+    const ruleset = await api.cf.rulesets.create({
+      zone_id: zoneId,
+      name: "Custom Firewall Rules",
+      kind: "zone",
+      phase: "http_request_firewall_custom",
+      rules: [ruleBody],
+    } as unknown as RulesetCreateParams);
+    const full = ruleset as unknown as Record<string, unknown>;
+    rulesetId = String(full["id"] ?? "");
+    const rules = (full["rules"] as Array<Record<string, unknown>>) ?? [];
+    result = rules[0] ?? full;
   }
   return mapFirewallRule(result, accountId, zoneId, rulesetId);
 }
@@ -123,7 +123,5 @@ export async function createFirewallRule(
 export async function deleteFirewallRule(api: CloudflareApi, externalId: string): Promise<void> {
   const [zoneId, rulesetId, ruleId] = externalId.split("/");
   if (!zoneId || !rulesetId || !ruleId) throw new Error("Invalid firewall rule ID");
-  await api.fetch(`/zones/${zoneId}/rulesets/${rulesetId}/rules/${ruleId}`, {
-    method: "DELETE",
-  });
+  await api.cf.rulesets.rules.delete(rulesetId, ruleId, { zone_id: zoneId });
 }

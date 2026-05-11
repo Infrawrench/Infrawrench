@@ -1,5 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
+import type { PageRuleCreateParams } from "cloudflare/resources/page-rules/page-rules";
 
 export function mapPageRule(
   rule: Record<string, unknown>,
@@ -47,14 +48,13 @@ export async function listAllPageRules(
   api: CloudflareApi,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const zones = await api.paginate<Record<string, unknown>>("/zones");
   const results: ResourceInstance[] = [];
-  for (const zone of zones) {
-    const zoneId = String(zone["id"]);
+  for await (const zone of api.cf.zones.list()) {
+    const zoneId = zone.id;
     try {
-      const rules = await api.paginate<Record<string, unknown>>(`/zones/${zoneId}/pagerules`);
+      const rules = await api.cf.pageRules.list({ zone_id: zoneId });
       for (const rule of rules) {
-        results.push(mapPageRule(rule, accountId, zoneId));
+        results.push(mapPageRule(rule as unknown as Record<string, unknown>, accountId, zoneId));
       }
     } catch {
       // Skip zones where we can't read page rules
@@ -72,6 +72,7 @@ export async function createPageRule(
   const zoneId = fields["zoneId"] || parentExternalId;
   if (!zoneId) throw new Error("Cloudflare plugin: zoneId is required to create a page rule");
   const body: Record<string, unknown> = {
+    zone_id: zoneId,
     targets: [
       {
         target: "url",
@@ -86,15 +87,12 @@ export async function createPageRule(
     ],
     status: "active",
   };
-  const rule = await api.fetch<Record<string, unknown>>(`/zones/${zoneId}/pagerules`, {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
-  return mapPageRule(rule, accountId, zoneId);
+  const rule = await api.cf.pageRules.create(body as unknown as PageRuleCreateParams);
+  return mapPageRule(rule as unknown as Record<string, unknown>, accountId, zoneId);
 }
 
 export async function deletePageRule(api: CloudflareApi, externalId: string): Promise<void> {
   const [zoneId, ruleId] = externalId.split("/");
   if (!zoneId || !ruleId) throw new Error("Invalid page rule ID");
-  await api.fetch(`/zones/${zoneId}/pagerules/${ruleId}`, { method: "DELETE" });
+  await api.cf.pageRules.delete(ruleId, { zone_id: zoneId });
 }

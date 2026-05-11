@@ -1,6 +1,12 @@
 import type { ResourceInstance, StorageObject } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
 
+/**
+ * R2 bucket CRUD uses the official SDK (`cf.r2.buckets.*`). The R2 *object*
+ * plane (list/upload/delete per-object) is not exposed by the SDK so those
+ * operations remain on `api.fetch`. See task spec for details.
+ */
+
 export function mapR2Bucket(
   b: Record<string, unknown>,
   accountId: string,
@@ -33,14 +39,10 @@ export async function listR2Buckets(
   api: CloudflareApi,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const cfAccountId = await api.getAccountId();
-  const response = await api.fetch<{ buckets: Array<Record<string, unknown>> }>(
-    `/accounts/${cfAccountId}/r2/buckets`,
-  );
-  const buckets = response?.buckets ?? (Array.isArray(response) ? response : []);
-  return (buckets as Array<Record<string, unknown>>).map((b) =>
-    mapR2Bucket(b, accountId, cfAccountId),
-  );
+  const account_id = await api.getAccountId();
+  const response = await api.cf.r2.buckets.list({ account_id });
+  const buckets = (response.buckets ?? []) as unknown as Array<Record<string, unknown>>;
+  return buckets.map((b) => mapR2Bucket(b, accountId, account_id));
 }
 
 export async function getR2Bucket(
@@ -48,11 +50,9 @@ export async function getR2Bucket(
   externalId: string,
   accountId: string,
 ): Promise<ResourceInstance> {
-  const cfAccountId = await api.getAccountId();
-  const bucket = await api.fetch<Record<string, unknown>>(
-    `/accounts/${cfAccountId}/r2/buckets/${externalId}`,
-  );
-  return mapR2Bucket(bucket, accountId, cfAccountId);
+  const account_id = await api.getAccountId();
+  const bucket = await api.cf.r2.buckets.get(externalId, { account_id });
+  return mapR2Bucket(bucket as unknown as Record<string, unknown>, accountId, account_id);
 }
 
 export async function createR2Bucket(
@@ -60,20 +60,21 @@ export async function createR2Bucket(
   accountId: string,
   fields: Record<string, string>,
 ): Promise<ResourceInstance> {
-  const cfAccountId = await api.getAccountId();
-  const body: Record<string, unknown> = { name: fields["name"] };
-  if (fields["locationHint"]) body["locationHint"] = fields["locationHint"];
-  const bucket = await api.fetch<Record<string, unknown>>(`/accounts/${cfAccountId}/r2/buckets`, {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
-  return mapR2Bucket(bucket, accountId, cfAccountId);
+  const account_id = await api.getAccountId();
+  const params: Record<string, unknown> = { account_id, name: fields["name"] ?? "" };
+  if (fields["locationHint"]) params["locationHint"] = fields["locationHint"];
+  const bucket = await api.cf.r2.buckets.create(
+    params as unknown as Parameters<typeof api.cf.r2.buckets.create>[0],
+  );
+  return mapR2Bucket(bucket as unknown as Record<string, unknown>, accountId, account_id);
 }
 
 export async function deleteR2Bucket(api: CloudflareApi, externalId: string): Promise<void> {
-  const cfAccountId = await api.getAccountId();
-  await api.fetch(`/accounts/${cfAccountId}/r2/buckets/${externalId}`, { method: "DELETE" });
+  const account_id = await api.getAccountId();
+  await api.cf.r2.buckets.delete(externalId, { account_id });
 }
+
+// --- R2 object plane (intentionally left on raw fetch — SDK has no coverage) ---
 
 export async function listR2StorageObjects(
   api: CloudflareApi,

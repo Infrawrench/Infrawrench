@@ -29,9 +29,12 @@ export async function listD1Databases(
   api: CloudflareApi,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const cfAccountId = await api.getAccountId();
-  const dbs = await api.paginate<Record<string, unknown>>(`/accounts/${cfAccountId}/d1/database`);
-  return dbs.map((db) => mapD1Database(db, accountId));
+  const account_id = await api.getAccountId();
+  const results: ResourceInstance[] = [];
+  for await (const db of api.cf.d1.database.list({ account_id })) {
+    results.push(mapD1Database(db as unknown as Record<string, unknown>, accountId));
+  }
+  return results;
 }
 
 export async function getD1Database(
@@ -39,9 +42,10 @@ export async function getD1Database(
   externalId: string,
   accountId: string,
 ): Promise<ResourceInstance> {
-  const cfAccountId = await api.getAccountId();
-  const db = await api.fetch<Record<string, unknown>>(
-    `/accounts/${cfAccountId}/d1/database/${externalId}`,
+  const account_id = await api.getAccountId();
+  // d1.database has no `.get(...)`; the v4 REST shape is GET /accounts/{aid}/d1/database/{id}.
+  const db = await api.cf.get<unknown, Record<string, unknown>>(
+    `/accounts/${account_id}/d1/database/${externalId}`,
   );
   return mapD1Database(db, accountId);
 }
@@ -51,17 +55,14 @@ export async function createD1Database(
   accountId: string,
   fields: Record<string, string>,
 ): Promise<ResourceInstance> {
-  const cfAccountId = await api.getAccountId();
-  const db = await api.fetch<Record<string, unknown>>(`/accounts/${cfAccountId}/d1/database`, {
-    method: "POST",
-    body: JSON.stringify({ name: fields["name"] }),
-  });
-  return mapD1Database(db, accountId);
+  const account_id = await api.getAccountId();
+  const db = await api.cf.d1.database.create({ account_id, name: fields["name"] ?? "" });
+  return mapD1Database(db as unknown as Record<string, unknown>, accountId);
 }
 
 export async function deleteD1Database(api: CloudflareApi, externalId: string): Promise<void> {
-  const cfAccountId = await api.getAccountId();
-  await api.fetch(`/accounts/${cfAccountId}/d1/database/${externalId}`, { method: "DELETE" });
+  const account_id = await api.getAccountId();
+  await api.cf.d1.database.delete(externalId, { account_id });
 }
 
 export async function executeD1Query(
@@ -70,24 +71,19 @@ export async function executeD1Query(
   sql: string,
 ): Promise<{ rows: Record<string, unknown>[]; durationMs: number }> {
   const externalId = resourceId.split(":").slice(2).join(":");
-  const cfAccountId = await api.getAccountId();
+  const account_id = await api.getAccountId();
   const start = Date.now();
 
-  const result = await api.fetch<
-    Array<{
-      results?: Array<Record<string, unknown>>;
-      success?: boolean;
-      meta?: { duration?: number; changes?: number; rows_read?: number; rows_written?: number };
-    }>
-  >(`/accounts/${cfAccountId}/d1/database/${externalId}/query`, {
-    method: "POST",
-    body: JSON.stringify({ sql }),
-  });
+  const rows: Record<string, unknown>[] = [];
+  for await (const item of api.cf.d1.database.query(externalId, { account_id, sql })) {
+    const raw = item as unknown as Record<string, unknown>;
+    const results = raw["results"];
+    if (Array.isArray(results)) {
+      for (const r of results) rows.push(r as Record<string, unknown>);
+    }
+  }
 
-  const durationMs = Date.now() - start;
-  const first = Array.isArray(result) ? result[0] : result;
-  const rows = (first as { results?: Array<Record<string, unknown>> })?.results ?? [];
-  return { rows, durationMs };
+  return { rows, durationMs: Date.now() - start };
 }
 
 export async function introspectD1Database(
@@ -95,41 +91,33 @@ export async function introspectD1Database(
   resourceId: string,
 ): Promise<SqlTableMeta[]> {
   const externalId = resourceId.split(":").slice(2).join(":");
-  const cfAccountId = await api.getAccountId();
+  const account_id = await api.getAccountId();
 
-  // Query sqlite_master for tables
-  const tablesResult = await api.fetch<
-    Array<{
-      results?: Array<Record<string, unknown>>;
-    }>
-  >(`/accounts/${cfAccountId}/d1/database/${externalId}/query`, {
-    method: "POST",
-    body: JSON.stringify({
-      sql: "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' ORDER BY name",
-    }),
-  });
+  // Query sqlite_master for tables.
+  const tables: Record<string, unknown>[] = [];
+  for await (const item of api.cf.d1.database.query(externalId, {
+    account_id,
+    sql: "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' ORDER BY name",
+  })) {
+    const results = (item as unknown as { results?: Array<Record<string, unknown>> }).results;
+    if (Array.isArray(results)) tables.push(...results);
+  }
 
-  const first = Array.isArray(tablesResult) ? tablesResult[0] : tablesResult;
-  const tables = (first as { results?: Array<Record<string, unknown>> })?.results ?? [];
   const result: SqlTableMeta[] = [];
-
   for (const table of tables) {
     const tableName = String(table["name"] ?? "");
     if (!tableName) continue;
 
-    const columnsResult = await api.fetch<
-      Array<{
-        results?: Array<Record<string, unknown>>;
-      }>
-    >(`/accounts/${cfAccountId}/d1/database/${externalId}/query`, {
-      method: "POST",
-      body: JSON.stringify({ sql: `PRAGMA table_info('${tableName.replace(/'/g, "''")}')` }),
-    });
+    const cols: Record<string, unknown>[] = [];
+    for await (const item of api.cf.d1.database.query(externalId, {
+      account_id,
+      sql: `PRAGMA table_info('${tableName.replace(/'/g, "''")}')`,
+    })) {
+      const results = (item as unknown as { results?: Array<Record<string, unknown>> }).results;
+      if (Array.isArray(results)) cols.push(...results);
+    }
 
-    const firstCol = Array.isArray(columnsResult) ? columnsResult[0] : columnsResult;
-    const cols = (firstCol as { results?: Array<Record<string, unknown>> })?.results ?? [];
     const pkColumns: string[] = [];
-
     const meta: SqlTableMeta = {
       name: tableName,
       columns: cols.map((c) => {

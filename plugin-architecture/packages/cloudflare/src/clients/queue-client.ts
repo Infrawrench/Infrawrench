@@ -31,9 +31,12 @@ export async function listQueues(
   api: CloudflareApi,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const cfAccountId = await api.getAccountId();
-  const queues = await api.paginate<Record<string, unknown>>(`/accounts/${cfAccountId}/queues`);
-  return queues.map((q) => mapQueue(q, accountId));
+  const account_id = await api.getAccountId();
+  const results: ResourceInstance[] = [];
+  for await (const q of api.cf.queues.list({ account_id })) {
+    results.push(mapQueue(q as unknown as Record<string, unknown>, accountId));
+  }
+  return results;
 }
 
 export async function createQueue(
@@ -41,15 +44,15 @@ export async function createQueue(
   accountId: string,
   fields: Record<string, string>,
 ): Promise<ResourceInstance> {
-  const cfAccountId = await api.getAccountId();
-  const q = await api.fetch<Record<string, unknown>>(`/accounts/${cfAccountId}/queues`, {
-    method: "POST",
-    body: JSON.stringify({ queue_name: fields["queue_name"] }),
+  const account_id = await api.getAccountId();
+  const q = await api.cf.queues.create({
+    account_id,
+    queue_name: fields["queue_name"] ?? "",
   });
-  return mapQueue(q, accountId);
+  return mapQueue(q as unknown as Record<string, unknown>, accountId);
 }
 
 export async function deleteQueue(api: CloudflareApi, externalId: string): Promise<void> {
-  const cfAccountId = await api.getAccountId();
-  await api.fetch(`/accounts/${cfAccountId}/queues/${externalId}`, { method: "DELETE" });
+  const account_id = await api.getAccountId();
+  await api.cf.queues.delete(externalId, { account_id });
 }

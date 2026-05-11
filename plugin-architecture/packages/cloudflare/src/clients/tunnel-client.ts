@@ -32,13 +32,14 @@ export async function listTunnels(
   api: CloudflareApi,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const cfAccountId = await api.getAccountId();
-  const tunnels = await api.paginate<Record<string, unknown>>(
-    `/accounts/${cfAccountId}/cfd_tunnel`,
-  );
-  return tunnels
-    .filter((t) => !t["deleted_at"]) // exclude soft-deleted tunnels
-    .map((t) => mapTunnel(t, accountId));
+  const account_id = await api.getAccountId();
+  const results: ResourceInstance[] = [];
+  for await (const t of api.cf.zeroTrust.tunnels.cloudflared.list({ account_id })) {
+    const raw = t as unknown as Record<string, unknown>;
+    if (raw["deleted_at"]) continue; // exclude soft-deleted tunnels
+    results.push(mapTunnel(raw, accountId));
+  }
+  return results;
 }
 
 export async function createTunnel(
@@ -46,29 +47,26 @@ export async function createTunnel(
   accountId: string,
   fields: Record<string, string>,
 ): Promise<ResourceInstance> {
-  const cfAccountId = await api.getAccountId();
-  const tunnel = await api.fetch<Record<string, unknown>>(`/accounts/${cfAccountId}/cfd_tunnel`, {
-    method: "POST",
-    body: JSON.stringify({
-      name: fields["name"] ?? "",
-      tunnel_secret: btoa(crypto.randomUUID()),
-    }),
+  const account_id = await api.getAccountId();
+  const tunnel = await api.cf.zeroTrust.tunnels.cloudflared.create({
+    account_id,
+    name: fields["name"] ?? "",
+    tunnel_secret: btoa(crypto.randomUUID()),
   });
-  return mapTunnel(tunnel, accountId);
+  return mapTunnel(tunnel as unknown as Record<string, unknown>, accountId);
 }
 
 export async function deleteTunnel(api: CloudflareApi, externalId: string): Promise<void> {
-  const cfAccountId = await api.getAccountId();
-  await api.fetch(`/accounts/${cfAccountId}/cfd_tunnel/${externalId}`, { method: "DELETE" });
+  const account_id = await api.getAccountId();
+  await api.cf.zeroTrust.tunnels.cloudflared.delete(externalId, { account_id });
 }
 
 export async function getTunnelToken(
   api: CloudflareApi,
   tunnelExternalId: string,
 ): Promise<string> {
-  const cfAccountId = await api.getAccountId();
-  // /cfd_tunnel/{id}/token returns result as a plain base64 string, not an object.
-  return await api.fetch<string>(`/accounts/${cfAccountId}/cfd_tunnel/${tunnelExternalId}/token`);
+  const account_id = await api.getAccountId();
+  return await api.cf.zeroTrust.tunnels.cloudflared.token.get(tunnelExternalId, { account_id });
 }
 
 export async function exportTunnelCredential(

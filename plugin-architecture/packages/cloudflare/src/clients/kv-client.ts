@@ -1,9 +1,11 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
+import type { Namespace } from "cloudflare/resources/kv/namespaces/namespaces";
 
-export function mapKVNamespace(ns: Record<string, unknown>, accountId: string): ResourceInstance {
-  const id = String(ns["id"] ?? "");
-  const title = String(ns["title"] ?? "");
+export function mapKVNamespace(ns: Namespace, accountId: string): ResourceInstance {
+  const raw = ns as unknown as Record<string, unknown>;
+  const id = String(raw["id"] ?? "");
+  const title = String(raw["title"] ?? "");
   return {
     id: `${accountId}:kv-namespace:${id}`,
     pluginId: "cloudflare",
@@ -12,7 +14,7 @@ export function mapKVNamespace(ns: Record<string, unknown>, accountId: string): 
     displayName: title || id,
     fields: {
       title,
-      supportsUrlEncoding: Boolean(ns["supports_url_encoding"]),
+      supportsUrlEncoding: Boolean(raw["supports_url_encoding"]),
     },
     resolvedOutputs: { namespaceId: id },
     secretStates: [],
@@ -26,11 +28,12 @@ export async function listKVNamespaces(
   api: CloudflareApi,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const cfAccountId = await api.getAccountId();
-  const namespaces = await api.paginate<Record<string, unknown>>(
-    `/accounts/${cfAccountId}/storage/kv/namespaces`,
-  );
-  return namespaces.map((ns) => mapKVNamespace(ns, accountId));
+  const account_id = await api.getAccountId();
+  const results: ResourceInstance[] = [];
+  for await (const ns of api.cf.kv.namespaces.list({ account_id })) {
+    results.push(mapKVNamespace(ns, accountId));
+  }
+  return results;
 }
 
 export async function createKVNamespace(
@@ -38,20 +41,15 @@ export async function createKVNamespace(
   accountId: string,
   fields: Record<string, string>,
 ): Promise<ResourceInstance> {
-  const cfAccountId = await api.getAccountId();
-  const ns = await api.fetch<Record<string, unknown>>(
-    `/accounts/${cfAccountId}/storage/kv/namespaces`,
-    {
-      method: "POST",
-      body: JSON.stringify({ title: fields["title"] }),
-    },
-  );
+  const account_id = await api.getAccountId();
+  const ns = await api.cf.kv.namespaces.create({
+    account_id,
+    title: fields["title"] ?? "",
+  });
   return mapKVNamespace(ns, accountId);
 }
 
 export async function deleteKVNamespace(api: CloudflareApi, externalId: string): Promise<void> {
-  const cfAccountId = await api.getAccountId();
-  await api.fetch(`/accounts/${cfAccountId}/storage/kv/namespaces/${externalId}`, {
-    method: "DELETE",
-  });
+  const account_id = await api.getAccountId();
+  await api.cf.kv.namespaces.delete(externalId, { account_id });
 }

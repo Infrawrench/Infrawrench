@@ -1,5 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
+import type { AppCreateParams } from "cloudflare/resources/spectrum/apps";
 
 export function mapSpectrumApplication(
   app: Record<string, unknown>,
@@ -45,14 +46,14 @@ export async function listAllSpectrumApplications(
   api: CloudflareApi,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const zones = await api.paginate<Record<string, unknown>>("/zones");
   const results: ResourceInstance[] = [];
-  for (const zone of zones) {
-    const zoneId = String(zone["id"]);
+  for await (const zone of api.cf.zones.list()) {
+    const zoneId = zone.id;
     try {
-      const apps = await api.paginate<Record<string, unknown>>(`/zones/${zoneId}/spectrum/apps`);
-      for (const app of apps) {
-        results.push(mapSpectrumApplication(app, accountId, zoneId));
+      for await (const app of api.cf.spectrum.apps.list({ zone_id: zoneId })) {
+        results.push(
+          mapSpectrumApplication(app as unknown as Record<string, unknown>, accountId, zoneId),
+        );
       }
     } catch {
       // Skip zones where Spectrum is not enabled
@@ -73,16 +74,15 @@ export async function createSpectrumApplication(
   const protocol = fields["protocol"] ?? "tcp/22";
   const dns = fields["dns"] ?? "";
   const originDirect = fields["originDirect"] ?? "";
-  const app = await api.fetch<Record<string, unknown>>(`/zones/${zoneId}/spectrum/apps`, {
-    method: "POST",
-    body: JSON.stringify({
-      protocol,
-      dns: { type: "CNAME", name: dns },
-      origin_direct: [originDirect],
-      ip_firewall: fields["ipFirewall"] === "true",
-    }),
-  });
-  return mapSpectrumApplication(app, accountId, zoneId);
+  const body: Record<string, unknown> = {
+    zone_id: zoneId,
+    protocol,
+    dns: { type: "CNAME", name: dns },
+    origin_direct: [originDirect],
+    ip_firewall: fields["ipFirewall"] === "true",
+  };
+  const app = await api.cf.spectrum.apps.create(body as unknown as AppCreateParams);
+  return mapSpectrumApplication(app as unknown as Record<string, unknown>, accountId, zoneId);
 }
 
 export async function deleteSpectrumApplication(
@@ -91,5 +91,5 @@ export async function deleteSpectrumApplication(
 ): Promise<void> {
   const [zoneId, appId] = externalId.split("/");
   if (!zoneId || !appId) throw new Error("Invalid spectrum application ID");
-  await api.fetch(`/zones/${zoneId}/spectrum/apps/${appId}`, { method: "DELETE" });
+  await api.cf.spectrum.apps.delete(appId, { zone_id: zoneId });
 }

@@ -1,5 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
+import type { RuleCreateParams } from "cloudflare/resources/email-routing/rules/rules";
 
 export function mapEmailRoutingRule(
   rule: Record<string, unknown>,
@@ -52,16 +53,14 @@ export async function listAllEmailRoutingRules(
   api: CloudflareApi,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const zones = await api.paginate<Record<string, unknown>>("/zones");
   const results: ResourceInstance[] = [];
-  for (const zone of zones) {
-    const zoneId = String(zone["id"]);
+  for await (const zone of api.cf.zones.list()) {
+    const zoneId = zone.id;
     try {
-      const rules = await api.paginate<Record<string, unknown>>(
-        `/zones/${zoneId}/email/routing/rules`,
-      );
-      for (const rule of rules) {
-        results.push(mapEmailRoutingRule(rule, accountId, zoneId));
+      for await (const rule of api.cf.emailRouting.rules.list({ zone_id: zoneId })) {
+        results.push(
+          mapEmailRoutingRule(rule as unknown as Record<string, unknown>, accountId, zoneId),
+        );
       }
     } catch {
       // Skip zones where email routing is not enabled
@@ -84,6 +83,7 @@ export async function createEmailRoutingRule(
   const actionType = fields["actionType"] ?? "forward";
   const actionValue = fields["actionValue"] ?? "";
   const body: Record<string, unknown> = {
+    zone_id: zoneId,
     name: fields["name"] ?? "",
     enabled: true,
     matchers: [{ type: "literal", field: matcherField, value: matcherValue }],
@@ -94,9 +94,6 @@ export async function createEmailRoutingRule(
       },
     ],
   };
-  const rule = await api.fetch<Record<string, unknown>>(`/zones/${zoneId}/email/routing/rules`, {
-    method: "POST",
-    body: JSON.stringify(body),
-  });
-  return mapEmailRoutingRule(rule, accountId, zoneId);
+  const rule = await api.cf.emailRouting.rules.create(body as unknown as RuleCreateParams);
+  return mapEmailRoutingRule(rule as unknown as Record<string, unknown>, accountId, zoneId);
 }

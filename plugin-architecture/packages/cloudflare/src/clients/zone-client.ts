@@ -1,42 +1,35 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
+import type { Zone } from "cloudflare/resources/zones/zones";
 
-export function mapZone(
-  api: CloudflareApi,
-  z: Record<string, unknown>,
-  accountId: string,
-): ResourceInstance {
-  const nameservers = Array.isArray(z["name_servers"])
-    ? (z["name_servers"] as string[]).join(", ")
-    : "";
-  const plan = z["plan"] as Record<string, unknown> | undefined;
+export function mapZone(api: CloudflareApi, z: Zone, accountId: string): ResourceInstance {
+  const nameservers = Array.isArray(z.name_servers) ? z.name_servers.join(", ") : "";
   // Cache account ID from zone data
-  const account = z["account"] as Record<string, unknown> | undefined;
-  if (account?.["id"] && !api.cfAccountId) {
-    api.cfAccountId = String(account["id"]);
+  if (z.account?.id && !api.cfAccountId) {
+    api.cfAccountId = z.account.id;
   }
   return {
-    id: `${accountId}:zone:${String(z["id"])}`,
+    id: `${accountId}:zone:${z.id}`,
     pluginId: "cloudflare",
     resourceTypeId: "zone",
     accountId,
-    displayName: String(z["name"]),
+    displayName: z.name,
     fields: {
-      name: String(z["name"]),
-      status: String(z["status"] ?? ""),
-      plan: String(plan?.["name"] ?? "Free"),
+      name: z.name,
+      status: String(z.status ?? ""),
+      plan: String(z.plan?.name ?? "Free"),
       nameservers,
-      type: String(z["type"] ?? "full"),
-      paused: Boolean(z["paused"]),
+      type: String(z.type ?? "full"),
+      paused: Boolean(z.paused),
     },
     resolvedOutputs: {
-      zoneId: String(z["id"]),
+      zoneId: z.id,
       nameservers,
     },
     secretStates: [],
-    externalId: String(z["id"]),
-    createdAt: String(z["created_on"] ?? new Date().toISOString()),
-    updatedAt: String(z["modified_on"] ?? new Date().toISOString()),
+    externalId: z.id,
+    createdAt: String(z.created_on ?? new Date().toISOString()),
+    updatedAt: String(z.modified_on ?? new Date().toISOString()),
   };
 }
 
@@ -44,8 +37,11 @@ export async function listZones(
   api: CloudflareApi,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const zones = await api.paginate<Record<string, unknown>>("/zones");
-  return zones.map((z) => mapZone(api, z, accountId));
+  const out: ResourceInstance[] = [];
+  for await (const z of api.cf.zones.list()) {
+    out.push(mapZone(api, z, accountId));
+  }
+  return out;
 }
 
 export async function getZone(
@@ -53,7 +49,7 @@ export async function getZone(
   externalId: string,
   accountId: string,
 ): Promise<ResourceInstance> {
-  const zone = await api.fetch<Record<string, unknown>>(`/zones/${externalId}`);
+  const zone = await api.cf.zones.get({ zone_id: externalId });
   return mapZone(api, zone, accountId);
 }
 
@@ -62,19 +58,25 @@ export async function createZone(
   accountId: string,
   fields: Record<string, string>,
 ): Promise<ResourceInstance> {
-  const zone = await api.fetch<Record<string, unknown>>("/zones", {
-    method: "POST",
-    body: JSON.stringify({ name: fields["name"], type: "full" }),
+  const cfAccountId = await api.getAccountId();
+  const zone = await api.cf.zones.create({
+    account: { id: cfAccountId },
+    name: fields["name"] ?? "",
+    type: "full",
   });
   return mapZone(api, zone, accountId);
 }
 
 export async function deleteZone(api: CloudflareApi, externalId: string): Promise<void> {
-  await api.fetch(`/zones/${externalId}`, { method: "DELETE" });
+  await api.cf.zones.delete({ zone_id: externalId });
 }
 
 export async function getZoneManifest(api: CloudflareApi, externalId: string): Promise<string> {
-  const settings = await api.fetch<Record<string, unknown>>(`/zones/${externalId}/settings`);
+  // The SDK only exposes per-setting `get`/`edit`. Fetching the full settings
+  // collection in one call is much cheaper, so we use the generic raw helper.
+  const settings = await api.cf.get<unknown, Record<string, unknown>>(
+    `/zones/${externalId}/settings`,
+  );
   return JSON.stringify(settings, null, 2);
 }
 
@@ -83,14 +85,14 @@ export async function applyZoneManifest(
   externalId: string,
   manifest: string,
 ): Promise<void> {
-  // Zone settings are applied per-setting via PATCH
   const settings = JSON.parse(manifest) as Array<{ id: string; value: unknown }>;
   if (!Array.isArray(settings))
     throw new Error("Zone settings must be an array of {id, value} objects");
   for (const setting of settings) {
-    await api.fetch(`/zones/${externalId}/settings/${setting.id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ value: setting.value }),
-    });
+    await api.cf.zones.settings.edit(setting.id, {
+      zone_id: externalId,
+      // SDK exposes a discriminated union per setting; cast through unknown.
+      value: setting.value,
+    } as Parameters<typeof api.cf.zones.settings.edit>[1]);
   }
 }

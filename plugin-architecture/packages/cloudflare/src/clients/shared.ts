@@ -1,19 +1,29 @@
 /**
  * Shared Cloudflare API client used by all per-feature client modules.
  *
- * Wraps the low-level v4 REST primitives (`fetch`, `paginate`), caches the
- * resolved account ID, and exposes a few helpers (`getZoneOptions`,
- * `getAccessAppOptions`) that several create-flows share.
+ * Wraps the official `cloudflare` SDK and caches the resolved account ID.
+ * A few legacy helpers (`fetch`, `paginate`) remain because the SDK does not
+ * expose the R2 object plane — see `r2-client.ts`. New code should prefer
+ * the SDK namespaces exposed via `api.cf`.
  */
+import Cloudflare from "cloudflare";
+
 export class CloudflareApi {
   readonly apiToken: string;
   readonly baseUrl = "https://api.cloudflare.com/client/v4";
+  readonly cf: Cloudflare;
   cfAccountId: string | null = null;
 
   constructor(apiToken: string) {
     this.apiToken = apiToken;
+    this.cf = new Cloudflare({ apiToken });
   }
 
+  /**
+   * Raw fetch wrapper. Retained only for the R2 object plane (uploads,
+   * deletes, list-objects), which the SDK does not expose. Do not add new
+   * call sites — use `this.cf` instead.
+   */
   async fetch<T>(path: string, options?: RequestInit): Promise<T> {
     const res = await fetch(`${this.baseUrl}${path}`, {
       headers: {
@@ -38,63 +48,47 @@ export class CloudflareApi {
     return json.result;
   }
 
-  /** Paginate through Cloudflare's v4 API (page-based) */
-  async paginate<T>(path: string, perPage = 50): Promise<T[]> {
-    const results: T[] = [];
-    let page = 1;
-    for (;;) {
-      const sep = path.includes("?") ? "&" : "?";
-      const res = await fetch(`${this.baseUrl}${path}${sep}page=${page}&per_page=${perPage}`, {
-        headers: {
-          Authorization: `Bearer ${this.apiToken}`,
-          "Content-Type": "application/json",
-        },
-      });
-      if (!res.ok) throw new Error(`Cloudflare API error ${res.status}: ${await res.text()}`);
-      const json = (await res.json()) as {
-        success: boolean;
-        result: T[];
-        result_info?: { total_pages: number; page: number };
-      };
-      if (!json.success || !Array.isArray(json.result)) break;
-      results.push(...json.result);
-      const totalPages = json.result_info?.total_pages ?? 1;
-      if (page >= totalPages) break;
-      page++;
-    }
-    return results;
+  /** Collect all items from an SDK PagePromise into an array. */
+  async collect<T>(pages: AsyncIterable<T>): Promise<T[]> {
+    const out: T[] = [];
+    for await (const item of pages) out.push(item);
+    return out;
   }
 
   /** Resolve the Cloudflare account ID from the first zone */
   async getAccountId(): Promise<string> {
     if (this.cfAccountId) return this.cfAccountId;
-    const zones = await this.paginate<Record<string, unknown>>("/zones?per_page=1");
-    const firstZone = zones[0];
-    if (!firstZone)
-      throw new Error("Cloudflare plugin: no zones found — cannot determine account ID");
-    const account = firstZone["account"] as Record<string, unknown> | undefined;
-    this.cfAccountId = String(account?.["id"] ?? "");
-    if (!this.cfAccountId)
-      throw new Error("Cloudflare plugin: could not determine account ID from zone");
-    return this.cfAccountId;
+    for await (const zone of this.cf.zones.list({ per_page: 1 })) {
+      const accountId = zone.account?.id ?? "";
+      if (!accountId)
+        throw new Error("Cloudflare plugin: could not determine account ID from zone");
+      this.cfAccountId = accountId;
+      return accountId;
+    }
+    throw new Error("Cloudflare plugin: no zones found — cannot determine account ID");
   }
 
   async getZoneOptions(): Promise<Array<{ id: string; label: string }>> {
-    const zones = await this.paginate<Record<string, unknown>>("/zones");
-    return zones.map((z) => ({
-      id: String(z["id"]),
-      label: String(z["name"]),
-    }));
+    const opts: Array<{ id: string; label: string }> = [];
+    for await (const z of this.cf.zones.list()) {
+      // Side effect: cache account ID for later calls.
+      if (z.account?.id && !this.cfAccountId) {
+        this.cfAccountId = z.account.id;
+      }
+      opts.push({ id: z.id, label: z.name });
+    }
+    return opts;
   }
 
   async getAccessAppOptions(): Promise<Array<{ id: string; label: string }>> {
-    const cfAccountId = await this.getAccountId();
-    const apps = await this.paginate<Record<string, unknown>>(
-      `/accounts/${cfAccountId}/access/apps`,
-    );
-    return apps.map((a) => ({
-      id: String(a["id"]),
-      label: String(a["name"] ?? a["domain"] ?? a["id"]),
-    }));
+    const account_id = await this.getAccountId();
+    const opts: Array<{ id: string; label: string }> = [];
+    for await (const a of this.cf.zeroTrust.access.applications.list({ account_id })) {
+      const app = a as Record<string, unknown>;
+      const id = String(app["id"] ?? "");
+      const label = String(app["name"] ?? app["domain"] ?? id);
+      opts.push({ id, label });
+    }
+    return opts;
   }
 }
