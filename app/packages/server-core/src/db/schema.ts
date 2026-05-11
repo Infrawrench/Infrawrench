@@ -31,6 +31,29 @@ export const users = pgTable(
   }),
 );
 
+export const roles = pgTable(
+  "roles",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    description: text("description"),
+    isSystem: boolean("is_system").notNull().default(false),
+    /** "owner" | "admin" | "member" for system rows; null for custom roles */
+    systemKey: text("system_key"),
+    /** Permission strings; ignored for system roles (resolved from code instead). */
+    permissions: jsonb("permissions").$type<string[]>().notNull().default([]),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("roles_org_idx").on(t.organizationId),
+    orgSystemUnique: uniqueIndex("roles_org_system_unique").on(t.organizationId, t.systemKey),
+  }),
+);
+
 export const organizationMembers = pgTable(
   "organization_members",
   {
@@ -41,13 +64,16 @@ export const organizationMembers = pgTable(
     organizationId: text("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
+    /** Legacy text role; superseded by roleId. Kept for one release for fallback. */
     role: text("role").notNull().default("member"), // "owner" | "admin" | "member"
+    roleId: text("role_id").references(() => roles.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (t) => ({
     userOrgUnique: uniqueIndex("org_members_user_org_unique").on(t.userId, t.organizationId),
     orgIdx: index("org_members_org_idx").on(t.organizationId),
     userIdx: index("org_members_user_idx").on(t.userId),
+    roleIdx: index("org_members_role_idx").on(t.roleId),
   }),
 );
 
@@ -366,7 +392,9 @@ export const invitations = pgTable(
       .notNull()
       .references(() => organizations.id, { onDelete: "cascade" }),
     email: text("email").notNull(),
+    /** Legacy text role; superseded by roleId. Kept for one release for fallback. */
     role: text("role").notNull().default("member"), // "admin" | "member"
+    roleId: text("role_id").references(() => roles.id, { onDelete: "set null" }),
     invitedByUserId: text("invited_by_user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),

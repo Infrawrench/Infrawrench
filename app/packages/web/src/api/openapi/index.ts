@@ -127,6 +127,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   });
 
   injectOperationIds(doc);
+  injectRequiredPermissions(doc);
   return doc;
 }
 
@@ -144,6 +145,159 @@ function injectOperationIds(doc: { paths?: Record<string, unknown> }) {
       const op = pathItem[method];
       if (!op || op.operationId) continue;
       op.operationId = deriveOperationId(method, path);
+    }
+  }
+}
+
+/**
+ * Map of `METHOD /path-suffix` → required permission, mirroring the
+ * `requirePermission` calls in route handlers. Path suffixes are matched
+ * against the part of the URL after `/api/org/{orgId}/` (or the matching
+ * unscoped prefix for sync/webhooks). Add new entries here when adding new
+ * routes — `pnpm --filter @infrawrench/web generate:openapi` will pick them up.
+ */
+const REQUIRED_PERMISSION: Record<string, string | null> = {
+  // accounts
+  "GET /accounts/plugins": "accounts:read",
+  "GET /accounts": "accounts:read",
+  "POST /accounts": "accounts:write",
+  "DELETE /accounts/{id}": "accounts:delete",
+  "PATCH /accounts/{id}": "accounts:write",
+  "GET /accounts/{id}/credentials": "secrets:read",
+  "GET /accounts/{id}/resources": "resources:read",
+  "POST /accounts/{id}/sync": "resources:read",
+  "GET /accounts/{id}/detail": "accounts:read",
+  "POST /accounts/{id}/sync-type/{typeId}": "resources:read",
+  // dashboards
+  "GET /dashboards": "dashboards:read",
+  "POST /dashboards": "dashboards:write",
+  "GET /dashboards/{id}": "dashboards:read",
+  "GET /dashboards/default/full": "dashboards:read",
+  "POST /dashboards/{id}/rename": "dashboards:write",
+  "DELETE /dashboards/{id}": "dashboards:write",
+  "POST /dashboards/pin": "dashboards:write",
+  "POST /dashboards/{id}/reorder": "dashboards:write",
+  "POST /dashboards/unpin": "dashboards:write",
+  "POST /dashboards/validate-tabs": "dashboards:read",
+  "GET /dashboards/pin/{pinId}": "dashboards:read",
+  "POST /dashboards/probe": "dashboards:read",
+  // resources
+  "GET /resources/{pluginId}/{typeId}/detail": "resources:read",
+  "GET /resources/{pluginId}/{typeId}/manifest": "resources:read",
+  "POST /resources/{pluginId}/{typeId}/manifest": "resources:write",
+  "POST /resources/{pluginId}/import-yaml": "resources:write",
+  "POST /resources/{pluginId}/{typeId}/describe": "resources:read",
+  "POST /resources/{pluginId}/{typeId}/logs": "resources:read",
+  "GET /resources/{pluginId}/{typeId}/secret-versions": "secrets:read",
+  "POST /resources/{pluginId}/{typeId}/secret-versions/access": "secrets:read",
+  "POST /resources/{pluginId}/{typeId}/secret-versions/add": "secrets:write",
+  "POST /resources/{pluginId}/{typeId}/secret-versions/modify": "secrets:write",
+  "DELETE /resources/{pluginId}/{typeId}": "resources:delete",
+  "POST /resources/invoke-action": "resources:write",
+  "POST /resources/nosql-command": "resources:execute",
+  "POST /resources/attach": "resources:write",
+  "POST /resources/{pluginId}/{typeId}/export-credential": "secrets:read",
+  "POST /resources/create": "resources:write",
+  "POST /resources/create-config": "resources:write",
+  "POST /resources/picker-resources": "resources:read",
+  "POST /resources/create-pricing": "resources:read",
+  "POST /resources/create-cost-estimate": "resources:read",
+  "POST /resources/{pluginId}/{typeId}/peer-panes": "resources:read",
+  "POST /resources/{pluginId}/{typeId}/metrics": "resources:read",
+  // associations
+  "POST /associations": "secrets:write",
+  "POST /associations/literal": "secrets:write",
+  // connection-features
+  "POST /sql/query": "resources:execute",
+  "POST /sql/execute": "resources:execute",
+  "POST /sql/estimate": "resources:read",
+  "POST /kv/command": "resources:execute",
+  "POST /docker/command": "resources:execute",
+  "POST /storage/list": "storage:read",
+  "POST /storage/mkdir": "storage:write",
+  "POST /storage/delete": "storage:write",
+  "POST /artifacts/list": "storage:read",
+  "POST /sftp/list": "storage:read",
+  "POST /sftp/mkdir": "storage:write",
+  "POST /sftp/delete": "storage:write",
+  // connect
+  "POST /connect/templates": "resources:read",
+  "POST /connect/secret-export": "resources:write",
+  "POST /connect/env-deploy": "resources:execute",
+  // storage / sftp uploads & downloads
+  "POST /v1/storage/upload": "storage:write",
+  "GET /v1/storage/download": "storage:read",
+  "POST /v1/sftp/upload": "storage:write",
+  "GET /v1/sftp/download": "storage:read",
+  // search
+  "GET /search": "resources:read",
+  // ssh keys
+  "GET /ssh-keys": "ssh-keys:read",
+  "POST /ssh-keys": "ssh-keys:write",
+  "POST /ssh-keys/import": "ssh-keys:write",
+  "DELETE /ssh-keys/{id}": "ssh-keys:write",
+  // ssh tunnels
+  "POST /ssh-tunnels/create-account": "accounts:write",
+  "POST /ssh-tunnels/open": "resources:execute",
+  "POST /ssh-tunnels/close": "resources:execute",
+  "GET /ssh-tunnels/active": "resources:execute",
+  "POST /ssh-tunnels/exec": "resources:execute",
+  // ws-token
+  "POST /ws-token": "resources:execute",
+  // team & roles
+  "GET /team/me": null,
+  "GET /team/permissions": "team:read",
+  "GET /team/roles": "team:read",
+  "POST /team/roles": "team:role:write",
+  "PATCH /team/roles/{id}": "team:role:write",
+  "DELETE /team/roles/{id}": "team:role:write",
+  "GET /team/members": "team:read",
+  "GET /team/invitations": "team:read",
+  "POST /team/invitations": "team:invite",
+  "DELETE /team/members/{id}": "team:remove",
+  "PATCH /team/members/{id}/role": "team:role:write",
+  "DELETE /team/invitations/{id}": "team:invite",
+  // billing
+  "GET /billing/status": "billing:read",
+  "POST /billing/checkout": "billing:write",
+  "POST /billing/portal": "billing:write",
+  // audit
+  "GET /audit-logs": "audit:read",
+  // api keys
+  "POST /api-keys": "apikeys:write",
+  "GET /api-keys": "apikeys:read",
+  "POST /api-keys/{id}/revoke": "apikeys:write",
+  "POST /api-keys/{id}/rotate": "apikeys:write",
+  // sync (bearer-auth, scopes mirror permissions)
+  "POST /v1/sync/pull": "resources:read",
+  "POST /v1/sync/push": "resources:write",
+  "GET /v1/sync/status": "resources:read",
+};
+
+/**
+ * Strip the org-scoping prefix so the lookup key matches the table above.
+ * `/api/org/{orgId}/foo` → `/foo`; `/api/v1/sync/pull` → `/v1/sync/pull`.
+ */
+function normalizePathForPermissionLookup(path: string): string {
+  return path.replace(/^\/api\/org\/\{orgId\}/, "").replace(/^\/api/, "");
+}
+
+function injectRequiredPermissions(doc: { paths?: Record<string, unknown> }) {
+  for (const [path, item] of Object.entries(doc.paths ?? {})) {
+    if (!item || typeof item !== "object") continue;
+    const pathItem = item as Record<string, Record<string, unknown> | undefined>;
+    const lookupPath = normalizePathForPermissionLookup(path);
+    for (const method of HTTP_METHODS) {
+      const op = pathItem[method];
+      if (!op) continue;
+      const key = `${method.toUpperCase()} ${lookupPath}`;
+      if (!(key in REQUIRED_PERMISSION)) continue;
+      const required = REQUIRED_PERMISSION[key];
+      if (required === null || required === undefined) continue;
+      op["x-required-permission"] = required;
+      const existingDesc = typeof op["description"] === "string" ? op["description"] : "";
+      const note = `_Requires permission: \`${required}\`._`;
+      op["description"] = existingDesc ? `${existingDesc}\n\n${note}` : note;
     }
   }
 }

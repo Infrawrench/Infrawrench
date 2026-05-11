@@ -12,6 +12,7 @@ import { encrypt, decrypt } from "../../services/encryption";
 import { openTunnel, closeTunnel, getActiveTunnels } from "../../services/ssh-tunnel";
 import type { SshTunnelConfig } from "@infrawrench/plugin-base";
 import { sshExec } from "../../services/ssh";
+import { requirePermission } from "../../auth/permissions";
 import type { AuthSession } from "../auth-middleware";
 
 declare module "hono" {
@@ -28,6 +29,7 @@ const app = new Hono();
  * This is the web equivalent of the desktop SshTunnelModal flow.
  */
 app.post("/create-account", async (c) => {
+  requirePermission(c, "accounts:write");
   const organizationId = c.get("organizationId");
   const input = await c.req.json<{
     sshHost: string;
@@ -114,6 +116,7 @@ app.post("/create-account", async (c) => {
  * Opens an SSH tunnel for an existing account that has an ssh_tunnel_configs row.
  */
 app.post("/open", async (c) => {
+  requirePermission(c, "resources:execute");
   const organizationId = c.get("organizationId");
   const input = await c.req.json<{ accountId: string }>();
 
@@ -151,6 +154,7 @@ app.post("/open", async (c) => {
  * POST /api/org/:orgId/ssh-tunnels/close
  */
 app.post("/close", async (c) => {
+  requirePermission(c, "resources:execute");
   const input = await c.req.json<{ tunnelId: string }>();
   closeTunnel(input.tunnelId);
   return c.json({ ok: true });
@@ -160,6 +164,7 @@ app.post("/close", async (c) => {
  * GET /api/org/:orgId/ssh-tunnels/active
  */
 app.get("/active", async (c) => {
+  requirePermission(c, "resources:execute");
   const organizationId = c.get("organizationId");
   const all = getActiveTunnels();
   // Filter to tunnels belonging to this org
@@ -181,6 +186,7 @@ app.get("/active", async (c) => {
  * Execute a command over SSH using an org SSH key.
  */
 app.post("/exec", async (c) => {
+  requirePermission(c, "resources:execute");
   const organizationId = c.get("organizationId");
   const input = await c.req.json<{
     sshHost: string;

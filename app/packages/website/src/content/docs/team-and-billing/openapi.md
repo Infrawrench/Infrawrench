@@ -27,13 +27,15 @@ Every operation accepts one of:
 - **`sessionCookie`** — the `wos-session` cookie set by `/callback`. Used by browser clients.
 - **`bearerAuth`** — a WorkOS access token (JWT) or an Infrawrench [API key](./api-keys.md). Used by scripts and CI.
 
-API keys must include the right scope for the operation:
+API keys must include the right scope for the operation. Scopes are **permission strings** — the same vocabulary used for [roles](./roles-and-permissions.md). Every operation that requires a permission carries an `x-required-permission` extension naming it, e.g.:
 
-| Scope                                | Used by                                             |
-| ------------------------------------ | --------------------------------------------------- |
-| `sync:read`                          | `POST /api/v1/sync/pull`, `GET /api/v1/sync/status` |
-| `sync:write`                         | `POST /api/v1/sync/push`                            |
-| `resources:read` / `resources:write` | Reserved for future fine-grained gating.            |
+```yaml
+post:
+  summary: Create an account
+  x-required-permission: accounts:write
+```
+
+The `Permission` enum component lists every recognised scope. Granted scopes can use wildcards (`resources:*:read`, `*`). Older keys created with `sync:read` / `sync:write` are migrated automatically the next time they authenticate to `resources:read` / `resources:write`.
 
 ## Generating client SDKs
 

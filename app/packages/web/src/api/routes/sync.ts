@@ -12,7 +12,7 @@ const app = new Hono();
 app.post("/pull", async (c) => {
   const auth = await authenticateApiRequest(c.req.raw);
   if (!auth) return c.json({ error: "Unauthorized" }, 401);
-  requireScope(auth, "sync:read");
+  requireScope(auth, "resources:read");
 
   const { lastSyncVersion } = await c.req.json<{ lastSyncVersion: number }>();
   const orgId = auth.organizationId;
@@ -78,7 +78,7 @@ app.post("/pull", async (c) => {
 app.post("/push", async (c) => {
   const auth = await authenticateApiRequest(c.req.raw);
   if (!auth) return c.json({ error: "Unauthorized" }, 401);
-  requireScope(auth, "sync:write");
+  requireScope(auth, "resources:write");
 
   const payload = await c.req.json<{
     accounts?: Array<{
@@ -222,6 +222,7 @@ app.post("/push", async (c) => {
 app.get("/status", async (c) => {
   const auth = await authenticateApiRequest(c.req.raw);
   if (!auth) return c.json({ error: "Unauthorized" }, 401);
+  requireScope(auth, "resources:read");
 
   const orgId = auth.organizationId;
 

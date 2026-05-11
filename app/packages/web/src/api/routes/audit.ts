@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { desc, eq, and, gte, lte, sql } from "drizzle-orm";
 import { db } from "../../db/client";
 import { auditLogs, users } from "../../db/schema";
+import { requirePermission } from "../../auth/permissions";
 import type { AuthSession } from "../auth-middleware";
 
 declare module "hono" {
@@ -14,6 +15,7 @@ const app = new Hono();
 
 /** GET /api/audit-logs */
 app.get("/", async (c) => {
+  requirePermission(c, "audit:read");
   const session = c.get("session");
   const page = parseInt(c.req.query("page") ?? "1", 10);
   const pageSize = parseInt(c.req.query("pageSize") ?? "25", 10);

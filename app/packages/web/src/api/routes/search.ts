@@ -3,6 +3,7 @@ import { eq, and, isNull } from "drizzle-orm";
 import { db } from "../../db/client";
 import { accounts, resources } from "../../db/schema";
 import { getPlugin } from "../../plugins/loader";
+import { requirePermission } from "../../auth/permissions";
 import type { AuthSession } from "../auth-middleware";
 
 declare module "hono" {
@@ -15,6 +16,7 @@ const app = new Hono();
 
 /** GET /api/search?q=... — search resources across all accounts */
 app.get("/", async (c) => {
+  requirePermission(c, "resources:read");
   const organizationId = c.get("organizationId");
   const q = (c.req.query("q") ?? "").toLowerCase().trim();
 

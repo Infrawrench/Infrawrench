@@ -4,6 +4,7 @@ import { sftpUpload, sftpDownloadToBuffer } from "../../services/sftp";
 import { getClientForAccount } from "../../services/plugin-clients";
 import { resolveSshConfig } from "../../services/ssh";
 import archiver from "archiver";
+import { requirePermission } from "../../auth/permissions";
 import type { AuthSession } from "../auth-middleware";
 
 declare module "hono" {
@@ -16,6 +17,7 @@ const app = new Hono();
 
 /** POST /api/v1/sftp/upload */
 app.post("/upload", async (c) => {
+  requirePermission(c, "storage:write");
   const organizationId = c.get("organizationId");
   const formData = await c.req.parseBody();
 
@@ -45,6 +47,7 @@ app.post("/upload", async (c) => {
 
 /** GET /api/v1/sftp/download */
 app.get("/download", async (c) => {
+  requirePermission(c, "storage:read");
   const organizationId = c.get("organizationId");
   const accountId = c.req.query("accountId");
   const pathsParam = c.req.query("paths");

@@ -5,6 +5,12 @@ import { workos, clientId } from "../auth/workos";
 import { verifyWorkosAccessToken } from "../auth/api-auth";
 import { db } from "../db/client";
 import { organizations, users, organizationMembers } from "../db/schema";
+import {
+  type ResolvedRole,
+  ensureSystemRoles,
+  getSystemRole,
+  resolveEffectivePermissions,
+} from "@infrawrench/server-core/permissions";
 import { v4 as uuid } from "uuid";
 
 export interface AuthSession {
@@ -16,6 +22,8 @@ declare module "hono" {
   interface ContextVariableMap {
     session: AuthSession;
     organizationId: string;
+    permissions: readonly string[];
+    role: ResolvedRole | null;
   }
 }
 
@@ -128,6 +136,24 @@ export const orgMiddleware = createMiddleware(async (c, next) => {
   return next();
 });
 
+/**
+ * Populates `permissions` (and `role`, where applicable) on the Hono context
+ * by resolving the current principal's effective permissions in the org.
+ * Must run after sessionMiddleware + orgMiddleware on session-authed routes,
+ * or be called manually for bearer-token endpoints.
+ */
+export const permissionsMiddleware = createMiddleware(async (c, next) => {
+  const session = c.get("session");
+  const orgId = c.get("organizationId");
+  const access = await resolveEffectivePermissions(orgId, {
+    kind: "user",
+    userId: session.userId,
+  });
+  c.set("permissions", access.permissions);
+  c.set("role", access.role);
+  return next();
+});
+
 export async function ensureUserFromClaims(
   userId: string,
   claimEmail: string | undefined,
@@ -185,6 +211,9 @@ export async function ensureMembership(userId: string, orgId: string) {
     })
     .onConflictDoNothing();
 
+  await ensureSystemRoles(orgId);
+  const ownerRole = await getSystemRole(orgId, "owner");
+
   await db
     .insert(organizationMembers)
     .values({
@@ -192,6 +221,29 @@ export async function ensureMembership(userId: string, orgId: string) {
       userId,
       organizationId: orgId,
       role: "owner",
+      roleId: ownerRole.id,
     })
     .onConflictDoNothing();
+
+  // Backfill roleId for legacy memberships that predate this column.
+  const existing = await db
+    .select({
+      id: organizationMembers.id,
+      roleId: organizationMembers.roleId,
+      role: organizationMembers.role,
+    })
+    .from(organizationMembers)
+    .where(
+      and(eq(organizationMembers.userId, userId), eq(organizationMembers.organizationId, orgId)),
+    )
+    .limit(1);
+  const m = existing[0];
+  if (m && !m.roleId) {
+    const key = m.role === "owner" || m.role === "admin" ? m.role : "member";
+    const role = await getSystemRole(orgId, key);
+    await db
+      .update(organizationMembers)
+      .set({ roleId: role.id })
+      .where(eq(organizationMembers.id, m.id));
+  }
 }

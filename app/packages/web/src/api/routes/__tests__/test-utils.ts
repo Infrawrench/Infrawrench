@@ -1,11 +1,12 @@
 import { Hono } from "hono";
+import { HTTPException } from "hono/http-exception";
 import type { AuthSession } from "@/api/auth-middleware";
 
 type AnyHono = Parameters<Hono["route"]>[1];
 
 /**
- * Build a test Hono app pre-populated with a fake auth session and
- * organization context, then mount the given route group at "/".
+ * Build a test Hono app pre-populated with a fake auth session, organization
+ * context, and full permissions, then mount the given route group at "/".
  *
  * All `__tests__/*.test.ts` files in this directory historically duplicated
  * this same scaffolding — this helper centralises it.
@@ -16,9 +17,17 @@ export function buildTestApp(routes: AnyHono): Hono {
     userId: "user-1",
     email: "test@example.com",
   };
+  app.onError((err, c) => {
+    if (err instanceof HTTPException) return err.getResponse();
+    throw err;
+  });
   app.use("*", async (c, next) => {
     c.set("session", session);
     c.set("organizationId", "org-1");
+    // Tests run as if the user has every permission; per-permission gating is
+    // covered by dedicated route tests when needed.
+    c.set("permissions", ["*"]);
+    c.set("role", null);
     return next();
   });
   app.route("/", routes);

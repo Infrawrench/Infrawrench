@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { v4 as uuid } from "uuid";
 import { db } from "../../db/client";
 import { organizations, organizationMembers } from "../../db/schema";
+import { ensureSystemRoles, getSystemRole } from "@infrawrench/server-core/permissions";
 import type { AuthSession } from "../auth-middleware";
 
 declare module "hono" {
@@ -28,11 +29,15 @@ app.post("/", async (c) => {
     displayName: displayName.trim(),
   });
 
+  await ensureSystemRoles(orgId);
+  const ownerRole = await getSystemRole(orgId, "owner");
+
   await db.insert(organizationMembers).values({
     id: uuid(),
     userId: session.userId,
     organizationId: orgId,
     role: "owner",
+    roleId: ownerRole.id,
   });
 
   return c.json({ id: orgId, displayName: displayName.trim() });

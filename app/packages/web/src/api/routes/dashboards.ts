@@ -6,6 +6,7 @@ import { db } from "../../db/client";
 import { dashboards, dashboardPins, resources, accounts } from "../../db/schema";
 import type { AuthSession } from "../auth-middleware";
 import { getPlugin } from "../../plugins/loader";
+import { requirePermission } from "../../auth/permissions";
 
 declare module "hono" {
   interface ContextVariableMap {
@@ -17,6 +18,7 @@ const app = new Hono();
 
 /** GET /api/dashboards — list all dashboards */
 app.get("/", async (c) => {
+  requirePermission(c, "dashboards:read");
   const organizationId = c.get("organizationId");
   const rows = await db
     .select({ id: dashboards.id, name: dashboards.name, isDefault: dashboards.isDefault })
@@ -28,6 +30,7 @@ app.get("/", async (c) => {
 
 /** POST /api/dashboards — create a dashboard */
 app.post("/", async (c) => {
+  requirePermission(c, "dashboards:write");
   const organizationId = c.get("organizationId");
   const { name } = await c.req.json<{ name: string }>();
   const [created] = await db
@@ -39,6 +42,7 @@ app.post("/", async (c) => {
 
 /** GET /api/dashboards/:id — get dashboard with pins */
 app.get("/:id", async (c) => {
+  requirePermission(c, "dashboards:read");
   const organizationId = c.get("organizationId");
   const dashboardId = c.req.param("id");
 
@@ -81,6 +85,7 @@ app.get("/:id", async (c) => {
 
 /** GET /api/dashboards/default/full — get-or-create default dashboard with pins */
 app.get("/default/full", async (c) => {
+  requirePermission(c, "dashboards:read");
   const organizationId = c.get("organizationId");
 
   let [defaultDashboard] = await db
@@ -128,6 +133,7 @@ app.get("/default/full", async (c) => {
 
 /** POST /api/dashboards/:id/rename */
 app.post("/:id/rename", async (c) => {
+  requirePermission(c, "dashboards:write");
   const organizationId = c.get("organizationId");
   const dashboardId = c.req.param("id");
   const { name } = await c.req.json<{ name: string }>();
@@ -140,6 +146,7 @@ app.post("/:id/rename", async (c) => {
 
 /** DELETE /api/dashboards/:id */
 app.delete("/:id", async (c) => {
+  requirePermission(c, "dashboards:write");
   const organizationId = c.get("organizationId");
   const dashboardId = c.req.param("id");
 
@@ -161,6 +168,7 @@ app.delete("/:id", async (c) => {
 
 /** POST /api/dashboards/pin */
 app.post("/pin", async (c) => {
+  requirePermission(c, "dashboards:write");
   const organizationId = c.get("organizationId");
   const { dashboardId, resourceId, gridX, gridY } = await c.req.json<{
     dashboardId: string;
@@ -202,6 +210,7 @@ app.post("/pin", async (c) => {
 
 /** POST /api/dashboards/:id/reorder — persist card order */
 app.post("/:id/reorder", async (c) => {
+  requirePermission(c, "dashboards:write");
   const organizationId = c.get("organizationId");
   const dashboardId = c.req.param("id");
   const { resourceIds } = await c.req.json<{ resourceIds: string[] }>();
@@ -230,6 +239,7 @@ app.post("/:id/reorder", async (c) => {
 
 /** POST /api/dashboards/unpin */
 app.post("/unpin", async (c) => {
+  requirePermission(c, "dashboards:write");
   const organizationId = c.get("organizationId");
   const { dashboardId, resourceId } = await c.req.json<{
     dashboardId: string;
@@ -253,6 +263,7 @@ app.post("/unpin", async (c) => {
 
 /** POST /api/dashboards/validate-tabs — validate which workspace tab targets still exist */
 app.post("/validate-tabs", async (c) => {
+  requirePermission(c, "dashboards:read");
   const organizationId = c.get("organizationId");
   const { tabs } = await c.req.json<{
     tabs: Array<{
@@ -346,6 +357,7 @@ function projectProbeStatus(row: {
 
 /** GET /api/dashboards/pin/:pinId — full enriched pin data + probed status */
 app.get("/pin/:pinId", async (c) => {
+  requirePermission(c, "dashboards:read");
   const organizationId = c.get("organizationId");
   const pinId = c.req.param("pinId");
 
@@ -402,6 +414,7 @@ app.get("/pin/:pinId", async (c) => {
 
 /** POST /api/dashboards/probe — read cached stats/metrics for dashboard cards */
 app.post("/probe", async (c) => {
+  requirePermission(c, "dashboards:read");
   const organizationId = c.get("organizationId");
   const { items } = await c.req.json<{
     items: Array<{

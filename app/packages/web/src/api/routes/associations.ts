@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from "uuid";
 import { db } from "../../db/client";
 import { associations, secretFieldStates, resources } from "../../db/schema";
 import { encrypt } from "../../services/encryption";
+import { requirePermission } from "../../auth/permissions";
 import type { AuthSession } from "../auth-middleware";
 
 declare module "hono" {
@@ -16,6 +17,7 @@ const app = new Hono();
 
 /** POST /api/associations — create or update an association */
 app.post("/", async (c) => {
+  requirePermission(c, "secrets:write");
   const organizationId = c.get("organizationId");
   const input = await c.req.json<{
     consumerResourceId: string;
@@ -91,6 +93,7 @@ app.post("/", async (c) => {
 
 /** POST /api/associations/literal — set a secret field to a literal value */
 app.post("/literal", async (c) => {
+  requirePermission(c, "secrets:write");
   const organizationId = c.get("organizationId");
   const input = await c.req.json<{
     resourceId: string;

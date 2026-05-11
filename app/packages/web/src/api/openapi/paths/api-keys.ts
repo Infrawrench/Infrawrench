@@ -1,10 +1,13 @@
 import { z } from "../zod";
-import { strict, ErrorResponses, OrgIdParam, Uuid, IsoDateTime, Ok } from "../common";
+import { strict, ErrorResponses, OrgIdParam, Uuid, IsoDateTime, Ok, Permission } from "../common";
 import type { BuildContext } from "../index";
 
-const Scope = z
-  .enum(["sync:read", "sync:write", "resources:read", "resources:write"])
-  .openapi("ApiKeyScope");
+/**
+ * API key scopes mirror the same permission strings used for role-based UI
+ * authorization. Granted scopes may include exact permissions from the
+ * `Permission` enum or wildcards (e.g. `resources:*:read`, `*`).
+ */
+const Scope = Permission;
 
 const ApiKey = strict({
   id: Uuid,

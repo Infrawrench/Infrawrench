@@ -3,6 +3,11 @@ import { v4 as uuid } from "uuid";
 import { eq, and, isNull, gt } from "drizzle-orm";
 import { db } from "../../db/client";
 import { invitations, organizations, organizationMembers } from "../../db/schema";
+import {
+  ensureSystemRoles,
+  getSystemRole,
+  isSystemRoleKey,
+} from "@infrawrench/server-core/permissions";
 import type { AuthSession } from "../auth-middleware";
 
 declare module "hono" {
@@ -74,6 +79,16 @@ app.post("/accept", async (c) => {
     return c.json({ error: "This invitation was sent to a different email address" }, 403);
   }
 
+  await ensureSystemRoles(invite.organizationId);
+  // Resolve roleId: prefer the explicit invitation roleId; otherwise map the
+  // legacy text role to the matching system role.
+  let assignedRoleId = invite.roleId;
+  if (!assignedRoleId) {
+    const key = isSystemRoleKey(invite.role) ? invite.role : "member";
+    const sys = await getSystemRole(invite.organizationId, key);
+    assignedRoleId = sys.id;
+  }
+
   await db
     .insert(organizationMembers)
     .values({
@@ -81,6 +96,7 @@ app.post("/accept", async (c) => {
       userId: session.userId,
       organizationId: invite.organizationId,
       role: invite.role,
+      roleId: assignedRoleId,
     })
     .onConflictDoNothing();
 

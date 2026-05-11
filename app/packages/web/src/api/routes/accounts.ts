@@ -6,6 +6,7 @@ import { accounts, resources } from "../../db/schema";
 import { encrypt, decrypt } from "../../services/encryption";
 import { loadPlugins, getPlugin } from "../../plugins/loader";
 import { syncAccountResources, syncAccountResourceType } from "../../services/sync-resources";
+import { requirePermission } from "../../auth/permissions";
 import type { AuthSession } from "../auth-middleware";
 
 declare module "hono" {
@@ -18,6 +19,7 @@ const app = new Hono();
 
 /** GET /api/plugins — list available plugins */
 app.get("/plugins", async (c) => {
+  requirePermission(c, "accounts:read");
   const plugins = await loadPlugins();
   return c.json(
     plugins.map((p) => ({
@@ -39,6 +41,7 @@ app.get("/plugins", async (c) => {
 
 /** GET /api/accounts — list accounts */
 app.get("/", async (c) => {
+  requirePermission(c, "accounts:read");
   const organizationId = c.get("organizationId");
   const rows = await db
     .select({
@@ -54,6 +57,7 @@ app.get("/", async (c) => {
 
 /** POST /api/accounts — create an account */
 app.post("/", async (c) => {
+  requirePermission(c, "accounts:write");
   const organizationId = c.get("organizationId");
   const { pluginId, displayName, credentials } = await c.req.json<{
     pluginId: string;
@@ -88,6 +92,7 @@ app.post("/", async (c) => {
 
 /** DELETE /api/accounts/:id */
 app.delete("/:id", async (c) => {
+  requirePermission(c, "accounts:delete");
   const organizationId = c.get("organizationId");
   const accountId = c.req.param("id");
   await db
@@ -98,6 +103,7 @@ app.delete("/:id", async (c) => {
 
 /** PATCH /api/accounts/:id — rename account */
 app.patch("/:id", async (c) => {
+  requirePermission(c, "accounts:write");
   const organizationId = c.get("organizationId");
   const accountId = c.req.param("id");
   const { displayName } = await c.req.json<{ displayName: string }>();
@@ -118,6 +124,7 @@ app.patch("/:id", async (c) => {
 
 /** GET /api/accounts/:id/credentials — get decrypted credentials */
 app.get("/:id/credentials", async (c) => {
+  requirePermission(c, "secrets:read");
   const organizationId = c.get("organizationId");
   const accountId = c.req.param("id");
   const [row] = await db
@@ -134,6 +141,7 @@ app.get("/:id/credentials", async (c) => {
 
 /** GET /api/accounts/:id/resources — list resources for account */
 app.get("/:id/resources", async (c) => {
+  requirePermission(c, "resources:read");
   const organizationId = c.get("organizationId");
   const accountId = c.req.param("id");
   const topLevelOnly = c.req.query("topLevelOnly") === "true";
@@ -164,6 +172,7 @@ app.get("/:id/resources", async (c) => {
 
 /** POST /api/accounts/:id/sync — sync resources from plugin API */
 app.post("/:id/sync", async (c) => {
+  requirePermission(c, "resources:read");
   const organizationId = c.get("organizationId");
   const accountId = c.req.param("id");
   const result = await syncAccountResources(accountId, organizationId);
@@ -172,6 +181,7 @@ app.post("/:id/sync", async (c) => {
 
 /** GET /api/accounts/:id/detail — account metadata + resource types (no resources, no sync) */
 app.get("/:id/detail", async (c) => {
+  requirePermission(c, "accounts:read");
   const organizationId = c.get("organizationId");
   const accountId = c.req.param("id");
 
@@ -206,6 +216,7 @@ app.get("/:id/detail", async (c) => {
 
 /** POST /api/accounts/:id/sync-type/:typeId — sync a single resource type and return its resources */
 app.post("/:id/sync-type/:typeId", async (c) => {
+  requirePermission(c, "resources:read");
   const organizationId = c.get("organizationId");
   const accountId = c.req.param("id");
   const typeId = c.req.param("typeId");

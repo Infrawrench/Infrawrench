@@ -1,4 +1,5 @@
 import { z } from "./zod";
+import { ALL_PERMISSIONS } from "@infrawrench/server-core/permissions";
 
 /** Strict object helper — refuses unknown properties. */
 export const strict = <T extends z.ZodRawShape>(shape: T) => z.object(shape).strict();
@@ -17,6 +18,19 @@ export const ErrorResponse = strict({
 }).openapi("Error");
 
 export const Role = z.enum(["owner", "admin", "member"]).openapi("OrganizationRole");
+
+/**
+ * Catalog of permission strings recognised by the server. Granted permissions
+ * stored on roles or API keys may also use wildcards (e.g. `resources:*:read`
+ * or `*`); see the per-operation `x-required-permission` extension for what
+ * each endpoint checks.
+ */
+export const Permission = z
+  .enum(ALL_PERMISSIONS as unknown as [string, ...string[]])
+  .openapi("Permission", {
+    description:
+      "A permission string. Roles may grant exact permissions like the entries in this enum, or wildcards (e.g. `resources:*:read`, `*`).",
+  });
 
 export const ResourceStatus = z
   .enum(["healthy", "warning", "error", "unknown", "pending", "stopped"])

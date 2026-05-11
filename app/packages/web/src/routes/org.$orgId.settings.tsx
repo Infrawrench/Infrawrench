@@ -11,6 +11,7 @@ function SettingsLayout() {
   const navItems = [
     { to: `/org/${orgId}/settings`, label: "General" },
     { to: `/org/${orgId}/settings/team`, label: "Team" },
+    { to: `/org/${orgId}/settings/roles`, label: "Roles" },
     { to: `/org/${orgId}/settings/ssh-keys`, label: "SSH Keys" },
     { to: `/org/${orgId}/settings/api-keys`, label: "API Keys" },
     { to: `/org/${orgId}/settings/billing`, label: "Billing" },

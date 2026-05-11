@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { apiReference } from "@scalar/hono-api-reference";
-import { sessionMiddleware, orgMiddleware } from "./auth-middleware";
+import { sessionMiddleware, orgMiddleware, permissionsMiddleware } from "./auth-middleware";
 import { workos, clientId } from "../auth/workos";
 import { getOpenApiDocument } from "./openapi/index";
 
@@ -89,6 +89,7 @@ api.route("/api", authed);
 const orgScoped = new Hono();
 orgScoped.use("*", sessionMiddleware);
 orgScoped.use("*", orgMiddleware);
+orgScoped.use("*", permissionsMiddleware);
 
 orgScoped.route("/dashboards", dashboardRoutes);
 orgScoped.route("/accounts", accountRoutes);

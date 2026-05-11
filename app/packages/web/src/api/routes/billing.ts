@@ -4,6 +4,7 @@ import { v4 as uuid } from "uuid";
 import { db } from "../../db/client";
 import { subscriptions } from "../../db/schema";
 import { getStripe, getStripePriceId } from "../../services/stripe";
+import { requirePermission } from "../../auth/permissions";
 import type { AuthSession } from "../auth-middleware";
 
 declare module "hono" {
@@ -16,6 +17,7 @@ const app = new Hono();
 
 /** GET /api/billing/status */
 app.get("/status", async (c) => {
+  requirePermission(c, "billing:read");
   const session = c.get("session");
   const [sub] = await db
     .select()
@@ -32,6 +34,7 @@ app.get("/status", async (c) => {
 
 /** POST /api/billing/checkout */
 app.post("/checkout", async (c) => {
+  requirePermission(c, "billing:write");
   const session = c.get("session");
   const stripe = getStripe();
   const priceId = getStripePriceId();
@@ -75,6 +78,7 @@ app.post("/checkout", async (c) => {
 
 /** POST /api/billing/portal */
 app.post("/portal", async (c) => {
+  requirePermission(c, "billing:write");
   const session = c.get("session");
   const stripe = getStripe();
 

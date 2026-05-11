@@ -1,10 +1,18 @@
 import { Hono } from "hono";
 import { v4 as uuid } from "uuid";
 import { randomBytes } from "node:crypto";
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and, isNull, sql } from "drizzle-orm";
 import { db } from "../../db/client";
-import { users, invitations, organizationMembers } from "../../db/schema";
+import { users, invitations, organizationMembers, roles } from "../../db/schema";
 import { logAudit } from "../../services/audit";
+import { requirePermission } from "../../auth/permissions";
+import {
+  ALL_PERMISSIONS,
+  ensureSystemRoles,
+  getSystemRole,
+  isSystemRoleKey,
+  systemRolePermissions,
+} from "@infrawrench/server-core/permissions";
 import type { AuthSession } from "../auth-middleware";
 
 declare module "hono" {
@@ -16,8 +24,196 @@ declare module "hono" {
 
 const app = new Hono();
 
+interface SerializedRole {
+  id: string;
+  name: string;
+  description: string | null;
+  isSystem: boolean;
+  systemKey: string | null;
+  permissions: string[];
+}
+
+function serializeRole(row: typeof roles.$inferSelect): SerializedRole {
+  const permissions =
+    row.isSystem && isSystemRoleKey(row.systemKey)
+      ? [...(systemRolePermissions(row.systemKey) ?? [])]
+      : ((row.permissions as string[]) ?? []);
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    isSystem: row.isSystem,
+    systemKey: row.systemKey,
+    permissions,
+  };
+}
+
+/** GET /api/org/:orgId/team/me — current user's effective permissions and role. */
+app.get("/me", async (c) => {
+  const role = c.get("role");
+  const permissions = c.get("permissions") ?? [];
+  const session = c.get("session");
+  return c.json({
+    userId: session.userId,
+    email: session.email,
+    role: role
+      ? {
+          id: role.id,
+          name: role.name,
+          description: role.description,
+          isSystem: role.isSystem,
+          systemKey: role.systemKey,
+        }
+      : null,
+    permissions: [...permissions],
+  });
+});
+
+/** GET /api/org/:orgId/team/permissions — catalog of all known permission strings. */
+app.get("/permissions", async (c) => {
+  requirePermission(c, "team:read");
+  return c.json({ permissions: [...ALL_PERMISSIONS] });
+});
+
+/** GET /api/org/:orgId/team/roles — list all roles (system + custom). */
+app.get("/roles", async (c) => {
+  requirePermission(c, "team:read");
+  const organizationId = c.get("organizationId");
+  await ensureSystemRoles(organizationId);
+  const rows = await db.select().from(roles).where(eq(roles.organizationId, organizationId));
+  return c.json(rows.map(serializeRole));
+});
+
+/** POST /api/org/:orgId/team/roles — create a custom role. */
+app.post("/roles", async (c) => {
+  requirePermission(c, "team:role:write");
+  const organizationId = c.get("organizationId");
+  const session = c.get("session");
+  const { name, description, permissions } = await c.req.json<{
+    name: string;
+    description?: string;
+    permissions: string[];
+  }>();
+  if (!name?.trim()) return c.json({ error: "Name is required" }, 400);
+  const cleanPerms = Array.isArray(permissions)
+    ? permissions.filter((p) => typeof p === "string")
+    : [];
+  const id = uuid();
+  await db.insert(roles).values({
+    id,
+    organizationId,
+    name: name.trim(),
+    description: description?.trim() || null,
+    isSystem: false,
+    systemKey: null,
+    permissions: cleanPerms,
+  });
+  void logAudit({
+    organizationId,
+    userId: session.userId,
+    action: "role.create",
+    entityType: "role",
+    entityId: id,
+    metadata: { name: name.trim(), permissions: cleanPerms },
+  });
+  const [row] = await db.select().from(roles).where(eq(roles.id, id));
+  return c.json(row ? serializeRole(row) : { id, name: name.trim(), permissions: cleanPerms });
+});
+
+/** PATCH /api/org/:orgId/team/roles/:id — edit a custom role. */
+app.patch("/roles/:id", async (c) => {
+  requirePermission(c, "team:role:write");
+  const organizationId = c.get("organizationId");
+  const session = c.get("session");
+  const roleId = c.req.param("id");
+  const { name, description, permissions } = await c.req.json<{
+    name?: string;
+    description?: string | null;
+    permissions?: string[];
+  }>();
+
+  const [existing] = await db
+    .select()
+    .from(roles)
+    .where(and(eq(roles.id, roleId), eq(roles.organizationId, organizationId)))
+    .limit(1);
+  if (!existing) return c.json({ error: "Role not found" }, 404);
+  if (existing.isSystem) return c.json({ error: "System roles cannot be edited" }, 422);
+
+  const updates: Partial<typeof roles.$inferInsert> = { updatedAt: new Date() };
+  if (typeof name === "string" && name.trim()) updates.name = name.trim();
+  if (description !== undefined) updates.description = description?.toString().trim() || null;
+  if (Array.isArray(permissions))
+    updates.permissions = permissions.filter((p) => typeof p === "string");
+
+  await db.update(roles).set(updates).where(eq(roles.id, roleId));
+  void logAudit({
+    organizationId,
+    userId: session.userId,
+    action: "role.update",
+    entityType: "role",
+    entityId: roleId,
+    metadata: { updates },
+  });
+  const [row] = await db.select().from(roles).where(eq(roles.id, roleId));
+  return c.json(row ? serializeRole(row) : { ok: true });
+});
+
+/** DELETE /api/org/:orgId/team/roles/:id — delete a custom role. */
+app.delete("/roles/:id", async (c) => {
+  requirePermission(c, "team:role:write");
+  const organizationId = c.get("organizationId");
+  const session = c.get("session");
+  const roleId = c.req.param("id");
+
+  const [existing] = await db
+    .select()
+    .from(roles)
+    .where(and(eq(roles.id, roleId), eq(roles.organizationId, organizationId)))
+    .limit(1);
+  if (!existing) return c.json({ error: "Role not found" }, 404);
+  if (existing.isSystem) return c.json({ error: "System roles cannot be deleted" }, 422);
+
+  // Reject if any member or pending invitation still references the role.
+  const [memberCount] = await db
+    .select({ n: sql<number>`count(*)` })
+    .from(organizationMembers)
+    .where(eq(organizationMembers.roleId, roleId));
+  if ((memberCount?.n ?? 0) > 0) {
+    return c.json(
+      {
+        error: "Role is assigned to one or more members. Reassign them before deleting.",
+      },
+      409,
+    );
+  }
+  const [inviteCount] = await db
+    .select({ n: sql<number>`count(*)` })
+    .from(invitations)
+    .where(and(eq(invitations.roleId, roleId), isNull(invitations.acceptedAt)));
+  if ((inviteCount?.n ?? 0) > 0) {
+    return c.json(
+      {
+        error: "Role is referenced by pending invitations. Cancel them before deleting.",
+      },
+      409,
+    );
+  }
+
+  await db.delete(roles).where(eq(roles.id, roleId));
+  void logAudit({
+    organizationId,
+    userId: session.userId,
+    action: "role.delete",
+    entityType: "role",
+    entityId: roleId,
+  });
+  return c.json({ ok: true });
+});
+
 /** GET /api/org/:orgId/team/members */
 app.get("/members", async (c) => {
+  requirePermission(c, "team:read");
   const organizationId = c.get("organizationId");
   const rows = await db
     .select({
@@ -25,36 +221,68 @@ app.get("/members", async (c) => {
       email: users.email,
       displayName: users.displayName,
       role: organizationMembers.role,
+      roleId: organizationMembers.roleId,
+      roleName: roles.name,
+      roleSystemKey: roles.systemKey,
       createdAt: organizationMembers.createdAt,
     })
     .from(organizationMembers)
     .innerJoin(users, eq(organizationMembers.userId, users.id))
+    .leftJoin(roles, eq(organizationMembers.roleId, roles.id))
     .where(eq(organizationMembers.organizationId, organizationId));
   return c.json(rows);
 });
 
 /** GET /api/org/:orgId/team/invitations */
 app.get("/invitations", async (c) => {
+  requirePermission(c, "team:read");
   const organizationId = c.get("organizationId");
   const rows = await db
     .select({
       id: invitations.id,
       email: invitations.email,
       role: invitations.role,
+      roleId: invitations.roleId,
+      roleName: roles.name,
       acceptedAt: invitations.acceptedAt,
       expiresAt: invitations.expiresAt,
       createdAt: invitations.createdAt,
     })
     .from(invitations)
+    .leftJoin(roles, eq(invitations.roleId, roles.id))
     .where(eq(invitations.organizationId, organizationId));
   return c.json(rows);
 });
 
 /** POST /api/org/:orgId/team/invitations */
 app.post("/invitations", async (c) => {
+  requirePermission(c, "team:invite");
   const session = c.get("session");
   const organizationId = c.get("organizationId");
-  const { email, role } = await c.req.json<{ email: string; role: string }>();
+  const body = await c.req.json<{ email: string; role?: string; roleId?: string }>();
+  const email = body.email;
+
+  // Resolve the role: prefer explicit roleId, fall back to the legacy text role
+  // mapped to a system role.
+  let resolvedRoleId: string | null = null;
+  let legacyRole = "member";
+  if (body.roleId) {
+    const [r] = await db
+      .select()
+      .from(roles)
+      .where(and(eq(roles.id, body.roleId), eq(roles.organizationId, organizationId)))
+      .limit(1);
+    if (!r) return c.json({ error: "Role not found" }, 404);
+    resolvedRoleId = r.id;
+    legacyRole = isSystemRoleKey(r.systemKey) ? r.systemKey : "member";
+  } else if (body.role) {
+    legacyRole = body.role;
+    if (isSystemRoleKey(body.role)) {
+      const sys = await getSystemRole(organizationId, body.role);
+      resolvedRoleId = sys.id;
+    }
+  }
+
   const token = randomBytes(32).toString("base64url");
   const id = uuid();
 
@@ -62,7 +290,8 @@ app.post("/invitations", async (c) => {
     id,
     organizationId,
     email,
-    role,
+    role: legacyRole,
+    roleId: resolvedRoleId,
     invitedByUserId: session.userId,
     token,
     expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
@@ -74,7 +303,7 @@ app.post("/invitations", async (c) => {
     action: "member.invite",
     entityType: "member",
     entityId: id,
-    metadata: { email, role },
+    metadata: { email, role: legacyRole, roleId: resolvedRoleId },
   });
 
   return c.json({ id, token });
@@ -82,6 +311,7 @@ app.post("/invitations", async (c) => {
 
 /** DELETE /api/org/:orgId/team/members/:id */
 app.delete("/members/:id", async (c) => {
+  requirePermission(c, "team:remove");
   const session = c.get("session");
   const organizationId = c.get("organizationId");
   const userId = c.req.param("id");
@@ -105,16 +335,41 @@ app.delete("/members/:id", async (c) => {
   return c.json({ ok: true });
 });
 
-/** PATCH /api/org/:orgId/team/members/:id/role */
+/**
+ * PATCH /api/org/:orgId/team/members/:id/role
+ *
+ * Accepts either `{ roleId }` (preferred) or `{ role }` (legacy text role,
+ * mapped to the matching system role).
+ */
 app.patch("/members/:id/role", async (c) => {
+  requirePermission(c, "team:role:write");
   const session = c.get("session");
   const organizationId = c.get("organizationId");
   const userId = c.req.param("id");
-  const { role } = await c.req.json<{ role: string }>();
+  const body = await c.req.json<{ role?: string; roleId?: string }>();
+
+  let newRoleId: string;
+  let legacyRole = "member";
+  if (body.roleId) {
+    const [r] = await db
+      .select()
+      .from(roles)
+      .where(and(eq(roles.id, body.roleId), eq(roles.organizationId, organizationId)))
+      .limit(1);
+    if (!r) return c.json({ error: "Role not found" }, 404);
+    newRoleId = r.id;
+    legacyRole = isSystemRoleKey(r.systemKey) ? r.systemKey : "member";
+  } else if (body.role && isSystemRoleKey(body.role)) {
+    const sys = await getSystemRole(organizationId, body.role);
+    newRoleId = sys.id;
+    legacyRole = body.role;
+  } else {
+    return c.json({ error: "Provide roleId or a system role name" }, 400);
+  }
 
   await db
     .update(organizationMembers)
-    .set({ role })
+    .set({ role: legacyRole, roleId: newRoleId })
     .where(
       and(
         eq(organizationMembers.userId, userId),
@@ -128,13 +383,14 @@ app.patch("/members/:id/role", async (c) => {
     action: "member.role_change",
     entityType: "member",
     entityId: userId,
-    metadata: { newRole: role },
+    metadata: { newRoleId, legacyRole },
   });
   return c.json({ ok: true });
 });
 
 /** DELETE /api/org/:orgId/team/invitations/:id */
 app.delete("/invitations/:id", async (c) => {
+  requirePermission(c, "team:invite");
   const organizationId = c.get("organizationId");
   const invitationId = c.req.param("id");
   await db

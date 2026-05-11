@@ -5,6 +5,7 @@ import { eq, and, isNull } from "drizzle-orm";
 import { db } from "../../db/client";
 import { apiKeys } from "../../db/schema";
 import { logAudit } from "../../services/audit";
+import { requirePermission } from "../../auth/permissions";
 import type { AuthSession } from "../auth-middleware";
 
 declare module "hono" {
@@ -17,6 +18,7 @@ const app = new Hono();
 
 /** POST /api/api-keys — create a new API key */
 app.post("/", async (c) => {
+  requirePermission(c, "apikeys:write");
   const session = c.get("session");
   const { name, scopes, expiresAt } = await c.req.json<{
     name: string;
@@ -55,6 +57,7 @@ app.post("/", async (c) => {
 
 /** GET /api/api-keys — list API keys */
 app.get("/", async (c) => {
+  requirePermission(c, "apikeys:read");
   const session = c.get("session");
   const rows = await db
     .select({
@@ -74,6 +77,7 @@ app.get("/", async (c) => {
 
 /** POST /api/api-keys/:id/revoke */
 app.post("/:id/revoke", async (c) => {
+  requirePermission(c, "apikeys:write");
   const session = c.get("session");
   const keyId = c.req.param("id");
   await db
@@ -99,6 +103,7 @@ app.post("/:id/revoke", async (c) => {
 
 /** POST /api/api-keys/:id/rotate */
 app.post("/:id/rotate", async (c) => {
+  requirePermission(c, "apikeys:write");
   const session = c.get("session");
   const keyId = c.req.param("id");
 

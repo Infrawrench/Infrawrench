@@ -5,6 +5,7 @@ import { promisify } from "node:util";
 import { db } from "../../db/client";
 import { sshKeys, users } from "../../db/schema";
 import { encrypt, decrypt } from "../../services/encryption";
+import { requirePermission } from "../../auth/permissions";
 import type { AuthSession } from "../auth-middleware";
 
 const generateKeyPair = promisify(crypto.generateKeyPair);
@@ -166,6 +167,7 @@ function validateSshPublicKey(key: string): { keyType: string; publicKey: string
  * Returns owner info so the UI can show who owns each key.
  */
 app.get("/", async (c) => {
+  requirePermission(c, "ssh-keys:read");
   const organizationId = c.get("organizationId");
   const rows = await db
     .select({
@@ -213,6 +215,7 @@ app.get("/", async (c) => {
  * public key + private key to the caller (private key is only returned once).
  */
 app.post("/", async (c) => {
+  requirePermission(c, "ssh-keys:write");
   const organizationId = c.get("organizationId");
   const { userId } = c.get("session");
   const { name } = await c.req.json<{ name: string }>();
@@ -274,6 +277,7 @@ app.post("/", async (c) => {
  * The key is shared with all org members.
  */
 app.post("/import", async (c) => {
+  requirePermission(c, "ssh-keys:write");
   const organizationId = c.get("organizationId");
   const { userId } = c.get("session");
   const { name, publicKey: rawPublicKey } = await c.req.json<{
@@ -325,6 +329,7 @@ app.post("/import", async (c) => {
 
 /** DELETE /api/ssh-keys/:id — delete a key (only the owner can delete their own) */
 app.delete("/:id", async (c) => {
+  requirePermission(c, "ssh-keys:write");
   const organizationId = c.get("organizationId");
   const { userId } = c.get("session");
   const id = c.req.param("id");

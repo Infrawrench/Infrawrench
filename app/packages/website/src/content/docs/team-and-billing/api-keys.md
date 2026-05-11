@@ -37,11 +37,15 @@ See the [API reference](./openapi.md) for endpoints. Everything the UI does, the
 
 There is no built-in rotate. Issue a new key, update your scripts, then revoke the old one.
 
-## Scoping and limits
+## Scopes
 
-- Keys are scoped to the issuing user’s role.
-- You can limit a key to specific accounts at creation time.
-- No per-endpoint scoping yet.
+API keys carry an explicit list of **permission strings** (scopes). The same vocabulary used for [roles](./roles-and-permissions.md) is used for API keys, so `resources:read` on a key gates the same endpoints as `resources:read` on a role.
+
+When you create a key you pick its scopes. Pick the narrowest set that gets the job done — a CI deploy key might only need `accounts:read` + `resources:read`, while a sync agent for the desktop app needs `resources:read` + `resources:write`.
+
+Wildcard scopes are honored: `resources:*:read`, `resources:postgres:*`, or just `*` for full access. The exact catalogue is documented in the [API reference](./openapi.md) under each operation's `x-required-permission` extension. The OpenAPI spec also exposes a `Permission` enum listing every recognised string.
+
+Older keys created with the deprecated `sync:read` / `sync:write` scopes are migrated automatically the next time they authenticate.
 
 ## Audit
 

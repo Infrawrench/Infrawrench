@@ -1,12 +1,50 @@
 import { z } from "../zod";
-import { strict, ErrorResponses, Uuid, Ok, OrgIdParam, Email, Role, IsoDateTime } from "../common";
+import {
+  strict,
+  ErrorResponse,
+  ErrorResponses,
+  Uuid,
+  Ok,
+  OrgIdParam,
+  Email,
+  Role,
+  IsoDateTime,
+  Permission,
+} from "../common";
 import type { BuildContext } from "../index";
+
+const RoleSummary = strict({
+  id: Uuid,
+  name: z.string(),
+  description: z.string().nullable(),
+  isSystem: z.boolean(),
+  systemKey: z.string().nullable(),
+}).openapi("RoleSummary");
+
+const RoleDetail = RoleSummary.extend({
+  permissions: z.array(Permission),
+}).openapi("Role");
+
+const RoleCreateRequest = strict({
+  name: z.string().min(1),
+  description: z.string().optional(),
+  permissions: z.array(Permission),
+}).openapi("RoleCreateRequest");
+
+const RoleUpdateRequest = strict({
+  name: z.string().optional(),
+  description: z.string().nullable().optional(),
+  permissions: z.array(Permission).optional(),
+}).openapi("RoleUpdateRequest");
 
 const Member = strict({
   id: Uuid,
   email: Email,
   displayName: z.string().nullable(),
   role: Role,
+  roleId: Uuid.nullable(),
+  roleName: z.string().nullable(),
+  roleSystemKey: z.string().nullable(),
   createdAt: IsoDateTime,
 }).openapi("OrgMember");
 
@@ -14,19 +52,120 @@ const Invitation = strict({
   id: Uuid,
   email: Email,
   role: Role,
+  roleId: Uuid.nullable(),
+  roleName: z.string().nullable(),
   acceptedAt: IsoDateTime.nullable(),
   expiresAt: IsoDateTime,
   createdAt: IsoDateTime,
 }).openapi("Invitation");
 
-const InviteRequest = strict({ email: Email, role: Role }).openapi("InviteRequest");
+const InviteRequest = strict({
+  email: Email,
+  role: Role.optional(),
+  roleId: Uuid.optional(),
+}).openapi("InviteRequest");
 const InviteResponse = strict({ id: Uuid, token: z.string() }).openapi("InviteResponse");
 
-const RoleChangeRequest = strict({ role: Role }).openapi("RoleChangeRequest");
+const RoleChangeRequest = strict({
+  role: Role.optional(),
+  roleId: Uuid.optional(),
+}).openapi("RoleChangeRequest");
+
+const MeResponse = strict({
+  userId: z.string(),
+  email: Email,
+  role: RoleSummary.nullable(),
+  permissions: z.array(Permission),
+}).openapi("MeResponse");
+
+const PermissionCatalog = strict({ permissions: z.array(Permission) }).openapi("PermissionCatalog");
 
 export function registerTeamPaths(ctx: BuildContext) {
   const { registry } = ctx;
   const idParams = OrgIdParam.extend({ id: Uuid.openapi({ param: { name: "id", in: "path" } }) });
+
+  registry.registerPath({
+    method: "get",
+    path: "/api/org/{orgId}/team/me",
+    tags: ["Team"],
+    summary: "Current user's effective permissions and role",
+    request: { params: OrgIdParam },
+    responses: {
+      200: { description: "Permissions", content: { "application/json": { schema: MeResponse } } },
+    },
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/api/org/{orgId}/team/permissions",
+    tags: ["Team"],
+    summary: "List all permission strings the server recognises",
+    request: { params: OrgIdParam },
+    responses: {
+      200: {
+        description: "Catalog",
+        content: { "application/json": { schema: PermissionCatalog } },
+      },
+    },
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/api/org/{orgId}/team/roles",
+    tags: ["Team"],
+    summary: "List roles (system + custom)",
+    request: { params: OrgIdParam },
+    responses: {
+      200: {
+        description: "Roles",
+        content: { "application/json": { schema: z.array(RoleDetail) } },
+      },
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/team/roles",
+    tags: ["Team"],
+    summary: "Create a custom role",
+    request: {
+      params: OrgIdParam,
+      body: { content: { "application/json": { schema: RoleCreateRequest } }, required: true },
+    },
+    responses: {
+      200: { description: "Created", content: { "application/json": { schema: RoleDetail } } },
+    },
+  });
+
+  registry.registerPath({
+    method: "patch",
+    path: "/api/org/{orgId}/team/roles/{id}",
+    tags: ["Team"],
+    summary: "Edit a custom role",
+    request: {
+      params: idParams,
+      body: { content: { "application/json": { schema: RoleUpdateRequest } }, required: true },
+    },
+    responses: {
+      200: { description: "Updated", content: { "application/json": { schema: RoleDetail } } },
+      404: ErrorResponses[404],
+      422: ErrorResponses[400],
+    },
+  });
+
+  registry.registerPath({
+    method: "delete",
+    path: "/api/org/{orgId}/team/roles/{id}",
+    tags: ["Team"],
+    summary: "Delete a custom role (must have no members or pending invitations)",
+    request: { params: idParams },
+    responses: {
+      200: { description: "Deleted", content: { "application/json": { schema: Ok } } },
+      404: ErrorResponses[404],
+      409: { description: "Conflict", content: { "application/json": { schema: ErrorResponse } } },
+      422: ErrorResponses[400],
+    },
+  });
 
   registry.registerPath({
     method: "get",

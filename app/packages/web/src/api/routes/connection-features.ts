@@ -8,6 +8,7 @@ import {
 import { rewriteConnectionForTunnel } from "../../services/tunnel-resolver";
 import { getClientForAccount, getClientForResource } from "../../services/plugin-clients";
 import { resolveSshConfig } from "../../services/ssh";
+import { requirePermission } from "../../auth/permissions";
 import type { AuthSession } from "../auth-middleware";
 
 declare module "hono" {
@@ -20,6 +21,7 @@ const app = new Hono();
 
 /** POST /api/sql/query */
 app.post("/sql/query", async (c) => {
+  requirePermission(c, "resources:execute");
   const organizationId = c.get("organizationId");
   const input = await c.req.json<{
     accountId: string;
@@ -75,6 +77,7 @@ app.post("/sql/query", async (c) => {
 
 /** POST /api/sql/execute */
 app.post("/sql/execute", async (c) => {
+  requirePermission(c, "resources:execute");
   const organizationId = c.get("organizationId");
   const input = await c.req.json<{
     accountId: string;
@@ -124,6 +127,7 @@ app.post("/sql/execute", async (c) => {
 
 /** POST /api/sql/estimate — dry-run cost estimation for pay-per-byte backends (e.g. BigQuery). */
 app.post("/sql/estimate", async (c) => {
+  requirePermission(c, "resources:read");
   const organizationId = c.get("organizationId");
   const input = await c.req.json<{
     accountId: string;
@@ -143,6 +147,7 @@ app.post("/sql/estimate", async (c) => {
 
 /** POST /api/kv/command */
 app.post("/kv/command", async (c) => {
+  requirePermission(c, "resources:execute");
   const organizationId = c.get("organizationId");
   const input = await c.req.json<{
     accountId: string;
@@ -176,6 +181,7 @@ app.post("/kv/command", async (c) => {
 
 /** POST /api/docker/command */
 app.post("/docker/command", async (c) => {
+  requirePermission(c, "resources:execute");
   const organizationId = c.get("organizationId");
   const input = await c.req.json<{
     accountId: string;
@@ -201,6 +207,7 @@ app.post("/docker/command", async (c) => {
 
 /** POST /api/storage/list */
 app.post("/storage/list", async (c) => {
+  requirePermission(c, "storage:read");
   const organizationId = c.get("organizationId");
   const input = await c.req.json<{ accountId: string; bucket: string; prefix: string }>();
   const ctx = await getClientForAccount(input.accountId, organizationId);
@@ -213,6 +220,7 @@ app.post("/storage/list", async (c) => {
 
 /** POST /api/storage/mkdir */
 app.post("/storage/mkdir", async (c) => {
+  requirePermission(c, "storage:write");
   const organizationId = c.get("organizationId");
   const input = await c.req.json<{ accountId: string; bucket: string; key: string }>();
   const ctx = await getClientForAccount(input.accountId, organizationId);
@@ -225,6 +233,7 @@ app.post("/storage/mkdir", async (c) => {
 
 /** POST /api/storage/delete */
 app.post("/storage/delete", async (c) => {
+  requirePermission(c, "storage:write");
   const organizationId = c.get("organizationId");
   const input = await c.req.json<{ accountId: string; bucket: string; key: string }>();
   const ctx = await getClientForAccount(input.accountId, organizationId);
@@ -237,6 +246,7 @@ app.post("/storage/delete", async (c) => {
 
 /** POST /api/artifacts/list */
 app.post("/artifacts/list", async (c) => {
+  requirePermission(c, "storage:read");
   const organizationId = c.get("organizationId");
   const input = await c.req.json<{
     accountId: string;
@@ -270,6 +280,7 @@ app.post("/artifacts/list", async (c) => {
 
 /** POST /api/sftp/list */
 app.post("/sftp/list", async (c) => {
+  requirePermission(c, "storage:read");
   const organizationId = c.get("organizationId");
   const input = await c.req.json<{
     accountId: string;
@@ -291,6 +302,7 @@ app.post("/sftp/list", async (c) => {
 
 /** POST /api/sftp/mkdir */
 app.post("/sftp/mkdir", async (c) => {
+  requirePermission(c, "storage:write");
   const organizationId = c.get("organizationId");
   const input = await c.req.json<{
     accountId: string;
@@ -312,6 +324,7 @@ app.post("/sftp/mkdir", async (c) => {
 
 /** POST /api/sftp/delete */
 app.post("/sftp/delete", async (c) => {
+  requirePermission(c, "storage:write");
   const organizationId = c.get("organizationId");
   const input = await c.req.json<{
     accountId: string;

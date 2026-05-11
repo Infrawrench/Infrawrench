@@ -12,7 +12,9 @@
     "./host-services": "./src/host-services.ts",
     "./tunnel-resolver": "./src/tunnel-resolver.ts",
     "./sync-resources": "./src/sync-resources.ts",
-    "./plugin-loader": "./src/plugin-loader.ts"
+    "./plugin-loader": "./src/plugin-loader.ts",
+    "./permissions": "./src/permissions/index.ts",
+    "./permissions/catalog": "./src/permissions/catalog.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit"

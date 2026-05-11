@@ -17,6 +17,7 @@ import { Route as OrgOrgIdSettingsRouteImport } from './routes/org.$orgId.settin
 import { Route as OrgOrgIdSettingsIndexRouteImport } from './routes/org.$orgId.settings.index'
 import { Route as OrgOrgIdSettingsTeamRouteImport } from './routes/org.$orgId.settings.team'
 import { Route as OrgOrgIdSettingsSshKeysRouteImport } from './routes/org.$orgId.settings.ssh-keys'
+import { Route as OrgOrgIdSettingsRolesRouteImport } from './routes/org.$orgId.settings.roles'
 import { Route as OrgOrgIdSettingsBillingRouteImport } from './routes/org.$orgId.settings.billing'
 import { Route as OrgOrgIdSettingsAuditLogRouteImport } from './routes/org.$orgId.settings.audit-log'
 import { Route as OrgOrgIdSettingsApiKeysRouteImport } from './routes/org.$orgId.settings.api-keys'
@@ -62,6 +63,11 @@ const OrgOrgIdSettingsTeamRoute = OrgOrgIdSettingsTeamRouteImport.update({
 const OrgOrgIdSettingsSshKeysRoute = OrgOrgIdSettingsSshKeysRouteImport.update({
   id: '/ssh-keys',
   path: '/ssh-keys',
+  getParentRoute: () => OrgOrgIdSettingsRoute,
+} as any)
+const OrgOrgIdSettingsRolesRoute = OrgOrgIdSettingsRolesRouteImport.update({
+  id: '/roles',
+  path: '/roles',
   getParentRoute: () => OrgOrgIdSettingsRoute,
 } as any)
 const OrgOrgIdSettingsBillingRoute = OrgOrgIdSettingsBillingRouteImport.update({
@@ -110,6 +116,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/settings/api-keys': typeof OrgOrgIdSettingsApiKeysRoute
   '/org/$orgId/settings/audit-log': typeof OrgOrgIdSettingsAuditLogRoute
   '/org/$orgId/settings/billing': typeof OrgOrgIdSettingsBillingRoute
+  '/org/$orgId/settings/roles': typeof OrgOrgIdSettingsRolesRoute
   '/org/$orgId/settings/ssh-keys': typeof OrgOrgIdSettingsSshKeysRoute
   '/org/$orgId/settings/team': typeof OrgOrgIdSettingsTeamRoute
   '/org/$orgId/settings/': typeof OrgOrgIdSettingsIndexRoute
@@ -124,6 +131,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/settings/api-keys': typeof OrgOrgIdSettingsApiKeysRoute
   '/org/$orgId/settings/audit-log': typeof OrgOrgIdSettingsAuditLogRoute
   '/org/$orgId/settings/billing': typeof OrgOrgIdSettingsBillingRoute
+  '/org/$orgId/settings/roles': typeof OrgOrgIdSettingsRolesRoute
   '/org/$orgId/settings/ssh-keys': typeof OrgOrgIdSettingsSshKeysRoute
   '/org/$orgId/settings/team': typeof OrgOrgIdSettingsTeamRoute
   '/org/$orgId/settings': typeof OrgOrgIdSettingsIndexRoute
@@ -141,6 +149,7 @@ export interface FileRoutesById {
   '/org/$orgId/settings/api-keys': typeof OrgOrgIdSettingsApiKeysRoute
   '/org/$orgId/settings/audit-log': typeof OrgOrgIdSettingsAuditLogRoute
   '/org/$orgId/settings/billing': typeof OrgOrgIdSettingsBillingRoute
+  '/org/$orgId/settings/roles': typeof OrgOrgIdSettingsRolesRoute
   '/org/$orgId/settings/ssh-keys': typeof OrgOrgIdSettingsSshKeysRoute
   '/org/$orgId/settings/team': typeof OrgOrgIdSettingsTeamRoute
   '/org/$orgId/settings/': typeof OrgOrgIdSettingsIndexRoute
@@ -159,6 +168,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/api-keys'
     | '/org/$orgId/settings/audit-log'
     | '/org/$orgId/settings/billing'
+    | '/org/$orgId/settings/roles'
     | '/org/$orgId/settings/ssh-keys'
     | '/org/$orgId/settings/team'
     | '/org/$orgId/settings/'
@@ -173,6 +183,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/api-keys'
     | '/org/$orgId/settings/audit-log'
     | '/org/$orgId/settings/billing'
+    | '/org/$orgId/settings/roles'
     | '/org/$orgId/settings/ssh-keys'
     | '/org/$orgId/settings/team'
     | '/org/$orgId/settings'
@@ -189,6 +200,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/api-keys'
     | '/org/$orgId/settings/audit-log'
     | '/org/$orgId/settings/billing'
+    | '/org/$orgId/settings/roles'
     | '/org/$orgId/settings/ssh-keys'
     | '/org/$orgId/settings/team'
     | '/org/$orgId/settings/'
@@ -259,6 +271,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgIdSettingsSshKeysRouteImport
       parentRoute: typeof OrgOrgIdSettingsRoute
     }
+    '/org/$orgId/settings/roles': {
+      id: '/org/$orgId/settings/roles'
+      path: '/roles'
+      fullPath: '/org/$orgId/settings/roles'
+      preLoaderRoute: typeof OrgOrgIdSettingsRolesRouteImport
+      parentRoute: typeof OrgOrgIdSettingsRoute
+    }
     '/org/$orgId/settings/billing': {
       id: '/org/$orgId/settings/billing'
       path: '/billing'
@@ -308,6 +327,7 @@ interface OrgOrgIdSettingsRouteChildren {
   OrgOrgIdSettingsApiKeysRoute: typeof OrgOrgIdSettingsApiKeysRoute
   OrgOrgIdSettingsAuditLogRoute: typeof OrgOrgIdSettingsAuditLogRoute
   OrgOrgIdSettingsBillingRoute: typeof OrgOrgIdSettingsBillingRoute
+  OrgOrgIdSettingsRolesRoute: typeof OrgOrgIdSettingsRolesRoute
   OrgOrgIdSettingsSshKeysRoute: typeof OrgOrgIdSettingsSshKeysRoute
   OrgOrgIdSettingsTeamRoute: typeof OrgOrgIdSettingsTeamRoute
   OrgOrgIdSettingsIndexRoute: typeof OrgOrgIdSettingsIndexRoute
@@ -317,6 +337,7 @@ const OrgOrgIdSettingsRouteChildren: OrgOrgIdSettingsRouteChildren = {
   OrgOrgIdSettingsApiKeysRoute: OrgOrgIdSettingsApiKeysRoute,
   OrgOrgIdSettingsAuditLogRoute: OrgOrgIdSettingsAuditLogRoute,
   OrgOrgIdSettingsBillingRoute: OrgOrgIdSettingsBillingRoute,
+  OrgOrgIdSettingsRolesRoute: OrgOrgIdSettingsRolesRoute,
   OrgOrgIdSettingsSshKeysRoute: OrgOrgIdSettingsSshKeysRoute,
   OrgOrgIdSettingsTeamRoute: OrgOrgIdSettingsTeamRoute,
   OrgOrgIdSettingsIndexRoute: OrgOrgIdSettingsIndexRoute,

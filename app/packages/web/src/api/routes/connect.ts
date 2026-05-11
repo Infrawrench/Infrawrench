@@ -7,6 +7,7 @@ import { getPlugin } from "../../plugins/loader";
 import { getClientForAccount } from "../../services/plugin-clients";
 import type { SecretExportTemplate } from "@infrawrench/plugin-base";
 import { sshExec } from "../../services/ssh";
+import { requirePermission } from "../../auth/permissions";
 import type { AuthSession } from "../auth-middleware";
 
 declare module "hono" {
@@ -23,6 +24,7 @@ const app = new Hono();
  * plus target capabilities (namespaces for K8s, SSH for env deploy).
  */
 app.post("/templates", async (c) => {
+  requirePermission(c, "resources:read");
   const organizationId = c.get("organizationId");
   const input = await c.req.json<{
     sourcePluginId: string;
@@ -80,6 +82,7 @@ app.post("/templates", async (c) => {
  * Creates a secret in the target (e.g. K8s) from the source resource's outputs.
  */
 app.post("/secret-export", async (c) => {
+  requirePermission(c, "resources:write");
   const organizationId = c.get("organizationId");
   const input = await c.req.json<{
     sourceAccountId: string;
@@ -157,6 +160,7 @@ app.post("/secret-export", async (c) => {
  * Deploys environment variables from source resource onto target via SSH.
  */
 app.post("/env-deploy", async (c) => {
+  requirePermission(c, "resources:execute");
   const organizationId = c.get("organizationId");
   const input = await c.req.json<{
     sourceAccountId: string;

@@ -251,6 +251,22 @@ Resource IDs follow the convention `{accountId}:{resourceTypeId}:{externalId}`. 
 
 ---
 
+## Permissions
+
+Authorization is **permission-string based**. Every org-scoped HTTP handler in `app/packages/web/src/api/routes/` calls `requirePermission(c, "<perm>")` (defined in `app/packages/web/src/auth/permissions.ts`). The check works for both session auth and API-key auth — `permissionsMiddleware` in `app/packages/web/src/api/auth-middleware.ts` populates `c.permissions` for sessions, and `authenticateApiRequest` populates the same key for bearer tokens.
+
+The catalog of permission strings lives in `app/packages/server-core/src/permissions/catalog.ts` (`ALL_PERMISSIONS`) — the single source of truth shared by server, OpenAPI spec, and the frontend permission picker. Wildcards are honored at any segment (`resources:*:read`, `resources:postgres:*`, or `*` for all).
+
+System roles (owner/admin/member) are defined in code (`app/packages/server-core/src/permissions/system-roles.ts`) and seeded lazily per org via `ensureSystemRoles(orgId)` — every membership write triggers it. Custom roles live in the `roles` table with arbitrary permission arrays. `organizationMembers.roleId` (and `invitations.roleId`) point at a `roles` row; the legacy text `role` column is kept in sync for one release as a fallback.
+
+OpenAPI: `app/packages/web/src/api/openapi/index.ts:injectRequiredPermissions` walks the generated paths and stamps `x-required-permission` onto every operation using the `REQUIRED_PERMISSION` table. When you add a new endpoint, add the matching entry there.
+
+Frontend: `app/packages/web/src/auth/permissions-context.tsx` provides `<PermissionsProvider>` (mounted in `org.$orgId.tsx`), the `usePermissions()` hook, and a `<Can permission="...">` component. The provider fetches `/api/org/:orgId/team/me` once per org switch. The pure `hasPermission` matcher is exported via the browser-safe `@infrawrench/server-core/permissions/catalog` subpath (the full `permissions` module pulls in `db/client` and is server-only).
+
+API key scopes use the same permission strings; the `Permission` enum in `app/packages/web/src/api/openapi/common.ts` is the OpenAPI representation. Legacy `sync:read`/`sync:write` scopes are migrated to `resources:read`/`resources:write` on next use by `authenticateApiRequest`.
+
+---
+
 ## Plugin registry & loader
 
 `app/packages/web/src/plugins/blessed-plugins.json` is the authoritative blessed list. Both web and desktop import from this path via a Vite alias (`@blessed-plugins`).

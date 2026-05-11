@@ -11,6 +11,7 @@ import { getClientForAccount, getClientForResource } from "../../services/plugin
 import { loadSecretStatesForResource } from "../../services/secret-states";
 import type { ResourceInstance, DetailViewSchema } from "@infrawrench/plugin-base";
 import { normalizeResourceCreateResult } from "@infrawrench/plugin-base";
+import { requirePermission } from "../../auth/permissions";
 import type { AuthSession } from "../auth-middleware";
 
 declare module "hono" {
@@ -23,6 +24,7 @@ const app = new Hono();
 
 /** GET /api/resources/:pluginId/:typeId/detail?resourceId=...&parentResourceId=... — full resource detail payload */
 app.get("/:pluginId/:typeId/detail", async (c) => {
+  requirePermission(c, "resources:read");
   const organizationId = c.get("organizationId");
   const pluginId = c.req.param("pluginId");
   const resourceTypeId = c.req.param("typeId");
@@ -509,6 +511,7 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
 
 /** GET /api/resources/:pluginId/:typeId/manifest?resourceId=...&accountId=...&parentResourceId=... */
 app.get("/:pluginId/:typeId/manifest", async (c) => {
+  requirePermission(c, "resources:read");
   const organizationId = c.get("organizationId");
   const pluginId = c.req.param("pluginId");
   const resourceId = c.req.query("resourceId");
@@ -528,6 +531,7 @@ app.get("/:pluginId/:typeId/manifest", async (c) => {
 
 /** POST /api/resources/:pluginId/:typeId/manifest */
 app.post("/:pluginId/:typeId/manifest", async (c) => {
+  requirePermission(c, "resources:write");
   const organizationId = c.get("organizationId");
   const pluginId = c.req.param("pluginId");
   const { accountId, resourceId, manifest, parentResourceId } = await c.req.json<{
@@ -548,6 +552,7 @@ app.post("/:pluginId/:typeId/manifest", async (c) => {
 
 /** POST /api/resources/:pluginId/import-yaml — kubectl apply -f equivalent */
 app.post("/:pluginId/import-yaml", async (c) => {
+  requirePermission(c, "resources:write");
   const organizationId = c.get("organizationId");
   const pluginId = c.req.param("pluginId");
   const { accountId, yaml, parentResourceId } = await c.req.json<{
@@ -566,6 +571,7 @@ app.post("/:pluginId/import-yaml", async (c) => {
 
 /** POST /api/resources/:pluginId/:typeId/describe */
 app.post("/:pluginId/:typeId/describe", async (c) => {
+  requirePermission(c, "resources:read");
   const organizationId = c.get("organizationId");
   const pluginId = c.req.param("pluginId");
   const resourceTypeId = c.req.param("typeId");
@@ -588,6 +594,7 @@ app.post("/:pluginId/:typeId/describe", async (c) => {
 
 /** POST /api/resources/:pluginId/:typeId/logs */
 app.post("/:pluginId/:typeId/logs", async (c) => {
+  requirePermission(c, "resources:read");
   const organizationId = c.get("organizationId");
   const pluginId = c.req.param("pluginId");
   const resourceTypeId = c.req.param("typeId");
@@ -618,6 +625,7 @@ app.post("/:pluginId/:typeId/logs", async (c) => {
 
 /** GET /api/resources/:pluginId/:typeId/secret-versions?resourceId=...&accountId=...&parentResourceId=... */
 app.get("/:pluginId/:typeId/secret-versions", async (c) => {
+  requirePermission(c, "secrets:read");
   const organizationId = c.get("organizationId");
   const pluginId = c.req.param("pluginId");
   const resourceTypeId = c.req.param("typeId");
@@ -638,6 +646,7 @@ app.get("/:pluginId/:typeId/secret-versions", async (c) => {
 
 /** POST /api/resources/:pluginId/:typeId/secret-versions/access */
 app.post("/:pluginId/:typeId/secret-versions/access", async (c) => {
+  requirePermission(c, "secrets:read");
   const organizationId = c.get("organizationId");
   const pluginId = c.req.param("pluginId");
   const resourceTypeId = c.req.param("typeId");
@@ -664,6 +673,7 @@ app.post("/:pluginId/:typeId/secret-versions/access", async (c) => {
 
 /** POST /api/resources/:pluginId/:typeId/secret-versions/add */
 app.post("/:pluginId/:typeId/secret-versions/add", async (c) => {
+  requirePermission(c, "secrets:write");
   const organizationId = c.get("organizationId");
   const pluginId = c.req.param("pluginId");
   const resourceTypeId = c.req.param("typeId");
@@ -685,6 +695,7 @@ app.post("/:pluginId/:typeId/secret-versions/add", async (c) => {
 
 /** POST /api/resources/:pluginId/:typeId/secret-versions/modify */
 app.post("/:pluginId/:typeId/secret-versions/modify", async (c) => {
+  requirePermission(c, "secrets:write");
   const organizationId = c.get("organizationId");
   const pluginId = c.req.param("pluginId");
   const resourceTypeId = c.req.param("typeId");
@@ -713,6 +724,7 @@ app.post("/:pluginId/:typeId/secret-versions/modify", async (c) => {
 
 /** DELETE /api/resources/:pluginId/:typeId?resourceId=...&accountId=...&parentResourceId=... */
 app.delete("/:pluginId/:typeId", async (c) => {
+  requirePermission(c, "resources:delete");
   const organizationId = c.get("organizationId");
   const pluginId = c.req.param("pluginId");
   const resourceTypeId = c.req.param("typeId");
@@ -732,6 +744,7 @@ app.delete("/:pluginId/:typeId", async (c) => {
 
 /** POST /api/resources/invoke-action — invoke a plugin-defined action against a resource. */
 app.post("/invoke-action", async (c) => {
+  requirePermission(c, "resources:write");
   const organizationId = c.get("organizationId");
   const input = await c.req.json<{
     pluginId: string;
@@ -766,6 +779,7 @@ app.post("/invoke-action", async (c) => {
 
 /** POST /api/resources/nosql-command — run a NoSQL document-browser command against a resource. */
 app.post("/nosql-command", async (c) => {
+  requirePermission(c, "resources:execute");
   const organizationId = c.get("organizationId");
   const input = await c.req.json<{
     pluginId: string;
@@ -802,6 +816,7 @@ app.post("/nosql-command", async (c) => {
 
 /** POST /api/resources/attach — attach a resource onto a same-account target (e.g. disk → VM). */
 app.post("/attach", async (c) => {
+  requirePermission(c, "resources:write");
   const organizationId = c.get("organizationId");
   const input = await c.req.json<{
     pluginId: string;
@@ -833,6 +848,7 @@ app.post("/attach", async (c) => {
 
 /** POST /api/resources/:pluginId/:typeId/export-credential */
 app.post("/:pluginId/:typeId/export-credential", async (c) => {
+  requirePermission(c, "secrets:read");
   const organizationId = c.get("organizationId");
   const pluginId = c.req.param("pluginId");
   const resourceTypeId = c.req.param("typeId");
@@ -866,6 +882,7 @@ app.post("/:pluginId/:typeId/export-credential", async (c) => {
 
 /** POST /api/resources/create */
 app.post("/create", async (c) => {
+  requirePermission(c, "resources:write");
   const organizationId = c.get("organizationId");
   const input = await c.req.json<{
     accountId: string;
@@ -973,6 +990,7 @@ app.post("/create", async (c) => {
 
 /** POST /api/resources/create-config */
 app.post("/create-config", async (c) => {
+  requirePermission(c, "resources:write");
   const organizationId = c.get("organizationId");
   const input = await c.req.json<{
     accountId: string;
@@ -999,6 +1017,7 @@ app.post("/create-config", async (c) => {
 
 /** POST /api/resources/picker-resources — get resources for resource-picker field */
 app.post("/picker-resources", async (c) => {
+  requirePermission(c, "resources:read");
   const organizationId = c.get("organizationId");
   const input = await c.req.json<{
     sources: Array<{ pluginId: string; resourceTypeId: string; outputKey: string }>;
@@ -1058,6 +1077,7 @@ app.post("/picker-resources", async (c) => {
 
 /** POST /api/resources/create-pricing — get size pricing for create form */
 app.post("/create-pricing", async (c) => {
+  requirePermission(c, "resources:read");
   const organizationId = c.get("organizationId");
   const input = await c.req.json<{
     accountId: string;
@@ -1088,6 +1108,7 @@ app.post("/create-pricing", async (c) => {
 
 /** POST /api/resources/create-cost-estimate — get cost estimate for create form */
 app.post("/create-cost-estimate", async (c) => {
+  requirePermission(c, "resources:read");
   const organizationId = c.get("organizationId");
   const input = await c.req.json<{
     accountId: string;
@@ -1114,6 +1135,7 @@ app.post("/create-cost-estimate", async (c) => {
 
 /** POST /api/resources/:pluginId/:typeId/peer-panes */
 app.post("/:pluginId/:typeId/peer-panes", async (c) => {
+  requirePermission(c, "resources:read");
   const organizationId = c.get("organizationId");
   const pluginId = c.req.param("pluginId");
   const resourceTypeId = c.req.param("typeId");
@@ -1199,6 +1221,7 @@ app.post("/:pluginId/:typeId/peer-panes", async (c) => {
 
 /** POST /api/resources/:pluginId/:typeId/metrics */
 app.post("/:pluginId/:typeId/metrics", async (c) => {
+  requirePermission(c, "resources:read");
   const organizationId = c.get("organizationId");
   const pluginId = c.req.param("pluginId");
   const { accountId, resourceId, startMs, endMs, parentResourceId } = await c.req.json<{
