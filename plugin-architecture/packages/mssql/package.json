@@ -32,11 +32,11 @@
     "@infrawrench/plugin-base": "workspace:*"
   },
   "peerDependencies": {
-    "mssql": ">=11"
+    "mssql": ">=12"
   },
   "devDependencies": {
     "@types/mssql": "^9.1.5",
-    "mssql": "^11.0.1",
+    "mssql": "^12.5.2",
     "tsup": "^8.3.5",
     "typescript": "^5.7.3",
     "vitest": "^3.0.5"

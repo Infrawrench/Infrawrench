@@ -30,12 +30,12 @@
     "@infrawrench/plugin-base": "workspace:*"
   },
   "peerDependencies": {
-    "ssh2": ">=1"
+    "ssh2": ">=1.17.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "@types/ssh2": "^1.15.4",
-    "ssh2": "^1.16.0",
+    "ssh2": "^1.17.0",
     "tsup": "^8.3.5",
     "typescript": "^5.7.3",
     "vitest": "^3.0.5"
