@@ -71,7 +71,7 @@
     "@infrawrench/plugin-base": "workspace:*",
     "@smithy/protocol-http": "^5.3.14",
     "@smithy/signature-v4": "^5.3.14",
-    "fast-xml-parser": "^4.5.0"
+    "fast-xml-parser": "^5.7.0"
   },
   "devDependencies": {
     "aws-sdk-client-mock": "^4.1.0",
