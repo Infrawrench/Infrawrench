@@ -180,8 +180,9 @@ export async function registerPerPluginCreateTools(
                     },
                   });
               }
-            } catch {
+            } catch (err) {
               // Non-critical; the next sync will reconcile.
+              console.error("[mcp/per-plugin-create] Failed to persist resource:", err);
             }
           }
 

@@ -549,8 +549,9 @@ export function registerGenericTools(server: McpServer, auth: McpAuthContext): v
                 },
               });
           }
-        } catch {
+        } catch (err) {
           // Non-critical; the next sync will reconcile.
+          console.error("[mcp/generic] Failed to persist resource:", err);
         }
       }
 

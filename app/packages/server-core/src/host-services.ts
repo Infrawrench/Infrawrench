@@ -71,7 +71,9 @@ const secretHostServices: SecretHostServices = {
         row.valueIv,
         buildAad("secretField", `${resourceId}:${fieldKey}`, "value"),
       );
-    } catch {
+    } catch (err) {
+      // Log so silent decryption regressions (key rotation, AAD mismatch) are visible.
+      console.error(`[host-services] Failed to decrypt secret ${resourceId}:${fieldKey}:`, err);
       return null;
     }
   },

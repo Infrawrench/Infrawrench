@@ -164,7 +164,8 @@ export async function ensureUserFromClaims(
       email = u.email;
       firstName = u.firstName ?? null;
       lastName = u.lastName ?? null;
-    } catch {
+    } catch (err) {
+      console.error(`[auth] WorkOS getUser failed for ${userId}:`, err);
       return null;
     }
   }

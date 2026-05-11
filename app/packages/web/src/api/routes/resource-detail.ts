@@ -76,8 +76,12 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
   try {
     liveResources = await client.listResources(resourceTypeId, accountId);
     liveFetchOk = true;
-  } catch {
-    // Provider API failed — fall back to DB data
+  } catch (err) {
+    // Provider API failed — fall back to DB data. Log so dev sees provider regressions.
+    console.error(
+      `[resource-detail] Provider listResources failed for ${pluginId}/${resourceTypeId}:`,
+      err,
+    );
   }
   const liveInstance = liveResources.find((r) => r.id === resourceId);
 
@@ -940,8 +944,10 @@ app.post("/create", async (c) => {
             },
           });
       }
-    } catch {
-      // Non-critical — detail page will fall back to listResources
+    } catch (err) {
+      // Non-critical — detail page will fall back to listResources.
+      // Log so persistent DB write regressions are visible.
+      console.error("[resource-detail] Failed to persist newly created resource:", err);
     }
   }
 

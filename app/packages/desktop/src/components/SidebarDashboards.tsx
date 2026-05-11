@@ -69,8 +69,8 @@ export function SidebarDashboards() {
       setNewName("");
       setAddingNew(false);
       await load();
-    } catch {
-      // ignore
+    } catch (err) {
+      console.error("[sidebar-dashboards] Failed to create dashboard:", err);
     }
   }
 
@@ -130,8 +130,8 @@ export function SidebarDashboards() {
                       setDashboards((prev) => prev.filter((d) => d.id !== dash.id));
                       // Navigate home if we just deleted the active dashboard
                       void navigate({ to: "/" });
-                    } catch {
-                      /* ignore */
+                    } catch (err) {
+                      console.error("[sidebar-dashboards] Failed to delete dashboard:", err);
                     }
                   })();
                 }

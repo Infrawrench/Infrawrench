@@ -25,8 +25,13 @@ export async function loadSecretStatesForResource(resourceId: string): Promise<S
             s.valueIv,
             buildAad("secretField", `${s.resourceId}:${s.fieldKey}`, "value"),
           );
-        } catch {
+        } catch (err) {
           // Surface empty plaintext rather than throwing on decryption failure.
+          // Log so silent decryption regressions (key rotation, AAD mismatch) are visible.
+          console.error(
+            `[secret-states] Failed to decrypt secret ${s.resourceId}:${s.fieldKey}:`,
+            err,
+          );
         }
       }
       result.push({
