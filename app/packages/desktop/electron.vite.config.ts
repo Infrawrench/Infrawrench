@@ -104,11 +104,35 @@ export default defineConfig({
       }),
       tailwindcss(),
       react(),
+      // `@netlify/api/lib/open_api.js` uses `createRequire` to load the
+      // OpenAPI JSON spec, which fails in the renderer build because
+      // `node:module` isn't available. Rewrite that one file to import the
+      // JSON directly — Vite resolves JSON imports natively.
+      {
+        name: "netlify-open-api-shim",
+        enforce: "pre",
+        transform(_code, id) {
+          if (id.endsWith("/@netlify/api/lib/open_api.js")) {
+            return {
+              code:
+                'import spec from "@netlify/open-api/dist/swagger.json";\n' +
+                "export const openApiSpec = spec;\n",
+              map: null,
+            };
+          }
+          return null;
+        },
+      },
     ],
     resolve: {
       alias: {
         "@": resolve(__dirname, "src"),
         "@blessed-plugins": resolve(__dirname, "../web/src/plugins/blessed-plugins.json"),
+        // `@netlify/api` (and any other Node-only dep we transitively pull in)
+        // imports `node-fetch`, which in v3 reaches into `node:util` and fails
+        // the renderer's browser build. Map it to a shim over the platform
+        // `fetch`; the renderer runs in Chromium and has a global fetch.
+        "node-fetch": resolve(__dirname, "src/lib/node-fetch-shim.ts"),
       },
     },
   },
