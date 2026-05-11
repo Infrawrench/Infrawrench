@@ -1,7 +1,7 @@
 ---
 title: Add your first account
 description: Connect a cloud provider so infrawrench can list and manage your resources.
-sidebar_order: 3
+sidebar_order: 2
 ---
 
 This walkthrough uses DigitalOcean because it has the simplest credential: a single API token. Any plugin follows the same shape — see each [plugin page](../plugins/digitalocean.md) for the exact fields.
