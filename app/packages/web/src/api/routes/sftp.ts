@@ -129,7 +129,9 @@ app.get("/download", async (c) => {
 
   const normalizedBase = basePath.endsWith("/") ? basePath : basePath ? `${basePath}/` : "";
   const relPath = (p: string): string =>
-    normalizedBase && p.startsWith(normalizedBase) ? p.slice(normalizedBase.length) : path.basename(p);
+    normalizedBase && p.startsWith(normalizedBase)
+      ? p.slice(normalizedBase.length)
+      : path.basename(p);
   archive.append(firstBuffer, { name: relPath(firstPath) });
   (async () => {
     try {
