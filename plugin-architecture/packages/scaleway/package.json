@@ -24,7 +24,12 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@infrawrench/plugin-base": "workspace:*"
+    "@infrawrench/plugin-base": "workspace:*",
+    "@scaleway/sdk-block": "^2.7.1",
+    "@scaleway/sdk-client": "^2.3.1",
+    "@scaleway/sdk-instance": "^2.8.1",
+    "@scaleway/sdk-k8s": "^2.10.1",
+    "@scaleway/sdk-rdb": "^2.7.1"
   },
   "devDependencies": {
     "tsup": "^8.3.5",

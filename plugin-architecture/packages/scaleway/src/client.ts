@@ -10,18 +10,35 @@ import type {
   ResourceTypeDefinition,
   DashboardStat,
 } from "@infrawrench/plugin-base";
-import { jsonRestFetch, labeledFieldItems } from "@infrawrench/plugin-base";
+import { labeledFieldItems } from "@infrawrench/plugin-base";
+import type { Client, Region, Zone } from "@scaleway/sdk-client";
+import { createClient } from "@scaleway/sdk-client";
+import { Instancev1 } from "@scaleway/sdk-instance";
+import { K8Sv1 } from "@scaleway/sdk-k8s";
+import { Rdbv1 } from "@scaleway/sdk-rdb";
+import { Blockv1 } from "@scaleway/sdk-block";
 
 /**
  * Scaleway plugin client.
  * Created per account (per secret key) by the host.
+ *
+ * Control-plane calls go through the official per-API Scaleway SDKs
+ * (@scaleway/sdk-instance, -k8s, -rdb, -block). Object Storage is
+ * S3-compatible and uses a hand-rolled SigV4 path below — the SDK does
+ * not cover Object Storage.
  */
 export class ScalewayClient implements PluginClient {
   private readonly secretKey: string;
   private readonly accessKey: string;
   private readonly defaultProjectId: string;
-  private readonly credentials: Record<string, string>;
   private readonly resourceTypes: ResourceTypeDefinition[];
+
+  // Lazily-initialised SDK client. We avoid eager creation because Scaleway's
+  // assertValidSettings rejects non-UUID project IDs / secrets used in tests.
+  private sdkClient: Client | undefined;
+
+  private static readonly DEFAULT_REGION: Region = "fr-par";
+  private static readonly DEFAULT_ZONE: Zone = "fr-par-1";
 
   private static readonly ZONE_INFO: Record<
     string,
@@ -62,8 +79,44 @@ export class ScalewayClient implements PluginClient {
     this.secretKey = secretKey;
     this.accessKey = credentials["accessKey"] ?? "";
     this.defaultProjectId = credentials["defaultProjectId"] ?? "";
-    this.credentials = credentials;
     this.resourceTypes = resourceTypes;
+  }
+
+  /**
+   * Returns the (lazily-initialised) SDK client. The SDK validates
+   * credentials/settings on construction, so we defer until we actually
+   * need to talk to the API.
+   */
+  private getClient(): Client {
+    if (!this.sdkClient) {
+      const settings: Parameters<typeof createClient>[0] = {
+        accessKey: this.accessKey,
+        secretKey: this.secretKey,
+        defaultRegion: ScalewayClient.DEFAULT_REGION,
+        defaultZone: ScalewayClient.DEFAULT_ZONE,
+      };
+      if (this.defaultProjectId) {
+        settings.defaultProjectId = this.defaultProjectId;
+      }
+      this.sdkClient = createClient(settings);
+    }
+    return this.sdkClient;
+  }
+
+  private instanceApi(): InstanceType<typeof Instancev1.API> {
+    return new Instancev1.API(this.getClient());
+  }
+
+  private k8sApi(): InstanceType<typeof K8Sv1.API> {
+    return new K8Sv1.API(this.getClient());
+  }
+
+  private rdbApi(): InstanceType<typeof Rdbv1.API> {
+    return new Rdbv1.API(this.getClient());
+  }
+
+  private blockApi(): InstanceType<typeof Blockv1.API> {
+    return new Blockv1.API(this.getClient());
   }
 
   private assertS3Credentials(): void {
@@ -78,6 +131,10 @@ export class ScalewayClient implements PluginClient {
   /**
    * Perform an S3-compatible request signed with AWS Signature V4.
    * Only SHA-256 via WebCrypto is used so it works in Node 18+ and browsers.
+   *
+   * Scaleway Object Storage exposes an S3-compatible API; the official
+   * per-API SDKs do not cover it, so we keep this minimal SigV4 path
+   * instead of pulling in @aws-sdk/client-s3 for two operations.
    */
   private async s3Fetch<T>(
     method: string,
@@ -181,31 +238,6 @@ export class ScalewayClient implements PluginClient {
       .join("");
   }
 
-  private async apiFetch<T>(url: string, options?: RequestInit): Promise<T> {
-    return jsonRestFetch<T>({
-      vendor: "Scaleway",
-      url,
-      headers: { "X-Auth-Token": this.secretKey },
-      ...(options ? { init: options } : {}),
-    });
-  }
-
-  private instanceUrl(zone: string, path: string): string {
-    return `https://api.scaleway.com/instance/v1/zones/${zone}${path}`;
-  }
-
-  private k8sUrl(region: string, path: string): string {
-    return `https://api.scaleway.com/k8s/v1/regions/${region}${path}`;
-  }
-
-  private rdbUrl(region: string, path: string): string {
-    return `https://api.scaleway.com/rdb/v1/regions/${region}${path}`;
-  }
-
-  private blockUrl(zone: string, path: string): string {
-    return `https://api.scaleway.com/block/v1/zones/${zone}${path}`;
-  }
-
   async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
     switch (typeId) {
       case "instance":
@@ -244,28 +276,31 @@ export class ScalewayClient implements PluginClient {
       const externalId = resourceId.split(":").pop()!;
       // externalId format: {region}/{clusterId}
       const parts = externalId.split("/");
-      const region = parts[0]!;
+      const region = parts[0]! as Region;
       const clusterId = parts[1]!;
-      const data = await this.apiFetch<{ content: string }>(
-        this.k8sUrl(region, `/clusters/${clusterId}/kubeconfig`),
-      );
-      // Scaleway returns base64-encoded kubeconfig content
-      return typeof data.content === "string" ? atob(data.content) : "";
+      // The SDK returns the kubeconfig as a Blob whose body is JSON of the
+      // form {content: base64, ...} (matching the upstream REST response).
+      const blob = await this.k8sApi().getClusterKubeConfig({ region, clusterId });
+      const text = await blob.text();
+      try {
+        const parsed = JSON.parse(text) as { content?: string };
+        return typeof parsed.content === "string" ? atob(parsed.content) : "";
+      } catch {
+        // If the response is already plain YAML, return it as-is.
+        return text;
+      }
     }
 
     if (typeId === "rdb-instance") {
       const externalId = resourceId.split(":").pop()!;
       const parts = externalId.split("/");
-      const region = parts[0]!;
+      const region = parts[0]! as Region;
       const instanceId = parts[1]!;
-      const data = await this.apiFetch<{
-        endpoints: Array<{ ip: string; port: number; name?: string }>;
-        engine: string;
-      }>(this.rdbUrl(region, `/instances/${instanceId}`));
-      const endpoint = data.endpoints?.[0];
+      const instance = await this.rdbApi().getInstance({ region, instanceId });
+      const endpoint = instance.endpoints?.[0];
       switch (outputKey) {
         case "host":
-          return endpoint?.ip ?? "";
+          return endpoint?.ip ?? endpoint?.hostname ?? "";
         case "port":
           return String(endpoint?.port ?? "");
         case "username":
@@ -441,36 +476,28 @@ export class ScalewayClient implements PluginClient {
       const externalId = resourceId.split(":").pop()!;
       // externalId format: {zone}/{serverId}
       const parts = externalId.split("/");
-      const zone = parts[0]!;
+      const zone = parts[0]! as Zone;
       const serverId = parts[1]!;
       // Terminate to also release the IP
-      await this.apiFetch<unknown>(this.instanceUrl(zone, `/servers/${serverId}/action`), {
-        method: "POST",
-        body: JSON.stringify({ action: "terminate" }),
-      });
+      await this.instanceApi().serverAction({ zone, serverId, action: "terminate" });
       return;
     }
 
     if (typeId === "kapsule-cluster") {
       const externalId = resourceId.split(":").pop()!;
       const parts = externalId.split("/");
-      const region = parts[0]!;
+      const region = parts[0]! as Region;
       const clusterId = parts[1]!;
-      await this.apiFetch<unknown>(this.k8sUrl(region, `/clusters/${clusterId}`), {
-        method: "DELETE",
-        body: JSON.stringify({ with_additional_resources: true }),
-      });
+      await this.k8sApi().deleteCluster({ region, clusterId, withAdditionalResources: true });
       return;
     }
 
     if (typeId === "rdb-instance") {
       const externalId = resourceId.split(":").pop()!;
       const parts = externalId.split("/");
-      const region = parts[0]!;
+      const region = parts[0]! as Region;
       const instanceId = parts[1]!;
-      await this.apiFetch<unknown>(this.rdbUrl(region, `/instances/${instanceId}`), {
-        method: "DELETE",
-      });
+      await this.rdbApi().deleteInstance({ region, instanceId });
       return;
     }
 
@@ -487,11 +514,9 @@ export class ScalewayClient implements PluginClient {
     if (typeId === "block-volume") {
       const externalId = resourceId.split(":").pop()!;
       const parts = externalId.split("/");
-      const zone = parts[0]!;
+      const zone = parts[0]! as Zone;
       const volumeId = parts[1]!;
-      await this.apiFetch<unknown>(this.blockUrl(zone, `/volumes/${volumeId}`), {
-        method: "DELETE",
-      });
+      await this.blockApi().deleteVolume({ zone, volumeId });
       return;
     }
 
@@ -524,22 +549,13 @@ export class ScalewayClient implements PluginClient {
       if (!serverId || !volumeId || !instanceZone) {
         throw new Error("Cannot determine zone/instance/volume id for attachment");
       }
-      // Attach is done via Instance API PATCH with the *full* volumes map.
-      // Read the server's existing volumes, append the new one, then PATCH.
-      const serverData = await this.apiFetch<{
-        server: { volumes?: Record<string, Record<string, unknown>> };
-      }>(this.instanceUrl(instanceZone, `/servers/${serverId}`));
-      const existing = serverData.server.volumes ?? {};
-      const usedKeys = new Set(Object.keys(existing).map((k) => Number(k)));
-      let nextKey = 0;
-      while (usedKeys.has(nextKey)) nextKey++;
-      const updated = {
-        ...existing,
-        [String(nextKey)]: { id: volumeId, volume_type: "sbs_volume", boot: false },
-      };
-      await this.apiFetch(this.instanceUrl(instanceZone, `/servers/${serverId}`), {
-        method: "PATCH",
-        body: JSON.stringify({ volumes: updated }),
+      // The SDK's attachVolume helper reads the server's current volume map,
+      // appends the new volume slot, and PATCHes the server — exactly what
+      // the hand-rolled code below used to do.
+      await this.instanceApi().attachVolume({
+        zone: instanceZone as Zone,
+        serverId,
+        volumeId,
       });
       return;
     }
@@ -562,47 +578,45 @@ export class ScalewayClient implements PluginClient {
     }
 
     if (typeId === "rdb-instance") {
-      const region = fields["region"] ?? "fr-par";
-      const data = await this.apiFetch<{
-        id: string;
-        name: string;
-        status: string;
-        engine: string;
-        node_type: string;
-        created_at: string;
-      }>(this.rdbUrl(region, "/instances"), {
-        method: "POST",
-        body: JSON.stringify({
-          name: fields["name"] ?? "",
-          engine: fields["engine"] ?? "PostgreSQL-16",
-          node_type: fields["nodeType"] ?? "DB-DEV-S",
-          is_ha_cluster: fields["isHaCluster"] === "true",
-          disable_backup: fields["disableBackup"] === "true",
-          user_name: fields["userName"] ?? "admin",
-          password: fields["password"] ?? "",
-        }),
+      const region = (fields["region"] ?? "fr-par") as Region;
+      const created = await this.rdbApi().createInstance({
+        region,
+        name: fields["name"] ?? "",
+        engine: fields["engine"] ?? "PostgreSQL-16",
+        nodeType: fields["nodeType"] ?? "DB-DEV-S",
+        isHaCluster: fields["isHaCluster"] === "true",
+        disableBackup: fields["disableBackup"] === "true",
+        userName: fields["userName"] ?? "admin",
+        password: fields["password"] ?? "",
+        // The original REST payload omitted these; passing 0/false preserves
+        // the same server-side defaults.
+        volumeSize: 0,
+        backupSameRegion: false,
       });
       const engine = fields["engine"] ?? "PostgreSQL-16";
       const [engineName, engineVersion] = engine.split("-");
+      const createdAt = created.createdAt
+        ? created.createdAt.toISOString()
+        : new Date().toISOString();
       return {
-        id: `${accountId}:rdb-instance:${region}/${data.id}`,
+        id: `${accountId}:rdb-instance:${region}/${created.id}`,
         pluginId: "scaleway",
         resourceTypeId: "rdb-instance",
         accountId,
-        displayName: data.name,
+        displayName: created.name,
         fields: {
-          name: data.name,
+          name: created.name,
           engine: engineName ?? engine,
           engineVersion: engineVersion ?? "",
           region,
           nodeType: fields["nodeType"] ?? "DB-DEV-S",
-          status: data.status ?? "provisioning",
+          status: created.status ?? "provisioning",
         },
         resolvedOutputs: {},
         secretStates: [],
-        externalId: `${region}/${data.id}`,
-        createdAt: data.created_at ?? new Date().toISOString(),
-        updatedAt: data.created_at ?? new Date().toISOString(),
+        externalId: `${region}/${created.id}`,
+        createdAt,
+        updatedAt: createdAt,
       };
     }
 
@@ -630,44 +644,37 @@ export class ScalewayClient implements PluginClient {
     }
 
     if (typeId === "block-volume") {
-      const zone = fields["zone"] ?? "fr-par-1";
+      const zone = (fields["zone"] ?? "fr-par-1") as Zone;
       const sizeGb = Number(fields["sizeGb"] ?? 100);
       const perfIops = Number(fields["perfIops"] ?? 5000);
-      const data = await this.apiFetch<{
-        id: string;
-        name: string;
-        size: number;
-        status: string;
-        created_at?: string;
-      }>(this.blockUrl(zone, "/volumes"), {
-        method: "POST",
-        body: JSON.stringify({
-          project_id: this.defaultProjectId,
-          name: fields["name"] ?? "",
-          perf_iops: perfIops,
-          from_empty: { size: sizeGb * 1_000_000_000 },
-        }),
+      const created = await this.blockApi().createVolume({
+        zone,
+        ...(this.defaultProjectId ? { projectId: this.defaultProjectId } : {}),
+        name: fields["name"] ?? "",
+        perfIops,
+        fromEmpty: { size: sizeGb * 1_000_000_000 },
       });
-      const now = new Date().toISOString();
+      const nowIso = new Date().toISOString();
+      const createdAt = created.createdAt ? created.createdAt.toISOString() : nowIso;
       return {
-        id: `${accountId}:block-volume:${zone}/${data.id}`,
+        id: `${accountId}:block-volume:${zone}/${created.id}`,
         pluginId: "scaleway",
         resourceTypeId: "block-volume",
         accountId,
-        displayName: data.name ?? fields["name"] ?? data.id,
+        displayName: created.name ?? fields["name"] ?? created.id,
         fields: {
-          name: data.name ?? fields["name"] ?? "",
+          name: created.name ?? fields["name"] ?? "",
           zone,
-          sizeGb: Math.round(data.size / 1_000_000_000),
+          sizeGb: Math.round(created.size / 1_000_000_000),
           perfIops: String(perfIops),
-          status: data.status ?? "creating",
+          status: created.status ?? "creating",
           attachedInstanceId: "",
         },
         resolvedOutputs: {},
         secretStates: [],
-        externalId: `${zone}/${data.id}`,
-        createdAt: data.created_at ?? now,
-        updatedAt: now,
+        externalId: `${zone}/${created.id}`,
+        createdAt,
+        updatedAt: nowIso,
       };
     }
 
@@ -760,7 +767,7 @@ export class ScalewayClient implements PluginClient {
 
     return {
       title: resource.displayName,
-      subtitle: `${resource.resourceTypeId} \u00B7 ${String(fields["zone"] ?? fields["region"] ?? "")}`,
+      subtitle: `${resource.resourceTypeId} · ${String(fields["zone"] ?? fields["region"] ?? "")}`,
       status: { kind: "status-dot", status: statusKind },
       sections: [
         {
@@ -794,45 +801,40 @@ export class ScalewayClient implements PluginClient {
   }
 
   private async listBlockVolumes(accountId: string): Promise<ResourceInstance[]> {
-    const zones = Object.keys(ScalewayClient.ZONE_INFO);
-    const results: ResourceInstance[] = [];
+    const zones = Object.keys(ScalewayClient.ZONE_INFO) as Zone[];
+    const api = this.blockApi();
     const fetches = zones.map(async (zone) => {
       try {
-        const data = await this.apiFetch<{
-          volumes?: Array<{
-            id: string;
-            name?: string;
-            size: number;
-            status?: string;
-            references?: Array<{ type?: string; product_resource_id?: string }>;
-            specs?: { perf_iops?: number };
-            created_at?: string;
-            updated_at?: string;
-          }>;
-        }>(this.blockUrl(zone, `/volumes?project_id=${this.defaultProjectId}`));
-        return (data.volumes ?? []).map((v) => {
+        const data = await api.listVolumes({
+          zone,
+          ...(this.defaultProjectId ? { projectId: this.defaultProjectId } : {}),
+          includeDeleted: false,
+        });
+        return data.volumes.map<ResourceInstance>((v) => {
           const attached =
-            (v.references ?? []).find((r) => r.type === "instance_server")?.product_resource_id ??
-            "";
+            v.references.find((r) => r.productResourceType === "instance_server")
+              ?.productResourceId ?? "";
+          const createdAt = v.createdAt ? v.createdAt.toISOString() : new Date().toISOString();
+          const updatedAt = v.updatedAt ? v.updatedAt.toISOString() : createdAt;
           return {
             id: `${accountId}:block-volume:${zone}/${v.id}`,
             pluginId: "scaleway",
             resourceTypeId: "block-volume",
             accountId,
-            displayName: v.name ?? v.id,
+            displayName: v.name || v.id,
             fields: {
               name: v.name ?? "",
               zone,
               sizeGb: Math.round(v.size / 1_000_000_000),
-              perfIops: String(v.specs?.perf_iops ?? ""),
+              perfIops: String(v.specs?.perfIops ?? ""),
               status: v.status ?? "",
               attachedInstanceId: attached,
             },
             resolvedOutputs: {},
             secretStates: [],
             externalId: `${zone}/${v.id}`,
-            createdAt: v.created_at ?? new Date().toISOString(),
-            updatedAt: v.updated_at ?? v.created_at ?? new Date().toISOString(),
+            createdAt,
+            updatedAt,
           };
         });
       } catch {
@@ -840,31 +842,19 @@ export class ScalewayClient implements PluginClient {
       }
     });
     const allResults = await Promise.all(fetches);
-    for (const batch of allResults) {
-      results.push(...batch);
-    }
-    return results;
+    return allResults.flat();
   }
 
   private async listInstances(accountId: string): Promise<ResourceInstance[]> {
-    const zones = [
-      "fr-par-1",
-      "fr-par-2",
-      "fr-par-3",
-      "nl-ams-1",
-      "nl-ams-2",
-      "nl-ams-3",
-      "pl-waw-1",
-      "pl-waw-2",
-      "pl-waw-3",
-    ];
-    const results: ResourceInstance[] = [];
+    const zones = Object.keys(ScalewayClient.ZONE_INFO) as Zone[];
+    const api = this.instanceApi();
 
     const fetches = zones.map(async (zone) => {
       try {
-        const data = await this.apiFetch<{
-          servers: Array<Record<string, unknown>>;
-        }>(this.instanceUrl(zone, `/servers?project=${this.defaultProjectId}`));
+        const data = await api.listServers({
+          zone,
+          ...(this.defaultProjectId ? { project: this.defaultProjectId } : {}),
+        });
         return data.servers.map((s) => this.mapInstance(s, zone, accountId));
       } catch {
         // Zone may not be available — skip silently
@@ -873,57 +863,43 @@ export class ScalewayClient implements PluginClient {
     });
 
     const allResults = await Promise.all(fetches);
-    for (const batch of allResults) {
-      results.push(...batch);
-    }
-    return results;
+    return allResults.flat();
   }
 
   private mapInstance(
-    s: Record<string, unknown>,
-    zone: string,
+    s: import("@scaleway/sdk-instance").Instancev1.Server,
+    zone: Zone,
     accountId: string,
   ): ResourceInstance {
-    const publicIpObj = s["public_ip"] as Record<string, unknown> | null;
-    const publicIp = publicIpObj ? String(publicIpObj["address"] ?? "") : "";
-    const privateIp = String((s["private_ip"] as string) ?? "");
-    const serverId = String(s["id"]);
-    const externalId = `${zone}/${serverId}`;
+    const publicIp = s.publicIp?.address ?? "";
+    const privateIp = s.privateIp ?? "";
+    const externalId = `${zone}/${s.id}`;
+    const createdAt = s.creationDate ? s.creationDate.toISOString() : new Date().toISOString();
+    const updatedAt = s.modificationDate ? s.modificationDate.toISOString() : createdAt;
 
     return {
       id: `${accountId}:instance:${externalId}`,
       pluginId: "scaleway",
       resourceTypeId: "instance",
       accountId,
-      displayName: String(s["name"]),
+      displayName: s.name,
       fields: {
-        name: String(s["name"]),
+        name: s.name,
         zone,
-        commercialType: String(s["commercial_type"] ?? ""),
-        image: String((s["image"] as Record<string, unknown>)?.["name"] ?? ""),
-        state: String(s["state"] ?? ""),
+        commercialType: s.commercialType ?? "",
+        image: s.image?.name ?? "",
+        state: s.state ?? "",
       },
       resolvedOutputs: { publicIp, privateIp },
       secretStates: [],
       externalId,
-      createdAt: String(s["creation_date"] ?? new Date().toISOString()),
-      updatedAt: String(s["modification_date"] ?? s["creation_date"] ?? new Date().toISOString()),
+      createdAt,
+      updatedAt,
     };
   }
 
   private async getInstanceCreateConfig(): Promise<CreateResourceConfig> {
-    // Fetch available commercial types from one zone first — they're mostly uniform
-    const zones = [
-      "fr-par-1",
-      "fr-par-2",
-      "fr-par-3",
-      "nl-ams-1",
-      "nl-ams-2",
-      "nl-ams-3",
-      "pl-waw-1",
-      "pl-waw-2",
-      "pl-waw-3",
-    ];
+    const zones = Object.keys(ScalewayClient.ZONE_INFO);
 
     const regionOptions = zones.map((zone) => {
       const info = ScalewayClient.ZONE_INFO[zone];
@@ -934,20 +910,11 @@ export class ScalewayClient implements PluginClient {
       };
     });
 
+    const api = this.instanceApi();
+
     let sizes: SizeOption[] = [];
     try {
-      const data = await this.apiFetch<{
-        servers: Record<
-          string,
-          {
-            ncpus: number;
-            ram: number;
-            monthly_price?: number;
-            hourly_price?: number;
-            alt_names?: string[];
-          }
-        >;
-      }>(this.instanceUrl("fr-par-1", "/products/servers"));
+      const data = await api.listServersTypes({ zone: "fr-par-1" });
 
       const sizesByCategory = new Map<string, SizeOption[]>();
       for (const [slug, info] of Object.entries(data.servers)) {
@@ -955,7 +922,7 @@ export class ScalewayClient implements PluginClient {
         const category = slug.replace(/-.*$/, "");
         if (!sizesByCategory.has(category)) sizesByCategory.set(category, []);
         const monthlyPrice =
-          info.monthly_price ?? (info.hourly_price ? info.hourly_price * 730 : undefined);
+          info.monthlyPrice ?? (info.hourlyPrice ? info.hourlyPrice * 730 : undefined);
         sizesByCategory.get(category)!.push({
           id: slug,
           label: slug,
@@ -991,17 +958,7 @@ export class ScalewayClient implements PluginClient {
 
     let images: ImageOption[] = [];
     try {
-      const data = await this.apiFetch<{
-        images: Array<{
-          id: string;
-          name: string;
-          arch: string;
-          default_bootscript?: Record<string, unknown>;
-          organization: string;
-          public: boolean;
-          creation_date: string;
-        }>;
-      }>(this.instanceUrl("fr-par-1", "/images?per_page=100&public=true"));
+      const data = await api.listImages({ zone: "fr-par-1", perPage: 100, public: true });
 
       const imageMap = new Map<string, ImageOption[]>();
       for (const img of data.images) {
@@ -1062,68 +1019,68 @@ export class ScalewayClient implements PluginClient {
     accountId: string,
     fields: Record<string, string>,
   ): Promise<ResourceInstance> {
-    const zone = fields["zone"] ?? "fr-par-1";
+    const zone = (fields["zone"] ?? "fr-par-1") as Zone;
+    const api = this.instanceApi();
 
-    const body: Record<string, unknown> = {
-      name: fields["name"],
-      commercial_type: fields["commercialType"],
-      image: fields["image"],
-      project: this.defaultProjectId || undefined,
-      dynamic_ip_required: true,
-    };
+    const created = await api.createServer({
+      zone,
+      name: fields["name"] ?? "",
+      commercialType: fields["commercialType"] ?? "",
+      image: fields["image"] ?? "",
+      ...(this.defaultProjectId ? { project: this.defaultProjectId } : {}),
+      dynamicIpRequired: true,
+      protected: false,
+    });
 
-    const data = await this.apiFetch<{ server: Record<string, unknown> }>(
-      this.instanceUrl(zone, "/servers"),
-      { method: "POST", body: JSON.stringify(body) },
-    );
-
-    const server = data.server;
-    const serverId = String(server["id"]);
+    const server = created.server;
+    if (!server) {
+      throw new Error("Scaleway plugin: createServer returned no server");
+    }
 
     // Boot the instance after creation
     try {
-      await this.apiFetch<unknown>(this.instanceUrl(zone, `/servers/${serverId}/action`), {
-        method: "POST",
-        body: JSON.stringify({ action: "poweron" }),
-      });
+      await api.serverAction({ zone, serverId: server.id, action: "poweron" });
     } catch {
       // Non-fatal — instance was created even if boot fails
     }
 
-    const publicIpObj = server["public_ip"] as Record<string, unknown> | null;
-    const publicIp = publicIpObj ? String(publicIpObj["address"] ?? "") : "";
-    const externalId = `${zone}/${serverId}`;
+    const publicIp = server.publicIp?.address ?? "";
+    const externalId = `${zone}/${server.id}`;
+    const createdAt = server.creationDate
+      ? server.creationDate.toISOString()
+      : new Date().toISOString();
 
     return {
       id: `${accountId}:instance:${externalId}`,
       pluginId: "scaleway",
       resourceTypeId: "instance",
       accountId,
-      displayName: String(server["name"]),
+      displayName: server.name,
       fields: {
-        name: String(server["name"]),
+        name: server.name,
         zone,
-        commercialType: String(server["commercial_type"] ?? fields["commercialType"]),
-        image: String((server["image"] as Record<string, unknown>)?.["name"] ?? fields["image"]),
-        state: String(server["state"] ?? "starting"),
+        commercialType: server.commercialType ?? fields["commercialType"] ?? "",
+        image: server.image?.name ?? fields["image"] ?? "",
+        state: server.state ?? "starting",
       },
       resolvedOutputs: { publicIp, privateIp: "" },
       secretStates: [],
       externalId,
-      createdAt: String(server["creation_date"] ?? new Date().toISOString()),
-      updatedAt: String(server["creation_date"] ?? new Date().toISOString()),
+      createdAt,
+      updatedAt: createdAt,
     };
   }
 
   private async listKapsuleClusters(accountId: string): Promise<ResourceInstance[]> {
-    const regions = ["fr-par", "nl-ams", "pl-waw"];
-    const results: ResourceInstance[] = [];
+    const regions = Object.keys(ScalewayClient.REGION_INFO) as Region[];
+    const api = this.k8sApi();
 
     const fetches = regions.map(async (region) => {
       try {
-        const data = await this.apiFetch<{
-          clusters: Array<Record<string, unknown>>;
-        }>(this.k8sUrl(region, `/clusters?project_id=${this.defaultProjectId}`));
+        const data = await api.listClusters({
+          region,
+          ...(this.defaultProjectId ? { projectId: this.defaultProjectId } : {}),
+        });
         return data.clusters.map((c) => this.mapKapsuleCluster(c, region, accountId));
       } catch {
         return [];
@@ -1131,43 +1088,42 @@ export class ScalewayClient implements PluginClient {
     });
 
     const allResults = await Promise.all(fetches);
-    for (const batch of allResults) {
-      results.push(...batch);
-    }
-    return results;
+    return allResults.flat();
   }
 
   private mapKapsuleCluster(
-    c: Record<string, unknown>,
-    region: string,
+    c: import("@scaleway/sdk-k8s").K8Sv1.Cluster,
+    region: Region,
     accountId: string,
   ): ResourceInstance {
-    const clusterId = String(c["id"]);
-    const externalId = `${region}/${clusterId}`;
-    const pools = c["pools"] as Array<Record<string, unknown>> | undefined;
-    const firstPool = pools?.[0];
+    const externalId = `${region}/${c.id}`;
+    const createdAt = c.createdAt ? c.createdAt.toISOString() : new Date().toISOString();
+    const updatedAt = c.updatedAt ? c.updatedAt.toISOString() : createdAt;
 
     return {
       id: `${accountId}:kapsule-cluster:${externalId}`,
       pluginId: "scaleway",
       resourceTypeId: "kapsule-cluster",
       accountId,
-      displayName: String(c["name"]),
+      displayName: c.name,
       fields: {
-        name: String(c["name"]),
-        region: String(c["region"] ?? region),
-        version: String(c["version"] ?? ""),
-        nodeType: String(firstPool?.["node_type"] ?? ""),
-        nodeCount: Number(firstPool?.["size"] ?? 0),
-        status: String(c["status"] ?? ""),
+        name: c.name,
+        region: c.region ?? region,
+        version: c.version ?? "",
+        // The Cluster type does not return per-pool info; we used to read it
+        // from c.pools[0] but the SDK's Cluster has no pools field. Leave
+        // nodeType empty here — the user can drill in for pool details.
+        nodeType: "",
+        nodeCount: 0,
+        status: c.status ?? "",
       },
       resolvedOutputs: {
-        clusterUrl: String(c["cluster_url"] ?? ""),
+        clusterUrl: c.clusterUrl ?? "",
       },
       secretStates: [],
       externalId,
-      createdAt: String(c["created_at"] ?? new Date().toISOString()),
-      updatedAt: String(c["updated_at"] ?? c["created_at"] ?? new Date().toISOString()),
+      createdAt,
+      updatedAt,
     };
   }
 
@@ -1181,9 +1137,7 @@ export class ScalewayClient implements PluginClient {
 
     let versions: { id: string; label: string }[] = [];
     try {
-      const data = await this.apiFetch<{
-        versions: Array<{ name: string; available_cnis: string[] }>;
-      }>(this.k8sUrl("fr-par", "/versions"));
+      const data = await this.k8sApi().listVersions({ region: "fr-par" });
       versions = data.versions.map((v) => ({
         id: v.name,
         label: v.name,
@@ -1195,19 +1149,14 @@ export class ScalewayClient implements PluginClient {
     // Reuse instance sizes for node pools
     let sizes: SizeOption[] = [];
     try {
-      const data = await this.apiFetch<{
-        servers: Record<
-          string,
-          { ncpus: number; ram: number; monthly_price?: number; hourly_price?: number }
-        >;
-      }>(this.instanceUrl("fr-par-1", "/products/servers"));
+      const data = await this.instanceApi().listServersTypes({ zone: "fr-par-1" });
 
       const sizesByCategory = new Map<string, SizeOption[]>();
       for (const [slug, info] of Object.entries(data.servers)) {
         const category = slug.replace(/-.*$/, "");
         if (!sizesByCategory.has(category)) sizesByCategory.set(category, []);
         const monthlyPrice =
-          info.monthly_price ?? (info.hourly_price ? info.hourly_price * 730 : undefined);
+          info.monthlyPrice ?? (info.hourlyPrice ? info.hourlyPrice * 730 : undefined);
         sizesByCategory.get(category)!.push({
           id: slug,
           label: slug,
@@ -1276,71 +1225,83 @@ export class ScalewayClient implements PluginClient {
     accountId: string,
     fields: Record<string, string>,
   ): Promise<ResourceInstance> {
-    const region = fields["region"] ?? "fr-par";
+    const region = (fields["region"] ?? "fr-par") as Region;
     const requestedNodeCount = Number.parseInt(fields["nodeCount"] ?? "3", 10);
     const nodeCount =
       Number.isFinite(requestedNodeCount) && requestedNodeCount > 0 ? requestedNodeCount : 3;
 
     const poolNameBase = (fields["name"] ?? "cluster").trim() || "cluster";
+    // The cluster's first pool inherits the cluster region's first zone.
+    const poolZone = `${region}-1` as Zone;
 
-    const body = {
-      name: fields["name"],
+    const cluster = await this.k8sApi().createCluster({
+      region,
+      // "kapsule" is the default cluster type for managed Kapsule clusters.
+      type: "kapsule",
+      name: fields["name"] ?? "",
+      description: "",
       version: fields["version"] ?? "1.30.2",
       cni: "cilium",
-      project_id: this.defaultProjectId || undefined,
+      ...(this.defaultProjectId ? { projectId: this.defaultProjectId } : {}),
       pools: [
         {
           name: `${poolNameBase}-default-pool`,
-          node_type: fields["nodeType"],
+          nodeType: fields["nodeType"] ?? "",
           size: nodeCount,
           autoscaling: false,
           autohealing: true,
+          containerRuntime: "containerd",
+          tags: [],
+          kubeletArgs: {},
+          zone: poolZone,
+          rootVolumeType: "sbs_5k",
+          publicIpDisabled: false,
+          labels: {},
+          taints: [],
+          startupTaints: [],
         },
       ],
-    };
+    });
 
-    const data = await this.apiFetch<{ cluster: Record<string, unknown> }>(
-      this.k8sUrl(region, "/clusters"),
-      { method: "POST", body: JSON.stringify(body) },
-    );
-
-    const cluster = data.cluster;
-    const clusterId = String(cluster["id"]);
-    const externalId = `${region}/${clusterId}`;
+    const externalId = `${region}/${cluster.id}`;
+    const createdAt = cluster.createdAt
+      ? cluster.createdAt.toISOString()
+      : new Date().toISOString();
 
     return {
       id: `${accountId}:kapsule-cluster:${externalId}`,
       pluginId: "scaleway",
       resourceTypeId: "kapsule-cluster",
       accountId,
-      displayName: String(cluster["name"] ?? fields["name"]),
+      displayName: cluster.name || fields["name"] || "",
       fields: {
-        name: String(cluster["name"] ?? fields["name"] ?? ""),
+        name: cluster.name || fields["name"] || "",
         region,
-        version: String(cluster["version"] ?? fields["version"] ?? ""),
+        version: cluster.version || fields["version"] || "",
         nodeType: fields["nodeType"] ?? "",
         nodeCount,
-        status: String(cluster["status"] ?? "creating"),
+        status: cluster.status ?? "creating",
       },
       resolvedOutputs: {
-        clusterUrl: String(cluster["cluster_url"] ?? ""),
+        clusterUrl: cluster.clusterUrl ?? "",
       },
       secretStates: [],
       externalId,
-      createdAt: String(cluster["created_at"] ?? new Date().toISOString()),
-      updatedAt: String(cluster["created_at"] ?? new Date().toISOString()),
+      createdAt,
+      updatedAt: createdAt,
     };
   }
 
   private async listManagedDatabases(accountId: string): Promise<ResourceInstance[]> {
-    const regions = ["fr-par", "nl-ams", "pl-waw"];
-    const results: ResourceInstance[] = [];
+    const regions = Object.keys(ScalewayClient.REGION_INFO) as Region[];
+    const api = this.rdbApi();
 
     const fetches = regions.map(async (region) => {
       try {
-        const data = await this.apiFetch<{
-          instances: Array<Record<string, unknown>>;
-        }>(this.rdbUrl(region, `/instances?project_id=${this.defaultProjectId}`));
+        const data = await api.listInstances({
+          region,
+          ...(this.defaultProjectId ? { projectId: this.defaultProjectId } : {}),
+        });
         return data.instances.map((db) => this.mapManagedDatabase(db, region, accountId));
       } catch {
         return [];
@@ -1348,42 +1309,39 @@ export class ScalewayClient implements PluginClient {
     });
 
     const allResults = await Promise.all(fetches);
-    for (const batch of allResults) {
-      results.push(...batch);
-    }
-    return results;
+    return allResults.flat();
   }
 
   private mapManagedDatabase(
-    db: Record<string, unknown>,
-    region: string,
+    db: import("@scaleway/sdk-rdb").Rdbv1.Instance,
+    region: Region,
     accountId: string,
   ): ResourceInstance {
-    const instanceId = String(db["id"]);
-    const externalId = `${region}/${instanceId}`;
-    const engine = String(db["engine"] ?? "");
+    const externalId = `${region}/${db.id}`;
+    const engine = db.engine ?? "";
     // Scaleway engine format: "PostgreSQL-16", "MySQL-8", etc.
     const [engineName, engineVersion] = engine.split("-");
+    const createdAt = db.createdAt ? db.createdAt.toISOString() : new Date().toISOString();
 
     return {
       id: `${accountId}:rdb-instance:${externalId}`,
       pluginId: "scaleway",
       resourceTypeId: "rdb-instance",
       accountId,
-      displayName: String(db["name"]),
+      displayName: db.name,
       fields: {
-        name: String(db["name"]),
+        name: db.name,
         engine: engineName ?? engine,
         engineVersion: engineVersion ?? "",
-        region: String(db["region"] ?? region),
-        nodeType: String(db["node_type"] ?? ""),
-        status: String(db["status"] ?? ""),
+        region: db.region ?? region,
+        nodeType: db.nodeType ?? "",
+        status: db.status ?? "",
       },
       resolvedOutputs: {},
       secretStates: [],
       externalId,
-      createdAt: String(db["created_at"] ?? new Date().toISOString()),
-      updatedAt: String(db["created_at"] ?? new Date().toISOString()),
+      createdAt,
+      updatedAt: createdAt,
     };
   }
 

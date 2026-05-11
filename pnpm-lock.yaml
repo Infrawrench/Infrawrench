@@ -1122,6 +1122,21 @@ importers:
       '@infrawrench/plugin-base':
         specifier: workspace:*
         version: link:../plugin-base
+      '@scaleway/sdk-block':
+        specifier: ^2.7.1
+        version: 2.7.1(@scaleway/sdk-client@2.3.1)
+      '@scaleway/sdk-client':
+        specifier: ^2.3.1
+        version: 2.3.1
+      '@scaleway/sdk-instance':
+        specifier: ^2.8.1
+        version: 2.8.1(@scaleway/sdk-client@2.3.1)
+      '@scaleway/sdk-k8s':
+        specifier: ^2.10.1
+        version: 2.10.1(@scaleway/sdk-client@2.3.1)
+      '@scaleway/sdk-rdb':
+        specifier: ^2.7.1
+        version: 2.7.1(@scaleway/sdk-client@2.3.1)
     devDependencies:
       tsup:
         specifier: ^8.3.5
@@ -2882,6 +2897,44 @@ packages:
   '@scalar/types@0.0.40':
     resolution: {integrity: sha512-0J6o+yZzgZEvl3KhvLTAGiXXyrCeEPKvs9gUWQDf1Rb5NfFxF0lA10ougCQCwVJIguWNEzZfOUiSoAFzGy2EqQ==}
     engines: {node: '>=18'}
+
+  '@scaleway/random-name@5.1.4':
+    resolution: {integrity: sha512-+rDbZG1317VGovkE79dLaDe0n1cCwtQUrQ1KxMct8vzzZwRA+viiU6VQePMSmu/MMhed2OUtDSM45tbmwE7BeQ==}
+    engines: {node: '>=20.x'}
+
+  '@scaleway/sdk-block@2.7.1':
+    resolution: {integrity: sha512-ksTk3TE1i/LL8Z3W4y73sT8yn1j9uo95ai65S1RtTZV9ZH8G4hxse4hFNi8Uqy8oTyc8LuOVsl4Nay9WxyjtiA==}
+    engines: {node: '>=20.19.6'}
+    peerDependencies:
+      '@scaleway/sdk-client': ^2.3.1
+
+  '@scaleway/sdk-client@2.3.1':
+    resolution: {integrity: sha512-LoGLu/s/ibOkF2fW/8qtCPdXNFVuFsB4Caa4vyijzxOfYP8ldt5IBDyZeBtWgjAKV2myd6celb8B2k22WFfUlQ==}
+    engines: {node: '>=20.19.6'}
+
+  '@scaleway/sdk-instance@2.8.1':
+    resolution: {integrity: sha512-grkBdgKh5wp0+e+qnZmnlboprQZVY3ZG/j+Os8PPyIe9hWQo4uRiIqTlk62ICBs0IQ+SC72+KQ5SEeDrnXSd6g==}
+    engines: {node: '>=20.19.6'}
+    peerDependencies:
+      '@scaleway/sdk-client': ^2.3.1
+
+  '@scaleway/sdk-k8s@2.10.1':
+    resolution: {integrity: sha512-CKufxr333lfWrxuDC/D84B2cAwjWsftTfwtiWC8UJnVkkO6ekD6/yr5COtBCJ7ou6BVsJWMpe6E0gaudYQ3DZw==}
+    engines: {node: '>=20.19.6'}
+    peerDependencies:
+      '@scaleway/sdk-client': ^2.3.1
+
+  '@scaleway/sdk-rdb@2.7.1':
+    resolution: {integrity: sha512-NW3vWWkPbLJFqZ4SIVNPJbDtN234JCbJmhgvtXWX5zFMqJPpolX7KJ4+5wZl4IIEUjOEdOicu9jmZAE6/owldA==}
+    engines: {node: '>=20.19.6'}
+    peerDependencies:
+      '@scaleway/sdk-client': ^2.3.1
+
+  '@scaleway/sdk-std@2.4.1':
+    resolution: {integrity: sha512-6G4cQVoo/tpyoi5CjFDMBemigpCISY/V8Tx88CFs1t+zv94eGDgtWD3+M5AJCURC7OY++MYbek0S/aR9LYVw3g==}
+    engines: {node: '>=20.19.6'}
+    peerDependencies:
+      '@scaleway/sdk-client': ^2.3.1
 
   '@shikijs/core@4.0.2':
     resolution: {integrity: sha512-hxT0YF4ExEqB8G/qFdtJvpmHXBYJ2lWW7qTHDarVkIudPFE6iCIrqdgWxGn5s+ppkGXI0aEGlibI0PAyzP3zlw==}
@@ -8820,6 +8873,38 @@ snapshots:
       '@scalar/openapi-types': 0.1.9
       '@unhead/schema': 1.11.20
       zod: 3.25.76
+
+  '@scaleway/random-name@5.1.4': {}
+
+  '@scaleway/sdk-block@2.7.1(@scaleway/sdk-client@2.3.1)':
+    dependencies:
+      '@scaleway/random-name': 5.1.4
+      '@scaleway/sdk-client': 2.3.1
+      '@scaleway/sdk-std': 2.4.1(@scaleway/sdk-client@2.3.1)
+
+  '@scaleway/sdk-client@2.3.1': {}
+
+  '@scaleway/sdk-instance@2.8.1(@scaleway/sdk-client@2.3.1)':
+    dependencies:
+      '@scaleway/random-name': 5.1.4
+      '@scaleway/sdk-client': 2.3.1
+      '@scaleway/sdk-std': 2.4.1(@scaleway/sdk-client@2.3.1)
+
+  '@scaleway/sdk-k8s@2.10.1(@scaleway/sdk-client@2.3.1)':
+    dependencies:
+      '@scaleway/random-name': 5.1.4
+      '@scaleway/sdk-client': 2.3.1
+      '@scaleway/sdk-std': 2.4.1(@scaleway/sdk-client@2.3.1)
+
+  '@scaleway/sdk-rdb@2.7.1(@scaleway/sdk-client@2.3.1)':
+    dependencies:
+      '@scaleway/random-name': 5.1.4
+      '@scaleway/sdk-client': 2.3.1
+      '@scaleway/sdk-std': 2.4.1(@scaleway/sdk-client@2.3.1)
+
+  '@scaleway/sdk-std@2.4.1(@scaleway/sdk-client@2.3.1)':
+    dependencies:
+      '@scaleway/sdk-client': 2.3.1
 
   '@shikijs/core@4.0.2':
     dependencies:
