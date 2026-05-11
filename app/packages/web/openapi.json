@@ -3286,7 +3286,10 @@
             "type": "boolean"
           },
           "fingerprint": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "publicKey": {
             "type": "string"

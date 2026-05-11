@@ -20,7 +20,7 @@ const SshKey = strict({
   name: z.string(),
   keyType: SshKeyType,
   isImported: z.boolean(),
-  fingerprint: z.string(),
+  fingerprint: z.string().nullable(),
   publicKey: z.string(),
   userId: Uuid,
   ownerEmail: Email,
