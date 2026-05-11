@@ -1,6 +1,96 @@
 import { ipcMain } from "electron";
 import { getAccessToken, forceRefreshAccessToken } from "./cloud-auth";
 import { CLOUD_URL } from "../env";
+import { promptHostKeyDecision } from "./ssh-host-key-prompt";
+
+interface HostKeyTrustRequiredBody {
+  error: "ssh_host_key_trust_required";
+  message?: string;
+  kind: "unknown" | "mismatch";
+  host: string;
+  port: number;
+  presentedFingerprint: string;
+  storedFingerprint?: string | null;
+}
+
+function isHostKeyTrustRequired(body: unknown): body is HostKeyTrustRequiredBody {
+  if (!body || typeof body !== "object") return false;
+  const b = body as Record<string, unknown>;
+  return (
+    b.error === "ssh_host_key_trust_required" &&
+    typeof b.host === "string" &&
+    typeof b.port === "number" &&
+    typeof b.presentedFingerprint === "string" &&
+    (b.kind === "unknown" || b.kind === "mismatch")
+  );
+}
+
+/**
+ * Calls fetch(url, init); if the response is a 409 ssh_host_key_trust_required,
+ * prompts the user via promptHostKeyDecision, POSTs the trust endpoint on
+ * accept, then re-runs the original request once. Returns the final Response.
+ *
+ * Because FormData bodies are one-shot streams, the caller passes a
+ * `buildInit` factory so the init (and any FormData) is constructed fresh
+ * on retry.
+ */
+async function fetchWithHostKeyPrompt(
+  orgId: string,
+  url: string,
+  buildInit: () => RequestInit | Promise<RequestInit>,
+  token: string,
+): Promise<Response> {
+  const init = await buildInit();
+  const res = await fetch(url, init);
+  if (res.status !== 409) return res;
+
+  // Clone before reading so we can return the original response if this turns
+  // out not to be a host-key-trust 409.
+  const cloned = res.clone();
+  let body: unknown;
+  try {
+    body = await cloned.json();
+  } catch {
+    return res;
+  }
+  if (!isHostKeyTrustRequired(body)) return res;
+
+  const promptKind = body.kind === "unknown" ? "first-connect" : "mismatch";
+  const accepted = await promptHostKeyDecision({
+    host: body.host,
+    port: body.port,
+    kind: promptKind,
+    presentedFingerprint: body.presentedFingerprint,
+    ...(body.storedFingerprint ? { storedFingerprint: body.storedFingerprint } : {}),
+  });
+  if (!accepted) return res;
+
+  const trustRes = await fetch(
+    `${CLOUD_URL}/api/org/${encodeURIComponent(orgId)}/ssh-host-keys/trust`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        host: body.host,
+        port: body.port,
+        fingerprint: body.presentedFingerprint,
+        ...(body.storedFingerprint ? { previousFingerprint: body.storedFingerprint } : {}),
+      }),
+    },
+  );
+  if (!trustRes.ok) {
+    // If the trust call itself raced and returned a fresh 409, surface that
+    // to the caller rather than looping indefinitely. The caller can re-issue
+    // the original IPC if the user wants to try again.
+    return trustRes;
+  }
+
+  const retryInit = await buildInit();
+  return fetch(url, retryInit);
+}
 
 async function cloudFetch<T>(
   orgId: string,
@@ -853,22 +943,27 @@ ipcMain.handle(
   ) => {
     const token = await getAccessToken();
     if (!token) throw new Error("Not authenticated to Infrawrench Cloud");
-    const form = new FormData();
-    form.append("accountId", accountId);
-    form.append("remotePath", remotePath);
-    form.append(
-      "file",
-      new Blob([new Uint8Array(data)]),
-      filename ?? remotePath.split("/").pop() ?? "upload",
-    );
-    if (sshKeyId) form.append("sshKeyId", sshKeyId);
-    if (sshHost) form.append("sshHost", sshHost);
-    if (sshUsername) form.append("sshUsername", sshUsername);
-    const res = await fetch(`${CLOUD_URL}/api/org/${encodeURIComponent(orgId)}/v1/sftp/upload`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
-      body: form,
-    });
+    const url = `${CLOUD_URL}/api/org/${encodeURIComponent(orgId)}/v1/sftp/upload`;
+    // FormData is a one-shot stream, so rebuild it on retry.
+    const buildInit = (): RequestInit => {
+      const form = new FormData();
+      form.append("accountId", accountId);
+      form.append("remotePath", remotePath);
+      form.append(
+        "file",
+        new Blob([new Uint8Array(data)]),
+        filename ?? remotePath.split("/").pop() ?? "upload",
+      );
+      if (sshKeyId) form.append("sshKeyId", sshKeyId);
+      if (sshHost) form.append("sshHost", sshHost);
+      if (sshUsername) form.append("sshUsername", sshUsername);
+      return {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: form,
+      };
+    };
+    const res = await fetchWithHostKeyPrompt(orgId, url, buildInit, token);
     if (!res.ok)
       throw new Error(`Upload failed: ${res.status} ${await res.text().catch(() => "")}`);
     return { ok: true };
@@ -906,10 +1001,11 @@ ipcMain.handle(
       ...(sshHost ? { sshHost } : {}),
       ...(sshUsername ? { sshUsername } : {}),
     });
-    const res = await fetch(
-      `${CLOUD_URL}/api/org/${encodeURIComponent(orgId)}/v1/sftp/download?${params}`,
-      { headers: { Authorization: `Bearer ${token}` } },
-    );
+    const url = `${CLOUD_URL}/api/org/${encodeURIComponent(orgId)}/v1/sftp/download?${params}`;
+    const buildInit = (): RequestInit => ({
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const res = await fetchWithHostKeyPrompt(orgId, url, buildInit, token);
     if (!res.ok)
       throw new Error(`Download failed: ${res.status} ${await res.text().catch(() => "")}`);
     const buf = Buffer.from(await res.arrayBuffer());
