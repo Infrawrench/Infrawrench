@@ -3,12 +3,7 @@ import { deriveSSHUsername, useUIStore } from "@infrawrench/ui";
 import { invoke } from "../lib/invoke";
 import { getDb } from "../db/client";
 import { PAGEANT_SENTINEL } from "../lib/ssh-agent";
-import type { SystemKey, AppKey, KeySource } from "../lib/ssh-key-source";
-
-interface CloudKeyRow {
-  id: string;
-  name: string;
-}
+import type { SystemKey, AppKey, KeySource, CloudKey } from "../lib/ssh-key-source";
 
 interface SshKeyPickerProps {
   username: string;
@@ -26,7 +21,7 @@ export function SshKeyPicker({
 }: SshKeyPickerProps) {
   const [systemKeys, setSystemKeys] = useState<SystemKey[]>([]);
   const [appKeys, setAppKeys] = useState<AppKey[]>([]);
-  const [cloudKeys, setCloudKeys] = useState<CloudKeyRow[]>([]);
+  const [cloudKeys, setCloudKeys] = useState<CloudKey[]>([]);
   const [pageantAvailable, setPageantAvailable] = useState(false);
   const [selectedKey, setSelectedKey] = useState<KeySource | null>(null);
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
@@ -54,9 +49,9 @@ export function SshKeyPicker({
     );
     setAppKeys(rows);
 
-    let cloud: CloudKeyRow[] = [];
+    let cloud: CloudKey[] = [];
     if (activeCloudOrgId) {
-      cloud = await invoke<CloudKeyRow[]>("cloud_ssh_keys_list", {
+      cloud = await invoke<CloudKey[]>("cloud_ssh_keys_list", {
         orgId: activeCloudOrgId,
       }).catch(() => []);
       setCloudKeys(cloud);

@@ -16,7 +16,7 @@ export interface AppKey {
 }
 
 /** An SSH key managed in Infrawrench Cloud — the private key lives server-side. */
-interface CloudKey {
+export interface CloudKey {
   id: string;
   name: string;
 }
