@@ -1204,6 +1204,9 @@ importers:
       '@infrawrench/plugin-base':
         specifier: workspace:*
         version: link:../plugin-base
+      '@tursodatabase/api':
+        specifier: ^2.0.0
+        version: 2.0.0
     devDependencies:
       '@libsql/client':
         specifier: ^0.14.0
@@ -3187,6 +3190,9 @@ packages:
     resolution: {integrity: sha512-/08CwpKJl3oRY8nOlh2YgilZVJDHsr60XTNxRhuDeuFXONpUZ5X+Nv65izbG/xBew9qxcJFbDX9/sAmAX+ITcQ==}
     cpu: [arm64]
     os: [win32]
+
+  '@tursodatabase/api@2.0.0':
+    resolution: {integrity: sha512-WMmIvG5qiJbyHmD2ZbYJxJwMbKfXIrCwXJFoMyoL5WCXgWtfTbNUNAgeBg1ltSEDO1eD+BEJmihlRQbFuG4P5w==}
 
   '@tybys/wasm-util@0.10.1':
     resolution: {integrity: sha512-9tTaPJLSiejZKx+Bmog4uSubteqTvFrVrURwkmHixBo0G4seD0zUxp98E1DzUBJxLQ3NPwXrGKDiVjwx/DpPsg==}
@@ -7144,6 +7150,9 @@ packages:
   webpack-virtual-modules@0.6.2:
     resolution: {integrity: sha512-66/V2i5hQanC51vBQKPH4aI8NMAcBW59FVBs+rC7eGHupMyfn34q7rZIE+ETlJ+XTevqfUhVVBgSUNSW2flEUQ==}
 
+  whatwg-fetch@3.6.20:
+    resolution: {integrity: sha512-EqhiFU6daOA8kpjOWTL0olhVOF3i7OrFzSYiGsEMB8GcXS+RrzauAERX65xMeNWVqxA6HXH2m69Z9LaKKdisfg==}
+
   whatwg-url@14.2.0:
     resolution: {integrity: sha512-De72GdQZzNTUBBChsXueQUnPKDkg/5A5zp7pFDuQAj5UFoENpiACU0wlCvzpAGnTkj++ihpKwKyYewn/XNUbKw==}
     engines: {node: '>=18'}
@@ -9088,6 +9097,10 @@ snapshots:
 
   '@turbo/windows-arm64@2.9.3':
     optional: true
+
+  '@tursodatabase/api@2.0.0':
+    dependencies:
+      whatwg-fetch: 3.6.20
 
   '@tybys/wasm-util@0.10.1':
     dependencies:
@@ -13801,6 +13814,8 @@ snapshots:
   webidl-conversions@7.0.0: {}
 
   webpack-virtual-modules@0.6.2: {}
+
+  whatwg-fetch@3.6.20: {}
 
   whatwg-url@14.2.0:
     dependencies:

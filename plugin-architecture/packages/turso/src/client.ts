@@ -7,31 +7,10 @@ import type {
   CreateResourceConfig,
   DashboardStat,
 } from "@infrawrench/plugin-base";
-import { jsonRestFetch } from "@infrawrench/plugin-base";
+import { createClient as createTursoApiClient } from "@tursodatabase/api";
+import type { Database, Group, LocationKeys } from "@tursodatabase/api";
 
-/**
- * Turso Platform API response shapes — minimal for the fields we use.
- */
-interface TursoDatabase {
-  Name: string;
-  DbId: string;
-  Hostname: string;
-  group: string;
-  primaryRegion: string;
-  regions: string[];
-  type: string;
-  version: string;
-  is_schema: boolean;
-  schema: string;
-  sleeping: boolean;
-}
-
-interface TursoGroup {
-  name: string;
-  locations: string[];
-  primary: string;
-  version: string;
-}
+type TursoApiClient = ReturnType<typeof createTursoApiClient>;
 
 const TURSO_LOCATIONS: Record<string, { location: string; flag: string }> = {
   ams: { location: "Amsterdam, Netherlands", flag: "\u{1F1F3}\u{1F1F1}" },
@@ -79,31 +58,18 @@ function formatLocation(code: string): string {
  * Manages Turso databases and groups via the Turso Platform API.
  */
 export class TursoClient implements PluginClient {
-  private readonly apiToken: string;
   private readonly orgName: string;
-  private readonly baseUrl = "https://api.turso.tech/v1";
+  private readonly api: TursoApiClient;
 
   constructor(credentials: Record<string, string>, _services?: HostServices) {
     const token = credentials["apiToken"];
     if (!token) throw new Error("Turso plugin: missing apiToken credential");
-    this.apiToken = token;
 
     const org = credentials["organizationName"];
     if (!org) throw new Error("Turso plugin: missing organizationName credential");
     this.orgName = org;
-  }
 
-  private async fetch<T>(path: string, options?: RequestInit): Promise<T> {
-    return jsonRestFetch<T>({
-      vendor: "Turso",
-      url: `${this.baseUrl}${path}`,
-      errorPath: path,
-      headers: {
-        Authorization: `Bearer ${this.apiToken}`,
-        Accept: "application/json",
-      },
-      ...(options ? { init: options } : {}),
-    });
+    this.api = createTursoApiClient({ org, token });
   }
 
   async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
@@ -291,31 +257,18 @@ export class TursoClient implements PluginClient {
   async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
     const externalId = resourceId.split(":").slice(2).join(":");
     if (typeId === "turso-database") {
-      await this.fetch(
-        `/organizations/${encodeURIComponent(this.orgName)}/databases/${encodeURIComponent(externalId)}`,
-        {
-          method: "DELETE",
-        },
-      );
+      await this.api.databases.delete(externalId);
       return;
     }
     if (typeId === "turso-group") {
-      await this.fetch(
-        `/organizations/${encodeURIComponent(this.orgName)}/groups/${encodeURIComponent(externalId)}`,
-        {
-          method: "DELETE",
-        },
-      );
+      await this.api.groups.delete(externalId);
       return;
     }
     throw new Error(`Turso plugin: cannot delete type "${typeId}"`);
   }
 
-  private async fetchDatabases(): Promise<TursoDatabase[]> {
-    const data = await this.fetch<{ databases: TursoDatabase[] }>(
-      `/organizations/${encodeURIComponent(this.orgName)}/databases`,
-    );
-    return data.databases ?? [];
+  private async fetchDatabases(): Promise<Database[]> {
+    return this.api.databases.list();
   }
 
   private async listDatabases(accountId: string): Promise<ResourceInstance[]> {
@@ -323,18 +276,18 @@ export class TursoClient implements PluginClient {
     const now = new Date().toISOString();
 
     return databases.map((db) => ({
-      id: `${accountId}:turso-database:${db.Name}`,
+      id: `${accountId}:turso-database:${db.name}`,
       pluginId: "turso",
       resourceTypeId: "turso-database",
       accountId,
-      displayName: db.Name,
-      externalId: db.Name,
+      displayName: db.name,
+      externalId: db.name,
       fields: {
-        name: db.Name,
-        hostname: db.Hostname,
-        group: db.group,
-        primaryRegion: db.primaryRegion,
-        regions: db.regions.join(", "),
+        name: db.name,
+        hostname: db.hostname,
+        group: db.group ?? "",
+        primaryRegion: db.primaryRegion ?? "",
+        regions: (db.regions ?? []).join(", "),
         version: db.version,
         isSchema: db.is_schema,
         schema: db.schema || "",
@@ -354,10 +307,7 @@ export class TursoClient implements PluginClient {
     const dbName = resourceId.split(":").slice(2).join(":");
 
     // Create a non-expiring auth token for this database
-    const tokenData = await this.fetch<{ jwt: string }>(
-      `/organizations/${encodeURIComponent(this.orgName)}/databases/${encodeURIComponent(dbName)}/auth/tokens`,
-      { method: "POST", body: JSON.stringify({}) },
-    );
+    const tokenData = await this.api.databases.createToken(dbName);
 
     // Return as libsql URL with auth token in query parameter
     // The driver will parse this to extract url and authToken
@@ -369,37 +319,34 @@ export class TursoClient implements PluginClient {
     accountId: string,
     fields: Record<string, string>,
   ): Promise<ResourceInstance> {
-    const body: Record<string, unknown> = {
-      name: fields["name"],
-      group: fields["group"],
+    const name = fields["name"];
+    if (!name) throw new Error("Turso plugin: missing database name");
+    const group = fields["group"];
+
+    const options: Parameters<typeof this.api.databases.create>[1] = {
+      ...(group ? { group } : {}),
+      ...(fields["isSchema"] === "true" ? { is_schema: true } : {}),
     };
-    if (fields["isSchema"] === "true") {
-      body["is_schema"] = true;
-    }
 
-    const data = await this.fetch<{ database: TursoDatabase }>(
-      `/organizations/${encodeURIComponent(this.orgName)}/databases`,
-      { method: "POST", body: JSON.stringify(body) },
-    );
+    const created = await this.api.databases.create(name, options);
 
-    const db = data.database;
     const now = new Date().toISOString();
     return {
-      id: `${accountId}:turso-database:${db.Name}`,
+      id: `${accountId}:turso-database:${created.name}`,
       pluginId: "turso",
       resourceTypeId: "turso-database",
       accountId,
-      displayName: db.Name,
-      externalId: db.Name,
+      displayName: created.name,
+      externalId: created.name,
       fields: {
-        name: db.Name,
-        hostname: db.Hostname,
-        group: db.group,
-        primaryRegion: db.primaryRegion,
-        regions: (db.regions ?? []).join(", "),
-        version: db.version ?? "",
-        isSchema: db.is_schema ?? false,
-        schema: db.schema ?? "",
+        name: created.name,
+        hostname: created.hostname,
+        group: group ?? "",
+        primaryRegion: "",
+        regions: "",
+        version: "",
+        isSchema: fields["isSchema"] === "true",
+        schema: "",
         sleeping: false,
       },
       resolvedOutputs: {},
@@ -409,11 +356,8 @@ export class TursoClient implements PluginClient {
     };
   }
 
-  private async fetchGroups(): Promise<TursoGroup[]> {
-    const data = await this.fetch<{ groups: TursoGroup[] }>(
-      `/organizations/${encodeURIComponent(this.orgName)}/groups`,
-    );
-    return data.groups ?? [];
+  private async fetchGroups(): Promise<Group[]> {
+    return this.api.groups.list();
   }
 
   private async listGroups(accountId: string): Promise<ResourceInstance[]> {
@@ -431,7 +375,7 @@ export class TursoClient implements PluginClient {
         name: g.name,
         primaryLocation: g.primary,
         locations: g.locations.join(", "),
-        version: g.version ?? "",
+        version: "",
       },
       resolvedOutputs: {},
       secretStates: [],
@@ -444,18 +388,13 @@ export class TursoClient implements PluginClient {
     accountId: string,
     fields: Record<string, string>,
   ): Promise<ResourceInstance> {
-    const data = await this.fetch<{ group: TursoGroup }>(
-      `/organizations/${encodeURIComponent(this.orgName)}/groups`,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          name: fields["name"],
-          location: fields["location"],
-        }),
-      },
-    );
+    const name = fields["name"];
+    const location = fields["location"];
+    if (!name) throw new Error("Turso plugin: missing group name");
+    if (!location) throw new Error("Turso plugin: missing group location");
 
-    const g = data.group;
+    const g = await this.api.groups.create(name, location as keyof LocationKeys);
+
     const now = new Date().toISOString();
     return {
       id: `${accountId}:turso-group:${g.name}`,
@@ -468,7 +407,7 @@ export class TursoClient implements PluginClient {
         name: g.name,
         primaryLocation: g.primary,
         locations: (g.locations ?? []).join(", "),
-        version: g.version ?? "",
+        version: "",
       },
       resolvedOutputs: {},
       secretStates: [],
