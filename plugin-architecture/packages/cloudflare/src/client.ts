@@ -44,133 +44,89 @@ import {
   renderSpectrumApplicationDetail,
   renderLogpushJobDetail,
 } from "./detail-renderers.js";
+import { CloudflareApi } from "./clients/shared.js";
+import * as zoneApi from "./clients/zone-client.js";
+import * as dnsRecordApi from "./clients/dns-record-client.js";
+import * as workerApi from "./clients/worker-client.js";
+import * as r2Api from "./clients/r2-client.js";
+import * as pagesApi from "./clients/pages-client.js";
+import * as kvApi from "./clients/kv-client.js";
+import * as d1Api from "./clients/d1-client.js";
+import * as queueApi from "./clients/queue-client.js";
+import * as tunnelApi from "./clients/tunnel-client.js";
+import * as sslApi from "./clients/ssl-certificate-client.js";
+import * as pageRuleApi from "./clients/page-rule-client.js";
+import * as firewallApi from "./clients/firewall-rule-client.js";
+import * as accessAppApi from "./clients/access-application-client.js";
+import * as accessPolicyApi from "./clients/access-policy-client.js";
+import * as loadBalancerApi from "./clients/load-balancer-client.js";
+import * as workerRouteApi from "./clients/worker-route-client.js";
+import * as customHostnameApi from "./clients/custom-hostname-client.js";
+import * as hyperdriveApi from "./clients/hyperdrive-client.js";
+import * as emailRoutingApi from "./clients/email-routing-client.js";
+import * as waitingRoomApi from "./clients/waiting-room-client.js";
+import * as spectrumApi from "./clients/spectrum-client.js";
+import * as logpushApi from "./clients/logpush-client.js";
 
 export class CloudflareClient implements PluginClient {
-  private readonly apiToken: string;
+  private readonly api: CloudflareApi;
   private readonly resourceTypes: ResourceTypeDefinition[];
-  private readonly baseUrl = "https://api.cloudflare.com/client/v4";
-  private cfAccountId: string | null = null;
 
   constructor(credentials: Record<string, string>, resourceTypes: ResourceTypeDefinition[] = []) {
     const token = credentials["apiToken"];
     if (!token) throw new Error("Cloudflare plugin: missing apiToken credential");
-    this.apiToken = token;
+    this.api = new CloudflareApi(token);
     this.resourceTypes = resourceTypes;
-  }
-
-  private async fetch<T>(path: string, options?: RequestInit): Promise<T> {
-    const res = await fetch(`${this.baseUrl}${path}`, {
-      headers: {
-        Authorization: `Bearer ${this.apiToken}`,
-        "Content-Type": "application/json",
-      },
-      ...options,
-    });
-    if (!res.ok) {
-      throw new Error(`Cloudflare API error ${res.status} for ${path}: ${await res.text()}`);
-    }
-    if (res.status === 204) return undefined as unknown as T;
-    const json = (await res.json()) as {
-      success: boolean;
-      result: T;
-      errors?: Array<{ message: string }>;
-    };
-    if (!json.success) {
-      const msgs = json.errors?.map((e) => e.message).join(", ") ?? "unknown error";
-      throw new Error(`Cloudflare API error for ${path}: ${msgs}`);
-    }
-    return json.result;
-  }
-
-  /** Paginate through Cloudflare's v4 API (page-based) */
-  private async paginate<T>(path: string, perPage = 50): Promise<T[]> {
-    const results: T[] = [];
-    let page = 1;
-    for (;;) {
-      const sep = path.includes("?") ? "&" : "?";
-      const res = await fetch(`${this.baseUrl}${path}${sep}page=${page}&per_page=${perPage}`, {
-        headers: {
-          Authorization: `Bearer ${this.apiToken}`,
-          "Content-Type": "application/json",
-        },
-      });
-      if (!res.ok) throw new Error(`Cloudflare API error ${res.status}: ${await res.text()}`);
-      const json = (await res.json()) as {
-        success: boolean;
-        result: T[];
-        result_info?: { total_pages: number; page: number };
-      };
-      if (!json.success || !Array.isArray(json.result)) break;
-      results.push(...json.result);
-      const totalPages = json.result_info?.total_pages ?? 1;
-      if (page >= totalPages) break;
-      page++;
-    }
-    return results;
-  }
-
-  /** Resolve the Cloudflare account ID from the first zone */
-  private async getAccountId(): Promise<string> {
-    if (this.cfAccountId) return this.cfAccountId;
-    const zones = await this.paginate<Record<string, unknown>>("/zones?per_page=1");
-    const firstZone = zones[0];
-    if (!firstZone)
-      throw new Error("Cloudflare plugin: no zones found — cannot determine account ID");
-    const account = firstZone["account"] as Record<string, unknown> | undefined;
-    this.cfAccountId = String(account?.["id"] ?? "");
-    if (!this.cfAccountId)
-      throw new Error("Cloudflare plugin: could not determine account ID from zone");
-    return this.cfAccountId;
   }
 
   async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
     switch (typeId) {
       case "zone":
-        return this.listZones(accountId);
+        return zoneApi.listZones(this.api, accountId);
       case "dns-record":
-        return this.listAllDnsRecords(accountId);
+        return dnsRecordApi.listAllDnsRecords(this.api, accountId);
       case "worker":
-        return this.listWorkers(accountId);
+        return workerApi.listWorkers(this.api, accountId);
       case "r2-bucket":
-        return this.listR2Buckets(accountId);
+        return r2Api.listR2Buckets(this.api, accountId);
       case "pages-project":
-        return this.listPagesProjects(accountId);
+        return pagesApi.listPagesProjects(this.api, accountId);
       case "pages-deployment":
-        return this.listAllPagesDeployments(accountId);
+        return pagesApi.listAllPagesDeployments(this.api, accountId);
       case "kv-namespace":
-        return this.listKVNamespaces(accountId);
+        return kvApi.listKVNamespaces(this.api, accountId);
       case "d1-database":
-        return this.listD1Databases(accountId);
+        return d1Api.listD1Databases(this.api, accountId);
       case "queue":
-        return this.listQueues(accountId);
+        return queueApi.listQueues(this.api, accountId);
       case "tunnel":
-        return this.listTunnels(accountId);
+        return tunnelApi.listTunnels(this.api, accountId);
       case "ssl-certificate":
-        return this.listAllSSLCertificates(accountId);
+        return sslApi.listAllSSLCertificates(this.api, accountId);
       case "page-rule":
-        return this.listAllPageRules(accountId);
+        return pageRuleApi.listAllPageRules(this.api, accountId);
       case "firewall-rule":
-        return this.listAllFirewallRules(accountId);
+        return firewallApi.listAllFirewallRules(this.api, accountId);
       case "access-application":
-        return this.listAccessApplications(accountId);
+        return accessAppApi.listAccessApplications(this.api, accountId);
       case "load-balancer":
-        return this.listAllLoadBalancers(accountId);
+        return loadBalancerApi.listAllLoadBalancers(this.api, accountId);
       case "worker-route":
-        return this.listAllWorkerRoutes(accountId);
+        return workerRouteApi.listAllWorkerRoutes(this.api, accountId);
       case "custom-hostname":
-        return this.listAllCustomHostnames(accountId);
+        return customHostnameApi.listAllCustomHostnames(this.api, accountId);
       case "hyperdrive":
-        return this.listHyperdrives(accountId);
+        return hyperdriveApi.listHyperdrives(this.api, accountId);
       case "email-routing-rule":
-        return this.listAllEmailRoutingRules(accountId);
+        return emailRoutingApi.listAllEmailRoutingRules(this.api, accountId);
       case "waiting-room":
-        return this.listAllWaitingRooms(accountId);
+        return waitingRoomApi.listAllWaitingRooms(this.api, accountId);
       case "access-policy":
-        return this.listAllAccessPolicies(accountId);
+        return accessPolicyApi.listAllAccessPolicies(this.api, accountId);
       case "spectrum-application":
-        return this.listAllSpectrumApplications(accountId);
+        return spectrumApi.listAllSpectrumApplications(this.api, accountId);
       case "logpush-job":
-        return this.listAllLogpushJobs(accountId);
+        return logpushApi.listAllLogpushJobs(this.api, accountId);
       default:
         throw new Error(`Cloudflare plugin: unknown resource type "${typeId}"`);
     }
@@ -184,30 +140,16 @@ export class CloudflareClient implements PluginClient {
     const externalId = resourceId.split(":").slice(2).join(":");
 
     if (typeId === "zone") {
-      const zone = await this.fetch<Record<string, unknown>>(`/zones/${externalId}`);
-      return this.mapZone(zone, accountId);
+      return zoneApi.getZone(this.api, externalId, accountId);
     }
     if (typeId === "dns-record") {
-      const [zoneId, recordId] = externalId.split("/");
-      if (!zoneId || !recordId) throw new Error("Invalid DNS record ID");
-      const record = await this.fetch<Record<string, unknown>>(
-        `/zones/${zoneId}/dns_records/${recordId}`,
-      );
-      return this.mapDnsRecord(record, accountId, zoneId);
+      return dnsRecordApi.getDnsRecord(this.api, externalId, accountId);
     }
     if (typeId === "r2-bucket") {
-      const cfAccountId = await this.getAccountId();
-      const bucket = await this.fetch<Record<string, unknown>>(
-        `/accounts/${cfAccountId}/r2/buckets/${externalId}`,
-      );
-      return this.mapR2Bucket(bucket, accountId, cfAccountId);
+      return r2Api.getR2Bucket(this.api, externalId, accountId);
     }
     if (typeId === "d1-database") {
-      const cfAccountId = await this.getAccountId();
-      const db = await this.fetch<Record<string, unknown>>(
-        `/accounts/${cfAccountId}/d1/database/${externalId}`,
-      );
-      return this.mapD1Database(db, accountId);
+      return d1Api.getD1Database(this.api, externalId, accountId);
     }
 
     // Fallback: list all and find
@@ -231,7 +173,7 @@ export class CloudflareClient implements PluginClient {
     if (typeId === "r2-bucket") {
       if (outputKey === "bucketName") return String(resource.fields["name"] ?? "");
       if (outputKey === "s3Endpoint") {
-        const cfAccountId = await this.getAccountId();
+        const cfAccountId = await this.api.getAccountId();
         return `https://${cfAccountId}.r2.cloudflarestorage.com`;
       }
     }
@@ -248,11 +190,7 @@ export class CloudflareClient implements PluginClient {
     if (typeId === "tunnel") {
       if (outputKey === "tunnelId") return resource.externalId ?? "";
       if (outputKey === "tunnelToken") {
-        const cfAccountId = await this.getAccountId();
-        // /cfd_tunnel/{id}/token returns result as a plain base64 string, not an object.
-        return await this.fetch<string>(
-          `/accounts/${cfAccountId}/cfd_tunnel/${resource.externalId}/token`,
-        );
+        return await tunnelApi.getTunnelToken(this.api, String(resource.externalId ?? ""));
       }
     }
     if (typeId === "pages-project") {
@@ -508,7 +446,7 @@ export class CloudflareClient implements PluginClient {
           label: "Zone",
           kind: "select",
           required: true,
-          options: await this.getZoneOptions(),
+          options: await this.api.getZoneOptions(),
         });
       }
       fields.push(
@@ -702,7 +640,7 @@ export class CloudflareClient implements PluginClient {
           label: "Zone",
           kind: "select",
           required: true,
-          options: await this.getZoneOptions(),
+          options: await this.api.getZoneOptions(),
         });
       }
       fields.push(
@@ -731,7 +669,7 @@ export class CloudflareClient implements PluginClient {
           label: "Zone",
           kind: "select",
           required: true,
-          options: await this.getZoneOptions(),
+          options: await this.api.getZoneOptions(),
         });
       }
       fields.push(
@@ -774,7 +712,7 @@ export class CloudflareClient implements PluginClient {
           label: "Zone",
           kind: "select",
           required: true,
-          options: await this.getZoneOptions(),
+          options: await this.api.getZoneOptions(),
         });
       }
       fields.push(
@@ -818,7 +756,7 @@ export class CloudflareClient implements PluginClient {
           label: "Zone",
           kind: "select",
           required: true,
-          options: await this.getZoneOptions(),
+          options: await this.api.getZoneOptions(),
         });
       }
       fields.push(
@@ -852,7 +790,7 @@ export class CloudflareClient implements PluginClient {
           label: "Zone",
           kind: "select",
           required: true,
-          options: await this.getZoneOptions(),
+          options: await this.api.getZoneOptions(),
         });
       }
       fields.push(
@@ -909,7 +847,7 @@ export class CloudflareClient implements PluginClient {
           label: "Zone",
           kind: "select",
           required: true,
-          options: await this.getZoneOptions(),
+          options: await this.api.getZoneOptions(),
         });
       }
       fields.push(
@@ -956,7 +894,7 @@ export class CloudflareClient implements PluginClient {
           label: "Zone",
           kind: "select",
           required: true,
-          options: await this.getZoneOptions(),
+          options: await this.api.getZoneOptions(),
         });
       }
       fields.push(
@@ -985,7 +923,7 @@ export class CloudflareClient implements PluginClient {
           label: "Zone",
           kind: "select",
           required: true,
-          options: await this.getZoneOptions(),
+          options: await this.api.getZoneOptions(),
         });
       }
       fields.push(
@@ -1061,7 +999,7 @@ export class CloudflareClient implements PluginClient {
           label: "Access Application",
           kind: "select",
           required: true,
-          options: await this.getAccessAppOptions(),
+          options: await this.api.getAccessAppOptions(),
         });
       }
       fields.push(
@@ -1102,7 +1040,7 @@ export class CloudflareClient implements PluginClient {
           label: "Zone",
           kind: "select",
           required: true,
-          options: await this.getZoneOptions(),
+          options: await this.api.getZoneOptions(),
         });
       }
       fields.push(
@@ -1138,7 +1076,7 @@ export class CloudflareClient implements PluginClient {
           label: "Zone",
           kind: "select",
           required: true,
-          options: await this.getZoneOptions(),
+          options: await this.api.getZoneOptions(),
         });
       }
       fields.push(
@@ -1224,563 +1162,115 @@ export class CloudflareClient implements PluginClient {
     parentResourceId?: string,
   ): Promise<ResourceInstance> {
     const parentExternalId = parentResourceId ? parentResourceId.split(":").slice(2).join(":") : "";
-    if (typeId === "zone") {
-      const zone = await this.fetch<Record<string, unknown>>("/zones", {
-        method: "POST",
-        body: JSON.stringify({ name: fields["name"], type: "full" }),
-      });
-      return this.mapZone(zone, accountId);
-    }
-    if (typeId === "dns-record") {
-      const zoneId = fields["zoneId"] || parentExternalId;
-      if (!zoneId) throw new Error("Cloudflare plugin: zoneId is required to create a DNS record");
-      const body: Record<string, unknown> = {
-        type: fields["type"],
-        name: fields["name"],
-        content: fields["content"],
-        ttl: Number(fields["ttl"] ?? 1),
-        proxied: fields["proxied"] === "true",
-      };
-      if (fields["priority"]) {
-        body["priority"] = Number(fields["priority"]);
-      }
-      const record = await this.fetch<Record<string, unknown>>(`/zones/${zoneId}/dns_records`, {
-        method: "POST",
-        body: JSON.stringify(body),
-      });
-      return this.mapDnsRecord(record, accountId, zoneId);
-    }
-    if (typeId === "r2-bucket") {
-      const cfAccountId = await this.getAccountId();
-      const body: Record<string, unknown> = { name: fields["name"] };
-      if (fields["locationHint"]) body["locationHint"] = fields["locationHint"];
-      const bucket = await this.fetch<Record<string, unknown>>(
-        `/accounts/${cfAccountId}/r2/buckets`,
-        {
-          method: "POST",
-          body: JSON.stringify(body),
-        },
-      );
-      return this.mapR2Bucket(bucket, accountId, cfAccountId);
-    }
-    if (typeId === "kv-namespace") {
-      const cfAccountId = await this.getAccountId();
-      const ns = await this.fetch<Record<string, unknown>>(
-        `/accounts/${cfAccountId}/storage/kv/namespaces`,
-        {
-          method: "POST",
-          body: JSON.stringify({ title: fields["title"] }),
-        },
-      );
-      return this.mapKVNamespace(ns, accountId);
-    }
-    if (typeId === "d1-database") {
-      const cfAccountId = await this.getAccountId();
-      const db = await this.fetch<Record<string, unknown>>(`/accounts/${cfAccountId}/d1/database`, {
-        method: "POST",
-        body: JSON.stringify({ name: fields["name"] }),
-      });
-      return this.mapD1Database(db, accountId);
-    }
-    if (typeId === "queue") {
-      const cfAccountId = await this.getAccountId();
-      const q = await this.fetch<Record<string, unknown>>(`/accounts/${cfAccountId}/queues`, {
-        method: "POST",
-        body: JSON.stringify({ queue_name: fields["queue_name"] }),
-      });
-      return this.mapQueue(q, accountId);
-    }
-    if (typeId === "hyperdrive") {
-      const cfAccountId = await this.getAccountId();
-      const hd = await this.fetch<Record<string, unknown>>(
-        `/accounts/${cfAccountId}/hyperdrive/configs`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            name: fields["name"],
-            origin: {
-              scheme: fields["scheme"] ?? "postgres",
-              host: fields["host"],
-              port: Number(fields["port"] ?? 5432),
-              database: fields["database"],
-              user: fields["user"],
-              password: fields["password"],
-            },
-          }),
-        },
-      );
-      return this.mapHyperdrive(hd, accountId);
-    }
-    if (typeId === "pages-project") {
-      const cfAccountId = await this.getAccountId();
-      const project = await this.fetch<Record<string, unknown>>(
-        `/accounts/${cfAccountId}/pages/projects`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            name: fields["name"] ?? "",
-            production_branch: fields["productionBranch"] ?? "main",
-          }),
-        },
-      );
-      return this.mapPagesProject(project, accountId);
-    }
-    if (typeId === "tunnel") {
-      const cfAccountId = await this.getAccountId();
-      const tunnel = await this.fetch<Record<string, unknown>>(
-        `/accounts/${cfAccountId}/cfd_tunnel`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            name: fields["name"] ?? "",
-            tunnel_secret: btoa(crypto.randomUUID()),
-          }),
-        },
-      );
-      return this.mapTunnel(tunnel, accountId);
-    }
-    if (typeId === "worker-route") {
-      const zoneId = fields["zoneId"] || parentExternalId;
-      if (!zoneId)
-        throw new Error("Cloudflare plugin: zoneId is required to create a worker route");
-      const route = await this.fetch<Record<string, unknown>>(`/zones/${zoneId}/workers/routes`, {
-        method: "POST",
-        body: JSON.stringify({
-          pattern: fields["pattern"] ?? "",
-          script: fields["scriptName"] ?? "",
-        }),
-      });
-      return this.mapWorkerRoute(route, accountId, zoneId);
-    }
-    if (typeId === "page-rule") {
-      const zoneId = fields["zoneId"] || parentExternalId;
-      if (!zoneId) throw new Error("Cloudflare plugin: zoneId is required to create a page rule");
-      const body: Record<string, unknown> = {
-        targets: [
-          {
-            target: "url",
-            constraint: { operator: "matches", value: fields["urlPattern"] ?? "" },
-          },
-        ],
-        actions: [
-          {
-            id: fields["action"] ?? "",
-            ...(fields["actionValue"] ? { value: fields["actionValue"] } : {}),
-          },
-        ],
-        status: "active",
-      };
-      const rule = await this.fetch<Record<string, unknown>>(`/zones/${zoneId}/pagerules`, {
-        method: "POST",
-        body: JSON.stringify(body),
-      });
-      return this.mapPageRule(rule, accountId, zoneId);
-    }
-    if (typeId === "firewall-rule") {
-      const zoneId = fields["zoneId"] || parentExternalId;
-      if (!zoneId)
-        throw new Error("Cloudflare plugin: zoneId is required to create a firewall rule");
-      // Get or create the http_request_firewall_custom phase ruleset
-      let rulesetId = "";
-      try {
-        const rulesets = await this.fetch<Array<Record<string, unknown>>>(
-          `/zones/${zoneId}/rulesets`,
+    switch (typeId) {
+      case "zone":
+        return zoneApi.createZone(this.api, accountId, fields);
+      case "dns-record":
+        return dnsRecordApi.createDnsRecord(this.api, accountId, fields, parentExternalId);
+      case "r2-bucket":
+        return r2Api.createR2Bucket(this.api, accountId, fields);
+      case "kv-namespace":
+        return kvApi.createKVNamespace(this.api, accountId, fields);
+      case "d1-database":
+        return d1Api.createD1Database(this.api, accountId, fields);
+      case "queue":
+        return queueApi.createQueue(this.api, accountId, fields);
+      case "hyperdrive":
+        return hyperdriveApi.createHyperdrive(this.api, accountId, fields);
+      case "pages-project":
+        return pagesApi.createPagesProject(this.api, accountId, fields);
+      case "tunnel":
+        return tunnelApi.createTunnel(this.api, accountId, fields);
+      case "worker-route":
+        return workerRouteApi.createWorkerRoute(this.api, accountId, fields, parentExternalId);
+      case "page-rule":
+        return pageRuleApi.createPageRule(this.api, accountId, fields, parentExternalId);
+      case "firewall-rule":
+        return firewallApi.createFirewallRule(this.api, accountId, fields, parentExternalId);
+      case "custom-hostname":
+        return customHostnameApi.createCustomHostname(
+          this.api,
+          accountId,
+          fields,
+          parentExternalId,
         );
-        const customRuleset = (rulesets ?? []).find(
-          (rs: Record<string, unknown>) => rs["phase"] === "http_request_firewall_custom",
+      case "email-routing-rule":
+        return emailRoutingApi.createEmailRoutingRule(
+          this.api,
+          accountId,
+          fields,
+          parentExternalId,
         );
-        if (customRuleset) {
-          rulesetId = String(customRuleset["id"]);
-        }
-      } catch {
-        // Ignore - we'll create via the phase entrypoint
-      }
-      const ruleBody = {
-        description: fields["description"] ?? "",
-        expression: fields["expression"] ?? "",
-        action: fields["action"] ?? "",
-        enabled: true,
-      };
-      let result: Record<string, unknown>;
-      if (rulesetId) {
-        const ruleset = await this.fetch<Record<string, unknown>>(
-          `/zones/${zoneId}/rulesets/${rulesetId}/rules`,
-          {
-            method: "POST",
-            body: JSON.stringify(ruleBody),
-          },
-        );
-        const rules = (ruleset["rules"] as Array<Record<string, unknown>>) ?? [];
-        result = rules[rules.length - 1] ?? ruleset;
-      } else {
-        const ruleset = await this.fetch<Record<string, unknown>>(`/zones/${zoneId}/rulesets`, {
-          method: "POST",
-          body: JSON.stringify({
-            name: "Custom Firewall Rules",
-            kind: "zone",
-            phase: "http_request_firewall_custom",
-            rules: [ruleBody],
-          }),
-        });
-        rulesetId = String(ruleset["id"] ?? "");
-        const rules = (ruleset["rules"] as Array<Record<string, unknown>>) ?? [];
-        result = rules[0] ?? ruleset;
-      }
-      return this.mapFirewallRule(result, accountId, zoneId, rulesetId);
+      case "waiting-room":
+        return waitingRoomApi.createWaitingRoom(this.api, accountId, fields, parentExternalId);
+      case "ssl-certificate":
+        return sslApi.createSSLCertificate(this.api, accountId, fields, parentExternalId);
+      case "logpush-job":
+        return logpushApi.createLogpushJob(this.api, accountId, fields, parentExternalId);
+      case "access-application":
+        return accessAppApi.createAccessApplication(this.api, accountId, fields);
+      case "access-policy":
+        return accessPolicyApi.createAccessPolicy(this.api, accountId, fields, parentExternalId);
+      case "load-balancer":
+        return loadBalancerApi.createLoadBalancer(this.api, accountId, fields, parentExternalId);
+      case "spectrum-application":
+        return spectrumApi.createSpectrumApplication(this.api, accountId, fields, parentExternalId);
+      case "worker":
+        return workerApi.createWorker(this.api, accountId, fields);
+      default:
+        throw new Error(`Cloudflare plugin: createResource not supported for type "${typeId}"`);
     }
-    if (typeId === "custom-hostname") {
-      const zoneId = fields["zoneId"] || parentExternalId;
-      if (!zoneId)
-        throw new Error("Cloudflare plugin: zoneId is required to create a custom hostname");
-      const ch = await this.fetch<Record<string, unknown>>(`/zones/${zoneId}/custom_hostnames`, {
-        method: "POST",
-        body: JSON.stringify({
-          hostname: fields["hostname"] ?? "",
-          ssl: {
-            method: fields["sslMethod"] ?? "http",
-            type: "dv",
-          },
-        }),
-      });
-      return this.mapCustomHostname(ch, accountId, zoneId);
-    }
-    if (typeId === "email-routing-rule") {
-      const zoneId = fields["zoneId"] || parentExternalId;
-      if (!zoneId)
-        throw new Error("Cloudflare plugin: zoneId is required to create an email routing rule");
-      const matcherField = fields["matcherField"] ?? "to";
-      const matcherValue = fields["matcherValue"] ?? "";
-      const actionType = fields["actionType"] ?? "forward";
-      const actionValue = fields["actionValue"] ?? "";
-      const body: Record<string, unknown> = {
-        name: fields["name"] ?? "",
-        enabled: true,
-        matchers: [{ type: "literal", field: matcherField, value: matcherValue }],
-        actions: [
-          {
-            type: actionType,
-            ...(actionType !== "drop" && actionValue ? { value: [actionValue] } : {}),
-          },
-        ],
-      };
-      const rule = await this.fetch<Record<string, unknown>>(
-        `/zones/${zoneId}/email/routing/rules`,
-        {
-          method: "POST",
-          body: JSON.stringify(body),
-        },
-      );
-      return this.mapEmailRoutingRule(rule, accountId, zoneId);
-    }
-    if (typeId === "waiting-room") {
-      const zoneId = fields["zoneId"] || parentExternalId;
-      if (!zoneId)
-        throw new Error("Cloudflare plugin: zoneId is required to create a waiting room");
-      const room = await this.fetch<Record<string, unknown>>(`/zones/${zoneId}/waiting_rooms`, {
-        method: "POST",
-        body: JSON.stringify({
-          name: fields["name"] ?? "",
-          host: fields["host"] ?? "",
-          total_active_users: Number(fields["totalActiveUsers"] ?? 200),
-          new_users_per_minute: Number(fields["newUsersPerMinute"] ?? 200),
-        }),
-      });
-      return this.mapWaitingRoom(room, accountId, zoneId);
-    }
-    if (typeId === "ssl-certificate") {
-      const zoneId = fields["zoneId"] || parentExternalId;
-      if (!zoneId)
-        throw new Error("Cloudflare plugin: zoneId is required to create an SSL certificate");
-      const cert = await this.fetch<Record<string, unknown>>(
-        `/zones/${zoneId}/custom_certificates`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            certificate: fields["certificate"] ?? "",
-            private_key: fields["privateKey"] ?? "",
-          }),
-        },
-      );
-      // Map using the zone name from the zone lookup
-      const zones = await this.paginate<Record<string, unknown>>("/zones");
-      const zone = zones.find((z) => String(z["id"]) === zoneId);
-      const zoneName = zone ? String(zone["name"]) : "";
-      return this.mapSSLCertificate(cert, accountId, zoneId, zoneName);
-    }
-    if (typeId === "logpush-job") {
-      const zoneId = fields["zoneId"] || parentExternalId;
-      if (!zoneId) throw new Error("Cloudflare plugin: zoneId is required to create a logpush job");
-      const body: Record<string, unknown> = {
-        destination_conf: fields["destinationConf"] ?? "",
-        dataset: fields["dataset"] ?? "",
-        enabled: true,
-      };
-      if (fields["name"]) body["name"] = fields["name"];
-      const job = await this.fetch<Record<string, unknown>>(`/zones/${zoneId}/logpush/jobs`, {
-        method: "POST",
-        body: JSON.stringify(body),
-      });
-      return this.mapLogpushJob(job, accountId, zoneId);
-    }
-    if (typeId === "access-application") {
-      const cfAccountId = await this.getAccountId();
-      const app = await this.fetch<Record<string, unknown>>(
-        `/accounts/${cfAccountId}/access/apps`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            name: fields["name"] ?? "",
-            domain: fields["domain"] ?? "",
-            type: fields["type"] ?? "self_hosted",
-          }),
-        },
-      );
-      return this.mapAccessApplication(app, accountId);
-    }
-    if (typeId === "access-policy") {
-      const cfAccountId = await this.getAccountId();
-      const appId = fields["appId"] || parentExternalId;
-      if (!appId)
-        throw new Error("Cloudflare plugin: appId is required to create an access policy");
-      const includeEmail = fields["includeEmail"] ?? "";
-      const includeRule: Record<string, unknown> = includeEmail.startsWith("@")
-        ? { email_domain: { domain: includeEmail.slice(1) } }
-        : { email: { email: includeEmail } };
-      const policy = await this.fetch<Record<string, unknown>>(
-        `/accounts/${cfAccountId}/access/apps/${appId}/policies`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            name: fields["name"] ?? "",
-            decision: fields["decision"] ?? "allow",
-            include: [includeRule],
-          }),
-        },
-      );
-      return this.mapAccessPolicy(policy, accountId, appId);
-    }
-    if (typeId === "load-balancer") {
-      const zoneId = fields["zoneId"] || parentExternalId;
-      if (!zoneId)
-        throw new Error("Cloudflare plugin: zoneId is required to create a load balancer");
-      const defaultPoolIds = (fields["defaultPools"] ?? "")
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean);
-      const lb = await this.fetch<Record<string, unknown>>(`/zones/${zoneId}/load_balancers`, {
-        method: "POST",
-        body: JSON.stringify({
-          name: fields["name"] ?? "",
-          fallback_pool: fields["fallbackPool"] ?? "",
-          default_pools: defaultPoolIds,
-        }),
-      });
-      return this.mapLoadBalancer(lb, accountId, zoneId);
-    }
-    if (typeId === "spectrum-application") {
-      const zoneId = fields["zoneId"] || parentExternalId;
-      if (!zoneId)
-        throw new Error("Cloudflare plugin: zoneId is required to create a spectrum application");
-      const protocol = fields["protocol"] ?? "tcp/22";
-      const dns = fields["dns"] ?? "";
-      const originDirect = fields["originDirect"] ?? "";
-      const app = await this.fetch<Record<string, unknown>>(`/zones/${zoneId}/spectrum/apps`, {
-        method: "POST",
-        body: JSON.stringify({
-          protocol,
-          dns: { type: "CNAME", name: dns },
-          origin_direct: [originDirect],
-          ip_firewall: fields["ipFirewall"] === "true",
-        }),
-      });
-      return this.mapSpectrumApplication(app, accountId, zoneId);
-    }
-    if (typeId === "worker") {
-      const cfAccountId = await this.getAccountId();
-      const name = fields["name"] ?? "";
-      const script =
-        fields["script"] ?? 'export default { async fetch() { return new Response("Hello"); } };';
-      const compatibilityDate =
-        fields["compatibilityDate"] ?? new Date().toISOString().split("T")[0] ?? "";
-      // Workers API requires multipart form data for module workers
-      const formData = new FormData();
-      formData.append(
-        "metadata",
-        JSON.stringify({
-          main_module: "worker.js",
-          compatibility_date: compatibilityDate,
-        }),
-      );
-      formData.append(
-        "worker.js",
-        new Blob([script], { type: "application/javascript+module" }),
-        "worker.js",
-      );
-      const res = await fetch(`${this.baseUrl}/accounts/${cfAccountId}/workers/scripts/${name}`, {
-        method: "PUT",
-        headers: { Authorization: `Bearer ${this.apiToken}` },
-        body: formData,
-      });
-      if (!res.ok) throw new Error(`Worker create failed: ${res.status}: ${await res.text()}`);
-      const now = new Date().toISOString();
-      return {
-        id: `${accountId}:worker:${name}`,
-        pluginId: "cloudflare",
-        resourceTypeId: "worker",
-        accountId,
-        displayName: name,
-        fields: {
-          name,
-          createdOn: now,
-          modifiedOn: now,
-          compatibilityDate,
-          routes: "",
-        },
-        resolvedOutputs: {},
-        secretStates: [],
-        externalId: name,
-        createdAt: now,
-        updatedAt: now,
-      };
-    }
-    throw new Error(`Cloudflare plugin: createResource not supported for type "${typeId}"`);
   }
 
   async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
     const externalId = resourceId.split(":").slice(2).join(":");
 
-    if (typeId === "zone") {
-      await this.fetch(`/zones/${externalId}`, { method: "DELETE" });
-      return;
+    switch (typeId) {
+      case "zone":
+        return zoneApi.deleteZone(this.api, externalId);
+      case "dns-record":
+        return dnsRecordApi.deleteDnsRecord(this.api, externalId);
+      case "r2-bucket":
+        return r2Api.deleteR2Bucket(this.api, externalId);
+      case "kv-namespace":
+        return kvApi.deleteKVNamespace(this.api, externalId);
+      case "d1-database":
+        return d1Api.deleteD1Database(this.api, externalId);
+      case "queue":
+        return queueApi.deleteQueue(this.api, externalId);
+      case "hyperdrive":
+        return hyperdriveApi.deleteHyperdrive(this.api, externalId);
+      case "worker":
+        return workerApi.deleteWorker(this.api, externalId);
+      case "pages-project":
+        return pagesApi.deletePagesProject(this.api, externalId);
+      case "pages-deployment":
+        return pagesApi.deletePagesDeployment(this.api, externalId);
+      case "tunnel":
+        return tunnelApi.deleteTunnel(this.api, externalId);
+      case "ssl-certificate":
+        return sslApi.deleteSSLCertificate(this.api, externalId);
+      case "page-rule":
+        return pageRuleApi.deletePageRule(this.api, externalId);
+      case "firewall-rule":
+        return firewallApi.deleteFirewallRule(this.api, externalId);
+      case "access-application":
+        return accessAppApi.deleteAccessApplication(this.api, externalId);
+      case "load-balancer":
+        return loadBalancerApi.deleteLoadBalancer(this.api, externalId);
+      case "worker-route":
+        return workerRouteApi.deleteWorkerRoute(this.api, externalId);
+      case "custom-hostname":
+        return customHostnameApi.deleteCustomHostname(this.api, externalId);
+      case "waiting-room":
+        return waitingRoomApi.deleteWaitingRoom(this.api, externalId);
+      case "spectrum-application":
+        return spectrumApi.deleteSpectrumApplication(this.api, externalId);
+      case "logpush-job":
+        return logpushApi.deleteLogpushJob(this.api, externalId);
+      default:
+        throw new Error(`Cloudflare plugin: deleteResource not supported for type "${typeId}"`);
     }
-    if (typeId === "dns-record") {
-      const [zoneId, recordId] = externalId.split("/");
-      if (!zoneId || !recordId) throw new Error("Invalid DNS record ID");
-      await this.fetch(`/zones/${zoneId}/dns_records/${recordId}`, { method: "DELETE" });
-      return;
-    }
-    if (typeId === "r2-bucket") {
-      const cfAccountId = await this.getAccountId();
-      await this.fetch(`/accounts/${cfAccountId}/r2/buckets/${externalId}`, { method: "DELETE" });
-      return;
-    }
-    if (typeId === "kv-namespace") {
-      const cfAccountId = await this.getAccountId();
-      await this.fetch(`/accounts/${cfAccountId}/storage/kv/namespaces/${externalId}`, {
-        method: "DELETE",
-      });
-      return;
-    }
-    if (typeId === "d1-database") {
-      const cfAccountId = await this.getAccountId();
-      await this.fetch(`/accounts/${cfAccountId}/d1/database/${externalId}`, { method: "DELETE" });
-      return;
-    }
-    if (typeId === "queue") {
-      const cfAccountId = await this.getAccountId();
-      await this.fetch(`/accounts/${cfAccountId}/queues/${externalId}`, { method: "DELETE" });
-      return;
-    }
-    if (typeId === "hyperdrive") {
-      const cfAccountId = await this.getAccountId();
-      await this.fetch(`/accounts/${cfAccountId}/hyperdrive/configs/${externalId}`, {
-        method: "DELETE",
-      });
-      return;
-    }
-    if (typeId === "worker") {
-      const cfAccountId = await this.getAccountId();
-      await this.fetch(`/accounts/${cfAccountId}/workers/scripts/${externalId}`, {
-        method: "DELETE",
-      });
-      return;
-    }
-    if (typeId === "pages-project") {
-      const cfAccountId = await this.getAccountId();
-      await this.fetch(`/accounts/${cfAccountId}/pages/projects/${externalId}`, {
-        method: "DELETE",
-      });
-      return;
-    }
-    if (typeId === "pages-deployment") {
-      const cfAccountId = await this.getAccountId();
-      const [project, deploymentId] = externalId.split("/");
-      if (!project || !deploymentId) throw new Error("Invalid pages deployment ID");
-      await this.fetch(
-        `/accounts/${cfAccountId}/pages/projects/${project}/deployments/${deploymentId}`,
-        { method: "DELETE" },
-      );
-      return;
-    }
-    if (typeId === "tunnel") {
-      const cfAccountId = await this.getAccountId();
-      await this.fetch(`/accounts/${cfAccountId}/cfd_tunnel/${externalId}`, { method: "DELETE" });
-      return;
-    }
-    if (typeId === "ssl-certificate") {
-      const [zoneId, certId] = externalId.split("/");
-      if (!zoneId || !certId) throw new Error("Invalid SSL certificate ID");
-      await this.fetch(`/zones/${zoneId}/custom_certificates/${certId}`, { method: "DELETE" });
-      return;
-    }
-    if (typeId === "page-rule") {
-      const [zoneId, ruleId] = externalId.split("/");
-      if (!zoneId || !ruleId) throw new Error("Invalid page rule ID");
-      await this.fetch(`/zones/${zoneId}/pagerules/${ruleId}`, { method: "DELETE" });
-      return;
-    }
-    if (typeId === "firewall-rule") {
-      const [zoneId, rulesetId, ruleId] = externalId.split("/");
-      if (!zoneId || !rulesetId || !ruleId) throw new Error("Invalid firewall rule ID");
-      await this.fetch(`/zones/${zoneId}/rulesets/${rulesetId}/rules/${ruleId}`, {
-        method: "DELETE",
-      });
-      return;
-    }
-    if (typeId === "access-application") {
-      const cfAccountId = await this.getAccountId();
-      await this.fetch(`/accounts/${cfAccountId}/access/apps/${externalId}`, {
-        method: "DELETE",
-      });
-      return;
-    }
-    if (typeId === "load-balancer") {
-      const [zoneId, lbId] = externalId.split("/");
-      if (!zoneId || !lbId) throw new Error("Invalid load balancer ID");
-      await this.fetch(`/zones/${zoneId}/load_balancers/${lbId}`, { method: "DELETE" });
-      return;
-    }
-    if (typeId === "worker-route") {
-      const [zoneId, routeId] = externalId.split("/");
-      if (!zoneId || !routeId) throw new Error("Invalid worker route ID");
-      await this.fetch(`/zones/${zoneId}/workers/routes/${routeId}`, { method: "DELETE" });
-      return;
-    }
-    if (typeId === "custom-hostname") {
-      const [zoneId, hostnameId] = externalId.split("/");
-      if (!zoneId || !hostnameId) throw new Error("Invalid custom hostname ID");
-      await this.fetch(`/zones/${zoneId}/custom_hostnames/${hostnameId}`, { method: "DELETE" });
-      return;
-    }
-    if (typeId === "waiting-room") {
-      const [zoneId, roomId] = externalId.split("/");
-      if (!zoneId || !roomId) throw new Error("Invalid waiting room ID");
-      await this.fetch(`/zones/${zoneId}/waiting_rooms/${roomId}`, { method: "DELETE" });
-      return;
-    }
-    if (typeId === "spectrum-application") {
-      const [zoneId, appId] = externalId.split("/");
-      if (!zoneId || !appId) throw new Error("Invalid spectrum application ID");
-      await this.fetch(`/zones/${zoneId}/spectrum/apps/${appId}`, { method: "DELETE" });
-      return;
-    }
-    if (typeId === "logpush-job") {
-      const [zoneId, jobId] = externalId.split("/");
-      if (!zoneId || !jobId) throw new Error("Invalid logpush job ID");
-      await this.fetch(`/zones/${zoneId}/logpush/jobs/${jobId}`, { method: "DELETE" });
-      return;
-    }
-    throw new Error(`Cloudflare plugin: deleteResource not supported for type "${typeId}"`);
   }
 
   async executeQuery(
@@ -1788,80 +1278,11 @@ export class CloudflareClient implements PluginClient {
     _accountId: string,
     sql: string,
   ): Promise<{ rows: Record<string, unknown>[]; durationMs: number }> {
-    const externalId = resourceId.split(":").slice(2).join(":");
-    const cfAccountId = await this.getAccountId();
-    const start = Date.now();
-
-    const result = await this.fetch<
-      Array<{
-        results?: Array<Record<string, unknown>>;
-        success?: boolean;
-        meta?: { duration?: number; changes?: number; rows_read?: number; rows_written?: number };
-      }>
-    >(`/accounts/${cfAccountId}/d1/database/${externalId}/query`, {
-      method: "POST",
-      body: JSON.stringify({ sql }),
-    });
-
-    const durationMs = Date.now() - start;
-    const first = Array.isArray(result) ? result[0] : result;
-    const rows = (first as { results?: Array<Record<string, unknown>> })?.results ?? [];
-    return { rows, durationMs };
+    return d1Api.executeD1Query(this.api, resourceId, sql);
   }
 
   async introspectResource(resourceId: string, _accountId: string): Promise<SqlTableMeta[]> {
-    const externalId = resourceId.split(":").slice(2).join(":");
-    const cfAccountId = await this.getAccountId();
-
-    // Query sqlite_master for tables
-    const tablesResult = await this.fetch<
-      Array<{
-        results?: Array<Record<string, unknown>>;
-      }>
-    >(`/accounts/${cfAccountId}/d1/database/${externalId}/query`, {
-      method: "POST",
-      body: JSON.stringify({
-        sql: "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' ORDER BY name",
-      }),
-    });
-
-    const first = Array.isArray(tablesResult) ? tablesResult[0] : tablesResult;
-    const tables = (first as { results?: Array<Record<string, unknown>> })?.results ?? [];
-    const result: SqlTableMeta[] = [];
-
-    for (const table of tables) {
-      const tableName = String(table["name"] ?? "");
-      if (!tableName) continue;
-
-      const columnsResult = await this.fetch<
-        Array<{
-          results?: Array<Record<string, unknown>>;
-        }>
-      >(`/accounts/${cfAccountId}/d1/database/${externalId}/query`, {
-        method: "POST",
-        body: JSON.stringify({ sql: `PRAGMA table_info('${tableName.replace(/'/g, "''")}')` }),
-      });
-
-      const firstCol = Array.isArray(columnsResult) ? columnsResult[0] : columnsResult;
-      const cols = (firstCol as { results?: Array<Record<string, unknown>> })?.results ?? [];
-      const pkColumns: string[] = [];
-
-      const meta: SqlTableMeta = {
-        name: tableName,
-        columns: cols.map((c) => {
-          const name = String(c["name"] ?? "");
-          if (Number(c["pk"]) > 0) pkColumns.push(name);
-          return {
-            name,
-            type: String(c["type"] ?? "TEXT"),
-          };
-        }),
-      };
-      if (pkColumns.length > 0) meta.pkColumns = pkColumns;
-      result.push(meta);
-    }
-
-    return result;
+    return d1Api.introspectD1Database(this.api, resourceId);
   }
 
   async exportCredential(
@@ -1872,22 +1293,7 @@ export class CloudflareClient implements PluginClient {
   ): Promise<CredentialExport> {
     if (typeId === "tunnel" && formatId === "tunnel-token") {
       const resource = await this.getResource(typeId, resourceId, accountId);
-      const cfAccountId = await this.getAccountId();
-      const token = await this.fetch<string>(
-        `/accounts/${cfAccountId}/cfd_tunnel/${resource.externalId}/token`,
-      );
-      const name = String(resource.fields["name"] ?? resource.externalId ?? "tunnel");
-      return {
-        content: token,
-        filename: `${name}.token`,
-        mimeType: "text/plain",
-        fields: [
-          { label: "Tunnel ID", value: String(resource.externalId ?? "") },
-          { label: "Run Token", value: token, sensitive: true, hint: "Paste into cloudflared" },
-        ],
-        warning:
-          "Run with: cloudflared tunnel run --token <token>. Anyone with this token can impersonate the tunnel. Rotate via the Cloudflare dashboard if exposed.",
-      };
+      return tunnelApi.exportTunnelCredential(this.api, resource);
     }
     throw new Error(
       `Cloudflare plugin: exportCredential not supported for type "${typeId}" / format "${formatId}"`,
@@ -1900,15 +1306,10 @@ export class CloudflareClient implements PluginClient {
     const externalId = parts.slice(2).join(":");
 
     if (typeId === "worker") {
-      const cfAccountId = await this.getAccountId();
-      const settings = await this.fetch<Record<string, unknown>>(
-        `/accounts/${cfAccountId}/workers/scripts/${externalId}/settings`,
-      );
-      return JSON.stringify(settings, null, 2);
+      return workerApi.getWorkerManifest(this.api, externalId);
     }
     if (typeId === "zone") {
-      const settings = await this.fetch<Record<string, unknown>>(`/zones/${externalId}/settings`);
-      return JSON.stringify(settings, null, 2);
+      return zoneApi.getZoneManifest(this.api, externalId);
     }
     throw new Error(`Cloudflare plugin: getManifest not supported for type "${typeId}"`);
   }
@@ -1919,118 +1320,25 @@ export class CloudflareClient implements PluginClient {
     const externalId = parts.slice(2).join(":");
 
     if (typeId === "zone") {
-      // Zone settings are applied per-setting via PATCH
-      const settings = JSON.parse(manifest) as Array<{ id: string; value: unknown }>;
-      if (!Array.isArray(settings))
-        throw new Error("Zone settings must be an array of {id, value} objects");
-      for (const setting of settings) {
-        await this.fetch(`/zones/${externalId}/settings/${setting.id}`, {
-          method: "PATCH",
-          body: JSON.stringify({ value: setting.value }),
-        });
-      }
-      return;
+      return zoneApi.applyZoneManifest(this.api, externalId, manifest);
     }
     throw new Error(`Cloudflare plugin: applyManifest not supported for type "${typeId}"`);
   }
 
   async listStorageObjects(bucket: string, prefix: string): Promise<StorageObject[]> {
-    const cfAccountId = await this.getAccountId();
-    const params = new URLSearchParams({ prefix, delimiter: "/" });
-    const res = await this.fetch<Record<string, unknown>>(
-      `/accounts/${cfAccountId}/r2/buckets/${bucket}/objects?${params.toString()}`,
-    );
-
-    const objects: StorageObject[] = [];
-
-    // Directories (common prefixes)
-    const prefixes =
-      (res as unknown as { delimited_prefixes?: string[] })?.delimited_prefixes ?? [];
-    for (const p of prefixes) {
-      const name = p.endsWith("/") ? p.slice(prefix.length, -1) : p.slice(prefix.length);
-      objects.push({
-        key: p,
-        name: name || p,
-        size: 0,
-        lastModified: "",
-        isDirectory: true,
-      });
-    }
-
-    // Files
-    const items = (res as unknown as { objects?: Array<Record<string, unknown>> })?.objects ?? [];
-    for (const item of items) {
-      const key = String(item["key"] ?? "");
-      if (key === prefix) continue; // skip the prefix itself
-      const name = key.slice(prefix.length);
-      if (!name) continue;
-      objects.push({
-        key,
-        name,
-        size: Number(item["size"] ?? 0),
-        lastModified: String(item["uploaded"] ?? ""),
-        isDirectory: false,
-        contentType: String(item["httpMetadata"]?.toString() ?? ""),
-      });
-    }
-
-    return objects;
+    return r2Api.listR2StorageObjects(this.api, bucket, prefix);
   }
 
   async deleteStorageObject(bucket: string, key: string): Promise<void> {
-    const cfAccountId = await this.getAccountId();
-    if (key.endsWith("/")) {
-      // Delete all objects under this prefix
-      const objects = await this.listStorageObjects(bucket, key);
-      for (const obj of objects) {
-        await this.deleteStorageObject(bucket, obj.key);
-      }
-    }
-    await this.fetch(
-      `/accounts/${cfAccountId}/r2/buckets/${bucket}/objects/${encodeURIComponent(key)}`,
-      {
-        method: "DELETE",
-      },
-    );
+    return r2Api.deleteR2StorageObject(this.api, bucket, key);
   }
 
   async uploadStorageObject(bucket: string, key: string, file: File): Promise<void> {
-    const cfAccountId = await this.getAccountId();
-    const arrayBuffer = await file.arrayBuffer();
-    const res = await fetch(
-      `${this.baseUrl}/accounts/${cfAccountId}/r2/buckets/${bucket}/objects/${encodeURIComponent(key)}`,
-      {
-        method: "PUT",
-        headers: {
-          Authorization: `Bearer ${this.apiToken}`,
-          "Content-Type": file.type || "application/octet-stream",
-        },
-        body: arrayBuffer,
-      },
-    );
-    if (!res.ok) {
-      throw new Error(`R2 upload error ${res.status}: ${await res.text()}`);
-    }
+    return r2Api.uploadR2StorageObject(this.api, bucket, key, file);
   }
 
   async makeStorageFolder(bucket: string, key: string): Promise<void> {
-    const cfAccountId = await this.getAccountId();
-    const folderKey = key.endsWith("/") ? key : `${key}/`;
-    const res = await fetch(
-      `${this.baseUrl}/accounts/${cfAccountId}/r2/buckets/${bucket}/objects/${encodeURIComponent(folderKey)}`,
-      {
-        method: "PUT",
-        headers: {
-          Authorization: `Bearer ${this.apiToken}`,
-          "Content-Type": "application/x-directory",
-          "Content-Length": "0",
-        },
-        body: null,
-      },
-    );
-    if (!res.ok) {
-      throw new Error(`R2 mkdir error ${res.status}: ${await res.text()}`);
-    }
+    return r2Api.makeR2StorageFolder(this.api, bucket, key);
   }
 
   async fetchDashboardStats(
@@ -2188,1103 +1496,8 @@ export class CloudflareClient implements PluginClient {
     }
   }
 
-  private async getAccessAppOptions(): Promise<Array<{ id: string; label: string }>> {
-    const cfAccountId = await this.getAccountId();
-    const apps = await this.paginate<Record<string, unknown>>(
-      `/accounts/${cfAccountId}/access/apps`,
-    );
-    return apps.map((a) => ({
-      id: String(a["id"]),
-      label: String(a["name"] ?? a["domain"] ?? a["id"]),
-    }));
-  }
-
-  private async getZoneOptions(): Promise<Array<{ id: string; label: string }>> {
-    const zones = await this.paginate<Record<string, unknown>>("/zones");
-    return zones.map((z) => ({
-      id: String(z["id"]),
-      label: String(z["name"]),
-    }));
-  }
-
-  private async listZones(accountId: string): Promise<ResourceInstance[]> {
-    const zones = await this.paginate<Record<string, unknown>>("/zones");
-    return zones.map((z) => this.mapZone(z, accountId));
-  }
-
-  private mapZone(z: Record<string, unknown>, accountId: string): ResourceInstance {
-    const nameservers = Array.isArray(z["name_servers"])
-      ? (z["name_servers"] as string[]).join(", ")
-      : "";
-    const plan = z["plan"] as Record<string, unknown> | undefined;
-    // Cache account ID from zone data
-    const account = z["account"] as Record<string, unknown> | undefined;
-    if (account?.["id"] && !this.cfAccountId) {
-      this.cfAccountId = String(account["id"]);
-    }
-    return {
-      id: `${accountId}:zone:${String(z["id"])}`,
-      pluginId: "cloudflare",
-      resourceTypeId: "zone",
-      accountId,
-      displayName: String(z["name"]),
-      fields: {
-        name: String(z["name"]),
-        status: String(z["status"] ?? ""),
-        plan: String(plan?.["name"] ?? "Free"),
-        nameservers,
-        type: String(z["type"] ?? "full"),
-        paused: Boolean(z["paused"]),
-      },
-      resolvedOutputs: {
-        zoneId: String(z["id"]),
-        nameservers,
-      },
-      secretStates: [],
-      externalId: String(z["id"]),
-      createdAt: String(z["created_on"] ?? new Date().toISOString()),
-      updatedAt: String(z["modified_on"] ?? new Date().toISOString()),
-    };
-  }
-
-  private async listAllDnsRecords(accountId: string): Promise<ResourceInstance[]> {
-    const zones = await this.paginate<Record<string, unknown>>("/zones");
-    const results: ResourceInstance[] = [];
-    for (const zone of zones) {
-      const zoneId = String(zone["id"]);
-      const records = await this.paginate<Record<string, unknown>>(`/zones/${zoneId}/dns_records`);
-      for (const r of records) {
-        results.push(this.mapDnsRecord(r, accountId, zoneId));
-      }
-    }
-    return results;
-  }
-
   /** List DNS records for a specific zone */
   async listDnsRecordsForZone(zoneId: string, accountId: string): Promise<ResourceInstance[]> {
-    const records = await this.paginate<Record<string, unknown>>(`/zones/${zoneId}/dns_records`);
-    return records.map((r) => this.mapDnsRecord(r, accountId, zoneId));
-  }
-
-  private mapDnsRecord(
-    r: Record<string, unknown>,
-    accountId: string,
-    zoneId: string,
-  ): ResourceInstance {
-    const type = String(r["type"] ?? "");
-    const name = String(r["name"] ?? "");
-    const content = String(r["content"] ?? "");
-    return {
-      id: `${accountId}:dns-record:${zoneId}/${String(r["id"])}`,
-      pluginId: "cloudflare",
-      resourceTypeId: "dns-record",
-      accountId,
-      displayName: `${type} ${name}`,
-      fields: {
-        type,
-        name,
-        content,
-        ttl: Number(r["ttl"] ?? 1),
-        proxied: Boolean(r["proxied"]),
-        ...(r["priority"] !== undefined ? { priority: Number(r["priority"]) } : {}),
-        zoneName: String(r["zone_name"] ?? ""),
-        ...(r["comment"] ? { comment: String(r["comment"]) } : {}),
-      },
-      resolvedOutputs: {},
-      secretStates: [],
-      externalId: `${zoneId}/${String(r["id"])}`,
-      parentResourceId: `${accountId}:zone:${zoneId}`,
-      createdAt: String(r["created_on"] ?? new Date().toISOString()),
-      updatedAt: String(r["modified_on"] ?? new Date().toISOString()),
-    };
-  }
-
-  private async listWorkers(accountId: string): Promise<ResourceInstance[]> {
-    const cfAccountId = await this.getAccountId();
-    const scripts = await this.fetch<Array<Record<string, unknown>>>(
-      `/accounts/${cfAccountId}/workers/scripts`,
-    );
-    return (scripts ?? []).map((s) => ({
-      id: `${accountId}:worker:${String(s["id"] ?? s["script_name"] ?? "")}`,
-      pluginId: "cloudflare",
-      resourceTypeId: "worker",
-      accountId,
-      displayName: String(s["id"] ?? s["script_name"] ?? ""),
-      fields: {
-        name: String(s["id"] ?? s["script_name"] ?? ""),
-        createdOn: String(s["created_on"] ?? ""),
-        modifiedOn: String(s["modified_on"] ?? ""),
-        compatibilityDate: String(s["compatibility_date"] ?? ""),
-        routes: "",
-      },
-      resolvedOutputs: {},
-      secretStates: [],
-      externalId: String(s["id"] ?? s["script_name"] ?? ""),
-      createdAt: String(s["created_on"] ?? new Date().toISOString()),
-      updatedAt: String(s["modified_on"] ?? new Date().toISOString()),
-    }));
-  }
-
-  private async listR2Buckets(accountId: string): Promise<ResourceInstance[]> {
-    const cfAccountId = await this.getAccountId();
-    const response = await this.fetch<{ buckets: Array<Record<string, unknown>> }>(
-      `/accounts/${cfAccountId}/r2/buckets`,
-    );
-    const buckets = response?.buckets ?? (Array.isArray(response) ? response : []);
-    return (buckets as Array<Record<string, unknown>>).map((b) =>
-      this.mapR2Bucket(b, accountId, cfAccountId),
-    );
-  }
-
-  private mapR2Bucket(
-    b: Record<string, unknown>,
-    accountId: string,
-    cfAccountId: string,
-  ): ResourceInstance {
-    const name = String(b["name"] ?? "");
-    return {
-      id: `${accountId}:r2-bucket:${name}`,
-      pluginId: "cloudflare",
-      resourceTypeId: "r2-bucket",
-      accountId,
-      displayName: name,
-      fields: {
-        name,
-        location: String(b["location"] ?? ""),
-        createdOn: String(b["creation_date"] ?? b["created"] ?? ""),
-      },
-      resolvedOutputs: {
-        bucketName: name,
-        s3Endpoint: `https://${cfAccountId}.r2.cloudflarestorage.com`,
-      },
-      secretStates: [],
-      externalId: name,
-      createdAt: String(b["creation_date"] ?? b["created"] ?? new Date().toISOString()),
-      updatedAt: new Date().toISOString(),
-    };
-  }
-
-  private async listPagesProjects(accountId: string): Promise<ResourceInstance[]> {
-    const cfAccountId = await this.getAccountId();
-    const projects = await this.paginate<Record<string, unknown>>(
-      `/accounts/${cfAccountId}/pages/projects`,
-    );
-    return projects.map((p) => this.mapPagesProject(p, accountId));
-  }
-
-  private mapPagesProject(p: Record<string, unknown>, accountId: string): ResourceInstance {
-    const name = String(p["name"] ?? "");
-    const subdomain = String(p["subdomain"] ?? `${name}.pages.dev`);
-    const latestDeploy = p["latest_deployment"] as Record<string, unknown> | undefined;
-    const source = p["source"] as Record<string, unknown> | undefined;
-    const buildConfig = p["build_config"] as Record<string, unknown> | undefined;
-    const customDomains = Array.isArray(p["domains"]) ? (p["domains"] as string[]).join(", ") : "";
-    return {
-      id: `${accountId}:pages-project:${name}`,
-      pluginId: "cloudflare",
-      resourceTypeId: "pages-project",
-      accountId,
-      displayName: name,
-      fields: {
-        name,
-        subdomain,
-        productionBranch: String(p["production_branch"] ?? source?.["config"]?.toString() ?? ""),
-        latestDeploymentStatus: String(
-          latestDeploy?.["latest_stage"]?.toString() ?? latestDeploy?.["environment"] ?? "",
-        ),
-        latestDeploymentUrl: String(latestDeploy?.["url"] ?? ""),
-        framework: String(buildConfig?.["framework"] ?? ""),
-        domains: customDomains,
-      },
-      resolvedOutputs: {
-        subdomain,
-        projectName: name,
-      },
-      secretStates: [],
-      externalId: name,
-      createdAt: String(p["created_on"] ?? new Date().toISOString()),
-      updatedAt: String(p["modified_on"] ?? new Date().toISOString()),
-    };
-  }
-
-  private async listAllPagesDeployments(accountId: string): Promise<ResourceInstance[]> {
-    const cfAccountId = await this.getAccountId();
-    const projects = await this.paginate<Record<string, unknown>>(
-      `/accounts/${cfAccountId}/pages/projects`,
-    );
-    const results: ResourceInstance[] = [];
-    for (const project of projects) {
-      const projectName = String(project["name"] ?? "");
-      try {
-        const deployments = await this.paginate<Record<string, unknown>>(
-          `/accounts/${cfAccountId}/pages/projects/${projectName}/deployments`,
-        );
-        // Only include the latest 5 deployments per project
-        for (const d of deployments.slice(0, 5)) {
-          results.push(this.mapPagesDeployment(d, accountId, projectName));
-        }
-      } catch {
-        // Skip projects we can't read deployments for
-      }
-    }
-    return results;
-  }
-
-  private mapPagesDeployment(
-    d: Record<string, unknown>,
-    accountId: string,
-    projectName: string,
-  ): ResourceInstance {
-    const id = String(d["id"] ?? "");
-    const env = String(d["environment"] ?? "production");
-    const latestStage = d["latest_stage"] as Record<string, unknown> | undefined;
-    const status = String(latestStage?.["status"] ?? d["status"] ?? "");
-    const source = d["source"] as Record<string, unknown> | undefined;
-    return {
-      id: `${accountId}:pages-deployment:${projectName}/${id}`,
-      pluginId: "cloudflare",
-      resourceTypeId: "pages-deployment",
-      accountId,
-      displayName: `${env} · ${String(d["deployment_trigger"]?.toString() ?? "").slice(0, 20) || id.slice(0, 8)}`,
-      fields: {
-        environment: env,
-        url: String(d["url"] ?? ""),
-        branch: String(source?.["branch"] ?? d["branch"] ?? ""),
-        commitHash: String(source?.["commit_hash"] ?? d["commit_hash"] ?? ""),
-        commitMessage: String(source?.["commit_message"] ?? d["commit_message"] ?? ""),
-        status,
-        createdOn: String(d["created_on"] ?? ""),
-      },
-      resolvedOutputs: {},
-      secretStates: [],
-      externalId: `${projectName}/${id}`,
-      parentResourceId: `${accountId}:pages-project:${projectName}`,
-      createdAt: String(d["created_on"] ?? new Date().toISOString()),
-      updatedAt: String(d["modified_on"] ?? new Date().toISOString()),
-    };
-  }
-
-  private async listKVNamespaces(accountId: string): Promise<ResourceInstance[]> {
-    const cfAccountId = await this.getAccountId();
-    const namespaces = await this.paginate<Record<string, unknown>>(
-      `/accounts/${cfAccountId}/storage/kv/namespaces`,
-    );
-    return namespaces.map((ns) => this.mapKVNamespace(ns, accountId));
-  }
-
-  private mapKVNamespace(ns: Record<string, unknown>, accountId: string): ResourceInstance {
-    const id = String(ns["id"] ?? "");
-    const title = String(ns["title"] ?? "");
-    return {
-      id: `${accountId}:kv-namespace:${id}`,
-      pluginId: "cloudflare",
-      resourceTypeId: "kv-namespace",
-      accountId,
-      displayName: title || id,
-      fields: {
-        title,
-        supportsUrlEncoding: Boolean(ns["supports_url_encoding"]),
-      },
-      resolvedOutputs: { namespaceId: id },
-      secretStates: [],
-      externalId: id,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-  }
-
-  private async listD1Databases(accountId: string): Promise<ResourceInstance[]> {
-    const cfAccountId = await this.getAccountId();
-    const dbs = await this.paginate<Record<string, unknown>>(
-      `/accounts/${cfAccountId}/d1/database`,
-    );
-    return dbs.map((db) => this.mapD1Database(db, accountId));
-  }
-
-  private mapD1Database(db: Record<string, unknown>, accountId: string): ResourceInstance {
-    const uuid = String(db["uuid"] ?? db["id"] ?? "");
-    const name = String(db["name"] ?? "");
-    return {
-      id: `${accountId}:d1-database:${uuid}`,
-      pluginId: "cloudflare",
-      resourceTypeId: "d1-database",
-      accountId,
-      displayName: name || uuid,
-      fields: {
-        name,
-        version: String(db["version"] ?? ""),
-        numTables: Number(db["num_tables"] ?? 0),
-        fileSize: String(db["file_size"] ?? ""),
-        createdAt: String(db["created_at"] ?? ""),
-      },
-      resolvedOutputs: { databaseId: uuid },
-      secretStates: [],
-      externalId: uuid,
-      createdAt: String(db["created_at"] ?? new Date().toISOString()),
-      updatedAt: new Date().toISOString(),
-    };
-  }
-
-  private async listQueues(accountId: string): Promise<ResourceInstance[]> {
-    const cfAccountId = await this.getAccountId();
-    const queues = await this.paginate<Record<string, unknown>>(`/accounts/${cfAccountId}/queues`);
-    return queues.map((q) => this.mapQueue(q, accountId));
-  }
-
-  private mapQueue(q: Record<string, unknown>, accountId: string): ResourceInstance {
-    const id = String(q["queue_id"] ?? q["id"] ?? "");
-    const name = String(q["queue_name"] ?? q["name"] ?? "");
-    const producers = q["producers"] as Array<unknown> | undefined;
-    const consumers = q["consumers"] as Array<unknown> | undefined;
-    return {
-      id: `${accountId}:queue:${id}`,
-      pluginId: "cloudflare",
-      resourceTypeId: "queue",
-      accountId,
-      displayName: name || id,
-      fields: {
-        name,
-        producersTotal: producers?.length ?? 0,
-        consumersTotal: consumers?.length ?? 0,
-        createdOn: String(q["created_on"] ?? ""),
-        modifiedOn: String(q["modified_on"] ?? ""),
-      },
-      resolvedOutputs: { queueId: id, queueName: name },
-      secretStates: [],
-      externalId: id,
-      createdAt: String(q["created_on"] ?? new Date().toISOString()),
-      updatedAt: String(q["modified_on"] ?? new Date().toISOString()),
-    };
-  }
-
-  private async listTunnels(accountId: string): Promise<ResourceInstance[]> {
-    const cfAccountId = await this.getAccountId();
-    const tunnels = await this.paginate<Record<string, unknown>>(
-      `/accounts/${cfAccountId}/cfd_tunnel`,
-    );
-    return tunnels
-      .filter((t) => !t["deleted_at"]) // exclude soft-deleted tunnels
-      .map((t) => this.mapTunnel(t, accountId));
-  }
-
-  private mapTunnel(t: Record<string, unknown>, accountId: string): ResourceInstance {
-    const id = String(t["id"] ?? "");
-    const name = String(t["name"] ?? "");
-    const connections = Array.isArray(t["connections"]) ? (t["connections"] as Array<unknown>) : [];
-    const status = String(t["status"] ?? (connections.length > 0 ? "active" : "inactive"));
-    return {
-      id: `${accountId}:tunnel:${id}`,
-      pluginId: "cloudflare",
-      resourceTypeId: "tunnel",
-      accountId,
-      displayName: name || id,
-      fields: {
-        name,
-        status,
-        tunnelType: String(t["tun_type"] ?? ""),
-        remoteConfig: Boolean(t["remote_config"]),
-        connectionsCount: connections.length,
-        createdAt: String(t["created_at"] ?? ""),
-      },
-      resolvedOutputs: { tunnelId: id },
-      secretStates: [],
-      externalId: id,
-      createdAt: String(t["created_at"] ?? new Date().toISOString()),
-      updatedAt: new Date().toISOString(),
-    };
-  }
-
-  private async listAllSSLCertificates(accountId: string): Promise<ResourceInstance[]> {
-    const zones = await this.paginate<Record<string, unknown>>("/zones");
-    const results: ResourceInstance[] = [];
-    for (const zone of zones) {
-      const zoneId = String(zone["id"]);
-      const zoneName = String(zone["name"]);
-      try {
-        const certs = await this.paginate<Record<string, unknown>>(
-          `/zones/${zoneId}/custom_certificates`,
-        );
-        for (const cert of certs) {
-          results.push(this.mapSSLCertificate(cert, accountId, zoneId, zoneName));
-        }
-      } catch {
-        // Skip zones where we can't read certificates
-      }
-    }
-    return results;
-  }
-
-  private mapSSLCertificate(
-    cert: Record<string, unknown>,
-    accountId: string,
-    zoneId: string,
-    zoneName: string,
-  ): ResourceInstance {
-    const id = String(cert["id"] ?? "");
-    const hosts = Array.isArray(cert["hosts"])
-      ? (cert["hosts"] as string[]).join(", ")
-      : String(cert["hosts"] ?? "");
-    const status = String(cert["status"] ?? "");
-    const certificates = cert["certificates"] as Array<Record<string, unknown>> | undefined;
-    const firstCert = certificates?.[0];
-    return {
-      id: `${accountId}:ssl-certificate:${zoneId}/${id}`,
-      pluginId: "cloudflare",
-      resourceTypeId: "ssl-certificate",
-      accountId,
-      displayName: hosts || `Certificate ${id.slice(0, 8)}`,
-      fields: {
-        hosts,
-        issuer: String(firstCert?.["issuer"] ?? cert["certificate_authority"] ?? ""),
-        status,
-        type: String(cert["type"] ?? ""),
-        expiresOn: String(firstCert?.["expires_on"] ?? ""),
-        zoneName,
-      },
-      resolvedOutputs: {},
-      secretStates: [],
-      externalId: `${zoneId}/${id}`,
-      parentResourceId: `${accountId}:zone:${zoneId}`,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-  }
-
-  private async listAllPageRules(accountId: string): Promise<ResourceInstance[]> {
-    const zones = await this.paginate<Record<string, unknown>>("/zones");
-    const results: ResourceInstance[] = [];
-    for (const zone of zones) {
-      const zoneId = String(zone["id"]);
-      try {
-        const rules = await this.paginate<Record<string, unknown>>(`/zones/${zoneId}/pagerules`);
-        for (const rule of rules) {
-          results.push(this.mapPageRule(rule, accountId, zoneId));
-        }
-      } catch {
-        // Skip zones where we can't read page rules
-      }
-    }
-    return results;
-  }
-
-  private mapPageRule(
-    rule: Record<string, unknown>,
-    accountId: string,
-    zoneId: string,
-  ): ResourceInstance {
-    const id = String(rule["id"] ?? "");
-    const targets = Array.isArray(rule["targets"])
-      ? (rule["targets"] as Array<Record<string, unknown>>)
-          .map((t) => {
-            const constraint = t["constraint"] as Record<string, unknown> | undefined;
-            return String(constraint?.["value"] ?? "");
-          })
-          .join(", ")
-      : "";
-    const actions = Array.isArray(rule["actions"])
-      ? (rule["actions"] as Array<Record<string, unknown>>)
-          .map((a) => String(a["id"] ?? ""))
-          .join(", ")
-      : "";
-    return {
-      id: `${accountId}:page-rule:${zoneId}/${id}`,
-      pluginId: "cloudflare",
-      resourceTypeId: "page-rule",
-      accountId,
-      displayName: targets || `Rule ${id.slice(0, 8)}`,
-      fields: {
-        targets,
-        actions,
-        status: String(rule["status"] ?? ""),
-        priority: Number(rule["priority"] ?? 0),
-        createdOn: String(rule["created_on"] ?? ""),
-        modifiedOn: String(rule["modified_on"] ?? ""),
-      },
-      resolvedOutputs: {},
-      secretStates: [],
-      externalId: `${zoneId}/${id}`,
-      parentResourceId: `${accountId}:zone:${zoneId}`,
-      createdAt: String(rule["created_on"] ?? new Date().toISOString()),
-      updatedAt: String(rule["modified_on"] ?? new Date().toISOString()),
-    };
-  }
-
-  private async listAllFirewallRules(accountId: string): Promise<ResourceInstance[]> {
-    const zones = await this.paginate<Record<string, unknown>>("/zones");
-    const results: ResourceInstance[] = [];
-    for (const zone of zones) {
-      const zoneId = String(zone["id"]);
-      try {
-        // Use the WAF custom rules endpoint (rulesets)
-        const rulesets = await this.fetch<{ rulesets?: Array<Record<string, unknown>> }>(
-          `/zones/${zoneId}/rulesets`,
-        );
-        const customRuleset = ((rulesets as unknown as Array<Record<string, unknown>>) ?? []).find(
-          (rs: Record<string, unknown>) => rs["phase"] === "http_request_firewall_custom",
-        );
-        if (customRuleset) {
-          const rsId = String(customRuleset["id"]);
-          const fullRuleset = await this.fetch<Record<string, unknown>>(
-            `/zones/${zoneId}/rulesets/${rsId}`,
-          );
-          const rules = (fullRuleset["rules"] as Array<Record<string, unknown>>) ?? [];
-          for (const rule of rules) {
-            results.push(this.mapFirewallRule(rule, accountId, zoneId, rsId));
-          }
-        }
-      } catch {
-        // Skip zones where we can't read firewall rules
-      }
-    }
-    return results;
-  }
-
-  private mapFirewallRule(
-    rule: Record<string, unknown>,
-    accountId: string,
-    zoneId: string,
-    rulesetId?: string,
-  ): ResourceInstance {
-    const id = String(rule["id"] ?? "");
-    const description = String(rule["description"] ?? "");
-    const externalIdSuffix = rulesetId ? `${zoneId}/${rulesetId}/${id}` : `${zoneId}/${id}`;
-    return {
-      id: `${accountId}:firewall-rule:${externalIdSuffix}`,
-      pluginId: "cloudflare",
-      resourceTypeId: "firewall-rule",
-      accountId,
-      displayName: description || `Rule ${id.slice(0, 8)}`,
-      fields: {
-        description,
-        expression: String(rule["expression"] ?? ""),
-        action: String(rule["action"] ?? ""),
-        enabled: Boolean(rule["enabled"] ?? true),
-        ...(rule["priority"] !== undefined ? { priority: Number(rule["priority"]) } : {}),
-      },
-      resolvedOutputs: {},
-      secretStates: [],
-      externalId: externalIdSuffix,
-      parentResourceId: `${accountId}:zone:${zoneId}`,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-  }
-
-  private async listAccessApplications(accountId: string): Promise<ResourceInstance[]> {
-    const cfAccountId = await this.getAccountId();
-    const apps = await this.paginate<Record<string, unknown>>(
-      `/accounts/${cfAccountId}/access/apps`,
-    );
-    return apps.map((app) => this.mapAccessApplication(app, accountId));
-  }
-
-  private mapAccessApplication(app: Record<string, unknown>, accountId: string): ResourceInstance {
-    const id = String(app["id"] ?? "");
-    const name = String(app["name"] ?? "");
-    const domain = String(app["domain"] ?? "");
-    return {
-      id: `${accountId}:access-application:${id}`,
-      pluginId: "cloudflare",
-      resourceTypeId: "access-application",
-      accountId,
-      displayName: name || domain || id,
-      fields: {
-        name,
-        domain,
-        type: String(app["type"] ?? ""),
-        sessionDuration: String(app["session_duration"] ?? ""),
-        createdAt: String(app["created_at"] ?? ""),
-        updatedAt: String(app["updated_at"] ?? ""),
-      },
-      resolvedOutputs: {
-        aud: String(app["aud"] ?? ""),
-      },
-      secretStates: [],
-      externalId: id,
-      createdAt: String(app["created_at"] ?? new Date().toISOString()),
-      updatedAt: String(app["updated_at"] ?? new Date().toISOString()),
-    };
-  }
-
-  private async listAllLoadBalancers(accountId: string): Promise<ResourceInstance[]> {
-    const zones = await this.paginate<Record<string, unknown>>("/zones");
-    const results: ResourceInstance[] = [];
-    for (const zone of zones) {
-      const zoneId = String(zone["id"]);
-      try {
-        const lbs = await this.paginate<Record<string, unknown>>(`/zones/${zoneId}/load_balancers`);
-        for (const lb of lbs) {
-          results.push(this.mapLoadBalancer(lb, accountId, zoneId));
-        }
-      } catch {
-        // Skip zones where we can't read load balancers
-      }
-    }
-    return results;
-  }
-
-  private mapLoadBalancer(
-    lb: Record<string, unknown>,
-    accountId: string,
-    zoneId: string,
-  ): ResourceInstance {
-    const id = String(lb["id"] ?? "");
-    const name = String(lb["name"] ?? "");
-    const defaultPools = Array.isArray(lb["default_pools"])
-      ? (lb["default_pools"] as string[]).join(", ")
-      : "";
-    return {
-      id: `${accountId}:load-balancer:${zoneId}/${id}`,
-      pluginId: "cloudflare",
-      resourceTypeId: "load-balancer",
-      accountId,
-      displayName: name || id,
-      fields: {
-        name,
-        fallbackPool: String(lb["fallback_pool"] ?? ""),
-        defaultPools,
-        enabled: Boolean(lb["enabled"] ?? true),
-        proxied: Boolean(lb["proxied"]),
-        ttl: Number(lb["ttl"] ?? 0),
-        steeringPolicy: String(lb["steering_policy"] ?? ""),
-        createdOn: String(lb["created_on"] ?? ""),
-        modifiedOn: String(lb["modified_on"] ?? ""),
-      },
-      resolvedOutputs: {},
-      secretStates: [],
-      externalId: `${zoneId}/${id}`,
-      parentResourceId: `${accountId}:zone:${zoneId}`,
-      createdAt: String(lb["created_on"] ?? new Date().toISOString()),
-      updatedAt: String(lb["modified_on"] ?? new Date().toISOString()),
-    };
-  }
-
-  private async listAllWorkerRoutes(accountId: string): Promise<ResourceInstance[]> {
-    const zones = await this.paginate<Record<string, unknown>>("/zones");
-    const results: ResourceInstance[] = [];
-    for (const zone of zones) {
-      const zoneId = String(zone["id"]);
-      try {
-        const routes = await this.fetch<Array<Record<string, unknown>>>(
-          `/zones/${zoneId}/workers/routes`,
-        );
-        for (const route of routes ?? []) {
-          results.push(this.mapWorkerRoute(route, accountId, zoneId));
-        }
-      } catch {
-        // Skip zones where we can't read worker routes
-      }
-    }
-    return results;
-  }
-
-  private mapWorkerRoute(
-    route: Record<string, unknown>,
-    accountId: string,
-    zoneId: string,
-  ): ResourceInstance {
-    const id = String(route["id"] ?? "");
-    const pattern = String(route["pattern"] ?? "");
-    const script = String(route["script"] ?? route["script_name"] ?? "");
-    return {
-      id: `${accountId}:worker-route:${zoneId}/${id}`,
-      pluginId: "cloudflare",
-      resourceTypeId: "worker-route",
-      accountId,
-      displayName: pattern || `Route ${id.slice(0, 8)}`,
-      fields: {
-        pattern,
-        script,
-      },
-      resolvedOutputs: {},
-      secretStates: [],
-      externalId: `${zoneId}/${id}`,
-      parentResourceId: `${accountId}:zone:${zoneId}`,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-  }
-
-  private async listAllCustomHostnames(accountId: string): Promise<ResourceInstance[]> {
-    const zones = await this.paginate<Record<string, unknown>>("/zones");
-    const results: ResourceInstance[] = [];
-    for (const zone of zones) {
-      const zoneId = String(zone["id"]);
-      try {
-        const hostnames = await this.paginate<Record<string, unknown>>(
-          `/zones/${zoneId}/custom_hostnames`,
-        );
-        for (const h of hostnames) {
-          results.push(this.mapCustomHostname(h, accountId, zoneId));
-        }
-      } catch {
-        // Skip zones where we can't read custom hostnames
-      }
-    }
-    return results;
-  }
-
-  private mapCustomHostname(
-    h: Record<string, unknown>,
-    accountId: string,
-    zoneId: string,
-  ): ResourceInstance {
-    const id = String(h["id"] ?? "");
-    const hostname = String(h["hostname"] ?? "");
-    const ssl = h["ssl"] as Record<string, unknown> | undefined;
-    return {
-      id: `${accountId}:custom-hostname:${zoneId}/${id}`,
-      pluginId: "cloudflare",
-      resourceTypeId: "custom-hostname",
-      accountId,
-      displayName: hostname || id,
-      fields: {
-        hostname,
-        status: String(h["status"] ?? ""),
-        sslStatus: String(ssl?.["status"] ?? ""),
-        sslMethod: String(ssl?.["method"] ?? ""),
-        sslType: String(ssl?.["type"] ?? ""),
-        createdAt: String(h["created_at"] ?? ""),
-      },
-      resolvedOutputs: {},
-      secretStates: [],
-      externalId: `${zoneId}/${id}`,
-      parentResourceId: `${accountId}:zone:${zoneId}`,
-      createdAt: String(h["created_at"] ?? new Date().toISOString()),
-      updatedAt: new Date().toISOString(),
-    };
-  }
-
-  private async listHyperdrives(accountId: string): Promise<ResourceInstance[]> {
-    const cfAccountId = await this.getAccountId();
-    const configs = await this.paginate<Record<string, unknown>>(
-      `/accounts/${cfAccountId}/hyperdrive/configs`,
-    );
-    return configs.map((c) => this.mapHyperdrive(c, accountId));
-  }
-
-  private mapHyperdrive(c: Record<string, unknown>, accountId: string): ResourceInstance {
-    const id = String(c["id"] ?? "");
-    const name = String(c["name"] ?? "");
-    const origin = c["origin"] as Record<string, unknown> | undefined;
-    const caching = c["caching"] as Record<string, unknown> | undefined;
-    return {
-      id: `${accountId}:hyperdrive:${id}`,
-      pluginId: "cloudflare",
-      resourceTypeId: "hyperdrive",
-      accountId,
-      displayName: name || id,
-      fields: {
-        name,
-        originHost: String(origin?.["host"] ?? ""),
-        originPort: Number(origin?.["port"] ?? 0),
-        originScheme: String(origin?.["scheme"] ?? ""),
-        database: String(origin?.["database"] ?? ""),
-        user: String(origin?.["user"] ?? ""),
-        cachingDisabled: Boolean(caching?.["disabled"]),
-      },
-      resolvedOutputs: { hyperdriveId: id },
-      secretStates: [],
-      externalId: id,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-  }
-
-  private async listAllEmailRoutingRules(accountId: string): Promise<ResourceInstance[]> {
-    const zones = await this.paginate<Record<string, unknown>>("/zones");
-    const results: ResourceInstance[] = [];
-    for (const zone of zones) {
-      const zoneId = String(zone["id"]);
-      try {
-        const rules = await this.paginate<Record<string, unknown>>(
-          `/zones/${zoneId}/email/routing/rules`,
-        );
-        for (const rule of rules) {
-          results.push(this.mapEmailRoutingRule(rule, accountId, zoneId));
-        }
-      } catch {
-        // Skip zones where email routing is not enabled
-      }
-    }
-    return results;
-  }
-
-  private mapEmailRoutingRule(
-    rule: Record<string, unknown>,
-    accountId: string,
-    zoneId: string,
-  ): ResourceInstance {
-    const tag = String(rule["tag"] ?? rule["id"] ?? "");
-    const name = String(rule["name"] ?? "");
-    const matchers = Array.isArray(rule["matchers"])
-      ? (rule["matchers"] as Array<Record<string, unknown>>)
-          .map(
-            (m) =>
-              `${String(m["type"] ?? "")}:${String(m["field"] ?? "")}=${String(m["value"] ?? "")}`,
-          )
-          .join(", ")
-      : "";
-    const actions = Array.isArray(rule["actions"])
-      ? (rule["actions"] as Array<Record<string, unknown>>)
-          .map((a) => {
-            const vals = Array.isArray(a["value"])
-              ? (a["value"] as string[]).join(", ")
-              : String(a["value"] ?? "");
-            return `${String(a["type"] ?? "")}: ${vals}`;
-          })
-          .join("; ")
-      : "";
-    return {
-      id: `${accountId}:email-routing-rule:${zoneId}/${tag}`,
-      pluginId: "cloudflare",
-      resourceTypeId: "email-routing-rule",
-      accountId,
-      displayName: name || `Rule ${tag.slice(0, 8)}`,
-      fields: {
-        name,
-        enabled: Boolean(rule["enabled"] ?? true),
-        matchers,
-        actions,
-        priority: Number(rule["priority"] ?? 0),
-      },
-      resolvedOutputs: {},
-      secretStates: [],
-      externalId: `${zoneId}/${tag}`,
-      parentResourceId: `${accountId}:zone:${zoneId}`,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-  }
-
-  private async listAllWaitingRooms(accountId: string): Promise<ResourceInstance[]> {
-    const zones = await this.paginate<Record<string, unknown>>("/zones");
-    const results: ResourceInstance[] = [];
-    for (const zone of zones) {
-      const zoneId = String(zone["id"]);
-      try {
-        const rooms = await this.fetch<Array<Record<string, unknown>>>(
-          `/zones/${zoneId}/waiting_rooms`,
-        );
-        for (const room of rooms ?? []) {
-          results.push(this.mapWaitingRoom(room, accountId, zoneId));
-        }
-      } catch {
-        // Skip zones where waiting rooms aren't enabled
-      }
-    }
-    return results;
-  }
-
-  private mapWaitingRoom(
-    room: Record<string, unknown>,
-    accountId: string,
-    zoneId: string,
-  ): ResourceInstance {
-    const id = String(room["id"] ?? "");
-    const name = String(room["name"] ?? "");
-    return {
-      id: `${accountId}:waiting-room:${zoneId}/${id}`,
-      pluginId: "cloudflare",
-      resourceTypeId: "waiting-room",
-      accountId,
-      displayName: name || id,
-      fields: {
-        name,
-        host: String(room["host"] ?? ""),
-        path: String(room["path"] ?? ""),
-        totalActiveUsers: Number(room["total_active_users"] ?? 0),
-        newUsersPerMinute: Number(room["new_users_per_minute"] ?? 0),
-        queueingMethod: String(room["queueing_method"] ?? ""),
-        sessionDuration: Number(room["session_duration"] ?? 0),
-        suspended: Boolean(room["suspended"]),
-      },
-      resolvedOutputs: {},
-      secretStates: [],
-      externalId: `${zoneId}/${id}`,
-      parentResourceId: `${accountId}:zone:${zoneId}`,
-      createdAt: String(room["created_on"] ?? new Date().toISOString()),
-      updatedAt: String(room["modified_on"] ?? new Date().toISOString()),
-    };
-  }
-
-  private async listAllAccessPolicies(accountId: string): Promise<ResourceInstance[]> {
-    const cfAccountId = await this.getAccountId();
-    const apps = await this.paginate<Record<string, unknown>>(
-      `/accounts/${cfAccountId}/access/apps`,
-    );
-    const results: ResourceInstance[] = [];
-    for (const app of apps) {
-      const appId = String(app["id"] ?? "");
-      try {
-        const policies = await this.paginate<Record<string, unknown>>(
-          `/accounts/${cfAccountId}/access/apps/${appId}/policies`,
-        );
-        for (const policy of policies) {
-          results.push(this.mapAccessPolicy(policy, accountId, appId));
-        }
-      } catch {
-        // Skip apps where we can't read policies
-      }
-    }
-    return results;
-  }
-
-  private mapAccessPolicy(
-    policy: Record<string, unknown>,
-    accountId: string,
-    appId: string,
-  ): ResourceInstance {
-    const id = String(policy["id"] ?? "");
-    const name = String(policy["name"] ?? "");
-    const decision = String(policy["decision"] ?? "");
-    const formatRules = (rules: unknown): string => {
-      if (!Array.isArray(rules)) return "";
-      return (rules as Array<Record<string, unknown>>)
-        .map((r) => {
-          const entries = Object.entries(r).map(([k, v]) => {
-            if (typeof v === "object" && v !== null) {
-              const inner = v as Record<string, unknown>;
-              return `${k}:${Object.values(inner).join(",")}`;
-            }
-            return `${k}:${String(v)}`;
-          });
-          return entries.join("+");
-        })
-        .join("; ");
-    };
-    return {
-      id: `${accountId}:access-policy:${appId}/${id}`,
-      pluginId: "cloudflare",
-      resourceTypeId: "access-policy",
-      accountId,
-      displayName: name || `Policy ${id.slice(0, 8)}`,
-      fields: {
-        name,
-        decision,
-        precedence: Number(policy["precedence"] ?? 0),
-        includeRules: formatRules(policy["include"]),
-        excludeRules: formatRules(policy["exclude"]),
-        requireRules: formatRules(policy["require"]),
-      },
-      resolvedOutputs: {},
-      secretStates: [],
-      externalId: `${appId}/${id}`,
-      parentResourceId: `${accountId}:access-application:${appId}`,
-      createdAt: String(policy["created_at"] ?? new Date().toISOString()),
-      updatedAt: String(policy["updated_at"] ?? new Date().toISOString()),
-    };
-  }
-
-  private async listAllSpectrumApplications(accountId: string): Promise<ResourceInstance[]> {
-    const zones = await this.paginate<Record<string, unknown>>("/zones");
-    const results: ResourceInstance[] = [];
-    for (const zone of zones) {
-      const zoneId = String(zone["id"]);
-      try {
-        const apps = await this.paginate<Record<string, unknown>>(`/zones/${zoneId}/spectrum/apps`);
-        for (const app of apps) {
-          results.push(this.mapSpectrumApplication(app, accountId, zoneId));
-        }
-      } catch {
-        // Skip zones where Spectrum is not enabled
-      }
-    }
-    return results;
-  }
-
-  private mapSpectrumApplication(
-    app: Record<string, unknown>,
-    accountId: string,
-    zoneId: string,
-  ): ResourceInstance {
-    const id = String(app["id"] ?? "");
-    const protocol = String(app["protocol"] ?? "");
-    const dns = app["dns"] as Record<string, unknown> | undefined;
-    const dnsName = String(dns?.["name"] ?? "");
-    const originDirect = Array.isArray(app["origin_direct"])
-      ? (app["origin_direct"] as string[]).join(", ")
-      : "";
-    const originDns = app["origin_dns"] as Record<string, unknown> | undefined;
-    return {
-      id: `${accountId}:spectrum-application:${zoneId}/${id}`,
-      pluginId: "cloudflare",
-      resourceTypeId: "spectrum-application",
-      accountId,
-      displayName: dnsName || `${protocol} ${id.slice(0, 8)}`,
-      fields: {
-        protocol,
-        dns: dnsName,
-        originDirect,
-        originDns: String(originDns?.["name"] ?? ""),
-        originPort: String(app["origin_port"] ?? ""),
-        ipFirewall: Boolean(app["ip_firewall"]),
-        proxyProtocol: String(app["proxy_protocol"] ?? "off"),
-        tls: String(app["tls"] ?? ""),
-        createdOn: String(app["created_on"] ?? ""),
-        modifiedOn: String(app["modified_on"] ?? ""),
-      },
-      resolvedOutputs: {},
-      secretStates: [],
-      externalId: `${zoneId}/${id}`,
-      parentResourceId: `${accountId}:zone:${zoneId}`,
-      createdAt: String(app["created_on"] ?? new Date().toISOString()),
-      updatedAt: String(app["modified_on"] ?? new Date().toISOString()),
-    };
-  }
-
-  private async listAllLogpushJobs(accountId: string): Promise<ResourceInstance[]> {
-    const zones = await this.paginate<Record<string, unknown>>("/zones");
-    const results: ResourceInstance[] = [];
-    for (const zone of zones) {
-      const zoneId = String(zone["id"]);
-      try {
-        const jobs = await this.fetch<Array<Record<string, unknown>>>(
-          `/zones/${zoneId}/logpush/jobs`,
-        );
-        for (const job of jobs ?? []) {
-          results.push(this.mapLogpushJob(job, accountId, zoneId));
-        }
-      } catch {
-        // Skip zones where logpush is not available
-      }
-    }
-    return results;
-  }
-
-  private mapLogpushJob(
-    job: Record<string, unknown>,
-    accountId: string,
-    zoneId: string,
-  ): ResourceInstance {
-    const id = String(job["id"] ?? "");
-    const name = String(job["name"] ?? "");
-    const dataset = String(job["dataset"] ?? "");
-    const destinationConf = String(job["destination_conf"] ?? "");
-    // Extract destination type from the destination_conf URL scheme
-    const destType = destinationConf.split("://")[0] ?? "";
-    return {
-      id: `${accountId}:logpush-job:${zoneId}/${id}`,
-      pluginId: "cloudflare",
-      resourceTypeId: "logpush-job",
-      accountId,
-      displayName: name || `${dataset} → ${destType}`,
-      fields: {
-        name,
-        enabled: Boolean(job["enabled"]),
-        dataset,
-        destinationType: destType,
-        frequency: String(job["frequency"] ?? ""),
-        logpullOptions: String(job["logpull_options"] ?? ""),
-        lastComplete: String(job["last_complete"] ?? ""),
-        lastError: String(job["last_error"] ?? ""),
-      },
-      resolvedOutputs: {},
-      secretStates: [],
-      externalId: `${zoneId}/${id}`,
-      parentResourceId: `${accountId}:zone:${zoneId}`,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
+    return dnsRecordApi.listDnsRecordsForZone(this.api, zoneId, accountId);
   }
 }
