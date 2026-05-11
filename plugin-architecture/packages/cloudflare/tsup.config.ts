@@ -6,9 +6,10 @@ export default defineConfig({
   dts: true,
   sourcemap: true,
   clean: true,
-  // Bundle (and tree-shake) the cloudflare SDK into the plugin output so the
-  // host doesn't need to ship it separately. The SDK is ~36 MB unpacked, but
-  // we only call a small slice of namespaces, so esbuild should drop the rest.
-  noExternal: ["cloudflare"],
-  external: ["@infrawrench/plugin-base"],
+  // Keep `cloudflare` external so each consumer resolves the right env
+  // conditional export (the SDK ships separate node/browser/worker shims).
+  // Bundling it picked the Node variant, which uses `util.deprecate` and
+  // broke Vite's renderer build with a missing `__vite-browser-external`
+  // deprecate export.
+  external: ["@infrawrench/plugin-base", "cloudflare"],
 });

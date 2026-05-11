@@ -52,6 +52,9 @@ importers:
       '@xterm/xterm':
         specifier: ^5.5.0
         version: 5.5.0
+      cloudflare:
+        specifier: ^6.1.0
+        version: 6.1.0(encoding@0.1.13)
       dockerode:
         specifier: ^5.0.0
         version: 5.0.0
@@ -545,6 +548,9 @@ importers:
       archiver:
         specifier: ^7.0.0
         version: 7.0.1
+      cloudflare:
+        specifier: ^6.1.0
+        version: 6.1.0(encoding@0.1.13)
       dockerode:
         specifier: ^5.0.0
         version: 5.0.0

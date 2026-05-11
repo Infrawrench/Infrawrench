@@ -58,6 +58,7 @@
     "@xterm/xterm": "^5.5.0",
     "@kubernetes/client-node": "^1.4.0",
     "archiver": "^7.0.0",
+    "cloudflare": "^6.1.0",
     "dockerode": "^5.0.0",
     "drizzle-orm": "^0.45.2",
     "hono": "^4.12.18",
