@@ -9,60 +9,16 @@ import type {
   DashboardStat,
   MetricSeries,
 } from "@infrawrench/plugin-base";
-import { jsonRestFetch } from "@infrawrench/plugin-base";
-
-/**
- * Neon API response types — minimal shapes for the fields we use.
- */
-interface NeonProject {
-  id: string;
-  name: string;
-  region_id: string;
-  pg_version: number;
-  created_at: string;
-  updated_at: string;
-}
-
-interface NeonBranch {
-  id: string;
-  project_id: string;
-  name: string;
-  primary: boolean;
-  current_state: string;
-  created_at: string;
-  updated_at: string;
-}
-
-interface NeonEndpoint {
-  id: string;
-  project_id: string;
-  branch_id: string;
-  host: string;
-  current_state: string;
-  type: string;
-  autoscaling_limit_min_cu: number;
-  autoscaling_limit_max_cu: number;
-  suspend_timeout_seconds: number;
-  created_at: string;
-  updated_at: string;
-}
-
-interface NeonDatabase {
-  id: number;
-  branch_id: string;
-  name: string;
-  owner_name: string;
-  created_at: string;
-  updated_at: string;
-}
-
-interface NeonRole {
-  branch_id: string;
-  name: string;
-  protected: boolean;
-  created_at: string;
-  updated_at: string;
-}
+import {
+  createApiClient,
+  type Api,
+  type Branch,
+  type Database,
+  type ProjectListItem,
+  type Role,
+  ConsumptionHistoryGranularity,
+  EndpointType,
+} from "@neondatabase/api-client";
 
 const NEON_REGIONS: Record<string, { location: string; flag: string }> = {
   "aws-us-east-1": { location: "Virginia, USA", flag: "🇺🇸" },
@@ -82,29 +38,15 @@ const NEON_REGIONS: Record<string, { location: string; flag: string }> = {
 /**
  * Neon plugin client.
  * Manages Neon serverless Postgres projects, branches, endpoints, databases, and roles
- * via the Neon public API (https://console.neon.tech/api/v2).
+ * via the official Neon control-plane SDK (@neondatabase/api-client).
  */
 export class NeonClient implements PluginClient {
-  private readonly apiKey: string;
-  private readonly baseUrl = "https://console.neon.tech/api/v2";
+  private readonly api: Api<unknown>;
 
   constructor(credentials: Record<string, string>, _services?: HostServices) {
     const key = credentials["apiKey"];
     if (!key) throw new Error("Neon plugin: missing apiKey credential");
-    this.apiKey = key;
-  }
-
-  private async fetch<T>(path: string, options?: RequestInit): Promise<T> {
-    return jsonRestFetch<T>({
-      vendor: "Neon",
-      url: `${this.baseUrl}${path}`,
-      errorPath: path,
-      headers: {
-        Authorization: `Bearer ${this.apiKey}`,
-        Accept: "application/json",
-      },
-      ...(options ? { init: options } : {}),
-    });
+    this.api = createApiClient({ apiKey: key });
   }
 
   async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
@@ -254,58 +196,45 @@ export class NeonClient implements PluginClient {
     const from = new Date(startMs).toISOString();
     const to = new Date(endMs).toISOString();
 
-    interface ConsumptionPeriod {
-      period_id: string;
-      active_time_seconds: number;
-      compute_time_seconds: number;
-      data_storage_bytes_hour: number;
-      written_data_bytes: number;
-      synthetic_storage_size: number;
-    }
-    interface ConsumptionProjectEntry {
-      project_id: string;
-      periods: ConsumptionPeriod[];
-    }
-    interface ConsumptionResponse {
-      projects: ConsumptionProjectEntry[];
-    }
-
     try {
-      const resp = await this.fetch<ConsumptionResponse>(
-        `/consumption/projects?project_ids=${encodeURIComponent(projectId)}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&granularity=hourly`,
-      );
-      const projectEntry = (resp.projects ?? []).find((p) => p.project_id === projectId);
+      const resp = await this.api.getConsumptionHistoryPerProject({
+        project_ids: [projectId],
+        from,
+        to,
+        granularity: ConsumptionHistoryGranularity.Hourly,
+      });
+      const projectEntry = (resp.data.projects ?? []).find((p) => p.project_id === projectId);
       const periods = projectEntry?.periods ?? [];
       if (periods.length === 0) return [];
 
-      // Build time-series from hourly periods
-      const hourMs = 3_600_000;
-      const baseTime = new Date(from).getTime();
+      // Flatten timeframes across all returned periods.
+      const timeframes = periods.flatMap((p) => p.consumption ?? []);
+      if (timeframes.length === 0) return [];
 
       const activeTimeSeries: MetricSeries = {
         label: "Active Time",
         unit: "s",
-        points: periods.map((p, i) => ({
-          timestamp: baseTime + i * hourMs,
-          value: p.active_time_seconds,
+        points: timeframes.map((t) => ({
+          timestamp: new Date(t.timeframe_start).getTime(),
+          value: t.active_time_seconds,
         })),
       };
 
       const storageSeries: MetricSeries = {
         label: "Storage",
         unit: "bytes",
-        points: periods.map((p, i) => ({
-          timestamp: baseTime + i * hourMs,
-          value: p.synthetic_storage_size,
+        points: timeframes.map((t) => ({
+          timestamp: new Date(t.timeframe_start).getTime(),
+          value: t.synthetic_storage_size_bytes,
         })),
       };
 
       const writtenSeries: MetricSeries = {
         label: "Data Written",
         unit: "bytes",
-        points: periods.map((p, i) => ({
-          timestamp: baseTime + i * hourMs,
-          value: p.written_data_bytes,
+        points: timeframes.map((t) => ({
+          timestamp: new Date(t.timeframe_start).getTime(),
+          value: t.written_data_bytes,
         })),
       };
 
@@ -384,8 +313,8 @@ export class NeonClient implements PluginClient {
       const fields: CreateResourceConfig["fields"] = [];
       if (!parentResourceId) {
         // List projects so the user can pick which one to branch from
-        const projects = await this.fetch<{ projects: NeonProject[] }>("/projects");
-        const projectOptions = projects.projects.map((p) => ({
+        const projects = await this.fetchAllProjects();
+        const projectOptions = projects.map((p) => ({
           id: p.id,
           label: p.name,
         }));
@@ -415,8 +344,8 @@ export class NeonClient implements PluginClient {
 
       if (!parentResourceId) {
         // List projects so the user can pick project → branch → create database
-        const projects = await this.fetch<{ projects: NeonProject[] }>("/projects");
-        const projectOptions = projects.projects.map((p) => ({
+        const projects = await this.fetchAllProjects();
+        const projectOptions = projects.map((p) => ({
           id: p.id,
           label: p.name,
         }));
@@ -424,12 +353,11 @@ export class NeonClient implements PluginClient {
         // Pre-fetch branches for the first project if available
         let branchOptions: Array<{ id: string; label: string }> = [];
         if (projectOptions[0]) {
-          const branches = await this.fetch<{ branches: NeonBranch[] }>(
-            `/projects/${projectOptions[0].id}/branches`,
-          );
-          branchOptions = branches.branches.map((b) => ({
+          const firstProjectId = projectOptions[0].id;
+          const branches = await this.api.listProjectBranches({ projectId: firstProjectId });
+          branchOptions = branches.data.branches.map((b) => ({
             id: b.id,
-            label: `${b.name}${b.primary ? " (primary)" : ""}`,
+            label: `${b.name}${isDefaultBranch(b) ? " (primary)" : ""}`,
           }));
         }
 
@@ -458,10 +386,8 @@ export class NeonClient implements PluginClient {
       let roleOptions: Array<{ id: string; label: string }> = [];
       if (scopedProjectId && scopedBranchId) {
         try {
-          const roles = await this.fetch<{ roles: NeonRole[] }>(
-            `/projects/${scopedProjectId}/branches/${scopedBranchId}/roles`,
-          );
-          roleOptions = roles.roles.map((r) => ({ id: r.name, label: r.name }));
+          const roles = await this.api.listProjectBranchRoles(scopedProjectId, scopedBranchId);
+          roleOptions = roles.data.roles.map((r) => ({ id: r.name, label: r.name }));
         } catch {
           /* some branches may not have roles accessible */
         }
@@ -484,14 +410,12 @@ export class NeonClient implements PluginClient {
     if (typeId === "neon-role") {
       const fields: CreateResourceConfig["fields"] = [];
       if (!parentResourceId) {
-        const projects = await this.fetch<{ projects: NeonProject[] }>("/projects");
+        const projects = await this.fetchAllProjects();
         const branchOptions: { id: string; label: string }[] = [];
-        for (const p of projects.projects) {
+        for (const p of projects) {
           try {
-            const branches = await this.fetch<{ branches: NeonBranch[] }>(
-              `/projects/${p.id}/branches`,
-            );
-            for (const b of branches.branches) {
+            const branches = await this.api.listProjectBranches({ projectId: p.id });
+            for (const b of branches.data.branches) {
               branchOptions.push({ id: `${p.id}/${b.id}`, label: `${p.name} / ${b.name}` });
             }
           } catch {
@@ -514,14 +438,12 @@ export class NeonClient implements PluginClient {
     if (typeId === "neon-endpoint") {
       const fields: CreateResourceConfig["fields"] = [];
       if (!parentResourceId) {
-        const projects = await this.fetch<{ projects: NeonProject[] }>("/projects");
+        const projects = await this.fetchAllProjects();
         const branchOptions: { id: string; label: string }[] = [];
-        for (const p of projects.projects) {
+        for (const p of projects) {
           try {
-            const branches = await this.fetch<{ branches: NeonBranch[] }>(
-              `/projects/${p.id}/branches`,
-            );
-            for (const b of branches.branches) {
+            const branches = await this.api.listProjectBranches({ projectId: p.id });
+            for (const b of branches.data.branches) {
               branchOptions.push({ id: `${p.id}/${b.id}`, label: `${p.name} / ${b.name}` });
             }
           } catch {
@@ -565,17 +487,15 @@ export class NeonClient implements PluginClient {
     //   neon-branch  → `{accountId}:neon-branch:{projectId}/{branchId}`
     const parentExternalId = parentResourceId ? parentResourceId.split(":").slice(2).join(":") : "";
     if (typeId === "neon-project") {
-      const data = await this.fetch<{ project: NeonProject }>("/projects", {
-        method: "POST",
-        body: JSON.stringify({
-          project: {
-            name: fields["name"],
-            region_id: fields["region"],
-            pg_version: Number(fields["pgVersion"] ?? 17),
-          },
-        }),
+      const pgVersion = Number(fields["pgVersion"] ?? 17);
+      const response = await this.api.createProject({
+        project: {
+          name: fields["name"] ?? "",
+          region_id: fields["region"] ?? "",
+          pg_version: pgVersion,
+        },
       });
-      const p = data.project;
+      const p = response.data.project;
       return {
         id: `${accountId}:neon-project:${p.id}`,
         pluginId: "neon",
@@ -602,14 +522,11 @@ export class NeonClient implements PluginClient {
       const projectId = fields["projectId"] || parentExternalId;
       if (!projectId) throw new Error("Neon plugin: projectId is required to create a branch");
 
-      const data = await this.fetch<{ branch: NeonBranch }>(`/projects/${projectId}/branches`, {
-        method: "POST",
-        body: JSON.stringify({
-          branch: { name: fields["name"] },
-          endpoints: [{ type: "read_write" }],
-        }),
+      const response = await this.api.createProjectBranch(projectId, {
+        branch: { name: fields["name"] ?? "" },
+        endpoints: [{ type: EndpointType.ReadWrite }],
       });
-      const b = data.branch;
+      const b = response.data.branch;
       return {
         id: `${accountId}:neon-branch:${projectId}/${b.id}`,
         pluginId: "neon",
@@ -619,7 +536,7 @@ export class NeonClient implements PluginClient {
         fields: {
           name: b.name,
           projectId: b.project_id,
-          primary: b.primary,
+          primary: isDefaultBranch(b),
           currentState: b.current_state,
           createdAt: b.created_at,
         },
@@ -640,19 +557,13 @@ export class NeonClient implements PluginClient {
       if (!projectId || !branchId)
         throw new Error("Neon plugin: projectId and branchId are required to create a database");
 
-      const data = await this.fetch<{ database: NeonDatabase }>(
-        `/projects/${projectId}/branches/${branchId}/databases`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            database: {
-              name: fields["name"],
-              owner_name: fields["ownerName"] ?? "neondb_owner",
-            },
-          }),
+      const response = await this.api.createProjectBranchDatabase(projectId, branchId, {
+        database: {
+          name: fields["name"] ?? "",
+          owner_name: fields["ownerName"] ?? "neondb_owner",
         },
-      );
-      const db = data.database;
+      });
+      const db = response.data.database;
       return {
         id: `${accountId}:neon-database:${projectId}/${branchId}/${db.name}`,
         pluginId: "neon",
@@ -681,14 +592,10 @@ export class NeonClient implements PluginClient {
       const branchId = pb[1] ?? "";
       if (!projectId || !branchId)
         throw new Error("Neon plugin: projectBranch is required to create a role");
-      const data = await this.fetch<{ role: NeonRole }>(
-        `/projects/${projectId}/branches/${branchId}/roles`,
-        {
-          method: "POST",
-          body: JSON.stringify({ role: { name: fields["name"] ?? "" } }),
-        },
-      );
-      const r = data.role;
+      const response = await this.api.createProjectBranchRole(projectId, branchId, {
+        role: { name: fields["name"] ?? "" },
+      });
+      const r = response.data.role;
       return {
         id: `${accountId}:neon-role:${projectId}/${branchId}/${r.name}`,
         pluginId: "neon",
@@ -699,7 +606,7 @@ export class NeonClient implements PluginClient {
           name: r.name,
           projectId,
           branchId,
-          protected: r.protected,
+          protected: r.protected ?? false,
         },
         resolvedOutputs: {},
         secretStates: [],
@@ -717,19 +624,15 @@ export class NeonClient implements PluginClient {
       const branchId = pb[1] ?? "";
       if (!projectId || !branchId)
         throw new Error("Neon plugin: projectBranch is required to create an endpoint");
-      const data = await this.fetch<{ endpoint: NeonEndpoint }>(
-        `/projects/${projectId}/endpoints`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            endpoint: {
-              branch_id: branchId,
-              type: fields["type"] ?? "read_write",
-            },
-          }),
+      const endpointType =
+        fields["type"] === "read_only" ? EndpointType.ReadOnly : EndpointType.ReadWrite;
+      const response = await this.api.createProjectEndpoint(projectId, {
+        endpoint: {
+          branch_id: branchId,
+          type: endpointType,
         },
-      );
-      const ep = data.endpoint;
+      });
+      const ep = response.data.endpoint;
       return {
         id: `${accountId}:neon-endpoint:${projectId}/${ep.id}`,
         pluginId: "neon",
@@ -762,7 +665,7 @@ export class NeonClient implements PluginClient {
     if (typeId === "neon-project") {
       const projectId = resourceId.split(":").pop();
       if (!projectId) throw new Error("Neon plugin: cannot parse project ID");
-      await this.fetch<unknown>(`/projects/${projectId}`, { method: "DELETE" });
+      await this.api.deleteProject(projectId);
       return;
     }
 
@@ -772,9 +675,7 @@ export class NeonClient implements PluginClient {
       if (!compound) throw new Error("Neon plugin: cannot parse branch ID");
       const [projectId, branchId] = compound.split("/");
       if (!projectId || !branchId) throw new Error("Neon plugin: cannot parse branch ID");
-      await this.fetch<unknown>(`/projects/${projectId}/branches/${branchId}`, {
-        method: "DELETE",
-      });
+      await this.api.deleteProjectBranch(projectId, branchId);
       return;
     }
 
@@ -786,10 +687,8 @@ export class NeonClient implements PluginClient {
       if (parts.length < 3) throw new Error("Neon plugin: cannot parse database ID");
       const [projectId, branchId, ...dbParts] = parts;
       const dbName = dbParts.join("/");
-      await this.fetch<unknown>(
-        `/projects/${projectId}/branches/${branchId}/databases/${encodeURIComponent(dbName)}`,
-        { method: "DELETE" },
-      );
+      if (!projectId || !branchId) throw new Error("Neon plugin: cannot parse database ID");
+      await this.api.deleteProjectBranchDatabase(projectId, branchId, dbName);
       return;
     }
 
@@ -799,9 +698,7 @@ export class NeonClient implements PluginClient {
       if (!compound) throw new Error("Neon plugin: cannot parse endpoint ID");
       const [projectId, endpointId] = compound.split("/");
       if (!projectId || !endpointId) throw new Error("Neon plugin: cannot parse endpoint ID");
-      await this.fetch<unknown>(`/projects/${projectId}/endpoints/${endpointId}`, {
-        method: "DELETE",
-      });
+      await this.api.deleteProjectEndpoint(projectId, endpointId);
       return;
     }
 
@@ -813,19 +710,35 @@ export class NeonClient implements PluginClient {
       if (parts.length < 3) throw new Error("Neon plugin: cannot parse role ID");
       const [projectId, branchId, ...roleParts] = parts;
       const roleName = roleParts.join("/");
-      await this.fetch<unknown>(
-        `/projects/${projectId}/branches/${branchId}/roles/${encodeURIComponent(roleName)}`,
-        { method: "DELETE" },
-      );
+      if (!projectId || !branchId) throw new Error("Neon plugin: cannot parse role ID");
+      await this.api.deleteProjectBranchRole(projectId, branchId, roleName);
       return;
     }
 
     throw new Error(`Neon plugin: deleteResource not supported for type "${typeId}"`);
   }
 
+  /**
+   * Fetch every project across pagination. The SDK requires a query argument; we
+   * page until no further cursor is returned.
+   */
+  private async fetchAllProjects(): Promise<ProjectListItem[]> {
+    const results: ProjectListItem[] = [];
+    let cursor: string | undefined;
+    // Cap iterations to avoid runaway pagination loops against unexpected responses.
+    for (let i = 0; i < 50; i++) {
+      const resp = await this.api.listProjects(cursor ? { cursor } : {});
+      results.push(...resp.data.projects);
+      const next = resp.data.pagination?.cursor;
+      if (!next || resp.data.projects.length === 0) break;
+      cursor = next;
+    }
+    return results;
+  }
+
   private async listProjects(accountId: string): Promise<ResourceInstance[]> {
-    const data = await this.fetch<{ projects: NeonProject[] }>("/projects");
-    return data.projects.map((p) => ({
+    const projects = await this.fetchAllProjects();
+    return projects.map((p) => ({
       id: `${accountId}:neon-project:${p.id}`,
       pluginId: "neon",
       resourceTypeId: "neon-project",
@@ -846,12 +759,12 @@ export class NeonClient implements PluginClient {
   }
 
   private async listAllBranches(accountId: string): Promise<ResourceInstance[]> {
-    const projects = await this.fetch<{ projects: NeonProject[] }>("/projects");
+    const projects = await this.fetchAllProjects();
     const results: ResourceInstance[] = [];
-    for (const p of projects.projects) {
+    for (const p of projects) {
       try {
-        const data = await this.fetch<{ branches: NeonBranch[] }>(`/projects/${p.id}/branches`);
-        for (const b of data.branches) {
+        const resp = await this.api.listProjectBranches({ projectId: p.id });
+        for (const b of resp.data.branches) {
           results.push({
             id: `${accountId}:neon-branch:${p.id}/${b.id}`,
             pluginId: "neon",
@@ -861,7 +774,7 @@ export class NeonClient implements PluginClient {
             fields: {
               name: b.name,
               projectId: b.project_id,
-              primary: b.primary,
+              primary: isDefaultBranch(b),
               currentState: b.current_state,
               createdAt: b.created_at,
             },
@@ -881,12 +794,12 @@ export class NeonClient implements PluginClient {
   }
 
   private async listAllEndpoints(accountId: string): Promise<ResourceInstance[]> {
-    const projects = await this.fetch<{ projects: NeonProject[] }>("/projects");
+    const projects = await this.fetchAllProjects();
     const results: ResourceInstance[] = [];
-    for (const p of projects.projects) {
+    for (const p of projects) {
       try {
-        const data = await this.fetch<{ endpoints: NeonEndpoint[] }>(`/projects/${p.id}/endpoints`);
-        for (const ep of data.endpoints) {
+        const resp = await this.api.listProjectEndpoints(p.id);
+        for (const ep of resp.data.endpoints) {
           results.push({
             id: `${accountId}:neon-endpoint:${p.id}/${ep.id}`,
             pluginId: "neon",
@@ -919,38 +832,16 @@ export class NeonClient implements PluginClient {
   }
 
   private async listAllDatabases(accountId: string): Promise<ResourceInstance[]> {
-    const projects = await this.fetch<{ projects: NeonProject[] }>("/projects");
+    const projects = await this.fetchAllProjects();
     const results: ResourceInstance[] = [];
-    for (const p of projects.projects) {
+    for (const p of projects) {
       try {
-        const branchData = await this.fetch<{ branches: NeonBranch[] }>(
-          `/projects/${p.id}/branches`,
-        );
-        for (const b of branchData.branches) {
+        const branchResp = await this.api.listProjectBranches({ projectId: p.id });
+        for (const b of branchResp.data.branches) {
           try {
-            const dbData = await this.fetch<{ databases: NeonDatabase[] }>(
-              `/projects/${p.id}/branches/${b.id}/databases`,
-            );
-            for (const db of dbData.databases) {
-              results.push({
-                id: `${accountId}:neon-database:${p.id}/${b.id}/${db.name}`,
-                pluginId: "neon",
-                resourceTypeId: "neon-database",
-                accountId,
-                displayName: db.name,
-                fields: {
-                  name: db.name,
-                  projectId: p.id,
-                  branchId: b.id,
-                  ownerName: db.owner_name,
-                },
-                resolvedOutputs: {},
-                secretStates: [],
-                externalId: String(db.id),
-                parentResourceId: `${accountId}:neon-branch:${p.id}/${b.id}`,
-                createdAt: db.created_at,
-                updatedAt: db.updated_at,
-              });
+            const dbResp = await this.api.listProjectBranchDatabases(p.id, b.id);
+            for (const db of dbResp.data.databases) {
+              results.push(this.buildDatabaseResource(accountId, p.id, b.id, db));
             }
           } catch {
             /* skip */
@@ -963,39 +854,44 @@ export class NeonClient implements PluginClient {
     return results;
   }
 
+  private buildDatabaseResource(
+    accountId: string,
+    projectId: string,
+    branchId: string,
+    db: Database,
+  ): ResourceInstance {
+    return {
+      id: `${accountId}:neon-database:${projectId}/${branchId}/${db.name}`,
+      pluginId: "neon",
+      resourceTypeId: "neon-database",
+      accountId,
+      displayName: db.name,
+      fields: {
+        name: db.name,
+        projectId,
+        branchId: db.branch_id,
+        ownerName: db.owner_name,
+      },
+      resolvedOutputs: {},
+      secretStates: [],
+      externalId: String(db.id),
+      parentResourceId: `${accountId}:neon-branch:${projectId}/${branchId}`,
+      createdAt: db.created_at,
+      updatedAt: db.updated_at,
+    };
+  }
+
   private async listAllRoles(accountId: string): Promise<ResourceInstance[]> {
-    const projects = await this.fetch<{ projects: NeonProject[] }>("/projects");
+    const projects = await this.fetchAllProjects();
     const results: ResourceInstance[] = [];
-    for (const p of projects.projects) {
+    for (const p of projects) {
       try {
-        const branchData = await this.fetch<{ branches: NeonBranch[] }>(
-          `/projects/${p.id}/branches`,
-        );
-        for (const b of branchData.branches) {
+        const branchResp = await this.api.listProjectBranches({ projectId: p.id });
+        for (const b of branchResp.data.branches) {
           try {
-            const roleData = await this.fetch<{ roles: NeonRole[] }>(
-              `/projects/${p.id}/branches/${b.id}/roles`,
-            );
-            for (const r of roleData.roles) {
-              results.push({
-                id: `${accountId}:neon-role:${p.id}/${b.id}/${r.name}`,
-                pluginId: "neon",
-                resourceTypeId: "neon-role",
-                accountId,
-                displayName: r.name,
-                fields: {
-                  name: r.name,
-                  projectId: p.id,
-                  branchId: b.id,
-                  protected: r.protected,
-                },
-                resolvedOutputs: {},
-                secretStates: [],
-                externalId: r.name,
-                parentResourceId: `${accountId}:neon-branch:${p.id}/${b.id}`,
-                createdAt: r.created_at,
-                updatedAt: r.updated_at,
-              });
+            const roleResp = await this.api.listProjectBranchRoles(p.id, b.id);
+            for (const r of roleResp.data.roles) {
+              results.push(this.buildRoleResource(accountId, p.id, b.id, r));
             }
           } catch {
             /* skip */
@@ -1006,6 +902,33 @@ export class NeonClient implements PluginClient {
       }
     }
     return results;
+  }
+
+  private buildRoleResource(
+    accountId: string,
+    projectId: string,
+    branchId: string,
+    r: Role,
+  ): ResourceInstance {
+    return {
+      id: `${accountId}:neon-role:${projectId}/${branchId}/${r.name}`,
+      pluginId: "neon",
+      resourceTypeId: "neon-role",
+      accountId,
+      displayName: r.name,
+      fields: {
+        name: r.name,
+        projectId,
+        branchId,
+        protected: r.protected ?? false,
+      },
+      resolvedOutputs: {},
+      secretStates: [],
+      externalId: r.name,
+      parentResourceId: `${accountId}:neon-branch:${projectId}/${branchId}`,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    };
   }
 
   private async resolveDatabaseConnectionString(
@@ -1020,11 +943,13 @@ export class NeonClient implements PluginClient {
     // Get the role name for this database
     const roleName = String(resource.fields["ownerName"] ?? "neondb_owner");
 
-    // Neon provides a connection_uri endpoint
-    const data = await this.fetch<{ uri: string }>(
-      `/projects/${projectId}/connection_uri?branch_id=${encodeURIComponent(branchId)}&database_name=${encodeURIComponent(dbName)}&role_name=${encodeURIComponent(roleName)}`,
-    );
-    return data.uri;
+    const resp = await this.api.getConnectionUri({
+      projectId,
+      branch_id: branchId,
+      database_name: dbName,
+      role_name: roleName,
+    });
+    return resp.data.uri;
   }
 
   /**
@@ -1039,24 +964,23 @@ export class NeonClient implements PluginClient {
     const projectId = String(resource.externalId ?? "");
 
     // Find the primary branch
-    const branchData = await this.fetch<{ branches: NeonBranch[] }>(
-      `/projects/${projectId}/branches`,
-    );
-    const primary = branchData.branches.find((b) => b.primary) ?? branchData.branches[0];
+    const branchResp = await this.api.listProjectBranches({ projectId });
+    const primary =
+      branchResp.data.branches.find((b) => isDefaultBranch(b)) ?? branchResp.data.branches[0];
     if (!primary) throw new Error("Neon plugin: no branches found on project");
 
     // Find the first database on that branch
-    const dbData = await this.fetch<{ databases: NeonDatabase[] }>(
-      `/projects/${projectId}/branches/${primary.id}/databases`,
-    );
-    const db = dbData.databases[0];
+    const dbResp = await this.api.listProjectBranchDatabases(projectId, primary.id);
+    const db = dbResp.data.databases[0];
     if (!db) throw new Error("Neon plugin: no databases found on primary branch");
 
-    // Get a connection URI via Neon's connection_uri endpoint
-    const data = await this.fetch<{ uri: string }>(
-      `/projects/${projectId}/connection_uri?branch_id=${encodeURIComponent(primary.id)}&database_name=${encodeURIComponent(db.name)}&role_name=${encodeURIComponent(db.owner_name)}`,
-    );
-    return data.uri;
+    const resp = await this.api.getConnectionUri({
+      projectId,
+      branch_id: primary.id,
+      database_name: db.name,
+      role_name: db.owner_name,
+    });
+    return resp.data.uri;
   }
 
   /**
@@ -1072,17 +996,17 @@ export class NeonClient implements PluginClient {
     const branchId = String(resource.externalId ?? "");
 
     // Find the first database on this branch
-    const dbData = await this.fetch<{ databases: NeonDatabase[] }>(
-      `/projects/${projectId}/branches/${branchId}/databases`,
-    );
-    const db = dbData.databases[0];
+    const dbResp = await this.api.listProjectBranchDatabases(projectId, branchId);
+    const db = dbResp.data.databases[0];
     if (!db) throw new Error("Neon plugin: no databases found on this branch");
 
-    // Get a connection URI via Neon's connection_uri endpoint
-    const data = await this.fetch<{ uri: string }>(
-      `/projects/${projectId}/connection_uri?branch_id=${encodeURIComponent(branchId)}&database_name=${encodeURIComponent(db.name)}&role_name=${encodeURIComponent(db.owner_name)}`,
-    );
-    return data.uri;
+    const resp = await this.api.getConnectionUri({
+      projectId,
+      branch_id: branchId,
+      database_name: db.name,
+      role_name: db.owner_name,
+    });
+    return resp.data.uri;
   }
 
   private async resolveRolePassword(resourceId: string, accountId: string): Promise<string> {
@@ -1091,10 +1015,8 @@ export class NeonClient implements PluginClient {
     const branchId = String(resource.fields["branchId"] ?? "");
     const roleName = String(resource.fields["name"] ?? "");
 
-    const data = await this.fetch<{ password: string }>(
-      `/projects/${projectId}/branches/${branchId}/roles/${encodeURIComponent(roleName)}/reveal_password`,
-    );
-    return data.password;
+    const resp = await this.api.getProjectBranchRolePassword(projectId, branchId, roleName);
+    return resp.data.password;
   }
 
   private renderProjectDetail(resource: ResourceInstance): DetailViewSchema {
@@ -1323,6 +1245,15 @@ export class NeonClient implements PluginClient {
       headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
   }
+}
+
+/**
+ * Neon used to mark the project's main branch with `primary: true`. That flag is
+ * deprecated in favor of `default`; older API responses may still set only one,
+ * so accept either signal.
+ */
+function isDefaultBranch(branch: Branch | { default?: boolean; primary?: boolean }): boolean {
+  return branch.default === true || branch.primary === true;
 }
 
 function mapNeonState(state: string): ResourceStatus {

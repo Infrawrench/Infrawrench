@@ -24,7 +24,8 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@infrawrench/plugin-base": "workspace:*"
+    "@infrawrench/plugin-base": "workspace:*",
+    "@neondatabase/api-client": "^2.7.1"
   },
   "devDependencies": {
     "tsup": "^8.3.5",
