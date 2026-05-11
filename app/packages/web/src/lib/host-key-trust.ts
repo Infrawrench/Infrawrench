@@ -95,8 +95,11 @@ export async function trustHostKey(orgId: string, payload: HostKeyTrustPayload):
   const text = await res.text();
   let message = text;
   try {
-    const parsed = JSON.parse(text);
-    message = (parsed && typeof parsed.error === "string" ? parsed.error : null) ?? text;
+    const parsed: unknown = JSON.parse(text);
+    if (parsed && typeof parsed === "object" && "error" in parsed) {
+      const errField = (parsed as { error?: unknown }).error;
+      if (typeof errField === "string") message = errField;
+    }
   } catch {
     /* keep raw text */
   }

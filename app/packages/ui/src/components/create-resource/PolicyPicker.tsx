@@ -4,8 +4,8 @@ import type { PolicyOption } from "@infrawrench/plugin-base";
 function parseSelection(value: string): string[] {
   if (!value) return [];
   try {
-    const arr = JSON.parse(value);
-    return Array.isArray(arr) ? arr.filter((v) => typeof v === "string") : [];
+    const arr: unknown = JSON.parse(value);
+    return Array.isArray(arr) ? arr.filter((v): v is string => typeof v === "string") : [];
   } catch {
     return [];
   }

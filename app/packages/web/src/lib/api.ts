@@ -52,10 +52,11 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
     if (res.status === 409 && isHostKeyTrustResponse(parsed)) {
       throw new HostKeyTrustRequiredClientError(parsed);
     }
-    const message =
-      parsed && typeof parsed === "object" && parsed !== null && "error" in parsed
-        ? (((parsed as { error?: unknown }).error as string | undefined) ?? text)
-        : text;
+    let message = text;
+    if (parsed && typeof parsed === "object" && parsed !== null && "error" in parsed) {
+      const errField = (parsed as { error?: unknown }).error;
+      if (typeof errField === "string") message = errField;
+    }
     throw new Error(message);
   }
 

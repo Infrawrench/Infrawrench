@@ -12,7 +12,7 @@ import {
   buildPeerPanes,
 } from "../../services/plugin-clients";
 import { loadSecretStatesForResource } from "../../services/secret-states";
-import type { ResourceInstance, DetailViewSchema } from "@infrawrench/plugin-base";
+import type { ResourceInstance, DetailViewSchema, PeerPaneSchema } from "@infrawrench/plugin-base";
 import { normalizeResourceCreateResult } from "@infrawrench/plugin-base";
 import { requirePermission } from "../../auth/permissions";
 import type { AuthSession } from "../auth-middleware";
@@ -279,7 +279,7 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
   const peerPanes: Array<{
     tabLabel: string;
     pluginLogoSvg: string;
-    schema: unknown;
+    schema: PeerPaneSchema;
     peerPluginId: string;
   }> = [];
   const peerIntegrationStubs: Array<{

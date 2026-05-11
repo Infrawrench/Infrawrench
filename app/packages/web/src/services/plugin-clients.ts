@@ -1,5 +1,10 @@
 import { eq, and, isNull } from "drizzle-orm";
-import type { PeerPluginIntegration, Plugin, PluginClient } from "@infrawrench/plugin-base";
+import type {
+  PeerPaneSchema,
+  PeerPluginIntegration,
+  Plugin,
+  PluginClient,
+} from "@infrawrench/plugin-base";
 import { db } from "../db/client";
 import { accounts, resources } from "../db/schema";
 import { decrypt, buildAad } from "./encryption";
@@ -10,7 +15,7 @@ import { rewriteCredentialsThroughTunnel } from "./tunnel-resolver";
 export interface PeerPaneResult {
   tabLabel: string;
   pluginLogoSvg: string;
-  schema: unknown;
+  schema: PeerPaneSchema;
   peerPluginId: string;
 }
 
