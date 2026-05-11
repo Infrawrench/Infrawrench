@@ -12,6 +12,7 @@ export type {
   KvDriverDeclaration,
   DockerDriverDeclaration,
   DockerHostServices,
+  KubernetesHostServices,
   HttpHostServices,
   SecretHostServices,
   PeerPaneContext,
@@ -100,6 +101,7 @@ export type {
   SqlNodeDriver,
   KvNodeDriver,
   DockerNodeDriver,
+  K8sNodeDriver,
   StorageNodeDriver,
   PluginNodeDriver,
 } from "./node-driver.js";

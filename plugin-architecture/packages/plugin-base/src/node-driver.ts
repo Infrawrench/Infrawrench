@@ -30,6 +30,18 @@ export interface DockerNodeDriver {
 }
 
 /**
+ * Kubernetes driver — wraps the official @kubernetes/client-node SDK in the
+ * host process. Unlike the browser-fallback K8sFetcher (which parses
+ * kubeconfig YAML by hand), this driver understands `exec` credential
+ * plugins (gke-gcloud-auth-plugin, aws-iam-authenticator), `auth-provider`,
+ * OIDC, and multi-context kubeconfigs.
+ */
+export interface K8sNodeDriver {
+  readonly id: string;
+  command(kubeconfig: string, op: string, params?: Record<string, unknown>): Promise<unknown>;
+}
+
+/**
  * Object-storage driver — lets plugins own the download logic for their
  * storage provider so the host never hard-codes provider-specific URLs or auth.
  */
@@ -51,5 +63,6 @@ export interface PluginNodeDriver {
   sql?: SqlNodeDriver;
   kv?: KvNodeDriver;
   docker?: DockerNodeDriver;
+  k8s?: K8sNodeDriver;
   storage?: StorageNodeDriver;
 }

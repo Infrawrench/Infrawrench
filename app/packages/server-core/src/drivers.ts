@@ -36,4 +36,13 @@ export const kvDrivers = new Map<string, KvNodeDriver>([
 
 export const dockerDrivers = new Map<string, DockerNodeDriver>([[dockerDriver.id, dockerDriver]]);
 
+// TODO(sdk-audit/k8s-node-driver): register the @infrawrench/plugin-kubernetes
+// node driver here so the poller can talk to clusters whose kubeconfigs use
+// exec credential plugins, auth-provider, OIDC, or multiple contexts.
+// Pattern:
+//   import { driver as k8sDriver } from "@infrawrench/plugin-kubernetes/driver";
+//   export const k8sDrivers = new Map<string, K8sNodeDriver>([[k8sDriver.id, k8sDriver]]);
+// Then plumb it through host-services.ts → buildPluginHostServices so
+// services.k8s.command(...) is injected for the kubernetes plugin.
+
 export const storageDrivers = new Map<string, StorageNodeDriver>([[gcpDriver.pluginId, gcpDriver]]);

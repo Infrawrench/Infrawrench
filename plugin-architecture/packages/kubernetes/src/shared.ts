@@ -252,6 +252,14 @@ export function describeFetchError(err: unknown): string {
  * bearer-token auth, CA-cert pinning via the host's http service when
  * available, and surfaces useful errors. JSON variant returns parsed JSON;
  * text variant is used for the /log endpoint which returns plain text.
+ *
+ * Dispatch order:
+ *   1. `services.k8s` — the @kubernetes/client-node driver in the host
+ *      process. This is the only path that handles exec credential
+ *      plugins, auth-provider, OIDC, etc., so prefer it when present.
+ *   2. `services.http` — host-proxied fetch with CA pinning. Works for
+ *      simple bearer-token kubeconfigs in any Node host.
+ *   3. global `fetch` — browser / renderer fallback for trusted certs.
  */
 export class K8sFetcher {
   constructor(
@@ -260,6 +268,16 @@ export class K8sFetcher {
   ) {}
 
   async fetch<T>(path: string, options?: RequestInit): Promise<T> {
+    if (this.services?.k8s) {
+      const result = await this.services.k8s.command("request", {
+        path,
+        method: options?.method ?? "GET",
+        headers: (options?.headers as Record<string, string> | undefined) ?? {},
+        ...(options?.body !== undefined ? { body: String(options.body) } : {}),
+      });
+      return result as T;
+    }
+
     const { server, token, caCertData } = this.parsed;
     if (!server) throw new Error("Kubernetes plugin: no server in kubeconfig");
     const headers: Record<string, string> = {
@@ -307,6 +325,17 @@ export class K8sFetcher {
 
   /** Plain-text variant of fetch — the /log endpoint returns text, not JSON. */
   async fetchText(path: string): Promise<string> {
+    if (this.services?.k8s) {
+      const result = await this.services.k8s.command("request", {
+        path,
+        method: "GET",
+        headers: {},
+      });
+      // The driver returns whatever the server sent. Log endpoints reply
+      // with text/plain, so the driver hands us the raw string.
+      return typeof result === "string" ? result : JSON.stringify(result);
+    }
+
     const { server, token, caCertData } = this.parsed;
     if (!server) throw new Error("Kubernetes plugin: no server in kubeconfig");
     const headers: Record<string, string> = {};

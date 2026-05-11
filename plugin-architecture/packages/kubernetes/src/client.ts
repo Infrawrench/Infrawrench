@@ -53,8 +53,17 @@ export class KubernetesClient implements PluginClient {
   constructor(credentials: Record<string, string>, services?: HostServices) {
     const kubeconfig = credentials["kubeconfig"];
     if (!kubeconfig) throw new Error("Kubernetes plugin: missing kubeconfig credential");
-    this.parsed = parseKubeconfig(kubeconfig);
     if (services) this.services = services;
+    // When the host k8s driver is available it owns all auth via the
+    // official SDK, so the hand-rolled parser's output is unused. Wrap the
+    // parse in try/catch so kubeconfigs the hand-rolled path can't make
+    // sense of (exec creds, OIDC) still work via the driver.
+    try {
+      this.parsed = parseKubeconfig(kubeconfig);
+    } catch (err) {
+      if (!this.services?.k8s) throw err;
+      this.parsed = { server: "" };
+    }
     this.fetcher = new K8sFetcher(this.parsed, this.services);
   }
 

@@ -131,6 +131,18 @@ export interface DockerHostServices {
 }
 
 /**
+ * Host-provided Kubernetes operations injected into plugin clients. Backed
+ * by the official `@kubernetes/client-node` SDK in the Node host process so
+ * kubeconfigs with `exec` credential plugins, `auth-provider`, OIDC, and
+ * multi-context configs work. Plugins fall back to a hand-rolled REST
+ * fetcher when this service is absent (browser / renderer paths).
+ */
+export interface KubernetesHostServices {
+  /** Run a high-level Kubernetes operation and return the result */
+  command(op: string, params?: Record<string, unknown>): Promise<unknown>;
+}
+
+/**
  * Host-provided HTTP request proxy injected into plugin clients.
  * Allows plugins to make HTTP requests through the host process, which can
  * supply custom CA certificates that the browser/renderer won't trust.
@@ -165,6 +177,12 @@ export interface HostServices {
   kv?: KvHostServices;
   /** Present only when the plugin's manifest declares a dockerDriver */
   docker?: DockerHostServices;
+  /**
+   * Present only when the host has a Kubernetes node driver registered
+   * (Electron main / poller). The plugin client prefers this over the
+   * hand-rolled REST fallback when available.
+   */
+  k8s?: KubernetesHostServices;
   /** Always available — proxies HTTP requests through the host for custom CA support */
   http?: HttpHostServices;
   /** Always available — read decrypted plaintext for the plugin's own persisted secretStates */

@@ -153,6 +153,11 @@ export function buildPluginHostServices(
       ...base,
     };
   }
+  // TODO(sdk-audit/k8s-node-driver): when the kubernetes plugin's node
+  // driver is registered in drivers.ts, inject `services.k8s.command(...)`
+  // here (gated on `manifest.id === "kubernetes"` since the manifest does
+  // not yet have a dedicated declaration field). Until that lands, the
+  // kubernetes plugin falls through to the hand-rolled K8sFetcher path.
   // Even without a specific driver, provide HTTP proxy for plugins like K8s
   return base;
 }
