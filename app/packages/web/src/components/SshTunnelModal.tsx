@@ -3,6 +3,7 @@ import { Modal, useUIStore, formatErrorMessage, deriveSSHUsername, toast } from 
 import { apiGet, apiPost } from "@/lib/api";
 import type { SshKey } from "@/lib/api-types";
 import { useOrgId } from "@/lib/useOrgId";
+import { useHostKeyTrust } from "@/lib/useHostKeyTrust";
 
 const PRESETS = {
   docker: { label: "Docker", pluginId: "docker", port: 2375 },
@@ -48,6 +49,7 @@ export function SshTunnelModal({
   onTunnelEstablished,
 }: SshTunnelModalProps) {
   const orgId = useOrgId();
+  const { withTrustPrompt, dialog: hostKeyDialog } = useHostKeyTrust(orgId);
   const [sshUser, setSshUser] = useState(defaultUsername ?? "root");
   const [sshPort, setSshPort] = useState(22);
   const [selectedKeyId, setSelectedKeyId] = useState<string | null>(null);
@@ -97,9 +99,8 @@ export function SshTunnelModal({
       const credentials = buildCredentials(pluginId, remotePort);
       const displayName = `${preset.label} on ${sshHost}`;
 
-      const result = await apiPost<{ accountId: string }>(
-        `/api/org/${orgId}/ssh-tunnels/create-account`,
-        {
+      const result = await withTrustPrompt(() =>
+        apiPost<{ accountId: string }>(`/api/org/${orgId}/ssh-tunnels/create-account`, {
           sshHost,
           sshPort,
           sshUser,
@@ -109,7 +110,7 @@ export function SshTunnelModal({
           pluginId,
           displayName,
           credentials,
-        },
+        }),
       );
 
       useUIStore.getState().bumpAccounts();
@@ -122,137 +123,140 @@ export function SshTunnelModal({
   }
 
   return (
-    <Modal onClose={onClose}>
-      <div className="bg-surface-raised border border-border-strong rounded-2xl shadow-2xl w-[480px] max-h-[90vh] overflow-auto">
-        <div className="p-6 border-b border-border">
-          <h2 className="text-base font-semibold text-on-surface">Connect to service via SSH</h2>
-          <p className="text-xs text-on-surface-muted mt-1">
-            SSH host: <span className="text-on-surface-secondary font-mono">{sshHost}</span>
-          </p>
-        </div>
+    <>
+      {hostKeyDialog}
+      <Modal onClose={onClose}>
+        <div className="bg-surface-raised border border-border-strong rounded-2xl shadow-2xl w-[480px] max-h-[90vh] overflow-auto">
+          <div className="p-6 border-b border-border">
+            <h2 className="text-base font-semibold text-on-surface">Connect to service via SSH</h2>
+            <p className="text-xs text-on-surface-muted mt-1">
+              SSH host: <span className="text-on-surface-secondary font-mono">{sshHost}</span>
+            </p>
+          </div>
 
-        <div className="p-6 space-y-4">
-          {/* SSH Key picker */}
-          <div className="flex items-start gap-3">
-            <label className="text-xs text-on-surface-muted w-20 shrink-0 pt-1">SSH Key</label>
-            <div className="flex-1 space-y-1">
-              {loadingKeys ? (
-                <p className="text-xs text-on-surface-faint py-1">Loading keys...</p>
-              ) : keys.length === 0 ? (
-                <p className="text-xs text-on-surface-faint py-1">
-                  No SSH keys found. Go to Settings to create one.
-                </p>
-              ) : (
-                keys.map((k) => (
-                  <div
-                    key={k.id}
-                    onClick={() => {
-                      setSelectedKeyId(k.id);
-                      if (!defaultUsername && k.ownerName) {
-                        setSshUser(deriveSSHUsername(k.ownerName));
-                      }
-                    }}
-                    className={`group flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer transition-colors ${
-                      selectedKeyId === k.id
-                        ? "bg-accent-muted border border-accent-muted-border text-accent-on-muted"
-                        : "hover:bg-surface-overlay border border-transparent text-on-surface-tertiary"
-                    }`}
-                  >
-                    <span className="text-xs shrink-0">
-                      {selectedKeyId === k.id ? "\u25c9" : "\u25cb"}
-                    </span>
-                    <span className="text-xs font-mono flex-1 truncate">{k.name}</span>
-                    <span className="text-xs text-on-surface-faint">{k.ownerName}</span>
-                  </div>
-                ))
-              )}
+          <div className="p-6 space-y-4">
+            {/* SSH Key picker */}
+            <div className="flex items-start gap-3">
+              <label className="text-xs text-on-surface-muted w-20 shrink-0 pt-1">SSH Key</label>
+              <div className="flex-1 space-y-1">
+                {loadingKeys ? (
+                  <p className="text-xs text-on-surface-faint py-1">Loading keys...</p>
+                ) : keys.length === 0 ? (
+                  <p className="text-xs text-on-surface-faint py-1">
+                    No SSH keys found. Go to Settings to create one.
+                  </p>
+                ) : (
+                  keys.map((k) => (
+                    <div
+                      key={k.id}
+                      onClick={() => {
+                        setSelectedKeyId(k.id);
+                        if (!defaultUsername && k.ownerName) {
+                          setSshUser(deriveSSHUsername(k.ownerName));
+                        }
+                      }}
+                      className={`group flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer transition-colors ${
+                        selectedKeyId === k.id
+                          ? "bg-accent-muted border border-accent-muted-border text-accent-on-muted"
+                          : "hover:bg-surface-overlay border border-transparent text-on-surface-tertiary"
+                      }`}
+                    >
+                      <span className="text-xs shrink-0">
+                        {selectedKeyId === k.id ? "\u25c9" : "\u25cb"}
+                      </span>
+                      <span className="text-xs font-mono flex-1 truncate">{k.name}</span>
+                      <span className="text-xs text-on-surface-faint">{k.ownerName}</span>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
-          </div>
 
-          {/* Username */}
-          <div className="flex items-center gap-3">
-            <label className="text-xs text-on-surface-muted w-20 shrink-0">Username</label>
-            <input
-              value={sshUser}
-              onChange={(e) => setSshUser(e.target.value)}
-              className="flex-1 bg-surface-overlay border border-border-strong rounded-lg px-3 py-1.5 text-sm text-on-surface-secondary font-mono focus:outline-none focus:border-border-strong"
-              placeholder="root"
-              spellCheck={false}
-            />
-          </div>
-
-          {/* SSH Port */}
-          <div className="flex items-center gap-3">
-            <label className="text-xs text-on-surface-muted w-20 shrink-0">SSH Port</label>
-            <input
-              type="number"
-              value={sshPort}
-              onChange={(e) => setSshPort(Number(e.target.value))}
-              className="w-24 bg-surface-overlay border border-border-strong rounded-lg px-3 py-1.5 text-sm text-on-surface-secondary font-mono focus:outline-none focus:border-border-strong"
-            />
-          </div>
-
-          {/* Service selector */}
-          <div>
-            <label className="block text-xs text-on-surface-muted mb-2">Target Service</label>
-            <div className="grid grid-cols-3 gap-2">
-              {(Object.entries(PRESETS) as [PresetKey, (typeof PRESETS)[PresetKey]][]).map(
-                ([key, p]) => (
-                  <button
-                    key={key}
-                    onClick={() => setService(key)}
-                    className={`px-3 py-2 rounded-lg text-xs border transition-colors ${
-                      service === key
-                        ? "border-blue-500 bg-accent-muted text-accent-on-muted"
-                        : "border-border-strong bg-surface-overlay text-on-surface-tertiary hover:border-border-strong hover:text-on-surface-secondary"
-                    }`}
-                  >
-                    <div className="font-medium">{p.label}</div>
-                    {key !== "custom" && (
-                      <div className="text-on-surface-muted mt-0.5">:{p.port}</div>
-                    )}
-                  </button>
-                ),
-              )}
-            </div>
-          </div>
-
-          {service === "custom" && (
+            {/* Username */}
             <div className="flex items-center gap-3">
-              <label className="text-xs text-on-surface-muted w-20 shrink-0">Remote Port</label>
+              <label className="text-xs text-on-surface-muted w-20 shrink-0">Username</label>
+              <input
+                value={sshUser}
+                onChange={(e) => setSshUser(e.target.value)}
+                className="flex-1 bg-surface-overlay border border-border-strong rounded-lg px-3 py-1.5 text-sm text-on-surface-secondary font-mono focus:outline-none focus:border-border-strong"
+                placeholder="root"
+                spellCheck={false}
+              />
+            </div>
+
+            {/* SSH Port */}
+            <div className="flex items-center gap-3">
+              <label className="text-xs text-on-surface-muted w-20 shrink-0">SSH Port</label>
               <input
                 type="number"
-                value={customPort}
-                onChange={(e) => setCustomPort(Number(e.target.value))}
+                value={sshPort}
+                onChange={(e) => setSshPort(Number(e.target.value))}
                 className="w-24 bg-surface-overlay border border-border-strong rounded-lg px-3 py-1.5 text-sm text-on-surface-secondary font-mono focus:outline-none focus:border-border-strong"
               />
             </div>
-          )}
 
-          {error && (
-            <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2">
-              <p className="text-xs text-red-400">{error}</p>
+            {/* Service selector */}
+            <div>
+              <label className="block text-xs text-on-surface-muted mb-2">Target Service</label>
+              <div className="grid grid-cols-3 gap-2">
+                {(Object.entries(PRESETS) as [PresetKey, (typeof PRESETS)[PresetKey]][]).map(
+                  ([key, p]) => (
+                    <button
+                      key={key}
+                      onClick={() => setService(key)}
+                      className={`px-3 py-2 rounded-lg text-xs border transition-colors ${
+                        service === key
+                          ? "border-blue-500 bg-accent-muted text-accent-on-muted"
+                          : "border-border-strong bg-surface-overlay text-on-surface-tertiary hover:border-border-strong hover:text-on-surface-secondary"
+                      }`}
+                    >
+                      <div className="font-medium">{p.label}</div>
+                      {key !== "custom" && (
+                        <div className="text-on-surface-muted mt-0.5">:{p.port}</div>
+                      )}
+                    </button>
+                  ),
+                )}
+              </div>
             </div>
-          )}
-        </div>
 
-        <div className="p-6 border-t border-border flex justify-end gap-3">
-          <button
-            onClick={onClose}
-            disabled={connecting}
-            className="px-4 py-2 text-sm text-on-surface-tertiary hover:text-on-surface-secondary transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={() => void onConfirm()}
-            disabled={connecting || !selectedKeyId}
-            className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors disabled:opacity-50"
-          >
-            {connecting ? "Connecting..." : "Connect"}
-          </button>
+            {service === "custom" && (
+              <div className="flex items-center gap-3">
+                <label className="text-xs text-on-surface-muted w-20 shrink-0">Remote Port</label>
+                <input
+                  type="number"
+                  value={customPort}
+                  onChange={(e) => setCustomPort(Number(e.target.value))}
+                  className="w-24 bg-surface-overlay border border-border-strong rounded-lg px-3 py-1.5 text-sm text-on-surface-secondary font-mono focus:outline-none focus:border-border-strong"
+                />
+              </div>
+            )}
+
+            {error && (
+              <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2">
+                <p className="text-xs text-red-400">{error}</p>
+              </div>
+            )}
+          </div>
+
+          <div className="p-6 border-t border-border flex justify-end gap-3">
+            <button
+              onClick={onClose}
+              disabled={connecting}
+              className="px-4 py-2 text-sm text-on-surface-tertiary hover:text-on-surface-secondary transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => void onConfirm()}
+              disabled={connecting || !selectedKeyId}
+              className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors disabled:opacity-50"
+            >
+              {connecting ? "Connecting..." : "Connect"}
+            </button>
+          </div>
         </div>
-      </div>
-    </Modal>
+      </Modal>
+    </>
   );
 }

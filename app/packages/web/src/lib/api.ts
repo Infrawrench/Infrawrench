@@ -5,7 +5,23 @@
  * - JSON parsing + error handling
  */
 
+import { isHostKeyTrustResponse, type HostKeyTrustPayload } from "./host-key-trust";
+
 const SIGN_IN_URL = "/api/auth/sign-in";
+
+/**
+ * Error thrown by `apiFetch` when a response carries the structured
+ * `ssh_host_key_trust_required` 409. Callers can `catch` and inspect
+ * `.payload` to drive the host-key trust dialog, then retry.
+ */
+export class HostKeyTrustRequiredClientError extends Error {
+  readonly payload: HostKeyTrustPayload;
+  constructor(payload: HostKeyTrustPayload) {
+    super(payload.message || "SSH host key trust required");
+    this.name = "HostKeyTrustRequiredClientError";
+    this.payload = payload;
+  }
+}
 
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
@@ -27,13 +43,19 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
 
   if (!res.ok) {
     const text = await res.text();
-    let message: string;
+    let parsed: unknown = null;
     try {
-      const json = JSON.parse(text);
-      message = json.error ?? text;
+      parsed = JSON.parse(text);
     } catch {
-      message = text;
+      /* not JSON */
     }
+    if (res.status === 409 && isHostKeyTrustResponse(parsed)) {
+      throw new HostKeyTrustRequiredClientError(parsed);
+    }
+    const message =
+      parsed && typeof parsed === "object" && parsed !== null && "error" in parsed
+        ? (((parsed as { error?: unknown }).error as string | undefined) ?? text)
+        : text;
     throw new Error(message);
   }
 
