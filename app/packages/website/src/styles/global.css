@@ -905,6 +905,27 @@ footer {
   line-height: 1.6;
 }
 
+/* ── Docs article + TOC layout ──────────────────────────── */
+.docs-article-with-toc {
+  display: flex;
+  align-items: flex-start;
+  gap: 48px;
+}
+
+.docs-article-with-toc > .docs-article-body {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.docs-article-with-toc > .docs-toc {
+  flex: 0 0 220px;
+  position: sticky;
+  top: 70px;
+  max-height: calc(100vh - 90px);
+  overflow-y: auto;
+  margin: 0;
+}
+
 /* ── Docs TOC ───────────────────────────────────────────── */
 .docs-toc {
   background: #080808;
@@ -1020,6 +1041,14 @@ footer {
 .docs-prose ol {
   padding-left: 22px;
   color: #c9d1d9;
+}
+
+.docs-prose ul {
+  list-style: disc;
+}
+
+.docs-prose ol {
+  list-style: decimal;
 }
 
 .docs-prose li + li {
@@ -1252,6 +1281,20 @@ footer {
 
   .docs-main {
     padding: 28px 0 64px;
+  }
+
+  .docs-article-with-toc {
+    flex-direction: column-reverse;
+    gap: 0;
+  }
+
+  .docs-article-with-toc > .docs-toc {
+    flex: none;
+    position: static;
+    max-height: none;
+    overflow: visible;
+    width: 100%;
+    margin-bottom: 32px;
   }
 }
 

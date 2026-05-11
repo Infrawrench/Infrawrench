@@ -11,33 +11,35 @@ const sections = await getDocsNav();
   title="Documentation"
   description="Guides for installing infrawrench, connecting accounts, and using the desktop and web apps."
 >
-  <header class="docs-article-header">
-    <h1 class="docs-article-title">Documentation</h1>
-    <p class="docs-article-lede">
-      Everything you need to install infrawrench, connect your first account, and get the most out of
-      the desktop and web apps.
-    </p>
-  </header>
+  <article class="docs-article">
+    <header class="docs-article-header">
+      <h1 class="docs-article-title">Documentation</h1>
+      <p class="docs-article-lede">
+        Everything you need to install infrawrench, connect your first account, and get the most out
+        of the desktop and web apps.
+      </p>
+    </header>
 
-  <div class="docs-index-grid">
-    {
-      sections.map((section) => (
-        <section class="docs-index-section">
-          <h2 class="docs-index-section-title">{section.label}</h2>
-          <ul class="docs-index-list">
-            {section.pages.map((page) => (
-              <li>
-                <a class="docs-index-card" href={page.href}>
-                  <span class="docs-index-card-title">{page.title}</span>
-                  {page.description && (
-                    <span class="docs-index-card-desc">{page.description}</span>
-                  )}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ))
-    }
-  </div>
+    <div class="docs-index-grid">
+      {
+        sections.map((section) => (
+          <section class="docs-index-section">
+            <h2 class="docs-index-section-title">{section.label}</h2>
+            <ul class="docs-index-list">
+              {section.pages.map((page) => (
+                <li>
+                  <a class="docs-index-card" href={page.href}>
+                    <span class="docs-index-card-title">{page.title}</span>
+                    {page.description && (
+                      <span class="docs-index-card-desc">{page.description}</span>
+                    )}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))
+      }
+    </div>
+  </article>
 </DocsLayout>

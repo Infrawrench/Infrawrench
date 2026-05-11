@@ -22,27 +22,31 @@ const tocItems = headings.filter((h) => h.depth === 2 || h.depth === 3);
   description={entry.data.description}
   activeSlug={entry.id}
 >
-  <header class="docs-article-header">
-    <h1 class="docs-article-title">{entry.data.title}</h1>
-    {entry.data.description && <p class="docs-article-lede">{entry.data.description}</p>}
-  </header>
+  <div class="docs-article-with-toc" data-has-toc={tocItems.length > 0 ? "" : undefined}>
+    <article class="docs-article docs-article-body">
+      <header class="docs-article-header">
+        <h1 class="docs-article-title">{entry.data.title}</h1>
+        {entry.data.description && <p class="docs-article-lede">{entry.data.description}</p>}
+      </header>
 
-  {
-    tocItems.length > 0 && (
-      <nav class="docs-toc" aria-label="On this page">
-        <div class="docs-toc-title">On this page</div>
-        <ul>
-          {tocItems.map((h) => (
-            <li data-depth={h.depth}>
-              <a href={`#${h.slug}`}>{h.text}</a>
-            </li>
-          ))}
-        </ul>
-      </nav>
-    )
-  }
+      <div class="docs-prose">
+        <Content />
+      </div>
+    </article>
 
-  <div class="docs-prose">
-    <Content />
+    {
+      tocItems.length > 0 && (
+        <nav class="docs-toc" aria-label="On this page">
+          <div class="docs-toc-title">On this page</div>
+          <ul>
+            {tocItems.map((h) => (
+              <li data-depth={h.depth}>
+                <a href={`#${h.slug}`}>{h.text}</a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      )
+    }
   </div>
 </DocsLayout>
