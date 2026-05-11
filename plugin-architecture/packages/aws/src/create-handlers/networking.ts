@@ -1,5 +1,6 @@
 import type { CreateResourceConfig, ResourceInstance } from "@infrawrench/plugin-base";
-import { signRequest, parseXml, ensureArray } from "../auth.js";
+import { parseXml, ensureArray } from "../auth.js";
+import { signRequest } from "../signed-request.js";
 import type { AwsCreateContext } from "./shared.js";
 
 export async function networkingGetCreateConfig(

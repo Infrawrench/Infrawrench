@@ -1,5 +1,5 @@
 import type { CreateResourceConfig, ResourceInstance } from "@infrawrench/plugin-base";
-import { signRequest } from "../auth.js";
+import { signRequest } from "../signed-request.js";
 import type { AwsCreateContext } from "./shared.js";
 
 export async function messagingGetCreateConfig(

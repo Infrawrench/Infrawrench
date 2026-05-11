@@ -1,6 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { AwsCredentials } from "./auth.js";
-import { signRequest } from "./auth.js";
+import { signRequest } from "./signed-request.js";
 import {
   ec2Call,
   ec2QueryCall,

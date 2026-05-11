@@ -1,6 +1,7 @@
 import type { StorageObject } from "@infrawrench/plugin-base";
 import type { AwsCredentials } from "./auth.js";
-import { signRequest, parseXml, ensureArray } from "./auth.js";
+import { parseXml, ensureArray } from "./auth.js";
+import { signRequest } from "./signed-request.js";
 
 /** S3-specific XML GET for ListObjectsV2 */
 async function s3Xml<T>(

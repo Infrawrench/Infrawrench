@@ -1,5 +1,6 @@
 import type { CreateResourceConfig, ResourceInstance } from "@infrawrench/plugin-base";
-import { signRequest, ensureArray } from "../auth.js";
+import { ensureArray } from "../auth.js";
+import { signRequest } from "../signed-request.js";
 import { ec2SshUsername } from "../ssh-username.js";
 import { AWS_REGIONS, EC2_SIZES } from "../constants.js";
 import type { AwsCreateContext } from "./shared.js";
