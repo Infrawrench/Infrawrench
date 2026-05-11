@@ -45,7 +45,6 @@ export function SshEnvDeployModal({
   const [error, setError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  // Load templates from source plugin
   useEffect(() => {
     let cancelled = false;
     async function init() {

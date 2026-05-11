@@ -25,15 +25,9 @@ function isHostKeyTrustRequired(body: unknown): body is HostKeyTrustRequiredBody
   );
 }
 
-/**
- * Calls fetch(url, init); if the response is a 409 ssh_host_key_trust_required,
- * prompts the user via promptHostKeyDecision, POSTs the trust endpoint on
- * accept, then re-runs the original request once. Returns the final Response.
- *
- * Because FormData bodies are one-shot streams, the caller passes a
- * `buildInit` factory so the init (and any FormData) is constructed fresh
- * on retry.
- */
+// On 409 ssh_host_key_trust_required: prompt the user, POST /trust on accept,
+// then retry once. `buildInit` is a factory so FormData (a one-shot stream) is
+// rebuilt for the retry.
 async function fetchWithHostKeyPrompt(
   orgId: string,
   url: string,
@@ -44,8 +38,7 @@ async function fetchWithHostKeyPrompt(
   const res = await fetch(url, init);
   if (res.status !== 409) return res;
 
-  // Clone before reading so we can return the original response if this turns
-  // out not to be a host-key-trust 409.
+  // Clone first so we can return the original response if this isn't a host-key 409.
   const cloned = res.clone();
   let body: unknown;
   try {
@@ -82,9 +75,7 @@ async function fetchWithHostKeyPrompt(
     },
   );
   if (!trustRes.ok) {
-    // If the trust call itself raced and returned a fresh 409, surface that
-    // to the caller rather than looping indefinitely. The caller can re-issue
-    // the original IPC if the user wants to try again.
+    // If /trust raced and 409'd again, surface that instead of looping.
     return trustRes;
   }
 
@@ -122,10 +113,6 @@ async function cloudFetch<T>(
   if (res.status === 204) return null;
   return (await res.json()) as T;
 }
-
-// ──────────────────────────────────────────────────────────────
-// Accounts
-// ──────────────────────────────────────────────────────────────
 
 ipcMain.handle("cloud_list_accounts", async (_e, { orgId }: { orgId: string }) => {
   return (
@@ -215,10 +202,6 @@ ipcMain.handle(
     );
   },
 );
-
-// ──────────────────────────────────────────────────────────────
-// Dashboards
-// ──────────────────────────────────────────────────────────────
 
 ipcMain.handle("cloud_list_dashboards", async (_e, { orgId }: { orgId: string }) => {
   return (
@@ -326,10 +309,6 @@ ipcMain.handle(
 ipcMain.handle("cloud_get_pin", async (_e, { orgId, pinId }: { orgId: string; pinId: string }) => {
   return cloudFetch(orgId, `/dashboards/pin/${encodeURIComponent(pinId)}`);
 });
-
-// ──────────────────────────────────────────────────────────────
-// Resources
-// ──────────────────────────────────────────────────────────────
 
 ipcMain.handle(
   "cloud_get_resource_detail",
@@ -854,10 +833,6 @@ ipcMain.handle(
   },
 );
 
-// ──────────────────────────────────────────────────────────────
-// Connection features (SQL / KV / Docker / SFTP / connect)
-// ──────────────────────────────────────────────────────────────
-
 ipcMain.handle("cloud_sql_query", async (_e, { orgId, body }: { orgId: string; body: unknown }) => {
   return cloudFetch(orgId, `/sql/query`, { method: "POST", body: JSON.stringify(body) });
 });
@@ -944,7 +919,6 @@ ipcMain.handle(
     const token = await getAccessToken();
     if (!token) throw new Error("Not authenticated to Infrawrench Cloud");
     const url = `${CLOUD_URL}/api/org/${encodeURIComponent(orgId)}/v1/sftp/upload`;
-    // FormData is a one-shot stream, so rebuild it on retry.
     const buildInit = (): RequestInit => {
       const form = new FormData();
       form.append("accountId", accountId);

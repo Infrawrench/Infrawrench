@@ -1,11 +1,3 @@
-/**
- * SSH infrastructure host — registers IPC channels for:
- *   - SSH tunnels (port-forwarding for remote services)
- *   - SSH shell sessions (terminal access)
- *   - System SSH key discovery
- *
- * main.ts imports this module for its side effects only.
- */
 import { dialog, ipcMain } from "electron";
 import fs from "node:fs";
 import os from "node:os";
@@ -34,16 +26,10 @@ ipcMain.handle("ssh_close_tunnel", (_e, { tunnelId }: { tunnelId: string }) => {
 
 ipcMain.handle("ssh_get_active_tunnels", () => getActiveTunnels());
 
-// FIX_FLAG: `ssh_exec_command` accepts an arbitrary command string and runs it
-// over SSH as the supplied user. The original intent (per the inline comment
-// in earlier revisions) was "check if Docker is installed", but real callers
-// (DockerSetupModal, SshEnvDeployModal) run multi-step provisioning scripts
-// — installing Docker, writing systemd units, deploying .env files, etc.
-//
-// Removing this channel would break those flows, so it stays for now, but it
-// is the highest-priority candidate for replacement with narrower typed
-// operations. A `ssh_check_docker_installed` channel is provided below so
-// the simple "is Docker present?" check no longer needs the generic path.
+// `ssh_exec_command` runs arbitrary command strings over SSH. Callers
+// (DockerSetupModal, SshEnvDeployModal) need multi-step provisioning — install
+// Docker, write systemd units, deploy .env files. Replace with narrower typed
+// operations when possible.
 ipcMain.handle(
   "ssh_exec_command",
   (
@@ -125,10 +111,8 @@ async function ensureLocalPathAllowed(localPath: string, description: string): P
 
 ipcMain.handle(
   "sftp_upload",
+  // No dialog-blessed-path check — the renderer hands over a Buffer, not a local path.
   (_e, { config, remotePath, data }: { config: SftpConfig; remotePath: string; data: Buffer }) =>
-    // sftp_upload takes the file body as a Buffer over IPC; the renderer is
-    // not handing the main process a local-disk path here, so we don't need
-    // the dialog-blessed-path check.
     sftpUpload(config, remotePath, data),
 );
 
@@ -156,11 +140,8 @@ const PRIVATE_KEY_HEADERS = [
 
 const SKIP_FILES = new Set(["known_hosts", "known_hosts.old", "authorized_keys", "config"]);
 
-// Names returned from the most recent `ssh_list_system_keys` call. Reads via
-// `ssh_read_system_key` must reference a name that appeared in this set (or
-// its `.pub` counterpart) — otherwise we fall back to a user confirmation
-// dialog. Without this gating, a compromised renderer could enumerate
-// `~/.ssh/*` simply by guessing filenames.
+// Without this gating, a compromised renderer could enumerate ~/.ssh/* by
+// guessing filenames. Reads outside the allowlist fall through to a confirm dialog.
 const SYSTEM_KEY_NAME_ALLOWLIST = new Set<string>();
 
 function rememberSystemKeyName(name: string): void {

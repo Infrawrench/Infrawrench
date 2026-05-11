@@ -36,9 +36,8 @@ function RootLayout() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   useEffect(() => {
-    // Skip auth/onboarding check for public-ish routes
     if (pathname.startsWith("/onboarding") || pathname.startsWith("/invite/")) {
-      // Still need auth check for these routes — but don't redirect to onboarding
+      // These routes still need an auth check, but we don't redirect them to onboarding.
       apiGet<AuthMe>("/api/auth/me")
         .then(() => setAuthChecked(true))
         .catch(() => {
@@ -54,7 +53,6 @@ function RootLayout() {
           return;
         }
 
-        // If not inside an org-scoped route, redirect to default org
         if (!pathname.startsWith("/org/")) {
           const orgs = await apiGet<Array<{ id: string }>>("/api/auth/orgs");
           if (orgs.length > 0) {
@@ -71,7 +69,6 @@ function RootLayout() {
   }, [navigate, pathname]);
 
   if (!authChecked) {
-    // Allow onboarding and invite routes to render while auth is checked
     if (pathname.startsWith("/onboarding") || pathname.startsWith("/invite/")) {
       return <Outlet />;
     }
@@ -83,14 +80,12 @@ function RootLayout() {
     );
   }
 
-  // Onboarding and invite routes render without the shell
   if (pathname.startsWith("/onboarding") || pathname.startsWith("/invite/")) {
     return <Outlet />;
   }
 
-  // If auth is confirmed but we're not on an org route yet, the redirect is
-  // still in-flight — show the loading screen rather than the shell with
-  // orgId=null (which would show "Select organization" in the org switcher).
+  // Redirect to /org/:orgId is in-flight; render the loading state rather
+  // than the shell with orgId=null (would show "Select organization").
   if (!pathname.startsWith("/org/")) {
     return (
       <div className="flex h-screen items-center justify-center bg-surface text-on-surface-tertiary">
@@ -109,7 +104,6 @@ function AuthenticatedShell() {
   const [spotlightOpen, setSpotlightOpen] = useState(false);
   const [tabsValidated, setTabsValidated] = useState(false);
 
-  // Extract orgId from path for API calls
   const orgIdMatch = pathname.match(/^\/org\/([^/]+)/);
   const orgId = orgIdMatch?.[1] ? decodeURIComponent(orgIdMatch[1]) : null;
 

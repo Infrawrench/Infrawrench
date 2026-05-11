@@ -71,7 +71,7 @@ export function SpotlightSearch({
 
       const accountNames = new Map(accountRows.map((a) => [a.id, a.display_name]));
 
-      // Step 1: SQLite cache (instant)
+      // First pass: SQLite cache for instant results.
       try {
         const sqliteRows = await db.select<
           {
@@ -118,12 +118,11 @@ export function SpotlightSearch({
         console.error("[spotlight] Failed to query resources cache:", err);
       }
 
-      // After SQLite cache, drop loading if we have results
       if (!cancelled && liveResults.size > 0) {
         setLoading(false);
       }
 
-      // Step 2: Live from plugins — each account streams in independently
+      // Second pass: live results stream in per account.
       if (accountRows.length === 0) {
         if (!cancelled) setLoading(false);
         return;

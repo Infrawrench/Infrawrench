@@ -36,7 +36,6 @@ function clearProactiveRefresh(): void {
   }
 }
 
-// Register custom protocol handler
 app.setAsDefaultProtocolClient(PROTOCOL);
 
 function focusMainWindow(): void {
@@ -102,11 +101,8 @@ let oauthState: string | null = null;
 function startOAuthFlow(): void {
   codeVerifier = base64url(crypto.randomBytes(32));
   const codeChallenge = base64url(crypto.createHash("sha256").update(codeVerifier).digest());
-  // Random `state` binds the auth request to this client run. The callback
-  // handler refuses any code whose state doesn't match — this prevents
-  // cross-site-request-forgery attacks against the custom protocol handler
-  // (without state, any infrawrench:// URL with a valid code would be
-  // accepted, even if the user didn't initiate the sign-in).
+  // Without `state`, any infrawrench:// URL with a valid code would be
+  // accepted — CSRF against the custom protocol handler.
   oauthState = base64url(crypto.randomBytes(32));
 
   const params = new URLSearchParams({
@@ -145,8 +141,6 @@ async function handleOAuthCallback(callbackUrl: string): Promise<void> {
     notifyAuthError("missing-code", "Sign-in callback missing code or verifier");
     return;
   }
-  // Constant-time-ish compare. If the state doesn't match the one we minted in
-  // startOAuthFlow, the callback didn't originate from a flow we started.
   if (
     !returnedState ||
     returnedState.length !== oauthState.length ||
@@ -226,9 +220,8 @@ async function clearStoredTokens(): Promise<void> {
   }
 }
 
-// Singleflight: concurrent callers share one in-flight refresh. Without this,
-// multiple callers race to spend the same refresh token and all but one get
-// invalid_grant from WorkOS (which rotates refresh tokens on every use).
+// WorkOS rotates refresh tokens on each use, so concurrent refreshes race and
+// all but one get invalid_grant. Singleflight gates them.
 async function refreshAccessToken(): Promise<boolean> {
   if (refreshInFlight) return refreshInFlight;
   refreshInFlight = doRefresh().finally(() => {
@@ -258,8 +251,8 @@ async function doRefresh(): Promise<boolean> {
   }
 
   if (!response.ok) {
-    // 4xx with invalid_grant → refresh token is dead, sign the user out fully.
-    // Other statuses (5xx, transient) → keep tokens for a later attempt.
+    // invalid_grant → refresh token is dead, sign the user out. Others are
+    // treated as transient and the tokens are kept for a later retry.
     const text = await response.text().catch(() => "");
     let isHardFailure = false;
     if (response.status >= 400 && response.status < 500) {
@@ -306,8 +299,7 @@ async function doRefresh(): Promise<boolean> {
   return true;
 }
 
-// Force a refresh even if the current access token isn't yet expired. Used by
-// cloudFetch on 401 to recover from server-side token rejection.
+// Called by cloudFetch on 401 to recover from server-side token rejection.
 export async function forceRefreshAccessToken(): Promise<string | null> {
   const ok = await refreshAccessToken();
   return ok && currentTokens ? currentTokens.accessToken : null;
@@ -332,8 +324,6 @@ export async function getAccessToken(): Promise<string | null> {
     scheduleProactiveRefresh(currentTokens.expiresAt);
   }
 
-  // Refresh if within 60s of expiry. On transient failure, keep currentTokens
-  // so the next caller can retry; only invalid_grant clears them (handled above).
   if (currentTokens.expiresAt < Date.now() + 60_000) {
     const refreshed = await refreshAccessToken();
     if (!refreshed) return null;
@@ -412,11 +402,7 @@ ipcMain.handle("cloud_auth_get_token", () => getAccessToken());
 ipcMain.handle("cloud_auth_orgs", () => fetchCloudOrgs());
 ipcMain.handle("cloud_get_url", () => CLOUD_URL);
 
-/**
- * Mint a short-lived WebSocket session token scoped to an org.
- * The server at /api/org/:orgId/ws-token exchanges a WorkOS JWT for a
- * single-use token suitable for `?token=` on the WS upgrade URL.
- */
+// Short-lived single-use token for `?token=` on the WS upgrade URL.
 ipcMain.handle(
   "cloud_auth_get_ws_token",
   async (_e, { orgId }: { orgId: string }): Promise<string | null> => {

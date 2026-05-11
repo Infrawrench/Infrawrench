@@ -73,7 +73,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
   const accountsVersion = useUIStore((s) => s.accountsVersion);
   const dashboardPinsVersion = useUIStore((s) => s.dashboardPinsVersion);
 
-  // Load orgs for the switcher — re-fetch when orgId changes (e.g. after creating a new org)
+  // Refetch when orgId changes so a newly-created org appears.
   useEffect(() => {
     apiGet<OrgEntry[]>("/api/auth/orgs")
       .then((data) => {

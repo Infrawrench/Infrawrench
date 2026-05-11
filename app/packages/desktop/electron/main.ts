@@ -27,7 +27,7 @@ import {
   registerDialogBlessedPath,
 } from "./main-utils";
 
-// Side-effect imports: register all IPC handlers for their domain
+// Side-effect imports register IPC handlers for each domain.
 import "./plugin-host";
 import "./ssh-host";
 import "./ssh-host-key-prompt";
@@ -42,12 +42,9 @@ import { teardownAllPfCloudSessions } from "./k8s-pf-cloud";
 // swipe-to-navigate ourselves in the renderer via wheel events.
 app.commandLine.appendSwitch("overscroll-history-navigation", "0");
 
-// Number of active metric pings — set by the renderer via `set_pings_active`.
-// While > 0, closing the last window hides it instead of quitting so that the
+// While > 0, closing the last window hides it instead of quitting so the
 // renderer's polling loop keeps firing notifications in the background.
 let activePingCount = 0;
-// True once the user has chosen Quit from the menu (or before-quit fired) —
-// after this we let window close events through.
 let quitting = false;
 
 function startAutoUpdater() {
@@ -98,12 +95,9 @@ function createWindow() {
 }
 
 app.whenReady().then(() => {
-  // Allow the renderer to make cross-origin requests (including DELETE/PUT) to
-  // external APIs such as GCP and DigitalOcean. Without this, the browser blocks
-  // the CORS preflight for non-simple methods when the app loads from file://.
-  // Allow the renderer to make cross-origin DELETE/PUT/PATCH requests to external
-  // APIs (GCP, DO, etc.). Only inject headers when the server hasn't already sent
-  // them — adding a second Access-Control-Allow-Origin value breaks CORS entirely.
+  // Allow cross-origin DELETE/PUT/PATCH from the renderer to external APIs
+  // (GCP, DO, etc.). Only inject headers when the server hasn't already sent
+  // them — adding a second Access-Control-Allow-Origin breaks CORS entirely.
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     const headers = { ...details.responseHeaders };
     const hasACAO = Object.keys(headers).some(
@@ -113,9 +107,9 @@ app.whenReady().then(() => {
       headers["Access-Control-Allow-Origin"] = ["*"];
       headers["Access-Control-Allow-Methods"] = ["DELETE, GET, HEAD, OPTIONS, POST, PUT, PATCH"];
       headers["Access-Control-Allow-Headers"] = ["Authorization, Content-Type, Accept"];
-      // OPTIONS preflight must return 200 OK — servers that reject cross-origin
-      // requests (e.g. GCP compute) return 403, which the browser refuses even
-      // when CORS headers are present. Only override status when we're injecting.
+      // OPTIONS preflight must return 200 OK — GCP compute and similar reject
+      // cross-origin requests with 403, which the browser refuses even when
+      // CORS headers are present.
       if (details.method === "OPTIONS") {
         callback({ responseHeaders: headers, statusLine: "HTTP/1.1 200 OK" });
         return;
@@ -132,7 +126,6 @@ app.whenReady().then(() => {
       createWindow();
       return;
     }
-    // When pings are active we hide rather than close — show + focus existing windows.
     for (const w of wins) {
       if (!w.isVisible()) w.show();
       w.focus();
@@ -141,8 +134,7 @@ app.whenReady().then(() => {
 });
 
 app.on("window-all-closed", () => {
-  // If pings are active, stay running in the background so notifications still fire.
-  // Otherwise fully quit — including on macOS, where the default is to stay in the dock.
+  // Stay alive while pings are active so notifications keep firing in the background.
   if (activePingCount > 0) return;
   app.quit();
 });
@@ -173,23 +165,11 @@ ipcMain.handle("show_notification", (_e, { title, body }: { title: string; body:
   n.show();
 });
 
-// NOTE: master-key handling has been consolidated into ./main-utils.ts —
-// it now wraps the on-disk key with Electron's safeStorage (OS keychain /
-// DPAPI) and falls back to 0o600 plaintext only when the platform's keyring
-// is unavailable.
-//
-// The `get_or_create_encryption_key` handler that previously returned the raw
-// master key to the renderer has been removed entirely. The renderer no
-// longer has any way to obtain the key.
-//
-// The previous `encrypt_value` / `decrypt_value` handlers exposed a generic
-// per-blob encryption oracle — any renderer caller (and therefore any XSS)
-// could decrypt arbitrary stored ciphertext, or have anything encrypted
-// under the master key. They've been replaced with the narrow typed
-// channels below; each one binds its plaintext to a specific row + field
-// via AAD, so a ciphertext from one row cannot be swapped into another.
+// Narrow typed channels below each bind their plaintext to a specific
+// row + field via AAD, so a ciphertext from one row cannot be swapped into
+// another. The renderer never sees the raw master key.
 
-const MAX_PLAINTEXT_BYTES = 64 * 1024; // 64 KiB — fits PEM keys + credential JSON
+const MAX_PLAINTEXT_BYTES = 64 * 1024; // fits PEM keys + credential JSON
 const MAX_CIPHERTEXT_BYTES = 96 * 1024;
 
 const AccountIdArgs = z.object({ accountId: z.string().min(1).max(128) });
@@ -324,10 +304,9 @@ ipcMain.handle("ssh_tunnel_config_encrypt_private_key", (_e, raw: unknown) => {
   return encryptValue(privateKey, getEncryptionKey(), aad);
 });
 
-// Generic per-resource secret field. Still oracle-shaped (the renderer
-// supplies the ciphertext/iv on decrypt) but the AAD binds each call to a
-// specific (resourceId, fieldKey), so an attacker cannot swap ciphertexts
-// across fields or rows.
+// Oracle-shaped (renderer supplies ciphertext/iv on decrypt) but the AAD binds
+// each call to a specific (resourceId, fieldKey), so an attacker cannot swap
+// ciphertexts across fields or rows.
 ipcMain.handle("secret_field_decrypt", (_e, raw: unknown) => {
   const { resourceId, fieldKey, ciphertext, iv } = SecretFieldDecryptArgs.parse(raw);
   const aad = buildAad("secretField", `${resourceId}:${fieldKey}`, "value");
@@ -362,8 +341,8 @@ async function getSqlite(): Promise<SqlJsDb> {
   _sqlite.run("PRAGMA foreign_keys = ON");
 
   for (const migration of MIGRATIONS) {
-    // Split multi-statement migrations and run each individually,
-    // ignoring "duplicate column" errors from re-running ALTER TABLE
+    // Run each statement individually and ignore "duplicate column" errors so
+    // re-running ALTER TABLE on an already-migrated DB is a no-op.
     const statements = migration
       .split(";")
       .map((s) => s.trim())
@@ -382,7 +361,6 @@ async function getSqlite(): Promise<SqlJsDb> {
   return _sqlite;
 }
 
-// Wire up the DB getter so cloud-auth / cloud-sync can access SQLite
 setDbGetter(async () => {
   const db = await getSqlite();
   return {
@@ -410,20 +388,11 @@ function normalizeSql(sql: string): string {
   return sql.replace(/\$\d+/g, "?");
 }
 
-// db_select / db_execute let the renderer run SQL against the local sql.js
-// DB. The bundled renderer JS is the only thing that should invoke them, and
-// access is gated through the typed preload bridge (electron/preload.ts) —
-// there's no raw `invoke(channel, args)` path for an XSS payload to reach
-// an unexpected channel. In addition, `validateSql` / `validateParams`
-// (db-guard.ts) reject multi-statement strings, banned statement types
-// (ATTACH/DETACH/PRAGMA/VACUUM/LOAD_EXTENSION), oversized SQL or param
-// arrays, and non-primitive parameter values.
-//
-// Residual risk: even with these guards, a compromised renderer can still
-// issue any SELECT/INSERT/UPDATE/DELETE on user-owned tables and exfiltrate
-// or tamper with encrypted blobs — the surface is narrowed, not eliminated.
-// The remaining mitigation is moving SQL to typed main-process operations,
-// which is tracked as a separate task.
+// db_select / db_execute expose the local sql.js DB to the renderer. Access is
+// gated by the typed preload bridge plus db-guard's validateSql/validateParams
+// (no multi-statements, no ATTACH/DETACH/PRAGMA/VACUUM/LOAD_EXTENSION, capped
+// sizes, primitive params only). A compromised renderer can still mutate any
+// user-owned table — the surface is narrowed, not eliminated.
 ipcMain.handle("db_select", async (_e, { sql, params }: { sql: string; params?: unknown[] }) => {
   validateSql(sql);
   const safeParams = validateParams(params);
@@ -441,7 +410,6 @@ ipcMain.handle("db_execute", async (_e, { sql, params }: { sql: string; params?:
   const safeParams = validateParams(params);
   const audit = classifyMutation(sql);
   if (audit) {
-    // Truncate the SQL prefix so we don't dump huge strings into the log.
     const preview = sql.length > 200 ? `${sql.slice(0, 200)}…` : sql;
     console.log(
       `[db-audit] ${audit.op} on ${audit.table} (params=${safeParams.length}) :: ${preview}`,

@@ -167,9 +167,8 @@ function RootLayout() {
           getCloudOrgs()
             .then((orgs) => {
               setCloudOrgs(orgs);
-              // If the persisted active org isn't in the loaded list (server
-              // unreachable, org removed, etc.), fall back to Local so the
-              // UI doesn't get stuck on "Select organization".
+              // Fall back to Local if the persisted org isn't reachable, or
+              // the UI gets stuck on "Select organization".
               const current = useUIStore.getState().activeCloudOrgId;
               if (current && !orgs.some((o) => o.id === current)) {
                 setActiveOrgId(null);
@@ -177,7 +176,6 @@ function RootLayout() {
             })
             .catch(console.error);
         } else {
-          // Not authenticated — any stale cloud org selection should drop to Local.
           if (useUIStore.getState().activeCloudOrgId) setActiveOrgId(null);
         }
       })
@@ -187,7 +185,6 @@ function RootLayout() {
       });
   }, []);
 
-  // Trackpad swipe gesture → browser-style back/forward
   const swipeBack = useCallback(() => router.history.back(), [router]);
   const swipeForward = useCallback(() => router.history.forward(), [router]);
   const swipeGesture = useSwipeNavigation(swipeBack, swipeForward);
@@ -201,8 +198,7 @@ function RootLayout() {
     }
     setActiveDashboard(currentTarget.kind === "dashboard" ? currentTarget.dashboardId : null);
     const activeTab = workspaceTabs.find((tab) => tab.id === activeWorkspaceTabId);
-    // Skip sync if the active tab already points at the current URL. This preserves
-    // duplicate tab instances that share a target, such as multiple Home tabs.
+    // Preserves duplicate tab instances that share a target (e.g. multiple Home tabs).
     if (activeTab && workspaceTabTargetsEqual(activeTab.target, currentTarget)) return;
     syncWorkspaceRoute(currentTarget);
   }, [
@@ -219,8 +215,8 @@ function RootLayout() {
     if (!tabsHydrated || tabsValidated) return;
     let cancelled = false;
 
-    // Capture current tabs/activeId at hydration time — we deliberately exclude
-    // workspaceTabs and activeWorkspaceTabId from deps so this only runs once.
+    // Snapshot at hydration time — workspaceTabs and activeWorkspaceTabId are
+    // intentionally excluded from deps so this runs only once.
     const tabsSnapshot = useUIStore.getState().workspaceTabs;
     const activeIdSnapshot = useUIStore.getState().activeWorkspaceTabId;
 
@@ -364,12 +360,11 @@ function RootLayout() {
       onTabDrop={handleTabDrop}
     >
       <div className="flex flex-col h-screen bg-surface text-on-surface select-none">
-        {/* macOS title bar — drag region with back/forward buttons */}
+        {/* macOS drag region — children must opt out individually. */}
         <div
           className="h-8 flex-shrink-0 border-b border-border/50 flex items-center"
           style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
         >
-          {/* Buttons must opt out of drag region */}
           <div
             className="flex items-center gap-0.5 pl-20"
             style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
@@ -402,7 +397,6 @@ function RootLayout() {
         />
 
         <div className="flex flex-1 overflow-hidden">
-          {/* Sidebar */}
           {!sidebarCollapsed && (
             <aside className="w-60 border-r border-border flex flex-col overflow-hidden flex-shrink-0">
               <div className="flex items-center justify-between px-1 py-1 border-b border-border">
@@ -434,7 +428,6 @@ function RootLayout() {
                 <SidebarAccounts refreshKey={accountsVersion} />
               </div>
 
-              {/* Bottom buttons */}
               <div className="border-t border-border p-2">
                 <button
                   onClick={() => setShowAddAccount(true)}
@@ -447,7 +440,6 @@ function RootLayout() {
                   <button
                     onClick={() => {
                       void startCloudAuth().then(() => {
-                        // Poll for auth status after opening browser
                         const poll = setInterval(() => {
                           getCloudAuthStatus()
                             .then((status) => {
@@ -459,7 +451,6 @@ function RootLayout() {
                             })
                             .catch(console.error);
                         }, 2000);
-                        // Stop polling after 2 minutes
                         setTimeout(() => clearInterval(poll), 120_000);
                       });
                     }}
@@ -473,7 +464,6 @@ function RootLayout() {
             </aside>
           )}
 
-          {/* Expand toggle when collapsed */}
           {sidebarCollapsed && (
             <button
               onClick={toggleSidebar}
@@ -484,12 +474,10 @@ function RootLayout() {
             </button>
           )}
 
-          {/* Main content */}
           <main className="flex-1 overflow-hidden">
             <Outlet />
           </main>
 
-          {/* Add account modal */}
           {showAddAccount && (
             <AddAccountModal
               onClose={() => setShowAddAccount(false)}
@@ -498,13 +486,9 @@ function RootLayout() {
             />
           )}
         </div>
-        {/* end flex row */}
       </div>
 
-      {/* Trackpad swipe navigation indicator */}
       <SwipeIndicator gesture={swipeGesture} />
-
-      {/* Modal that appears when ssh2 encounters an unknown host or a key mismatch */}
       <SshHostKeyPromptHost />
     </DndShell>
   );

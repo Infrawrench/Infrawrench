@@ -1,21 +1,9 @@
-/**
- * Typed preload bridge. Each renderer-callable IPC channel is exposed as a
- * named method that internally calls `ipcRenderer.invoke(<specific channel>)`.
- *
- * The renderer can NEVER pass a channel name in — the channel list is hard-coded
- * here. This prevents a compromised renderer (XSS, malicious dep) from reaching
- * arbitrary main-process handlers.
- *
- * Event subscriptions (`on` / `offAll`) accept a channel string, but the channel
- * is validated against a fixed list of literal names and templated prefixes.
- */
+// Typed preload bridge. The renderer can only invoke channels in INVOKE_CHANNELS
+// and only listen to events in EVENT_LITERALS / EVENT_PREFIXES — there is no
+// path for a compromised renderer to pass an arbitrary channel name through.
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
 
-// ---------------------------------------------------------------------------
-// Invokable channels — kept in sync with the ipcMain.handle(...) calls in
-// the electron/ directory. Adding a new handler in main requires adding it
-// here too.
-// ---------------------------------------------------------------------------
+// Must stay in sync with the ipcMain.handle(...) calls in the electron/ dir.
 const INVOKE_CHANNELS = [
   // app shell
   "set_pings_active",
@@ -23,9 +11,7 @@ const INVOKE_CHANNELS = [
   "show_open_dialog",
   "show_save_dialog",
   "open_external_url",
-  // narrowed credential encryption helpers (raw key is never exposed and the
-  // renderer cannot ask main to encrypt or decrypt arbitrary blobs — each
-  // channel binds plaintext to a specific row + field via AAD).
+  // credential helpers — each channel binds plaintext to a specific row + field via AAD
   "account_get_credentials",
   "account_save_credentials",
   "account_create",
@@ -151,10 +137,6 @@ const INVOKE_CHANNELS = [
 
 const INVOKE_SET = new Set<string>(INVOKE_CHANNELS);
 
-// ---------------------------------------------------------------------------
-// Event channels (main → renderer). The renderer subscribes by channel name,
-// but the names are validated against a fixed list of literal/prefixed strings.
-// ---------------------------------------------------------------------------
 const EVENT_LITERALS = new Set<string>([
   "cloud_auth_error",
   "storage_download_progress",
@@ -177,24 +159,16 @@ function isAllowedEventChannel(channel: string): boolean {
   return EVENT_PREFIXES.some((p) => channel.startsWith(p));
 }
 
-// Build a `{ [channel]: (args) => invoke(channel, args) }` map. The renderer
-// has no way to pass a different channel name in — each method has the channel
-// baked in via closure.
+// Each method has the channel baked in via closure so the renderer cannot
+// invoke a channel name it didn't already have a method for.
 const invokeMap: Record<string, (args?: unknown) => Promise<unknown>> = {};
 for (const ch of INVOKE_CHANNELS) {
   invokeMap[ch] = (args?: unknown) => ipcRenderer.invoke(ch, args);
 }
 
 contextBridge.exposeInMainWorld("electronAPI", {
-  // Typed per-channel methods. The renderer should prefer the lookup form
-  // `electronAPI[channel](args)` via the typed helper in `lib/invoke.ts`.
   ...invokeMap,
 
-  /**
-   * Subscribe to a main-process event. The channel name must match a known
-   * literal or known prefix; unknown channels throw to prevent a compromised
-   * renderer from listening on arbitrary IPC traffic.
-   */
   on(channel: string, callback: (...args: unknown[]) => void): void {
     if (!isAllowedEventChannel(channel)) {
       throw new Error(`electronAPI.on: refused unknown channel "${channel}"`);

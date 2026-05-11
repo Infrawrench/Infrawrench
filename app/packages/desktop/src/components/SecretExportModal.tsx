@@ -37,20 +37,18 @@ export function SecretExportModal({
   const [error, setError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [targetClient, setTargetClient] = useState<PluginClient | null>(null);
-  /** The resource type ID we found templates on — may differ from source.resourceTypeId for __account__ drops */
+  // May differ from source.resourceTypeId for __account__ drops.
   const [effectiveTypeId, setEffectiveTypeId] = useState<string>(source.resourceTypeId);
 
-  // Load templates from source plugin + namespaces from target
   useEffect(() => {
     let cancelled = false;
 
     async function init() {
       try {
-        // Load source plugin to get templates
         const sourceLoaded = await getPlugin(source.pluginId);
         if (!sourceLoaded || cancelled) return;
 
-        // For account-level drops, find the first resource type that has secret export templates
+        // Account-level drops: pick the first type with templates.
         let resourceType = sourceLoaded.plugin.resourceTypes.find(
           (t) => t.id === source.resourceTypeId,
         );
@@ -78,7 +76,6 @@ export function SecretExportModal({
           setEditableKeys(initial);
         }
 
-        // Generate default secret name
         const baseName = source.displayName
           .toLowerCase()
           .replace(/[^a-z0-9-]/g, "-")
@@ -86,7 +83,6 @@ export function SecretExportModal({
           .replace(/^-|-$/g, "");
         if (!cancelled) setSecretName(baseName || "imported-secret");
 
-        // Create the target client directly from the provided credentials
         const targetLoaded = await getPlugin(targetPluginId);
         if (!targetLoaded || cancelled) return;
         const targetServices = buildPluginHostServices(
@@ -96,13 +92,12 @@ export function SecretExportModal({
         const client = targetLoaded.plugin.createClient(targetCredentials, targetServices);
         if (!cancelled) setTargetClient(client);
 
-        // Fetch namespaces from the target
         if (client.listNamespacesForImport) {
           try {
             const ns = await client.listNamespacesForImport("");
             if (!cancelled) setNamespaces(ns);
           } catch {
-            // Namespace listing is best-effort
+            // best-effort
           }
         }
       } catch (e) {
@@ -137,7 +132,6 @@ export function SecretExportModal({
     setError(null);
 
     try {
-      // 1. Resolve source outputs
       const db = await getDb();
       const sourceRows = await db.select<{ id: string; plugin_id: string }[]>(
         "SELECT id, plugin_id FROM accounts WHERE id = $1",
@@ -167,7 +161,6 @@ export function SecretExportModal({
           );
           data[envKey] = value;
         } catch {
-          // Fall back to fields
           const fieldVal = source.fields[entry.outputKey];
           if (fieldVal !== undefined && fieldVal !== null) {
             data[envKey] = String(fieldVal);
@@ -176,7 +169,6 @@ export function SecretExportModal({
       }
       setResolving(false);
 
-      // 2. Create secret via the target client (already initialized with credentials)
       if (!targetClient.importSecret)
         throw new Error("Target plugin doesn't support secret import");
       await targetClient.importSecret("", {

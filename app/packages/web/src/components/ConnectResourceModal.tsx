@@ -69,11 +69,9 @@ export function ConnectResourceModal({
   const [filePath, setFilePath] = useState("~/.env");
   const [append, setAppend] = useState(true);
 
-  // Submit state
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Load templates + capabilities
   useEffect(() => {
     let cancelled = false;
     setLoadingTemplates(true);
@@ -96,7 +94,6 @@ export function ConnectResourceModal({
           return;
         }
 
-        // Set defaults
         setSelectedTemplateId(data.templates[0]!.id);
         const initial: Record<string, string> = {};
         for (const entry of data.templates[0]!.entries) initial[entry.outputKey] = entry.envKey;
@@ -109,7 +106,6 @@ export function ConnectResourceModal({
           .replace(/^-|-$/g, "");
         setSecretName(baseName || "imported-secret");
 
-        // Auto-select mode
         if (data.supportsSecretImport) {
           setMode("secret-export");
         } else if (sshHost) {
@@ -132,7 +128,6 @@ export function ConnectResourceModal({
     };
   }, [orgId, source, targetAccountId, targetPluginId, sshHost]);
 
-  // Load SSH keys when env-deploy mode is active
   useEffect(() => {
     if (mode !== "env-deploy") return;
     apiGet<SshKey[]>(`/api/org/${orgId}/ssh-keys`)

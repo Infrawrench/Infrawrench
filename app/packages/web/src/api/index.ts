@@ -8,18 +8,14 @@ import { workos, clientId } from "../auth/workos";
 import { getOpenApiDocument } from "./openapi/index";
 import { OAUTH_STATE_COOKIE } from "./oauth-state";
 
-// Public routes (no auth)
 import { callbackRoutes } from "./routes/callback";
 import { stripeWebhookRoutes } from "./routes/stripe-webhook";
 
-// Auth routes (session-authed — me, sign-out, orgs)
 import { authRoutes } from "./routes/auth";
 
-// Unscoped session-authed routes (no org context needed)
 import { orgManagementRoutes } from "./routes/orgs";
 import { invitationAcceptRoutes } from "./routes/invitation-accept";
 
-// Org-scoped session-authed routes
 import { dashboardRoutes } from "./routes/dashboards";
 import { accountRoutes } from "./routes/accounts";
 import { apiKeyRoutes } from "./routes/api-keys";
@@ -38,19 +34,16 @@ import { searchRoutes } from "./routes/search";
 import { connectRoutes } from "./routes/connect";
 import { sshTunnelRoutes } from "./routes/ssh-tunnels";
 
-// API-key-authed routes (handle their own auth)
+// API-key-authed; handles its own auth.
 import { syncRoutes } from "./routes/sync";
 
-// Public MCP discovery (no auth)
 import { wellKnownRoutes } from "../mcp/well-known";
 
 const api = new Hono();
 
 api.onError((err, c) => {
   if (err instanceof HTTPException) return err.getResponse();
-  // Always log the full error server-side, keyed by a correlation id we
-  // hand back to the caller. In production we deliberately do NOT echo the
-  // error message or stack — those can leak schema/path/secret material.
+  // In production we don't echo the message/stack — they leak schema, paths, secrets.
   const correlationId = randomUUID();
   console.error(`[api] uncaught error correlationId=${correlationId}:`, err);
   if (process.env["NODE_ENV"] === "production") {
@@ -64,8 +57,7 @@ api.route("/callback", callbackRoutes);
 api.route("/api/v1/webhooks/stripe", stripeWebhookRoutes);
 api.route("/.well-known", wellKnownRoutes);
 
-// OpenAPI spec + Scalar reference UI. Public — they document the API surface
-// itself, not any private data. The doc is built once and cached.
+// Public — the spec describes the API surface, not private data.
 api.get("/openapi.json", async (c) => c.json(await getOpenApiDocument()));
 api.get(
   "/docs",
@@ -78,16 +70,15 @@ api.get(
 
 api.get("/api/auth/sign-in", async (c) => {
   const redirectUri = process.env["WORKOS_REDIRECT_URI"] ?? "http://localhost:3000/callback";
-  // Generate a random per-request nonce, set it in a short-lived HttpOnly
-  // cookie, and pass it as the OAuth `state` parameter. The callback verifies
-  // the cookie matches the returned `state` to prevent login CSRF.
+  // Per-request nonce. The callback verifies the cookie matches the returned
+  // `state` parameter, blocking login CSRF.
   const state = randomBytes(32).toString("base64url");
   setCookie(c, OAUTH_STATE_COOKIE, state, {
     httpOnly: true,
     secure: process.env["NODE_ENV"] === "production",
     sameSite: "lax",
     path: "/",
-    maxAge: 60 * 5, // 5 minutes
+    maxAge: 60 * 5,
   });
   const url = workos.userManagement.getAuthorizationUrl({
     provider: "authkit",

@@ -67,7 +67,6 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
   const [accountResources, setAccountResources] = useState<Record<string, AccountResourcesState>>(
     {},
   );
-  // typeId → sshEndpoint config for resources with sshEndpoint
   const [sshEndpointByTypeId, setSshEndpointByTypeId] = useState<
     Record<
       string,
@@ -79,15 +78,10 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
       }
     >
   >({});
-  // Resource type IDs that have a "kubeconfig" output — can be drop targets for secret import
   const [kubeconfigTypeIds, setKubeconfigTypeIds] = useState<Set<string>>(new Set());
-  // Resource type IDs that support metric series — can have ping alerts attached
   const [metricsTypeIds, setMetricsTypeIds] = useState<Set<string>>(new Set());
-  // resourceId → sshHost value
   const [resourceSshHosts, setResourceSshHosts] = useState<Record<string, string>>({});
-  // resourceId → default SSH username
   const [resourceSshUsernames, setResourceSshUsernames] = useState<Record<string, string>>({});
-  // context menu state
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
@@ -100,7 +94,6 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
     supportsMetrics: boolean;
     accountId: string;
   } | null>(null);
-  // Metric ping modal target
   const [pingTarget, setPingTarget] = useState<{
     resourceId: string;
     accountId: string;
@@ -108,34 +101,28 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
     resourceTypeId: string;
     displayName: string;
   } | null>(null);
-  // SSH tunnel modal target
   const [tunnelTarget, setTunnelTarget] = useState<{
     sshHost: string;
     sshDefaultUsername?: string;
     sourceAccountId: string;
     defaultService?: PresetKey;
   } | null>(null);
-  // Docker setup modal target
   const [dockerSetupTarget, setDockerSetupTarget] = useState<{
     sshHost: string;
     sshDefaultUsername?: string;
     sourceAccountId: string;
   } | null>(null);
-  // Plugin IDs that support secret import (e.g. kubernetes)
   const [secretImportPluginIds, setSecretImportPluginIds] = useState<Set<string>>(new Set());
-  // Secret export modal state (triggered by dropping onto a K8s account)
   const [secretExportDrop, setSecretExportDrop] = useState<{
     source: DraggableResource;
     targetPluginId: string;
     targetCredentials: Record<string, string>;
   } | null>(null);
-  // Env deploy modal state (triggered by dropping a non-tunnel resource onto a VM)
   const [envDeployDrop, setEnvDeployDrop] = useState<{
     source: DraggableResource;
     sshHost: string;
     sshDefaultUsername?: string;
   } | null>(null);
-  // Account deletion state
   const [deleteTarget, setDeleteTarget] = useState<Account | null>(null);
   const navigate = useNavigate();
   const bumpAccounts = useUIStore((s) => s.bumpAccounts);
@@ -211,7 +198,6 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
         }
         if (!cancelled) setSecretImportPluginIds(importPlugins);
 
-        // Build set of resource type IDs that have a kubeconfig output (GKE, DOKS clusters)
         const kcTypes = new Set<string>();
         const metricTypes = new Set<string>();
         for (const p of plugins) {
@@ -314,15 +300,13 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
       }));
       const sshHosts: Record<string, string> = {};
       const sshUsernames: Record<string, string> = {};
-      // SSH/tunnel features need locally-decryptable credentials; skip detection
-      // for cloud-managed accounts so those menu items simply don't appear.
+      // SSH/tunnel features need locally-decryptable credentials.
       if (account.cloudManaged) {
         return;
       }
       for (const r of allResources) {
         const endpoint = sshEndpointByTypeId[r.resourceTypeId];
         if (endpoint) {
-          // Check runningWhen guard
           if (endpoint.runningWhen) {
             const fieldVal = String(r.fields[endpoint.runningWhen.fieldKey] ?? "");
             if (fieldVal.toLowerCase() !== endpoint.runningWhen.value.toLowerCase()) continue;
@@ -332,7 +316,6 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
           );
           if (host) {
             sshHosts[r.id] = host;
-            // Resolve default SSH username
             let username = "";
             if (endpoint.usernameFieldKey) {
               username = String(r.fields[endpoint.usernameFieldKey] ?? "");
@@ -351,7 +334,7 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
         setResourceSshUsernames((prev) => ({ ...prev, ...sshUsernames }));
       }
     } catch (e) {
-      if (background) return; // silently ignore errors during background refresh
+      if (background) return;
       setAccountResources((prev) => ({
         ...prev,
         [id]: {
@@ -372,7 +355,6 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
       else next.delete(id);
       return next;
     });
-    // Only load resources if expanding and not already loaded
     if (!isNowExpanded) return;
     if (accountResources[id]) return;
     void loadAccountResources(account);
@@ -380,7 +362,7 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
 
   async function handleDeleteAccount(account: Account) {
     const db = await getDb();
-    // Cascade deletes resources, dashboard_pins, secret_field_states, ssh_tunnel_configs via FK
+    // Cascades to resources, dashboard_pins, secret_field_states, ssh_tunnel_configs via FK.
     await db.execute("DELETE FROM accounts WHERE id = $1", [account.id]);
     const tabsToRemove = workspaceTabs
       .filter((tab) => {
@@ -396,7 +378,6 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
     setDeleteTarget(null);
   }
 
-  // Auto-refresh expanded accounts every 30 s (background — no loading flash)
   useEffect(() => {
     const id = setInterval(() => {
       const allAccounts = groups.flatMap((g) => g.accounts);
@@ -408,16 +389,12 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
     return () => clearInterval(id);
   }, [groups, expanded]);
 
-  // Invalidate + reload resource list when something was deleted (or otherwise changed).
-  // When a resourceTypeId is provided in the event detail, only the affected type is
-  // re-synced for immediate feedback; otherwise the full account is reloaded.
   useEffect(() => {
     function handler(e: Event) {
       const detail = (e as CustomEvent<{ accountId?: string; resourceTypeId?: string }>).detail;
       const accountId = detail?.accountId;
       const resourceTypeId = detail?.resourceTypeId;
       if (!accountId) {
-        // Broad change — clear caches so anything expanded reloads from its source.
         for (const id of expanded) {
           const acc = groups.flatMap((g) => g.accounts).find((a) => a.id === id);
           if (acc) void loadAccountResources(acc, true);
@@ -436,13 +413,12 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
         return;
       }
 
-      // Targeted re-sync when we know the type and the account is cloud-managed.
       if (resourceTypeId && account.cloudManaged && activeCloudOrgId) {
         void (async () => {
           try {
             await syncCloudAccountType(activeCloudOrgId, accountId, resourceTypeId);
           } catch {
-            // ignore — fall through to full reload
+            // fall through to full reload
           }
           void loadAccountResources(account, true);
         })();
@@ -455,7 +431,6 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
     return () => window.removeEventListener(RESOURCES_CHANGED_EVENT, handler);
   }, [groups, expanded, activeCloudOrgId]);
 
-  // Handle secret drops onto sidebar accounts and resources
   useEffect(() => {
     function handler(e: Event) {
       const { source, targetId, kind } = (
@@ -518,7 +493,6 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
                 : {}),
             });
           } else {
-            // Non-tunnel resources → deploy credentials via SSH
             setEnvDeployDrop({
               source,
               sshHost,
@@ -590,7 +564,6 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
       <div className="py-1">
         {groups.map((group) => (
           <div key={group.pluginId} className="mb-3">
-            {/* Plugin header */}
             <div className="flex items-center gap-2 px-3 py-1">
               <div
                 className="w-4 h-4 flex-shrink-0"
@@ -601,14 +574,12 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
               </span>
             </div>
 
-            {/* Accounts under this plugin */}
             {group.accounts.map((account) => {
               const isExpanded = expanded.has(account.id);
               const resourceState = accountResources[account.id];
 
               return (
                 <div key={account.id}>
-                  {/* Account row — draggable */}
                   <AccountDraggableRow
                     account={account}
                     group={group}
@@ -624,7 +595,6 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
                     onDelete={account.cloudManaged ? undefined : () => setDeleteTarget(account)}
                   />
 
-                  {/* Expanded resources */}
                   {isExpanded && (
                     <div className="pl-8 pb-1">
                       {resourceState?.loading && (
@@ -699,7 +669,6 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
         ))}
       </div>
 
-      {/* Context menu for resources */}
       {contextMenu && (
         <div
           ref={contextMenuRef}
@@ -763,7 +732,6 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
         </div>
       )}
 
-      {/* Metric ping modal */}
       {pingTarget && (
         <MetricPingModal
           resourceId={pingTarget.resourceId}
@@ -775,7 +743,6 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
         />
       )}
 
-      {/* SSH tunnel modal */}
       {tunnelTarget && (
         <SshTunnelModal
           sshHost={tunnelTarget.sshHost}
@@ -794,7 +761,6 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
         />
       )}
 
-      {/* Docker setup modal */}
       {dockerSetupTarget && (
         <DockerSetupModal
           sshHost={dockerSetupTarget.sshHost}
@@ -810,7 +776,6 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
         />
       )}
 
-      {/* Env deploy modal (triggered by dropping a non-tunnel resource onto a VM) */}
       {envDeployDrop && (
         <SshEnvDeployModal
           source={envDeployDrop.source}
@@ -823,7 +788,6 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
         />
       )}
 
-      {/* Secret export modal (triggered by dropping onto a K8s account) */}
       {secretExportDrop && (
         <SecretExportModal
           source={secretExportDrop.source}
@@ -834,7 +798,6 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
         />
       )}
 
-      {/* Account deletion modal */}
       {deleteTarget && (
         <ConfirmDeleteModal
           kind="account"

@@ -57,8 +57,8 @@ app.post("/create-account", async (c) => {
     return c.json({ error: e instanceof Error ? e.message : "Invalid SSH host" }, 400);
   }
 
-  // Load and decrypt the SSH key — restricted to keys OWNED by the caller,
-  // so a same-org peer cannot use another user's private key.
+  // Restricted to keys owned by the caller — same-org peers cannot use
+  // another user's private key.
   const [keyRow] = await db
     .select({
       encryptedPrivateKey: sshKeys.encryptedPrivateKey,

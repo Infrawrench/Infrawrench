@@ -30,7 +30,6 @@ export function SshQuickConnectPanel({
   const [newKeyPem, setNewKeyPem] = useState("");
   const [saving, setSaving] = useState(false);
 
-  // Load keys on mount
   useEffect(() => {
     void loadKeys();
   }, [activeCloudOrgId]); // eslint-disable-line react-hooks/exhaustive-deps

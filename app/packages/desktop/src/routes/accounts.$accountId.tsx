@@ -152,7 +152,6 @@ function AccountPage() {
       const targetCategory = categories.find((c) => c.resources.some((r) => r.id === targetId));
       const sshEndpoint = targetCategory?.typeDef.sshEndpoint;
       if (sshEndpoint && !kubeconfigTypeIds.has(targetResource.resourceTypeId)) {
-        // Check runningWhen guard
         let vmRunning = true;
         if (sshEndpoint.runningWhen) {
           const fieldVal = String(targetResource.fields[sshEndpoint.runningWhen.fieldKey] ?? "");
@@ -166,7 +165,6 @@ function AccountPage() {
             )
           : "";
         if (sshHost) {
-          // Resolve SSH username from sshEndpoint declaration
           let sshDefaultUsername: string | undefined;
           if (sshEndpoint.usernameFieldKey) {
             const val = String(targetResource.fields[sshEndpoint.usernameFieldKey] ?? "");
@@ -294,7 +292,6 @@ function AccountPage() {
         const orgId = useUIStore.getState().activeCloudOrgId;
 
         if (orgId) {
-          // Cloud account detail — no local decrypt, no local plugin client.
           const detail = await getCloudAccountDetail(orgId, accountId);
           if (!detail) throw new Error("Account not found");
           const accountLike: AccountRow = {
@@ -311,7 +308,8 @@ function AccountPage() {
               setWorkspaceTabTitle(activeWorkspaceTabId, detail.account.displayName);
           }
 
-          // Load full plugin locally to get full ResourceTypeDefinitions (sshEndpoint, outputs, etc.)
+          // Local plugin gives us the full ResourceTypeDefinitions; the cloud
+          // detail only returns ids and labels.
           const loaded = await getPlugin(detail.account.pluginId);
           const allTypes: ResourceTypeDefinition[] = loaded?.plugin.resourceTypes ?? [];
 
@@ -328,8 +326,7 @@ function AccountPage() {
             setInitialLoading(false);
           }
 
-          // Single DB read from the cloud — the poller keeps it fresh. No
-          // per-type provider calls.
+          // Single DB read — the poller keeps it fresh.
           listCloudAccountResources(orgId, accountId)
             .then((rows) => {
               if (cancelled) return;
@@ -385,8 +382,7 @@ function AccountPage() {
               }
             });
 
-          // Cloud pin-state visual — the server doesn't have a "pins by account"
-          // endpoint; toggling still works. Leave empty; togglePin updates optimistically.
+          // No "pins by account" endpoint server-side; togglePin updates optimistically.
           if (!cancelled) setPinned(new Set());
           return;
         }
@@ -421,7 +417,6 @@ function AccountPage() {
         }
         if (!cancelled) setKubeconfigTypeIds(kcTypes);
 
-        // On foreground load, show category headers immediately with loading skeletons
         if (!isBackground && !cancelled) {
           setCategories(
             allTypes.map((t) => ({
@@ -434,7 +429,6 @@ function AccountPage() {
           setInitialLoading(false);
         }
 
-        // Fire off independent async loads per category
         for (const typeDef of allTypes) {
           client
             .listResources(typeDef.id, accountId)
@@ -451,14 +445,13 @@ function AccountPage() {
             .catch((err) => {
               if (cancelled) return;
               if (isBackground) {
-                // Background refresh: silently clear loading, keep stale data
+                // Keep stale data, just clear the loading flag.
                 setCategories((prev) =>
                   prev.map((cat) =>
                     cat.typeDef.id === typeDef.id ? { ...cat, loading: false } : cat,
                   ),
                 );
               } else {
-                // Foreground: show error, but keep the category visible if it supports create
                 setCategories((prev) =>
                   prev.map((cat) =>
                     cat.typeDef.id === typeDef.id
@@ -529,7 +522,7 @@ function AccountPage() {
         return s;
       });
     } else {
-      // Upsert resource so dashboard_pins FK is satisfied
+      // Satisfy the dashboard_pins FK by upserting the resource first.
       await db.execute(
         `INSERT OR REPLACE INTO resources
          (id, plugin_id, resource_type_id, account_id, display_name, external_id, fields_json)
@@ -545,7 +538,6 @@ function AccountPage() {
         ],
       );
 
-      // Ensure a default dashboard exists
       const dashboards = await db.select<{ id: string }[]>(
         "SELECT id FROM dashboards WHERE is_default = 1 LIMIT 1",
       );
@@ -573,7 +565,7 @@ function AccountPage() {
       await deleteCloudAccount(activeCloudOrgId, accountId);
     } else {
       const db = await getDb();
-      // Cascade deletes resources, dashboard_pins, secret_field_states, ssh_tunnel_configs via FK
+      // Cascades to resources, dashboard_pins, secret_field_states, ssh_tunnel_configs via FK.
       await db.execute("DELETE FROM accounts WHERE id = $1", [accountId]);
     }
     removeWorkspaceTabs(
@@ -719,7 +711,6 @@ function AccountPage() {
             supportsMetrics={!!cat.typeDef.supportsMetrics}
             onContextMenuOpen={(e, sshHost) => {
               e.preventDefault();
-              // Resolve SSH username from the resource type's sshEndpoint
               let sshDefaultUsername: string | undefined;
               const ep = cat.typeDef.sshEndpoint;
               if (ep?.usernameFieldKey) {

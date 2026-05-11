@@ -25,8 +25,8 @@ ipcMain.handle("k8s_pf_start", (event, args) => startPortForward(event.sender, a
 ipcMain.handle("k8s_pf_stop", (_event, { sessionId }) => stopPortForward(sessionId));
 ipcMain.handle("k8s_pf_list", () => listPortForwards());
 
-// Routes K8s API requests through Node so we can supply the cluster CA cert
-// that Chromium's fetch() refuses to trust.
+// Routed through Node so we can supply the cluster CA cert; Chromium's fetch
+// won't trust per-request CAs.
 
 interface K8sApiRequest {
   url: string;
@@ -36,18 +36,10 @@ interface K8sApiRequest {
   caCert?: string; // PEM-encoded CA certificate
 }
 
-/**
- * Hosts that an attacker-controlled renderer could try to abuse for SSRF.
- *
- * `k8s_api_request` is meant to talk to Kubernetes API servers that the user
- * has configured in their kubeconfig — which in practice are remote hostnames.
- * If a request targets a loopback/private/link-local address, we require the
- * host:port to have been registered by a kubeconfig-driven caller (see
- * `registerK8sEndpoint` below) — otherwise we refuse.
- *
- * This blocks XSS-driven scans of cloud metadata services (169.254.169.254),
- * the local Docker daemon, internal corporate services, etc.
- */
+// SSRF defense: requests to private/loopback/link-local addresses are refused
+// unless the host:port was registered via registerK8sEndpoint (e.g. by the
+// kubeconfig loader). Blocks XSS-driven scans of metadata services
+// (169.254.169.254), the local Docker daemon, internal corporate services, etc.
 const REGISTERED_K8S_HOSTS = new Set<string>();
 
 export function registerK8sEndpoint(host: string, port: number | string): void {
@@ -58,18 +50,16 @@ function isPrivateOrLoopbackHost(hostname: string): boolean {
   const lower = hostname.toLowerCase();
   if (lower === "localhost" || lower.endsWith(".localhost")) return true;
   if (lower === "metadata.google.internal") return true;
-  // IPv4 numeric checks
   if (net.isIPv4(lower)) {
     const [a = 0, b = 0] = lower.split(".").map((p) => Number(p));
-    if (a === 127) return true; // loopback
-    if (a === 10) return true; // private
-    if (a === 169 && b === 254) return true; // link-local (incl. cloud metadata)
+    if (a === 127) return true;
+    if (a === 10) return true;
+    if (a === 169 && b === 254) return true; // link-local (cloud metadata)
     if (a === 172 && b >= 16 && b <= 31) return true;
     if (a === 192 && b === 168) return true;
     if (a === 0) return true;
     return false;
   }
-  // IPv6 — block loopback, ULA, link-local
   if (net.isIPv6(lower)) {
     if (lower === "::1") return true;
     if (lower.startsWith("fe80:") || lower.startsWith("fe80::")) return true;
@@ -98,13 +88,6 @@ ipcMain.handle(
       const port = parsed.port || (isHttps ? "443" : "80");
       const endpointKey = `${parsed.hostname.toLowerCase()}:${port}`;
 
-      // Block private/loopback/link-local targets unless explicitly registered
-      // by the cluster-config loader. Today that registration list is empty —
-      // legitimate users mostly talk to public Kubernetes endpoints, and any
-      // local-cluster (kind, minikube, k3d) traffic should run through the
-      // k8s plugin's local-config path, not `k8s_api_request`. If we later
-      // want to support those, call `registerK8sEndpoint` from kubeconfig
-      // ingestion.
       if (isPrivateOrLoopbackHost(parsed.hostname) && !REGISTERED_K8S_HOSTS.has(endpointKey)) {
         reject(
           new Error(
@@ -125,10 +108,6 @@ ipcMain.handle(
         headers: req.headers,
       };
 
-      // FIX_FLAG: the renderer still supplies the CA cert per call. Long-term
-      // this should be loaded from main-side cluster config keyed by hostname
-      // — see `registerK8sEndpoint`. For now we accept the CA but only after
-      // confirming the URL points at a permitted host above.
       if (isHttps && req.caCert) {
         options.ca = req.caCert;
       }

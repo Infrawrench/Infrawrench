@@ -13,10 +13,8 @@ import { hostKeyTrustResponse } from "./ssh-host-keys";
 import { requirePermission } from "../../auth/permissions";
 import type { AuthSession } from "../auth-middleware";
 
-// Restrict env-deploy file paths to a conservative POSIX charset so they
-// cannot break out of the single-quoted shell argument used below. Even with
-// the quote-escape, banning shell metacharacters defends against tricks that
-// might exploit shells with non-standard quoting behavior.
+// Defense in depth: even with the quote-escape below, banning shell
+// metacharacters guards against shells with non-standard quoting behavior.
 const envDeployFilePathSchema = z
   .string()
   .min(1)
@@ -45,14 +43,13 @@ app.post("/templates", async (c) => {
     targetPluginId: string;
   }>();
 
-  // Load source plugin to get templates
   const sourceLoaded = await getPlugin(input.sourcePluginId);
   if (!sourceLoaded) return c.json({ error: "Source plugin not found" }, 404);
 
   let resourceType = sourceLoaded.plugin.resourceTypes.find(
     (t) => t.id === input.sourceResourceTypeId,
   );
-  // For account-level drops, find the first type with templates
+  // Account-level drops: pick the first type that has templates.
   if (
     !resourceType?.secretExportTemplates?.length &&
     input.sourceResourceTypeId === "__account__"
@@ -64,11 +61,9 @@ app.post("/templates", async (c) => {
 
   const templates: SecretExportTemplate[] = resourceType?.secretExportTemplates ?? [];
 
-  // Check if target supports secret import (e.g. Kubernetes)
   const targetLoaded = await getPlugin(input.targetPluginId);
   const supportsSecretImport = targetLoaded?.plugin.manifest.supportsSecretImport ?? false;
 
-  // Load target namespaces if applicable
   let namespaces: string[] = [];
   if (supportsSecretImport) {
     const targetCtx = await getClientForAccount(input.targetAccountId, organizationId);
@@ -76,7 +71,7 @@ app.post("/templates", async (c) => {
       try {
         namespaces = await targetCtx.client.listNamespacesForImport("");
       } catch {
-        // Namespace listing is best-effort
+        // best-effort
       }
     }
   }
@@ -110,7 +105,6 @@ app.post("/secret-export", async (c) => {
     keyOverrides: Record<string, string>;
   }>();
 
-  // Load source plugin + client
   const sourceCtx = await getClientForAccount(input.sourceAccountId, organizationId);
   if (!sourceCtx) return c.json({ error: "Source account not found" }, 404);
 
@@ -119,7 +113,6 @@ app.post("/secret-export", async (c) => {
   );
   let template = sourceResourceType?.secretExportTemplates?.find((t) => t.id === input.templateId);
 
-  // For account-level, search all types
   if (!template && input.sourceResourceTypeId === "__account__") {
     for (const rt of sourceCtx.plugin.resourceTypes) {
       template = rt.secretExportTemplates?.find((t) => t.id === input.templateId);
@@ -129,7 +122,6 @@ app.post("/secret-export", async (c) => {
 
   if (!template) return c.json({ error: "Template not found" }, 404);
 
-  // Resolve outputs from source
   const data: Record<string, string> = {};
   for (const entry of template.entries) {
     const envKey = input.keyOverrides[entry.outputKey] ?? entry.envKey;
@@ -142,7 +134,7 @@ app.post("/secret-export", async (c) => {
       );
       data[envKey] = value;
     } catch {
-      // Fall through — field-based fallback not available server-side
+      // field-based fallback isn't available server-side
     }
   }
 
@@ -150,7 +142,6 @@ app.post("/secret-export", async (c) => {
     return c.json({ error: "Could not resolve any outputs from the source resource" }, 400);
   }
 
-  // Load target plugin + client
   const targetCtx = await getClientForAccount(input.targetAccountId, organizationId);
   if (!targetCtx) return c.json({ error: "Target account not found" }, 404);
 
@@ -190,11 +181,9 @@ app.post("/env-deploy", async (c) => {
     append: boolean;
   }>();
 
-  // Load source plugin + client
   const sourceCtx = await getClientForAccount(input.sourceAccountId, organizationId);
   if (!sourceCtx) return c.json({ error: "Source account not found" }, 404);
 
-  // Find template
   let template: SecretExportTemplate | undefined;
   for (const rt of sourceCtx.plugin.resourceTypes) {
     template = rt.secretExportTemplates?.find((t) => t.id === input.templateId);
@@ -202,7 +191,6 @@ app.post("/env-deploy", async (c) => {
   }
   if (!template) return c.json({ error: "Template not found" }, 404);
 
-  // Resolve outputs
   const data: Record<string, string> = {};
   for (const entry of template.entries) {
     const envKey = input.keyOverrides[entry.outputKey] ?? entry.envKey;
@@ -223,10 +211,6 @@ app.post("/env-deploy", async (c) => {
     return c.json({ error: "Could not resolve any outputs from the source resource" }, 400);
   }
 
-  // Validate filePath against an allowlist of safe characters BEFORE any
-  // shell interpolation. Anything outside this set (spaces, quotes, $, `,
-  // ;, |, &, newlines, etc.) is rejected so the value cannot break out of
-  // the quoted argument below.
   const parsedFilePath = envDeployFilePathSchema.safeParse(input.filePath);
   if (!parsedFilePath.success) {
     return c.json(
@@ -238,7 +222,6 @@ app.post("/env-deploy", async (c) => {
   }
   const safeFilePath = parsedFilePath.data;
 
-  // Load SSH key
   const [keyRow] = await db
     .select({
       encryptedPrivateKey: sshKeys.encryptedPrivateKey,
@@ -257,17 +240,15 @@ app.post("/env-deploy", async (c) => {
     buildAad("sshKey", input.sshKeyId, "privateKey"),
   );
 
-  // Build env content
   const lines =
     input.format === "profile"
       ? Object.entries(data).map(([k, v]) => `export ${k}=${JSON.stringify(v)}`)
       : Object.entries(data).map(([k, v]) => `${k}=${v}`);
   const content = lines.join("\n") + "\n";
 
-  // Deploy via SSH. Single-quote-escape both the content AND the file path,
-  // so an attacker cannot break out of the quoted argument even if validation
-  // ever loosens. `operator` is constructed from a server-side boolean so it
-  // does not need escaping.
+  // Single-quote-escape content + path so an attacker can't break out of the
+  // quoted argument even if file-path validation ever loosens. `operator` is
+  // server-side boolean, no escaping needed.
   const operator = input.append ? ">>" : ">";
   const escapeSingleQuoted = (s: string) => `'${s.replace(/'/g, "'\\''")}'`;
   const quotedContent = escapeSingleQuoted(content);

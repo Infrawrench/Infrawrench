@@ -208,8 +208,7 @@ export async function loadCloudResource(orgId: string, params: LoaderParams): Pr
   };
   refs.client.current = null;
 
-  // Strip storageBrowser from cloud schema — storage requires a local client
-  // until cloud storage endpoints land.
+  // Storage requires a local client until cloud storage endpoints land.
   const { storageBrowser: _storageBrowser, ...restSchema } = detail.detailSchema;
   void _storageBrowser;
 
@@ -246,9 +245,8 @@ export async function loadCloudResource(orgId: string, params: LoaderParams): Pr
     ) as ChildResourceGroup[],
   );
 
-  // Peer panes: use stubs on initial load, hydrate lazily when a tab is
-  // opened. Preserve already-hydrated panes across background refreshes so
-  // we don't lose state.
+  // Stubs on first load; hydrate lazily on tab open. Preserve hydrated panes
+  // across background refreshes.
   const stubs = detail.peerIntegrationStubs ?? [];
   const eagerPanes = detail.peerPanes ?? [];
   if (eagerPanes.length > 0) {
@@ -421,12 +419,10 @@ export async function loadLocalResource(params: LoaderParams): Promise<void> {
   const db = await getDb();
   const session = getSqlSession(accountId);
 
-  // If we have a cached connection + the resource is in SQLite, show
-  // the page immediately without waiting for listResources or pg queries.
+  // Cached connection + SQLite hit: render immediately without waiting for
+  // listResources or pg queries.
   if (session) {
     refs.connectionString.current = session.connectionString;
-    // Driver name is resolved properly in the full load; pre-populate from manifest
-    // once we have the plugin. For now set from loaded plugin below if fast-path exits early.
 
     const [accountRows, sqliteRows] = await Promise.all([
       db.select<AccountRow[]>(
@@ -485,7 +481,7 @@ export async function loadLocalResource(params: LoaderParams): Promise<void> {
         setters.setSchema(immediateSchema);
         setters.setPgConnected(!!session.tablesJson);
         setAccountConnected(accountId, true);
-        setters.setLoading(false); // ← show the page NOW
+        setters.setLoading(false);
       }
     }
   } else if (!isBackground) {
@@ -570,7 +566,6 @@ export async function loadLocalResource(params: LoaderParams): Promise<void> {
   let sqlOk = !!session;
 
   if (hostServices && isDocker) {
-    // Docker plugin — verify connection via version check
     try {
       await client.fetchStats?.();
       if (!isCancelled()) setAccountConnected(accountId, true);
@@ -579,7 +574,6 @@ export async function loadLocalResource(params: LoaderParams): Promise<void> {
       /* ignore */
     }
   } else if (hostServices && cs && isKv) {
-    // KV plugin — just verify connection with a PING
     try {
       await client.fetchStats?.();
       if (!isCancelled()) {
@@ -591,7 +585,7 @@ export async function loadLocalResource(params: LoaderParams): Promise<void> {
       /* ignore — console will show the error on first command */
     }
   } else if (client.executeQuery) {
-    // REST-based query provider (e.g. BigQuery) — no node SQL driver needed
+    // REST-based query providers (e.g. BigQuery) — no node SQL driver needed.
     try {
       const tables = (await client.introspectResource?.(decodedResourceId, accountId)) ?? [];
       const tablesJson = JSON.stringify(tables);
@@ -645,8 +639,6 @@ export async function loadLocalResource(params: LoaderParams): Promise<void> {
     }
   }
 
-  // When the resource type declares resourceSqlDriver, resolve the
-  // connection string from the resource's outputs and enable SQL.
   const rtSqlDriver = resourceTypeDef?.resourceSqlDriver;
   if (rtSqlDriver && !sqlOk) {
     try {
@@ -660,9 +652,7 @@ export async function loadLocalResource(params: LoaderParams): Promise<void> {
         refs.connectionString.current = rtConnectionString;
         refs.sqlDriverId.current = rtSqlDriver.driver;
 
-        // Expose the resolved connection string to renderDetail so plugins
-        // can display it (e.g. Neon database Connection String field) without
-        // doing async work themselves.
+        // Expose the resolved string so renderDetail can show it without async work.
         enrichedResource = {
           ...enrichedResource,
           resolvedOutputs: {
@@ -671,7 +661,6 @@ export async function loadLocalResource(params: LoaderParams): Promise<void> {
           },
         };
 
-        // Introspect via the resolved connection
         try {
           const [tableRows, columnRows, pkRows] = await Promise.all([
             sqlQuery(
@@ -747,7 +736,6 @@ export async function loadLocalResource(params: LoaderParams): Promise<void> {
     }
     const detailSchema = client.renderDetail(enrichedResource);
 
-    // Inject sqlEditor into the schema if per-resource SQL driver is active
     const finalSchema =
       rtSqlDriver && sqlOk && !detailSchema.sqlEditor
         ? {
@@ -772,12 +760,10 @@ export async function loadLocalResource(params: LoaderParams): Promise<void> {
       setWorkspaceTabTitle(activeWorkspaceTabId, viewSuffix);
     }
 
-    // Resolve SSH host and default username if this resource type declares an sshEndpoint
     setters.setResourceTypeLabel(resourceTypeDef?.displayName ?? "Resource");
     if (resourceTypeDef?.sshEndpoint) {
       const { hostOutputKey, runningWhen, usernameFieldKey, defaultUsername } =
         resourceTypeDef.sshEndpoint;
-      // If runningWhen is specified, only enable SSH when the field matches
       if (runningWhen) {
         const fieldVal = String(enrichedResource.fields[runningWhen.fieldKey] ?? "");
         if (fieldVal.toLowerCase() !== runningWhen.value.toLowerCase()) {
@@ -798,7 +784,6 @@ export async function loadLocalResource(params: LoaderParams): Promise<void> {
         );
         if (!isCancelled()) setters.setSshHost(host || null);
       }
-      // Resolve SSH username
       if (!isCancelled()) {
         let resolvedUsername: string | null = null;
         if (usernameFieldKey) {
@@ -848,10 +833,7 @@ export async function loadLocalResource(params: LoaderParams): Promise<void> {
       setters.setChildResourceGroups([]);
     }
 
-    // Peer panes are lazy-fetched on tab click via handlePeerPaneOpen.
-    // Expose stubs (tab label + logo) so tabs render immediately, and
-    // stash the context needed for the lazy fetch. Preserve hydrated
-    // panes across background refreshes so the user doesn't lose state.
+    // Stubs so tabs render immediately; handlePeerPaneOpen hydrates on click.
     if (resourceTypeDef?.peerIntegrations?.length) {
       const integrationFields = enrichedResource.fields ?? {};
       const visibleIntegrations = resourceTypeDef.peerIntegrations.filter((i) => {
@@ -893,7 +875,6 @@ export async function loadLocalResource(params: LoaderParams): Promise<void> {
       if (!isCancelled() && !isBackground) setters.setPeerPanes([]);
     }
 
-    // Fetch time-series metrics if supported
     if (resourceTypeDef?.supportsMetrics && client.fetchMetricSeries && !isBackground) {
       client
         .fetchMetricSeries(enrichedResource.resourceTypeId, enrichedResource.id, accountId)

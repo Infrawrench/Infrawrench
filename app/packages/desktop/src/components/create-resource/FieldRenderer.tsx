@@ -38,7 +38,6 @@ export function FieldRenderer({
         if (!cancelled) setCloudAuthed(false);
       });
 
-    // Load system keys
     async function loadSystemKeys() {
       try {
         const sysKeys = await invoke<{ name: string }[]>("ssh_list_system_keys");

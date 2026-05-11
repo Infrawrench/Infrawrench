@@ -59,14 +59,11 @@ interface PluginMeta {
 
 interface CardStatus {
   phase: "connecting" | "ok" | "error";
-  // account summary stats
   resourceCounts?: { typeLabel: string; count: number }[] | undefined;
-  // generic stats
   stats?: Array<{ label: string; value: string; variant?: string }> | undefined;
   sparkline?: Array<{ timestamp: number; value: number }> | undefined;
   sparklineLabel?: string | undefined;
   error?: string | undefined;
-  // SSH connect button
   sshTarget?: boolean;
   resourceId?: string;
   accountId?: string;
@@ -95,7 +92,6 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
   const { setNodeRef, isOver } = useDroppable({ id: `dashboard:${dashboardId}` });
 
-  // Listen for card reorder events from DndShell
   const handleReorder = useCallback(
     (e: Event) => {
       const { activeResourceId, overResourceId } = (e as CustomEvent).detail as {
@@ -107,7 +103,6 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
         const newIndex = prev.findIndex((p) => p.resource_id === overResourceId);
         if (oldIndex === -1 || newIndex === -1) return prev;
         const next = arrayMove(prev, oldIndex, newIndex);
-        // Persist the new order in the background
         void (async () => {
           const orgId = useUIStore.getState().activeCloudOrgId;
           if (orgId) {
@@ -171,7 +166,6 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
         loadedName = full.dashboard.name;
         isDefault = full.dashboard.isDefault;
 
-        // Fan out per-pin enrichment to get resource data + initial probe status.
         const enriched = await Promise.all(
           [...full.pins]
             .sort((a, b) => a.gridX - b.gridX)
@@ -219,7 +213,6 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
               : {}),
           };
         }
-        // Seed cardStatus with the enriched initial status; subsequent probes update it.
         setCardStatus((prev) => ({ ...prev, ...initialStatus }));
       } else {
         const db = await getDb();
@@ -251,17 +244,14 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
       setDashboardName(loadedName);
       setIsHome(isDefault);
 
-      // Update tab title with actual dashboard name
       const { activeWorkspaceTabId, setWorkspaceTabTitle } = useUIStore.getState();
       if (activeWorkspaceTabId) setWorkspaceTabTitle(activeWorkspaceTabId, loadedName);
 
-      // Restore "ok" status from cache for cards that are already connected,
-      // so re-loads (e.g. after pinning a new resource) don't flash "Connecting…"
+      // Keep "ok" cards as-is so pinning a new resource doesn't flash "Connecting…".
       setCardStatus((prev) => {
         const next: Record<string, CardStatus> = {};
         for (const row of rows) {
           if (prev[row.resource_id]?.phase === "ok") {
-            // Keep the existing connected status
             next[row.resource_id] = prev[row.resource_id]!;
           }
         }
@@ -270,7 +260,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
 
       setPinned(rows);
     } catch {
-      // empty dashboard is fine
+      // empty dashboard
     } finally {
       setLoading(false);
     }
@@ -291,7 +281,6 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  // Auto-connect cards after pins load
   useEffect(() => {
     if (pinned.length === 0) return;
     let cancelled = false;
@@ -305,7 +294,6 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
       }));
       if (items.length === 0) return;
 
-      // Mark not-yet-ok cards as connecting
       if (!cancelled) {
         setCardStatus((prev) => {
           const next = { ...prev };
@@ -365,7 +353,6 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
         await connectAllCloud(cloudOrgId);
         return;
       }
-      // Decrypt credentials once per unique account
       const credsByAccount = new Map<string, Record<string, string>>();
 
       const accountIds = [...new Set(pinned.map((r) => r.account_id))];
@@ -382,7 +369,6 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
         }),
       );
 
-      // Mark cards as "connecting" — but only those not already connected
       const connectableIds = pinned
         .filter((r) => credsByAccount.has(r.account_id))
         .map((r) => r.resource_id);
@@ -399,12 +385,10 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
         });
       }
 
-      // Connect each card in parallel — skip cards already showing "ok"
       await Promise.all(
         pinned.map(async (row) => {
           const creds = credsByAccount.get(row.account_id);
           if (!creds) return;
-          // Read current status via functional pattern below; skip if already connected
           let alreadyOk = false;
           setCardStatus((prev) => {
             alreadyOk = prev[row.resource_id]?.phase === "ok";
@@ -454,9 +438,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
 
           const meta = pluginMeta[row.plugin_id];
 
-          // SSH target — preserve sshTarget flag for the connect button
           if (meta?.terminalResourceTypeIds.includes(row.resource_type_id)) {
-            // Still fetch stats via fetchDashboardStats (ssh plugin returns host:port)
             try {
               const loaded = await getPlugin(row.plugin_id);
               if (loaded) {
@@ -499,7 +481,6 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
             return;
           }
 
-          // Build host services for plugins that need them (SQL, KV, Docker)
           const loaded = await getPlugin(row.plugin_id);
           if (!loaded) return;
           const manifest = loaded.plugin.manifest;
@@ -508,7 +489,6 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
           if (manifest.sqlDriver) {
             const cs = creds[manifest.sqlDriver.credentialKey] ?? "";
             hostServices = buildHostServices(manifest.sqlDriver.driver, cs);
-            // Cache SQL session for the detail page's SQL editor
             setSqlSession(row.account_id, { connectionString: cs });
           } else if (manifest.kvDriver) {
             const cs = creds[manifest.kvDriver.credentialKey] ?? "";
@@ -527,7 +507,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
 
           const client = loaded.plugin.createClient(creds, hostServices);
 
-          // Introspect SQL schema in background for SQL editor autocomplete
+          // Cache the schema for SQL editor autocomplete on the detail page.
           if (manifest.sqlDriver && client.introspect) {
             const cs = creds[manifest.sqlDriver.credentialKey] ?? "";
             void client
@@ -543,7 +523,6 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
               .catch(() => undefined);
           }
 
-          // Unified stats path — all plugins implement fetchDashboardStats
           try {
             const stats = client.fetchDashboardStats
               ? await client.fetchDashboardStats(
@@ -553,7 +532,6 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
                 )
               : undefined;
 
-            // Fetch sparkline if the resource type supports metrics
             let sparkline: Array<{ timestamp: number; value: number }> | undefined;
             let sparklineLabel: string | undefined;
             const resourceTypeDef = loaded.plugin.resourceTypes.find(
@@ -693,7 +671,6 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
       ref={setNodeRef}
       className={`flex flex-col h-full transition-colors ${isOver ? "bg-accent-muted/20" : ""}`}
     >
-      {/* Header */}
       <div className="px-8 pt-8 pb-4 border-b border-border/50 flex items-center justify-between">
         <div>
           {editingName ? (
@@ -729,7 +706,6 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
         )}
       </div>
 
-      {/* Content */}
       <div className="flex-1 overflow-auto px-8 py-6">
         {pinned.length === 0 ? (
           <button
@@ -826,7 +802,6 @@ function ResourceCard({
 
   return (
     <div className="group relative rounded-2xl border border-border bg-surface-raised hover:border-border-strong transition-colors flex flex-col overflow-hidden">
-      {/* Unpin button */}
       <button
         onClick={(e) => {
           e.stopPropagation();
@@ -839,7 +814,6 @@ function ResourceCard({
       </button>
 
       <button onClick={onOpen} className="flex-1 flex flex-col p-5 text-left gap-3">
-        {/* Plugin logo + name */}
         <div className="flex items-center gap-2">
           {pluginMeta?.logoSvg ? (
             <div
@@ -854,7 +828,6 @@ function ResourceCard({
           </span>
         </div>
 
-        {/* Resource name */}
         <div>
           <p className="text-base font-semibold text-on-surface leading-tight">
             {row.display_name}
@@ -863,7 +836,6 @@ function ResourceCard({
         </div>
       </button>
 
-      {/* Connection status footer */}
       <ConnectionFooter status={status} onConnect={onConnect} />
     </div>
   );
@@ -899,14 +871,12 @@ function ConnectionFooter({
     );
   }
 
-  // ok — show stats
   return (
     <div className="px-5 py-3 border-t border-border space-y-1">
       <div className="flex items-center gap-1.5 mb-1">
         <span className="w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0" />
         <span className="text-xs text-on-surface-faint">Connected</span>
       </div>
-      {/* Generic stats */}
       {status.stats?.map((stat) => {
         const color =
           stat.variant === "status-healthy"
@@ -923,7 +893,6 @@ function ConnectionFooter({
           </div>
         );
       })}
-      {/* Sparkline chart */}
       {status.sparkline && status.sparkline.length >= 2 && (
         <div className="flex items-center gap-2 mt-2.5">
           <SparklineChart points={status.sparkline} width={120} height={24} />
@@ -932,7 +901,6 @@ function ConnectionFooter({
           )}
         </div>
       )}
-      {/* Account summary stats */}
       {status.resourceCounts?.map(({ typeLabel, count }) => (
         <div key={typeLabel} className="flex justify-between text-xs">
           <span className="text-on-surface-faint">{typeLabel}</span>
@@ -940,7 +908,6 @@ function ConnectionFooter({
         </div>
       ))}
 
-      {/* SSH fast-connect button */}
       {status.sshTarget && onConnect && (
         <button
           onClick={(e) => {

@@ -17,7 +17,7 @@ declare module "hono" {
   }
 }
 
-/** Write a length-prefixed SSH wire string: uint32be(len) + data */
+// Length-prefixed SSH wire string: uint32be(len) + data.
 function sshWireString(type: string, ...bufs: Uint8Array[]): Buffer {
   const typeLen = Buffer.alloc(4);
   typeLen.writeUInt32BE(type.length);
@@ -30,10 +30,8 @@ function sshWireString(type: string, ...bufs: Uint8Array[]): Buffer {
   return Buffer.concat(parts);
 }
 
-/**
- * Build an unencrypted OpenSSH private key file (same format as `ssh-keygen -t ed25519`).
- * See https://github.com/openssh/openssh-portable/blob/master/PROTOCOL.key
- */
+// Unencrypted OpenSSH private key file, matching `ssh-keygen -t ed25519`.
+// Spec: https://github.com/openssh/openssh-portable/blob/master/PROTOCOL.key
 function buildOpenSshPrivateKey(privSeed: Buffer, pubKey: Buffer, comment: string): string {
   const AUTH_MAGIC = "openssh-key-v1\0";
   const cipherName = "none";
@@ -41,10 +39,8 @@ function buildOpenSshPrivateKey(privSeed: Buffer, pubKey: Buffer, comment: strin
   const kdfOptions = Buffer.alloc(0);
   const keyCount = 1;
 
-  // Public key blob (same wire format as authorized_keys)
   const pubBlob = sshWireString("ssh-ed25519", pubKey);
 
-  // Private section (unencrypted)
   const checkInt = crypto.randomBytes(4);
   const keyType = Buffer.from("ssh-ed25519");
   const keyTypeLenBuf = Buffer.alloc(4);
@@ -59,9 +55,10 @@ function buildOpenSshPrivateKey(privSeed: Buffer, pubKey: Buffer, comment: strin
   const commentLenBuf = Buffer.alloc(4);
   commentLenBuf.writeUInt32BE(commentBuf.length);
 
+  // The OpenSSH format repeats the checkint to detect bad decryption.
   const privSection = Buffer.concat([
     checkInt,
-    checkInt, // two identical checkints
+    checkInt,
     keyTypeLenBuf,
     keyType,
     pubLenBuf,
@@ -72,13 +69,12 @@ function buildOpenSshPrivateKey(privSeed: Buffer, pubKey: Buffer, comment: strin
     commentBuf,
   ]);
 
-  // Pad to 8-byte boundary (cipher block size for "none")
+  // Pad to 8-byte boundary (cipher block size for "none").
   const padLen = 8 - (privSection.length % 8);
   const padding = Buffer.alloc(padLen === 8 ? 0 : padLen);
   for (let i = 0; i < padding.length; i++) padding[i] = i + 1;
   const paddedPriv = Buffer.concat([privSection, padding]);
 
-  // Assemble the full key file
   const cipherBuf = Buffer.from(cipherName);
   const cipherLenBuf = Buffer.alloc(4);
   cipherLenBuf.writeUInt32BE(cipherBuf.length);
@@ -109,7 +105,6 @@ function buildOpenSshPrivateKey(privSeed: Buffer, pubKey: Buffer, comment: strin
     paddedPriv,
   ]);
 
-  // Wrap in PEM-style armor with 70-char lines
   const b64 = full.toString("base64");
   const lines = b64.match(/.{1,70}/g) ?? [];
   return `-----BEGIN OPENSSH PRIVATE KEY-----\n${lines.join("\n")}\n-----END OPENSSH PRIVATE KEY-----\n`;
@@ -117,18 +112,15 @@ function buildOpenSshPrivateKey(privSeed: Buffer, pubKey: Buffer, comment: strin
 
 const app = new Hono();
 
-/** Compute the SHA-256 fingerprint of an SSH public key string */
 function computeFingerprint(publicKey: string): string {
-  // Extract the base64 blob from "ssh-<type> <base64> <comment>"
   const parts = publicKey.trim().split(/\s+/);
   if (parts.length < 2) throw new Error("Invalid SSH public key format");
   const blob = Buffer.from(parts[1]!, "base64");
   const hash = crypto.createHash("sha256").update(blob).digest("base64");
-  // Remove trailing '=' padding to match ssh-keygen output
+  // Strip trailing '=' to match ssh-keygen's output.
   return `SHA256:${hash.replace(/=+$/, "")}`;
 }
 
-/** Validate that a string looks like a valid SSH public key */
 function validateSshPublicKey(key: string): { keyType: string; publicKey: string } {
   const trimmed = key.trim();
   const parts = trimmed.split(/\s+/);
@@ -149,11 +141,10 @@ function validateSshPublicKey(key: string): { keyType: string; publicKey: string
     throw new Error(`Unsupported key type: ${keyType}`);
   }
 
-  // Verify the base64 blob is valid
   const blob = Buffer.from(parts[1]!, "base64");
   if (blob.length < 16) throw new Error("SSH public key blob is too short");
 
-  // Verify the type string inside the blob matches the prefix
+  // The type embedded in the blob must match the outer prefix.
   const typeLen = blob.readUInt32BE(0);
   const embeddedType = blob.subarray(4, 4 + typeLen).toString("utf8");
   if (embeddedType !== keyType) {
@@ -163,10 +154,6 @@ function validateSshPublicKey(key: string): { keyType: string; publicKey: string
   return { keyType, publicKey: trimmed };
 }
 
-/**
- * GET /api/ssh-keys — list all SSH keys in the org (public keys visible to all members).
- * Returns owner info so the UI can show who owns each key.
- */
 app.get("/", async (c) => {
   requirePermission(c, "ssh-keys:read");
   const organizationId = c.get("organizationId");
@@ -214,11 +201,7 @@ app.get("/", async (c) => {
   return c.json(keys);
 });
 
-/**
- * POST /api/ssh-keys — generate a new Ed25519 keypair.
- * The server generates the keypair, stores both encrypted, and returns the
- * public key + private key to the caller (private key is only returned once).
- */
+// Generates an Ed25519 keypair; the private key is returned to the caller exactly once.
 app.post("/", async (c) => {
   requirePermission(c, "ssh-keys:write");
   const organizationId = c.get("organizationId");
@@ -227,28 +210,23 @@ app.post("/", async (c) => {
 
   if (!name?.trim()) return c.json({ error: "Name is required" }, 400);
 
-  // Generate Ed25519 keypair
   const { publicKey: pubPem, privateKey: privPem } = await generateKeyPair("ed25519", {
     publicKeyEncoding: { type: "spki", format: "pem" },
     privateKeyEncoding: { type: "pkcs8", format: "pem" },
   });
 
-  // Extract raw key bytes from DER encodings
   const spkiDer = crypto.createPublicKey(pubPem).export({ type: "spki", format: "der" });
   const pkcs8Der = crypto.createPrivateKey(privPem).export({ type: "pkcs8", format: "der" });
   const rawPubKey = spkiDer.subarray(12); // 32 bytes after SPKI header
   const rawPrivKey = pkcs8Der.subarray(16); // 32 bytes after PKCS#8 header
 
-  // Build OpenSSH public key wire format
   const sshPublicKey = `ssh-ed25519 ${sshWireString("ssh-ed25519", rawPubKey).toString("base64")} ${name.trim()}`;
-
-  // Build OpenSSH private key format (same as ssh-keygen output)
   const privateKeyOpenSsh = buildOpenSshPrivateKey(rawPrivKey, rawPubKey, name.trim());
 
   const id = crypto.randomUUID();
   const fingerprint = computeFingerprint(sshPublicKey);
 
-  // Encrypt both keys at rest, binding ciphertext to the new row id.
+  // AAD binds the ciphertext to this row id.
   const encPub = await encrypt(sshPublicKey, buildAad("sshKey", id, "publicKey"));
   const encPriv = await encrypt(privateKeyOpenSsh, buildAad("sshKey", id, "privateKey"));
 
@@ -276,11 +254,7 @@ app.post("/", async (c) => {
   });
 });
 
-/**
- * POST /api/ssh-keys/import — import an existing SSH public key into the org.
- * Only the public key is stored; the user retains the private key.
- * The key is shared with all org members.
- */
+// Stores only the public key; the user retains the private key.
 app.post("/import", async (c) => {
   requirePermission(c, "ssh-keys:write");
   const organizationId = c.get("organizationId");
@@ -293,7 +267,6 @@ app.post("/import", async (c) => {
   if (!name?.trim()) return c.json({ error: "Name is required" }, 400);
   if (!rawPublicKey?.trim()) return c.json({ error: "Public key is required" }, 400);
 
-  // Validate the SSH public key format
   let keyType: string;
   let publicKey: string;
   try {
@@ -307,7 +280,6 @@ app.post("/import", async (c) => {
   const fingerprint = computeFingerprint(publicKey);
 
   const id = crypto.randomUUID();
-  // Encrypt the public key at rest, binding ciphertext to the new row id.
   const encPub = await encrypt(publicKey, buildAad("sshKey", id, "publicKey"));
 
   await db.insert(sshKeys).values({
@@ -332,15 +304,9 @@ app.post("/import", async (c) => {
   });
 });
 
-/**
- * DELETE /api/ssh-keys/:id — delete a key.
- *
- * A user may delete their own keys. An org admin / owner (anyone holding
- * `team:role:write`, which lives on the admin+ system role) may delete any
- * key in the org so they can offboard a departed member or revoke a
- * compromised key. Returns 404 if no row matched (wrong id, wrong org, or a
- * non-admin trying to delete someone else's key).
- */
+// Owners may delete their own keys; team:role:write may delete any key in the
+// org (offboarding, revoking compromised keys). 404 covers wrong id, wrong
+// org, or a non-admin targeting someone else's key.
 app.delete("/:id", async (c) => {
   requirePermission(c, "ssh-keys:write");
   const organizationId = c.get("organizationId");

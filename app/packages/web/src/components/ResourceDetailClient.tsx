@@ -105,7 +105,6 @@ interface Props {
   hasSecretVersions?: boolean | undefined;
   resourceDisplayName: string;
   resourceTypeLabel: string;
-  // Connection feature flags
   hasSqlEditor?: boolean | undefined;
   hasStorageBrowser?: boolean | undefined;
   hasArtifactRegistry?: boolean | undefined;
@@ -423,7 +422,6 @@ export function ResourceDetailClient({
   const [hydratedVersion, setHydratedVersion] = useState(0);
   const peerPanesHydratingRef = useRef(false);
 
-  // Reset lazy-fetched panes when the resource changes
   useEffect(() => {
     hydratedPeerPanes.current = null;
     peerPanesHydratingRef.current = false;

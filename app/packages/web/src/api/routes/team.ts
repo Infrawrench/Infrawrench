@@ -275,8 +275,7 @@ app.post("/invitations", async (c) => {
   const body = await c.req.json<{ email: string; role?: string; roleId?: string }>();
   const email = body.email;
 
-  // Resolve the role: prefer explicit roleId, fall back to the legacy text role
-  // mapped to a system role.
+  // Prefer roleId; fall back to mapping the legacy text role to a system role.
   let resolvedRoleId: string | null = null;
   let legacyRole = "member";
   if (body.roleId) {
@@ -296,9 +295,8 @@ app.post("/invitations", async (c) => {
     }
   }
 
-  // Generate a random invitation token and store only its SHA-256 hash.
-  // The raw token is returned to the caller exactly once below so an invite
-  // URL can be constructed; a DB read leak cannot weaponize the invite.
+  // Store only the SHA-256 hash. The raw token is returned exactly once below
+  // so the invite URL can be built; a DB read leak cannot weaponize the invite.
   const token = randomBytes(32).toString("base64url");
   const hashedToken = createHash("sha256").update(token).digest("hex");
   const id = uuid();
@@ -310,8 +308,7 @@ app.post("/invitations", async (c) => {
     role: legacyRole,
     roleId: resolvedRoleId,
     invitedByUserId: session.userId,
-    // Legacy `token` column retained for one release. Store a non-recoverable
-    // placeholder so a DB leak does not expose a usable token.
+    // Legacy `token` column retained for one release; store a non-recoverable placeholder.
     token: `hashed:${hashedToken}`,
     hashedToken,
     expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
@@ -329,12 +326,8 @@ app.post("/invitations", async (c) => {
   return c.json({ id, token });
 });
 
-/**
- * Count active owners in the org. An owner is any member whose linked role row
- * has `systemKey = "owner"`, or (legacy fallback) whose
- * `organization_members.role` text column is "owner" when no role row is
- * linked. Used by the "last owner" guard on member delete / role change.
- */
+// Counts both new (role.systemKey === "owner") and legacy (text role) owners.
+// Used by the "last owner" guard on member delete / role change.
 async function countOwners(organizationId: string): Promise<number> {
   const rows = await db
     .select({
@@ -413,12 +406,7 @@ app.delete("/members/:id", async (c) => {
   return c.json({ ok: true });
 });
 
-/**
- * PATCH /api/org/:orgId/team/members/:id/role
- *
- * Accepts either `{ roleId }` (preferred) or `{ role }` (legacy text role,
- * mapped to the matching system role).
- */
+// Accepts either `{ roleId }` (preferred) or legacy `{ role }` text role.
 app.patch("/members/:id/role", async (c) => {
   requirePermission(c, "team:role:write");
   const session = c.get("session");
