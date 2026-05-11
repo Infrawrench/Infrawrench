@@ -1,14 +1,49 @@
 import fs from "node:fs";
 import path from "node:path";
 import { Client as SshClient } from "ssh2";
-import type { SFTPWrapper, FileEntry } from "ssh2";
+import type { ConnectConfig, SFTPWrapper, FileEntry } from "ssh2";
 import type { SftpConfig, StorageObject } from "@infrawrench/plugin-base" with {
   "resolution-mode": "import",
 };
 
 export type SftpEntry = StorageObject;
 
-export function withSftp<T>(config: SftpConfig, fn: (sftp: SFTPWrapper) => Promise<T>): Promise<T> {
+export interface WithSftpOptions {
+  /**
+   * Hook called just before the SSH client connects. Receives the default
+   * ConnectConfig assembled from the SftpConfig and may return a modified
+   * config (e.g. install a `hostVerifier` that consults a TOFU pin store).
+   *
+   * The default ConnectConfig fails closed — its `hostVerifier` rejects every
+   * key with a clear error — so callers MUST provide a verifier here. The
+   * web service supplies one backed by an in-memory pin map; the desktop
+   * supplies one backed by the local sql.js `ssh_host_keys` table.
+   */
+  configureConnect?: (opts: ConnectConfig) => ConnectConfig;
+}
+
+function buildConnectConfig(config: SftpConfig, options?: WithSftpOptions): ConnectConfig {
+  const baseOpts: ConnectConfig = {
+    host: config.host,
+    port: config.port,
+    username: config.username,
+    privateKey: config.privateKey,
+    hostVerifier: () => {
+      throw new Error(
+        "sftp-host: no SSH host-key verifier configured. Pass " +
+          "options.configureConnect to install one (see the web and desktop " +
+          "ssh-host-keys modules for TOFU verifiers).",
+      );
+    },
+  };
+  return options?.configureConnect ? options.configureConnect(baseOpts) : baseOpts;
+}
+
+export function withSftp<T>(
+  config: SftpConfig,
+  fn: (sftp: SFTPWrapper) => Promise<T>,
+  options?: WithSftpOptions,
+): Promise<T> {
   return new Promise((resolve, reject) => {
     const client = new SshClient();
     client.once("ready", () => {
@@ -30,17 +65,15 @@ export function withSftp<T>(config: SftpConfig, fn: (sftp: SFTPWrapper) => Promi
       });
     });
     client.once("error", (err) => reject(new Error(`SSH error: ${err.message}`)));
-    client.connect({
-      host: config.host,
-      port: config.port,
-      username: config.username,
-      privateKey: config.privateKey,
-      hostVerifier: () => true,
-    });
+    client.connect(buildConnectConfig(config, options));
   });
 }
 
-export function sftpList(config: SftpConfig, dirPath: string): Promise<SftpEntry[]> {
+export function sftpList(
+  config: SftpConfig,
+  dirPath: string,
+  options?: WithSftpOptions,
+): Promise<SftpEntry[]> {
   return withSftp(
     config,
     (sftp) =>
@@ -72,10 +105,15 @@ export function sftpList(config: SftpConfig, dirPath: string): Promise<SftpEntry
           resolve(entries);
         });
       }),
+    options,
   );
 }
 
-export function sftpMkdir(config: SftpConfig, dirPath: string): Promise<void> {
+export function sftpMkdir(
+  config: SftpConfig,
+  dirPath: string,
+  options?: WithSftpOptions,
+): Promise<void> {
   return withSftp(
     config,
     (sftp) =>
@@ -88,6 +126,7 @@ export function sftpMkdir(config: SftpConfig, dirPath: string): Promise<void> {
           resolve();
         });
       }),
+    options,
   );
 }
 
@@ -121,16 +160,30 @@ function rmdirRecursive(sftp: SFTPWrapper, dirPath: string): Promise<void> {
   });
 }
 
-export function sftpDelete(config: SftpConfig, remotePath: string, isDir: boolean): Promise<void> {
-  return withSftp(config, (sftp) => {
-    if (isDir) return rmdirRecursive(sftp, remotePath);
-    return new Promise((resolve, reject) => {
-      sftp.unlink(remotePath, (err) => (err ? reject(err) : resolve()));
-    });
-  });
+export function sftpDelete(
+  config: SftpConfig,
+  remotePath: string,
+  isDir: boolean,
+  options?: WithSftpOptions,
+): Promise<void> {
+  return withSftp(
+    config,
+    (sftp) => {
+      if (isDir) return rmdirRecursive(sftp, remotePath);
+      return new Promise((resolve, reject) => {
+        sftp.unlink(remotePath, (err) => (err ? reject(err) : resolve()));
+      });
+    },
+    options,
+  );
 }
 
-export function sftpUpload(config: SftpConfig, remotePath: string, data: Buffer): Promise<void> {
+export function sftpUpload(
+  config: SftpConfig,
+  remotePath: string,
+  data: Buffer,
+  options?: WithSftpOptions,
+): Promise<void> {
   return withSftp(
     config,
     (sftp) =>
@@ -140,6 +193,7 @@ export function sftpUpload(config: SftpConfig, remotePath: string, data: Buffer)
         stream.once("close", () => resolve());
         stream.end(data);
       }),
+    options,
   );
 }
 
@@ -148,6 +202,7 @@ export function sftpDownload(
   config: SftpConfig,
   remotePath: string,
   localPath: string,
+  options?: WithSftpOptions,
 ): Promise<void> {
   return withSftp(
     config,
@@ -163,11 +218,16 @@ export function sftpDownload(
           resolve();
         });
       }),
+    options,
   );
 }
 
 /** Buffer the entire remote file into memory (web pattern). */
-export function sftpDownloadToBuffer(config: SftpConfig, remotePath: string): Promise<Buffer> {
+export function sftpDownloadToBuffer(
+  config: SftpConfig,
+  remotePath: string,
+  options?: WithSftpOptions,
+): Promise<Buffer> {
   return withSftp(
     config,
     (sftp) =>
@@ -178,5 +238,6 @@ export function sftpDownloadToBuffer(config: SftpConfig, remotePath: string): Pr
         stream.on("end", () => resolve(Buffer.concat(chunks)));
         stream.on("error", reject);
       }),
+    options,
   );
 }
