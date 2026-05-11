@@ -7,7 +7,7 @@
  */
 import { ipcMain } from "electron";
 import path from "node:path";
-import { sqlDrivers, kvDrivers, dockerDrivers, storageDrivers } from "./drivers";
+import { sqlDrivers, kvDrivers, dockerDrivers, k8sDrivers, storageDrivers } from "./drivers";
 import { isDialogBlessedPath } from "./main-utils";
 
 ipcMain.handle(
@@ -74,6 +74,23 @@ ipcMain.handle(
     const driver = dockerDrivers.get(driverId);
     if (!driver) throw new Error(`No Docker driver registered for "${driverId}"`);
     return driver.command(dockerHost, op, params ?? {});
+  },
+);
+
+ipcMain.handle(
+  "plugin_k8s_command",
+  (
+    _e,
+    {
+      driverId,
+      kubeconfig,
+      op,
+      params,
+    }: { driverId: string; kubeconfig: string; op: string; params?: Record<string, unknown> },
+  ) => {
+    const driver = k8sDrivers.get(driverId);
+    if (!driver) throw new Error(`No Kubernetes driver registered for "${driverId}"`);
+    return driver.command(kubeconfig, op, params ?? {});
   },
 );
 

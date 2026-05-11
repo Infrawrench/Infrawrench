@@ -8,7 +8,7 @@ import * as http from "node:http";
 import { URL } from "node:url";
 import { eq, and } from "drizzle-orm";
 import type { HostServices, PluginManifest, SecretHostServices } from "@infrawrench/plugin-base";
-import { sqlDrivers, kvDrivers, dockerDrivers } from "./drivers";
+import { sqlDrivers, kvDrivers, dockerDrivers, k8sDrivers } from "./drivers";
 import { db } from "./db/client";
 import { secretFieldStates } from "./db/schema";
 import { decrypt, buildAad } from "./encryption";
@@ -40,6 +40,16 @@ export function buildDockerHostServices(driverId: string, dockerHost: string): H
   return {
     docker: {
       command: (op, params) => driver.command(dockerHost, op, params),
+    },
+  };
+}
+
+export function buildK8sHostServices(driverId: string, kubeconfig: string): HostServices {
+  const driver = k8sDrivers.get(driverId);
+  if (!driver) throw new Error(`Unknown Kubernetes driver: ${driverId}`);
+  return {
+    k8s: {
+      command: (op, params) => driver.command(kubeconfig, op, params),
     },
   };
 }
@@ -139,6 +149,13 @@ export function buildPluginHostServices(
       ...base,
     };
   }
+  if (manifest.kubernetesDriver) {
+    const kubeconfig = credentials[manifest.kubernetesDriver.credentialKey] ?? "";
+    return {
+      ...buildK8sHostServices(manifest.kubernetesDriver.driver, kubeconfig),
+      ...base,
+    };
+  }
   if (manifest.sqlDriver) {
     const connectionString = credentials[manifest.sqlDriver.credentialKey] ?? "";
     return {
@@ -153,11 +170,6 @@ export function buildPluginHostServices(
       ...base,
     };
   }
-  // TODO(sdk-audit/k8s-node-driver): when the kubernetes plugin's node
-  // driver is registered in drivers.ts, inject `services.k8s.command(...)`
-  // here (gated on `manifest.id === "kubernetes"` since the manifest does
-  // not yet have a dedicated declaration field). Until that lands, the
-  // kubernetes plugin falls through to the hand-rolled K8sFetcher path.
   // Even without a specific driver, provide HTTP proxy for plugins like K8s
   return base;
 }

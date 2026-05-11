@@ -56,6 +56,7 @@
     "@workos-inc/node": "^8.0.0",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/xterm": "^5.5.0",
+    "@kubernetes/client-node": "^1.4.0",
     "archiver": "^7.0.0",
     "dockerode": "^5.0.0",
     "drizzle-orm": "^0.45.2",

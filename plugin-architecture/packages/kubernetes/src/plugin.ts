@@ -27,6 +27,10 @@ const manifest: PluginManifest = {
   minHostVersion: "0.1.0",
   peerPlugins: ["digitalocean"],
   supportsSecretImport: true,
+  kubernetesDriver: {
+    driver: "kubernetes",
+    credentialKey: "kubeconfig",
+  },
   credentialFields: [
     {
       key: "kubeconfig",

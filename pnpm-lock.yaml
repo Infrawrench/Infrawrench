@@ -34,6 +34,9 @@ importers:
       '@dnd-kit/core':
         specifier: ^6.3.1
         version: 6.3.1(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      '@kubernetes/client-node':
+        specifier: ^1.4.0
+        version: 1.4.0(encoding@0.1.13)
       '@libsql/client':
         specifier: ^0.14.0
         version: 0.14.0
@@ -515,6 +518,9 @@ importers:
       '@infrawrench/ui':
         specifier: workspace:*
         version: link:../ui
+      '@kubernetes/client-node':
+        specifier: ^1.4.0
+        version: 1.4.0(encoding@0.1.13)
       '@libsql/client':
         specifier: ^0.14.0
         version: 0.14.0

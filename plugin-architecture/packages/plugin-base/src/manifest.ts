@@ -50,6 +50,18 @@ export interface DockerDriverDeclaration {
   credentialKey: string;
 }
 
+/**
+ * Declares that this plugin manages a Kubernetes cluster.
+ * The host owns the kubeconfig parsing + auth (via @kubernetes/client-node);
+ * the plugin issues typed operations via KubernetesHostServices.
+ */
+export interface KubernetesDriverDeclaration {
+  /** Identifier for the K8s driver — always "kubernetes". */
+  driver: string;
+  /** The key in the account credentials that holds the kubeconfig YAML. */
+  credentialKey: string;
+}
+
 export interface PluginManifest {
   /** Unique identifier — must match the blessed registry entry */
   id: string;
@@ -81,6 +93,11 @@ export interface PluginManifest {
    * enabling Docker daemon operations.
    */
   dockerDriver?: DockerDriverDeclaration;
+  /**
+   * If present, the host will inject KubernetesHostServices into the plugin client,
+   * backed by @kubernetes/client-node so exec/auth-provider/OIDC kubeconfigs work.
+   */
+  kubernetesDriver?: KubernetesDriverDeclaration;
   /**
    * If true, this plugin's client implements importSecret() and listNamespacesForImport(),
    * allowing other resources to be dragged onto accounts of this plugin to create secrets.

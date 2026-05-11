@@ -64,6 +64,23 @@ export function buildDockerHostServices(driverId: string, dockerHost: string): H
   };
 }
 
+export function k8sCommand(
+  driverId: string,
+  kubeconfig: string,
+  op: string,
+  params?: Record<string, unknown>,
+): Promise<unknown> {
+  return invoke<unknown>("plugin_k8s_command", { driverId, kubeconfig, op, params });
+}
+
+export function buildK8sHostServices(driverId: string, kubeconfig: string): HostServices {
+  return {
+    k8s: {
+      command: (op, params) => k8sCommand(driverId, kubeconfig, op, params),
+    },
+  };
+}
+
 function httpRequest(req: {
   url: string;
   method: string;
@@ -85,6 +102,13 @@ export function buildPluginHostServices(
     const dockerHost = credentials[manifest.dockerDriver.credentialKey] ?? "";
     return {
       ...buildDockerHostServices(manifest.dockerDriver.driver, dockerHost),
+      ...httpHostServices,
+    };
+  }
+  if (manifest.kubernetesDriver) {
+    const kubeconfig = credentials[manifest.kubernetesDriver.credentialKey] ?? "";
+    return {
+      ...buildK8sHostServices(manifest.kubernetesDriver.driver, kubeconfig),
       ...httpHostServices,
     };
   }
