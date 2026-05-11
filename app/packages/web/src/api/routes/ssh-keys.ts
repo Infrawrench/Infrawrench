@@ -4,8 +4,9 @@ import crypto from "node:crypto";
 import { promisify } from "node:util";
 import { db } from "../../db/client";
 import { sshKeys, users } from "../../db/schema";
-import { encrypt, decrypt } from "../../services/encryption";
+import { encrypt, decrypt, buildAad } from "../../services/encryption";
 import { requirePermission } from "../../auth/permissions";
+import { hasPermission } from "@infrawrench/server-core/permissions";
 import type { AuthSession } from "../auth-middleware";
 
 const generateKeyPair = promisify(crypto.generateKeyPair);
@@ -190,7 +191,11 @@ app.get("/", async (c) => {
 
   const keys = await Promise.all(
     rows.map(async (row) => {
-      const publicKey = await decrypt(row.encryptedPublicKey, row.publicKeyIv);
+      const publicKey = await decrypt(
+        row.encryptedPublicKey,
+        row.publicKeyIv,
+        buildAad("sshKey", row.id, "publicKey"),
+      );
       return {
         id: row.id,
         name: row.name,
@@ -240,12 +245,12 @@ app.post("/", async (c) => {
   // Build OpenSSH private key format (same as ssh-keygen output)
   const privateKeyOpenSsh = buildOpenSshPrivateKey(rawPrivKey, rawPubKey, name.trim());
 
-  // Encrypt both keys at rest
-  const encPub = await encrypt(sshPublicKey);
-  const encPriv = await encrypt(privateKeyOpenSsh);
-
   const id = crypto.randomUUID();
   const fingerprint = computeFingerprint(sshPublicKey);
+
+  // Encrypt both keys at rest, binding ciphertext to the new row id.
+  const encPub = await encrypt(sshPublicKey, buildAad("sshKey", id, "publicKey"));
+  const encPriv = await encrypt(privateKeyOpenSsh, buildAad("sshKey", id, "privateKey"));
 
   await db.insert(sshKeys).values({
     id,
@@ -301,9 +306,9 @@ app.post("/import", async (c) => {
 
   const fingerprint = computeFingerprint(publicKey);
 
-  // Encrypt the public key at rest
-  const encPub = await encrypt(publicKey);
   const id = crypto.randomUUID();
+  // Encrypt the public key at rest, binding ciphertext to the new row id.
+  const encPub = await encrypt(publicKey, buildAad("sshKey", id, "publicKey"));
 
   await db.insert(sshKeys).values({
     id,
@@ -327,23 +332,37 @@ app.post("/import", async (c) => {
   });
 });
 
-/** DELETE /api/ssh-keys/:id — delete a key (only the owner can delete their own) */
+/**
+ * DELETE /api/ssh-keys/:id — delete a key.
+ *
+ * A user may delete their own keys. An org admin / owner (anyone holding
+ * `team:role:write`, which lives on the admin+ system role) may delete any
+ * key in the org so they can offboard a departed member or revoke a
+ * compromised key. Returns 404 if no row matched (wrong id, wrong org, or a
+ * non-admin trying to delete someone else's key).
+ */
 app.delete("/:id", async (c) => {
   requirePermission(c, "ssh-keys:write");
   const organizationId = c.get("organizationId");
   const { userId } = c.get("session");
   const id = c.req.param("id");
 
-  const result = await db
-    .delete(sshKeys)
-    .where(
-      and(
+  const grantedPerms = c.get("permissions") ?? [];
+  const canManageAll = hasPermission(grantedPerms, "team:role:write");
+
+  const whereClause = canManageAll
+    ? and(eq(sshKeys.id, id), eq(sshKeys.organizationId, organizationId))
+    : and(
         eq(sshKeys.id, id),
         eq(sshKeys.organizationId, organizationId),
         eq(sshKeys.userId, userId),
-      ),
-    );
+      );
 
+  const result = await db.delete(sshKeys).where(whereClause).returning({ id: sshKeys.id });
+
+  if (result.length === 0) {
+    return c.json({ error: "SSH key not found" }, 404);
+  }
   return c.json({ ok: true });
 });
 

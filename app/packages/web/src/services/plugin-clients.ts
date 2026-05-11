@@ -2,7 +2,7 @@ import { eq, and, isNull } from "drizzle-orm";
 import type { PeerPluginIntegration, Plugin, PluginClient } from "@infrawrench/plugin-base";
 import { db } from "../db/client";
 import { accounts, resources } from "../db/schema";
-import { decrypt } from "./encryption";
+import { decrypt, buildAad } from "./encryption";
 import { getPlugin } from "../plugins/loader";
 import { buildPluginHostServices } from "./host-services";
 import { rewriteCredentialsThroughTunnel } from "./tunnel-resolver";
@@ -102,7 +102,11 @@ export async function getClientForAccount(accountId: string, organizationId: str
 
   if (!account) return null;
 
-  const plaintext = await decrypt(account.encryptedCredentials, account.credentialsIv);
+  const plaintext = await decrypt(
+    account.encryptedCredentials,
+    account.credentialsIv,
+    buildAad("account", account.id, "credentials"),
+  );
   const credentials = JSON.parse(plaintext) as Record<string, string>;
 
   await rewriteCredentialsThroughTunnel(accountId, credentials);

@@ -12,7 +12,7 @@ import {
 } from "@infrawrench/ssh-tunnel-core";
 import { db } from "./db/client";
 import { sshTunnelConfigs } from "./db/schema";
-import { decrypt } from "./encryption";
+import { decrypt, buildAad } from "./encryption";
 
 function findTunnelForAccount(accountId: string): { localPort: number } | null {
   const r = findTunnel<TunnelExtras>((rec) => rec.extras.accountId === accountId);
@@ -45,7 +45,11 @@ async function resolveTunnelForAccount(accountId: string): Promise<TunnelResolut
 
     if (!config) return { status: "none" };
 
-    const privateKey = await decrypt(config.encryptedPrivateKey, config.privateKeyIv);
+    const privateKey = await decrypt(
+      config.encryptedPrivateKey,
+      config.privateKeyIv,
+      buildAad("sshTunnelConfig", config.id, "privateKey"),
+    );
     const { localPort } = await coreOpenTunnel<TunnelExtras>(
       {
         sshHost: config.sshHost,

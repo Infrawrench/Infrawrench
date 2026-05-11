@@ -1,10 +1,20 @@
 import { Hono } from "hono";
 import path from "node:path";
+import os from "node:os";
+import { randomUUID } from "node:crypto";
 import { getClientForAccount } from "../../services/plugin-clients";
 import { storageDrivers } from "../../services/drivers";
 import archiver from "archiver";
 import { requirePermission } from "../../auth/permissions";
 import type { AuthSession } from "../auth-middleware";
+
+/** Maximum number of paths/keys accepted in a single bulk request. */
+const MAX_BULK_KEYS = 100;
+
+/** Build a non-guessable temp path under the OS tmpdir for a download. */
+function tmpDownloadPath(key: string): string {
+  return path.join(os.tmpdir(), `iw-download-${randomUUID()}-${path.basename(key)}`);
+}
 
 declare module "hono" {
   interface ContextVariableMap {
@@ -58,7 +68,13 @@ app.get("/download", async (c) => {
     return c.json({ error: "Invalid keys parameter" }, 400);
   }
 
+  if (!Array.isArray(keys)) {
+    return c.json({ error: "keys must be a JSON array of strings" }, 400);
+  }
   if (keys.length === 0) return c.json({ error: "No keys specified" }, 400);
+  if (keys.length > MAX_BULK_KEYS) {
+    return c.json({ error: `Too many keys (max ${MAX_BULK_KEYS})` }, 400);
+  }
 
   const ctx = await getClientForAccount(accountId, organizationId);
   if (!ctx) return c.json({ error: "Account or plugin not found" }, 404);
@@ -73,7 +89,7 @@ app.get("/download", async (c) => {
 
   if (keys.length === 1) {
     const key = keys[0]!;
-    const tmpPath = `/tmp/iw-download-${Date.now()}-${path.basename(key)}`;
+    const tmpPath = tmpDownloadPath(key);
 
     try {
       await storageDriver.downloadFile(bucket, key, accessToken, tmpPath);
@@ -102,7 +118,7 @@ app.get("/download", async (c) => {
     try {
       for (const key of keys) {
         if (key.endsWith("/")) continue;
-        const tmpPath = `/tmp/iw-download-${Date.now()}-${path.basename(key)}`;
+        const tmpPath = tmpDownloadPath(key);
         await storageDriver.downloadFile(bucket, key, accessToken, tmpPath);
         archive.file(tmpPath, { name: key });
       }

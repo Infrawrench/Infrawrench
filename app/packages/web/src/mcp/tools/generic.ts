@@ -7,7 +7,7 @@ import { accounts, resources, secretFieldStates } from "../../db/schema";
 import { loadPlugins, getPlugin } from "../../plugins/loader";
 import { getClientForAccount, getClientForResource } from "../../services/plugin-clients";
 import { loadSecretStatesForResource } from "../../services/secret-states";
-import { encrypt } from "../../services/encryption";
+import { encrypt, buildAad } from "../../services/encryption";
 import { logAudit } from "../../services/audit";
 import { normalizeResourceCreateResult } from "@infrawrench/plugin-base";
 import type { McpAuthContext } from "../auth";
@@ -517,7 +517,10 @@ export function registerGenericTools(server: McpServer, auth: McpAuthContext): v
 
           for (const state of created.secretStates ?? []) {
             if (state.resolution.kind !== "plaintext") continue;
-            const { ciphertext, iv } = await encrypt(state.resolution.value);
+            const { ciphertext, iv } = await encrypt(
+              state.resolution.value,
+              buildAad("secretField", `${created.id}:${state.fieldKey}`, "value"),
+            );
             await db
               .insert(secretFieldStates)
               .values({

@@ -1,8 +1,10 @@
 import { Hono } from "hono";
 import { v4 as uuid } from "uuid";
+import { createHash } from "node:crypto";
 import { eq, and, isNull, gt } from "drizzle-orm";
 import { db } from "../../db/client";
 import { invitations, organizations, organizationMembers } from "../../db/schema";
+import { workos } from "../../auth/workos";
 import {
   ensureSystemRoles,
   getSystemRole,
@@ -18,10 +20,18 @@ declare module "hono" {
 
 const app = new Hono();
 
+function hashToken(raw: string): string {
+  return createHash("sha256").update(raw).digest("hex");
+}
+
 /** GET /api/invitations/by-token/:token — get invite details (for the accept page) */
 app.get("/by-token/:token", async (c) => {
   const token = c.req.param("token");
+  const hashedToken = hashToken(token);
 
+  // Only return invites that are still pending and unexpired. Returning the
+  // email/org for an already-accepted or expired invite would leak who was
+  // invited to which org — treat those as 404.
   const rows = await db
     .select({
       id: invitations.id,
@@ -34,7 +44,13 @@ app.get("/by-token/:token", async (c) => {
     })
     .from(invitations)
     .innerJoin(organizations, eq(invitations.organizationId, organizations.id))
-    .where(eq(invitations.token, token))
+    .where(
+      and(
+        eq(invitations.hashedToken, hashedToken),
+        isNull(invitations.acceptedAt),
+        gt(invitations.expiresAt, new Date()),
+      ),
+    )
     .limit(1);
 
   const invite = rows[0];
@@ -57,13 +73,14 @@ app.get("/by-token/:token", async (c) => {
 app.post("/accept", async (c) => {
   const session = c.get("session");
   const { token } = await c.req.json<{ token: string }>();
+  const hashedToken = hashToken(token);
 
   const rows = await db
     .select()
     .from(invitations)
     .where(
       and(
-        eq(invitations.token, token),
+        eq(invitations.hashedToken, hashedToken),
         isNull(invitations.acceptedAt),
         gt(invitations.expiresAt, new Date()),
       ),
@@ -77,6 +94,18 @@ app.post("/accept", async (c) => {
 
   if (invite.email !== session.email) {
     return c.json({ error: "This invitation was sent to a different email address" }, 403);
+  }
+
+  // Require the WorkOS user's email to be verified before honoring an invite.
+  // Otherwise an attacker who controls a different, similarly-named email
+  // could intercept invites by registering with an unverified address.
+  try {
+    const workosUser = await workos.userManagement.getUser(session.userId);
+    if (!workosUser.emailVerified) {
+      return c.json({ error: "Email address must be verified before accepting invitations" }, 403);
+    }
+  } catch {
+    return c.json({ error: "Unable to verify account status" }, 403);
   }
 
   await ensureSystemRoles(invite.organizationId);

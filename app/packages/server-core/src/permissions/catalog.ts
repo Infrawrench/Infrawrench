@@ -55,3 +55,53 @@ export function hasPermission(granted: readonly string[], required: string): boo
   }
   return false;
 }
+
+/**
+ * Expand a wildcard permission entry against the full catalog. `*` expands to
+ * every permission; `team:*` expands to every permission starting with `team:`
+ * (matching segment-by-segment). Non-wildcard entries pass through unchanged
+ * (even if not in the catalog — unknown strings are simply themselves).
+ */
+function expandPermission(entry: string): string[] {
+  if (entry === "*") return [...ALL_PERMISSIONS];
+  if (!entry.includes("*")) return [entry];
+  const entryParts = entry.split(":");
+  const matches: string[] = [];
+  for (const perm of ALL_PERMISSIONS) {
+    const permParts = perm.split(":");
+    if (permParts.length !== entryParts.length) continue;
+    let ok = true;
+    for (let i = 0; i < entryParts.length; i++) {
+      const e = entryParts[i];
+      if (e !== "*" && e !== permParts[i]) {
+        ok = false;
+        break;
+      }
+    }
+    if (ok) matches.push(perm);
+  }
+  return matches;
+}
+
+/**
+ * Returns true if every permission implied by `target` is also implied by
+ * `caller`. Handles wildcards on both sides: `target=["*"]` requires the caller
+ * to also hold `*` (or the full catalog); `target=["team:*"]` requires the
+ * caller to hold every `team:*` permission. Used to enforce the "you can only
+ * grant permissions you already have" rule on role creation/edit/assignment.
+ */
+export function isSubsetOfCallerPerms(
+  target: readonly string[],
+  caller: readonly string[],
+): boolean {
+  if (!target || target.length === 0) return true;
+  // Fast path: caller has full wildcard.
+  if (caller.includes("*")) return true;
+  for (const entry of target) {
+    const expanded = expandPermission(entry);
+    for (const required of expanded) {
+      if (!hasPermission(caller, required)) return false;
+    }
+  }
+  return true;
+}

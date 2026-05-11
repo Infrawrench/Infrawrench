@@ -1,14 +1,34 @@
 import { Hono } from "hono";
-import { setCookie } from "hono/cookie";
+import { getCookie, setCookie, deleteCookie } from "hono/cookie";
+import { timingSafeEqual } from "node:crypto";
 import { workos, clientId } from "../../auth/workos";
+import { OAUTH_STATE_COOKIE } from "../oauth-state";
 
 const app = new Hono();
+
+/** Constant-time string comparison; returns false if lengths differ. */
+function constantTimeEqual(a: string, b: string): boolean {
+  const aBuf = Buffer.from(a);
+  const bBuf = Buffer.from(b);
+  if (aBuf.length !== bBuf.length) return false;
+  return timingSafeEqual(aBuf, bBuf);
+}
 
 /** GET /callback — WorkOS OAuth callback */
 app.get("/", async (c) => {
   const code = c.req.query("code");
   if (!code) {
     return c.text("Missing code parameter", 400);
+  }
+
+  // Verify the OAuth `state` nonce matches the cookie set on sign-in.
+  // Prevents login CSRF (forcing a victim to sign in as the attacker).
+  const cookieState = getCookie(c, OAUTH_STATE_COOKIE);
+  const queryState = c.req.query("state");
+  // Always clear the cookie regardless of outcome — it is single-use.
+  deleteCookie(c, OAUTH_STATE_COOKIE, { path: "/" });
+  if (!cookieState || !queryState || !constantTimeEqual(cookieState, queryState)) {
+    return c.text("Invalid OAuth state", 400);
   }
 
   const cookiePassword = process.env["WORKOS_COOKIE_PASSWORD"];

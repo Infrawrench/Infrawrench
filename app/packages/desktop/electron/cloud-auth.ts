@@ -97,10 +97,17 @@ async function deleteSyncState(key: string): Promise<void> {
 }
 
 let codeVerifier: string | null = null;
+let oauthState: string | null = null;
 
 function startOAuthFlow(): void {
   codeVerifier = base64url(crypto.randomBytes(32));
   const codeChallenge = base64url(crypto.createHash("sha256").update(codeVerifier).digest());
+  // Random `state` binds the auth request to this client run. The callback
+  // handler refuses any code whose state doesn't match — this prevents
+  // cross-site-request-forgery attacks against the custom protocol handler
+  // (without state, any infrawrench:// URL with a valid code would be
+  // accepted, even if the user didn't initiate the sign-in).
+  oauthState = base64url(crypto.randomBytes(32));
 
   const params = new URLSearchParams({
     response_type: "code",
@@ -109,6 +116,7 @@ function startOAuthFlow(): void {
     provider: "authkit",
     code_challenge: codeChallenge,
     code_challenge_method: "S256",
+    state: oauthState,
   });
 
   const url = `${WORKOS_API_URL}/user_management/authorize?${params}`;
@@ -131,9 +139,23 @@ function jwtExpMillis(jwt: string): number {
 async function handleOAuthCallback(callbackUrl: string): Promise<void> {
   const url = new URL(callbackUrl);
   const code = url.searchParams.get("code");
-  if (!code || !codeVerifier) {
-    console.error("[cloud-auth] Missing code or code verifier");
+  const returnedState = url.searchParams.get("state");
+  if (!code || !codeVerifier || !oauthState) {
+    console.error("[cloud-auth] Missing code, verifier, or state");
     notifyAuthError("missing-code", "Sign-in callback missing code or verifier");
+    return;
+  }
+  // Constant-time-ish compare. If the state doesn't match the one we minted in
+  // startOAuthFlow, the callback didn't originate from a flow we started.
+  if (
+    !returnedState ||
+    returnedState.length !== oauthState.length ||
+    !crypto.timingSafeEqual(Buffer.from(returnedState), Buffer.from(oauthState))
+  ) {
+    console.error("[cloud-auth] OAuth state mismatch — refusing callback");
+    notifyAuthError("state-mismatch", "Sign-in callback rejected (state mismatch)");
+    codeVerifier = null;
+    oauthState = null;
     return;
   }
 
@@ -188,6 +210,7 @@ async function handleOAuthCallback(callbackUrl: string): Promise<void> {
     notifyAuthError("token-exchange", e instanceof Error ? e.message : String(e));
   } finally {
     codeVerifier = null;
+    oauthState = null;
   }
 }
 

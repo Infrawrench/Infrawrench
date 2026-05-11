@@ -6,7 +6,7 @@
 import { eq, and, isNull } from "drizzle-orm";
 import { db } from "@/db/client";
 import { accounts, resources } from "@/db/schema";
-import { decrypt } from "@/services/encryption";
+import { decrypt, buildAad } from "@/services/encryption";
 import { getPlugin } from "@/plugins/loader";
 import { buildPluginHostServices } from "@/services/host-services";
 
@@ -37,7 +37,11 @@ export async function resolveKubeconfig(
   const loaded = await getPlugin(account.pluginId);
   if (!loaded) return null;
 
-  const plaintext = await decrypt(account.encryptedCredentials, account.credentialsIv);
+  const plaintext = await decrypt(
+    account.encryptedCredentials,
+    account.credentialsIv,
+    buildAad("account", account.id, "credentials"),
+  );
   const credentials = JSON.parse(plaintext) as Record<string, string>;
   const hostServices = buildPluginHostServices(loaded.plugin.manifest, credentials);
   const client = loaded.plugin.createClient(credentials, hostServices);

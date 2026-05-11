@@ -23,7 +23,7 @@ vi.mock("@/auth/api-auth", () => ({
 
 vi.mock("@/api/auth-middleware", () => ({
   ensureUserFromClaims: vi.fn(),
-  ensureMembership: vi.fn(),
+  hasMembership: vi.fn(),
   sessionMiddleware: vi.fn(),
   orgMiddleware: vi.fn(),
 }));
@@ -106,7 +106,7 @@ describe("authenticateMcpRequest", () => {
       id: "user_123",
       email: "u@example.com",
     });
-    vi.mocked(middleware.ensureMembership).mockResolvedValue(undefined);
+    vi.mocked(middleware.hasMembership).mockResolvedValue(true);
 
     const result = await authenticateMcpRequest("Bearer jwt-good");
     expect(result).toEqual({
@@ -115,6 +115,22 @@ describe("authenticateMcpRequest", () => {
       email: "u@example.com",
     });
     expect(middleware.ensureUserFromClaims).toHaveBeenCalledWith("user_123", "u@example.com");
-    expect(middleware.ensureMembership).toHaveBeenCalledWith("user_123", "org_456");
+    expect(middleware.hasMembership).toHaveBeenCalledWith("user_123", "org_456");
+  });
+
+  it("returns null when the caller has no membership in the org_id", async () => {
+    vi.mocked(apiAuth.verifyWorkosAccessToken).mockResolvedValue({
+      sub: "user_123",
+      email: "u@example.com",
+      org_id: "org_456",
+    } as never);
+    vi.mocked(middleware.ensureUserFromClaims).mockResolvedValue({
+      id: "user_123",
+      email: "u@example.com",
+    });
+    vi.mocked(middleware.hasMembership).mockResolvedValue(false);
+
+    const result = await authenticateMcpRequest("Bearer jwt-no-membership");
+    expect(result).toBeNull();
   });
 });

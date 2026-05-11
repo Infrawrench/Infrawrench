@@ -3,7 +3,7 @@ import { eq, and } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import { db } from "../../db/client";
 import { associations, secretFieldStates, resources } from "../../db/schema";
-import { encrypt } from "../../services/encryption";
+import { encrypt, buildAad } from "../../services/encryption";
 import { requirePermission } from "../../auth/permissions";
 import type { AuthSession } from "../auth-middleware";
 
@@ -108,7 +108,10 @@ app.post("/literal", async (c) => {
     .limit(1);
   if (!resource) return c.json({ error: "Resource not found" }, 404);
 
-  const { ciphertext, iv } = await encrypt(input.plaintextValue);
+  const { ciphertext, iv } = await encrypt(
+    input.plaintextValue,
+    buildAad("secretField", `${input.resourceId}:${input.fieldKey}`, "value"),
+  );
 
   await db
     .insert(secretFieldStates)

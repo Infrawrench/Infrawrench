@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { v4 as uuid } from "uuid";
-import { randomBytes } from "node:crypto";
+import { randomBytes, createHash } from "node:crypto";
 import { eq, and, isNull, sql } from "drizzle-orm";
 import { db } from "../../db/client";
 import { users, invitations, organizationMembers, roles } from "../../db/schema";
@@ -10,6 +10,7 @@ import {
   ALL_PERMISSIONS,
   ensureSystemRoles,
   getSystemRole,
+  isSubsetOfCallerPerms,
   isSystemRoleKey,
   systemRolePermissions,
 } from "@infrawrench/server-core/permissions";
@@ -89,6 +90,7 @@ app.post("/roles", async (c) => {
   requirePermission(c, "team:role:write");
   const organizationId = c.get("organizationId");
   const session = c.get("session");
+  const callerPerms = c.get("permissions") ?? [];
   const { name, description, permissions } = await c.req.json<{
     name: string;
     description?: string;
@@ -98,6 +100,10 @@ app.post("/roles", async (c) => {
   const cleanPerms = Array.isArray(permissions)
     ? permissions.filter((p) => typeof p === "string")
     : [];
+  // Privilege-escalation guard: caller cannot grant permissions they don't hold.
+  if (!isSubsetOfCallerPerms(cleanPerms, callerPerms)) {
+    return c.json({ error: "Cannot grant permissions you do not hold yourself" }, 403);
+  }
   const id = uuid();
   await db.insert(roles).values({
     id,
@@ -143,8 +149,15 @@ app.patch("/roles/:id", async (c) => {
   const updates: Partial<typeof roles.$inferInsert> = { updatedAt: new Date() };
   if (typeof name === "string" && name.trim()) updates.name = name.trim();
   if (description !== undefined) updates.description = description?.toString().trim() || null;
-  if (Array.isArray(permissions))
-    updates.permissions = permissions.filter((p) => typeof p === "string");
+  if (Array.isArray(permissions)) {
+    const cleanPerms = permissions.filter((p) => typeof p === "string");
+    const callerPerms = c.get("permissions") ?? [];
+    // Privilege-escalation guard: caller cannot grant permissions they don't hold.
+    if (!isSubsetOfCallerPerms(cleanPerms, callerPerms)) {
+      return c.json({ error: "Cannot grant permissions you do not hold yourself" }, 403);
+    }
+    updates.permissions = cleanPerms;
+  }
 
   await db.update(roles).set(updates).where(eq(roles.id, roleId));
   void logAudit({
@@ -283,7 +296,11 @@ app.post("/invitations", async (c) => {
     }
   }
 
+  // Generate a random invitation token and store only its SHA-256 hash.
+  // The raw token is returned to the caller exactly once below so an invite
+  // URL can be constructed; a DB read leak cannot weaponize the invite.
   const token = randomBytes(32).toString("base64url");
+  const hashedToken = createHash("sha256").update(token).digest("hex");
   const id = uuid();
 
   await db.insert(invitations).values({
@@ -293,7 +310,10 @@ app.post("/invitations", async (c) => {
     role: legacyRole,
     roleId: resolvedRoleId,
     invitedByUserId: session.userId,
-    token,
+    // Legacy `token` column retained for one release. Store a non-recoverable
+    // placeholder so a DB leak does not expose a usable token.
+    token: `hashed:${hashedToken}`,
+    hashedToken,
     expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
   });
 
@@ -309,12 +329,70 @@ app.post("/invitations", async (c) => {
   return c.json({ id, token });
 });
 
+/**
+ * Count active owners in the org. An owner is any member whose linked role row
+ * has `systemKey = "owner"`, or (legacy fallback) whose
+ * `organization_members.role` text column is "owner" when no role row is
+ * linked. Used by the "last owner" guard on member delete / role change.
+ */
+async function countOwners(organizationId: string): Promise<number> {
+  const rows = await db
+    .select({
+      legacyRole: organizationMembers.role,
+      systemKey: roles.systemKey,
+    })
+    .from(organizationMembers)
+    .leftJoin(roles, eq(organizationMembers.roleId, roles.id))
+    .where(eq(organizationMembers.organizationId, organizationId));
+  let count = 0;
+  for (const r of rows) {
+    if (r.systemKey === "owner") count++;
+    else if (!r.systemKey && r.legacyRole === "owner") count++;
+  }
+  return count;
+}
+
+/** Returns true if the membership row for (userId, orgId) is an owner. */
+async function isMemberOwner(organizationId: string, userId: string): Promise<boolean> {
+  const [row] = await db
+    .select({
+      legacyRole: organizationMembers.role,
+      systemKey: roles.systemKey,
+    })
+    .from(organizationMembers)
+    .leftJoin(roles, eq(organizationMembers.roleId, roles.id))
+    .where(
+      and(
+        eq(organizationMembers.userId, userId),
+        eq(organizationMembers.organizationId, organizationId),
+      ),
+    )
+    .limit(1);
+  if (!row) return false;
+  if (row.systemKey === "owner") return true;
+  if (!row.systemKey && row.legacyRole === "owner") return true;
+  return false;
+}
+
 /** DELETE /api/org/:orgId/team/members/:id */
 app.delete("/members/:id", async (c) => {
   requirePermission(c, "team:remove");
   const session = c.get("session");
   const organizationId = c.get("organizationId");
   const userId = c.req.param("id");
+
+  const targetIsOwner = await isMemberOwner(organizationId, userId);
+  if (targetIsOwner) {
+    // Only an owner can remove an owner.
+    const callerRole = c.get("role");
+    if (callerRole?.systemKey !== "owner") {
+      return c.json({ error: "Only an owner can remove another owner" }, 403);
+    }
+    const ownerCount = await countOwners(organizationId);
+    if (ownerCount <= 1) {
+      return c.json({ error: "Cannot remove the last owner" }, 400);
+    }
+  }
 
   await db
     .delete(organizationMembers)
@@ -350,6 +428,7 @@ app.patch("/members/:id/role", async (c) => {
 
   let newRoleId: string;
   let legacyRole = "member";
+  let targetRolePerms: readonly string[] = [];
   if (body.roleId) {
     const [r] = await db
       .select()
@@ -359,12 +438,44 @@ app.patch("/members/:id/role", async (c) => {
     if (!r) return c.json({ error: "Role not found" }, 404);
     newRoleId = r.id;
     legacyRole = isSystemRoleKey(r.systemKey) ? r.systemKey : "member";
+    targetRolePerms =
+      r.isSystem && isSystemRoleKey(r.systemKey)
+        ? (systemRolePermissions(r.systemKey) ?? [])
+        : ((r.permissions as string[]) ?? []);
   } else if (body.role && isSystemRoleKey(body.role)) {
     const sys = await getSystemRole(organizationId, body.role);
     newRoleId = sys.id;
     legacyRole = body.role;
+    targetRolePerms = sys.permissions;
   } else {
     return c.json({ error: "Provide roleId or a system role name" }, 400);
+  }
+
+  // Privilege-escalation guard: the role being assigned must be a subset of
+  // the caller's effective permissions. Prevents an admin (who can write
+  // roles) from elevating a member to a role that grants permissions the
+  // admin themselves lack (e.g. billing:write via a "*" custom role).
+  const callerPerms = c.get("permissions") ?? [];
+  if (!isSubsetOfCallerPerms(targetRolePerms, callerPerms)) {
+    return c.json({ error: "Cannot assign a role with permissions you do not hold" }, 403);
+  }
+
+  // Owner-mutation guards. Only an owner may demote an owner, and demoting
+  // the last remaining owner is never allowed.
+  const callerRole = c.get("role");
+  const targetIsOwner = await isMemberOwner(organizationId, userId);
+  const movingToOwner = legacyRole === "owner";
+  if ((targetIsOwner || movingToOwner) && callerRole?.systemKey !== "owner") {
+    return c.json(
+      { error: "Only an owner can change an owner's role or grant the owner role" },
+      403,
+    );
+  }
+  if (targetIsOwner && !movingToOwner) {
+    const ownerCount = await countOwners(organizationId);
+    if (ownerCount <= 1) {
+      return c.json({ error: "Cannot remove the last owner" }, 400);
+    }
   }
 
   await db

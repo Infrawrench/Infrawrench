@@ -2,7 +2,7 @@ import { and, eq, inArray, isNotNull, isNull, notInArray, sql } from "drizzle-or
 import type { Plugin, PluginClient, ResourceInstance } from "@infrawrench/plugin-base";
 import { db } from "./db/client";
 import { accounts, dashboardPins, resources } from "./db/schema";
-import { decrypt } from "./encryption";
+import { decrypt, buildAad } from "./encryption";
 import { getPlugin } from "./plugin-loader";
 import { buildPluginHostServices } from "./host-services";
 import { rewriteCredentialsThroughTunnel } from "./tunnel-resolver";
@@ -27,7 +27,11 @@ async function loadAccountClient(accountId: string, organizationId: string) {
   const loaded = await getPlugin(account.pluginId);
   if (!loaded) throw new Error(`Plugin "${account.pluginId}" not loaded`);
 
-  const plaintext = await decrypt(account.encryptedCredentials, account.credentialsIv);
+  const plaintext = await decrypt(
+    account.encryptedCredentials,
+    account.credentialsIv,
+    buildAad("account", account.id, "credentials"),
+  );
   const credentials = JSON.parse(plaintext) as Record<string, string>;
   await rewriteCredentialsThroughTunnel(accountId, credentials);
 

@@ -1,12 +1,50 @@
 import { Hono } from "hono";
-import { eq, gt, and, sql } from "drizzle-orm";
+import { eq, gt, and, sql, inArray } from "drizzle-orm";
+import { z } from "zod";
 import { db } from "../../db/client";
 import { accounts, resources, dashboards, dashboardPins, associations } from "../../db/schema";
 import { authenticateApiRequest, requireScope } from "../../auth/api-auth";
-import { encrypt } from "../../services/encryption";
+import { encrypt, buildAad } from "../../services/encryption";
 import { logAudit } from "../../services/audit";
 
 const app = new Hono();
+
+const accountPushSchema = z.object({
+  id: z.string().min(1),
+  pluginId: z.string().min(1),
+  displayName: z.string(),
+  credentials: z.record(z.string(), z.string()),
+  updatedAt: z.string(),
+  deletedAt: z.string().nullish(),
+});
+
+const resourcePushSchema = z.object({
+  id: z.string().min(1),
+  pluginId: z.string().min(1),
+  resourceTypeId: z.string().min(1),
+  accountId: z.string().min(1),
+  displayName: z.string(),
+  externalId: z.string().nullish(),
+  fieldsJson: z.unknown(),
+  outputsJson: z.unknown(),
+  parentResourceId: z.string().nullish(),
+  updatedAt: z.string(),
+  deletedAt: z.string().nullish(),
+});
+
+const dashboardPushSchema = z.object({
+  id: z.string().min(1),
+  name: z.string(),
+  isDefault: z.boolean(),
+  updatedAt: z.string(),
+  deletedAt: z.string().nullish(),
+});
+
+const pushBodySchema = z.object({
+  accounts: z.array(accountPushSchema).optional(),
+  resources: z.array(resourcePushSchema).optional(),
+  dashboards: z.array(dashboardPushSchema).optional(),
+});
 
 /** POST /api/v1/sync/pull */
 app.post("/pull", async (c) => {
@@ -80,41 +118,51 @@ app.post("/push", async (c) => {
   if (!auth) return c.json({ error: "Unauthorized" }, 401);
   requireScope(auth, "resources:write");
 
-  const payload = await c.req.json<{
-    accounts?: Array<{
-      id: string;
-      pluginId: string;
-      displayName: string;
-      credentials: Record<string, string>;
-      updatedAt: string;
-      deletedAt?: string | null;
-    }>;
-    resources?: Array<{
-      id: string;
-      pluginId: string;
-      resourceTypeId: string;
-      accountId: string;
-      displayName: string;
-      externalId?: string | null;
-      fieldsJson: unknown;
-      outputsJson: unknown;
-      parentResourceId?: string | null;
-      updatedAt: string;
-      deletedAt?: string | null;
-    }>;
-    dashboards?: Array<{
-      id: string;
-      name: string;
-      isDefault: boolean;
-      updatedAt: string;
-      deletedAt?: string | null;
-    }>;
-  }>();
+  let payload: z.infer<typeof pushBodySchema>;
+  try {
+    const raw = await c.req.json();
+    payload = pushBodySchema.parse(raw);
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      return c.json({ error: "Invalid request body", issues: err.issues }, 400);
+    }
+    return c.json({ error: "Invalid JSON body" }, 400);
+  }
   const orgId = auth.organizationId;
+
+  // Validate that every resource.accountId references either an account being
+  // pushed in this request OR an account already owned by this organization.
+  // This prevents a caller from attaching resources to accounts in other orgs.
+  if (payload.resources && payload.resources.length > 0) {
+    const pushedAccountIds = new Set((payload.accounts ?? []).map((a) => a.id));
+    const referencedAccountIds = Array.from(
+      new Set(payload.resources.map((r) => r.accountId).filter((id) => !pushedAccountIds.has(id))),
+    );
+    if (referencedAccountIds.length > 0) {
+      const existing = await db
+        .select({ id: accounts.id })
+        .from(accounts)
+        .where(and(eq(accounts.organizationId, orgId), inArray(accounts.id, referencedAccountIds)));
+      const existingIds = new Set(existing.map((r) => r.id));
+      const missing = referencedAccountIds.filter((id) => !existingIds.has(id));
+      if (missing.length > 0) {
+        return c.json(
+          {
+            error: "Unknown accountId on resource(s)",
+            accountIds: missing,
+          },
+          400,
+        );
+      }
+    }
+  }
 
   if (payload.accounts) {
     for (const acct of payload.accounts) {
-      const { ciphertext, iv } = await encrypt(JSON.stringify(acct.credentials));
+      const { ciphertext, iv } = await encrypt(
+        JSON.stringify(acct.credentials),
+        buildAad("account", acct.id, "credentials"),
+      );
       await db
         .insert(accounts)
         .values({
@@ -138,6 +186,7 @@ app.post("/push", async (c) => {
             syncVersion: sql`COALESCE((SELECT MAX(sync_version) FROM accounts WHERE organization_id = ${orgId}), 0) + 1`,
             updatedAt: new Date(acct.updatedAt),
           },
+          where: eq(accounts.organizationId, orgId),
         });
     }
   }
@@ -171,6 +220,7 @@ app.post("/push", async (c) => {
             syncVersion: sql`COALESCE((SELECT MAX(sync_version) FROM resources WHERE organization_id = ${orgId}), 0) + 1`,
             updatedAt: new Date(res.updatedAt),
           },
+          where: eq(resources.organizationId, orgId),
         });
     }
   }
@@ -197,6 +247,7 @@ app.post("/push", async (c) => {
             syncVersion: sql`COALESCE((SELECT MAX(sync_version) FROM dashboards WHERE organization_id = ${orgId}), 0) + 1`,
             updatedAt: new Date(dash.updatedAt),
           },
+          where: eq(dashboards.organizationId, orgId),
         });
     }
   }

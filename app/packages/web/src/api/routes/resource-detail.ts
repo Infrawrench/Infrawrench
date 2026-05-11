@@ -5,7 +5,7 @@ import { db } from "../../db/client";
 import { resources, secretFieldStates } from "../../db/schema";
 import { getPlugin } from "../../plugins/loader";
 import { sqlDrivers } from "../../services/drivers";
-import { encrypt } from "../../services/encryption";
+import { encrypt, buildAad } from "../../services/encryption";
 import {
   getClientForAccount,
   getClientForResource,
@@ -908,7 +908,10 @@ app.post("/create", async (c) => {
       // Plugins never see ciphertext; the host upgrades plaintext -> literal here.
       for (const state of created.secretStates ?? []) {
         if (state.resolution.kind !== "plaintext") continue;
-        const { ciphertext, iv } = await encrypt(state.resolution.value);
+        const { ciphertext, iv } = await encrypt(
+          state.resolution.value,
+          buildAad("secretField", `${created.id}:${state.fieldKey}`, "value"),
+        );
         await db
           .insert(secretFieldStates)
           .values({

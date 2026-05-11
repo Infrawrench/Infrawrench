@@ -11,7 +11,7 @@ import type { HostServices, PluginManifest, SecretHostServices } from "@infrawre
 import { sqlDrivers, kvDrivers, dockerDrivers } from "./drivers";
 import { db } from "./db/client";
 import { secretFieldStates } from "./db/schema";
-import { decrypt } from "./encryption";
+import { decrypt, buildAad } from "./encryption";
 
 export function buildHostServices(driverId: string, connectionString: string): HostServices {
   const driver = sqlDrivers.get(driverId);
@@ -56,7 +56,11 @@ const secretHostServices: SecretHostServices = {
     if (!row || row.resolutionKind !== "literal") return null;
     if (!row.encryptedValue || !row.valueIv) return null;
     try {
-      return await decrypt(row.encryptedValue, row.valueIv);
+      return await decrypt(
+        row.encryptedValue,
+        row.valueIv,
+        buildAad("secretField", `${resourceId}:${fieldKey}`, "value"),
+      );
     } catch {
       return null;
     }
@@ -88,6 +92,14 @@ function nodeHttpsRequest(req: {
 }): Promise<{ status: number; body: string }> {
   const parsed = new URL(req.url);
   const isHttps = parsed.protocol === "https:";
+  // A custom CA strongly implies the caller intended TLS. Refuse to silently
+  // strip the CA pin and downgrade to plaintext — better to error than to
+  // give the caller a false sense of security.
+  if (req.caCert && !isHttps) {
+    throw new Error(
+      `Refusing http:// request when a caCert is provided (url=${req.url}); use https://`,
+    );
+  }
   const mod = isHttps ? https : http;
   const options: https.RequestOptions = {
     method: req.method ?? "GET",

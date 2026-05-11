@@ -1,14 +1,25 @@
 import { Hono } from "hono";
 import { eq, and } from "drizzle-orm";
+import { z } from "zod";
 import { db } from "../../db/client";
 import { sshKeys } from "../../db/schema";
-import { decrypt } from "../../services/encryption";
+import { decrypt, buildAad } from "../../services/encryption";
 import { getPlugin } from "../../plugins/loader";
 import { getClientForAccount } from "../../services/plugin-clients";
 import type { SecretExportTemplate } from "@infrawrench/plugin-base";
 import { sshExec } from "../../services/ssh";
+import { HostKeyMismatchError } from "../../services/ssh-host-keys";
 import { requirePermission } from "../../auth/permissions";
 import type { AuthSession } from "../auth-middleware";
+
+// Restrict env-deploy file paths to a conservative POSIX charset so they
+// cannot break out of the single-quoted shell argument used below. Even with
+// the quote-escape, banning shell metacharacters defends against tricks that
+// might exploit shells with non-standard quoting behavior.
+const envDeployFilePathSchema = z
+  .string()
+  .min(1)
+  .regex(/^[A-Za-z0-9._/-]+$/);
 
 declare module "hono" {
   interface ContextVariableMap {
@@ -211,6 +222,21 @@ app.post("/env-deploy", async (c) => {
     return c.json({ error: "Could not resolve any outputs from the source resource" }, 400);
   }
 
+  // Validate filePath against an allowlist of safe characters BEFORE any
+  // shell interpolation. Anything outside this set (spaces, quotes, $, `,
+  // ;, |, &, newlines, etc.) is rejected so the value cannot break out of
+  // the quoted argument below.
+  const parsedFilePath = envDeployFilePathSchema.safeParse(input.filePath);
+  if (!parsedFilePath.success) {
+    return c.json(
+      {
+        error: "Invalid filePath: only letters, digits, '.', '_', '/' and '-' are allowed",
+      },
+      400,
+    );
+  }
+  const safeFilePath = parsedFilePath.data;
+
   // Load SSH key
   const [keyRow] = await db
     .select({
@@ -224,7 +250,11 @@ app.post("/env-deploy", async (c) => {
   if (!keyRow.encryptedPrivateKey || !keyRow.privateKeyIv) {
     return c.json({ error: "SSH key has no private key data" }, 400);
   }
-  const privateKey = await decrypt(keyRow.encryptedPrivateKey, keyRow.privateKeyIv);
+  const privateKey = await decrypt(
+    keyRow.encryptedPrivateKey,
+    keyRow.privateKeyIv,
+    buildAad("sshKey", input.sshKeyId, "privateKey"),
+  );
 
   // Build env content
   const lines =
@@ -233,18 +263,40 @@ app.post("/env-deploy", async (c) => {
       : Object.entries(data).map(([k, v]) => `${k}=${v}`);
   const content = lines.join("\n") + "\n";
 
-  // Deploy via SSH
+  // Deploy via SSH. Single-quote-escape both the content AND the file path,
+  // so an attacker cannot break out of the quoted argument even if validation
+  // ever loosens. `operator` is constructed from a server-side boolean so it
+  // does not need escaping.
   const operator = input.append ? ">>" : ">";
-  const escapedContent = content.replace(/'/g, "'\\''");
-  await sshExec(
-    {
-      host: input.targetSshHost,
-      port: 22,
-      username: input.sshUsername,
-      privateKey,
-    },
-    `printf '%s' '${escapedContent}' ${operator} ${input.filePath}`,
-  );
+  const escapeSingleQuoted = (s: string) => `'${s.replace(/'/g, "'\\''")}'`;
+  const quotedContent = escapeSingleQuoted(content);
+  const quotedFilePath = escapeSingleQuoted(safeFilePath);
+  try {
+    await sshExec(
+      {
+        host: input.targetSshHost,
+        port: 22,
+        username: input.sshUsername,
+        privateKey,
+      },
+      `printf '%s' ${quotedContent} ${operator} ${quotedFilePath}`,
+    );
+  } catch (err) {
+    if (err instanceof HostKeyMismatchError) {
+      return c.json(
+        {
+          error: "ssh_host_key_mismatch",
+          message: err.message,
+          host: err.host,
+          port: err.port,
+          storedFingerprint: err.storedFingerprint,
+          presentedFingerprint: err.presentedFingerprint,
+        },
+        409,
+      );
+    }
+    throw err;
+  }
 
   return c.json({ ok: true });
 });

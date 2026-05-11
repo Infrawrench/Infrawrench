@@ -1,10 +1,14 @@
-import { createHash } from "node:crypto";
 import { eq, and, isNull } from "drizzle-orm";
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
 import { db } from "@/db/client";
 import { apiKeys } from "@/db/schema";
+import { keyedHash, legacySha256Hex } from "@/services/encryption";
 import { workos, clientId } from "./workos";
 import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
+
+/** Domain label for HMAC sub-key derivation when hashing API keys. Must
+ * match the value used in `api/routes/api-keys.ts`. */
+const API_KEY_HASH_DOMAIN = "api-key";
 
 export interface ApiAuthResult {
   userId: string;
@@ -72,11 +76,26 @@ export async function authenticateApiRequest(request: Request): Promise<ApiAuthR
   const token = auth.slice(7);
 
   if (token.startsWith("iwk_")) {
-    const hashedKey = createHash("sha256").update(token).digest("hex");
-    const [key] = await db
+    // Try the keyed hash first (current scheme). Fall back to the legacy
+    // plain SHA-256 hash for rows that pre-date HMAC migration. When a
+    // legacy match is found, opportunistically rehash so the row converges
+    // to the new scheme on next use.
+    // TODO: drop the legacy lookup once all rows have been rehashed.
+    const newHash = await keyedHash(token, API_KEY_HASH_DOMAIN);
+    let [key] = await db
       .select()
       .from(apiKeys)
-      .where(and(eq(apiKeys.hashedKey, hashedKey), isNull(apiKeys.revokedAt)));
+      .where(and(eq(apiKeys.hashedKey, newHash), isNull(apiKeys.revokedAt)));
+
+    let rehash = false;
+    if (!key) {
+      const legacyHash = await legacySha256Hex(token);
+      [key] = await db
+        .select()
+        .from(apiKeys)
+        .where(and(eq(apiKeys.hashedKey, legacyHash), isNull(apiKeys.revokedAt)));
+      if (key) rehash = true;
+    }
 
     if (!key) return null;
 
@@ -89,7 +108,11 @@ export async function authenticateApiRequest(request: Request): Promise<ApiAuthR
 
     await db
       .update(apiKeys)
-      .set({ lastUsedAt: new Date(), ...(scopesChanged ? { scopes: migrated } : {}) })
+      .set({
+        lastUsedAt: new Date(),
+        ...(scopesChanged ? { scopes: migrated } : {}),
+        ...(rehash ? { hashedKey: newHash } : {}),
+      })
       .where(eq(apiKeys.id, key.id));
 
     return {

@@ -3,7 +3,7 @@ import { z, type ZodTypeAny } from "zod";
 import { v4 as uuidv4 } from "uuid";
 import { db } from "../../db/client";
 import { resources, secretFieldStates } from "../../db/schema";
-import { encrypt } from "../../services/encryption";
+import { encrypt, buildAad } from "../../services/encryption";
 import { logAudit } from "../../services/audit";
 import { loadPlugins } from "../../plugins/loader";
 import { getClientForResource } from "../../services/plugin-clients";
@@ -148,7 +148,10 @@ export async function registerPerPluginCreateTools(
 
               for (const state of created.secretStates ?? []) {
                 if (state.resolution.kind !== "plaintext") continue;
-                const { ciphertext, iv } = await encrypt(state.resolution.value);
+                const { ciphertext, iv } = await encrypt(
+                  state.resolution.value,
+                  buildAad("secretField", `${created.id}:${state.fieldKey}`, "value"),
+                );
                 await db
                   .insert(secretFieldStates)
                   .values({

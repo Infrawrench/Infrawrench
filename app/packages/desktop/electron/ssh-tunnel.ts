@@ -15,6 +15,11 @@ import type { SshTunnelConfig } from "@infrawrench/plugin-base" with {
   "resolution-mode": "import",
 };
 import { PAGEANT_SENTINEL } from "./ssh-agent";
+import {
+  ensureHostKeyCacheLoaded,
+  verifyOrPinHostKeySync,
+  HostKeyMismatchError,
+} from "./ssh-host-keys";
 
 function withAgentOverride(opts: ConnectConfig): ConnectConfig {
   if (opts.privateKey === PAGEANT_SENTINEL) {
@@ -24,10 +29,47 @@ function withAgentOverride(opts: ConnectConfig): ConnectConfig {
   return opts;
 }
 
-export function openTunnel(
+/**
+ * Wrap a ConnectConfig so its host-key verifier consults the desktop TOFU
+ * store. Captures any mismatch error on `hostKeyErrorRef.value` so the
+ * outer Promise reject can surface a meaningful error instead of the
+ * generic ssh2 "All configured authentication methods failed".
+ */
+function withHostKeyVerifier(
+  opts: ConnectConfig,
+  hostKeyErrorRef: { value: HostKeyMismatchError | null },
+): ConnectConfig {
+  const host = String(opts.host);
+  const port = Number(opts.port);
+  return {
+    ...opts,
+    hostVerifier: (hostKey: Buffer) => {
+      const result = verifyOrPinHostKeySync(host, port, hostKey);
+      if (!result.ok) {
+        console.error(
+          `[ssh-tunnel] host key mismatch for ${result.error.host}:${result.error.port} ` +
+            `(stored=${result.error.storedFingerprint}, presented=${result.error.presentedFingerprint})`,
+        );
+        hostKeyErrorRef.value = result.error;
+        return false;
+      }
+      return true;
+    },
+  };
+}
+
+export async function openTunnel(
   config: SshTunnelConfig,
 ): Promise<{ tunnelId: string; localPort: number }> {
-  return coreOpenTunnel<undefined>(config, undefined, { configureConnect: withAgentOverride });
+  await ensureHostKeyCacheLoaded();
+  // The ssh-tunnel-core surface doesn't expose the host-key error path
+  // separately, so any mismatch will manifest as a connection failure with a
+  // message we log above. That's acceptable for tunnels because the IPC
+  // caller only sees pass/fail; the console log identifies the cause.
+  const hostKeyErrorRef = { value: null as HostKeyMismatchError | null };
+  return coreOpenTunnel<undefined>(config, undefined, {
+    configureConnect: (opts) => withHostKeyVerifier(withAgentOverride(opts), hostKeyErrorRef),
+  });
 }
 
 export function closeTunnel(tunnelId: string): void {
@@ -57,12 +99,14 @@ export function getActiveTunnels(): Record<
  * Execute a command over SSH and return stdout/stderr.
  * Useful for one-off commands like checking if Docker is installed.
  */
-export function sshExecCommand(
+export async function sshExecCommand(
   config: { sshHost: string; sshPort: number; sshUser: string; privateKey: string },
   command: string,
 ): Promise<{ stdout: string; stderr: string; code: number }> {
+  await ensureHostKeyCacheLoaded();
   return new Promise((resolve, reject) => {
     const client = new SshClient();
+    const hostKeyErrorRef = { value: null as HostKeyMismatchError | null };
     client.once("ready", () => {
       client.exec(command, (err, channel) => {
         if (err) {
@@ -84,13 +128,19 @@ export function sshExecCommand(
         });
       });
     });
-    client.once("error", (err) => reject(new Error(`SSH connection failed: ${err.message}`)));
+    client.once("error", (err) => {
+      if (hostKeyErrorRef.value) {
+        reject(hostKeyErrorRef.value);
+        return;
+      }
+      reject(new Error(`SSH connection failed: ${err.message}`));
+    });
     const baseOpts: ConnectConfig = {
       host: config.sshHost,
       port: config.sshPort,
       username: config.sshUser,
       privateKey: config.privateKey,
     };
-    client.connect(withAgentOverride(baseOpts));
+    client.connect(withHostKeyVerifier(withAgentOverride(baseOpts), hostKeyErrorRef));
   });
 }

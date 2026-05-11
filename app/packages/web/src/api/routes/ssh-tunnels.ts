@@ -8,11 +8,13 @@ import { v4 as uuid } from "uuid";
 import { eq, and } from "drizzle-orm";
 import { db } from "../../db/client";
 import { accounts, sshKeys, sshTunnelConfigs } from "../../db/schema";
-import { encrypt, decrypt } from "../../services/encryption";
+import { encrypt, decrypt, buildAad } from "../../services/encryption";
 import { openTunnel, closeTunnel, getActiveTunnels } from "../../services/ssh-tunnel";
 import type { SshTunnelConfig } from "@infrawrench/plugin-base";
 import { sshExec } from "../../services/ssh";
 import { requirePermission } from "../../auth/permissions";
+import { assertHostNotInternal } from "../../services/host-validation";
+import { logAudit } from "../../services/audit";
 import type { AuthSession } from "../auth-middleware";
 
 declare module "hono" {
@@ -31,6 +33,7 @@ const app = new Hono();
 app.post("/create-account", async (c) => {
   requirePermission(c, "accounts:write");
   const organizationId = c.get("organizationId");
+  const session = c.get("session");
   const input = await c.req.json<{
     sshHost: string;
     sshPort: number;
@@ -43,14 +46,30 @@ app.post("/create-account", async (c) => {
     credentials: Record<string, string>;
   }>();
 
-  // Load and decrypt the SSH key
+  // SSRF guard: refuse to use a bastion that resolves to internal address
+  // space. Only `sshHost` (the public bastion the server dials) is checked;
+  // the inner `remoteHost` is allowed to be private, that's the point.
+  try {
+    await assertHostNotInternal(input.sshHost);
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : "Invalid SSH host" }, 400);
+  }
+
+  // Load and decrypt the SSH key — restricted to keys OWNED by the caller,
+  // so a same-org peer cannot use another user's private key.
   const [keyRow] = await db
     .select({
       encryptedPrivateKey: sshKeys.encryptedPrivateKey,
       privateKeyIv: sshKeys.privateKeyIv,
     })
     .from(sshKeys)
-    .where(and(eq(sshKeys.id, input.sshKeyId), eq(sshKeys.organizationId, organizationId)))
+    .where(
+      and(
+        eq(sshKeys.id, input.sshKeyId),
+        eq(sshKeys.organizationId, organizationId),
+        eq(sshKeys.userId, session.userId),
+      ),
+    )
     .limit(1);
 
   if (!keyRow) return c.json({ error: "SSH key not found" }, 404);
@@ -58,7 +77,11 @@ app.post("/create-account", async (c) => {
     return c.json({ error: "SSH key has no private key data" }, 400);
   }
 
-  const privateKey = await decrypt(keyRow.encryptedPrivateKey, keyRow.privateKeyIv);
+  const privateKey = await decrypt(
+    keyRow.encryptedPrivateKey,
+    keyRow.privateKeyIv,
+    buildAad("sshKey", input.sshKeyId, "privateKey"),
+  );
 
   // Verify the SSH tunnel works before persisting
   const tunnelConfig: SshTunnelConfig = {
@@ -81,10 +104,15 @@ app.post("/create-account", async (c) => {
     );
   }
 
+  const tunnelConfigId = uuid();
   const { ciphertext: credCiphertext, iv: credIv } = await encrypt(
     JSON.stringify(input.credentials),
+    buildAad("account", newAccountId, "credentials"),
   );
-  const { ciphertext: keyCiphertext, iv: keyIv } = await encrypt(privateKey);
+  const { ciphertext: keyCiphertext, iv: keyIv } = await encrypt(
+    privateKey,
+    buildAad("sshTunnelConfig", tunnelConfigId, "privateKey"),
+  );
 
   await db.insert(accounts).values({
     id: newAccountId,
@@ -96,7 +124,7 @@ app.post("/create-account", async (c) => {
   });
 
   await db.insert(sshTunnelConfigs).values({
-    id: uuid(),
+    id: tunnelConfigId,
     accountId: newAccountId,
     organizationId,
     sshHost: input.sshHost,
@@ -133,7 +161,19 @@ app.post("/open", async (c) => {
 
   if (!config) return c.json({ error: "No tunnel config for this account" }, 404);
 
-  const privateKey = await decrypt(config.encryptedPrivateKey, config.privateKeyIv);
+  // SSRF guard on the stored bastion endpoint. The create-account flow
+  // validates this at write time, but DNS records can change.
+  try {
+    await assertHostNotInternal(config.sshHost);
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : "Invalid SSH host" }, 400);
+  }
+
+  const privateKey = await decrypt(
+    config.encryptedPrivateKey,
+    config.privateKeyIv,
+    buildAad("sshTunnelConfig", config.id, "privateKey"),
+  );
   const result = await openTunnel(
     {
       sshHost: config.sshHost,
@@ -184,10 +224,19 @@ app.get("/active", async (c) => {
 /**
  * POST /api/org/:orgId/ssh-tunnels/exec
  * Execute a command over SSH using an org SSH key.
+ *
+ * Authorization:
+ *  - The (sshHost, sshPort, sshUser) triple must match an admin-configured
+ *    `ssh_tunnel_configs` row for this org. Without this, `resources:execute`
+ *    is an arbitrary "run any command as any user on any host with any
+ *    available key" primitive.
+ *  - The SSH key must be OWNED by the caller (sshKeys.userId === caller).
+ *  - Every exec attempt — success or failure — is audit-logged.
  */
 app.post("/exec", async (c) => {
   requirePermission(c, "resources:execute");
   const organizationId = c.get("organizationId");
+  const session = c.get("session");
   const input = await c.req.json<{
     sshHost: string;
     sshPort: number;
@@ -196,13 +245,52 @@ app.post("/exec", async (c) => {
     command: string;
   }>();
 
+  // SSRF guard on the bastion host the server is about to dial.
+  try {
+    await assertHostNotInternal(input.sshHost);
+  } catch (e) {
+    return c.json({ error: e instanceof Error ? e.message : "Invalid SSH host" }, 400);
+  }
+
+  // (host, port, user) must be tied to a tunnel config admin-configured for
+  // this org. We do not trust arbitrary triples even within the same org.
+  const matchingConfigs = await db
+    .select({ id: sshTunnelConfigs.id, accountId: sshTunnelConfigs.accountId })
+    .from(sshTunnelConfigs)
+    .where(
+      and(
+        eq(sshTunnelConfigs.organizationId, organizationId),
+        eq(sshTunnelConfigs.sshHost, input.sshHost),
+        eq(sshTunnelConfigs.sshUser, input.sshUser),
+        eq(sshTunnelConfigs.sshPort, input.sshPort),
+      ),
+    )
+    .limit(1);
+
+  if (matchingConfigs.length === 0) {
+    return c.json(
+      {
+        error:
+          "The requested SSH host/user combination is not configured for this organization. Ask an admin to create an SSH tunnel config first.",
+      },
+      403,
+    );
+  }
+
+  // Key lookup restricted to the calling user as owner.
   const [keyRow] = await db
     .select({
       encryptedPrivateKey: sshKeys.encryptedPrivateKey,
       privateKeyIv: sshKeys.privateKeyIv,
     })
     .from(sshKeys)
-    .where(and(eq(sshKeys.id, input.sshKeyId), eq(sshKeys.organizationId, organizationId)))
+    .where(
+      and(
+        eq(sshKeys.id, input.sshKeyId),
+        eq(sshKeys.organizationId, organizationId),
+        eq(sshKeys.userId, session.userId),
+      ),
+    )
     .limit(1);
 
   if (!keyRow) return c.json({ error: "SSH key not found" }, 404);
@@ -210,17 +298,51 @@ app.post("/exec", async (c) => {
     return c.json({ error: "SSH key has no private key data" }, 400);
   }
 
-  const privateKey = await decrypt(keyRow.encryptedPrivateKey, keyRow.privateKeyIv);
+  const privateKey = await decrypt(
+    keyRow.encryptedPrivateKey,
+    keyRow.privateKeyIv,
+    buildAad("sshKey", input.sshKeyId, "privateKey"),
+  );
+
+  const commandSnippet = input.command.slice(0, 200);
+  const auditBase = {
+    organizationId,
+    userId: session.userId,
+    entityType: "ssh-tunnel-exec",
+    entityId: matchingConfigs[0]!.accountId,
+  };
 
   try {
     const stdout = await sshExec(
       { host: input.sshHost, port: input.sshPort, username: input.sshUser, privateKey },
       input.command,
     );
+    void logAudit({
+      ...auditBase,
+      action: "ssh.exec",
+      metadata: {
+        sshHost: input.sshHost,
+        sshUser: input.sshUser,
+        sshKeyId: input.sshKeyId,
+        commandSnippet,
+        exitCode: 0,
+      },
+    });
     return c.json({ stdout, code: 0 });
   } catch (e) {
     // sshExec throws on non-zero exit; extract info from message
     const message = e instanceof Error ? e.message : "Command failed";
+    void logAudit({
+      ...auditBase,
+      action: "ssh.exec.failed",
+      metadata: {
+        sshHost: input.sshHost,
+        sshUser: input.sshUser,
+        sshKeyId: input.sshKeyId,
+        commandSnippet,
+        error: message,
+      },
+    });
     return c.json({ stdout: "", stderr: message, code: 1 });
   }
 });

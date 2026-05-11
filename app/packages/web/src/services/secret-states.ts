@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { db } from "../db/client";
 import { secretFieldStates } from "../db/schema";
-import { decrypt } from "./encryption";
+import { decrypt, buildAad } from "./encryption";
 import type { SecretFieldState, SecretResolution } from "@infrawrench/plugin-base";
 
 /**
@@ -20,7 +20,11 @@ export async function loadSecretStatesForResource(resourceId: string): Promise<S
       let value = "";
       if (s.encryptedValue && s.valueIv) {
         try {
-          value = await decrypt(s.encryptedValue, s.valueIv);
+          value = await decrypt(
+            s.encryptedValue,
+            s.valueIv,
+            buildAad("secretField", `${s.resourceId}:${s.fieldKey}`, "value"),
+          );
         } catch {
           // Surface empty plaintext rather than throwing on decryption failure.
         }

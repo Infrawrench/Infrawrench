@@ -1,17 +1,14 @@
 import { createMiddleware } from "hono/factory";
 import { getCookie, setCookie } from "hono/cookie";
 import { eq, and } from "drizzle-orm";
-import { workos, clientId } from "../auth/workos";
+import { workos } from "../auth/workos";
 import { verifyWorkosAccessToken } from "../auth/api-auth";
 import { db } from "../db/client";
-import { organizations, users, organizationMembers } from "../db/schema";
+import { users, organizationMembers } from "../db/schema";
 import {
   type ResolvedRole,
-  ensureSystemRoles,
-  getSystemRole,
   resolveEffectivePermissions,
 } from "@infrawrench/server-core/permissions";
-import { v4 as uuid } from "uuid";
 
 export interface AuthSession {
   userId: string;
@@ -43,9 +40,6 @@ export const sessionMiddleware = createMiddleware(async (c, next) => {
       const user = await ensureUserFromClaims(claims.sub, claims.email);
       if (!user) {
         return c.json({ error: "Unauthorized" }, 401);
-      }
-      if (claims.org_id) {
-        await ensureMembership(user.id, claims.org_id);
       }
       c.set("session", { userId: user.id, email: user.email });
       return next();
@@ -83,9 +77,6 @@ export const sessionMiddleware = createMiddleware(async (c, next) => {
         }
         const user = refreshResult.user;
         await provisionUser(user);
-        if (refreshResult.organizationId) {
-          await ensureMembership(user.id, refreshResult.organizationId);
-        }
         c.set("session", { userId: user.id, email: user.email });
         return next();
       } catch {
@@ -95,9 +86,6 @@ export const sessionMiddleware = createMiddleware(async (c, next) => {
 
     const user = authResult.user;
     await provisionUser(user);
-    if (authResult.organizationId) {
-      await ensureMembership(user.id, authResult.organizationId);
-    }
     c.set("session", { userId: user.id, email: user.email });
     return next();
   } catch {
@@ -202,48 +190,18 @@ async function provisionUser(user: {
     .onConflictDoNothing();
 }
 
-export async function ensureMembership(userId: string, orgId: string) {
-  await db
-    .insert(organizations)
-    .values({
-      id: orgId,
-      displayName: orgId,
-    })
-    .onConflictDoNothing();
-
-  await ensureSystemRoles(orgId);
-  const ownerRole = await getSystemRole(orgId, "owner");
-
-  await db
-    .insert(organizationMembers)
-    .values({
-      id: uuid(),
-      userId,
-      organizationId: orgId,
-      role: "owner",
-      roleId: ownerRole.id,
-    })
-    .onConflictDoNothing();
-
-  // Backfill roleId for legacy memberships that predate this column.
-  const existing = await db
-    .select({
-      id: organizationMembers.id,
-      roleId: organizationMembers.roleId,
-      role: organizationMembers.role,
-    })
+/**
+ * Returns true if the user already has a membership row in the given org.
+ * Never creates organizations or memberships — org creation is exclusively
+ * handled by `POST /api/orgs`, and memberships by explicit invites.
+ */
+export async function hasMembership(userId: string, orgId: string): Promise<boolean> {
+  const rows = await db
+    .select({ id: organizationMembers.id })
     .from(organizationMembers)
     .where(
       and(eq(organizationMembers.userId, userId), eq(organizationMembers.organizationId, orgId)),
     )
     .limit(1);
-  const m = existing[0];
-  if (m && !m.roleId) {
-    const key = m.role === "owner" || m.role === "admin" ? m.role : "member";
-    const role = await getSystemRole(orgId, key);
-    await db
-      .update(organizationMembers)
-      .set({ roleId: role.id })
-      .where(eq(organizationMembers.id, m.id));
-  }
+  return rows.length > 0;
 }

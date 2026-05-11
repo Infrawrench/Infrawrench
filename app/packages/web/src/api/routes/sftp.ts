@@ -67,7 +67,14 @@ app.get("/download", async (c) => {
     return c.json({ error: "Invalid paths parameter" }, 400);
   }
 
+  if (!Array.isArray(paths)) {
+    return c.json({ error: "paths must be a JSON array of strings" }, 400);
+  }
   if (paths.length === 0) return c.json({ error: "No paths specified" }, 400);
+  const MAX_BULK_PATHS = 100;
+  if (paths.length > MAX_BULK_PATHS) {
+    return c.json({ error: `Too many paths (max ${MAX_BULK_PATHS})` }, 400);
+  }
 
   const ctx = await getClientForAccount(accountId, organizationId);
   if (!ctx) return c.json({ error: "Account not found" }, 404);

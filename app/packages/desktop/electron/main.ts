@@ -8,16 +8,22 @@ import {
   session,
   shell,
 } from "electron";
-import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { z } from "zod";
 import initSqlJs, { type Database as SqlJsDb, type SqlValue } from "sql.js";
 import { closeAllTunnels } from "./ssh-tunnel";
 import { killAllSshShells } from "./ssh-shell";
 import { killAllK8sExecs } from "./k8s-exec";
 import { killAllK9sSessions } from "./k9s";
 import { MIGRATIONS } from "../src/db/schema";
-import { setDbGetter } from "./main-utils";
+import {
+  getEncryptionKey,
+  encryptValue,
+  decryptValue,
+  setDbGetter,
+  registerDialogBlessedPath,
+} from "./main-utils";
 
 // Side-effect imports: register all IPC handlers for their domain
 import "./plugin-host";
@@ -164,44 +170,49 @@ ipcMain.handle("show_notification", (_e, { title, body }: { title: string; body:
   n.show();
 });
 
-let _encryptionKey: Buffer | null = null;
+// NOTE: master-key handling has been consolidated into ./main-utils.ts —
+// it now wraps the on-disk key with Electron's safeStorage (OS keychain /
+// DPAPI) and falls back to 0o600 plaintext only when the platform's keyring
+// is unavailable.
+//
+// The `get_or_create_encryption_key` handler that previously returned the raw
+// master key to the renderer has been removed entirely. The renderer no
+// longer has any way to obtain the key — it must use `encrypt_value` /
+// `decrypt_value` below, which run in the main process.
+//
+// `encrypt_value` and `decrypt_value` still expose an encryption oracle to
+// the renderer, which we'd like to remove eventually. For now, every caller
+// in the codebase uses them to read/write SSH private keys or
+// service-credential JSON stored in the desktop sql.js DB — replacing them
+// outright would require moving every credential-display flow into main.
+// Inputs are size-bounded below to make the oracle less useful, but this is
+// still an architectural weakness — see the FIX_FLAG comment.
 
-function getEncryptionKey(): Buffer {
-  if (_encryptionKey) return _encryptionKey;
-  const keyPath = path.join(app.getPath("userData"), "master.key");
-  if (fs.existsSync(keyPath)) {
-    _encryptionKey = Buffer.from(fs.readFileSync(keyPath, "utf8"), "base64");
-  } else {
-    _encryptionKey = crypto.randomBytes(32);
-    fs.mkdirSync(path.dirname(keyPath), { recursive: true });
-    fs.writeFileSync(keyPath, _encryptionKey.toString("base64"), "utf8");
-  }
-  return _encryptionKey;
-}
+// FIX_FLAG: encrypt_value / decrypt_value remain a per-blob encryption oracle
+// for any renderer code (and therefore any XSS). Long-term, replace each
+// caller with a typed main-process operation (e.g. `open_account_connection`)
+// that performs the decrypt + use inside main.
 
-ipcMain.handle("get_or_create_encryption_key", () => getEncryptionKey().toString("base64"));
+const MAX_PLAINTEXT_BYTES = 64 * 1024; // 64 KiB — fits PEM keys + credential JSON
+const MAX_CIPHERTEXT_BYTES = 96 * 1024;
 
-ipcMain.handle("encrypt_value", (_e, { plaintext }: { plaintext: string }) => {
-  const key = getEncryptionKey();
-  const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
-  const encrypted = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
-  const tag = cipher.getAuthTag();
-  return {
-    ciphertext: Buffer.concat([encrypted, tag]).toString("base64"),
-    iv: iv.toString("base64"),
-  };
+const EncryptArgs = z.object({
+  plaintext: z.string().max(MAX_PLAINTEXT_BYTES),
 });
 
-ipcMain.handle("decrypt_value", (_e, { ciphertext, iv }: { ciphertext: string; iv: string }) => {
-  const key = getEncryptionKey();
-  const data = Buffer.from(ciphertext, "base64");
-  const ivBuf = Buffer.from(iv, "base64");
-  const tag = data.subarray(-16);
-  const encrypted = data.subarray(0, -16);
-  const decipher = crypto.createDecipheriv("aes-256-gcm", key, ivBuf);
-  decipher.setAuthTag(tag);
-  return decipher.update(encrypted).toString("utf8") + decipher.final("utf8");
+const DecryptArgs = z.object({
+  ciphertext: z.string().max(MAX_CIPHERTEXT_BYTES),
+  iv: z.string().max(64),
+});
+
+ipcMain.handle("encrypt_value", (_e, raw: unknown) => {
+  const { plaintext } = EncryptArgs.parse(raw);
+  return encryptValue(plaintext, getEncryptionKey());
+});
+
+ipcMain.handle("decrypt_value", (_e, raw: unknown) => {
+  const { ciphertext, iv } = DecryptArgs.parse(raw);
+  return decryptValue(ciphertext, iv, getEncryptionKey());
 });
 
 let _sqlite: SqlJsDb | null = null;
@@ -274,6 +285,13 @@ function normalizeSql(sql: string): string {
   return sql.replace(/\$\d+/g, "?");
 }
 
+// FIX_FLAG: db_select / db_execute let the renderer run arbitrary SQL against
+// the local sql.js DB. The bundled renderer JS is the only thing that should
+// invoke them, and access is now gated through the typed preload bridge
+// (electron/preload.ts) — there's no raw `invoke(channel, args)` path for an
+// XSS payload to reach an unexpected channel. A future change should replace
+// these with typed query helpers (per-table CRUD) so a renderer compromise
+// can't pivot through arbitrary SQL.
 ipcMain.handle("db_select", async (_e, { sql, params }: { sql: string; params?: unknown[] }) => {
   const db = await getSqlite();
   const stmt = db.prepare(normalizeSql(sql));
@@ -294,9 +312,35 @@ ipcMain.handle("db_execute", async (_e, { sql, params }: { sql: string; params?:
 
 ipcMain.handle("show_open_dialog", async (_e, options: Electron.OpenDialogOptions) => {
   const win = BrowserWindow.getFocusedWindow();
-  return win ? dialog.showOpenDialog(win, options) : dialog.showOpenDialog(options);
+  const result = win
+    ? await dialog.showOpenDialog(win, options)
+    : await dialog.showOpenDialog(options);
+  if (!result.canceled) {
+    for (const p of result.filePaths ?? []) registerDialogBlessedPath(p);
+  }
+  return result;
 });
 
+ipcMain.handle("show_save_dialog", async (_e, options: Electron.SaveDialogOptions) => {
+  const win = BrowserWindow.getFocusedWindow();
+  const result = win
+    ? await dialog.showSaveDialog(win, options)
+    : await dialog.showSaveDialog(options);
+  if (!result.canceled && result.filePath) registerDialogBlessedPath(result.filePath);
+  return result;
+});
+
+const EXTERNAL_URL_SCHEMES = new Set(["http:", "https:", "mailto:"]);
+
 ipcMain.handle("open_external_url", async (_e, { url }: { url: string }) => {
-  await shell.openExternal(url);
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error("open_external_url: invalid URL");
+  }
+  if (!EXTERNAL_URL_SCHEMES.has(parsed.protocol)) {
+    throw new Error(`open_external_url: scheme "${parsed.protocol}" is not permitted`);
+  }
+  await shell.openExternal(parsed.toString());
 });

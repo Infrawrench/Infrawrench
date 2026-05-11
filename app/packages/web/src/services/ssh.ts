@@ -6,7 +6,8 @@ import { eq, and } from "drizzle-orm";
 import type { PluginClient, SshConfig } from "@infrawrench/plugin-base";
 import { db } from "../db/client";
 import { sshKeys } from "../db/schema";
-import { decrypt } from "./encryption";
+import { decrypt, buildAad } from "./encryption";
+import { HostKeyMismatchError, verifyOrPinHostKey } from "./ssh-host-keys";
 
 /**
  * Resolve an SSH config for an SFTP/SSH-exec request:
@@ -37,7 +38,11 @@ export async function resolveSshConfig(
   if (!keyRow.encryptedPrivateKey || !keyRow.privateKeyIv) {
     throw new Error("SSH key has no private key data");
   }
-  const privateKey = await decrypt(keyRow.encryptedPrivateKey, keyRow.privateKeyIv);
+  const privateKey = await decrypt(
+    keyRow.encryptedPrivateKey,
+    keyRow.privateKeyIv,
+    buildAad("sshKey", input.sshKeyId, "privateKey"),
+  );
   return {
     host: input.sshHost,
     port: 22,
@@ -50,6 +55,7 @@ export async function resolveSshConfig(
 export function sshExec(config: SshConfig, command: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const client = new SshClient();
+    let hostKeyError: Error | null = null;
     client.once("ready", () => {
       client.exec(command, (err, stream) => {
         if (err) {
@@ -75,13 +81,35 @@ export function sshExec(config: SshConfig, command: string): Promise<string> {
         });
       });
     });
-    client.once("error", (err) => reject(new Error(`SSH error: ${err.message}`)));
+    client.once("error", (err) => {
+      // If the connection was aborted because of a host-key mismatch, report
+      // that error rather than the generic ssh2 "All configured ..." message.
+      if (hostKeyError) {
+        reject(hostKeyError);
+        return;
+      }
+      reject(new Error(`SSH error: ${err.message}`));
+    });
     client.connect({
       host: config.host,
       port: config.port,
       username: config.username,
       privateKey: config.privateKey,
-      hostVerifier: () => true,
+      hostVerifier: (hostKey: Buffer) => {
+        try {
+          verifyOrPinHostKey(config.host, config.port, hostKey);
+          return true;
+        } catch (e) {
+          if (e instanceof HostKeyMismatchError) {
+            console.error(
+              `[ssh] host key mismatch for ${e.host}:${e.port} ` +
+                `(stored=${e.storedFingerprint}, presented=${e.presentedFingerprint})`,
+            );
+            hostKeyError = e;
+          }
+          return false;
+        }
+      },
     });
   });
 }

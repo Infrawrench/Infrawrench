@@ -167,4 +167,18 @@ export const MIGRATIONS = [
     UNIQUE(resource_id, metric_label)
   );
   `,
+  // v5 — SSH host-key pins (TOFU). One row per (host, port); we reject the
+  // connection if the fingerprint we see at connect time does not match.
+
+  `
+  CREATE TABLE IF NOT EXISTS ssh_host_keys (
+    id TEXT PRIMARY KEY,
+    host TEXT NOT NULL,
+    port INTEGER NOT NULL,
+    fingerprint TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(host, port)
+  );
+  `,
 ] as const;

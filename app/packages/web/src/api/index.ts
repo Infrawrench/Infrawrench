@@ -1,9 +1,12 @@
 import { Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
+import { setCookie } from "hono/cookie";
+import { randomBytes, randomUUID } from "node:crypto";
 import { apiReference } from "@scalar/hono-api-reference";
 import { sessionMiddleware, orgMiddleware, permissionsMiddleware } from "./auth-middleware";
 import { workos, clientId } from "../auth/workos";
 import { getOpenApiDocument } from "./openapi/index";
+import { OAUTH_STATE_COOKIE } from "./oauth-state";
 
 // Public routes (no auth)
 import { callbackRoutes } from "./routes/callback";
@@ -44,9 +47,16 @@ const api = new Hono();
 
 api.onError((err, c) => {
   if (err instanceof HTTPException) return err.getResponse();
+  // Always log the full error server-side, keyed by a correlation id we
+  // hand back to the caller. In production we deliberately do NOT echo the
+  // error message or stack — those can leak schema/path/secret material.
+  const correlationId = randomUUID();
+  console.error(`[api] uncaught error correlationId=${correlationId}:`, err);
+  if (process.env["NODE_ENV"] === "production") {
+    return c.json({ error: "Internal server error", correlationId }, 500);
+  }
   const message = err instanceof Error ? err.message : String(err);
-  console.error("[api] uncaught error:", err);
-  return c.json({ error: message }, 500);
+  return c.json({ error: message, correlationId }, 500);
 });
 
 api.route("/callback", callbackRoutes);
@@ -67,10 +77,22 @@ api.get(
 
 api.get("/api/auth/sign-in", async (c) => {
   const redirectUri = process.env["WORKOS_REDIRECT_URI"] ?? "http://localhost:3000/callback";
+  // Generate a random per-request nonce, set it in a short-lived HttpOnly
+  // cookie, and pass it as the OAuth `state` parameter. The callback verifies
+  // the cookie matches the returned `state` to prevent login CSRF.
+  const state = randomBytes(32).toString("base64url");
+  setCookie(c, OAUTH_STATE_COOKIE, state, {
+    httpOnly: true,
+    secure: process.env["NODE_ENV"] === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: 60 * 5, // 5 minutes
+  });
   const url = workos.userManagement.getAuthorizationUrl({
     provider: "authkit",
     clientId,
     redirectUri,
+    state,
   });
   return c.redirect(url);
 });

@@ -1,1 +1,7 @@
-export { encrypt, decrypt } from "@infrawrench/server-core/encryption";
+export {
+  encrypt,
+  decrypt,
+  buildAad,
+  keyedHash,
+  legacySha256Hex,
+} from "@infrawrench/server-core/encryption";

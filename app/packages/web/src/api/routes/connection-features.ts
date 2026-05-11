@@ -9,6 +9,7 @@ import { rewriteConnectionForTunnel } from "../../services/tunnel-resolver";
 import { getClientForAccount, getClientForResource } from "../../services/plugin-clients";
 import { resolveSshConfig } from "../../services/ssh";
 import { requirePermission } from "../../auth/permissions";
+import { logAudit } from "../../services/audit";
 import type { AuthSession } from "../auth-middleware";
 
 declare module "hono" {
@@ -79,6 +80,7 @@ app.post("/sql/query", async (c) => {
 app.post("/sql/execute", async (c) => {
   requirePermission(c, "resources:execute");
   const organizationId = c.get("organizationId");
+  const session = c.get("session");
   const input = await c.req.json<{
     accountId: string;
     resourceId?: string;
@@ -91,6 +93,24 @@ app.post("/sql/execute", async (c) => {
   if (!ctx) return c.json({ error: "Account not found" }, 404);
   const { client, plugin, credentials } = ctx;
   const params = input.params ?? [];
+
+  // Audit log every /sql/execute attempt — this is a mutating operation that
+  // bypasses the per-resource UI and so should always be traceable to a user.
+  // Statement is truncated to 200 chars to bound metadata size and reduce the
+  // risk of logging large bind values inline.
+  const sqlSnippet = input.sql.slice(0, 200);
+  void logAudit({
+    organizationId,
+    userId: session.userId,
+    action: "sql.execute",
+    entityType: "account",
+    entityId: input.accountId,
+    metadata: {
+      resourceId: input.resourceId,
+      resourceTypeId: input.resourceTypeId,
+      sqlSnippet,
+    },
+  });
 
   // Per-resource SQL driver
   if (input.resourceId && input.resourceTypeId) {

@@ -1,12 +1,17 @@
 import { Hono } from "hono";
-import { createHash, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { v4 as uuid } from "uuid";
 import { eq, and, isNull } from "drizzle-orm";
 import { db } from "../../db/client";
 import { apiKeys } from "../../db/schema";
 import { logAudit } from "../../services/audit";
+import { keyedHash } from "../../services/encryption";
 import { requirePermission } from "../../auth/permissions";
+import { hasPermission } from "@infrawrench/server-core/permissions";
 import type { AuthSession } from "../auth-middleware";
+
+/** Domain label for HMAC sub-key derivation when hashing API keys. */
+export const API_KEY_HASH_DOMAIN = "api-key";
 
 declare module "hono" {
   interface ContextVariableMap {
@@ -28,7 +33,7 @@ app.post("/", async (c) => {
 
   const raw = randomBytes(32);
   const key = `iwk_${raw.toString("base64url")}`;
-  const hashedKey = createHash("sha256").update(key).digest("hex");
+  const hashedKey = await keyedHash(key, API_KEY_HASH_DOMAIN);
   const prefix = key.slice(0, 12);
   const id = uuid();
 
@@ -55,10 +60,21 @@ app.post("/", async (c) => {
   return c.json({ id, key });
 });
 
-/** GET /api/api-keys — list API keys */
+/**
+ * GET /api/api-keys — list API keys.
+ *
+ * Non-admins see only their own keys. Callers with `apikeys:write` (held by
+ * admins and owners via the system role catalog) see every key in the org so
+ * they can manage / revoke them — e.g. for offboarding.
+ */
 app.get("/", async (c) => {
   requirePermission(c, "apikeys:read");
   const session = c.get("session");
+  const grantedPerms = c.get("permissions") ?? [];
+  const canManageAll = hasPermission(grantedPerms, "apikeys:write");
+  const whereClause = canManageAll
+    ? eq(apiKeys.organizationId, c.get("organizationId"))
+    : and(eq(apiKeys.organizationId, c.get("organizationId")), eq(apiKeys.userId, session.userId));
   const rows = await db
     .select({
       id: apiKeys.id,
@@ -71,7 +87,7 @@ app.get("/", async (c) => {
       createdAt: apiKeys.createdAt,
     })
     .from(apiKeys)
-    .where(eq(apiKeys.organizationId, c.get("organizationId")));
+    .where(whereClause);
   return c.json(rows.map((r) => ({ ...r, scopes: (r.scopes as string[]) ?? [] })));
 });
 
@@ -126,7 +142,7 @@ app.post("/:id/rotate", async (c) => {
 
   const raw = randomBytes(32);
   const key = `iwk_${raw.toString("base64url")}`;
-  const hashedKey = createHash("sha256").update(key).digest("hex");
+  const hashedKey = await keyedHash(key, API_KEY_HASH_DOMAIN);
   const prefix = key.slice(0, 12);
   const id = uuid();
 

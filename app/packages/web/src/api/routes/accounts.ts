@@ -3,7 +3,7 @@ import { v4 as uuid } from "uuid";
 import { eq, and, isNull } from "drizzle-orm";
 import { db } from "../../db/client";
 import { accounts, resources } from "../../db/schema";
-import { encrypt, decrypt } from "../../services/encryption";
+import { encrypt, decrypt, buildAad } from "../../services/encryption";
 import { loadPlugins, getPlugin } from "../../plugins/loader";
 import { syncAccountResources, syncAccountResourceType } from "../../services/sync-resources";
 import { requirePermission } from "../../auth/permissions";
@@ -65,8 +65,11 @@ app.post("/", async (c) => {
     credentials: Record<string, string>;
   }>();
 
-  const { ciphertext, iv } = await encrypt(JSON.stringify(credentials));
   const id = uuid();
+  const { ciphertext, iv } = await encrypt(
+    JSON.stringify(credentials),
+    buildAad("account", id, "credentials"),
+  );
   await db.insert(accounts).values({
     id,
     organizationId,
@@ -135,7 +138,11 @@ app.get("/:id/credentials", async (c) => {
     .from(accounts)
     .where(and(eq(accounts.id, accountId), eq(accounts.organizationId, organizationId)));
   if (!row) return c.json({ error: "Account not found" }, 404);
-  const plaintext = await decrypt(row.encryptedCredentials, row.credentialsIv);
+  const plaintext = await decrypt(
+    row.encryptedCredentials,
+    row.credentialsIv,
+    buildAad("account", accountId, "credentials"),
+  );
   return c.json(JSON.parse(plaintext));
 });
 

@@ -1,5 +1,5 @@
 import { verifyWorkosAccessToken } from "../auth/api-auth";
-import { ensureUserFromClaims, ensureMembership } from "../api/auth-middleware";
+import { ensureUserFromClaims, hasMembership } from "../api/auth-middleware";
 
 export interface McpAuthContext {
   userId: string;
@@ -25,7 +25,10 @@ export async function authenticateMcpRequest(
   const user = await ensureUserFromClaims(claims.sub, claims.email);
   if (!user) return null;
 
-  await ensureMembership(user.id, claims.org_id);
+  // Verify the caller is already a member of the WorkOS-supplied org. We
+  // never auto-provision memberships here — org creation is exclusive to
+  // `POST /api/orgs` and memberships are added via explicit invites.
+  if (!(await hasMembership(user.id, claims.org_id))) return null;
 
   const ctx: McpAuthContext = {
     userId: user.id,

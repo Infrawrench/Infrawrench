@@ -7,7 +7,7 @@ import type { WebSocket } from "ws";
 import { eq, and } from "drizzle-orm";
 import { db } from "@/db/client";
 import { accounts, sshKeys } from "@/db/schema";
-import { decrypt } from "@/services/encryption";
+import { decrypt, buildAad } from "@/services/encryption";
 import { getPlugin } from "@/plugins/loader";
 import { buildPluginHostServices } from "@/services/host-services";
 
@@ -41,7 +41,11 @@ export async function handleSshSession(
         return;
       }
 
-      const privateKey = await decrypt(key.encryptedPrivateKey, key.privateKeyIv);
+      const privateKey = await decrypt(
+        key.encryptedPrivateKey,
+        key.privateKeyIv,
+        buildAad("sshKey", key.id, "privateKey"),
+      );
       sshConfig = {
         host: directSsh.host,
         port: 22,
@@ -60,7 +64,11 @@ export async function handleSshSession(
         return;
       }
 
-      const plaintext = await decrypt(account.encryptedCredentials, account.credentialsIv);
+      const plaintext = await decrypt(
+        account.encryptedCredentials,
+        account.credentialsIv,
+        buildAad("account", account.id, "credentials"),
+      );
       const credentials = JSON.parse(plaintext) as Record<string, string>;
 
       const loaded = await getPlugin(account.pluginId);

@@ -71,6 +71,13 @@
       "when": 1778444289401,
       "tag": "0009_mighty_romulus",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1778483302166,
+      "tag": "0010_white_warbird",
+      "breakpoints": true
     }
   ]
 }
