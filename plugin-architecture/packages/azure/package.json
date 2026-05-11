@@ -25,6 +25,7 @@
   },
   "dependencies": {
     "@infrawrench/plugin-base": "workspace:*",
+    "@microsoft/microsoft-graph-client": "^3.0.7",
     "zod": "^3.24.1"
   },
   "devDependencies": {

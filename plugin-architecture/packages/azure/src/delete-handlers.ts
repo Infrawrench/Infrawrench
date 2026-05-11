@@ -10,6 +10,7 @@
  * database is special-cased here, and a couple of api-versions are tuned for
  * the delete operation.
  */
+import type { Client as GraphClient } from "@microsoft/microsoft-graph-client";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { ARM, type ArmResourceSpec, type AzureHttpContext } from "./shared.js";
 
@@ -92,12 +93,7 @@ const DELETE_SPECS: Record<string, ArmResourceSpec> = {
 
 export interface DeleteContext extends AzureHttpContext {
   getResource(typeId: string, resourceId: string, accountId: string): Promise<ResourceInstance>;
-  graphRequest<T>(
-    method: "GET" | "POST" | "DELETE" | "PATCH",
-    path: string,
-    body?: unknown,
-    extraHeaders?: Record<string, string>,
-  ): Promise<T>;
+  graphClient: GraphClient;
 }
 
 export async function deleteAzureResource(
@@ -110,7 +106,7 @@ export async function deleteAzureResource(
     const resource = await ctx.getResource(typeId, resourceId, accountId);
     const objectId = String(resource.externalId ?? resource.fields["objectId"] ?? "");
     if (!objectId) throw new Error("Cannot determine app registration object id");
-    await ctx.graphRequest("DELETE", `/applications/${objectId}`);
+    await ctx.graphClient.api(`/applications/${objectId}`).delete();
     return;
   }
   const resource = await ctx.getResource(typeId, resourceId, accountId);

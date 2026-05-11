@@ -6,16 +6,11 @@
  * so we list all apps the SP can see and rely on the SP's permissions to gate
  * the result set.
  */
+import type { Client as GraphClient } from "@microsoft/microsoft-graph-client";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 
 export interface AppRegistrationContext {
-  graphRequest<T>(
-    method: "GET" | "POST" | "DELETE" | "PATCH",
-    path: string,
-    body?: unknown,
-    extraHeaders?: Record<string, string>,
-  ): Promise<T>;
-  graphToken(): Promise<string>;
+  graphClient: GraphClient;
   makeId(accountId: string, typeId: string, externalId: string): string;
   now(): string;
   tenantId: string;
@@ -26,21 +21,26 @@ export async function listAppRegistrations(
   accountId: string,
 ): Promise<ResourceInstance[]> {
   const apps: Array<Record<string, unknown>> = [];
-  let nextLink: string | undefined;
   const servicePrincipals = new Map<string, string>(); // appId -> sp.id
 
-  // First page: apps
-  let data = await ctx.graphRequest<{
+  // First page: apps. The SDK's `.api(absoluteUrl)` accepts the `@odata.nextLink`
+  // value verbatim, so paging is just "while there's a nextLink, fetch it".
+  let data = (await ctx.graphClient
+    .api("/applications")
+    .top(100)
+    .select("id,appId,displayName,signInAudience,createdDateTime")
+    .get()) as {
     value: Array<Record<string, unknown>>;
     "@odata.nextLink"?: string;
-  }>("GET", "/applications?$top=100&$select=id,appId,displayName,signInAudience,createdDateTime");
+  };
   apps.push(...data.value);
-  nextLink = data["@odata.nextLink"];
+  let nextLink = data["@odata.nextLink"];
   while (nextLink) {
-    const tok = await ctx.graphToken();
-    const res = await fetch(nextLink, { headers: { Authorization: `Bearer ${tok}` } });
-    if (!res.ok) break;
-    data = (await res.json()) as typeof data;
+    try {
+      data = (await ctx.graphClient.api(nextLink).get()) as typeof data;
+    } catch {
+      break;
+    }
     apps.push(...data.value);
     nextLink = data["@odata.nextLink"];
   }
@@ -51,10 +51,11 @@ export async function listAppRegistrations(
     const appId = String(app["appId"] ?? "");
     if (!appId) continue;
     try {
-      const spList = await ctx.graphRequest<{ value: Array<Record<string, unknown>> }>(
-        "GET",
-        `/servicePrincipals?$filter=appId eq '${appId}'&$select=id`,
-      );
+      const spList = (await ctx.graphClient
+        .api("/servicePrincipals")
+        .filter(`appId eq '${appId}'`)
+        .select("id")
+        .get()) as { value: Array<Record<string, unknown>> };
       const spId = spList.value[0]?.["id"];
       if (typeof spId === "string") servicePrincipals.set(appId, spId);
     } catch {

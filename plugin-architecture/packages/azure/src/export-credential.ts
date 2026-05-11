@@ -8,6 +8,7 @@
  * (Graph only returns the secret text on this single call) and packages it as
  * a .env file alongside the tenant/client id.
  */
+import type { Client as GraphClient } from "@microsoft/microsoft-graph-client";
 import type { CredentialExport } from "@infrawrench/plugin-base";
 import type { AzureCredentials } from "./auth.js";
 import { ARM, type AzureHttpContext } from "./shared.js";
@@ -15,12 +16,7 @@ import type { ResourceInstance } from "@infrawrench/plugin-base";
 
 export interface ExportCredentialContext extends AzureHttpContext {
   getResource(typeId: string, resourceId: string, accountId: string): Promise<ResourceInstance>;
-  graphRequest<T>(
-    method: "GET" | "POST" | "DELETE" | "PATCH",
-    path: string,
-    body?: unknown,
-    extraHeaders?: Record<string, string>,
-  ): Promise<T>;
+  graphClient: GraphClient;
   creds: AzureCredentials;
 }
 
@@ -92,14 +88,14 @@ export async function exportAzureCredential(
     }
     // Default two-year expiry, Graph-side default.
     const secretDisplayName = `infrawrench-${new Date().toISOString().slice(0, 10)}`;
-    const pw = await ctx.graphRequest<{
+    const pw = (await ctx.graphClient.api(`/applications/${objectId}/addPassword`).post({
+      passwordCredential: { displayName: secretDisplayName },
+    })) as {
       secretText?: string;
       keyId?: string;
       displayName?: string;
       endDateTime?: string;
-    }>("POST", `/applications/${objectId}/addPassword`, {
-      passwordCredential: { displayName: secretDisplayName },
-    });
+    };
     const secretText = pw.secretText ?? "";
     const keyId = pw.keyId ?? "";
     if (!secretText) throw new Error("Graph returned an empty secretText");

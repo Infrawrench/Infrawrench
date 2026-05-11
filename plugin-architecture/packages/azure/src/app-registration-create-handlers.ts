@@ -15,26 +15,28 @@ export async function createAppRegistration(
 ): Promise<ResourceInstance> {
   const displayName = fields["displayName"] ?? "";
   if (!displayName) throw new Error("displayName is required");
-  const app = await ctx.graphRequest<{
+  const app = (await ctx.graphClient.api("/applications").post({ displayName })) as {
     id?: string;
     appId?: string;
     displayName?: string;
     signInAudience?: string;
     createdDateTime?: string;
-  }>("POST", "/applications", { displayName });
+  };
   const objectId = app.id ?? "";
   const appId = app.appId ?? "";
   if (!objectId || !appId) throw new Error("Graph returned an empty application");
   // Create the SP — without this, the app can't be used as a principal for role assignments.
   let spId = "";
   try {
-    const sp = await ctx.graphRequest<{ id?: string }>("POST", "/servicePrincipals", { appId });
+    const sp = (await ctx.graphClient.api("/servicePrincipals").post({ appId })) as {
+      id?: string;
+    };
     spId = sp.id ?? "";
   } catch (e) {
     // Roll back the app if SP creation fails so we don't leak an orphan.
     let cleanupNote = "";
     try {
-      await ctx.graphRequest("DELETE", `/applications/${objectId}`);
+      await ctx.graphClient.api(`/applications/${objectId}`).delete();
     } catch (cleanupErr) {
       cleanupNote = ` (cleanup of orphaned app ${objectId} also failed: ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)})`;
     }

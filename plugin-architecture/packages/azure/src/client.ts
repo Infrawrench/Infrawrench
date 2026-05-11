@@ -58,6 +58,7 @@ import {
 } from "./storage-client.js";
 import { listAcrArtifacts } from "./container-registry-client.js";
 import { listAppRegistrations } from "./app-registration.js";
+import { makeGraphClient } from "./graph-client.js";
 import { resolveAzureOutput } from "./output-resolver.js";
 import { buildAzureDashboardStats } from "./dashboard-stats.js";
 import { renderAzureDetail, renderAzureSidebarItem } from "./renderers.js";
@@ -216,41 +217,14 @@ export class AzureClient implements PluginClient {
     }
   }
 
-  /** Low-level Graph request helper — handles auth + parses the error envelope. */
-  private async graphRequest<T>(
-    method: "GET" | "POST" | "DELETE" | "PATCH",
-    path: string,
-    body?: unknown,
-    extraHeaders?: Record<string, string>,
-  ): Promise<T> {
-    const tok = await this.graphToken();
-    const headers: Record<string, string> = {
-      Authorization: `Bearer ${tok}`,
-      ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
-      ...(extraHeaders ?? {}),
-    };
-    const res = await fetch(`https://graph.microsoft.com/v1.0${path}`, {
-      method,
-      headers,
-      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-    });
-    if (res.status === 204) return undefined as unknown as T;
-    const raw = await res.text();
-    if (!res.ok) {
-      // Graph error envelope: { error: { code, message, innerError } }
-      try {
-        const parsed = JSON.parse(raw) as {
-          error?: { code?: string; message?: string };
-        };
-        const code = parsed.error?.code ?? "UnknownError";
-        const msg = parsed.error?.message ?? raw;
-        throw new Error(`Graph ${method} ${path} (${res.status}) ${code}: ${msg}`);
-      } catch (e) {
-        if (e instanceof Error && e.message.startsWith("Graph ")) throw e;
-        throw new Error(`Graph ${method} ${path} (${res.status}): ${raw}`);
-      }
-    }
-    return raw ? (JSON.parse(raw) as T) : (undefined as unknown as T);
+  /**
+   * Microsoft Graph SDK client — defers token acquisition to `graphToken()`,
+   * which already caches/refreshes via `fetchGraphAccessToken`. We mint a
+   * fresh `Client` each access (the SDK is stateless aside from the auth
+   * provider, so this matches the lifecycle of the previous helper).
+   */
+  private get graphClient() {
+    return makeGraphClient({ graphToken: () => this.graphToken() });
   }
 
   // ─── Context builders ──────────────────────────────────────────────────
@@ -291,12 +265,7 @@ export class AzureClient implements PluginClient {
       patch: <T>(url: string, body: unknown) => this.patch<T>(url, body),
       del: (url: string) => this.del(url),
       makeId: (accountId, typeId, externalId) => this.makeId(accountId, typeId, externalId),
-      graphRequest: <T>(
-        method: "GET" | "POST" | "DELETE" | "PATCH",
-        path: string,
-        body?: unknown,
-        extraHeaders?: Record<string, string>,
-      ) => this.graphRequest<T>(method, path, body, extraHeaders),
+      graphClient: this.graphClient,
       subscriptionId: this.creds.subscriptionId,
       tenantId: this.creds.tenantId,
       clientId: this.creds.clientId,
@@ -342,13 +311,7 @@ export class AzureClient implements PluginClient {
     if (typeId === "azure-app-registration") {
       return listAppRegistrations(
         {
-          graphRequest: <T>(
-            method: "GET" | "POST" | "DELETE" | "PATCH",
-            path: string,
-            body?: unknown,
-            extraHeaders?: Record<string, string>,
-          ) => this.graphRequest<T>(method, path, body, extraHeaders),
-          graphToken: () => this.graphToken(),
+          graphClient: this.graphClient,
           makeId: (a, t, e) => this.makeId(a, t, e),
           now: () => new Date().toISOString(),
           tenantId: this.creds.tenantId,
@@ -495,12 +458,7 @@ export class AzureClient implements PluginClient {
       {
         ...this.httpCtx,
         getResource: (t, r, a) => this.getResource(t, r, a),
-        graphRequest: <T>(
-          method: "GET" | "POST" | "DELETE" | "PATCH",
-          path: string,
-          body?: unknown,
-          extraHeaders?: Record<string, string>,
-        ) => this.graphRequest<T>(method, path, body, extraHeaders),
+        graphClient: this.graphClient,
       },
       typeId,
       resourceId,
@@ -518,12 +476,7 @@ export class AzureClient implements PluginClient {
       {
         ...this.httpCtx,
         getResource: (t, r, a) => this.getResource(t, r, a),
-        graphRequest: <T>(
-          method: "GET" | "POST" | "DELETE" | "PATCH",
-          path: string,
-          body?: unknown,
-          extraHeaders?: Record<string, string>,
-        ) => this.graphRequest<T>(method, path, body, extraHeaders),
+        graphClient: this.graphClient,
         creds: this.creds,
       },
       typeId,

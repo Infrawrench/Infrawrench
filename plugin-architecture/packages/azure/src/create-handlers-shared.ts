@@ -1,3 +1,5 @@
+import type { Client as GraphClient } from "@microsoft/microsoft-graph-client";
+
 export const ARM = "https://management.azure.com";
 
 export interface AzureCreateContext {
@@ -7,12 +9,7 @@ export interface AzureCreateContext {
   patch<T>(url: string, body: unknown): Promise<T>;
   del(url: string): Promise<void>;
   makeId(accountId: string, typeId: string, externalId: string): string;
-  graphRequest<T>(
-    method: "GET" | "POST" | "DELETE" | "PATCH",
-    path: string,
-    body?: unknown,
-    extraHeaders?: Record<string, string>,
-  ): Promise<T>;
+  graphClient: GraphClient;
   subscriptionId: string;
   tenantId: string;
   clientId: string;
