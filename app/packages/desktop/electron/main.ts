@@ -28,6 +28,7 @@ import {
 // Side-effect imports: register all IPC handlers for their domain
 import "./plugin-host";
 import "./ssh-host";
+import "./ssh-host-key-prompt";
 import "./k8s-host";
 import "./cloud-auth";
 import "./cloud-data";

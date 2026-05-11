@@ -48,6 +48,7 @@ const INVOKE_CHANNELS = [
   "ssh_list_system_keys",
   "ssh_read_system_key",
   "ssh_check_pageant",
+  "ssh_host_key_decide",
   // sftp
   "sftp_list",
   "sftp_mkdir",
@@ -145,7 +146,11 @@ const INVOKE_SET = new Set<string>(INVOKE_CHANNELS);
 // Event channels (main → renderer). The renderer subscribes by channel name,
 // but the names are validated against a fixed list of literal/prefixed strings.
 // ---------------------------------------------------------------------------
-const EVENT_LITERALS = new Set<string>(["cloud_auth_error", "storage_download_progress"]);
+const EVENT_LITERALS = new Set<string>([
+  "cloud_auth_error",
+  "storage_download_progress",
+  "ssh_host_key_prompt",
+]);
 
 const EVENT_PREFIXES: readonly string[] = [
   "ssh_shell_data_",

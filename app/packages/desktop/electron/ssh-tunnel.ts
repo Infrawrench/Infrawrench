@@ -17,7 +17,7 @@ import type { SshTunnelConfig } from "@infrawrench/plugin-base" with {
 import { PAGEANT_SENTINEL } from "./ssh-agent";
 import {
   ensureHostKeyCacheLoaded,
-  verifyOrPinHostKeySync,
+  verifyOrPinHostKeyInteractive,
   HostKeyMismatchError,
 } from "./ssh-host-keys";
 
@@ -43,17 +43,25 @@ function withHostKeyVerifier(
   const port = Number(opts.port);
   return {
     ...opts,
-    hostVerifier: (hostKey: Buffer) => {
-      const result = verifyOrPinHostKeySync(host, port, hostKey);
-      if (!result.ok) {
-        console.error(
-          `[ssh-tunnel] host key mismatch for ${result.error.host}:${result.error.port} ` +
-            `(stored=${result.error.storedFingerprint}, presented=${result.error.presentedFingerprint})`,
-        );
-        hostKeyErrorRef.value = result.error;
-        return false;
-      }
-      return true;
+    hostVerifier: (hostKey: Buffer, verify: (matches: boolean) => void) => {
+      verifyOrPinHostKeyInteractive(host, port, hostKey).then(
+        (result) => {
+          if (!result.ok) {
+            console.error(
+              `[ssh-tunnel] host key rejected for ${result.error.host}:${result.error.port} ` +
+                `(stored=${result.error.storedFingerprint}, presented=${result.error.presentedFingerprint})`,
+            );
+            hostKeyErrorRef.value = result.error;
+            verify(false);
+            return;
+          }
+          verify(true);
+        },
+        (err) => {
+          console.error("[ssh-tunnel] host-key verification error:", err);
+          verify(false);
+        },
+      );
     },
   };
 }

@@ -12,6 +12,7 @@
  */
 import * as crypto from "node:crypto";
 import { getDb } from "./main-utils";
+import { promptHostKeyDecision } from "./ssh-host-key-prompt";
 
 export class HostKeyMismatchError extends Error {
   readonly host: string;
@@ -77,37 +78,73 @@ async function persistPin(host: string, port: number, fp: string): Promise<void>
   ]);
 }
 
+/** Call before initiating an SSH handshake so the verifier can run. */
+export async function ensureHostKeyCacheLoaded(): Promise<void> {
+  await ensureCacheLoaded();
+}
+
 /**
- * Synchronous verifier suitable for use inside ssh2's `hostVerifier` callback.
- * Requires the cache to be primed via `ensureHostKeyCacheLoaded()` first.
+ * Async verifier suitable for ssh2's HostVerifier callback form. Prompts the
+ * user (via the renderer) when the host is unknown or the key changed.
  *
- * Returns true if the presented key matches an existing pin OR no pin yet
- * exists (in which case it is recorded asynchronously). Returns false on a
- * mismatch — caller should treat that as a fatal connection error.
+ * - Match → ok (no prompt).
+ * - Unknown host → prompt; on accept persist the pin, on deny reject.
+ * - Mismatch → prompt with both fingerprints; on accept replace the pin,
+ *   on deny reject and bubble a `HostKeyMismatchError`.
  */
-export function verifyOrPinHostKeySync(
+export async function verifyOrPinHostKeyInteractive(
   host: string,
   port: number,
   hostKey: Buffer,
-): { ok: true; fingerprint: string } | { ok: false; error: HostKeyMismatchError } {
+): Promise<{ ok: true; fingerprint: string } | { ok: false; error: HostKeyMismatchError }> {
+  await ensureCacheLoaded();
   const fp = fingerprint(hostKey);
   const existing = cache.get(cacheKey(host, port));
+
+  if (existing === fp) {
+    return { ok: true, fingerprint: fp };
+  }
+
   if (existing === undefined) {
+    const accepted = await promptHostKeyDecision({
+      host,
+      port,
+      kind: "first-connect",
+      presentedFingerprint: fp,
+    });
+    if (!accepted) {
+      // Synthesize a mismatch-style error so the connecting code can surface
+      // a useful message ("connection denied by user") instead of the
+      // generic ssh2 auth-failed message.
+      return {
+        ok: false,
+        error: new HostKeyMismatchError(host, port, "(none)", fp),
+      };
+    }
     cache.set(cacheKey(host, port), fp);
-    // Persist in the background; even if it fails the in-memory pin keeps
-    // this process consistent.
     void persistPin(host, port, fp).catch((e) => {
       console.warn("[ssh] failed to persist host-key pin:", e);
     });
     return { ok: true, fingerprint: fp };
   }
-  if (existing !== fp) {
-    return { ok: false, error: new HostKeyMismatchError(host, port, existing, fp) };
-  }
-  return { ok: true, fingerprint: fp };
-}
 
-/** Call before initiating an SSH handshake so the sync verifier can run. */
-export async function ensureHostKeyCacheLoaded(): Promise<void> {
-  await ensureCacheLoaded();
+  // Mismatch — prompt with both fingerprints so the user can compare.
+  const accepted = await promptHostKeyDecision({
+    host,
+    port,
+    kind: "mismatch",
+    presentedFingerprint: fp,
+    storedFingerprint: existing,
+  });
+  if (!accepted) {
+    return {
+      ok: false,
+      error: new HostKeyMismatchError(host, port, existing, fp),
+    };
+  }
+  cache.set(cacheKey(host, port), fp);
+  void persistPin(host, port, fp).catch((e) => {
+    console.warn("[ssh] failed to persist replacement host-key pin:", e);
+  });
+  return { ok: true, fingerprint: fp };
 }

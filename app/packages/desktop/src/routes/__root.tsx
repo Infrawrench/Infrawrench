@@ -24,6 +24,7 @@ import {
 } from "@infrawrench/ui";
 import { AddAccountModal } from "../components/AddAccountModal";
 import { GlobalTabBar } from "../components/GlobalTabBar";
+import { SshHostKeyPromptHost } from "../components/SshHostKeyPromptHost";
 import { SwipeIndicator } from "../components/SwipeIndicator";
 import { SidebarAccounts } from "../components/SidebarAccounts";
 import { SidebarDashboards } from "../components/SidebarDashboards";
@@ -504,6 +505,9 @@ function RootLayout() {
 
       {/* Trackpad swipe navigation indicator */}
       <SwipeIndicator gesture={swipeGesture} />
+
+      {/* Modal that appears when ssh2 encounters an unknown host or a key mismatch */}
+      <SshHostKeyPromptHost />
     </DndShell>
   );
 }
