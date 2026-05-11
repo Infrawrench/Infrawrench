@@ -1,5 +1,5 @@
 import { z } from "../zod";
-import { strict, ErrorResponses, Uuid, Email, Role, IsoDateTime, Ok } from "../common";
+import { strict, ErrorResponses, Uuid, Email, Role, IsoDateTime } from "../common";
 import type { BuildContext } from "../context";
 
 const InvitationDetail = strict({
@@ -51,7 +51,4 @@ export function registerInvitationPaths(ctx: BuildContext) {
       403: ErrorResponses[403],
     },
   });
-
-  // Re-export Ok for convenience to ensure it's referenced somewhere; harmless.
-  void Ok;
 }
