@@ -9,7 +9,7 @@ import {
   JsonObject,
   ResourceId,
 } from "../common";
-import type { BuildContext } from "../index";
+import type { BuildContext } from "../context";
 
 const CredentialField = strict({
   key: z.string(),

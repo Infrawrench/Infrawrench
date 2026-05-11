@@ -11,7 +11,7 @@ import {
   IsoDateTime,
   Permission,
 } from "../common";
-import type { BuildContext } from "../index";
+import type { BuildContext } from "../context";
 
 const RoleSummary = strict({
   id: Uuid,

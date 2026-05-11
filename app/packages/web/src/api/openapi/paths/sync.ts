@@ -1,6 +1,6 @@
 import { z } from "../zod";
 import { strict, ErrorResponses, Uuid, IsoDateTime, JsonObject, Ok, ResourceId } from "../common";
-import type { BuildContext } from "../index";
+import type { BuildContext } from "../context";
 
 const PullRequest = strict({
   lastSyncVersion: z.number().int().nonnegative(),

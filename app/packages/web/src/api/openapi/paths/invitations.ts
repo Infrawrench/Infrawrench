@@ -1,6 +1,6 @@
 import { z } from "../zod";
 import { strict, ErrorResponses, Uuid, Email, Role, IsoDateTime, Ok } from "../common";
-import type { BuildContext } from "../index";
+import type { BuildContext } from "../context";
 
 const InvitationDetail = strict({
   id: Uuid,

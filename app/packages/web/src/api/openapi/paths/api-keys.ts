@@ -1,6 +1,6 @@
 import { z } from "../zod";
 import { strict, ErrorResponses, OrgIdParam, Uuid, IsoDateTime, Ok, Permission } from "../common";
-import type { BuildContext } from "../index";
+import type { BuildContext } from "../context";
 
 /**
  * API key scopes mirror the same permission strings used for role-based UI

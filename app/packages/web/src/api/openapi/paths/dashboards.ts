@@ -9,7 +9,7 @@ import {
   ResourceId,
   IsoDateTime,
 } from "../common";
-import type { BuildContext } from "../index";
+import type { BuildContext } from "../context";
 
 const Dashboard = strict({
   id: Uuid,

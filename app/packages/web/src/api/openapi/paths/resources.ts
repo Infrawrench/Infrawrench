@@ -9,7 +9,7 @@ import {
   ResourceId,
   ResourceStatus,
 } from "../common";
-import type { BuildContext } from "../index";
+import type { BuildContext } from "../context";
 
 const StatusDot = strict({
   kind: z.literal("status-dot"),

@@ -1,6 +1,6 @@
 import { z } from "../zod";
 import { strict, ErrorResponse } from "../common";
-import type { BuildContext } from "../index";
+import type { BuildContext } from "../context";
 
 export function registerWebhookPaths(ctx: BuildContext) {
   ctx.registry.registerPath({

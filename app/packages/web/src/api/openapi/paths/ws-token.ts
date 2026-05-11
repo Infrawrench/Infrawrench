@@ -1,6 +1,6 @@
 import { z } from "../zod";
 import { strict, OrgIdParam } from "../common";
-import type { BuildContext } from "../index";
+import type { BuildContext } from "../context";
 
 export function registerWsTokenPaths(ctx: BuildContext) {
   ctx.registry.registerPath({

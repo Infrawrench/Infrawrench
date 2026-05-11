@@ -1,6 +1,6 @@
 import { z } from "../zod";
 import { strict, OrgIdParam, Uuid, IsoDateTime, JsonObject, Email } from "../common";
-import type { BuildContext } from "../index";
+import type { BuildContext } from "../context";
 
 const AuditEntry = strict({
   id: Uuid,

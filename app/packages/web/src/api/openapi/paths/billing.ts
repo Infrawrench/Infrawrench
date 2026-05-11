@@ -1,6 +1,6 @@
 import { z } from "../zod";
 import { strict, ErrorResponses, OrgIdParam, IsoDateTime } from "../common";
-import type { BuildContext } from "../index";
+import type { BuildContext } from "../context";
 
 const Subscription = strict({
   status: z.enum(["trialing", "active", "past_due", "canceled", "unpaid"]),

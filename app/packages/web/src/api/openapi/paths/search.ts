@@ -1,6 +1,6 @@
 import { z } from "../zod";
 import { strict, OrgIdParam, Uuid, ResourceId } from "../common";
-import type { BuildContext } from "../index";
+import type { BuildContext } from "../context";
 
 const SearchHit = strict({
   id: ResourceId,

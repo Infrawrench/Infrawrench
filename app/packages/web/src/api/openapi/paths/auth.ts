@@ -1,6 +1,6 @@
 import { z } from "../zod";
 import { strict, ErrorResponse, ErrorResponses, Email, Role, Uuid } from "../common";
-import type { BuildContext } from "../index";
+import type { BuildContext } from "../context";
 
 const SessionResponse = strict({
   userId: Uuid,

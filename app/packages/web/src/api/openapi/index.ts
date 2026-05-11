@@ -1,5 +1,8 @@
 import { OpenAPIRegistry, OpenApiGeneratorV31 } from "@asteasolutions/zod-to-openapi";
-import { buildDynamicEnums, type DynamicEnums } from "./dynamic";
+import { buildDynamicEnums } from "./dynamic";
+import type { BuildContext } from "./context";
+
+export type { BuildContext } from "./context";
 
 type OpenAPIObject = ReturnType<OpenApiGeneratorV31["generateDocument"]>;
 
@@ -30,11 +33,6 @@ export interface BuildOptions {
   servers?: Array<{ url: string; description?: string }>;
   /** Override the spec version (defaults to the package.json version). */
   version?: string;
-}
-
-export interface BuildContext {
-  registry: OpenAPIRegistry;
-  enums: DynamicEnums;
 }
 
 export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<OpenAPIObject> {

@@ -1,6 +1,6 @@
 import { z } from "../zod";
 import { strict, ErrorResponses, Uuid, Ok, OrgIdParam } from "../common";
-import type { BuildContext } from "../index";
+import type { BuildContext } from "../context";
 
 const SftpUploadForm = strict({
   accountId: Uuid,

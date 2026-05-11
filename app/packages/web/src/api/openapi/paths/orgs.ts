@@ -1,6 +1,6 @@
 import { z } from "../zod";
 import { strict, ErrorResponses, Uuid } from "../common";
-import type { BuildContext } from "../index";
+import type { BuildContext } from "../context";
 
 const CreateOrgRequest = strict({
   displayName: z.string().min(1).openapi({ example: "Acme Inc" }),
