@@ -25,12 +25,14 @@ export const Role = z.enum(["owner", "admin", "member"]).openapi("OrganizationRo
  * or `*`); see the per-operation `x-required-permission` extension for what
  * each endpoint checks.
  */
-export const Permission = z
-  .enum(ALL_PERMISSIONS as unknown as [string, ...string[]])
-  .openapi("Permission", {
-    description:
-      "A permission string. Roles may grant exact permissions like the entries in this enum, or wildcards (e.g. `resources:*:read`, `*`).",
-  });
+type PermissionEnumTuple = readonly [
+  (typeof ALL_PERMISSIONS)[number],
+  ...(typeof ALL_PERMISSIONS)[number][],
+];
+export const Permission = z.enum(ALL_PERMISSIONS as PermissionEnumTuple).openapi("Permission", {
+  description:
+    "A permission string. Roles may grant exact permissions like the entries in this enum, or wildcards (e.g. `resources:*:read`, `*`).",
+});
 
 export const ResourceStatus = z
   .enum(["healthy", "warning", "error", "unknown", "pending", "stopped"])

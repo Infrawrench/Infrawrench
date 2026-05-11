@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import type { TLSSocket } from "node:tls";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { authenticateMcpRequest, buildWwwAuthenticate } from "./auth";
@@ -27,9 +28,9 @@ async function readJsonBody(req: IncomingMessage): Promise<unknown> {
 
 function reqUrlString(req: IncomingMessage): string {
   const host = req.headers.host ?? "localhost";
-  const proto =
-    (req.headers["x-forwarded-proto"] as string | undefined) ??
-    ((req.socket as unknown as { encrypted?: boolean }).encrypted ? "https" : "http");
+  const xfProto = req.headers["x-forwarded-proto"];
+  const headerProto = Array.isArray(xfProto) ? xfProto[0] : xfProto;
+  const proto = headerProto ?? ((req.socket as Partial<TLSSocket>).encrypted ? "https" : "http");
   return `${proto}://${host}${req.url ?? "/"}`;
 }
 
