@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { createPluginClient } from "../lib/plugin-client";
 import {
   CreateResourceModal as SharedCreateResourceModal,
@@ -219,16 +219,26 @@ export function CreateResourceModal({
     resourceType.id,
   ]);
 
+  // Hold `callbacks` in a ref so `loadResources` stays referentially stable
+  // across rerenders. Without this, every fresh `onCreated` arrow from a
+  // parent regenerates `callbacks`, which regenerates `loadResources`, which
+  // fires ResourcePickerResolver's effect — the resource picker flickers and
+  // refetches on every parent render.
+  const callbacksRef = useRef(callbacks);
+  useEffect(() => {
+    callbacksRef.current = callbacks;
+  }, [callbacks]);
+
   const loadResources = useCallback(
     (sources: AssociationSource[], acctId: string): Promise<ResourcePickerOption[]> => {
       if (activeCloudOrgId) {
         return loadCloudPickerResources(activeCloudOrgId, sources, acctId);
       }
-      return callbacks.loadResources
-        ? callbacks.loadResources(sources, acctId)
+      return callbacksRef.current.loadResources
+        ? callbacksRef.current.loadResources(sources, acctId)
         : Promise.resolve([]);
     },
-    [activeCloudOrgId, callbacks],
+    [activeCloudOrgId],
   );
 
   const resourcePickerProps = useMemo(
