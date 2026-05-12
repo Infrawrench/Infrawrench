@@ -1,6 +1,11 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useUIStore, RESOURCES_CHANGED_EVENT, type ResourcesChangedDetail } from "@infrawrench/ui";
+import {
+  useUIStore,
+  useTabId,
+  RESOURCES_CHANGED_EVENT,
+  type ResourcesChangedDetail,
+} from "@infrawrench/ui";
 import {
   AccountDetailView,
   type CategoryState,
@@ -9,7 +14,9 @@ import {
 import { apiGet, apiPost } from "@/lib/api";
 
 export const Route = createFileRoute("/org/$orgId/accounts/$accountId")({
-  component: AccountPage,
+  // Rendering is handled by WorkspaceTabsViewport in __root.tsx, which mounts
+  // every open tab simultaneously and keeps them alive across tab switches.
+  component: () => null,
   validateSearch: (search: Record<string, unknown>): { type?: string; q?: string } => {
     const result: { type?: string; q?: string } = {};
     if (typeof search.type === "string") result.type = search.type;
@@ -49,12 +56,25 @@ function patchSearchParams(patch: Record<string, string | undefined>) {
   window.history.replaceState(window.history.state, "", url);
 }
 
-function AccountPage() {
-  const { orgId, accountId } = Route.useParams();
-  const initialSearch = Route.useSearch();
+interface AccountPanelProps {
+  orgId: string;
+  accountId: string;
+  /** Initial values from URL search params; only honoured if this tab is the
+   * one currently driving the URL (otherwise the tab keeps its own state). */
+  initialActiveType?: string | null;
+  initialSearchQuery?: string;
+}
 
-  const [activeType, setActiveTypeState] = useState<string | null>(initialSearch.type ?? null);
-  const [searchQuery, setSearchQueryState] = useState(initialSearch.q ?? "");
+export function AccountPanel({
+  orgId,
+  accountId,
+  initialActiveType,
+  initialSearchQuery,
+}: AccountPanelProps) {
+  const tabId = useTabId();
+
+  const [activeType, setActiveTypeState] = useState<string | null>(initialActiveType ?? null);
+  const [searchQuery, setSearchQueryState] = useState(initialSearchQuery ?? "");
   const prevAccountIdRef = useRef(accountId);
 
   // Reset URL-synced state when switching accounts
@@ -161,9 +181,9 @@ function AccountPage() {
         if (cancelled) return;
 
         setMeta(detail);
-        const { activeWorkspaceTabId, setWorkspaceTabTitle } = useUIStore.getState();
-        if (activeWorkspaceTabId)
-          setWorkspaceTabTitle(activeWorkspaceTabId, detail.account.displayName);
+        if (tabId) {
+          useUIStore.getState().setWorkspaceTabTitle(tabId, detail.account.displayName);
+        }
 
         setCategories(groupRows(rows, detail.resourceTypes));
         setInitialLoading(false);
@@ -176,7 +196,7 @@ function AccountPage() {
     return () => {
       cancelled = true;
     };
-  }, [accountId, orgId, loadVersion, groupRows]);
+  }, [accountId, orgId, loadVersion, groupRows, tabId]);
 
   if (initialLoading)
     return <div className="p-6 text-on-surface-muted text-sm animate-pulse">Loading…</div>;
@@ -194,8 +214,7 @@ function AccountPage() {
       onActiveSectionIdChange={setActiveType}
       onAccountUpdated={(displayName) => {
         setMeta((prev) => (prev ? { ...prev, account: { ...prev.account, displayName } } : prev));
-        const { setWorkspaceTabTitle, activeWorkspaceTabId } = useUIStore.getState();
-        if (activeWorkspaceTabId) setWorkspaceTabTitle(activeWorkspaceTabId, displayName);
+        if (tabId) useUIStore.getState().setWorkspaceTabTitle(tabId, displayName);
       }}
     />
   );

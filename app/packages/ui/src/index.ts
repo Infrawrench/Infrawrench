@@ -7,6 +7,9 @@ export {
   workspaceTabTargetsEqual,
 } from "./store/ui.store.js";
 
+export { WorkspaceTabsViewport } from "./workspace/WorkspaceTabsViewport.js";
+export { WorkspaceTabProvider, useTabId } from "./workspace/WorkspaceTabContext.js";
+
 export { SchemaRenderer, StatusDotNodeRenderer } from "./components/renderer/SchemaRenderer.js";
 
 export { MetricChart } from "./components/charts/MetricChart.js";

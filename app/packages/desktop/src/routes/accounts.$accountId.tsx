@@ -43,7 +43,9 @@ import {
 } from "../lib/workspace-tabs";
 
 export const Route = createFileRoute("/accounts/$accountId")({
-  component: AccountPage,
+  // Rendering is handled by WorkspaceTabsViewport in __root.tsx, which mounts
+  // every open tab simultaneously and keeps them alive across tab switches.
+  component: () => null,
 });
 
 interface CategoryState {
@@ -53,8 +55,12 @@ interface CategoryState {
   resources: ResourceInstance[];
 }
 
-function AccountPage() {
-  const { accountId } = Route.useParams();
+interface AccountPanelProps {
+  accountId: string;
+}
+
+export function AccountPanel({ accountId }: AccountPanelProps) {
+  const tabId = useTabId();
   const navigate = useNavigate();
   const bumpAccounts = useUIStore((s) => s.bumpAccounts);
   const removeWorkspaceTabs = useUIStore((s) => s.removeWorkspaceTabs);
@@ -311,9 +317,8 @@ function AccountPage() {
           };
           if (!cancelled) {
             setAccount(accountLike);
-            const { activeWorkspaceTabId, setWorkspaceTabTitle } = useUIStore.getState();
-            if (activeWorkspaceTabId)
-              setWorkspaceTabTitle(activeWorkspaceTabId, detail.account.displayName);
+            if (tabId)
+              useUIStore.getState().setWorkspaceTabTitle(tabId, detail.account.displayName);
           }
 
           // Local plugin gives us the full ResourceTypeDefinitions; the cloud
@@ -404,8 +409,7 @@ function AccountPage() {
         if (!row) throw new Error("Account not found");
         if (!cancelled) {
           setAccount(row);
-          const { activeWorkspaceTabId, setWorkspaceTabTitle } = useUIStore.getState();
-          if (activeWorkspaceTabId) setWorkspaceTabTitle(activeWorkspaceTabId, row.display_name);
+          if (tabId) useUIStore.getState().setWorkspaceTabTitle(tabId, row.display_name);
         }
 
         const credentials = await invoke<Record<string, string>>("account_get_credentials", {
@@ -608,8 +612,7 @@ function AccountPage() {
         ]);
         setAccount((prev) => (prev ? { ...prev, display_name: editName.trim() } : prev));
       }
-      const { activeWorkspaceTabId, setWorkspaceTabTitle } = useUIStore.getState();
-      if (activeWorkspaceTabId) setWorkspaceTabTitle(activeWorkspaceTabId, editName.trim());
+      if (tabId) useUIStore.getState().setWorkspaceTabTitle(tabId, editName.trim());
       bumpAccounts();
       setIsEditing(false);
     } catch (e) {

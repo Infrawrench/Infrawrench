@@ -24,6 +24,7 @@ import {
 } from "@infrawrench/ui";
 import { AddAccountModal } from "../components/AddAccountModal";
 import { GlobalTabBar } from "../components/GlobalTabBar";
+import { DesktopWorkspaceTabsViewport } from "../components/WorkspaceTabsViewport";
 import { SshHostKeyPromptHost } from "../components/SshHostKeyPromptHost";
 import { SwipeIndicator } from "../components/SwipeIndicator";
 import { SidebarAccounts } from "../components/SidebarAccounts";
@@ -480,7 +481,12 @@ function RootLayout() {
             </button>
           )}
 
-          <main id="main-content" className="flex-1 overflow-hidden">
+          <main id="main-content" className="flex-1 flex flex-col min-w-0 overflow-hidden">
+            {/* Tabs render via WorkspaceTabsViewport: every open tab stays
+                mounted so SSH PTYs / xterm scrollback / port-forwards
+                survive tab switches. <Outlet/> still renders non-tab routes
+                (index, settings); tab routes' components are no-ops. */}
+            <DesktopWorkspaceTabsViewport />
             <Outlet />
           </main>
 

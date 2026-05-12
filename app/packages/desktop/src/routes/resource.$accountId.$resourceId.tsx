@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { createFileRoute, useNavigate, useRouterState } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import type {
   ResourceInstance,
   DetailViewSchema,
@@ -51,6 +51,7 @@ import {
   type PromptNoSqlCommandDetail,
   type ResourcePickerOption,
   useUIStore,
+  useTabId,
 } from "@infrawrench/ui";
 import { getDb } from "../db/client";
 import type { AccountRow } from "../db/rows";
@@ -87,7 +88,9 @@ import {
 import type { CloudCtx, QuickSshConnection, SshConfig } from "./_resource-detail/types";
 
 export const Route = createFileRoute("/resource/$accountId/$resourceId")({
-  component: ResourceDetailPage,
+  // Rendering is handled by WorkspaceTabsViewport in __root.tsx, which mounts
+  // every open tab simultaneously and keeps them alive across tab switches.
+  component: () => null,
   validateSearch: (
     search: Record<string, unknown>,
   ): { plugin?: string; type?: string; parent?: string } => ({
@@ -97,10 +100,26 @@ export const Route = createFileRoute("/resource/$accountId/$resourceId")({
   }),
 });
 
-function ResourceDetailPage() {
-  const { accountId, resourceId } = Route.useParams();
+interface ResourcePanelProps {
+  accountId: string;
+  resourceId: string;
+  peerPlugin?: string | undefined;
+  peerType?: string | undefined;
+  peerParent?: string | undefined;
+  /** "" | "ssh" | "sftp" — drives the view selection. */
+  view: string;
+}
+
+export function ResourcePanel({
+  accountId,
+  resourceId,
+  peerPlugin,
+  peerType,
+  peerParent,
+  view: locationHash,
+}: ResourcePanelProps) {
+  const tabId = useTabId();
   const decodedResourceId = decodeURIComponent(resourceId);
-  const { plugin: peerPlugin, type: peerType, parent: peerParent } = Route.useSearch();
 
   const [account, setAccount] = useState<AccountRow | null>(null);
   const [resource, setResource] = useState<ResourceInstance | null>(null);
@@ -132,7 +151,6 @@ function ResourceDetailPage() {
   const [showDropSpotlight, setShowDropSpotlight] = useState(false);
   const setAccountConnected = useUIStore((s) => s.setAccountConnected);
   const removeWorkspaceTabs = useUIStore((s) => s.removeWorkspaceTabs);
-  const locationHash = useRouterState({ select: (s) => s.location.hash });
   const [canDelete, setCanDelete] = useState(false);
   const [credentialFormats, setCredentialFormats] = useState<CredentialFormat[]>([]);
   const [showExportCredential, setShowExportCredential] = useState(false);
@@ -223,6 +241,7 @@ function ResourceDetailPage() {
       refs,
       setters,
       setAccountConnected,
+      tabId,
     };
 
     async function load() {

@@ -1,7 +1,8 @@
-import { createFileRoute, useRouterState } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect, useCallback } from "react";
 import {
   useUIStore,
+  useTabId,
   resourceTabTitle,
   RESOURCES_CHANGED_EVENT,
   REFRESH_RESOURCE_EVENT,
@@ -79,7 +80,9 @@ interface ResourceDetailResponse {
 
 export const Route = createFileRoute("/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId")(
   {
-    component: ResourceDetailPage,
+    // Rendering is handled by WorkspaceTabsViewport in __root.tsx, which mounts
+    // every open tab simultaneously and keeps them alive across tab switches.
+    component: () => null,
     validateSearch: (search: Record<string, unknown>): { accountId?: string; parent?: string } => ({
       ...(typeof search["accountId"] === "string" ? { accountId: search["accountId"] } : {}),
       ...(typeof search["parent"] === "string" ? { parent: search["parent"] } : {}),
@@ -87,13 +90,27 @@ export const Route = createFileRoute("/org/$orgId/resources/$pluginId/$resourceT
   },
 );
 
-function ResourceDetailPage() {
-  const { orgId, pluginId, resourceTypeId, resourceId: rawResourceId } = Route.useParams();
-  const decodedResourceId = decodeURIComponent(rawResourceId);
-  const resourceId = decodedResourceId;
-  const { accountId, parent } = Route.useSearch();
-  const locationHash = useRouterState({ select: (s) => s.location.hash });
-  const currentView = locationHash.replace(/^#/, "");
+interface ResourcePanelProps {
+  orgId: string;
+  pluginId: string;
+  resourceTypeId: string;
+  resourceId: string;
+  accountId?: string | undefined;
+  parent?: string | undefined;
+  /** "ssh" / "sftp" / "" — derived from the tab target's `view`. */
+  view: string;
+}
+
+export function ResourcePanel({
+  orgId,
+  pluginId,
+  resourceTypeId,
+  resourceId,
+  accountId,
+  parent,
+  view: currentView,
+}: ResourcePanelProps) {
+  const tabId = useTabId();
   const [data, setData] = useState<ResourceDetailResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [promptModal, setPromptModal] = useState<PromptNoSqlCommandDetail | null>(null);
@@ -138,15 +155,11 @@ function ResourceDetailPage() {
   }, [detailUrl]);
 
   useEffect(() => {
-    if (!data) return;
-    const { activeWorkspaceTabId, setWorkspaceTabTitle } = useUIStore.getState();
-    if (activeWorkspaceTabId) {
-      setWorkspaceTabTitle(
-        activeWorkspaceTabId,
-        resourceTabTitle(data.resourceDisplayName, currentView),
-      );
-    }
-  }, [data, currentView]);
+    if (!data || !tabId) return;
+    useUIStore
+      .getState()
+      .setWorkspaceTabTitle(tabId, resourceTabTitle(data.resourceDisplayName, currentView));
+  }, [data, currentView, tabId]);
 
   useEffect(() => {
     let cancelled = false;

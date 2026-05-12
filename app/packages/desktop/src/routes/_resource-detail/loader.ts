@@ -94,6 +94,10 @@ export interface LoaderParams {
   refs: LoaderRefs;
   setters: LoaderSetters;
   setAccountConnected: (accountId: string, connected: boolean) => void;
+  /** Id of the workspace tab the loader is feeding. Used to update the
+   * correct tab's title — with keep-alive, multiple tabs are mounted
+   * simultaneously and `activeWorkspaceTabId` would target the wrong one. */
+  tabId: string | null;
 }
 
 export async function loadCloudResource(orgId: string, params: LoaderParams): Promise<void> {
@@ -109,6 +113,7 @@ export async function loadCloudResource(orgId: string, params: LoaderParams): Pr
     refs,
     setters,
     setAccountConnected,
+    tabId,
   } = params;
 
   const accountDetail = await getCloudAccountDetail(orgId, accountId);
@@ -281,10 +286,9 @@ export async function loadCloudResource(orgId: string, params: LoaderParams): Pr
     );
   }
 
-  const { activeWorkspaceTabId, setWorkspaceTabTitle } = useUIStore.getState();
-  if (activeWorkspaceTabId) {
+  if (tabId) {
     const viewSuffix = resourceTabTitle(detail.resourceDisplayName, locationHash);
-    setWorkspaceTabTitle(activeWorkspaceTabId, viewSuffix);
+    useUIStore.getState().setWorkspaceTabTitle(tabId, viewSuffix);
   }
 
   setAccountConnected(accountId, true);
@@ -316,6 +320,7 @@ export async function loadLocalPeerResource(params: LoaderParams): Promise<void>
     refs,
     setters,
     setAccountConnected,
+    tabId,
   } = params;
 
   const db = await getDb();
@@ -397,10 +402,9 @@ export async function loadLocalPeerResource(params: LoaderParams): Promise<void>
   refs.localPeerCtx.current = null;
   setAccountConnected(accountId, true);
 
-  const { activeWorkspaceTabId, setWorkspaceTabTitle } = useUIStore.getState();
-  if (activeWorkspaceTabId) {
+  if (tabId) {
     const viewSuffix = resourceTabTitle(found.displayName, locationHash);
-    setWorkspaceTabTitle(activeWorkspaceTabId, viewSuffix);
+    useUIStore.getState().setWorkspaceTabTitle(tabId, viewSuffix);
   }
 }
 
@@ -414,6 +418,7 @@ export async function loadLocalResource(params: LoaderParams): Promise<void> {
     refs,
     setters,
     setAccountConnected,
+    tabId,
   } = params;
 
   const db = await getDb();
@@ -754,10 +759,9 @@ export async function loadLocalResource(params: LoaderParams): Promise<void> {
     setters.setSchema(finalSchema);
     setters.setResource(enrichedResource);
 
-    const { activeWorkspaceTabId, setWorkspaceTabTitle } = useUIStore.getState();
-    if (activeWorkspaceTabId) {
+    if (tabId) {
       const viewSuffix = resourceTabTitle(enrichedResource.displayName, locationHash);
-      setWorkspaceTabTitle(activeWorkspaceTabId, viewSuffix);
+      useUIStore.getState().setWorkspaceTabTitle(tabId, viewSuffix);
     }
 
     setters.setResourceTypeLabel(resourceTypeDef?.displayName ?? "Resource");

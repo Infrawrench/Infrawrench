@@ -1,0 +1,89 @@
+import { useEffect } from "react";
+import { useRouterState } from "@tanstack/react-router";
+import {
+  WorkspaceTabsViewport as BaseViewport,
+  useUIStore,
+  type WorkspaceTab,
+  type WorkspaceTabTarget,
+} from "@infrawrench/ui";
+import { DashboardPanel } from "@/routes/org.$orgId.dashboard.$dashboardId";
+import { AccountPanel } from "@/routes/org.$orgId.accounts.$accountId";
+import { ResourcePanel } from "@/routes/org.$orgId.resources.$pluginId.$resourceTypeId.$resourceId";
+import { syncWorkspaceRouteFromPath } from "@/lib/workspace-tabs";
+
+interface WebWorkspaceTabsViewportProps {
+  orgId: string;
+}
+
+// Web-side glue between WorkspaceTabsViewport (in @infrawrench/ui) and the
+// per-kind panel components. Each open tab is rendered once and kept mounted
+// across tab switches — see WorkspaceTabsViewport for the rendering rules.
+export function WebWorkspaceTabsViewport({ orgId }: WebWorkspaceTabsViewportProps) {
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const hash = useRouterState({ select: (s) => s.location.hash });
+  const tabsHydrated = useUIStore((s) => s.tabsHydrated);
+
+  // The URL is a "tab URL" when syncWorkspaceRouteFromPath returns a target.
+  // On non-tab routes (settings, onboarding) we hide all tab panels so the
+  // route's <Outlet/> renders alone — tabs stay mounted in the DOM.
+  const routeTarget = syncWorkspaceRouteFromPath(pathname, hash);
+  const showActive = routeTarget !== null;
+
+  // Direct URL navigation (deep link, browser back/forward) needs to add the
+  // matching tab to the workspace if it isn't already open. The viewport
+  // itself only renders tabs from the store, so this hook keeps the store
+  // in sync with the URL. Compute the target inside the effect so the dep
+  // array stays primitive (otherwise the fresh object refires every render).
+  useEffect(() => {
+    if (!tabsHydrated) return;
+    const target = syncWorkspaceRouteFromPath(pathname, hash);
+    if (!target) return;
+    const { workspaceTabs: latestTabs } = useUIStore.getState();
+    if (latestTabs.some((tab) => targetsMatch(tab.target, target))) return;
+    useUIStore.getState().syncWorkspaceRoute(target);
+  }, [tabsHydrated, pathname, hash]);
+
+  return <BaseViewport showActive={showActive} renderTabPanel={(tab) => renderPanel(tab, orgId)} />;
+}
+
+function renderPanel(tab: WorkspaceTab, orgId: string) {
+  const t = tab.target;
+  switch (t.kind) {
+    case "dashboard":
+      return <DashboardPanel orgId={orgId} dashboardId={t.dashboardId} />;
+    case "account":
+      return <AccountPanel orgId={orgId} accountId={t.accountId} />;
+    case "resource":
+      if (!t.pluginId || !t.resourceTypeId) {
+        // Without pluginId/resourceTypeId we can't construct the detail URL.
+        // Fall through to the account panel for the resource's account so
+        // the user lands somewhere sensible.
+        return <AccountPanel orgId={orgId} accountId={t.accountId} />;
+      }
+      return (
+        <ResourcePanel
+          orgId={orgId}
+          pluginId={t.pluginId}
+          resourceTypeId={t.resourceTypeId}
+          resourceId={t.resourceId}
+          accountId={t.accountId}
+          parent={t.parentResourceId}
+          view={t.view ?? "details"}
+        />
+      );
+  }
+}
+
+function targetsMatch(a: WorkspaceTabTarget, b: WorkspaceTabTarget): boolean {
+  if (a.kind !== b.kind) return false;
+  if (a.kind === "dashboard" && b.kind === "dashboard") return a.dashboardId === b.dashboardId;
+  if (a.kind === "account" && b.kind === "account") return a.accountId === b.accountId;
+  if (a.kind === "resource" && b.kind === "resource") {
+    return (
+      a.accountId === b.accountId &&
+      a.resourceId === b.resourceId &&
+      (a.view ?? "details") === (b.view ?? "details")
+    );
+  }
+  return false;
+}

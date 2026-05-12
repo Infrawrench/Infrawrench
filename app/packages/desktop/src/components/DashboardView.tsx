@@ -5,6 +5,7 @@ import { invoke } from "../lib/invoke";
 import { useDroppable } from "@dnd-kit/core";
 import {
   useUIStore,
+  useTabId,
   SparklineChart,
   SortableDashboardCard,
   SortableContext,
@@ -87,6 +88,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
   const [spotlightMode, setSpotlightMode] = useState<"pin" | "navigate" | null>(null);
   const dashboardPinsVersion = useUIStore((s) => s.dashboardPinsVersion);
   const bumpDashboardPins = useUIStore((s) => s.bumpDashboardPins);
+  const tabId = useTabId();
   const setAccountConnected = useUIStore((s) => s.setAccountConnected);
   const removeWorkspaceTabs = useUIStore((s) => s.removeWorkspaceTabs);
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
@@ -244,8 +246,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
       setDashboardName(loadedName);
       setIsHome(isDefault);
 
-      const { activeWorkspaceTabId, setWorkspaceTabTitle } = useUIStore.getState();
-      if (activeWorkspaceTabId) setWorkspaceTabTitle(activeWorkspaceTabId, loadedName);
+      if (tabId) useUIStore.getState().setWorkspaceTabTitle(tabId, loadedName);
 
       // Keep "ok" cards as-is so pinning a new resource doesn't flash "Connecting…".
       setCardStatus((prev) => {

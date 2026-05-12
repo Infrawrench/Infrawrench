@@ -13,6 +13,7 @@ import {
 } from "@infrawrench/ui";
 import { WebSidebar } from "@/components/WebSidebar";
 import { SpotlightSearch } from "@/components/SpotlightSearch";
+import { WebWorkspaceTabsViewport } from "@/components/WorkspaceTabsViewport";
 import { apiGet, apiPost } from "@/lib/api";
 import {
   dashboardTabTarget,
@@ -239,7 +240,13 @@ function AuthenticatedShell() {
         />
         <div className="flex flex-1 overflow-hidden">
           <WebSidebar orgId={orgId} />
-          <main className="flex-1 overflow-auto">
+          <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
+            {/* Tabs are rendered via WorkspaceTabsViewport: every open tab
+                stays mounted so SSH sessions / xterm scrollback / websocket
+                subscriptions survive tab switches. <Outlet/> still renders
+                non-tab routes like /onboarding and /settings; tab routes'
+                components are no-ops. */}
+            {orgId && <WebWorkspaceTabsViewport orgId={orgId} />}
             <Outlet />
           </main>
         </div>
