@@ -1,5 +1,6 @@
 /**
- * Detail renderers for VPC networking resources: Cloud Router and Cloud NAT.
+ * Detail renderers for VPC networking resources: Cloud Router, Cloud NAT,
+ * and Backend Service.
  */
 import type { DetailViewSchema, ResourceInstance, SectionNode } from "@infrawrench/plugin-base";
 
@@ -373,6 +374,79 @@ export function renderCloudNat(resource: ResourceInstance, base: DetailViewSchem
       kind: "section",
       title: "Router status",
       children: [{ kind: "text", content: `Could not load router status: ${status.error}` }],
+    });
+  }
+}
+
+/** Apply the Backend Service renderer to `base`. */
+export function renderBackendService(resource: ResourceInstance, base: DetailViewSchema): void {
+  const f = resource.fields;
+  const scheme = String(f["loadBalancingScheme"] ?? "");
+  const protocol = String(f["protocol"] ?? "");
+  const schemeLabel =
+    scheme === "EXTERNAL_MANAGED"
+      ? "External (managed)"
+      : scheme === "INTERNAL_MANAGED"
+        ? "Internal (managed)"
+        : scheme === "INTERNAL_SELF_MANAGED"
+          ? "Internal Self-Managed"
+          : scheme === "INTERNAL"
+            ? "Internal"
+            : scheme === "EXTERNAL"
+              ? "External (classic)"
+              : scheme || "—";
+  base.subtitle = `Backend Service · ${schemeLabel}${protocol ? ` · ${protocol}` : ""}`;
+  base.status = { kind: "status-dot", status: "healthy", label: "Active" };
+  // Only HTTPS-family LBs are wired into fetchMetricSeries; surface metrics
+  // when those metrics are likely to exist.
+  const cdnEligible =
+    (scheme === "EXTERNAL" || scheme === "EXTERNAL_MANAGED") &&
+    (protocol === "HTTP" || protocol === "HTTPS" || protocol === "HTTP2");
+  if (cdnEligible) {
+    base.metricsCapability = { defaultTimeRangeMs: 3_600_000 };
+  }
+
+  const cfgItems = [
+    { key: "Protocol", value: protocol || "—" },
+    { key: "Load balancing scheme", value: schemeLabel },
+    { key: "Port name", value: String(f["portName"] ?? "") || "—" },
+    {
+      key: "Backend timeout",
+      value: f["timeoutSec"] ? `${String(f["timeoutSec"])} seconds` : "—",
+    },
+    {
+      key: "Connection draining",
+      value:
+        f["connectionDrainingTimeoutSec"] != null
+          ? `${String(f["connectionDrainingTimeoutSec"])} seconds`
+          : "—",
+    },
+    { key: "Session affinity", value: String(f["sessionAffinity"] ?? "NONE") },
+    { key: "Cloud CDN", value: f["enableCDN"] === true ? "Enabled" : "Disabled" },
+    { key: "Backends", value: String(f["backendCount"] ?? 0) },
+    { key: "Health checks", value: String(f["healthCheckCount"] ?? 0) },
+  ];
+
+  base.sections = [
+    ...base.sections,
+    {
+      kind: "section",
+      title: "Configuration",
+      children: [{ kind: "key-value-list", items: cfgItems }],
+    },
+  ];
+
+  if (Number(f["healthCheckCount"] ?? 0) === 0) {
+    base.sections.push({
+      kind: "section",
+      title: "Health checks",
+      children: [
+        {
+          kind: "text",
+          content:
+            "No health check attached. Required for instance-group and zonal NEG backends — leave empty only for Internet NEG or Serverless NEG.",
+        },
+      ],
     });
   }
 }

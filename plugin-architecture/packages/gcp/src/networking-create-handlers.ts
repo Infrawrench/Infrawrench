@@ -212,19 +212,30 @@ export const networkingCreateConfigHandlers: Record<
     };
   },
   "backend-service": async (ctx, parentResourceId) => {
-    // Fetch health checks for the selector
-    const hcData = await ctx
-      .get<{
-        items?: Array<{ name: string; selfLink: string }>;
-      }>(`https://compute.googleapis.com/compute/v1/projects/${ctx.project}/global/healthChecks`)
-      .catch(() => ({ items: [] as Array<{ name: string; selfLink: string }> }));
-    const hcOptions = (hcData.items ?? []).map((hc) => ({
-      id: hc.selfLink ?? hc.name,
-      label: hc.name,
-    }));
     return {
       fields: [
         { key: "name", label: "Service Name", kind: "text", required: true },
+        {
+          key: "description",
+          label: "Description",
+          kind: "text",
+          required: false,
+          description: "Optional human-readable description.",
+        },
+        {
+          key: "loadBalancingScheme",
+          label: "Load Balancing Scheme",
+          kind: "select",
+          required: true,
+          options: [
+            { id: "EXTERNAL_MANAGED", label: "External Managed (Global Application LB)" },
+            { id: "EXTERNAL", label: "External (Classic / Network LB)" },
+            { id: "INTERNAL_SELF_MANAGED", label: "Internal Self-Managed (Traffic Director)" },
+          ],
+          defaultValue: "EXTERNAL_MANAGED",
+          description:
+            "Choose External Managed for the modern global Application Load Balancer. Use Classic External for legacy HTTP(S) or proxy/network LBs.",
+        },
         {
           key: "protocol",
           label: "Protocol",
@@ -233,31 +244,80 @@ export const networkingCreateConfigHandlers: Record<
           options: [
             { id: "HTTP", label: "HTTP" },
             { id: "HTTPS", label: "HTTPS" },
+            { id: "HTTP2", label: "HTTP/2" },
             { id: "TCP", label: "TCP" },
             { id: "SSL", label: "SSL" },
-            { id: "HTTP2", label: "HTTP/2" },
+            { id: "GRPC", label: "gRPC" },
           ],
           defaultValue: "HTTP",
         },
         {
-          key: "healthCheck",
-          label: "Health Check",
-          kind: hcOptions.length > 0 ? "select" : "text",
-          required: true,
-          ...(hcOptions.length > 0 ? { options: hcOptions } : {}),
-          description: "Health check to use for this backend service",
+          key: "portName",
+          label: "Port Name",
+          kind: "text",
+          required: false,
+          description:
+            "Named port on backend instance groups (e.g. 'http'). Required when using instance-group backends with EXTERNAL/INTERNAL_MANAGED/INTERNAL_SELF_MANAGED.",
         },
         {
-          key: "loadBalancingScheme",
-          label: "Load Balancing Scheme",
+          key: "timeoutSec",
+          label: "Backend Timeout (s)",
+          kind: "number",
+          required: false,
+          defaultValue: "30",
+          minValue: 1,
+          maxValue: 2_147_483_647,
+          description: "How long the load balancer waits for a backend response.",
+        },
+        {
+          key: "connectionDrainingTimeoutSec",
+          label: "Connection Draining (s)",
+          kind: "number",
+          required: false,
+          defaultValue: "0",
+          minValue: 0,
+          maxValue: 3600,
+          description:
+            "How long to keep existing connections open after a backend is removed from the pool.",
+        },
+        {
+          key: "sessionAffinity",
+          label: "Session Affinity",
           kind: "select",
           required: false,
           options: [
-            { id: "EXTERNAL", label: "External" },
-            { id: "INTERNAL", label: "Internal" },
-            { id: "INTERNAL_SELF_MANAGED", label: "Internal Self-Managed" },
+            { id: "NONE", label: "None" },
+            { id: "CLIENT_IP", label: "Client IP" },
+            { id: "CLIENT_IP_PORT_PROTO", label: "Client IP, port, protocol" },
+            { id: "CLIENT_IP_PROTO", label: "Client IP, protocol" },
+            { id: "GENERATED_COOKIE", label: "Generated cookie (HTTP/S only)" },
+            { id: "HEADER_FIELD", label: "Header field (HTTP/S only)" },
+            { id: "HTTP_COOKIE", label: "HTTP cookie (HTTP/S only)" },
           ],
-          defaultValue: "EXTERNAL",
+          defaultValue: "NONE",
+        },
+        {
+          key: "enableCDN",
+          label: "Enable Cloud CDN",
+          kind: "select",
+          required: false,
+          options: [
+            { id: "false", label: "Disabled" },
+            { id: "true", label: "Enabled (HTTP/S external only)" },
+          ],
+          defaultValue: "false",
+          description: "Only valid for EXTERNAL_MANAGED / EXTERNAL with HTTP, HTTPS, or HTTP/2.",
+        },
+        {
+          key: "healthCheck",
+          label: "Health Check",
+          kind: "resource-picker",
+          required: false,
+          description:
+            "Required for instance-group / zonal NEG backends. Leave empty for Internet NEG or Serverless NEG backends.",
+          associationSources: [
+            { pluginId: "gcp", resourceTypeId: "health-check", outputKey: "selfLink" },
+          ],
         },
       ],
     };
@@ -688,26 +748,57 @@ export const networkingCreateResourceHandlers: Record<
   "backend-service": async (ctx, accountId, fields, parentResourceId) => {
     const p = ctx.project;
     const name = fields["name"] ?? "";
+    const description = fields["description"] ?? "";
     const protocol = fields["protocol"] ?? "HTTP";
-    const healthCheck = fields["healthCheck"] ?? "";
-    const loadBalancingScheme = fields["loadBalancingScheme"] ?? "EXTERNAL";
+    const loadBalancingScheme = fields["loadBalancingScheme"] ?? "EXTERNAL_MANAGED";
+    const healthCheckRaw = (fields["healthCheck"] ?? "").trim();
+    const portName = (fields["portName"] ?? "").trim();
+    const timeoutSec = Number(fields["timeoutSec"] || 30);
+    const drainSec = Number(fields["connectionDrainingTimeoutSec"] || 0);
+    const sessionAffinity = fields["sessionAffinity"] ?? "NONE";
+    const enableCDN = fields["enableCDN"] === "true";
+
+    // Resource picker hands us a selfLink URL. Bare names are wrapped to the
+    // global health check path so the API accepts them.
+    const healthCheckRef = healthCheckRaw
+      ? healthCheckRaw.includes("/")
+        ? healthCheckRaw
+        : `projects/${p}/global/healthChecks/${healthCheckRaw}`
+      : "";
+
+    const body: Record<string, unknown> = {
+      name,
+      protocol,
+      loadBalancingScheme,
+      timeoutSec,
+      sessionAffinity,
+      connectionDraining: { drainingTimeoutSec: drainSec },
+    };
+    if (description) body["description"] = description;
+    if (portName) body["portName"] = portName;
+    if (healthCheckRef) body["healthChecks"] = [healthCheckRef];
+    // enableCDN is only valid for EXTERNAL/EXTERNAL_MANAGED with HTTP-family protocols.
+    if (
+      enableCDN &&
+      (loadBalancingScheme === "EXTERNAL" || loadBalancingScheme === "EXTERNAL_MANAGED") &&
+      (protocol === "HTTP" || protocol === "HTTPS" || protocol === "HTTP2")
+    ) {
+      body["enableCDN"] = true;
+    }
+
     const tok = await ctx.token();
     const res = await fetch(
       `https://compute.googleapis.com/compute/v1/projects/${p}/global/backendServices`,
       {
         method: "POST",
         headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name,
-          protocol,
-          healthChecks: [healthCheck],
-          loadBalancingScheme,
-        }),
+        body: JSON.stringify(body),
       },
     );
     if (!res.ok)
       throw new Error(`Backend Service create failed: ${res.status}: ${await res.text()}`);
     const now = new Date().toISOString();
+    const selfLink = `https://www.googleapis.com/compute/v1/projects/${p}/global/backendServices/${name}`;
     return {
       id: ctx.id(accountId, "backend-service", name),
       pluginId: "gcp",
@@ -716,16 +807,19 @@ export const networkingCreateResourceHandlers: Record<
       displayName: name,
       fields: {
         name,
+        description,
         protocol,
         port: 0,
-        portName: "",
+        portName,
         loadBalancingScheme,
-        healthCheckCount: 1,
+        timeoutSec,
+        connectionDrainingTimeoutSec: drainSec,
+        healthCheckCount: healthCheckRef ? 1 : 0,
         backendCount: 0,
-        enableCDN: false,
-        sessionAffinity: "NONE",
+        enableCDN: body["enableCDN"] === true,
+        sessionAffinity,
       },
-      resolvedOutputs: {},
+      resolvedOutputs: { selfLink },
       secretStates: [],
       externalId: name,
       createdAt: now,

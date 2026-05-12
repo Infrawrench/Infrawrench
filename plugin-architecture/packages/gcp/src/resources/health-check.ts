@@ -14,7 +14,7 @@ export const HealthCheckResourceType: ResourceTypeDefinition = {
     { key: "healthyThreshold", label: "Healthy Threshold", kind: "number", required: false },
     { key: "unhealthyThreshold", label: "Unhealthy Threshold", kind: "number", required: false },
   ],
-  outputs: [],
+  outputs: [{ key: "selfLink", label: "Self Link", sensitive: false }],
   dashboardPinnable: false,
   supportsCreate: true,
 };
