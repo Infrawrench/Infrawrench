@@ -6,15 +6,35 @@ export interface BigQuerySpannerContext {
   get: <T>(url: string) => Promise<T>;
 }
 
+// Canonical BigQuery externalId formats:
+//   bigquery-dataset: "{project}:{datasetId}"
+//   bigquery-table:   "{project}:{datasetId}/{tableId}"
+// Throws on legacy/malformed ids (e.g. slash-only "{project}/{zone}/{name}")
+// instead of silently producing a 404-bound URL.
+export function parseBigQueryDatasetExternalId(resourceId: string): {
+  project: string;
+  datasetId: string;
+} {
+  const externalId = resourceId.split(":").slice(2).join(":");
+  const colonIdx = externalId.indexOf(":");
+  if (colonIdx <= 0) {
+    throw new Error(
+      `BigQuery: malformed resourceId "${resourceId}" — expected externalId in "project:dataset" form, got "${externalId}"`,
+    );
+  }
+  const project = externalId.slice(0, colonIdx);
+  const datasetAndMaybeTable = externalId.slice(colonIdx + 1);
+  const slashIdx = datasetAndMaybeTable.indexOf("/");
+  const datasetId = slashIdx === -1 ? datasetAndMaybeTable : datasetAndMaybeTable.slice(0, slashIdx);
+  return { project, datasetId };
+}
+
 export async function executeBigQueryQuery(
   ctx: BigQuerySpannerContext,
   resourceId: string,
   sql: string,
 ): Promise<{ rows: Record<string, unknown>[]; durationMs: number }> {
-  const externalId = resourceId.split(":").slice(2).join(":");
-  const colonIdx = externalId.indexOf(":");
-  const project = externalId.slice(0, colonIdx);
-  const datasetId = externalId.slice(colonIdx + 1);
+  const { project, datasetId } = parseBigQueryDatasetExternalId(resourceId);
   const tok = await ctx.token();
   const start = Date.now();
 
@@ -75,10 +95,7 @@ export async function introspectBigQueryDataset(
   ctx: BigQuerySpannerContext,
   resourceId: string,
 ): Promise<SqlTableMeta[]> {
-  const externalId = resourceId.split(":").slice(2).join(":");
-  const colonIdx = externalId.indexOf(":");
-  const project = externalId.slice(0, colonIdx);
-  const datasetId = externalId.slice(colonIdx + 1);
+  const { project, datasetId } = parseBigQueryDatasetExternalId(resourceId);
 
   const data = await ctx.get<{ tables?: Array<Record<string, unknown>> }>(
     `https://bigquery.googleapis.com/bigquery/v2/projects/${project}/datasets/${datasetId}/tables?maxResults=200`,

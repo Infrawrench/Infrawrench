@@ -45,6 +45,7 @@ import {
   executeSpannerQuery,
   introspectBigQueryDataset,
   introspectSpannerDatabase,
+  parseBigQueryDatasetExternalId,
 } from "./bigquery-spanner-handlers.js";
 
 import type { GcpCreateContext } from "./create-handlers.js";
@@ -727,10 +728,7 @@ export class GcpClient implements PluginClient {
     _accountId: string,
     sql: string,
   ): Promise<QueryCostEstimate> {
-    const externalId = resourceId.split(":").slice(2).join(":");
-    const colonIdx = externalId.indexOf(":");
-    const project = externalId.slice(0, colonIdx);
-    const datasetId = externalId.slice(colonIdx + 1);
+    const { project, datasetId } = parseBigQueryDatasetExternalId(resourceId);
     const tok = await this.token();
 
     const res = await fetch(
