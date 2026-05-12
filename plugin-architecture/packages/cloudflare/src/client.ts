@@ -1572,7 +1572,8 @@ export class CloudflareClient implements PluginClient {
       if (!res.ok) return [];
       const json = (await res.json()) as GraphResp;
       const zoneGroups = json.data?.viewer?.zones?.[0];
-      groups = (useHourly ? zoneGroups?.httpRequests1hGroups : zoneGroups?.httpRequests1mGroups) ?? [];
+      groups =
+        (useHourly ? zoneGroups?.httpRequests1hGroups : zoneGroups?.httpRequests1mGroups) ?? [];
     } catch {
       return [];
     }

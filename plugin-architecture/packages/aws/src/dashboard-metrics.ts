@@ -121,6 +121,7 @@ export async function fetchMetricSeries(
   resourceTypeId: string,
   timeRange?: { startMs: number; endMs: number },
 ): Promise<MetricSeries[]> {
+  const f = resource.fields;
   const now = Date.now();
   const start = timeRange?.startMs ?? now - 3600_000;
   const end = timeRange?.endMs ?? now;
