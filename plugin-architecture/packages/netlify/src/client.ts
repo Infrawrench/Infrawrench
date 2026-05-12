@@ -96,11 +96,7 @@ class NetlifyAPI {
     zoneId: string;
     body: { type: string; hostname: string; value: string; ttl?: number };
   }): Promise<unknown> {
-    return this.call(
-      "POST",
-      `/dns_zones/${encodeURIComponent(p.zoneId)}/dns_records`,
-      p.body,
-    );
+    return this.call("POST", `/dns_zones/${encodeURIComponent(p.zoneId)}/dns_records`, p.body);
   }
   deleteDnsZone(p: { zoneId: string }): Promise<unknown> {
     return this.call("DELETE", `/dns_zones/${encodeURIComponent(p.zoneId)}`);

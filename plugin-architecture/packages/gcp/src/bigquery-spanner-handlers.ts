@@ -25,7 +25,8 @@ export function parseBigQueryDatasetExternalId(resourceId: string): {
   const project = externalId.slice(0, colonIdx);
   const datasetAndMaybeTable = externalId.slice(colonIdx + 1);
   const slashIdx = datasetAndMaybeTable.indexOf("/");
-  const datasetId = slashIdx === -1 ? datasetAndMaybeTable : datasetAndMaybeTable.slice(0, slashIdx);
+  const datasetId =
+    slashIdx === -1 ? datasetAndMaybeTable : datasetAndMaybeTable.slice(0, slashIdx);
   return { project, datasetId };
 }
 

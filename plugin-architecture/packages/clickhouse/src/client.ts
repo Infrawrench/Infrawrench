@@ -1,7 +1,4 @@
-import {
-  createClient,
-  type ClickHouseClient as ClickHouseSdkClient,
-} from "@clickhouse/client-web";
+import { createClient, type ClickHouseClient as ClickHouseSdkClient } from "@clickhouse/client-web";
 import type {
   PluginClient,
   ResourceInstance,
