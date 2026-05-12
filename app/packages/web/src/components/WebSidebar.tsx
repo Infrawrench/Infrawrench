@@ -228,26 +228,26 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
     }
 
     try {
-      const [existing] = await Promise.all([
-        apiGet<ResourceSummary[]>(`${apiBase}/accounts/${accountId}/resources?topLevelOnly=true`),
-        apiPost(`${apiBase}/accounts/${accountId}/sync`)
-          .then(() =>
-            apiGet<ResourceSummary[]>(
-              `${apiBase}/accounts/${accountId}/resources?topLevelOnly=true`,
-            ),
-          )
-          .then((fresh) => {
-            setAccountResources((prev) => ({
-              ...prev,
-              [accountId]: { loading: false, resources: fresh },
-            }));
-          })
-          .catch((e) => console.error("Background sync failed:", e)),
-      ]);
+      const existing = await apiGet<ResourceSummary[]>(
+        `${apiBase}/accounts/${accountId}/resources?topLevelOnly=true`,
+      );
       setAccountResources((prev) => ({
         ...prev,
         [accountId]: { loading: false, resources: existing },
       }));
+      apiPost(`${apiBase}/accounts/${accountId}/sync`)
+        .then(() =>
+          apiGet<ResourceSummary[]>(
+            `${apiBase}/accounts/${accountId}/resources?topLevelOnly=true`,
+          ),
+        )
+        .then((fresh) => {
+          setAccountResources((prev) => ({
+            ...prev,
+            [accountId]: { loading: false, resources: fresh },
+          }));
+        })
+        .catch((e) => console.error("Background sync failed:", e));
     } catch (e) {
       if (background) return;
       setAccountResources((prev) => ({
