@@ -25,6 +25,18 @@ interface ResourceSummary {
   resourceTypeId: string;
   accountId: string;
   displayName: string;
+  externalId?: string | null;
+  fieldsJson?: unknown;
+}
+
+interface ResourceTypeMeta {
+  id: string;
+  attachTargets?: Array<{
+    pluginId: string;
+    resourceTypeId: string;
+    matchField?: string;
+    verb?: string;
+  }>;
 }
 
 interface PluginGroup {
@@ -52,6 +64,9 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [accountResources, setAccountResources] = useState<
     Record<string, { loading: boolean; resources: ResourceSummary[]; error?: string | undefined }>
+  >({});
+  const [accountTypeMeta, setAccountTypeMeta] = useState<
+    Record<string, Record<string, ResourceTypeMeta>>
   >({});
   const [showAddAccount, setShowAddAccount] = useState(false);
 
@@ -228,9 +243,19 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
     }
 
     try {
-      const existing = await apiGet<ResourceSummary[]>(
-        `${apiBase}/accounts/${accountId}/resources?topLevelOnly=true`,
-      );
+      const detailPromise = background
+        ? Promise.resolve(null)
+        : apiGet<{ resourceTypes: ResourceTypeMeta[] }>(
+            `${apiBase}/accounts/${accountId}/detail`,
+          ).catch(() => null);
+      const [existing, detail] = await Promise.all([
+        apiGet<ResourceSummary[]>(`${apiBase}/accounts/${accountId}/resources?topLevelOnly=true`),
+        detailPromise,
+      ]);
+      if (detail) {
+        const lookup = Object.fromEntries(detail.resourceTypes.map((t) => [t.id, t]));
+        setAccountTypeMeta((prev) => ({ ...prev, [accountId]: lookup }));
+      }
       setAccountResources((prev) => ({
         ...prev,
         [accountId]: { loading: false, resources: existing },
@@ -490,30 +515,39 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                               No resources
                             </div>
                           )}
-                        {resourceState?.resources.map((resource) => (
-                          <DraggableSidebarResource
-                            key={resource.id}
-                            resource={{
-                              id: resource.id,
-                              pluginId: resource.pluginId,
-                              resourceTypeId: resource.resourceTypeId,
-                              accountId: resource.accountId,
-                              displayName: resource.displayName,
-                              fields: {},
-                            }}
-                            onClick={() =>
-                              void navigate({
-                                to: "/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId",
-                                params: {
-                                  orgId: orgId!,
-                                  pluginId: resource.pluginId,
-                                  resourceTypeId: resource.resourceTypeId,
-                                  resourceId: resource.id,
-                                },
-                              })
-                            }
-                          />
-                        ))}
+                        {resourceState?.resources.map((resource) => {
+                          const typeMeta = accountTypeMeta[account.id]?.[resource.resourceTypeId];
+                          return (
+                            <DraggableSidebarResource
+                              key={resource.id}
+                              resource={{
+                                id: resource.id,
+                                pluginId: resource.pluginId,
+                                resourceTypeId: resource.resourceTypeId,
+                                accountId: resource.accountId,
+                                displayName: resource.displayName,
+                                fields: (resource.fieldsJson as Record<string, unknown>) ?? {},
+                                ...(resource.externalId != null
+                                  ? { externalId: resource.externalId }
+                                  : {}),
+                                ...(typeMeta?.attachTargets
+                                  ? { attachTargets: typeMeta.attachTargets }
+                                  : {}),
+                              }}
+                              onClick={() =>
+                                void navigate({
+                                  to: "/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId",
+                                  params: {
+                                    orgId: orgId!,
+                                    pluginId: resource.pluginId,
+                                    resourceTypeId: resource.resourceTypeId,
+                                    resourceId: resource.id,
+                                  },
+                                })
+                              }
+                            />
+                          );
+                        })}
                       </div>
                     )}
                   </div>
