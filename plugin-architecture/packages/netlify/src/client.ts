@@ -1,6 +1,7 @@
 import type {
   PluginClient,
   HostServices,
+  HttpHostServices,
   ResourceInstance,
   DetailViewSchema,
   SidebarItemSchema,
@@ -24,8 +25,17 @@ import {
 class NetlifyAPI {
   private readonly token: string;
   private readonly baseUrl = "https://api.netlify.com/api/v1";
-  constructor(token: string, _opts?: { userAgent?: string }) {
+  private readonly caCert: string;
+  private readonly http: HttpHostServices | undefined;
+  constructor(
+    token: string,
+    _opts?: { userAgent?: string },
+    caCert?: string,
+    http?: HttpHostServices,
+  ) {
     this.token = token;
+    this.caCert = caCert ?? "";
+    this.http = http;
   }
   private call<T>(method: string, path: string, body?: unknown): Promise<T> {
     return jsonRestFetch<T>({
@@ -38,6 +48,7 @@ class NetlifyAPI {
         "User-Agent": "Infrawrench/0.1.0",
       },
       init: { method, ...(body !== undefined ? { body: JSON.stringify(body) } : {}) },
+      ...(this.caCert && this.http ? { caCert: this.caCert, http: this.http } : {}),
     });
   }
   private query(params: Record<string, unknown>): string {
@@ -317,12 +328,21 @@ export class NetlifyClient implements PluginClient {
   // /sites/{site_id}/env[/{key}]) are not part of the SDK's typed methods.
   // We use jsonRestFetch as a narrow escape hatch for those two calls.
   private readonly legacyEnvBaseUrl = "https://api.netlify.com/api/v1";
+  private readonly caCert: string;
+  private readonly services: HostServices | undefined;
 
-  constructor(credentials: Record<string, string>, _services?: HostServices) {
+  constructor(credentials: Record<string, string>, services?: HostServices) {
     const token = credentials["accessToken"];
     if (!token) throw new Error("Netlify plugin: missing accessToken credential");
     this.token = token;
-    this.api = new NetlifyAPI(token, { userAgent: "Infrawrench/0.1.0" });
+    this.caCert = credentials["caCert"] ?? "";
+    this.services = services;
+    this.api = new NetlifyAPI(
+      token,
+      { userAgent: "Infrawrench/0.1.0" },
+      this.caCert,
+      this.services?.http,
+    );
   }
 
   /**
@@ -911,6 +931,9 @@ export class NetlifyClient implements PluginClient {
         "User-Agent": "Infrawrench/0.1.0",
       },
       init,
+      ...(this.caCert && this.services?.http
+        ? { caCert: this.caCert, http: this.services.http }
+        : {}),
     });
   }
 

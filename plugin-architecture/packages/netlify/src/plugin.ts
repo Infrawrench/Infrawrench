@@ -1,4 +1,5 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { NetlifyClient } from "./client.js";
 import { NetlifySiteResourceType } from "./resources/site.js";
 import { NetlifyDeployResourceType } from "./resources/deploy.js";
@@ -30,6 +31,7 @@ const manifest: PluginManifest = {
       sensitive: true,
       placeholder: "nfp_...",
     },
+    caCertCredentialField,
   ],
 };
 
@@ -46,5 +48,5 @@ const resourceTypes: ResourceTypeDefinition[] = [
 export const plugin: Plugin = {
   manifest,
   resourceTypes,
-  createClient: (credentials) => new NetlifyClient(credentials),
+  createClient: (credentials, services) => new NetlifyClient(credentials, services),
 };

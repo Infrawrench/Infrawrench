@@ -74,8 +74,10 @@ export class PlanetScaleClient implements PluginClient {
   private readonly tokenSecret: string;
   private readonly orgName: string;
   private readonly baseUrl = "https://api.planetscale.com/v1";
+  private readonly caCert: string;
+  private readonly services: HostServices | undefined;
 
-  constructor(credentials: Record<string, string>, _services?: HostServices) {
+  constructor(credentials: Record<string, string>, services?: HostServices) {
     const id = credentials["serviceTokenId"];
     if (!id) throw new Error("PlanetScale plugin: missing serviceTokenId credential");
     this.tokenId = id;
@@ -87,6 +89,9 @@ export class PlanetScaleClient implements PluginClient {
     const org = credentials["organizationName"];
     if (!org) throw new Error("PlanetScale plugin: missing organizationName credential");
     this.orgName = org;
+
+    this.caCert = credentials["caCert"] ?? "";
+    this.services = services;
   }
 
   private async fetch<T>(path: string, options?: RequestInit): Promise<T> {
@@ -99,6 +104,9 @@ export class PlanetScaleClient implements PluginClient {
         Accept: "application/json",
       },
       ...(options ? { init: options } : {}),
+      ...(this.caCert && this.services?.http
+        ? { caCert: this.caCert, http: this.services.http }
+        : {}),
     });
   }
 

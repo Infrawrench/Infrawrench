@@ -137,7 +137,7 @@ export {
 } from "./dns.js";
 export type { DnsRecordDetailOptions } from "./dns.js";
 
-export { jsonRestFetch, formatBytes } from "./http.js";
+export { jsonRestFetch, formatBytes, caCertCredentialField } from "./http.js";
 export type { JsonRestFetchOptions } from "./http.js";
 
 export { signedS3Fetch } from "./signed-s3-request.js";

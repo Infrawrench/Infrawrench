@@ -1,4 +1,5 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { FlyClient } from "./client.js";
 import { AppResourceType } from "./resources/app.js";
 import { MachineResourceType } from "./resources/machine.js";
@@ -36,6 +37,7 @@ const manifest: PluginManifest = {
       placeholder: "personal",
       defaultValue: "personal",
     },
+    caCertCredentialField,
   ],
 };
 
@@ -48,5 +50,5 @@ const resourceTypes: ResourceTypeDefinition[] = [
 export const plugin: Plugin = {
   manifest,
   resourceTypes,
-  createClient: (credentials) => new FlyClient(credentials, resourceTypes),
+  createClient: (credentials, services) => new FlyClient(credentials, resourceTypes, services),
 };

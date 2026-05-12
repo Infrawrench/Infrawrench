@@ -1,4 +1,5 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { CloudinaryClient } from "./client.js";
 import { FolderResourceType } from "./resources/folder.js";
 import { MediaAssetResourceType } from "./resources/media-asset.js";
@@ -39,6 +40,7 @@ const manifest: PluginManifest = {
       sensitive: true,
       placeholder: "abcdefghijklmnopqrstuvwxyz",
     },
+    caCertCredentialField,
   ],
 };
 
@@ -52,5 +54,5 @@ const resourceTypes: ResourceTypeDefinition[] = [
 export const plugin: Plugin = {
   manifest,
   resourceTypes,
-  createClient: (credentials) => new CloudinaryClient(credentials),
+  createClient: (credentials, services) => new CloudinaryClient(credentials, services),
 };

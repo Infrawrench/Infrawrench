@@ -1,4 +1,5 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { DigitalOceanClient } from "./client.js";
 import { ProjectResourceType } from "./resources/project.js";
 import { DropletResourceType } from "./resources/droplet.js";
@@ -29,6 +30,7 @@ const manifest: PluginManifest = {
       sensitive: true,
       placeholder: "dop_v1_...",
     },
+    caCertCredentialField,
   ],
   rateLimit: { capacity: 60, refillPerSecond: 4 },
 };
@@ -47,5 +49,6 @@ const resourceTypes: ResourceTypeDefinition[] = [
 export const plugin: Plugin = {
   manifest,
   resourceTypes,
-  createClient: (credentials) => new DigitalOceanClient(credentials, resourceTypes),
+  createClient: (credentials, services) =>
+    new DigitalOceanClient(credentials, resourceTypes, services),
 };

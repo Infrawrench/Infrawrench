@@ -1,4 +1,5 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { VercelClient } from "./client.js";
 import { VercelProjectResourceType } from "./resources/project.js";
 import { VercelDeploymentResourceType } from "./resources/deployment.js";
@@ -33,6 +34,7 @@ const manifest: PluginManifest = {
       sensitive: false,
       placeholder: "team_...",
     },
+    caCertCredentialField,
   ],
 };
 
@@ -47,5 +49,5 @@ const resourceTypes: ResourceTypeDefinition[] = [
 export const plugin: Plugin = {
   manifest,
   resourceTypes,
-  createClient: (credentials) => new VercelClient(credentials),
+  createClient: (credentials, services) => new VercelClient(credentials, services),
 };

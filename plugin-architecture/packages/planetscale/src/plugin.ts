@@ -1,4 +1,5 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { PlanetScaleClient } from "./client.js";
 import { PsDatabaseResourceType } from "./resources/ps-database.js";
 import { PsBranchResourceType } from "./resources/ps-branch.js";
@@ -38,6 +39,7 @@ const manifest: PluginManifest = {
       sensitive: false,
       placeholder: "my-org",
     },
+    caCertCredentialField,
   ],
 };
 

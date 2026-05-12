@@ -14,6 +14,27 @@
  * or custom signing (e.g. OVH's HMAC, AWS SigV4) keep their own helpers.
  */
 
+import type { CredentialField, HttpHostServices } from "./manifest.js";
+
+/**
+ * Optional CA-bundle credential plugins can include in their manifest when
+ * they make HTTPS calls to a configurable vendor endpoint (e.g. self-hosted
+ * Databricks workspace) or sit behind a corporate TLS-intercepting proxy.
+ *
+ * Empty value → falls back to the OS trust store via the global `fetch`.
+ * Non-empty value → request is routed through the Node host's `https` agent
+ * with the supplied PEM as the only trust anchor.
+ */
+export const caCertCredentialField: CredentialField = {
+  key: "caCert",
+  label: "CA Certificate (optional)",
+  description:
+    "PEM-encoded trust anchor for verifying the API endpoint. Use this for self-hosted vendor instances or corporate TLS-intercepting proxies. Leave blank to use the operating system's default trust store.",
+  sensitive: false,
+  multiline: true,
+  placeholder: "-----BEGIN CERTIFICATE-----\n…\n-----END CERTIFICATE-----",
+};
+
 export interface JsonRestFetchOptions {
   /** Vendor name used in the error message, e.g. `"DigitalOcean"`. */
   vendor: string;
@@ -31,6 +52,21 @@ export interface JsonRestFetchOptions {
    * it is merged on top of `headers` (so call-site overrides auth headers).
    */
   init?: RequestInit;
+  /**
+   * PEM-encoded CA certificate(s) to pin against the server's leaf chain.
+   * When set together with `http`, the request is routed through the host
+   * process's `https` agent so the custom trust anchor is honored. Use this
+   * for self-hosted / on-prem vendor endpoints (e.g. private Databricks
+   * workspace) or corporate TLS-intercepting proxies. Empty / missing falls
+   * back to the OS trust store via the global `fetch`.
+   */
+  caCert?: string;
+  /**
+   * Host-provided HTTP service. Required for `caCert` to take effect; the
+   * renderer (browser) cannot install a custom trust anchor on its own and
+   * has to proxy through the Node host.
+   */
+  http?: HttpHostServices;
 }
 
 /**
@@ -41,7 +77,7 @@ export interface JsonRestFetchOptions {
  * - `Content-Type: application/json` is set unless the caller supplied one.
  */
 export async function jsonRestFetch<T>(opts: JsonRestFetchOptions): Promise<T> {
-  const { vendor, url, headers, errorPath, init } = opts;
+  const { vendor, url, headers, errorPath, init, caCert, http } = opts;
   const initHeaders = init?.headers;
   const mergedHeaders: Record<string, string> = {
     "Content-Type": "application/json",
@@ -58,6 +94,24 @@ export async function jsonRestFetch<T>(opts: JsonRestFetchOptions): Promise<T> {
       Object.assign(mergedHeaders, initHeaders);
     }
   }
+
+  if (caCert && http) {
+    const body = init?.body != null ? String(init.body) : undefined;
+    const result = await http.request({
+      url,
+      method: init?.method ?? "GET",
+      headers: mergedHeaders,
+      ...(body !== undefined ? { body } : {}),
+      caCert,
+    });
+    if (result.status < 200 || result.status >= 300) {
+      const label = errorPath ?? url;
+      throw new Error(`${vendor} API error ${result.status} for ${label}: ${result.body}`);
+    }
+    if (result.status === 204 || !result.body) return undefined as unknown as T;
+    return JSON.parse(result.body) as T;
+  }
+
   const res = await fetch(url, { ...init, headers: mergedHeaders });
   if (!res.ok) {
     const label = errorPath ?? url;

@@ -6,6 +6,7 @@ import type {
   CreateResourceConfig,
   SectionNode,
   DashboardStat,
+  HostServices,
 } from "@infrawrench/plugin-base";
 import { jsonRestFetch, formatBytes as sharedFormatBytes } from "@infrawrench/plugin-base";
 
@@ -56,8 +57,10 @@ export class CloudinaryClient implements PluginClient {
   private readonly apiKey: string;
   private readonly apiSecret: string;
   private readonly cloudName: string;
+  private readonly caCert: string;
+  private readonly services: HostServices | undefined;
 
-  constructor(credentials: Record<string, string>) {
+  constructor(credentials: Record<string, string>, services?: HostServices) {
     const cloudName = credentials["cloudName"];
     const apiKey = credentials["apiKey"];
     const apiSecret = credentials["apiSecret"];
@@ -67,6 +70,8 @@ export class CloudinaryClient implements PluginClient {
     this.cloudName = cloudName;
     this.apiKey = apiKey;
     this.apiSecret = apiSecret;
+    this.caCert = credentials["caCert"] ?? "";
+    this.services = services;
   }
 
   private get baseUrl(): string {
@@ -84,6 +89,9 @@ export class CloudinaryClient implements PluginClient {
       errorPath: path,
       headers: { Authorization: this.authHeader },
       ...(options ? { init: options } : {}),
+      ...(this.caCert && this.services?.http
+        ? { caCert: this.caCert, http: this.services.http }
+        : {}),
     });
   }
 

@@ -1,4 +1,5 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { HetznerClient } from "./client.js";
 import { ServerResourceType } from "./resources/server.js";
 import { VolumeResourceType } from "./resources/volume.js";
@@ -26,6 +27,7 @@ const manifest: PluginManifest = {
       sensitive: true,
       placeholder: "",
     },
+    caCertCredentialField,
   ],
 };
 
@@ -39,5 +41,5 @@ const resourceTypes: ResourceTypeDefinition[] = [
 export const plugin: Plugin = {
   manifest,
   resourceTypes,
-  createClient: (credentials) => new HetznerClient(credentials, resourceTypes),
+  createClient: (credentials, services) => new HetznerClient(credentials, resourceTypes, services),
 };

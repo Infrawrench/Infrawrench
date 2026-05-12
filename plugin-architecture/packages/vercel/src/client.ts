@@ -6,6 +6,7 @@ import type {
   CreateResourceConfig,
   ResourceStatus,
   DashboardStat,
+  HostServices,
 } from "@infrawrench/plugin-base";
 import { jsonRestFetch } from "@infrawrench/plugin-base";
 
@@ -139,12 +140,16 @@ export class VercelClient implements PluginClient {
   private readonly accessToken: string;
   private readonly teamId: string | null;
   private readonly baseUrl = "https://api.vercel.com";
+  private readonly caCert: string;
+  private readonly services: HostServices | undefined;
 
-  constructor(credentials: Record<string, string>) {
+  constructor(credentials: Record<string, string>, services?: HostServices) {
     const token = credentials["accessToken"];
     if (!token) throw new Error("Vercel plugin: missing accessToken credential");
     this.accessToken = token;
     this.teamId = credentials["teamId"] || null;
+    this.caCert = credentials["caCert"] ?? "";
+    this.services = services;
   }
 
   /** Append teamId query param if configured */
@@ -162,6 +167,9 @@ export class VercelClient implements PluginClient {
       errorPath: path,
       headers: { Authorization: `Bearer ${this.accessToken}` },
       ...(options ? { init: options } : {}),
+      ...(this.caCert && this.services?.http
+        ? { caCert: this.caCert, http: this.services.http }
+        : {}),
     });
   }
 

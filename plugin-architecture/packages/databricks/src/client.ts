@@ -8,6 +8,7 @@ import type {
   ResourceTypeDefinition,
   DashboardStat,
   CreateResourceConfig,
+  HostServices,
 } from "@infrawrench/plugin-base";
 import { labeledFieldItems, labeledOutputItems } from "@infrawrench/plugin-base";
 import type { ListerContext } from "./resource-listers.js";
@@ -25,8 +26,14 @@ export class DatabricksClient implements PluginClient {
   private readonly host: string;
   private readonly token: string;
   private readonly resourceTypes: ResourceTypeDefinition[];
+  private readonly caCert: string;
+  private readonly services: HostServices | undefined;
 
-  constructor(credentials: Record<string, string>, resourceTypes: ResourceTypeDefinition[] = []) {
+  constructor(
+    credentials: Record<string, string>,
+    resourceTypes: ResourceTypeDefinition[] = [],
+    services?: HostServices,
+  ) {
     this.resourceTypes = resourceTypes;
     let host = credentials["host"] ?? "";
     // Normalize: ensure https:// prefix, strip trailing slash
@@ -40,20 +47,43 @@ export class DatabricksClient implements PluginClient {
     if (!this.token) {
       throw new Error("Databricks plugin: missing personal access token");
     }
+
+    this.caCert = credentials["caCert"] ?? "";
+    this.services = services;
   }
 
   private async api<T>(method: string, path: string, body?: Record<string, unknown>): Promise<T> {
     // Separate path from query string if present
     const url = path.startsWith("http") ? path : `${this.host}${path}`;
-    const init: RequestInit = {
-      method,
-      headers: {
-        Authorization: `Bearer ${this.token}`,
-        "Content-Type": "application/json",
-      },
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${this.token}`,
+      "Content-Type": "application/json",
     };
-    if (body && (method === "POST" || method === "PUT" || method === "PATCH")) {
-      init.body = JSON.stringify(body);
+    const requestBody =
+      body && (method === "POST" || method === "PUT" || method === "PATCH")
+        ? JSON.stringify(body)
+        : undefined;
+
+    // Route through the host's HTTPS agent when a custom CA is configured.
+    // Self-hosted Databricks workspaces commonly sit behind private TLS CAs.
+    if (this.caCert && this.services?.http) {
+      const result = await this.services.http.request({
+        url,
+        method,
+        headers,
+        ...(requestBody !== undefined ? { body: requestBody } : {}),
+        caCert: this.caCert,
+      });
+      if (result.status < 200 || result.status >= 300) {
+        throw new Error(`Databricks ${method} ${path} failed: ${result.status} ${result.body}`);
+      }
+      if (!result.body) return {} as T;
+      return JSON.parse(result.body) as T;
+    }
+
+    const init: RequestInit = { method, headers };
+    if (requestBody !== undefined) {
+      init.body = requestBody;
     }
 
     const res = await fetch(url, init);
