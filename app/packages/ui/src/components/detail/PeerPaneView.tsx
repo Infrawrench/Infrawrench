@@ -240,12 +240,16 @@ export function PeerPaneView({
             key={groupKey}
             className="rounded-2xl border border-border bg-surface-raised/40 overflow-hidden"
           >
-            <div
-              className="flex items-center justify-between gap-3 px-4 py-3 cursor-pointer select-none hover:bg-surface-overlay/30 transition-colors"
-              onClick={() => toggleGroupCollapsed(groupKey)}
-            >
-              <div className="flex items-center gap-2">
+            <div className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-surface-overlay/30 transition-colors">
+              <button
+                type="button"
+                onClick={() => toggleGroupCollapsed(groupKey)}
+                aria-expanded={!isCollapsed}
+                aria-controls={`peer-pane-group-${groupKey}`}
+                className="flex items-center gap-2 flex-1 min-w-0 text-left cursor-pointer select-none"
+              >
                 <span
+                  aria-hidden="true"
                   className={`text-on-surface-muted text-xs transition-transform ${isCollapsed ? "" : "rotate-90"}`}
                 >
                   ▶
@@ -264,7 +268,7 @@ export function PeerPaneView({
                     user
                   </span>
                 )}
-              </div>
+              </button>
               <div className="flex items-center gap-2">
                 {group.supportsCreate && onCreate && (
                   <button
@@ -281,7 +285,7 @@ export function PeerPaneView({
             </div>
 
             {!isCollapsed && itemCount > 0 && (
-              <div className="px-4 pb-3">
+              <div id={`peer-pane-group-${groupKey}`} className="px-4 pb-3">
                 {isNamespaceGroup ? (
                   <NamespaceGrid
                     items={group.items.filter((ns) => namespaces.includes(ns.displayName))}
@@ -326,7 +330,7 @@ export function PeerPaneView({
             )}
 
             {!isCollapsed && itemCount === 0 && (
-              <div className="px-4 pb-3">
+              <div id={`peer-pane-group-${groupKey}`} className="px-4 pb-3">
                 <p className="text-sm text-on-surface-muted">No resources found.</p>
               </div>
             )}
@@ -423,6 +427,8 @@ function NamespaceGrid({
             {ns.displayName}
             {ns.status && (
               <span
+                role="img"
+                aria-label={`Status: ${ns.status}`}
                 className={`ml-1.5 inline-block w-1.5 h-1.5 rounded-full ${statusClassName(ns.status)}`}
               />
             )}
@@ -535,8 +541,9 @@ function PeerResourcePill({
           </span>
           {resource.status && (
             <span
+              role="img"
+              aria-label={`Status: ${resource.status}`}
               className={`w-2 h-2 rounded-full flex-shrink-0 ${statusClassName(resource.status)}`}
-              aria-hidden
             />
           )}
         </div>
@@ -559,8 +566,9 @@ function PeerResourcePill({
           }}
           className="ml-1 h-6 px-2 rounded-full bg-surface-overlay hover:bg-surface-sunken text-xs text-on-surface-secondary transition-colors whitespace-nowrap"
           title="Exec shell"
+          aria-label={`Exec shell into ${resource.displayName}`}
         >
-          ⌨
+          <span aria-hidden="true">⌨</span>
         </button>
       )}
       {onPortForward && !activePortForward && (

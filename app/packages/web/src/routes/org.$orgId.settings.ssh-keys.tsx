@@ -72,13 +72,27 @@ function SshKeysPage() {
           <table className="w-full">
             <thead>
               <tr className="border-b border-border text-xs text-on-surface-muted">
-                <th className="text-left px-4 py-2 font-medium">Name</th>
-                <th className="text-left px-4 py-2 font-medium">Type</th>
-                <th className="text-left px-4 py-2 font-medium">Fingerprint</th>
-                <th className="text-left px-4 py-2 font-medium">Source</th>
-                <th className="text-left px-4 py-2 font-medium">Owner</th>
-                <th className="text-left px-4 py-2 font-medium">Added</th>
-                <th className="text-right px-4 py-2 font-medium">Actions</th>
+                <th scope="col" className="text-left px-4 py-2 font-medium">
+                  Name
+                </th>
+                <th scope="col" className="text-left px-4 py-2 font-medium">
+                  Type
+                </th>
+                <th scope="col" className="text-left px-4 py-2 font-medium">
+                  Fingerprint
+                </th>
+                <th scope="col" className="text-left px-4 py-2 font-medium">
+                  Source
+                </th>
+                <th scope="col" className="text-left px-4 py-2 font-medium">
+                  Owner
+                </th>
+                <th scope="col" className="text-left px-4 py-2 font-medium">
+                  Added
+                </th>
+                <th scope="col" className="text-right px-4 py-2 font-medium">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -224,6 +238,7 @@ function GenerateKeyModal({
           <h2 className="text-sm font-semibold text-on-surface-secondary">Generate SSH Key</h2>
           <button
             onClick={onClose}
+            aria-label="Close"
             className="text-on-surface-faint hover:text-on-surface-tertiary text-lg"
           >
             &#215;
@@ -296,6 +311,7 @@ function ImportKeyModal({ onClose, onImported }: { onClose: () => void; onImport
           <h2 className="text-sm font-semibold text-on-surface-secondary">Import SSH Key</h2>
           <button
             onClick={onClose}
+            aria-label="Close"
             className="text-on-surface-faint hover:text-on-surface-tertiary text-lg"
           >
             &#215;

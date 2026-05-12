@@ -84,6 +84,7 @@ export function SidebarDashboards() {
         <button
           onClick={() => setAddingNew(true)}
           title="New dashboard"
+          aria-label="Create new dashboard"
           className="text-on-surface-faint hover:text-on-surface-secondary text-sm leading-none w-5 h-5 flex items-center justify-center rounded hover:bg-surface-overlay transition-colors"
         >
           +

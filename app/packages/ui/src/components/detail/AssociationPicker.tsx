@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useRef, useState, type KeyboardEvent } from "react";
 import type { ProviderResource, RerollSelection } from "./detail-types.js";
 import { Modal } from "../Modal.js";
 import { camelToTitle } from "@infrawrench/plugin-base";
@@ -26,6 +26,32 @@ export function AssociationPicker({
   const [mode, setMode] = useState<"provider" | "literal">("provider");
   const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null);
   const [literalValue, setLiteralValue] = useState("");
+
+  const baseId = useId();
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const tabOrder: Array<"provider" | "literal"> = ["provider", "literal"];
+  const tabId = (m: "provider" | "literal") => `${baseId}-tab-${m}`;
+  const panelId = (m: "provider" | "literal") => `${baseId}-panel-${m}`;
+
+  const onTabKeyDown = (e: KeyboardEvent<HTMLButtonElement>) => {
+    const currentIndex = tabOrder.indexOf(mode);
+    let nextIndex = currentIndex;
+    if (e.key === "ArrowRight") {
+      nextIndex = (currentIndex + 1) % tabOrder.length;
+    } else if (e.key === "ArrowLeft") {
+      nextIndex = (currentIndex - 1 + tabOrder.length) % tabOrder.length;
+    } else if (e.key === "Home") {
+      nextIndex = 0;
+    } else if (e.key === "End") {
+      nextIndex = tabOrder.length - 1;
+    } else {
+      return;
+    }
+    e.preventDefault();
+    const nextMode = tabOrder[nextIndex]!;
+    setMode(nextMode);
+    tabRefs.current[nextIndex]?.focus();
+  };
 
   const handleConfirm = () => {
     if (mode === "literal") {
@@ -65,9 +91,24 @@ export function AssociationPicker({
         </div>
 
         {/* Mode tabs */}
-        <div className="flex border-b border-border">
+        <div
+          role="tablist"
+          aria-label="Reroll source"
+          aria-orientation="horizontal"
+          className="flex border-b border-border"
+        >
           <button
+            ref={(el) => {
+              tabRefs.current[0] = el;
+            }}
+            type="button"
+            role="tab"
+            id={tabId("provider")}
+            aria-selected={mode === "provider"}
+            aria-controls={panelId("provider")}
+            tabIndex={mode === "provider" ? 0 : -1}
             onClick={() => setMode("provider")}
+            onKeyDown={onTabKeyDown}
             className={`flex-1 py-2.5 text-sm transition-colors ${
               mode === "provider"
                 ? "text-accent border-b-2 border-blue-400"
@@ -77,7 +118,17 @@ export function AssociationPicker({
             From resource
           </button>
           <button
+            ref={(el) => {
+              tabRefs.current[1] = el;
+            }}
+            type="button"
+            role="tab"
+            id={tabId("literal")}
+            aria-selected={mode === "literal"}
+            aria-controls={panelId("literal")}
+            tabIndex={mode === "literal" ? 0 : -1}
             onClick={() => setMode("literal")}
+            onKeyDown={onTabKeyDown}
             className={`flex-1 py-2.5 text-sm transition-colors ${
               mode === "literal"
                 ? "text-accent border-b-2 border-blue-400"
@@ -91,7 +142,13 @@ export function AssociationPicker({
         {/* Content */}
         <div className="p-4">
           {mode === "provider" && (
-            <div className="space-y-2">
+            <div
+              role="tabpanel"
+              id={panelId("provider")}
+              aria-labelledby={tabId("provider")}
+              tabIndex={0}
+              className="space-y-2"
+            >
               {providerResources.length === 0 ? (
                 <p className="text-sm text-on-surface-faint text-center py-4">
                   No compatible resources found.
@@ -130,12 +187,14 @@ export function AssociationPicker({
           )}
 
           {mode === "literal" && (
-            <textarea
-              value={literalValue}
-              onChange={(e) => setLiteralValue(e.target.value)}
-              placeholder={`Paste ${fieldKey} value...`}
-              className="w-full h-40 bg-surface-overlay border border-border-strong rounded-lg p-3 text-sm font-mono text-on-surface-secondary placeholder:text-on-surface-faint resize-none focus:outline-none focus:border-blue-500"
-            />
+            <div role="tabpanel" id={panelId("literal")} aria-labelledby={tabId("literal")}>
+              <textarea
+                value={literalValue}
+                onChange={(e) => setLiteralValue(e.target.value)}
+                placeholder={`Paste ${fieldKey} value...`}
+                className="w-full h-40 bg-surface-overlay border border-border-strong rounded-lg p-3 text-sm font-mono text-on-surface-secondary placeholder:text-on-surface-faint resize-none focus:outline-none focus:border-blue-500"
+              />
+            </div>
           )}
         </div>
 

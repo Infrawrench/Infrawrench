@@ -35,7 +35,11 @@ export function SelectPicker({
           <span className="text-xs text-accent truncate max-w-48">{selected.label}</span>
         )}
       </div>
-      <div className="max-h-56 overflow-y-auto p-3 bg-surface-raised/30">
+      <div
+        className="max-h-56 overflow-y-auto p-3 bg-surface-raised/30"
+        role="listbox"
+        aria-label="Options"
+      >
         <div className="grid grid-cols-2 gap-2">
           {filtered.map((opt) => {
             const showSecondary = opt.label !== opt.id;
@@ -43,6 +47,8 @@ export function SelectPicker({
               <button
                 key={opt.id}
                 type="button"
+                role="option"
+                aria-selected={value === opt.id}
                 onClick={() => onChange(opt.id)}
                 className={`text-left px-3 py-2.5 rounded-lg border transition-all min-w-0 ${
                   value === opt.id

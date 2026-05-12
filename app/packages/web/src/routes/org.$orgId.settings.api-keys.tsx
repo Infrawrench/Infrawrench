@@ -80,12 +80,24 @@ function ApiKeysPage() {
           <table className="w-full">
             <thead>
               <tr className="border-b border-border text-xs text-on-surface-muted">
-                <th className="text-left px-4 py-2 font-medium">Name</th>
-                <th className="text-left px-4 py-2 font-medium">Key</th>
-                <th className="text-left px-4 py-2 font-medium">Scopes</th>
-                <th className="text-left px-4 py-2 font-medium">Last used</th>
-                <th className="text-left px-4 py-2 font-medium">Status</th>
-                <th className="text-right px-4 py-2 font-medium">Actions</th>
+                <th scope="col" className="text-left px-4 py-2 font-medium">
+                  Name
+                </th>
+                <th scope="col" className="text-left px-4 py-2 font-medium">
+                  Key
+                </th>
+                <th scope="col" className="text-left px-4 py-2 font-medium">
+                  Scopes
+                </th>
+                <th scope="col" className="text-left px-4 py-2 font-medium">
+                  Last used
+                </th>
+                <th scope="col" className="text-left px-4 py-2 font-medium">
+                  Status
+                </th>
+                <th scope="col" className="text-right px-4 py-2 font-medium">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -217,6 +229,7 @@ function CreateApiKeyModal({
           <h2 className="text-sm font-semibold text-on-surface-secondary">Create API Key</h2>
           <button
             onClick={onClose}
+            aria-label="Close"
             className="text-on-surface-faint hover:text-on-surface-tertiary text-lg"
           >
             &#215;
@@ -224,12 +237,16 @@ function CreateApiKeyModal({
         </div>
         <div className="p-5 space-y-4">
           <div>
-            <label className="block text-xs text-on-surface-tertiary mb-1">Name</label>
+            <label htmlFor="api-key-name" className="block text-xs text-on-surface-tertiary mb-1">
+              Name
+            </label>
             <input
+              id="api-key-name"
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="My desktop key"
+              {...(error ? { "aria-describedby": "api-key-name-error" } : {})}
               className="w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-border-strong"
             />
           </div>
@@ -259,7 +276,11 @@ function CreateApiKeyModal({
               ))}
             </div>
           </div>
-          {error && <p className="text-xs text-red-400">{error}</p>}
+          {error && (
+            <p id="api-key-name-error" role="alert" className="text-xs text-red-400">
+              {error}
+            </p>
+          )}
           <button
             onClick={() => void handleCreate()}
             disabled={saving}

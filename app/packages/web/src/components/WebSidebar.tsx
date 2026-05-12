@@ -237,9 +237,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
       }));
       apiPost(`${apiBase}/accounts/${accountId}/sync`)
         .then(() =>
-          apiGet<ResourceSummary[]>(
-            `${apiBase}/accounts/${accountId}/resources?topLevelOnly=true`,
-          ),
+          apiGet<ResourceSummary[]>(`${apiBase}/accounts/${accountId}/resources?topLevelOnly=true`),
         )
         .then((fresh) => {
           setAccountResources((prev) => ({
@@ -428,6 +426,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                 <div
                   className="w-4 h-4 flex-shrink-0"
                   dangerouslySetInnerHTML={{ __html: group.logoSvg }}
+                  aria-hidden="true"
                 />
                 <span className="text-xs font-medium text-on-surface-muted uppercase tracking-wide">
                   {group.displayName}
@@ -445,9 +444,13 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                     <div className="flex items-center w-full px-4 py-1.5 text-sm transition-colors group text-on-surface-secondary hover:bg-surface-overlay hover:text-on-surface">
                       <button
                         onClick={() => void toggleExpand(account.id)}
+                        aria-expanded={isExpanded}
+                        aria-controls={`web-sidebar-account-${account.id}`}
+                        aria-label={isExpanded ? "Collapse account" : "Expand account"}
                         className="w-4 h-4 flex items-center justify-center flex-shrink-0 text-on-surface-faint hover:text-on-surface-tertiary transition-colors mr-1"
                       >
                         <span
+                          aria-hidden="true"
                           className="inline-block transition-transform text-xs"
                           style={{ transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)" }}
                         >
@@ -470,7 +473,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
 
                     {/* Expanded resources */}
                     {isExpanded && (
-                      <div className="pl-8 pb-1">
+                      <div id={`web-sidebar-account-${account.id}`} className="pl-8 pb-1">
                         {resourceState?.loading && (
                           <div className="px-3 py-1 text-xs text-on-surface-faint">Loading...</div>
                         )}

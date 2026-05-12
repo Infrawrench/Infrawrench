@@ -103,6 +103,7 @@ export function AccountDetailView({
         {pluginLogoSvg && (
           <div
             className="w-8 h-8 flex-shrink-0"
+            aria-hidden="true"
             dangerouslySetInnerHTML={{ __html: pluginLogoSvg }}
           />
         )}

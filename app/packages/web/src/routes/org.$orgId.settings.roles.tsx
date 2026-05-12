@@ -1,5 +1,6 @@
 import { createFileRoute, useParams } from "@tanstack/react-router";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Modal } from "@infrawrench/ui";
 import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
 import { usePermissions } from "@/auth/permissions-context";
 
@@ -229,13 +230,17 @@ function RoleEditor({ role, orgId, groups, onClose, onSaved, onError }: RoleEdit
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="bg-surface w-full max-w-3xl max-h-[90vh] overflow-auto rounded-xl border border-border p-6">
+    <Modal onClose={onClose}>
+      <div className="bg-surface w-[min(48rem,92vw)] max-h-[90vh] overflow-auto rounded-xl border border-border p-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-base font-semibold">
             {role ? `Edit role: ${role.name}` : "New role"}
           </h2>
-          <button onClick={onClose} className="text-on-surface-tertiary hover:text-on-surface">
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="text-on-surface-tertiary hover:text-on-surface"
+          >
             Close
           </button>
         </div>
@@ -342,6 +347,6 @@ function RoleEditor({ role, orgId, groups, onClose, onSaved, onError }: RoleEdit
           </div>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { deriveSSHUsername, formatErrorMessage, toast } from "@infrawrench/ui";
+import { deriveSSHUsername, formatErrorMessage, toast, SshKeyRadioGroup } from "@infrawrench/ui";
 import { apiGet } from "@/lib/api";
 import type { SshKey } from "@/lib/api-types";
 import { useOrgId } from "@/lib/useOrgId";
@@ -88,31 +88,25 @@ export function SshQuickConnectPanel({
                 No SSH keys found. Go to Settings to create one.
               </p>
             ) : (
-              keys.map((k) => (
-                <div
-                  key={k.id}
-                  onClick={() => {
-                    setSelectedKeyId(k.id);
-                    if (!defaultUsername && k.ownerName) {
-                      const derivedUsername = deriveSSHUsername(k.ownerName);
-                      setUsername((prev) =>
-                        prev === "root" || prev === derivedUsername ? derivedUsername : prev,
-                      );
-                    }
-                  }}
-                  className={`group flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer transition-colors ${
-                    selectedKeyId === k.id
-                      ? "bg-accent-muted border border-accent-muted-border text-accent-on-muted"
-                      : "hover:bg-surface-overlay border border-transparent text-on-surface-tertiary"
-                  }`}
-                >
-                  <span className="text-xs shrink-0">
-                    {selectedKeyId === k.id ? "\u25c9" : "\u25cb"}
-                  </span>
-                  <span className="text-xs font-mono flex-1 truncate">{k.name}</span>
-                  <span className="text-xs text-on-surface-faint">{k.ownerName}</span>
-                </div>
-              ))
+              <SshKeyRadioGroup
+                ariaLabel="SSH Key"
+                selectedId={selectedKeyId}
+                onChange={(id) => {
+                  setSelectedKeyId(id);
+                  const k = keys.find((x) => x.id === id);
+                  if (!defaultUsername && k?.ownerName) {
+                    const derivedUsername = deriveSSHUsername(k.ownerName);
+                    setUsername((prev) =>
+                      prev === "root" || prev === derivedUsername ? derivedUsername : prev,
+                    );
+                  }
+                }}
+                keys={keys.map((k) => ({
+                  id: k.id,
+                  label: k.name,
+                  meta: k.ownerName,
+                }))}
+              />
             )}
           </div>
         </div>

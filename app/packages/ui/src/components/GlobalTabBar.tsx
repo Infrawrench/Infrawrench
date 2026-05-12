@@ -1,3 +1,4 @@
+import { useId, useRef, type KeyboardEvent } from "react";
 import type { WorkspaceTab } from "../store/ui.store.js";
 
 export interface GlobalTabBarProps {
@@ -27,11 +28,42 @@ export function GlobalTabBar({
   rootRef,
   showEmptyHint = false,
 }: GlobalTabBarProps) {
+  const baseId = useId();
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
   if (!showEmptyHint && tabs.length === 0) return null;
+
+  const focusTab = (index: number) => {
+    const target = tabRefs.current[index];
+    if (target) {
+      target.focus();
+      const id = tabs[index]?.id;
+      if (id) onActivate(id);
+    }
+  };
+
+  const onTabKeyDown = (e: KeyboardEvent<HTMLButtonElement>, index: number) => {
+    if (e.key === "ArrowRight") {
+      e.preventDefault();
+      focusTab((index + 1) % tabs.length);
+    } else if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      focusTab((index - 1 + tabs.length) % tabs.length);
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      focusTab(0);
+    } else if (e.key === "End") {
+      e.preventDefault();
+      focusTab(tabs.length - 1);
+    }
+  };
 
   return (
     <div
       ref={rootRef}
+      role="tablist"
+      aria-label="Workspace tabs"
+      aria-orientation="horizontal"
       className={`h-9 shrink-0 border-b border-border bg-surface flex items-end gap-0 overflow-x-auto overflow-y-hidden ${className ?? ""}`}
       style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
     >
@@ -40,7 +72,7 @@ export function GlobalTabBar({
           Drag dashboards, accounts, or resources here to pin tabs
         </div>
       ) : (
-        tabs.map((tab) => {
+        tabs.map((tab, index) => {
           const item = (
             <TabBarItem
               key={tab.id}
@@ -48,6 +80,13 @@ export function GlobalTabBar({
               active={tab.id === activeTabId}
               onActivate={onActivate}
               onClose={onClose}
+              tabId={`${baseId}-tab-${tab.id}`}
+              panelId={`${baseId}-panel-${tab.id}`}
+              tabIndex={tab.id === activeTabId ? 0 : -1}
+              onKeyDown={(e) => onTabKeyDown(e, index)}
+              buttonRef={(el) => {
+                tabRefs.current[index] = el;
+              }}
             />
           );
           return renderTabWrapper ? renderTabWrapper(tab, item) : item;
@@ -70,30 +109,55 @@ function TabBarItem({
   active,
   onActivate,
   onClose,
+  tabId,
+  panelId,
+  tabIndex,
+  onKeyDown,
+  buttonRef,
 }: {
   tab: WorkspaceTab;
   active: boolean;
   onActivate: (tabId: string) => void;
   onClose: (tabId: string) => void;
+  tabId: string;
+  panelId: string;
+  tabIndex: number;
+  onKeyDown: (e: KeyboardEvent<HTMLButtonElement>) => void;
+  buttonRef: (el: HTMLButtonElement | null) => void;
 }) {
+  // Outer container preserves drag wrapper hooks; the inner button carries
+  // tab semantics so screen-reader and keyboard semantics are correct.
   return (
     <div
-      className={`group relative min-w-0 max-w-52 flex items-center gap-1.5 px-3 h-8 rounded-t-md transition-colors cursor-pointer select-none ${
+      role="presentation"
+      className={`group relative min-w-0 max-w-52 flex items-center gap-1.5 rounded-t-md transition-colors select-none ${
         active
           ? "bg-surface-overlay text-on-surface border border-b-0 border-border-strong"
           : "bg-transparent text-on-surface-muted border border-transparent hover:text-on-surface-secondary hover:bg-surface-overlay/50"
       }`}
-      onClick={() => onActivate(tab.id)}
     >
       {active && <span className="absolute bottom-0 left-0 right-0 h-px bg-surface-overlay" />}
-      <span className="truncate text-xs font-medium">{tab.title}</span>
+      <button
+        ref={buttonRef}
+        type="button"
+        role="tab"
+        id={tabId}
+        aria-selected={active}
+        aria-controls={panelId}
+        tabIndex={tabIndex}
+        onClick={() => onActivate(tab.id)}
+        onKeyDown={onKeyDown}
+        className="flex-1 min-w-0 flex items-center pl-3 pr-1 h-8 cursor-pointer bg-transparent text-left"
+      >
+        <span className="truncate text-xs font-medium">{tab.title}</span>
+      </button>
       <button
         onClick={(e) => {
           e.stopPropagation();
           onClose(tab.id);
         }}
-        className="shrink-0 w-3.5 h-3.5 flex items-center justify-center rounded text-on-surface-faint hover:text-on-surface-secondary hover:bg-surface-sunken transition-colors opacity-0 group-hover:opacity-100"
-        aria-label={`Close ${tab.title}`}
+        className="shrink-0 mr-2 w-3.5 h-3.5 flex items-center justify-center rounded text-on-surface-faint hover:text-on-surface-secondary hover:bg-surface-sunken transition-colors opacity-0 group-hover:opacity-100"
+        aria-label={`Close tab ${tab.title}`}
         title={`Close ${tab.title}`}
       >
         &times;

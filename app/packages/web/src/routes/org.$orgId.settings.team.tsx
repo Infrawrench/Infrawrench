@@ -159,10 +159,18 @@ function TeamPage() {
           <table className="w-full">
             <thead>
               <tr className="border-b border-border text-xs text-on-surface-muted">
-                <th className="text-left px-4 py-2 font-medium">Name</th>
-                <th className="text-left px-4 py-2 font-medium">Email</th>
-                <th className="text-left px-4 py-2 font-medium">Role</th>
-                <th className="text-right px-4 py-2 font-medium">Actions</th>
+                <th scope="col" className="text-left px-4 py-2 font-medium">
+                  Name
+                </th>
+                <th scope="col" className="text-left px-4 py-2 font-medium">
+                  Email
+                </th>
+                <th scope="col" className="text-left px-4 py-2 font-medium">
+                  Role
+                </th>
+                <th scope="col" className="text-right px-4 py-2 font-medium">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -226,10 +234,18 @@ function TeamPage() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-border text-xs text-on-surface-muted">
-                  <th className="text-left px-4 py-2 font-medium">Email</th>
-                  <th className="text-left px-4 py-2 font-medium">Role</th>
-                  <th className="text-left px-4 py-2 font-medium">Expires</th>
-                  <th className="text-right px-4 py-2 font-medium">Actions</th>
+                  <th scope="col" className="text-left px-4 py-2 font-medium">
+                    Email
+                  </th>
+                  <th scope="col" className="text-left px-4 py-2 font-medium">
+                    Role
+                  </th>
+                  <th scope="col" className="text-left px-4 py-2 font-medium">
+                    Expires
+                  </th>
+                  <th scope="col" className="text-right px-4 py-2 font-medium">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody>

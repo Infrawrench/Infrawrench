@@ -8,6 +8,7 @@ import {
   dispatchResourcesChanged,
   buildChildResourceGroups,
   useUIStore,
+  Modal,
   PeerPaneView,
   NAVIGATE_TO_RESOURCE_EVENT,
   formatErrorMessage,
@@ -933,13 +934,10 @@ export function ResourceDetailClient({
       )}
 
       {consoleOpen && consoleToken && parentResourceId && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
-          onClick={(event) => {
-            if (event.target === event.currentTarget) {
-              setConsoleOpen(false);
-              setConsoleToken(null);
-            }
+        <Modal
+          onClose={() => {
+            setConsoleOpen(false);
+            setConsoleToken(null);
           }}
         >
           <div className="w-[min(1100px,92vw)] h-[min(720px,82vh)] overflow-hidden rounded-2xl border border-border-strong bg-surface shadow-2xl flex flex-col">
@@ -953,6 +951,7 @@ export function ResourceDetailClient({
                   setConsoleOpen(false);
                   setConsoleToken(null);
                 }}
+                aria-label="Close"
                 className="text-on-surface-muted hover:text-on-surface-secondary text-xl leading-none"
               >
                 ×
@@ -973,7 +972,7 @@ export function ResourceDetailClient({
               />
             </div>
           </div>
-        </div>
+        </Modal>
       )}
 
       {peerCreateTarget && (
@@ -993,18 +992,14 @@ export function ResourceDetailClient({
       )}
 
       {k9sPane && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
-          onClick={(event) => {
-            if (event.target === event.currentTarget) setK9sPane(null);
-          }}
-        >
+        <Modal onClose={() => setK9sPane(null)}>
           <div className="w-[min(1100px,92vw)] h-[min(720px,82vh)] overflow-hidden rounded-2xl border border-border-strong bg-surface shadow-2xl flex flex-col">
             <div className="flex items-center justify-between border-b border-border px-4 py-3">
               <h2 className="text-sm font-semibold text-on-surface">k9s — {resourceDisplayName}</h2>
               <button
                 type="button"
                 onClick={() => setK9sPane(null)}
+                aria-label="Close"
                 className="text-on-surface-muted hover:text-on-surface-secondary text-xl leading-none"
               >
                 ×
@@ -1019,7 +1014,7 @@ export function ResourceDetailClient({
               />
             </div>
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   );

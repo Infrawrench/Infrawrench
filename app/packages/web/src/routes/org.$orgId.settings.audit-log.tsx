@@ -78,7 +78,11 @@ function AuditLogPage() {
       <h1 className="text-xl font-semibold mb-6">Audit Log</h1>
 
       <div className="flex gap-3 mb-4">
+        <label htmlFor="audit-entity-filter" className="sr-only">
+          Filter by type
+        </label>
         <select
+          id="audit-entity-filter"
           value={entityTypeFilter}
           onChange={(e) => {
             setEntityTypeFilter(e.target.value);
@@ -99,10 +103,18 @@ function AuditLogPage() {
         <table className="w-full">
           <thead>
             <tr className="border-b border-border text-xs text-on-surface-muted">
-              <th className="text-left px-4 py-2 font-medium">Time</th>
-              <th className="text-left px-4 py-2 font-medium">User</th>
-              <th className="text-left px-4 py-2 font-medium">Action</th>
-              <th className="text-left px-4 py-2 font-medium">Entity</th>
+              <th scope="col" className="text-left px-4 py-2 font-medium">
+                Time
+              </th>
+              <th scope="col" className="text-left px-4 py-2 font-medium">
+                User
+              </th>
+              <th scope="col" className="text-left px-4 py-2 font-medium">
+                Action
+              </th>
+              <th scope="col" className="text-left px-4 py-2 font-medium">
+                Entity
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -147,16 +159,22 @@ function AuditLogPage() {
             <button
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1}
+              aria-label="Previous page"
               className="px-3 py-1 text-sm border border-border-strong rounded-lg text-on-surface-tertiary hover:text-on-surface-secondary disabled:opacity-30"
             >
               Previous
             </button>
-            <span className="px-3 py-1 text-sm text-on-surface-tertiary">
+            <span
+              aria-current="page"
+              aria-label={`Page ${page} of ${totalPages}`}
+              className="px-3 py-1 text-sm text-on-surface-tertiary"
+            >
               {page} / {totalPages}
             </span>
             <button
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page >= totalPages}
+              aria-label="Next page"
               className="px-3 py-1 text-sm border border-border-strong rounded-lg text-on-surface-tertiary hover:text-on-surface-secondary disabled:opacity-30"
             >
               Next

@@ -205,6 +205,7 @@ export function CredentialExportModal({
                           {f.sensitive && (
                             <button
                               onClick={() => toggleReveal(i)}
+                              aria-label={`${revealed.has(i) ? "Hide" : "Reveal"} credential for ${f.label}`}
                               className="text-[10px] uppercase tracking-wide text-on-surface-faint hover:text-on-surface-secondary px-2 py-1 rounded hover:bg-surface-overlay flex-shrink-0"
                             >
                               {revealed.has(i) ? "Hide" : "Reveal"}
@@ -212,6 +213,7 @@ export function CredentialExportModal({
                           )}
                           <button
                             onClick={() => copy(f.value, i)}
+                            aria-label={`Copy ${f.label}`}
                             className="text-[10px] uppercase tracking-wide text-on-surface-faint hover:text-on-surface-secondary px-2 py-1 rounded hover:bg-surface-overlay flex-shrink-0"
                           >
                             {copied === i ? "Copied" : "Copy"}

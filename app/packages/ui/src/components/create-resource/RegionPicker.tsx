@@ -42,11 +42,13 @@ export function RegionPicker({
           </span>
         )}
       </div>
-      <div className="max-h-44 overflow-y-auto">
+      <div className="max-h-44 overflow-y-auto" role="listbox" aria-label="Regions">
         {filtered.map((r) => (
           <button
             key={r.id}
             type="button"
+            role="option"
+            aria-selected={value === r.id}
             onClick={() => onChange(r.id)}
             className={`w-full text-left px-3 py-2.5 transition-colors flex items-center gap-3 ${
               value === r.id ? "bg-accent-muted" : "hover:bg-surface-overlay"

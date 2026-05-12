@@ -43,10 +43,13 @@ export function ResourcePicker({
             className="w-full bg-transparent text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none"
           />
         </div>
-        <div className="max-h-52 overflow-y-auto">
+        <div className="max-h-52 overflow-y-auto" role="listbox" aria-label="Resources">
           {filtered.map((r) => (
             <button
               key={r.id}
+              type="button"
+              role="option"
+              aria-selected={selectedResource?.id === r.id}
               onClick={() => onChange(r.outputValue)}
               className={`w-full text-left px-3 py-2.5 text-sm transition-colors flex items-center gap-3 ${
                 selectedResource?.id === r.id

@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { deriveSSHUsername, useUIStore } from "@infrawrench/ui";
+import { useState, useEffect, useId } from "react";
+import { deriveSSHUsername, useUIStore, SshKeyRadioItem } from "@infrawrench/ui";
 import { invoke } from "../lib/invoke";
 import { getDb } from "../db/client";
 import { PAGEANT_SENTINEL } from "../lib/ssh-agent";
@@ -25,6 +25,7 @@ export function SshKeyPicker({
   const [pageantAvailable, setPageantAvailable] = useState(false);
   const [selectedKey, setSelectedKey] = useState<KeySource | null>(null);
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
+  const radioGroupName = useId();
 
   const [showAddKey, setShowAddKey] = useState(false);
   const [newKeyName, setNewKeyName] = useState("");
@@ -189,6 +190,8 @@ export function SshKeyPicker({
                 <div className="space-y-0.5">
                   <p className="text-xs text-on-surface-faint px-1 pb-0.5">Windows SSH Agent</p>
                   <KeyRow
+                    groupName={radioGroupName}
+                    value="pageant"
                     label="Pageant"
                     sublabel="running — "
                     selected={selectedKey?.type === "pageant"}
@@ -202,6 +205,8 @@ export function SshKeyPicker({
                   {systemKeys.map((k) => (
                     <KeyRow
                       key={k.name}
+                      groupName={radioGroupName}
+                      value={`system:${k.name}`}
                       label={k.name}
                       sublabel="~/.ssh/"
                       selected={selectedKey?.type === "system" && selectedKey.name === k.name}
@@ -216,6 +221,8 @@ export function SshKeyPicker({
                   {appKeys.map((k) => (
                     <KeyRow
                       key={k.id}
+                      groupName={radioGroupName}
+                      value={`app:${k.id}`}
                       label={k.name}
                       selected={selectedKey?.type === "app" && selectedKey.id === k.id}
                       onSelect={() => void selectKey({ type: "app", id: k.id, name: k.name })}
@@ -230,6 +237,8 @@ export function SshKeyPicker({
                   {cloudKeys.map((k) => (
                     <KeyRow
                       key={k.id}
+                      groupName={radioGroupName}
+                      value={`cloud:${k.id}`}
                       label={k.name}
                       sublabel="cloud/"
                       selected={selectedKey?.type === "cloud" && selectedKey.sshKeyId === k.id}
@@ -297,12 +306,16 @@ export function SshKeyPicker({
 }
 
 function KeyRow({
+  groupName,
+  value,
   label,
   sublabel,
   selected,
   onSelect,
   onDelete,
 }: {
+  groupName: string;
+  value: string;
   label: string;
   sublabel?: string;
   selected: boolean;
@@ -310,31 +323,28 @@ function KeyRow({
   onDelete?: () => void;
 }) {
   return (
-    <div
-      onClick={onSelect}
-      className={`group flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer transition-colors ${
-        selected
-          ? "bg-accent-muted border border-accent-muted-border text-accent-on-muted"
-          : "hover:bg-surface-overlay border border-transparent text-on-surface-tertiary"
-      }`}
-    >
-      <span className="text-xs shrink-0">{selected ? "◉" : "○"}</span>
-      <span className="text-xs font-mono flex-1 truncate">
-        {sublabel && <span className="text-on-surface-faint">{sublabel}</span>}
-        {label}
-      </span>
-      {onDelete && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete();
-          }}
-          className="opacity-0 group-hover:opacity-100 text-on-surface-faint hover:text-red-400 text-xs px-1 transition-all"
-          title="Remove key"
-        >
-          ✕
-        </button>
-      )}
-    </div>
+    <SshKeyRadioItem
+      name={groupName}
+      value={value}
+      label={label}
+      {...(sublabel !== undefined ? { sublabel } : {})}
+      selected={selected}
+      onSelect={onSelect}
+      trailing={
+        onDelete ? (
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onDelete();
+            }}
+            className="opacity-0 group-hover:opacity-100 text-on-surface-faint hover:text-red-400 text-xs px-1 transition-all"
+            title="Remove key"
+          >
+            ✕
+          </button>
+        ) : undefined
+      }
+    />
   );
 }

@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { formatErrorMessage } from "../utils.js";
 import { ErrorNotice } from "./ErrorNotice.js";
+import { Modal } from "./Modal.js";
 
 export interface ImportYamlModalProps {
   title?: string;
@@ -42,10 +43,9 @@ export function ImportYamlModal({ title, onClose, onSubmit, onApplied }: ImportY
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
-      onClick={(event) => {
-        if (event.target === event.currentTarget && !busy) onClose();
+    <Modal
+      onClose={() => {
+        if (!busy) onClose();
       }}
     >
       <div className="w-[min(900px,92vw)] h-[min(700px,85vh)] overflow-hidden rounded-2xl border border-border-strong bg-surface shadow-2xl flex flex-col">
@@ -55,6 +55,7 @@ export function ImportYamlModal({ title, onClose, onSubmit, onApplied }: ImportY
             type="button"
             onClick={onClose}
             disabled={busy}
+            aria-label="Close"
             className="text-on-surface-muted hover:text-on-surface-secondary disabled:opacity-50 text-xl leading-none"
           >
             ×
@@ -120,6 +121,6 @@ export function ImportYamlModal({ title, onClose, onSubmit, onApplied }: ImportY
           </button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

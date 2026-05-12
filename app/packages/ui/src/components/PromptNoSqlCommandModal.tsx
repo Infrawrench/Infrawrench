@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { CreateFieldConfig } from "@infrawrench/plugin-base";
 import { FieldRenderer, type ResourcePickerCallbacks } from "./create-resource/FieldRenderer.js";
 import { buildDefaultFields, evaluateShowWhen } from "../utils.js";
+import { Modal } from "./Modal.js";
 
 export interface PromptNoSqlCommandModalProps {
   title: string;
@@ -54,14 +55,6 @@ export function PromptNoSqlCommandModal({
     first?.select?.();
   }, []);
 
-  useEffect(() => {
-    function handler(e: KeyboardEvent) {
-      if (e.key === "Escape") onCancel();
-    }
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [onCancel]);
-
   // Fields that render in the form. Hidden fields still participate in the
   // submit payload — they're typically context values (resource name to
   // delete, etc.) pre-filled by the plugin.
@@ -101,16 +94,12 @@ export function PromptNoSqlCommandModal({
     : "px-3 py-1.5 rounded bg-blue-600 text-xs text-white hover:bg-blue-500 transition-colors disabled:opacity-50";
 
   return (
-    <div
-      className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4"
-      onClick={onCancel}
-    >
+    <Modal onClose={onCancel}>
       <div
         ref={cardRef}
         className={`bg-surface border border-border-strong rounded-lg shadow-xl flex flex-col ${
           splitPane ? "w-[1100px] h-[80vh]" : "max-w-xl w-full max-h-[90vh]"
         }`}
-        onClick={(e) => e.stopPropagation()}
       >
         <div
           className={`px-5 py-4 flex-shrink-0 ${visibleFields.length > 0 ? "border-b border-border/60" : ""}`}
@@ -180,6 +169,6 @@ export function PromptNoSqlCommandModal({
           </button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

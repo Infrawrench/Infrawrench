@@ -58,6 +58,7 @@ export function CreateResourceModal({
             <button
               onClick={onClose}
               className="text-on-surface-faint hover:text-on-surface-secondary text-xl leading-none"
+              aria-label="Close"
             >
               &times;
             </button>
@@ -69,7 +70,10 @@ export function CreateResourceModal({
             <div className="w-[440px] flex-shrink-0 overflow-y-auto px-6 py-5 border-r border-border">
               {form.loadingConfig ? (
                 <div className="flex items-center gap-3 text-sm text-on-surface-muted py-8 justify-center">
-                  <span className="animate-spin inline-block w-4 h-4 rounded-full border-2 border-border-strong border-t-gray-300" />
+                  <span
+                    aria-hidden="true"
+                    className="animate-spin inline-block w-4 h-4 rounded-full border-2 border-border-strong border-t-gray-300"
+                  />
                   Fetching available options...
                 </div>
               ) : form.configError ? (

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import type {
   DetailViewSchema,
   LogsFetchParams,
@@ -184,6 +184,44 @@ export function DetailView({
     setActiveTab("overview");
   }, [resourceId]);
 
+  const baseTabId = useId();
+  const tabIdFor = (key: Tab) => `${baseTabId}-tab-${key}`;
+  const panelIdFor = (key: Tab) => `${baseTabId}-panel-${key}`;
+
+  // Ordered list of tab keys (matches the visible tab strip).
+  const tabKeys: Tab[] = ["overview"];
+  if (hasSqlEditor) tabKeys.push("sql");
+  if (hasManifestEditor) tabKeys.push("manifest");
+  if (hasDescribe) tabKeys.push("describe");
+  if (hasLogs) tabKeys.push("logs");
+  if (hasMetrics) tabKeys.push("metrics");
+  if (hasArtifacts) tabKeys.push("artifacts");
+  if (hasSecretVersions) tabKeys.push("secret-versions");
+  if (hasNoSqlBrowser) tabKeys.push("nosql-browser");
+  for (const tab of customTabs) tabKeys.push(`custom:${tab.id}` as Tab);
+  for (let i = 0; i < peerPanes.length; i++) tabKeys.push(`peer:${i}` as Tab);
+
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
+  const onTabKeyDown = (e: KeyboardEvent<HTMLButtonElement>, index: number) => {
+    let next = index;
+    if (e.key === "ArrowRight") next = (index + 1) % tabKeys.length;
+    else if (e.key === "ArrowLeft") next = (index - 1 + tabKeys.length) % tabKeys.length;
+    else if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = tabKeys.length - 1;
+    else return;
+    e.preventDefault();
+    const nextKey = tabKeys[next];
+    if (!nextKey) return;
+    setActiveTab(nextKey);
+    if (nextKey.startsWith("peer:")) {
+      const i = Number(nextKey.slice("peer:".length));
+      const pane = peerPanes[i];
+      if (pane?.loading) onPeerPaneOpen?.(pane, i);
+    }
+    tabRefs.current[next]?.focus();
+  };
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Header — title row + (separate) tab row, so the tab strip always
@@ -228,92 +266,137 @@ export function DetailView({
         {/* Tab bar — its own full-width row so the right-side actions never
             squeeze it (which would jitter widths between tabs). */}
         {hasTabs && (
-          <div className="flex gap-0 px-6 -mb-px overflow-x-auto">
-            <TabButton
-              active={activeTab === "overview"}
-              onClick={() => setActiveTab("overview")}
-              logoSvg={pluginLogoSvg}
-            >
-              Overview
-            </TabButton>
-            {hasSqlEditor && (
-              <TabButton active={activeTab === "sql"} onClick={() => setActiveTab("sql")}>
-                SQL Editor
-              </TabButton>
-            )}
-            {hasManifestEditor && (
-              <TabButton active={activeTab === "manifest"} onClick={() => setActiveTab("manifest")}>
-                Manifest
-              </TabButton>
-            )}
-            {hasDescribe && (
-              <TabButton active={activeTab === "describe"} onClick={() => setActiveTab("describe")}>
-                Describe
-              </TabButton>
-            )}
-            {hasLogs && (
-              <TabButton active={activeTab === "logs"} onClick={() => setActiveTab("logs")}>
-                Logs
-              </TabButton>
-            )}
-            {hasMetrics && (
-              <TabButton active={activeTab === "metrics"} onClick={() => setActiveTab("metrics")}>
-                Metrics
-              </TabButton>
-            )}
-            {hasArtifacts && (
-              <TabButton
-                active={activeTab === "artifacts"}
-                onClick={() => setActiveTab("artifacts")}
-              >
-                Artifacts
-              </TabButton>
-            )}
-            {hasSecretVersions && (
-              <TabButton
-                active={activeTab === "secret-versions"}
-                onClick={() => setActiveTab("secret-versions")}
-              >
-                Versions
-              </TabButton>
-            )}
-            {hasNoSqlBrowser && (
-              <TabButton
-                active={activeTab === "nosql-browser"}
-                onClick={() => setActiveTab("nosql-browser")}
-              >
-                Documents
-              </TabButton>
-            )}
-            {customTabs.map((tab) => (
-              <TabButton
-                key={tab.id}
-                active={activeTab === `custom:${tab.id}`}
-                onClick={() => setActiveTab(`custom:${tab.id}`)}
-              >
-                {tab.label}
-              </TabButton>
-            ))}
-            {peerPanes.map((pane, i) => (
-              <TabButton
-                key={i}
-                active={activeTab === `peer:${i}`}
-                onClick={() => {
-                  setActiveTab(`peer:${i}`);
-                  if (pane.loading) onPeerPaneOpen?.(pane, i);
-                }}
-                logoSvg={pane.pluginLogoSvg}
-              >
-                {pane.tabLabel}
-              </TabButton>
-            ))}
+          <div
+            role="tablist"
+            aria-label="Resource sections"
+            aria-orientation="horizontal"
+            className="flex gap-0 px-6 -mb-px overflow-x-auto"
+          >
+            {tabKeys.map((key, index) => {
+              const tabProps = {
+                active: activeTab === key,
+                tabId: tabIdFor(key),
+                panelId: panelIdFor(key),
+                onKeyDown: (e: KeyboardEvent<HTMLButtonElement>) => onTabKeyDown(e, index),
+                buttonRef: (el: HTMLButtonElement | null) => {
+                  tabRefs.current[index] = el;
+                },
+              };
+              if (key === "overview") {
+                return (
+                  <TabButton
+                    key={key}
+                    {...tabProps}
+                    onClick={() => setActiveTab("overview")}
+                    logoSvg={pluginLogoSvg}
+                  >
+                    Overview
+                  </TabButton>
+                );
+              }
+              if (key === "sql") {
+                return (
+                  <TabButton key={key} {...tabProps} onClick={() => setActiveTab("sql")}>
+                    SQL Editor
+                  </TabButton>
+                );
+              }
+              if (key === "manifest") {
+                return (
+                  <TabButton key={key} {...tabProps} onClick={() => setActiveTab("manifest")}>
+                    Manifest
+                  </TabButton>
+                );
+              }
+              if (key === "describe") {
+                return (
+                  <TabButton key={key} {...tabProps} onClick={() => setActiveTab("describe")}>
+                    Describe
+                  </TabButton>
+                );
+              }
+              if (key === "logs") {
+                return (
+                  <TabButton key={key} {...tabProps} onClick={() => setActiveTab("logs")}>
+                    Logs
+                  </TabButton>
+                );
+              }
+              if (key === "metrics") {
+                return (
+                  <TabButton key={key} {...tabProps} onClick={() => setActiveTab("metrics")}>
+                    Metrics
+                  </TabButton>
+                );
+              }
+              if (key === "artifacts") {
+                return (
+                  <TabButton key={key} {...tabProps} onClick={() => setActiveTab("artifacts")}>
+                    Artifacts
+                  </TabButton>
+                );
+              }
+              if (key === "secret-versions") {
+                return (
+                  <TabButton
+                    key={key}
+                    {...tabProps}
+                    onClick={() => setActiveTab("secret-versions")}
+                  >
+                    Versions
+                  </TabButton>
+                );
+              }
+              if (key === "nosql-browser") {
+                return (
+                  <TabButton key={key} {...tabProps} onClick={() => setActiveTab("nosql-browser")}>
+                    Documents
+                  </TabButton>
+                );
+              }
+              if (key.startsWith("custom:")) {
+                const customId = key.slice("custom:".length);
+                const tab = customTabs.find((t) => t.id === customId);
+                if (!tab) return null;
+                return (
+                  <TabButton key={key} {...tabProps} onClick={() => setActiveTab(key)}>
+                    {tab.label}
+                  </TabButton>
+                );
+              }
+              if (key.startsWith("peer:")) {
+                const i = Number(key.slice("peer:".length));
+                const pane = peerPanes[i];
+                if (!pane) return null;
+                return (
+                  <TabButton
+                    key={key}
+                    {...tabProps}
+                    onClick={() => {
+                      setActiveTab(key);
+                      if (pane.loading) onPeerPaneOpen?.(pane, i);
+                    }}
+                    logoSvg={pane.pluginLogoSvg}
+                  >
+                    {pane.tabLabel}
+                  </TabButton>
+                );
+              }
+              return null;
+            })}
           </div>
         )}
       </div>
 
       {/* Body */}
       {activeTab === "overview" && (
-        <div className="flex-1 overflow-auto p-6 space-y-6">
+        <div
+          role="tabpanel"
+          id={panelIdFor("overview")}
+          aria-labelledby={tabIdFor("overview")}
+          tabIndex={0}
+          className="flex-1 overflow-auto p-6 space-y-6"
+        >
           {schema.sections.map((section, i) => (
             <SchemaRenderer key={i} node={section} resourceId={resourceId} />
           ))}
@@ -452,7 +535,12 @@ export function DetailView({
       )}
 
       {hasSqlEditor && activeTab === "sql" && (
-        <div className="flex-1 overflow-hidden">
+        <div
+          role="tabpanel"
+          id={panelIdFor("sql")}
+          aria-labelledby={tabIdFor("sql")}
+          className="flex-1 overflow-hidden"
+        >
           <SqlEditorView
             tables={schema.sqlEditor!.tables ?? []}
             defaultQuery={schema.sqlEditor!.defaultQuery ?? "SELECT 1;"}
@@ -466,7 +554,12 @@ export function DetailView({
       )}
 
       {hasManifestEditor && activeTab === "manifest" && (
-        <div className="flex-1 overflow-hidden">
+        <div
+          role="tabpanel"
+          id={panelIdFor("manifest")}
+          aria-labelledby={tabIdFor("manifest")}
+          className="flex-1 overflow-hidden"
+        >
           <ManifestEditorView
             capability={schema.manifestEditor!}
             onGetManifest={onGetManifest!}
@@ -476,19 +569,35 @@ export function DetailView({
       )}
 
       {hasDescribe && activeTab === "describe" && (
-        <div className="flex-1 overflow-hidden">
+        <div
+          role="tabpanel"
+          id={panelIdFor("describe")}
+          aria-labelledby={tabIdFor("describe")}
+          className="flex-1 overflow-hidden"
+        >
           <DescribeView capability={schema.describe!} onGetDescribe={onGetDescribe!} />
         </div>
       )}
 
       {hasLogs && activeTab === "logs" && (
-        <div className="flex-1 overflow-hidden">
+        <div
+          role="tabpanel"
+          id={panelIdFor("logs")}
+          aria-labelledby={tabIdFor("logs")}
+          className="flex-1 overflow-hidden"
+        >
           <LogsView capability={schema.logs!} onGetLogs={onGetLogs!} />
         </div>
       )}
 
       {hasMetrics && activeTab === "metrics" && (
-        <div className="flex-1 overflow-auto p-6 space-y-6">
+        <div
+          role="tabpanel"
+          id={panelIdFor("metrics")}
+          aria-labelledby={tabIdFor("metrics")}
+          tabIndex={0}
+          className="flex-1 overflow-auto p-6 space-y-6"
+        >
           {metricSeries!.map((series, i) => (
             <MetricChart
               key={i}
@@ -506,7 +615,12 @@ export function DetailView({
       )}
 
       {hasArtifacts && activeTab === "artifacts" && (
-        <div className="flex-1 overflow-hidden">
+        <div
+          role="tabpanel"
+          id={panelIdFor("artifacts")}
+          aria-labelledby={tabIdFor("artifacts")}
+          className="flex-1 overflow-hidden"
+        >
           <ArtifactRegistryView
             capability={schema.artifactRegistry!}
             onListArtifacts={onListArtifacts!}
@@ -515,7 +629,12 @@ export function DetailView({
       )}
 
       {hasSecretVersions && activeTab === "secret-versions" && (
-        <div className="flex-1 overflow-hidden">
+        <div
+          role="tabpanel"
+          id={panelIdFor("secret-versions")}
+          aria-labelledby={tabIdFor("secret-versions")}
+          className="flex-1 overflow-hidden"
+        >
           <SecretVersionsView
             capability={schema.secretVersions!}
             onList={onListSecretVersions!}
@@ -527,12 +646,26 @@ export function DetailView({
       )}
 
       {hasNoSqlBrowser && activeTab === "nosql-browser" && (
-        <div className="flex-1 flex flex-col overflow-hidden">{renderNoSqlBrowser!()}</div>
+        <div
+          role="tabpanel"
+          id={panelIdFor("nosql-browser")}
+          aria-labelledby={tabIdFor("nosql-browser")}
+          className="flex-1 flex flex-col overflow-hidden"
+        >
+          {renderNoSqlBrowser!()}
+        </div>
       )}
 
       {customTabs.map((tab) =>
         activeTab === `custom:${tab.id}` ? (
-          <div key={tab.id} className="flex-1 overflow-auto p-6 space-y-6">
+          <div
+            key={tab.id}
+            role="tabpanel"
+            id={panelIdFor(`custom:${tab.id}` as Tab)}
+            aria-labelledby={tabIdFor(`custom:${tab.id}` as Tab)}
+            tabIndex={0}
+            className="flex-1 overflow-auto p-6 space-y-6"
+          >
             {tab.sections?.map((section, i) => (
               <SchemaRenderer key={i} node={section} resourceId={resourceId} />
             ))}
@@ -596,7 +729,14 @@ export function DetailView({
 
       {peerPanes.map((pane, i) =>
         activeTab === `peer:${i}` ? (
-          <div key={i} className="flex-1 overflow-auto p-6 space-y-6">
+          <div
+            key={i}
+            role="tabpanel"
+            id={panelIdFor(`peer:${i}` as Tab)}
+            aria-labelledby={tabIdFor(`peer:${i}` as Tab)}
+            tabIndex={0}
+            className="flex-1 overflow-auto p-6 space-y-6"
+          >
             {pane.loading ? (
               <div className="flex items-center justify-center py-16 text-on-surface-muted text-sm animate-pulse">
                 Loading {pane.tabLabel.toLowerCase()}…
@@ -720,16 +860,31 @@ function TabButton({
   onClick,
   logoSvg,
   children,
+  tabId,
+  panelId,
+  onKeyDown,
+  buttonRef,
 }: {
   active: boolean;
   onClick: () => void;
   logoSvg?: string;
   children: React.ReactNode;
+  tabId: string;
+  panelId: string;
+  onKeyDown: (e: KeyboardEvent<HTMLButtonElement>) => void;
+  buttonRef: (el: HTMLButtonElement | null) => void;
 }) {
   return (
     <button
+      ref={buttonRef}
       type="button"
+      role="tab"
+      id={tabId}
+      aria-selected={active}
+      aria-controls={panelId}
+      tabIndex={active ? 0 : -1}
       onClick={onClick}
+      onKeyDown={onKeyDown}
       className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap shrink-0 ${
         active
           ? "border-blue-500 text-white"
@@ -740,7 +895,7 @@ function TabButton({
         <span
           className="w-3.5 h-3.5 flex-shrink-0 inline-flex"
           dangerouslySetInnerHTML={{ __html: logoSvg }}
-          aria-hidden
+          aria-hidden="true"
         />
       )}
       {children}

@@ -1,5 +1,6 @@
 import { createFileRoute, useParams } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
+import { Modal } from "@infrawrench/ui";
 import { apiGet, apiDelete } from "@/lib/api";
 
 export const Route = createFileRoute("/org/$orgId/settings/ssh-host-keys")({
@@ -81,11 +82,21 @@ function SshHostKeysPage() {
           <table className="w-full">
             <thead>
               <tr className="border-b border-border text-xs text-on-surface-muted">
-                <th className="text-left px-4 py-2 font-medium">Host</th>
-                <th className="text-left px-4 py-2 font-medium">Port</th>
-                <th className="text-left px-4 py-2 font-medium">Fingerprint</th>
-                <th className="text-left px-4 py-2 font-medium">Trusted</th>
-                <th className="text-right px-4 py-2 font-medium">Actions</th>
+                <th scope="col" className="text-left px-4 py-2 font-medium">
+                  Host
+                </th>
+                <th scope="col" className="text-left px-4 py-2 font-medium">
+                  Port
+                </th>
+                <th scope="col" className="text-left px-4 py-2 font-medium">
+                  Fingerprint
+                </th>
+                <th scope="col" className="text-left px-4 py-2 font-medium">
+                  Trusted
+                </th>
+                <th scope="col" className="text-right px-4 py-2 font-medium">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -153,14 +164,12 @@ function RevokePinConfirm({
   onConfirm: () => void;
 }) {
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-      onClick={submitting ? undefined : onCancel}
+    <Modal
+      onClose={() => {
+        if (!submitting) onCancel();
+      }}
     >
-      <div
-        className="bg-surface-raised border border-border-strong rounded-xl w-full max-w-md shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <div className="bg-surface-raised border border-border-strong rounded-xl w-[min(28rem,92vw)] shadow-2xl">
         <div className="px-5 py-4 border-b border-border">
           <h2 className="text-sm font-semibold text-on-surface-secondary">Revoke trusted host</h2>
         </div>
@@ -198,6 +207,6 @@ function RevokePinConfirm({
           </div>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

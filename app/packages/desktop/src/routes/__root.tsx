@@ -360,6 +360,12 @@ function RootLayout() {
       onTabDrop={handleTabDrop}
     >
       <div className="flex flex-col h-screen bg-surface text-on-surface select-none">
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-[100] focus:px-3 focus:py-1.5 focus:rounded focus:bg-surface-overlay focus:text-on-surface focus:border focus:border-border-strong focus:shadow-lg"
+        >
+          Skip to content
+        </a>
         {/* macOS drag region — children must opt out individually. */}
         <div
           className="h-8 flex-shrink-0 border-b border-border/50 flex items-center"
@@ -474,7 +480,7 @@ function RootLayout() {
             </button>
           )}
 
-          <main className="flex-1 overflow-hidden">
+          <main id="main-content" className="flex-1 overflow-hidden">
             <Outlet />
           </main>
 

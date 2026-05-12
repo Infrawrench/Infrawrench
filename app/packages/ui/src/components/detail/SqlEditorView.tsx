@@ -296,10 +296,13 @@ export function SqlEditorView({
                   <div className="flex items-center group">
                     <button
                       onClick={() => toggleTableExpand(table.name)}
+                      aria-expanded={expanded}
+                      aria-label={`${expanded ? "Collapse" : "Expand"} ${table.name} columns`}
                       className="w-4 h-6 flex items-center justify-center text-on-surface-faint hover:text-on-surface-tertiary shrink-0"
                     >
                       {table.columns.length > 0 && (
                         <svg
+                          aria-hidden="true"
                           className={`w-2.5 h-2.5 transition-transform ${expanded ? "rotate-90" : ""}`}
                           viewBox="0 0 6 10"
                           fill="none"
@@ -328,6 +331,7 @@ export function SqlEditorView({
                             <span
                               className="text-yellow-500 text-xs leading-none"
                               title="Primary key"
+                              aria-label="Primary key"
                             >
                               ⚿
                             </span>
@@ -543,12 +547,24 @@ export function SqlEditorView({
                               </td>
                             );
                           }
+                          const editable = canEdit && !isPk;
                           return (
                             <td
                               key={col}
                               className={`px-3 py-1.5 font-mono whitespace-nowrap max-w-xs overflow-hidden text-ellipsis ${isPk ? "text-yellow-600 dark:text-yellow-300/80" : "text-on-surface-secondary"}`}
                               title={val === null ? "NULL" : String(val)}
-                              onDoubleClick={canEdit && !isPk ? () => startEdit(i, row) : undefined}
+                              onDoubleClick={editable ? () => startEdit(i, row) : undefined}
+                              tabIndex={editable ? 0 : undefined}
+                              onKeyDown={
+                                editable
+                                  ? (e) => {
+                                      if (e.key === "Enter" || e.key === " ") {
+                                        e.preventDefault();
+                                        startEdit(i, row);
+                                      }
+                                    }
+                                  : undefined
+                              }
                             >
                               {val === null ? (
                                 <span className="text-on-surface-faint not-italic">NULL</span>

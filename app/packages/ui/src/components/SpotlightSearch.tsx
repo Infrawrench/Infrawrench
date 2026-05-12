@@ -161,7 +161,9 @@ export function SpotlightSearch({
       >
         {/* Search input */}
         <div className="flex items-center gap-3 px-4 py-3 border-b border-border">
-          <span className="text-on-surface-muted text-base flex-shrink-0">&#8981;</span>
+          <span aria-hidden="true" className="text-on-surface-muted text-base flex-shrink-0">
+            &#8981;
+          </span>
           <input
             ref={inputRef}
             value={query}
@@ -173,6 +175,14 @@ export function SpotlightSearch({
                 : mode === "drop"
                   ? "Search resources to connect\u2026"
                   : "Search resources to add\u2026"
+            }
+            aria-label="Search"
+            role="combobox"
+            aria-expanded={results.length > 0}
+            aria-controls="spotlight-results"
+            aria-autocomplete="list"
+            aria-activedescendant={
+              results[selectedIndex] ? `spotlight-option-${selectedIndex}` : undefined
             }
             className="flex-1 bg-transparent text-on-surface placeholder:text-on-surface-faint text-sm focus:outline-none"
           />
@@ -188,7 +198,7 @@ export function SpotlightSearch({
         </div>
 
         {/* Results */}
-        <div ref={listRef} className="overflow-y-auto flex-1">
+        <div ref={listRef} id="spotlight-results" role="listbox" className="overflow-y-auto flex-1">
           {results.length === 0 && !loading ? (
             <div className="flex items-center justify-center py-12 text-sm text-on-surface-faint">
               {query ? `No results for \u201c${query}\u201d` : "No resources found"}
@@ -204,6 +214,7 @@ export function SpotlightSearch({
                     {first.pluginLogoSvg ? (
                       <div
                         className="w-3.5 h-3.5 flex-shrink-0"
+                        aria-hidden="true"
                         dangerouslySetInnerHTML={{ __html: first.pluginLogoSvg }}
                       />
                     ) : null}
@@ -221,6 +232,9 @@ export function SpotlightSearch({
                     return (
                       <div
                         key={result.id}
+                        id={`spotlight-option-${globalIdx}`}
+                        role="option"
+                        aria-selected={isSelected}
                         data-idx={globalIdx}
                         onClick={() => handleSelect(result)}
                         onMouseEnter={() => setSelectedIndex(globalIdx)}

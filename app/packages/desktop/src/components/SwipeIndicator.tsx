@@ -50,6 +50,7 @@ function EdgePill({
 
   return (
     <div
+      aria-hidden="true"
       className="pointer-events-none fixed inset-y-0 z-50 flex items-center"
       style={{
         [side]: 0,
@@ -75,6 +76,7 @@ function EdgePill({
           height={14}
           viewBox="0 0 14 14"
           fill="none"
+          aria-hidden="true"
           className="text-white"
           style={{
             opacity: triggered ? 1 : 0.8,

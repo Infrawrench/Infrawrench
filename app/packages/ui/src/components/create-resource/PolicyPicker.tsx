@@ -175,15 +175,16 @@ function PolicyRow({
   onToggle: () => void;
 }) {
   return (
-    <button
-      onClick={onToggle}
-      className={`w-full text-left px-3 py-2 text-sm transition-colors flex items-start gap-2 border-b border-border-strong/20 ${
+    <label
+      className={`w-full text-left px-3 py-2 text-sm transition-colors flex items-start gap-2 border-b border-border-strong/20 cursor-pointer ${
         selected
           ? "bg-accent-muted text-accent-on-muted"
           : "text-on-surface-secondary hover:bg-surface-overlay"
       }`}
     >
+      <input type="checkbox" checked={selected} onChange={onToggle} className="sr-only" />
       <span
+        aria-hidden="true"
         className={`mt-0.5 w-3.5 h-3.5 rounded border flex-shrink-0 flex items-center justify-center ${
           selected ? "border-blue-400 bg-blue-500" : "border-border-strong bg-surface-sunken"
         }`}
@@ -211,6 +212,6 @@ function PolicyRow({
           </span>
         )}
       </span>
-    </button>
+    </label>
   );
 }

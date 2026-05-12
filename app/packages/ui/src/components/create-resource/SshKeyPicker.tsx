@@ -213,33 +213,37 @@ export function SshKeyPicker({
                   const selected = value === k.publicKey;
                   const isOwn = currentUserId ? k.userId === currentUserId : true;
                   return (
-                    <div
-                      key={k.id}
-                      onClick={() => onChange(k.publicKey)}
-                      className={`group w-full text-left px-3 py-2.5 text-sm transition-colors flex items-center gap-3 cursor-pointer ${
-                        selected
-                          ? "bg-accent-muted text-accent-on-muted"
-                          : "text-on-surface-secondary hover:bg-surface-overlay"
-                      }`}
-                    >
-                      <span
-                        className={`w-2 h-2 rounded-full flex-shrink-0 ${selected ? "bg-blue-400" : "bg-surface-sunken"}`}
-                      />
-                      <span className="flex-1 min-w-0">
-                        <span className="font-medium block text-xs">{k.name}</span>
-                        <span className="text-[11px] text-on-surface-faint">
-                          {k.keyType && <>{k.keyType} · </>}
-                          {k.ownerName ?? k.ownerEmail ?? "you"}
+                    <div key={k.id} className="group relative flex items-stretch">
+                      <button
+                        type="button"
+                        onClick={() => onChange(k.publicKey)}
+                        className={`w-full text-left px-3 py-2.5 text-sm transition-colors flex items-center gap-3 cursor-pointer ${
+                          selected
+                            ? "bg-accent-muted text-accent-on-muted"
+                            : "text-on-surface-secondary hover:bg-surface-overlay"
+                        }`}
+                      >
+                        <span
+                          className={`w-2 h-2 rounded-full flex-shrink-0 ${selected ? "bg-blue-400" : "bg-surface-sunken"}`}
+                        />
+                        <span className="flex-1 min-w-0">
+                          <span className="font-medium block text-xs">{k.name}</span>
+                          <span className="text-[11px] text-on-surface-faint">
+                            {k.keyType && <>{k.keyType} · </>}
+                            {k.ownerName ?? k.ownerEmail ?? "you"}
+                          </span>
                         </span>
-                      </span>
+                      </button>
                       {isOwn && (
                         <button
+                          type="button"
                           onClick={(e) => {
                             e.stopPropagation();
                             void handleDelete(k.id);
                           }}
-                          className="opacity-0 group-hover:opacity-100 text-on-surface-faint hover:text-red-400 text-xs px-1 transition-all flex-shrink-0"
+                          className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 text-on-surface-faint hover:text-red-400 text-xs px-1 transition-all flex-shrink-0"
                           title="Remove key"
+                          aria-label={`Remove SSH key ${k.name}`}
                         >
                           ✕
                         </button>

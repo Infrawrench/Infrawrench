@@ -23,6 +23,9 @@ export function SidebarItem({ item, pluginId, resourceTypeId, depth = 0 }: Sideb
           selectResource(pluginId, resourceTypeId, item.id);
           if (hasChildren) setExpanded((e) => !e);
         }}
+        {...(hasChildren
+          ? { "aria-expanded": expanded, "aria-controls": `sidebar-children-${item.id}` }
+          : {})}
         className={`w-full flex items-center gap-2 px-3 py-1.5 text-sm rounded transition-colors text-left
           ${isSelected ? "bg-surface-overlay text-on-surface" : "text-on-surface-tertiary hover:text-on-surface-secondary hover:bg-surface-raised"}
         `}
@@ -39,7 +42,7 @@ export function SidebarItem({ item, pluginId, resourceTypeId, depth = 0 }: Sideb
       </button>
 
       {hasChildren && expanded && (
-        <div>
+        <div id={`sidebar-children-${item.id}`}>
           {item.children!.map((child) => (
             <SidebarItem
               key={child.id}

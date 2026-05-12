@@ -162,13 +162,22 @@ export function DashboardView({
               className="text-2xl font-semibold bg-transparent border-b border-blue-500 text-on-surface focus:outline-none"
             />
           ) : (
-            <h1
-              className="text-2xl font-semibold text-on-surface cursor-default hover:text-white"
-              onDoubleClick={() => setEditingName(true)}
-              title="Double-click to rename"
-            >
-              {dashboardName}
-            </h1>
+            <div className="flex items-center gap-2">
+              <h1
+                className="text-2xl font-semibold text-on-surface cursor-default hover:text-white"
+                onDoubleClick={() => setEditingName(true)}
+                title="Double-click to rename"
+              >
+                {dashboardName}
+              </h1>
+              <button
+                onClick={() => setEditingName(true)}
+                aria-label="Rename dashboard"
+                className="text-xs text-on-surface-faint hover:text-on-surface-muted transition-colors px-2 py-1 rounded hover:bg-surface-overlay"
+              >
+                Rename
+              </button>
+            </div>
           )}
         </div>
 
@@ -327,6 +336,7 @@ function PinCard({
         }}
         disabled={unpinning}
         title="Remove from dashboard"
+        aria-label="Remove from dashboard"
         className="absolute top-2 right-2 w-5 h-5 rounded-full text-on-surface-faint hover:text-on-surface-secondary hover:bg-surface-sunken transition-all opacity-0 group-hover:opacity-100 text-xs flex items-center justify-center z-10"
       >
         &#10005;
@@ -337,6 +347,7 @@ function PinCard({
           {detail.pluginLogoSvg ? (
             <div
               className="w-6 h-6 flex-shrink-0"
+              aria-hidden="true"
               dangerouslySetInnerHTML={{ __html: detail.pluginLogoSvg }}
             />
           ) : (
@@ -365,7 +376,11 @@ function ConnectionFooter({ status }: { status: ProbeStatus }) {
         className="px-5 py-3 border-t border-border flex items-center gap-2"
         title={status.error}
       >
-        <span className="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0" />
+        <span
+          className="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0"
+          role="img"
+          aria-label="Error"
+        />
         <span className="text-xs text-red-500 truncate">{status.error ?? "Connection failed"}</span>
       </div>
     );
@@ -374,7 +389,11 @@ function ConnectionFooter({ status }: { status: ProbeStatus }) {
   return (
     <div className="px-5 py-3 border-t border-border space-y-1">
       <div className="flex items-center gap-1.5 mb-1">
-        <span className="w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0" />
+        <span
+          className="w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0"
+          role="img"
+          aria-label="Connected"
+        />
         <span className="text-xs text-on-surface-faint">Connected</span>
       </div>
       {status.stats?.map((stat) => {

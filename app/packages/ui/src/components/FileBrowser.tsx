@@ -301,8 +301,14 @@ export function FileBrowser({
     <div className="flex-1 min-h-0 border-t border-border bg-surface flex flex-col">
       {/* ── Header: path bar + search + actions ── */}
       <div className="flex items-center gap-2 px-4 py-2 border-b border-border/60 flex-shrink-0">
-        <span className="text-xs text-on-surface-muted font-medium flex-shrink-0">Path</span>
+        <label
+          htmlFor="file-browser-path"
+          className="text-xs text-on-surface-muted font-medium flex-shrink-0"
+        >
+          Path
+        </label>
         <input
+          id="file-browser-path"
           type="text"
           value={pathInput}
           onChange={(e) => setPathInput(e.target.value)}
@@ -464,6 +470,7 @@ export function FileBrowser({
                 <th className="px-3 py-1.5 w-8">
                   <input
                     type="checkbox"
+                    aria-label="Select all items"
                     checked={allSelected}
                     ref={(el) => {
                       if (el) el.indeterminate = someSelected;
@@ -525,6 +532,9 @@ export function FileBrowser({
               {/* Up row */}
               {((isAbsolute && prefix !== "/") || (!isAbsolute && prefix)) && !search && (
                 <tr
+                  role="button"
+                  tabIndex={0}
+                  aria-label="Go to parent folder"
                   className="hover:bg-surface-overlay/50 cursor-pointer transition-colors"
                   onClick={() => {
                     if (isAbsolute) {
@@ -537,13 +547,29 @@ export function FileBrowser({
                       navigateTo(parts.length ? parts.join("/") : "");
                     }
                   }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      if (isAbsolute) {
+                        const parts = prefix.split("/").filter(Boolean);
+                        parts.pop();
+                        navigateTo(parts.length ? "/" + parts.join("/") : "/");
+                      } else {
+                        const parts = prefix.replace(/\/$/, "").split("/");
+                        parts.pop();
+                        navigateTo(parts.length ? parts.join("/") : "");
+                      }
+                    }
+                  }}
                 >
                   <td />
                   <td
                     className="px-2 py-1.5 text-on-surface-muted flex items-center gap-2"
                     colSpan={3}
                   >
-                    <span className="text-on-surface-faint">↑</span>
+                    <span aria-hidden="true" className="text-on-surface-faint">
+                      ↑
+                    </span>
                     <span>..</span>
                   </td>
                 </tr>
@@ -574,11 +600,18 @@ export function FileBrowser({
                         className="w-3 h-3 accent-blue-500 cursor-pointer"
                       />
                     </td>
-                    <td className="px-2 py-1.5 cursor-pointer" onClick={() => navigateTo(d.key)}>
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="text-yellow-600 flex-shrink-0">▶</span>
+                    <td className="px-2 py-1.5">
+                      <button
+                        type="button"
+                        onClick={() => navigateTo(d.key)}
+                        aria-label={`Open folder ${d.name}`}
+                        className="flex items-center gap-2 min-w-0 w-full text-left cursor-pointer"
+                      >
+                        <span aria-hidden="true" className="text-yellow-600 flex-shrink-0">
+                          ▶
+                        </span>
                         <span className="text-on-surface-secondary truncate">{d.name}/</span>
-                      </div>
+                      </button>
                     </td>
                     <td className="px-4 py-1.5 text-right text-on-surface-faint">—</td>
                     <td className="px-4 py-1.5 text-right">
@@ -608,6 +641,7 @@ export function FileBrowser({
                             }}
                             className="opacity-0 group-hover:opacity-100 text-on-surface-faint hover:text-red-400 transition-all px-1"
                             title="Delete folder"
+                            aria-label={`Delete folder ${d.name}`}
                           >
                             ✕
                           </button>
@@ -685,6 +719,7 @@ export function FileBrowser({
                                 onClick={() => void handleDownload([f.key])}
                                 className="text-on-surface-faint hover:text-accent transition-colors px-1"
                                 title="Download"
+                                aria-label={`Download ${f.name}`}
                               >
                                 ↓
                               </button>
@@ -694,6 +729,7 @@ export function FileBrowser({
                                 onClick={() => setConfirmDeleteKey(f.key)}
                                 className="text-on-surface-faint hover:text-red-400 transition-colors px-1"
                                 title="Delete"
+                                aria-label={`Delete ${f.name}`}
                               >
                                 ✕
                               </button>

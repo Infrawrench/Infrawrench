@@ -5,6 +5,7 @@ import { useDraggable, useDroppable, useDndContext } from "@dnd-kit/core";
 import type { ResourceInstance, ResourceTypeDefinition } from "@infrawrench/plugin-base";
 import {
   useUIStore,
+  useTabId,
   ConfirmDeleteModal,
   RESOURCES_CHANGED_EVENT,
   dispatchResourcesChanged,
@@ -132,8 +133,15 @@ function AccountPage() {
         setContextMenu(null);
       }
     }
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setContextMenu(null);
+    }
     document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("keydown", handleKey);
+    };
   }, [contextMenu]);
 
   useEffect(() => {
@@ -637,6 +645,7 @@ function AccountPage() {
               <input
                 type="text"
                 value={editName}
+                aria-label="Account name"
                 onChange={(e) => setEditName(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") handleRename();
@@ -794,11 +803,13 @@ function AccountPage() {
       {contextMenu && (
         <div
           ref={contextMenuRef}
+          role="menu"
           style={{ position: "fixed", left: contextMenu.x, top: contextMenu.y, zIndex: 9999 }}
           className="bg-surface-overlay border border-border-strong rounded-lg shadow-xl py-1 min-w-[200px]"
         >
           {contextMenu.sshHost && (
             <button
+              role="menuitem"
               className="w-full px-3 py-2 text-xs text-on-surface-secondary hover:bg-surface-sunken text-left flex items-center gap-2"
               onClick={() => {
                 setTunnelTarget({
@@ -816,6 +827,7 @@ function AccountPage() {
           )}
           {contextMenu.sshHost && (
             <button
+              role="menuitem"
               className="w-full px-3 py-2 text-xs text-on-surface-secondary hover:bg-surface-sunken text-left flex items-center gap-2"
               onClick={() => {
                 setDockerSetupTarget({
@@ -833,6 +845,7 @@ function AccountPage() {
           )}
           {contextMenu.pingTarget && (
             <button
+              role="menuitem"
               className="w-full px-3 py-2 text-xs text-on-surface-secondary hover:bg-surface-sunken text-left flex items-center gap-2"
               onClick={() => {
                 setPingModalTarget(contextMenu.pingTarget!);
@@ -1033,6 +1046,7 @@ function ResourcePill({
                 onPin();
               }}
               title={pinned ? "Unpin" : "Pin to dashboard"}
+              aria-label={pinned ? "Unpin" : "Pin to dashboard"}
               className={`ml-1 p-1 rounded-full text-xs transition-all ${
                 pinned
                   ? "text-accent hover:text-accent-on-muted"
@@ -1048,6 +1062,7 @@ function ResourcePill({
                 onOpen();
               }}
               title="Open detail view"
+              aria-label="Open detail view"
               className="p-1 rounded-full text-on-surface-faint hover:text-on-surface-secondary opacity-0 group-hover:opacity-100 transition-all text-xs"
             >
               →

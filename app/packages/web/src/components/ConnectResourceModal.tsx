@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Modal, formatErrorMessage, toast } from "@infrawrench/ui";
+import { Modal, formatErrorMessage, toast, SshKeyRadioGroup } from "@infrawrench/ui";
 import type { SpotlightResult } from "@infrawrench/ui";
 import type { SecretExportTemplate } from "@infrawrench/plugin-base";
 import { camelToTitle } from "@infrawrench/plugin-base";
@@ -401,25 +401,16 @@ export function ConnectResourceModal({
                         No SSH keys found. Go to Settings to add one.
                       </p>
                     ) : (
-                      <div className="space-y-1">
-                        {sshKeys.map((k) => (
-                          <div
-                            key={k.id}
-                            onClick={() => setSelectedKeyId(k.id)}
-                            className={`flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer transition-colors ${
-                              selectedKeyId === k.id
-                                ? "bg-accent-muted border border-accent-muted-border text-accent-on-muted"
-                                : "hover:bg-surface-overlay border border-transparent text-on-surface-tertiary"
-                            }`}
-                          >
-                            <span className="text-xs">
-                              {selectedKeyId === k.id ? "\u25c9" : "\u25cb"}
-                            </span>
-                            <span className="text-xs font-mono flex-1 truncate">{k.name}</span>
-                            <span className="text-xs text-on-surface-faint">{k.ownerName}</span>
-                          </div>
-                        ))}
-                      </div>
+                      <SshKeyRadioGroup
+                        ariaLabel="SSH Key"
+                        selectedId={selectedKeyId}
+                        onChange={(id) => setSelectedKeyId(id)}
+                        keys={sshKeys.map((k) => ({
+                          id: k.id,
+                          label: k.name,
+                          meta: k.ownerName,
+                        }))}
+                      />
                     )}
                   </div>
 

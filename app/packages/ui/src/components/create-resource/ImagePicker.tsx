@@ -49,7 +49,7 @@ export function ImagePicker({
         )}
       </div>
 
-      <div className="max-h-52 overflow-y-auto">
+      <div className="max-h-52 overflow-y-auto" role="listbox" aria-label="Images">
         {filtered ? (
           // Flat search results
           filtered.length === 0 ? (

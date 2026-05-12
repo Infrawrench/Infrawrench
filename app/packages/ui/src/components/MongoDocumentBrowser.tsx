@@ -518,33 +518,42 @@ function DocumentRow({
     }
   }
 
+  const idLabel = id != null ? formatValue(id) : "";
+  const panelId = `mongo-doc-${index}${idLabel ? `-${idLabel}` : ""}`;
+
   return (
     <div className="group">
-      <div
-        className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-surface-overlay/30 transition-colors"
-        onClick={onToggle}
-      >
-        <span
-          className={`text-on-surface-faint text-xs transition-transform flex-shrink-0 ${expanded ? "rotate-90" : ""}`}
+      <div className="flex items-center gap-3 px-3 py-2 hover:bg-surface-overlay/30 transition-colors">
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={expanded}
+          aria-controls={panelId}
+          className="flex items-center gap-3 flex-1 min-w-0 text-left cursor-pointer"
         >
-          &#9654;
-        </span>
-        <span className="text-xs text-on-surface-muted w-8 flex-shrink-0 text-right font-mono">
-          {index}
-        </span>
-        {id != null && (
-          <span className="text-xs text-accent/70 font-mono flex-shrink-0 truncate max-w-[160px]">
-            {formatValue(id)}
+          <span
+            aria-hidden="true"
+            className={`text-on-surface-faint text-xs transition-transform flex-shrink-0 ${expanded ? "rotate-90" : ""}`}
+          >
+            &#9654;
           </span>
-        )}
-        <div className="flex-1 min-w-0 flex items-center gap-3 overflow-hidden">
-          {previewFields.map(([key, val]) => (
-            <span key={key} className="text-xs truncate flex-shrink">
-              <span className="text-on-surface-faint">{key}:</span>{" "}
-              <span className="text-on-surface-tertiary">{formatPreview(val)}</span>
+          <span className="text-xs text-on-surface-muted w-8 flex-shrink-0 text-right font-mono">
+            {index}
+          </span>
+          {id != null && (
+            <span className="text-xs text-accent/70 font-mono flex-shrink-0 truncate max-w-[160px]">
+              {formatValue(id)}
             </span>
-          ))}
-        </div>
+          )}
+          <div className="flex-1 min-w-0 flex items-center gap-3 overflow-hidden">
+            {previewFields.map(([key, val]) => (
+              <span key={key} className="text-xs truncate flex-shrink">
+                <span className="text-on-surface-faint">{key}:</span>{" "}
+                <span className="text-on-surface-tertiary">{formatPreview(val)}</span>
+              </span>
+            ))}
+          </div>
+        </button>
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -553,6 +562,7 @@ function DocumentRow({
           }}
           className="opacity-0 group-hover:opacity-100 text-xs text-on-surface-faint hover:text-blue-400 px-1 transition-all flex-shrink-0"
           title="Edit document"
+          aria-label={idLabel ? `Edit document ${idLabel}` : "Edit document"}
         >
           Edit
         </button>
@@ -563,12 +573,13 @@ function DocumentRow({
           }}
           className="opacity-0 group-hover:opacity-100 text-xs text-on-surface-faint hover:text-red-400 px-1 transition-all flex-shrink-0"
           title="Delete document"
+          aria-label={idLabel ? `Delete document ${idLabel}` : "Delete document"}
         >
           Delete
         </button>
       </div>
       {expanded && (
-        <div className="px-12 pb-3">
+        <div id={panelId} className="px-12 pb-3">
           {editing ? (
             <div className="space-y-2">
               <textarea

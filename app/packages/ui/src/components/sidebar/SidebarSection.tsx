@@ -23,16 +23,20 @@ export function SidebarSection({
   pluginName,
   pluginLogoSvg,
   pluginId,
+  accountId,
   accountName,
   resourceGroups,
 }: SidebarSectionProps) {
   const [expanded, setExpanded] = useState(true);
+  const panelId = `sidebar-section-${pluginId}-${accountId}`;
 
   return (
     <div className="mb-2">
       {/* Plugin + account header */}
       <button
         onClick={() => setExpanded((e) => !e)}
+        aria-expanded={expanded}
+        aria-controls={panelId}
         className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-on-surface-muted hover:text-on-surface-secondary transition-colors"
       >
         <span
@@ -47,9 +51,14 @@ export function SidebarSection({
       </button>
 
       {expanded && (
-        <div className="space-y-1">
+        <div id={panelId} className="space-y-1">
           {resourceGroups.map((group) => (
-            <ResourceTypeGroup key={group.resourceTypeId} group={group} pluginId={pluginId} />
+            <ResourceTypeGroup
+              key={group.resourceTypeId}
+              group={group}
+              pluginId={pluginId}
+              accountId={accountId}
+            />
           ))}
         </div>
       )}
@@ -60,23 +69,28 @@ export function SidebarSection({
 function ResourceTypeGroup({
   group,
   pluginId,
+  accountId,
 }: {
   group: SidebarSectionProps["resourceGroups"][number];
   pluginId: string;
+  accountId: string;
 }) {
   const [expanded, setExpanded] = useState(true);
+  const panelId = `sidebar-group-${pluginId}-${accountId}-${group.resourceTypeId}`;
 
   return (
     <div>
       <button
         onClick={() => setExpanded((e) => !e)}
+        aria-expanded={expanded}
+        aria-controls={panelId}
         className="w-full flex items-center gap-1 px-3 py-1 text-xs text-on-surface-faint hover:text-on-surface-tertiary transition-colors"
       >
         <span className="flex-1 text-left">{group.displayName}</span>
         <span>{expanded ? "▾" : "▸"}</span>
       </button>
       {expanded && (
-        <div>
+        <div id={panelId}>
           {group.items.map((item) => (
             <SidebarItem
               key={item.id}

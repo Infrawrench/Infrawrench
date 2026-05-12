@@ -40,7 +40,11 @@ export function ConfirmDeleteModal({ kind, name, onConfirm, onClose }: ConfirmDe
           <span className="text-white font-medium select-all">{name}</span> below.
         </p>
 
+        <label htmlFor="confirm-delete-input" className="sr-only">
+          Type {name} to confirm
+        </label>
         <input
+          id="confirm-delete-input"
           autoFocus
           type="text"
           value={typed}

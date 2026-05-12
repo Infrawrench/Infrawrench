@@ -35,10 +35,13 @@ export function DiskPicker({
           className="w-full bg-transparent text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none"
         />
       </div>
-      <div className="max-h-52 overflow-y-auto">
+      <div className="max-h-52 overflow-y-auto" role="listbox" aria-label="Disks">
         {filtered.map((d) => (
           <button
             key={d.id}
+            type="button"
+            role="option"
+            aria-selected={value === d.id}
             onClick={() => onChange(d.id)}
             className={`w-full text-left px-3 py-2.5 text-sm transition-colors flex items-center gap-3 ${
               value === d.id
