@@ -377,7 +377,7 @@ jobs:
           mv dist-linux-x64/*.AppImage dist-linux-x64/*.deb dist-linux-x64/*.snap dist/
 
           # Windows — installers already named correctly via win.artifactName.
-          mv dist-windows-2025-vs2026/*.exe dist/
+          mv dist-blacksmith-4vcpu-windows-2025/*.exe dist/
           mv dist-windows-11-arm/*.exe dist/
       - name: Merge updater metadata
         run: |
@@ -389,14 +389,14 @@ jobs:
             dist/latest-mac.yml
           # Windows: union x64 + arm64 latest.yml into a single file.
           node repo/app/packages/desktop/scripts/merge-update-yml.mjs \
-            dist-windows-2025-vs2026/latest.yml \
+            dist-blacksmith-4vcpu-windows-2025/latest.yml \
             dist-windows-11-arm/latest.yml \
             dist/latest.yml
           # Linux YMLs are already arch-suffixed by electron-builder; ship as-is.
           mv dist-linux-x64/latest-linux.yml dist/
           mv dist-linux-arm64/latest-linux-arm64.yml dist/
       - name: Clean staging dirs
-        run: rm -rf dist-macos-15 dist-macos-15-intel dist-linux-arm64 dist-linux-x64 dist-windows-2025-vs2026 dist-windows-11-arm repo
+        run: rm -rf dist-macos-15 dist-macos-15-intel dist-linux-arm64 dist-linux-x64 dist-blacksmith-4vcpu-windows-2025 dist-windows-11-arm repo
       - name: Create release
         uses: ncipollo/release-action@v1
         with:
