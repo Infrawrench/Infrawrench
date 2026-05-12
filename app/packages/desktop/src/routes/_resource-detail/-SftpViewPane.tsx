@@ -1,6 +1,6 @@
 import { SftpBrowserPanel } from "../../components/SftpBrowserPanel";
 import { SshQuickConnectPanel } from "../../components/SshQuickConnectPanel";
-import type { QuickSshConnection, SshConfig } from "./types";
+import type { QuickSshConnection, SshConfig } from "./-types";
 
 interface SftpViewPaneProps {
   activeCloudOrgId: string | null;

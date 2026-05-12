@@ -1,6 +1,6 @@
 import { SshTerminal } from "../../components/SshTerminal";
 import { SshQuickConnectPanel } from "../../components/SshQuickConnectPanel";
-import type { QuickSshConnection, SshConfig } from "./types";
+import type { QuickSshConnection, SshConfig } from "./-types";
 
 interface SshViewPaneProps {
   accountId: string;

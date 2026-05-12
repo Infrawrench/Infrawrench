@@ -67,16 +67,16 @@ import {
   resourceSftpTabTarget,
   resourceTabTarget,
 } from "../lib/workspace-tabs";
-import { SftpViewPane } from "./_resource-detail/SftpViewPane";
-import { SshViewPane } from "./_resource-detail/SshViewPane";
-import { ResourceActionBar } from "./_resource-detail/ResourceActionBar";
-import { ResourceFooterBar } from "./_resource-detail/ResourceFooterBar";
-import { SshConnectionBar } from "./_resource-detail/SshConnectionBar";
-import { DataPanels } from "./_resource-detail/DataPanels";
-import { K8sConsoleModal } from "./_resource-detail/K8sConsoleModal";
-import { DetailViewContainer } from "./_resource-detail/DetailViewContainer";
-import { StorageBrowserContainer } from "./_resource-detail/StorageBrowserContainer";
-import { ResourceModals } from "./_resource-detail/ResourceModals";
+import { SftpViewPane } from "./_resource-detail/-SftpViewPane";
+import { SshViewPane } from "./_resource-detail/-SshViewPane";
+import { ResourceActionBar } from "./_resource-detail/-ResourceActionBar";
+import { ResourceFooterBar } from "./_resource-detail/-ResourceFooterBar";
+import { SshConnectionBar } from "./_resource-detail/-SshConnectionBar";
+import { DataPanels } from "./_resource-detail/-DataPanels";
+import { K8sConsoleModal } from "./_resource-detail/-K8sConsoleModal";
+import { DetailViewContainer } from "./_resource-detail/-DetailViewContainer";
+import { StorageBrowserContainer } from "./_resource-detail/-StorageBrowserContainer";
+import { ResourceModals } from "./_resource-detail/-ResourceModals";
 import {
   loadCloudResource,
   loadLocalPeerResource,
@@ -84,8 +84,8 @@ import {
   type LoaderParams,
   type LoaderRefs,
   type LoaderSetters,
-} from "./_resource-detail/loader";
-import type { CloudCtx, QuickSshConnection, SshConfig } from "./_resource-detail/types";
+} from "./_resource-detail/-loader";
+import type { CloudCtx, QuickSshConnection, SshConfig } from "./_resource-detail/-types";
 
 export const Route = createFileRoute("/resource/$accountId/$resourceId")({
   // Rendering is handled by WorkspaceTabsViewport in __root.tsx, which mounts

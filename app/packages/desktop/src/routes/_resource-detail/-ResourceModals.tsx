@@ -26,7 +26,7 @@ import {
   resourceTabTarget,
 } from "../../lib/workspace-tabs";
 import type { AccountRow } from "../../db/rows";
-import type { CloudCtx } from "./types";
+import type { CloudCtx } from "./-types";
 
 interface ResourceModalsProps {
   showExportCredential: boolean;

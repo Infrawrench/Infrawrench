@@ -1,4 +1,4 @@
-import type { QuickSshConnection, SshConfig } from "./types";
+import type { QuickSshConnection, SshConfig } from "./-types";
 
 interface SshConnectionBarProps {
   sshConfig: SshConfig | null;

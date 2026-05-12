@@ -38,7 +38,7 @@ import {
   sqlQuery,
 } from "../../lib/sql-drivers";
 import { resolveTunneledHost } from "../../lib/ssh-tunnel";
-import type { CloudCtx, SqliteResourceRow, SshConfig } from "./types";
+import type { CloudCtx, SqliteResourceRow, SshConfig } from "./-types";
 
 export interface LoaderRefs {
   connectionString: { current: string };
