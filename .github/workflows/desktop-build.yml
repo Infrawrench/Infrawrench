@@ -176,7 +176,7 @@ jobs:
   macos-build:
     strategy:
       matrix:
-        platform: [macos-15-intel, macos-15]
+        platform: [macos-15-intel, blacksmith-6vcpu-macos-15]
     runs-on: ${{ matrix.platform }}
     name: Build on ${{ matrix.platform }}
     needs: [check-if-release, r2-setup]
@@ -369,7 +369,7 @@ jobs:
           mkdir dist
 
           # macOS — dmg + zip per arch (zip is electron-updater's payload).
-          mv dist-macos-15/*.dmg dist-macos-15/*.zip dist/
+          mv dist-blacksmith-6vcpu-macos-15/*.dmg dist-blacksmith-6vcpu-macos-15/*.zip dist/
           mv dist-macos-15-intel/*.dmg dist-macos-15-intel/*.zip dist/
 
           # Linux — AppImage/deb already named via artifactName / electron-builder defaults.
@@ -384,7 +384,7 @@ jobs:
           set -eo pipefail
           # Mac: union arm64 + x64 latest-mac.yml into a single file.
           node repo/app/packages/desktop/scripts/merge-update-yml.mjs \
-            dist-macos-15/latest-mac.yml \
+            dist-blacksmith-6vcpu-macos-15/latest-mac.yml \
             dist-macos-15-intel/latest-mac.yml \
             dist/latest-mac.yml
           # Windows: union x64 + arm64 latest.yml into a single file.
@@ -396,7 +396,7 @@ jobs:
           mv dist-linux-x64/latest-linux.yml dist/
           mv dist-linux-arm64/latest-linux-arm64.yml dist/
       - name: Clean staging dirs
-        run: rm -rf dist-macos-15 dist-macos-15-intel dist-linux-arm64 dist-linux-x64 dist-blacksmith-4vcpu-windows-2025 dist-windows-11-arm repo
+        run: rm -rf dist-blacksmith-6vcpu-macos-15 dist-macos-15-intel dist-linux-arm64 dist-linux-x64 dist-blacksmith-4vcpu-windows-2025 dist-windows-11-arm repo
       - name: Create release
         uses: ncipollo/release-action@v1
         with:
