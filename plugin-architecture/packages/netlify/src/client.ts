@@ -14,7 +14,126 @@ import {
   renderDnsRecordDetail,
   renderDnsRecordSidebar,
 } from "@infrawrench/plugin-base";
-import { NetlifyAPI } from "@netlify/api";
+
+// Browser-compatible replacement for the `@netlify/api` SDK. The official SDK
+// is OpenAPI-generated and uses `module.createRequire` at import time, which
+// is Node-only — it cannot be loaded in Electron's renderer. This shim issues
+// the same REST calls via fetch with the small slice of operations the plugin
+// actually exercises. Method signatures mirror the SDK so the rest of this
+// file is unchanged.
+class NetlifyAPI {
+  private readonly token: string;
+  private readonly baseUrl = "https://api.netlify.com/api/v1";
+  constructor(token: string, _opts?: { userAgent?: string }) {
+    this.token = token;
+  }
+  private call<T>(method: string, path: string, body?: unknown): Promise<T> {
+    return jsonRestFetch<T>({
+      vendor: "Netlify",
+      url: `${this.baseUrl}${path}`,
+      errorPath: path,
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+        Accept: "application/json",
+        "User-Agent": "Infrawrench/0.1.0",
+      },
+      init: { method, ...(body !== undefined ? { body: JSON.stringify(body) } : {}) },
+    });
+  }
+  private query(params: Record<string, unknown>): string {
+    const entries = Object.entries(params).filter(([, v]) => v !== undefined && v !== null);
+    if (entries.length === 0) return "";
+    const sp = new URLSearchParams();
+    for (const [k, v] of entries) sp.set(k, String(v));
+    return `?${sp.toString()}`;
+  }
+
+  // Sites
+  getSite(p: { siteId: string }): Promise<unknown> {
+    return this.call("GET", `/sites/${encodeURIComponent(p.siteId)}`);
+  }
+  listSites(p: { page?: number; per_page?: number }): Promise<unknown> {
+    return this.call("GET", `/sites${this.query(p)}`);
+  }
+  createSite(p: { body: { name: string } }): Promise<unknown> {
+    return this.call("POST", `/sites`, p.body);
+  }
+  deleteSite(p: { siteId: string }): Promise<unknown> {
+    return this.call("DELETE", `/sites/${encodeURIComponent(p.siteId)}`);
+  }
+
+  // Deploys
+  listSiteDeploys(p: { siteId: string; page?: number; per_page?: number }): Promise<unknown> {
+    const { siteId, ...q } = p;
+    return this.call("GET", `/sites/${encodeURIComponent(siteId)}/deploys${this.query(q)}`);
+  }
+  deleteDeploy(p: { deployId: string }): Promise<unknown> {
+    return this.call("DELETE", `/deploys/${encodeURIComponent(p.deployId)}`);
+  }
+
+  // Forms
+  listSiteForms(p: { siteId: string }): Promise<unknown> {
+    return this.call("GET", `/sites/${encodeURIComponent(p.siteId)}/forms`);
+  }
+  deleteSiteForm(p: { siteId: string; formId: string }): Promise<unknown> {
+    return this.call(
+      "DELETE",
+      `/sites/${encodeURIComponent(p.siteId)}/forms/${encodeURIComponent(p.formId)}`,
+    );
+  }
+
+  // DNS
+  getDnsZones(): Promise<unknown> {
+    return this.call("GET", `/dns_zones`);
+  }
+  getDnsRecords(p: { zoneId: string }): Promise<unknown> {
+    return this.call("GET", `/dns_zones/${encodeURIComponent(p.zoneId)}/dns_records`);
+  }
+  createDnsZone(p: { body: { name: string } }): Promise<unknown> {
+    return this.call("POST", `/dns_zones`, p.body);
+  }
+  createDnsRecord(p: {
+    zoneId: string;
+    body: { type: string; hostname: string; value: string; ttl?: number };
+  }): Promise<unknown> {
+    return this.call(
+      "POST",
+      `/dns_zones/${encodeURIComponent(p.zoneId)}/dns_records`,
+      p.body,
+    );
+  }
+  deleteDnsZone(p: { zoneId: string }): Promise<unknown> {
+    return this.call("DELETE", `/dns_zones/${encodeURIComponent(p.zoneId)}`);
+  }
+  deleteDnsRecord(p: { zoneId: string; dnsRecordId: string }): Promise<unknown> {
+    return this.call(
+      "DELETE",
+      `/dns_zones/${encodeURIComponent(p.zoneId)}/dns_records/${encodeURIComponent(p.dnsRecordId)}`,
+    );
+  }
+
+  // Build hooks
+  listSiteBuildHooks(p: { siteId: string }): Promise<unknown> {
+    return this.call("GET", `/sites/${encodeURIComponent(p.siteId)}/build_hooks`);
+  }
+  createSiteBuildHook(p: {
+    siteId: string;
+    body: { title: string; branch?: string };
+  }): Promise<unknown> {
+    return this.call("POST", `/sites/${encodeURIComponent(p.siteId)}/build_hooks`, p.body);
+  }
+  deleteSiteBuildHook(p: { siteId: string; id: string }): Promise<unknown> {
+    return this.call(
+      "DELETE",
+      `/sites/${encodeURIComponent(p.siteId)}/build_hooks/${encodeURIComponent(p.id)}`,
+    );
+  }
+
+  // Env vars (legacy site-level endpoint, kept for GET parity with the SDK)
+  getSiteEnvVars(p: { siteId: string }): Promise<unknown> {
+    return this.call("GET", `/sites/${encodeURIComponent(p.siteId)}/env`);
+  }
+}
 
 // The `@netlify/api` SDK is OpenAPI-generated and exposes weakly-typed
 // dynamic methods (each response type is inferred via `any` in the runtime
