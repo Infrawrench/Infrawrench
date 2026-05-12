@@ -10,7 +10,7 @@ concurrency:
 
 jobs:
   r2-setup:
-    runs-on: ubuntu-24.04-arm
+    runs-on: blacksmith-4vcpu-ubuntu-2404-arm
     name: Ensure R2 lifecycle policy
     steps:
       - name: Apply lifecycle rule (7-day TTL on desktop-builds/)
@@ -41,7 +41,7 @@ jobs:
             --endpoint-url "${R2_ENDPOINT}"
 
   linux-arm64-build:
-    runs-on: ubuntu-24.04-arm
+    runs-on: blacksmith-4vcpu-ubuntu-2404-arm
     name: Build on ubuntu-24.04-arm
     needs: r2-setup
     steps:
@@ -89,7 +89,7 @@ jobs:
             --endpoint-url "${R2_ENDPOINT}"
 
   check-if-release:
-    runs-on: ubuntu-24.04-arm
+    runs-on: blacksmith-4vcpu-ubuntu-2404-arm
     name: Check if this is a new tag and get the release notes if it is
     outputs:
       package-version: ${{ steps.check-if-release.outputs.PACKAGE_VERSION }}
@@ -124,7 +124,7 @@ jobs:
           fi
 
   linux-x64-build:
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     name: Build on ubuntu-24.04
     needs: [check-if-release, r2-setup]
     if: needs.check-if-release.outputs.package-version != ''
@@ -275,7 +275,7 @@ jobs:
   windows-build:
     strategy:
       matrix:
-        platform: [windows-2025-vs2026, windows-11-arm]
+        platform: [blacksmith-4vcpu-windows-2025, windows-11-arm]
     runs-on: ${{ matrix.platform }}
     name: Build on ${{ matrix.platform }}
     needs: [check-if-release, r2-setup]
@@ -332,7 +332,7 @@ jobs:
             --endpoint-url "${R2_ENDPOINT}"
 
   publish-release:
-    runs-on: ubuntu-24.04-arm
+    runs-on: blacksmith-4vcpu-ubuntu-2404-arm
     name: Publish release
     needs: [check-if-release, linux-arm64-build, linux-x64-build, macos-build, windows-build]
     if: needs.check-if-release.outputs.package-version != ''
