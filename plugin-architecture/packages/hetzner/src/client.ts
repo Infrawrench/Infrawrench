@@ -9,6 +9,8 @@ import type {
   ResourceStatus,
   ResourceTypeDefinition,
   DashboardStat,
+  HostServices,
+  MetricSeries,
 } from "@infrawrench/plugin-base";
 import {
   jsonRestFetch,
@@ -34,11 +36,20 @@ export class HetznerClient implements PluginClient {
     sin: { location: "Singapore", flag: "🇸🇬" },
   };
 
-  constructor(credentials: Record<string, string>, resourceTypes: ResourceTypeDefinition[] = []) {
+  private readonly caCert: string;
+  private readonly services: HostServices | undefined;
+
+  constructor(
+    credentials: Record<string, string>,
+    resourceTypes: ResourceTypeDefinition[] = [],
+    services?: HostServices,
+  ) {
     const token = credentials["apiToken"];
     if (!token) throw new Error("Hetzner plugin: missing apiToken credential");
     this.token = token;
     this.resourceTypes = resourceTypes;
+    this.caCert = credentials["caCert"] ?? "";
+    this.services = services;
   }
 
   private async fetch<T>(path: string, options?: RequestInit): Promise<T> {
@@ -48,6 +59,9 @@ export class HetznerClient implements PluginClient {
       errorPath: path,
       headers: { Authorization: `Bearer ${this.token}` },
       ...(options ? { init: options } : {}),
+      ...(this.caCert && this.services?.http
+        ? { caCert: this.caCert, http: this.services.http }
+        : {}),
     });
   }
 
@@ -662,6 +676,62 @@ export class HetznerClient implements PluginClient {
     }
 
     return [];
+  }
+
+  async fetchMetricSeries(
+    resourceTypeId: string,
+    resourceId: string,
+    _accountId: string,
+    timeRange?: { startMs: number; endMs: number },
+  ): Promise<MetricSeries[]> {
+    if (resourceTypeId !== "server") return [];
+
+    const externalId = resourceId.split(":").pop();
+    if (!externalId) return [];
+
+    const now = Date.now();
+    const start = new Date(timeRange?.startMs ?? now - 3_600_000).toISOString();
+    const end = new Date(timeRange?.endMs ?? now).toISOString();
+
+    interface HetznerMetricsResponse {
+      metrics: {
+        time_series: Record<string, { values: [number, string][] }>;
+      };
+    }
+
+    let resp: HetznerMetricsResponse;
+    try {
+      resp = await this.fetch<HetznerMetricsResponse>(
+        `/servers/${externalId}/metrics?type=cpu,disk,network&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`,
+      );
+    } catch {
+      return [];
+    }
+
+    const ts = resp.metrics?.time_series ?? {};
+    const toSeries = (key: string, label: string, unit: string): MetricSeries | null => {
+      const values = ts[key]?.values;
+      if (!values || values.length === 0) return null;
+      return {
+        label,
+        unit,
+        points: values.map(([t, v]) => ({
+          timestamp: Math.round(t * 1000),
+          value: Number(v),
+        })),
+      };
+    };
+
+    const results: MetricSeries[] = [];
+    const push = (s: MetricSeries | null) => {
+      if (s) results.push(s);
+    };
+    push(toSeries("cpu", "CPU Utilization", "%"));
+    push(toSeries("disk.0.iops.read", "Disk IOPS (read)", "iops"));
+    push(toSeries("disk.0.iops.write", "Disk IOPS (write)", "iops"));
+    push(toSeries("network.0.bandwidth.in", "Network In", "bytes/s"));
+    push(toSeries("network.0.bandwidth.out", "Network Out", "bytes/s"));
+    return results;
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {

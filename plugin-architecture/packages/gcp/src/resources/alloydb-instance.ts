@@ -28,6 +28,7 @@ export const AlloyDbInstanceResourceType: ResourceTypeDefinition = {
   parentTypeId: "alloydb-cluster",
   dashboardPinnable: false,
   supportsCreate: true,
+  supportsMetrics: true,
   peerIntegrations: [
     {
       pluginId: "postgres",

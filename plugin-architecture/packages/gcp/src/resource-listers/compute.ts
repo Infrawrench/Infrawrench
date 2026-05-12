@@ -251,6 +251,7 @@ export async function listHealthChecks(
       type = "TCP";
       port = Number(tcpHc["port"] ?? 0);
     }
+    const selfLink = String(hc["selfLink"] ?? "");
     return {
       id: ctx.id(accountId, "health-check", name),
       pluginId: "gcp",
@@ -266,7 +267,7 @@ export async function listHealthChecks(
         healthyThreshold: Number(hc["healthyThreshold"] ?? 2),
         unhealthyThreshold: Number(hc["unhealthyThreshold"] ?? 2),
       },
-      resolvedOutputs: {},
+      resolvedOutputs: selfLink ? { selfLink } : {},
       secretStates: [],
       externalId: name,
       createdAt: String(hc["creationTimestamp"] ?? ctx.now()),
@@ -289,6 +290,8 @@ export async function listBackendServices(
     const name = String(bs["name"]);
     const backends = bs["backends"] as unknown[] | undefined;
     const healthChecks = bs["healthChecks"] as unknown[] | undefined;
+    const draining = bs["connectionDraining"] as Record<string, unknown> | undefined;
+    const selfLink = String(bs["selfLink"] ?? "");
     return {
       id: ctx.id(accountId, "backend-service", name),
       pluginId: "gcp",
@@ -297,16 +300,19 @@ export async function listBackendServices(
       displayName: name,
       fields: {
         name,
+        description: String(bs["description"] ?? ""),
         protocol: String(bs["protocol"] ?? ""),
         port: Number(bs["port"] ?? 0),
         portName: String(bs["portName"] ?? ""),
         loadBalancingScheme: String(bs["loadBalancingScheme"] ?? ""),
+        timeoutSec: Number(bs["timeoutSec"] ?? 0),
+        connectionDrainingTimeoutSec: Number(draining?.["drainingTimeoutSec"] ?? 0),
         healthCheckCount: Array.isArray(healthChecks) ? healthChecks.length : 0,
         backendCount: Array.isArray(backends) ? backends.length : 0,
         enableCDN: bs["enableCDN"] === true,
         sessionAffinity: String(bs["sessionAffinity"] ?? "NONE"),
       },
-      resolvedOutputs: {},
+      resolvedOutputs: selfLink ? { selfLink } : {},
       secretStates: [],
       externalId: name,
       createdAt: String(bs["creationTimestamp"] ?? ctx.now()),

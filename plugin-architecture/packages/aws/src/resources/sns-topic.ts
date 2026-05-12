@@ -15,6 +15,7 @@ export const SNSTopicResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   iconKey: "topic",
   supportsCreate: true,
+  supportsMetrics: true,
   secretExportTemplates: [
     {
       id: "sns-topic",

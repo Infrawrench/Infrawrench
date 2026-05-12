@@ -21,4 +21,5 @@ export const PubSubSubscriptionResourceType: ResourceTypeDefinition = {
   parentTypeId: "pubsub-topic",
   dashboardPinnable: false,
   supportsCreate: true,
+  supportsMetrics: true,
 };

@@ -49,6 +49,7 @@ export const CloudSqlInstanceResourceType: ResourceTypeDefinition = {
   ],
   dashboardPinnable: true,
   supportsCreate: true,
+  supportsMetrics: true,
   peerIntegrations: [
     {
       pluginId: "postgres",

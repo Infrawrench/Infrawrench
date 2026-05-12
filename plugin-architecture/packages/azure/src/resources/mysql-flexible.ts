@@ -30,6 +30,7 @@ export const MySQLFlexibleServerResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   iconKey: "database",
   supportsCreate: true,
+  supportsMetrics: true,
   secretExportTemplates: [
     {
       id: "mysql-connection",

@@ -7,6 +7,8 @@ import type {
   ResourceStatus,
   ResourceTypeDefinition,
   DashboardStat,
+  HostServices,
+  MetricSeries,
 } from "@infrawrench/plugin-base";
 import { jsonRestFetch, labeledFieldItems, labeledOutputItems } from "@infrawrench/plugin-base";
 
@@ -58,12 +60,21 @@ export class FlyClient implements PluginClient {
     yyz: { location: "Toronto, Canada", flag: "\u{1F1E8}\u{1F1E6}" },
   };
 
-  constructor(credentials: Record<string, string>, resourceTypes: ResourceTypeDefinition[] = []) {
+  private readonly caCert: string;
+  private readonly services: HostServices | undefined;
+
+  constructor(
+    credentials: Record<string, string>,
+    resourceTypes: ResourceTypeDefinition[] = [],
+    services?: HostServices,
+  ) {
     const token = credentials["apiToken"];
     if (!token) throw new Error("Fly plugin: missing apiToken credential");
     this.token = token;
     this.orgSlug = credentials["orgSlug"] ?? "personal";
     this.resourceTypes = resourceTypes;
+    this.caCert = credentials["caCert"] ?? "";
+    this.services = services;
   }
 
   /* ------------------------------------------------------------------ */
@@ -77,6 +88,9 @@ export class FlyClient implements PluginClient {
       errorPath: path,
       headers: { Authorization: `Bearer ${this.token}` },
       ...(options ? { init: options } : {}),
+      ...(this.caCert && this.services?.http
+        ? { caCert: this.caCert, http: this.services.http }
+        : {}),
     });
   }
 
@@ -441,6 +455,107 @@ export class FlyClient implements PluginClient {
     }
 
     return [];
+  }
+
+  async fetchMetricSeries(
+    resourceTypeId: string,
+    resourceId: string,
+    accountId: string,
+    timeRange?: { startMs: number; endMs: number },
+  ): Promise<MetricSeries[]> {
+    if (resourceTypeId !== "machine" && resourceTypeId !== "app") return [];
+
+    const resource = await this.getResource(resourceTypeId, resourceId, accountId);
+    const appName = String(
+      resourceTypeId === "app" ? resource.fields["name"] : resource.fields["appName"],
+    );
+    if (!appName) return [];
+
+    const machineFilter =
+      resourceTypeId === "machine"
+        ? `,instance="${String(resource.fields["instanceId"] ?? resource.externalId ?? "")}"`
+        : "";
+
+    const now = Date.now();
+    const start = Math.floor((timeRange?.startMs ?? now - 3_600_000) / 1000);
+    const end = Math.floor((timeRange?.endMs ?? now) / 1000);
+    const step = "60s";
+
+    const url = `https://api.fly.io/prometheus/${encodeURIComponent(this.orgSlug)}/api/v1/query_range`;
+
+    interface PromResp {
+      data?: {
+        result?: Array<{
+          metric: Record<string, string>;
+          values: [number, string][];
+        }>;
+      };
+    }
+
+    const fetchPromql = async (
+      query: string,
+      label: string,
+      unit: string,
+    ): Promise<MetricSeries | null> => {
+      try {
+        const u = new URL(url);
+        u.searchParams.set("query", query);
+        u.searchParams.set("start", String(start));
+        u.searchParams.set("end", String(end));
+        u.searchParams.set("step", step);
+        const res = await fetch(u.toString(), {
+          headers: {
+            Authorization: `Bearer ${this.token}`,
+            "Content-Type": "application/json",
+          },
+        });
+        if (!res.ok) return null;
+        const data = (await res.json()) as PromResp;
+        // Sum across all returned series (when multiple machines match).
+        const points = new Map<number, number>();
+        for (const series of data.data?.result ?? []) {
+          for (const [ts, v] of series.values) {
+            const tsMs = Math.round(ts * 1000);
+            points.set(tsMs, (points.get(tsMs) ?? 0) + Number(v));
+          }
+        }
+        if (points.size === 0) return null;
+        return {
+          label,
+          unit,
+          points: [...points.entries()]
+            .sort(([a], [b]) => a - b)
+            .map(([timestamp, value]) => ({ timestamp, value })),
+        };
+      } catch {
+        return null;
+      }
+    };
+
+    const labels = `app="${appName}"${machineFilter}`;
+    const series = await Promise.all([
+      fetchPromql(
+        `sum(rate(fly_instance_cpu{${labels},mode="user"}[1m])) by (instance)`,
+        "CPU (user)",
+        "cores",
+      ),
+      fetchPromql(
+        `avg(fly_instance_memory_mem_available{${labels}}) by (instance)`,
+        "Available Memory",
+        "bytes",
+      ),
+      fetchPromql(
+        `sum(rate(fly_instance_net_recv_bytes{${labels}}[1m])) by (instance)`,
+        "Network In",
+        "bytes/s",
+      ),
+      fetchPromql(
+        `sum(rate(fly_instance_net_sent_bytes{${labels}}[1m])) by (instance)`,
+        "Network Out",
+        "bytes/s",
+      ),
+    ]);
+    return series.filter((s): s is MetricSeries => s != null);
   }
 
   /* ------------------------------------------------------------------ */

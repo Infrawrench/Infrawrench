@@ -18,6 +18,7 @@ export const DynamoDBTableResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   iconKey: "database",
   supportsCreate: true,
+  supportsMetrics: true,
   secretExportTemplates: [
     {
       id: "dynamodb-table",

@@ -47,4 +47,5 @@ export const AppResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   iconKey: "app",
   supportsCreate: true,
+  supportsMetrics: true,
 };

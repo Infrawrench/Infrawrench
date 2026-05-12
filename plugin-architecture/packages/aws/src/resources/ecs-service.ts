@@ -23,5 +23,6 @@ export const ECSServiceResourceType: ResourceTypeDefinition = {
   outputs: [{ key: "serviceArn", label: "Service ARN", sensitive: false }],
   dashboardPinnable: true,
   supportsCreate: true,
+  supportsMetrics: true,
   iconKey: "container",
 };

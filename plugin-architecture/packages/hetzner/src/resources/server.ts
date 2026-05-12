@@ -66,4 +66,5 @@ export const ServerResourceType: ResourceTypeDefinition = {
     defaultUsername: "root",
   },
   supportsCreate: true,
+  supportsMetrics: true,
 };

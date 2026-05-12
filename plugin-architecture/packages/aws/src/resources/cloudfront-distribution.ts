@@ -17,4 +17,5 @@ export const CloudFrontDistributionResourceType: ResourceTypeDefinition = {
   outputs: [{ key: "distributionArn", label: "Distribution ARN", sensitive: false }],
   dashboardPinnable: true,
   iconKey: "cdn",
+  supportsMetrics: true,
 };

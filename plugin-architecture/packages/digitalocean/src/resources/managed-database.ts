@@ -76,6 +76,7 @@ export const ManagedDatabaseResourceType: ResourceTypeDefinition = {
   parentTypeId: "project",
   dashboardPinnable: true,
   supportsCreate: true,
+  supportsMetrics: true,
   iconKey: "database",
   secretExportTemplates: [
     {

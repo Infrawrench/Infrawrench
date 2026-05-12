@@ -19,7 +19,11 @@ import { renderCloudFunction, renderCloudRunService } from "./cloud-run-detail-r
 import { renderCloudTasksQueue } from "./cloud-tasks-detail-renderers.js";
 import { renderCloudDnsRecordSet, renderCloudDnsZone } from "./dns-detail-renderers.js";
 import { renderFirestoreDatabase } from "./firestore-detail-renderers.js";
-import { renderCloudNat, renderCloudRouter } from "./network-detail-renderers.js";
+import {
+  renderBackendService,
+  renderCloudNat,
+  renderCloudRouter,
+} from "./network-detail-renderers.js";
 import { renderPubsubSubscription, renderPubsubTopic } from "./pubsub-detail-renderers.js";
 
 export type { GcpDetailContext } from "./detail-context.js";
@@ -227,6 +231,10 @@ export function gcpRenderDetail(
 
   if (resource.resourceTypeId === "cloud-nat") {
     renderCloudNat(resource, base);
+  }
+
+  if (resource.resourceTypeId === "backend-service") {
+    renderBackendService(resource, base);
   }
 
   if (resource.resourceTypeId === "cloud-armor-policy") {

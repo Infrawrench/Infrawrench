@@ -27,6 +27,7 @@ export const SQSQueueResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   iconKey: "queue",
   supportsCreate: true,
+  supportsMetrics: true,
   secretExportTemplates: [
     {
       id: "sqs-queue",

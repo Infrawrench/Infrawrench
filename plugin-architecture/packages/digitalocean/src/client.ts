@@ -10,6 +10,7 @@ import type {
   DashboardStat,
   MetricSeries,
   CredentialExport,
+  HostServices,
 } from "@infrawrench/plugin-base";
 import {
   dnsRecordBadgeColor,
@@ -36,13 +37,21 @@ export class DigitalOceanClient implements PluginClient {
   private readonly credentials: Record<string, string>;
   private readonly resourceTypes: ResourceTypeDefinition[];
   private readonly baseUrl = "https://api.digitalocean.com/v2";
+  private readonly caCert: string;
+  private readonly services: HostServices | undefined;
 
-  constructor(credentials: Record<string, string>, resourceTypes: ResourceTypeDefinition[] = []) {
+  constructor(
+    credentials: Record<string, string>,
+    resourceTypes: ResourceTypeDefinition[] = [],
+    services?: HostServices,
+  ) {
     const token = credentials["apiToken"];
     if (!token) throw new Error("DigitalOcean plugin: missing apiToken credential");
     this.token = token;
     this.credentials = credentials;
     this.resourceTypes = resourceTypes;
+    this.caCert = credentials["caCert"] ?? "";
+    this.services = services;
   }
 
   private async fetch<T>(path: string, options?: RequestInit): Promise<T> {
@@ -52,6 +61,9 @@ export class DigitalOceanClient implements PluginClient {
       errorPath: path,
       headers: { Authorization: `Bearer ${this.token}` },
       ...(options ? { init: options } : {}),
+      ...(this.caCert && this.services?.http
+        ? { caCert: this.caCert, http: this.services.http }
+        : {}),
     });
   }
 
@@ -408,21 +420,9 @@ export class DigitalOceanClient implements PluginClient {
     accountId: string,
     timeRange?: { startMs: number; endMs: number },
   ): Promise<MetricSeries[]> {
-    if (resourceTypeId !== "droplet") return [];
-
-    const resource = await this.getResource(resourceTypeId, resourceId, accountId);
-    const dropletId = resource.externalId ?? resourceId.split(":").pop();
-    if (!dropletId) return [];
-
     const now = Date.now();
     const startUnix = Math.floor((timeRange?.startMs ?? now - 3_600_000) / 1000);
     const endUnix = Math.floor((timeRange?.endMs ?? now) / 1000);
-
-    const metricDefs: Array<{ name: string; label: string; unit: string }> = [
-      { name: "cpu", label: "CPU Utilization", unit: "%" },
-      { name: "memory_free", label: "Free Memory", unit: "bytes" },
-      { name: "bandwidth", label: "Public Inbound Bandwidth", unit: "bytes/sec" },
-    ];
 
     interface MonitoringResult {
       values: [number, string][];
@@ -431,30 +431,62 @@ export class DigitalOceanClient implements PluginClient {
       data: { result: MonitoringResult[] };
     }
 
-    const results: MetricSeries[] = [];
-
-    for (const metric of metricDefs) {
+    const fetchPromMetric = async (
+      path: string,
+      label: string,
+      unit: string,
+    ): Promise<MetricSeries | null> => {
       try {
-        const basePath = `/monitoring/metrics/droplet/${metric.name}?host_id=${dropletId}&start=${startUnix}&end=${endUnix}`;
-        const path =
-          metric.name === "bandwidth" ? `${basePath}&interface=public&direction=inbound` : basePath;
         const resp = await this.fetch<MonitoringResponse>(path);
         const values = resp.data?.result?.[0]?.values ?? [];
-        if (values.length === 0) continue;
-        results.push({
-          label: metric.label,
-          unit: metric.unit,
+        if (values.length === 0) return null;
+        return {
+          label,
+          unit,
           points: values.map(([ts, val]) => ({
             timestamp: ts * 1000,
             value: Number(val),
           })),
-        });
+        };
       } catch {
-        // Skip metrics that fail to fetch
+        return null;
       }
+    };
+
+    if (resourceTypeId === "droplet") {
+      const resource = await this.getResource(resourceTypeId, resourceId, accountId);
+      const dropletId = resource.externalId ?? resourceId.split(":").pop();
+      if (!dropletId) return [];
+      const metricDefs: Array<{ name: string; label: string; unit: string }> = [
+        { name: "cpu", label: "CPU Utilization", unit: "%" },
+        { name: "memory_free", label: "Free Memory", unit: "bytes" },
+        { name: "bandwidth", label: "Public Inbound Bandwidth", unit: "bytes/sec" },
+      ];
+      const results: MetricSeries[] = [];
+      for (const metric of metricDefs) {
+        const basePath = `/monitoring/metrics/droplet/${metric.name}?host_id=${dropletId}&start=${startUnix}&end=${endUnix}`;
+        const path =
+          metric.name === "bandwidth" ? `${basePath}&interface=public&direction=inbound` : basePath;
+        const series = await fetchPromMetric(path, metric.label, metric.unit);
+        if (series) results.push(series);
+      }
+      return results;
     }
 
-    return results;
+    if (resourceTypeId === "managed-database") {
+      const clusterUuid = resourceId.split(":").pop();
+      if (!clusterUuid) return [];
+      const qs = `cluster_uuid=${clusterUuid}&start=${startUnix}&end=${endUnix}`;
+      const series = await Promise.all([
+        fetchPromMetric(`/monitoring/metrics/database/cpu?${qs}`, "CPU Utilization", "%"),
+        fetchPromMetric(`/monitoring/metrics/database/memory_usage?${qs}`, "Memory Used", "bytes"),
+        fetchPromMetric(`/monitoring/metrics/database/disk_usage?${qs}`, "Disk Used", "bytes"),
+        fetchPromMetric(`/monitoring/metrics/database/load_15?${qs}`, "Load (15min)", ""),
+      ]);
+      return series.filter((s): s is MetricSeries => s != null);
+    }
+
+    return [];
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {

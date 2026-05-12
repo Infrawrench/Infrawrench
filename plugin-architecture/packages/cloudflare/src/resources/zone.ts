@@ -24,5 +24,6 @@ export const ZoneResourceType: ResourceTypeDefinition = {
   ],
   dashboardPinnable: true,
   supportsCreate: true,
+  supportsMetrics: true,
   iconKey: "dns",
 };

@@ -25,5 +25,6 @@ export const APIGatewayResourceType: ResourceTypeDefinition = {
   ],
   dashboardPinnable: true,
   supportsCreate: true,
+  supportsMetrics: true,
   iconKey: "api",
 };

@@ -40,4 +40,5 @@ export const ALBResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   iconKey: "load-balancer",
   supportsCreate: true,
+  supportsMetrics: true,
 };

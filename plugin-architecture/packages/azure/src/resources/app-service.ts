@@ -22,4 +22,5 @@ export const AppServiceResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   iconKey: "deployment",
   supportsCreate: true,
+  supportsMetrics: true,
 };

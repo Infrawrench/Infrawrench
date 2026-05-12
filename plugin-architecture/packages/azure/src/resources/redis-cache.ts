@@ -25,6 +25,7 @@ export const RedisCacheResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   iconKey: "cache",
   supportsCreate: true,
+  supportsMetrics: true,
   secretExportTemplates: [
     {
       id: "redis-connection",

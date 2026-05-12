@@ -57,4 +57,5 @@ export const MachineResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   iconKey: "server",
   supportsCreate: true,
+  supportsMetrics: true,
 };

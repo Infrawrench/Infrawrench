@@ -238,6 +238,15 @@ export async function resolveOutput(
     return String(resource.resolvedOutputs[outputKey] ?? "");
   }
 
+  if ((typeId === "health-check" || typeId === "backend-service") && outputKey === "selfLink") {
+    const resource = await ctx.getResource(typeId, resourceId, accountId);
+    const cached = String(resource.resolvedOutputs["selfLink"] ?? "");
+    if (cached) return cached;
+    const name = String(resource.fields["name"] ?? resource.externalId ?? "");
+    const segment = typeId === "health-check" ? "healthChecks" : "backendServices";
+    return `https://www.googleapis.com/compute/v1/projects/${p}/global/${segment}/${name}`;
+  }
+
   if (typeId === "gcp-service-account" && outputKey === "key") {
     const exp = await exportCredential(ctx, typeId, resourceId, accountId, "json-key");
     return exp.content;

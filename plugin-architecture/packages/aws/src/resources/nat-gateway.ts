@@ -30,4 +30,5 @@ export const NATGatewayResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   iconKey: "network",
   supportsCreate: true,
+  supportsMetrics: true,
 };

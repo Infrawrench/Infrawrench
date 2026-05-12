@@ -33,4 +33,5 @@ export const CloudFunctionResourceType: ResourceTypeDefinition = {
   ],
   dashboardPinnable: true,
   supportsCreate: true,
+  supportsMetrics: true,
 };

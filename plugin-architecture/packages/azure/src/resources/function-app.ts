@@ -23,4 +23,5 @@ export const FunctionAppResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   iconKey: "function",
   supportsCreate: true,
+  supportsMetrics: true,
 };

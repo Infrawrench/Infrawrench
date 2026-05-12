@@ -23,4 +23,5 @@ export const KinesisStreamResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   iconKey: "stream",
   supportsCreate: true,
+  supportsMetrics: true,
 };

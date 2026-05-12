@@ -51,4 +51,5 @@ export const VMResourceType: ResourceTypeDefinition = {
     usernameFieldKey: "sshUsername",
   },
   supportsCreate: true,
+  supportsMetrics: true,
 };

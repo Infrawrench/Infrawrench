@@ -27,6 +27,7 @@ export const ElastiCacheClusterResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   iconKey: "cache",
   supportsCreate: true,
+  supportsMetrics: true,
   secretExportTemplates: [
     {
       id: "connection",

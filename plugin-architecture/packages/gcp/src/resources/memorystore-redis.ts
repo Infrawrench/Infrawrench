@@ -27,6 +27,7 @@ export const MemorystoreRedisResourceType: ResourceTypeDefinition = {
   ],
   dashboardPinnable: true,
   supportsCreate: true,
+  supportsMetrics: true,
   secretExportTemplates: [
     {
       id: "redis-credentials",

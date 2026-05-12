@@ -25,5 +25,6 @@ export const AutoScalingGroupResourceType: ResourceTypeDefinition = {
   outputs: [{ key: "autoScalingGroupArn", label: "ASG ARN", sensitive: false }],
   dashboardPinnable: true,
   supportsCreate: true,
+  supportsMetrics: true,
   iconKey: "scaling",
 };

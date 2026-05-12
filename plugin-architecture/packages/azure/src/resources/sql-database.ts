@@ -42,6 +42,7 @@ export const SQLDatabaseResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   iconKey: "database",
   supportsCreate: true,
+  supportsMetrics: true,
   secretExportTemplates: [
     {
       id: "connection-string",

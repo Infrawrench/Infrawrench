@@ -41,6 +41,7 @@ export const GkeClusterResourceType: ResourceTypeDefinition = {
   ],
   dashboardPinnable: true,
   supportsCreate: true,
+  supportsMetrics: true,
   peerIntegrations: [
     {
       pluginId: "kubernetes",

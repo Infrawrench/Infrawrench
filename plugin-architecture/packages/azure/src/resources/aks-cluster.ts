@@ -35,6 +35,7 @@ export const AKSClusterResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   iconKey: "kubernetes",
   supportsCreate: true,
+  supportsMetrics: true,
   peerIntegrations: [
     {
       pluginId: "kubernetes",

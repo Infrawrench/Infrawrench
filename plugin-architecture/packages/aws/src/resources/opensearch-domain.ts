@@ -23,6 +23,7 @@ export const OpenSearchDomainResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   iconKey: "search",
   supportsCreate: true,
+  supportsMetrics: true,
   secretExportTemplates: [
     {
       id: "opensearch-endpoint",

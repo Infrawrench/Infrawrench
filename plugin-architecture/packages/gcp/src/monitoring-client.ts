@@ -71,6 +71,14 @@ export async function fetchDashboardStats(
         { label: "Nodes", value: String(f["nodeCount"] ?? 0) },
       ];
     }
+    case "backend-service": {
+      return [
+        { label: "Protocol", value: String(f["protocol"] ?? "—") },
+        { label: "Scheme", value: String(f["loadBalancingScheme"] ?? "—") },
+        { label: "Backends", value: String(f["backendCount"] ?? 0) },
+        { label: "Health checks", value: String(f["healthCheckCount"] ?? 0) },
+      ];
+    }
     default: {
       // Generic fallback — show key fields from the resource
       const stats: DashboardStat[] = [];
@@ -275,6 +283,47 @@ export async function fetchMetricSeries(
       }
       break;
     }
+    case "backend-service": {
+      // HTTPS/HTTP(2) external load balancers emit metrics on the
+      // `https_lb_rule` monitored resource, keyed by `backend_target_name`
+      // (the backend service name). For TCP/SSL/UDP LBs the metrics live
+      // under different resource types — we surface the HTTPS family here
+      // since that covers the common case.
+      const name = String(resource.fields["name"] ?? "");
+      if (!name) break;
+      const fetchLbSeries = async (
+        metricType: string,
+        label: string,
+        unit: string,
+      ): Promise<MetricSeries | null> =>
+        fetchSeries(metricType, "backend_target_name", name, label, unit);
+      const series = await Promise.all([
+        fetchLbSeries(
+          "loadbalancing.googleapis.com/https/backend_request_count",
+          "Backend requests",
+          "requests",
+        ),
+        fetchLbSeries(
+          "loadbalancing.googleapis.com/https/backend_latencies",
+          "Backend latency",
+          "ms",
+        ),
+        fetchLbSeries(
+          "loadbalancing.googleapis.com/https/backend_request_bytes_count",
+          "Request bytes",
+          "bytes",
+        ),
+        fetchLbSeries(
+          "loadbalancing.googleapis.com/https/backend_response_bytes_count",
+          "Response bytes",
+          "bytes",
+        ),
+      ]);
+      for (const s of series) {
+        if (s) results.push(s);
+      }
+      break;
+    }
     case "cloud-nat": {
       // NAT metrics live on the nat_gateway monitored resource type, keyed
       // by gateway_name (the NAT's name). Allocation level is the headline
@@ -309,6 +358,253 @@ export async function fetchMetricSeries(
           natName,
           "New connections",
           "connections",
+        ),
+      ]);
+      for (const s of series) {
+        if (s) results.push(s);
+      }
+      break;
+    }
+    case "cloudsql-instance": {
+      // Cloud SQL monitored resource label is `database_id` = "<project>:<instance>".
+      const instName = String(resource.fields["name"] ?? "");
+      if (!instName) break;
+      const databaseId = `${ctx.project}:${instName}`;
+      const series = await Promise.all([
+        fetchSeries(
+          "cloudsql.googleapis.com/database/cpu/utilization",
+          "database_id",
+          databaseId,
+          "CPU Utilization",
+          "%",
+        ),
+        fetchSeries(
+          "cloudsql.googleapis.com/database/memory/utilization",
+          "database_id",
+          databaseId,
+          "Memory Utilization",
+          "%",
+        ),
+        fetchSeries(
+          "cloudsql.googleapis.com/database/disk/utilization",
+          "database_id",
+          databaseId,
+          "Disk Utilization",
+          "%",
+        ),
+        fetchSeries(
+          "cloudsql.googleapis.com/database/network/connections",
+          "database_id",
+          databaseId,
+          "Connections",
+          "connections",
+        ),
+      ]);
+      for (const s of series) {
+        if (s) results.push(s);
+      }
+      break;
+    }
+    case "pubsub-topic": {
+      const topicId = String(resource.fields["name"] ?? "");
+      if (!topicId) break;
+      const series = await Promise.all([
+        fetchSeries(
+          "pubsub.googleapis.com/topic/send_request_count",
+          "topic_id",
+          topicId,
+          "Publish Requests",
+          "requests",
+        ),
+        fetchSeries(
+          "pubsub.googleapis.com/topic/byte_cost",
+          "topic_id",
+          topicId,
+          "Byte Cost",
+          "bytes",
+        ),
+        fetchSeries(
+          "pubsub.googleapis.com/topic/num_retained_messages",
+          "topic_id",
+          topicId,
+          "Retained Messages",
+          "messages",
+        ),
+      ]);
+      for (const s of series) {
+        if (s) results.push(s);
+      }
+      break;
+    }
+    case "pubsub-subscription": {
+      const subId = String(resource.fields["name"] ?? "");
+      if (!subId) break;
+      const series = await Promise.all([
+        fetchSeries(
+          "pubsub.googleapis.com/subscription/num_undelivered_messages",
+          "subscription_id",
+          subId,
+          "Undelivered Messages",
+          "messages",
+        ),
+        fetchSeries(
+          "pubsub.googleapis.com/subscription/pull_message_operation_count",
+          "subscription_id",
+          subId,
+          "Pull Operations",
+          "operations",
+        ),
+        fetchSeries(
+          "pubsub.googleapis.com/subscription/ack_message_count",
+          "subscription_id",
+          subId,
+          "Acked Messages",
+          "messages",
+        ),
+        fetchSeries(
+          "pubsub.googleapis.com/subscription/oldest_unacked_message_age",
+          "subscription_id",
+          subId,
+          "Oldest Unacked Age",
+          "s",
+        ),
+      ]);
+      for (const s of series) {
+        if (s) results.push(s);
+      }
+      break;
+    }
+    case "alloydb-instance": {
+      // AlloyDB monitored resource has label `instance_id` (instance name only).
+      const instId = String(resource.fields["name"] ?? "");
+      if (!instId) break;
+      const series = await Promise.all([
+        fetchSeries(
+          "alloydb.googleapis.com/instance/cpu/average_utilization",
+          "instance_id",
+          instId,
+          "CPU Utilization",
+          "%",
+        ),
+        fetchSeries(
+          "alloydb.googleapis.com/instance/memory/min_available_memory",
+          "instance_id",
+          instId,
+          "Available Memory",
+          "bytes",
+        ),
+        fetchSeries(
+          "alloydb.googleapis.com/instance/postgresql/new_connections_count",
+          "instance_id",
+          instId,
+          "New Connections",
+          "connections",
+        ),
+      ]);
+      for (const s of series) {
+        if (s) results.push(s);
+      }
+      break;
+    }
+    case "memorystore-redis": {
+      // Monitored resource `redis_instance`, label `instance_id` is the full
+      // resource name including project/location.
+      const instName = String(resource.fields["name"] ?? "");
+      const region = String(resource.fields["region"] ?? "");
+      if (!instName || !region) break;
+      const fullName = `projects/${ctx.project}/locations/${region}/instances/${instName}`;
+      const series = await Promise.all([
+        fetchSeries(
+          "redis.googleapis.com/stats/cpu_utilization",
+          "instance_id",
+          fullName,
+          "CPU Utilization",
+          "%",
+        ),
+        fetchSeries(
+          "redis.googleapis.com/stats/memory/usage_ratio",
+          "instance_id",
+          fullName,
+          "Memory Usage",
+          "%",
+        ),
+        fetchSeries(
+          "redis.googleapis.com/stats/connections/total",
+          "instance_id",
+          fullName,
+          "Connections",
+          "connections",
+        ),
+        fetchSeries(
+          "redis.googleapis.com/commands/calls",
+          "instance_id",
+          fullName,
+          "Commands",
+          "ops",
+        ),
+      ]);
+      for (const s of series) {
+        if (s) results.push(s);
+      }
+      break;
+    }
+    case "gke-cluster": {
+      // GKE uses monitored resource `k8s_cluster` with label `cluster_name`.
+      const clusterName = String(resource.fields["name"] ?? "");
+      if (!clusterName) break;
+      const series = await Promise.all([
+        fetchSeries(
+          "kubernetes.io/cluster/node/count",
+          "cluster_name",
+          clusterName,
+          "Node Count",
+          "nodes",
+        ),
+        fetchSeries(
+          "kubernetes.io/cluster/pod/count",
+          "cluster_name",
+          clusterName,
+          "Pod Count",
+          "pods",
+        ),
+      ]);
+      for (const s of series) {
+        if (s) results.push(s);
+      }
+      break;
+    }
+    case "cloud-function": {
+      // Gen1 metrics only — gen2 is Cloud Run under the hood.
+      const fnName = String(resource.fields["name"] ?? "");
+      if (!fnName) break;
+      const series = await Promise.all([
+        fetchSeries(
+          "cloudfunctions.googleapis.com/function/execution_count",
+          "function_name",
+          fnName,
+          "Executions",
+          "calls",
+        ),
+        fetchSeries(
+          "cloudfunctions.googleapis.com/function/execution_times",
+          "function_name",
+          fnName,
+          "Execution Time",
+          "ns",
+        ),
+        fetchSeries(
+          "cloudfunctions.googleapis.com/function/active_instances",
+          "function_name",
+          fnName,
+          "Active Instances",
+          "instances",
+        ),
+        fetchSeries(
+          "cloudfunctions.googleapis.com/function/network_egress",
+          "function_name",
+          fnName,
+          "Network Egress",
+          "bytes",
         ),
       ]);
       for (const s of series) {

@@ -31,6 +31,7 @@ export const RDSClusterResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   iconKey: "database",
   supportsCreate: true,
+  supportsMetrics: true,
   resourceSqlDriver: {
     driver: "postgres",
     connectionStringOutputKey: "endpoint",

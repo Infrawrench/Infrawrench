@@ -9,6 +9,7 @@ import type {
   SqlTableMeta,
   DashboardStat,
   CredentialExport,
+  MetricSeries,
 } from "@infrawrench/plugin-base";
 import {
   dnsRecordBadgeColor,
@@ -1494,6 +1495,125 @@ export class CloudflareClient implements PluginClient {
       if (typeVal != null) stats.push({ label: "Type", value: String(typeVal) });
       return stats;
     }
+  }
+
+  async fetchMetricSeries(
+    resourceTypeId: string,
+    resourceId: string,
+    _accountId: string,
+    timeRange?: { startMs: number; endMs: number },
+  ): Promise<MetricSeries[]> {
+    if (resourceTypeId !== "zone") return [];
+
+    const zoneId = resourceId.split(":").pop();
+    if (!zoneId) return [];
+
+    const now = Date.now();
+    const from = new Date(timeRange?.startMs ?? now - 24 * 3_600_000).toISOString();
+    const to = new Date(timeRange?.endMs ?? now).toISOString();
+
+    // Pick aggregation granularity: hour buckets for windows ≥6h, minute for shorter.
+    const windowMs = (timeRange?.endMs ?? now) - (timeRange?.startMs ?? now - 24 * 3_600_000);
+    const useHourly = windowMs >= 6 * 3_600_000;
+    const groupName = useHourly ? "httpRequests1hGroups" : "httpRequests1mGroups";
+    const dimKey = useHourly ? "datetime" : "datetimeMinute";
+
+    const query = `query Z($zone: String!, $from: Time!, $to: Time!) {
+      viewer {
+        zones(filter: { zoneTag: $zone }) {
+          ${groupName}(
+            limit: 1000
+            filter: { datetime_geq: $from, datetime_lt: $to }
+            orderBy: [${dimKey}_ASC]
+          ) {
+            dimensions { ${dimKey} }
+            sum { requests bytes cachedRequests cachedBytes threats }
+            uniq { uniques }
+          }
+        }
+      }
+    }`;
+
+    interface GraphResp {
+      data?: {
+        viewer?: {
+          zones?: Array<{
+            httpRequests1mGroups?: GraphGroup[];
+            httpRequests1hGroups?: GraphGroup[];
+          }>;
+        };
+      };
+    }
+    interface GraphGroup {
+      dimensions: { datetimeMinute?: string; datetime?: string };
+      sum: {
+        requests?: number;
+        bytes?: number;
+        cachedRequests?: number;
+        cachedBytes?: number;
+        threats?: number;
+      };
+      uniq: { uniques?: number };
+    }
+
+    let groups: GraphGroup[] = [];
+    try {
+      const res = await fetch("https://api.cloudflare.com/client/v4/graphql", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.api.apiToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          query,
+          variables: { zone: zoneId, from, to },
+        }),
+      });
+      if (!res.ok) return [];
+      const json = (await res.json()) as GraphResp;
+      const zoneGroups = json.data?.viewer?.zones?.[0];
+      groups = (useHourly ? zoneGroups?.httpRequests1hGroups : zoneGroups?.httpRequests1mGroups) ?? [];
+    } catch {
+      return [];
+    }
+
+    if (groups.length === 0) return [];
+
+    const tsOf = (g: GraphGroup): number =>
+      new Date(String(g.dimensions[dimKey as "datetime"] ?? "")).getTime();
+
+    const requests: MetricSeries = {
+      label: "Requests",
+      unit: "requests",
+      points: groups.map((g) => ({ timestamp: tsOf(g), value: Number(g.sum.requests ?? 0) })),
+    };
+    const bytes: MetricSeries = {
+      label: "Bandwidth",
+      unit: "bytes",
+      points: groups.map((g) => ({ timestamp: tsOf(g), value: Number(g.sum.bytes ?? 0) })),
+    };
+    const cached: MetricSeries = {
+      label: "Cached Requests",
+      unit: "requests",
+      points: groups.map((g) => ({
+        timestamp: tsOf(g),
+        value: Number(g.sum.cachedRequests ?? 0),
+      })),
+    };
+    const threats: MetricSeries = {
+      label: "Threats",
+      unit: "events",
+      points: groups.map((g) => ({ timestamp: tsOf(g), value: Number(g.sum.threats ?? 0) })),
+    };
+    const uniques: MetricSeries = {
+      label: "Unique Visitors",
+      unit: "visitors",
+      points: groups.map((g) => ({ timestamp: tsOf(g), value: Number(g.uniq.uniques ?? 0) })),
+    };
+
+    return [requests, bytes, cached, threats, uniques].filter((s) =>
+      s.points.some((p) => p.value > 0),
+    );
   }
 
   /** List DNS records for a specific zone */
