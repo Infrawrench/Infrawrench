@@ -29,6 +29,7 @@ const INVOKE_CHANNELS = [
   "plugin_sql_execute",
   "plugin_kv_command",
   "plugin_docker_command",
+  "plugin_k8s_command",
   "storage_download_batch",
   // ssh
   "ssh_open_tunnel",
