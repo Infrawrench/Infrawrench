@@ -40,9 +40,9 @@ jobs:
             --lifecycle-configuration file://lifecycle.json \
             --endpoint-url "${R2_ENDPOINT}"
 
-  linux-arm64-build:
-    runs-on: blacksmith-4vcpu-ubuntu-2404-arm
-    name: Build on ubuntu-24.04-arm
+  linux-x64-build:
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    name: Build on blacksmith-4vcpu-ubuntu-24.04
     needs: r2-setup
     steps:
       - name: Checkout code
@@ -52,7 +52,7 @@ jobs:
       - name: Setup cache
         uses: actions/cache@v5
         with:
-          key: ${{ matrix.platform }}-cache-${{ hashFiles('pnpm-lock.yaml') }}
+          key: lintel-electron-cache-${{ hashFiles('pnpm-lock.yaml') }}
           path: |
             ${{ runner.temp }}/electron-cache
             ${{ runner.temp }}/electron-builder-cache
@@ -67,9 +67,9 @@ jobs:
       - name: Copy env.production.ts to env.ts for desktop package
         run: cp app/packages/desktop/env.production.ts app/packages/desktop/env.ts
       - name: Build plugin dependencies
-        run: pnpm turbo build --filter='@infrawrench/desktop^...'
+        run: sudo env "PATH=$PATH" pnpm turbo build --filter='@infrawrench/desktop^...'
       - name: Build
-        run: pnpm --filter @infrawrench/desktop dist --linux deb appimage
+        run: sudo env "PATH=$PATH" pnpm --filter @infrawrench/desktop dist --linux deb appimage snap
         env:
           ELECTRON_CACHE: ${{ runner.temp }}/electron-cache
           ELECTRON_BUILDER_CACHE: ${{ runner.temp }}/electron-builder-cache
@@ -83,9 +83,10 @@ jobs:
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
         run: |
           set -eo pipefail
-          tar -czf "${RUNNER_TEMP}/dist-linux-arm64.tar.gz" -C app/packages/desktop/dist .
-          aws s3 cp "${RUNNER_TEMP}/dist-linux-arm64.tar.gz" \
-            "s3://${R2_BUCKET}/desktop-builds/${GITHUB_RUN_ID}/dist-linux-arm64.tar.gz" \
+          sudo tar -czf "${RUNNER_TEMP}/dist-linux-x64.tar.gz" -C app/packages/desktop/dist .
+          sudo chown "$(id -u):$(id -g)" "${RUNNER_TEMP}/dist-linux-x64.tar.gz"
+          aws s3 cp "${RUNNER_TEMP}/dist-linux-x64.tar.gz" \
+            "s3://${R2_BUCKET}/desktop-builds/${GITHUB_RUN_ID}/dist-linux-x64.tar.gz" \
             --endpoint-url "${R2_ENDPOINT}"
 
   check-if-release:
@@ -123,9 +124,9 @@ jobs:
             rm CHANGELOG.md
           fi
 
-  linux-x64-build:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
-    name: Build on ubuntu-24.04
+  linux-arm64-build:
+    runs-on: blacksmith-4vcpu-ubuntu-2404-arm
+    name: Build on blacksmith-4vcpu-ubuntu-24.04-arm
     needs: [check-if-release, r2-setup]
     if: needs.check-if-release.outputs.package-version != ''
     steps:
@@ -136,7 +137,7 @@ jobs:
       - name: Setup cache
         uses: actions/cache@v5
         with:
-          key: ${{ matrix.platform }}-electron-cache-${{ hashFiles('pnpm-lock.yaml') }}
+          key: larm-cache-${{ hashFiles('pnpm-lock.yaml') }}
           path: |
             ${{ runner.temp }}/electron-cache
             ${{ runner.temp }}/electron-builder-cache
@@ -151,9 +152,9 @@ jobs:
       - name: Copy env.production.ts to env.ts for desktop package
         run: cp app/packages/desktop/env.production.ts app/packages/desktop/env.ts
       - name: Build plugin dependencies
-        run: sudo env "PATH=$PATH" pnpm turbo build --filter='@infrawrench/desktop^...'
+        run: pnpm turbo build --filter='@infrawrench/desktop^...'
       - name: Build
-        run: sudo env "PATH=$PATH" pnpm --filter @infrawrench/desktop dist --linux deb appimage snap
+        run: pnpm --filter @infrawrench/desktop dist --linux deb appimage
         env:
           ELECTRON_CACHE: ${{ runner.temp }}/electron-cache
           ELECTRON_BUILDER_CACHE: ${{ runner.temp }}/electron-builder-cache
@@ -167,10 +168,9 @@ jobs:
           R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
         run: |
           set -eo pipefail
-          sudo tar -czf "${RUNNER_TEMP}/dist-linux-x64.tar.gz" -C app/packages/desktop/dist .
-          sudo chown "$(id -u):$(id -g)" "${RUNNER_TEMP}/dist-linux-x64.tar.gz"
-          aws s3 cp "${RUNNER_TEMP}/dist-linux-x64.tar.gz" \
-            "s3://${R2_BUCKET}/desktop-builds/${GITHUB_RUN_ID}/dist-linux-x64.tar.gz" \
+          tar -czf "${RUNNER_TEMP}/dist-linux-arm64.tar.gz" -C app/packages/desktop/dist .
+          aws s3 cp "${RUNNER_TEMP}/dist-linux-arm64.tar.gz" \
+            "s3://${R2_BUCKET}/desktop-builds/${GITHUB_RUN_ID}/dist-linux-arm64.tar.gz" \
             --endpoint-url "${R2_ENDPOINT}"
 
   macos-build:
