@@ -30,7 +30,7 @@
       "@esbuild-kit/core-utils>esbuild": ">=0.25.0"
     },
     "patchedDependencies": {
-      "app-builder-lib@26.8.1": "patches/app-builder-lib@26.8.1.patch"
+      "app-builder-lib@26.10.0": "patches/app-builder-lib@26.10.0.patch"
     }
   }
 }
