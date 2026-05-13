@@ -28,6 +28,9 @@
     "overrides": {
       "yaml": ">=2.8.3",
       "@esbuild-kit/core-utils>esbuild": ">=0.25.0"
+    },
+    "patchedDependencies": {
+      "app-builder-lib@26.8.1": "patches/app-builder-lib@26.8.1.patch"
     }
   }
 }
