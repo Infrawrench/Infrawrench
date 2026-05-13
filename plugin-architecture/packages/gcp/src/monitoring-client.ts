@@ -573,45 +573,6 @@ export async function fetchMetricSeries(
       }
       break;
     }
-    case "cloud-function": {
-      // Gen1 metrics only — gen2 is Cloud Run under the hood.
-      const fnName = String(resource.fields["name"] ?? "");
-      if (!fnName) break;
-      const series = await Promise.all([
-        fetchSeries(
-          "cloudfunctions.googleapis.com/function/execution_count",
-          "function_name",
-          fnName,
-          "Executions",
-          "calls",
-        ),
-        fetchSeries(
-          "cloudfunctions.googleapis.com/function/execution_times",
-          "function_name",
-          fnName,
-          "Execution Time",
-          "ns",
-        ),
-        fetchSeries(
-          "cloudfunctions.googleapis.com/function/active_instances",
-          "function_name",
-          fnName,
-          "Active Instances",
-          "instances",
-        ),
-        fetchSeries(
-          "cloudfunctions.googleapis.com/function/network_egress",
-          "function_name",
-          fnName,
-          "Network Egress",
-          "bytes",
-        ),
-      ]);
-      for (const s of series) {
-        if (s) results.push(s);
-      }
-      break;
-    }
   }
 
   return results;
