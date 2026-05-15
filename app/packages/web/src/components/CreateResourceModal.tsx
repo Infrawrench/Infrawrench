@@ -102,6 +102,19 @@ export function CreateResourceModal({
         );
         onCreated(created);
       },
+      executeFieldAction: (fieldKey: string, actionId: string, fields: Record<string, string>) =>
+        apiPost<{ value: string; option?: { id: string; label: string } }>(
+          `/api/org/${orgId}/resources/field-action`,
+          {
+            accountId,
+            pluginId,
+            resourceTypeId,
+            fieldKey,
+            actionId,
+            fields,
+            ...(parentResourceId ? { parentResourceId } : {}),
+          },
+        ),
     }),
     [accountId, orgId, pluginId, resourceTypeId, parentResourceId, onCreated],
   );
@@ -128,6 +141,11 @@ export function CreateResourceModal({
           resourcePickerProps={{
             loadResources,
             accountId,
+          }}
+          fieldActionProps={{
+            runAction: form.runFieldAction,
+            runningByKey: form.fieldActionRunning,
+            errorByKey: form.fieldActionError,
           }}
         />
       )}

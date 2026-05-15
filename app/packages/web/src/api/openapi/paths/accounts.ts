@@ -11,6 +11,13 @@ import {
 } from "../common";
 import type { BuildContext } from "../context";
 
+const CredentialFieldRegion = strict({
+  id: z.string(),
+  label: z.string(),
+  location: z.string().optional(),
+  flag: z.string().optional(),
+}).openapi("CredentialFieldRegion");
+
 const CredentialField = strict({
   key: z.string(),
   label: z.string(),
@@ -19,6 +26,7 @@ const CredentialField = strict({
   sensitive: z.boolean().optional(),
   multiline: z.boolean().optional(),
   defaultValue: z.string().optional(),
+  regions: z.array(CredentialFieldRegion).optional(),
 }).openapi("CredentialField");
 
 const PluginSummary = strict({

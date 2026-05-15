@@ -258,6 +258,21 @@ const CreateCostEstimateRequest = strict({
   parentResourceId: ResourceId.optional(),
 }).openapi("CreateCostEstimateRequest");
 
+const FieldActionRequest = strict({
+  accountId: Uuid,
+  resourceTypeId: z.string(),
+  fieldKey: z.string(),
+  actionId: z.string(),
+  fields: z.record(z.string()),
+  pluginId: z.string().optional(),
+  parentResourceId: ResourceId.optional(),
+}).openapi("FieldActionRequest");
+
+const FieldActionResponse = strict({
+  value: z.string(),
+  option: strict({ id: z.string(), label: z.string() }).optional(),
+}).openapi("FieldActionResponse");
+
 const PeerPanesRequest = strict({
   accountId: Uuid,
   resourceId: ResourceId,
@@ -660,6 +675,27 @@ export function registerResourcePaths(ctx: BuildContext) {
           "Map of `sizeId → pricing`. Empty object when the plugin doesn't support pricing.",
         content: { "application/json": { schema: z.record(JsonObject) } },
       },
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/resources/field-action",
+    tags: ["Resources"],
+    summary: "Execute an in-form field action (e.g. generate an IAM role)",
+    description:
+      "Calls the plugin's `executeFieldAction`. Returns `{ value }` to assign to the field; for `select` fields the optional `option` should be spliced into the options list so the new value can be displayed.",
+    request: {
+      params: OrgIdParam,
+      body: { content: { "application/json": { schema: FieldActionRequest } }, required: true },
+    },
+    responses: {
+      200: {
+        description: "Action result",
+        content: { "application/json": { schema: FieldActionResponse } },
+      },
+      400: ErrorResponses[400],
+      404: ErrorResponses[404],
     },
   });
 

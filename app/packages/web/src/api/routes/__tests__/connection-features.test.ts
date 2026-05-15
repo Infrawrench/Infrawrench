@@ -34,6 +34,10 @@ vi.mock("@/services/tunnel-resolver", () => ({
   rewriteCredentialsThroughTunnel: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock("@/services/credential-rewriters", () => ({
+  applyCredentialRewriters: vi.fn().mockResolvedValue(undefined),
+}));
+
 const mockSqlQuery = vi.fn();
 const mockSqlExecute = vi.fn();
 const mockKvCommand = vi.fn();

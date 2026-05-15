@@ -11,6 +11,7 @@ import {
   getClientForResource,
   buildPeerPanes,
 } from "../../services/plugin-clients";
+import { getMetricRange } from "@infrawrench/server-core/clickhouse/readers";
 import { loadSecretStatesForResource } from "../../services/secret-states";
 import type { ResourceInstance, DetailViewSchema, PeerPaneSchema } from "@infrawrench/plugin-base";
 import { normalizeResourceCreateResult } from "@infrawrench/plugin-base";
@@ -295,6 +296,12 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
   if (resourceTypeDef?.peerIntegrations?.length) {
     const fields = enrichedInstance.fields ?? {};
     const visibleIntegrations = resourceTypeDef.peerIntegrations.filter((i) => {
+      if (i.requiresFields) {
+        for (const key of i.requiresFields) {
+          const v = fields[key];
+          if (v == null || v === "") return false;
+        }
+      }
       if (!i.showWhen) return true;
       const v = fields[i.showWhen.fieldKey];
       if (v == null || v === "") return false;
@@ -311,6 +318,7 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
         resourceTypeId,
         resourceId,
         accountId,
+        organizationId,
       );
       peerPanes.push(...builtPanes);
     } else {
@@ -1072,6 +1080,43 @@ app.post("/create-pricing", async (c) => {
   return c.json(pricing ?? {});
 });
 
+/** POST /api/resources/field-action — execute an in-form field action (e.g. mint an IAM role) */
+app.post("/field-action", async (c) => {
+  requirePermission(c, "resources:write");
+  const organizationId = c.get("organizationId");
+  const input = await c.req.json<{
+    accountId: string;
+    resourceTypeId: string;
+    fieldKey: string;
+    actionId: string;
+    fields: Record<string, string>;
+    pluginId?: string;
+    parentResourceId?: string;
+  }>();
+
+  const ctx = input.pluginId
+    ? await getClientForResource(
+        input.pluginId,
+        input.accountId,
+        organizationId,
+        input.parentResourceId,
+      )
+    : await getClientForAccount(input.accountId, organizationId);
+  if (!ctx) return c.json({ error: "Account or peer resource not found" }, 404);
+  if (!ctx.client.executeFieldAction) {
+    return c.json({ error: "Plugin does not support field actions" }, 400);
+  }
+
+  const result = await ctx.client.executeFieldAction(
+    input.resourceTypeId,
+    input.fieldKey,
+    input.actionId,
+    input.accountId,
+    input.fields,
+  );
+  return c.json(result);
+});
+
 /** POST /api/resources/create-cost-estimate — get cost estimate for create form */
 app.post("/create-cost-estimate", async (c) => {
   requirePermission(c, "resources:read");
@@ -1126,37 +1171,33 @@ app.post("/:pluginId/:typeId/peer-panes", async (c) => {
     resourceTypeId,
     resourceId,
     accountId,
+    organizationId,
   );
 
   return c.json(panes);
 });
 
-/** POST /api/resources/:pluginId/:typeId/metrics */
+/**
+ * POST /api/resources/:pluginId/:typeId/metrics
+ *
+ * Returns historical metric series for a resource. Data is sourced from
+ * ClickHouse (written by the poller). Only resources pinned on some dashboard
+ * accumulate points; unpinned resources will return an empty series array.
+ */
 app.post("/:pluginId/:typeId/metrics", async (c) => {
   requirePermission(c, "resources:read");
   const organizationId = c.get("organizationId");
-  const pluginId = c.req.param("pluginId");
-  const { accountId, resourceId, startMs, endMs, parentResourceId } = await c.req.json<{
+  const { resourceId, startMs, endMs } = await c.req.json<{
     accountId: string;
     resourceId: string;
     startMs?: number;
     endMs?: number;
     parentResourceId?: string;
   }>();
-  const resourceTypeId = c.req.param("typeId");
 
-  const ctx = await getClientForResource(pluginId, accountId, organizationId, parentResourceId);
-  if (!ctx) return c.json({ error: "Account or peer resource not found" }, 404);
-  if (!ctx.client.fetchMetricSeries)
-    return c.json({ error: "Plugin does not support metrics" }, 400);
-
-  const timeRange = startMs && endMs ? { startMs, endMs } : undefined;
-  const series = await ctx.client.fetchMetricSeries(
-    resourceTypeId,
-    resourceId,
-    accountId,
-    timeRange,
-  );
+  const toMs = endMs ?? Date.now();
+  const fromMs = startMs ?? toMs - 60 * 60 * 1000;
+  const series = await getMetricRange(organizationId, resourceId, fromMs, toMs);
   return c.json({ series });
 });
 

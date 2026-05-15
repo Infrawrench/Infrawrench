@@ -5,12 +5,13 @@ import type {
   Plugin,
   PluginClient,
 } from "@infrawrench/plugin-base";
+import { evaluatePeerIntegrationUnreachable } from "@infrawrench/plugin-base";
 import { db } from "../db/client";
 import { accounts, resources } from "../db/schema";
 import { decrypt, buildAad } from "./encryption";
 import { getPlugin } from "../plugins/loader";
 import { buildPluginHostServices } from "./host-services";
-import { rewriteCredentialsThroughTunnel } from "./tunnel-resolver";
+import { applyCredentialRewriters } from "./credential-rewriters";
 
 export interface PeerPaneResult {
   tabLabel: string;
@@ -33,10 +34,33 @@ export async function buildPeerPanes(
   resourceTypeId: string,
   resourceId: string,
   accountId: string,
+  organizationId?: string,
 ): Promise<PeerPaneResult[]> {
   const panes: PeerPaneResult[] = [];
+  // Fetch the parent ResourceInstance once so credential rewriters that need
+  // resource-level data (e.g. Cloud SQL Auth Proxy needs `connectionName`)
+  // can read it from `ctx.resourceFields` / `ctx.resourceOutputs` instead of
+  // re-querying storage.
+  const parentResource = await parentClient
+    .getResource(resourceTypeId, resourceId, accountId)
+    .catch(() => null);
   await Promise.allSettled(
     integrations.map(async (integration) => {
+      // Provider-declared unreachable check (e.g. private-IP-only Cloud SQL).
+      // Short-circuit before we resolve outputs, run rewriters, or load the
+      // peer plugin — just hand back the guidance pane.
+      const guidance = evaluatePeerIntegrationUnreachable(integration, parentResource?.fields);
+      if (guidance) {
+        const peerLoaded = await getPlugin(integration.pluginId);
+        if (!peerLoaded) return;
+        panes.push({
+          tabLabel: integration.tabLabel,
+          pluginLogoSvg: peerLoaded.plugin.manifest.logoSvg,
+          schema: { resourceGroups: [], guidance },
+          peerPluginId: integration.pluginId,
+        });
+        return;
+      }
       try {
         const peerCredentials: Record<string, string> = {};
         for (const mapping of integration.credentialMappings) {
@@ -48,6 +72,19 @@ export async function buildPeerPanes(
           );
           peerCredentials[mapping.credentialKey] = value;
         }
+
+        await applyCredentialRewriters(
+          {
+            orgId: organizationId,
+            accountId,
+            resourcePluginId: parentPlugin.manifest.id,
+            resourceTypeId,
+            resourceId,
+            resourceFields: parentResource?.fields,
+            resourceOutputs: parentResource?.resolvedOutputs,
+          },
+          peerCredentials,
+        );
 
         const peerLoaded = await getPlugin(integration.pluginId);
         if (!peerLoaded) return;
@@ -114,7 +151,7 @@ export async function getClientForAccount(accountId: string, organizationId: str
   );
   const credentials = JSON.parse(plaintext) as Record<string, string>;
 
-  await rewriteCredentialsThroughTunnel(accountId, credentials);
+  await applyCredentialRewriters({ orgId: organizationId, accountId }, credentials);
 
   const loaded = await getPlugin(account.pluginId);
   if (!loaded) return null;
@@ -171,6 +208,25 @@ export async function getClientForResource(
     );
     peerCredentials[mapping.credentialKey] = value;
   }
+
+  // Fetch the parent ResourceInstance so the rewriter context carries live
+  // fields/outputs (Cloud SQL Auth Proxy needs `connectionName`).
+  const parentInstance = await parent.client
+    .getResource(parentResource.resourceTypeId, parentResourceId, accountId)
+    .catch(() => null);
+
+  await applyCredentialRewriters(
+    {
+      orgId: organizationId,
+      accountId,
+      resourcePluginId: parent.account.pluginId,
+      resourceTypeId: parentResource.resourceTypeId,
+      resourceId: parentResourceId,
+      resourceFields: parentInstance?.fields,
+      resourceOutputs: parentInstance?.resolvedOutputs,
+    },
+    peerCredentials,
+  );
 
   const peerLoaded = await getPlugin(pluginId);
   if (!peerLoaded) return null;

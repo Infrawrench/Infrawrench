@@ -34,6 +34,7 @@ app.get("/plugins", async (c) => {
         sensitive: f.sensitive,
         multiline: f.multiline,
         defaultValue: f.defaultValue,
+        regions: f.regions,
       })),
     })),
   );

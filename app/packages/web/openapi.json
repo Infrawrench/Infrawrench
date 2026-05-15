@@ -283,6 +283,25 @@
         "required": ["token"],
         "additionalProperties": false
       },
+      "CredentialFieldRegion": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "location": {
+            "type": "string"
+          },
+          "flag": {
+            "type": "string"
+          }
+        },
+        "required": ["id", "label"],
+        "additionalProperties": false
+      },
       "CredentialField": {
         "type": "object",
         "properties": {
@@ -306,6 +325,12 @@
           },
           "defaultValue": {
             "type": "string"
+          },
+          "regions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CredentialFieldRegion"
+            }
           }
         },
         "required": ["key", "label"],
@@ -1199,6 +1224,48 @@
         ],
         "additionalProperties": false
       },
+      "PinRangeMetricSeries": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "points": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "timestamp": {
+                  "type": "number"
+                },
+                "value": {
+                  "type": "number"
+                }
+              },
+              "required": ["timestamp", "value"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["label", "points"],
+        "additionalProperties": false
+      },
+      "PinRangeResponse": {
+        "type": "object",
+        "properties": {
+          "series": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PinRangeMetricSeries"
+            }
+          }
+        },
+        "required": ["series"],
+        "additionalProperties": false
+      },
       "ProbeRequest": {
         "type": "object",
         "properties": {
@@ -2077,6 +2144,62 @@
           }
         },
         "required": ["accountId", "resourceTypeId", "sizes"],
+        "additionalProperties": false
+      },
+      "FieldActionResponse": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string"
+          },
+          "option": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              }
+            },
+            "required": ["id", "label"],
+            "additionalProperties": false
+          }
+        },
+        "required": ["value"],
+        "additionalProperties": false
+      },
+      "FieldActionRequest": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "fieldKey": {
+            "type": "string"
+          },
+          "actionId": {
+            "type": "string"
+          },
+          "fields": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "pluginId": {
+            "type": "string"
+          },
+          "parentResourceId": {
+            "$ref": "#/components/schemas/ResourceId"
+          }
+        },
+        "required": ["accountId", "resourceTypeId", "fieldKey", "actionId", "fields"],
         "additionalProperties": false
       },
       "CreateCostEstimateRequest": {
@@ -5401,6 +5524,85 @@
         "description": "_Requires permission: `dashboards:read`._"
       }
     },
+    "/api/org/{orgId}/dashboards/pin/{pinId}/range": {
+      "get": {
+        "tags": ["Dashboards"],
+        "summary": "Historical metric series for a pinned resource",
+        "description": "Returns per-series metric points between fromMs and toMs. The backend auto-routes between raw, 1-minute, and 1-hour rollups based on span: ≤2h raw, ≤7d 1m, >7d 1h.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "pinId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": ["integer", "null"]
+            },
+            "required": false,
+            "name": "fromMs",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": ["integer", "null"]
+            },
+            "required": false,
+            "name": "toMs",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Series",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PinRangeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdDashboardsPinPinIdRange"
+      }
+    },
     "/api/org/{orgId}/dashboards/probe": {
       "post": {
         "tags": ["Dashboards"],
@@ -6891,6 +7093,69 @@
         "operationId": "postOrgOrgIdResourcesCreatePricing",
         "x-required-permission": "resources:read",
         "description": "_Requires permission: `resources:read`._"
+      }
+    },
+    "/api/org/{orgId}/resources/field-action": {
+      "post": {
+        "tags": ["Resources"],
+        "summary": "Execute an in-form field action (e.g. generate an IAM role)",
+        "description": "Calls the plugin's `executeFieldAction`. Returns `{ value }` to assign to the field; for `select` fields the optional `option` should be spliced into the options list so the new value can be displayed.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FieldActionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Action result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FieldActionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdResourcesFieldAction"
       }
     },
     "/api/org/{orgId}/resources/create-cost-estimate": {
