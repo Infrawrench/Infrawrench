@@ -60,12 +60,33 @@ export async function deleteResource(
   }
 
   if (typeId === "cloudsql-instance") {
-    const resource = await ctx.getResource(typeId, resourceId, accountId);
-    const name = String(resource.fields["name"] ?? resource.externalId ?? "");
-    const res = await fetch(`https://sqladmin.googleapis.com/v1/projects/${p}/instances/${name}`, {
-      method: "DELETE",
-      headers: { Authorization: `Bearer ${tok}` },
-    });
+    // resourceId format is `<accountId>:cloudsql-instance:<name>` and the
+    // instance name is all we need for the DELETE — skip the listResources
+    // round-trip that `ctx.getResource` does. Adds an AbortController-backed
+    // timeout so the DELETE doesn't hang the UI indefinitely if Cloud SQL's
+    // API stalls. The API returns immediately with an Operation; the actual
+    // deletion runs async on Google's side.
+    const name = resourceId.split(":").slice(2).join(":") || "";
+    if (!name) throw new Error("Cannot determine Cloud SQL instance name for deletion");
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 30_000);
+    let res: Response;
+    try {
+      res = await fetch(`https://sqladmin.googleapis.com/v1/projects/${p}/instances/${name}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${tok}` },
+        signal: controller.signal,
+      });
+    } catch (err) {
+      if (controller.signal.aborted) {
+        throw new Error(
+          "Cloud SQL DELETE timed out after 30s. The deletion may still complete in Google Cloud — refresh in a minute to confirm.",
+        );
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
     if (!res.ok) throw new Error(`Cloud SQL API ${res.status}: ${await res.text()}`);
     return;
   }

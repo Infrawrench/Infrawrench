@@ -24,9 +24,18 @@ You can optionally set a **Project ID** to override the project embedded in the 
 ## Notable flows
 
 - **SSH terminal** on Compute Engine VMs — infrawrench injects your chosen SSH key via the instance metadata API.
-- **SQL editor** on Cloud SQL (Postgres and MySQL).
+- **SQL editor** on Cloud SQL (Postgres, MySQL, SQL Server) — direct connection to the instance's public IP using the embedded root password (see below).
 - **File browser** on GCS buckets.
 - **Secret export to K8s** for Cloud SQL and GCS (with service account key export as a secret).
+
+## Cloud SQL connectivity
+
+The PostgreSQL / MySQL / SQL Server tabs on a Cloud SQL instance connect directly to the instance's public IP using the root password Infrawrench stored at create time. To make this reachable from your machine you need to:
+
+- Enable a public IP on the instance (Cloud SQL → this instance → Connections → Networking → Public IP). New instances created from Infrawrench have this enabled by default; the create modal exposes the toggle.
+- Add your client IP (or `0.0.0.0/0` if you accept the risk) to **Authorized networks** on the same screen so Cloud SQL accepts the inbound connection.
+
+If the instance has no public IP, the tab renders a static guidance pane explaining the options (add public IP, run Infrawrench inside the VPC, or set up Cloud VPN / IAP) — Infrawrench doesn't try to dial through a tunnel automatically.
 
 ## Tips & limits
 

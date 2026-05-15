@@ -25,6 +25,7 @@ import {
   serviceAccountKeySchema,
   type ServiceAccountKey,
 } from "./auth.js";
+import { detectMyPublicIp } from "./cloudsql-create-handlers.js";
 import { gcpStatus } from "./utils.js";
 import {
   type PricingCacheEntry,
@@ -679,6 +680,64 @@ export class GcpClient implements PluginClient {
     parentResourceId?: string,
   ): Promise<ResourceInstance> {
     return gcpCreateResource(this.createCtx, typeId, accountId, fields, parentResourceId);
+  }
+
+  async executeFieldAction(
+    typeId: string,
+    fieldKey: string,
+    actionId: string,
+    _accountId: string,
+    fields: Record<string, string>,
+  ): Promise<{ value: string; option?: { id: string; label: string } }> {
+    if (
+      typeId === "cloudsql-instance" &&
+      fieldKey === "authorizedNetworks" &&
+      actionId === "detect-my-ip"
+    ) {
+      const next = await detectMyPublicIp(fields[fieldKey]);
+      return { value: next };
+    }
+    throw new Error(`GCP plugin: no field action for ${typeId}.${fieldKey} / ${actionId}`);
+  }
+
+  async applySecretReroll(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+    fieldKey: string,
+    plaintext: string,
+  ): Promise<void> {
+    if (typeId === "cloudsql-instance" && fieldKey === "rootPassword") {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      const databaseVersion = String(resource.fields["databaseVersion"] ?? "");
+      const name = resource.externalId ?? String(resource.fields["name"] ?? "");
+      if (!name) throw new Error("Cannot determine Cloud SQL instance name");
+      // Default admin user per engine — matches `engineInfoFromVersion` in
+      // cloudsql-engine.ts. The Cloud SQL Admin API rejects updates that omit
+      // both name and host, so we always pass them.
+      const username = databaseVersion.startsWith("MYSQL_")
+        ? "root"
+        : databaseVersion.startsWith("SQLSERVER_")
+          ? "sqlserver"
+          : "postgres";
+      // For Postgres + SQL Server the user has no host scope; MySQL users
+      // are scoped to a host pattern, with `%` matching any.
+      const host = databaseVersion.startsWith("MYSQL_") ? "%" : "";
+      const tok = await this.token();
+      const params = new URLSearchParams({ name: username });
+      if (host) params.set("host", host);
+      const url = `https://sqladmin.googleapis.com/v1/projects/${this.project}/instances/${name}/users?${params}`;
+      const res = await fetch(url, {
+        method: "PUT",
+        headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ password: plaintext }),
+      });
+      if (!res.ok) {
+        throw new Error(`Cloud SQL user update ${res.status}: ${await res.text()}`);
+      }
+      return;
+    }
+    throw new Error(`GCP plugin: applySecretReroll not supported for ${typeId}.${fieldKey}`);
   }
 
   async fetchDashboardStats(

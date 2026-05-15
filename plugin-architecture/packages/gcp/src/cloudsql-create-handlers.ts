@@ -80,11 +80,43 @@ export const cloudsqlCreateConfigHandlers: Record<
           description: "Password for the default admin user (postgres / root / sqlserver)",
         },
         {
+          key: "publicIp",
+          label: "Public IP",
+          kind: "select",
+          required: true,
+          description:
+            "Public IP makes the instance reachable from the open internet. Disable to use private IP only — connections then require VPC reachability (Cloud VPN, Cloud Run/GCE in the VPC, IAP tunnel).",
+          options: [
+            { id: "true", label: "Enabled (recommended for desktop access)" },
+            { id: "false", label: "Disabled (private IP only)" },
+          ],
+          defaultValue: "true",
+        },
+        {
+          key: "authorizedNetworks",
+          label: "Authorized Networks",
+          kind: "text",
+          multiline: true,
+          required: false,
+          description:
+            "One CIDR per line. Cloud SQL drops connections from any IP not listed here. Use 0.0.0.0/0 to allow any IP (insecure — fine for dev). Leave empty to deny all public access. Click 'Detect my IP' to insert your current public IP.",
+          placeholder: "1.2.3.4/32\n10.0.0.0/8",
+          showWhen: { fieldKey: "publicIp", fieldValue: "true" },
+          actions: [
+            {
+              id: "detect-my-ip",
+              label: "Detect my IP",
+              description: "Look up this machine's current public IP and append it as a /32 entry.",
+            },
+          ],
+        },
+        {
           key: "network",
           label: "VPC Network",
           kind: "resource-picker",
           required: false,
-          description: "VPC network for private IP access",
+          description:
+            "VPC network used for the private IP. Required when public IP is disabled; optional alongside public IP to enable both.",
           associationSources: [
             { pluginId: "gcp", resourceTypeId: "vpc-network", outputKey: "selfLink" },
           ],
@@ -113,16 +145,27 @@ export const cloudsqlCreateResourceHandlers: Record<
     const diskSizeGb = fields["diskSizeGb"] ?? "10";
     const rootPassword = fields["rootPassword"] ?? "";
     const network = fields["network"];
+    // The select submits "true" / "false"; treat anything other than an
+    // explicit "false" as enabled so existing API consumers keep their
+    // historical default (public IP on, matches the pre-toggle behaviour).
+    const publicIpEnabled = fields["publicIp"] !== "false";
     const engine = engineInfoFromVersion(databaseVersion);
 
-    const ipConfig: Record<string, unknown> = {};
+    if (!publicIpEnabled && !network) {
+      throw new Error(
+        "Cloud SQL: when public IP is disabled, a VPC network is required for the instance to be reachable.",
+      );
+    }
+
+    const ipConfig: Record<string, unknown> = { ipv4Enabled: publicIpEnabled };
     if (network) {
       const projectsIdx = network.indexOf("projects/");
       ipConfig.privateNetwork =
         projectsIdx >= 0 ? network.slice(projectsIdx) : `projects/${p}/global/networks/${network}`;
-      ipConfig.ipv4Enabled = false;
-    } else {
-      ipConfig.ipv4Enabled = true;
+    }
+    if (publicIpEnabled) {
+      const authorizedNetworks = parseAuthorizedNetworks(fields["authorizedNetworks"]);
+      if (authorizedNetworks.length > 0) ipConfig.authorizedNetworks = authorizedNetworks;
     }
 
     const res = await fetch(`https://sqladmin.googleapis.com/v1/projects/${p}/instances`, {
@@ -176,3 +219,48 @@ export const cloudsqlCreateResourceHandlers: Record<
     };
   },
 };
+
+/**
+ * Parse the `authorizedNetworks` create-form field into the Cloud SQL API
+ * shape `[{ name, value: "<cidr>" }, …]`. Splits on newlines and commas,
+ * skips blanks, validates rough CIDR shape, and labels each entry so they're
+ * identifiable in the GCP console.
+ */
+export function parseAuthorizedNetworks(
+  raw: string | undefined,
+): Array<{ name: string; value: string }> {
+  if (!raw) return [];
+  const cidrRe = /^[0-9a-fA-F:.]+\/\d{1,3}$/;
+  const out: Array<{ name: string; value: string }> = [];
+  for (const part of raw.split(/[\n,]+/)) {
+    const cidr = part.trim();
+    if (!cidr) continue;
+    if (!cidrRe.test(cidr)) {
+      throw new Error(
+        `Invalid CIDR in Authorized Networks: "${cidr}". Use forms like 1.2.3.4/32 or 10.0.0.0/8.`,
+      );
+    }
+    out.push({ name: `infrawrench-${out.length + 1}`, value: cidr });
+  }
+  return out;
+}
+
+/**
+ * Look up this machine's current public IP via a public echo service. Used
+ * by the Authorized Networks field's "Detect my IP" action so users don't
+ * have to alt-tab to whatismyip.
+ */
+export async function detectMyPublicIp(existing: string | undefined): Promise<string> {
+  const res = await fetch("https://api.ipify.org?format=text");
+  if (!res.ok) throw new Error(`Couldn't detect public IP (${res.status})`);
+  const ip = (await res.text()).trim();
+  if (!/^[0-9.]+$/.test(ip) && !/^[0-9a-fA-F:]+$/.test(ip)) {
+    throw new Error(`Public-IP service returned an unexpected value: ${ip}`);
+  }
+  const cidr = ip.includes(":") ? `${ip}/128` : `${ip}/32`;
+  // Append to existing rather than replace, so users can build a list.
+  const trimmed = (existing ?? "").replace(/\s+$/, "");
+  if (!trimmed) return cidr;
+  if (trimmed.split(/[\n,]/).some((s) => s.trim() === cidr)) return trimmed;
+  return `${trimmed}\n${cidr}`;
+}

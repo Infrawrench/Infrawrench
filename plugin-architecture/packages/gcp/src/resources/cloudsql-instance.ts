@@ -50,26 +50,49 @@ export const CloudSqlInstanceResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   supportsCreate: true,
   supportsMetrics: true,
-  peerIntegrations: [
-    {
-      pluginId: "postgres",
-      tabLabel: "PostgreSQL",
-      credentialMappings: [{ outputKey: "connectionUrl", credentialKey: "connectionString" }],
-      showWhen: { fieldKey: "databaseVersion", prefix: "POSTGRES_" },
-    },
-    {
-      pluginId: "mysql",
-      tabLabel: "MySQL",
-      credentialMappings: [{ outputKey: "connectionUrl", credentialKey: "connectionString" }],
-      showWhen: { fieldKey: "databaseVersion", prefix: "MYSQL_" },
-    },
-    {
-      pluginId: "mssql",
-      tabLabel: "SQL Server",
-      credentialMappings: [{ outputKey: "connectionUrl", credentialKey: "connectionString" }],
-      showWhen: { fieldKey: "databaseVersion", prefix: "SQLSERVER_" },
-    },
-  ],
+  peerIntegrations: (() => {
+    // The peer plugin connects directly to the Cloud SQL instance's public IP
+    // using the URL the GCP plugin builds in `resolveOutput("connectionUrl")`
+    // (engine-specific scheme, embedded password, IPv4 endpoint).
+    //
+    // `unreachableWhen` short-circuits the tab when the instance has no public
+    // IP — a private-only Cloud SQL is only reachable from inside its VPC,
+    // and a desktop / web Infrawrench process almost never is. The host
+    // renders a static guidance pane instead of attempting a doomed connect.
+    const unreachableWhen = {
+      fieldsEmpty: ["publicIpAddress"],
+      title:
+        "This Cloud SQL instance has no public IP, so Infrawrench can't reach it from outside its VPC.",
+      suggestions: [
+        "Add a public IP in the Google Cloud console (Cloud SQL → this instance → Connections → Networking).",
+        "Run Infrawrench from a host inside the VPC — Cloud Shell, a GCE VM, or a Cloud Run job.",
+        "Set up a Cloud VPN, Cloud Interconnect, or IAP TCP tunnel from your network into the VPC.",
+      ],
+    };
+    return [
+      {
+        pluginId: "postgres",
+        tabLabel: "PostgreSQL",
+        credentialMappings: [{ outputKey: "connectionUrl", credentialKey: "connectionString" }],
+        showWhen: { fieldKey: "databaseVersion", prefix: "POSTGRES_" },
+        unreachableWhen,
+      },
+      {
+        pluginId: "mysql",
+        tabLabel: "MySQL",
+        credentialMappings: [{ outputKey: "connectionUrl", credentialKey: "connectionString" }],
+        showWhen: { fieldKey: "databaseVersion", prefix: "MYSQL_" },
+        unreachableWhen,
+      },
+      {
+        pluginId: "mssql",
+        tabLabel: "SQL Server",
+        credentialMappings: [{ outputKey: "connectionUrl", credentialKey: "connectionString" }],
+        showWhen: { fieldKey: "databaseVersion", prefix: "SQLSERVER_" },
+        unreachableWhen,
+      },
+    ];
+  })(),
   secretExportTemplates: [
     {
       id: "cloudsql-connection-url",

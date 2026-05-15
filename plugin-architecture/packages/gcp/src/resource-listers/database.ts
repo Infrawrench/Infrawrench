@@ -12,9 +12,12 @@ export async function listCloudSqlInstances(
     "items",
   );
   return items.map((db) => {
-    const ip = (db["ipAddresses"] as Array<Record<string, unknown>> | undefined)?.find(
-      (a) => a["type"] === "PRIMARY",
-    );
+    const ips = (db["ipAddresses"] as Array<Record<string, unknown>> | undefined) ?? [];
+    // Only the PRIMARY (public) address is directly reachable from the user's
+    // machine. Private IPs require a Cloud SQL Auth Proxy or VPC-peered network,
+    // so they're surfaced for visibility but not used as the connection target.
+    const publicIp = String(ips.find((a) => a["type"] === "PRIMARY")?.["ipAddress"] ?? "");
+    const privateIp = String(ips.find((a) => a["type"] === "PRIVATE")?.["ipAddress"] ?? "");
     const databaseVersion = String(db["databaseVersion"] ?? "");
     const engine = engineInfoFromVersion(databaseVersion);
     return {
@@ -32,10 +35,12 @@ export async function listCloudSqlInstances(
         availabilityType: String(
           (db["settings"] as Record<string, unknown> | undefined)?.["availabilityType"] ?? "",
         ),
+        publicIpAddress: publicIp,
+        privateIpAddress: privateIp,
       },
       resolvedOutputs: {
         connectionName: String(db["connectionName"] ?? ""),
-        ipAddress: String(ip?.["ipAddress"] ?? ""),
+        ipAddress: publicIp,
         username: engine.username,
         port: engine.port,
       },

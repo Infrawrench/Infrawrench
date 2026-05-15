@@ -133,7 +133,7 @@ export const cloudFunctionsCreateConfigHandlers: Record<
             { id: "nodejs22", label: "Node.js 22" },
             { id: "nodejs20", label: "Node.js 20" },
           ],
-          defaultValue: "nodejs22",
+          defaultValue: "nodejs24",
         },
         {
           key: "runtime_python",
@@ -142,12 +142,13 @@ export const cloudFunctionsCreateConfigHandlers: Record<
           required: true,
           showWhen: { fieldKey: "language", fieldValue: "python" },
           options: [
+            { id: "python314", label: "Python 3.14" },
             { id: "python313", label: "Python 3.13" },
             { id: "python312", label: "Python 3.12" },
             { id: "python311", label: "Python 3.11" },
             { id: "python310", label: "Python 3.10" },
           ],
-          defaultValue: "python313",
+          defaultValue: "python314",
         },
         {
           key: "runtime_go",
@@ -168,10 +169,11 @@ export const cloudFunctionsCreateConfigHandlers: Record<
           required: true,
           showWhen: { fieldKey: "language", fieldValue: "java" },
           options: [
+            { id: "java25", label: "Java 25" },
             { id: "java21", label: "Java 21" },
             { id: "java17", label: "Java 17" },
           ],
-          defaultValue: "java21",
+          defaultValue: "java25",
         },
         {
           key: "entryPoint",
@@ -266,7 +268,7 @@ export const cloudFunctionsCreateResourceHandlers: Record<
     const name = fields["name"] ?? "";
     const region = fields["region"] ?? "us-central1";
     const language = fields["language"] ?? "nodejs";
-    const runtime = fields[`runtime_${language}`] ?? "nodejs22";
+    const runtime = fields[`runtime_${language}`] ?? "nodejs24";
     const entryPoint = fields["entryPoint"] ?? "helloHttp";
     const availableMemory = fields["availableMemory"] ?? "256M";
     const timeout = fields["timeout"] ?? "60";

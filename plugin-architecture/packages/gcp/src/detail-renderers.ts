@@ -66,6 +66,33 @@ export function gcpRenderDetail(
     delete base.status;
   }
 
+  if (resource.resourceTypeId === "cloudsql-instance") {
+    // Surface a "Reset root password" action so users can recover after a
+    // create where the secret didn't make it into the host's local store
+    // (e.g. instances created on an older build), and so the password is
+    // rotatable from inside Infrawrench.
+    base.sections = [
+      ...(base.sections ?? []),
+      {
+        kind: "section",
+        title: "Connection",
+        children: [
+          {
+            kind: "text",
+            variant: "body",
+            content:
+              "Reset the root password to push a new value to Cloud SQL and store it for future tabs to use.",
+          },
+          {
+            kind: "action",
+            label: "Reset Root Password",
+            action: { type: "reroll-secret", fieldKey: "rootPassword" },
+          },
+        ],
+      },
+    ];
+  }
+
   if (resource.resourceTypeId === "memorystore-redis") {
     // Memorystore is private-VPC only — we can't actively verify reachability
     // from outside the network, so surface it as informational rather than
