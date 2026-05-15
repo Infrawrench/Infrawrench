@@ -13,6 +13,7 @@ interface WebTerminalProps {
   sshKeyId?: string;
   sshHost?: string;
   sshUsername?: string;
+  agentForward?: boolean;
 }
 
 export function WebTerminal({
@@ -22,6 +23,7 @@ export function WebTerminal({
   sshKeyId,
   sshHost,
   sshUsername,
+  agentForward,
 }: WebTerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -79,6 +81,7 @@ export function WebTerminal({
               sshUsername,
               cols: term!.cols,
               rows: term!.rows,
+              ...(agentForward ? { agentForward: true } : {}),
             }),
           );
         };

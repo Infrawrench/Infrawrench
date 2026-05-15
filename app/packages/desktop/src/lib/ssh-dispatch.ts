@@ -33,6 +33,7 @@ interface CloudShellParams {
   username: string;
   cols: number;
   rows: number;
+  agentForward?: boolean;
 }
 
 interface LocalShellParams {
@@ -42,6 +43,7 @@ interface LocalShellParams {
   privateKey: string;
   cols: number;
   rows: number;
+  agentForward?: boolean;
 }
 
 type OpenSshShellParams =
@@ -63,6 +65,7 @@ async function openLocalShell(params: LocalShellParams): Promise<SshShellHandle>
     privateKey: params.privateKey,
     cols: params.cols,
     rows: params.rows,
+    ...(params.agentForward ? { agentForward: true } : {}),
   });
 
   const dataListeners: Array<(d: Uint8Array) => void> = [];
@@ -129,6 +132,7 @@ async function openCloudShell(params: CloudShellParams): Promise<SshShellHandle>
         sshUsername: params.username,
         cols: params.cols,
         rows: params.rows,
+        ...(params.agentForward ? { agentForward: true } : {}),
       }),
     );
   });

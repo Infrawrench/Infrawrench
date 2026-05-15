@@ -29,6 +29,19 @@ Infrawrench auto-derives the username from the key comment if possible (e.g. `as
 - Resize by dragging — the remote pty resizes with the pane.
 - Scrollback is kept per-session until you close the tab.
 
+## Agent forwarding
+
+The SSH view has a **Forward SSH agent** checkbox above the terminal. When enabled, the same key you used to log in is exposed back to the remote host via the standard OpenSSH agent protocol. That means `git clone git@github.com:...` (or `ssh user@another-host` from the remote) authenticates with your local key — no need to copy private keys onto the server.
+
+- Off by default. The setting is remembered per resource.
+- Takes effect on the next connection; toggling does not kill an active session.
+- **No setup required.** Infrawrench exposes your selected key through a built-in, in-process agent. You do not need to run `ssh-agent`, configure `SSH_AUTH_SOCK`, or install Pageant.
+- If you authenticated with **Pageant** (Windows), Pageant itself is forwarded instead — so whichever keys Pageant holds are available on the remote.
+- Works in **desktop local**, **desktop cloud**, and **web** modes. In cloud/web mode the in-process agent runs on the Infrawrench Cloud server using the same encrypted key it already uses to open the SSH connection; the forwarded key never leaves the proxy.
+- **Security:** a compromised remote can use the forwarded key against any other host that accepts it. Only enable for hosts you trust. The blast radius is one key — the one you logged in with — not your entire keyring.
+
+<insert [SSH view toolbar showing the "Forward SSH agent" checkbox above the terminal] here>
+
 ## Security notes
 
 - Keys never leave your machine in desktop mode.

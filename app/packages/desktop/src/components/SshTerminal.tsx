@@ -23,6 +23,8 @@ interface SshTerminalProps {
   accountId?: string;
   /** Optional resource id — helps the cloud proxy resolve a default SSH config. */
   resourceId?: string;
+  /** Forward the local SSH agent to the remote host (local mode only). */
+  agentForward?: boolean;
 }
 
 export function SshTerminal({
@@ -33,6 +35,7 @@ export function SshTerminal({
   keySource,
   accountId,
   resourceId,
+  agentForward,
 }: SshTerminalProps) {
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -73,6 +76,7 @@ export function SshTerminal({
               username,
               cols: term.cols,
               rows: term.rows,
+              ...(agentForward ? { agentForward: true } : {}),
             })
           : openSshShell({
               mode: "local",
@@ -82,6 +86,7 @@ export function SshTerminal({
               privateKey,
               cols: term.cols,
               rows: term.rows,
+              ...(agentForward ? { agentForward: true } : {}),
             });
 
       openPromise

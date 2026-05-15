@@ -203,6 +203,18 @@ export function ResourceDetailClient({
   const [dropSource, setDropSource] = useState<SpotlightResult | null>(null);
   const [showSshTunnel, setShowSshTunnel] = useState(false);
   const [showDockerSetup, setShowDockerSetup] = useState(false);
+  const agentForwardStorageKey = `ssh:agentForward:${accountId}:${resourceId}`;
+  const [agentForward, setAgentForward] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return window.localStorage.getItem(agentForwardStorageKey) === "1";
+  });
+  const toggleAgentForward = useCallback(() => {
+    setAgentForward((prev) => {
+      const next = !prev;
+      window.localStorage.setItem(agentForwardStorageKey, next ? "1" : "0");
+      return next;
+    });
+  }, [agentForwardStorageKey]);
 
   const isSshView = initialView === "ssh";
   const isSftpView = initialView === "sftp";
@@ -542,45 +554,74 @@ export function ResourceDetailClient({
 
       {/* SSH view — full screen */}
       {isSshView && (
-        <div className="flex-1 min-h-0 overflow-hidden">
-          {sshHost && !sshQuickConnect ? (
-            <SshQuickConnectPanel
-              host={sshHost}
-              {...(defaultSshUsername ? { defaultUsername: defaultSshUsername } : {})}
-              onConnect={async (config) => {
-                setSshQuickConnect(config);
-                const { token } = await apiPost<{ token: string }>(`/api/org/${orgId}/ws-token`);
-                setWsToken(token);
-              }}
-            />
-          ) : sshHost && sshQuickConnect && wsToken ? (
-            <WebTerminal
-              accountId={accountId}
-              resourceId={resourceId}
-              token={wsToken}
-              sshKeyId={sshQuickConnect.sshKeyId}
-              sshHost={sshHost}
-              sshUsername={sshQuickConnect.username}
-            />
-          ) : wsToken ? (
-            <WebTerminal accountId={accountId} resourceId={resourceId} token={wsToken} />
-          ) : !sshHost ? (
-            <div className="flex items-center justify-center h-full">
-              <button
-                onClick={async () => {
+        <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+          {sshHost && !sshQuickConnect && (
+            <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 border-b border-border/60 bg-surface/40">
+              <label className="flex items-center gap-2 text-xs text-on-surface-muted cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={agentForward}
+                  onChange={toggleAgentForward}
+                  className="accent-green-600"
+                />
+                <span>Forward SSH agent</span>
+              </label>
+              <span
+                className="text-[10px] text-on-surface-faint"
+                title="Forwards the same SSH key used to log in, so commands like `git clone` on the remote can authenticate with it. A compromised remote could use the forwarded key against other hosts that accept it — only enable for hosts you trust. Takes effect on the next connection."
+              >
+                (forwards your selected key; applies on next connect)
+              </span>
+            </div>
+          )}
+          <div className="flex-1 min-h-0 overflow-hidden">
+            {sshHost && !sshQuickConnect ? (
+              <SshQuickConnectPanel
+                host={sshHost}
+                {...(defaultSshUsername ? { defaultUsername: defaultSshUsername } : {})}
+                onConnect={async (config) => {
+                  setSshQuickConnect(config);
                   const { token } = await apiPost<{ token: string }>(`/api/org/${orgId}/ws-token`);
                   setWsToken(token);
                 }}
-                className="px-4 py-2 text-sm text-on-surface-secondary border border-border-strong hover:border-border-strong rounded-lg transition-colors"
-              >
-                Connect SSH Terminal
-              </button>
-            </div>
-          ) : (
-            <div className="flex items-center justify-center h-full text-on-surface-muted text-sm animate-pulse">
-              Connecting…
-            </div>
-          )}
+              />
+            ) : sshHost && sshQuickConnect && wsToken ? (
+              <WebTerminal
+                accountId={accountId}
+                resourceId={resourceId}
+                token={wsToken}
+                sshKeyId={sshQuickConnect.sshKeyId}
+                sshHost={sshHost}
+                sshUsername={sshQuickConnect.username}
+                agentForward={agentForward}
+              />
+            ) : wsToken ? (
+              <WebTerminal
+                accountId={accountId}
+                resourceId={resourceId}
+                token={wsToken}
+                agentForward={agentForward}
+              />
+            ) : !sshHost ? (
+              <div className="flex items-center justify-center h-full">
+                <button
+                  onClick={async () => {
+                    const { token } = await apiPost<{ token: string }>(
+                      `/api/org/${orgId}/ws-token`,
+                    );
+                    setWsToken(token);
+                  }}
+                  className="px-4 py-2 text-sm text-on-surface-secondary border border-border-strong hover:border-border-strong rounded-lg transition-colors"
+                >
+                  Connect SSH Terminal
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center justify-center h-full text-on-surface-muted text-sm animate-pulse">
+                Connecting…
+              </div>
+            )}
+          </div>
         </div>
       )}
 

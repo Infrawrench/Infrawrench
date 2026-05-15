@@ -10,6 +10,7 @@ import { accounts, sshKeys } from "@/db/schema";
 import { decrypt, buildAad } from "@/services/encryption";
 import { getPlugin } from "@/plugins/loader";
 import { buildPluginHostServices } from "@/services/host-services";
+import { buildInProcessAgent } from "@/services/ssh-agent";
 
 interface DirectSshParams {
   sshKeyId: string;
@@ -25,6 +26,7 @@ export async function handleSshSession(
   directSsh?: DirectSshParams,
   cols?: number,
   rows?: number,
+  agentForward?: boolean,
 ): Promise<void> {
   try {
     let sshConfig: { host: string; port: number; username: string; privateKey: string };
@@ -146,11 +148,22 @@ export async function handleSshSession(
       ws.send(JSON.stringify({ type: "ssh:error", error: err.message }));
     });
 
+    const forwardAgent = agentForward ? buildInProcessAgent(sshConfig.privateKey) : null;
+    if (agentForward && !forwardAgent) {
+      ws.send(
+        JSON.stringify({
+          type: "ssh:error",
+          error: "Agent forwarding requested but the SSH key could not be parsed.",
+        }),
+      );
+      return;
+    }
     conn.connect({
       host: sshConfig.host,
       port: sshConfig.port ?? 22,
       username: sshConfig.username,
       privateKey: sshConfig.privateKey,
+      ...(forwardAgent ? { agent: forwardAgent, agentForward: true } : {}),
     });
   } catch (e) {
     ws.send(

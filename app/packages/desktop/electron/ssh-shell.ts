@@ -3,6 +3,7 @@ import { Client as SshClient } from "ssh2";
 import type { ClientChannel } from "ssh2";
 import type { WebContents } from "electron";
 import { PAGEANT_SENTINEL } from "./ssh-agent";
+import { buildInProcessAgent } from "./ssh-shell-agent";
 import {
   ensureHostKeyCacheLoaded,
   verifyOrPinHostKeyInteractive,
@@ -16,6 +17,7 @@ export interface SshShellConfig {
   privateKey: string;
   cols: number;
   rows: number;
+  agentForward?: boolean;
 }
 
 interface ShellRecord {
@@ -83,12 +85,37 @@ export async function spawnSshShell(
       reject(new Error(`SSH error: ${err.message}`));
     });
 
-    const useAgent = config.privateKey === PAGEANT_SENTINEL;
+    const useAgentForAuth = config.privateKey === PAGEANT_SENTINEL;
+    let forwardAgent: ReturnType<typeof buildInProcessAgent> | "pageant" | null = null;
+    if (config.agentForward) {
+      if (useAgentForAuth) {
+        // User chose Pageant for auth — forward Pageant itself so the keys
+        // they actually unlocked are what the remote can use.
+        forwardAgent = "pageant";
+      } else {
+        forwardAgent = buildInProcessAgent(config.privateKey);
+        if (!forwardAgent) {
+          reject(
+            new Error(
+              "Agent forwarding requested but the selected SSH key could not be loaded into Infrawrench's in-process agent.",
+            ),
+          );
+          return;
+        }
+        console.log(
+          `[ssh-shell] agent forwarding: in-process (${forwardAgent.keyCount} key${
+            forwardAgent.keyCount === 1 ? "" : "s"
+          })`,
+        );
+      }
+    }
     client.connect({
       host: config.host,
       port: config.port,
       username: config.username,
-      ...(useAgent ? { agent: "pageant" } : { privateKey: config.privateKey }),
+      ...(useAgentForAuth ? {} : { privateKey: config.privateKey }),
+      ...(forwardAgent ? { agent: forwardAgent } : {}),
+      ...(config.agentForward ? { agentForward: true } : {}),
       hostVerifier: (hostKey: Buffer, verify: (matches: boolean) => void) => {
         verifyOrPinHostKeyInteractive(config.host, config.port, hostKey).then(
           (result) => {

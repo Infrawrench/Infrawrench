@@ -16,11 +16,19 @@ import { resolveKubeconfig } from "./src/services/k8s-kubeconfig-resolver";
 import { authenticateApiRequest } from "./src/auth/api-auth";
 import { validateWsToken } from "./src/services/ws-tokens";
 import { handleMcpHttp } from "./src/mcp/http-handler";
+import { migrateMetrics } from "@infrawrench/server-core/clickhouse/migrate";
 
 const dev = process.env["NODE_ENV"] !== "production";
 const port = parseInt(process.env["PORT"] ?? "3000", 10);
 
 async function start() {
+  try {
+    await migrateMetrics();
+  } catch (err) {
+    console.error("[clickhouse] migrateMetrics failed:", err);
+    if (!dev) throw err;
+  }
+
   const honoListener = getRequestListener(api.fetch);
   let server: ReturnType<typeof createHttpServer>;
 
@@ -142,6 +150,7 @@ async function start() {
             sshKeyId?: string;
             sshHost?: string;
             sshUsername?: string;
+            agentForward?: boolean;
             peerPluginId?: string;
             namespace?: string;
             podName?: string;
@@ -164,6 +173,7 @@ async function start() {
                     : undefined,
                   msg.cols,
                   msg.rows,
+                  msg.agentForward === true,
                 );
               }
               break;
