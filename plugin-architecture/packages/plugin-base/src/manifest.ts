@@ -1,5 +1,12 @@
 import type { ResourceTypeDefinition } from "./resource.js";
 
+export interface CredentialFieldRegion {
+  id: string;
+  label: string;
+  location?: string;
+  flag?: string;
+}
+
 export interface CredentialField {
   key: string;
   label: string;
@@ -11,6 +18,8 @@ export interface CredentialField {
   defaultValue?: string;
   /** Use a textarea instead of a single-line input (e.g. kubeconfig YAML) */
   multiline?: boolean;
+  /** When provided, the field is rendered as the searchable region picker */
+  regions?: CredentialFieldRegion[];
 }
 
 /**
@@ -307,8 +316,36 @@ export interface PluginClient {
    * Plugins can include provider-specific components like storage in this estimate.
    */
   getCreateCostEstimate?(typeId: string, fields: Record<string, string>): Promise<number | null>;
+  /**
+   * Execute an in-form field action (declared via `CreateFieldConfig.actions`).
+   * Plugins typically use this to mint a dependency mid-form — e.g. generate
+   * a fresh IAM role for a Lambda function — and return its identifier so
+   * the host can fill the field with the new value.
+   */
+  executeFieldAction?(
+    typeId: string,
+    fieldKey: string,
+    actionId: string,
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<FieldActionResult>;
   /** Permanently delete a resource. The host is responsible for confirming with the user first. */
   deleteResource?(typeId: string, resourceId: string, accountId: string): Promise<void>;
+  /**
+   * Apply a freshly-rerolled secret to the upstream provider before the host
+   * persists it locally. Called when the user picks a literal value for a
+   * sensitive field (e.g. resetting a Cloud SQL `rootPassword`). The plugin
+   * is responsible for the upstream mutation; throwing aborts persistence so
+   * the local store never drifts from the provider. Plugins that have
+   * nothing to push (most fields) omit this method or return without action.
+   */
+  applySecretReroll?(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+    fieldKey: string,
+    plaintext: string,
+  ): Promise<void>;
   /**
    * Invoke a plugin-defined action against a resource — e.g. restart VMs in an
    * instance group. `actionId` is plugin-specific. The host calls this in
@@ -563,4 +600,8 @@ import type {
   SqlTableMeta,
   StorageObject,
 } from "./schema.js";
-import type { CreateResourceConfig, CreateSizePricingRequest } from "./create.js";
+import type {
+  CreateResourceConfig,
+  CreateSizePricingRequest,
+  FieldActionResult,
+} from "./create.js";

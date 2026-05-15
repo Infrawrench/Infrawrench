@@ -543,4 +543,11 @@ export interface PeerPaneSchema {
    */
   supportsYamlImport?: boolean;
   resourceGroups: PeerPaneResourceGroup[];
+  /**
+   * Static guidance shown in place of the resource groups. Populated by the
+   * host when a `PeerPluginIntegration.unreachableWhen` matches — the peer
+   * plugin isn't invoked at all in that case. Provider-agnostic; carries the
+   * provider's text verbatim.
+   */
+  guidance?: { title: string; suggestions: string[] };
 }

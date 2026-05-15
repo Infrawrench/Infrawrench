@@ -161,10 +161,40 @@ export interface CreateFieldConfig {
   addLabel?: string;
   minEntries?: number;
   maxEntries?: number;
+  /**
+   * Optional in-form actions (e.g. "+ Generate role"). Each renders as a
+   * button the user can click to mint a value via the plugin.
+   */
+  actions?: FieldAction[];
 }
 
 export interface CreateResourceConfig {
   fields: CreateFieldConfig[];
+}
+
+/**
+ * A button the host renders alongside a create-form field. Clicking it calls
+ * the plugin's `executeFieldAction`, which can mint a fresh resource (e.g. an
+ * IAM role) and return its identifier as the field's new value. Designed to
+ * be domain-agnostic — the plugin owns what each action means.
+ */
+export interface FieldAction {
+  /** Plugin-defined identifier passed back to `executeFieldAction`. */
+  id: string;
+  /** Button label, e.g. "+ Generate role". */
+  label: string;
+  /** Optional helper text shown as a tooltip / aria-label. */
+  description?: string;
+}
+
+/**
+ * Result of `PluginClient.executeFieldAction`. `value` becomes the field's
+ * new submitted value. For `select` fields, the host can prepend `option` to
+ * the field's options list so the freshly-created entity shows up there.
+ */
+export interface FieldActionResult {
+  value: string;
+  option?: { id: string; label: string };
 }
 
 /**

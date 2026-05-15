@@ -41,6 +41,14 @@ const peerPluginIntegrationSchema = z.object({
       prefix: z.string().optional(),
     })
     .optional(),
+  requiresFields: z.array(z.string().min(1)).optional(),
+  unreachableWhen: z
+    .object({
+      fieldsEmpty: z.array(z.string().min(1)).min(1),
+      title: z.string().min(1),
+      suggestions: z.array(z.string().min(1)),
+    })
+    .optional(),
 });
 
 const secretExportEntrySchema = z.object({

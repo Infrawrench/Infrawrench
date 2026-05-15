@@ -21,6 +21,17 @@ export const pluginManifestSchema = z.object({
         sensitive: z.boolean(),
         placeholder: z.string().optional(),
         multiline: z.boolean().optional(),
+        defaultValue: z.string().optional(),
+        regions: z
+          .array(
+            z.object({
+              id: z.string(),
+              label: z.string(),
+              location: z.string().optional(),
+              flag: z.string().optional(),
+            }),
+          )
+          .optional(),
       }),
     )
     .optional(),

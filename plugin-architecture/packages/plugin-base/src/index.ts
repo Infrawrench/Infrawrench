@@ -3,6 +3,7 @@ export type {
   PluginClient,
   PluginManifest,
   CredentialField,
+  CredentialFieldRegion,
   CredentialExport,
   CredentialExportField,
   HostServices,
@@ -41,6 +42,7 @@ export type {
   ResourceCreateReturn,
 } from "./instance.js";
 export { normalizeResourceCreateResult } from "./instance.js";
+export { evaluatePeerIntegrationUnreachable } from "./resource.js";
 
 export type {
   SecretResolution,
@@ -117,6 +119,8 @@ export type {
   ImageOption,
   DiskOption,
   PolicyOption,
+  FieldAction,
+  FieldActionResult,
 } from "./create.js";
 
 export type { PluginRegistry, PluginRegistryEntry } from "./registry.js";

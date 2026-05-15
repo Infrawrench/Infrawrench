@@ -62,6 +62,57 @@ export interface PeerPluginIntegration {
    * `POSTGRES_`).
    */
   showWhen?: { fieldKey: string; equals?: string; prefix?: string };
+  /**
+   * Additional gate: each listed field must exist and be non-empty for the
+   * tab to render. Combined with `showWhen` (AND). Useful when a single
+   * `showWhen` can't express both an engine check and a "must have an
+   * endpoint" check — e.g. Cloud SQL postgres only shows when the engine is
+   * Postgres AND a public IP is available.
+   */
+  requiresFields?: string[];
+  /**
+   * Declarative "this tab can't actually connect" predicate. When the listed
+   * fields are all empty on the parent resource, the host shows the tab but
+   * skips spawning the peer plugin / running rewriters; instead it renders a
+   * static guidance pane with `title` + `suggestions`.
+   *
+   * Use this for private-only network endpoints (private-IP-only Cloud SQL,
+   * AlloyDB without a publicly reachable instance, AWS RDS with public
+   * accessibility disabled, etc.) where Infrawrench can't synthesise VPC
+   * reachability. Providers know which field signals "no public endpoint";
+   * the host doesn't need to know provider-specific details.
+   */
+  unreachableWhen?: {
+    /** All of these fields must be empty (or absent) for the tab to render unreachable. */
+    fieldsEmpty: string[];
+    /** One-sentence summary of why this tab can't connect from here. */
+    title: string;
+    /** Practical next steps, in priority order. Rendered as a bulleted list. */
+    suggestions: string[];
+  };
+}
+
+/**
+ * Evaluate `integration.unreachableWhen` against a resource's fields. Returns
+ * the guidance to display when the predicate matches, or `null` when the
+ * integration is reachable (or the predicate isn't declared).
+ *
+ * Used by both the server's `buildPeerPanes` and the desktop renderer's
+ * peer-pane hydration so the unreachable-check behaves identically across
+ * platforms.
+ */
+export function evaluatePeerIntegrationUnreachable(
+  integration: PeerPluginIntegration,
+  fields: Record<string, unknown> | undefined,
+): { title: string; suggestions: string[] } | null {
+  const rule = integration.unreachableWhen;
+  if (!rule) return null;
+  const allEmpty = rule.fieldsEmpty.every((key) => {
+    const v = fields?.[key];
+    return v == null || v === "";
+  });
+  if (!allEmpty) return null;
+  return { title: rule.title, suggestions: rule.suggestions };
 }
 
 /** A single key-value entry in a secret export (e.g. DATABASE_URL → connectionString output) */
