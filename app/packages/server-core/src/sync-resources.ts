@@ -1,11 +1,24 @@
 import { and, eq, inArray, isNotNull, isNull, notInArray, sql } from "drizzle-orm";
-import type { Plugin, PluginClient, ResourceInstance } from "@infrawrench/plugin-base";
+import type {
+  DashboardStat,
+  MetricSeries,
+  Plugin,
+  PluginClient,
+  ResourceInstance,
+} from "@infrawrench/plugin-base";
 import { db } from "./db/client";
 import { accounts, dashboardPins, resources } from "./db/schema";
 import { decrypt, buildAad } from "./encryption";
 import { getPlugin } from "./plugin-loader";
 import { buildPluginHostServices } from "./host-services";
 import { rewriteCredentialsThroughTunnel } from "./tunnel-resolver";
+import {
+  flattenMetricSeries,
+  insertAccountResourceCounts,
+  insertDashboardStats,
+  insertMetricPoints,
+  insertPollOutcome,
+} from "./clickhouse/writers";
 
 /** Returns only top-level resource types (no parent) — duplicated from
  * @infrawrench/ui to avoid a server→React-package dependency. */
@@ -149,7 +162,8 @@ export async function syncAccountResources(
   organizationId: string,
   options: SyncAccountOptions = {},
 ): Promise<SyncAccountResult> {
-  const { plugin, client } = await loadAccountClient(accountId, organizationId);
+  const pollStart = Date.now();
+  const { account, plugin, client } = await loadAccountClient(accountId, organizationId);
 
   const canListType = options.canListType ?? (() => true);
   const onTypeDone = options.onTypeDone ?? (() => undefined);
@@ -216,6 +230,19 @@ export async function syncAccountResources(
 
   await refreshPinnedStats(accountId, organizationId, plugin, client);
 
+  await insertPollOutcome({
+    organizationId,
+    accountId,
+    pluginId: account.pluginId,
+    ts: new Date(),
+    durationMs: Date.now() - pollStart,
+    resourceCount: allResources.length,
+    succeededTypeCount: succeededTypeIds.length,
+    failedTypeCount: failedTypeIds.length,
+    skippedTypeCount: skippedTypeIds.length,
+    ...(firstError ? { firstError: firstError.message } : {}),
+  });
+
   const result: SyncAccountResult = {
     resourceCount: allResources.length,
     succeededTypeIds,
@@ -228,9 +255,9 @@ export async function syncAccountResources(
 
 /**
  * Fetch dashboard stats + metric series for resources in this account that are pinned
- * on some dashboard, and write them back to the DB. For __account__ pins, store
- * aggregate resource counts on the account row. Failures per resource are swallowed
- * so one plugin error can't poison the whole cycle.
+ * on some dashboard, and stream them into ClickHouse. For __account__ pins, write
+ * aggregate resource counts. Per-resource failures are swallowed so one plugin
+ * error can't poison the cycle.
  */
 async function refreshPinnedStats(
   accountId: string,
@@ -242,6 +269,7 @@ async function refreshPinnedStats(
     .selectDistinct({
       resourceId: resources.id,
       resourceTypeId: resources.resourceTypeId,
+      pluginId: resources.pluginId,
     })
     .from(dashboardPins)
     .innerJoin(resources, eq(dashboardPins.resourceId, resources.id))
@@ -271,10 +299,12 @@ async function refreshPinnedStats(
           r.status === "fulfilled" && r.value.count > 0,
       )
       .map((r) => r.value);
-    await db
-      .update(accounts)
-      .set({ latestStatsJson: { resourceCounts }, statsFetchedAt: now })
-      .where(and(eq(accounts.id, accountId), eq(accounts.organizationId, organizationId)));
+    await insertAccountResourceCounts({
+      organizationId,
+      accountId,
+      ts: now,
+      counts: resourceCounts,
+    });
   }
 
   if (!client.fetchDashboardStats) return;
@@ -293,15 +323,28 @@ async function refreshPinnedStats(
             ? fetchMetrics(p.resourceTypeId, p.resourceId, accountId)
             : Promise.resolve(null),
         ]);
-        const patch: {
-          latestStatsJson?: unknown;
-          latestMetricsJson?: unknown;
-          statsFetchedAt: Date;
-        } = { statsFetchedAt: now };
-        if (statsResult.status === "fulfilled") patch.latestStatsJson = statsResult.value;
-        if (metricsResult.status === "fulfilled" && metricsResult.value)
-          patch.latestMetricsJson = metricsResult.value;
-        await db.update(resources).set(patch).where(eq(resources.id, p.resourceId));
+        if (statsResult.status === "fulfilled") {
+          await insertDashboardStats({
+            organizationId,
+            accountId,
+            resourceId: p.resourceId,
+            ts: now,
+            stats: statsResult.value as DashboardStat[],
+          });
+        }
+        if (metricsResult.status === "fulfilled" && metricsResult.value) {
+          const rows = flattenMetricSeries(
+            {
+              organizationId,
+              accountId,
+              resourceId: p.resourceId,
+              pluginId: p.pluginId,
+              resourceTypeId: p.resourceTypeId,
+            },
+            metricsResult.value as MetricSeries[],
+          );
+          await insertMetricPoints(rows);
+        }
       }),
   );
 }

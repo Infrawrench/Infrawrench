@@ -238,6 +238,18 @@ Two migrations. Tables:
 - `dashboards` — named dashboards, `is_default` flag
 - `dashboard_pins` — `dashboard_id, resource_id, grid_x/y/w/h`
 
+**Metrics — ClickHouse Cloud (not Postgres):**
+
+The poller writes time-series data to a ClickHouse Cloud cluster, configured via `CLICKHOUSE_METRICS_*` env vars. Postgres holds no metric history; the `resources.latest_*_json` / `accounts.latest_stats_json` columns were removed in migration `0013_glamorous_sersi`. Tables (in `server-core/src/clickhouse/migrate.ts`, auto-created on web boot):
+
+- `metric_points_raw` — raw `(org, account, resource, plugin, type, series, unit, ts, value)`, TTL 7 days
+- `metric_points_1m` / `metric_points_1h` — `AggregatingMergeTree` rollups (TTL 30 d / 365 d) populated by materialized views
+- `dashboard_stats` — JSON-encoded `DashboardStat[]` snapshots per resource (TTL 30 d)
+- `account_resource_counts` — per-account `{typeLabel,count}[]` for `__account__` pins (TTL 30 d)
+- `poll_outcomes` — poller telemetry (duration, success/fail/skip counts, first error) per account per cycle (TTL 30 d)
+
+Writes are best-effort: if `CLICKHOUSE_METRICS_*` is unset, all writers/readers no-op and the poller proceeds. Only **pinned** resources accumulate metric points — `refreshPinnedStats` is the sole writer. Reads are routed through `server-core/clickhouse/readers.ts`; `getMetricRange` auto-selects raw / 1m / 1h based on span (≤2h / ≤7d / >7d). Web exposes `GET /api/org/:orgId/dashboards/pin/:pinId/range?fromMs=&toMs=` for historical zoom, and `POST /api/org/:orgId/resources/:pluginId/:typeId/metrics` (resource-detail metrics tab) now reads from ClickHouse instead of calling the plugin live.
+
 **v2:**
 
 - `ssh_tunnel_configs` — `account_id (UNIQUE), ssh_host, ssh_port, ssh_user, remote_host, remote_port, encrypted_private_key, private_key_iv`
@@ -533,6 +545,7 @@ All polling is _background_ (no loading flash):
 - EKS kubeconfig: generated as YAML with aws eks get-token exec credential, enables K8s peer integration
 - Route 53: uses shared dns.ts helpers (renderDnsRecordDetail, renderDnsRecordSidebar, dnsZoneStatus) for DNS record rendering
 - Create support for 8 resource types: EC2 Instance (AMI picker, instance type picker, disk slider, SSH key), EKS Cluster (K8s version picker), S3 Bucket, VPC, Security Group, SQS Queue, SNS Topic, DynamoDB Table (partition/sort key, billing mode)
+- EC2 AMI resolution: image picker submits a family slug (`al2023`, `amzn2`, `ubuntu-2204`, `ubuntu-2404`, `debian-12`, `rhel-9`, `sles-15`) — `ami-lookup.ts` resolves it at create time to a real region+arch-specific AMI ID. Amazon Linux / Ubuntu / Debian go through SSM Public Parameters (`AmazonSSM.GetParameter`); RHEL / SUSE go through `DescribeImages` with vendor owner IDs (`309956199498`, `013907871322`). Architecture is derived from the instance type — Graviton families ending in `g[a-z]*` and `a1.*` map to `arm64`, everything else to `x86_64`. SSH username comes from a per-family table at create time; the legacy AMI→username map in `ssh-username.ts` remains as a fallback for synced/listed instances.
 - `getCreateCostEstimate` handles `ec2-instance` (instance + gp3 root volume), `ebs-volume` (sizeGb × per-volumeType rate for gp3/gp2/io2/st1/sc1/standard), and `rds-instance` (instance class + gp2 allocated storage); pricing is approximated for us-east-1
 - 27 AWS regions configured for create form region picker
 - EC2 instance types: T3 burstable, M6i general purpose, C6i compute-optimized, R6i memory-optimized

@@ -1,9 +1,17 @@
 import { Hono } from "hono";
 import { eq, and, inArray, isNull, desc, max } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
-import type { DashboardStat, MetricSeries, ProbeStatus } from "@infrawrench/plugin-base";
+import type { ProbeStatus } from "@infrawrench/plugin-base";
 import { db } from "../../db/client";
 import { dashboards, dashboardPins, resources, accounts } from "../../db/schema";
+import {
+  getLatestAccountCountsBatch,
+  getLatestMetrics,
+  getLatestMetricsBatch,
+  getLatestStats,
+  getLatestStatsBatch,
+  getMetricRange,
+} from "@infrawrench/server-core/clickhouse/readers";
 import type { AuthSession } from "../auth-middleware";
 import { getPlugin } from "../../plugins/loader";
 import { requirePermission } from "../../auth/permissions";
@@ -327,27 +335,21 @@ app.post("/validate-tabs", async (c) => {
 });
 
 /**
- * Project cached stats/metrics JSON blobs (written by the poller) into the ProbeStatus
- * shape the dashboard UI expects. Sparkline is derived from the first MetricSeries with
- * enough points — same logic as the old live path.
+ * Build the ProbeStatus dashboard cards consume, from data already fetched
+ * out of ClickHouse. Sparkline = first MetricSeries with ≥2 points.
  */
 function projectProbeStatus(row: {
   resourceTypeId: string;
-  latestStatsJson: unknown;
-  latestMetricsJson: unknown;
-  accountStatsJson: unknown;
+  latestStats: Awaited<ReturnType<typeof getLatestStats>>;
+  latestMetrics: Awaited<ReturnType<typeof getLatestMetrics>>;
+  accountCounts: { typeLabel: string; count: number }[] | null;
 }): ProbeStatus {
   if (row.resourceTypeId === "__account__") {
-    const account = row.accountStatsJson as {
-      resourceCounts?: ProbeStatus["resourceCounts"];
-    } | null;
-    return { phase: "ok", resourceCounts: account?.resourceCounts ?? [] };
+    return { phase: "ok", resourceCounts: row.accountCounts ?? [] };
   }
   const result: ProbeStatus = { phase: "ok" };
-  const stats = row.latestStatsJson as DashboardStat[] | null;
-  if (stats) result.stats = stats;
-  const metrics = row.latestMetricsJson as MetricSeries[] | null;
-  const firstSeries = metrics?.[0];
+  if (row.latestStats) result.stats = row.latestStats;
+  const firstSeries = row.latestMetrics?.[0];
   if (firstSeries && firstSeries.points.length >= 2) {
     result.sparkline = firstSeries.points;
     result.sparklineLabel = firstSeries.label;
@@ -375,9 +377,6 @@ app.get("/pin/:pinId", async (c) => {
       accountId: resources.accountId,
       fieldsJson: resources.fieldsJson,
       outputsJson: resources.outputsJson,
-      latestStatsJson: resources.latestStatsJson,
-      latestMetricsJson: resources.latestMetricsJson,
-      accountStatsJson: accounts.latestStatsJson,
       dashboardOrgId: dashboards.organizationId,
     })
     .from(dashboardPins)
@@ -400,16 +399,63 @@ app.get("/pin/:pinId", async (c) => {
   const pluginLogoSvg = loaded?.plugin.manifest.logoSvg ?? "";
   const pluginDisplayName = loaded?.plugin.manifest.displayName ?? pin.pluginId;
 
-  const status = projectProbeStatus(pin);
+  const [latestStats, latestMetrics, accountCounts] = await Promise.all([
+    pin.resourceTypeId === "__account__"
+      ? Promise.resolve(null)
+      : getLatestStats(organizationId, pin.resourceId),
+    pin.resourceTypeId === "__account__"
+      ? Promise.resolve(null)
+      : getLatestMetrics(organizationId, pin.resourceId),
+    pin.resourceTypeId === "__account__"
+      ? ((await getLatestAccountCountsBatch(organizationId, [pin.accountId])).get(pin.accountId) ??
+        null)
+      : Promise.resolve(null),
+  ]);
 
-  const {
-    dashboardOrgId: _omit,
-    latestStatsJson: _s,
-    latestMetricsJson: _m,
-    accountStatsJson: _a,
-    ...pinFields
-  } = pin;
+  const status = projectProbeStatus({
+    resourceTypeId: pin.resourceTypeId,
+    latestStats,
+    latestMetrics,
+    accountCounts,
+  });
+
+  const { dashboardOrgId: _omit, ...pinFields } = pin;
   return c.json({ ...pinFields, pluginLogoSvg, pluginDisplayName, status });
+});
+
+/** GET /api/dashboards/pin/:pinId/range?fromMs=…&toMs=… — historical metric series */
+app.get("/pin/:pinId/range", async (c) => {
+  requirePermission(c, "dashboards:read");
+  const organizationId = c.get("organizationId");
+  const pinId = c.req.param("pinId");
+  const fromMs = Number(c.req.query("fromMs"));
+  const toMs = Number(c.req.query("toMs"));
+  if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || fromMs >= toMs) {
+    return c.json({ error: "Invalid fromMs/toMs" }, 400);
+  }
+
+  const [pin] = await db
+    .select({
+      resourceId: dashboardPins.resourceId,
+      resourceTypeId: resources.resourceTypeId,
+    })
+    .from(dashboardPins)
+    .innerJoin(resources, eq(dashboardPins.resourceId, resources.id))
+    .innerJoin(dashboards, eq(dashboardPins.dashboardId, dashboards.id))
+    .where(
+      and(
+        eq(dashboardPins.id, pinId),
+        eq(dashboards.organizationId, organizationId),
+        isNull(dashboardPins.deletedAt),
+        isNull(resources.deletedAt),
+      ),
+    )
+    .limit(1);
+  if (!pin) return c.json({ error: "Pin not found" }, 404);
+  if (pin.resourceTypeId === "__account__") return c.json({ series: [] });
+
+  const series = await getMetricRange(organizationId, pin.resourceId, fromMs, toMs);
+  return c.json({ series });
 });
 
 /** POST /api/dashboards/probe — read cached stats/metrics for dashboard cards */
@@ -432,9 +478,7 @@ app.post("/probe", async (c) => {
     .select({
       resourceId: resources.id,
       resourceTypeId: resources.resourceTypeId,
-      latestStatsJson: resources.latestStatsJson,
-      latestMetricsJson: resources.latestMetricsJson,
-      accountStatsJson: accounts.latestStatsJson,
+      accountId: resources.accountId,
     })
     .from(resources)
     .innerJoin(accounts, eq(resources.accountId, accounts.id))
@@ -449,11 +493,32 @@ app.post("/probe", async (c) => {
     );
 
   const byId = new Map(rows.map((r) => [r.resourceId, r]));
+
+  const resourceIdsForMetrics = rows
+    .filter((r) => r.resourceTypeId !== "__account__")
+    .map((r) => r.resourceId);
+  const accountIdsForCounts = [
+    ...new Set(rows.filter((r) => r.resourceTypeId === "__account__").map((r) => r.accountId)),
+  ];
+
+  const [statsByResource, metricsByResource, countsByAccount] = await Promise.all([
+    getLatestStatsBatch(organizationId, resourceIdsForMetrics),
+    getLatestMetricsBatch(organizationId, resourceIdsForMetrics),
+    getLatestAccountCountsBatch(organizationId, accountIdsForCounts),
+  ]);
+
   for (const item of items) {
     const row = byId.get(item.resourceId);
-    results[item.resourceId] = row
-      ? projectProbeStatus(row)
-      : { phase: "error", error: "Resource not found" };
+    if (!row) {
+      results[item.resourceId] = { phase: "error", error: "Resource not found" };
+      continue;
+    }
+    results[item.resourceId] = projectProbeStatus({
+      resourceTypeId: row.resourceTypeId,
+      latestStats: statsByResource.get(row.resourceId) ?? null,
+      latestMetrics: metricsByResource.get(row.resourceId) ?? null,
+      accountCounts: countsByAccount.get(row.accountId) ?? null,
+    });
   }
 
   return c.json(results);

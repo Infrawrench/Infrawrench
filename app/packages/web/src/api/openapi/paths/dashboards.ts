@@ -111,6 +111,16 @@ const ProbeRequest = strict({
   ),
 }).openapi("ProbeRequest");
 
+const PinRangeMetricSeries = strict({
+  label: z.string(),
+  unit: z.string().optional(),
+  points: z.array(strict({ timestamp: z.number(), value: z.number() })),
+}).openapi("PinRangeMetricSeries");
+
+const PinRangeResponse = strict({
+  series: z.array(PinRangeMetricSeries),
+}).openapi("PinRangeResponse");
+
 export function registerDashboardPaths(ctx: BuildContext) {
   const { registry } = ctx;
   const params = (extra: Record<string, z.ZodType>) => OrgIdParam.extend(extra);
@@ -280,6 +290,31 @@ export function registerDashboardPaths(ctx: BuildContext) {
     },
     responses: {
       200: { description: "Pin", content: { "application/json": { schema: PinFullResponse } } },
+      404: ErrorResponses[404],
+    },
+  });
+
+  registry.registerPath({
+    method: "get",
+    path: "/api/org/{orgId}/dashboards/pin/{pinId}/range",
+    tags: ["Dashboards"],
+    summary: "Historical metric series for a pinned resource",
+    description:
+      "Returns per-series metric points between fromMs and toMs. The backend auto-routes " +
+      "between raw, 1-minute, and 1-hour rollups based on span: ≤2h raw, ≤7d 1m, >7d 1h.",
+    request: {
+      params: params({ pinId: Uuid.openapi({ param: { name: "pinId", in: "path" } }) }),
+      query: strict({
+        fromMs: z.coerce.number().int(),
+        toMs: z.coerce.number().int(),
+      }),
+    },
+    responses: {
+      200: {
+        description: "Series",
+        content: { "application/json": { schema: PinRangeResponse } },
+      },
+      400: ErrorResponses[400],
       404: ErrorResponses[404],
     },
   });

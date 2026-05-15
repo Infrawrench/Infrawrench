@@ -33,6 +33,22 @@ vi.mock("@/services/encryption", () => ({
   decrypt: vi.fn().mockResolvedValue("{}"),
 }));
 
+const mockGetLatestStatsBatch = vi.fn();
+const mockGetLatestMetricsBatch = vi.fn();
+const mockGetLatestAccountCountsBatch = vi.fn();
+const mockGetLatestStats = vi.fn();
+const mockGetLatestMetrics = vi.fn();
+const mockGetMetricRange = vi.fn();
+
+vi.mock("@infrawrench/server-core/clickhouse/readers", () => ({
+  getLatestStatsBatch: (...args: unknown[]) => mockGetLatestStatsBatch(...args),
+  getLatestMetricsBatch: (...args: unknown[]) => mockGetLatestMetricsBatch(...args),
+  getLatestAccountCountsBatch: (...args: unknown[]) => mockGetLatestAccountCountsBatch(...args),
+  getLatestStats: (...args: unknown[]) => mockGetLatestStats(...args),
+  getLatestMetrics: (...args: unknown[]) => mockGetLatestMetrics(...args),
+  getMetricRange: (...args: unknown[]) => mockGetMetricRange(...args),
+}));
+
 const { dashboardRoutes } = await import("@/api/routes/dashboards");
 
 const buildApp = () => buildTestApp(dashboardRoutes);
@@ -54,6 +70,12 @@ describe("Dashboard routes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(decrypt).mockResolvedValue("{}");
+    mockGetLatestStatsBatch.mockResolvedValue(new Map());
+    mockGetLatestMetricsBatch.mockResolvedValue(new Map());
+    mockGetLatestAccountCountsBatch.mockResolvedValue(new Map());
+    mockGetLatestStats.mockResolvedValue(null);
+    mockGetLatestMetrics.mockResolvedValue(null);
+    mockGetMetricRange.mockResolvedValue([]);
   });
 
   describe("GET / — list dashboards", () => {
@@ -242,29 +264,24 @@ describe("Dashboard routes", () => {
   });
 
   describe("POST /probe — probe dashboard cards", () => {
-    it("projects cached stats/metrics JSON from the DB into ProbeStatus", async () => {
+    it("projects ClickHouse stats/metrics into ProbeStatus", async () => {
       const stats = [{ label: "Status", value: "Healthy", variant: "status-healthy" }];
       const rows = [
-        {
-          resourceId: "res-1",
-          resourceTypeId: "mock-type",
-          latestStatsJson: stats,
-          latestMetricsJson: null,
-          accountStatsJson: null,
-        },
-        {
-          resourceId: "res-2",
-          resourceTypeId: "mock-type",
-          latestStatsJson: stats,
-          latestMetricsJson: null,
-          accountStatsJson: null,
-        },
+        { resourceId: "res-1", resourceTypeId: "mock-type", accountId: "acct-1" },
+        { resourceId: "res-2", resourceTypeId: "mock-type", accountId: "acct-1" },
       ];
       // probe does select().from().innerJoin().where() and awaits where directly
       const where = vi.fn().mockResolvedValue(rows);
       const innerJoin = vi.fn().mockReturnValue({ where });
       const from = vi.fn().mockReturnValue({ innerJoin });
       mockSelect.mockReturnValue({ from });
+
+      mockGetLatestStatsBatch.mockResolvedValue(
+        new Map([
+          ["res-1", stats],
+          ["res-2", stats],
+        ]),
+      );
 
       const app = buildApp();
       const res = await app.request("/probe", {
@@ -293,7 +310,7 @@ describe("Dashboard routes", () => {
       expect(body["res-1"]?.phase).toBe("ok");
       expect(body["res-1"]?.stats).toEqual(stats);
       expect(body["res-2"]?.phase).toBe("ok");
-      expect(mockSelect).toHaveBeenCalledTimes(1);
+      expect(mockGetLatestStatsBatch).toHaveBeenCalledWith("org-1", ["res-1", "res-2"]);
     });
 
     it("returns 'Resource not found' error for items missing from the DB", async () => {

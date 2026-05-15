@@ -115,9 +115,6 @@ export const accounts = pgTable(
     lastPolledAt: timestamp("last_polled_at"),
     nextPollAt: timestamp("next_poll_at"),
     pollFailureCount: integer("poll_failure_count").notNull().default(0),
-    /** Latest account-level stats (e.g. resourceCounts) as JSON — populated by the poller for __account__ dashboard pins. */
-    latestStatsJson: jsonb("latest_stats_json"),
-    statsFetchedAt: timestamp("stats_fetched_at"),
     deletedAt: timestamp("deleted_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -153,11 +150,6 @@ export const resources = pgTable(
     parentResourceId: text("parent_resource_id"),
     lastSyncedAt: timestamp("last_synced_at"),
     syncVersion: integer("sync_version").notNull().default(0),
-    /** Latest DashboardStat[] from plugin.fetchDashboardStats — populated only for resources pinned on some dashboard. */
-    latestStatsJson: jsonb("latest_stats_json"),
-    /** Latest MetricSeries[] from plugin.fetchMetricSeries — populated only for pinned resources on plugins with supportsMetrics. */
-    latestMetricsJson: jsonb("latest_metrics_json"),
-    statsFetchedAt: timestamp("stats_fetched_at"),
     deletedAt: timestamp("deleted_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
