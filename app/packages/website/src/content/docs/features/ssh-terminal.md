@@ -38,6 +38,7 @@ The SSH view has a **Forward SSH agent** checkbox above the terminal. When enabl
 - **No setup required.** Infrawrench exposes your selected key through a built-in, in-process agent. You do not need to run `ssh-agent`, configure `SSH_AUTH_SOCK`, or install Pageant.
 - If you authenticated with **Pageant** (Windows), Pageant itself is forwarded instead — so whichever keys Pageant holds are available on the remote.
 - Works in **desktop local**, **desktop cloud**, and **web** modes. In cloud/web mode the in-process agent runs on the Infrawrench Cloud server using the same encrypted key it already uses to open the SSH connection; the forwarded key never leaves the proxy.
+- **Cloud audit trail.** In cloud/web mode, each forwarded sign-request the proxy performs on your behalf is recorded in the [audit log](../team-and-billing/audit-log.md). Look for action `ssh.agent.session_opened` (one per session) and `ssh.agent.sign` / `ssh.agent.sign_failed` (one per remote SSH challenge). Metadata includes the SSH key id, the target host, and the username used.
 - **Security:** a compromised remote can use the forwarded key against any other host that accepts it. Only enable for hosts you trust. The blast radius is one key — the one you logged in with — not your entire keyring.
 
 <insert [SSH view toolbar showing the "Forward SSH agent" checkbox above the terminal] here>

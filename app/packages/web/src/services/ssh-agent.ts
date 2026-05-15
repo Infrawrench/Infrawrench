@@ -8,8 +8,22 @@ import {
   type SignCallback,
   type SigningRequestOptions,
 } from "ssh2";
+import { logAudit } from "@/services/audit";
 
 const { parseKey } = utils;
+
+// Context recorded on every forwarded sign-request so users can see exactly
+// which key the cloud proxy used to authenticate on their behalf. Optional —
+// when omitted, the agent skips audit writes (used by tests / non-cloud paths).
+export interface AgentAuditContext {
+  organizationId: string;
+  userId?: string | undefined;
+  accountId: string;
+  resourceId?: string | undefined;
+  sshKeyId: string;
+  sshHost: string;
+  sshUsername: string;
+}
 
 // SSH agent protocol message types (draft-miller-ssh-agent).
 const SSH_AGENT_FAILURE = 5;
@@ -25,7 +39,10 @@ const SSH_AGENT_RSA_SHA2_512 = 1 << 2;
 // @infrawrench/web depends on ssh2 server-side; hoist into server-core if a
 // third caller appears.
 export class InProcessAgent extends BaseAgent<ParsedKey> {
-  constructor(private readonly keys: ParsedKey[]) {
+  constructor(
+    private readonly keys: ParsedKey[],
+    private readonly audit?: AgentAuditContext,
+  ) {
     super();
   }
 
@@ -86,22 +103,26 @@ export class InProcessAgent extends BaseAgent<ParsedKey> {
       flags = r.readUInt32();
     } catch (e) {
       console.error(`[ssh-agent] SIGN_REQUEST malformed: ${(e as Error).message}`);
+      this.auditSign(null, "malformed_request");
       return null;
     }
     const key = this.findKey(keyBlob);
     if (!key) {
       console.error("[ssh-agent] SIGN_REQUEST: no matching key");
+      this.auditSign(null, "no_matching_key");
       return null;
     }
 
     const { formatId, hash, kind } = resolveSignParams(key.type, flags);
     if (!formatId) {
       console.error(`[ssh-agent] SIGN_REQUEST: unsupported key type ${key.type}`);
+      this.auditSign(key.type, "unsupported_key_type");
       return null;
     }
     const raw = signRaw(key, data, hash);
     if (raw instanceof Error) {
       console.error(`[ssh-agent] SIGN_REQUEST failed: ${raw.message}`);
+      this.auditSign(key.type, `sign_error:${raw.message}`);
       return null;
     }
 
@@ -110,6 +131,7 @@ export class InProcessAgent extends BaseAgent<ParsedKey> {
       const conv = derToSshEcdsa(raw);
       if (!conv) {
         console.error("[ssh-agent] SIGN_REQUEST: ECDSA signature conversion failed");
+        this.auditSign(key.type, "ecdsa_conversion_failed");
         return null;
       }
       sigBytes = conv;
@@ -120,7 +142,29 @@ export class InProcessAgent extends BaseAgent<ParsedKey> {
     const blob = Buffer.concat([sshString(Buffer.from(formatId, "utf8")), sshString(sigBytes)]);
     const payload = Buffer.concat([Buffer.from([SSH_AGENT_SIGN_RESPONSE]), sshString(blob)]);
     console.log(`[ssh-agent] SIGN_REQUEST → ${formatId} (${sigBytes.length} bytes)`);
+    this.auditSign(key.type, null, formatId);
     return frame(payload);
+  }
+
+  private auditSign(keyType: string | null, failureReason: string | null, formatId?: string): void {
+    if (!this.audit) return;
+    const audit = this.audit;
+    void logAudit({
+      organizationId: audit.organizationId,
+      userId: audit.userId,
+      action: failureReason ? "ssh.agent.sign_failed" : "ssh.agent.sign",
+      entityType: "ssh-session",
+      entityId: audit.accountId,
+      metadata: {
+        sshKeyId: audit.sshKeyId,
+        sshHost: audit.sshHost,
+        sshUsername: audit.sshUsername,
+        ...(audit.resourceId ? { resourceId: audit.resourceId } : {}),
+        ...(keyType ? { keyType } : {}),
+        ...(formatId ? { signatureFormat: formatId } : {}),
+        ...(failureReason ? { failureReason } : {}),
+      },
+    });
   }
 
   private findKey(pubKey: ParsedKey | Buffer | string): ParsedKey | null {
@@ -145,14 +189,17 @@ function toPublicSSH(pubKey: ParsedKey | Buffer | string): Buffer | null {
   return null;
 }
 
-export function buildInProcessAgent(privateKeyPem: string): InProcessAgent | null {
+export function buildInProcessAgent(
+  privateKeyPem: string,
+  audit?: AgentAuditContext,
+): InProcessAgent | null {
   if (!privateKeyPem || !privateKeyPem.trim()) return null;
   const parsed = parseKey(privateKeyPem);
   if (parsed instanceof Error) return null;
   const keys = Array.isArray(parsed) ? parsed : [parsed];
   const usable = keys.filter((k) => k.isPrivateKey());
   if (usable.length === 0) return null;
-  return new InProcessAgent(usable);
+  return new InProcessAgent(usable, audit);
 }
 
 function signRaw(

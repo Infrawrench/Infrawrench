@@ -174,6 +174,7 @@ async function start() {
                   msg.cols,
                   msg.rows,
                   msg.agentForward === true,
+                  auth.userId,
                 );
               }
               break;

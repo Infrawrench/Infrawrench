@@ -10,7 +10,8 @@ import { accounts, sshKeys } from "@/db/schema";
 import { decrypt, buildAad } from "@/services/encryption";
 import { getPlugin } from "@/plugins/loader";
 import { buildPluginHostServices } from "@/services/host-services";
-import { buildInProcessAgent } from "@/services/ssh-agent";
+import { buildInProcessAgent, type AgentAuditContext } from "@/services/ssh-agent";
+import { logAudit } from "@/services/audit";
 
 interface DirectSshParams {
   sshKeyId: string;
@@ -27,6 +28,7 @@ export async function handleSshSession(
   cols?: number,
   rows?: number,
   agentForward?: boolean,
+  userId?: string,
 ): Promise<void> {
   try {
     let sshConfig: { host: string; port: number; username: string; privateKey: string };
@@ -148,7 +150,20 @@ export async function handleSshSession(
       ws.send(JSON.stringify({ type: "ssh:error", error: err.message }));
     });
 
-    const forwardAgent = agentForward ? buildInProcessAgent(sshConfig.privateKey) : null;
+    const auditContext: AgentAuditContext | undefined = agentForward
+      ? {
+          organizationId,
+          userId,
+          accountId,
+          resourceId,
+          sshKeyId: directSsh?.sshKeyId ?? "",
+          sshHost: sshConfig.host,
+          sshUsername: sshConfig.username,
+        }
+      : undefined;
+    const forwardAgent = agentForward
+      ? buildInProcessAgent(sshConfig.privateKey, auditContext)
+      : null;
     if (agentForward && !forwardAgent) {
       ws.send(
         JSON.stringify({
@@ -157,6 +172,21 @@ export async function handleSshSession(
         }),
       );
       return;
+    }
+    if (forwardAgent && auditContext) {
+      void logAudit({
+        organizationId: auditContext.organizationId,
+        userId: auditContext.userId,
+        action: "ssh.agent.session_opened",
+        entityType: "ssh-session",
+        entityId: auditContext.accountId,
+        metadata: {
+          sshKeyId: auditContext.sshKeyId,
+          sshHost: auditContext.sshHost,
+          sshUsername: auditContext.sshUsername,
+          ...(auditContext.resourceId ? { resourceId: auditContext.resourceId } : {}),
+        },
+      });
     }
     conn.connect({
       host: sshConfig.host,
