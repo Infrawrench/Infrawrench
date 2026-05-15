@@ -49,7 +49,7 @@ export async function authenticateBastionAgent(
   const hashedToken = await keyedHash(token, BASTION_TOKEN_HASH_DOMAIN);
   const row = await findBastionByHashedToken(hashedToken);
   if (!row) return null;
-  return row;
+  return { bastionId: row.id, organizationId: row.organizationId };
 }
 
 /** Promote the upgraded socket to a managed bastion-agent WebSocket. */

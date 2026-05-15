@@ -86,10 +86,13 @@ function httpRequest(req: {
   url: string;
   method: string;
   headers: Record<string, string>;
-  body?: string;
+  body?: string | Uint8Array;
   caCert?: string;
-}): Promise<{ status: number; body: string }> {
-  return invoke<{ status: number; body: string }>("k8s_api_request", req);
+}): Promise<{ status: number; headers: Record<string, string>; body: string }> {
+  return invoke<{ status: number; headers: Record<string, string>; body: string }>(
+    "k8s_api_request",
+    req,
+  );
 }
 
 const httpHostServices = { http: { request: httpRequest } };

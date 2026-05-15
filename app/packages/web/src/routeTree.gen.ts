@@ -20,6 +20,7 @@ import { Route as OrgOrgIdSettingsSshKeysRouteImport } from './routes/org.$orgId
 import { Route as OrgOrgIdSettingsSshHostKeysRouteImport } from './routes/org.$orgId.settings.ssh-host-keys'
 import { Route as OrgOrgIdSettingsRolesRouteImport } from './routes/org.$orgId.settings.roles'
 import { Route as OrgOrgIdSettingsBillingRouteImport } from './routes/org.$orgId.settings.billing'
+import { Route as OrgOrgIdSettingsBastionsRouteImport } from './routes/org.$orgId.settings.bastions'
 import { Route as OrgOrgIdSettingsAuditLogRouteImport } from './routes/org.$orgId.settings.audit-log'
 import { Route as OrgOrgIdSettingsApiKeysRouteImport } from './routes/org.$orgId.settings.api-keys'
 import { Route as OrgOrgIdDashboardDashboardIdRouteImport } from './routes/org.$orgId.dashboard.$dashboardId'
@@ -82,6 +83,12 @@ const OrgOrgIdSettingsBillingRoute = OrgOrgIdSettingsBillingRouteImport.update({
   path: '/billing',
   getParentRoute: () => OrgOrgIdSettingsRoute,
 } as any)
+const OrgOrgIdSettingsBastionsRoute =
+  OrgOrgIdSettingsBastionsRouteImport.update({
+    id: '/bastions',
+    path: '/bastions',
+    getParentRoute: () => OrgOrgIdSettingsRoute,
+  } as any)
 const OrgOrgIdSettingsAuditLogRoute =
   OrgOrgIdSettingsAuditLogRouteImport.update({
     id: '/audit-log',
@@ -122,6 +129,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/dashboard/$dashboardId': typeof OrgOrgIdDashboardDashboardIdRoute
   '/org/$orgId/settings/api-keys': typeof OrgOrgIdSettingsApiKeysRoute
   '/org/$orgId/settings/audit-log': typeof OrgOrgIdSettingsAuditLogRoute
+  '/org/$orgId/settings/bastions': typeof OrgOrgIdSettingsBastionsRoute
   '/org/$orgId/settings/billing': typeof OrgOrgIdSettingsBillingRoute
   '/org/$orgId/settings/roles': typeof OrgOrgIdSettingsRolesRoute
   '/org/$orgId/settings/ssh-host-keys': typeof OrgOrgIdSettingsSshHostKeysRoute
@@ -138,6 +146,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/dashboard/$dashboardId': typeof OrgOrgIdDashboardDashboardIdRoute
   '/org/$orgId/settings/api-keys': typeof OrgOrgIdSettingsApiKeysRoute
   '/org/$orgId/settings/audit-log': typeof OrgOrgIdSettingsAuditLogRoute
+  '/org/$orgId/settings/bastions': typeof OrgOrgIdSettingsBastionsRoute
   '/org/$orgId/settings/billing': typeof OrgOrgIdSettingsBillingRoute
   '/org/$orgId/settings/roles': typeof OrgOrgIdSettingsRolesRoute
   '/org/$orgId/settings/ssh-host-keys': typeof OrgOrgIdSettingsSshHostKeysRoute
@@ -157,6 +166,7 @@ export interface FileRoutesById {
   '/org/$orgId/dashboard/$dashboardId': typeof OrgOrgIdDashboardDashboardIdRoute
   '/org/$orgId/settings/api-keys': typeof OrgOrgIdSettingsApiKeysRoute
   '/org/$orgId/settings/audit-log': typeof OrgOrgIdSettingsAuditLogRoute
+  '/org/$orgId/settings/bastions': typeof OrgOrgIdSettingsBastionsRoute
   '/org/$orgId/settings/billing': typeof OrgOrgIdSettingsBillingRoute
   '/org/$orgId/settings/roles': typeof OrgOrgIdSettingsRolesRoute
   '/org/$orgId/settings/ssh-host-keys': typeof OrgOrgIdSettingsSshHostKeysRoute
@@ -177,6 +187,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/dashboard/$dashboardId'
     | '/org/$orgId/settings/api-keys'
     | '/org/$orgId/settings/audit-log'
+    | '/org/$orgId/settings/bastions'
     | '/org/$orgId/settings/billing'
     | '/org/$orgId/settings/roles'
     | '/org/$orgId/settings/ssh-host-keys'
@@ -193,6 +204,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/dashboard/$dashboardId'
     | '/org/$orgId/settings/api-keys'
     | '/org/$orgId/settings/audit-log'
+    | '/org/$orgId/settings/bastions'
     | '/org/$orgId/settings/billing'
     | '/org/$orgId/settings/roles'
     | '/org/$orgId/settings/ssh-host-keys'
@@ -211,6 +223,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/dashboard/$dashboardId'
     | '/org/$orgId/settings/api-keys'
     | '/org/$orgId/settings/audit-log'
+    | '/org/$orgId/settings/bastions'
     | '/org/$orgId/settings/billing'
     | '/org/$orgId/settings/roles'
     | '/org/$orgId/settings/ssh-host-keys'
@@ -305,6 +318,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgIdSettingsBillingRouteImport
       parentRoute: typeof OrgOrgIdSettingsRoute
     }
+    '/org/$orgId/settings/bastions': {
+      id: '/org/$orgId/settings/bastions'
+      path: '/bastions'
+      fullPath: '/org/$orgId/settings/bastions'
+      preLoaderRoute: typeof OrgOrgIdSettingsBastionsRouteImport
+      parentRoute: typeof OrgOrgIdSettingsRoute
+    }
     '/org/$orgId/settings/audit-log': {
       id: '/org/$orgId/settings/audit-log'
       path: '/audit-log'
@@ -346,6 +366,7 @@ declare module '@tanstack/react-router' {
 interface OrgOrgIdSettingsRouteChildren {
   OrgOrgIdSettingsApiKeysRoute: typeof OrgOrgIdSettingsApiKeysRoute
   OrgOrgIdSettingsAuditLogRoute: typeof OrgOrgIdSettingsAuditLogRoute
+  OrgOrgIdSettingsBastionsRoute: typeof OrgOrgIdSettingsBastionsRoute
   OrgOrgIdSettingsBillingRoute: typeof OrgOrgIdSettingsBillingRoute
   OrgOrgIdSettingsRolesRoute: typeof OrgOrgIdSettingsRolesRoute
   OrgOrgIdSettingsSshHostKeysRoute: typeof OrgOrgIdSettingsSshHostKeysRoute
@@ -357,6 +378,7 @@ interface OrgOrgIdSettingsRouteChildren {
 const OrgOrgIdSettingsRouteChildren: OrgOrgIdSettingsRouteChildren = {
   OrgOrgIdSettingsApiKeysRoute: OrgOrgIdSettingsApiKeysRoute,
   OrgOrgIdSettingsAuditLogRoute: OrgOrgIdSettingsAuditLogRoute,
+  OrgOrgIdSettingsBastionsRoute: OrgOrgIdSettingsBastionsRoute,
   OrgOrgIdSettingsBillingRoute: OrgOrgIdSettingsBillingRoute,
   OrgOrgIdSettingsRolesRoute: OrgOrgIdSettingsRolesRoute,
   OrgOrgIdSettingsSshHostKeysRoute: OrgOrgIdSettingsSshHostKeysRoute,

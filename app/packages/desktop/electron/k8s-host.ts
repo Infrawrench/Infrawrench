@@ -32,7 +32,7 @@ interface K8sApiRequest {
   url: string;
   method: string;
   headers: Record<string, string>;
-  body?: string;
+  body?: string | Uint8Array;
   caCert?: string; // PEM-encoded CA certificate
 }
 
@@ -71,7 +71,10 @@ function isPrivateOrLoopbackHost(hostname: string): boolean {
 
 ipcMain.handle(
   "k8s_api_request",
-  (_event, req: K8sApiRequest): Promise<{ status: number; body: string }> => {
+  (
+    _event,
+    req: K8sApiRequest,
+  ): Promise<{ status: number; headers: Record<string, string>; body: string }> => {
     return new Promise((resolve, reject) => {
       let parsed: URL;
       try {
@@ -116,8 +119,14 @@ ipcMain.handle(
         const chunks: Buffer[] = [];
         res.on("data", (chunk: Buffer) => chunks.push(chunk));
         res.on("end", () => {
+          const headers: Record<string, string> = {};
+          for (const [k, v] of Object.entries(res.headers)) {
+            if (v == null) continue;
+            headers[k] = Array.isArray(v) ? v.join(", ") : String(v);
+          }
           resolve({
             status: res.statusCode ?? 0,
+            headers,
             body: Buffer.concat(chunks).toString("utf8"),
           });
         });

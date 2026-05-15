@@ -112,7 +112,7 @@ function buildHttpHostServices(bastionId: string | null | undefined): HttpHostSe
           dispatcher,
         };
         if (req.body != null) {
-          init.body = req.body as UndiciRequestInit["body"];
+          init.body = req.body as NonNullable<UndiciRequestInit["body"]>;
         }
         const resp = await undiciFetch(req.url, init);
         return {
@@ -127,7 +127,7 @@ function buildHttpHostServices(bastionId: string | null | undefined): HttpHostSe
       const resp = await fetch(req.url, {
         method: req.method,
         headers: req.headers,
-        ...(req.body != null ? { body: req.body as BodyInit } : {}),
+        ...(req.body != null ? { body: req.body as string | Uint8Array<ArrayBuffer> } : {}),
       });
       return {
         status: resp.status,

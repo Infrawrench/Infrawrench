@@ -13,6 +13,8 @@ import { db } from "../db/client.js";
 import { accounts, bastionVms } from "../db/schema.js";
 import { BastionAgentConnection } from "./dispatcher.js";
 
+export { BastionAgentConnection };
+
 const connections = new Map<string, BastionAgentConnection>();
 
 /** Register a freshly authenticated agent. Replaces any prior connection for the same bastion. */
