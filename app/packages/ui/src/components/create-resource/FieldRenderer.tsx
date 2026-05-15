@@ -38,6 +38,15 @@ export interface ResourcePickerCallbacks {
   accountId?: string;
 }
 
+export interface FieldActionCallbacks {
+  /** Invoked when the user clicks one of `field.actions` */
+  runAction: (fieldKey: string, actionId: string) => Promise<void>;
+  /** Whether an action on this field is currently in flight */
+  runningByKey: Record<string, boolean>;
+  /** Latest error message for an action on this field, if any */
+  errorByKey: Record<string, string | null>;
+}
+
 export interface FieldRendererProps {
   field: CreateFieldConfig;
   value: string;
@@ -46,6 +55,8 @@ export interface FieldRendererProps {
   sshKeyProps?: SshKeyPickerCallbacks;
   /** Resource picker callbacks for association fields */
   resourcePickerProps?: ResourcePickerCallbacks;
+  /** Action button callbacks for `field.actions`. Omit to hide the actions. */
+  fieldActionProps?: FieldActionCallbacks;
 }
 
 export function FieldRenderer({
@@ -54,7 +65,33 @@ export function FieldRenderer({
   onChange,
   sshKeyProps,
   resourcePickerProps,
+  fieldActionProps,
 }: FieldRendererProps) {
+  const actions = field.actions ?? [];
+  const actionRunning = fieldActionProps?.runningByKey[field.key] ?? false;
+  const actionError = fieldActionProps?.errorByKey[field.key] ?? null;
+  const actionsBar =
+    actions.length > 0 && fieldActionProps ? (
+      <div className="flex flex-wrap items-center gap-2 mt-2">
+        {actions.map((a) => (
+          <button
+            key={a.id}
+            type="button"
+            disabled={actionRunning}
+            onClick={() => void fieldActionProps.runAction(field.key, a.id)}
+            title={a.description}
+            className="px-3 py-1.5 rounded-md text-xs font-medium border border-border-strong bg-surface-overlay/50 hover:border-blue-500 hover:bg-accent-muted hover:text-accent-on-muted text-on-surface-tertiary transition-colors disabled:opacity-50 disabled:cursor-wait"
+          >
+            {actionRunning ? "Working…" : a.label}
+          </button>
+        ))}
+        {actionError && (
+          <span className="text-xs text-red-400 leading-tight" title={actionError}>
+            {actionError.length > 80 ? `${actionError.slice(0, 80)}…` : actionError}
+          </span>
+        )}
+      </div>
+    ) : null;
   // The "code" kind takes over the side pane in split-pane mode and renders
   // edge-to-edge — its container styling differs from regular fields.
   if (field.kind === "code") {
@@ -270,6 +307,8 @@ export function FieldRenderer({
           {...(field.maxEntries !== undefined ? { maxEntries: field.maxEntries } : {})}
         />
       )}
+
+      {actionsBar}
     </div>
   );
 }

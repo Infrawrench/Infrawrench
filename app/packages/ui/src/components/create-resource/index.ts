@@ -3,6 +3,7 @@ export type {
   FieldRendererProps,
   SshKeyPickerCallbacks,
   ResourcePickerCallbacks,
+  FieldActionCallbacks,
 } from "./FieldRenderer.js";
 export { SelectPicker } from "./SelectPicker.js";
 export { RegionPicker } from "./RegionPicker.js";

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Modal } from "./Modal.js";
+import { RegionPicker } from "./create-resource/RegionPicker.js";
 import { formatErrorMessage } from "../utils.js";
 
 export interface PluginInfo {
@@ -14,6 +15,7 @@ export interface PluginInfo {
     sensitive?: boolean;
     multiline?: boolean;
     defaultValue?: string;
+    regions?: Array<{ id: string; label: string; location?: string; flag?: string }>;
   }>;
 }
 
@@ -53,7 +55,12 @@ export function AddAccountModal({
     setSelected(p);
     setAccountName("");
     setFieldValues(
-      Object.fromEntries(p.credentialFields.map((f) => [f.key, f.defaultValue ?? ""])),
+      Object.fromEntries(
+        p.credentialFields.map((f) => [
+          f.key,
+          f.defaultValue ?? (f.regions && f.regions.length > 0 ? f.regions[0]!.id : ""),
+        ]),
+      ),
     );
     setError(null);
     setStep("enter-credentials");
@@ -187,7 +194,13 @@ export function AddAccountModal({
                         {f.description && (
                           <p className="text-xs text-on-surface-faint mb-1">{f.description}</p>
                         )}
-                        {f.multiline ? (
+                        {f.regions && f.regions.length > 0 ? (
+                          <RegionPicker
+                            regions={f.regions}
+                            value={fieldValues[f.key] ?? ""}
+                            onChange={(v) => setFieldValues((cur) => ({ ...cur, [f.key]: v }))}
+                          />
+                        ) : f.multiline ? (
                           <textarea
                             id={fieldId}
                             value={fieldValues[f.key] ?? ""}

@@ -111,6 +111,7 @@ export { ResourcePicker } from "./components/create-resource/index.js";
 export type {
   ResourcePickerOption,
   ResourcePickerCallbacks,
+  FieldActionCallbacks,
 } from "./components/create-resource/index.js";
 
 export { DndShell } from "./dnd/DndShell.js";

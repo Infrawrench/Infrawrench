@@ -15,6 +15,17 @@ export interface CreateResourceCallbacks {
   loadCostEstimate?: (fields: Record<string, string>) => Promise<number | null>;
   /** Submit the create form — platform handles the result via its own callback */
   create: (fields: Record<string, string>) => Promise<void>;
+  /**
+   * Execute an in-form field action (e.g. mint an IAM role) — only used when
+   * the loaded `CreateResourceConfig` declares `actions` on a field. Returns
+   * the new value plus an optional option entry that should be spliced into
+   * the field's options list so the value can render in a select.
+   */
+  executeFieldAction?: (
+    fieldKey: string,
+    actionId: string,
+    fields: Record<string, string>,
+  ) => Promise<{ value: string; option?: { id: string; label: string } }>;
 }
 
 export interface CreateResourceFormState {
@@ -30,6 +41,12 @@ export interface CreateResourceFormState {
   isValid: boolean;
   estimatedMonthlyPriceLabel: string | null;
   handleCreate: () => Promise<void>;
+  /** Whether an action on this field is currently running (keyed by field key). */
+  fieldActionRunning: Record<string, boolean>;
+  /** Most-recent error from a failed action, keyed by field key. */
+  fieldActionError: Record<string, string | null>;
+  /** Run a field-level action and apply its result to the form state. */
+  runFieldAction: (fieldKey: string, actionId: string) => Promise<void>;
 }
 
 export function useCreateResourceForm(
@@ -305,6 +322,41 @@ export function useCreateResourceForm(
     return true;
   }, [configWithPricing, visibleFields, fields]);
 
+  const [fieldActionRunning, setFieldActionRunning] = useState<Record<string, boolean>>({});
+  const [fieldActionError, setFieldActionError] = useState<Record<string, string | null>>({});
+
+  const runFieldAction = useCallback(
+    async (fieldKey: string, actionId: string) => {
+      const exec = callbacksRef.current.executeFieldAction;
+      if (!exec) return;
+      setFieldActionRunning((prev) => ({ ...prev, [fieldKey]: true }));
+      setFieldActionError((prev) => ({ ...prev, [fieldKey]: null }));
+      try {
+        const result = await exec(fieldKey, actionId, fields);
+        // If the action returned a synthetic option, splice it into the
+        // field's options list so the new value can render in the select.
+        if (result.option) {
+          setConfig((prev) => {
+            if (!prev) return prev;
+            const nextFields = prev.fields.map((f) => {
+              if (f.key !== fieldKey) return f;
+              const existing = f.options ?? [];
+              if (existing.some((o) => o.id === result.option!.id)) return f;
+              return { ...f, options: [result.option!, ...existing] };
+            });
+            return { ...prev, fields: nextFields };
+          });
+        }
+        setFields((prev) => ({ ...prev, [fieldKey]: result.value }));
+      } catch (e) {
+        setFieldActionError((prev) => ({ ...prev, [fieldKey]: formatErrorMessage(e) }));
+      } finally {
+        setFieldActionRunning((prev) => ({ ...prev, [fieldKey]: false }));
+      }
+    },
+    [fields],
+  );
+
   const handleCreate = useCallback(async () => {
     setCreating(true);
     setError(null);
@@ -337,5 +389,8 @@ export function useCreateResourceForm(
     isValid,
     estimatedMonthlyPriceLabel,
     handleCreate,
+    fieldActionRunning,
+    fieldActionError,
+    runFieldAction,
   };
 }

@@ -75,15 +75,18 @@ export function AssociationPicker({
 
   return (
     <Modal onClose={onCancel}>
-      <div className="bg-surface-raised border border-border-strong rounded-xl shadow-2xl w-full max-w-md mx-4">
+      <div
+        className="bg-surface-raised border border-border-strong rounded-xl shadow-2xl overflow-hidden"
+        style={{ width: "28rem", maxWidth: "calc(100vw - 2rem)" }}
+      >
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-border">
-          <h2 className="text-sm font-semibold text-on-surface">
+        <div className="flex items-center justify-between gap-3 p-4 border-b border-border">
+          <h2 className="text-sm font-semibold text-on-surface min-w-0 flex-1 truncate">
             Reroll <code className="text-accent">{fieldKey}</code>
           </h2>
           <button
             onClick={onCancel}
-            className="text-on-surface-faint hover:text-on-surface-tertiary transition-colors"
+            className="text-on-surface-faint hover:text-on-surface-tertiary transition-colors flex-shrink-0"
             aria-label="Close"
           >
             ✕
@@ -109,7 +112,7 @@ export function AssociationPicker({
             tabIndex={mode === "provider" ? 0 : -1}
             onClick={() => setMode("provider")}
             onKeyDown={onTabKeyDown}
-            className={`flex-1 py-2.5 text-sm transition-colors ${
+            className={`flex-1 min-w-0 truncate px-3 py-2.5 text-sm transition-colors ${
               mode === "provider"
                 ? "text-accent border-b-2 border-blue-400"
                 : "text-on-surface-muted hover:text-on-surface-secondary"
@@ -129,7 +132,7 @@ export function AssociationPicker({
             tabIndex={mode === "literal" ? 0 : -1}
             onClick={() => setMode("literal")}
             onKeyDown={onTabKeyDown}
-            className={`flex-1 py-2.5 text-sm transition-colors ${
+            className={`flex-1 min-w-0 truncate px-3 py-2.5 text-sm transition-colors ${
               mode === "literal"
                 ? "text-accent border-b-2 border-blue-400"
                 : "text-on-surface-muted hover:text-on-surface-secondary"
