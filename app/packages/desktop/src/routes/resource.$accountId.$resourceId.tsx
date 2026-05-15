@@ -16,6 +16,7 @@ import {
   queryResultSchema,
   queryExecuteResultSchema,
   queryCostEstimateSchema,
+  evaluatePeerIntegrationUnreachable,
 } from "@infrawrench/plugin-base";
 import {
   getCloudManifest,
@@ -44,20 +45,28 @@ import {
   dispatchRefreshResource,
   resourceTabTitle,
   formatErrorMessage,
+  toast,
   type QueryResult,
   type ChildResourceGroup,
   type NavigateToResourceDetail,
   type InvokePluginActionDetail,
   type PromptNoSqlCommandDetail,
   type ResourcePickerOption,
+  type RerollSelection,
   useUIStore,
   useTabId,
 } from "@infrawrench/ui";
 import { getDb } from "../db/client";
 import type { AccountRow } from "../db/rows";
 import { getPlugin } from "../plugins/loader";
-import { sqlQuery, sqlExecute, buildPluginHostServices } from "../lib/sql-drivers";
+import {
+  sqlQuery,
+  sqlExecute,
+  buildPluginHostServices,
+  persistPlaintextSecret,
+} from "../lib/sql-drivers";
 import { createPluginClient } from "../lib/plugin-client";
+import { applyCredentialRewriters } from "../lib/credential-rewriters";
 import type { PluginClient, PeerPaneContext, AssociationSource } from "@infrawrench/plugin-base";
 import type { PeerPaneData } from "@infrawrench/ui";
 import {
@@ -172,6 +181,8 @@ export function ResourcePanel({
     parentPluginId: string;
     parentResourceTypeId: string;
     parentResourceId: string;
+    parentResourceFields: Record<string, unknown>;
+    parentResourceOutputs: Record<string, unknown>;
   } | null>(null);
   const navigate = useNavigate();
 
@@ -812,6 +823,24 @@ export function ResourcePanel({
       const resolved: PeerPaneData[] = [];
       await Promise.allSettled(
         (localCtx.peerIntegrations ?? []).map(async (integration) => {
+          // Provider-declared unreachable check (e.g. private-IP-only Cloud
+          // SQL). Skip resolving outputs / rewriters / the peer plugin and
+          // just render the guidance pane.
+          const guidance = evaluatePeerIntegrationUnreachable(
+            integration,
+            localCtx.parentResourceFields,
+          );
+          if (guidance) {
+            const peerLoaded = await getPlugin(integration.pluginId);
+            if (!peerLoaded) return;
+            resolved.push({
+              tabLabel: integration.tabLabel,
+              pluginLogoSvg: peerLoaded.plugin.manifest.logoSvg,
+              credentials: {},
+              schema: { resourceGroups: [], guidance },
+            });
+            return;
+          }
           try {
             const peerCredentials: Record<string, string> = {};
             for (const mapping of integration.credentialMappings) {
@@ -823,6 +852,17 @@ export function ResourcePanel({
               );
               peerCredentials[mapping.credentialKey] = value;
             }
+            await applyCredentialRewriters(
+              {
+                accountId,
+                resourcePluginId: localCtx.parentPluginId,
+                resourceTypeId: localCtx.parentResourceTypeId,
+                resourceId: localCtx.parentResourceId,
+                resourceFields: localCtx.parentResourceFields,
+                resourceOutputs: localCtx.parentResourceOutputs,
+              },
+              peerCredentials,
+            );
             const peerLoaded = await getPlugin(integration.pluginId);
             if (!peerLoaded) return;
             const peerServices = buildPluginHostServices(
@@ -868,6 +908,41 @@ export function ResourcePanel({
   useEffect(() => {
     handlePeerPaneOpenRef.current = handlePeerPaneOpen;
   }, [handlePeerPaneOpen]);
+
+  async function handleReroll(
+    fieldKey: string,
+    selection: RerollSelection | { kind: "literal"; value: string },
+  ) {
+    if (!resource) return;
+    if (selection.kind !== "literal") {
+      toast.error("This field only accepts a literal value.");
+      return;
+    }
+    const client = clientRef.current;
+    if (!client) {
+      toast.error("Plugin client not ready.");
+      return;
+    }
+    try {
+      // Push to the upstream provider first so the local store never holds a
+      // value the provider hasn't accepted. Plugins that don't implement
+      // applySecretReroll skip the upstream call (literal-only persist).
+      if (client.applySecretReroll) {
+        await client.applySecretReroll(
+          resource.resourceTypeId,
+          resource.id,
+          accountId,
+          fieldKey,
+          selection.value,
+        );
+      }
+      await persistPlaintextSecret(resource.id, fieldKey, selection.value);
+      toast.success(`${fieldKey} updated.`);
+      dispatchRefreshResource();
+    } catch (err) {
+      toast.error(`Reroll failed: ${formatErrorMessage(err)}`);
+    }
+  }
 
   async function handleDelete() {
     if (!resource || !account) return;
@@ -1004,6 +1079,7 @@ export function ResourcePanel({
               onOpenConsole={() => setConsoleOpen(true)}
               onNoSqlCommand={handleNoSqlCommand}
               onChildCreate={(rt) => setCreateChildTarget(rt)}
+              onReroll={handleReroll}
             />
           </div>
         )}

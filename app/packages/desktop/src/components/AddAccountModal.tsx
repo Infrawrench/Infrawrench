@@ -25,6 +25,7 @@ export function AddAccountModal({ onClose, onAdded, orgId }: Props) {
         sensitive: f.sensitive,
         ...(f.multiline !== undefined ? { multiline: f.multiline } : {}),
         ...(f.defaultValue !== undefined ? { defaultValue: f.defaultValue } : {}),
+        ...(f.regions !== undefined ? { regions: f.regions } : {}),
       })),
     }));
   }, []);

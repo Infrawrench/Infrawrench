@@ -1,5 +1,6 @@
 import { invoke } from "../lib/invoke";
-import type { HostServices, PluginManifest } from "@infrawrench/plugin-base";
+import { getDb } from "../db/client";
+import type { HostServices, PluginManifest, SecretHostServices } from "@infrawrench/plugin-base";
 
 export function sqlQuery(
   driverId: string,
@@ -93,39 +94,105 @@ function httpRequest(req: {
 
 const httpHostServices = { http: { request: httpRequest } };
 
+/**
+ * Renderer-side `SecretHostServices` — looks up persisted secret-field rows
+ * via the SQLite IPC and decrypts them through the main process. Mirrors
+ * `app/packages/server-core/src/host-services.ts` so plugin code that calls
+ * `ctx.hostServices.secrets.getPlaintext(resourceId, fieldKey)` works the
+ * same way on desktop and web.
+ */
+const secretHostServices: SecretHostServices = {
+  async getPlaintext(resourceId: string, fieldKey: string): Promise<string | null> {
+    try {
+      const db = await getDb();
+      const rows = await db.select<
+        Array<{
+          resolution_kind: string;
+          encrypted_value: string | null;
+          value_iv: string | null;
+        }>
+      >(
+        "SELECT resolution_kind, encrypted_value, value_iv FROM secret_field_states WHERE resource_id = $1 AND field_key = $2 LIMIT 1",
+        [resourceId, fieldKey],
+      );
+      const row = rows[0];
+      if (!row || row.resolution_kind !== "literal") return null;
+      if (!row.encrypted_value || !row.value_iv) return null;
+      const plaintext = await invoke<string>("secret_field_decrypt", {
+        resourceId,
+        fieldKey,
+        ciphertext: row.encrypted_value,
+        iv: row.value_iv,
+      });
+      return plaintext;
+    } catch (err) {
+      console.error(`[secrets] getPlaintext(${resourceId}, ${fieldKey}) failed:`, err);
+      return null;
+    }
+  },
+};
+
+/**
+ * Persist a plaintext secret returned by a plugin's `createResource` (or any
+ * other flow that yields plaintext). Mirrors what the web server does inline
+ * after create — encrypts via the main process, then upserts into the
+ * `secret_field_states` table the renderer can read back via
+ * `secretHostServices.getPlaintext`.
+ */
+export async function persistPlaintextSecret(
+  resourceId: string,
+  fieldKey: string,
+  plaintext: string,
+): Promise<void> {
+  const { ciphertext, iv } = await invoke<{ ciphertext: string; iv: string }>(
+    "secret_field_encrypt",
+    { resourceId, fieldKey, plaintext },
+  );
+  const db = await getDb();
+  await db.execute(
+    `INSERT INTO secret_field_states (id, resource_id, field_key, resolution_kind, encrypted_value, value_iv)
+     VALUES ($1, $2, $3, 'literal', $4, $5)
+     ON CONFLICT(resource_id, field_key) DO UPDATE SET
+       resolution_kind = 'literal',
+       encrypted_value = excluded.encrypted_value,
+       value_iv = excluded.value_iv,
+       source_plugin_id = NULL,
+       source_resource_type_id = NULL,
+       source_resource_id = NULL,
+       source_account_id = NULL,
+       source_output_key = NULL,
+       cached_encrypted_value = NULL,
+       cached_value_iv = NULL,
+       cached_at = NULL,
+       updated_at = datetime('now')`,
+    [crypto.randomUUID(), resourceId, fieldKey, ciphertext, iv],
+  );
+}
+
 /** Inspects the plugin manifest and builds the appropriate HostServices for use with createClient(). */
 export function buildPluginHostServices(
   manifest: PluginManifest,
   credentials: Record<string, string>,
 ): HostServices | undefined {
+  // `secrets` is added to every host-services bundle so any plugin (driver
+  // or HTTP-only) can resolve persisted secret-field values via the same
+  // IPC-backed lookup. Mirrors the server-core `buildPluginHostServices`.
+  const base: HostServices = { ...httpHostServices, secrets: secretHostServices };
   if (manifest.dockerDriver) {
     const dockerHost = credentials[manifest.dockerDriver.credentialKey] ?? "";
-    return {
-      ...buildDockerHostServices(manifest.dockerDriver.driver, dockerHost),
-      ...httpHostServices,
-    };
+    return { ...buildDockerHostServices(manifest.dockerDriver.driver, dockerHost), ...base };
   }
   if (manifest.kubernetesDriver) {
     const kubeconfig = credentials[manifest.kubernetesDriver.credentialKey] ?? "";
-    return {
-      ...buildK8sHostServices(manifest.kubernetesDriver.driver, kubeconfig),
-      ...httpHostServices,
-    };
+    return { ...buildK8sHostServices(manifest.kubernetesDriver.driver, kubeconfig), ...base };
   }
   if (manifest.sqlDriver) {
     const connectionString = credentials[manifest.sqlDriver.credentialKey] ?? "";
-    return {
-      ...buildHostServices(manifest.sqlDriver.driver, connectionString),
-      ...httpHostServices,
-    };
+    return { ...buildHostServices(manifest.sqlDriver.driver, connectionString), ...base };
   }
   if (manifest.kvDriver) {
     const connectionString = credentials[manifest.kvDriver.credentialKey] ?? "";
-    return {
-      ...buildKvHostServices(manifest.kvDriver.driver, connectionString),
-      ...httpHostServices,
-    };
+    return { ...buildKvHostServices(manifest.kvDriver.driver, connectionString), ...base };
   }
-  // Even without a specific driver, provide HTTP proxy for plugins like K8s
-  return httpHostServices;
+  return base;
 }

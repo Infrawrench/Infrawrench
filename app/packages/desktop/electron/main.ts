@@ -106,7 +106,13 @@ app.whenReady().then(() => {
     if (!hasACAO) {
       headers["Access-Control-Allow-Origin"] = ["*"];
       headers["Access-Control-Allow-Methods"] = ["DELETE, GET, HEAD, OPTIONS, POST, PUT, PATCH"];
-      headers["Access-Control-Allow-Headers"] = ["Authorization, Content-Type, Accept"];
+      // AWS SigV4 requests carry x-amz-* headers (content-sha256, date, target,
+      // security-token, user-agent) and Authorization. Without listing these
+      // here, the browser blocks every preflight against AWS endpoints — AWS
+      // itself returns no CORS headers, so we synthesize a permissive set.
+      headers["Access-Control-Allow-Headers"] = [
+        "Authorization, Content-Type, Accept, X-Amz-Content-Sha256, X-Amz-Date, X-Amz-Target, X-Amz-Security-Token, X-Amz-User-Agent, X-Amz-Algorithm, X-Amz-Credential, X-Amz-Signature, X-Amz-SignedHeaders",
+      ];
       // OPTIONS preflight must return 200 OK — GCP compute and similar reject
       // cross-origin requests with 403, which the browser refuses even when
       // CORS headers are present.

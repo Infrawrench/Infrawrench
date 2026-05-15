@@ -52,6 +52,10 @@ export interface LoaderRefs {
       parentPluginId: string;
       parentResourceTypeId: string;
       parentResourceId: string;
+      /** Live fields/outputs of the parent resource. Passed to credential
+       * rewriters so they can read e.g. `connectionName` without re-fetching. */
+      parentResourceFields: Record<string, unknown>;
+      parentResourceOutputs: Record<string, unknown>;
     } | null;
   };
 }
@@ -841,6 +845,12 @@ export async function loadLocalResource(params: LoaderParams): Promise<void> {
     if (resourceTypeDef?.peerIntegrations?.length) {
       const integrationFields = enrichedResource.fields ?? {};
       const visibleIntegrations = resourceTypeDef.peerIntegrations.filter((i) => {
+        if (i.requiresFields) {
+          for (const key of i.requiresFields) {
+            const v = integrationFields[key];
+            if (v == null || v === "") return false;
+          }
+        }
         if (!i.showWhen) return true;
         const v = integrationFields[i.showWhen.fieldKey];
         if (v == null || v === "") return false;
@@ -854,6 +864,8 @@ export async function loadLocalResource(params: LoaderParams): Promise<void> {
         parentPluginId: plugin.manifest.id,
         parentResourceTypeId: enrichedResource.resourceTypeId,
         parentResourceId: enrichedResource.id,
+        parentResourceFields: enrichedResource.fields,
+        parentResourceOutputs: enrichedResource.resolvedOutputs,
       };
       const stubPanes: PeerPaneData[] = [];
       for (const integration of visibleIntegrations) {

@@ -7,6 +7,7 @@ import {
   type SystemSshKey,
   type ResourcePickerOption,
   type ResourcePickerCallbacks,
+  type FieldActionCallbacks,
 } from "@infrawrench/ui";
 import { invoke } from "../../lib/invoke";
 
@@ -15,11 +16,13 @@ export function FieldRenderer({
   value,
   onChange,
   resourcePickerProps,
+  fieldActionProps,
 }: {
   field: CreateFieldConfig;
   value: string;
   onChange: (v: string) => void;
   resourcePickerProps?: ResourcePickerCallbacks;
+  fieldActionProps?: FieldActionCallbacks;
 }) {
   const [systemKeys, setSystemKeys] = useState<SystemSshKey[]>([]);
   const [cloudAuthed, setCloudAuthed] = useState(false);
@@ -125,6 +128,7 @@ export function FieldRenderer({
         },
       }}
       {...(resourcePickerProps ? { resourcePickerProps } : {})}
+      {...(fieldActionProps ? { fieldActionProps } : {})}
     />
   );
 }

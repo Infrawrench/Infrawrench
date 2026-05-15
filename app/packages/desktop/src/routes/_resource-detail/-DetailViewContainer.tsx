@@ -18,6 +18,7 @@ import {
   type ChildResourceGroup,
   type PeerPaneData,
   type QueryResult,
+  type RerollSelection,
 } from "@infrawrench/ui";
 import { useNavigate } from "@tanstack/react-router";
 import { PeerPaneView } from "../../components/PeerPaneView";
@@ -60,6 +61,10 @@ interface DetailViewContainerProps {
   onOpenConsole: () => void;
   onNoSqlCommand: (command: string, args: (string | number)[]) => Promise<unknown>;
   onChildCreate: (typeDef: ResourceTypeDefinition) => void;
+  onReroll?: (
+    fieldKey: string,
+    selection: RerollSelection | { kind: "literal"; value: string },
+  ) => void;
 }
 
 export function DetailViewContainer({
@@ -91,6 +96,7 @@ export function DetailViewContainer({
   onOpenConsole,
   onNoSqlCommand,
   onChildCreate,
+  onReroll,
 }: DetailViewContainerProps) {
   const navigate = useNavigate();
   const noSqlBrowser = schema?.noSqlBrowser;
@@ -101,6 +107,7 @@ export function DetailViewContainer({
         schema={schema}
         resourceId={decodedResourceId}
         pluginLogoSvg={logoSvg}
+        {...(onReroll ? { onReroll } : {})}
         peerPanes={peerPanes}
         renderPeerPane={(pane, i) => (
           <PeerPaneView

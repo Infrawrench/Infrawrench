@@ -24,6 +24,42 @@ import type {
   ResourceTypeDefinition,
 } from "@infrawrench/plugin-base";
 import { normalizeResourceCreateResult } from "@infrawrench/plugin-base";
+import { getDb } from "../db/client";
+import { persistPlaintextSecret } from "../lib/sql-drivers";
+
+/**
+ * Persist a freshly-created resource + its plaintext secret states into the
+ * local SQLite. The web server does this inline after `createResource`; on
+ * desktop we have to do it from the renderer because the create flow doesn't
+ * round-trip through a server. Without this, peer panes can't resolve secrets
+ * the plugin returned at create time (e.g. Cloud SQL `rootPassword`).
+ *
+ * The `resources` row is required by the FK on `secret_field_states`, so we
+ * UPSERT it first even if no other code path will need it (peer-pane checks
+ * read in-memory parent fields, not this row).
+ */
+async function persistCreatedResource(resource: ResourceInstance): Promise<void> {
+  const db = await getDb();
+  await db.execute(
+    `INSERT OR REPLACE INTO resources
+     (id, plugin_id, resource_type_id, account_id, display_name, external_id, fields_json, outputs_json)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [
+      resource.id,
+      resource.pluginId,
+      resource.resourceTypeId,
+      resource.accountId,
+      resource.displayName,
+      resource.externalId ?? resource.id,
+      JSON.stringify(resource.fields ?? {}),
+      JSON.stringify(resource.resolvedOutputs ?? {}),
+    ],
+  );
+  for (const state of resource.secretStates ?? []) {
+    if (state.resolution.kind !== "plaintext") continue;
+    await persistPlaintextSecret(resource.id, state.fieldKey, state.resolution.value);
+  }
+}
 
 interface CreateResourceModalProps {
   accountId: string;
@@ -195,10 +231,24 @@ export function CreateResourceModal({
           parentResourceId,
         );
         const { resource, warnings } = normalizeResourceCreateResult(createReturn);
+        await persistCreatedResource(resource);
         for (const w of warnings) {
           toast.warning(w.message);
         }
         onCreated(resource);
+      },
+      executeFieldAction: async (
+        fieldKey: string,
+        actionId: string,
+        fields: Record<string, string>,
+      ) => {
+        const client =
+          clientRef.current ??
+          (clientFactory ? await clientFactory() : await createPluginClient(accountId, pluginId));
+        if (!client.executeFieldAction) {
+          throw new Error("Plugin does not support field actions");
+        }
+        return client.executeFieldAction(resourceType.id, fieldKey, actionId, accountId, fields);
       },
     };
   }, [
@@ -258,6 +308,11 @@ export function CreateResourceModal({
           value={value}
           onChange={onChange}
           resourcePickerProps={resourcePickerProps}
+          fieldActionProps={{
+            runAction: form.runFieldAction,
+            runningByKey: form.fieldActionRunning,
+            errorByKey: form.fieldActionError,
+          }}
         />
       )}
       renderError={(message, props) => <ErrorNotice message={message} {...props} />}
