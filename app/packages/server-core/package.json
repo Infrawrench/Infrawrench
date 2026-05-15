@@ -11,10 +11,15 @@
     "./drivers": "./src/drivers.ts",
     "./host-services": "./src/host-services.ts",
     "./tunnel-resolver": "./src/tunnel-resolver.ts",
+    "./credential-rewriters": "./src/credential-rewriters/index.ts",
     "./sync-resources": "./src/sync-resources.ts",
     "./plugin-loader": "./src/plugin-loader.ts",
     "./permissions": "./src/permissions/index.ts",
-    "./permissions/catalog": "./src/permissions/catalog.ts"
+    "./permissions/catalog": "./src/permissions/catalog.ts",
+    "./clickhouse/client": "./src/clickhouse/client.ts",
+    "./clickhouse/migrate": "./src/clickhouse/migrate.ts",
+    "./clickhouse/readers": "./src/clickhouse/readers.ts",
+    "./clickhouse/writers": "./src/clickhouse/writers.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit"
@@ -48,6 +53,7 @@
     "@infrawrench/plugin-turso": "workspace:*",
     "@infrawrench/plugin-vercel": "workspace:*",
     "@infrawrench/ssh-tunnel-core": "workspace:*",
+    "@clickhouse/client": "^1.13.0",
     "drizzle-orm": "^0.45.2",
     "postgres": "^3.4.5"
   },

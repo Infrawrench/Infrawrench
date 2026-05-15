@@ -274,6 +274,9 @@ importers:
 
   app/packages/server-core:
     dependencies:
+      '@clickhouse/client':
+        specifier: ^1.13.0
+        version: 1.18.5
       '@infrawrench/plugin-aws':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/aws
@@ -2043,8 +2046,15 @@ packages:
   '@clickhouse/client-common@1.18.4':
     resolution: {integrity: sha512-kPPtv8yQmplNAxfrAJvwBJq5dd+IWRewEbXSpUvtyEJXlrB8lt/ZH63jUS81Nmd+lK5MRvpOFXPoN3iogkvg+A==}
 
+  '@clickhouse/client-common@1.18.5':
+    resolution: {integrity: sha512-g9LwcS1dvkatKDsIjT1PwUHldsiYzwdKAB0nXfd9APLd+t4PrNJa+my+dXcqJdmcWyhWjKLP/2/ztBwgxp+sbQ==}
+
   '@clickhouse/client-web@1.18.4':
     resolution: {integrity: sha512-y8j4AHnwm5rgAtNahq9/mt+p2IDAcXd3TEQF2ECa6unC4ZPn6fEJ+S6lx623g2bgkcn441uHBIdT5o7U+tiJfw==}
+
+  '@clickhouse/client@1.18.5':
+    resolution: {integrity: sha512-4FfoyMkFWhsdNMuXsoEL6l3c12svA63BBJBtDo9SrxRZ14RdmN6jLr/rF3f84BK8cFoxETZCSeKlsbk6NNYebw==}
+    engines: {node: '>=16'}
 
   '@cloudflare/kv-asset-handler@0.5.0':
     resolution: {integrity: sha512-jxQYkj8dSIzc0cD6cMMNdOc1UVjqSqu8BZdor5s8cGjW2I8BjODt/kWPVdY+u9zj3ms75Q5qaZgnxUad83+eAg==}
@@ -11306,9 +11316,15 @@ snapshots:
 
   '@clickhouse/client-common@1.18.4': {}
 
+  '@clickhouse/client-common@1.18.5': {}
+
   '@clickhouse/client-web@1.18.4':
     dependencies:
       '@clickhouse/client-common': 1.18.4
+
+  '@clickhouse/client@1.18.5':
+    dependencies:
+      '@clickhouse/client-common': 1.18.5
 
   '@cloudflare/kv-asset-handler@0.5.0': {}
 
@@ -13276,7 +13292,7 @@ snapshots:
     dependencies:
       '@types/http-cache-semantics': 4.2.0
       '@types/keyv': 3.1.4
-      '@types/node': 22.19.17
+      '@types/node': 22.19.19
       '@types/responselike': 1.0.3
 
   '@types/chai@5.2.3':
@@ -13316,7 +13332,7 @@ snapshots:
 
   '@types/docker-modem@3.0.6':
     dependencies:
-      '@types/node': 22.19.17
+      '@types/node': 22.19.19
       '@types/ssh2': 1.15.5
 
   '@types/dockerode@3.3.47':
@@ -13343,7 +13359,7 @@ snapshots:
 
   '@types/keyv@3.1.4':
     dependencies:
-      '@types/node': 22.19.17
+      '@types/node': 22.19.19
 
   '@types/mdast@4.0.4':
     dependencies:
@@ -13353,7 +13369,7 @@ snapshots:
 
   '@types/mssql@9.1.11(@azure/core-client@1.10.1)':
     dependencies:
-      '@types/node': 22.19.17
+      '@types/node': 22.19.19
       tarn: 3.0.2
       tedious: 18.6.2(@azure/core-client@1.10.1)
     transitivePeerDependencies:
@@ -13366,7 +13382,7 @@ snapshots:
 
   '@types/node-fetch@2.6.13':
     dependencies:
-      '@types/node': 22.19.17
+      '@types/node': 22.19.19
       form-data: 4.0.5
 
   '@types/node@18.19.130':
@@ -13407,15 +13423,15 @@ snapshots:
 
   '@types/readable-stream@4.0.23':
     dependencies:
-      '@types/node': 22.19.17
+      '@types/node': 22.19.19
 
   '@types/readdir-glob@1.1.5':
     dependencies:
-      '@types/node': 22.19.17
+      '@types/node': 22.19.19
 
   '@types/responselike@1.0.3':
     dependencies:
-      '@types/node': 22.19.17
+      '@types/node': 22.19.19
 
   '@types/sql.js@1.4.11':
     dependencies:
@@ -13428,7 +13444,7 @@ snapshots:
 
   '@types/stream-buffers@3.0.8':
     dependencies:
-      '@types/node': 22.19.17
+      '@types/node': 22.19.19
 
   '@types/unist@3.0.3': {}
 
@@ -13451,7 +13467,7 @@ snapshots:
 
   '@types/yauzl@2.10.3':
     dependencies:
-      '@types/node': 22.19.17
+      '@types/node': 22.19.19
     optional: true
 
   '@typescript/native-preview-darwin-arm64@7.0.0-dev.20260411.1':
@@ -16704,7 +16720,7 @@ snapshots:
       '@protobufjs/path': 1.1.2
       '@protobufjs/pool': 1.1.0
       '@protobufjs/utf8': 1.1.1
-      '@types/node': 22.19.17
+      '@types/node': 22.19.19
       long: 5.3.2
 
   proxy-addr@2.0.7:
@@ -17359,7 +17375,7 @@ snapshots:
       lines-and-columns: 1.2.4
       mz: 2.7.0
       pirates: 4.0.7
-      tinyglobby: 0.2.15
+      tinyglobby: 0.2.16
       ts-interface-checker: 0.1.13
 
   sumchecker@3.0.1:
@@ -17444,7 +17460,7 @@ snapshots:
       '@azure/identity': 4.13.1
       '@azure/keyvault-keys': 4.10.0(@azure/core-client@1.10.1)
       '@js-joda/core': 5.7.0
-      '@types/node': 22.19.17
+      '@types/node': 22.19.19
       bl: 6.1.6
       iconv-lite: 0.6.3
       js-md4: 0.3.2
@@ -17460,7 +17476,7 @@ snapshots:
       '@azure/identity': 4.13.1
       '@azure/keyvault-keys': 4.10.0(@azure/core-client@1.10.1)
       '@js-joda/core': 5.7.0
-      '@types/node': 22.19.17
+      '@types/node': 22.19.19
       bl: 6.1.6
       iconv-lite: 0.7.2
       js-md4: 0.3.2
@@ -17584,7 +17600,7 @@ snapshots:
       source-map: 0.7.6
       sucrase: 3.35.1
       tinyexec: 0.3.2
-      tinyglobby: 0.2.15
+      tinyglobby: 0.2.16
       tree-kill: 1.2.2
     optionalDependencies:
       postcss: 8.5.14
@@ -17939,7 +17955,7 @@ snapshots:
       std-env: 3.10.0
       tinybench: 2.9.0
       tinyexec: 0.3.2
-      tinyglobby: 0.2.15
+      tinyglobby: 0.2.16
       tinypool: 1.1.1
       tinyrainbow: 2.0.0
       vite: 6.4.2(@types/node@22.19.17)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.3)
@@ -17981,7 +17997,7 @@ snapshots:
       std-env: 3.10.0
       tinybench: 2.9.0
       tinyexec: 0.3.2
-      tinyglobby: 0.2.15
+      tinyglobby: 0.2.16
       tinypool: 1.1.1
       tinyrainbow: 2.0.0
       vite: 6.4.2(@types/node@24.12.2)(jiti@2.7.0)(lightningcss@1.32.0)(tsx@4.21.0)(yaml@2.8.3)
