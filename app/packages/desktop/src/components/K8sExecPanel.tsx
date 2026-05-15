@@ -2,7 +2,11 @@ import { useEffect, useRef } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
-import { getXtermTerminalOptions } from "@infrawrench/ui";
+import {
+  attachAltBufferScrollHandler,
+  attachTerminalClipboard,
+  getXtermTerminalOptions,
+} from "@infrawrench/ui";
 import { openK8sExec, type K8sSessionHandle } from "../lib/k8s-dispatch";
 
 interface K8sExecCloudContext {
@@ -38,6 +42,8 @@ export function K8sExecPanel({
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
     term.open(containerRef.current);
+
+    const clipboard = attachTerminalClipboard(term);
 
     let session: K8sSessionHandle | null = null;
     let disposed = false;
@@ -141,7 +147,9 @@ export function K8sExecPanel({
       attemptConnect(MAX_RETRIES);
     });
 
-    const onData = term.onData((data) => session?.write(data));
+    const sendToSession = (data: string) => session?.write(data);
+    const onData = term.onData(sendToSession);
+    const altScroll = attachAltBufferScrollHandler(term, sendToSession);
 
     const resizeObserver = new ResizeObserver(() => {
       if (disposed) return;
@@ -154,6 +162,8 @@ export function K8sExecPanel({
       disposed = true;
       resizeObserver.disconnect();
       onData.dispose();
+      altScroll.dispose();
+      clipboard.dispose();
       session?.kill();
       term.dispose();
     };

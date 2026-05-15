@@ -3,7 +3,11 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import { invoke } from "../lib/invoke";
-import { getXtermTerminalOptions } from "@infrawrench/ui";
+import {
+  attachAltBufferScrollHandler,
+  attachTerminalClipboard,
+  getXtermTerminalOptions,
+} from "@infrawrench/ui";
 import { openK9s, type K8sSessionHandle } from "../lib/k8s-dispatch";
 
 const K9S_INSTALL_URL = "https://k9scli.io/topics/install/";
@@ -61,6 +65,8 @@ export function K9sTerminal({ kubeconfig, cloudContext, namespace }: K9sTerminal
     term.loadAddon(fitAddon);
     term.open(containerRef.current);
 
+    const clipboard = attachTerminalClipboard(term);
+
     let session: K8sSessionHandle | null = null;
     let disposed = false;
 
@@ -105,7 +111,9 @@ export function K9sTerminal({ kubeconfig, cloudContext, namespace }: K9sTerminal
         });
     });
 
-    const onData = term.onData((data) => session?.write(data));
+    const sendToSession = (data: string) => session?.write(data);
+    const onData = term.onData(sendToSession);
+    const altScroll = attachAltBufferScrollHandler(term, sendToSession);
 
     const resizeObserver = new ResizeObserver(() => {
       if (disposed) return;
@@ -118,6 +126,8 @@ export function K9sTerminal({ kubeconfig, cloudContext, namespace }: K9sTerminal
       disposed = true;
       resizeObserver.disconnect();
       onData.dispose();
+      altScroll.dispose();
+      clipboard.dispose();
       session?.kill();
       term.dispose();
     };

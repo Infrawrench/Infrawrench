@@ -2,7 +2,12 @@ import { useEffect, useRef } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
-import { getXtermTerminalOptions, useUIStore } from "@infrawrench/ui";
+import {
+  attachAltBufferScrollHandler,
+  attachTerminalClipboard,
+  getXtermTerminalOptions,
+  useUIStore,
+} from "@infrawrench/ui";
 import type { KeySource } from "../lib/ssh-key-source";
 import { openSshShell, type SshShellHandle } from "../lib/ssh-dispatch";
 
@@ -40,6 +45,8 @@ export function SshTerminal({
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
     term.open(containerRef.current);
+
+    const clipboard = attachTerminalClipboard(term);
 
     let shell: SshShellHandle | null = null;
     let disposed = false;
@@ -93,9 +100,11 @@ export function SshTerminal({
         });
     });
 
-    const onData = term.onData((data) => {
+    const sendToShell = (data: string) => {
       shell?.write(data);
-    });
+    };
+    const onData = term.onData(sendToShell);
+    const altScroll = attachAltBufferScrollHandler(term, sendToShell);
 
     const ro = new ResizeObserver(() => {
       if (disposed) return;
@@ -108,6 +117,8 @@ export function SshTerminal({
       disposed = true;
       ro.disconnect();
       onData.dispose();
+      altScroll.dispose();
+      clipboard.dispose();
       shell?.kill();
       term.dispose();
     };

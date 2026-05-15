@@ -24,7 +24,8 @@ Infrawrench auto-derives the username from the key comment if possible (e.g. `as
 
 ## Quality of life
 
-- Copy on selection, paste with Cmd/Ctrl + V.
+- Copy on selection — anything you highlight with the mouse is sent to the system clipboard.
+- Paste with **Cmd + V** on macOS, **Ctrl + Shift + V** on Linux/Windows. Plain Ctrl + V is left alone so readline's quoted-insert keeps working.
 - Resize by dragging — the remote pty resizes with the pane.
 - Scrollback is kept per-session until you close the tab.
 

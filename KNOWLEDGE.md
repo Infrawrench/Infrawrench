@@ -685,7 +685,7 @@ The sidebar and account page both listen for `iw:resources-changed` and re-fetch
 1. User selects key in `SshQuickConnectPanel` → reads private key from `~/.ssh/` or decrypts saved key
 2. Username auto-populated from `.pub` file comment (`user@host` → `user`)
 3. `connect()` → `setResolvedKey(key)` → renders `SshTerminal`
-4. `SshTerminal` defers `fitAddon.fit()` to `requestAnimationFrame` (avoids xterm "dimensions undefined" error)
+4. `SshTerminal` defers `fitAddon.fit()` to `requestAnimationFrame` (avoids xterm "dimensions undefined" error). It also calls `attachTerminalClipboard(term)` from `@infrawrench/ui` — same helper is used by every other xterm.js terminal (desktop SSH/k9s/k8s-exec, web equivalents) for copy-on-selection + Cmd/Ctrl+Shift+V paste. The helper is duck-typed against the xterm `Terminal` shape so the `ui` package stays xterm-free.
 5. `ssh_shell_spawn` IPC → ssh2 in Electron main → resolves to `shellId`
 6. Data events: `ssh_shell_data_{shellId}` → `term.write()`
 7. Cleanup: `ro.disconnect()`, kill shell, `term.dispose()`

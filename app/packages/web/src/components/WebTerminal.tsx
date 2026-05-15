@@ -1,6 +1,10 @@
 import { useEffect, useRef } from "react";
 import "@xterm/xterm/css/xterm.css";
-import { getXtermTerminalOptions } from "@infrawrench/ui";
+import {
+  attachAltBufferScrollHandler,
+  attachTerminalClipboard,
+  getXtermTerminalOptions,
+} from "@infrawrench/ui";
 
 interface WebTerminalProps {
   accountId: string;
@@ -38,14 +42,18 @@ export function WebTerminal({
       term.loadAddon(fitAddon);
       term.open(containerRef.current);
 
-      // Guard terminal input — only forward after SSH session is ready.
-      // Mirrors desktop's `if (shellId)` guard: xterm.js auto-sends device
-      // attribute responses which must not reach the shell before it's ready.
-      const onData = term.onData((data) => {
+      const clipboard = attachTerminalClipboard(term);
+
+      const sendToShell = (data: string) => {
         if (connected && wsRef.current?.readyState === WebSocket.OPEN) {
           wsRef.current.send(JSON.stringify({ type: "ssh:data", data: btoa(data) }));
         }
-      });
+      };
+      // Guard terminal input — only forward after SSH session is ready.
+      // Mirrors desktop's `if (shellId)` guard: xterm.js auto-sends device
+      // attribute responses which must not reach the shell before it's ready.
+      const onData = term.onData(sendToShell);
+      const altScroll = attachAltBufferScrollHandler(term, sendToShell);
 
       requestAnimationFrame(() => {
         if (disposed || !term) return;
@@ -120,6 +128,8 @@ export function WebTerminal({
       return () => {
         ro.disconnect();
         onData.dispose();
+        altScroll.dispose();
+        clipboard.dispose();
       };
     }
 

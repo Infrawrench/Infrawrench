@@ -1,6 +1,10 @@
 import { useEffect, useRef } from "react";
 import "@xterm/xterm/css/xterm.css";
-import { getXtermTerminalOptions } from "@infrawrench/ui";
+import {
+  attachAltBufferScrollHandler,
+  attachTerminalClipboard,
+  getXtermTerminalOptions,
+} from "@infrawrench/ui";
 
 interface K8sExecTerminalProps {
   accountId: string;
@@ -40,11 +44,15 @@ export function K8sExecTerminal({
       term.loadAddon(fitAddon);
       term.open(containerRef.current);
 
-      const onData = term.onData((data) => {
+      const clipboard = attachTerminalClipboard(term);
+
+      const sendToSession = (data: string) => {
         if (connected && wsRef.current?.readyState === WebSocket.OPEN) {
           wsRef.current.send(JSON.stringify({ type: "k8s:exec:data", data: btoa(data) }));
         }
-      });
+      };
+      const onData = term.onData(sendToSession);
+      const altScroll = attachAltBufferScrollHandler(term, sendToSession);
 
       requestAnimationFrame(() => {
         if (disposed || !term) return;
@@ -162,6 +170,8 @@ export function K8sExecTerminal({
       return () => {
         ro.disconnect();
         onData.dispose();
+        altScroll.dispose();
+        clipboard.dispose();
       };
     }
 

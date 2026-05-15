@@ -42,5 +42,6 @@ export function getXtermTerminalOptions() {
     cursorStyle: "block" as const,
     allowTransparency: true,
     convertEol: false,
+    scrollback: 10000,
   };
 }
