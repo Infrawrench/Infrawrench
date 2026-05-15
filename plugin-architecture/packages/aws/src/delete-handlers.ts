@@ -11,7 +11,10 @@ import {
 } from "./client-transport.js";
 
 export interface DeleteContext {
+  /** Home/default creds — used only for global services. */
   creds: AwsCredentials;
+  /** Build creds scoped to a specific region — use this for regional services. */
+  credsFor(region: string): AwsCredentials;
   getResource(typeId: string, resourceId: string, accountId: string): Promise<ResourceInstance>;
 }
 
@@ -21,9 +24,10 @@ export async function deleteResource(
   resourceId: string,
   accountId: string,
 ): Promise<void> {
-  const { creds } = ctx;
   const resource = await ctx.getResource(typeId, resourceId, accountId);
   const externalId = resource.externalId ?? "";
+  const region = String(resource.fields["region"] ?? ctx.creds.region);
+  const creds = ctx.credsFor(region);
 
   switch (typeId) {
     case "ec2-instance":

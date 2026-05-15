@@ -2,8 +2,44 @@ import type { CreateResourceConfig, ResourceInstance } from "@infrawrench/plugin
 import { ensureArray } from "../auth.js";
 import { signRequest } from "../signed-request.js";
 import { ec2SshUsername } from "../ssh-username.js";
+import {
+  FAMILY_SSH_USERNAME,
+  instanceTypeArch,
+  isImageFamily,
+  resolveAmiId,
+} from "../ami-lookup.js";
 import { AWS_REGIONS, EC2_SIZES } from "../constants.js";
 import type { AwsCreateContext } from "./shared.js";
+
+/**
+ * The SSH key picker submits a full public key (e.g. `ssh-ed25519 AAAA... user@host`),
+ * but EC2 `RunInstances` expects `KeyName` to refer to a key pair already imported in
+ * the target region. Import the material idempotently into a content-addressed name and
+ * return that name. If a pair with the same hashed name already exists, AWS responds
+ * with `InvalidKeyPair.Duplicate` — safe to ignore since the name is derived from the
+ * key material itself.
+ */
+async function ensureEc2KeyPair(rctx: AwsCreateContext, publicKey: string): Promise<string> {
+  const trimmed = publicKey.trim();
+  const material = trimmed.split(/\s+/)[1] ?? trimmed;
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(material));
+  const hash = Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("")
+    .slice(0, 16);
+  const keyName = `infrawrench-${hash}`;
+  const base64 = btoa(trimmed);
+  try {
+    await rctx.ec2("ImportKeyPair", {
+      KeyName: keyName,
+      PublicKeyMaterial: base64,
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (!msg.includes("InvalidKeyPair.Duplicate")) throw e;
+  }
+  return keyName;
+}
 
 function crc32(data: Uint8Array): number {
   let crc = 0xffffffff;
@@ -53,43 +89,43 @@ export async function computeGetCreateConfig(
           required: true,
           images: [
             {
-              id: "ami-0c02fb55956c7d316",
+              id: "al2023",
               label: "Amazon Linux 2023",
               category: "Amazon Linux",
               family: "al2023",
             },
             {
-              id: "ami-0261755bbcb8c4a84",
+              id: "amzn2",
               label: "Amazon Linux 2",
               category: "Amazon Linux",
               family: "amzn2",
             },
             {
-              id: "ami-0c7217cdde317cfec",
+              id: "ubuntu-2204",
               label: "Ubuntu 22.04 LTS",
               category: "Ubuntu",
               family: "ubuntu-2204",
             },
             {
-              id: "ami-0e001c9271cf7f3b9",
+              id: "ubuntu-2404",
               label: "Ubuntu 24.04 LTS",
               category: "Ubuntu",
               family: "ubuntu-2404",
             },
             {
-              id: "ami-0b0dcb5067f052a63",
+              id: "debian-12",
               label: "Debian 12",
               category: "Debian",
               family: "debian-12",
             },
             {
-              id: "ami-0dfcb1ef8fc5fd105",
+              id: "rhel-9",
               label: "Red Hat Enterprise Linux 9",
               category: "RHEL",
               family: "rhel-9",
             },
             {
-              id: "ami-0b5eea76982371e91",
+              id: "sles-15",
               label: "SUSE Linux Enterprise Server 15",
               category: "SUSE",
               family: "sles-15",
@@ -189,13 +225,14 @@ export async function computeGetCreateConfig(
           kind: "select",
           required: true,
           options: [
+            { id: "1.35", label: "1.35" },
+            { id: "1.34", label: "1.34" },
+            { id: "1.33", label: "1.33" },
             { id: "1.32", label: "1.32" },
             { id: "1.31", label: "1.31" },
             { id: "1.30", label: "1.30" },
-            { id: "1.29", label: "1.29" },
-            { id: "1.28", label: "1.28" },
           ],
-          defaultValue: "1.31",
+          defaultValue: "1.34",
         },
       ],
     };
@@ -204,6 +241,14 @@ export async function computeGetCreateConfig(
     return {
       fields: [
         { key: "name", label: "Name (Tag)", kind: "text", required: false },
+        {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AWS_REGIONS,
+          defaultValue: ctx.creds.region,
+        },
         {
           key: "volumeType",
           label: "Volume Type",
@@ -239,7 +284,17 @@ export async function computeGetCreateConfig(
   }
   if (typeId === "elastic-ip") {
     return {
-      fields: [{ key: "name", label: "Name (Tag)", kind: "text", required: false }],
+      fields: [
+        { key: "name", label: "Name (Tag)", kind: "text", required: false },
+        {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AWS_REGIONS,
+          defaultValue: ctx.creds.region,
+        },
+      ],
     };
   }
   if (typeId === "auto-scaling-group") {
@@ -260,6 +315,14 @@ export async function computeGetCreateConfig(
     return {
       fields: [
         { key: "name", label: "Group Name", kind: "text", required: true },
+        {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AWS_REGIONS,
+          defaultValue: ctx.creds.region,
+        },
         {
           key: "launchTemplateId",
           label: "Launch Template",
@@ -317,6 +380,14 @@ export async function computeGetCreateConfig(
     return {
       fields: [
         { key: "serviceName", label: "Service Name", kind: "text", required: true },
+        {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AWS_REGIONS,
+          defaultValue: ctx.creds.region,
+        },
         {
           key: "cluster",
           label: "Cluster",
@@ -376,6 +447,14 @@ export async function computeGetCreateConfig(
       fields: [
         { key: "jobQueueName", label: "Queue Name", kind: "text", required: true },
         {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AWS_REGIONS,
+          defaultValue: ctx.creds.region,
+        },
+        {
           key: "computeEnvironment",
           label: "Compute Environment",
           kind: ceOptions.length > 0 ? "select" : "text",
@@ -405,7 +484,9 @@ export async function computeGetCreateConfig(
     };
   }
   if (typeId === "lambda-function") {
-    // Fetch IAM roles for the execution role selector
+    // Fetch IAM roles for the execution role selector. Service-linked roles
+    // (path `/aws-service-role/`) cannot be used as Lambda execution roles —
+    // PassRole rejects them — so exclude them from the list.
     const rolesRaw = await ctx
       .ec2Query<Record<string, unknown>>("iam", "ListRoles", "2010-05-08")
       .catch(() => ({}) as Record<string, unknown>);
@@ -413,43 +494,64 @@ export async function computeGetCreateConfig(
     const rolesList = ensureArray(
       (rolesResult?.["Roles"] as Record<string, unknown> | undefined)?.["member"],
     ) as Record<string, unknown>[];
-    const roleOptions = rolesList
-      .filter(
-        (r) =>
-          String(r["Arn"] ?? "").includes("lambda") ||
-          String(r["RoleName"] ?? "")
-            .toLowerCase()
-            .includes("lambda") ||
-          String(r["RoleName"] ?? "")
-            .toLowerCase()
-            .includes("execution"),
-      )
-      .map((r) => ({ id: String(r["Arn"] ?? ""), label: String(r["RoleName"] ?? "") }));
-    const allRoleOptions =
-      roleOptions.length > 0
-        ? roleOptions
-        : rolesList.map((r) => ({
-            id: String(r["Arn"] ?? ""),
-            label: String(r["RoleName"] ?? ""),
-          }));
+    const assumableByLambda = (r: Record<string, unknown>): boolean => {
+      // Try the trust policy first — that's the authoritative signal. The
+      // policy is URL-encoded JSON in `AssumeRolePolicyDocument`.
+      const raw = r["AssumeRolePolicyDocument"];
+      if (typeof raw === "string" && raw.length > 0) {
+        try {
+          const decoded = decodeURIComponent(raw);
+          if (decoded.includes("lambda.amazonaws.com")) return true;
+        } catch {
+          /* fall through to name heuristic */
+        }
+      }
+      // Fallback: roles whose name/path hint at Lambda or generic execution
+      // use. Avoids hiding e.g. "MyAppExecutionRole" which has no `lambda`
+      // substring but might still be assumable.
+      const name = String(r["RoleName"] ?? "").toLowerCase();
+      return name.includes("lambda") || name.includes("execution");
+    };
+    const usableRoles = rolesList.filter(
+      (r) => !String(r["Path"] ?? "/").startsWith("/aws-service-role/"),
+    );
+    const matched = usableRoles.filter(assumableByLambda);
+    const allRoleOptions = (matched.length > 0 ? matched : usableRoles).map((r) => ({
+      id: String(r["Arn"] ?? ""),
+      label: String(r["RoleName"] ?? ""),
+    }));
+    const nodejsDefault = `exports.handler = async (event) => {\n  return { statusCode: 200, body: "Hello from Lambda!" };\n};\n`;
+    const pythonDefault = `def lambda_handler(event, context):\n    return {"statusCode": 200, "body": "Hello from Lambda!"}\n`;
+    const rubyDefault = `def lambda_handler(event:, context:)\n  { statusCode: 200, body: "Hello from Lambda!" }\nend\n`;
     return {
       fields: [
         { key: "name", label: "Function Name", kind: "text", required: true },
+        {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AWS_REGIONS,
+          defaultValue: ctx.creds.region,
+        },
         {
           key: "runtime",
           label: "Runtime",
           kind: "select",
           required: true,
           options: [
+            { id: "nodejs24.x", label: "Node.js 24.x" },
             { id: "nodejs22.x", label: "Node.js 22.x" },
             { id: "nodejs20.x", label: "Node.js 20.x" },
+            { id: "python3.14", label: "Python 3.14" },
             { id: "python3.13", label: "Python 3.13" },
             { id: "python3.12", label: "Python 3.12" },
-            { id: "java21", label: "Java 21" },
-            { id: "dotnet8", label: ".NET 8" },
+            { id: "ruby3.4", label: "Ruby 3.4" },
             { id: "ruby3.3", label: "Ruby 3.3" },
           ],
-          defaultValue: "nodejs22.x",
+          defaultValue: "nodejs24.x",
+          description:
+            "Java and .NET runtimes require pre-built deployment packages; use the AWS console to upload those.",
         },
         {
           key: "role",
@@ -458,6 +560,52 @@ export async function computeGetCreateConfig(
           required: true,
           ...(allRoleOptions.length > 0 ? { options: allRoleOptions } : {}),
           description: "IAM role ARN for the function's execution role",
+          actions: [
+            {
+              id: "generate-role",
+              label: "+ Generate role",
+              description:
+                "Create a fresh IAM role with AWSLambdaBasicExecutionRole attached and select it.",
+            },
+          ],
+        },
+        {
+          key: "code_nodejs",
+          label: "Source Code (index.js)",
+          kind: "code",
+          codeLanguage: "javascript",
+          required: true,
+          showWhen: {
+            fieldKey: "runtime",
+            fieldValues: ["nodejs24.x", "nodejs22.x", "nodejs20.x"],
+          },
+          defaultValue: nodejsDefault,
+          description: "Saved as index.js. Handler entry point is index.handler.",
+        },
+        {
+          key: "code_python",
+          label: "Source Code (lambda_function.py)",
+          kind: "code",
+          codeLanguage: "python",
+          required: true,
+          showWhen: {
+            fieldKey: "runtime",
+            fieldValues: ["python3.14", "python3.13", "python3.12"],
+          },
+          defaultValue: pythonDefault,
+          description:
+            "Saved as lambda_function.py. Handler entry point is lambda_function.lambda_handler.",
+        },
+        {
+          key: "code_ruby",
+          label: "Source Code (lambda_function.rb)",
+          kind: "code",
+          codeLanguage: "ruby",
+          required: true,
+          showWhen: { fieldKey: "runtime", fieldValues: ["ruby3.4", "ruby3.3"] },
+          defaultValue: rubyDefault,
+          description:
+            "Saved as lambda_function.rb. Handler entry point is lambda_function.lambda_handler.",
         },
         {
           key: "memorySize",
@@ -487,13 +635,27 @@ export async function computeCreateResource(
   _parentResourceId?: string,
 ): Promise<ResourceInstance | null> {
   if (typeId === "ec2-instance") {
+    const region = fields["region"] ?? ctx.creds.region;
+    const rctx = ctx.withRegion(region);
+    const instanceType = fields["instanceType"] ?? "t3.micro";
+    const arch = instanceTypeArch(instanceType);
+    const imageField = fields["imageId"] ?? "";
+    // Image picker submits a family slug (e.g. "ubuntu-2404"). Resolve it
+    // to a region+arch-specific AMI now. If the caller already supplied a
+    // raw ami-xxx id (e.g. from automation), pass it through unchanged.
+    let resolvedImageId = imageField;
+    if (isImageFamily(imageField)) {
+      resolvedImageId = await resolveAmiId(rctx, imageField, arch);
+    }
     const params: Record<string, string> = {
-      ImageId: fields["imageId"] ?? "",
-      InstanceType: fields["instanceType"] ?? "t3.micro",
+      ImageId: resolvedImageId,
+      InstanceType: instanceType,
       MinCount: "1",
       MaxCount: "1",
     };
-    if (fields["sshKey"]) params["KeyName"] = fields["sshKey"];
+    if (fields["sshKey"]) {
+      params["KeyName"] = await ensureEc2KeyPair(rctx, fields["sshKey"]);
+    }
     if (fields["diskSizeGb"]) {
       params["BlockDeviceMapping.1.DeviceName"] = "/dev/xvda";
       params["BlockDeviceMapping.1.Ebs.VolumeSize"] = fields["diskSizeGb"];
@@ -516,7 +678,7 @@ export async function computeCreateResource(
       params["SecurityGroupId.1"] = securityGroup;
     }
 
-    const data = await ctx.ec2<Record<string, unknown>>("RunInstances", params);
+    const data = await rctx.ec2<Record<string, unknown>>("RunInstances", params);
     const instancesSet = data["instancesSet"] as Record<string, unknown> | undefined;
     const instances = ensureArray(instancesSet?.["item"]) as Record<string, unknown>[];
     const inst = instances[0];
@@ -526,7 +688,7 @@ export async function computeCreateResource(
 
     // Tag with name
     if (fields["name"]) {
-      await ctx.ec2("CreateTags", {
+      await rctx.ec2("CreateTags", {
         "ResourceId.1": instanceId,
         "Tag.1.Key": "Name",
         "Tag.1.Value": fields["name"],
@@ -541,6 +703,7 @@ export async function computeCreateResource(
       displayName: fields["name"] || instanceId,
       fields: {
         name: fields["name"] ?? "",
+        region,
         instanceId,
         instanceType: String(inst["instanceType"] ?? ""),
         availabilityZone: String(
@@ -550,7 +713,9 @@ export async function computeCreateResource(
         imageId: String(inst["imageId"] ?? ""),
         vpcId: String(inst["vpcId"] ?? ""),
         subnetId: String(inst["subnetId"] ?? ""),
-        sshUsername: ec2SshUsername(fields["imageId"] ?? ""),
+        sshUsername: isImageFamily(imageField)
+          ? FAMILY_SSH_USERNAME[imageField]
+          : ec2SshUsername(String(inst["imageId"] ?? "")),
       },
       resolvedOutputs: {
         publicIp: "",
@@ -564,15 +729,17 @@ export async function computeCreateResource(
     };
   }
   if (typeId === "ebs-volume") {
+    const region = fields["region"] ?? ctx.creds.region;
+    const rctx = ctx.withRegion(region);
     const params: Record<string, string> = {
       VolumeType: fields["volumeType"] ?? "gp3",
       Size: fields["sizeGb"] ?? "20",
       AvailabilityZone: fields["availabilityZone"] ?? "",
     };
-    const data = await ctx.ec2<Record<string, unknown>>("CreateVolume", params);
+    const data = await rctx.ec2<Record<string, unknown>>("CreateVolume", params);
     const volumeId = String(data["volumeId"] ?? "");
     if (fields["name"]) {
-      await ctx.ec2("CreateTags", {
+      await rctx.ec2("CreateTags", {
         "ResourceId.1": volumeId,
         "Tag.1.Key": "Name",
         "Tag.1.Value": fields["name"],
@@ -586,6 +753,7 @@ export async function computeCreateResource(
       displayName: fields["name"] || volumeId,
       fields: {
         volumeId,
+        region,
         availabilityZone: fields["availabilityZone"] ?? "",
         sizeGb: Number(fields["sizeGb"] ?? 20),
         volumeType: fields["volumeType"] ?? "gp3",
@@ -601,13 +769,15 @@ export async function computeCreateResource(
     };
   }
   if (typeId === "elastic-ip") {
-    const data = await ctx.ec2<Record<string, unknown>>("AllocateAddress", {
+    const region = fields["region"] ?? ctx.creds.region;
+    const rctx = ctx.withRegion(region);
+    const data = await rctx.ec2<Record<string, unknown>>("AllocateAddress", {
       Domain: "vpc",
     });
     const allocationId = String(data["allocationId"] ?? "");
     const publicIp = String(data["publicIp"] ?? "");
     if (fields["name"]) {
-      await ctx.ec2("CreateTags", {
+      await rctx.ec2("CreateTags", {
         "ResourceId.1": allocationId,
         "Tag.1.Key": "Name",
         "Tag.1.Value": fields["name"],
@@ -621,6 +791,7 @@ export async function computeCreateResource(
       displayName: publicIp || allocationId,
       fields: {
         allocationId,
+        region,
         publicIp,
         associationId: "",
         instanceId: "",
@@ -635,12 +806,14 @@ export async function computeCreateResource(
     };
   }
   if (typeId === "auto-scaling-group") {
+    const region = fields["region"] ?? ctx.creds.region;
+    const rctx = ctx.withRegion(region);
     const name = fields["name"] ?? "";
     const launchTemplateId = fields["launchTemplateId"] ?? "";
     const minSize = fields["minSize"] ?? "1";
     const maxSize = fields["maxSize"] ?? "3";
     const desiredCapacity = fields["desiredCapacity"] ?? "1";
-    await ctx.ec2Query("autoscaling", "CreateAutoScalingGroup", "2011-01-01", {
+    await rctx.ec2Query("autoscaling", "CreateAutoScalingGroup", "2011-01-01", {
       AutoScalingGroupName: name,
       "LaunchTemplate.LaunchTemplateId": launchTemplateId,
       "LaunchTemplate.Version": "$Default",
@@ -657,6 +830,7 @@ export async function computeCreateResource(
       displayName: name,
       fields: {
         name,
+        region,
         minSize: Number(minSize),
         maxSize: Number(maxSize),
         desiredCapacity: Number(desiredCapacity),
@@ -674,6 +848,8 @@ export async function computeCreateResource(
     };
   }
   if (typeId === "ecs-service") {
+    const region = fields["region"] ?? ctx.creds.region;
+    const rctx = ctx.withRegion(region);
     const serviceName = fields["serviceName"] ?? "";
     const cluster = fields["cluster"] ?? "";
     const taskDefinition = fields["taskDefinition"] ?? "";
@@ -695,7 +871,7 @@ export async function computeCreateResource(
         },
       };
     }
-    const result = await ctx.json<{ service?: Record<string, unknown> }>(
+    const result = await rctx.json<{ service?: Record<string, unknown> }>(
       "ecs",
       "AmazonEC2ContainerServiceV20141113.CreateService",
       body,
@@ -710,6 +886,7 @@ export async function computeCreateResource(
       displayName: serviceName,
       fields: {
         serviceName,
+        region,
         clusterName: cluster,
         status: String(svc["status"] ?? "ACTIVE"),
         launchType,
@@ -727,11 +904,13 @@ export async function computeCreateResource(
     };
   }
   if (typeId === "batch-job-queue") {
+    const region = fields["region"] ?? ctx.creds.region;
+    const rctx = ctx.withRegion(region);
     const jobQueueName = fields["jobQueueName"] ?? "";
     const computeEnvironment = fields["computeEnvironment"] ?? "";
     const priority = Number(fields["priority"] ?? "1");
     const state = fields["state"] ?? "ENABLED";
-    const result = await ctx.json<Record<string, unknown>>("batch", "AWSBatch.CreateJobQueue", {
+    const result = await rctx.json<Record<string, unknown>>("batch", "AWSBatch.CreateJobQueue", {
       jobQueueName,
       state,
       priority,
@@ -746,6 +925,7 @@ export async function computeCreateResource(
       displayName: jobQueueName,
       fields: {
         jobQueueName,
+        region,
         state,
         status: "CREATING",
         priority,
@@ -761,35 +941,35 @@ export async function computeCreateResource(
     };
   }
   if (typeId === "lambda-function") {
+    const region = fields["region"] ?? ctx.creds.region;
+    const rctx = ctx.withRegion(region);
     const name = fields["name"] ?? "";
-    const runtime = fields["runtime"] ?? "nodejs22.x";
+    const runtime = fields["runtime"] ?? "nodejs24.x";
     const role = fields["role"] ?? "";
     const memorySize = fields["memorySize"] ?? "128";
     const timeout = fields["timeout"] ?? "3";
 
-    // Build a minimal inline handler based on runtime
-    let handler = "index.handler";
-    let code = "";
+    let handler: string;
+    let code: string;
+    let ext: string;
     if (runtime.startsWith("python")) {
       handler = "lambda_function.lambda_handler";
-      code =
-        'def lambda_handler(event, context):\n    return {"statusCode": 200, "body": "Hello from Lambda!"}';
-    } else if (runtime.startsWith("nodejs")) {
-      code =
-        'exports.handler = async (event) => { return { statusCode: 200, body: "Hello from Lambda!" }; };';
+      code = fields["code_python"] ?? "";
+      ext = ".py";
     } else if (runtime.startsWith("ruby")) {
       handler = "lambda_function.lambda_handler";
-      code =
-        'def lambda_handler(event:, context:)\n  { statusCode: 200, body: "Hello from Lambda!" }\nend';
+      code = fields["code_ruby"] ?? "";
+      ext = ".rb";
     } else {
-      code = "// placeholder handler";
+      handler = "index.handler";
+      code = fields["code_nodejs"] ?? "";
+      ext = ".js";
     }
 
     // Construct a minimal ZIP file containing the handler
     const encoder = new TextEncoder();
     const codeBytes = encoder.encode(code);
     const fileName = handler.split(".")[0] ?? "index";
-    const ext = runtime.startsWith("python") ? ".py" : runtime.startsWith("ruby") ? ".rb" : ".js";
     const fullName = fileName + ext;
     const nameBytes = encoder.encode(fullName);
 
@@ -859,7 +1039,7 @@ export async function computeCreateResource(
     }
     const zipBase64 = btoa(binary);
 
-    const host = ctx.hostForService("lambda");
+    const host = rctx.hostForService("lambda");
     const url = `https://${host}/2015-03-31/functions`;
     const bodyStr = JSON.stringify({
       FunctionName: name,
@@ -876,7 +1056,7 @@ export async function computeCreateResource(
       headers: { Host: host, "Content-Type": "application/json" },
       body: bodyStr,
       service: "lambda",
-      credentials: ctx.creds,
+      credentials: rctx.creds,
     });
     const res = await fetch(url, { method: "POST", headers, body: bodyStr });
     if (!res.ok)
@@ -892,6 +1072,7 @@ export async function computeCreateResource(
       displayName: name,
       fields: {
         name,
+        region,
         runtime,
         handler,
         codeSize: String(codeBytes.length),

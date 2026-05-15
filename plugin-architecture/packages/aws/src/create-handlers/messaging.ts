@@ -1,9 +1,10 @@
 import type { CreateResourceConfig, ResourceInstance } from "@infrawrench/plugin-base";
 import { signRequest } from "../signed-request.js";
+import { AWS_REGIONS } from "../constants.js";
 import type { AwsCreateContext } from "./shared.js";
 
 export async function messagingGetCreateConfig(
-  _ctx: AwsCreateContext,
+  ctx: AwsCreateContext,
   typeId: string,
   _parentResourceId?: string,
 ): Promise<CreateResourceConfig | null> {
@@ -11,6 +12,14 @@ export async function messagingGetCreateConfig(
     return {
       fields: [
         { key: "queueName", label: "Queue Name", kind: "text", required: true },
+        {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AWS_REGIONS,
+          defaultValue: ctx.creds.region,
+        },
         {
           key: "fifo",
           label: "FIFO Queue",
@@ -30,6 +39,14 @@ export async function messagingGetCreateConfig(
       fields: [
         { key: "topicName", label: "Topic Name", kind: "text", required: true },
         {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AWS_REGIONS,
+          defaultValue: ctx.creds.region,
+        },
+        {
           key: "fifo",
           label: "FIFO Topic",
           kind: "select",
@@ -48,6 +65,14 @@ export async function messagingGetCreateConfig(
       fields: [
         { key: "streamName", label: "Stream Name", kind: "text", required: true },
         {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AWS_REGIONS,
+          defaultValue: ctx.creds.region,
+        },
+        {
           key: "shardCount",
           label: "Shard Count",
           kind: "number",
@@ -63,6 +88,14 @@ export async function messagingGetCreateConfig(
     return {
       fields: [
         { key: "name", label: "Rule Name", kind: "text", required: true },
+        {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AWS_REGIONS,
+          defaultValue: ctx.creds.region,
+        },
         {
           key: "scheduleExpression",
           label: "Schedule Expression",
@@ -85,6 +118,14 @@ export async function messagingGetCreateConfig(
     return {
       fields: [
         { key: "brokerName", label: "Broker Name", kind: "text", required: true },
+        {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AWS_REGIONS,
+          defaultValue: ctx.creds.region,
+        },
         {
           key: "engineType",
           label: "Engine",
@@ -142,6 +183,8 @@ export async function messagingCreateResource(
   _parentResourceId?: string,
 ): Promise<ResourceInstance | null> {
   if (typeId === "sqs-queue") {
+    const region = fields["region"] ?? ctx.creds.region;
+    const rctx = ctx.withRegion(region);
     const queueName =
       fields["fifo"] === "true"
         ? (fields["queueName"] ?? "").replace(/\.fifo$/, "") + ".fifo"
@@ -150,7 +193,7 @@ export async function messagingCreateResource(
     if (fields["fifo"] === "true") {
       body["Attributes"] = { FifoQueue: "true" };
     }
-    const data = await ctx.json<{ QueueUrl?: string }>("sqs", "AmazonSQS.CreateQueue", body);
+    const data = await rctx.json<{ QueueUrl?: string }>("sqs", "AmazonSQS.CreateQueue", body);
     const queueUrl = data.QueueUrl ?? "";
     return {
       id: ctx.makeId(accountId, "sqs-queue", queueName),
@@ -160,6 +203,7 @@ export async function messagingCreateResource(
       displayName: queueName,
       fields: {
         queueName,
+        region,
         queueUrl,
         approximateMessages: 0,
         approximateMessagesDelayed: 0,
@@ -174,6 +218,8 @@ export async function messagingCreateResource(
     };
   }
   if (typeId === "sns-topic") {
+    const region = fields["region"] ?? ctx.creds.region;
+    const rctx = ctx.withRegion(region);
     const topicName =
       fields["fifo"] === "true"
         ? (fields["topicName"] ?? "").replace(/\.fifo$/, "") + ".fifo"
@@ -182,7 +228,7 @@ export async function messagingCreateResource(
     if (fields["fifo"] === "true") {
       body["Attributes"] = { FifoTopic: "true" };
     }
-    const data = await ctx.json<{ TopicArn?: string }>("sns", "SNS.CreateTopic", body);
+    const data = await rctx.json<{ TopicArn?: string }>("sns", "SNS.CreateTopic", body);
     const topicArn = data.TopicArn ?? "";
     return {
       id: ctx.makeId(accountId, "sns-topic", topicName),
@@ -192,6 +238,7 @@ export async function messagingCreateResource(
       displayName: topicName,
       fields: {
         topicName,
+        region,
         topicArn,
         subscriptionCount: 0,
         isFifo: topicName.endsWith(".fifo"),
@@ -204,8 +251,10 @@ export async function messagingCreateResource(
     };
   }
   if (typeId === "kinesis-stream") {
+    const region = fields["region"] ?? ctx.creds.region;
+    const rctx = ctx.withRegion(region);
     const streamName = fields["streamName"] ?? "";
-    await ctx.json<Record<string, unknown>>("kinesis", "Kinesis_20131202.CreateStream", {
+    await rctx.json<Record<string, unknown>>("kinesis", "Kinesis_20131202.CreateStream", {
       StreamName: streamName,
       ShardCount: Number(fields["shardCount"] ?? "1"),
     });
@@ -217,6 +266,7 @@ export async function messagingCreateResource(
       displayName: streamName,
       fields: {
         streamName,
+        region,
         status: "CREATING",
         shardCount: Number(fields["shardCount"] ?? "1"),
         retentionPeriodHours: 24,
@@ -233,12 +283,14 @@ export async function messagingCreateResource(
     };
   }
   if (typeId === "eventbridge-rule") {
+    const region = fields["region"] ?? ctx.creds.region;
+    const rctx = ctx.withRegion(region);
     const name = fields["name"] ?? "";
     const body: Record<string, unknown> = { Name: name };
     if (fields["scheduleExpression"]) body["ScheduleExpression"] = fields["scheduleExpression"];
     if (fields["eventPattern"]) body["EventPattern"] = fields["eventPattern"];
     if (fields["description"]) body["Description"] = fields["description"];
-    const data = await ctx.json<{ RuleArn?: string }>("events", "AWSEvents.PutRule", body);
+    const data = await rctx.json<{ RuleArn?: string }>("events", "AWSEvents.PutRule", body);
     const ruleArn = data.RuleArn ?? "";
     return {
       id: ctx.makeId(accountId, "eventbridge-rule", name),
@@ -248,6 +300,7 @@ export async function messagingCreateResource(
       displayName: name,
       fields: {
         name,
+        region,
         state: "ENABLED",
         eventBusName: "default",
         scheduleExpression: fields["scheduleExpression"] ?? "",
@@ -261,13 +314,15 @@ export async function messagingCreateResource(
     };
   }
   if (typeId === "mq-broker") {
+    const region = fields["region"] ?? ctx.creds.region;
+    const rctx = ctx.withRegion(region);
     const brokerName = fields["brokerName"] ?? "";
-    const host = ctx.hostForService("mq");
+    const host = rctx.hostForService("mq");
     const url = `https://${host}/v1/brokers`;
     const bodyObj = {
       BrokerName: brokerName,
       EngineType: fields["engineType"] ?? "RABBITMQ",
-      EngineVersion: fields["engineType"] === "ACTIVEMQ" ? "5.17.6" : "3.11.20",
+      EngineVersion: fields["engineType"] === "ACTIVEMQ" ? "5.19" : "3.13",
       HostInstanceType: fields["hostInstanceType"] ?? "mq.t3.micro",
       DeploymentMode: fields["deploymentMode"] ?? "SINGLE_INSTANCE",
       PubliclyAccessible: false,
@@ -285,7 +340,7 @@ export async function messagingCreateResource(
       headers: { Host: host, "Content-Type": "application/json" },
       body: bodyStr,
       service: "mq",
-      credentials: ctx.creds,
+      credentials: rctx.creds,
     });
     const res = await fetch(url, { method: "POST", headers, body: bodyStr });
     if (!res.ok) throw new Error(`MQ CreateBroker failed: ${res.status} ${await res.text()}`);
@@ -299,9 +354,10 @@ export async function messagingCreateResource(
       displayName: brokerName,
       fields: {
         brokerName,
+        region,
         brokerId,
         engineType: fields["engineType"] ?? "RABBITMQ",
-        engineVersion: fields["engineType"] === "ACTIVEMQ" ? "5.17.6" : "3.11.20",
+        engineVersion: fields["engineType"] === "ACTIVEMQ" ? "5.19" : "3.13",
         hostInstanceType: fields["hostInstanceType"] ?? "mq.t3.micro",
         deploymentMode: fields["deploymentMode"] ?? "SINGLE_INSTANCE",
         status: "CREATION_IN_PROGRESS",

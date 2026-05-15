@@ -6,6 +6,13 @@ export interface ListerContext {
   ec2<T>(action: string, params?: Record<string, string>): Promise<T>;
   json<T>(service: string, target: string, body: Record<string, unknown>): Promise<T>;
   jsonGet<T>(service: string, path: string): Promise<T>;
+  /** REST-JSON POST/GET with a path (Batch /v1/*, MQ /v1/*, …). */
+  restJson<T>(
+    service: string,
+    path: string,
+    body?: Record<string, unknown>,
+    method?: "POST" | "GET",
+  ): Promise<T>;
   /** Make an XML Query API call for non-EC2 services (ELBv2, AutoScaling, Redshift, CloudFormation, RDS, IAM, etc.) */
   ec2Query<T>(
     service: string,
@@ -61,6 +68,7 @@ export async function listEC2Instances(
         fields: {
           name,
           instanceId,
+          region: ctx.region,
           instanceType: String(inst["instanceType"] ?? ""),
           availabilityZone: String(
             (inst["placement"] as Record<string, unknown> | undefined)?.["availabilityZone"] ?? "",
@@ -112,6 +120,7 @@ export async function listEBSVolumes(
       displayName: name || volumeId,
       fields: {
         volumeId,
+        region: ctx.region,
         availabilityZone: String(vol["availabilityZone"] ?? ""),
         sizeGb: Number(vol["size"] ?? 0),
         volumeType: String(vol["volumeType"] ?? ""),
@@ -150,6 +159,7 @@ export async function listVPCs(ctx: ListerContext, accountId: string): Promise<R
       fields: {
         vpcId,
         name,
+        region: ctx.region,
         cidrBlock: String(vpc["cidrBlock"] ?? ""),
         state: String(vpc["state"] ?? ""),
         isDefault: String(vpc["isDefault"]) === "true",
@@ -221,6 +231,7 @@ export async function listEKSClusters(
         displayName: name,
         fields: {
           name,
+          region: ctx.region,
           version: String(c["version"] ?? ""),
           status: String(c["status"] ?? ""),
           platformVersion: String(c["platformVersion"] ?? ""),
@@ -267,6 +278,7 @@ export async function listRDSInstances(
       displayName: dbId,
       fields: {
         dbInstanceId: dbId,
+        region: ctx.region,
         engine: String(db["Engine"] ?? ""),
         engineVersion: String(db["EngineVersion"] ?? ""),
         instanceClass: String(db["DBInstanceClass"] ?? ""),
@@ -340,6 +352,7 @@ export async function listLambdaFunctions(
       displayName: name,
       fields: {
         name,
+        region: ctx.region,
         runtime: String(fn["Runtime"] ?? ""),
         handler: String(fn["Handler"] ?? ""),
         codeSize: Number(fn["CodeSize"] ?? 0),
@@ -401,6 +414,7 @@ export async function listECSServices(
           fields: {
             serviceName,
             clusterName,
+            region: ctx.region,
             status: String(svc["status"] ?? ""),
             launchType: String(svc["launchType"] ?? ""),
             desiredCount: Number(svc["desiredCount"] ?? 0),
@@ -460,6 +474,7 @@ export async function listDynamoDBTables(
         displayName: tableName,
         fields: {
           tableName,
+          region: ctx.region,
           status: String(t["TableStatus"] ?? ""),
           itemCount: Number(t["ItemCount"] ?? 0),
           sizeBytes: Number(t["TableSizeBytes"] ?? 0),
@@ -510,6 +525,7 @@ export async function listElastiCacheClusters(
       displayName: clusterId,
       fields: {
         clusterId,
+        region: ctx.region,
         engine: String(c["Engine"] ?? ""),
         engineVersion: String(c["EngineVersion"] ?? ""),
         nodeType: String(c["CacheNodeType"] ?? ""),
@@ -559,6 +575,7 @@ export async function listSQSQueues(
         fields: {
           queueName,
           queueUrl,
+          region: ctx.region,
           approximateMessages: Number(a["ApproximateNumberOfMessages"] ?? 0),
           approximateMessagesDelayed: Number(a["ApproximateNumberOfMessagesDelayed"] ?? 0),
           approximateMessagesNotVisible: Number(a["ApproximateNumberOfMessagesNotVisible"] ?? 0),
@@ -624,6 +641,7 @@ export async function listSNSTopics(
         fields: {
           topicName,
           topicArn,
+          region: ctx.region,
           subscriptionCount: Number(a["SubscriptionsConfirmed"] ?? 0),
           isFifo: topicName.endsWith(".fifo"),
         },
@@ -640,7 +658,13 @@ export async function listSNSTopics(
         resourceTypeId: "sns-topic",
         accountId,
         displayName: topicName,
-        fields: { topicName, topicArn, subscriptionCount: 0, isFifo: topicName.endsWith(".fifo") },
+        fields: {
+          topicName,
+          topicArn,
+          region: ctx.region,
+          subscriptionCount: 0,
+          isFifo: topicName.endsWith(".fifo"),
+        },
         resolvedOutputs: { topicArn },
         secretStates: [],
         externalId: topicName,
@@ -672,6 +696,7 @@ export async function listECRRepositories(
       displayName: name,
       fields: {
         repositoryName: name,
+        region: ctx.region,
         registryId: String(repo["registryId"] ?? ""),
         imageCount: 0, // Would need a separate DescribeImages call
         imageScanOnPush:
@@ -716,6 +741,7 @@ export async function listSecretsManagerSecrets(
       displayName: name,
       fields: {
         name,
+        region: ctx.region,
         description: String(s["Description"] ?? ""),
         lastAccessedDate: String(s["LastAccessedDate"] ?? ""),
         lastChangedDate: String(s["LastChangedDate"] ?? ""),

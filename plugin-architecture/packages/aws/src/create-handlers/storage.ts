@@ -34,6 +34,14 @@ export async function storageGetCreateConfig(
       fields: [
         { key: "repositoryName", label: "Repository Name", kind: "text", required: true },
         {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AWS_REGIONS,
+          defaultValue: ctx.creds.region,
+        },
+        {
           key: "imageTagMutability",
           label: "Image Tag Mutability",
           kind: "select",
@@ -62,6 +70,14 @@ export async function storageGetCreateConfig(
     return {
       fields: [
         { key: "name", label: "Name", kind: "text", required: false },
+        {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AWS_REGIONS,
+          defaultValue: ctx.creds.region,
+        },
         {
           key: "performanceMode",
           label: "Performance Mode",
@@ -109,20 +125,22 @@ export async function storageCreateResource(
   _parentResourceId?: string,
 ): Promise<ResourceInstance | null> {
   if (typeId === "s3-bucket") {
+    const region = fields["region"] ?? ctx.creds.region;
+    const rctx = ctx.withRegion(region);
     const bucketName = fields["name"] ?? "";
-    const host = `${bucketName}.s3.${ctx.creds.region}.amazonaws.com`;
+    const host = `${bucketName}.s3.${region}.amazonaws.com`;
     const url = `https://${host}/`;
     const bodyXml =
-      ctx.creds.region === "us-east-1"
+      region === "us-east-1"
         ? ""
-        : `<CreateBucketConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><LocationConstraint>${ctx.creds.region}</LocationConstraint></CreateBucketConfiguration>`;
+        : `<CreateBucketConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><LocationConstraint>${region}</LocationConstraint></CreateBucketConfiguration>`;
     const headers = await signRequest({
       method: "PUT",
       url,
       headers: { Host: host },
       body: bodyXml,
       service: "s3",
-      credentials: ctx.creds,
+      credentials: rctx.creds,
     });
     const res = await fetch(url, {
       method: "PUT",
@@ -139,12 +157,12 @@ export async function storageCreateResource(
       displayName: bucketName,
       fields: {
         name: bucketName,
-        region: ctx.creds.region,
+        region,
         creationDate: new Date().toISOString(),
       },
       resolvedOutputs: {
         bucketArn: `arn:aws:s3:::${bucketName}`,
-        endpoint: `https://${bucketName}.s3.${ctx.creds.region}.amazonaws.com`,
+        endpoint: `https://${bucketName}.s3.${region}.amazonaws.com`,
       },
       secretStates: [],
       externalId: bucketName,
@@ -153,8 +171,10 @@ export async function storageCreateResource(
     };
   }
   if (typeId === "ecr-repository") {
+    const region = fields["region"] ?? ctx.creds.region;
+    const rctx = ctx.withRegion(region);
     const repoName = fields["repositoryName"] ?? "";
-    const data = await ctx.json<{ repository?: Record<string, unknown> }>(
+    const data = await rctx.json<{ repository?: Record<string, unknown> }>(
       "ecr",
       "AmazonEC2ContainerRegistry_V20150921.CreateRepository",
       {
@@ -174,6 +194,7 @@ export async function storageCreateResource(
       displayName: repoName,
       fields: {
         repositoryName: repoName,
+        region,
         registryId: String(repo["registryId"] ?? ""),
         imageCount: 0,
         imageScanOnPush: fields["scanOnPush"] === "true",
@@ -190,7 +211,9 @@ export async function storageCreateResource(
     };
   }
   if (typeId === "efs-file-system") {
-    const host = ctx.hostForService("elasticfilesystem");
+    const region = fields["region"] ?? ctx.creds.region;
+    const rctx = ctx.withRegion(region);
+    const host = rctx.hostForService("elasticfilesystem");
     const url = `https://${host}/2015-02-01/file-systems`;
     const bodyObj: Record<string, unknown> = {
       CreationToken: `iw-${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -208,7 +231,7 @@ export async function storageCreateResource(
       headers: { Host: host, "Content-Type": "application/json" },
       body: bodyStr,
       service: "elasticfilesystem",
-      credentials: ctx.creds,
+      credentials: rctx.creds,
     });
     const res = await fetch(url, { method: "POST", headers, body: bodyStr });
     if (!res.ok) throw new Error(`EFS CreateFileSystem failed: ${res.status} ${await res.text()}`);
@@ -222,6 +245,7 @@ export async function storageCreateResource(
       displayName: fields["name"] || fsId,
       fields: {
         name: fields["name"] ?? "",
+        region,
         fileSystemId: fsId,
         lifeCycleState: String(fs["LifeCycleState"] ?? "creating"),
         performanceMode: fields["performanceMode"] ?? "generalPurpose",

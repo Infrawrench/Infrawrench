@@ -1,10 +1,11 @@
 import type { CreateResourceConfig, ResourceInstance } from "@infrawrench/plugin-base";
 import { parseXml, ensureArray } from "../auth.js";
 import { signRequest } from "../signed-request.js";
+import { AWS_REGIONS } from "../constants.js";
 import type { AwsCreateContext } from "./shared.js";
 
 export async function networkingGetCreateConfig(
-  _ctx: AwsCreateContext,
+  ctx: AwsCreateContext,
   typeId: string,
   parentResourceId?: string,
 ): Promise<CreateResourceConfig | null> {
@@ -12,6 +13,14 @@ export async function networkingGetCreateConfig(
     return {
       fields: [
         { key: "name", label: "Name", kind: "text", required: true },
+        {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AWS_REGIONS,
+          defaultValue: ctx.creds.region,
+        },
         {
           key: "cidrBlock",
           label: "CIDR Block",
@@ -27,6 +36,14 @@ export async function networkingGetCreateConfig(
     return {
       fields: [
         { key: "groupName", label: "Group Name", kind: "text", required: true },
+        {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AWS_REGIONS,
+          defaultValue: ctx.creds.region,
+        },
         { key: "description", label: "Description", kind: "text", required: true },
         {
           key: "vpcId",
@@ -40,7 +57,17 @@ export async function networkingGetCreateConfig(
   }
   if (typeId === "internet-gateway") {
     return {
-      fields: [{ key: "name", label: "Name (Tag)", kind: "text", required: false }],
+      fields: [
+        { key: "name", label: "Name (Tag)", kind: "text", required: false },
+        {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AWS_REGIONS,
+          defaultValue: ctx.creds.region,
+        },
+      ],
     };
   }
   if (typeId === "subnet") {
@@ -48,6 +75,14 @@ export async function networkingGetCreateConfig(
     const fields: CreateResourceConfig["fields"] = [];
     if (!hasParent) {
       fields.push({ key: "vpcId", label: "VPC ID", kind: "text", required: true });
+      fields.push({
+        key: "region",
+        label: "Region",
+        kind: "region-picker",
+        required: true,
+        regions: AWS_REGIONS,
+        defaultValue: ctx.creds.region,
+      });
     }
     fields.push(
       {
@@ -72,6 +107,14 @@ export async function networkingGetCreateConfig(
     return {
       fields: [
         { key: "subnetId", label: "Subnet ID", kind: "text", required: true },
+        {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AWS_REGIONS,
+          defaultValue: ctx.creds.region,
+        },
         {
           key: "allocationId",
           label: "Elastic IP Allocation ID",
@@ -112,6 +155,14 @@ export async function networkingGetCreateConfig(
     ];
     if (!hasParent) {
       fields.push({ key: "vpcId", label: "VPC ID", kind: "text", required: true });
+      fields.push({
+        key: "region",
+        label: "Region",
+        kind: "region-picker",
+        required: true,
+        regions: AWS_REGIONS,
+        defaultValue: ctx.creds.region,
+      });
     }
     fields.push({
       key: "targetType",
@@ -132,6 +183,14 @@ export async function networkingGetCreateConfig(
     return {
       fields: [
         { key: "name", label: "Name", kind: "text", required: true },
+        {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AWS_REGIONS,
+          defaultValue: ctx.creds.region,
+        },
         {
           key: "subnets",
           label: "Subnet IDs",
@@ -234,6 +293,15 @@ export async function networkingGetCreateConfig(
           description: "e.g. example.com or *.example.com",
         },
         {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AWS_REGIONS,
+          defaultValue: ctx.creds.region,
+          description: "For CloudFront-attached certs, choose us-east-1",
+        },
+        {
           key: "validationMethod",
           label: "Validation Method",
           kind: "select",
@@ -251,6 +319,14 @@ export async function networkingGetCreateConfig(
     return {
       fields: [
         { key: "name", label: "API Name", kind: "text", required: true },
+        {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AWS_REGIONS,
+          defaultValue: ctx.creds.region,
+        },
         {
           key: "protocolType",
           label: "Protocol Type",
@@ -275,6 +351,15 @@ export async function networkingGetCreateConfig(
     return {
       fields: [
         { key: "name", label: "Name", kind: "text", required: true },
+        {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AWS_REGIONS,
+          defaultValue: ctx.creds.region,
+          description: "For CLOUDFRONT scope, choose us-east-1",
+        },
         {
           key: "scope",
           label: "Scope",
@@ -312,14 +397,16 @@ export async function networkingCreateResource(
   parentResourceId?: string,
 ): Promise<ResourceInstance | null> {
   if (typeId === "vpc") {
-    const data = await ctx.ec2<Record<string, unknown>>("CreateVpc", {
+    const region = fields["region"] ?? ctx.creds.region;
+    const rctx = ctx.withRegion(region);
+    const data = await rctx.ec2<Record<string, unknown>>("CreateVpc", {
       CidrBlock: fields["cidrBlock"] ?? "10.0.0.0/16",
     });
     const vpc = (data["vpc"] ?? data) as Record<string, unknown>;
     const vpcId = String(vpc["vpcId"] ?? "");
     // Tag with name
     if (fields["name"]) {
-      await ctx.ec2("CreateTags", {
+      await rctx.ec2("CreateTags", {
         "ResourceId.1": vpcId,
         "Tag.1.Key": "Name",
         "Tag.1.Value": fields["name"],
@@ -333,6 +420,7 @@ export async function networkingCreateResource(
       displayName: fields["name"] || vpcId,
       fields: {
         vpcId,
+        region,
         name: fields["name"] ?? "",
         cidrBlock: fields["cidrBlock"] ?? "10.0.0.0/16",
         state: "available",
@@ -347,12 +435,14 @@ export async function networkingCreateResource(
     };
   }
   if (typeId === "security-group") {
+    const region = fields["region"] ?? ctx.creds.region;
+    const rctx = ctx.withRegion(region);
     const params: Record<string, string> = {
       GroupName: fields["groupName"] ?? "",
       GroupDescription: fields["description"] ?? "",
     };
     if (fields["vpcId"]) params["VpcId"] = fields["vpcId"];
-    const data = await ctx.ec2<Record<string, unknown>>("CreateSecurityGroup", params);
+    const data = await rctx.ec2<Record<string, unknown>>("CreateSecurityGroup", params);
     const groupId = String(data["groupId"] ?? "");
     return {
       id: ctx.makeId(accountId, "security-group", groupId),
@@ -362,6 +452,7 @@ export async function networkingCreateResource(
       displayName: fields["groupName"] ?? groupId,
       fields: {
         groupId,
+        region,
         groupName: fields["groupName"] ?? "",
         description: fields["description"] ?? "",
         vpcId: fields["vpcId"] ?? "",
@@ -376,11 +467,13 @@ export async function networkingCreateResource(
     };
   }
   if (typeId === "internet-gateway") {
-    const data = await ctx.ec2<Record<string, unknown>>("CreateInternetGateway");
+    const region = fields["region"] ?? ctx.creds.region;
+    const rctx = ctx.withRegion(region);
+    const data = await rctx.ec2<Record<string, unknown>>("CreateInternetGateway");
     const igw = (data["internetGateway"] ?? data) as Record<string, unknown>;
     const igwId = String(igw["internetGatewayId"] ?? "");
     if (fields["name"]) {
-      await ctx.ec2("CreateTags", {
+      await rctx.ec2("CreateTags", {
         "ResourceId.1": igwId,
         "Tag.1.Key": "Name",
         "Tag.1.Value": fields["name"],
@@ -394,6 +487,7 @@ export async function networkingCreateResource(
       displayName: igwId,
       fields: {
         internetGatewayId: igwId,
+        region,
         vpcId: "",
         state: "detached",
       },
@@ -407,16 +501,22 @@ export async function networkingCreateResource(
   if (typeId === "subnet") {
     const parentVpcId = parentResourceId ? parentResourceId.split(":").slice(2).join(":") : "";
     const vpcId = fields["vpcId"] || parentVpcId;
+    let region = fields["region"] ?? ctx.creds.region;
+    if (!fields["region"] && parentResourceId) {
+      const parentVpc = await ctx.getResource("vpc", parentResourceId, accountId);
+      region = String(parentVpc.fields["region"] ?? region);
+    }
+    const rctx = ctx.withRegion(region);
     const params: Record<string, string> = {
       VpcId: vpcId,
       CidrBlock: fields["cidrBlock"] ?? "",
       AvailabilityZone: fields["availabilityZone"] ?? "",
     };
-    const data = await ctx.ec2<Record<string, unknown>>("CreateSubnet", params);
+    const data = await rctx.ec2<Record<string, unknown>>("CreateSubnet", params);
     const sub = (data["subnet"] ?? data) as Record<string, unknown>;
     const subnetId = String(sub["subnetId"] ?? "");
     if (fields["name"]) {
-      await ctx.ec2("CreateTags", {
+      await rctx.ec2("CreateTags", {
         "ResourceId.1": subnetId,
         "Tag.1.Key": "Name",
         "Tag.1.Value": fields["name"],
@@ -430,6 +530,7 @@ export async function networkingCreateResource(
       displayName: fields["name"] || subnetId,
       fields: {
         subnetId,
+        region,
         name: fields["name"] ?? "",
         vpcId,
         cidrBlock: fields["cidrBlock"] ?? "",
@@ -448,7 +549,9 @@ export async function networkingCreateResource(
     };
   }
   if (typeId === "nat-gateway") {
-    const data = await ctx.ec2<Record<string, unknown>>("CreateNatGateway", {
+    const region = fields["region"] ?? ctx.creds.region;
+    const rctx = ctx.withRegion(region);
+    const data = await rctx.ec2<Record<string, unknown>>("CreateNatGateway", {
       SubnetId: fields["subnetId"] ?? "",
       AllocationId: fields["allocationId"] ?? "",
     });
@@ -462,6 +565,7 @@ export async function networkingCreateResource(
       displayName: natGatewayId,
       fields: {
         natGatewayId,
+        region,
         state: "pending",
         subnetId: fields["subnetId"] ?? "",
         vpcId: "",
@@ -481,10 +585,13 @@ export async function networkingCreateResource(
     // vpcId field is hidden — look up the parent ALB to read its vpcId since
     // the ALB's externalId is just its name, not the VPC.
     let vpcId = fields["vpcId"] ?? "";
-    if (!vpcId && parentResourceId) {
+    let region = fields["region"] ?? ctx.creds.region;
+    if (parentResourceId) {
       const alb = await ctx.getResource("alb", parentResourceId, accountId);
-      vpcId = String(alb.fields["vpcId"] ?? "");
+      if (!vpcId) vpcId = String(alb.fields["vpcId"] ?? "");
+      if (!fields["region"]) region = String(alb.fields["region"] ?? region);
     }
+    const rctx = ctx.withRegion(region);
     const params: Record<string, string> = {
       Name: fields["name"] ?? "",
       Protocol: fields["protocol"] ?? "HTTP",
@@ -492,7 +599,7 @@ export async function networkingCreateResource(
       VpcId: vpcId,
       TargetType: fields["targetType"] ?? "instance",
     };
-    const data = await ctx.ec2Query<Record<string, unknown>>(
+    const data = await rctx.ec2Query<Record<string, unknown>>(
       "elasticloadbalancing",
       "CreateTargetGroup",
       "2015-12-01",
@@ -511,6 +618,7 @@ export async function networkingCreateResource(
       displayName: name,
       fields: {
         name,
+        region,
         protocol: fields["protocol"] ?? "HTTP",
         port: Number(fields["port"] ?? 80),
         targetType: fields["targetType"] ?? "instance",
@@ -529,6 +637,8 @@ export async function networkingCreateResource(
     };
   }
   if (typeId === "alb") {
+    const region = fields["region"] ?? ctx.creds.region;
+    const rctx = ctx.withRegion(region);
     const subnets = (fields["subnets"] ?? "")
       .split(",")
       .map((s) => s.trim())
@@ -540,7 +650,7 @@ export async function networkingCreateResource(
     subnets.forEach((s, i) => {
       params[`Subnets.member.${i + 1}`] = s;
     });
-    const data = await ctx.ec2Query<Record<string, unknown>>(
+    const data = await rctx.ec2Query<Record<string, unknown>>(
       "elasticloadbalancing",
       "CreateLoadBalancer",
       "2015-12-01",
@@ -559,6 +669,7 @@ export async function networkingCreateResource(
       displayName: name,
       fields: {
         name,
+        region,
         type: String(lb["Type"] ?? "application"),
         state: "provisioning",
         scheme: fields["scheme"] ?? "internet-facing",
@@ -687,8 +798,10 @@ export async function networkingCreateResource(
     };
   }
   if (typeId === "acm-certificate") {
+    const region = fields["region"] ?? ctx.creds.region;
+    const rctx = ctx.withRegion(region);
     const domainName = fields["domainName"] ?? "";
-    const data = await ctx.json<{ CertificateArn?: string }>(
+    const data = await rctx.json<{ CertificateArn?: string }>(
       "acm",
       "CertificateManager.RequestCertificate",
       {
@@ -705,6 +818,7 @@ export async function networkingCreateResource(
       displayName: domainName,
       fields: {
         domainName,
+        region,
         status: "PENDING_VALIDATION",
         type: "AMAZON_ISSUED",
         issuer: "",
@@ -722,10 +836,12 @@ export async function networkingCreateResource(
     };
   }
   if (typeId === "api-gateway") {
+    const region = fields["region"] ?? ctx.creds.region;
+    const rctx = ctx.withRegion(region);
     const name = fields["name"] ?? "";
     const protocolType = fields["protocolType"] ?? "HTTP";
     const description = fields["description"] ?? "";
-    const host = ctx.hostForService("apigateway");
+    const host = rctx.hostForService("apigateway");
     const url = `https://${host}/v2/apis`;
     const bodyStr = JSON.stringify({
       name,
@@ -738,7 +854,7 @@ export async function networkingCreateResource(
       headers: { Host: host, "Content-Type": "application/json" },
       body: bodyStr,
       service: "apigateway",
-      credentials: ctx.creds,
+      credentials: rctx.creds,
     });
     const res = await fetch(url, { method: "POST", headers, body: bodyStr });
     if (!res.ok) throw new Error(`API Gateway create failed: ${res.status}: ${await res.text()}`);
@@ -753,6 +869,7 @@ export async function networkingCreateResource(
       displayName: name,
       fields: {
         name,
+        region,
         apiId,
         protocolType,
         description,
@@ -770,10 +887,12 @@ export async function networkingCreateResource(
     };
   }
   if (typeId === "waf-web-acl") {
+    const region = fields["region"] ?? ctx.creds.region;
+    const rctx = ctx.withRegion(region);
     const name = fields["name"] ?? "";
     const scope = fields["scope"] ?? "REGIONAL";
     const defaultAction = fields["defaultAction"] === "BLOCK" ? { Block: {} } : { Allow: {} };
-    const data = await ctx.json<{ Summary?: Record<string, unknown> }>(
+    const data = await rctx.json<{ Summary?: Record<string, unknown> }>(
       "wafv2",
       "AWSWAF_20190729.CreateWebACL",
       {
@@ -798,6 +917,7 @@ export async function networkingCreateResource(
       displayName: name,
       fields: {
         name,
+        region,
         scope,
         description: fields["description"] ?? "",
         ruleCount: 0,

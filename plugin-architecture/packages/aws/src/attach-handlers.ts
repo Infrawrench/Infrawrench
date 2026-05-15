@@ -4,7 +4,10 @@ import { ensureArray } from "./auth.js";
 import { ec2Call } from "./client-transport.js";
 
 export interface AttachContext {
+  /** Home/default creds — used only for global services. */
   creds: AwsCredentials;
+  /** Build creds scoped to a specific region — use this for regional services. */
+  credsFor(region: string): AwsCredentials;
   getResource(typeId: string, resourceId: string, accountId: string): Promise<ResourceInstance>;
 }
 
@@ -30,8 +33,10 @@ export async function attachResource(
     if (!allocationId || !instanceId) {
       throw new Error("Cannot determine AllocationId or InstanceId for attachment");
     }
+    const region = String(instance.fields["region"] ?? ctx.creds.region);
+    const creds = ctx.credsFor(region);
     // Associate the Elastic IP with the EC2 instance
-    await ec2Call<unknown>(ctx.creds, "AssociateAddress", {
+    await ec2Call<unknown>(creds, "AssociateAddress", {
       AllocationId: allocationId,
       InstanceId: instanceId,
     });
@@ -54,9 +59,11 @@ export async function attachResource(
         `Volume AZ ${volumeAz} does not match instance AZ ${instanceAz} — EBS volumes must be in the same AZ as the instance.`,
       );
     }
+    const region = String(instance.fields["region"] ?? ctx.creds.region);
+    const creds = ctx.credsFor(region);
     // Pick the first free device letter after /dev/sdf (sdf..sdp is the conventional range)
     const device = "/dev/sdf";
-    await ec2Call(ctx.creds, "AttachVolume", {
+    await ec2Call(creds, "AttachVolume", {
       VolumeId: volumeId,
       InstanceId: instanceId,
       Device: device,
@@ -73,8 +80,10 @@ export async function attachResource(
     if (!sgId || !instanceId) {
       throw new Error("Cannot determine security group or instance id for attachment");
     }
+    const region = String(instance.fields["region"] ?? ctx.creds.region);
+    const creds = ctx.credsFor(region);
     // Fetch the instance's current SG IDs so we don't overwrite existing ones.
-    const describeRes = await ec2Call<Record<string, unknown>>(ctx.creds, "DescribeInstances", {
+    const describeRes = await ec2Call<Record<string, unknown>>(creds, "DescribeInstances", {
       "InstanceId.1": instanceId,
     });
     const reservations = ensureArray(
@@ -93,7 +102,7 @@ export async function attachResource(
     next.forEach((g, i) => {
       params[`GroupId.${i + 1}`] = g;
     });
-    await ec2Call(ctx.creds, "ModifyInstanceAttribute", params);
+    await ec2Call(creds, "ModifyInstanceAttribute", params);
     return;
   }
   throw new Error(`AWS plugin: attachResource not supported for ${sourceTypeId} → ${targetTypeId}`);

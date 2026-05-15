@@ -1,5 +1,6 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
 import { AWSClient } from "./client.js";
+import { AWS_REGIONS } from "./constants.js";
 import { EC2InstanceResourceType } from "./resources/ec2-instance.js";
 import { EBSVolumeResourceType } from "./resources/ebs-volume.js";
 import { VPCResourceType } from "./resources/vpc.js";
@@ -82,10 +83,12 @@ const manifest: PluginManifest = {
     },
     {
       key: "region",
-      label: "Region",
-      description: "AWS region to query (e.g. us-east-1).",
+      label: "Home Region",
+      description:
+        "Default region for create forms and global-service signing. Resource listings still cover every region enabled on the account.",
       sensitive: false,
-      placeholder: "us-east-1",
+      defaultValue: "us-east-1",
+      regions: AWS_REGIONS,
     },
   ],
   rateLimit: { capacity: 120, refillPerSecond: 8 },

@@ -1,9 +1,10 @@
 import type { CreateResourceConfig, ResourceInstance } from "@infrawrench/plugin-base";
 import { signRequest } from "../signed-request.js";
+import { AWS_REGIONS } from "../constants.js";
 import type { AwsCreateContext } from "./shared.js";
 
 export async function databaseGetCreateConfig(
-  _ctx: AwsCreateContext,
+  ctx: AwsCreateContext,
   typeId: string,
   _parentResourceId?: string,
 ): Promise<CreateResourceConfig | null> {
@@ -11,6 +12,14 @@ export async function databaseGetCreateConfig(
     return {
       fields: [
         { key: "tableName", label: "Table Name", kind: "text", required: true },
+        {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AWS_REGIONS,
+          defaultValue: ctx.creds.region,
+        },
         {
           key: "partitionKey",
           label: "Partition Key",
@@ -67,6 +76,14 @@ export async function databaseGetCreateConfig(
     return {
       fields: [
         { key: "dbInstanceId", label: "DB Instance Identifier", kind: "text", required: true },
+        {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AWS_REGIONS,
+          defaultValue: ctx.creds.region,
+        },
         {
           key: "engine",
           label: "Engine",
@@ -129,6 +146,14 @@ export async function databaseGetCreateConfig(
       fields: [
         { key: "cacheClusterId", label: "Cluster ID", kind: "text", required: true },
         {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AWS_REGIONS,
+          defaultValue: ctx.creds.region,
+        },
+        {
           key: "engine",
           label: "Engine",
           kind: "select",
@@ -170,6 +195,14 @@ export async function databaseGetCreateConfig(
       fields: [
         { key: "dbClusterIdentifier", label: "Cluster Identifier", kind: "text", required: true },
         {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AWS_REGIONS,
+          defaultValue: ctx.creds.region,
+        },
+        {
           key: "engine",
           label: "Engine",
           kind: "select",
@@ -195,6 +228,14 @@ export async function databaseGetCreateConfig(
     return {
       fields: [
         { key: "clusterIdentifier", label: "Cluster Identifier", kind: "text", required: true },
+        {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AWS_REGIONS,
+          defaultValue: ctx.creds.region,
+        },
         {
           key: "nodeType",
           label: "Node Type",
@@ -234,12 +275,27 @@ export async function databaseGetCreateConfig(
       fields: [
         { key: "domainName", label: "Domain Name", kind: "text", required: true },
         {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AWS_REGIONS,
+          defaultValue: ctx.creds.region,
+        },
+        {
           key: "engineVersion",
           label: "Engine Version",
-          kind: "text",
+          kind: "select",
           required: true,
-          defaultValue: "OpenSearch_2.11",
-          description: "e.g. OpenSearch_2.11 or Elasticsearch_7.10",
+          options: [
+            { id: "OpenSearch_3.5", label: "OpenSearch 3.5" },
+            { id: "OpenSearch_3.3", label: "OpenSearch 3.3" },
+            { id: "OpenSearch_3.1", label: "OpenSearch 3.1" },
+            { id: "OpenSearch_2.19", label: "OpenSearch 2.19" },
+            { id: "OpenSearch_2.17", label: "OpenSearch 2.17" },
+            { id: "Elasticsearch_7.10", label: "Elasticsearch 7.10 (legacy)" },
+          ],
+          defaultValue: "OpenSearch_3.5",
         },
         {
           key: "instanceType",
@@ -270,6 +326,14 @@ export async function databaseGetCreateConfig(
     return {
       fields: [
         { key: "dbClusterIdentifier", label: "Cluster Identifier", kind: "text", required: true },
+        {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AWS_REGIONS,
+          defaultValue: ctx.creds.region,
+        },
       ],
     };
   }
@@ -277,6 +341,14 @@ export async function databaseGetCreateConfig(
     return {
       fields: [
         { key: "dbClusterIdentifier", label: "Cluster Identifier", kind: "text", required: true },
+        {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AWS_REGIONS,
+          defaultValue: ctx.creds.region,
+        },
         {
           key: "masterUsername",
           label: "Master Username",
@@ -299,6 +371,8 @@ export async function databaseCreateResource(
   _parentResourceId?: string,
 ): Promise<ResourceInstance | null> {
   if (typeId === "dynamodb-table") {
+    const region = fields["region"] ?? ctx.creds.region;
+    const rctx = ctx.withRegion(region);
     const keySchema: Array<{ AttributeName: string; KeyType: string }> = [
       { AttributeName: fields["partitionKey"] ?? "id", KeyType: "HASH" },
     ];
@@ -327,7 +401,7 @@ export async function databaseCreateResource(
         WriteCapacityUnits: 5,
       };
     }
-    const data = await ctx.json<{ TableDescription: Record<string, unknown> }>(
+    const data = await rctx.json<{ TableDescription: Record<string, unknown> }>(
       "dynamodb",
       "DynamoDB_20120810.CreateTable",
       body,
@@ -342,6 +416,7 @@ export async function databaseCreateResource(
       displayName: tableName,
       fields: {
         tableName,
+        region,
         status: String(t["TableStatus"] ?? "CREATING"),
         itemCount: 0,
         sizeBytes: 0,
@@ -359,8 +434,10 @@ export async function databaseCreateResource(
     };
   }
   if (typeId === "rds-instance") {
+    const region = fields["region"] ?? ctx.creds.region;
+    const rctx = ctx.withRegion(region);
     const dbId = fields["dbInstanceId"] ?? "";
-    const data = await ctx.queryPost<Record<string, unknown>>(
+    const data = await rctx.queryPost<Record<string, unknown>>(
       "rds",
       "CreateDBInstance",
       "2014-10-31",
@@ -383,6 +460,7 @@ export async function databaseCreateResource(
       displayName: dbId,
       fields: {
         dbInstanceId: dbId,
+        region,
         engine: fields["engine"] ?? "postgres",
         engineVersion: "",
         instanceClass: fields["instanceClass"] ?? "db.t3.micro",
@@ -403,8 +481,10 @@ export async function databaseCreateResource(
     };
   }
   if (typeId === "elasticache-cluster") {
+    const region = fields["region"] ?? ctx.creds.region;
+    const rctx = ctx.withRegion(region);
     const clusterId = fields["cacheClusterId"] ?? "";
-    await ctx.queryPost<Record<string, unknown>>(
+    await rctx.queryPost<Record<string, unknown>>(
       "elasticache",
       "CreateCacheCluster",
       "2015-02-02",
@@ -423,6 +503,7 @@ export async function databaseCreateResource(
       displayName: clusterId,
       fields: {
         clusterId,
+        region,
         engine: fields["engine"] ?? "redis",
         engineVersion: "",
         nodeType: fields["cacheNodeType"] ?? "cache.t3.micro",
@@ -441,8 +522,10 @@ export async function databaseCreateResource(
     };
   }
   if (typeId === "rds-cluster") {
+    const region = fields["region"] ?? ctx.creds.region;
+    const rctx = ctx.withRegion(region);
     const clusterId = fields["dbClusterIdentifier"] ?? "";
-    const data = await ctx.queryPost<Record<string, unknown>>(
+    const data = await rctx.queryPost<Record<string, unknown>>(
       "rds",
       "CreateDBCluster",
       "2014-10-31",
@@ -463,6 +546,7 @@ export async function databaseCreateResource(
       displayName: clusterId,
       fields: {
         clusterIdentifier: clusterId,
+        region,
         engine: fields["engine"] ?? "aurora-postgresql",
         engineVersion: "",
         status: String(c["Status"] ?? "creating"),
@@ -485,8 +569,10 @@ export async function databaseCreateResource(
     };
   }
   if (typeId === "redshift-cluster") {
+    const region = fields["region"] ?? ctx.creds.region;
+    const rctx = ctx.withRegion(region);
     const clusterId = fields["clusterIdentifier"] ?? "";
-    const data = await ctx.json<{ Cluster?: Record<string, unknown> }>(
+    const data = await rctx.json<{ Cluster?: Record<string, unknown> }>(
       "redshift",
       "RedshiftServiceVersion20121201.CreateCluster",
       {
@@ -509,6 +595,7 @@ export async function databaseCreateResource(
       displayName: clusterId,
       fields: {
         clusterIdentifier: clusterId,
+        region,
         nodeType: fields["nodeType"] ?? "dc2.large",
         status: String(c["ClusterStatus"] ?? "creating"),
         numberOfNodes: Number(fields["numberOfNodes"] ?? "1"),
@@ -521,7 +608,7 @@ export async function databaseCreateResource(
         endpoint: "",
         port: "",
         masterUsername: fields["masterUsername"] ?? "admin",
-        clusterArn: `arn:aws:redshift:${ctx.creds.region}:${accountId}:cluster:${clusterId}`,
+        clusterArn: `arn:aws:redshift:${region}:${accountId}:cluster:${clusterId}`,
       },
       secretStates: [],
       externalId: clusterId,
@@ -530,12 +617,14 @@ export async function databaseCreateResource(
     };
   }
   if (typeId === "opensearch-domain") {
+    const region = fields["region"] ?? ctx.creds.region;
+    const rctx = ctx.withRegion(region);
     const domainName = fields["domainName"] ?? "";
-    const host = ctx.hostForService("es");
+    const host = rctx.hostForService("es");
     const url = `https://${host}/2021-01-01/opensearch/domain`;
     const bodyObj = {
       DomainName: domainName,
-      EngineVersion: fields["engineVersion"] ?? "OpenSearch_2.11",
+      EngineVersion: fields["engineVersion"] ?? "OpenSearch_3.5",
       ClusterConfig: {
         InstanceType: fields["instanceType"] ?? "t3.small.search",
         InstanceCount: Number(fields["instanceCount"] ?? "1"),
@@ -553,7 +642,7 @@ export async function databaseCreateResource(
       headers: { Host: host, "Content-Type": "application/json" },
       body: bodyStr,
       service: "es",
-      credentials: ctx.creds,
+      credentials: rctx.creds,
     });
     const res = await fetch(url, { method: "POST", headers, body: bodyStr });
     if (!res.ok)
@@ -568,7 +657,8 @@ export async function databaseCreateResource(
       displayName: domainName,
       fields: {
         domainName,
-        engineVersion: fields["engineVersion"] ?? "OpenSearch_2.11",
+        region,
+        engineVersion: fields["engineVersion"] ?? "OpenSearch_3.5",
         instanceType: fields["instanceType"] ?? "t3.small.search",
         instanceCount: Number(fields["instanceCount"] ?? "1"),
         status: true,
@@ -588,8 +678,10 @@ export async function databaseCreateResource(
     };
   }
   if (typeId === "neptune-cluster") {
+    const region = fields["region"] ?? ctx.creds.region;
+    const rctx = ctx.withRegion(region);
     const clusterId = fields["dbClusterIdentifier"] ?? "";
-    const data = await ctx.queryPost<Record<string, unknown>>(
+    const data = await rctx.queryPost<Record<string, unknown>>(
       "rds",
       "CreateDBCluster",
       "2014-10-31",
@@ -608,6 +700,7 @@ export async function databaseCreateResource(
       displayName: clusterId,
       fields: {
         clusterIdentifier: clusterId,
+        region,
         engine: "neptune",
         engineVersion: "",
         status: String(c["Status"] ?? "creating"),
@@ -628,8 +721,10 @@ export async function databaseCreateResource(
     };
   }
   if (typeId === "documentdb-cluster") {
+    const region = fields["region"] ?? ctx.creds.region;
+    const rctx = ctx.withRegion(region);
     const clusterId = fields["dbClusterIdentifier"] ?? "";
-    const data = await ctx.queryPost<Record<string, unknown>>(
+    const data = await rctx.queryPost<Record<string, unknown>>(
       "rds",
       "CreateDBCluster",
       "2014-10-31",
@@ -650,6 +745,7 @@ export async function databaseCreateResource(
       displayName: clusterId,
       fields: {
         clusterIdentifier: clusterId,
+        region,
         engine: "docdb",
         engineVersion: "",
         status: String(c["Status"] ?? "creating"),

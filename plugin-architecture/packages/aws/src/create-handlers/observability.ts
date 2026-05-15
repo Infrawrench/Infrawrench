@@ -1,5 +1,6 @@
 import type { CreateResourceConfig, ResourceInstance } from "@infrawrench/plugin-base";
 import { ensureArray } from "../auth.js";
+import { AWS_REGIONS } from "../constants.js";
 import type { AwsCreateContext } from "./shared.js";
 
 export async function observabilityGetCreateConfig(
@@ -16,6 +17,14 @@ export async function observabilityGetCreateConfig(
           kind: "text",
           required: true,
           description: "e.g. /aws/lambda/my-function",
+        },
+        {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AWS_REGIONS,
+          defaultValue: ctx.creds.region,
         },
         {
           key: "retentionInDays",
@@ -42,6 +51,14 @@ export async function observabilityGetCreateConfig(
     return {
       fields: [
         { key: "alarmName", label: "Alarm Name", kind: "text", required: true },
+        {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AWS_REGIONS,
+          defaultValue: ctx.creds.region,
+        },
         {
           key: "namespace",
           label: "Namespace",
@@ -124,6 +141,14 @@ export async function observabilityGetCreateConfig(
       fields: [
         { key: "name", label: "Trail Name", kind: "text", required: true },
         {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AWS_REGIONS,
+          defaultValue: ctx.creds.region,
+        },
+        {
           key: "s3BucketName",
           label: "S3 Bucket",
           kind: "select",
@@ -167,12 +192,14 @@ export async function observabilityCreateResource(
   _parentResourceId?: string,
 ): Promise<ResourceInstance | null> {
   if (typeId === "cloudwatch-log-group") {
+    const region = fields["region"] ?? ctx.creds.region;
+    const rctx = ctx.withRegion(region);
     const logGroupName = fields["logGroupName"] ?? "";
     const body: Record<string, unknown> = { logGroupName };
-    await ctx.json<Record<string, unknown>>("logs", "Logs_20140328.CreateLogGroup", body);
+    await rctx.json<Record<string, unknown>>("logs", "Logs_20140328.CreateLogGroup", body);
     const retention = Number(fields["retentionInDays"] ?? "0");
     if (retention > 0) {
-      await ctx.json<Record<string, unknown>>("logs", "Logs_20140328.PutRetentionPolicy", {
+      await rctx.json<Record<string, unknown>>("logs", "Logs_20140328.PutRetentionPolicy", {
         logGroupName,
         retentionInDays: retention,
       });
@@ -185,6 +212,7 @@ export async function observabilityCreateResource(
       displayName: logGroupName,
       fields: {
         logGroupName,
+        region,
         storedBytes: 0,
         retentionInDays: retention,
         metricFilterCount: 0,
@@ -200,8 +228,10 @@ export async function observabilityCreateResource(
     };
   }
   if (typeId === "cloudwatch-alarm") {
+    const region = fields["region"] ?? ctx.creds.region;
+    const rctx = ctx.withRegion(region);
     const alarmName = fields["alarmName"] ?? "";
-    await ctx.json<Record<string, unknown>>(
+    await rctx.json<Record<string, unknown>>(
       "monitoring",
       "GraniteServiceVersion20100801.PutMetricAlarm",
       {
@@ -223,6 +253,7 @@ export async function observabilityCreateResource(
       displayName: alarmName,
       fields: {
         alarmName,
+        region,
         state: "INSUFFICIENT_DATA",
         metricName: fields["metricName"] ?? "",
         namespace: fields["namespace"] ?? "",
@@ -241,9 +272,11 @@ export async function observabilityCreateResource(
     };
   }
   if (typeId === "cloudtrail-trail") {
+    const region = fields["region"] ?? ctx.creds.region;
+    const rctx = ctx.withRegion(region);
     const name = fields["name"] ?? "";
     const s3BucketName = fields["s3BucketName"] ?? "";
-    await ctx.json(
+    await rctx.json(
       "cloudtrail",
       "com.amazonaws.cloudtrail.v20131101.CloudTrail_20131101.CreateTrail",
       {
@@ -262,6 +295,7 @@ export async function observabilityCreateResource(
       displayName: name,
       fields: {
         name,
+        region,
         s3BucketName,
         isMultiRegion: fields["isMultiRegion"] === "true",
         isOrganizationTrail: false,

@@ -27,6 +27,12 @@ export interface AwsCreateContext {
   listAllIAMPolicies(scope: "AWS" | "Local" | "All"): Promise<Array<Record<string, unknown>>>;
   policiesToOptions(raw: Array<Record<string, unknown>>, category: string): PolicyOption[];
   getResource(typeId: string, resourceId: string, accountId: string): Promise<ResourceInstance>;
+  /**
+   * Return a sub-context whose AWS calls are signed for and routed to the
+   * given region. Create handlers should call this with the user-picked
+   * `fields.region` so resources land where the form said they should.
+   */
+  withRegion(region: string): AwsCreateContext;
 }
 
 /**

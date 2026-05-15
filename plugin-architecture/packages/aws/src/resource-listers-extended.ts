@@ -116,6 +116,7 @@ export async function listALBs(ctx: ListerContext, accountId: string): Promise<R
       displayName: name,
       fields: {
         name,
+        region: ctx.region,
         type: String(lb["Type"] ?? "application"),
         state: String(stateObj?.["Code"] ?? "active"),
         scheme: String(lb["Scheme"] ?? ""),
@@ -159,6 +160,7 @@ export async function listTargetGroups(
       displayName: name,
       fields: {
         name,
+        region: ctx.region,
         protocol: String(tg["Protocol"] ?? ""),
         port: Number(tg["Port"] ?? 0),
         targetType: String(tg["TargetType"] ?? "instance"),
@@ -209,6 +211,7 @@ export async function listAutoScalingGroups(
       displayName: name,
       fields: {
         name,
+        region: ctx.region,
         minSize: Number(asg["MinSize"] ?? 0),
         maxSize: Number(asg["MaxSize"] ?? 0),
         desiredCapacity: Number(asg["DesiredCapacity"] ?? 0),
@@ -293,6 +296,7 @@ export async function listSecurityGroups(
       displayName: String(sg["groupName"] ?? groupId),
       fields: {
         groupId,
+        region: ctx.region,
         groupName: String(sg["groupName"] ?? ""),
         description: String(sg["groupDescription"] ?? ""),
         vpcId: String(sg["vpcId"] ?? ""),
@@ -333,6 +337,7 @@ export async function listSubnets(
       fields: {
         subnetId,
         name,
+        region: ctx.region,
         vpcId: String(sub["vpcId"] ?? ""),
         cidrBlock: String(sub["cidrBlock"] ?? ""),
         availabilityZone: String(sub["availabilityZone"] ?? ""),
@@ -375,6 +380,7 @@ export async function listNATGateways(
       displayName: natGatewayId,
       fields: {
         natGatewayId,
+        region: ctx.region,
         state: String(nat["state"] ?? ""),
         subnetId: String(nat["subnetId"] ?? ""),
         vpcId: String(nat["vpcId"] ?? ""),
@@ -413,6 +419,7 @@ export async function listElasticIPs(
       fields: {
         allocationId,
         publicIp,
+        region: ctx.region,
         associationId: String(addr["associationId"] ?? ""),
         instanceId: String(addr["instanceId"] ?? ""),
         networkInterfaceId: String(addr["networkInterfaceId"] ?? ""),
@@ -456,6 +463,7 @@ export async function listStepFunctions(
         displayName: name,
         fields: {
           name,
+          region: ctx.region,
           status: String(detail["status"] ?? "ACTIVE"),
           type: String(detail["type"] ?? "STANDARD"),
           creationDate: String(detail["creationDate"] ?? ""),
@@ -475,6 +483,7 @@ export async function listStepFunctions(
         displayName: name,
         fields: {
           name,
+          region: ctx.region,
           status: "ACTIVE",
           type: String(sm["type"] ?? "STANDARD"),
           creationDate: String(sm["creationDate"] ?? ""),
@@ -510,6 +519,7 @@ export async function listEventBridgeRules(
       displayName: name,
       fields: {
         name,
+        region: ctx.region,
         state: String(rule["State"] ?? "ENABLED"),
         eventBusName: String(rule["EventBusName"] ?? "default"),
         scheduleExpression: String(rule["ScheduleExpression"] ?? ""),
@@ -554,6 +564,7 @@ export async function listKinesisStreams(
         displayName: streamName,
         fields: {
           streamName,
+          region: ctx.region,
           status: String(s["StreamStatus"] ?? ""),
           shardCount: shards?.length ?? 0,
           retentionPeriodHours: Number(s["RetentionPeriodHours"] ?? 24),
@@ -602,6 +613,7 @@ export async function listRedshiftClusters(
       displayName: clusterId,
       fields: {
         clusterIdentifier: clusterId,
+        region: ctx.region,
         nodeType: String(c["NodeType"] ?? ""),
         status: String(c["ClusterStatus"] ?? ""),
         numberOfNodes: Number(c["NumberOfNodes"] ?? 0),
@@ -649,6 +661,7 @@ export async function listRDSClusters(
       displayName: clusterId,
       fields: {
         clusterIdentifier: clusterId,
+        region: ctx.region,
         engine: String(c["Engine"] ?? ""),
         engineVersion: String(c["EngineVersion"] ?? ""),
         status: String(c["Status"] ?? ""),
@@ -701,6 +714,7 @@ export async function listOpenSearchDomains(
         displayName: domainName,
         fields: {
           domainName,
+          region: ctx.region,
           engineVersion: String(ds["EngineVersion"] ?? ""),
           instanceType: String(clusterConfig?.["InstanceType"] ?? ""),
           instanceCount: Number(clusterConfig?.["InstanceCount"] ?? 0),
@@ -754,6 +768,7 @@ export async function listACMCertificates(
         displayName: String(c["DomainName"] ?? ""),
         fields: {
           domainName: String(c["DomainName"] ?? ""),
+          region: ctx.region,
           status: String(c["Status"] ?? ""),
           type: String(c["Type"] ?? ""),
           issuer: String(c["Issuer"] ?? ""),
@@ -778,6 +793,7 @@ export async function listACMCertificates(
         displayName: String(cert["DomainName"] ?? ""),
         fields: {
           domainName: String(cert["DomainName"] ?? ""),
+          region: ctx.region,
           status: String(cert["Status"] ?? ""),
           type: String(cert["Type"] ?? ""),
           issuer: "",
@@ -829,6 +845,7 @@ export async function listWAFWebACLs(
         displayName: name,
         fields: {
           name,
+          region: ctx.region,
           scope: "REGIONAL",
           description: String(w["Description"] ?? ""),
           ruleCount: rules?.length ?? 0,
@@ -853,6 +870,7 @@ export async function listWAFWebACLs(
         displayName: name,
         fields: {
           name,
+          region: ctx.region,
           scope: "REGIONAL",
           description: String(acl["Description"] ?? ""),
           ruleCount: 0,
@@ -902,6 +920,7 @@ export async function listCodeBuildProjects(
       displayName: name,
       fields: {
         name,
+        region: ctx.region,
         description: String(p["description"] ?? ""),
         sourceType: String(source?.["type"] ?? ""),
         environment: String(environment?.["image"] ?? ""),
@@ -939,6 +958,7 @@ export async function listCodePipelines(
       displayName: name,
       fields: {
         name,
+        region: ctx.region,
         stageCount: 0,
         version: Number(p["version"] ?? 0),
         createdAt: String(p["created"] ?? ""),
@@ -979,6 +999,7 @@ export async function listCloudFormationStacks(
       displayName: stackName,
       fields: {
         stackName,
+        region: ctx.region,
         stackId: String(s["StackId"] ?? ""),
         status: String(s["StackStatus"] ?? ""),
         description: String(s["Description"] ?? ""),
@@ -1020,6 +1041,7 @@ export async function listSSMParameters(
       displayName: name,
       fields: {
         name,
+        region: ctx.region,
         type: String(p["Type"] ?? ""),
         version: Number(p["Version"] ?? 0),
         tier: String(p["Tier"] ?? "Standard"),
@@ -1063,6 +1085,7 @@ export async function listEFSFileSystems(
       fields: {
         name,
         fileSystemId: fsId,
+        region: ctx.region,
         lifeCycleState: String(fs["LifeCycleState"] ?? ""),
         performanceMode: String(fs["PerformanceMode"] ?? ""),
         throughputMode: String(fs["ThroughputMode"] ?? ""),
@@ -1105,6 +1128,7 @@ export async function listAPIGateways(
       fields: {
         name,
         apiId,
+        region: ctx.region,
         protocolType: String(api["ProtocolType"] ?? "HTTP"),
         description: String(api["Description"] ?? ""),
         routeCount,
@@ -1126,14 +1150,19 @@ export async function listCloudWatchAlarms(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.json<{ MetricAlarms?: Record<string, unknown>[] }>(
+  // CloudWatch (signing name `monitoring`) speaks the AWS Query protocol,
+  // not JSON-RPC. The JSON form returns 404 from the endpoint.
+  const data = await ctx.ec2Query<Record<string, unknown>>(
     "monitoring",
-    "GraniteServiceVersion20100801.DescribeAlarms",
-    {},
+    "DescribeAlarms",
+    "2010-08-01",
   );
-  const alarms = data.MetricAlarms ?? [];
+  const result = data["DescribeAlarmsResult"] as Record<string, unknown> | undefined;
+  const metricAlarms = ensureArray(
+    (result?.["MetricAlarms"] as Record<string, unknown> | undefined)?.["member"],
+  ) as Record<string, unknown>[];
 
-  return alarms.map((a) => {
+  return metricAlarms.map((a) => {
     const alarmName = String(a["AlarmName"] ?? "");
     return {
       id: ctx.id(accountId, "cloudwatch-alarm", alarmName),
@@ -1143,13 +1172,14 @@ export async function listCloudWatchAlarms(
       displayName: alarmName,
       fields: {
         alarmName,
+        region: ctx.region,
         state: String(a["StateValue"] ?? ""),
         metricName: String(a["MetricName"] ?? ""),
         namespace: String(a["Namespace"] ?? ""),
         comparisonOperator: String(a["ComparisonOperator"] ?? ""),
         threshold: Number(a["Threshold"] ?? 0),
         period: Number(a["Period"] ?? 0),
-        actionsEnabled: a["ActionsEnabled"] === true,
+        actionsEnabled: a["ActionsEnabled"] === true || a["ActionsEnabled"] === "true",
       },
       resolvedOutputs: {
         alarmArn: String(a["AlarmArn"] ?? ""),
@@ -1183,6 +1213,7 @@ export async function listCloudWatchLogGroups(
       displayName: logGroupName,
       fields: {
         logGroupName,
+        region: ctx.region,
         storedBytes: Number(lg["storedBytes"] ?? 0),
         retentionInDays: Number(lg["retentionInDays"] ?? 0),
         metricFilterCount: Number(lg["metricFilterCount"] ?? 0),
@@ -1220,6 +1251,7 @@ export async function listAppRunnerServices(
       displayName: serviceName,
       fields: {
         serviceName,
+        region: ctx.region,
         status: String(svc["Status"] ?? ""),
         serviceId: String(svc["ServiceId"] ?? ""),
         sourceType: "",
@@ -1257,6 +1289,7 @@ export async function listGlueDatabases(
       displayName: name,
       fields: {
         name,
+        region: ctx.region,
         description: String(db["Description"] ?? ""),
         locationUri: String(db["LocationUri"] ?? ""),
         createTime: String(db["CreateTime"] ?? ""),
@@ -1295,6 +1328,7 @@ export async function listInternetGateways(
       displayName: igwId,
       fields: {
         internetGatewayId: igwId,
+        region: ctx.region,
         vpcId: attachment ? String(attachment["vpcId"] ?? "") : "",
         state: attachment ? String(attachment["state"] ?? "") : "detached",
       },
@@ -1327,6 +1361,7 @@ export async function listCloudTrailTrails(
       displayName: name,
       fields: {
         name,
+        region: ctx.region,
         s3BucketName: String(t["S3BucketName"] ?? ""),
         isMultiRegion: t["IsMultiRegionTrail"] === true,
         isOrganizationTrail: t["IsOrganizationTrail"] === true,
@@ -1365,6 +1400,7 @@ export async function listMSKClusters(
       displayName: name,
       fields: {
         clusterName: name,
+        region: ctx.region,
         state: String(c["State"] ?? ""),
         kafkaVersion: String(
           c["CurrentBrokerSoftwareInfo"]
@@ -1431,6 +1467,7 @@ export async function listNeptuneClusters(
         displayName: clusterId,
         fields: {
           clusterIdentifier: clusterId,
+          region: ctx.region,
           engine: String(c["Engine"] ?? ""),
           engineVersion: String(c["EngineVersion"] ?? ""),
           status: String(c["Status"] ?? ""),
@@ -1483,6 +1520,7 @@ export async function listDocumentDBClusters(
         displayName: clusterId,
         fields: {
           clusterIdentifier: clusterId,
+          region: ctx.region,
           engine: String(c["Engine"] ?? ""),
           engineVersion: String(c["EngineVersion"] ?? ""),
           status: String(c["Status"] ?? ""),
@@ -1526,6 +1564,7 @@ export async function listMQBrokers(
       fields: {
         brokerName,
         brokerId,
+        region: ctx.region,
         engineType: String(b["EngineType"] ?? ""),
         engineVersion: String(b["EngineVersion"] ?? ""),
         hostInstanceType: String(b["HostInstanceType"] ?? ""),
@@ -1548,9 +1587,10 @@ export async function listBatchJobQueues(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const data = await ctx.json<{ jobQueues?: Record<string, unknown>[] }>(
+  // AWS Batch is REST-JSON over /v1/* — JSON-RPC at `/` returns 404.
+  const data = await ctx.restJson<{ jobQueues?: Record<string, unknown>[] }>(
     "batch",
-    "AWSBatch.DescribeJobQueues",
+    "/v1/describejobqueues",
     {},
   );
   const queues = data.jobQueues ?? [];
@@ -1565,6 +1605,7 @@ export async function listBatchJobQueues(
       displayName: name,
       fields: {
         jobQueueName: name,
+        region: ctx.region,
         state: String(q["state"] ?? ""),
         status: String(q["status"] ?? ""),
         priority: Number(q["priority"] ?? 0),
@@ -1602,6 +1643,7 @@ export async function listSageMakerEndpoints(
       displayName: name,
       fields: {
         endpointName: name,
+        region: ctx.region,
         status: String(ep["EndpointStatus"] ?? ""),
         endpointConfigName: String(ep["EndpointConfigName"] ?? ""),
         creationTime: String(ep["CreationTime"] ?? ""),

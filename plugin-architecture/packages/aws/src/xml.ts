@@ -21,6 +21,12 @@ const parser = new XMLParser({
   parseTagValue: false,
   parseAttributeValue: false,
   trimValues: true,
+  // Strip the `<?xml ?>` declaration so it does not show up as a `?xml` key
+  // alongside the response root. Without this, AWS XML responses that include
+  // the declaration (e.g. EC2 `RunInstances`) parse to two top-level keys and
+  // the root-unwrap below bails out, leaving callers reading from the wrong
+  // level of the tree.
+  ignoreDeclaration: true,
   isArray: (tagName) => tagName === "item" || tagName === "member",
 });
 

@@ -78,6 +78,7 @@ import {
   jsonCall,
   jsonGetCall,
   queryPostCall,
+  restJsonCall,
   xmlGetCall,
 } from "./client-transport.js";
 import { listAllIAMPolicies, policiesToOptions } from "./iam-policies.js";
@@ -99,6 +100,7 @@ import { getCreateCostEstimate as getCreateCostEstimateImpl } from "./cost-estim
 import { attachResource as attachResourceImpl } from "./attach-handlers.js";
 import { resolveOutput as resolveOutputImpl } from "./resolve-output.js";
 import { deleteResource as deleteResourceImpl } from "./delete-handlers.js";
+import { executeFieldAction as executeFieldActionImpl } from "./field-actions.js";
 
 export class AWSClient implements PluginClient {
   private readonly creds: AwsCredentials;
@@ -119,53 +121,141 @@ export class AWSClient implements PluginClient {
     return `${accountId}:${typeId}:${externalId}`;
   }
 
-  private get ctx(): ListerContext {
+  /**
+   * Resource types that live outside any single region (S3 ListBuckets, IAM,
+   * Route 53, CloudFront, ACM-on-CloudFront, …). Listing these once is enough
+   * — fanning out across regions would just yield duplicates. Per-bucket S3
+   * detail calls still pin to the bucket's home region, but discovery is
+   * global.
+   */
+  private static readonly GLOBAL_TYPES = new Set([
+    "s3-bucket",
+    "iam-user",
+    "iam-role",
+    "route53-hosted-zone",
+    "route53-record-set",
+    "cloudfront-distribution",
+  ]);
+
+  /**
+   * Maximum number of regions queried in parallel during a fan-out list. AWS
+   * accounts have a single shared API rate limit, and the plugin's own rate
+   * limiter (capacity 120, refill 8/s in manifest) is the real ceiling — so
+   * picking a moderate concurrency keeps a typed-out user-action snappy
+   * without burning the bucket on a single refresh.
+   */
+  private static readonly REGION_FANOUT_CONCURRENCY = 8;
+
+  private enabledRegionsCache: string[] | null = null;
+  private enabledRegionsPromise: Promise<string[]> | null = null;
+
+  private credsFor(region: string): AwsCredentials {
+    return { ...this.creds, region };
+  }
+
+  private ctxFor(region: string): ListerContext {
+    const creds = this.credsFor(region);
     return {
       ec2: <T>(action: string, params?: Record<string, string>) =>
-        ec2Call<T>(this.creds, action, params),
+        ec2Call<T>(creds, action, params),
       json: <T>(service: string, target: string, body: Record<string, unknown>) =>
-        jsonCall<T>(this.creds, service, target, body),
-      jsonGet: <T>(service: string, path: string) => jsonGetCall<T>(this.creds, service, path),
+        jsonCall<T>(creds, service, target, body),
+      jsonGet: <T>(service: string, path: string) => jsonGetCall<T>(creds, service, path),
+      restJson: <T>(
+        service: string,
+        path: string,
+        body?: Record<string, unknown>,
+        method?: "POST" | "GET",
+      ) => restJsonCall<T>(creds, service, path, body, method),
       ec2Query: <T>(
         service: string,
         action: string,
         version: string,
         params?: Record<string, string>,
-      ) => ec2QueryCall<T>(this.creds, service, action, version, params),
-      xmlGet: <T>(service: string, path?: string) => xmlGetCall<T>(this.creds, service, path),
+      ) => ec2QueryCall<T>(creds, service, action, version, params),
+      xmlGet: <T>(service: string, path?: string) => xmlGetCall<T>(creds, service, path),
       id: (accountId, typeId, externalId) => this.makeId(accountId, typeId, externalId),
       now: () => new Date().toISOString(),
-      region: this.creds.region,
+      region,
     };
   }
 
-  private get createCtx(): AwsCreateContext {
-    return {
-      creds: this.creds,
-      hostForService: (s) => hostForService(this.creds, s),
+  private createCtxFor(region: string): AwsCreateContext {
+    const creds = this.credsFor(region);
+    const sub: AwsCreateContext = {
+      creds,
+      hostForService: (s) => hostForService(creds, s),
       ec2: <T>(action: string, params?: Record<string, string>) =>
-        ec2Call<T>(this.creds, action, params),
+        ec2Call<T>(creds, action, params),
       json: <T>(service: string, target: string, body: Record<string, unknown>) =>
-        jsonCall<T>(this.creds, service, target, body),
+        jsonCall<T>(creds, service, target, body),
       ec2Query: <T>(
         service: string,
         action: string,
         version: string,
         params?: Record<string, string>,
-      ) => ec2QueryCall<T>(this.creds, service, action, version, params),
+      ) => ec2QueryCall<T>(creds, service, action, version, params),
       queryPost: <T>(
         service: string,
         action: string,
         version: string,
         params?: Record<string, string>,
-      ) => queryPostCall<T>(this.creds, service, action, version, params),
-      xmlGet: <T>(service: string, path?: string) => xmlGetCall<T>(this.creds, service, path),
+      ) => queryPostCall<T>(creds, service, action, version, params),
+      xmlGet: <T>(service: string, path?: string) => xmlGetCall<T>(creds, service, path),
       makeId: (accountId, typeId, externalId) => this.makeId(accountId, typeId, externalId),
-      listAllIAMPolicies: (scope) => listAllIAMPolicies(this.creds, scope),
+      listAllIAMPolicies: (scope) => listAllIAMPolicies(creds, scope),
       policiesToOptions: (raw, category) => policiesToOptions(raw, category),
       getResource: (typeId, resourceId, accountId) =>
         this.getResource(typeId, resourceId, accountId),
+      withRegion: (r: string) => this.createCtxFor(r),
     };
+    return sub;
+  }
+
+  private get ctx(): ListerContext {
+    return this.ctxFor(this.creds.region);
+  }
+
+  private get createCtx(): AwsCreateContext {
+    return this.createCtxFor(this.creds.region);
+  }
+
+  /**
+   * Return the regions enabled on this AWS account. Calls `DescribeRegions`
+   * once and caches the result for the lifetime of this client instance. The
+   * call is signed from the user's home region so it works even if some
+   * regions are disabled.
+   */
+  private async getEnabledRegions(): Promise<string[]> {
+    if (this.enabledRegionsCache) return this.enabledRegionsCache;
+    if (this.enabledRegionsPromise) return this.enabledRegionsPromise;
+    this.enabledRegionsPromise = (async () => {
+      try {
+        const data = await ec2Call<Record<string, unknown>>(this.creds, "DescribeRegions");
+        const regionInfo = data["regionInfo"] as Record<string, unknown> | undefined;
+        const items = Array.isArray(regionInfo?.["item"])
+          ? (regionInfo["item"] as Record<string, unknown>[])
+          : regionInfo?.["item"]
+            ? [regionInfo["item"] as Record<string, unknown>]
+            : [];
+        const names = items
+          .map((r) => String(r["regionName"] ?? ""))
+          .filter((n): n is string => Boolean(n));
+        const result = names.length > 0 ? names : [this.creds.region];
+        this.enabledRegionsCache = result;
+        return result;
+      } catch {
+        // If DescribeRegions fails (lacking ec2:DescribeRegions permission,
+        // restricted partition, …), fall back to just the home region so the
+        // app keeps working in a degraded but predictable mode.
+        const result = [this.creds.region];
+        this.enabledRegionsCache = result;
+        return result;
+      } finally {
+        this.enabledRegionsPromise = null;
+      }
+    })();
+    return this.enabledRegionsPromise;
   }
 
   private static readonly LISTERS: Record<
@@ -229,7 +319,30 @@ export class AWSClient implements PluginClient {
   async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
     const lister = AWSClient.LISTERS[typeId];
     if (!lister) throw new Error(`AWS plugin: unknown resource type "${typeId}"`);
-    return lister(this.ctx, accountId);
+
+    // Global resources have no concept of region — list them once.
+    if (AWSClient.GLOBAL_TYPES.has(typeId)) {
+      return lister(this.ctxFor(this.creds.region), accountId);
+    }
+
+    // Regional resources fan out across every enabled region. We process the
+    // regions in bounded-concurrency batches so a single refresh of a sparsely
+    // populated account doesn't open 30 sockets at once. Per-region failures
+    // are swallowed: an opt-in region with bad credentials should not make
+    // every other region's listing disappear.
+    const regions = await this.getEnabledRegions();
+    const results: ResourceInstance[] = [];
+    const concurrency = AWSClient.REGION_FANOUT_CONCURRENCY;
+    for (let i = 0; i < regions.length; i += concurrency) {
+      const batch = regions.slice(i, i + concurrency);
+      const settled = await Promise.allSettled(
+        batch.map((region) => lister(this.ctxFor(region), accountId)),
+      );
+      for (const s of settled) {
+        if (s.status === "fulfilled") results.push(...s.value);
+      }
+    }
+    return results;
   }
 
   async getResource(
@@ -253,6 +366,7 @@ export class AWSClient implements PluginClient {
     return attachResourceImpl(
       {
         creds: this.creds,
+        credsFor: (region: string) => this.credsFor(region),
         getResource: (t, r, a) => this.getResource(t, r, a),
       },
       sourceTypeId,
@@ -272,6 +386,7 @@ export class AWSClient implements PluginClient {
     return resolveOutputImpl(
       {
         creds: this.creds,
+        credsFor: (region: string) => this.credsFor(region),
         getResource: (t, r, a) => this.getResource(t, r, a),
         exportCredential: (t, r, a, f) => this.exportCredential(t, r, a, f),
       },
@@ -298,11 +413,13 @@ export class AWSClient implements PluginClient {
     timeRange?: { startMs: number; endMs: number },
   ): Promise<MetricSeries[]> {
     const resource = await this.getResource(resourceTypeId, resourceId, accountId);
-    return fetchMetricSeriesImpl(this.creds, resource, resourceTypeId, timeRange);
+    const region = String(resource.fields["region"] ?? this.creds.region);
+    return fetchMetricSeriesImpl(this.credsFor(region), resource, resourceTypeId, timeRange);
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
-    return renderDetailImpl(resource, this.resourceTypes, this.creds.region);
+    const region = String(resource.fields["region"] ?? this.creds.region);
+    return renderDetailImpl(resource, this.resourceTypes, region);
   }
 
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema {
@@ -328,7 +445,7 @@ export class AWSClient implements PluginClient {
   async listArtifacts(
     typeId: string,
     resourceId: string,
-    _accountId: string,
+    accountId: string,
     params?: { pageToken?: string; prefix?: string },
   ): Promise<{ items: ArtifactEntry[]; nextPageToken?: string }> {
     if (typeId !== "ecr-repository") {
@@ -340,10 +457,12 @@ export class AWSClient implements PluginClient {
       maxResults: 50,
     };
     if (params?.pageToken) body["nextToken"] = params.pageToken;
+    const resource = await this.getResource(typeId, resourceId, accountId);
+    const region = String(resource.fields["region"] ?? this.creds.region);
     const data = await jsonCall<{
       imageDetails?: Array<Record<string, unknown>>;
       nextToken?: string;
-    }>(this.creds, "ecr", "AmazonEC2ContainerRegistry_V20150921.DescribeImages", body);
+    }>(this.credsFor(region), "ecr", "AmazonEC2ContainerRegistry_V20150921.DescribeImages", body);
     const items: ArtifactEntry[] = (data.imageDetails ?? []).map((img) => {
       const tags = Array.isArray(img["imageTags"]) ? (img["imageTags"] as string[]) : undefined;
       const entry: ArtifactEntry = {
@@ -394,10 +513,21 @@ export class AWSClient implements PluginClient {
     return getCreateCostEstimateImpl(typeId, fields);
   }
 
+  async executeFieldAction(
+    typeId: string,
+    fieldKey: string,
+    actionId: string,
+    _accountId: string,
+    _fields: Record<string, string>,
+  ): Promise<{ value: string; option?: { id: string; label: string } }> {
+    return executeFieldActionImpl(this.creds, typeId, fieldKey, actionId);
+  }
+
   async deleteResource(typeId: string, resourceId: string, accountId: string): Promise<void> {
     return deleteResourceImpl(
       {
         creds: this.creds,
+        credsFor: (region: string) => this.credsFor(region),
         getResource: (t, r, a) => this.getResource(t, r, a),
       },
       typeId,

@@ -1,8 +1,9 @@
 import type { CreateResourceConfig, ResourceInstance } from "@infrawrench/plugin-base";
+import { AWS_REGIONS } from "../constants.js";
 import type { AwsCreateContext } from "./shared.js";
 
 export async function managementGetCreateConfig(
-  _ctx: AwsCreateContext,
+  ctx: AwsCreateContext,
   typeId: string,
   _parentResourceId?: string,
 ): Promise<CreateResourceConfig | null> {
@@ -10,6 +11,14 @@ export async function managementGetCreateConfig(
     return {
       fields: [
         { key: "name", label: "Secret Name", kind: "text", required: true },
+        {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AWS_REGIONS,
+          defaultValue: ctx.creds.region,
+        },
         { key: "description", label: "Description", kind: "text", required: false },
         { key: "secretValue", label: "Secret Value", kind: "text", required: true },
       ],
@@ -24,6 +33,14 @@ export async function managementGetCreateConfig(
           kind: "text",
           required: true,
           description: "e.g. /app/config/key",
+        },
+        {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AWS_REGIONS,
+          defaultValue: ctx.creds.region,
         },
         {
           key: "type",
@@ -45,20 +62,50 @@ export async function managementGetCreateConfig(
     return {
       fields: [
         { key: "name", label: "Database Name", kind: "text", required: true },
+        {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AWS_REGIONS,
+          defaultValue: ctx.creds.region,
+        },
         { key: "description", label: "Description", kind: "text", required: false },
       ],
     };
   }
   if (typeId === "step-function") {
+    const aslDefault = `{
+  "Comment": "A minimal state machine that returns a greeting",
+  "StartAt": "Hello",
+  "States": {
+    "Hello": {
+      "Type": "Pass",
+      "Result": "Hello from Step Functions!",
+      "End": true
+    }
+  }
+}
+`;
     return {
       fields: [
         { key: "name", label: "Name", kind: "text", required: true },
         {
-          key: "definition",
-          label: "Definition (JSON)",
-          kind: "text",
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
           required: true,
-          description: "State machine definition in ASL JSON",
+          regions: AWS_REGIONS,
+          defaultValue: ctx.creds.region,
+        },
+        {
+          key: "definition",
+          label: "Definition (ASL JSON)",
+          kind: "code",
+          codeLanguage: "json",
+          required: true,
+          defaultValue: aslDefault,
+          description: "State machine definition in Amazon States Language (JSON)",
         },
         {
           key: "type",
@@ -82,15 +129,32 @@ export async function managementGetCreateConfig(
     };
   }
   if (typeId === "cloudformation-stack") {
+    const templateDefault = `AWSTemplateFormatVersion: "2010-09-09"
+Description: Minimal stack created by Infrawrench
+
+Resources:
+  Placeholder:
+    Type: AWS::CloudFormation::WaitConditionHandle
+`;
     return {
       fields: [
         { key: "stackName", label: "Stack Name", kind: "text", required: true },
         {
-          key: "templateBody",
-          label: "Template Body (JSON/YAML)",
-          kind: "text",
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
           required: true,
-          description: "CloudFormation template",
+          regions: AWS_REGIONS,
+          defaultValue: ctx.creds.region,
+        },
+        {
+          key: "templateBody",
+          label: "Template Body",
+          kind: "code",
+          codeLanguage: "yaml",
+          required: true,
+          defaultValue: templateDefault,
+          description: "CloudFormation template (YAML or JSON)",
         },
       ],
     };
@@ -99,6 +163,14 @@ export async function managementGetCreateConfig(
     return {
       fields: [
         { key: "name", label: "Project Name", kind: "text", required: true },
+        {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AWS_REGIONS,
+          defaultValue: ctx.creds.region,
+        },
         {
           key: "sourceType",
           label: "Source Type",
@@ -123,10 +195,27 @@ export async function managementGetCreateConfig(
         {
           key: "image",
           label: "Build Image",
-          kind: "text",
+          kind: "select",
           required: true,
-          defaultValue: "aws/codebuild/amazonlinux2-x86_64-standard:5.0",
-          description: "Docker image for the build environment",
+          options: [
+            {
+              id: "aws/codebuild/amazonlinux-x86_64-standard:5.0",
+              label: "Amazon Linux 2023 x86_64 standard:5.0",
+            },
+            {
+              id: "aws/codebuild/amazonlinux-aarch64-standard:3.0",
+              label: "Amazon Linux 2023 aarch64 standard:3.0",
+            },
+            {
+              id: "aws/codebuild/standard:7.0",
+              label: "Ubuntu standard:7.0",
+            },
+            {
+              id: "aws/codebuild/standard:6.0",
+              label: "Ubuntu standard:6.0",
+            },
+          ],
+          defaultValue: "aws/codebuild/amazonlinux-x86_64-standard:5.0",
         },
         {
           key: "computeType",
@@ -147,6 +236,15 @@ export async function managementGetCreateConfig(
           required: true,
           description: "IAM role ARN for CodeBuild",
         },
+        {
+          key: "buildspec",
+          label: "Buildspec",
+          kind: "code",
+          codeLanguage: "yaml",
+          required: true,
+          defaultValue: "version: 0.2\nphases:\n  build:\n    commands:\n      - echo Hello\n",
+          description: "Inline buildspec used when the source type does not provide one",
+        },
       ],
     };
   }
@@ -154,6 +252,14 @@ export async function managementGetCreateConfig(
     return {
       fields: [
         { key: "serviceName", label: "Service Name", kind: "text", required: true },
+        {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions: AWS_REGIONS,
+          defaultValue: ctx.creds.region,
+        },
         {
           key: "imageUri",
           label: "Container Image URI",
@@ -212,8 +318,10 @@ export async function managementCreateResource(
   _parentResourceId?: string,
 ): Promise<ResourceInstance | null> {
   if (typeId === "secrets-manager-secret") {
+    const region = fields["region"] ?? ctx.creds.region;
+    const rctx = ctx.withRegion(region);
     const name = fields["name"] ?? "";
-    const data = await ctx.json<{ ARN?: string; Name?: string }>(
+    const data = await rctx.json<{ ARN?: string; Name?: string }>(
       "secretsmanager",
       "secretsmanager.CreateSecret",
       {
@@ -230,6 +338,7 @@ export async function managementCreateResource(
       displayName: name,
       fields: {
         name,
+        region,
         description: fields["description"] ?? "",
         lastAccessedDate: "",
         lastChangedDate: "",
@@ -245,8 +354,10 @@ export async function managementCreateResource(
     };
   }
   if (typeId === "ssm-parameter") {
+    const region = fields["region"] ?? ctx.creds.region;
+    const rctx = ctx.withRegion(region);
     const name = fields["name"] ?? "";
-    await ctx.json<Record<string, unknown>>("ssm", "AmazonSSM.PutParameter", {
+    await rctx.json<Record<string, unknown>>("ssm", "AmazonSSM.PutParameter", {
       Name: name,
       Type: fields["type"] ?? "String",
       Value: fields["value"] ?? "",
@@ -259,6 +370,7 @@ export async function managementCreateResource(
       displayName: name,
       fields: {
         name,
+        region,
         type: fields["type"] ?? "String",
         version: 1,
         tier: "Standard",
@@ -266,7 +378,7 @@ export async function managementCreateResource(
         dataType: "text",
       },
       resolvedOutputs: {
-        parameterArn: `arn:aws:ssm:${ctx.creds.region}:${accountId}:parameter${name.startsWith("/") ? "" : "/"}${name}`,
+        parameterArn: `arn:aws:ssm:${region}:${accountId}:parameter${name.startsWith("/") ? "" : "/"}${name}`,
         parameterValue: "",
       },
       secretStates: [],
@@ -276,8 +388,10 @@ export async function managementCreateResource(
     };
   }
   if (typeId === "glue-database") {
+    const region = fields["region"] ?? ctx.creds.region;
+    const rctx = ctx.withRegion(region);
     const name = fields["name"] ?? "";
-    await ctx.json<Record<string, unknown>>("glue", "AWSGlue.CreateDatabase", {
+    await rctx.json<Record<string, unknown>>("glue", "AWSGlue.CreateDatabase", {
       DatabaseInput: {
         Name: name,
         ...(fields["description"] ? { Description: fields["description"] } : {}),
@@ -291,6 +405,7 @@ export async function managementCreateResource(
       displayName: name,
       fields: {
         name,
+        region,
         description: fields["description"] ?? "",
         locationUri: "",
         createTime: new Date().toISOString(),
@@ -304,8 +419,10 @@ export async function managementCreateResource(
     };
   }
   if (typeId === "step-function") {
+    const region = fields["region"] ?? ctx.creds.region;
+    const rctx = ctx.withRegion(region);
     const name = fields["name"] ?? "";
-    const data = await ctx.json<{ stateMachineArn?: string }>(
+    const data = await rctx.json<{ stateMachineArn?: string }>(
       "states",
       "AWSStepFunctions.CreateStateMachine",
       {
@@ -324,6 +441,7 @@ export async function managementCreateResource(
       displayName: name,
       fields: {
         name,
+        region,
         status: "ACTIVE",
         type: fields["type"] ?? "STANDARD",
         creationDate: new Date().toISOString(),
@@ -336,8 +454,10 @@ export async function managementCreateResource(
     };
   }
   if (typeId === "cloudformation-stack") {
+    const region = fields["region"] ?? ctx.creds.region;
+    const rctx = ctx.withRegion(region);
     const stackName = fields["stackName"] ?? "";
-    await ctx.json<Record<string, unknown>>("cloudformation", "CloudFormation.CreateStack", {
+    await rctx.json<Record<string, unknown>>("cloudformation", "CloudFormation.CreateStack", {
       StackName: stackName,
       TemplateBody: fields["templateBody"] ?? "",
     });
@@ -349,6 +469,7 @@ export async function managementCreateResource(
       displayName: stackName,
       fields: {
         stackName,
+        region,
         stackId: "",
         status: "CREATE_IN_PROGRESS",
         description: "",
@@ -365,8 +486,10 @@ export async function managementCreateResource(
     };
   }
   if (typeId === "codebuild-project") {
+    const region = fields["region"] ?? ctx.creds.region;
+    const rctx = ctx.withRegion(region);
     const name = fields["name"] ?? "";
-    const data = await ctx.json<{ project?: Record<string, unknown> }>(
+    const data = await rctx.json<{ project?: Record<string, unknown> }>(
       "codebuild",
       "CodeBuild_20161006.CreateProject",
       {
@@ -374,16 +497,12 @@ export async function managementCreateResource(
         source: {
           type: fields["sourceType"] ?? "NO_SOURCE",
           ...(fields["sourceLocation"] ? { location: fields["sourceLocation"] } : {}),
-          ...(fields["sourceType"] === "NO_SOURCE"
-            ? {
-                buildspec: "version: 0.2\nphases:\n  build:\n    commands:\n      - echo Hello",
-              }
-            : {}),
+          ...(fields["buildspec"] ? { buildspec: fields["buildspec"] } : {}),
         },
         artifacts: { type: "NO_ARTIFACTS" },
         environment: {
           type: "LINUX_CONTAINER",
-          image: fields["image"] ?? "aws/codebuild/amazonlinux2-x86_64-standard:5.0",
+          image: fields["image"] ?? "aws/codebuild/amazonlinux-x86_64-standard:5.0",
           computeType: fields["computeType"] ?? "BUILD_GENERAL1_SMALL",
         },
         serviceRole: fields["serviceRole"] ?? "",
@@ -398,9 +517,10 @@ export async function managementCreateResource(
       displayName: name,
       fields: {
         name,
+        region,
         description: "",
         sourceType: fields["sourceType"] ?? "NO_SOURCE",
-        environment: fields["image"] ?? "aws/codebuild/amazonlinux2-x86_64-standard:5.0",
+        environment: fields["image"] ?? "aws/codebuild/amazonlinux-x86_64-standard:5.0",
         computeType: fields["computeType"] ?? "BUILD_GENERAL1_SMALL",
         lastBuildStatus: "",
         badge: false,
@@ -415,8 +535,10 @@ export async function managementCreateResource(
     };
   }
   if (typeId === "apprunner-service") {
+    const region = fields["region"] ?? ctx.creds.region;
+    const rctx = ctx.withRegion(region);
     const serviceName = fields["serviceName"] ?? "";
-    const data = await ctx.json<{ Service?: Record<string, unknown> }>(
+    const data = await rctx.json<{ Service?: Record<string, unknown> }>(
       "apprunner",
       "AppRunner.CreateService",
       {
@@ -446,6 +568,7 @@ export async function managementCreateResource(
       displayName: serviceName,
       fields: {
         serviceName,
+        region,
         status: String(svc["Status"] ?? "OPERATION_IN_PROGRESS"),
         serviceId: String(svc["ServiceId"] ?? ""),
         sourceType: "IMAGE",

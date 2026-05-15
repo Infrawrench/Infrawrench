@@ -103,6 +103,18 @@ async function resolveEndpoint(creds: AwsCredentials, service: string): Promise<
   if (!binding) {
     throw new Error(`AWS transport: unknown service "${service}"`);
   }
+  // Neptune and DocumentDB share the RDS control plane. The SDK clients ship
+  // an endpoint template (neptune.<region>.<dns>, docdb.<region>.<dns>) that
+  // simply does not exist in DNS — every request fails with
+  // ERR_NAME_NOT_RESOLVED. Force the RDS host here so the rest of the
+  // pipeline (signed with `rds` as the service name) reaches a real endpoint.
+  if (service === "neptune" || service === "docdb") {
+    return {
+      host: `rds.${creds.region}.amazonaws.com`,
+      signingName: binding.signingName,
+      signingRegion: GLOBAL_SIGNING_REGION[service] ?? creds.region,
+    };
+  }
   const clients = getAwsClients(creds);
   const client = clients[binding.clientKey] as unknown as {
     config: {
@@ -172,6 +184,15 @@ export async function ec2Call<T>(
   return parseXml(xml) as T;
 }
 
+/**
+ * Services that speak AWS JSON 1.0 instead of 1.1. Sending the wrong
+ * protocol Content-Type makes the service refuse the request (DynamoDB and
+ * Step Functions return 404, AppRunner returns UnknownOperation). The set
+ * here matches the `awsJson1_0` Smithy protocol trait on the upstream
+ * service models.
+ */
+const AWS_JSON_1_0_SERVICES = new Set(["apprunner", "dynamodb", "sqs", "states"]);
+
 /** JSON-RPC over POST with `X-Amz-Target` (DynamoDB, ECS, …). */
 export async function jsonCall<T>(
   creds: AwsCredentials,
@@ -182,15 +203,47 @@ export async function jsonCall<T>(
   const ep = await resolveEndpoint(creds, service);
   const url = `https://${ep.host}/`;
   const bodyStr = JSON.stringify(body);
+  const contentType = AWS_JSON_1_0_SERVICES.has(service)
+    ? "application/x-amz-json-1.0"
+    : "application/x-amz-json-1.1";
   const res = await fetchSigned({
     method: "POST",
     url,
     headers: {
       Host: ep.host,
-      "Content-Type": "application/x-amz-json-1.1",
+      "Content-Type": contentType,
       "X-Amz-Target": target,
     },
     body: bodyStr,
+    service: ep.signingName,
+    credentials: { ...creds, region: ep.signingRegion },
+  });
+  return (await res.json()) as T;
+}
+
+/**
+ * REST JSON POST with a body. Used by services like AWS Batch and OpenSearch
+ * that expose path-based REST APIs rather than a `/` JSON-RPC endpoint.
+ */
+export async function restJsonCall<T>(
+  creds: AwsCredentials,
+  service: string,
+  path: string,
+  body: Record<string, unknown> = {},
+  method: "POST" | "GET" = "POST",
+): Promise<T> {
+  const ep = await resolveEndpoint(creds, service);
+  const url = `https://${ep.host}${path}`;
+  const hasBody = method === "POST";
+  const bodyStr = hasBody ? JSON.stringify(body) : undefined;
+  const res = await fetchSigned({
+    method,
+    url,
+    headers: {
+      Host: ep.host,
+      ...(hasBody ? { "Content-Type": "application/json" } : {}),
+    },
+    ...(bodyStr !== undefined ? { body: bodyStr } : {}),
     service: ep.signingName,
     credentials: { ...creds, region: ep.signingRegion },
   });

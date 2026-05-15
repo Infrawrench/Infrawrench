@@ -3,7 +3,10 @@ import type { AwsCredentials } from "./auth.js";
 import { jsonCall } from "./client-transport.js";
 
 export interface ResolveOutputContext {
+  /** Home/default creds — used only for global services. */
   creds: AwsCredentials;
+  /** Build creds scoped to a specific region — use this for regional services. */
+  credsFor(region: string): AwsCredentials;
   getResource(typeId: string, resourceId: string, accountId: string): Promise<ResourceInstance>;
   exportCredential(
     typeId: string,
@@ -27,9 +30,11 @@ export async function resolveOutput(
     const resource = await ctx.getResource(typeId, resourceId, accountId);
     const externalId = resource.externalId;
     if (!externalId) return "";
+    const region = String(resource.fields["region"] ?? ctx.creds.region);
+    const creds = ctx.credsFor(region);
     try {
       const detail = await jsonCall<{ Certificate?: Record<string, unknown> }>(
-        ctx.creds,
+        creds,
         "acm",
         "CertificateManager.DescribeCertificate",
         {
