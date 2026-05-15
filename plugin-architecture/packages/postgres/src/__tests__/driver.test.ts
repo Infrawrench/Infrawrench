@@ -86,11 +86,13 @@ describe("postgres driver", () => {
     });
 
     it("always calls pool.end() even on error", async () => {
-      mockQuery.mockRejectedValue(new Error("timeout"));
+      // The driver rewrites timeout-flavoured errors into a friendlier "this
+      // instance may be unreachable" message, so assert on the rewritten text.
+      mockQuery.mockRejectedValue(new Error("Connection terminated due to connection timeout"));
 
       await expect(
         driver.execute("postgresql://localhost/test", "DELETE FROM users WHERE id = $1", [1]),
-      ).rejects.toThrow("timeout");
+      ).rejects.toThrow(/Couldn't connect to PostgreSQL/);
       expect(mockEnd).toHaveBeenCalled();
     });
   });

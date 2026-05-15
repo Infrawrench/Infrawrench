@@ -34,7 +34,7 @@ export class PostgresClient implements PluginClient {
   private requireConnection(): string {
     if (!this.connectionString) {
       throw new Error(
-        "PostgreSQL connection is not available yet. The parent resource hasn't published a connection endpoint — provision a primary instance or wait for the database to come online.",
+        "PostgreSQL connection is not available yet. The parent resource hasn't published a reachable endpoint — wait for it to come online, or check that a public/private IP and credentials are configured.",
       );
     }
     return this.connectionString;
