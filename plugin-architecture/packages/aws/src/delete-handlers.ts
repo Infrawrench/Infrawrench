@@ -1,6 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { AwsCredentials } from "./auth.js";
-import { signRequest } from "./signed-request.js";
+import { fetchSigned } from "./signed-request.js";
 import {
   ec2Call,
   ec2QueryCall,
@@ -60,15 +60,13 @@ export async function deleteResource(
       {
         const host = hostForService(creds, "lambda");
         const url = `https://${host}/2015-03-31/functions/${encodeURIComponent(externalId)}`;
-        const headers = await signRequest({
+        await fetchSigned({
           method: "DELETE",
           url,
           headers: { Host: host },
           service: "lambda",
           credentials: creds,
         });
-        const res = await fetch(url, { method: "DELETE", headers });
-        if (!res.ok) throw new Error(`Lambda delete ${externalId} failed: ${res.status}`);
       }
       break;
     case "sqs-queue": {
@@ -130,7 +128,7 @@ export async function deleteResource(
     case "sagemaker-endpoint": {
       const host = hostForService(creds, "sagemaker");
       const url = `https://${host}`;
-      const headers = await signRequest({
+      await fetchSigned({
         method: "POST",
         url,
         headers: {
@@ -142,12 +140,6 @@ export async function deleteResource(
         service: "sagemaker",
         credentials: creds,
       });
-      const res = await fetch(url, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ EndpointName: externalId }),
-      });
-      if (!res.ok) throw new Error(`SageMaker delete endpoint ${externalId} failed: ${res.status}`);
       break;
     }
     case "ecs-service": {
@@ -189,30 +181,25 @@ export async function deleteResource(
       const host = hostForService(creds, "es");
       const path = `/2021-01-01/opensearch/domain/${encodeURIComponent(externalId)}`;
       const url = `https://${host}${path}`;
-      const headers = await signRequest({
+      await fetchSigned({
         method: "DELETE",
         url,
         headers: { Host: host },
         service: "es",
         credentials: creds,
       });
-      const res = await fetch(url, { method: "DELETE", headers });
-      if (!res.ok) throw new Error(`OpenSearch delete ${externalId} failed: ${res.status}`);
       break;
     }
     case "route53-hosted-zone": {
       const host = hostForService(creds, "route53");
       const url = `https://${host}/2013-04-01/hostedzone/${externalId}`;
-      const headers = await signRequest({
+      await fetchSigned({
         method: "DELETE",
         url,
         headers: { Host: host },
         service: "route53",
         credentials: creds,
       });
-      const res = await fetch(url, { method: "DELETE", headers });
-      if (!res.ok)
-        throw new Error(`Route53 delete hosted zone ${externalId} failed: ${res.status}`);
       break;
     }
     case "route53-record-set": {
@@ -241,7 +228,7 @@ export async function deleteResource(
       ].join("");
       const host = hostForService(creds, "route53");
       const url = `https://${host}/2013-04-01/hostedzone/${zoneId}/rrset`;
-      const headers = await signRequest({
+      await fetchSigned({
         method: "POST",
         url,
         headers: { Host: host, "Content-Type": "application/xml" },
@@ -249,8 +236,6 @@ export async function deleteResource(
         service: "route53",
         credentials: creds,
       });
-      const res = await fetch(url, { method: "POST", headers, body: xmlBody });
-      if (!res.ok) throw new Error(`Route53 delete record set ${externalId} failed: ${res.status}`);
       break;
     }
     case "alb": {
@@ -295,29 +280,25 @@ export async function deleteResource(
     case "efs-file-system": {
       const host = hostForService(creds, "elasticfilesystem");
       const url = `https://${host}/2015-02-01/file-systems/${encodeURIComponent(externalId)}`;
-      const headers = await signRequest({
+      await fetchSigned({
         method: "DELETE",
         url,
         headers: { Host: host },
         service: "elasticfilesystem",
         credentials: creds,
       });
-      const res = await fetch(url, { method: "DELETE", headers });
-      if (!res.ok) throw new Error(`EFS delete ${externalId} failed: ${res.status}`);
       break;
     }
     case "api-gateway": {
       const host = hostForService(creds, "apigateway");
       const url = `https://${host}/v2/apis/${encodeURIComponent(externalId)}`;
-      const headers = await signRequest({
+      await fetchSigned({
         method: "DELETE",
         url,
         headers: { Host: host },
         service: "apigateway",
         credentials: creds,
       });
-      const res = await fetch(url, { method: "DELETE", headers });
-      if (!res.ok) throw new Error(`API Gateway delete ${externalId} failed: ${res.status}`);
       break;
     }
     case "apprunner-service": {
@@ -351,15 +332,13 @@ export async function deleteResource(
       const clusterArn = String(resource.resolvedOutputs["clusterArn"] ?? "");
       const host = hostForService(creds, "kafka");
       const url = `https://${host}/v1/clusters/${encodeURIComponent(clusterArn)}`;
-      const headers = await signRequest({
+      await fetchSigned({
         method: "DELETE",
         url,
         headers: { Host: host },
         service: "kafka",
         credentials: creds,
       });
-      const res = await fetch(url, { method: "DELETE", headers });
-      if (!res.ok) throw new Error(`MSK delete cluster ${externalId} failed: ${res.status}`);
       break;
     }
     case "neptune-cluster":
@@ -380,15 +359,13 @@ export async function deleteResource(
     case "mq-broker": {
       const host = hostForService(creds, "mq");
       const url = `https://${host}/v1/brokers/${encodeURIComponent(externalId)}`;
-      const headers = await signRequest({
+      await fetchSigned({
         method: "DELETE",
         url,
         headers: { Host: host },
         service: "mq",
         credentials: creds,
       });
-      const res = await fetch(url, { method: "DELETE", headers });
-      if (!res.ok) throw new Error(`MQ delete broker ${externalId} failed: ${res.status}`);
       break;
     }
     case "glue-database":
@@ -433,15 +410,13 @@ export async function deleteResource(
     case "eks-cluster": {
       const host = hostForService(creds, "eks");
       const url = `https://${host}/clusters/${encodeURIComponent(externalId)}`;
-      const headers = await signRequest({
+      await fetchSigned({
         method: "DELETE",
         url,
         headers: { Host: host },
         service: "eks",
         credentials: creds,
       });
-      const res = await fetch(url, { method: "DELETE", headers });
-      if (!res.ok) throw new Error(`EKS delete cluster ${externalId} failed: ${res.status}`);
       break;
     }
     default:

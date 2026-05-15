@@ -48,7 +48,7 @@ vi.mock("@/plugins/loader", () => pluginLoaderMock);
 vi.mock("@infrawrench/server-core/plugin-loader", () => pluginLoaderMock);
 
 const hostServicesMock = {
-  buildPluginHostServices: vi.fn().mockReturnValue({}),
+  buildPluginHostServices: vi.fn().mockResolvedValue({}),
   buildHostServices: vi.fn().mockReturnValue({}),
   buildKvHostServices: vi.fn().mockReturnValue({}),
   buildDockerHostServices: vi.fn().mockReturnValue({}),

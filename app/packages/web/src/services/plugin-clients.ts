@@ -89,9 +89,10 @@ export async function buildPeerPanes(
         const peerLoaded = await getPlugin(integration.pluginId);
         if (!peerLoaded) return;
 
-        const peerHostServices = buildPluginHostServices(
+        const peerHostServices = await buildPluginHostServices(
           peerLoaded.plugin.manifest,
           peerCredentials,
+          { accountId },
         );
         const peerClient = peerLoaded.plugin.createClient(peerCredentials, peerHostServices);
         if (!peerClient.renderPeerPane) return;
@@ -137,6 +138,7 @@ export async function getClientForAccount(accountId: string, organizationId: str
       pluginId: accounts.pluginId,
       encryptedCredentials: accounts.encryptedCredentials,
       credentialsIv: accounts.credentialsIv,
+      bastionId: accounts.bastionId,
     })
     .from(accounts)
     .where(and(eq(accounts.id, accountId), eq(accounts.organizationId, organizationId)))
@@ -156,7 +158,10 @@ export async function getClientForAccount(accountId: string, organizationId: str
   const loaded = await getPlugin(account.pluginId);
   if (!loaded) return null;
 
-  const hostServices = buildPluginHostServices(loaded.plugin.manifest, credentials);
+  const hostServices = await buildPluginHostServices(loaded.plugin.manifest, credentials, {
+    accountId,
+    bastionId: account.bastionId ?? null,
+  });
   const client = loaded.plugin.createClient(credentials, hostServices);
   return { client, plugin: loaded.plugin, credentials, account };
 }
@@ -231,7 +236,11 @@ export async function getClientForResource(
   const peerLoaded = await getPlugin(pluginId);
   if (!peerLoaded) return null;
 
-  const peerHostServices = buildPluginHostServices(peerLoaded.plugin.manifest, peerCredentials);
+  const peerHostServices = await buildPluginHostServices(
+    peerLoaded.plugin.manifest,
+    peerCredentials,
+    { accountId },
+  );
   const peerClient = peerLoaded.plugin.createClient(peerCredentials, peerHostServices);
   return {
     client: peerClient,

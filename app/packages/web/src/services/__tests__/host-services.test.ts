@@ -63,31 +63,33 @@ describe("buildDockerHostServices", () => {
 });
 
 describe("buildPluginHostServices", () => {
-  it("builds SQL-based host services from manifest", () => {
+  it("builds SQL-based host services from manifest", async () => {
     const manifest = {
       sqlDriver: { driver: "postgres", credentialKey: "connStr" },
     } as unknown as PluginManifest;
-    const services = buildPluginHostServices(manifest, { connStr: "postgres://localhost/db" });
+    const services = await buildPluginHostServices(manifest, {
+      connStr: "postgres://localhost/db",
+    });
     expect(services).toBeDefined();
     expect(services!.sql).toBeDefined();
     expect(services!.http).toBeDefined();
   });
 
-  it("builds KV-based host services from manifest", () => {
+  it("builds KV-based host services from manifest", async () => {
     const manifest = {
       kvDriver: { driver: "redis", credentialKey: "redisUrl" },
     } as unknown as PluginManifest;
-    const services = buildPluginHostServices(manifest, { redisUrl: "redis://localhost" });
+    const services = await buildPluginHostServices(manifest, { redisUrl: "redis://localhost" });
     expect(services).toBeDefined();
     expect(services!.kv).toBeDefined();
     expect(services!.http).toBeDefined();
   });
 
-  it("builds Docker-based host services from manifest", () => {
+  it("builds Docker-based host services from manifest", async () => {
     const manifest = {
       dockerDriver: { driver: "docker", credentialKey: "dockerHost" },
     } as unknown as PluginManifest;
-    const services = buildPluginHostServices(manifest, {
+    const services = await buildPluginHostServices(manifest, {
       dockerHost: "unix:///var/run/docker.sock",
     });
     expect(services).toBeDefined();
@@ -95,9 +97,9 @@ describe("buildPluginHostServices", () => {
     expect(services!.http).toBeDefined();
   });
 
-  it("returns http-only services when no driver specified", () => {
+  it("returns http-only services when no driver specified", async () => {
     const manifest = {} as unknown as PluginManifest;
-    const services = buildPluginHostServices(manifest, {});
+    const services = await buildPluginHostServices(manifest, {});
     expect(services).toBeDefined();
     expect(services!.http).toBeDefined();
   });

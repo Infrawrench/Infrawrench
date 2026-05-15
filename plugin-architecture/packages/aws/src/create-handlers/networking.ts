@@ -1,6 +1,6 @@
 import type { CreateResourceConfig, ResourceInstance } from "@infrawrench/plugin-base";
 import { parseXml, ensureArray } from "../auth.js";
-import { signRequest } from "../signed-request.js";
+import { fetchSigned } from "../signed-request.js";
 import { AWS_REGIONS } from "../constants.js";
 import type { AwsCreateContext } from "./shared.js";
 
@@ -702,7 +702,7 @@ export async function networkingCreateResource(
         : "",
       `</CreateHostedZoneRequest>`,
     ].join("");
-    const headers = await signRequest({
+    const res = await fetchSigned({
       method: "POST",
       url,
       headers: { Host: host, "Content-Type": "application/xml" },
@@ -710,9 +710,6 @@ export async function networkingCreateResource(
       service: "route53",
       credentials: ctx.creds,
     });
-    const res = await fetch(url, { method: "POST", headers, body: bodyXml });
-    if (!res.ok)
-      throw new Error(`Route53 CreateHostedZone failed: ${res.status} ${await res.text()}`);
     const xml = await res.text();
     const parsed = parseXml(xml) as Record<string, unknown>;
     const hz = (parsed["HostedZone"] ?? {}) as Record<string, unknown>;
@@ -765,7 +762,7 @@ export async function networkingCreateResource(
       `</Change></Changes></ChangeBatch>`,
       `</ChangeResourceRecordSetsRequest>`,
     ].join("");
-    const headers = await signRequest({
+    await fetchSigned({
       method: "POST",
       url,
       headers: { Host: host, "Content-Type": "application/xml" },
@@ -773,9 +770,6 @@ export async function networkingCreateResource(
       service: "route53",
       credentials: ctx.creds,
     });
-    const res = await fetch(url, { method: "POST", headers, body: bodyXml });
-    if (!res.ok)
-      throw new Error(`Route53 ChangeResourceRecordSets failed: ${res.status} ${await res.text()}`);
     const recordId = `${hostedZoneId}:${recordName}:${recordType}`;
     return {
       id: ctx.makeId(accountId, "route53-record-set", recordId),
@@ -848,7 +842,7 @@ export async function networkingCreateResource(
       protocolType,
       description,
     });
-    const headers = await signRequest({
+    const res = await fetchSigned({
       method: "POST",
       url,
       headers: { Host: host, "Content-Type": "application/json" },
@@ -856,8 +850,6 @@ export async function networkingCreateResource(
       service: "apigateway",
       credentials: rctx.creds,
     });
-    const res = await fetch(url, { method: "POST", headers, body: bodyStr });
-    if (!res.ok) throw new Error(`API Gateway create failed: ${res.status}: ${await res.text()}`);
     const result = (await res.json()) as Record<string, unknown>;
     const apiId = String(result["apiId"] ?? "");
     const now = new Date().toISOString();

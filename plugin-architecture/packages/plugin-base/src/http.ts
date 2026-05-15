@@ -95,14 +95,18 @@ export async function jsonRestFetch<T>(opts: JsonRestFetchOptions): Promise<T> {
     }
   }
 
-  if (caCert && http) {
-    const body = init?.body != null ? String(init.body) : undefined;
+  // Always prefer the host's HTTP service when present — that's the only path
+  // that picks up bastion routing for accounts that have one attached, and the
+  // only path that honors a custom CA. Fall back to direct fetch when there is
+  // no host (browser/renderer paths, tests).
+  if (http) {
+    const body = bodyForHostHttp(init?.body);
     const result = await http.request({
       url,
       method: init?.method ?? "GET",
       headers: mergedHeaders,
       ...(body !== undefined ? { body } : {}),
-      caCert,
+      ...(caCert ? { caCert } : {}),
     });
     if (result.status < 200 || result.status >= 300) {
       const label = errorPath ?? url;
@@ -119,6 +123,25 @@ export async function jsonRestFetch<T>(opts: JsonRestFetchOptions): Promise<T> {
   }
   if (res.status === 204) return undefined as unknown as T;
   return (await res.json()) as T;
+}
+
+/**
+ * Normalise the variety of `BodyInit` types `fetch` accepts down to what
+ * `HttpHostServices.request` expects (string | Uint8Array | undefined).
+ * Streams and FormData are not supported — control-plane plugins should not
+ * be using them through this helper.
+ */
+function bodyForHostHttp(body: BodyInit | null | undefined): string | Uint8Array | undefined {
+  if (body == null) return undefined;
+  if (typeof body === "string") return body;
+  if (body instanceof Uint8Array) return body;
+  if (body instanceof ArrayBuffer) return new Uint8Array(body);
+  if (ArrayBuffer.isView(body))
+    return new Uint8Array(body.buffer, body.byteOffset, body.byteLength);
+  // Anything else (Blob, FormData, ReadableStream, URLSearchParams) — coerce
+  // to string. URLSearchParams.toString() matches form-urlencoded semantics
+  // and is the only one of these we realistically see in plugin control planes.
+  return String(body);
 }
 
 /**

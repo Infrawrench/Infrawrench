@@ -19,6 +19,12 @@ export interface PluginInfo {
   }>;
 }
 
+export interface BastionOption {
+  id: string;
+  name: string;
+  connected: boolean;
+}
+
 interface AddAccountModalProps {
   onClose: () => void;
   onAdded: () => void;
@@ -27,7 +33,14 @@ interface AddAccountModalProps {
     pluginId: string,
     displayName: string,
     credentials: Record<string, string>,
+    bastionId: string | null,
   ) => Promise<void>;
+  /**
+   * Optional list of bastions the user can route this account through. When
+   * provided and non-empty, the credentials step renders an "Egress via"
+   * dropdown. Desktop callers (no bastion support) pass nothing.
+   */
+  bastions?: BastionOption[];
 }
 
 type Step = "pick-plugin" | "enter-credentials";
@@ -37,12 +50,14 @@ export function AddAccountModal({
   onAdded,
   loadPlugins,
   saveAccount,
+  bastions,
 }: AddAccountModalProps) {
   const [step, setStep] = useState<Step>("pick-plugin");
   const [plugins, setPlugins] = useState<PluginInfo[]>([]);
   const [selected, setSelected] = useState<PluginInfo | null>(null);
   const [accountName, setAccountName] = useState("");
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
+  const [bastionId, setBastionId] = useState<string>("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -88,7 +103,7 @@ export function AddAccountModal({
           fieldValues[f.key]?.trim() || f.defaultValue || "",
         ]),
       );
-      await saveAccount(selected.id, accountName.trim(), credentials);
+      await saveAccount(selected.id, accountName.trim(), credentials, bastionId || null);
       onAdded();
       onClose();
     } catch (e) {
@@ -226,6 +241,35 @@ export function AddAccountModal({
                       </div>
                     );
                   })}
+
+                  {bastions && bastions.length > 0 && (
+                    <div>
+                      <label
+                        htmlFor="add-account-bastion"
+                        className="block text-xs text-on-surface-tertiary mb-1"
+                      >
+                        Egress via
+                      </label>
+                      <p className="text-xs text-on-surface-faint mb-1">
+                        Route this account&apos;s cloud-API traffic through a bastion agent. Leave
+                        as &quot;Direct&quot; to keep using the default egress.
+                      </p>
+                      <select
+                        id="add-account-bastion"
+                        value={bastionId}
+                        onChange={(e) => setBastionId(e.target.value)}
+                        className="w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-sm text-on-surface-secondary focus:outline-none focus:border-border-strong"
+                      >
+                        <option value="">Direct (no bastion)</option>
+                        {bastions.map((b) => (
+                          <option key={b.id} value={b.id}>
+                            {b.name}
+                            {b.connected ? "" : " — offline"}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
 
                   {error && <p className="text-xs text-red-400">{error}</p>}
 

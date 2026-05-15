@@ -42,6 +42,7 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<SystemRoleKey, SystemRoleDefinition
       "team:read",
       "audit:read",
       "ssh-keys:read",
+      "bastions:read",
       "billing:read",
     ],
   },

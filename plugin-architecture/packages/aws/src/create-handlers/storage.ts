@@ -1,5 +1,5 @@
 import type { CreateResourceConfig, ResourceInstance } from "@infrawrench/plugin-base";
-import { signRequest } from "../signed-request.js";
+import { fetchSigned } from "../signed-request.js";
 import { AWS_REGIONS } from "../constants.js";
 import type { AwsCreateContext } from "./shared.js";
 
@@ -134,20 +134,14 @@ export async function storageCreateResource(
       region === "us-east-1"
         ? ""
         : `<CreateBucketConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><LocationConstraint>${region}</LocationConstraint></CreateBucketConfiguration>`;
-    const headers = await signRequest({
+    await fetchSigned({
       method: "PUT",
       url,
       headers: { Host: host },
-      body: bodyXml,
+      ...(bodyXml ? { body: bodyXml } : {}),
       service: "s3",
       credentials: rctx.creds,
     });
-    const res = await fetch(url, {
-      method: "PUT",
-      headers,
-      ...(bodyXml ? { body: bodyXml } : {}),
-    });
-    if (!res.ok) throw new Error(`S3 CreateBucket failed: ${res.status} ${await res.text()}`);
 
     return {
       id: ctx.makeId(accountId, "s3-bucket", bucketName),
@@ -225,7 +219,7 @@ export async function storageCreateResource(
       bodyObj["Tags"] = [{ Key: "Name", Value: fields["name"] }];
     }
     const bodyStr = JSON.stringify(bodyObj);
-    const headers = await signRequest({
+    const res = await fetchSigned({
       method: "POST",
       url,
       headers: { Host: host, "Content-Type": "application/json" },
@@ -233,8 +227,6 @@ export async function storageCreateResource(
       service: "elasticfilesystem",
       credentials: rctx.creds,
     });
-    const res = await fetch(url, { method: "POST", headers, body: bodyStr });
-    if (!res.ok) throw new Error(`EFS CreateFileSystem failed: ${res.status} ${await res.text()}`);
     const fs = (await res.json()) as Record<string, unknown>;
     const fsId = String(fs["FileSystemId"] ?? "");
     return {

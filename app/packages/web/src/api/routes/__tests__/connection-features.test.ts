@@ -26,7 +26,7 @@ vi.mock("@/plugins/loader", () => ({
 }));
 
 vi.mock("@/services/host-services", () => ({
-  buildPluginHostServices: vi.fn().mockReturnValue({}),
+  buildPluginHostServices: vi.fn().mockResolvedValue({}),
 }));
 
 vi.mock("@/services/tunnel-resolver", () => ({

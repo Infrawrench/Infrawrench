@@ -20,6 +20,7 @@ import { registerStorageUploadPaths } from "./paths/storage-upload";
 import { registerSftpUploadPaths } from "./paths/sftp-upload";
 import { registerSshKeyPaths } from "./paths/ssh-keys";
 import { registerSshTunnelPaths } from "./paths/ssh-tunnels";
+import { registerBastionPaths } from "./paths/bastions";
 import { registerTeamPaths } from "./paths/team";
 import { registerBillingPaths } from "./paths/billing";
 import { registerAuditPaths } from "./paths/audit";
@@ -69,6 +70,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerSftpUploadPaths(ctx);
   registerSshKeyPaths(ctx);
   registerSshTunnelPaths(ctx);
+  registerBastionPaths(ctx);
   registerTeamPaths(ctx);
   registerBillingPaths(ctx);
   registerAuditPaths(ctx);
@@ -114,6 +116,11 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
       { name: "SFTP", description: "SFTP helpers (uploads via API key)." },
       { name: "SSH keys", description: "Org SSH keys for tunnel/SSH access." },
       { name: "SSH tunnels", description: "Server-side SSH tunnel lifecycle." },
+      {
+        name: "Bastions",
+        description:
+          "Per-account egress agents — register a bastion, run the agent container on your infra, and bind accounts to it so cloud control-plane traffic exits from your IP.",
+      },
       { name: "Team", description: "Members and invitations." },
       { name: "Billing", description: "Stripe checkout and portal." },
       { name: "Audit", description: "Audit log access." },
@@ -240,6 +247,10 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "POST /ssh-tunnels/close": "resources:execute",
   "GET /ssh-tunnels/active": "resources:execute",
   "POST /ssh-tunnels/exec": "resources:execute",
+  // bastions
+  "GET /bastions": "bastions:read",
+  "POST /bastions": "bastions:write",
+  "DELETE /bastions/{id}": "bastions:write",
   // ws-token
   "POST /ws-token": "resources:execute",
   // team & roles

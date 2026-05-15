@@ -33,6 +33,7 @@ import { sshHostKeyRoutes } from "./routes/ssh-host-keys";
 import { searchRoutes } from "./routes/search";
 import { connectRoutes } from "./routes/connect";
 import { sshTunnelRoutes } from "./routes/ssh-tunnels";
+import { bastionRoutes } from "./routes/bastions";
 
 // API-key-authed; handles its own auth.
 import { syncRoutes } from "./routes/sync";
@@ -122,6 +123,7 @@ orgScoped.route("/ssh-host-keys", sshHostKeyRoutes);
 orgScoped.route("/search", searchRoutes);
 orgScoped.route("/connect", connectRoutes);
 orgScoped.route("/ssh-tunnels", sshTunnelRoutes);
+orgScoped.route("/bastions", bastionRoutes);
 
 api.route("/api/org/:orgId", orgScoped);
 

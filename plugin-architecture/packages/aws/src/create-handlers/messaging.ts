@@ -1,5 +1,5 @@
 import type { CreateResourceConfig, ResourceInstance } from "@infrawrench/plugin-base";
-import { signRequest } from "../signed-request.js";
+import { fetchSigned } from "../signed-request.js";
 import { AWS_REGIONS } from "../constants.js";
 import type { AwsCreateContext } from "./shared.js";
 
@@ -334,7 +334,7 @@ export async function messagingCreateResource(
       ],
     };
     const bodyStr = JSON.stringify(bodyObj);
-    const headers = await signRequest({
+    const res = await fetchSigned({
       method: "POST",
       url,
       headers: { Host: host, "Content-Type": "application/json" },
@@ -342,8 +342,6 @@ export async function messagingCreateResource(
       service: "mq",
       credentials: rctx.creds,
     });
-    const res = await fetch(url, { method: "POST", headers, body: bodyStr });
-    if (!res.ok) throw new Error(`MQ CreateBroker failed: ${res.status} ${await res.text()}`);
     const result = (await res.json()) as Record<string, unknown>;
     const brokerId = String(result["BrokerId"] ?? "");
     return {

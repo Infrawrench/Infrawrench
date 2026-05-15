@@ -48,7 +48,10 @@ async function loadAccountClient(accountId: string, organizationId: string) {
   const credentials = JSON.parse(plaintext) as Record<string, string>;
   await rewriteCredentialsThroughTunnel(accountId, credentials);
 
-  const hostServices = buildPluginHostServices(loaded.plugin.manifest, credentials);
+  const hostServices = await buildPluginHostServices(loaded.plugin.manifest, credentials, {
+    accountId,
+    bastionId: account.bastionId ?? null,
+  });
   const client = loaded.plugin.createClient(credentials, hostServices);
   return { account, plugin: loaded.plugin, client };
 }

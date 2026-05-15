@@ -40,7 +40,9 @@ export async function handleSqlSession(
       return;
     }
 
-    const hostServices = buildPluginHostServices(loaded.plugin.manifest, credentials);
+    const hostServices = await buildPluginHostServices(loaded.plugin.manifest, credentials, {
+      accountId: account.id,
+    });
     const client = loaded.plugin.createClient(credentials, hostServices);
 
     // Use REST-based executeQuery if available

@@ -10,6 +10,7 @@ import type {
   DashboardStat,
   MetricSeries,
   CredentialExport,
+  HostServices,
 } from "@infrawrench/plugin-base";
 import type { AwsCredentials } from "./auth.js";
 import type { ListerContext } from "./resource-listers.js";
@@ -106,7 +107,11 @@ export class AWSClient implements PluginClient {
   private readonly creds: AwsCredentials;
   private readonly resourceTypes: ResourceTypeDefinition[];
 
-  constructor(credentials: Record<string, string>, resourceTypes: ResourceTypeDefinition[] = []) {
+  constructor(
+    credentials: Record<string, string>,
+    resourceTypes: ResourceTypeDefinition[] = [],
+    services?: HostServices,
+  ) {
     this.resourceTypes = resourceTypes;
     const accessKeyId = credentials["accessKeyId"];
     const secretAccessKey = credentials["secretAccessKey"];
@@ -114,7 +119,12 @@ export class AWSClient implements PluginClient {
     if (!accessKeyId || !secretAccessKey) {
       throw new Error("AWS plugin: missing accessKeyId or secretAccessKey");
     }
-    this.creds = { accessKeyId, secretAccessKey, region };
+    this.creds = {
+      accessKeyId,
+      secretAccessKey,
+      region,
+      ...(services?.http ? { http: services.http } : {}),
+    };
   }
 
   private makeId(accountId: string, typeId: string, externalId: string): string {

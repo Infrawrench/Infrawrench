@@ -28,6 +28,49 @@ export interface SignRequestArgs {
   credentials: AwsCredentials;
 }
 
+/**
+ * Tail end of the legacy "sign manually, then fetch raw" pattern still used by
+ * a handful of delete/create handlers (e.g. Lambda DELETE, Route53 DELETE,
+ * SageMaker DeleteEndpoint). Honors `creds.http` so per-account bastion
+ * routing applies. Throws on non-2xx like `fetchSigned`. New code should
+ * prefer `fetchSigned` or the typed helpers in `client-transport.ts`.
+ */
+export async function signedRawFetch(
+  creds: { http?: import("@infrawrench/plugin-base").HttpHostServices },
+  url: string,
+  init: {
+    method: string;
+    headers: Record<string, string>;
+    body?: string | Uint8Array;
+  },
+  errorContext: string,
+): Promise<{ status: number; body: string }> {
+  if (creds.http) {
+    const result = await creds.http.request({
+      url,
+      method: init.method,
+      headers: init.headers,
+      ...(init.body !== undefined ? { body: init.body } : {}),
+    });
+    if (result.status < 200 || result.status >= 300) {
+      throw new Error(`${errorContext} failed: ${result.status} — ${result.body.slice(0, 400)}`);
+    }
+    return { status: result.status, body: result.body };
+  }
+  const res = await fetch(url, {
+    method: init.method,
+    headers: init.headers,
+    ...(init.body !== undefined ? { body: init.body as BodyInit } : {}),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(
+      `${errorContext} failed: ${res.status}${detail ? ` — ${detail.slice(0, 400)}` : ""}`,
+    );
+  }
+  return { status: res.status, body: await res.text() };
+}
+
 export async function signRequest(req: SignRequestArgs): Promise<Record<string, string>> {
   const { method, url: rawUrl, headers, body, service, credentials } = req;
   const parsedUrl = new URL(rawUrl);
@@ -68,10 +111,43 @@ export async function signRequest(req: SignRequestArgs): Promise<Record<string, 
  * Throws on non-2xx status with the response body included in the message.
  */
 export async function fetchSigned(
-  req: SignRequestArgs & { body?: string | ArrayBuffer | Uint8Array },
+  req: Omit<SignRequestArgs, "body"> & { body?: string | ArrayBuffer | Uint8Array },
 ): Promise<Response> {
   const bodyForSig = typeof req.body === "string" ? req.body : "";
   const headers = await signRequest({ ...req, body: bodyForSig });
+
+  // Route through the host's HTTP service when available so per-account
+  // bastion routing applies. SigV4 signing happens above on the same headers
+  // regardless of transport, so the signature stays valid either way.
+  const http = req.credentials.http;
+  if (http) {
+    const body =
+      req.body === undefined || req.method === "GET" || req.method === "HEAD"
+        ? undefined
+        : typeof req.body === "string"
+          ? req.body
+          : req.body instanceof Uint8Array
+            ? req.body
+            : new Uint8Array(req.body);
+    const result = await http.request({
+      url: req.url,
+      method: req.method,
+      headers,
+      ...(body !== undefined ? { body } : {}),
+    });
+    if (result.status < 200 || result.status >= 300) {
+      throw new Error(
+        `AWS ${req.service} ${req.method} ${new URL(req.url).pathname} failed: ${result.status}${
+          result.body ? ` — ${result.body.slice(0, 400)}` : ""
+        }`,
+      );
+    }
+    // Wrap the buffered response in a real `Response` so downstream
+    // `.text()` / `.json()` callers keep working unchanged.
+    const responseHeaders = new Headers(result.headers);
+    return new Response(result.body, { status: result.status, headers: responseHeaders });
+  }
+
   const fetchInit: RequestInit = { method: req.method, headers };
   if (req.body !== undefined && req.method !== "GET" && req.method !== "HEAD") {
     fetchInit.body = req.body as BodyInit;

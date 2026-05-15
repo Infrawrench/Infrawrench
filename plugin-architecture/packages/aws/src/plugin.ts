@@ -164,5 +164,5 @@ const resourceTypes: ResourceTypeDefinition[] = [
 export const plugin: Plugin = {
   manifest,
   resourceTypes,
-  createClient: (credentials) => new AWSClient(credentials, resourceTypes),
+  createClient: (credentials, services) => new AWSClient(credentials, resourceTypes, services),
 };

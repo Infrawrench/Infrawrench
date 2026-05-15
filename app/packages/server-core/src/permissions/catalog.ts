@@ -31,6 +31,8 @@ export const ALL_PERMISSIONS = [
   "billing:write",
   "ssh-keys:read",
   "ssh-keys:write",
+  "bastions:read",
+  "bastions:write",
   "org:settings:write",
 ] as const;
 

@@ -33,6 +33,28 @@ importers:
         specifier: ^5.7.3
         version: 5.9.3
 
+  app/packages/bastion-agent:
+    dependencies:
+      ws:
+        specifier: ^8.18.0
+        version: 8.20.0
+    devDependencies:
+      '@types/node':
+        specifier: ^22.14.0
+        version: 22.19.19
+      '@types/ws':
+        specifier: ^8.5.13
+        version: 8.18.1
+      esbuild:
+        specifier: ^0.25.0
+        version: 0.25.12
+      tsx:
+        specifier: ^4.19.0
+        version: 4.21.0
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+
   app/packages/desktop:
     dependencies:
       '@kubernetes/client-node':
@@ -367,10 +389,19 @@ importers:
       postgres:
         specifier: ^3.4.5
         version: 3.4.8
+      undici:
+        specifier: ^7.0.0
+        version: 7.24.8
+      ws:
+        specifier: ^8.18.0
+        version: 8.20.0
     devDependencies:
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.17
+      '@types/ws':
+        specifier: ^8.5.13
+        version: 8.18.1
       typescript:
         specifier: ^5.7.3
         version: 5.9.3
@@ -13338,7 +13369,7 @@ snapshots:
   '@types/dockerode@3.3.47':
     dependencies:
       '@types/docker-modem': 3.0.6
-      '@types/node': 22.19.17
+      '@types/node': 22.19.19
       '@types/ssh2': 1.15.5
 
   '@types/emscripten@1.41.5': {}
@@ -13403,7 +13434,7 @@ snapshots:
 
   '@types/pg@8.20.0':
     dependencies:
-      '@types/node': 22.19.17
+      '@types/node': 22.19.19
       pg-protocol: 1.13.0
       pg-types: 2.2.0
 
@@ -13436,7 +13467,7 @@ snapshots:
   '@types/sql.js@1.4.11':
     dependencies:
       '@types/emscripten': 1.41.5
-      '@types/node': 22.19.17
+      '@types/node': 22.19.19
 
   '@types/ssh2@1.15.5':
     dependencies:
@@ -13463,7 +13494,7 @@ snapshots:
 
   '@types/ws@8.18.1':
     dependencies:
-      '@types/node': 22.19.17
+      '@types/node': 22.19.19
 
   '@types/yauzl@2.10.3':
     dependencies:
@@ -17363,7 +17394,7 @@ snapshots:
 
   stripe@17.7.0:
     dependencies:
-      '@types/node': 22.19.17
+      '@types/node': 22.19.19
       qs: 6.15.1
 
   strnum@2.3.0: {}

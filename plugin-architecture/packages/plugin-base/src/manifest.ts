@@ -170,18 +170,28 @@ export interface KubernetesHostServices {
 
 /**
  * Host-provided HTTP request proxy injected into plugin clients.
- * Allows plugins to make HTTP requests through the host process, which can
- * supply custom CA certificates that the browser/renderer won't trust.
+ *
+ * This is the *only* sanctioned outbound HTTP path for plugins. Going through
+ * the host buys two things plugins can't get on their own:
+ *   - Custom CA certificates the browser/renderer won't trust by default.
+ *   - Per-account egress routing through a bastion agent when the account is
+ *     bound to one. Plugins that bypass `services.http` and call `fetch`
+ *     directly will *not* be tunnelled — even when the user has selected a
+ *     bastion for that account.
+ *
+ * `body` accepts a `Uint8Array` for SigV4 / binary payloads. The response
+ * body is always a UTF-8 string; for endpoints that return arbitrary binary
+ * (storage object reads, etc.), use a dedicated host service instead.
  */
 export interface HttpHostServices {
-  /** Make an HTTP request through the host process (supports custom CA certs). */
+  /** Make an HTTP request through the host process. */
   request(req: {
     url: string;
     method: string;
     headers: Record<string, string>;
-    body?: string;
+    body?: string | Uint8Array;
     caCert?: string;
-  }): Promise<{ status: number; body: string }>;
+  }): Promise<{ status: number; headers: Record<string, string>; body: string }>;
 }
 
 /**

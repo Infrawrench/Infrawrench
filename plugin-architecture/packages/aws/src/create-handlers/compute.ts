@@ -1,6 +1,6 @@
 import type { CreateResourceConfig, ResourceInstance } from "@infrawrench/plugin-base";
 import { ensureArray } from "../auth.js";
-import { signRequest } from "../signed-request.js";
+import { fetchSigned } from "../signed-request.js";
 import { ec2SshUsername } from "../ssh-username.js";
 import {
   FAMILY_SSH_USERNAME,
@@ -1050,7 +1050,7 @@ export async function computeCreateResource(
       MemorySize: parseInt(memorySize, 10),
       Timeout: parseInt(timeout, 10),
     });
-    const headers = await signRequest({
+    const res = await fetchSigned({
       method: "POST",
       url,
       headers: { Host: host, "Content-Type": "application/json" },
@@ -1058,9 +1058,6 @@ export async function computeCreateResource(
       service: "lambda",
       credentials: rctx.creds,
     });
-    const res = await fetch(url, { method: "POST", headers, body: bodyStr });
-    if (!res.ok)
-      throw new Error(`Lambda CreateFunction failed: ${res.status}: ${await res.text()}`);
     const result = (await res.json()) as Record<string, unknown>;
     const functionArn = String(result["FunctionArn"] ?? "");
     const now = new Date().toISOString();

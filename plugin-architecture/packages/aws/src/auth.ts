@@ -6,6 +6,8 @@
  * longer relies on DOMParser or hand-rolled HMAC.
  */
 
+import type { HttpHostServices } from "@infrawrench/plugin-base";
+
 export { parseXml, ensureArray } from "./xml.js";
 
 export interface AwsCredentials {
@@ -13,4 +15,11 @@ export interface AwsCredentials {
   secretAccessKey: string;
   region: string;
   sessionToken?: string;
+  /**
+   * Host-provided HTTP service. When set, the AWS transport routes all SigV4
+   * requests through it instead of calling `fetch` directly — that's how
+   * per-account bastion routing reaches AWS. The renderer/browser path also
+   * uses this for CORS-free signing. Absent ⇒ direct `fetch`.
+   */
+  http?: HttpHostServices;
 }

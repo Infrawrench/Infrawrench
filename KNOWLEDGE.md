@@ -932,3 +932,42 @@ Hosted Model Context Protocol endpoint inside the web app — lets external AI c
 - **Tools (always registered):** `list_plugins`, `list_resource_types`, `list_accounts`, `search_resources`, `list_resources`, `get_resource`, `get_resource_inputs`, `get_resource_outputs`, `get_resource_stats`, `get_resource_metrics`, `describe_resource`, `create_resource`, `delete_resource`, `invoke_action`, `get_manifest`, `apply_manifest`. Mutating tools call `logAudit` with `source: "mcp"`.
 - **Per-plugin create tools:** at server build time we walk `loadPlugins()` and register one `<pluginId>_create_<resourceTypeId>` tool per `supportsCreate: true` type, with a Zod schema generated from `FieldDefinition[]`. Same write path as the generic `create_resource` (incl. DB upsert + plaintext-secret encryption) — there to give clients typed, discoverable creates without round-tripping `list_resource_types` first.
 - **Auth context per request:** the McpServer is built inside the request handler with `auth: { userId, organizationId, email? }`. Tool handlers close over `auth`, so each connection only sees its own org — no URL-supplied `:orgId`.
+
+---
+
+## Bastion agents (web app)
+
+Users can register a bastion in **Settings → Bastions** and run a tiny Docker container (`@infrawrench/bastion-agent`) on their own infrastructure. When an account is bound to a bastion, that account's cloud control-plane HTTPS calls (AWS, GCP, Azure, DO, Hetzner, Fly, Vercel, Netlify, PlanetScale, Databricks, Cloudinary…) exit through the user's IP instead of the Infrawrench backend's. Useful for cloud accounts with source-IP allowlists.
+
+### Wire shape
+
+```
+Backend (Hono)  ←—— WSS multiplex ——  bastion-agent (docker)  ——→ AWS/GCP/…
+```
+
+The agent **dials outbound** to `/api/bastions/agent` with `Authorization: Bearer <token>`. End-to-end TLS terminates between the backend (TLS client) and the cloud API (TLS server) — the agent only forwards opaque bytes.
+
+### Code paths
+
+- **Protocol & registry** — `app/packages/server-core/src/bastion/`
+  - `protocol.ts` — JSON envelope (`open` / `data` / `end` / `close` / `opened` / `open-failed` / `ping` / `pong` / `hello` / `agent-info`). Subprotocol `infrawrench-bastion-v1`.
+  - `dispatcher.ts` — `BastionAgentConnection` exposes an `undici.Agent` whose `connect()` returns a `Duplex` backed by the WS multiplex (`allowHalfOpen: true`, credit-based backpressure when `ws.bufferedAmount > 1 MiB`). HTTP/1.1 only — undici opens one stream per cloud-API call.
+  - `registry.ts` — in-memory `Map<bastionId, AgentConnection>`. `getDispatcherFor(id)` returns the dispatcher or `null`. `allowlistForPlugins(...)` derives the per-plugin destination allowlist (e.g. `*.amazonaws.com`, `*.googleapis.com`, `api.digitalocean.com`).
+  - `errors.ts` — `BastionDisconnectedError` / `BastionStreamOpenError`.
+- **Host-side HTTP routing** — `app/packages/server-core/src/host-services.ts`. `buildPluginHostServices(manifest, credentials, { accountId, bastionId })` is now **async** — it looks up the account's `bastionId` (if not supplied) and constructs an `HttpHostServices.request` that goes through `undici.fetch(url, { dispatcher })` when the account has a bastion. Bound-but-offline ⇒ `BastionDisconnectedError`, never silent fallback.
+- **WS endpoint** — `app/packages/web/src/services/bastion-ws.ts` and the upgrade hook in `app/packages/web/server.ts`. Bearer-token auth via `keyedHash(token, "bastion-agent")`. On connect: register, send `hello` with allowlist + `heartbeatMs`, start app-level pings every 25s.
+- **REST + UI** — `app/packages/web/src/api/routes/bastions.ts` (list/create/revoke), `org.$orgId.settings.bastions.tsx`, account add/edit modal "Egress via" dropdown (`AddAccountModal` shared component, new `bastions` prop + `bastionId` argument on `saveAccount`).
+- **AWS plugin** — `signed-request.ts:fetchSigned` reads `AwsCredentials.http` (populated by `AWSClient` from `services.http`) and routes through it when set. All previous direct-`fetch` sites in `delete-handlers.ts`, `create-handlers/*.ts`, and `s3-storage.ts` now call `fetchSigned`, so create/delete/storage paths also flow through the bastion.
+- **Other plugins on `services.http`** — `jsonRestFetch` in `plugin-base/src/http.ts` now **always** prefers the host's HTTP service when present (previously only when a `caCert` was supplied). DO/Hetzner/Fly/Vercel/Netlify/PlanetScale/Databricks/Cloudinary/Kubernetes get bastion routing for free.
+
+### Schema
+
+`bastion_vms` table: `id, organization_id, created_by_user_id, name, hashed_token (sha256 keyed-hash, unique), token_prefix, agent_version, last_seen_at, status (pending|active|revoked), revoked_at, created_at, updated_at`. `accounts.bastion_id` is a nullable FK with `ON DELETE SET NULL` — revoking a bastion silently reverts its accounts to direct egress rather than breaking them. Permissions: `bastions:read` (default for members) and `bastions:write` (admin/owner).
+
+### Limitations (v1)
+
+- **Single-process backend.** The dispatcher registry lives in `web`'s process memory. The poller is a separate process and does **not** currently route its background syncs through bastions — bound accounts only get bastion routing on user-triggered actions in `web`. Multi-instance via Postgres `LISTEN/NOTIFY` peer discovery is a follow-up.
+- **HTTP/1.1 only**, no h2 to cloud APIs.
+- **Buffered response bodies** in `HttpHostServices.request` (`{status, headers, body: string}`). Streaming variant is a follow-up; bounded control-plane responses are fine.
+- **Plugins that still use raw `fetch`** (GCP / Azure / Mongo / SQL / Redis / etc.) ignore the bastion. They keep working; we surface no UI difference for now. Migration is mechanical: thread the plugin client's `services.http` through its outbound HTTP layer.
+- **Token rotation:** revoke + recreate. No in-place rotation in v1.

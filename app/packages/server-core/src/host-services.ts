@@ -7,11 +7,19 @@ import * as https from "node:https";
 import * as http from "node:http";
 import { URL } from "node:url";
 import { eq, and } from "drizzle-orm";
-import type { HostServices, PluginManifest, SecretHostServices } from "@infrawrench/plugin-base";
+import { fetch as undiciFetch, type RequestInit as UndiciRequestInit } from "undici";
+import type {
+  HostServices,
+  HttpHostServices,
+  PluginManifest,
+  SecretHostServices,
+} from "@infrawrench/plugin-base";
 import { sqlDrivers, kvDrivers, dockerDrivers, k8sDrivers } from "./drivers";
 import { db } from "./db/client";
-import { secretFieldStates } from "./db/schema";
+import { accounts, secretFieldStates } from "./db/schema";
 import { decrypt, buildAad } from "./encryption";
+import { getDispatcherFor } from "./bastion/registry";
+import { BastionDisconnectedError } from "./bastion/errors";
 
 export function buildHostServices(driverId: string, connectionString: string): HostServices {
   const driver = sqlDrivers.get(driverId);
@@ -79,29 +87,64 @@ const secretHostServices: SecretHostServices = {
   },
 };
 
-const httpHostServices: HostServices = {
-  http: {
+/**
+ * Build the HTTP host service for a given account. When the account is bound
+ * to a connected bastion, plugin HTTPS calls are routed through the agent's
+ * dispatcher; when bound but offline, requests throw
+ * `BastionDisconnectedError` rather than silently leaking egress.
+ *
+ * Pass `bastionId = undefined` (the default) for unbound flows (peer-pane
+ * resolution from a parent that itself isn't behind a bastion, or callers
+ * that genuinely don't have an account context).
+ */
+function buildHttpHostServices(bastionId: string | null | undefined): HttpHostServices {
+  return {
     request: async (req) => {
+      if (bastionId) {
+        const dispatcher = getDispatcherFor(bastionId);
+        if (!dispatcher) throw new BastionDisconnectedError(bastionId);
+        // caCert is rarely combined with a bastion (the agent terminates the
+        // TCP, but TLS is still client-side). undici uses the OS trust store
+        // by default; if a custom CA was supplied, layer it on per-request.
+        const init: UndiciRequestInit = {
+          method: req.method,
+          headers: req.headers,
+          dispatcher,
+        };
+        if (req.body != null) {
+          init.body = req.body as UndiciRequestInit["body"];
+        }
+        const resp = await undiciFetch(req.url, init);
+        return {
+          status: resp.status,
+          headers: Object.fromEntries(resp.headers.entries()),
+          body: await resp.text(),
+        };
+      }
       if (req.caCert) {
         return nodeHttpsRequest(req);
       }
       const resp = await fetch(req.url, {
         method: req.method,
         headers: req.headers,
-        ...(req.body != null ? { body: req.body } : {}),
+        ...(req.body != null ? { body: req.body as BodyInit } : {}),
       });
-      return { status: resp.status, body: await resp.text() };
+      return {
+        status: resp.status,
+        headers: Object.fromEntries(resp.headers.entries()),
+        body: await resp.text(),
+      };
     },
-  },
-};
+  };
+}
 
 function nodeHttpsRequest(req: {
   url: string;
   method?: string;
   headers?: Record<string, string>;
-  body?: string;
+  body?: string | Uint8Array;
   caCert?: string;
-}): Promise<{ status: number; body: string }> {
+}): Promise<{ status: number; headers: Record<string, string>; body: string }> {
   const parsed = new URL(req.url);
   const isHttps = parsed.protocol === "https:";
   // A custom CA strongly implies the caller intended TLS. Refuse to silently
@@ -126,24 +169,58 @@ function nodeHttpsRequest(req: {
       const chunks: Buffer[] = [];
       res.on("data", (chunk: Buffer) => chunks.push(chunk));
       res.on("end", () => {
+        const flatHeaders: Record<string, string> = {};
+        for (const [k, v] of Object.entries(res.headers)) {
+          if (v == null) continue;
+          flatHeaders[k] = Array.isArray(v) ? v.join(", ") : String(v);
+        }
         resolve({
           status: res.statusCode ?? 0,
+          headers: flatHeaders,
           body: Buffer.concat(chunks).toString("utf8"),
         });
       });
     });
     clientReq.on("error", reject);
-    if (req.body != null) clientReq.write(req.body);
+    if (req.body != null) {
+      // node:http accepts string | Buffer | Uint8Array directly.
+      clientReq.write(req.body as Buffer | string | Uint8Array);
+    }
     clientReq.end();
   });
 }
 
-/** Inspects the plugin manifest and builds the appropriate HostServices for use with createClient(). */
-export function buildPluginHostServices(
+/** Look up an account's bastion binding for the host-services factory. */
+async function getAccountBastionId(accountId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ bastionId: accounts.bastionId })
+    .from(accounts)
+    .where(eq(accounts.id, accountId))
+    .limit(1);
+  return row?.bastionId ?? null;
+}
+
+/**
+ * Inspects the plugin manifest and builds the appropriate HostServices for use with createClient().
+ *
+ * Pass `accountId` when the credentials come from a stored account row — that
+ * lets the HTTP service route through the account's bastion (if any). Callers
+ * who already know the bastion id (e.g. peer-pane resolution) can pass
+ * `bastionId` directly to skip the DB round-trip.
+ */
+export async function buildPluginHostServices(
   manifest: PluginManifest,
   credentials: Record<string, string>,
-): HostServices | undefined {
-  const base: HostServices = { ...httpHostServices, secrets: secretHostServices };
+  options: { accountId?: string; bastionId?: string | null } = {},
+): Promise<HostServices | undefined> {
+  let bastionId: string | null | undefined = options.bastionId;
+  if (bastionId === undefined && options.accountId) {
+    bastionId = await getAccountBastionId(options.accountId);
+  }
+  const base: HostServices = {
+    http: buildHttpHostServices(bastionId ?? null),
+    secrets: secretHostServices,
+  };
   if (manifest.dockerDriver) {
     const dockerHost = credentials[manifest.dockerDriver.credentialKey] ?? "";
     return {

@@ -40,6 +40,10 @@ const Account = strict({
   id: Uuid,
   pluginId: z.string(),
   displayName: z.string(),
+  bastionId: Uuid.nullable().openapi({
+    description:
+      "Bastion this account's cloud-API egress is routed through. `null` ⇒ direct egress.",
+  }),
   createdAt: IsoDateTime,
 }).openapi("Account");
 
@@ -47,6 +51,9 @@ const CreateAccountRequest = strict({
   pluginId: z.string(),
   displayName: z.string().min(1),
   credentials: z.record(z.string()),
+  bastionId: Uuid.optional().nullable().openapi({
+    description: "Optional bastion id to route this account's cloud API traffic through.",
+  }),
 }).openapi("CreateAccountRequest");
 
 const CreateAccountResponse = strict({
@@ -54,14 +61,19 @@ const CreateAccountResponse = strict({
   syncError: strict({ message: z.string() }).optional(),
 }).openapi("CreateAccountResponse");
 
-const RenameAccountRequest = strict({ displayName: z.string().min(1) }).openapi(
-  "RenameAccountRequest",
-);
+const UpdateAccountRequest = strict({
+  displayName: z.string().min(1).optional(),
+  bastionId: Uuid.nullable().optional().openapi({
+    description:
+      "Pass `null` to unbind, a uuid to bind, or omit the field to leave the binding unchanged.",
+  }),
+}).openapi("UpdateAccountRequest");
 
-const RenameAccountResponse = strict({
+const UpdateAccountResponse = strict({
   id: Uuid,
   displayName: z.string(),
-}).openapi("RenamedAccount");
+  bastionId: Uuid.nullable(),
+}).openapi("UpdatedAccount");
 
 const Resource = strict({
   id: ResourceId,
@@ -183,15 +195,15 @@ export function registerAccountPaths(ctx: BuildContext) {
     method: "patch",
     path: "/api/org/{orgId}/accounts/{id}",
     tags: ["Accounts"],
-    summary: "Rename an account",
+    summary: "Update an account (rename and/or change bastion binding)",
     request: {
       params: OrgIdParam.extend({ id: Uuid.openapi({ param: { name: "id", in: "path" } }) }),
-      body: { content: { "application/json": { schema: RenameAccountRequest } }, required: true },
+      body: { content: { "application/json": { schema: UpdateAccountRequest } }, required: true },
     },
     responses: {
       200: {
-        description: "Renamed",
-        content: { "application/json": { schema: RenameAccountResponse } },
+        description: "Updated",
+        content: { "application/json": { schema: UpdateAccountResponse } },
       },
       400: ErrorResponses[400],
       404: ErrorResponses[404],

@@ -17,6 +17,7 @@ import { authenticateApiRequest } from "./src/auth/api-auth";
 import { validateWsToken } from "./src/services/ws-tokens";
 import { handleMcpHttp } from "./src/mcp/http-handler";
 import { migrateMetrics } from "@infrawrench/server-core/clickhouse/migrate";
+import { authenticateBastionAgent, handleBastionAgentUpgrade } from "./src/services/bastion-ws";
 
 const dev = process.env["NODE_ENV"] !== "production";
 const port = parseInt(process.env["PORT"] ?? "3000", 10);
@@ -100,6 +101,17 @@ async function start() {
 
   server.on("upgrade", async (request, socket, head) => {
     const url = parse(request.url ?? "", true);
+
+    if (url.pathname === "/api/bastions/agent") {
+      const bastion = await authenticateBastionAgent(request);
+      if (!bastion) {
+        socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+        socket.destroy();
+        return;
+      }
+      handleBastionAgentUpgrade(request, socket, head, bastion);
+      return;
+    }
 
     if (url.pathname !== "/api/ws") {
       socket.destroy();

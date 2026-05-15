@@ -43,7 +43,9 @@ export async function resolveKubeconfig(
     buildAad("account", account.id, "credentials"),
   );
   const credentials = JSON.parse(plaintext) as Record<string, string>;
-  const hostServices = buildPluginHostServices(loaded.plugin.manifest, credentials);
+  const hostServices = await buildPluginHostServices(loaded.plugin.manifest, credentials, {
+    accountId: account.id,
+  });
   const client = loaded.plugin.createClient(credentials, hostServices);
 
   // Find the resource to get its resourceTypeId

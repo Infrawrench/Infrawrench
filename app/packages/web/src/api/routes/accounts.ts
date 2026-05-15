@@ -2,7 +2,8 @@ import { Hono } from "hono";
 import { v4 as uuid } from "uuid";
 import { eq, and, isNull } from "drizzle-orm";
 import { db } from "../../db/client";
-import { accounts, resources } from "../../db/schema";
+import { accounts, bastionVms, resources } from "../../db/schema";
+import { refreshAllowlistById } from "@infrawrench/server-core/bastion/registry";
 import { encrypt, decrypt, buildAad } from "../../services/encryption";
 import { loadPlugins, getPlugin } from "../../plugins/loader";
 import { syncAccountResources, syncAccountResourceType } from "../../services/sync-resources";
@@ -49,6 +50,7 @@ app.get("/", async (c) => {
       id: accounts.id,
       pluginId: accounts.pluginId,
       displayName: accounts.displayName,
+      bastionId: accounts.bastionId,
       createdAt: accounts.createdAt,
     })
     .from(accounts)
@@ -60,11 +62,24 @@ app.get("/", async (c) => {
 app.post("/", async (c) => {
   requirePermission(c, "accounts:write");
   const organizationId = c.get("organizationId");
-  const { pluginId, displayName, credentials } = await c.req.json<{
+  const { pluginId, displayName, credentials, bastionId } = await c.req.json<{
     pluginId: string;
     displayName: string;
     credentials: Record<string, string>;
+    bastionId?: string | null;
   }>();
+
+  // Verify the bastion (if any) belongs to this org — never trust the client.
+  let validatedBastionId: string | null = null;
+  if (bastionId) {
+    const [b] = await db
+      .select({ id: bastionVms.id })
+      .from(bastionVms)
+      .where(and(eq(bastionVms.id, bastionId), eq(bastionVms.organizationId, organizationId)))
+      .limit(1);
+    if (!b) return c.json({ error: "Bastion not found" }, 400);
+    validatedBastionId = b.id;
+  }
 
   const id = uuid();
   const { ciphertext, iv } = await encrypt(
@@ -78,7 +93,15 @@ app.post("/", async (c) => {
     displayName,
     encryptedCredentials: ciphertext,
     credentialsIv: iv,
+    bastionId: validatedBastionId,
   });
+
+  // If the new account is bound to a bastion that's currently connected, push
+  // the refreshed destination allowlist so the agent immediately starts
+  // accepting traffic to this plugin's cloud APIs.
+  if (validatedBastionId) {
+    void refreshAllowlistById(validatedBastionId).catch(() => {});
+  }
 
   // Sync resources before returning so the UI has data immediately. If the
   // sync itself blows up we still return the freshly-created account row, but
@@ -105,24 +128,70 @@ app.delete("/:id", async (c) => {
   return c.json({ ok: true });
 });
 
-/** PATCH /api/accounts/:id — rename account */
+/** PATCH /api/accounts/:id — rename account or change bastion binding. */
 app.patch("/:id", async (c) => {
   requirePermission(c, "accounts:write");
   const organizationId = c.get("organizationId");
   const accountId = c.req.param("id");
-  const { displayName } = await c.req.json<{ displayName: string }>();
+  const body = await c.req.json<{
+    displayName?: string;
+    /** Pass `null` to unbind, a uuid to bind, or omit the field to leave unchanged. */
+    bastionId?: string | null;
+  }>();
 
-  if (!displayName || typeof displayName !== "string") {
-    return c.json({ error: "displayName is required" }, 400);
+  const updates: { displayName?: string; bastionId?: string | null } = {};
+  if (body.displayName !== undefined) {
+    if (typeof body.displayName !== "string" || !body.displayName.trim()) {
+      return c.json({ error: "displayName is required" }, 400);
+    }
+    updates.displayName = body.displayName;
+  }
+  let oldBastionId: string | null = null;
+  if (body.bastionId !== undefined) {
+    if (body.bastionId === null) {
+      updates.bastionId = null;
+    } else {
+      const [b] = await db
+        .select({ id: bastionVms.id })
+        .from(bastionVms)
+        .where(
+          and(eq(bastionVms.id, body.bastionId), eq(bastionVms.organizationId, organizationId)),
+        )
+        .limit(1);
+      if (!b) return c.json({ error: "Bastion not found" }, 400);
+      updates.bastionId = b.id;
+    }
+    // Look up the previous bastionId so we can refresh both allowlists.
+    const [existing] = await db
+      .select({ bastionId: accounts.bastionId })
+      .from(accounts)
+      .where(and(eq(accounts.id, accountId), eq(accounts.organizationId, organizationId)))
+      .limit(1);
+    oldBastionId = existing?.bastionId ?? null;
+  }
+  if (Object.keys(updates).length === 0) {
+    return c.json({ error: "Nothing to update" }, 400);
   }
 
   const [updated] = await db
     .update(accounts)
-    .set({ displayName })
+    .set(updates)
     .where(and(eq(accounts.id, accountId), eq(accounts.organizationId, organizationId)))
-    .returning({ id: accounts.id, displayName: accounts.displayName });
+    .returning({
+      id: accounts.id,
+      displayName: accounts.displayName,
+      bastionId: accounts.bastionId,
+    });
 
   if (!updated) return c.json({ error: "Account not found" }, 404);
+  if (body.bastionId !== undefined) {
+    if (oldBastionId && oldBastionId !== updates.bastionId) {
+      void refreshAllowlistById(oldBastionId).catch(() => {});
+    }
+    if (updates.bastionId) {
+      void refreshAllowlistById(updates.bastionId).catch(() => {});
+    }
+  }
   return c.json(updated);
 });
 

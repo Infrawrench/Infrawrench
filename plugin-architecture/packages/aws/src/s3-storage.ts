@@ -1,7 +1,7 @@
 import type { StorageObject } from "@infrawrench/plugin-base";
 import type { AwsCredentials } from "./auth.js";
 import { parseXml, ensureArray } from "./auth.js";
-import { signRequest } from "./signed-request.js";
+import { fetchSigned } from "./signed-request.js";
 
 /** S3-specific XML GET for ListObjectsV2 */
 async function s3Xml<T>(
@@ -12,15 +12,13 @@ async function s3Xml<T>(
   const host = `${bucket}.s3.${creds.region}.amazonaws.com`;
   const searchParams = new URLSearchParams(params);
   const url = `https://${host}/?${searchParams}`;
-  const headers = await signRequest({
+  const res = await fetchSigned({
     method: "GET",
     url,
     headers: { Host: host },
     service: "s3",
     credentials: creds,
   });
-  const res = await fetch(url, { headers });
-  if (!res.ok) throw new Error(`S3 ListObjectsV2 failed: ${res.status}`);
   const xml = await res.text();
   return parseXml(xml) as T;
 }
@@ -34,32 +32,27 @@ async function s3Put(
 ): Promise<void> {
   const host = `${bucket}.s3.${creds.region}.amazonaws.com`;
   const url = `https://${host}/${encodeURIComponent(key).replace(/%2F/g, "/")}`;
-  const bodyStr = typeof body === "string" ? body : "";
-  const headers = await signRequest({
+  await fetchSigned({
     method: "PUT",
     url,
     headers: { Host: host, "Content-Type": "application/octet-stream" },
-    body: bodyStr,
+    body,
     service: "s3",
     credentials: creds,
   });
-  const res = await fetch(url, { method: "PUT", headers, body });
-  if (!res.ok) throw new Error(`S3 PUT ${key} failed: ${res.status}`);
 }
 
 /** S3 DELETE object */
 async function s3Delete(creds: AwsCredentials, bucket: string, key: string): Promise<void> {
   const host = `${bucket}.s3.${creds.region}.amazonaws.com`;
   const url = `https://${host}/${encodeURIComponent(key).replace(/%2F/g, "/")}`;
-  const headers = await signRequest({
+  await fetchSigned({
     method: "DELETE",
     url,
     headers: { Host: host },
     service: "s3",
     credentials: creds,
   });
-  const res = await fetch(url, { method: "DELETE", headers });
-  if (!res.ok) throw new Error(`S3 DELETE ${key} failed: ${res.status}`);
 }
 
 export async function uploadStorageObject(
@@ -71,8 +64,7 @@ export async function uploadStorageObject(
   const host = `${bucket}.s3.${creds.region}.amazonaws.com`;
   const url = `https://${host}/${encodeURIComponent(key).replace(/%2F/g, "/")}`;
   const body = await file.arrayBuffer();
-  const bodyStr = new TextDecoder().decode(body);
-  const headers = await signRequest({
+  await fetchSigned({
     method: "PUT",
     url,
     headers: {
@@ -80,12 +72,10 @@ export async function uploadStorageObject(
       "Content-Type": file.type || "application/octet-stream",
       "Content-Length": String(body.byteLength),
     },
-    body: bodyStr,
+    body,
     service: "s3",
     credentials: creds,
   });
-  const res = await fetch(url, { method: "PUT", headers, body });
-  if (!res.ok) throw new Error(`S3 upload ${key} failed: ${res.status}`);
 }
 
 export async function listStorageObjects(

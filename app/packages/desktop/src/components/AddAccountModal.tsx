@@ -30,8 +30,15 @@ export function AddAccountModal({ onClose, onAdded, orgId }: Props) {
     }));
   }, []);
 
+  // Desktop doesn't expose bastions today; the bastionId argument from the
+  // shared modal is ignored here.
   const saveAccount = useCallback(
-    async (pluginId: string, displayName: string, credentials: Record<string, string>) => {
+    async (
+      pluginId: string,
+      displayName: string,
+      credentials: Record<string, string>,
+      _bastionId: string | null,
+    ) => {
       if (orgId) {
         await createCloudAccount(orgId, pluginId, displayName, credentials);
         return;

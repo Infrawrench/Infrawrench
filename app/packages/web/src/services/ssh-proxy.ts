@@ -81,7 +81,9 @@ export async function handleSshSession(
         return;
       }
 
-      const hostServices = buildPluginHostServices(loaded.plugin.manifest, credentials);
+      const hostServices = await buildPluginHostServices(loaded.plugin.manifest, credentials, {
+        accountId: account.id,
+      });
       const client = loaded.plugin.createClient(credentials, hostServices);
       const pluginSshConfig = client.getSshConfig?.();
       if (!pluginSshConfig) {
