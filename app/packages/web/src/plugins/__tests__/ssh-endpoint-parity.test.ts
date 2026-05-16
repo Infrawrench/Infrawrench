@@ -31,22 +31,64 @@ describe("SSH endpoint parity", () => {
     pluginId: string;
     resourceTypeId: string;
     hostOutputKey: string;
+    privateHostOutputKey?: string;
   }> = [
-    { pluginId: "aws", resourceTypeId: "ec2-instance", hostOutputKey: "publicIp" },
-    { pluginId: "digitalocean", resourceTypeId: "droplet", hostOutputKey: "ipv4" },
-    { pluginId: "hetzner", resourceTypeId: "server", hostOutputKey: "ipv4" },
-    { pluginId: "gcp", resourceTypeId: "gce-instance", hostOutputKey: "externalIp" },
-    { pluginId: "scaleway", resourceTypeId: "instance", hostOutputKey: "publicIp" },
-    { pluginId: "ovh", resourceTypeId: "instance", hostOutputKey: "ipv4" },
+    {
+      pluginId: "aws",
+      resourceTypeId: "ec2-instance",
+      hostOutputKey: "publicIp",
+      privateHostOutputKey: "privateIp",
+    },
+    {
+      pluginId: "digitalocean",
+      resourceTypeId: "droplet",
+      hostOutputKey: "ipv4",
+      privateHostOutputKey: "ipv4Private",
+    },
+    {
+      pluginId: "hetzner",
+      resourceTypeId: "server",
+      hostOutputKey: "ipv4",
+      privateHostOutputKey: "ipv4Private",
+    },
+    {
+      pluginId: "gcp",
+      resourceTypeId: "gce-instance",
+      hostOutputKey: "externalIp",
+      privateHostOutputKey: "internalIp",
+    },
+    {
+      pluginId: "scaleway",
+      resourceTypeId: "instance",
+      hostOutputKey: "publicIp",
+      privateHostOutputKey: "privateIp",
+    },
+    {
+      pluginId: "ovh",
+      resourceTypeId: "instance",
+      hostOutputKey: "ipv4",
+      privateHostOutputKey: "ipv4Private",
+    },
   ];
 
-  for (const { pluginId, resourceTypeId, hostOutputKey } of SSH_ENDPOINT_PLUGINS) {
+  for (const {
+    pluginId,
+    resourceTypeId,
+    hostOutputKey,
+    privateHostOutputKey,
+  } of SSH_ENDPOINT_PLUGINS) {
     it(`${pluginId}/${resourceTypeId} declares sshEndpoint with hostOutputKey="${hostOutputKey}"`, () => {
       const loaded = getPlugin(pluginId);
       const rt = loaded.plugin.resourceTypes.find((t) => t.id === resourceTypeId);
       expect(rt).toBeDefined();
       expect(rt!.sshEndpoint).toBeDefined();
       expect(rt!.sshEndpoint!.hostOutputKey).toBe(hostOutputKey);
+      if (privateHostOutputKey) {
+        expect(rt!.sshEndpoint!.privateHostOutputKey).toBe(privateHostOutputKey);
+        // The private-host output key must point at a real declared output, so
+        // the jumpbox flow doesn't end up snapshotting an empty string.
+        expect(rt!.outputs.map((o) => o.key)).toContain(privateHostOutputKey);
+      }
     });
   }
 

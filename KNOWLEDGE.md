@@ -78,7 +78,7 @@ pnpm workspaces + Turborepo. All package references use `workspace:*`.
 
 Key manifest fields:
 
-- `credentialFields` — what the host asks the user for when adding an account
+- `credentialFields` — what the host asks the user for when adding an account. Fields can be text, password (`sensitive: true`), multiline (`multiline: true`), region-pickers (`regions: …`), or account references (`accountReference: { pluginId }` — rendered as a dropdown of existing accounts of that plugin; used by the SSH plugin's "Connect through" jumpbox field). Set `optional: true` on fields the user may leave empty.
 - `sqlDriver?: SqlDriverDeclaration` — opts in to SQL editor; host routes IPC to the right SQL node driver
 - `kvDriver?: KvDriverDeclaration` — opts in to Redis-style KV console
 - `dockerDriver?: DockerDriverDeclaration` — opts in to Docker container management
@@ -147,7 +147,7 @@ Important flags:
 - `supportsCreate?: boolean` — whether the host shows a "+ Create" button
 - `supportsStorageBrowser?: boolean` — whether the host renders the GCS browser panel
 - `supportsTerminal?: boolean` — whether the host renders the SSH terminal panel
-- `sshEndpoint?: { hostOutputKey, runningWhen?, defaultUsername?, usernameFieldKey? }` — enables "Connect via SSH" right-click in sidebar; `hostOutputKey` names the resolved output to use as the SSH host (e.g. `"ipv4"`); `defaultUsername` is a static default SSH username (e.g. `"root"`); `usernameFieldKey` points to a per-instance field storing the SSH username (e.g. `"sshUsername"`); resolution precedence: `fields[usernameFieldKey]` > `defaultUsername` > `"root"`
+- `sshEndpoint?: { hostOutputKey, privateHostOutputKey?, runningWhen?, defaultUsername?, usernameFieldKey? }` — enables "Connect via SSH" right-click in sidebar; `hostOutputKey` names the resolved output to use as the SSH host (e.g. `"ipv4"`); `privateHostOutputKey` (optional) names the private/internal address output, surfaced by the "Connect through jumpbox" flow so the routed connection can target the VM on its private interface; `defaultUsername` is a static default SSH username (e.g. `"root"`); `usernameFieldKey` points to a per-instance field storing the SSH username (e.g. `"sshUsername"`); resolution precedence: `fields[usernameFieldKey]` > `defaultUsername` > `"root"`
 - `resourceSqlDriver?: { driver, connectionStringOutputKey }` — per-resource SQL editor; the host resolves the connection string from the resource's outputs via `resolveOutput()` and enables the SQL editor tab (unlike manifest-level `sqlDriver` which uses account credentials)
 - `parentTypeId?: string` — child types are shown on their parent's detail page, not on the account page; the host auto-fetches children and renders them as navigable cards with optional create buttons
 - `attachTargets?: AttachTarget[]` — resource types this resource can be dragged onto to trigger `client.attachResource`. `AttachTarget = { pluginId, resourceTypeId, matchField?, verb? }`. Drops are restricted to the _same account_; when `matchField` is set, the named field (e.g. `"zone"`) must match between source and target. Currently wired: GCP `gce-disk` → `gce-instance` (attach persistent disk to VM, zone-matched).
@@ -220,6 +220,7 @@ Handles `plugin_*` IPC calls by looking up the right driver from `drivers.ts`.
 
 - Tunnels: ssh2 `Client` + Node.js `net.Server` on port 0 (OS-assigned); each TCP connection opens an SSH forward channel. `openTunnel()` returns `{ tunnelId, localPort }`.
 - Shells: ssh2 `Client.shell()` with `xterm-256color`; data piped to renderer via `webContents.send()`. Binary data encoded with `.toString("binary")`.
+- Jumpbox routing: `SshShellConfig.jumpHops?` (outermost-first) lets `spawnSshShell` dial through one or more intermediate ssh2 clients using the shared `forwardOutHop` helper from `@infrawrench/plugin-ssh/chain` (also used by the web ssh-proxy). Each hop's host key is verified independently against the TOFU cache. Agent forwarding applies to the final hop only.
 - `closeAllTunnels()` and `killAllSshShells()` called on `app.before-quit`.
 
 ---

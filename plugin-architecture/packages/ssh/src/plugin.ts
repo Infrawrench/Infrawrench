@@ -43,6 +43,15 @@ const manifest: PluginManifest = {
       multiline: true,
       placeholder: "-----BEGIN OPENSSH PRIVATE KEY-----\n...",
     },
+    {
+      key: "connectThroughAccountId",
+      label: "Connect through",
+      description:
+        "Optional. Route this SSH connection through another SSH account (jump host / bastion). Chains: the selected account may itself connect through another, and so on.",
+      sensitive: false,
+      optional: true,
+      accountReference: { pluginId: "ssh" },
+    },
   ],
 };
 

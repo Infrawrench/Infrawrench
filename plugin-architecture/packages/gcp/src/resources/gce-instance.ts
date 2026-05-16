@@ -36,6 +36,7 @@ export const GceInstanceResourceType: ResourceTypeDefinition = {
   supportsMetrics: true,
   sshEndpoint: {
     hostOutputKey: "externalIp",
+    privateHostOutputKey: "internalIp",
     runningWhen: { fieldKey: "status", value: "RUNNING" },
     usernameFieldKey: "sshUsername",
   },

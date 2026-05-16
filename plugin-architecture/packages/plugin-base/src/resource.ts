@@ -164,6 +164,13 @@ export interface ResourceTypeDefinition {
   sshEndpoint?: {
     hostOutputKey: string;
     /**
+     * Optional output key resolving to a private/internal address (e.g.
+     * "privateIp"). When present, the host can offer the user a "Private IP"
+     * option — primarily used by the "Connect through jumpbox" flow, where the
+     * jump host typically reaches the target on its private interface.
+     */
+    privateHostOutputKey?: string;
+    /**
      * Optional guard: SSH/SFTP buttons are only shown when the resource field
      * named by `fieldKey` equals `value` (case-insensitive).
      * For example `{ fieldKey: "status", value: "RUNNING" }` hides buttons

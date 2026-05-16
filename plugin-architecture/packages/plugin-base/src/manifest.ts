@@ -20,6 +20,15 @@ export interface CredentialField {
   multiline?: boolean;
   /** When provided, the field is rendered as the searchable region picker */
   regions?: CredentialFieldRegion[];
+  /**
+   * When set, the field is rendered as a picker of existing accounts in the same
+   * organization. The stored value is the selected account's id (or empty for
+   * "None"). `pluginId` filters the dropdown to accounts of a single plugin —
+   * e.g. the SSH plugin's "Connect through" field filters to `ssh`.
+   */
+  accountReference?: { pluginId: string };
+  /** Field is optional — the modal accepts an empty value and skips validation. */
+  optional?: boolean;
 }
 
 /**

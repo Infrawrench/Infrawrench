@@ -23,6 +23,13 @@ export interface SshShellHandle {
   onError: (cb: (err: string) => void) => void;
 }
 
+export interface SshJumpHop {
+  host: string;
+  port: number;
+  username: string;
+  privateKey: string;
+}
+
 interface CloudShellParams {
   orgId: string;
   keySource: Extract<KeySource, { type: "cloud" }>;
@@ -34,6 +41,8 @@ interface CloudShellParams {
   cols: number;
   rows: number;
   agentForward?: boolean;
+  /** Account id of an SSH plugin jumpbox to route through. The cloud proxy resolves the chain. */
+  connectThroughAccountId?: string;
 }
 
 interface LocalShellParams {
@@ -44,6 +53,8 @@ interface LocalShellParams {
   cols: number;
   rows: number;
   agentForward?: boolean;
+  /** Pre-resolved chain of jump hops, outermost-first. The renderer is responsible for loading them. */
+  jumpHops?: SshJumpHop[];
 }
 
 type OpenSshShellParams =
@@ -66,6 +77,7 @@ async function openLocalShell(params: LocalShellParams): Promise<SshShellHandle>
     cols: params.cols,
     rows: params.rows,
     ...(params.agentForward ? { agentForward: true } : {}),
+    ...(params.jumpHops && params.jumpHops.length > 0 ? { jumpHops: params.jumpHops } : {}),
   });
 
   const dataListeners: Array<(d: Uint8Array) => void> = [];
@@ -133,6 +145,9 @@ async function openCloudShell(params: CloudShellParams): Promise<SshShellHandle>
         cols: params.cols,
         rows: params.rows,
         ...(params.agentForward ? { agentForward: true } : {}),
+        ...(params.connectThroughAccountId
+          ? { connectThroughAccountId: params.connectThroughAccountId }
+          : {}),
       }),
     );
   });

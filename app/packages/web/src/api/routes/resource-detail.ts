@@ -402,8 +402,9 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
   // Resolve SSH host from resource type's sshEndpoint declaration (like desktop)
   // This enables SSH/SFTP for cloud VMs (AWS EC2, DO droplets, Hetzner servers, etc.)
   let sshHost: string | null = null;
+  let sshPrivateHost: string | null = null;
   if (resourceTypeDef?.sshEndpoint) {
-    const { hostOutputKey, runningWhen } = resourceTypeDef.sshEndpoint;
+    const { hostOutputKey, privateHostOutputKey, runningWhen } = resourceTypeDef.sshEndpoint;
     // If runningWhen is specified, only enable SSH when the field matches
     let isVmRunning = true;
     if (runningWhen) {
@@ -417,6 +418,14 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
           "",
       );
       if (host) sshHost = host;
+      if (privateHostOutputKey) {
+        const priv = String(
+          enrichedInstance.resolvedOutputs?.[privateHostOutputKey] ??
+            enrichedInstance.fields?.[privateHostOutputKey] ??
+            "",
+        );
+        if (priv) sshPrivateHost = priv;
+      }
     }
   }
 
@@ -470,6 +479,7 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
     hasSshTerminal,
     hasSftpBrowser,
     sshHost,
+    sshPrivateHost,
     defaultSshUsername,
     containerId,
     databaseName,

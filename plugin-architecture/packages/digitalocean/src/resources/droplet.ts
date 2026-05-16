@@ -49,6 +49,10 @@ export const DropletResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   supportsMetrics: true,
   iconKey: "droplet",
-  sshEndpoint: { hostOutputKey: "ipv4", defaultUsername: "root" },
+  sshEndpoint: {
+    hostOutputKey: "ipv4",
+    privateHostOutputKey: "ipv4Private",
+    defaultUsername: "root",
+  },
   supportsCreate: true,
 };

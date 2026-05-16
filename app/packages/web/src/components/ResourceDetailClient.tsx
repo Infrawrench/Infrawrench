@@ -55,6 +55,7 @@ import { SshQuickConnectPanel } from "@/components/SshQuickConnectPanel";
 import { SpotlightSearch } from "./SpotlightSearch";
 import { ConnectResourceModal } from "./ConnectResourceModal";
 import { SshTunnelModal } from "./SshTunnelModal";
+import { ConnectThroughJumpboxDialog } from "./ConnectThroughJumpboxDialog";
 import { DockerSetupModal } from "./DockerSetupModal";
 import { K8sExecTerminal } from "./K8sExecTerminal";
 import { K9sTerminal } from "./K9sTerminal";
@@ -116,6 +117,7 @@ interface Props {
   hasSshTerminal?: boolean | undefined;
   hasSftpBrowser?: boolean | undefined;
   sshHost?: string | undefined;
+  sshPrivateHost?: string | undefined;
   defaultSshUsername?: string | undefined;
   containerId?: string | undefined;
   databaseName?: string | undefined;
@@ -153,6 +155,7 @@ export function ResourceDetailClient({
   hasSshTerminal,
   hasSftpBrowser,
   sshHost,
+  sshPrivateHost,
   defaultSshUsername,
   containerId,
   databaseName,
@@ -202,6 +205,7 @@ export function ResourceDetailClient({
   const [showDropSpotlight, setShowDropSpotlight] = useState(false);
   const [dropSource, setDropSource] = useState<SpotlightResult | null>(null);
   const [showSshTunnel, setShowSshTunnel] = useState(false);
+  const [showJumpboxDialog, setShowJumpboxDialog] = useState(false);
   const [showDockerSetup, setShowDockerSetup] = useState(false);
   const agentForwardStorageKey = `ssh:agentForward:${accountId}:${resourceId}`;
   const [agentForward, setAgentForward] = useState<boolean>(() => {
@@ -656,6 +660,14 @@ export function ResourceDetailClient({
             )}
             {sshHost && (
               <button
+                onClick={() => setShowJumpboxDialog(true)}
+                className="px-3 py-1.5 text-xs text-on-surface-muted hover:text-on-surface-secondary border border-border hover:border-border-strong rounded-lg transition-colors"
+              >
+                Connect through jumpbox…
+              </button>
+            )}
+            {sshHost && (
+              <button
                 onClick={() => setShowDockerSetup(true)}
                 className="px-3 py-1.5 text-xs text-on-surface-muted hover:text-on-surface-secondary border border-border hover:border-border-strong rounded-lg transition-colors"
               >
@@ -954,6 +966,20 @@ export function ResourceDetailClient({
               to: "/org/$orgId/accounts/$accountId",
               params: { orgId, accountId: newAccountId },
             });
+          }}
+        />
+      )}
+
+      {showJumpboxDialog && sshHost && (
+        <ConnectThroughJumpboxDialog
+          sourceDisplayName={resourceDisplayName}
+          publicHost={sshHost}
+          privateHost={sshPrivateHost}
+          defaultUsername={defaultSshUsername}
+          onClose={() => setShowJumpboxDialog(false)}
+          onAdded={() => {
+            setShowJumpboxDialog(false);
+            useUIStore.getState().bumpAccounts();
           }}
         />
       )}

@@ -71,6 +71,7 @@ interface ResourceDetailResponse {
   hasSshTerminal?: boolean;
   hasSftpBrowser?: boolean;
   sshHost?: string;
+  sshPrivateHost?: string;
   defaultSshUsername?: string;
   containerId?: string;
   databaseName?: string;
@@ -265,6 +266,7 @@ export function ResourcePanel({
         hasSshTerminal={data.hasSshTerminal}
         hasSftpBrowser={data.hasSftpBrowser}
         sshHost={data.sshHost}
+        sshPrivateHost={data.sshPrivateHost}
         defaultSshUsername={data.defaultSshUsername}
         containerId={data.containerId}
         databaseName={data.databaseName}

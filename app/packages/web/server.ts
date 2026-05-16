@@ -163,6 +163,7 @@ async function start() {
             sshHost?: string;
             sshUsername?: string;
             agentForward?: boolean;
+            connectThroughAccountId?: string;
             peerPluginId?: string;
             namespace?: string;
             podName?: string;
@@ -181,7 +182,14 @@ async function start() {
                   msg.accountId,
                   msg.resourceId,
                   msg.sshKeyId
-                    ? { sshKeyId: msg.sshKeyId, host: msg.sshHost!, username: msg.sshUsername! }
+                    ? {
+                        sshKeyId: msg.sshKeyId,
+                        host: msg.sshHost!,
+                        username: msg.sshUsername!,
+                        ...(msg.connectThroughAccountId
+                          ? { connectThroughAccountId: msg.connectThroughAccountId }
+                          : {}),
+                      }
                     : undefined,
                   msg.cols,
                   msg.rows,

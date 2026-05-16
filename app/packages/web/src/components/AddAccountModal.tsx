@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   AddAccountModal as SharedAddAccountModal,
   toast,
+  type AccountReferenceOption,
   type BastionOption,
   type PluginInfo,
 } from "@infrawrench/ui";
@@ -11,6 +12,15 @@ import { useOrgId } from "@/lib/useOrgId";
 interface Props {
   onClose: () => void;
   onAdded: () => void;
+  prefilledPluginId?: string;
+  prefilledCredentials?: Record<string, string>;
+  prefilledDisplayName?: string;
+}
+
+interface AccountListItem {
+  id: string;
+  pluginId: string;
+  displayName: string;
 }
 
 interface CreateAccountResponse {
@@ -25,9 +35,16 @@ interface BastionListItem {
   status: string;
 }
 
-export function AddAccountModal({ onClose, onAdded }: Props) {
+export function AddAccountModal({
+  onClose,
+  onAdded,
+  prefilledPluginId,
+  prefilledCredentials,
+  prefilledDisplayName,
+}: Props) {
   const orgId = useOrgId();
   const [bastions, setBastions] = useState<BastionOption[]>([]);
+  const [accounts, setAccounts] = useState<AccountReferenceOption[]>([]);
 
   const loadPlugins = useCallback(
     () => apiGet<PluginInfo[]>(`/api/org/${orgId}/accounts/plugins`),
@@ -44,6 +61,16 @@ export function AddAccountModal({ onClose, onAdded }: Props) {
         ),
       )
       .catch(() => setBastions([]));
+  }, [orgId]);
+
+  useEffect(() => {
+    apiGet<AccountListItem[]>(`/api/org/${orgId}/accounts`)
+      .then((rows) =>
+        setAccounts(
+          rows.map((r) => ({ id: r.id, pluginId: r.pluginId, displayName: r.displayName })),
+        ),
+      )
+      .catch(() => setAccounts([]));
   }, [orgId]);
 
   const saveAccount = useCallback(
@@ -75,6 +102,10 @@ export function AddAccountModal({ onClose, onAdded }: Props) {
       loadPlugins={loadPlugins}
       saveAccount={saveAccount}
       bastions={bastions}
+      accounts={accounts}
+      {...(prefilledPluginId ? { prefilledPluginId } : {})}
+      {...(prefilledCredentials ? { prefilledCredentials } : {})}
+      {...(prefilledDisplayName ? { prefilledDisplayName } : {})}
     />
   );
 }

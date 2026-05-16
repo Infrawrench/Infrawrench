@@ -79,6 +79,7 @@ const ResourceDetailResponse = strict({
   hasSshTerminal: z.boolean(),
   hasSftpBrowser: z.boolean(),
   sshHost: z.string().nullable(),
+  sshPrivateHost: z.string().nullable().optional(),
   defaultSshUsername: z.string().nullable(),
   containerId: z.string(),
   databaseName: z.string(),

@@ -32,6 +32,12 @@ export const pluginManifestSchema = z.object({
             }),
           )
           .optional(),
+        accountReference: z
+          .object({
+            pluginId: z.string().min(1),
+          })
+          .optional(),
+        optional: z.boolean().optional(),
       }),
     )
     .optional(),

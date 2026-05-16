@@ -1,6 +1,11 @@
-import { useCallback } from "react";
-import { AddAccountModal as SharedAddAccountModal, type PluginInfo } from "@infrawrench/ui";
+import { useCallback, useEffect, useState } from "react";
+import {
+  AddAccountModal as SharedAddAccountModal,
+  type AccountReferenceOption,
+  type PluginInfo,
+} from "@infrawrench/ui";
 import { invoke } from "../lib/invoke";
+import { getDb } from "../db/client";
 import { loadPlugins } from "../plugins/loader";
 import { createCloudAccount } from "../lib/cloud-api";
 
@@ -8,9 +13,48 @@ interface Props {
   onClose: () => void;
   onAdded: () => void;
   orgId?: string | null;
+  prefilledPluginId?: string;
+  prefilledCredentials?: Record<string, string>;
+  prefilledDisplayName?: string;
 }
 
-export function AddAccountModal({ onClose, onAdded, orgId }: Props) {
+interface LocalAccountRow {
+  id: string;
+  plugin_id: string;
+  display_name: string;
+}
+
+export function AddAccountModal({
+  onClose,
+  onAdded,
+  orgId,
+  prefilledPluginId,
+  prefilledCredentials,
+  prefilledDisplayName,
+}: Props) {
+  const [accounts, setAccounts] = useState<AccountReferenceOption[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const db = await getDb();
+        const rows = await db.select<LocalAccountRow[]>(
+          "SELECT id, plugin_id, display_name FROM accounts ORDER BY display_name",
+        );
+        if (cancelled) return;
+        setAccounts(
+          rows.map((r) => ({ id: r.id, pluginId: r.plugin_id, displayName: r.display_name })),
+        );
+      } catch {
+        if (!cancelled) setAccounts([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const handleLoadPlugins = useCallback(async (): Promise<PluginInfo[]> => {
     const loaded = await loadPlugins();
     return loaded.map((l) => ({
@@ -26,6 +70,8 @@ export function AddAccountModal({ onClose, onAdded, orgId }: Props) {
         ...(f.multiline !== undefined ? { multiline: f.multiline } : {}),
         ...(f.defaultValue !== undefined ? { defaultValue: f.defaultValue } : {}),
         ...(f.regions !== undefined ? { regions: f.regions } : {}),
+        ...(f.optional !== undefined ? { optional: f.optional } : {}),
+        ...(f.accountReference !== undefined ? { accountReference: f.accountReference } : {}),
       })),
     }));
   }, []);
@@ -55,6 +101,10 @@ export function AddAccountModal({ onClose, onAdded, orgId }: Props) {
       onAdded={onAdded}
       loadPlugins={handleLoadPlugins}
       saveAccount={saveAccount}
+      accounts={accounts}
+      {...(prefilledPluginId ? { prefilledPluginId } : {})}
+      {...(prefilledCredentials ? { prefilledCredentials } : {})}
+      {...(prefilledDisplayName ? { prefilledDisplayName } : {})}
     />
   );
 }

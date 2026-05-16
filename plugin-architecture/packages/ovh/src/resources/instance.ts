@@ -58,6 +58,7 @@ export const InstanceResourceType: ResourceTypeDefinition = {
   iconKey: "instance",
   sshEndpoint: {
     hostOutputKey: "ipv4",
+    privateHostOutputKey: "ipv4Private",
     runningWhen: { fieldKey: "status", value: "ACTIVE" },
     defaultUsername: "root",
     usernameFieldKey: "sshUsername",

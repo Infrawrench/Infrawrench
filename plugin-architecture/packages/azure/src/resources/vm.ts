@@ -47,6 +47,7 @@ export const VMResourceType: ResourceTypeDefinition = {
   iconKey: "instance",
   sshEndpoint: {
     hostOutputKey: "publicIp",
+    privateHostOutputKey: "privateIp",
     runningWhen: { fieldKey: "powerState", value: "VM running" },
     usernameFieldKey: "sshUsername",
   },

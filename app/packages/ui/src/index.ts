@@ -51,7 +51,11 @@ export type {
 export { Modal } from "./components/Modal.js";
 export { ConfirmDeleteModal } from "./components/ConfirmDeleteModal.js";
 export { AddAccountModal } from "./components/AddAccountModal.js";
-export type { PluginInfo, BastionOption } from "./components/AddAccountModal.js";
+export type {
+  PluginInfo,
+  BastionOption,
+  AccountReferenceOption,
+} from "./components/AddAccountModal.js";
 export { DockerActionsPanel } from "./components/DockerActionsPanel.js";
 export { KvConsole, tokenize, formatRedisResult } from "./components/KvConsole.js";
 export type { KvConsoleProps } from "./components/KvConsole.js";

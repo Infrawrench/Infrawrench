@@ -46,6 +46,7 @@ export const EC2InstanceResourceType: ResourceTypeDefinition = {
   supportsMetrics: true,
   sshEndpoint: {
     hostOutputKey: "publicIp",
+    privateHostOutputKey: "privateIp",
     runningWhen: { fieldKey: "state", value: "running" },
     usernameFieldKey: "sshUsername",
   },
