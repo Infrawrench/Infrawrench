@@ -933,6 +933,21 @@ Hosted Model Context Protocol endpoint inside the web app — lets external AI c
 - **Tools (always registered):** `list_plugins`, `list_resource_types`, `list_accounts`, `search_resources`, `list_resources`, `get_resource`, `get_resource_inputs`, `get_resource_outputs`, `get_resource_stats`, `get_resource_metrics`, `describe_resource`, `create_resource`, `delete_resource`, `invoke_action`, `get_manifest`, `apply_manifest`. Mutating tools call `logAudit` with `source: "mcp"`.
 - **Per-plugin create tools:** at server build time we walk `loadPlugins()` and register one `<pluginId>_create_<resourceTypeId>` tool per `supportsCreate: true` type, with a Zod schema generated from `FieldDefinition[]`. Same write path as the generic `create_resource` (incl. DB upsert + plaintext-secret encryption) — there to give clients typed, discoverable creates without round-tripping `list_resource_types` first.
 - **Auth context per request:** the McpServer is built inside the request handler with `auth: { userId, organizationId, email? }`. Tool handlers close over `auth`, so each connection only sees its own org — no URL-supplied `:orgId`.
+- **Shared tool registry:** tool implementations now live in `app/packages/web/src/tools/` (not under `mcp/`). The MCP server adapts them via `buildMcpServer`, and the in-app chat agent (`app/packages/web/src/chat/agent.ts`) consumes the same registry. Tool definitions carry a `risk: "read" | "write" | "destructive"` tag that the chat surface uses to gate destructive calls behind UI approval — MCP exposes everything regardless.
+
+---
+
+## AI chat agent (`/api/org/:orgId/chat`)
+
+Hosted Claude-powered chat with full UI parity — same tool registry as MCP plus connection-layer tools (SQL exec, KV/Docker commands, SSH exec, storage, secret versions, credential export). The agent loop lives entirely server-side; web + desktop both render the same React route.
+
+- **Code:** `app/packages/web/src/chat/agent.ts` (agent loop + suspend/resume), `chat/auth.ts` (session cookie OR WorkOS Bearer OR `iwk_` API key with `chat:write`), `chat/billing.ts` (per-turn `chat_usage` rows + Stripe metered usage), `chat/pricing.ts` (per-Mtok rates × markup, env-overridable). Routes: `api/routes/chat.ts`. UI: `routes/org.$orgId.chat.tsx` + `routes/org.$orgId.chat.$conversationId.tsx`, components in `components/chat/`.
+- **Tool registry:** `src/tools/registry.ts` returns plain `ToolDefinition[]` (generic + connections + per-plugin-create). Each handler accepts a `ToolAuthContext` with `source: "mcp" | "chat" | "api"` so audit rows distinguish caller.
+- **Destructive-action flow:** when the model emits a `tool_use` for a `risk: "destructive"` tool, the loop inserts a `chat_pending_actions` row (status `pending`), emits an SSE `pending_action` event, and ends the turn. The UI shows Approve/Reject; approve transitions to `approved` and synchronously runs the handler, writing `executed`/`errored` + result. Once every pending action for the latest assistant message is resolved, the UI hits `POST /messages {resume: true}` and the loop continues with `tool_result` blocks.
+- **Pricing:** defaults to Sonnet 4.6 rates (input $3 / output $15 / cache-read $0.30 / cache-write $3.75 per Mtok) × 1.5 markup. Override via `INFRAWRENCH_CHAT_PRICE_*_PER_MTOK` and `INFRAWRENCH_CHAT_MARKUP`. Each turn's tokens are persisted as `chat_usage(cost_micros)`; if `INFRAWRENCH_STRIPE_CHAT_METER_EVENT` is set we also push a Stripe meter event keyed by customer.
+- **Monthly cap:** `organizations.chat_monthly_cap_micros`. Checked at the start of each turn; cap reached → `spend_blocked` SSE event, user message persisted but no model call.
+- **DB tables:** `chat_conversations`, `chat_messages` (content jsonb in Anthropic content-block shape + per-turn token counts), `chat_pending_actions`, `chat_usage`. Migration `0015_chat_tables.sql`.
+- **Auth:** sync-style — `authenticateChat(c, orgId, scope)` accepts the session cookie, a WorkOS Bearer access token, or an `iwk_*` API key with `chat:read`/`chat:write`. The scope catalogue in `server-core/permissions/catalog.ts` gained `chat:read` + `chat:write`.
 
 ---
 

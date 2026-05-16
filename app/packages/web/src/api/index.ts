@@ -37,6 +37,7 @@ import { bastionRoutes } from "./routes/bastions";
 
 // API-key-authed; handles its own auth.
 import { syncRoutes } from "./routes/sync";
+import { chatRoutes } from "./routes/chat";
 
 import { wellKnownRoutes } from "../mcp/well-known";
 
@@ -91,6 +92,10 @@ api.get("/api/auth/sign-in", async (c) => {
 });
 
 api.route("/api/v1/sync", syncRoutes);
+
+// Chat handles its own auth so it can serve both session-cookie UI clients
+// and `iwk_` API-key holders with the `chat:write` scope.
+api.route("/api/org/:orgId/chat", chatRoutes);
 
 const authed = new Hono();
 authed.use("*", sessionMiddleware);

@@ -22,6 +22,8 @@ const AVAILABLE_SCOPES = [
   { value: "resources:write", label: "Resources (write)" },
   { value: "dashboards:read", label: "Dashboards (read)" },
   { value: "dashboards:write", label: "Dashboards (write)" },
+  { value: "chat:read", label: "Chat (read)" },
+  { value: "chat:write", label: "Chat (write)" },
 ];
 
 export const Route = createFileRoute("/org/$orgId/settings/api-keys")({

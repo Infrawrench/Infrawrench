@@ -45,6 +45,8 @@ When you create a key you pick its scopes. Pick the narrowest set that gets the 
 
 Wildcard scopes are honored: `resources:*:read`, `resources:postgres:*`, or just `*` for full access. The exact catalogue is documented in the [API reference](./openapi.md) under each operation's `x-required-permission` extension. The OpenAPI spec also exposes a `Permission` enum listing every recognised string.
 
+The `chat:read` and `chat:write` scopes gate the [AI chat](../features/ai-chat.md) API: list/inspect conversations vs. send messages and approve destructive tool calls. Calls authed by a `chat:write` key still meter tokens to the org and respect the org-level monthly spend cap.
+
 Older keys created with the deprecated `sync:read` / `sync:write` scopes are migrated automatically the next time they authenticate.
 
 ## Audit

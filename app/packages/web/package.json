@@ -16,9 +16,9 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.96.0",
     "@asteasolutions/zod-to-openapi": "^7.3.0",
     "@hono/node-server": "^1.19.13",
-    "@scalar/hono-api-reference": "^0.5.172",
     "@infrawrench/plugin-aws": "workspace:*",
     "@infrawrench/plugin-azure": "workspace:*",
     "@infrawrench/plugin-base": "workspace:*",
@@ -50,13 +50,14 @@
     "@infrawrench/sftp-host": "workspace:*",
     "@infrawrench/ssh-tunnel-core": "workspace:*",
     "@infrawrench/ui": "workspace:*",
+    "@kubernetes/client-node": "^1.4.0",
     "@libsql/client": "^0.14.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "@scalar/hono-api-reference": "^0.5.172",
     "@tanstack/react-router": "^1.114.7",
     "@workos-inc/node": "^8.0.0",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/xterm": "^5.5.0",
-    "@kubernetes/client-node": "^1.4.0",
     "archiver": "^7.0.0",
     "cloudflare": "^6.1.0",
     "dockerode": "^5.0.0",
@@ -76,7 +77,8 @@
     "stripe": "^17.7.0",
     "uuid": "^11.1.0",
     "ws": "^8.18.0",
-    "zod": "^3.24.1"
+    "zod": "^3.24.1",
+    "zod-to-json-schema": "^3.25.2"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.2.2",

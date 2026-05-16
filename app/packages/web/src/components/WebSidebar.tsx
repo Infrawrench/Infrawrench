@@ -567,6 +567,13 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
             Add account
           </button>
           <button
+            onClick={() => void navigate({ to: "/org/$orgId/chat", params: { orgId: orgId! } })}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-on-surface-muted hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
+          >
+            <span className="text-base leading-none">&#9670;</span>
+            Chat
+          </button>
+          <button
             onClick={() => void navigate({ to: "/org/$orgId/settings", params: { orgId: orgId! } })}
             className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-on-surface-muted hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
           >

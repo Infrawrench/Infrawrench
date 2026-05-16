@@ -14,6 +14,7 @@ import { Route as OrgOrgIdRouteImport } from './routes/org.$orgId'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as OrgOrgIdIndexRouteImport } from './routes/org.$orgId.index'
 import { Route as OrgOrgIdSettingsRouteImport } from './routes/org.$orgId.settings'
+import { Route as OrgOrgIdChatRouteImport } from './routes/org.$orgId.chat'
 import { Route as OrgOrgIdSettingsIndexRouteImport } from './routes/org.$orgId.settings.index'
 import { Route as OrgOrgIdSettingsTeamRouteImport } from './routes/org.$orgId.settings.team'
 import { Route as OrgOrgIdSettingsSshKeysRouteImport } from './routes/org.$orgId.settings.ssh-keys'
@@ -24,6 +25,7 @@ import { Route as OrgOrgIdSettingsBastionsRouteImport } from './routes/org.$orgI
 import { Route as OrgOrgIdSettingsAuditLogRouteImport } from './routes/org.$orgId.settings.audit-log'
 import { Route as OrgOrgIdSettingsApiKeysRouteImport } from './routes/org.$orgId.settings.api-keys'
 import { Route as OrgOrgIdDashboardDashboardIdRouteImport } from './routes/org.$orgId.dashboard.$dashboardId'
+import { Route as OrgOrgIdChatConversationIdRouteImport } from './routes/org.$orgId.chat.$conversationId'
 import { Route as OrgOrgIdAccountsAccountIdRouteImport } from './routes/org.$orgId.accounts.$accountId'
 import { Route as OrgOrgIdResourcesPluginIdResourceTypeIdResourceIdRouteImport } from './routes/org.$orgId.resources.$pluginId.$resourceTypeId.$resourceId'
 
@@ -50,6 +52,11 @@ const OrgOrgIdIndexRoute = OrgOrgIdIndexRouteImport.update({
 const OrgOrgIdSettingsRoute = OrgOrgIdSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
+const OrgOrgIdChatRoute = OrgOrgIdChatRouteImport.update({
+  id: '/chat',
+  path: '/chat',
   getParentRoute: () => OrgOrgIdRoute,
 } as any)
 const OrgOrgIdSettingsIndexRoute = OrgOrgIdSettingsIndexRouteImport.update({
@@ -106,6 +113,12 @@ const OrgOrgIdDashboardDashboardIdRoute =
     path: '/dashboard/$dashboardId',
     getParentRoute: () => OrgOrgIdRoute,
   } as any)
+const OrgOrgIdChatConversationIdRoute =
+  OrgOrgIdChatConversationIdRouteImport.update({
+    id: '/$conversationId',
+    path: '/$conversationId',
+    getParentRoute: () => OrgOrgIdChatRoute,
+  } as any)
 const OrgOrgIdAccountsAccountIdRoute =
   OrgOrgIdAccountsAccountIdRouteImport.update({
     id: '/accounts/$accountId',
@@ -123,9 +136,11 @@ export interface FileRoutesByFullPath {
   '/onboarding': typeof OnboardingRoute
   '/invite/$token': typeof InviteTokenRoute
   '/org/$orgId': typeof OrgOrgIdRouteWithChildren
+  '/org/$orgId/chat': typeof OrgOrgIdChatRouteWithChildren
   '/org/$orgId/settings': typeof OrgOrgIdSettingsRouteWithChildren
   '/org/$orgId/': typeof OrgOrgIdIndexRoute
   '/org/$orgId/accounts/$accountId': typeof OrgOrgIdAccountsAccountIdRoute
+  '/org/$orgId/chat/$conversationId': typeof OrgOrgIdChatConversationIdRoute
   '/org/$orgId/dashboard/$dashboardId': typeof OrgOrgIdDashboardDashboardIdRoute
   '/org/$orgId/settings/api-keys': typeof OrgOrgIdSettingsApiKeysRoute
   '/org/$orgId/settings/audit-log': typeof OrgOrgIdSettingsAuditLogRoute
@@ -141,8 +156,10 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/onboarding': typeof OnboardingRoute
   '/invite/$token': typeof InviteTokenRoute
+  '/org/$orgId/chat': typeof OrgOrgIdChatRouteWithChildren
   '/org/$orgId': typeof OrgOrgIdIndexRoute
   '/org/$orgId/accounts/$accountId': typeof OrgOrgIdAccountsAccountIdRoute
+  '/org/$orgId/chat/$conversationId': typeof OrgOrgIdChatConversationIdRoute
   '/org/$orgId/dashboard/$dashboardId': typeof OrgOrgIdDashboardDashboardIdRoute
   '/org/$orgId/settings/api-keys': typeof OrgOrgIdSettingsApiKeysRoute
   '/org/$orgId/settings/audit-log': typeof OrgOrgIdSettingsAuditLogRoute
@@ -160,9 +177,11 @@ export interface FileRoutesById {
   '/onboarding': typeof OnboardingRoute
   '/invite/$token': typeof InviteTokenRoute
   '/org/$orgId': typeof OrgOrgIdRouteWithChildren
+  '/org/$orgId/chat': typeof OrgOrgIdChatRouteWithChildren
   '/org/$orgId/settings': typeof OrgOrgIdSettingsRouteWithChildren
   '/org/$orgId/': typeof OrgOrgIdIndexRoute
   '/org/$orgId/accounts/$accountId': typeof OrgOrgIdAccountsAccountIdRoute
+  '/org/$orgId/chat/$conversationId': typeof OrgOrgIdChatConversationIdRoute
   '/org/$orgId/dashboard/$dashboardId': typeof OrgOrgIdDashboardDashboardIdRoute
   '/org/$orgId/settings/api-keys': typeof OrgOrgIdSettingsApiKeysRoute
   '/org/$orgId/settings/audit-log': typeof OrgOrgIdSettingsAuditLogRoute
@@ -181,9 +200,11 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/invite/$token'
     | '/org/$orgId'
+    | '/org/$orgId/chat'
     | '/org/$orgId/settings'
     | '/org/$orgId/'
     | '/org/$orgId/accounts/$accountId'
+    | '/org/$orgId/chat/$conversationId'
     | '/org/$orgId/dashboard/$dashboardId'
     | '/org/$orgId/settings/api-keys'
     | '/org/$orgId/settings/audit-log'
@@ -199,8 +220,10 @@ export interface FileRouteTypes {
   to:
     | '/onboarding'
     | '/invite/$token'
+    | '/org/$orgId/chat'
     | '/org/$orgId'
     | '/org/$orgId/accounts/$accountId'
+    | '/org/$orgId/chat/$conversationId'
     | '/org/$orgId/dashboard/$dashboardId'
     | '/org/$orgId/settings/api-keys'
     | '/org/$orgId/settings/audit-log'
@@ -217,9 +240,11 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/invite/$token'
     | '/org/$orgId'
+    | '/org/$orgId/chat'
     | '/org/$orgId/settings'
     | '/org/$orgId/'
     | '/org/$orgId/accounts/$accountId'
+    | '/org/$orgId/chat/$conversationId'
     | '/org/$orgId/dashboard/$dashboardId'
     | '/org/$orgId/settings/api-keys'
     | '/org/$orgId/settings/audit-log'
@@ -274,6 +299,13 @@ declare module '@tanstack/react-router' {
       path: '/settings'
       fullPath: '/org/$orgId/settings'
       preLoaderRoute: typeof OrgOrgIdSettingsRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
+    '/org/$orgId/chat': {
+      id: '/org/$orgId/chat'
+      path: '/chat'
+      fullPath: '/org/$orgId/chat'
+      preLoaderRoute: typeof OrgOrgIdChatRouteImport
       parentRoute: typeof OrgOrgIdRoute
     }
     '/org/$orgId/settings/': {
@@ -346,6 +378,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgIdDashboardDashboardIdRouteImport
       parentRoute: typeof OrgOrgIdRoute
     }
+    '/org/$orgId/chat/$conversationId': {
+      id: '/org/$orgId/chat/$conversationId'
+      path: '/$conversationId'
+      fullPath: '/org/$orgId/chat/$conversationId'
+      preLoaderRoute: typeof OrgOrgIdChatConversationIdRouteImport
+      parentRoute: typeof OrgOrgIdChatRoute
+    }
     '/org/$orgId/accounts/$accountId': {
       id: '/org/$orgId/accounts/$accountId'
       path: '/accounts/$accountId'
@@ -362,6 +401,18 @@ declare module '@tanstack/react-router' {
     }
   }
 }
+
+interface OrgOrgIdChatRouteChildren {
+  OrgOrgIdChatConversationIdRoute: typeof OrgOrgIdChatConversationIdRoute
+}
+
+const OrgOrgIdChatRouteChildren: OrgOrgIdChatRouteChildren = {
+  OrgOrgIdChatConversationIdRoute: OrgOrgIdChatConversationIdRoute,
+}
+
+const OrgOrgIdChatRouteWithChildren = OrgOrgIdChatRoute._addFileChildren(
+  OrgOrgIdChatRouteChildren,
+)
 
 interface OrgOrgIdSettingsRouteChildren {
   OrgOrgIdSettingsApiKeysRoute: typeof OrgOrgIdSettingsApiKeysRoute
@@ -391,6 +442,7 @@ const OrgOrgIdSettingsRouteWithChildren =
   OrgOrgIdSettingsRoute._addFileChildren(OrgOrgIdSettingsRouteChildren)
 
 interface OrgOrgIdRouteChildren {
+  OrgOrgIdChatRoute: typeof OrgOrgIdChatRouteWithChildren
   OrgOrgIdSettingsRoute: typeof OrgOrgIdSettingsRouteWithChildren
   OrgOrgIdIndexRoute: typeof OrgOrgIdIndexRoute
   OrgOrgIdAccountsAccountIdRoute: typeof OrgOrgIdAccountsAccountIdRoute
@@ -399,6 +451,7 @@ interface OrgOrgIdRouteChildren {
 }
 
 const OrgOrgIdRouteChildren: OrgOrgIdRouteChildren = {
+  OrgOrgIdChatRoute: OrgOrgIdChatRouteWithChildren,
   OrgOrgIdSettingsRoute: OrgOrgIdSettingsRouteWithChildren,
   OrgOrgIdIndexRoute: OrgOrgIdIndexRoute,
   OrgOrgIdAccountsAccountIdRoute: OrgOrgIdAccountsAccountIdRoute,

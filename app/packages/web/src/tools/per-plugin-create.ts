@@ -1,32 +1,17 @@
-import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z, type ZodTypeAny } from "zod";
 import { v4 as uuidv4 } from "uuid";
-import { db } from "../../db/client";
-import { resources, secretFieldStates } from "../../db/schema";
-import { encrypt, buildAad } from "../../services/encryption";
-import { logAudit } from "../../services/audit";
-import { loadPlugins } from "../../plugins/loader";
-import { getClientForResource } from "../../services/plugin-clients";
+import { db } from "../db/client";
+import { resources, secretFieldStates } from "../db/schema";
+import { encrypt, buildAad } from "../services/encryption";
+import { logAudit } from "../services/audit";
+import { loadPlugins } from "../plugins/loader";
+import { getClientForResource } from "../services/plugin-clients";
 import { normalizeResourceCreateResult } from "@infrawrench/plugin-base";
 import type { FieldDefinition, ResourceTypeDefinition } from "@infrawrench/plugin-base";
-import type { McpAuthContext } from "../auth";
+import { ok, err, type ToolDefinition } from "./types";
 
 function safeName(input: string): string {
   return input.replace(/[^a-zA-Z0-9_]/g, "_");
-}
-
-function inputSchemaForType(type: ResourceTypeDefinition): Record<string, ZodTypeAny> {
-  const shape: Record<string, ZodTypeAny> = {
-    accountId: z.string().describe("Connected account id (see list_accounts)"),
-    parentResourceId: z.string().optional(),
-  };
-  for (const f of type.fields) {
-    let leaf: ZodTypeAny = scalarFor(f);
-    if (f.description) leaf = leaf.describe(f.description);
-    if (!f.required) leaf = leaf.optional();
-    shape[f.key] = leaf;
-  }
-  return shape;
 }
 
 function scalarFor(f: FieldDefinition): ZodTypeAny {
@@ -48,30 +33,41 @@ function scalarFor(f: FieldDefinition): ZodTypeAny {
   }
 }
 
-export async function registerPerPluginCreateTools(
-  server: McpServer,
-  auth: McpAuthContext,
-): Promise<void> {
-  const orgId = auth.organizationId;
+function inputSchemaForType(type: ResourceTypeDefinition): Record<string, ZodTypeAny> {
+  const shape: Record<string, ZodTypeAny> = {
+    accountId: z.string().describe("Connected account id (see list_accounts)"),
+    parentResourceId: z.string().optional(),
+  };
+  for (const f of type.fields) {
+    let leaf: ZodTypeAny = scalarFor(f);
+    if (f.description) leaf = leaf.describe(f.description);
+    if (!f.required) leaf = leaf.optional();
+    shape[f.key] = leaf;
+  }
+  return shape;
+}
+
+export async function perPluginCreateTools(): Promise<ToolDefinition[]> {
   const plugins = await loadPlugins();
+  const out: ToolDefinition[] = [];
 
   for (const loaded of plugins) {
     const pluginId = loaded.plugin.manifest.id;
     for (const type of loaded.plugin.resourceTypes) {
       if (!type.supportsCreate) continue;
       const toolName = `${safeName(pluginId)}_create_${safeName(type.id)}`;
+      const typeId = type.id;
 
-      server.registerTool(
-        toolName,
-        {
-          title: `Create ${type.displayName} (${loaded.plugin.manifest.displayName})`,
-          description:
-            `Create a new ${type.displayName} via the ${loaded.plugin.manifest.displayName} plugin. ` +
-            `Pass the connected accountId plus the type's fields. ` +
-            (type.description ?? ""),
-          inputSchema: inputSchemaForType(type),
-        },
-        async (input) => {
+      out.push({
+        name: toolName,
+        title: `Create ${type.displayName} (${loaded.plugin.manifest.displayName})`,
+        description:
+          `Create a new ${type.displayName} via the ${loaded.plugin.manifest.displayName} plugin. ` +
+          `Pass the connected accountId plus the type's fields. ` +
+          (type.description ?? ""),
+        inputSchema: inputSchemaForType(type),
+        risk: "write",
+        handler: async (input, auth) => {
           const { accountId, parentResourceId, ...rest } = input as Record<string, unknown> & {
             accountId: string;
             parentResourceId?: string;
@@ -83,38 +79,21 @@ export async function registerPerPluginCreateTools(
             fields[k] = typeof v === "string" ? v : String(v);
           }
 
+          const orgId = auth.organizationId;
           const ctx = await getClientForResource(pluginId, accountId, orgId, parentResourceId);
-          if (!ctx) {
-            return {
-              content: [{ type: "text", text: "Account or peer resource not found" }],
-              isError: true,
-            };
-          }
-          if (!ctx.client.createResource) {
-            return {
-              content: [{ type: "text", text: "Plugin does not support creation" }],
-              isError: true,
-            };
-          }
+          if (!ctx) return err("Account or peer resource not found");
+          if (!ctx.client.createResource) return err("Plugin does not support creation");
 
           let createReturn;
           try {
             createReturn = await ctx.client.createResource(
-              type.id,
+              typeId,
               accountId,
               fields,
               parentResourceId,
             );
           } catch (e) {
-            return {
-              content: [
-                {
-                  type: "text",
-                  text: e instanceof Error ? e.message : "Resource creation failed",
-                },
-              ],
-              isError: true,
-            };
+            return err(e instanceof Error ? e.message : "Resource creation failed");
           }
 
           const { resource: created, warnings } = normalizeResourceCreateResult(createReturn);
@@ -127,7 +106,7 @@ export async function registerPerPluginCreateTools(
                   id: created.id,
                   organizationId: orgId,
                   pluginId,
-                  resourceTypeId: type.id,
+                  resourceTypeId: typeId,
                   accountId,
                   displayName: created.displayName,
                   externalId: created.externalId ?? null,
@@ -180,9 +159,8 @@ export async function registerPerPluginCreateTools(
                     },
                   });
               }
-            } catch (err) {
-              // Non-critical; the next sync will reconcile.
-              console.error("[mcp/per-plugin-create] Failed to persist resource:", err);
+            } catch (persistErr) {
+              console.error("[tools/per-plugin-create] Failed to persist resource:", persistErr);
             }
           }
 
@@ -192,23 +170,19 @@ export async function registerPerPluginCreateTools(
             action: "resource.create",
             entityType: "resource",
             entityId: created.id,
-            metadata: { pluginId, resourceTypeId: type.id, source: "mcp", tool: toolName },
+            metadata: {
+              pluginId,
+              resourceTypeId: typeId,
+              source: auth.source,
+              tool: toolName,
+            },
           });
 
-          return {
-            content: [
-              {
-                type: "text",
-                text: JSON.stringify(
-                  { id: created.id, displayName: created.displayName, warnings },
-                  null,
-                  2,
-                ),
-              },
-            ],
-          };
+          return ok({ id: created.id, displayName: created.displayName, warnings });
         },
-      );
+      });
     }
   }
+
+  return out;
 }

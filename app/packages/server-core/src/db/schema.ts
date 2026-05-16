@@ -13,6 +13,12 @@ import { sql } from "drizzle-orm";
 export const organizations = pgTable("organizations", {
   id: text("id").primaryKey(), // WorkOS org ID
   displayName: text("display_name").notNull(),
+  /**
+   * Optional monthly token-spend cap for the chat agent, in micro-dollars
+   * (1 USD = 1_000_000). When the org's current-month chat_usage cost sum
+   * exceeds this, the agent loop refuses new turns. Null means no cap.
+   */
+  chatMonthlyCapMicros: integer("chat_monthly_cap_micros"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -496,5 +502,127 @@ export const sshTunnelConfigs = pgTable(
   (t) => ({
     accountUnique: uniqueIndex("ssh_tunnel_configs_account_unique").on(t.accountId),
     orgIdx: index("ssh_tunnel_configs_org_idx").on(t.organizationId),
+  }),
+);
+
+/* -------------------------------------------------------------------------- */
+/* AI chat — conversations + per-turn messages + pending-action approvals     */
+/* + per-turn token usage rolled up for Stripe metered billing.               */
+/* -------------------------------------------------------------------------- */
+
+export const chatConversations = pgTable(
+  "chat_conversations",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    title: text("title").notNull().default("New chat"),
+    model: text("model").notNull().default("claude-sonnet-4-6"),
+    /** System prompt override; null means use the default from chat/agent.ts */
+    systemPrompt: text("system_prompt"),
+    archivedAt: timestamp("archived_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgUserIdx: index("chat_conversations_org_user_idx").on(t.organizationId, t.userId),
+    orgUpdatedIdx: index("chat_conversations_org_updated_idx").on(t.organizationId, t.updatedAt),
+  }),
+);
+
+export const chatMessages = pgTable(
+  "chat_messages",
+  {
+    id: text("id").primaryKey(),
+    conversationId: text("conversation_id")
+      .notNull()
+      .references(() => chatConversations.id, { onDelete: "cascade" }),
+    /** "user" | "assistant" | "tool" */
+    role: text("role").notNull(),
+    /**
+     * Anthropic-shaped content blocks. For role=user this is the user's text
+     * input plus any tool_result blocks returned from the previous turn. For
+     * role=assistant it's the text + tool_use blocks the model emitted. Tool
+     * results from approved-and-executed tool calls are stored as a follow-on
+     * role=user message with tool_result blocks, mirroring the SDK shape.
+     */
+    content: jsonb("content").notNull(),
+    /** Tokens reported by Anthropic for this individual turn (assistant rows only). */
+    inputTokens: integer("input_tokens").notNull().default(0),
+    outputTokens: integer("output_tokens").notNull().default(0),
+    cacheReadTokens: integer("cache_read_tokens").notNull().default(0),
+    cacheWriteTokens: integer("cache_write_tokens").notNull().default(0),
+    /** Stop reason from the API: "end_turn" | "tool_use" | "max_tokens" | etc. */
+    stopReason: text("stop_reason"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    conversationCreatedIdx: index("chat_messages_conversation_created_idx").on(
+      t.conversationId,
+      t.createdAt,
+    ),
+  }),
+);
+
+export const chatPendingActions = pgTable(
+  "chat_pending_actions",
+  {
+    id: text("id").primaryKey(),
+    conversationId: text("conversation_id")
+      .notNull()
+      .references(() => chatConversations.id, { onDelete: "cascade" }),
+    /** The assistant message that emitted this tool_use block. */
+    messageId: text("message_id")
+      .notNull()
+      .references(() => chatMessages.id, { onDelete: "cascade" }),
+    /** Tool call id from the Anthropic SDK (toolu_*). Used to build tool_result. */
+    toolUseId: text("tool_use_id").notNull(),
+    toolName: text("tool_name").notNull(),
+    toolInput: jsonb("tool_input").notNull(),
+    /** "pending" | "approved" | "rejected" | "executed" | "errored" */
+    status: text("status").notNull().default("pending"),
+    /** Tool result text once executed; or rejection reason. */
+    result: text("result"),
+    isError: boolean("is_error").notNull().default(false),
+    resolvedAt: timestamp("resolved_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    conversationIdx: index("chat_pending_actions_conversation_idx").on(t.conversationId),
+    statusIdx: index("chat_pending_actions_status_idx").on(t.status),
+  }),
+);
+
+export const chatUsage = pgTable(
+  "chat_usage",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    conversationId: text("conversation_id")
+      .notNull()
+      .references(() => chatConversations.id, { onDelete: "cascade" }),
+    messageId: text("message_id")
+      .notNull()
+      .references(() => chatMessages.id, { onDelete: "cascade" }),
+    model: text("model").notNull(),
+    inputTokens: integer("input_tokens").notNull(),
+    outputTokens: integer("output_tokens").notNull(),
+    cacheReadTokens: integer("cache_read_tokens").notNull(),
+    cacheWriteTokens: integer("cache_write_tokens").notNull(),
+    /** Total billable cost in micro-dollars after markup. */
+    costMicros: integer("cost_micros").notNull(),
+    /** Stripe usage record id once reported; null until reported. */
+    stripeUsageRecordId: text("stripe_usage_record_id"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgCreatedIdx: index("chat_usage_org_created_idx").on(t.organizationId, t.createdAt),
+    unreportedIdx: index("chat_usage_unreported_idx").on(t.stripeUsageRecordId),
   }),
 );

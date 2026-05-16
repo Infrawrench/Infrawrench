@@ -33,6 +33,8 @@ export const ALL_PERMISSIONS = [
   "ssh-keys:write",
   "bastions:read",
   "bastions:write",
+  "chat:read",
+  "chat:write",
   "org:settings:write",
 ] as const;
 
