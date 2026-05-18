@@ -24,4 +24,12 @@ export const SecretsManagerSecretResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   supportsCreate: true,
   iconKey: "secret",
+  secretExportTemplates: [
+    {
+      id: "secret-value",
+      displayName: "Secret Value",
+      description: "Inject the secret's current value as an env var",
+      entries: [{ envKey: "SECRET_VALUE", outputKey: "secretValue" }],
+    },
+  ],
 };

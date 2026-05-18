@@ -24,6 +24,13 @@ export const PsBranchResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   supportsCreate: true,
   iconKey: "planetscale",
+  peerIntegrations: [
+    {
+      pluginId: "mysql",
+      credentialMappings: [{ outputKey: "connectionString", credentialKey: "connectionString" }],
+      tabLabel: "MySQL",
+    },
+  ],
   secretExportTemplates: [
     {
       id: "connection-url",

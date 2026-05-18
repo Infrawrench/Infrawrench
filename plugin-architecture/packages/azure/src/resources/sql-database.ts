@@ -43,6 +43,26 @@ export const SQLDatabaseResourceType: ResourceTypeDefinition = {
   iconKey: "database",
   supportsCreate: true,
   supportsMetrics: true,
+  resourceSqlDriver: {
+    driver: "mssql",
+    connectionStringOutputKey: "connectionString",
+  },
+  peerIntegrations: [
+    {
+      pluginId: "mssql",
+      credentialMappings: [{ outputKey: "connectionString", credentialKey: "connectionString" }],
+      tabLabel: "MSSQL",
+      unreachableWhen: {
+        fieldsEmpty: ["serverFqdn"],
+        title: "SQL Server has no public endpoint reachable from this host.",
+        suggestions: [
+          "Connect from inside the same VNet as the SQL server private endpoint.",
+          "Enable public network access on the logical server (configure firewall rules).",
+          "Use Azure Bastion or a jumpbox in the server's network.",
+        ],
+      },
+    },
+  ],
   secretExportTemplates: [
     {
       id: "connection-string",

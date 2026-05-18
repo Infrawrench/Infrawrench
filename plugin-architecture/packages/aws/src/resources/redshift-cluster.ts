@@ -24,6 +24,27 @@ export const RedshiftClusterResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   iconKey: "database",
   supportsCreate: true,
+  supportsMetrics: true,
+  resourceSqlDriver: {
+    driver: "postgres",
+    connectionStringOutputKey: "connectionString",
+  },
+  peerIntegrations: [
+    {
+      pluginId: "postgres",
+      credentialMappings: [{ outputKey: "connectionString", credentialKey: "connectionString" }],
+      tabLabel: "SQL",
+      unreachableWhen: {
+        fieldsEmpty: ["publiclyAccessible"],
+        title: "Cluster is not publicly accessible.",
+        suggestions: [
+          "Run queries from within the same VPC, e.g. via a bastion host or SSH tunnel.",
+          "Toggle publicly accessible on the cluster (not recommended in production).",
+          "Use the AWS Redshift Query Editor v2 from the AWS console.",
+        ],
+      },
+    },
+  ],
   secretExportTemplates: [
     {
       id: "connection",

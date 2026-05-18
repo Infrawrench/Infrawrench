@@ -31,4 +31,5 @@ export const SageMakerEndpointResourceType: ResourceTypeDefinition = {
   outputs: [{ key: "endpointArn", label: "Endpoint ARN", sensitive: false }],
   dashboardPinnable: true,
   iconKey: "function",
+  supportsMetrics: true,
 };

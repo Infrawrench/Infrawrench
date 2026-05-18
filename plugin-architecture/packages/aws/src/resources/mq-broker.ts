@@ -40,6 +40,7 @@ export const MQBrokerResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   iconKey: "queue",
   supportsCreate: true,
+  supportsMetrics: true,
   secretExportTemplates: [
     {
       id: "mq-connection",

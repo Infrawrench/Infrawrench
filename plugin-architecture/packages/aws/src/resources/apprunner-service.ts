@@ -33,4 +33,13 @@ export const AppRunnerServiceResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   iconKey: "service",
   supportsCreate: true,
+  supportsMetrics: true,
+  secretExportTemplates: [
+    {
+      id: "apprunner-url",
+      displayName: "App Runner URL",
+      description: "Service URL for HTTP access",
+      entries: [{ envKey: "APP_RUNNER_URL", outputKey: "serviceUrl" }],
+    },
+  ],
 };

@@ -217,6 +217,36 @@ const RESOURCE_TYPE_METRICS: Record<string, { provider: string; metrics: MetricC
       { metricName: "TotalRequestUnits", label: "RU Consumed", aggregation: "Total" },
     ],
   },
+  "azure-storage-account": {
+    provider: "Microsoft.Storage/storageAccounts",
+    metrics: [
+      { metricName: "UsedCapacity", label: "Used Capacity", aggregation: "Average", unit: "bytes" },
+      { metricName: "Transactions", label: "Transactions", aggregation: "Total" },
+      { metricName: "Ingress", label: "Ingress", aggregation: "Total", unit: "bytes" },
+      { metricName: "Egress", label: "Egress", aggregation: "Total", unit: "bytes" },
+      { metricName: "Availability", label: "Availability", aggregation: "Average", unit: "%" },
+    ],
+  },
+  "azure-event-hub": {
+    provider: "Microsoft.EventHub/namespaces",
+    metrics: [
+      { metricName: "IncomingMessages", label: "Incoming Messages", aggregation: "Total" },
+      { metricName: "OutgoingMessages", label: "Outgoing Messages", aggregation: "Total" },
+      { metricName: "IncomingBytes", label: "Incoming Bytes", aggregation: "Total", unit: "bytes" },
+      { metricName: "OutgoingBytes", label: "Outgoing Bytes", aggregation: "Total", unit: "bytes" },
+      { metricName: "ThrottledRequests", label: "Throttled Requests", aggregation: "Total" },
+    ],
+  },
+  "azure-service-bus": {
+    provider: "Microsoft.ServiceBus/namespaces",
+    metrics: [
+      { metricName: "ActiveMessages", label: "Active Messages", aggregation: "Average" },
+      { metricName: "IncomingMessages", label: "Incoming Messages", aggregation: "Total" },
+      { metricName: "OutgoingMessages", label: "Outgoing Messages", aggregation: "Total" },
+      { metricName: "Size", label: "Size", aggregation: "Average", unit: "bytes" },
+      { metricName: "ThrottledRequests", label: "Throttled Requests", aggregation: "Total" },
+    ],
+  },
 };
 
 export function azureSupportsMetrics(resourceTypeId: string): boolean {

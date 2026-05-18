@@ -31,6 +31,26 @@ export const MySQLFlexibleServerResourceType: ResourceTypeDefinition = {
   iconKey: "database",
   supportsCreate: true,
   supportsMetrics: true,
+  resourceSqlDriver: {
+    driver: "mysql",
+    connectionStringOutputKey: "connectionString",
+  },
+  peerIntegrations: [
+    {
+      pluginId: "mysql",
+      credentialMappings: [{ outputKey: "connectionString", credentialKey: "connectionString" }],
+      tabLabel: "MySQL",
+      unreachableWhen: {
+        fieldsEmpty: ["fqdn"],
+        title: "Server has no public endpoint reachable from this host.",
+        suggestions: [
+          "Connect from inside the VNet (jump VM, AKS pod, or Bastion).",
+          "Enable public network access on the flexible server (firewall rules required).",
+          "Use a self-hosted VPN or ExpressRoute that peers into the server's VNet.",
+        ],
+      },
+    },
+  ],
   secretExportTemplates: [
     {
       id: "mysql-connection",

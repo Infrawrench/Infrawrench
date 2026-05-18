@@ -47,11 +47,38 @@ export const ManagedDatabaseResourceType: ResourceTypeDefinition = {
     { key: "username", label: "Username", sensitive: false },
     { key: "password", label: "Password", sensitive: true },
     { key: "dbName", label: "Database Name", sensitive: false },
+    { key: "connectionString", label: "Connection String", sensitive: true },
   ],
   dashboardPinnable: true,
   supportsCreate: true,
   iconKey: "database",
+  peerIntegrations: [
+    {
+      pluginId: "postgres",
+      credentialMappings: [{ outputKey: "connectionString", credentialKey: "connectionString" }],
+      tabLabel: "PostgreSQL",
+      showWhen: { fieldKey: "engine", equals: "PostgreSQL" },
+    },
+    {
+      pluginId: "mysql",
+      credentialMappings: [{ outputKey: "connectionString", credentialKey: "connectionString" }],
+      tabLabel: "MySQL",
+      showWhen: { fieldKey: "engine", equals: "MySQL" },
+    },
+    {
+      pluginId: "redis",
+      credentialMappings: [{ outputKey: "connectionString", credentialKey: "connectionString" }],
+      tabLabel: "Redis",
+      showWhen: { fieldKey: "engine", equals: "Redis" },
+    },
+  ],
   secretExportTemplates: [
+    {
+      id: "url",
+      displayName: "Connection URL",
+      description: "Single DATABASE_URL containing the full connection string",
+      entries: [{ envKey: "DATABASE_URL", outputKey: "connectionString" }],
+    },
     {
       id: "individual",
       displayName: "Individual Credentials",

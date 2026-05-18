@@ -27,4 +27,13 @@ export const StepFunctionResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   iconKey: "workflow",
   supportsCreate: true,
+  supportsMetrics: true,
+  secretExportTemplates: [
+    {
+      id: "step-function-arn",
+      displayName: "State Machine ARN",
+      description: "State machine ARN for SDK invocation",
+      entries: [{ envKey: "STATE_MACHINE_ARN", outputKey: "stateMachineArn" }],
+    },
+  ],
 };

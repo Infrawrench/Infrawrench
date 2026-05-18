@@ -30,6 +30,7 @@ export const SpacesResourceType: ResourceTypeDefinition = {
   parentTypeId: "project",
   dashboardPinnable: true,
   supportsCreate: true,
+  supportsStorageBrowser: true,
   iconKey: "spaces",
   credentialFormats: [
     {

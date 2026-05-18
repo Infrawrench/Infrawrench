@@ -26,6 +26,13 @@ export const RedisCacheResourceType: ResourceTypeDefinition = {
   iconKey: "cache",
   supportsCreate: true,
   supportsMetrics: true,
+  peerIntegrations: [
+    {
+      pluginId: "redis",
+      credentialMappings: [{ outputKey: "connectionString", credentialKey: "connectionString" }],
+      tabLabel: "Redis",
+    },
+  ],
   secretExportTemplates: [
     {
       id: "redis-connection",

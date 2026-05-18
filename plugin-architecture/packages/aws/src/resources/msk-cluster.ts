@@ -34,6 +34,7 @@ export const MSKClusterResourceType: ResourceTypeDefinition = {
   ],
   dashboardPinnable: true,
   iconKey: "stream",
+  supportsMetrics: true,
   secretExportTemplates: [
     {
       id: "kafka-connection",

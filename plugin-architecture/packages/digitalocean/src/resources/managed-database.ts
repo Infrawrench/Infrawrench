@@ -78,6 +78,36 @@ export const ManagedDatabaseResourceType: ResourceTypeDefinition = {
   supportsCreate: true,
   supportsMetrics: true,
   iconKey: "database",
+  resourceSqlDriver: {
+    driver: "postgres",
+    connectionStringOutputKey: "connectionString",
+  },
+  peerIntegrations: [
+    {
+      pluginId: "postgres",
+      credentialMappings: [{ outputKey: "connectionString", credentialKey: "connectionString" }],
+      tabLabel: "PostgreSQL",
+      showWhen: { fieldKey: "engine", equals: "pg" },
+    },
+    {
+      pluginId: "mysql",
+      credentialMappings: [{ outputKey: "connectionString", credentialKey: "connectionString" }],
+      tabLabel: "MySQL",
+      showWhen: { fieldKey: "engine", equals: "mysql" },
+    },
+    {
+      pluginId: "redis",
+      credentialMappings: [{ outputKey: "connectionString", credentialKey: "connectionString" }],
+      tabLabel: "Redis",
+      showWhen: { fieldKey: "engine", equals: "redis" },
+    },
+    {
+      pluginId: "mongodb",
+      credentialMappings: [{ outputKey: "connectionString", credentialKey: "connectionString" }],
+      tabLabel: "MongoDB",
+      showWhen: { fieldKey: "engine", equals: "mongodb" },
+    },
+  ],
   secretExportTemplates: [
     {
       id: "connection-url",

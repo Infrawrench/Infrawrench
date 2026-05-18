@@ -43,7 +43,14 @@ export const AppResourceType: ResourceTypeDefinition = {
       description: "Private network name",
     },
   ],
-  outputs: [],
+  outputs: [
+    {
+      key: "hostname",
+      label: "Hostname",
+      sensitive: false,
+      description: "Public hostname (<app>.fly.dev)",
+    },
+  ],
   dashboardPinnable: true,
   iconKey: "app",
   supportsCreate: true,

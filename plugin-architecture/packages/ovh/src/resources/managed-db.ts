@@ -80,6 +80,32 @@ export const ManagedDbResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   supportsCreate: true,
   iconKey: "database",
+  peerIntegrations: [
+    {
+      pluginId: "postgres",
+      credentialMappings: [{ outputKey: "connectionString", credentialKey: "connectionString" }],
+      tabLabel: "PostgreSQL",
+      showWhen: { fieldKey: "engine", equals: "postgresql" },
+    },
+    {
+      pluginId: "mysql",
+      credentialMappings: [{ outputKey: "connectionString", credentialKey: "connectionString" }],
+      tabLabel: "MySQL",
+      showWhen: { fieldKey: "engine", equals: "mysql" },
+    },
+    {
+      pluginId: "redis",
+      credentialMappings: [{ outputKey: "connectionString", credentialKey: "connectionString" }],
+      tabLabel: "Redis",
+      showWhen: { fieldKey: "engine", equals: "redis" },
+    },
+    {
+      pluginId: "mongodb",
+      credentialMappings: [{ outputKey: "connectionString", credentialKey: "connectionString" }],
+      tabLabel: "MongoDB",
+      showWhen: { fieldKey: "engine", equals: "mongodb" },
+    },
+  ],
   secretExportTemplates: [
     {
       id: "connection-url",

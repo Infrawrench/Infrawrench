@@ -27,6 +27,7 @@ export const EventHubNamespaceResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   iconKey: "topic",
   supportsCreate: true,
+  supportsMetrics: true,
   secretExportTemplates: [
     {
       id: "eventhub-connection",

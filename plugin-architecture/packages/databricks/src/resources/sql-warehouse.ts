@@ -29,6 +29,18 @@ export const SqlWarehouseResourceType: ResourceTypeDefinition = {
     { key: "warehouseId", label: "Warehouse ID", sensitive: false },
     { key: "jdbcUrl", label: "JDBC URL", sensitive: false },
     { key: "odbcUrl", label: "ODBC URL", sensitive: false },
+    {
+      key: "httpPath",
+      label: "HTTP Path",
+      sensitive: false,
+      description: "HTTP path for the SQL Connector / JDBC driver",
+    },
+    {
+      key: "serverHostname",
+      label: "Server Hostname",
+      sensitive: false,
+      description: "Workspace hostname for the SQL Connector",
+    },
   ],
   dashboardPinnable: true,
   supportsCreate: true,
@@ -37,4 +49,17 @@ export const SqlWarehouseResourceType: ResourceTypeDefinition = {
     driver: "databricks",
     connectionStringOutputKey: "warehouseId",
   },
+  secretExportTemplates: [
+    {
+      id: "databricks-sql",
+      displayName: "Databricks SQL Connector",
+      description:
+        "Environment variables for databricks-sql-connector / JDBC. Pair with a Databricks PAT.",
+      entries: [
+        { envKey: "DATABRICKS_HOST", outputKey: "serverHostname" },
+        { envKey: "DATABRICKS_HTTP_PATH", outputKey: "httpPath" },
+        { envKey: "DATABRICKS_WAREHOUSE_ID", outputKey: "warehouseId" },
+      ],
+    },
+  ],
 };

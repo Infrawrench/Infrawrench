@@ -68,4 +68,6 @@ export const ServerResourceType: ResourceTypeDefinition = {
   },
   supportsCreate: true,
   supportsMetrics: true,
+  supportsTerminal: true,
+  supportsSftpBrowser: true,
 };

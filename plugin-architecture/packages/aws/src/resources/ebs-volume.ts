@@ -23,6 +23,7 @@ export const EBSVolumeResourceType: ResourceTypeDefinition = {
   outputs: [],
   dashboardPinnable: true,
   supportsCreate: true,
+  supportsMetrics: true,
   iconKey: "volume",
   attachTargets: [
     {

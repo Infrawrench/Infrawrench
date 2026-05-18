@@ -26,6 +26,7 @@ export const StorageAccountResourceType: ResourceTypeDefinition = {
   iconKey: "storage",
   supportsStorageBrowser: true,
   supportsCreate: true,
+  supportsMetrics: true,
   credentialFormats: [
     {
       id: "connection-string",

@@ -22,6 +22,7 @@ export const ObjectStorageResourceType: ResourceTypeDefinition = {
   ],
   dashboardPinnable: true,
   supportsCreate: true,
+  supportsStorageBrowser: true,
   iconKey: "storage",
   secretExportTemplates: [
     {

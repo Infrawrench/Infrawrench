@@ -32,4 +32,5 @@ export const WAFWebACLResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   iconKey: "firewall",
   supportsCreate: true,
+  supportsMetrics: true,
 };

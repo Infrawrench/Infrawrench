@@ -84,4 +84,22 @@ export const ManagedKubeResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   iconKey: "kubernetes",
   supportsCreate: true,
+  peerIntegrations: [
+    {
+      pluginId: "kubernetes",
+      credentialMappings: [{ outputKey: "kubeconfig", credentialKey: "kubeconfig" }],
+      tabLabel: "Kubernetes",
+    },
+  ],
+  secretExportTemplates: [
+    {
+      id: "ovh-kubeconfig",
+      displayName: "OVH Kubeconfig",
+      description: "Kubeconfig for kubectl access to this OVH Managed Kubernetes cluster",
+      entries: [
+        { envKey: "KUBECONFIG_DATA", outputKey: "kubeconfig" },
+        { envKey: "KUBE_API_ENDPOINT", outputKey: "clusterUrl" },
+      ],
+    },
+  ],
 };

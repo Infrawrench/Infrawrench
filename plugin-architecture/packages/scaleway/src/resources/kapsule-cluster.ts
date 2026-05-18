@@ -67,4 +67,22 @@ export const KapsuleClusterResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   iconKey: "kubernetes",
   supportsCreate: true,
+  peerIntegrations: [
+    {
+      pluginId: "kubernetes",
+      credentialMappings: [{ outputKey: "kubeconfig", credentialKey: "kubeconfig" }],
+      tabLabel: "Kubernetes",
+    },
+  ],
+  secretExportTemplates: [
+    {
+      id: "kapsule-kubeconfig",
+      displayName: "Kapsule Kubeconfig",
+      description: "Kubeconfig for kubectl access to this Kapsule cluster",
+      entries: [
+        { envKey: "KUBECONFIG_DATA", outputKey: "kubeconfig" },
+        { envKey: "KUBE_API_ENDPOINT", outputKey: "clusterUrl" },
+      ],
+    },
+  ],
 };

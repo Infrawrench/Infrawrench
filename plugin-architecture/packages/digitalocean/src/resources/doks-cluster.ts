@@ -74,4 +74,15 @@ export const DOKSClusterResourceType: ResourceTypeDefinition = {
       tabLabel: "Kubernetes",
     },
   ],
+  secretExportTemplates: [
+    {
+      id: "doks-kubeconfig",
+      displayName: "DOKS Kubeconfig",
+      description: "Kubeconfig for kubectl access to this DOKS cluster",
+      entries: [
+        { envKey: "KUBECONFIG_DATA", outputKey: "kubeconfig" },
+        { envKey: "KUBE_API_ENDPOINT", outputKey: "clusterEndpoint" },
+      ],
+    },
+  ],
 };

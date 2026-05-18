@@ -987,3 +987,36 @@ The agent **dials outbound** to `/api/bastions/agent` with `Authorization: Beare
 - **Buffered response bodies** in `HttpHostServices.request` (`{status, headers, body: string}`). Streaming variant is a follow-up; bounded control-plane responses are fine.
 - **Plugins that still use raw `fetch`** (GCP / Azure / Mongo / SQL / Redis / etc.) ignore the bastion. They keep working; we surface no UI difference for now. Migration is mechanical: thread the plugin client's `services.http` through its outbound HTTP layer.
 - **Token rotation:** revoke + recreate. No in-place rotation in v1.
+
+---
+
+## Resource type "sidecars" (cross-plugin convention)
+
+Each `ResourceTypeDefinition` can declare optional capabilities the host UI surfaces as tabs, secret-export menus, or metrics panels. Loosely "sidecars":
+
+- **`peerIntegrations`** — instantiate another plugin from this resource's outputs and render its panes as extra tabs. Managed-Kubernetes resources declare a `kubernetes` peer via the `kubeconfig` output. Managed-DB resources declare a `postgres` / `mysql` / `mssql` / `redis` / `mongodb` peer via a `connectionString` output, engine-gated with `showWhen: { fieldKey: "engine", equals: "..." }`. Mark big-blob outputs (kubeconfig YAML) `hidden: true` so they don't clutter the outputs panel but remain resolvable.
+- **`secretExportTemplates`** — env-var-style secrets the resource can produce when dropped onto a K8s cluster or SSH target. Conventional names: `DATABASE_URL` for DB URIs, `KUBECONFIG_DATA` for kubeconfigs, `AWS_*` for S3-compatible buckets.
+- **`resourceSqlDriver`** — enables a SQL editor tab in the detail view, resolving the connection string per-resource. Pair with the matching `peerIntegrations` entry.
+- **`sshEndpoint`** + **`supportsTerminal`** + **`supportsSftpBrowser`** — for compute resources; host output key, running-state guard, default username.
+- **`supportsStorageBrowser`** — S3-compatible buckets (R2, Spaces, Scaleway Object Storage).
+- **`supportsMetrics`** — turn on the Metrics tab; the plugin's `fetchMetricSeries` must return a useful series for this `resourceTypeId`.
+- **`unreachableWhen`** — declarative "tab renders but can't connect from here" guidance. Use for resources with private-only endpoints.
+
+## Cloud metric dimension gotchas
+
+The metric-API dimension value is **often a name, not the ARN/id** the resource is keyed by. Verify when adding a new metrics case.
+
+- **DynamoDB:** dim is `TableName` — use `f.tableName ?? resource.externalId` because externalId is the ARN.
+- **MQ Broker:** dim is the broker name (`f.brokerName`), not the broker id.
+- **MSK:** dim key is `"Cluster Name"` (with the space).
+- **WAFv2:** three dims (`WebACL`, `Rule="ALL"`, `Region`). CloudFront-scoped ACLs use `Region: "CloudFront"`.
+- **SageMaker:** requires both `EndpointName` AND `VariantName=AllTraffic`.
+- **CloudFront:** requires `Region: "Global"`.
+- **SQS:** dim is the queue NAME (last URL segment), not the ARN.
+- **SNS:** dim is the topic NAME (last segment of ARN).
+- **ALB:** dim value is the `app/name/hash` slice of the ARN.
+- **S3:** size/object metrics are daily — widen to ≥3 days and pin `StorageType` (`StandardStorage` vs `AllStorageTypes`).
+- **Redshift:** dim is the cluster identifier (the name), not the ARN.
+- **Step Functions:** dim is the state-machine ARN.
+
+When implementing a new metrics case in `dashboard-metrics.ts` / `monitor-metrics.ts`, drop a one-line comment if the dim shape isn't the obvious resource-id.

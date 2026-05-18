@@ -59,4 +59,6 @@ export const InstanceResourceType: ResourceTypeDefinition = {
     defaultUsername: "root",
   },
   supportsCreate: true,
+  supportsTerminal: true,
+  supportsSftpBrowser: true,
 };

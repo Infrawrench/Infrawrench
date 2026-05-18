@@ -39,5 +39,17 @@ export const EFSFileSystemResourceType: ResourceTypeDefinition = {
   ],
   dashboardPinnable: true,
   supportsCreate: true,
+  supportsMetrics: true,
   iconKey: "storage",
+  secretExportTemplates: [
+    {
+      id: "efs-mount",
+      displayName: "EFS Mount",
+      description: "File System ID for NFS mounting (use with mount.nfs4)",
+      entries: [
+        { envKey: "EFS_FILE_SYSTEM_ID", outputKey: "fileSystemId" },
+        { envKey: "EFS_FILE_SYSTEM_ARN", outputKey: "fileSystemArn" },
+      ],
+    },
+  ],
 };

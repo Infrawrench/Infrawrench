@@ -64,4 +64,19 @@ export const AKSClusterResourceType: ResourceTypeDefinition = {
       tabLabel: "Kubernetes",
     },
   ],
+  secretExportTemplates: [
+    {
+      id: "aks-kubeconfig",
+      displayName: "AKS Kubeconfig",
+      description: "Kubeconfig YAML for connecting kubectl to this AKS cluster",
+      entries: [
+        {
+          envKey: "KUBECONFIG_DATA",
+          outputKey: "kubeconfig",
+          description: "Generated kubeconfig YAML",
+        },
+        { envKey: "KUBE_API_FQDN", outputKey: "fqdn", description: "Kubernetes API server FQDN" },
+      ],
+    },
+  ],
 };

@@ -32,6 +32,14 @@ export const CosmosDBAccountResourceType: ResourceTypeDefinition = {
   iconKey: "database",
   supportsCreate: true,
   supportsMetrics: true,
+  peerIntegrations: [
+    {
+      pluginId: "mongodb",
+      credentialMappings: [{ outputKey: "connectionString", credentialKey: "connectionString" }],
+      tabLabel: "MongoDB",
+      showWhen: { fieldKey: "kind", equals: "MongoDB" },
+    },
+  ],
   secretExportTemplates: [
     {
       id: "cosmos-connection",

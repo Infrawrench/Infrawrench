@@ -18,4 +18,5 @@ export const CodeBuildProjectResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   iconKey: "build",
   supportsCreate: true,
+  supportsMetrics: true,
 };

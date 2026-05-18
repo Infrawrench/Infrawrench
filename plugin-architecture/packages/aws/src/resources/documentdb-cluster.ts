@@ -24,6 +24,22 @@ export const DocumentDBClusterResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   iconKey: "database",
   supportsCreate: true,
+  supportsMetrics: true,
+  peerIntegrations: [
+    {
+      pluginId: "mongodb",
+      credentialMappings: [{ outputKey: "connectionString", credentialKey: "connectionString" }],
+      tabLabel: "MongoDB",
+      unreachableWhen: {
+        fieldsEmpty: ["endpoint"],
+        title: "Cluster endpoint is not reachable from this host.",
+        suggestions: [
+          "DocumentDB clusters are VPC-only — connect from inside the VPC or via an SSH tunnel.",
+          "Use AWS Cloud9 / EC2 bastion in the same VPC.",
+        ],
+      },
+    },
+  ],
   secretExportTemplates: [
     {
       id: "documentdb-connection",

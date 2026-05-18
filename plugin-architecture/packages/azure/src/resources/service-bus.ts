@@ -21,6 +21,7 @@ export const ServiceBusNamespaceResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   iconKey: "queue",
   supportsCreate: true,
+  supportsMetrics: true,
   secretExportTemplates: [
     {
       id: "servicebus-connection",

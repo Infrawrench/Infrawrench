@@ -14,8 +14,34 @@ export const HyperdriveResourceType: ResourceTypeDefinition = {
     { key: "user", label: "User", kind: "string", required: false },
     { key: "cachingDisabled", label: "Caching Disabled", kind: "boolean", required: false },
   ],
-  outputs: [{ key: "hyperdriveId", label: "Hyperdrive ID", sensitive: false }],
+  outputs: [
+    { key: "hyperdriveId", label: "Hyperdrive ID", sensitive: false },
+    {
+      key: "connectionString",
+      label: "Connection String",
+      sensitive: true,
+      description: "Postgres connection string for the Hyperdrive origin",
+    },
+  ],
   dashboardPinnable: true,
   supportsCreate: true,
   iconKey: "hyperdrive",
+  peerIntegrations: [
+    {
+      pluginId: "postgres",
+      credentialMappings: [{ outputKey: "connectionString", credentialKey: "connectionString" }],
+      tabLabel: "PostgreSQL",
+    },
+  ],
+  secretExportTemplates: [
+    {
+      id: "hyperdrive-connection",
+      displayName: "Hyperdrive Connection",
+      description: "Hyperdrive connection details for Worker bindings",
+      entries: [
+        { envKey: "HYPERDRIVE_ID", outputKey: "hyperdriveId" },
+        { envKey: "HYPERDRIVE_CONNECTION_STRING", outputKey: "connectionString" },
+      ],
+    },
+  ],
 };
