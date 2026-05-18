@@ -38,6 +38,9 @@ interface MetricConfig {
 const RESOURCE_TYPE_METRICS: Record<string, { provider: string; metrics: MetricConfig[] }> = {
   "azure-vm": {
     provider: "Microsoft.Compute/virtualMachines",
+    // All metric names verified against
+    // https://learn.microsoft.com/azure/azure-monitor/reference/supported-metrics/microsoft-compute-virtualmachines-metrics
+    // Default-aggregation column from the same table.
     metrics: [
       {
         metricName: "Percentage CPU",
@@ -61,6 +64,18 @@ const RESOURCE_TYPE_METRICS: Record<string, { provider: string; metrics: MetricC
         metricName: "Available Memory Bytes",
         label: "Available Memory",
         aggregation: "Average",
+        unit: "bytes",
+      },
+      {
+        metricName: "Disk Read Bytes",
+        label: "Disk Read",
+        aggregation: "Total",
+        unit: "bytes",
+      },
+      {
+        metricName: "Disk Write Bytes",
+        label: "Disk Write",
+        aggregation: "Total",
         unit: "bytes",
       },
     ],
@@ -200,21 +215,34 @@ const RESOURCE_TYPE_METRICS: Record<string, { provider: string; metrics: MetricC
   },
   "azure-cosmos-db": {
     provider: "Microsoft.DocumentDB/databaseAccounts",
+    // Verified against
+    // https://learn.microsoft.com/azure/azure-monitor/reference/supported-metrics/microsoft-documentdb-databaseaccounts-metrics
+    // NOTE: `ServerSideLatency` was deprecated end of August 2025 — replaced
+    // by `ServerSideLatencyDirect` / `ServerSideLatencyGateway` per connection
+    // mode. We surface both so the user sees whichever applies.
     metrics: [
       { metricName: "TotalRequests", label: "Requests", aggregation: "Total" },
       {
         metricName: "NormalizedRUConsumption",
         label: "Normalized RU",
-        aggregation: "Average",
+        aggregation: "Maximum",
         unit: "%",
       },
+      { metricName: "TotalRequestUnits", label: "RU Consumed", aggregation: "Total" },
+      { metricName: "ProvisionedThroughput", label: "Provisioned RU/s", aggregation: "Maximum" },
+      { metricName: "DataUsage", label: "Data Usage", aggregation: "Total", unit: "bytes" },
       {
-        metricName: "ServerSideLatency",
-        label: "Server-side Latency",
+        metricName: "ServerSideLatencyDirect",
+        label: "Latency (Direct)",
         aggregation: "Average",
         unit: "ms",
       },
-      { metricName: "TotalRequestUnits", label: "RU Consumed", aggregation: "Total" },
+      {
+        metricName: "ServerSideLatencyGateway",
+        label: "Latency (Gateway)",
+        aggregation: "Average",
+        unit: "ms",
+      },
     ],
   },
   "azure-storage-account": {
@@ -229,11 +257,14 @@ const RESOURCE_TYPE_METRICS: Record<string, { provider: string; metrics: MetricC
   },
   "azure-event-hub": {
     provider: "Microsoft.EventHub/namespaces",
+    // Verified against
+    // https://learn.microsoft.com/azure/azure-monitor/reference/supported-metrics/microsoft-eventhub-namespaces-metrics
     metrics: [
       { metricName: "IncomingMessages", label: "Incoming Messages", aggregation: "Total" },
       { metricName: "OutgoingMessages", label: "Outgoing Messages", aggregation: "Total" },
       { metricName: "IncomingBytes", label: "Incoming Bytes", aggregation: "Total", unit: "bytes" },
       { metricName: "OutgoingBytes", label: "Outgoing Bytes", aggregation: "Total", unit: "bytes" },
+      { metricName: "ActiveConnections", label: "Active Connections", aggregation: "Average" },
       { metricName: "ThrottledRequests", label: "Throttled Requests", aggregation: "Total" },
     ],
   },
@@ -272,13 +303,27 @@ const RESOURCE_TYPE_METRICS: Record<string, { provider: string; metrics: MetricC
   },
   "azure-load-balancer": {
     provider: "Microsoft.Network/loadBalancers",
+    // Verified against
+    // https://learn.microsoft.com/azure/azure-monitor/reference/supported-metrics/microsoft-network-loadbalancers-metrics
     metrics: [
       { metricName: "ByteCount", label: "Bytes", aggregation: "Total", unit: "bytes" },
       { metricName: "PacketCount", label: "Packets", aggregation: "Total" },
       { metricName: "SnatConnectionCount", label: "SNAT Connections", aggregation: "Total" },
       {
+        metricName: "AllocatedSnatPorts",
+        label: "Allocated SNAT Ports",
+        aggregation: "Average",
+      },
+      { metricName: "UsedSnatPorts", label: "Used SNAT Ports", aggregation: "Average" },
+      {
         metricName: "DipAvailability",
-        label: "Backend Availability",
+        label: "Backend Health",
+        aggregation: "Average",
+        unit: "%",
+      },
+      {
+        metricName: "VipAvailability",
+        label: "Data Path Availability",
         aggregation: "Average",
         unit: "%",
       },
@@ -286,12 +331,17 @@ const RESOURCE_TYPE_METRICS: Record<string, { provider: string; metrics: MetricC
   },
   "azure-app-gateway": {
     provider: "Microsoft.Network/applicationGateways",
+    // Verified against
+    // https://learn.microsoft.com/azure/azure-monitor/reference/supported-metrics/microsoft-network-applicationgateways-metrics
     metrics: [
       { metricName: "Throughput", label: "Throughput", aggregation: "Average", unit: "bytes/s" },
       { metricName: "TotalRequests", label: "Total Requests", aggregation: "Total" },
       { metricName: "FailedRequests", label: "Failed Requests", aggregation: "Total" },
+      { metricName: "ResponseStatus", label: "Response Status", aggregation: "Total" },
       { metricName: "HealthyHostCount", label: "Healthy Hosts", aggregation: "Average" },
       { metricName: "UnhealthyHostCount", label: "Unhealthy Hosts", aggregation: "Average" },
+      { metricName: "CpuUtilization", label: "CPU Utilization", aggregation: "Average", unit: "%" },
+      { metricName: "CurrentConnections", label: "Current Connections", aggregation: "Total" },
     ],
   },
 };
