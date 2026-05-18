@@ -115,28 +115,44 @@ const RESOURCE_TYPE_METRICS: Record<string, { provider: string; metrics: MetricC
   },
   "azure-app-service": {
     provider: "Microsoft.Web/sites",
+    // Verified against
+    // https://learn.microsoft.com/azure/azure-monitor/reference/supported-metrics/microsoft-web-sites-metrics
+    // NOTE: `AverageResponseTime` is marked deprecated in the portal —
+    // use `HttpResponseTime` (same shape, seconds, Average) instead.
     metrics: [
       { metricName: "Requests", label: "Requests", aggregation: "Total" },
       {
-        metricName: "AverageResponseTime",
-        label: "Avg Response Time",
+        metricName: "HttpResponseTime",
+        label: "Response Time",
         aggregation: "Average",
         unit: "s",
       },
-      { metricName: "Http5xx", label: "5xx Errors", aggregation: "Total" },
+      { metricName: "Http2xx", label: "2xx Responses", aggregation: "Total" },
       { metricName: "Http4xx", label: "4xx Errors", aggregation: "Total" },
+      { metricName: "Http5xx", label: "5xx Errors", aggregation: "Total" },
       { metricName: "CpuTime", label: "CPU Time", aggregation: "Total", unit: "s" },
       { metricName: "MemoryWorkingSet", label: "Memory", aggregation: "Average", unit: "bytes" },
+      { metricName: "BytesReceived", label: "Data In", aggregation: "Total", unit: "bytes" },
+      { metricName: "BytesSent", label: "Data Out", aggregation: "Total", unit: "bytes" },
+      { metricName: "HealthCheckStatus", label: "Health Check", aggregation: "Average" },
     ],
   },
   "azure-function-app": {
     provider: "Microsoft.Web/sites",
+    // Function apps share the Web/sites namespace but only emit a subset
+    // (Function-prefixed metrics).
     metrics: [
       { metricName: "FunctionExecutionCount", label: "Executions", aggregation: "Total" },
       {
         metricName: "FunctionExecutionUnits",
         label: "Execution Units",
         aggregation: "Total",
+      },
+      {
+        metricName: "HttpResponseTime",
+        label: "Response Time",
+        aggregation: "Average",
+        unit: "s",
       },
       { metricName: "Http5xx", label: "5xx Errors", aggregation: "Total" },
       {

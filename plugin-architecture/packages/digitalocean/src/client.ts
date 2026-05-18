@@ -474,14 +474,39 @@ export class DigitalOceanClient implements PluginClient {
     }
 
     if (resourceTypeId === "managed-database") {
-      const clusterUuid = resourceId.split(":").pop();
-      if (!clusterUuid) return [];
-      const qs = `cluster_uuid=${clusterUuid}&start=${startUnix}&end=${endUnix}`;
+      // The DO managed-DB monitoring endpoints are engine-scoped and use the
+      // pattern `/v2/monitoring/metrics/database/{engine}/{metric}` with
+      // `db_id` + `aggregate` + `start` + `end` as query params. The earlier
+      // implementation used `/database/{metric}?cluster_uuid=...` which
+      // doesn't exist — the API responded 404 and we silently returned
+      // nothing.
+      // Ref: https://docs.digitalocean.com/reference/pydo/reference/monitoring/get_database_mysql_cpu_usage/
+      const resource = await this.getResource(resourceTypeId, resourceId, accountId);
+      const dbId = resource.externalId ?? resourceId.split(":").pop();
+      if (!dbId) return [];
+      // Engine slug in URL is the full word: "pg" → "postgresql".
+      const engineMap: Record<string, string> = {
+        pg: "postgresql",
+        mysql: "mysql",
+        redis: "redis",
+        mongodb: "mongodb",
+        kafka: "kafka",
+        opensearch: "opensearch",
+      };
+      const engineSlug = engineMap[String(resource.fields["engine"] ?? "")] ?? "";
+      if (!engineSlug) return [];
+      const qs = `db_id=${dbId}&aggregate=avg&start=${startUnix}&end=${endUnix}`;
+      const base = `/monitoring/metrics/database/${engineSlug}`;
+      // The four metrics below are the only ones DO documents across all
+      // engines. Engine-specific metrics (e.g. mysql/op_rates, redis/cache_hit_rate)
+      // exist but aren't surfaced here. fetchPromMetric swallows 404s for the
+      // engines that don't publish a given metric, so adding new engines is
+      // safe.
       const series = await Promise.all([
-        fetchPromMetric(`/monitoring/metrics/database/cpu?${qs}`, "CPU Utilization", "%"),
-        fetchPromMetric(`/monitoring/metrics/database/memory_usage?${qs}`, "Memory Used", "bytes"),
-        fetchPromMetric(`/monitoring/metrics/database/disk_usage?${qs}`, "Disk Used", "bytes"),
-        fetchPromMetric(`/monitoring/metrics/database/load_15?${qs}`, "Load (15min)", ""),
+        fetchPromMetric(`${base}/cpu_usage?${qs}`, "CPU Utilization", "%"),
+        fetchPromMetric(`${base}/memory_usage?${qs}`, "Memory Used", "%"),
+        fetchPromMetric(`${base}/disk_usage?${qs}`, "Disk Used", "%"),
+        fetchPromMetric(`${base}/load?${qs}`, "Load", ""),
       ]);
       return series.filter((s): s is MetricSeries => s != null);
     }
