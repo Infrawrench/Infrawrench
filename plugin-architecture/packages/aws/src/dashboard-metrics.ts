@@ -635,15 +635,20 @@ export async function fetchMetricSeries(
     }
     case "step-function": {
       // States dimension is the full state machine ARN; externalId is the ARN.
+      // AWS Step Functions docs (https://docs.aws.amazon.com/step-functions/latest/dg/procedure-cw-metrics.html)
+      // recommend `ExecutionsStarted` + `ExecutionsTimedOut` as the baseline.
       const smArn = String(
         resource.resolvedOutputs?.["stateMachineArn"] ?? resource.externalId ?? "",
       );
       if (!smArn) return [];
       const dims = [{ Name: "StateMachineArn", Value: smArn }];
-      const [started, succeeded, failed, time] = await Promise.all([
+      const [started, succeeded, failed, timedOut, throttled, aborted, time] = await Promise.all([
         fetchCw("AWS/States", "ExecutionsStarted", dims, "Sum").catch(() => null),
         fetchCw("AWS/States", "ExecutionsSucceeded", dims, "Sum").catch(() => null),
         fetchCw("AWS/States", "ExecutionsFailed", dims, "Sum").catch(() => null),
+        fetchCw("AWS/States", "ExecutionsTimedOut", dims, "Sum").catch(() => null),
+        fetchCw("AWS/States", "ExecutionThrottled", dims, "Sum").catch(() => null),
+        fetchCw("AWS/States", "ExecutionsAborted", dims, "Sum").catch(() => null),
         fetchCw("AWS/States", "ExecutionTime", dims).catch(() => null),
       ]);
       const results: MetricSeries[] = [];
@@ -653,6 +658,12 @@ export async function fetchMetricSeries(
         results.push({ ...succeeded, label: "Executions Succeeded" });
       if (failed && failed.points.length > 0)
         results.push({ ...failed, label: "Executions Failed" });
+      if (timedOut && timedOut.points.length > 0)
+        results.push({ ...timedOut, label: "Executions Timed Out" });
+      if (aborted && aborted.points.length > 0)
+        results.push({ ...aborted, label: "Executions Aborted" });
+      if (throttled && throttled.points.length > 0)
+        results.push({ ...throttled, label: "Throttled" });
       if (time && time.points.length > 0)
         results.push({ ...time, label: "Execution Time", unit: "ms" });
       return results;
