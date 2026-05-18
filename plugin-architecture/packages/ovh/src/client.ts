@@ -445,12 +445,19 @@ export class OvhClient implements PluginClient {
             defaultValue: "essential",
           },
           {
+            // The full flavor list varies by region/engine/plan and OVH adds
+            // new generations frequently — we keep this as text rather than a
+            // curated select to avoid offering a flavor that errors at order
+            // time. The capabilities endpoint
+            // (/cloud/project/$pid/database/capabilities) returns the
+            // currently-orderable set if we ever wire it through.
             key: "flavor",
             label: "Flavor",
             kind: "text",
             required: true,
             defaultValue: "db1-7",
-            description: "Node flavor, e.g. db1-7",
+            description:
+              "Node flavor, e.g. db1-4, db1-7, db1-15. Available flavors depend on engine/plan/region.",
           },
           {
             key: "nodeCount",

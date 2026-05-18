@@ -282,12 +282,19 @@ export class ScalewayClient implements PluginClient {
             defaultValue: "fr-par",
           },
           {
+            // Scaleway exposes two RDB node-type families (legacy DB-DEV-*/
+            // DB-GP-* with all-caps and the newer db-pro2-* lowercase line)
+            // which evolve regularly. We avoid hard-coding a curated select
+            // because passing a retired or unavailable type errors at create
+            // time. The authoritative list per region is at
+            // GET /rdb/v1/regions/{region}/node-types.
             key: "nodeType",
             label: "Node Type",
             kind: "text",
             required: true,
             defaultValue: "DB-DEV-S",
-            description: "e.g. DB-DEV-S, DB-GP-XS",
+            description:
+              "Node type identifier, e.g. DB-DEV-S, DB-GP-S, db-pro2-xxs (varies by region).",
           },
           {
             key: "isHaCluster",

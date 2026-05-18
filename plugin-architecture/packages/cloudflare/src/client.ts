@@ -1656,6 +1656,10 @@ export class CloudflareClient implements PluginClient {
       : "workersInvocationsAdaptiveGroups";
     const orderBy = "datetime_ASC";
 
+    // workersInvocationsAdaptive sum-able fields are requests / subrequests /
+    // errors only — duration is exposed via the `quantiles` block (cpuTimeP50/
+    // cpuTimeP99, durationP50/durationP99). See:
+    // https://developers.cloudflare.com/analytics/graphql-api/tutorials/querying-workers-metrics/
     const query = `query W($account: String!, $script: String!, $from: Time!, $to: Time!) {
       viewer {
         accounts(filter: { accountTag: $account }) {
@@ -1665,8 +1669,8 @@ export class CloudflareClient implements PluginClient {
             orderBy: [${orderBy}]
           ) {
             dimensions { datetime }
-            sum { requests subrequests errors duration }
-            quantiles { cpuTimeP99 }
+            sum { requests subrequests errors }
+            quantiles { cpuTimeP50 cpuTimeP99 }
           }
         }
       }
@@ -1674,8 +1678,8 @@ export class CloudflareClient implements PluginClient {
 
     interface Group {
       dimensions: { datetime: string };
-      sum: { requests?: number; subrequests?: number; errors?: number; duration?: number };
-      quantiles: { cpuTimeP99?: number };
+      sum: { requests?: number; subrequests?: number; errors?: number };
+      quantiles: { cpuTimeP50?: number; cpuTimeP99?: number };
     }
     interface Resp {
       data?: { viewer?: { accounts?: Array<{ workersInvocationsAdaptiveGroups?: Group[] }> } };
@@ -1720,9 +1724,12 @@ export class CloudflareClient implements PluginClient {
         points: groups.map((g) => ({ timestamp: tsOf(g), value: Number(g.sum.subrequests ?? 0) })),
       },
       {
-        label: "Wall Duration (avg)",
+        label: "CPU Time p50",
         unit: "μs",
-        points: groups.map((g) => ({ timestamp: tsOf(g), value: Number(g.sum.duration ?? 0) })),
+        points: groups.map((g) => ({
+          timestamp: tsOf(g),
+          value: Number(g.quantiles.cpuTimeP50 ?? 0),
+        })),
       },
       {
         label: "CPU Time p99",
