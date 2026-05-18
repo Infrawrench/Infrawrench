@@ -31,11 +31,12 @@ export const GkeClusterResourceType: ResourceTypeDefinition = {
     },
   ],
   outputs: [
-    { key: "clusterEndpoint", label: "Cluster Endpoint", sensitive: false },
+    { key: "clusterEndpoint", label: "Cluster Endpoint", sensitive: false, hidden: true },
     {
       key: "kubeconfig",
       label: "Kubeconfig",
       sensitive: true,
+      hidden: true,
       description: "Full kubeconfig YAML for kubectl access",
     },
   ],

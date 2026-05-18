@@ -1,5 +1,8 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
-import { ensureArray } from "./auth.js";
+import { Sha256 } from "@aws-crypto/sha256-js";
+import { HttpRequest } from "@smithy/protocol-http";
+import { SignatureV4 } from "@smithy/signature-v4";
+import { ensureArray, type AwsCredentials } from "./auth.js";
 import { ec2SshUsername } from "./ssh-username.js";
 
 export interface ListerContext {
@@ -25,6 +28,14 @@ export interface ListerContext {
   id(accountId: string, typeId: string, externalId: string): string;
   now(): string;
   region: string;
+  /**
+   * AWS credentials for this account. Used by EKS kubeconfig generation to
+   * embed an `env:` block in the exec credential plugin so the spawned `aws`
+   * CLI uses Infrawrench's creds instead of whatever the host machine's
+   * AWS_PROFILE / `~/.aws/config` points at (which often includes an
+   * assume-role the user isn't authorized for).
+   */
+  creds: AwsCredentials;
 }
 
 export async function listEC2Instances(
@@ -174,6 +185,100 @@ export async function listVPCs(ctx: ListerContext, accountId: string): Promise<R
   });
 }
 
+/**
+ * Generate an EKS auth token by presigning an STS GetCallerIdentity request
+ * with an `x-k8s-aws-id` header. This is what `aws eks get-token` produces
+ * under the hood — doing it in-process means we don't have to invoke the AWS
+ * CLI (which the host's user-level profile / assume-role config would hijack)
+ * and don't need it installed on the host at all.
+ *
+ * Tokens are valid for 14 minutes; the lister refreshes the kubeconfig on
+ * each poll cycle so resolvedOutputs always carries a fresh one.
+ */
+export async function generateEksToken(
+  creds: AwsCredentials,
+  clusterName: string,
+  region: string,
+): Promise<string> {
+  const signer = new SignatureV4({
+    service: "sts",
+    region,
+    credentials: {
+      accessKeyId: creds.accessKeyId,
+      secretAccessKey: creds.secretAccessKey,
+      ...(creds.sessionToken ? { sessionToken: creds.sessionToken } : {}),
+    },
+    sha256: Sha256,
+  });
+  const request = new HttpRequest({
+    method: "GET",
+    protocol: "https:",
+    hostname: `sts.${region}.amazonaws.com`,
+    path: "/",
+    query: { Action: "GetCallerIdentity", Version: "2011-06-15" },
+    headers: {
+      host: `sts.${region}.amazonaws.com`,
+      "x-k8s-aws-id": clusterName,
+    },
+  });
+  const signed = await signer.presign(request, {
+    expiresIn: 60,
+    signableHeaders: new Set(["host", "x-k8s-aws-id"]),
+  });
+  const queryString = new URLSearchParams(signed.query as Record<string, string>).toString();
+  const fullUrl = `${signed.protocol}//${signed.hostname}${signed.path}?${queryString}`;
+  return `k8s-aws-v1.${toBase64Url(fullUrl)}`;
+}
+
+/** base64url without padding — works in both Node (Buffer) and browser (btoa) hosts. */
+function toBase64Url(input: string): string {
+  let b64: string;
+  if (typeof Buffer !== "undefined") {
+    b64 = Buffer.from(input, "utf8").toString("base64");
+  } else {
+    // btoa requires Latin-1; encode UTF-8 bytes first
+    const bytes = new TextEncoder().encode(input);
+    let bin = "";
+    for (const b of bytes) bin += String.fromCharCode(b);
+    b64 = btoa(bin);
+  }
+  return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+/**
+ * Build a kubeconfig YAML for an EKS cluster. Embeds a presigned STS token
+ * directly so consumers don't need the AWS CLI and aren't subject to the
+ * host's AWS_PROFILE / shared config.
+ */
+export async function buildEksKubeconfig(
+  clusterName: string,
+  endpoint: string,
+  caData: string,
+  region: string,
+  creds: AwsCredentials,
+): Promise<string> {
+  const token = await generateEksToken(creds, clusterName, region);
+  return [
+    "apiVersion: v1",
+    "kind: Config",
+    "clusters:",
+    `- name: ${clusterName}`,
+    "  cluster:",
+    `    server: ${endpoint}`,
+    `    certificate-authority-data: ${caData}`,
+    "contexts:",
+    `- name: ${clusterName}`,
+    "  context:",
+    `    cluster: ${clusterName}`,
+    `    user: ${clusterName}`,
+    "current-context: " + clusterName,
+    "users:",
+    `- name: ${clusterName}`,
+    "  user:",
+    `    token: ${token}`,
+  ].join("\n");
+}
+
 export async function listEKSClusters(
   ctx: ListerContext,
   accountId: string,
@@ -193,35 +298,48 @@ export async function listEKSClusters(
       const caData = String(
         (c["certificateAuthority"] as Record<string, unknown> | undefined)?.["data"] ?? "",
       );
-      // Generate a kubeconfig YAML for kubectl access
-      const kubeconfig = [
-        "apiVersion: v1",
-        "kind: Config",
-        "clusters:",
-        `- name: ${name}`,
-        "  cluster:",
-        `    server: ${endpoint}`,
-        `    certificate-authority-data: ${caData}`,
-        "contexts:",
-        `- name: ${name}`,
-        "  context:",
-        `    cluster: ${name}`,
-        `    user: ${name}`,
-        "current-context: " + name,
-        "users:",
-        `- name: ${name}`,
-        "  user:",
-        "    exec:",
-        "      apiVersion: client.authentication.k8s.io/v1beta1",
-        "      command: aws",
-        "      args:",
-        "        - eks",
-        "        - get-token",
-        "        - --cluster-name",
-        `        - ${name}`,
-        `        - --region`,
-        `        - ${ctx.region}`,
-      ].join("\n");
+
+      // Fetch managed node groups so we can surface instance type, disk size, and node count
+      let nodeGroupCount = 0;
+      let totalNodeCount = 0;
+      let instanceTypesSet = new Set<string>();
+      let diskSizeGb = 0;
+      try {
+        const ngList = await ctx.jsonGet<{ nodegroups?: string[] }>(
+          "eks",
+          `/clusters/${encodeURIComponent(name)}/node-groups`,
+        );
+        const ngNames = ngList.nodegroups ?? [];
+        nodeGroupCount = ngNames.length;
+        for (const ngName of ngNames) {
+          try {
+            const ngDetail = await ctx.jsonGet<{ nodegroup: Record<string, unknown> }>(
+              "eks",
+              `/clusters/${encodeURIComponent(name)}/node-groups/${encodeURIComponent(ngName)}`,
+            );
+            const ng = ngDetail.nodegroup;
+            const scaling = (ng["scalingConfig"] as Record<string, unknown> | undefined) ?? {};
+            totalNodeCount += Number(scaling["desiredSize"] ?? 0);
+            const types = (ng["instanceTypes"] as string[] | undefined) ?? [];
+            for (const t of types) instanceTypesSet.add(t);
+            if (!diskSizeGb) diskSizeGb = Number(ng["diskSize"] ?? 0);
+          } catch {
+            // Skip node groups we can't describe
+          }
+        }
+      } catch {
+        // No permission to list node groups — leave fields empty
+      }
+
+      // Don't let kubeconfig generation hide the cluster from the list — the
+      // cluster might still be useful even without a working kubeconfig (e.g.
+      // when SignatureV4 / Buffer aren't available in the host runtime).
+      let kubeconfig = "";
+      try {
+        kubeconfig = await buildEksKubeconfig(name, endpoint, caData, ctx.region, ctx.creds);
+      } catch (err) {
+        console.error(`[eks] kubeconfig generation failed for ${name}:`, err);
+      }
 
       results.push({
         id: ctx.id(accountId, "eks-cluster", name),
@@ -236,6 +354,10 @@ export async function listEKSClusters(
           status: String(c["status"] ?? ""),
           platformVersion: String(c["platformVersion"] ?? ""),
           roleArn: String(c["roleArn"] ?? ""),
+          nodeGroupCount,
+          nodeCount: totalNodeCount,
+          instanceTypes: Array.from(instanceTypesSet).join(", "),
+          diskSizeGb,
         },
         resolvedOutputs: {
           endpoint,
@@ -247,8 +369,11 @@ export async function listEKSClusters(
         createdAt: String(c["createdAt"] ?? ctx.now()),
         updatedAt: ctx.now(),
       });
-    } catch {
-      // Skip clusters we can't describe (permission issues)
+    } catch (err) {
+      // Skip clusters we can't describe (permission issues), but log so the
+      // operator can tell the difference between "no cluster" and "described
+      // but threw downstream".
+      console.error(`[eks] failed to describe cluster ${name}:`, err);
     }
   }
   return results;

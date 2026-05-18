@@ -35,6 +35,13 @@ export const KapsuleClusterResourceType: ResourceTypeDefinition = {
       required: true,
     },
     {
+      key: "diskSizeGb",
+      label: "Disk Size (GB)",
+      kind: "number",
+      required: false,
+      description: "Root volume size of the first node pool",
+    },
+    {
       key: "status",
       label: "Status",
       kind: "string",
@@ -46,12 +53,14 @@ export const KapsuleClusterResourceType: ResourceTypeDefinition = {
       key: "kubeconfig",
       label: "Kubeconfig",
       sensitive: true,
+      hidden: true,
       description: "Full kubeconfig YAML for connecting to this cluster",
     },
     {
       key: "clusterUrl",
       label: "Cluster URL",
       sensitive: false,
+      hidden: true,
       description: "HTTPS endpoint for the Kubernetes API server",
     },
   ],

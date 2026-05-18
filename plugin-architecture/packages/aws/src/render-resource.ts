@@ -110,24 +110,22 @@ export function renderDetail(
           },
         ],
       },
-      ...(Object.keys(resource.resolvedOutputs).length > 0
-        ? [
-            {
-              kind: "section" as const,
-              title: "Outputs",
-              children: [
-                {
-                  kind: "key-value-list" as const,
-                  items: labeledOutputItems(
-                    resource.resolvedOutputs,
-                    resourceTypes,
-                    resource.resourceTypeId,
-                  ),
-                },
-              ],
-            },
-          ]
-        : []),
+      ...(() => {
+        const outputItems = labeledOutputItems(
+          resource.resolvedOutputs,
+          resourceTypes,
+          resource.resourceTypeId,
+        );
+        return outputItems.length > 0
+          ? [
+              {
+                kind: "section" as const,
+                title: "Outputs",
+                children: [{ kind: "key-value-list" as const, items: outputItems }],
+              },
+            ]
+          : [];
+      })(),
     ],
     headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     ...(resource.resourceTypeId === "ecr-repository"

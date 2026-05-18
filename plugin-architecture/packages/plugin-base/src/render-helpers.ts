@@ -52,11 +52,16 @@ export function labeledOutputItems(
 ): KVItem[] {
   const typeDef = resourceTypes.find((rt) => rt.id === resourceTypeId);
   const labelMap = new Map(typeDef?.outputs.map((o) => [o.key, o.label]) ?? []);
-  return Object.entries(resolvedOutputs).map(([key, value]) => ({
-    key: labelMap.get(key) ?? camelToTitle(key),
-    value: String(value),
-    copyable: true,
-  }));
+  const hiddenKeys = new Set(
+    typeDef?.outputs.filter((o) => o.hidden === true).map((o) => o.key) ?? [],
+  );
+  return Object.entries(resolvedOutputs)
+    .filter(([key]) => !hiddenKeys.has(key))
+    .map(([key, value]) => ({
+      key: labelMap.get(key) ?? camelToTitle(key),
+      value: String(value),
+      copyable: true,
+    }));
 }
 
 /**

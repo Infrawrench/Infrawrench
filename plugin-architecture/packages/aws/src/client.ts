@@ -187,6 +187,7 @@ export class AWSClient implements PluginClient {
       id: (accountId, typeId, externalId) => this.makeId(accountId, typeId, externalId),
       now: () => new Date().toISOString(),
       region,
+      creds,
     };
   }
 

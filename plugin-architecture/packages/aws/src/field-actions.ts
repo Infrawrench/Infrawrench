@@ -30,6 +30,9 @@ const POLICY = {
   codeBuildDeveloperAccess: "arn:aws:iam::aws:policy/AWSCodeBuildDeveloperAccess",
   ecsTaskExec: "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy",
   eksClusterPolicy: "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy",
+  eksWorkerNodePolicy: "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy",
+  eksCniPolicy: "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy",
+  ec2ContainerRegistryReadOnly: "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly",
   sageMakerFullAccess: "arn:aws:iam::aws:policy/AmazonSageMakerFullAccess",
 };
 
@@ -115,6 +118,27 @@ const FIELD_ACTIONS: Record<string, FieldActionEntry[]> = {
           managedPolicyArns: [POLICY.eksClusterPolicy],
           namePrefix: "infrawrench-eks-cluster-",
           description: "EKS cluster role created by Infrawrench",
+        });
+        return {
+          value: result.roleArn,
+          option: { id: result.roleArn, label: result.roleName },
+        };
+      },
+    },
+  ],
+  "eks-cluster:nodeRoleArn": [
+    {
+      actionId: "generate-role",
+      generate: async (creds) => {
+        const result = await generateServiceRole(creds, {
+          principalService: "ec2.amazonaws.com",
+          managedPolicyArns: [
+            POLICY.eksWorkerNodePolicy,
+            POLICY.eksCniPolicy,
+            POLICY.ec2ContainerRegistryReadOnly,
+          ],
+          namePrefix: "infrawrench-eks-node-",
+          description: "EKS managed node group role created by Infrawrench",
         });
         return {
           value: result.roleArn,

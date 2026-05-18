@@ -17,24 +17,43 @@ export const EKSClusterResourceType: ResourceTypeDefinition = {
     },
     { key: "platformVersion", label: "Platform Version", kind: "string", required: false },
     { key: "roleArn", label: "Role ARN", kind: "string", required: false },
+    { key: "nodeGroupCount", label: "Node Groups", kind: "number", required: false },
+    { key: "nodeCount", label: "Node Count", kind: "number", required: false },
+    {
+      key: "instanceTypes",
+      label: "Instance Types",
+      kind: "string",
+      required: false,
+      description: "Instance types used across managed node groups",
+    },
+    {
+      key: "diskSizeGb",
+      label: "Disk Size (GB)",
+      kind: "number",
+      required: false,
+      description: "Disk size of the first node group",
+    },
   ],
   outputs: [
     {
       key: "endpoint",
       label: "API Endpoint",
       sensitive: false,
+      hidden: true,
       description: "HTTPS endpoint for the Kubernetes API server",
     },
     {
       key: "certificateAuthority",
       label: "Certificate Authority",
       sensitive: false,
+      hidden: true,
       description: "Base64-encoded CA data for cluster TLS verification",
     },
     {
       key: "kubeconfig",
       label: "Kubeconfig",
       sensitive: true,
+      hidden: true,
       description: "Generated kubeconfig YAML for kubectl access",
     },
   ],
@@ -45,7 +64,7 @@ export const EKSClusterResourceType: ResourceTypeDefinition = {
     {
       pluginId: "kubernetes",
       credentialMappings: [{ outputKey: "kubeconfig", credentialKey: "kubeconfig" }],
-      tabLabel: "Workloads",
+      tabLabel: "Kubernetes",
     },
   ],
   secretExportTemplates: [

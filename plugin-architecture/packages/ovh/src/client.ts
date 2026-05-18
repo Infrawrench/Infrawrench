@@ -324,7 +324,10 @@ export class OvhClient implements PluginClient {
     }
 
     if (typeId === "managed-kube") {
-      const regionsData = await this.ovhFetch<OvhRegion[]>(this.cloudPath("/region"));
+      const [regionsData, flavorsData] = await Promise.all([
+        this.ovhFetch<OvhRegion[]>(this.cloudPath("/region")),
+        this.ovhFetch<OvhFlavor[]>(this.cloudPath("/flavor")).catch(() => [] as OvhFlavor[]),
+      ]);
       const regions = regionsData
         .filter((r) => r.status === "UP")
         .map((r) => {
@@ -336,7 +339,26 @@ export class OvhClient implements PluginClient {
           };
         });
 
+      // Group flavors by name (across regions) so the picker shows one row per
+      // commercial type. OVH's node pool API takes `flavorName` (e.g. "b3-8"),
+      // not the per-region flavor id.
+      const sizesByName = new Map<string, SizeOption>();
+      for (const f of flavorsData) {
+        if (!f.available) continue;
+        if (sizesByName.has(f.name)) continue;
+        sizesByName.set(f.name, {
+          id: f.name,
+          label: f.name,
+          vcpus: f.vcpus,
+          memoryMb: f.ram,
+          diskGb: f.disk,
+          category: f.type ?? "General Purpose",
+        });
+      }
+      const sizes = [...sizesByName.values()];
+
       const defaultRegion = regions[0]?.id;
+      const defaultSize = sizes.find((s) => s.id === "b3-8")?.id ?? sizes[0]?.id;
 
       return {
         fields: [
@@ -360,6 +382,14 @@ export class OvhClient implements PluginClient {
               { id: "1.29", label: "1.29" },
             ],
             defaultValue: "1.31",
+          },
+          {
+            key: "flavor",
+            label: "Node Flavor",
+            kind: "size-picker",
+            required: true,
+            sizes,
+            ...(defaultSize ? { defaultValue: defaultSize } : {}),
           },
           {
             key: "nodeCount",
@@ -562,9 +592,11 @@ export class OvhClient implements PluginClient {
       const requestedNodeCount = Number.parseInt(fields["nodeCount"] ?? "3", 10);
       const nodeCount =
         Number.isFinite(requestedNodeCount) && requestedNodeCount > 0 ? requestedNodeCount : 3;
+      const flavorName = fields["flavor"] ?? "b3-8";
+      const clusterName = fields["name"] ?? "";
 
       const body = {
-        name: fields["name"],
+        name: clusterName,
         region: fields["region"],
         version: fields["version"] ?? "1.31",
       };
@@ -574,8 +606,34 @@ export class OvhClient implements PluginClient {
         body: JSON.stringify(body),
       });
 
-      // nodeCount is used for reference but the node pool is created separately via the API
-      // For simplicity, store it in fields
+      // OVH lets us create node pools immediately after the cluster POST —
+      // unlike EKS, the cluster doesn't need to be ACTIVE first.
+      const poolName = `${clusterName || "cluster"}-default-pool`
+        .toLowerCase()
+        .replace(/[^a-z0-9-]/g, "-")
+        .slice(0, 40);
+      let nodePoolCount = 0;
+      try {
+        await this.ovhFetch<OvhKubeNodePool>(this.cloudPath(`/kube/${cluster.id}/nodepool`), {
+          method: "POST",
+          body: JSON.stringify({
+            name: poolName,
+            flavorName,
+            desiredNodes: nodeCount,
+            monthlyBilled: false,
+            autoscale: false,
+            antiAffinity: false,
+          }),
+        });
+        nodePoolCount = 1;
+      } catch (e) {
+        // Surface the failure but keep the cluster — the user can add a pool by hand
+        const msg = e instanceof Error ? e.message : String(e);
+        throw new Error(
+          `Cluster ${clusterName} created but node pool creation failed: ${msg}. Delete the cluster and retry, or add a node pool via the OVH console.`,
+        );
+      }
+
       return {
         id: `${accountId}:managed-kube:${cluster.id}`,
         pluginId: "ovh",
@@ -587,6 +645,9 @@ export class OvhClient implements PluginClient {
           region: cluster.region ?? fields["region"] ?? "",
           version: cluster.version ?? fields["version"] ?? "",
           status: cluster.status ?? "INSTALLING",
+          flavor: flavorName,
+          nodeCount,
+          nodePoolCount,
           nodesUrl: cluster.nodesUrl ?? "",
         },
         resolvedOutputs: {
@@ -934,29 +995,48 @@ export class OvhClient implements PluginClient {
     // OVH /kube returns an array of cluster IDs, need to fetch each
     const clusterIds = await this.ovhFetch<string[]>(this.cloudPath("/kube"));
     const clusters = await Promise.all(
-      clusterIds.map((id) => this.ovhFetch<OvhKubeCluster>(this.cloudPath(`/kube/${id}`))),
+      clusterIds.map(async (id) => {
+        const cluster = await this.ovhFetch<OvhKubeCluster>(this.cloudPath(`/kube/${id}`));
+        let pools: OvhKubeNodePool[] = [];
+        try {
+          pools = await this.ovhFetch<OvhKubeNodePool[]>(this.cloudPath(`/kube/${id}/nodepool`));
+        } catch {
+          // No permission to list node pools — leave fields empty
+        }
+        return { cluster, pools };
+      }),
     );
-    return clusters.map((c) => ({
-      id: `${accountId}:managed-kube:${c.id}`,
-      pluginId: "ovh",
-      resourceTypeId: "managed-kube",
-      accountId,
-      displayName: c.name ?? c.id,
-      fields: {
-        name: c.name ?? "",
-        region: c.region ?? "",
-        version: c.version ?? "",
-        status: c.status ?? "",
-        nodesUrl: c.nodesUrl ?? "",
-      },
-      resolvedOutputs: {
-        clusterUrl: c.url ?? "",
-      },
-      secretStates: [],
-      externalId: c.id,
-      createdAt: c.createdAt ?? new Date().toISOString(),
-      updatedAt: c.updatedAt ?? c.createdAt ?? new Date().toISOString(),
-    }));
+    return clusters.map(({ cluster: c, pools }) => {
+      const firstPool = pools[0];
+      const totalNodes = pools.reduce(
+        (sum, p) => sum + Number(p.desiredNodes ?? p.currentNodes ?? 0),
+        0,
+      );
+      return {
+        id: `${accountId}:managed-kube:${c.id}`,
+        pluginId: "ovh",
+        resourceTypeId: "managed-kube",
+        accountId,
+        displayName: c.name ?? c.id,
+        fields: {
+          name: c.name ?? "",
+          region: c.region ?? "",
+          version: c.version ?? "",
+          status: c.status ?? "",
+          flavor: firstPool?.flavorName ?? "",
+          nodeCount: totalNodes,
+          nodePoolCount: pools.length,
+          nodesUrl: c.nodesUrl ?? "",
+        },
+        resolvedOutputs: {
+          clusterUrl: c.url ?? "",
+        },
+        secretStates: [],
+        externalId: c.id,
+        createdAt: c.createdAt ?? new Date().toISOString(),
+        updatedAt: c.updatedAt ?? c.createdAt ?? new Date().toISOString(),
+      };
+    });
   }
 
   private async listManagedDatabases(accountId: string): Promise<ResourceInstance[]> {
@@ -1014,6 +1094,17 @@ interface OvhKubeCluster {
   nodesUrl?: string;
   createdAt?: string;
   updatedAt?: string;
+}
+
+interface OvhKubeNodePool {
+  id: string;
+  name?: string;
+  flavorName?: string;
+  desiredNodes?: number;
+  currentNodes?: number;
+  minNodes?: number;
+  maxNodes?: number;
+  status?: string;
 }
 
 interface OvhDatabaseService {

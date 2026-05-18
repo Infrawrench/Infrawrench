@@ -91,20 +91,16 @@ export function renderAzureDetail(
     },
   ];
 
-  if (Object.keys(resource.resolvedOutputs).length > 0) {
+  const outputItems = labeledOutputItems(
+    resource.resolvedOutputs,
+    resourceTypes,
+    resource.resourceTypeId,
+  );
+  if (outputItems.length > 0) {
     sections.push({
       kind: "section",
       title: "Outputs",
-      children: [
-        {
-          kind: "key-value-list",
-          items: labeledOutputItems(
-            resource.resolvedOutputs,
-            resourceTypes,
-            resource.resourceTypeId,
-          ),
-        },
-      ],
+      children: [{ kind: "key-value-list", items: outputItems }],
     });
   }
 

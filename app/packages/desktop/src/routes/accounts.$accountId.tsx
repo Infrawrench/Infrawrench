@@ -78,6 +78,11 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
   const [loadVersion, setLoadVersion] = useState(0);
   const backgroundLoadRef = useRef(false);
   const [kubeconfigTypeIds, setKubeconfigTypeIds] = useState<Set<string>>(new Set());
+  const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
+  // Read inside the load loop without retriggering it: changing the active
+  // section after the initial fetch is in flight shouldn't restart everything.
+  const activeSectionIdRef = useRef<string | null>(null);
+  activeSectionIdRef.current = activeSectionId;
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
@@ -441,7 +446,19 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
           setInitialLoading(false);
         }
 
-        for (const typeDef of allTypes) {
+        // Dispatch the user's highlighted section first so its request gets
+        // the first browser connection slot / token bucket allowance. Other
+        // types still fire in parallel but a microsecond behind, which is
+        // enough for the active section to win contention on slow providers.
+        const priorityId = activeSectionIdRef.current;
+        const orderedTypes = priorityId
+          ? [
+              ...allTypes.filter((t) => t.id === priorityId),
+              ...allTypes.filter((t) => t.id !== priorityId),
+            ]
+          : allTypes;
+
+        for (const typeDef of orderedTypes) {
           client
             .listResources(typeDef.id, accountId)
             .then((resources) => {
@@ -704,6 +721,8 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
 
       <AccountResourceSections
         categories={categories}
+        activeSectionId={activeSectionId}
+        onActiveSectionIdChange={setActiveSectionId}
         renderResource={(resource, cat) => (
           <ResourcePill
             key={resource.id}

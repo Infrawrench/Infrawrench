@@ -999,7 +999,20 @@ export class ScalewayClient implements PluginClient {
           region,
           ...(this.defaultProjectId ? { projectId: this.defaultProjectId } : {}),
         });
-        return data.clusters.map((c) => this.mapKapsuleCluster(c, region, accountId));
+        return Promise.all(
+          data.clusters.map(async (c) => {
+            let firstPool: import("@scaleway/sdk-k8s").K8Sv1.Pool | undefined;
+            let totalNodes = 0;
+            try {
+              const poolsResp = await api.listPools({ region, clusterId: c.id });
+              firstPool = poolsResp.pools[0];
+              for (const p of poolsResp.pools) totalNodes += p.size;
+            } catch {
+              // Skip pools we can't list
+            }
+            return this.mapKapsuleCluster(c, region, accountId, firstPool, totalNodes);
+          }),
+        );
       } catch {
         return [];
       }
@@ -1013,6 +1026,8 @@ export class ScalewayClient implements PluginClient {
     c: import("@scaleway/sdk-k8s").K8Sv1.Cluster,
     region: Region,
     accountId: string,
+    firstPool?: import("@scaleway/sdk-k8s").K8Sv1.Pool,
+    nodeCount = 0,
   ): ResourceInstance {
     const externalId = `${region}/${c.id}`;
     const createdAt = c.createdAt ? c.createdAt.toISOString() : new Date().toISOString();
@@ -1028,11 +1043,11 @@ export class ScalewayClient implements PluginClient {
         name: c.name,
         region: c.region ?? region,
         version: c.version ?? "",
-        // The Cluster type does not return per-pool info; we used to read it
-        // from c.pools[0] but the SDK's Cluster has no pools field. Leave
-        // nodeType empty here — the user can drill in for pool details.
-        nodeType: "",
-        nodeCount: 0,
+        nodeType: firstPool?.nodeType ?? "",
+        nodeCount,
+        diskSizeGb: firstPool?.rootVolumeSize
+          ? Math.round(firstPool.rootVolumeSize / (1024 * 1024 * 1024))
+          : 0,
         status: c.status ?? "",
       },
       resolvedOutputs: {

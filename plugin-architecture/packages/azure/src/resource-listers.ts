@@ -260,6 +260,7 @@ export async function listAKSClusters(
     const props = cluster["properties"] as Record<string, unknown> | undefined;
     const agentPools = props?.["agentPoolProfiles"] as Array<Record<string, unknown>> | undefined;
     const totalNodes = agentPools?.reduce((sum, p) => sum + Number(p["count"] ?? 0), 0) ?? 0;
+    const firstPool = agentPools?.[0];
     const networkProfile = props?.["networkProfile"] as Record<string, unknown> | undefined;
     const powerState = props?.["powerState"] as Record<string, unknown> | undefined;
 
@@ -278,6 +279,8 @@ export async function listAKSClusters(
         powerState: String(powerState?.["code"] ?? "Running"),
         nodeCount: totalNodes,
         nodePoolCount: agentPools?.length ?? 0,
+        vmSize: String(firstPool?.["vmSize"] ?? ""),
+        osDiskSizeGb: Number(firstPool?.["osDiskSizeGB"] ?? 0),
         networkPlugin: String(networkProfile?.["networkPlugin"] ?? ""),
         tier: String((cluster["sku"] as Record<string, unknown> | undefined)?.["tier"] ?? "Free"),
       },

@@ -35,6 +35,13 @@ export interface ResourceOutput {
   /** Sensitive outputs are encrypted at rest and masked in the UI */
   sensitive: boolean;
   description?: string;
+  /**
+   * When true, the output is omitted from the detail page's outputs panel but
+   * is still available to peer integrations, secret exports, and tool calls.
+   * Use for large blob-style values (e.g. a kubeconfig YAML) that are noise
+   * in the UI but load-bearing for downstream consumers.
+   */
+  hidden?: boolean;
 }
 
 /**

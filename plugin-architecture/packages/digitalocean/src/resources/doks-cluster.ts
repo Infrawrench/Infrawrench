@@ -52,12 +52,14 @@ export const DOKSClusterResourceType: ResourceTypeDefinition = {
       key: "kubeconfig",
       label: "Kubeconfig",
       sensitive: true,
+      hidden: true,
       description: "Full kubeconfig YAML for connecting to this cluster",
     },
     {
       key: "clusterEndpoint",
       label: "Cluster Endpoint",
       sensitive: false,
+      hidden: true,
       description: "HTTPS endpoint for the Kubernetes API server",
     },
   ],
@@ -69,7 +71,7 @@ export const DOKSClusterResourceType: ResourceTypeDefinition = {
     {
       pluginId: "kubernetes",
       credentialMappings: [{ outputKey: "kubeconfig", credentialKey: "kubeconfig" }],
-      tabLabel: "Workloads",
+      tabLabel: "Kubernetes",
     },
   ],
 };

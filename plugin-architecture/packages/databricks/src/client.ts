@@ -327,24 +327,22 @@ export class DatabricksClient implements PluginClient {
             },
           ],
         },
-        ...(Object.keys(resource.resolvedOutputs).length > 0
-          ? [
-              {
-                kind: "section" as const,
-                title: "Outputs",
-                children: [
-                  {
-                    kind: "key-value-list" as const,
-                    items: labeledOutputItems(
-                      resource.resolvedOutputs,
-                      this.resourceTypes,
-                      resource.resourceTypeId,
-                    ),
-                  },
-                ],
-              },
-            ]
-          : []),
+        ...(() => {
+          const outputItems = labeledOutputItems(
+            resource.resolvedOutputs,
+            this.resourceTypes,
+            resource.resourceTypeId,
+          );
+          return outputItems.length > 0
+            ? [
+                {
+                  kind: "section" as const,
+                  title: "Outputs",
+                  children: [{ kind: "key-value-list" as const, items: outputItems }],
+                },
+              ]
+            : [];
+        })(),
       ],
       headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };

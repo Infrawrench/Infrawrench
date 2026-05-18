@@ -408,18 +408,100 @@ export async function deleteResource(
       break;
     }
     case "eks-cluster": {
-      const host = hostForService(creds, "eks");
-      const url = `https://${host}/clusters/${encodeURIComponent(externalId)}`;
-      await fetchSigned({
-        method: "DELETE",
-        url,
-        headers: { Host: host },
-        service: "eks",
-        credentials: creds,
-      });
+      await deleteEksClusterWithNodeGroups(creds, externalId);
       break;
     }
     default:
       throw new Error(`AWS plugin: deleteResource not supported for type "${typeId}"`);
   }
+}
+
+/**
+ * EKS rejects DeleteCluster while any managed node group still exists, and
+ * node groups themselves take 5–10 minutes to terminate. Initiate the node
+ * group deletes synchronously (the API call returns immediately, with the
+ * actual EC2 teardown happening async on AWS's side), then fire-and-forget
+ * the wait-for-node-groups-gone + cluster delete so the HTTP request can
+ * return promptly. The lister will pick up the cluster disappearing on a
+ * later sync cycle.
+ */
+async function deleteEksClusterWithNodeGroups(
+  creds: AwsCredentials,
+  clusterName: string,
+): Promise<void> {
+  const host = hostForService(creds, "eks");
+  const encoded = encodeURIComponent(clusterName);
+
+  // 1) Discover existing node groups
+  let nodegroups: string[] = [];
+  try {
+    const data = await jsonGetCall<{ nodegroups?: string[] }>(
+      creds,
+      "eks",
+      `/clusters/${encoded}/node-groups`,
+    );
+    nodegroups = data.nodegroups ?? [];
+  } catch {
+    // If we can't list (cluster already mostly gone, or permission issue),
+    // fall through and let the cluster delete try anyway.
+  }
+
+  // 2) Initiate each node group delete. Each call returns immediately with
+  // the node group entering DELETING state.
+  for (const ng of nodegroups) {
+    try {
+      await fetchSigned({
+        method: "DELETE",
+        url: `https://${host}/clusters/${encoded}/node-groups/${encodeURIComponent(ng)}`,
+        headers: { Host: host },
+        service: "eks",
+        credentials: creds,
+      });
+    } catch (e) {
+      console.error(`[eks] failed to initiate delete of node group ${ng}:`, e);
+    }
+  }
+
+  // 3) If there were no node groups, the cluster delete can run inline.
+  if (nodegroups.length === 0) {
+    await fetchSigned({
+      method: "DELETE",
+      url: `https://${host}/clusters/${encoded}`,
+      headers: { Host: host },
+      service: "eks",
+      credentials: creds,
+    });
+    return;
+  }
+
+  // 4) Otherwise poll for node groups to drain, then delete the cluster, in
+  // the background.
+  void (async () => {
+    const deadline = Date.now() + 30 * 60 * 1000;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 30_000));
+      try {
+        const data = await jsonGetCall<{ nodegroups?: string[] }>(
+          creds,
+          "eks",
+          `/clusters/${encoded}/node-groups`,
+        );
+        if (!data.nodegroups || data.nodegroups.length === 0) break;
+      } catch {
+        // Assume gone if listing fails
+        break;
+      }
+    }
+    try {
+      await fetchSigned({
+        method: "DELETE",
+        url: `https://${host}/clusters/${encoded}`,
+        headers: { Host: host },
+        service: "eks",
+        credentials: creds,
+      });
+    } catch (e) {
+      console.error(`[eks] cluster ${clusterName} delete failed after node-group drain:`, e);
+    }
+  })();
 }

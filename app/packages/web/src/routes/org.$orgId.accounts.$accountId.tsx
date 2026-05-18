@@ -169,6 +169,18 @@ export function AccountPanel({
     return () => clearInterval(id);
   }, []);
 
+  // When the user focuses a section, kick off a fresh provider-side sync for
+  // that type so slow-to-poll groups get priority loading. Each type only
+  // gets one auto-resync per mount; explicit RESOURCES_CHANGED events still
+  // re-trigger as before.
+  const prioritizedTypesRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!activeType) return;
+    if (prioritizedTypesRef.current.has(activeType)) return;
+    prioritizedTypesRef.current.add(activeType);
+    void resyncType(activeType);
+  }, [activeType, resyncType]);
+
   useEffect(() => {
     let cancelled = false;
 
