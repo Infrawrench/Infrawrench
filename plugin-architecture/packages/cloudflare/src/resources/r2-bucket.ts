@@ -17,6 +17,7 @@ export const R2BucketResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   supportsCreate: true,
   supportsStorageBrowser: true,
+  supportsMetrics: true,
   secretExportTemplates: [
     {
       id: "r2-s3-credentials",

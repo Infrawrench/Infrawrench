@@ -497,7 +497,7 @@ export class DigitalOceanClient implements PluginClient {
       return this.renderDnsRecordDetail(resource);
     }
     const fields = resource.fields;
-    return {
+    const detail: DetailViewSchema = {
       title: resource.displayName,
       subtitle: `${resourceTypeDisplayName(this.resourceTypes, resource.resourceTypeId)} \u00B7 ${String(fields["region"] ?? "")}`,
       status: { kind: "status-dot", status: "info" },
@@ -515,6 +515,22 @@ export class DigitalOceanClient implements PluginClient {
       ],
       headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
+
+    // MongoDB-engined managed databases get the inline MongoDB peer browser \u2014
+    // user links one of their MongoDB accounts and browses documents in place.
+    if (
+      resource.resourceTypeId === "managed-database" &&
+      String(fields["engine"] ?? "") === "mongodb"
+    ) {
+      detail.noSqlBrowser = {
+        driver: "mongodb-peer",
+        databaseLabel: String(fields["name"] ?? resource.externalId ?? ""),
+        helpText:
+          "Link a MongoDB account in your sidebar to browse this database inline. The account must be reachable from your network \u2014 for trusted-sources-only clusters, connect from inside the VPC.",
+      };
+    }
+
+    return detail;
   }
 
   private renderDomainDetail(resource: ResourceInstance): DetailViewSchema {

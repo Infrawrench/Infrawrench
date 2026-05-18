@@ -1503,6 +1503,12 @@ export class CloudflareClient implements PluginClient {
     _accountId: string,
     timeRange?: { startMs: number; endMs: number },
   ): Promise<MetricSeries[]> {
+    if (resourceTypeId === "worker") {
+      return this.fetchWorkerMetricSeries(resourceId, timeRange);
+    }
+    if (resourceTypeId === "r2-bucket") {
+      return this.fetchR2MetricSeries(resourceId, timeRange);
+    }
     if (resourceTypeId !== "zone") return [];
 
     const zoneId = resourceId.split(":").pop();
@@ -1615,6 +1621,272 @@ export class CloudflareClient implements PluginClient {
     return [requests, bytes, cached, threats, uniques].filter((s) =>
       s.points.some((p) => p.value > 0),
     );
+  }
+
+  /**
+   * Worker metrics via GraphQL `workersInvocationsAdaptive`. Worker scripts
+   * are account-scoped (not zone-scoped) so this resolves the CF account ID
+   * via the shared client before issuing the query. Resource id encoding:
+   * `${infrawrenchAccountId}:worker:${scriptName}` — we take the last segment.
+   */
+  private async fetchWorkerMetricSeries(
+    resourceId: string,
+    timeRange?: { startMs: number; endMs: number },
+  ): Promise<MetricSeries[]> {
+    const scriptName = resourceId.split(":").pop();
+    if (!scriptName) return [];
+
+    let cfAccountId: string;
+    try {
+      cfAccountId = await this.api.getAccountId();
+    } catch {
+      return [];
+    }
+
+    const now = Date.now();
+    const from = new Date(timeRange?.startMs ?? now - 24 * 3_600_000).toISOString();
+    const to = new Date(timeRange?.endMs ?? now).toISOString();
+    const windowMs = (timeRange?.endMs ?? now) - (timeRange?.startMs ?? now - 24 * 3_600_000);
+    // Workers GraphQL exposes 15-minute and 1-hour buckets; the 1m schema is
+    // gated behind paid plans, so always pick 15m for short windows and 1h
+    // for windows ≥6h.
+    const useHourly = windowMs >= 6 * 3_600_000;
+    const groupName = useHourly
+      ? "workersInvocationsAdaptiveGroups"
+      : "workersInvocationsAdaptiveGroups";
+    const orderBy = "datetime_ASC";
+
+    const query = `query W($account: String!, $script: String!, $from: Time!, $to: Time!) {
+      viewer {
+        accounts(filter: { accountTag: $account }) {
+          ${groupName}(
+            limit: 1000
+            filter: { scriptName: $script, datetime_geq: $from, datetime_lt: $to }
+            orderBy: [${orderBy}]
+          ) {
+            dimensions { datetime }
+            sum { requests subrequests errors duration }
+            quantiles { cpuTimeP99 }
+          }
+        }
+      }
+    }`;
+
+    interface Group {
+      dimensions: { datetime: string };
+      sum: { requests?: number; subrequests?: number; errors?: number; duration?: number };
+      quantiles: { cpuTimeP99?: number };
+    }
+    interface Resp {
+      data?: { viewer?: { accounts?: Array<{ workersInvocationsAdaptiveGroups?: Group[] }> } };
+    }
+
+    let groups: Group[] = [];
+    try {
+      const res = await fetch("https://api.cloudflare.com/client/v4/graphql", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.api.apiToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          query,
+          variables: { account: cfAccountId, script: scriptName, from, to },
+        }),
+      });
+      if (!res.ok) return [];
+      const json = (await res.json()) as Resp;
+      groups = json.data?.viewer?.accounts?.[0]?.workersInvocationsAdaptiveGroups ?? [];
+    } catch {
+      return [];
+    }
+    if (groups.length === 0) return [];
+
+    const tsOf = (g: Group): number => new Date(g.dimensions.datetime).getTime();
+    const series: MetricSeries[] = [
+      {
+        label: "Requests",
+        unit: "requests",
+        points: groups.map((g) => ({ timestamp: tsOf(g), value: Number(g.sum.requests ?? 0) })),
+      },
+      {
+        label: "Errors",
+        unit: "errors",
+        points: groups.map((g) => ({ timestamp: tsOf(g), value: Number(g.sum.errors ?? 0) })),
+      },
+      {
+        label: "Subrequests",
+        unit: "subrequests",
+        points: groups.map((g) => ({ timestamp: tsOf(g), value: Number(g.sum.subrequests ?? 0) })),
+      },
+      {
+        label: "Wall Duration (avg)",
+        unit: "μs",
+        points: groups.map((g) => ({ timestamp: tsOf(g), value: Number(g.sum.duration ?? 0) })),
+      },
+      {
+        label: "CPU Time p99",
+        unit: "μs",
+        points: groups.map((g) => ({
+          timestamp: tsOf(g),
+          value: Number(g.quantiles.cpuTimeP99 ?? 0),
+        })),
+      },
+    ];
+    return series.filter((s) => s.points.some((p) => p.value > 0));
+  }
+
+  /**
+   * R2 bucket metrics via GraphQL `r2OperationsAdaptiveGroups` (Class A/B
+   * operation counts) and `r2StorageAdaptiveGroups` (object/byte counts).
+   * Both are account-scoped and filter by `bucketName`.
+   */
+  private async fetchR2MetricSeries(
+    resourceId: string,
+    timeRange?: { startMs: number; endMs: number },
+  ): Promise<MetricSeries[]> {
+    const bucketName = resourceId.split(":").pop();
+    if (!bucketName) return [];
+
+    let cfAccountId: string;
+    try {
+      cfAccountId = await this.api.getAccountId();
+    } catch {
+      return [];
+    }
+
+    const now = Date.now();
+    const from = new Date(timeRange?.startMs ?? now - 24 * 3_600_000).toISOString();
+    const to = new Date(timeRange?.endMs ?? now).toISOString();
+
+    const query = `query R($account: String!, $bucket: String!, $from: Time!, $to: Time!) {
+      viewer {
+        accounts(filter: { accountTag: $account }) {
+          r2OperationsAdaptiveGroups(
+            limit: 1000
+            filter: { bucketName: $bucket, datetime_geq: $from, datetime_lt: $to }
+            orderBy: [datetime_ASC]
+          ) {
+            dimensions { datetime actionType }
+            sum { requests responseObjectSize }
+          }
+          r2StorageAdaptiveGroups(
+            limit: 1000
+            filter: { bucketName: $bucket, datetime_geq: $from, datetime_lt: $to }
+            orderBy: [datetime_ASC]
+          ) {
+            dimensions { datetime }
+            max { metadataSize payloadSize objectCount uploadCount }
+          }
+        }
+      }
+    }`;
+
+    interface OpsGroup {
+      dimensions: { datetime: string; actionType: string };
+      sum: { requests?: number; responseObjectSize?: number };
+    }
+    interface StorageGroup {
+      dimensions: { datetime: string };
+      max: {
+        metadataSize?: number;
+        payloadSize?: number;
+        objectCount?: number;
+        uploadCount?: number;
+      };
+    }
+    interface Resp {
+      data?: {
+        viewer?: {
+          accounts?: Array<{
+            r2OperationsAdaptiveGroups?: OpsGroup[];
+            r2StorageAdaptiveGroups?: StorageGroup[];
+          }>;
+        };
+      };
+    }
+
+    let ops: OpsGroup[] = [];
+    let storage: StorageGroup[] = [];
+    try {
+      const res = await fetch("https://api.cloudflare.com/client/v4/graphql", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.api.apiToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          query,
+          variables: { account: cfAccountId, bucket: bucketName, from, to },
+        }),
+      });
+      if (!res.ok) return [];
+      const json = (await res.json()) as Resp;
+      const acc = json.data?.viewer?.accounts?.[0];
+      ops = acc?.r2OperationsAdaptiveGroups ?? [];
+      storage = acc?.r2StorageAdaptiveGroups ?? [];
+    } catch {
+      return [];
+    }
+
+    // R2 splits requests into Class A (writes/lists, $$$) and Class B (reads, $).
+    // Bucket the ops counts so the user sees both lines clearly.
+    const tsOf = (s: { dimensions: { datetime: string } }): number =>
+      new Date(s.dimensions.datetime).getTime();
+    const classA = new Map<number, number>();
+    const classB = new Map<number, number>();
+    const CLASS_A_ACTIONS = new Set([
+      "ListBuckets",
+      "PutBucket",
+      "ListObjects",
+      "PutObject",
+      "CopyObject",
+      "CompleteMultipartUpload",
+      "CreateMultipartUpload",
+      "UploadPart",
+      "UploadPartCopy",
+      "PutBucketEncryption",
+      "ListMultipartUploads",
+      "PutBucketCors",
+      "PutBucketLifecycleConfiguration",
+    ]);
+    for (const g of ops) {
+      const t = tsOf(g);
+      const v = Number(g.sum.requests ?? 0);
+      const target = CLASS_A_ACTIONS.has(g.dimensions.actionType) ? classA : classB;
+      target.set(t, (target.get(t) ?? 0) + v);
+    }
+
+    const toSeries = (m: Map<number, number>, label: string, unit: string): MetricSeries => ({
+      label,
+      unit,
+      points: [...m.entries()]
+        .sort(([a], [b]) => a - b)
+        .map(([timestamp, value]) => ({ timestamp, value })),
+    });
+
+    const series: MetricSeries[] = [
+      toSeries(classA, "Class A Operations", "requests"),
+      toSeries(classB, "Class B Operations", "requests"),
+    ];
+
+    if (storage.length > 0) {
+      series.push({
+        label: "Object Count",
+        unit: "objects",
+        points: storage.map((g) => ({ timestamp: tsOf(g), value: Number(g.max.objectCount ?? 0) })),
+      });
+      series.push({
+        label: "Stored Bytes",
+        unit: "bytes",
+        points: storage.map((g) => ({
+          timestamp: tsOf(g),
+          value: Number(g.max.payloadSize ?? 0) + Number(g.max.metadataSize ?? 0),
+        })),
+      });
+    }
+
+    return series.filter((s) => s.points.some((p) => p.value > 0));
   }
 
   /** List DNS records for a specific zone */

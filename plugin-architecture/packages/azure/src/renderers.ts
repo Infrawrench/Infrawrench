@@ -128,6 +128,20 @@ export function renderAzureDetail(
     };
   }
 
+  // Cosmos DB with MongoDB API → render the MongoDB peer browser inline so
+  // users can browse documents without leaving the resource page. The
+  // user picks one of their MongoDB accounts; the host wires its connection
+  // to a `databaseLabel`-scoped MongoDocumentBrowser. Other Cosmos API kinds
+  // (SQL, Cassandra, Gremlin, Table) don't have an equivalent browser.
+  if (resource.resourceTypeId === "azure-cosmos-db" && String(fields["kind"] ?? "") === "MongoDB") {
+    detail.noSqlBrowser = {
+      driver: "mongodb-peer",
+      databaseLabel: String(fields["name"] ?? resource.externalId ?? ""),
+      helpText:
+        "Cosmos DB MongoDB-API accounts speak the MongoDB wire protocol. Link a MongoDB account in your sidebar to browse this database inline.",
+    };
+  }
+
   return detail;
 }
 

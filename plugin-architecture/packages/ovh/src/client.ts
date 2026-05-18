@@ -883,7 +883,7 @@ export class OvhClient implements PluginClient {
       return "info";
     })();
 
-    return {
+    const detail: DetailViewSchema = {
       title: resource.displayName,
       subtitle: `${resourceTypeDisplayName(this.resourceTypes, resource.resourceTypeId)} · ${String(fields["region"] ?? "")}`,
       status: { kind: "status-dot", status, ...(statusStr ? { label: statusStr } : {}) },
@@ -901,6 +901,17 @@ export class OvhClient implements PluginClient {
       ],
       headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
+
+    if (resource.resourceTypeId === "managed-db" && String(fields["engine"] ?? "") === "mongodb") {
+      detail.noSqlBrowser = {
+        driver: "mongodb-peer",
+        databaseLabel: String(fields["description"] ?? resource.externalId ?? ""),
+        helpText:
+          "Link a MongoDB account in your sidebar to browse this database inline. The account must be reachable from your network.",
+      };
+    }
+
+    return detail;
   }
 
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema {
