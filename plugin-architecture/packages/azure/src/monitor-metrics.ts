@@ -82,6 +82,11 @@ const RESOURCE_TYPE_METRICS: Record<string, { provider: string; metrics: MetricC
   },
   "azure-sql-database": {
     provider: "Microsoft.Sql/servers/databases",
+    // Verified against
+    // https://learn.microsoft.com/azure/azure-monitor/reference/supported-metrics/microsoft-sql-servers-databases-metrics
+    // DTU-percent only emits for DTU-tier DBs, log_write_percent doesn't
+    // emit for data warehouses — the metric API silently returns empty so
+    // there's no harm in listing both shapes.
     metrics: [
       { metricName: "cpu_percent", label: "CPU", aggregation: "Average", unit: "%" },
       { metricName: "dtu_consumption_percent", label: "DTU", aggregation: "Average", unit: "%" },
@@ -91,17 +96,21 @@ const RESOURCE_TYPE_METRICS: Record<string, { provider: string; metrics: MetricC
         aggregation: "Average",
         unit: "%",
       },
+      { metricName: "log_write_percent", label: "Log IO", aggregation: "Average", unit: "%" },
       {
         metricName: "storage_percent",
         label: "Storage Used",
         aggregation: "Average",
         unit: "%",
       },
+      { metricName: "workers_percent", label: "Workers", aggregation: "Average", unit: "%" },
       {
         metricName: "connection_successful",
         label: "Successful Connections",
         aggregation: "Total",
       },
+      { metricName: "connection_failed", label: "Failed Connections", aggregation: "Total" },
+      { metricName: "deadlock", label: "Deadlocks", aggregation: "Total" },
     ],
   },
   "azure-app-service": {
@@ -140,27 +149,44 @@ const RESOURCE_TYPE_METRICS: Record<string, { provider: string; metrics: MetricC
   },
   "azure-redis-cache": {
     provider: "Microsoft.Cache/redis",
+    // Verified against
+    // https://learn.microsoft.com/azure/azure-monitor/reference/supported-metrics/microsoft-cache-redis-metrics
+    // The portal exposes default aggregation Maximum for the percent metrics
+    // (CPU, Server Load, Used Memory %) which masks short spikes better than
+    // Average.
     metrics: [
       {
         metricName: "percentProcessorTime",
         label: "CPU",
-        aggregation: "Average",
+        aggregation: "Maximum",
+        unit: "%",
+      },
+      {
+        metricName: "serverLoad",
+        label: "Server Load",
+        aggregation: "Maximum",
         unit: "%",
       },
       {
         metricName: "usedmemorypercentage",
         label: "Memory Used",
-        aggregation: "Average",
+        aggregation: "Maximum",
         unit: "%",
       },
+      { metricName: "usedmemory", label: "Used Memory", aggregation: "Maximum", unit: "bytes" },
       { metricName: "connectedclients", label: "Connected Clients", aggregation: "Maximum" },
-      { metricName: "totalcommandsprocessed", label: "Commands", aggregation: "Total" },
+      { metricName: "operationsPerSecond", label: "Ops/sec", aggregation: "Maximum" },
+      { metricName: "totalcommandsprocessed", label: "Total Commands", aggregation: "Total" },
       { metricName: "cachehits", label: "Cache Hits", aggregation: "Total" },
       { metricName: "cachemisses", label: "Cache Misses", aggregation: "Total" },
+      { metricName: "evictedkeys", label: "Evicted Keys", aggregation: "Total" },
+      { metricName: "errors", label: "Errors", aggregation: "Maximum" },
     ],
   },
   "azure-postgres-flexible": {
     provider: "Microsoft.DBforPostgreSQL/flexibleServers",
+    // Verified against
+    // https://learn.microsoft.com/azure/azure-monitor/reference/supported-metrics/microsoft-dbforpostgresql-flexibleservers-metrics
     metrics: [
       { metricName: "cpu_percent", label: "CPU", aggregation: "Average", unit: "%" },
       { metricName: "memory_percent", label: "Memory", aggregation: "Average", unit: "%" },
@@ -170,15 +196,38 @@ const RESOURCE_TYPE_METRICS: Record<string, { provider: string; metrics: MetricC
         aggregation: "Average",
         unit: "%",
       },
+      { metricName: "iops", label: "IOPS", aggregation: "Average" },
       {
         metricName: "active_connections",
         label: "Active Connections",
         aggregation: "Average",
       },
+      {
+        metricName: "connections_succeeded",
+        label: "Successful Connections",
+        aggregation: "Total",
+      },
+      { metricName: "connections_failed", label: "Failed Connections", aggregation: "Total" },
+      {
+        metricName: "network_bytes_ingress",
+        label: "Network In",
+        aggregation: "Total",
+        unit: "bytes",
+      },
+      {
+        metricName: "network_bytes_egress",
+        label: "Network Out",
+        aggregation: "Total",
+        unit: "bytes",
+      },
+      { metricName: "is_db_alive", label: "Database Alive", aggregation: "Maximum" },
     ],
   },
   "azure-mysql-flexible": {
     provider: "Microsoft.DBforMySQL/flexibleServers",
+    // MySQL flexible exposes the same Saturation/Traffic metric vocabulary
+    // as Postgres flexible. Verified against
+    // https://learn.microsoft.com/azure/azure-monitor/reference/supported-metrics/microsoft-dbformysql-flexibleservers-metrics
     metrics: [
       { metricName: "cpu_percent", label: "CPU", aggregation: "Average", unit: "%" },
       { metricName: "memory_percent", label: "Memory", aggregation: "Average", unit: "%" },
@@ -189,14 +238,39 @@ const RESOURCE_TYPE_METRICS: Record<string, { provider: string; metrics: MetricC
         unit: "%",
       },
       {
+        metricName: "io_consumption_percent",
+        label: "IO Usage",
+        aggregation: "Average",
+        unit: "%",
+      },
+      {
         metricName: "active_connections",
         label: "Active Connections",
         aggregation: "Average",
+      },
+      {
+        metricName: "aborted_connections",
+        label: "Aborted Connections",
+        aggregation: "Total",
+      },
+      {
+        metricName: "network_bytes_ingress",
+        label: "Network In",
+        aggregation: "Total",
+        unit: "bytes",
+      },
+      {
+        metricName: "network_bytes_egress",
+        label: "Network Out",
+        aggregation: "Total",
+        unit: "bytes",
       },
     ],
   },
   "azure-aks-cluster": {
     provider: "Microsoft.ContainerService/managedClusters",
+    // Verified against
+    // https://learn.microsoft.com/azure/azure-monitor/reference/supported-metrics/microsoft-containerservice-managedclusters-metrics
     metrics: [
       {
         metricName: "node_cpu_usage_percentage",
@@ -210,7 +284,37 @@ const RESOURCE_TYPE_METRICS: Record<string, { provider: string; metrics: MetricC
         aggregation: "Average",
         unit: "%",
       },
+      {
+        metricName: "node_disk_usage_percentage",
+        label: "Node Disk",
+        aggregation: "Average",
+        unit: "%",
+      },
       { metricName: "kube_pod_status_ready", label: "Pods Ready", aggregation: "Average" },
+      { metricName: "kube_pod_status_phase", label: "Pod Phases", aggregation: "Total" },
+      {
+        metricName: "apiserver_cpu_usage_percentage",
+        label: "API Server CPU",
+        aggregation: "Maximum",
+        unit: "%",
+      },
+      {
+        metricName: "apiserver_memory_usage_percentage",
+        label: "API Server Memory",
+        aggregation: "Maximum",
+        unit: "%",
+      },
+      {
+        metricName: "etcd_database_usage_percentage",
+        label: "ETCD Database Used",
+        aggregation: "Maximum",
+        unit: "%",
+      },
+      {
+        metricName: "cluster_autoscaler_unschedulable_pods_count",
+        label: "Unschedulable Pods",
+        aggregation: "Total",
+      },
     ],
   },
   "azure-cosmos-db": {
@@ -270,19 +374,35 @@ const RESOURCE_TYPE_METRICS: Record<string, { provider: string; metrics: MetricC
   },
   "azure-service-bus": {
     provider: "Microsoft.ServiceBus/namespaces",
+    // Verified against
+    // https://learn.microsoft.com/azure/azure-monitor/reference/supported-metrics/microsoft-servicebus-namespaces-metrics
     metrics: [
       { metricName: "ActiveMessages", label: "Active Messages", aggregation: "Average" },
+      {
+        metricName: "DeadletteredMessages",
+        label: "Dead-lettered Messages",
+        aggregation: "Average",
+      },
+      { metricName: "ScheduledMessages", label: "Scheduled Messages", aggregation: "Average" },
       { metricName: "IncomingMessages", label: "Incoming Messages", aggregation: "Total" },
       { metricName: "OutgoingMessages", label: "Outgoing Messages", aggregation: "Total" },
       { metricName: "Size", label: "Size", aggregation: "Average", unit: "bytes" },
+      { metricName: "ActiveConnections", label: "Active Connections", aggregation: "Total" },
       { metricName: "ThrottledRequests", label: "Throttled Requests", aggregation: "Total" },
+      { metricName: "ServerErrors", label: "Server Errors", aggregation: "Total" },
+      { metricName: "UserErrors", label: "User Errors", aggregation: "Total" },
     ],
   },
   "azure-key-vault": {
     provider: "Microsoft.KeyVault/vaults",
+    // Verified against
+    // https://learn.microsoft.com/azure/azure-monitor/reference/supported-metrics/microsoft-keyvault-vaults-metrics
+    // ServiceApiHit and ServiceApiResult only support the `Count` aggregation
+    // (number of samples) — requesting `Total` returns empty.
     metrics: [
-      { metricName: "ServiceApiHit", label: "API Hits", aggregation: "Total" },
+      { metricName: "ServiceApiHit", label: "API Hits", aggregation: "Count" },
       { metricName: "ServiceApiLatency", label: "API Latency", aggregation: "Average", unit: "ms" },
+      { metricName: "ServiceApiResult", label: "API Results", aggregation: "Count" },
       { metricName: "Availability", label: "Availability", aggregation: "Average", unit: "%" },
       {
         metricName: "SaturationShoebox",

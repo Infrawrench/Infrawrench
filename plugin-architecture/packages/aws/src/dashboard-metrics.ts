@@ -771,23 +771,29 @@ export async function fetchMetricSeries(
     }
     case "sagemaker-endpoint": {
       // SageMaker requires both EndpointName and VariantName. Default variant is AllTraffic.
+      // Verified against
+      // https://docs.aws.amazon.com/sagemaker/latest/dg/monitoring-cloudwatch.html
+      // (`AWS/SageMaker` namespace; latency metrics are in microseconds).
       const endpointName = String(f.endpointName ?? resource.externalId ?? "");
       if (!endpointName) return [];
       const dims = [
         { Name: "EndpointName", Value: endpointName },
         { Name: "VariantName", Value: "AllTraffic" },
       ];
-      const [invocations, latency, errors4xx, errors5xx] = await Promise.all([
+      const [invocations, modelLatency, overheadLatency, errors4xx, errors5xx] = await Promise.all([
         fetchCw("AWS/SageMaker", "Invocations", dims, "Sum").catch(() => null),
         fetchCw("AWS/SageMaker", "ModelLatency", dims).catch(() => null),
+        fetchCw("AWS/SageMaker", "OverheadLatency", dims).catch(() => null),
         fetchCw("AWS/SageMaker", "Invocation4XXErrors", dims, "Sum").catch(() => null),
         fetchCw("AWS/SageMaker", "Invocation5XXErrors", dims, "Sum").catch(() => null),
       ]);
       const results: MetricSeries[] = [];
       if (invocations && invocations.points.length > 0)
         results.push({ ...invocations, label: "Invocations" });
-      if (latency && latency.points.length > 0)
-        results.push({ ...latency, label: "Model Latency", unit: "μs" });
+      if (modelLatency && modelLatency.points.length > 0)
+        results.push({ ...modelLatency, label: "Model Latency", unit: "μs" });
+      if (overheadLatency && overheadLatency.points.length > 0)
+        results.push({ ...overheadLatency, label: "Overhead Latency", unit: "μs" });
       if (errors4xx && errors4xx.points.length > 0)
         results.push({ ...errors4xx, label: "4xx Errors" });
       if (errors5xx && errors5xx.points.length > 0)
@@ -852,23 +858,36 @@ export async function fetchMetricSeries(
       return results;
     }
     case "apprunner-service": {
-      // App Runner dim is ServiceName.
+      // App Runner dim is ServiceName. Service-level metrics include the
+      // request/response counters; instance-level metrics are CPU/Memory.
+      // Verified against
+      // https://docs.aws.amazon.com/apprunner/latest/dg/monitor-cw.html
       const serviceName = String(f.serviceName ?? resource.externalId ?? "");
       if (!serviceName) return [];
       const dims = [{ Name: "ServiceName", Value: serviceName }];
-      const [cpu, mem, reqs, status4xx, status5xx] = await Promise.all([
-        fetchCw("AWS/AppRunner", "CPUUtilization", dims).catch(() => null),
-        fetchCw("AWS/AppRunner", "MemoryUtilization", dims).catch(() => null),
-        fetchCw("AWS/AppRunner", "Requests", dims, "Sum").catch(() => null),
-        fetchCw("AWS/AppRunner", "4xxStatusResponses", dims, "Sum").catch(() => null),
-        fetchCw("AWS/AppRunner", "5xxStatusResponses", dims, "Sum").catch(() => null),
-      ]);
+      const [cpu, mem, reqs, latency, concurrency, activeInstances, status4xx, status5xx] =
+        await Promise.all([
+          fetchCw("AWS/AppRunner", "CPUUtilization", dims).catch(() => null),
+          fetchCw("AWS/AppRunner", "MemoryUtilization", dims).catch(() => null),
+          fetchCw("AWS/AppRunner", "Requests", dims, "Sum").catch(() => null),
+          fetchCw("AWS/AppRunner", "RequestLatency", dims).catch(() => null),
+          fetchCw("AWS/AppRunner", "Concurrency", dims).catch(() => null),
+          fetchCw("AWS/AppRunner", "ActiveInstances", dims).catch(() => null),
+          fetchCw("AWS/AppRunner", "4xxStatusResponses", dims, "Sum").catch(() => null),
+          fetchCw("AWS/AppRunner", "5xxStatusResponses", dims, "Sum").catch(() => null),
+        ]);
       const results: MetricSeries[] = [];
       if (cpu && cpu.points.length > 0)
         results.push({ ...cpu, label: "CPU Utilization", unit: "%" });
       if (mem && mem.points.length > 0)
         results.push({ ...mem, label: "Memory Utilization", unit: "%" });
       if (reqs && reqs.points.length > 0) results.push({ ...reqs, label: "Requests" });
+      if (latency && latency.points.length > 0)
+        results.push({ ...latency, label: "Request Latency", unit: "ms" });
+      if (concurrency && concurrency.points.length > 0)
+        results.push({ ...concurrency, label: "Concurrency" });
+      if (activeInstances && activeInstances.points.length > 0)
+        results.push({ ...activeInstances, label: "Active Instances" });
       if (status4xx && status4xx.points.length > 0)
         results.push({ ...status4xx, label: "4xx Responses" });
       if (status5xx && status5xx.points.length > 0)
