@@ -19,5 +19,6 @@ export const AppGatewayResourceType: ResourceTypeDefinition = {
   ],
   outputs: [{ key: "frontendIp", label: "Frontend IP", sensitive: false }],
   dashboardPinnable: true,
+  supportsMetrics: true,
   iconKey: "network",
 };

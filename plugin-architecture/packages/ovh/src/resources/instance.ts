@@ -64,6 +64,4 @@ export const InstanceResourceType: ResourceTypeDefinition = {
     usernameFieldKey: "sshUsername",
   },
   supportsCreate: true,
-  supportsTerminal: true,
-  supportsSftpBrowser: true,
 };

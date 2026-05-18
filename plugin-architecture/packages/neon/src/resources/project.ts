@@ -21,6 +21,17 @@ export const NeonProjectResourceType: ResourceTypeDefinition = {
   supportsCreate: true,
   supportsMetrics: true,
   iconKey: "neon",
+  resourceSqlDriver: {
+    driver: "postgres",
+    connectionStringOutputKey: "connectionString",
+  },
+  peerIntegrations: [
+    {
+      pluginId: "postgres",
+      credentialMappings: [{ outputKey: "connectionString", credentialKey: "connectionString" }],
+      tabLabel: "PostgreSQL",
+    },
+  ],
   secretExportTemplates: [
     {
       id: "connection-url",

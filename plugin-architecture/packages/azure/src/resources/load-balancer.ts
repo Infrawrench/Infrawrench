@@ -18,5 +18,6 @@ export const LoadBalancerResourceType: ResourceTypeDefinition = {
   outputs: [{ key: "frontendIp", label: "Frontend IP", sensitive: false }],
   dashboardPinnable: true,
   supportsCreate: true,
+  supportsMetrics: true,
   iconKey: "network",
 };

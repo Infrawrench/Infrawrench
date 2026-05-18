@@ -32,4 +32,17 @@ export const VercelProjectResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   supportsCreate: true,
   iconKey: "vercel",
+  secretExportTemplates: [
+    {
+      id: "vercel-project",
+      displayName: "Vercel Project",
+      description:
+        "Project identifiers for use with Vercel CLI / API. Pair with a `VERCEL_TOKEN` from your team's tokens page.",
+      entries: [
+        { envKey: "VERCEL_PROJECT_ID", outputKey: "projectId" },
+        { envKey: "VERCEL_PROJECT_NAME", outputKey: "projectName" },
+        { envKey: "VERCEL_PRODUCTION_URL", outputKey: "productionUrl" },
+      ],
+    },
+  ],
 };

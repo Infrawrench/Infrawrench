@@ -19,4 +19,15 @@ export const QueueResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   supportsCreate: true,
   iconKey: "queue",
+  secretExportTemplates: [
+    {
+      id: "queue-binding",
+      displayName: "Queue Binding",
+      description: "Queue ID and name for wrangler `[[queues.producers]]` bindings.",
+      entries: [
+        { envKey: "QUEUE_ID", outputKey: "queueId" },
+        { envKey: "QUEUE_NAME", outputKey: "queueName" },
+      ],
+    },
+  ],
 };

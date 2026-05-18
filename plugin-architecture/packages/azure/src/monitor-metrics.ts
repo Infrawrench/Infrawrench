@@ -247,6 +247,53 @@ const RESOURCE_TYPE_METRICS: Record<string, { provider: string; metrics: MetricC
       { metricName: "ThrottledRequests", label: "Throttled Requests", aggregation: "Total" },
     ],
   },
+  "azure-key-vault": {
+    provider: "Microsoft.KeyVault/vaults",
+    metrics: [
+      { metricName: "ServiceApiHit", label: "API Hits", aggregation: "Total" },
+      { metricName: "ServiceApiLatency", label: "API Latency", aggregation: "Average", unit: "ms" },
+      { metricName: "Availability", label: "Availability", aggregation: "Average", unit: "%" },
+      {
+        metricName: "SaturationShoebox",
+        label: "Vault Saturation",
+        aggregation: "Average",
+        unit: "%",
+      },
+    ],
+  },
+  "azure-container-registry": {
+    provider: "Microsoft.ContainerRegistry/registries",
+    metrics: [
+      { metricName: "TotalPullCount", label: "Pulls", aggregation: "Total" },
+      { metricName: "TotalPushCount", label: "Pushes", aggregation: "Total" },
+      { metricName: "StorageUsed", label: "Storage Used", aggregation: "Average", unit: "bytes" },
+      { metricName: "RunDuration", label: "Run Duration", aggregation: "Total", unit: "ms" },
+    ],
+  },
+  "azure-load-balancer": {
+    provider: "Microsoft.Network/loadBalancers",
+    metrics: [
+      { metricName: "ByteCount", label: "Bytes", aggregation: "Total", unit: "bytes" },
+      { metricName: "PacketCount", label: "Packets", aggregation: "Total" },
+      { metricName: "SnatConnectionCount", label: "SNAT Connections", aggregation: "Total" },
+      {
+        metricName: "DipAvailability",
+        label: "Backend Availability",
+        aggregation: "Average",
+        unit: "%",
+      },
+    ],
+  },
+  "azure-app-gateway": {
+    provider: "Microsoft.Network/applicationGateways",
+    metrics: [
+      { metricName: "Throughput", label: "Throughput", aggregation: "Average", unit: "bytes/s" },
+      { metricName: "TotalRequests", label: "Total Requests", aggregation: "Total" },
+      { metricName: "FailedRequests", label: "Failed Requests", aggregation: "Total" },
+      { metricName: "HealthyHostCount", label: "Healthy Hosts", aggregation: "Average" },
+      { metricName: "UnhealthyHostCount", label: "Unhealthy Hosts", aggregation: "Average" },
+    ],
+  },
 };
 
 export function azureSupportsMetrics(resourceTypeId: string): boolean {

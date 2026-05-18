@@ -13,4 +13,12 @@ export const KVNamespaceResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   supportsCreate: true,
   iconKey: "kv",
+  secretExportTemplates: [
+    {
+      id: "kv-binding",
+      displayName: "KV Binding",
+      description: "Namespace ID for wrangler `[[kv_namespaces]]` bindings.",
+      entries: [{ envKey: "KV_NAMESPACE_ID", outputKey: "namespaceId" }],
+    },
+  ],
 };

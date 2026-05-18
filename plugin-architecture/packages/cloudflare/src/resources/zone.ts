@@ -26,4 +26,12 @@ export const ZoneResourceType: ResourceTypeDefinition = {
   supportsCreate: true,
   supportsMetrics: true,
   iconKey: "dns",
+  secretExportTemplates: [
+    {
+      id: "zone-id",
+      displayName: "Zone ID",
+      description: "Zone ID for Cloudflare API / wrangler operations",
+      entries: [{ envKey: "CLOUDFLARE_ZONE_ID", outputKey: "zoneId" }],
+    },
+  ],
 };

@@ -20,4 +20,12 @@ export const D1DatabaseResourceType: ResourceTypeDefinition = {
     connectionStringOutputKey: "databaseId",
   },
   iconKey: "database",
+  secretExportTemplates: [
+    {
+      id: "d1-binding",
+      displayName: "D1 Binding",
+      description: "Database ID for wrangler bindings (`[[d1_databases]]` in wrangler.toml).",
+      entries: [{ envKey: "D1_DATABASE_ID", outputKey: "databaseId" }],
+    },
+  ],
 };

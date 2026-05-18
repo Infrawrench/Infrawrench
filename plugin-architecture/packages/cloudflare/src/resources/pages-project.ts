@@ -21,4 +21,15 @@ export const PagesProjectResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   supportsCreate: true,
   iconKey: "pages",
+  secretExportTemplates: [
+    {
+      id: "pages-project",
+      displayName: "Pages Project",
+      description: "Pages project identifiers for wrangler / CI pipelines",
+      entries: [
+        { envKey: "CF_PAGES_PROJECT_NAME", outputKey: "projectName" },
+        { envKey: "CF_PAGES_SUBDOMAIN", outputKey: "subdomain" },
+      ],
+    },
+  ],
 };

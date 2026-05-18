@@ -12,8 +12,16 @@ export const WorkerResourceType: ResourceTypeDefinition = {
     { key: "compatibilityDate", label: "Compat Date", kind: "string", required: false },
     { key: "routes", label: "Routes", kind: "string", required: false },
   ],
-  outputs: [],
+  outputs: [
+    {
+      key: "workerName",
+      label: "Worker Name",
+      sensitive: false,
+      description: "Identifier used in `wrangler` commands and binding strings",
+    },
+  ],
   dashboardPinnable: true,
   supportsCreate: true,
+  supportsMetrics: true,
   iconKey: "worker",
 };

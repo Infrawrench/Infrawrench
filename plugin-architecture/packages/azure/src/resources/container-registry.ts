@@ -18,4 +18,13 @@ export const ContainerRegistryResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   iconKey: "container-registry",
   supportsCreate: true,
+  supportsMetrics: true,
+  secretExportTemplates: [
+    {
+      id: "acr-login-server",
+      displayName: "ACR Login Server",
+      description: "Login server hostname for docker push / pull",
+      entries: [{ envKey: "ACR_LOGIN_SERVER", outputKey: "loginServer" }],
+    },
+  ],
 };

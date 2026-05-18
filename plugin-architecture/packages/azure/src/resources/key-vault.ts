@@ -19,4 +19,13 @@ export const KeyVaultResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   iconKey: "secret",
   supportsCreate: true,
+  supportsMetrics: true,
+  secretExportTemplates: [
+    {
+      id: "key-vault-uri",
+      displayName: "Key Vault URI",
+      description: "Vault URI for SDK / azure-cli access",
+      entries: [{ envKey: "AZURE_KEY_VAULT_URI", outputKey: "vaultUri" }],
+    },
+  ],
 };
