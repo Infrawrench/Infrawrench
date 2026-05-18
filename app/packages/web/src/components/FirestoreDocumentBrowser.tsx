@@ -9,6 +9,7 @@ export function FirestoreDocumentBrowser({
   resourceId,
   databaseLabel,
   parentResourceId,
+  singleCollection,
 }: {
   pluginId: string;
   accountId: string;
@@ -16,11 +17,13 @@ export function FirestoreDocumentBrowser({
   resourceId: string;
   databaseLabel: string;
   parentResourceId?: string;
+  singleCollection?: boolean;
 }) {
   const orgId = useOrgId();
   return (
     <SharedFirestoreDocumentBrowser
       databaseLabel={databaseLabel}
+      singleCollection={singleCollection ?? false}
       onCommand={async (command, args) => {
         const { result } = await apiPost<{ result: unknown }>(
           `/api/org/${orgId}/resources/nosql-command`,

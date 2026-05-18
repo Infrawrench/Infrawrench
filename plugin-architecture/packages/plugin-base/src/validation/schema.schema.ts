@@ -213,9 +213,10 @@ export const detailViewSchema = z.object({
   metricsCapability: z.object({ defaultTimeRangeMs: z.number().optional() }).optional(),
   noSqlBrowser: z
     .object({
-      driver: z.enum(["firestore", "mongodb-peer"]),
+      driver: z.enum(["firestore", "mongodb-peer", "dynamodb"]),
       databaseLabel: z.string(),
       helpText: z.string().optional(),
+      singleCollection: z.boolean().optional(),
     })
     .optional(),
   customTabs: z

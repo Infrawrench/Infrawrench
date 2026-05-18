@@ -4,6 +4,12 @@ import { formatErrorMessage } from "../utils.js";
 export interface FirestoreDocumentBrowserProps {
   databaseLabel: string;
   connected?: boolean;
+  /**
+   * When true, the collection sidebar hides the "+ add collection" affordance
+   * and the per-collection drop button — used by drivers (DynamoDB) whose
+   * underlying resource is a single fixed collection.
+   */
+  singleCollection?: boolean;
   /** Runs a Firestore command. Results are forwarded unchanged from the backend. */
   onCommand: (command: string, args: (string | number)[]) => Promise<unknown>;
 }
@@ -18,6 +24,7 @@ const PAGE_SIZE = 25;
 export function FirestoreDocumentBrowser({
   databaseLabel,
   connected = true,
+  singleCollection = false,
   onCommand,
 }: FirestoreDocumentBrowserProps) {
   const [collections, setCollections] = useState<string[]>([]);
@@ -200,16 +207,18 @@ export function FirestoreDocumentBrowser({
             >
               ↻
             </button>
-            <button
-              onClick={() => setShowNewCollection((v) => !v)}
-              className="text-on-surface-faint hover:text-on-surface-secondary transition-colors text-sm leading-none"
-              title="Add collection"
-            >
-              +
-            </button>
+            {!singleCollection && (
+              <button
+                onClick={() => setShowNewCollection((v) => !v)}
+                className="text-on-surface-faint hover:text-on-surface-secondary transition-colors text-sm leading-none"
+                title="Add collection"
+              >
+                +
+              </button>
+            )}
           </div>
         </div>
-        {showNewCollection && (
+        {!singleCollection && showNewCollection && (
           <div className="px-2 py-2 border-b border-border/60 flex gap-1">
             <input
               value={newCollectionName}
@@ -235,7 +244,7 @@ export function FirestoreDocumentBrowser({
             <div className="px-3 py-2 text-xs text-on-surface-faint">Loading...</div>
           ) : collections.length === 0 ? (
             <div className="px-3 py-2 text-xs text-on-surface-faint">
-              No collections. Use + to start one.
+              {singleCollection ? "Loading table…" : "No collections. Use + to start one."}
             </div>
           ) : (
             collections.map((col) => (
@@ -268,16 +277,18 @@ export function FirestoreDocumentBrowser({
                     >
                       {col}
                     </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setDroppingCollection(col);
-                      }}
-                      className="absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 text-on-surface-faint hover:text-red-400 transition-all text-xs px-1"
-                      title="Delete collection"
-                    >
-                      ×
-                    </button>
+                    {!singleCollection && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDroppingCollection(col);
+                        }}
+                        className="absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 text-on-surface-faint hover:text-red-400 transition-all text-xs px-1"
+                        title="Delete collection"
+                      >
+                        ×
+                      </button>
+                    )}
                   </>
                 )}
               </div>

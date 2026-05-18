@@ -785,14 +785,16 @@ export function ResourceDetailClient({
               {...(detailSchema.noSqlBrowser
                 ? {
                     renderNoSqlBrowser: () => {
-                      if (detailSchema.noSqlBrowser!.driver === "firestore") {
+                      const cap = detailSchema.noSqlBrowser!;
+                      if (cap.driver === "firestore" || cap.driver === "dynamodb") {
                         return (
                           <FirestoreDocumentBrowser
                             pluginId={pluginId}
                             accountId={accountId}
                             resourceTypeId={resourceTypeId}
                             resourceId={resourceId}
-                            databaseLabel={detailSchema.noSqlBrowser!.databaseLabel}
+                            databaseLabel={cap.databaseLabel}
+                            singleCollection={cap.singleCollection ?? false}
                             {...(parentResourceId ? { parentResourceId } : {})}
                           />
                         );
@@ -800,7 +802,7 @@ export function ResourceDetailClient({
                       return (
                         <FirestoreMongoPeerBrowser
                           resourceId={resourceId}
-                          firestoreDatabaseId={detailSchema.noSqlBrowser!.databaseLabel}
+                          firestoreDatabaseId={cap.databaseLabel}
                         />
                       );
                     },

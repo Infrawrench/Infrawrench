@@ -1020,3 +1020,17 @@ The metric-API dimension value is **often a name, not the ARN/id** the resource 
 - **Step Functions:** dim is the state-machine ARN.
 
 When implementing a new metrics case in `dashboard-metrics.ts` / `monitor-metrics.ts`, drop a one-line comment if the dim shape isn't the obvious resource-id.
+
+## NoSQL document browser
+
+The `noSqlBrowser` capability on a `DetailViewSchema` lets a plugin host an inline document explorer on a resource's detail page. Three drivers are supported:
+
+- **`firestore`** — used by GCP Firestore. The plugin implements `executeNoSqlCommand` with `listCollections` / `find` / `countDocuments` / `getDocument` / `insertDocument` / `updateDocument` / `deleteDocument` / `deleteCollection`. The Firestore-style UI in `app/packages/ui/src/components/FirestoreDocumentBrowser.tsx` is the canonical client.
+- **`mongodb-peer`** — used by Firestore Enterprise (MongoDB-compat). The host resolves a user-linked MongoDB account and uses its connection; the host plugin does not implement commands.
+- **`dynamodb`** — used by AWS DynamoDB tables. Implemented in `plugin-architecture/packages/aws/src/dynamodb-handlers.ts`. Reuses the Firestore UI by:
+  - Returning the table name as the single collection (`listCollections` → `{ collections: [tableName] }`).
+  - Encoding each item's composite primary key (`partitionKey` + optional `sortKey`, joined with `::`) into a synthetic `_name` field on every returned document. `getDocument` / `deleteDocument` / `updateDocument` decode `_name` back into a DynamoDB `Key` map.
+  - Mapping `find(skip, limit)` to `Scan(Limit = skip + limit + 1)` and slicing client-side. Server-side cursor pagination via `ExclusiveStartKey` isn't wired through the Firestore-style `skip/limit` contract, so large `skip` values are wasteful — direct key access via `getDocument` is the recommended escape hatch.
+  - `countDocuments` returns `DescribeTable.ItemCount` (≈ 6h-stale) rather than a `Scan` with `Select=COUNT`, which would cost RCUs proportional to table size.
+
+When a driver renders a single fixed collection (DynamoDB), set `singleCollection: true` on the capability so the Firestore UI hides "+ add collection" / drop affordances.

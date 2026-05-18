@@ -177,11 +177,12 @@ export function DetailViewContainer({
         {...(noSqlBrowser
           ? {
               renderNoSqlBrowser: () => {
-                if (noSqlBrowser.driver === "firestore") {
+                if (noSqlBrowser.driver === "firestore" || noSqlBrowser.driver === "dynamodb") {
                   return (
                     <FirestoreDocumentBrowser
                       databaseLabel={noSqlBrowser.databaseLabel}
                       connected={true}
+                      singleCollection={noSqlBrowser.singleCollection ?? false}
                       onCommand={onNoSqlCommand}
                     />
                   );

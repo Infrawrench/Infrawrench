@@ -102,6 +102,7 @@ import { attachResource as attachResourceImpl } from "./attach-handlers.js";
 import { resolveOutput as resolveOutputImpl } from "./resolve-output.js";
 import { deleteResource as deleteResourceImpl } from "./delete-handlers.js";
 import { executeFieldAction as executeFieldActionImpl } from "./field-actions.js";
+import { executeDynamoDbCommand } from "./dynamodb-handlers.js";
 
 export class AWSClient implements PluginClient {
   private readonly creds: AwsCredentials;
@@ -545,6 +546,22 @@ export class AWSClient implements PluginClient {
       resourceId,
       accountId,
     );
+  }
+
+  async executeNoSqlCommand(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+    command: string,
+    args: (string | number)[],
+  ): Promise<unknown> {
+    if (typeId === "dynamodb-table") {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      const tableName = String(resource.fields["tableName"] ?? resource.externalId ?? "");
+      const region = String(resource.fields["region"] ?? this.creds.region);
+      return executeDynamoDbCommand(this.credsFor(region), tableName, command, args);
+    }
+    throw new Error(`AWS plugin: executeNoSqlCommand not supported for type "${typeId}"`);
   }
 
   async exportCredential(

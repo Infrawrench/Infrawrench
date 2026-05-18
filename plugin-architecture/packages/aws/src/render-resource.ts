@@ -136,6 +136,17 @@ export function renderDetail(
           },
         }
       : {}),
+    ...(resource.resourceTypeId === "dynamodb-table"
+      ? {
+          noSqlBrowser: {
+            driver: "dynamodb" as const,
+            databaseLabel: String(fields["tableName"] ?? resource.externalId ?? ""),
+            singleCollection: true,
+            helpText:
+              "Scan the table to browse items. Item keys are encoded into the `_name` field — strip it before re-inserting.",
+          },
+        }
+      : {}),
   };
 }
 

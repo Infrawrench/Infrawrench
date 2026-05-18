@@ -480,19 +480,32 @@ export interface DetailViewSchema {
  * browser inline on the detail page. The plugin implements
  * executeNoSqlCommand() on PluginClient to handle the backend operations.
  *
- * Supports two drivers:
+ * Supports three drivers:
  *  - "firestore" — native Google Cloud Firestore REST API
  *  - "mongodb-peer" — the detail page hosts a MongoDB document browser. The
  *    host resolves a linked MongoDB account from the user and uses its
  *    connection for reads; the plugin that owns the detail view does not
  *    implement commands itself.
+ *  - "dynamodb" — Amazon DynamoDB. Like Firestore, the plugin implements
+ *    listCollections/find/getDocument/insertDocument/updateDocument/
+ *    deleteDocument/countDocuments. Unlike Firestore, a DynamoDB resource is
+ *    a single table — `listCollections` returns the one table name, and
+ *    documents are keyed by composite (partition + optional sort) primary
+ *    keys encoded into the `_name` field of each returned document so the
+ *    Firestore-style UI can address them.
  */
 export interface NoSqlBrowserCapability {
-  driver: "firestore" | "mongodb-peer";
+  driver: "firestore" | "mongodb-peer" | "dynamodb";
   /** Database identifier shown above the collection list (e.g. Firestore database id). */
   databaseLabel: string;
   /** Optional help text shown above the browser when collections are empty. */
   helpText?: string;
+  /**
+   * When true, the host's collection sidebar hides the "+ add collection" and
+   * "drop collection" affordances — used by drivers (DynamoDB) where the
+   * resource is a single fixed collection (the table).
+   */
+  singleCollection?: boolean;
 }
 
 /** Sidebar tree node */
