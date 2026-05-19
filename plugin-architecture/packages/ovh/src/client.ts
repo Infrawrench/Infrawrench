@@ -9,6 +9,7 @@ import type {
   ResourceStatus,
   ResourceTypeDefinition,
   DashboardStat,
+  MetricSeries,
 } from "@infrawrench/plugin-base";
 import { labeledFieldItems, resourceTypeDisplayName } from "@infrawrench/plugin-base";
 
@@ -812,6 +813,20 @@ export class OvhClient implements PluginClient {
     throw new Error(
       `OVH plugin: attachResource not supported for ${sourceTypeId} → ${targetTypeId}`,
     );
+  }
+
+  // OVH metrics live in the separate Metrics Data Platform (a distinct service with its
+  // own token and endpoint — not the OVHcloud Public Cloud API used here).
+  // See: https://docs.ovh.com/gb/en/metrics/
+  // Wiring it up requires an additional credential (Metrics token) and a different base
+  // URL, which is out of scope for the current single-credential plugin setup. Skipped.
+  async fetchMetricSeries(
+    _resourceTypeId: string,
+    _resourceId: string,
+    _accountId: string,
+    _timeRange?: { startMs: number; endMs: number },
+  ): Promise<MetricSeries[]> {
+    return [];
   }
 
   async fetchDashboardStats(
