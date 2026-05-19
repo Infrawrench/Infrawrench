@@ -465,6 +465,37 @@ const RESOURCE_TYPE_METRICS: Record<string, { provider: string; metrics: MetricC
       },
     ],
   },
+  "azure-disk": {
+    provider: "Microsoft.Compute/disks",
+    // Verified against
+    // https://learn.microsoft.com/azure/azure-monitor/reference/supported-metrics/microsoft-compute-disks-metrics
+    // The metric names actually contain spaces and a slash — they must be
+    // passed verbatim ("Composite Disk Read Bytes/sec").
+    metrics: [
+      {
+        metricName: "Composite Disk Read Bytes/sec",
+        label: "Read",
+        aggregation: "Average",
+        unit: "bytes/s",
+      },
+      {
+        metricName: "Composite Disk Write Bytes/sec",
+        label: "Write",
+        aggregation: "Average",
+        unit: "bytes/s",
+      },
+      {
+        metricName: "Composite Disk Read Operations/sec",
+        label: "Read IOPS",
+        aggregation: "Average",
+      },
+      {
+        metricName: "Composite Disk Write Operations/sec",
+        label: "Write IOPS",
+        aggregation: "Average",
+      },
+    ],
+  },
   "azure-app-gateway": {
     provider: "Microsoft.Network/applicationGateways",
     // Verified against

@@ -695,9 +695,12 @@ export async function fetchMetricSeries(
       return results;
     }
     case "api-gateway": {
+      // Verified against
+      // https://docs.aws.amazon.com/apigateway/latest/developerguide/api-gateway-metrics-and-dimensions.html
       // v1 REST APIs publish metrics keyed on `ApiName`; v2 (HTTP/WebSocket)
-      // APIs publish on `ApiId`. The lister sets `protocolType` to "REST" for
-      // v1 and "HTTP"/"WEBSOCKET" for v2, so branch on that.
+      // APIs publish on `ApiId`. IntegrationLatency = backend portion of
+      // Latency; the difference is API GW's own overhead. CacheHit/Miss only
+      // emit when API caching is enabled on the stage.
       const protocolType = String(f.protocolType ?? "").toUpperCase();
       const apiId = String(f.apiId ?? resource.externalId ?? "");
       const apiName = String(f.name ?? "");
@@ -708,20 +711,30 @@ export async function fetchMetricSeries(
             ? [{ Name: "ApiId", Value: apiId }]
             : null;
       if (!dims) return [];
-      const [count, latency, errors5xx, errors4xx] = await Promise.all([
-        fetchCw("AWS/ApiGateway", "Count", dims, "Sum").catch(() => null),
-        fetchCw("AWS/ApiGateway", "Latency", dims).catch(() => null),
-        fetchCw("AWS/ApiGateway", "5XXError", dims, "Sum").catch(() => null),
-        fetchCw("AWS/ApiGateway", "4XXError", dims, "Sum").catch(() => null),
-      ]);
+      const [count, latency, integrationLat, errors5xx, errors4xx, cacheHit, cacheMiss] =
+        await Promise.all([
+          fetchCw("AWS/ApiGateway", "Count", dims, "Sum").catch(() => null),
+          fetchCw("AWS/ApiGateway", "Latency", dims).catch(() => null),
+          fetchCw("AWS/ApiGateway", "IntegrationLatency", dims).catch(() => null),
+          fetchCw("AWS/ApiGateway", "5XXError", dims, "Sum").catch(() => null),
+          fetchCw("AWS/ApiGateway", "4XXError", dims, "Sum").catch(() => null),
+          fetchCw("AWS/ApiGateway", "CacheHitCount", dims, "Sum").catch(() => null),
+          fetchCw("AWS/ApiGateway", "CacheMissCount", dims, "Sum").catch(() => null),
+        ]);
       const results: MetricSeries[] = [];
       if (count && count.points.length > 0) results.push({ ...count, label: "Request Count" });
       if (latency && latency.points.length > 0)
-        results.push({ ...latency, label: "Latency", unit: "ms" });
+        results.push({ ...latency, label: "Latency (total)", unit: "ms" });
+      if (integrationLat && integrationLat.points.length > 0)
+        results.push({ ...integrationLat, label: "Backend Latency", unit: "ms" });
       if (errors5xx && errors5xx.points.length > 0)
         results.push({ ...errors5xx, label: "5xx Errors" });
       if (errors4xx && errors4xx.points.length > 0)
         results.push({ ...errors4xx, label: "4xx Errors" });
+      if (cacheHit && cacheHit.points.length > 0)
+        results.push({ ...cacheHit, label: "Cache Hits" });
+      if (cacheMiss && cacheMiss.points.length > 0)
+        results.push({ ...cacheMiss, label: "Cache Misses" });
       return results;
     }
     case "sns-topic": {

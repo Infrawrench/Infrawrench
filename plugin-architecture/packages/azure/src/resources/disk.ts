@@ -34,6 +34,7 @@ export const DiskResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   iconKey: "volume",
   supportsCreate: true,
+  supportsMetrics: true,
   attachTargets: [
     {
       pluginId: "azure",
