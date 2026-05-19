@@ -29,8 +29,11 @@ export type ImageFamily =
   | "amzn2"
   | "ubuntu-2204"
   | "ubuntu-2404"
+  | "ubuntu-2604"
   | "debian-12"
+  | "debian-13"
   | "rhel-9"
+  | "rhel-10"
   | "sles-15";
 
 /**
@@ -43,8 +46,11 @@ export const FAMILY_SSH_USERNAME: Record<ImageFamily, string> = {
   amzn2: "ec2-user",
   "ubuntu-2204": "ubuntu",
   "ubuntu-2404": "ubuntu",
+  "ubuntu-2604": "ubuntu",
   "debian-12": "admin",
+  "debian-13": "admin",
   "rhel-9": "ec2-user",
+  "rhel-10": "ec2-user",
   "sles-15": "ec2-user",
 };
 
@@ -73,15 +79,26 @@ function ssmPathFor(family: ImageFamily, arch: Arch): string | null {
       const ubuntuArch = arch === "x86_64" ? "amd64" : "arm64";
       return `/aws/service/canonical/ubuntu/server/24.04/stable/current/${ubuntuArch}/hvm/ebs-gp3/ami-id`;
     }
+    case "ubuntu-2604": {
+      // Ubuntu 26.04 LTS "Resolute Raccoon", released April 2026.
+      const ubuntuArch = arch === "x86_64" ? "amd64" : "arm64";
+      return `/aws/service/canonical/ubuntu/server/26.04/stable/current/${ubuntuArch}/hvm/ebs-gp3/ami-id`;
+    }
     case "debian-12": {
-      // Debian publishes SSM Public Parameters keyed by codename, not version
-      // number. `bookworm` = 12, `bullseye` = 11. The numeric path returns
-      // nothing; verified via the Debian wiki Cloud/AmazonEC2Image/Bookworm
-      // and SSM parameter listings.
+      // Debian 12 SSM parameters are keyed by codename. `bookworm` = 12.
+      // Verified at https://wiki.debian.org/Cloud/AmazonEC2Image/Bookworm
       const debianArch = arch === "x86_64" ? "amd64" : "arm64";
       return `/aws/service/debian/release/bookworm/latest/${debianArch}`;
     }
+    case "debian-13": {
+      // Debian changed the SSM path convention starting with 13 (trixie) —
+      // the documented path on the wiki uses the version number, not the
+      // codename. Verified at https://wiki.debian.org/Cloud/AmazonEC2Image/Trixie
+      const debianArch = arch === "x86_64" ? "amd64" : "arm64";
+      return `/aws/service/debian/release/13/latest/${debianArch}`;
+    }
     case "rhel-9":
+    case "rhel-10":
     case "sles-15":
       return null;
   }
@@ -101,6 +118,13 @@ function describeImagesQuery(
     return {
       owner: "309956199498",
       namePattern: `RHEL-9.*_HVM-*-${arch}-*-Hourly2-GP*`,
+    };
+  }
+  if (family === "rhel-10") {
+    // RHEL 10 (released May 2025) uses the same naming convention.
+    return {
+      owner: "309956199498",
+      namePattern: `RHEL-10.*_HVM-*-${arch}-*-Hourly2-GP*`,
     };
   }
   if (family === "sles-15") {
