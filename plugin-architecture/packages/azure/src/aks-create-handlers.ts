@@ -33,11 +33,13 @@ export async function getAKSCreateConfig(ctx: AzureCreateContext): Promise<Creat
         kind: "select",
         required: true,
         options: [
-          { id: "1.30", label: "1.30" },
-          { id: "1.29", label: "1.29" },
-          { id: "1.28", label: "1.28" },
+          { id: "1.35", label: "1.35" },
+          { id: "1.34", label: "1.34" },
+          { id: "1.33", label: "1.33" },
+          { id: "1.32", label: "1.32" },
+          { id: "1.31", label: "1.31" },
         ],
-        defaultValue: "1.30",
+        defaultValue: "1.34",
       },
       {
         key: "nodeSize",
@@ -45,13 +47,6 @@ export async function getAKSCreateConfig(ctx: AzureCreateContext): Promise<Creat
         kind: "size-picker",
         required: true,
         sizes: [
-          {
-            id: "Standard_B2s",
-            label: "B2s",
-            vcpus: 2,
-            memoryMb: 4096,
-            category: "Burstable",
-          },
           {
             id: "Standard_D2s_v5",
             label: "D2s v5",
@@ -88,15 +83,38 @@ export async function getAKSCreateConfig(ctx: AzureCreateContext): Promise<Creat
             category: "Memory optimized",
           },
         ],
+        defaultValue: "Standard_D2s_v5",
       },
       {
         key: "nodeCount",
         label: "Node Count",
         kind: "number",
         required: true,
-        defaultValue: "3",
+        defaultValue: "2",
         minValue: 1,
-        maxValue: 100,
+        stepValue: 1,
+      },
+      {
+        key: "osDiskSizeGb",
+        label: "OS Disk Size",
+        kind: "disk-slider",
+        required: false,
+        minGb: 30,
+        maxGb: 1024,
+        defaultGb: 100,
+        stepGb: 10,
+      },
+      {
+        key: "networkPlugin",
+        label: "Network Plugin",
+        kind: "select",
+        required: false,
+        defaultValue: "azure",
+        options: [
+          { id: "kubenet", label: "kubenet" },
+          { id: "azure", label: "azure" },
+          { id: "azure-cni", label: "azure-cni" },
+        ],
       },
     ],
   };
@@ -112,7 +130,9 @@ export async function createAKSCluster(
   const location = fields["region"]!;
   const k8sVersion = fields["kubernetesVersion"]!;
   const nodeSize = fields["nodeSize"]!;
-  const nodeCount = Number(fields["nodeCount"] ?? "3");
+  const nodeCount = Number(fields["nodeCount"] ?? "2");
+  const osDiskSizeGb = fields["osDiskSizeGb"] ? Number(fields["osDiskSizeGb"]) : undefined;
+  const networkPlugin = fields["networkPlugin"] ?? "azure";
 
   const result = await ctx.put<Record<string, unknown>>(
     `${ARM}/subscriptions/${ctx.subscriptionId}/resourceGroups/${rg}/providers/Microsoft.ContainerService/managedClusters/${name}?api-version=2024-01-01`,
@@ -128,8 +148,12 @@ export async function createAKSCluster(
             vmSize: nodeSize,
             osType: "Linux",
             mode: "System",
+            ...(osDiskSizeGb != null ? { osDiskSizeGB: osDiskSizeGb } : {}),
           },
         ],
+        networkProfile: {
+          networkPlugin,
+        },
         servicePrincipalProfile: {
           clientId: ctx.clientId,
           secret: ctx.clientSecret,
@@ -155,7 +179,7 @@ export async function createAKSCluster(
       powerState: "Running",
       nodeCount,
       nodePoolCount: 1,
-      networkPlugin: "",
+      networkPlugin,
       tier: "Free",
     },
     resolvedOutputs: {
