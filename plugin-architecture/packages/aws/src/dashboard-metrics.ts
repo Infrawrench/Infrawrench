@@ -1342,6 +1342,48 @@ export async function fetchMetricSeries(
         results.push({ ...status5xx, label: "5xx Responses" });
       return results;
     }
+    case "target-group": {
+      // Verified against
+      // https://docs.aws.amazon.com/elasticloadbalancing/latest/application/load-balancer-cloudwatch-metrics.html
+      // ALB target metrics REQUIRE both LoadBalancer and TargetGroup dims —
+      // querying with just TargetGroup returns nothing. Both dims use the
+      // trailing portion of the ARN (`app/...` and `targetgroup/...`).
+      const tgArn = String(resource.resolvedOutputs?.["targetGroupArn"] ?? "");
+      const tgDim = tgArn.split(":targetgroup/").pop() ?? "";
+      if (!tgDim) return [];
+      const tgDimName = tgDim ? `targetgroup/${tgDim}` : "";
+      // Target groups don't store the parent LB ARN; the lister sets
+      // `loadBalancerArn` on the field map when known. Without it we can't
+      // build a complete dimension set, but querying by TargetGroup alone
+      // works for HealthyHostCount/UnHealthyHostCount in many setups.
+      const lbArn = String(f.loadBalancerArn ?? "");
+      const lbDim = lbArn.split(":loadbalancer/").pop() ?? "";
+      const dims = lbDim
+        ? [
+            { Name: "LoadBalancer", Value: lbDim },
+            { Name: "TargetGroup", Value: tgDimName },
+          ]
+        : [{ Name: "TargetGroup", Value: tgDimName }];
+      const [healthy, unhealthy, reqPerTarget, targetRT, targetConnErr] = await Promise.all([
+        fetchCw("AWS/ApplicationELB", "HealthyHostCount", dims).catch(() => null),
+        fetchCw("AWS/ApplicationELB", "UnHealthyHostCount", dims).catch(() => null),
+        fetchCw("AWS/ApplicationELB", "RequestCountPerTarget", dims, "Sum").catch(() => null),
+        fetchCw("AWS/ApplicationELB", "TargetResponseTime", dims).catch(() => null),
+        fetchCw("AWS/ApplicationELB", "TargetConnectionErrorCount", dims, "Sum").catch(() => null),
+      ]);
+      const results: MetricSeries[] = [];
+      if (healthy && healthy.points.length > 0)
+        results.push({ ...healthy, label: "Healthy Hosts" });
+      if (unhealthy && unhealthy.points.length > 0)
+        results.push({ ...unhealthy, label: "Unhealthy Hosts" });
+      if (reqPerTarget && reqPerTarget.points.length > 0)
+        results.push({ ...reqPerTarget, label: "Requests per Target" });
+      if (targetRT && targetRT.points.length > 0)
+        results.push({ ...targetRT, label: "Target Response Time", unit: "s" });
+      if (targetConnErr && targetConnErr.points.length > 0)
+        results.push({ ...targetConnErr, label: "Target Conn Errors" });
+      return results;
+    }
     default:
       return [];
   }

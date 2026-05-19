@@ -21,6 +21,7 @@ export const PublicIPResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   iconKey: "network",
   supportsCreate: true,
+  supportsMetrics: true,
   attachTargets: [
     {
       pluginId: "azure",

@@ -23,7 +23,8 @@ export const TargetGroupResourceType: ResourceTypeDefinition = {
     { key: "healthyThreshold", label: "Healthy Threshold", kind: "number", required: false },
   ],
   outputs: [{ key: "targetGroupArn", label: "Target Group ARN", sensitive: false }],
-  dashboardPinnable: false,
+  dashboardPinnable: true,
   iconKey: "load-balancer",
   supportsCreate: true,
+  supportsMetrics: true,
 };

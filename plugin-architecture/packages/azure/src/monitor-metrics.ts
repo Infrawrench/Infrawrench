@@ -465,6 +465,45 @@ const RESOURCE_TYPE_METRICS: Record<string, { provider: string; metrics: MetricC
       },
     ],
   },
+  "azure-public-ip": {
+    provider: "Microsoft.Network/publicIPAddresses",
+    // Verified against
+    // https://learn.microsoft.com/azure/azure-monitor/reference/supported-metrics/microsoft-network-publicipaddresses-metrics
+    // DDoS metrics only emit non-zero when the IP is under attack — listing
+    // them is cheap and provides visibility when it matters.
+    metrics: [
+      { metricName: "ByteCount", label: "Bytes", aggregation: "Total", unit: "bytes" },
+      { metricName: "PacketCount", label: "Packets", aggregation: "Total" },
+      { metricName: "SynCount", label: "SYN Packets", aggregation: "Total" },
+      {
+        metricName: "VipAvailability",
+        label: "Data Path Availability",
+        aggregation: "Average",
+        unit: "%",
+      },
+      {
+        metricName: "IfUnderDDoSAttack",
+        label: "Under DDoS Attack",
+        aggregation: "Maximum",
+      },
+      {
+        metricName: "BytesInDDoS",
+        label: "DDoS Inbound Bytes",
+        aggregation: "Maximum",
+        unit: "bytes/s",
+      },
+      {
+        metricName: "PacketsInDDoS",
+        label: "DDoS Inbound Packets",
+        aggregation: "Maximum",
+      },
+      {
+        metricName: "PacketsDroppedDDoS",
+        label: "DDoS Packets Dropped",
+        aggregation: "Maximum",
+      },
+    ],
+  },
   "azure-disk": {
     provider: "Microsoft.Compute/disks",
     // Verified against
