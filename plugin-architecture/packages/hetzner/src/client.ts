@@ -684,7 +684,7 @@ export class HetznerClient implements PluginClient {
     _accountId: string,
     timeRange?: { startMs: number; endMs: number },
   ): Promise<MetricSeries[]> {
-    if (resourceTypeId !== "server") return [];
+    if (resourceTypeId !== "server" && resourceTypeId !== "load-balancer") return [];
 
     const externalId = resourceId.split(":").pop();
     if (!externalId) return [];
@@ -699,17 +699,12 @@ export class HetznerClient implements PluginClient {
       };
     }
 
-    let resp: HetznerMetricsResponse;
-    try {
-      resp = await this.fetch<HetznerMetricsResponse>(
-        `/servers/${externalId}/metrics?type=cpu,disk,network&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`,
-      );
-    } catch {
-      return [];
-    }
-
-    const ts = resp.metrics?.time_series ?? {};
-    const toSeries = (key: string, label: string, unit: string): MetricSeries | null => {
+    const toSeries = (
+      ts: Record<string, { values: [number, string][] }>,
+      key: string,
+      label: string,
+      unit: string,
+    ): MetricSeries | null => {
       const values = ts[key]?.values;
       if (!values || values.length === 0) return null;
       return {
@@ -722,16 +717,54 @@ export class HetznerClient implements PluginClient {
       };
     };
 
-    const results: MetricSeries[] = [];
-    const push = (s: MetricSeries | null) => {
-      if (s) results.push(s);
-    };
-    push(toSeries("cpu", "CPU Utilization", "%"));
-    push(toSeries("disk.0.iops.read", "Disk IOPS (read)", "iops"));
-    push(toSeries("disk.0.iops.write", "Disk IOPS (write)", "iops"));
-    push(toSeries("network.0.bandwidth.in", "Network In", "bytes/s"));
-    push(toSeries("network.0.bandwidth.out", "Network Out", "bytes/s"));
-    return results;
+    if (resourceTypeId === "server") {
+      let resp: HetznerMetricsResponse;
+      try {
+        resp = await this.fetch<HetznerMetricsResponse>(
+          `/servers/${externalId}/metrics?type=cpu,disk,network&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`,
+        );
+      } catch {
+        return [];
+      }
+
+      const ts = resp.metrics?.time_series ?? {};
+      const results: MetricSeries[] = [];
+      const push = (s: MetricSeries | null) => {
+        if (s) results.push(s);
+      };
+      push(toSeries(ts, "cpu", "CPU Utilization", "%"));
+      push(toSeries(ts, "disk.0.iops.read", "Disk IOPS (read)", "iops"));
+      push(toSeries(ts, "disk.0.iops.write", "Disk IOPS (write)", "iops"));
+      push(toSeries(ts, "network.0.bandwidth.in", "Network In", "bytes/s"));
+      push(toSeries(ts, "network.0.bandwidth.out", "Network Out", "bytes/s"));
+      return results;
+    }
+
+    // load-balancer: Hetzner exposes /load_balancers/{id}/metrics with metric types
+    // open_connections, connections_per_second, requests_per_second, bandwidth.
+    // Ref: https://raw.githubusercontent.com/hetznercloud/hcloud-go/main/hcloud/load_balancer.go
+    if (resourceTypeId === "load-balancer") {
+      let resp: HetznerMetricsResponse;
+      try {
+        resp = await this.fetch<HetznerMetricsResponse>(
+          `/load_balancers/${externalId}/metrics?type=open_connections,bandwidth&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`,
+        );
+      } catch {
+        return [];
+      }
+
+      const ts = resp.metrics?.time_series ?? {};
+      const results: MetricSeries[] = [];
+      const push = (s: MetricSeries | null) => {
+        if (s) results.push(s);
+      };
+      push(toSeries(ts, "open_connections", "Open Connections", "connections"));
+      push(toSeries(ts, "bandwidth.in", "Bandwidth In", "bytes/s"));
+      push(toSeries(ts, "bandwidth.out", "Bandwidth Out", "bytes/s"));
+      return results;
+    }
+
+    return [];
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {

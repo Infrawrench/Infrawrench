@@ -473,6 +473,10 @@ export class DigitalOceanClient implements PluginClient {
       return results;
     }
 
+    // doks-cluster: DigitalOcean does not expose cluster-level Prometheus metrics
+    // via the v2 monitoring API (checked 2026-05). Node-pool metrics would require
+    // querying individual droplet IDs from the pool — not supported here.
+
     if (resourceTypeId === "managed-database") {
       // The DO managed-DB monitoring endpoints are engine-scoped and use the
       // pattern `/v2/monitoring/metrics/database/{engine}/{metric}` with

@@ -9,6 +9,7 @@ import type {
   ResourceStatus,
   ResourceTypeDefinition,
   DashboardStat,
+  MetricSeries,
 } from "@infrawrench/plugin-base";
 import { labeledFieldItems, signedS3Fetch } from "@infrawrench/plugin-base";
 import type { Client, Region, Zone } from "@scaleway/sdk-client";
@@ -672,6 +673,23 @@ export class ScalewayClient implements PluginClient {
       default:
         return [];
     }
+  }
+
+  // TODO: Scaleway instance metrics are not available through the Instance API.
+  // They are exposed via the Cockpit observability platform (Prometheus-compatible
+  // push/query) which requires a separate Cockpit token with query_metrics scope and
+  // a per-project Prometheus endpoint. Wiring that up is non-trivial and out of scope
+  // for a single-credential plugin credential set.
+  // See: https://www.scaleway.com/en/developers/api/cockpit/regional/
+  // Until Scaleway exposes instance metrics on the Instance API directly, this returns
+  // no series and supportsMetrics is NOT set on the instance resource type.
+  async fetchMetricSeries(
+    _resourceTypeId: string,
+    _resourceId: string,
+    _accountId: string,
+    _timeRange?: { startMs: number; endMs: number },
+  ): Promise<MetricSeries[]> {
+    return [];
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
