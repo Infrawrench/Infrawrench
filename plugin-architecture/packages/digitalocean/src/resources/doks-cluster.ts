@@ -67,6 +67,7 @@ export const DOKSClusterResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   iconKey: "kubernetes",
   supportsCreate: true,
+  supportsMetrics: true,
   peerIntegrations: [
     {
       pluginId: "kubernetes",

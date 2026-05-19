@@ -473,9 +473,80 @@ export class DigitalOceanClient implements PluginClient {
       return results;
     }
 
-    // doks-cluster: DigitalOcean does not expose cluster-level Prometheus metrics
-    // via the v2 monitoring API (checked 2026-05). Node-pool metrics would require
-    // querying individual droplet IDs from the pool — not supported here.
+    if (resourceTypeId === "doks-cluster") {
+      const clusterId = resourceId.split(":").pop();
+      if (!clusterId) return [];
+      // Get nodes
+      let dropletIds: string[];
+      try {
+        const cluster = await this.fetch<{
+          kubernetes_cluster: {
+            node_pools: Array<{ nodes: Array<{ droplet_id?: string }> }>;
+          };
+        }>(`/kubernetes/clusters/${clusterId}`);
+        dropletIds = (cluster.kubernetes_cluster?.node_pools ?? [])
+          .flatMap((pool) => pool.nodes ?? [])
+          .map((n) => String(n.droplet_id ?? ""))
+          .filter((id) => id.length > 0);
+      } catch {
+        return [];
+      }
+      if (dropletIds.length === 0) return [];
+
+      // For each metric, fetch per-droplet series and sum (or average) across nodes.
+      // CPU is a percentage so average; memory_free is bytes so sum; bandwidth is bytes/sec so sum.
+      const metricDefs: Array<{
+        name: string;
+        label: string;
+        unit: string;
+        combine: "avg" | "sum";
+        extraQs?: string;
+      }> = [
+        { name: "cpu", label: "CPU Utilization (avg)", unit: "%", combine: "avg" },
+        { name: "memory_free", label: "Free Memory (sum)", unit: "bytes", combine: "sum" },
+        {
+          name: "bandwidth",
+          label: "Network In (sum)",
+          unit: "bytes/s",
+          combine: "sum",
+          extraQs: "&interface=public&direction=inbound",
+        },
+      ];
+      const results: MetricSeries[] = [];
+      for (const def of metricDefs) {
+        const perDroplet = await Promise.all(
+          dropletIds.map((id) =>
+            fetchPromMetric(
+              `/monitoring/metrics/droplet/${def.name}?host_id=${id}&start=${startUnix}&end=${endUnix}${def.extraQs ?? ""}`,
+              def.label,
+              def.unit,
+            ),
+          ),
+        );
+        // Combine: bucket points by timestamp.
+        const buckets = new Map<number, number[]>();
+        for (const series of perDroplet) {
+          if (!series) continue;
+          for (const p of series.points) {
+            const arr = buckets.get(p.timestamp) ?? [];
+            arr.push(p.value);
+            buckets.set(p.timestamp, arr);
+          }
+        }
+        if (buckets.size === 0) continue;
+        const merged = [...buckets.entries()]
+          .sort(([a], [b]) => a - b)
+          .map(([timestamp, values]) => ({
+            timestamp,
+            value:
+              def.combine === "avg"
+                ? values.reduce((s, v) => s + v, 0) / values.length
+                : values.reduce((s, v) => s + v, 0),
+          }));
+        results.push({ label: def.label, unit: def.unit, points: merged });
+      }
+      return results;
+    }
 
     if (resourceTypeId === "managed-database") {
       // The DO managed-DB monitoring endpoints are engine-scoped and use the

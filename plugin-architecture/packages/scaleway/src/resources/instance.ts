@@ -59,4 +59,5 @@ export const InstanceResourceType: ResourceTypeDefinition = {
     defaultUsername: "root",
   },
   supportsCreate: true,
+  supportsMetrics: true,
 };
