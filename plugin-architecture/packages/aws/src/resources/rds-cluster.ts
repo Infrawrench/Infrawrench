@@ -27,6 +27,12 @@ export const RDSClusterResourceType: ResourceTypeDefinition = {
     { key: "port", label: "Port", sensitive: false },
     { key: "masterUsername", label: "Master Username", sensitive: false },
     { key: "clusterArn", label: "Cluster ARN", sensitive: false },
+    {
+      key: "connectionString",
+      label: "Connection String",
+      sensitive: true,
+      description: "Database connection URI (constructed from endpoint + port)",
+    },
   ],
   dashboardPinnable: true,
   iconKey: "database",
@@ -34,9 +40,53 @@ export const RDSClusterResourceType: ResourceTypeDefinition = {
   supportsMetrics: true,
   resourceSqlDriver: {
     driver: "postgres",
-    connectionStringOutputKey: "endpoint",
+    connectionStringOutputKey: "connectionString",
   },
+  peerIntegrations: [
+    {
+      pluginId: "postgres",
+      credentialMappings: [{ outputKey: "connectionString", credentialKey: "connectionString" }],
+      tabLabel: "PostgreSQL",
+      showWhen: { fieldKey: "engine", equals: "aurora-postgresql" },
+      unreachableWhen: {
+        fieldsEmpty: ["endpoint"],
+        title: "Cluster writer endpoint is not reachable from this host.",
+        suggestions: [
+          "Aurora clusters are typically VPC-only — connect from inside the VPC or via an SSH tunnel.",
+          "Enable publicly accessible on the cluster instances (not recommended in production).",
+          "Use an EC2 bastion in the same VPC.",
+        ],
+      },
+    },
+    {
+      pluginId: "mysql",
+      credentialMappings: [{ outputKey: "connectionString", credentialKey: "connectionString" }],
+      tabLabel: "MySQL",
+      showWhen: { fieldKey: "engine", equals: "aurora-mysql" },
+      unreachableWhen: {
+        fieldsEmpty: ["endpoint"],
+        title: "Cluster writer endpoint is not reachable from this host.",
+        suggestions: [
+          "Aurora clusters are typically VPC-only — connect from inside the VPC or via an SSH tunnel.",
+          "Enable publicly accessible on the cluster instances (not recommended in production).",
+          "Use an EC2 bastion in the same VPC.",
+        ],
+      },
+    },
+  ],
   secretExportTemplates: [
+    {
+      id: "database-url",
+      displayName: "Database URL",
+      description: "Single DATABASE_URL containing the full connection string",
+      entries: [
+        {
+          envKey: "DATABASE_URL",
+          outputKey: "connectionString",
+          description: "Full connection URI",
+        },
+      ],
+    },
     {
       id: "aurora-connection",
       displayName: "Aurora Connection",

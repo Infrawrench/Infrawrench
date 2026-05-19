@@ -78,10 +78,6 @@ export const ManagedDatabaseResourceType: ResourceTypeDefinition = {
   supportsCreate: true,
   supportsMetrics: true,
   iconKey: "database",
-  resourceSqlDriver: {
-    driver: "postgres",
-    connectionStringOutputKey: "connectionString",
-  },
   peerIntegrations: [
     {
       pluginId: "postgres",

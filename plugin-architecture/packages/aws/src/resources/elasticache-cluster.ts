@@ -23,12 +23,60 @@ export const ElastiCacheClusterResourceType: ResourceTypeDefinition = {
   outputs: [
     { key: "endpoint", label: "Endpoint", sensitive: false },
     { key: "port", label: "Port", sensitive: false },
+    {
+      key: "connectionString",
+      label: "Connection String",
+      sensitive: true,
+      description: "Redis/Memcached connection URI (constructed from endpoint + port)",
+    },
   ],
   dashboardPinnable: true,
   iconKey: "cache",
   supportsCreate: true,
   supportsMetrics: true,
+  peerIntegrations: [
+    {
+      pluginId: "redis",
+      credentialMappings: [{ outputKey: "connectionString", credentialKey: "connectionString" }],
+      tabLabel: "Redis",
+      showWhen: { fieldKey: "engine", equals: "redis" },
+      unreachableWhen: {
+        fieldsEmpty: ["endpoint"],
+        title: "Cluster endpoint is not reachable from this host.",
+        suggestions: [
+          "ElastiCache clusters are VPC-only — connect from inside the VPC or via an SSH tunnel.",
+          "Use an EC2 bastion in the same VPC.",
+        ],
+      },
+    },
+    {
+      pluginId: "memcached",
+      credentialMappings: [{ outputKey: "connectionString", credentialKey: "connectionString" }],
+      tabLabel: "Memcached",
+      showWhen: { fieldKey: "engine", equals: "memcached" },
+      unreachableWhen: {
+        fieldsEmpty: ["endpoint"],
+        title: "Cluster endpoint is not reachable from this host.",
+        suggestions: [
+          "ElastiCache clusters are VPC-only — connect from inside the VPC or via an SSH tunnel.",
+          "Use an EC2 bastion in the same VPC.",
+        ],
+      },
+    },
+  ],
   secretExportTemplates: [
+    {
+      id: "redis-url",
+      displayName: "Redis URL",
+      description: "REDIS_URL for Redis-engine clusters",
+      entries: [
+        {
+          envKey: "REDIS_URL",
+          outputKey: "connectionString",
+          description: "Redis connection URI",
+        },
+      ],
+    },
     {
       id: "connection",
       displayName: "Connection Details",

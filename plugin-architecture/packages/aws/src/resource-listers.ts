@@ -661,6 +661,9 @@ export async function listElastiCacheClusters(
       resolvedOutputs: {
         endpoint: String(endpoint?.["Address"] ?? ""),
         port: String(endpoint?.["Port"] ?? ""),
+        connectionString: endpoint?.["Address"]
+          ? `${String(c["Engine"] ?? "redis")}://${String(endpoint["Address"])}:${String(endpoint["Port"] ?? 6379)}`
+          : "",
       },
       secretStates: [],
       externalId: clusterId,

@@ -20,6 +20,12 @@ export const RedshiftClusterResourceType: ResourceTypeDefinition = {
     { key: "port", label: "Port", sensitive: false },
     { key: "masterUsername", label: "Master Username", sensitive: false },
     { key: "clusterArn", label: "Cluster ARN", sensitive: false },
+    {
+      key: "connectionString",
+      label: "Connection String",
+      sensitive: true,
+      description: "PostgreSQL connection URI for Redshift (constructed from endpoint + port)",
+    },
   ],
   dashboardPinnable: true,
   iconKey: "database",

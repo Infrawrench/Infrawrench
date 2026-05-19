@@ -627,6 +627,9 @@ export async function listRedshiftClusters(
         port: String(endpoint?.["Port"] ?? ""),
         masterUsername: String(c["MasterUsername"] ?? ""),
         clusterArn: `arn:aws:redshift:${ctx.region}:${accountId}:cluster:${clusterId}`,
+        connectionString: endpoint?.["Address"]
+          ? `postgresql://${String(c["MasterUsername"] ?? "")}@${String(endpoint["Address"])}:${String(endpoint["Port"] ?? 5439)}/${String(c["DBName"] ?? "dev")}`
+          : "",
       },
       secretStates: [],
       externalId: clusterId,
@@ -676,6 +679,9 @@ export async function listRDSClusters(
         port: String(c["Port"] ?? ""),
         masterUsername: String(c["MasterUsername"] ?? ""),
         clusterArn: String(c["DBClusterArn"] ?? ""),
+        connectionString: c["Endpoint"]
+          ? `${String(c["Engine"] ?? "").startsWith("aurora-postgresql") ? "postgresql" : "mysql"}://${String(c["MasterUsername"] ?? "")}@${String(c["Endpoint"])}:${String(c["Port"] ?? "")}`
+          : "",
       },
       secretStates: [],
       externalId: clusterId,
@@ -1534,6 +1540,9 @@ export async function listDocumentDBClusters(
           port: String(c["Port"] ?? ""),
           masterUsername: String(c["MasterUsername"] ?? ""),
           clusterArn: String(c["DBClusterArn"] ?? ""),
+          connectionString: c["Endpoint"]
+            ? `mongodb://${String(c["MasterUsername"] ?? "")}@${String(c["Endpoint"])}:${String(c["Port"] ?? 27017)}/`
+            : "",
         },
         secretStates: [],
         externalId: clusterId,

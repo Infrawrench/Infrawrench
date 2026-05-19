@@ -20,6 +20,12 @@ export const DocumentDBClusterResourceType: ResourceTypeDefinition = {
     { key: "port", label: "Port", sensitive: false },
     { key: "masterUsername", label: "Master Username", sensitive: false },
     { key: "clusterArn", label: "Cluster ARN", sensitive: false },
+    {
+      key: "connectionString",
+      label: "Connection String",
+      sensitive: true,
+      description: "MongoDB connection URI for DocumentDB (constructed from endpoint + port)",
+    },
   ],
   dashboardPinnable: true,
   iconKey: "database",
@@ -50,6 +56,18 @@ export const DocumentDBClusterResourceType: ResourceTypeDefinition = {
         { envKey: "DOCDB_READER_HOST", outputKey: "readerEndpoint" },
         { envKey: "DOCDB_PORT", outputKey: "port" },
         { envKey: "DOCDB_USER", outputKey: "masterUsername" },
+      ],
+    },
+    {
+      id: "mongodb-uri",
+      displayName: "MongoDB URI",
+      description: "MONGODB_URI connection string for DocumentDB (MongoDB-compatible)",
+      entries: [
+        {
+          envKey: "MONGODB_URI",
+          outputKey: "connectionString",
+          description: "MongoDB connection URI",
+        },
       ],
     },
   ],
