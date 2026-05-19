@@ -29,6 +29,11 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - name: Setup Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+
       - name: Run Claude Code with prompt file
         uses: grll/claude-code-base-action@beta
         with:
