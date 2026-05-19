@@ -1659,3 +1659,158 @@ export async function listSageMakerEndpoints(
     };
   });
 }
+
+export async function listRoute53HealthChecks(
+  ctx: ListerContext,
+  accountId: string,
+): Promise<ResourceInstance[]> {
+  const data = await ctx.jsonGet<{
+    HealthChecks?: Array<Record<string, unknown>>;
+  }>("route53", "/2013-04-01/healthcheck");
+  const checks = data.HealthChecks ?? [];
+  return checks.map((hc) => {
+    const id = String(hc["Id"] ?? "");
+    const config = hc["HealthCheckConfig"] as Record<string, unknown> | undefined;
+    const type = String(config?.["Type"] ?? "");
+    return {
+      id: ctx.id(accountId, "route53-health-check", id),
+      pluginId: "aws",
+      resourceTypeId: "route53-health-check",
+      accountId,
+      displayName: String(config?.["FullyQualifiedDomainName"] ?? config?.["IPAddress"] ?? id),
+      fields: {
+        healthCheckId: id,
+        type,
+        ipAddress: String(config?.["IPAddress"] ?? ""),
+        port: config?.["Port"] !== undefined ? Number(config["Port"]) : undefined,
+        resourcePath: String(config?.["ResourcePath"] ?? ""),
+        fqdn: String(config?.["FullyQualifiedDomainName"] ?? ""),
+        requestInterval:
+          config?.["RequestInterval"] !== undefined ? Number(config["RequestInterval"]) : undefined,
+        failureThreshold:
+          config?.["FailureThreshold"] !== undefined
+            ? Number(config["FailureThreshold"])
+            : undefined,
+        disabled: hc["HealthCheckConfig"]
+          ? config?.["Disabled"] === true || config?.["Disabled"] === "true"
+          : false,
+      },
+      resolvedOutputs: {
+        healthCheckId: id,
+      },
+      secretStates: [],
+      externalId: id,
+      createdAt: ctx.now(),
+      updatedAt: ctx.now(),
+    };
+  });
+}
+
+export async function listCognitoUserPools(
+  ctx: ListerContext,
+  accountId: string,
+): Promise<ResourceInstance[]> {
+  const listData = await ctx.json<{
+    UserPools?: Array<Record<string, unknown>>;
+  }>("cognito-idp", "AWSCognitoIdentityProviderService.ListUserPools", { MaxResults: 60 });
+  const pools = listData.UserPools ?? [];
+  const results: ResourceInstance[] = [];
+
+  for (const pool of pools) {
+    const poolId = String(pool["Id"] ?? "");
+    const name = String(pool["Name"] ?? "");
+    try {
+      const detail = await ctx.json<{
+        UserPool: Record<string, unknown>;
+      }>("cognito-idp", "AWSCognitoIdentityProviderService.DescribeUserPool", {
+        UserPoolId: poolId,
+      });
+      const up = detail.UserPool;
+      results.push({
+        id: ctx.id(accountId, "cognito-user-pool", poolId),
+        pluginId: "aws",
+        resourceTypeId: "cognito-user-pool",
+        accountId,
+        displayName: name,
+        fields: {
+          name,
+          userPoolId: poolId,
+          status: String(pool["Status"] ?? ""),
+          mfaConfiguration: String(up["MfaConfiguration"] ?? "OFF"),
+          estimatedNumberOfUsers: Number(up["EstimatedNumberOfUsers"] ?? 0),
+          creationDate: String(up["CreationDate"] ?? ""),
+          lastModifiedDate: String(up["LastModifiedDate"] ?? ""),
+          domain: String(up["Domain"] ?? ""),
+        },
+        resolvedOutputs: {
+          userPoolId: poolId,
+          userPoolArn: String(up["Arn"] ?? ""),
+        },
+        secretStates: [],
+        externalId: poolId,
+        createdAt: String(up["CreationDate"] ?? ctx.now()),
+        updatedAt: ctx.now(),
+      });
+    } catch {
+      results.push({
+        id: ctx.id(accountId, "cognito-user-pool", poolId),
+        pluginId: "aws",
+        resourceTypeId: "cognito-user-pool",
+        accountId,
+        displayName: name,
+        fields: {
+          name,
+          userPoolId: poolId,
+          status: String(pool["Status"] ?? ""),
+          mfaConfiguration: "OFF",
+          estimatedNumberOfUsers: 0,
+          creationDate: String(pool["CreationDate"] ?? ""),
+          lastModifiedDate: String(pool["LastModifiedDate"] ?? ""),
+          domain: "",
+        },
+        resolvedOutputs: {
+          userPoolId: poolId,
+          userPoolArn: "",
+        },
+        secretStates: [],
+        externalId: poolId,
+        createdAt: String(pool["CreationDate"] ?? ctx.now()),
+        updatedAt: ctx.now(),
+      });
+    }
+  }
+  return results;
+}
+
+export async function listBackupVaults(
+  ctx: ListerContext,
+  accountId: string,
+): Promise<ResourceInstance[]> {
+  const data = await ctx.restJson<{
+    BackupVaultList?: Array<Record<string, unknown>>;
+  }>("backup", "/backup-vaults", {}, "GET");
+  const vaults = data.BackupVaultList ?? [];
+  return vaults.map((v) => {
+    const vaultName = String(v["BackupVaultName"] ?? "");
+    return {
+      id: ctx.id(accountId, "backup-vault", vaultName),
+      pluginId: "aws",
+      resourceTypeId: "backup-vault",
+      accountId,
+      displayName: vaultName,
+      fields: {
+        backupVaultName: vaultName,
+        numberOfRecoveryPoints: Number(v["NumberOfRecoveryPoints"] ?? 0),
+        encryptionKeyArn: String(v["EncryptionKeyArn"] ?? ""),
+        creationDate: String(v["CreationDate"] ?? ""),
+      },
+      resolvedOutputs: {
+        backupVaultArn: String(v["BackupVaultArn"] ?? ""),
+      },
+      secretStates: [],
+      externalId: vaultName,
+      createdAt: String(v["CreationDate"] ?? ctx.now()),
+      updatedAt: ctx.now(),
+    };
+  });
+}

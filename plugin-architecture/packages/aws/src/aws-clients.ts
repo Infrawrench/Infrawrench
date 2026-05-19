@@ -15,6 +15,7 @@ import { APIGatewayClient } from "@aws-sdk/client-api-gateway";
 import { ApiGatewayV2Client } from "@aws-sdk/client-apigatewayv2";
 import { AppRunnerClient } from "@aws-sdk/client-apprunner";
 import { AutoScalingClient } from "@aws-sdk/client-auto-scaling";
+import { BackupClient } from "@aws-sdk/client-backup";
 import { BatchClient } from "@aws-sdk/client-batch";
 import { CloudFormationClient } from "@aws-sdk/client-cloudformation";
 import { CloudFrontClient } from "@aws-sdk/client-cloudfront";
@@ -23,6 +24,7 @@ import { CloudWatchClient } from "@aws-sdk/client-cloudwatch";
 import { CloudWatchLogsClient } from "@aws-sdk/client-cloudwatch-logs";
 import { CodeBuildClient } from "@aws-sdk/client-codebuild";
 import { CodePipelineClient } from "@aws-sdk/client-codepipeline";
+import { CognitoIdentityProviderClient } from "@aws-sdk/client-cognito-identity-provider";
 import { DocDBClient } from "@aws-sdk/client-docdb";
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { EC2Client } from "@aws-sdk/client-ec2";
@@ -61,6 +63,7 @@ export interface AwsClients {
   readonly apiGatewayV2: ApiGatewayV2Client;
   readonly appRunner: AppRunnerClient;
   readonly autoScaling: AutoScalingClient;
+  readonly backup: BackupClient;
   readonly batch: BatchClient;
   readonly cloudFormation: CloudFormationClient;
   readonly cloudFront: CloudFrontClient;
@@ -69,6 +72,7 @@ export interface AwsClients {
   readonly cloudWatchLogs: CloudWatchLogsClient;
   readonly codeBuild: CodeBuildClient;
   readonly codePipeline: CodePipelineClient;
+  readonly cognitoIdp: CognitoIdentityProviderClient;
   readonly docDb: DocDBClient;
   readonly dynamoDb: DynamoDBClient;
   readonly ec2: EC2Client;
@@ -132,6 +136,7 @@ export function getAwsClients(creds: AwsCredentials): AwsClients {
     apiGatewayV2: () => new ApiGatewayV2Client(baseConfig),
     appRunner: () => new AppRunnerClient(baseConfig),
     autoScaling: () => new AutoScalingClient(baseConfig),
+    backup: () => new BackupClient(baseConfig),
     batch: () => new BatchClient(baseConfig),
     cloudFormation: () => new CloudFormationClient(baseConfig),
     // CloudFront, IAM, and Route 53 are global services. Their SDK clients
@@ -142,6 +147,7 @@ export function getAwsClients(creds: AwsCredentials): AwsClients {
     cloudWatchLogs: () => new CloudWatchLogsClient(baseConfig),
     codeBuild: () => new CodeBuildClient(baseConfig),
     codePipeline: () => new CodePipelineClient(baseConfig),
+    cognitoIdp: () => new CognitoIdentityProviderClient(baseConfig),
     docDb: () => new DocDBClient(baseConfig),
     dynamoDb: () => new DynamoDBClient(baseConfig),
     ec2: () => new EC2Client(baseConfig),

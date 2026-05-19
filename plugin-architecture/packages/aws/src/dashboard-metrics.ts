@@ -1421,6 +1421,54 @@ export async function fetchMetricSeries(
         results.push({ ...targetConnErr, label: "Target Conn Errors" });
       return results;
     }
+    case "route53-health-check": {
+      // Route 53 metrics live in us-east-1 only. HealthCheckId is the dim.
+      // Verified: https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/monitoring-health-checks.html
+      const id = String(f.healthCheckId ?? resource.externalId ?? "");
+      if (!id) return [];
+      const dims = [{ Name: "HealthCheckId", Value: id }];
+      const [status, healthy, connTime, ttfb] = await Promise.all([
+        fetchCw("AWS/Route53", "HealthCheckStatus", dims, "Minimum").catch(() => null),
+        fetchCw("AWS/Route53", "HealthCheckPercentageHealthy", dims).catch(() => null),
+        fetchCw("AWS/Route53", "ConnectionTime", dims).catch(() => null),
+        fetchCw("AWS/Route53", "TimeToFirstByte", dims).catch(() => null),
+      ]);
+      const results: MetricSeries[] = [];
+      if (status && status.points.length > 0) results.push({ ...status, label: "Health (1=OK)" });
+      if (healthy && healthy.points.length > 0)
+        results.push({ ...healthy, label: "% Checkers Healthy", unit: "%" });
+      if (connTime && connTime.points.length > 0)
+        results.push({ ...connTime, label: "Connection Time", unit: "ms" });
+      if (ttfb && ttfb.points.length > 0)
+        results.push({ ...ttfb, label: "Time to First Byte", unit: "ms" });
+      return results;
+    }
+    case "backup-vault": {
+      // Verified: https://docs.aws.amazon.com/aws-backup/latest/devguide/cloudwatch.html
+      const vaultName = String(f.backupVaultName ?? resource.externalId ?? "");
+      if (!vaultName) return [];
+      const dims = [{ Name: "BackupVaultName", Value: vaultName }];
+      const [jobsCompleted, jobsFailed, jobsRunning, restoreCompleted, restoreFailed] =
+        await Promise.all([
+          fetchCw("AWS/Backup", "NumberOfBackupJobsCompleted", dims, "Sum").catch(() => null),
+          fetchCw("AWS/Backup", "NumberOfBackupJobsFailed", dims, "Sum").catch(() => null),
+          fetchCw("AWS/Backup", "NumberOfBackupJobsRunning", dims).catch(() => null),
+          fetchCw("AWS/Backup", "NumberOfRestoreJobsCompleted", dims, "Sum").catch(() => null),
+          fetchCw("AWS/Backup", "NumberOfRestoreJobsFailed", dims, "Sum").catch(() => null),
+        ]);
+      const results: MetricSeries[] = [];
+      if (jobsCompleted && jobsCompleted.points.length > 0)
+        results.push({ ...jobsCompleted, label: "Backups Completed" });
+      if (jobsFailed && jobsFailed.points.length > 0)
+        results.push({ ...jobsFailed, label: "Backups Failed" });
+      if (jobsRunning && jobsRunning.points.length > 0)
+        results.push({ ...jobsRunning, label: "Backups Running" });
+      if (restoreCompleted && restoreCompleted.points.length > 0)
+        results.push({ ...restoreCompleted, label: "Restores Completed" });
+      if (restoreFailed && restoreFailed.points.length > 0)
+        results.push({ ...restoreFailed, label: "Restores Failed" });
+      return results;
+    }
     default:
       return [];
   }

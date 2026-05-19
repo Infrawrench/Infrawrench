@@ -52,3 +52,6 @@ export { DocumentDBClusterResourceType } from "./resources/documentdb-cluster.js
 export { MQBrokerResourceType } from "./resources/mq-broker.js";
 export { BatchJobQueueResourceType } from "./resources/batch-job-queue.js";
 export { SageMakerEndpointResourceType } from "./resources/sagemaker-endpoint.js";
+export { Route53HealthCheckResourceType } from "./resources/route53-health-check.js";
+export { CognitoUserPoolResourceType } from "./resources/cognito-user-pool.js";
+export { BackupVaultResourceType } from "./resources/backup-vault.js";

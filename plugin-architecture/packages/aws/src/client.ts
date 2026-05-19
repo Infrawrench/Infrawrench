@@ -69,6 +69,9 @@ import {
   listMQBrokers,
   listBatchJobQueues,
   listSageMakerEndpoints,
+  listRoute53HealthChecks,
+  listCognitoUserPools,
+  listBackupVaults,
 } from "./resource-listers-extended.js";
 import type { AwsCreateContext } from "./create-handlers.js";
 import { awsGetCreateConfig, awsCreateResource } from "./create-handlers.js";
@@ -326,6 +329,9 @@ export class AWSClient implements PluginClient {
     "mq-broker": listMQBrokers,
     "batch-job-queue": listBatchJobQueues,
     "sagemaker-endpoint": listSageMakerEndpoints,
+    "route53-health-check": listRoute53HealthChecks,
+    "cognito-user-pool": listCognitoUserPools,
+    "backup-vault": listBackupVaults,
   };
 
   async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
