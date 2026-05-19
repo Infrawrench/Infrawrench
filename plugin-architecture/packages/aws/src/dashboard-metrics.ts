@@ -297,15 +297,32 @@ export async function fetchMetricSeries(
       return results;
     }
     case "lambda-function": {
+      // Verified against
+      // https://docs.aws.amazon.com/lambda/latest/dg/monitoring-metrics-types.html
+      // IteratorAge applies only to stream sources (Kinesis/DynamoDB/DocDB);
+      // DeadLetterErrors / AsyncEventAge apply to async invocations; the
+      // points-length guard naturally hides metrics that don't apply.
       const fnName = String(f.name ?? resource.externalId ?? "");
       if (!fnName) return [];
       const dims = [{ Name: "FunctionName", Value: fnName }];
-      const [invocations, duration, errors, throttles, concurrent] = await Promise.all([
+      const [
+        invocations,
+        duration,
+        errors,
+        throttles,
+        concurrent,
+        deadLetter,
+        iteratorAge,
+        asyncEventAge,
+      ] = await Promise.all([
         fetchCw("AWS/Lambda", "Invocations", dims, "Sum").catch(() => null),
         fetchCw("AWS/Lambda", "Duration", dims).catch(() => null),
         fetchCw("AWS/Lambda", "Errors", dims, "Sum").catch(() => null),
         fetchCw("AWS/Lambda", "Throttles", dims, "Sum").catch(() => null),
         fetchCw("AWS/Lambda", "ConcurrentExecutions", dims, "Maximum").catch(() => null),
+        fetchCw("AWS/Lambda", "DeadLetterErrors", dims, "Sum").catch(() => null),
+        fetchCw("AWS/Lambda", "IteratorAge", dims, "Maximum").catch(() => null),
+        fetchCw("AWS/Lambda", "AsyncEventAge", dims, "Maximum").catch(() => null),
       ]);
       const results: MetricSeries[] = [];
       if (invocations && invocations.points.length > 0)
@@ -317,6 +334,12 @@ export async function fetchMetricSeries(
         results.push({ ...throttles, label: "Throttles" });
       if (concurrent && concurrent.points.length > 0)
         results.push({ ...concurrent, label: "Concurrent Executions" });
+      if (deadLetter && deadLetter.points.length > 0)
+        results.push({ ...deadLetter, label: "Dead Letter Errors" });
+      if (iteratorAge && iteratorAge.points.length > 0)
+        results.push({ ...iteratorAge, label: "Iterator Age", unit: "ms" });
+      if (asyncEventAge && asyncEventAge.points.length > 0)
+        results.push({ ...asyncEventAge, label: "Async Event Age", unit: "ms" });
       return results;
     }
     case "alb": {
@@ -404,25 +427,45 @@ export async function fetchMetricSeries(
       return results;
     }
     case "sqs-queue": {
+      // Verified against
+      // https://docs.aws.amazon.com/AWSSimpleQueueService/latest/SQSDeveloperGuide/sqs-available-cloudwatch-metrics.html
       // SQS dimension is the queue NAME (last segment of the queue URL), not ARN.
+      // For DLQs `ApproximateNumberOfMessagesVisible` is the canonical "backlog"
+      // signal — `NumberOfMessagesSent` doesn't count auto-redriven messages.
       const queueUrl = String(f.queueUrl ?? "");
       const queueName = String(f.queueName ?? queueUrl.split("/").pop() ?? "");
       if (!queueName) return [];
       const dims = [{ Name: "QueueName", Value: queueName }];
-      const [visible, age, sent, received] = await Promise.all([
-        fetchCw("AWS/SQS", "ApproximateNumberOfMessagesVisible", dims).catch(() => null),
-        fetchCw("AWS/SQS", "ApproximateAgeOfOldestMessage", dims).catch(() => null),
-        fetchCw("AWS/SQS", "NumberOfMessagesSent", dims, "Sum").catch(() => null),
-        fetchCw("AWS/SQS", "NumberOfMessagesReceived", dims, "Sum").catch(() => null),
-      ]);
+      const [visible, notVisible, delayed, age, sent, received, deleted, emptyReceives, msgSize] =
+        await Promise.all([
+          fetchCw("AWS/SQS", "ApproximateNumberOfMessagesVisible", dims).catch(() => null),
+          fetchCw("AWS/SQS", "ApproximateNumberOfMessagesNotVisible", dims).catch(() => null),
+          fetchCw("AWS/SQS", "ApproximateNumberOfMessagesDelayed", dims).catch(() => null),
+          fetchCw("AWS/SQS", "ApproximateAgeOfOldestMessage", dims).catch(() => null),
+          fetchCw("AWS/SQS", "NumberOfMessagesSent", dims, "Sum").catch(() => null),
+          fetchCw("AWS/SQS", "NumberOfMessagesReceived", dims, "Sum").catch(() => null),
+          fetchCw("AWS/SQS", "NumberOfMessagesDeleted", dims, "Sum").catch(() => null),
+          fetchCw("AWS/SQS", "NumberOfEmptyReceives", dims, "Sum").catch(() => null),
+          fetchCw("AWS/SQS", "SentMessageSize", dims).catch(() => null),
+        ]);
       const results: MetricSeries[] = [];
       if (visible && visible.points.length > 0)
         results.push({ ...visible, label: "Messages Visible" });
+      if (notVisible && notVisible.points.length > 0)
+        results.push({ ...notVisible, label: "In-flight Messages" });
+      if (delayed && delayed.points.length > 0)
+        results.push({ ...delayed, label: "Delayed Messages" });
       if (age && age.points.length > 0)
         results.push({ ...age, label: "Age of Oldest Message", unit: "s" });
       if (sent && sent.points.length > 0) results.push({ ...sent, label: "Messages Sent" });
       if (received && received.points.length > 0)
         results.push({ ...received, label: "Messages Received" });
+      if (deleted && deleted.points.length > 0)
+        results.push({ ...deleted, label: "Messages Deleted" });
+      if (emptyReceives && emptyReceives.points.length > 0)
+        results.push({ ...emptyReceives, label: "Empty Receives" });
+      if (msgSize && msgSize.points.length > 0)
+        results.push({ ...msgSize, label: "Sent Message Size", unit: "bytes" });
       return results;
     }
     case "ecs-service": {
