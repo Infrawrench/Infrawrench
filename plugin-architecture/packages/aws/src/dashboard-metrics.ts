@@ -162,49 +162,138 @@ export async function fetchMetricSeries(
 
   switch (resourceTypeId) {
     case "ec2-instance": {
+      // Verified against
+      // https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/viewing_metrics_with_cloudwatch.html
+      // Note: DiskRead/WriteOps are instance store (ephemeral) — for EBS use
+      // EBSReadOps/EBSWriteOps. CPUCreditBalance is T-class only and silently
+      // returns empty for other instance types.
       const instanceId = resource.externalId ?? "";
       const dims = [{ Name: "InstanceId", Value: instanceId }];
-      const [cpu, netIn, netOut, statusFailed, diskRead, diskWrite] = await Promise.all([
+      const [
+        cpu,
+        netIn,
+        netOut,
+        netPktsIn,
+        netPktsOut,
+        statusFailed,
+        statusInst,
+        statusSys,
+        diskRead,
+        diskWrite,
+        ebsReadBytes,
+        ebsWriteBytes,
+        ebsReadOps,
+        ebsWriteOps,
+        creditBalance,
+      ] = await Promise.all([
         fetchCw("AWS/EC2", "CPUUtilization", dims).catch(() => null),
-        fetchCw("AWS/EC2", "NetworkIn", dims).catch(() => null),
-        fetchCw("AWS/EC2", "NetworkOut", dims).catch(() => null),
+        fetchCw("AWS/EC2", "NetworkIn", dims, "Sum").catch(() => null),
+        fetchCw("AWS/EC2", "NetworkOut", dims, "Sum").catch(() => null),
+        fetchCw("AWS/EC2", "NetworkPacketsIn", dims, "Sum").catch(() => null),
+        fetchCw("AWS/EC2", "NetworkPacketsOut", dims, "Sum").catch(() => null),
         fetchCw("AWS/EC2", "StatusCheckFailed", dims, "Maximum").catch(() => null),
+        fetchCw("AWS/EC2", "StatusCheckFailed_Instance", dims, "Maximum").catch(() => null),
+        fetchCw("AWS/EC2", "StatusCheckFailed_System", dims, "Maximum").catch(() => null),
         fetchCw("AWS/EC2", "DiskReadOps", dims, "Sum").catch(() => null),
         fetchCw("AWS/EC2", "DiskWriteOps", dims, "Sum").catch(() => null),
+        fetchCw("AWS/EC2", "EBSReadBytes", dims, "Sum").catch(() => null),
+        fetchCw("AWS/EC2", "EBSWriteBytes", dims, "Sum").catch(() => null),
+        fetchCw("AWS/EC2", "EBSReadOps", dims, "Sum").catch(() => null),
+        fetchCw("AWS/EC2", "EBSWriteOps", dims, "Sum").catch(() => null),
+        fetchCw("AWS/EC2", "CPUCreditBalance", dims).catch(() => null),
       ]);
       const results: MetricSeries[] = [];
       if (cpu && cpu.points.length > 0) results.push({ ...cpu, unit: "%" });
       if (netIn && netIn.points.length > 0)
-        results.push({ ...netIn, label: "Network In", unit: " bytes" });
+        results.push({ ...netIn, label: "Network In", unit: "bytes" });
       if (netOut && netOut.points.length > 0)
-        results.push({ ...netOut, label: "Network Out", unit: " bytes" });
+        results.push({ ...netOut, label: "Network Out", unit: "bytes" });
+      if (netPktsIn && netPktsIn.points.length > 0)
+        results.push({ ...netPktsIn, label: "Packets In" });
+      if (netPktsOut && netPktsOut.points.length > 0)
+        results.push({ ...netPktsOut, label: "Packets Out" });
       if (statusFailed && statusFailed.points.length > 0)
         results.push({ ...statusFailed, label: "Status Check Failed" });
+      if (statusInst && statusInst.points.length > 0)
+        results.push({ ...statusInst, label: "Instance Check Failed" });
+      if (statusSys && statusSys.points.length > 0)
+        results.push({ ...statusSys, label: "System Check Failed" });
+      if (ebsReadBytes && ebsReadBytes.points.length > 0)
+        results.push({ ...ebsReadBytes, label: "EBS Read", unit: "bytes" });
+      if (ebsWriteBytes && ebsWriteBytes.points.length > 0)
+        results.push({ ...ebsWriteBytes, label: "EBS Write", unit: "bytes" });
+      if (ebsReadOps && ebsReadOps.points.length > 0)
+        results.push({ ...ebsReadOps, label: "EBS Read Ops" });
+      if (ebsWriteOps && ebsWriteOps.points.length > 0)
+        results.push({ ...ebsWriteOps, label: "EBS Write Ops" });
       if (diskRead && diskRead.points.length > 0)
-        results.push({ ...diskRead, label: "Disk Read Ops" });
+        results.push({ ...diskRead, label: "Instance Store Read Ops" });
       if (diskWrite && diskWrite.points.length > 0)
-        results.push({ ...diskWrite, label: "Disk Write Ops" });
+        results.push({ ...diskWrite, label: "Instance Store Write Ops" });
+      if (creditBalance && creditBalance.points.length > 0)
+        results.push({ ...creditBalance, label: "CPU Credit Balance" });
       return results;
     }
     case "rds-instance": {
+      // Verified against
+      // https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/rds-metrics.html
       const dbId = String(f.dbInstanceId ?? resource.externalId ?? "");
       if (!dbId) return [];
       const dims = [{ Name: "DBInstanceIdentifier", Value: dbId }];
-      const [cpu, conns, freeStorage, readIops, writeIops] = await Promise.all([
+      const [
+        cpu,
+        conns,
+        freeStorage,
+        freeableMem,
+        swap,
+        readIops,
+        writeIops,
+        readLat,
+        writeLat,
+        netIn,
+        netOut,
+        burstBal,
+        replicaLag,
+      ] = await Promise.all([
         fetchCw("AWS/RDS", "CPUUtilization", dims).catch(() => null),
         fetchCw("AWS/RDS", "DatabaseConnections", dims, "Sum").catch(() => null),
         fetchCw("AWS/RDS", "FreeStorageSpace", dims).catch(() => null),
+        fetchCw("AWS/RDS", "FreeableMemory", dims).catch(() => null),
+        fetchCw("AWS/RDS", "SwapUsage", dims).catch(() => null),
         fetchCw("AWS/RDS", "ReadIOPS", dims).catch(() => null),
         fetchCw("AWS/RDS", "WriteIOPS", dims).catch(() => null),
+        fetchCw("AWS/RDS", "ReadLatency", dims).catch(() => null),
+        fetchCw("AWS/RDS", "WriteLatency", dims).catch(() => null),
+        fetchCw("AWS/RDS", "NetworkReceiveThroughput", dims).catch(() => null),
+        fetchCw("AWS/RDS", "NetworkTransmitThroughput", dims).catch(() => null),
+        fetchCw("AWS/RDS", "BurstBalance", dims).catch(() => null),
+        fetchCw("AWS/RDS", "ReplicaLag", dims).catch(() => null),
       ]);
       const results: MetricSeries[] = [];
       if (cpu && cpu.points.length > 0) results.push({ ...cpu, unit: "%" });
       if (conns && conns.points.length > 0) results.push({ ...conns, label: "Connections" });
       if (freeStorage && freeStorage.points.length > 0)
         results.push({ ...freeStorage, label: "Free Storage", unit: " bytes" });
+      if (freeableMem && freeableMem.points.length > 0)
+        results.push({ ...freeableMem, label: "Freeable Memory", unit: " bytes" });
+      if (swap && swap.points.length > 0)
+        results.push({ ...swap, label: "Swap Usage", unit: " bytes" });
       if (readIops && readIops.points.length > 0) results.push({ ...readIops, label: "Read IOPS" });
       if (writeIops && writeIops.points.length > 0)
         results.push({ ...writeIops, label: "Write IOPS" });
+      if (readLat && readLat.points.length > 0)
+        results.push({ ...readLat, label: "Read Latency", unit: "s" });
+      if (writeLat && writeLat.points.length > 0)
+        results.push({ ...writeLat, label: "Write Latency", unit: "s" });
+      if (netIn && netIn.points.length > 0)
+        results.push({ ...netIn, label: "Network In", unit: " bytes/s" });
+      if (netOut && netOut.points.length > 0)
+        results.push({ ...netOut, label: "Network Out", unit: " bytes/s" });
+      if (burstBal && burstBal.points.length > 0)
+        results.push({ ...burstBal, label: "Burst Balance", unit: "%" });
+      // ReplicaLag is only emitted on read replicas.
+      if (replicaLag && replicaLag.points.length > 0)
+        results.push({ ...replicaLag, label: "Replica Lag", unit: "s" });
       return results;
     }
     case "lambda-function": {
@@ -231,28 +320,67 @@ export async function fetchMetricSeries(
       return results;
     }
     case "alb": {
-      // ALB dimension wants the trailing portion of the ARN (e.g. `app/my-lb/abc123`).
+      // Verified against
+      // https://docs.aws.amazon.com/elasticloadbalancing/latest/application/load-balancer-cloudwatch-metrics.html
+      // ALB dimension wants the trailing portion of the ARN (e.g.
+      // `app/my-lb/abc123`). ELB 4xx/5xx are different from Target 4xx/5xx —
+      // ELB-originated codes mean the load balancer never reached a target
+      // (no targets, malformed request, etc.), so worth surfacing separately.
       const arn = String(resource.resolvedOutputs?.["loadBalancerArn"] ?? "");
       const dim = arn.split(":loadbalancer/").pop() ?? "";
       if (!dim) return [];
       const dims = [{ Name: "LoadBalancer", Value: dim }];
-      const [reqs, active, latency, http5xx, http4xx] = await Promise.all([
+      const [
+        reqs,
+        active,
+        newConn,
+        rejected,
+        bytes,
+        latency,
+        target5xx,
+        target4xx,
+        elb5xx,
+        elb4xx,
+        targetConnErr,
+        consumedLcus,
+      ] = await Promise.all([
         fetchCw("AWS/ApplicationELB", "RequestCount", dims, "Sum").catch(() => null),
         fetchCw("AWS/ApplicationELB", "ActiveConnectionCount", dims, "Sum").catch(() => null),
+        fetchCw("AWS/ApplicationELB", "NewConnectionCount", dims, "Sum").catch(() => null),
+        fetchCw("AWS/ApplicationELB", "RejectedConnectionCount", dims, "Sum").catch(() => null),
+        fetchCw("AWS/ApplicationELB", "ProcessedBytes", dims, "Sum").catch(() => null),
         fetchCw("AWS/ApplicationELB", "TargetResponseTime", dims).catch(() => null),
         fetchCw("AWS/ApplicationELB", "HTTPCode_Target_5XX_Count", dims, "Sum").catch(() => null),
         fetchCw("AWS/ApplicationELB", "HTTPCode_Target_4XX_Count", dims, "Sum").catch(() => null),
+        fetchCw("AWS/ApplicationELB", "HTTPCode_ELB_5XX_Count", dims, "Sum").catch(() => null),
+        fetchCw("AWS/ApplicationELB", "HTTPCode_ELB_4XX_Count", dims, "Sum").catch(() => null),
+        fetchCw("AWS/ApplicationELB", "TargetConnectionErrorCount", dims, "Sum").catch(() => null),
+        fetchCw("AWS/ApplicationELB", "ConsumedLCUs", dims).catch(() => null),
       ]);
       const results: MetricSeries[] = [];
       if (reqs && reqs.points.length > 0) results.push({ ...reqs, label: "Requests" });
       if (active && active.points.length > 0)
         results.push({ ...active, label: "Active Connections" });
+      if (newConn && newConn.points.length > 0)
+        results.push({ ...newConn, label: "New Connections" });
+      if (rejected && rejected.points.length > 0)
+        results.push({ ...rejected, label: "Rejected Connections" });
+      if (bytes && bytes.points.length > 0)
+        results.push({ ...bytes, label: "Processed Bytes", unit: "bytes" });
       if (latency && latency.points.length > 0)
         results.push({ ...latency, label: "Target Response Time", unit: "s" });
-      if (http5xx && http5xx.points.length > 0)
-        results.push({ ...http5xx, label: "5xx Errors (target)" });
-      if (http4xx && http4xx.points.length > 0)
-        results.push({ ...http4xx, label: "4xx Errors (target)" });
+      if (target5xx && target5xx.points.length > 0)
+        results.push({ ...target5xx, label: "5xx Errors (target)" });
+      if (target4xx && target4xx.points.length > 0)
+        results.push({ ...target4xx, label: "4xx Errors (target)" });
+      if (elb5xx && elb5xx.points.length > 0)
+        results.push({ ...elb5xx, label: "5xx Errors (ELB)" });
+      if (elb4xx && elb4xx.points.length > 0)
+        results.push({ ...elb4xx, label: "4xx Errors (ELB)" });
+      if (targetConnErr && targetConnErr.points.length > 0)
+        results.push({ ...targetConnErr, label: "Target Conn Errors" });
+      if (consumedLcus && consumedLcus.points.length > 0)
+        results.push({ ...consumedLcus, label: "Consumed LCUs" });
       return results;
     }
     case "dynamodb-table": {
@@ -392,27 +520,65 @@ export async function fetchMetricSeries(
       return results;
     }
     case "elasticache-cluster": {
+      // Verified against
+      // https://docs.aws.amazon.com/AmazonElastiCache/latest/red-ug/CacheMetrics.Redis.html
       // ElastiCache CloudWatch dim is CacheClusterId; for replication groups the
       // metric is published per-node. Fall back to the cluster externalId.
+      // `EngineCPUUtilization` is a more precise CPU number than the host-level
+      // `CPUUtilization` on small nodes (≤2 vCPU); we surface both so users on
+      // larger nodes can pick the more useful series.
       const clusterId = String(f.clusterId ?? f.cacheClusterId ?? resource.externalId ?? "");
       if (!clusterId) return [];
       const dims = [{ Name: "CacheClusterId", Value: clusterId }];
-      const [cpu, conns, bytesUsed, hits, misses] = await Promise.all([
+      const [
+        cpu,
+        engineCpu,
+        conns,
+        newConns,
+        dbMemPct,
+        bytesUsed,
+        hits,
+        misses,
+        evictions,
+        replLag,
+        netIn,
+        netOut,
+      ] = await Promise.all([
         fetchCw("AWS/ElastiCache", "CPUUtilization", dims).catch(() => null),
+        fetchCw("AWS/ElastiCache", "EngineCPUUtilization", dims).catch(() => null),
         fetchCw("AWS/ElastiCache", "CurrConnections", dims).catch(() => null),
+        fetchCw("AWS/ElastiCache", "NewConnections", dims, "Sum").catch(() => null),
+        fetchCw("AWS/ElastiCache", "DatabaseMemoryUsagePercentage", dims).catch(() => null),
         fetchCw("AWS/ElastiCache", "BytesUsedForCache", dims).catch(() => null),
         fetchCw("AWS/ElastiCache", "CacheHits", dims, "Sum").catch(() => null),
         fetchCw("AWS/ElastiCache", "CacheMisses", dims, "Sum").catch(() => null),
+        fetchCw("AWS/ElastiCache", "Evictions", dims, "Sum").catch(() => null),
+        fetchCw("AWS/ElastiCache", "ReplicationLag", dims).catch(() => null),
+        fetchCw("AWS/ElastiCache", "NetworkBytesIn", dims, "Sum").catch(() => null),
+        fetchCw("AWS/ElastiCache", "NetworkBytesOut", dims, "Sum").catch(() => null),
       ]);
       const results: MetricSeries[] = [];
-      if (cpu && cpu.points.length > 0)
-        results.push({ ...cpu, label: "CPU Utilization", unit: "%" });
+      if (cpu && cpu.points.length > 0) results.push({ ...cpu, label: "Host CPU", unit: "%" });
+      if (engineCpu && engineCpu.points.length > 0)
+        results.push({ ...engineCpu, label: "Engine CPU", unit: "%" });
       if (conns && conns.points.length > 0)
         results.push({ ...conns, label: "Current Connections" });
+      if (newConns && newConns.points.length > 0)
+        results.push({ ...newConns, label: "New Connections" });
+      if (dbMemPct && dbMemPct.points.length > 0)
+        results.push({ ...dbMemPct, label: "Memory Used", unit: "%" });
       if (bytesUsed && bytesUsed.points.length > 0)
         results.push({ ...bytesUsed, label: "Bytes Used", unit: "bytes" });
       if (hits && hits.points.length > 0) results.push({ ...hits, label: "Cache Hits" });
       if (misses && misses.points.length > 0) results.push({ ...misses, label: "Cache Misses" });
+      if (evictions && evictions.points.length > 0)
+        results.push({ ...evictions, label: "Evictions" });
+      if (replLag && replLag.points.length > 0)
+        results.push({ ...replLag, label: "Replica Lag", unit: "s" });
+      if (netIn && netIn.points.length > 0)
+        results.push({ ...netIn, label: "Network In", unit: "bytes" });
+      if (netOut && netOut.points.length > 0)
+        results.push({ ...netOut, label: "Network Out", unit: "bytes" });
       return results;
     }
     case "rds-cluster": {
@@ -548,27 +714,70 @@ export async function fetchMetricSeries(
       return results;
     }
     case "opensearch-domain": {
+      // Verified against
+      // https://docs.aws.amazon.com/opensearch-service/latest/developerguide/managedomains-cloudwatchmetrics.html
+      // OpenSearch metrics can take either {DomainName} or
+      // {DomainName, ClientId} dimensions; the single-dim form works in
+      // every region we've tested. ClusterStatus.{green,yellow,red} are
+      // separate metrics (not a dim split).
       const domainName = String(f.domainName ?? resource.externalId ?? "");
       if (!domainName) return [];
-      // OpenSearch requires both DomainName and the AWS account/principal as
-      // the ClientId. Use the principal-derived AccountId in dimensions only if
-      // we can — otherwise fall back to single-dim query (works for most cases).
       const dims = [{ Name: "DomainName", Value: domainName }];
-      const [cpu, jvm, storage, searches] = await Promise.all([
+      const [
+        cpu,
+        jvm,
+        masterCpu,
+        masterJvm,
+        storage,
+        statusYellow,
+        statusRed,
+        unassignedShards,
+        searchRate,
+        searchLat,
+        indexRate,
+        indexLat,
+        docs,
+      ] = await Promise.all([
         fetchCw("AWS/ES", "CPUUtilization", dims).catch(() => null),
         fetchCw("AWS/ES", "JVMMemoryPressure", dims).catch(() => null),
+        fetchCw("AWS/ES", "MasterCPUUtilization", dims).catch(() => null),
+        fetchCw("AWS/ES", "MasterJVMMemoryPressure", dims).catch(() => null),
         fetchCw("AWS/ES", "FreeStorageSpace", dims).catch(() => null),
+        fetchCw("AWS/ES", "ClusterStatus.yellow", dims, "Maximum").catch(() => null),
+        fetchCw("AWS/ES", "ClusterStatus.red", dims, "Maximum").catch(() => null),
+        fetchCw("AWS/ES", "Shards.unassigned", dims, "Maximum").catch(() => null),
         fetchCw("AWS/ES", "SearchRate", dims, "Sum").catch(() => null),
+        fetchCw("AWS/ES", "SearchLatency", dims).catch(() => null),
+        fetchCw("AWS/ES", "IndexingRate", dims, "Sum").catch(() => null),
+        fetchCw("AWS/ES", "IndexingLatency", dims).catch(() => null),
+        fetchCw("AWS/ES", "SearchableDocuments", dims).catch(() => null),
       ]);
       const results: MetricSeries[] = [];
       if (cpu && cpu.points.length > 0)
         results.push({ ...cpu, label: "CPU Utilization", unit: "%" });
+      if (masterCpu && masterCpu.points.length > 0)
+        results.push({ ...masterCpu, label: "Master CPU", unit: "%" });
       if (jvm && jvm.points.length > 0)
         results.push({ ...jvm, label: "JVM Memory Pressure", unit: "%" });
+      if (masterJvm && masterJvm.points.length > 0)
+        results.push({ ...masterJvm, label: "Master JVM Pressure", unit: "%" });
       if (storage && storage.points.length > 0)
         results.push({ ...storage, label: "Free Storage", unit: "MB" });
-      if (searches && searches.points.length > 0)
-        results.push({ ...searches, label: "Search Rate" });
+      if (statusYellow && statusYellow.points.length > 0)
+        results.push({ ...statusYellow, label: "Cluster Yellow" });
+      if (statusRed && statusRed.points.length > 0)
+        results.push({ ...statusRed, label: "Cluster Red" });
+      if (unassignedShards && unassignedShards.points.length > 0)
+        results.push({ ...unassignedShards, label: "Unassigned Shards" });
+      if (searchRate && searchRate.points.length > 0)
+        results.push({ ...searchRate, label: "Search Rate" });
+      if (searchLat && searchLat.points.length > 0)
+        results.push({ ...searchLat, label: "Search Latency", unit: "ms" });
+      if (indexRate && indexRate.points.length > 0)
+        results.push({ ...indexRate, label: "Indexing Rate" });
+      if (indexLat && indexLat.points.length > 0)
+        results.push({ ...indexLat, label: "Indexing Latency", unit: "ms" });
+      if (docs && docs.points.length > 0) results.push({ ...docs, label: "Searchable Documents" });
       return results;
     }
     case "nat-gateway": {
@@ -669,15 +878,39 @@ export async function fetchMetricSeries(
       return results;
     }
     case "redshift-cluster": {
-      // Redshift dimension is the cluster identifier (the name), not the ARN.
+      // Verified against
+      // https://docs.aws.amazon.com/redshift/latest/mgmt/metrics-listing.html
+      // Redshift dimension is `ClusterIdentifier` (the cluster name), not the
+      // ARN.
       const clusterId = String(f.clusterIdentifier ?? resource.externalId ?? "");
       if (!clusterId) return [];
       const dims = [{ Name: "ClusterIdentifier", Value: clusterId }];
-      const [cpu, conns, diskPct, healthStatus] = await Promise.all([
+      const [
+        cpu,
+        conns,
+        diskPct,
+        healthStatus,
+        maintenance,
+        readIops,
+        writeIops,
+        readLat,
+        writeLat,
+        netIn,
+        netOut,
+        commitQueue,
+      ] = await Promise.all([
         fetchCw("AWS/Redshift", "CPUUtilization", dims).catch(() => null),
         fetchCw("AWS/Redshift", "DatabaseConnections", dims).catch(() => null),
         fetchCw("AWS/Redshift", "PercentageDiskSpaceUsed", dims).catch(() => null),
         fetchCw("AWS/Redshift", "HealthStatus", dims).catch(() => null),
+        fetchCw("AWS/Redshift", "MaintenanceMode", dims).catch(() => null),
+        fetchCw("AWS/Redshift", "ReadIOPS", dims).catch(() => null),
+        fetchCw("AWS/Redshift", "WriteIOPS", dims).catch(() => null),
+        fetchCw("AWS/Redshift", "ReadLatency", dims).catch(() => null),
+        fetchCw("AWS/Redshift", "WriteLatency", dims).catch(() => null),
+        fetchCw("AWS/Redshift", "NetworkReceiveThroughput", dims).catch(() => null),
+        fetchCw("AWS/Redshift", "NetworkTransmitThroughput", dims).catch(() => null),
+        fetchCw("AWS/Redshift", "CommitQueueLength", dims).catch(() => null),
       ]);
       const results: MetricSeries[] = [];
       if (cpu && cpu.points.length > 0)
@@ -686,19 +919,59 @@ export async function fetchMetricSeries(
       if (diskPct && diskPct.points.length > 0)
         results.push({ ...diskPct, label: "% Disk Used", unit: "%" });
       if (healthStatus && healthStatus.points.length > 0)
-        results.push({ ...healthStatus, label: "Health Status" });
+        results.push({ ...healthStatus, label: "Health (1=OK)" });
+      if (maintenance && maintenance.points.length > 0)
+        results.push({ ...maintenance, label: "Maintenance Mode" });
+      if (readIops && readIops.points.length > 0) results.push({ ...readIops, label: "Read IOPS" });
+      if (writeIops && writeIops.points.length > 0)
+        results.push({ ...writeIops, label: "Write IOPS" });
+      if (readLat && readLat.points.length > 0)
+        results.push({ ...readLat, label: "Read Latency", unit: "s" });
+      if (writeLat && writeLat.points.length > 0)
+        results.push({ ...writeLat, label: "Write Latency", unit: "s" });
+      if (netIn && netIn.points.length > 0)
+        results.push({ ...netIn, label: "Network In", unit: "bytes/s" });
+      if (netOut && netOut.points.length > 0)
+        results.push({ ...netOut, label: "Network Out", unit: "bytes/s" });
+      if (commitQueue && commitQueue.points.length > 0)
+        results.push({ ...commitQueue, label: "Commit Queue" });
       return results;
     }
     case "documentdb-cluster": {
-      // DocumentDB shares the DocDB namespace; dim is the cluster identifier name.
+      // Verified against
+      // https://docs.aws.amazon.com/documentdb/latest/developerguide/cloud_watch.html
+      // DBClusterIdentifier is the cluster name (not the ARN).
       const clusterId = String(f.clusterIdentifier ?? resource.externalId ?? "");
       if (!clusterId) return [];
       const dims = [{ Name: "DBClusterIdentifier", Value: clusterId }];
-      const [cpu, conns, bufHit, readLat] = await Promise.all([
+      const [
+        cpu,
+        conns,
+        bufHit,
+        freeableMem,
+        readLat,
+        writeLat,
+        replicaLag,
+        opQuery,
+        opInsert,
+        opUpdate,
+        opDelete,
+        netIn,
+        netOut,
+      ] = await Promise.all([
         fetchCw("AWS/DocDB", "CPUUtilization", dims).catch(() => null),
         fetchCw("AWS/DocDB", "DatabaseConnections", dims).catch(() => null),
         fetchCw("AWS/DocDB", "BufferCacheHitRatio", dims).catch(() => null),
+        fetchCw("AWS/DocDB", "FreeableMemory", dims).catch(() => null),
         fetchCw("AWS/DocDB", "ReadLatency", dims).catch(() => null),
+        fetchCw("AWS/DocDB", "WriteLatency", dims).catch(() => null),
+        fetchCw("AWS/DocDB", "DBClusterReplicaLagMaximum", dims).catch(() => null),
+        fetchCw("AWS/DocDB", "OpcountersQuery", dims, "Sum").catch(() => null),
+        fetchCw("AWS/DocDB", "OpcountersInsert", dims, "Sum").catch(() => null),
+        fetchCw("AWS/DocDB", "OpcountersUpdate", dims, "Sum").catch(() => null),
+        fetchCw("AWS/DocDB", "OpcountersDelete", dims, "Sum").catch(() => null),
+        fetchCw("AWS/DocDB", "NetworkReceiveThroughput", dims).catch(() => null),
+        fetchCw("AWS/DocDB", "NetworkTransmitThroughput", dims).catch(() => null),
       ]);
       const results: MetricSeries[] = [];
       if (cpu && cpu.points.length > 0)
@@ -706,28 +979,87 @@ export async function fetchMetricSeries(
       if (conns && conns.points.length > 0) results.push({ ...conns, label: "Connections" });
       if (bufHit && bufHit.points.length > 0)
         results.push({ ...bufHit, label: "Buffer Cache Hit Ratio", unit: "%" });
+      if (freeableMem && freeableMem.points.length > 0)
+        results.push({ ...freeableMem, label: "Freeable Memory", unit: "bytes" });
       if (readLat && readLat.points.length > 0)
         results.push({ ...readLat, label: "Read Latency", unit: "ms" });
+      if (writeLat && writeLat.points.length > 0)
+        results.push({ ...writeLat, label: "Write Latency", unit: "ms" });
+      if (replicaLag && replicaLag.points.length > 0)
+        results.push({ ...replicaLag, label: "Replica Lag (max)", unit: "ms" });
+      if (opQuery && opQuery.points.length > 0) results.push({ ...opQuery, label: "Queries" });
+      if (opInsert && opInsert.points.length > 0) results.push({ ...opInsert, label: "Inserts" });
+      if (opUpdate && opUpdate.points.length > 0) results.push({ ...opUpdate, label: "Updates" });
+      if (opDelete && opDelete.points.length > 0) results.push({ ...opDelete, label: "Deletes" });
+      if (netIn && netIn.points.length > 0)
+        results.push({ ...netIn, label: "Network In", unit: "bytes/s" });
+      if (netOut && netOut.points.length > 0)
+        results.push({ ...netOut, label: "Network Out", unit: "bytes/s" });
       return results;
     }
     case "neptune-cluster": {
+      // Verified against
+      // https://docs.aws.amazon.com/neptune/latest/userguide/cw-metrics.html
+      // Neptune emits metrics only when they have a non-zero value, so the
+      // `points.length > 0` guards effectively pick the engines (Gremlin /
+      // openCypher / SPARQL) that this cluster actually serves.
       const clusterId = String(f.clusterIdentifier ?? resource.externalId ?? "");
       if (!clusterId) return [];
       const dims = [{ Name: "DBClusterIdentifier", Value: clusterId }];
-      const [cpu, conns, bufHit, gremlinReq] = await Promise.all([
+      const [
+        cpu,
+        freeableMem,
+        bufHit,
+        pending,
+        totalReq,
+        gremlinReq,
+        cypherReq,
+        sparqlReq,
+        txCommit,
+        txRollback,
+        replicaLag,
+        http4xx,
+        http5xx,
+      ] = await Promise.all([
         fetchCw("AWS/Neptune", "CPUUtilization", dims).catch(() => null),
-        fetchCw("AWS/Neptune", "MainRequestQueuePendingRequests", dims).catch(() => null),
+        fetchCw("AWS/Neptune", "FreeableMemory", dims).catch(() => null),
         fetchCw("AWS/Neptune", "BufferCacheHitRatio", dims).catch(() => null),
-        fetchCw("AWS/Neptune", "GremlinRequestsPerSec", dims, "Sum").catch(() => null),
+        fetchCw("AWS/Neptune", "MainRequestQueuePendingRequests", dims, "Sum").catch(() => null),
+        fetchCw("AWS/Neptune", "TotalRequestsPerSec", dims).catch(() => null),
+        fetchCw("AWS/Neptune", "GremlinRequestsPerSec", dims).catch(() => null),
+        fetchCw("AWS/Neptune", "OpenCypherRequestsPerSec", dims).catch(() => null),
+        fetchCw("AWS/Neptune", "SparqlRequestsPerSec", dims).catch(() => null),
+        fetchCw("AWS/Neptune", "NumTxCommitted", dims, "Sum").catch(() => null),
+        fetchCw("AWS/Neptune", "NumTxRolledBack", dims, "Sum").catch(() => null),
+        fetchCw("AWS/Neptune", "ClusterReplicaLag", dims).catch(() => null),
+        fetchCw("AWS/Neptune", "Http4xx", dims, "Sum").catch(() => null),
+        fetchCw("AWS/Neptune", "Http5xx", dims, "Sum").catch(() => null),
       ]);
       const results: MetricSeries[] = [];
       if (cpu && cpu.points.length > 0)
         results.push({ ...cpu, label: "CPU Utilization", unit: "%" });
-      if (conns && conns.points.length > 0) results.push({ ...conns, label: "Pending Requests" });
+      if (freeableMem && freeableMem.points.length > 0)
+        results.push({ ...freeableMem, label: "Freeable Memory", unit: "bytes" });
       if (bufHit && bufHit.points.length > 0)
         results.push({ ...bufHit, label: "Buffer Cache Hit Ratio", unit: "%" });
+      if (pending && pending.points.length > 0)
+        results.push({ ...pending, label: "Pending Requests" });
+      if (totalReq && totalReq.points.length > 0)
+        results.push({ ...totalReq, label: "Total Requests/sec" });
       if (gremlinReq && gremlinReq.points.length > 0)
         results.push({ ...gremlinReq, label: "Gremlin Requests/sec" });
+      if (cypherReq && cypherReq.points.length > 0)
+        results.push({ ...cypherReq, label: "openCypher Requests/sec" });
+      if (sparqlReq && sparqlReq.points.length > 0)
+        results.push({ ...sparqlReq, label: "SPARQL Requests/sec" });
+      if (txCommit && txCommit.points.length > 0)
+        results.push({ ...txCommit, label: "Tx Committed" });
+      if (txRollback && txRollback.points.length > 0)
+        results.push({ ...txRollback, label: "Tx Rolled Back" });
+      if (replicaLag && replicaLag.points.length > 0)
+        results.push({ ...replicaLag, label: "Replica Lag", unit: "ms" });
+      if (http4xx && http4xx.points.length > 0) results.push({ ...http4xx, label: "4xx Errors" });
+      if (http5xx && http5xx.points.length > 0) results.push({ ...http5xx, label: "5xx Errors" });
       return results;
     }
     case "mq-broker": {
