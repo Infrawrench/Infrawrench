@@ -14,6 +14,7 @@ export const DNSZoneResourceType: ResourceTypeDefinition = {
   ],
   outputs: [{ key: "nameServers", label: "Name Servers", sensitive: false }],
   dashboardPinnable: true,
+  supportsMetrics: true,
   iconKey: "dns",
   supportsCreate: true,
 };

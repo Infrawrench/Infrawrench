@@ -16,6 +16,9 @@ export const NSGResourceType: ResourceTypeDefinition = {
   ],
   outputs: [{ key: "resourceId", label: "Resource ID", sensitive: false }],
   dashboardPinnable: true,
+  // NSG does not publish Azure Monitor numeric metrics — the reference page 404s
+  // (https://learn.microsoft.com/azure/azure-monitor/reference/supported-metrics/microsoft-network-networksecuritygroups-metrics).
+  // Flow-log analytics are the recommended observability surface for NSGs.
   iconKey: "firewall",
   supportsCreate: true,
   attachTargets: [{ pluginId: "azure", resourceTypeId: "azure-vm", verb: "Apply NSG" }],

@@ -599,6 +599,53 @@ const RESOURCE_TYPE_METRICS: Record<string, { provider: string; metrics: MetricC
       { metricName: "CurrentConnections", label: "Current Connections", aggregation: "Total" },
     ],
   },
+  "azure-firewall": {
+    provider: "Microsoft.Network/azureFirewalls",
+    // Verified against
+    // https://learn.microsoft.com/azure/azure-monitor/reference/supported-metrics/microsoft-network-azurefirewalls-metrics
+    metrics: [
+      { metricName: "ApplicationRuleHit", label: "Application Rule Hits", aggregation: "Total" },
+      { metricName: "NetworkRuleHit", label: "Network Rule Hits", aggregation: "Total" },
+      { metricName: "DataProcessed", label: "Data Processed", aggregation: "Total", unit: "bytes" },
+      {
+        metricName: "Throughput",
+        label: "Throughput",
+        aggregation: "Average",
+        unit: "bits/s",
+      },
+      {
+        metricName: "FirewallHealth",
+        label: "Firewall Health",
+        aggregation: "Average",
+        unit: "%",
+      },
+      {
+        metricName: "SNATPortUtilization",
+        label: "SNAT Port Utilization",
+        aggregation: "Maximum",
+        unit: "%",
+      },
+    ],
+  },
+  "azure-dns-zone": {
+    provider: "Microsoft.Network/dnsZones",
+    // Verified against
+    // https://learn.microsoft.com/azure/azure-monitor/reference/supported-metrics/microsoft-network-dnszones-metrics
+    metrics: [
+      { metricName: "QueryVolume", label: "Query Volume", aggregation: "Total" },
+      {
+        metricName: "RecordSetCount",
+        label: "Record Set Count",
+        aggregation: "Maximum",
+      },
+      {
+        metricName: "RecordSetCapacityUtilization",
+        label: "Record Set Capacity Used",
+        aggregation: "Maximum",
+        unit: "%",
+      },
+    ],
+  },
 };
 
 export function azureSupportsMetrics(resourceTypeId: string): boolean {

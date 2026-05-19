@@ -16,5 +16,6 @@ export const FirewallResourceType: ResourceTypeDefinition = {
   ],
   outputs: [{ key: "privateIp", label: "Private IP", sensitive: false }],
   dashboardPinnable: true,
+  supportsMetrics: true,
   iconKey: "firewall",
 };
