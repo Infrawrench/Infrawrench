@@ -21,5 +21,6 @@ export const SpectrumApplicationResourceType: ResourceTypeDefinition = {
   parentTypeId: "zone",
   dashboardPinnable: false,
   supportsCreate: true,
+  supportsMetrics: true,
   iconKey: "spectrum",
 };

@@ -1509,6 +1509,12 @@ export class CloudflareClient implements PluginClient {
     if (resourceTypeId === "r2-bucket") {
       return this.fetchR2MetricSeries(resourceId, timeRange);
     }
+    if (resourceTypeId === "pages-project") {
+      return this.fetchPagesMetricSeries(resourceId, timeRange);
+    }
+    if (resourceTypeId === "spectrum-application") {
+      return this.fetchSpectrumMetricSeries(resourceId, timeRange);
+    }
     if (resourceTypeId !== "zone") return [];
 
     const zoneId = resourceId.split(":").pop();
@@ -1893,6 +1899,204 @@ export class CloudflareClient implements PluginClient {
       });
     }
 
+    return series.filter((s) => s.points.some((p) => p.value > 0));
+  }
+
+  /**
+   * Pages project metrics via GraphQL `pagesFunctionInvocationsAdaptiveGroups`
+   * (account-scoped, filter by `scriptName` which equals the project name).
+   * Resource id: `${infrawrenchAccountId}:pages-project:${projectName}`.
+   */
+  private async fetchPagesMetricSeries(
+    resourceId: string,
+    timeRange?: { startMs: number; endMs: number },
+  ): Promise<MetricSeries[]> {
+    const projectName = resourceId.split(":").pop();
+    if (!projectName) return [];
+
+    let cfAccountId: string;
+    try {
+      cfAccountId = await this.api.getAccountId();
+    } catch {
+      return [];
+    }
+
+    const now = Date.now();
+    const from = new Date(timeRange?.startMs ?? now - 24 * 3_600_000).toISOString();
+    const to = new Date(timeRange?.endMs ?? now).toISOString();
+
+    const query = `query P($account: String!, $script: String!, $from: Time!, $to: Time!) {
+      viewer {
+        accounts(filter: { accountTag: $account }) {
+          pagesFunctionInvocationsAdaptiveGroups(
+            limit: 1000
+            filter: { scriptName: $script, datetime_geq: $from, datetime_lt: $to }
+            orderBy: [datetime_ASC]
+          ) {
+            dimensions { datetime }
+            sum { requests errors }
+            quantiles { cpuTimeP99 }
+          }
+        }
+      }
+    }`;
+
+    interface Group {
+      dimensions: { datetime: string };
+      sum: { requests?: number; errors?: number };
+      quantiles: { cpuTimeP99?: number };
+    }
+    interface Resp {
+      data?: {
+        viewer?: { accounts?: Array<{ pagesFunctionInvocationsAdaptiveGroups?: Group[] }> };
+      };
+    }
+
+    let groups: Group[] = [];
+    try {
+      const res = await fetch("https://api.cloudflare.com/client/v4/graphql", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.api.apiToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          query,
+          variables: { account: cfAccountId, script: projectName, from, to },
+        }),
+      });
+      if (!res.ok) return [];
+      const json = (await res.json()) as Resp;
+      groups = json.data?.viewer?.accounts?.[0]?.pagesFunctionInvocationsAdaptiveGroups ?? [];
+    } catch {
+      return [];
+    }
+    if (groups.length === 0) return [];
+
+    const tsOf = (g: Group): number => new Date(g.dimensions.datetime).getTime();
+    const series: MetricSeries[] = [
+      {
+        label: "Requests",
+        unit: "requests",
+        points: groups.map((g) => ({ timestamp: tsOf(g), value: Number(g.sum.requests ?? 0) })),
+      },
+      {
+        label: "Errors",
+        unit: "errors",
+        points: groups.map((g) => ({ timestamp: tsOf(g), value: Number(g.sum.errors ?? 0) })),
+      },
+      {
+        label: "CPU Time p99",
+        unit: "μs",
+        points: groups.map((g) => ({
+          timestamp: tsOf(g),
+          value: Number(g.quantiles.cpuTimeP99 ?? 0),
+        })),
+      },
+    ];
+    return series.filter((s) => s.points.some((p) => p.value > 0));
+  }
+
+  /**
+   * Spectrum application metrics via GraphQL
+   * `spectrumNetworkAnalyticsAdaptiveGroups` (zone-scoped, filter by `appID`).
+   * Resource id: `${infrawrenchAccountId}:spectrum-application:${zoneId}/${appId}`.
+   */
+  private async fetchSpectrumMetricSeries(
+    resourceId: string,
+    timeRange?: { startMs: number; endMs: number },
+  ): Promise<MetricSeries[]> {
+    // Last colon-segment is "${zoneId}/${appId}"
+    const lastSegment = resourceId.split(":").pop();
+    if (!lastSegment) return [];
+    const slashIdx = lastSegment.indexOf("/");
+    if (slashIdx === -1) return [];
+    const zoneId = lastSegment.slice(0, slashIdx);
+    const appId = lastSegment.slice(slashIdx + 1);
+    if (!zoneId || !appId) return [];
+
+    const now = Date.now();
+    const from = new Date(timeRange?.startMs ?? now - 24 * 3_600_000).toISOString();
+    const to = new Date(timeRange?.endMs ?? now).toISOString();
+
+    const query = `query S($zone: String!, $app: String!, $from: Time!, $to: Time!) {
+      viewer {
+        zones(filter: { zoneTag: $zone }) {
+          spectrumNetworkAnalyticsAdaptiveGroups(
+            limit: 1000
+            filter: { appID: $app, datetime_geq: $from, datetime_lt: $to }
+            orderBy: [datetime_ASC]
+          ) {
+            dimensions { datetime }
+            sum { events bytesIngress bytesEgress connections }
+          }
+        }
+      }
+    }`;
+
+    interface Group {
+      dimensions: { datetime: string };
+      sum: { events?: number; bytesIngress?: number; bytesEgress?: number; connections?: number };
+    }
+    interface Resp {
+      data?: {
+        viewer?: { zones?: Array<{ spectrumNetworkAnalyticsAdaptiveGroups?: Group[] }> };
+      };
+    }
+
+    let groups: Group[] = [];
+    try {
+      const res = await fetch("https://api.cloudflare.com/client/v4/graphql", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.api.apiToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          query,
+          variables: { zone: zoneId, app: appId, from, to },
+        }),
+      });
+      if (!res.ok) return [];
+      const json = (await res.json()) as Resp;
+      groups = json.data?.viewer?.zones?.[0]?.spectrumNetworkAnalyticsAdaptiveGroups ?? [];
+    } catch {
+      return [];
+    }
+    if (groups.length === 0) return [];
+
+    const tsOf = (g: Group): number => new Date(g.dimensions.datetime).getTime();
+    const series: MetricSeries[] = [
+      {
+        label: "Events",
+        unit: "events",
+        points: groups.map((g) => ({ timestamp: tsOf(g), value: Number(g.sum.events ?? 0) })),
+      },
+      {
+        label: "Bytes Ingress",
+        unit: "bytes",
+        points: groups.map((g) => ({
+          timestamp: tsOf(g),
+          value: Number(g.sum.bytesIngress ?? 0),
+        })),
+      },
+      {
+        label: "Bytes Egress",
+        unit: "bytes",
+        points: groups.map((g) => ({
+          timestamp: tsOf(g),
+          value: Number(g.sum.bytesEgress ?? 0),
+        })),
+      },
+      {
+        label: "Connections",
+        unit: "connections",
+        points: groups.map((g) => ({
+          timestamp: tsOf(g),
+          value: Number(g.sum.connections ?? 0),
+        })),
+      },
+    ];
     return series.filter((s) => s.points.some((p) => p.value > 0));
   }
 

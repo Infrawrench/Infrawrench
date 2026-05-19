@@ -20,6 +20,7 @@ export const PagesProjectResourceType: ResourceTypeDefinition = {
   ],
   dashboardPinnable: true,
   supportsCreate: true,
+  supportsMetrics: true,
   iconKey: "pages",
   secretExportTemplates: [
     {
