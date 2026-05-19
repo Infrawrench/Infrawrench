@@ -652,26 +652,46 @@ export async function fetchMetricSeries(
       return results;
     }
     case "cloudfront-distribution": {
-      // CloudFront metrics are only published in us-east-1. The dim is the
-      // distribution Id (externalId). If creds are signed for another region
-      // CloudWatch will still answer for global metrics.
+      // Verified against
+      // https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/programming-cloudwatch-metrics.html
+      // CloudFront metrics only publish in us-east-1 and require
+      // Region=Global. CacheHitRate / OriginLatency / 4xx-error / 5xx-error
+      // / 4xxErrorRate / 5xxErrorRate require "additional metrics" to be
+      // toggled on per distribution — they silently emit nothing otherwise,
+      // so listing them costs nothing.
       const distId = String(resource.externalId ?? "");
       if (!distId) return [];
       const dims = [
         { Name: "DistributionId", Value: distId },
         { Name: "Region", Value: "Global" },
       ];
-      const [reqs, bytesDown, errorRate] = await Promise.all([
-        fetchCw("AWS/CloudFront", "Requests", dims, "Sum").catch(() => null),
-        fetchCw("AWS/CloudFront", "BytesDownloaded", dims, "Sum").catch(() => null),
-        fetchCw("AWS/CloudFront", "TotalErrorRate", dims).catch(() => null),
-      ]);
+      const [reqs, bytesDown, bytesUp, totalErr, err4xx, err5xx, cacheHit, originLat] =
+        await Promise.all([
+          fetchCw("AWS/CloudFront", "Requests", dims, "Sum").catch(() => null),
+          fetchCw("AWS/CloudFront", "BytesDownloaded", dims, "Sum").catch(() => null),
+          fetchCw("AWS/CloudFront", "BytesUploaded", dims, "Sum").catch(() => null),
+          fetchCw("AWS/CloudFront", "TotalErrorRate", dims).catch(() => null),
+          fetchCw("AWS/CloudFront", "4xxErrorRate", dims).catch(() => null),
+          fetchCw("AWS/CloudFront", "5xxErrorRate", dims).catch(() => null),
+          fetchCw("AWS/CloudFront", "CacheHitRate", dims).catch(() => null),
+          fetchCw("AWS/CloudFront", "OriginLatency", dims).catch(() => null),
+        ]);
       const results: MetricSeries[] = [];
       if (reqs && reqs.points.length > 0) results.push({ ...reqs, label: "Requests" });
       if (bytesDown && bytesDown.points.length > 0)
         results.push({ ...bytesDown, label: "Bytes Downloaded", unit: "bytes" });
-      if (errorRate && errorRate.points.length > 0)
-        results.push({ ...errorRate, label: "Error Rate", unit: "%" });
+      if (bytesUp && bytesUp.points.length > 0)
+        results.push({ ...bytesUp, label: "Bytes Uploaded", unit: "bytes" });
+      if (totalErr && totalErr.points.length > 0)
+        results.push({ ...totalErr, label: "Total Error Rate", unit: "%" });
+      if (err4xx && err4xx.points.length > 0)
+        results.push({ ...err4xx, label: "4xx Error Rate", unit: "%" });
+      if (err5xx && err5xx.points.length > 0)
+        results.push({ ...err5xx, label: "5xx Error Rate", unit: "%" });
+      if (cacheHit && cacheHit.points.length > 0)
+        results.push({ ...cacheHit, label: "Cache Hit Rate", unit: "%" });
+      if (originLat && originLat.points.length > 0)
+        results.push({ ...originLat, label: "Origin Latency", unit: "ms" });
       return results;
     }
     case "api-gateway": {
@@ -705,16 +725,22 @@ export async function fetchMetricSeries(
       return results;
     }
     case "sns-topic": {
+      // Verified against
+      // https://docs.aws.amazon.com/sns/latest/dg/sns-monitoring-using-cloudwatch.html
       // SNS dimension is TopicName (last segment of ARN).
       const arn = String(resource.resolvedOutputs?.["topicArn"] ?? resource.externalId ?? "");
       const topicName = arn.split(":").pop() ?? "";
       if (!topicName) return [];
       const dims = [{ Name: "TopicName", Value: topicName }];
-      const [published, delivered, failed] = await Promise.all([
-        fetchCw("AWS/SNS", "NumberOfMessagesPublished", dims, "Sum").catch(() => null),
-        fetchCw("AWS/SNS", "NumberOfNotificationsDelivered", dims, "Sum").catch(() => null),
-        fetchCw("AWS/SNS", "NumberOfNotificationsFailed", dims, "Sum").catch(() => null),
-      ]);
+      const [published, delivered, failed, filteredOut, redrivenDlq, publishSize] =
+        await Promise.all([
+          fetchCw("AWS/SNS", "NumberOfMessagesPublished", dims, "Sum").catch(() => null),
+          fetchCw("AWS/SNS", "NumberOfNotificationsDelivered", dims, "Sum").catch(() => null),
+          fetchCw("AWS/SNS", "NumberOfNotificationsFailed", dims, "Sum").catch(() => null),
+          fetchCw("AWS/SNS", "NumberOfNotificationsFilteredOut", dims, "Sum").catch(() => null),
+          fetchCw("AWS/SNS", "NumberOfNotificationsRedrivenToDlq", dims, "Sum").catch(() => null),
+          fetchCw("AWS/SNS", "PublishSize", dims).catch(() => null),
+        ]);
       const results: MetricSeries[] = [];
       if (published && published.points.length > 0)
         results.push({ ...published, label: "Messages Published" });
@@ -722,25 +748,49 @@ export async function fetchMetricSeries(
         results.push({ ...delivered, label: "Notifications Delivered" });
       if (failed && failed.points.length > 0)
         results.push({ ...failed, label: "Notifications Failed" });
+      if (filteredOut && filteredOut.points.length > 0)
+        results.push({ ...filteredOut, label: "Filtered Out" });
+      if (redrivenDlq && redrivenDlq.points.length > 0)
+        results.push({ ...redrivenDlq, label: "Redriven to DLQ" });
+      if (publishSize && publishSize.points.length > 0)
+        results.push({ ...publishSize, label: "Publish Size", unit: "bytes" });
       return results;
     }
     case "kinesis-stream": {
+      // Verified against
+      // https://docs.aws.amazon.com/streams/latest/dev/monitoring-with-cloudwatch.html
+      // IteratorAgeMilliseconds is the docs-recommended #1 metric to watch
+      // for stream consumer health — alert above 50% of retention period.
       const streamName = String(f.streamName ?? resource.externalId ?? "");
       if (!streamName) return [];
       const dims = [{ Name: "StreamName", Value: streamName }];
-      const [incomingBytes, incomingRecords, getBytes, putBytes, writeThrottle, readThrottle] =
-        await Promise.all([
-          fetchCw("AWS/Kinesis", "IncomingBytes", dims, "Sum").catch(() => null),
-          fetchCw("AWS/Kinesis", "IncomingRecords", dims, "Sum").catch(() => null),
-          fetchCw("AWS/Kinesis", "GetRecords.Bytes", dims, "Sum").catch(() => null),
-          fetchCw("AWS/Kinesis", "PutRecord.Bytes", dims, "Sum").catch(() => null),
-          fetchCw("AWS/Kinesis", "WriteProvisionedThroughputExceeded", dims, "Sum").catch(
-            () => null,
-          ),
-          fetchCw("AWS/Kinesis", "ReadProvisionedThroughputExceeded", dims, "Sum").catch(
-            () => null,
-          ),
-        ]);
+      const [
+        incomingBytes,
+        incomingRecords,
+        getBytes,
+        getRecords,
+        putBytes,
+        putSuccess,
+        putRecordsSucc,
+        putRecordsFail,
+        iteratorAge,
+        writeThrottle,
+        readThrottle,
+      ] = await Promise.all([
+        fetchCw("AWS/Kinesis", "IncomingBytes", dims, "Sum").catch(() => null),
+        fetchCw("AWS/Kinesis", "IncomingRecords", dims, "Sum").catch(() => null),
+        fetchCw("AWS/Kinesis", "GetRecords.Bytes", dims, "Sum").catch(() => null),
+        fetchCw("AWS/Kinesis", "GetRecords.Records", dims, "Sum").catch(() => null),
+        fetchCw("AWS/Kinesis", "PutRecord.Bytes", dims, "Sum").catch(() => null),
+        fetchCw("AWS/Kinesis", "PutRecord.Success", dims).catch(() => null),
+        fetchCw("AWS/Kinesis", "PutRecords.SuccessfulRecords", dims, "Sum").catch(() => null),
+        fetchCw("AWS/Kinesis", "PutRecords.FailedRecords", dims, "Sum").catch(() => null),
+        fetchCw("AWS/Kinesis", "GetRecords.IteratorAgeMilliseconds", dims, "Maximum").catch(
+          () => null,
+        ),
+        fetchCw("AWS/Kinesis", "WriteProvisionedThroughputExceeded", dims, "Sum").catch(() => null),
+        fetchCw("AWS/Kinesis", "ReadProvisionedThroughputExceeded", dims, "Sum").catch(() => null),
+      ]);
       const results: MetricSeries[] = [];
       if (incomingBytes && incomingBytes.points.length > 0)
         results.push({ ...incomingBytes, label: "Incoming Bytes", unit: "bytes" });
@@ -748,8 +798,18 @@ export async function fetchMetricSeries(
         results.push({ ...incomingRecords, label: "Incoming Records" });
       if (getBytes && getBytes.points.length > 0)
         results.push({ ...getBytes, label: "GetRecords Bytes", unit: "bytes" });
+      if (getRecords && getRecords.points.length > 0)
+        results.push({ ...getRecords, label: "GetRecords (count)" });
       if (putBytes && putBytes.points.length > 0)
         results.push({ ...putBytes, label: "PutRecord Bytes", unit: "bytes" });
+      if (putSuccess && putSuccess.points.length > 0)
+        results.push({ ...putSuccess, label: "PutRecord Success Rate" });
+      if (putRecordsSucc && putRecordsSucc.points.length > 0)
+        results.push({ ...putRecordsSucc, label: "PutRecords Successful" });
+      if (putRecordsFail && putRecordsFail.points.length > 0)
+        results.push({ ...putRecordsFail, label: "PutRecords Failed" });
+      if (iteratorAge && iteratorAge.points.length > 0)
+        results.push({ ...iteratorAge, label: "Iterator Age", unit: "ms" });
       if (writeThrottle && writeThrottle.points.length > 0)
         results.push({ ...writeThrottle, label: "Write Throttles" });
       if (readThrottle && readThrottle.points.length > 0)
