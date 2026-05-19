@@ -625,23 +625,52 @@ export async function fetchMetricSeries(
       return results;
     }
     case "rds-cluster": {
+      // Verified against
+      // https://docs.aws.amazon.com/AmazonRDS/latest/AuroraUserGuide/Aurora.Monitoring.Metrics.html
+      // Aurora clusters expose extra metrics over non-Aurora RDS:
+      // BufferCacheHitRatio, CommitLatency, AuroraReplicaLag(/Maximum),
+      // DeadlockCount, VolumeBytesUsed (Aurora storage grows automatically;
+      // worth watching).
       const clusterId = String(
         f.clusterIdentifier ?? f.dbClusterIdentifier ?? resource.externalId ?? "",
       );
       if (!clusterId) return [];
       const dims = [{ Name: "DBClusterIdentifier", Value: clusterId }];
-      const [cpu, conns, readLat, writeLat, readIops, writeIops] = await Promise.all([
+      const [
+        cpu,
+        conns,
+        readLat,
+        writeLat,
+        readIops,
+        writeIops,
+        bufHit,
+        commitLat,
+        replicaLag,
+        replicaLagMax,
+        deadlocks,
+        volBytes,
+      ] = await Promise.all([
         fetchCw("AWS/RDS", "CPUUtilization", dims).catch(() => null),
         fetchCw("AWS/RDS", "DatabaseConnections", dims, "Sum").catch(() => null),
         fetchCw("AWS/RDS", "ReadLatency", dims).catch(() => null),
         fetchCw("AWS/RDS", "WriteLatency", dims).catch(() => null),
         fetchCw("AWS/RDS", "ReadIOPS", dims).catch(() => null),
         fetchCw("AWS/RDS", "WriteIOPS", dims).catch(() => null),
+        fetchCw("AWS/RDS", "BufferCacheHitRatio", dims).catch(() => null),
+        fetchCw("AWS/RDS", "CommitLatency", dims).catch(() => null),
+        fetchCw("AWS/RDS", "AuroraReplicaLag", dims).catch(() => null),
+        fetchCw("AWS/RDS", "AuroraReplicaLagMaximum", dims).catch(() => null),
+        fetchCw("AWS/RDS", "DeadlockCount", dims, "Sum").catch(() => null),
+        fetchCw("AWS/RDS", "VolumeBytesUsed", dims).catch(() => null),
       ]);
       const results: MetricSeries[] = [];
       if (cpu && cpu.points.length > 0)
         results.push({ ...cpu, label: "CPU Utilization", unit: "%" });
       if (conns && conns.points.length > 0) results.push({ ...conns, label: "Connections" });
+      if (bufHit && bufHit.points.length > 0)
+        results.push({ ...bufHit, label: "Buffer Cache Hit Ratio", unit: "%" });
+      if (commitLat && commitLat.points.length > 0)
+        results.push({ ...commitLat, label: "Commit Latency", unit: "ms" });
       if (readLat && readLat.points.length > 0)
         results.push({ ...readLat, label: "Read Latency", unit: "s" });
       if (writeLat && writeLat.points.length > 0)
@@ -649,6 +678,14 @@ export async function fetchMetricSeries(
       if (readIops && readIops.points.length > 0) results.push({ ...readIops, label: "Read IOPS" });
       if (writeIops && writeIops.points.length > 0)
         results.push({ ...writeIops, label: "Write IOPS" });
+      if (replicaLag && replicaLag.points.length > 0)
+        results.push({ ...replicaLag, label: "Replica Lag", unit: "ms" });
+      if (replicaLagMax && replicaLagMax.points.length > 0)
+        results.push({ ...replicaLagMax, label: "Replica Lag (max)", unit: "ms" });
+      if (deadlocks && deadlocks.points.length > 0)
+        results.push({ ...deadlocks, label: "Deadlocks" });
+      if (volBytes && volBytes.points.length > 0)
+        results.push({ ...volBytes, label: "Volume Size", unit: "bytes" });
       return results;
     }
     case "cloudfront-distribution": {

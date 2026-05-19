@@ -465,6 +465,55 @@ const RESOURCE_TYPE_METRICS: Record<string, { provider: string; metrics: MetricC
       },
     ],
   },
+  "azure-container-instance": {
+    provider: "Microsoft.ContainerInstance/containerGroups",
+    // Verified against
+    // https://learn.microsoft.com/azure/azure-monitor/reference/supported-metrics/microsoft-containerinstance-containergroups-metrics
+    // CpuUsage is in millicores (not %); MemoryUsage is in bytes.
+    metrics: [
+      { metricName: "CpuUsage", label: "CPU Usage", aggregation: "Average", unit: "millicores" },
+      { metricName: "MemoryUsage", label: "Memory Usage", aggregation: "Average", unit: "bytes" },
+      {
+        metricName: "NetworkBytesReceivedPerSecond",
+        label: "Network In",
+        aggregation: "Average",
+        unit: "bytes/s",
+      },
+      {
+        metricName: "NetworkBytesTransmittedPerSecond",
+        label: "Network Out",
+        aggregation: "Average",
+        unit: "bytes/s",
+      },
+    ],
+  },
+  "azure-log-analytics": {
+    provider: "Microsoft.OperationalInsights/workspaces",
+    // Verified against
+    // https://learn.microsoft.com/azure/azure-monitor/reference/supported-metrics/microsoft-operationalinsights-workspaces-metrics
+    // The useful SLI metrics for a workspace are ingestion volume/time and
+    // query failure rate. "Ingestion Volume" / "Ingestion Time" / "Query
+    // Count" / "Query Failure Count" / "AvailabilityRate_Query" — names
+    // with spaces must be passed verbatim.
+    metrics: [
+      { metricName: "Ingestion Volume", label: "Ingestion Volume", aggregation: "Count" },
+      {
+        metricName: "Ingestion Time",
+        label: "Ingestion Time",
+        aggregation: "Average",
+        unit: "s",
+      },
+      { metricName: "Query Count", label: "Queries", aggregation: "Count" },
+      { metricName: "Query Failure Count", label: "Query Failures", aggregation: "Count" },
+      {
+        metricName: "AvailabilityRate_Query",
+        label: "Query Availability",
+        aggregation: "Average",
+        unit: "%",
+      },
+      { metricName: "Heartbeat", label: "Heartbeats", aggregation: "Total" },
+    ],
+  },
   "azure-public-ip": {
     provider: "Microsoft.Network/publicIPAddresses",
     // Verified against

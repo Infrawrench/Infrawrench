@@ -21,6 +21,7 @@ export const LogAnalyticsWorkspaceResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   iconKey: "pipeline",
   supportsCreate: true,
+  supportsMetrics: true,
   secretExportTemplates: [
     {
       id: "log-analytics-connection",

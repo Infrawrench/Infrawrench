@@ -23,4 +23,5 @@ export const ContainerInstanceResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   iconKey: "container",
   supportsCreate: true,
+  supportsMetrics: true,
 };
