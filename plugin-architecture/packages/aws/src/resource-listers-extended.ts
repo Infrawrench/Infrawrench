@@ -1691,18 +1691,14 @@ export async function listRoute53HealthChecks(
         healthCheckId: id,
         type,
         ipAddress: String(config?.["IPAddress"] ?? ""),
-        port: config?.["Port"] !== undefined ? Number(config["Port"]) : undefined,
+        port: config?.["Port"] !== undefined ? Number(config["Port"]) : 0,
         resourcePath: String(config?.["ResourcePath"] ?? ""),
         fqdn: String(config?.["FullyQualifiedDomainName"] ?? ""),
         requestInterval:
-          config?.["RequestInterval"] !== undefined ? Number(config["RequestInterval"]) : undefined,
+          config?.["RequestInterval"] !== undefined ? Number(config["RequestInterval"]) : 0,
         failureThreshold:
-          config?.["FailureThreshold"] !== undefined
-            ? Number(config["FailureThreshold"])
-            : undefined,
-        disabled: hc["HealthCheckConfig"]
-          ? config?.["Disabled"] === true || config?.["Disabled"] === "true"
-          : false,
+          config?.["FailureThreshold"] !== undefined ? Number(config["FailureThreshold"]) : 0,
+        disabled: config?.["Disabled"] === true || config?.["Disabled"] === "true",
       },
       resolvedOutputs: {
         healthCheckId: id,
