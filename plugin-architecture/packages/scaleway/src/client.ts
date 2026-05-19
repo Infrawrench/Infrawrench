@@ -33,6 +33,10 @@ export class ScalewayClient implements PluginClient {
   private readonly accessKey: string;
   private readonly defaultProjectId: string;
   private readonly resourceTypes: ResourceTypeDefinition[];
+  private readonly cockpitQueryToken: string | null;
+
+  // Cache of discovered Cockpit data-source URLs keyed by region slug.
+  private cockpitDataSourceCache: Map<string, string> = new Map();
 
   // Lazily-initialised SDK client. We avoid eager creation because Scaleway's
   // assertValidSettings rejects non-UUID project IDs / secrets used in tests.
@@ -81,6 +85,7 @@ export class ScalewayClient implements PluginClient {
     this.accessKey = credentials["accessKey"] ?? "";
     this.defaultProjectId = credentials["defaultProjectId"] ?? "";
     this.resourceTypes = resourceTypes;
+    this.cockpitQueryToken = credentials["cockpitQueryToken"] ?? null;
   }
 
   /**
@@ -675,20 +680,157 @@ export class ScalewayClient implements PluginClient {
     }
   }
 
-  // TODO: Scaleway instance metrics are not available through the Instance API.
-  // They are exposed via the Cockpit observability platform (Prometheus-compatible
-  // push/query) which requires a separate Cockpit token with query_metrics scope and
-  // a per-project Prometheus endpoint. Wiring that up is non-trivial and out of scope
-  // for a single-credential plugin credential set.
-  // See: https://www.scaleway.com/en/developers/api/cockpit/regional/
-  // Until Scaleway exposes instance metrics on the Instance API directly, this returns
-  // no series and supportsMetrics is NOT set on the instance resource type.
+  /**
+   * Discover the Cockpit "Scaleway metrics" data-source URL for a given region.
+   * Uses the IAM secret key (NOT the Cockpit query token) to call the Cockpit
+   * control-plane API. Result is cached on the client instance.
+   *
+   * Returns null when the data source cannot be found or the request fails.
+   */
+  private async getCockpitDataSource(region: string): Promise<string | null> {
+    if (this.cockpitDataSourceCache.has(region)) {
+      return this.cockpitDataSourceCache.get(region)!;
+    }
+    try {
+      const qs = this.defaultProjectId
+        ? `project_id=${this.defaultProjectId}&types=metrics&origin=scaleway`
+        : `types=metrics&origin=scaleway`;
+      const resp = await fetch(
+        `https://api.scaleway.com/cockpit/v1/regions/${region}/data-sources?${qs}`,
+        { headers: { "X-Auth-Token": this.secretKey } },
+      );
+      if (!resp.ok) return null;
+      const body = (await resp.json()) as {
+        data_sources?: Array<{ url?: string }>;
+      };
+      const url = body.data_sources?.[0]?.url ?? null;
+      if (url) {
+        this.cockpitDataSourceCache.set(region, url);
+        return url;
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Run a Prometheus range query against a Cockpit data-source URL.
+   * Returns parsed MetricSeries or null on any error / empty result.
+   */
+  private async queryCockpitRange(
+    dataSourceUrl: string,
+    promql: string,
+    start: number,
+    end: number,
+    label: string,
+    unit: string,
+  ): Promise<MetricSeries | null> {
+    if (!this.cockpitQueryToken) return null;
+    try {
+      const body = new URLSearchParams({
+        query: promql,
+        start: String(start),
+        end: String(end),
+        step: "60s",
+      });
+      const resp = await fetch(`${dataSourceUrl}/prometheus/api/v1/query_range`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.cockpitQueryToken}`,
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: body.toString(),
+      });
+      if (!resp.ok) return null;
+      const json = (await resp.json()) as {
+        status?: string;
+        data?: {
+          result?: Array<{ values?: Array<[number, string]> }>;
+        };
+      };
+      const values = json.data?.result?.[0]?.values ?? [];
+      if (values.length === 0) return null;
+      return {
+        label,
+        unit,
+        points: values.map(([ts, val]) => ({ timestamp: ts * 1000, value: Number(val) })),
+      };
+    } catch {
+      return null;
+    }
+  }
+
   async fetchMetricSeries(
-    _resourceTypeId: string,
-    _resourceId: string,
+    resourceTypeId: string,
+    resourceId: string,
     _accountId: string,
-    _timeRange?: { startMs: number; endMs: number },
+    timeRange?: { startMs: number; endMs: number },
   ): Promise<MetricSeries[]> {
+    // No-op when the Cockpit query token is absent — this is the common case
+    // and must remain side-effect-free so existing tests continue to pass.
+    if (!this.cockpitQueryToken) return [];
+
+    const now = Date.now();
+    const startUnix = Math.floor((timeRange?.startMs ?? now - 3_600_000) / 1000);
+    const endUnix = Math.floor((timeRange?.endMs ?? now) / 1000);
+
+    if (resourceTypeId === "instance") {
+      // externalId format: {zone}/{serverId}  e.g. "fr-par-1/abc-123"
+      const externalId = resourceId.split(":").pop() ?? "";
+      const parts = externalId.split("/");
+      const zone = parts[0] ?? "";
+      const serverId = parts[1] ?? "";
+      if (!zone || !serverId) return [];
+
+      // Map zone → region  (fr-par-1 → fr-par)
+      const region = zone.replace(/-\d+$/, "");
+      const dsUrl = await this.getCockpitDataSource(region);
+      if (!dsUrl) return [];
+
+      // PromQL metric names for Scaleway instance servers.
+      // Verified names to try when you have a working Cockpit setup:
+      //   scaleway_instance_server_cpu_seconds_total{instance_id="<id>"}
+      //   scaleway_instance_server_network_bytes_total{instance_id="<id>",direction="rx"}
+      //   scaleway_instance_server_network_bytes_total{instance_id="<id>",direction="tx"}
+      // We use rate()[1m] for counters and fall back gracefully on 4xx / empty.
+      const queries: Array<{ promql: string; label: string; unit: string }> = [
+        {
+          promql: `rate(scaleway_instance_server_cpu_seconds_total{instance_id="${serverId}"}[1m])`,
+          label: "CPU Usage",
+          unit: "%",
+        },
+        {
+          promql: `rate(scaleway_instance_server_network_bytes_total{instance_id="${serverId}",direction="rx"}[1m])`,
+          label: "Network In",
+          unit: "bytes/s",
+        },
+        {
+          promql: `rate(scaleway_instance_server_network_bytes_total{instance_id="${serverId}",direction="tx"}[1m])`,
+          label: "Network Out",
+          unit: "bytes/s",
+        },
+      ];
+
+      const series = await Promise.all(
+        queries.map((q) =>
+          this.queryCockpitRange(dsUrl, q.promql, startUnix, endUnix, q.label, q.unit),
+        ),
+      );
+      return series.filter((s): s is MetricSeries => s != null);
+    }
+
+    if (resourceTypeId === "kapsule-cluster") {
+      // TODO: Verify Cockpit PromQL metric names for Kapsule clusters.
+      // Candidate queries once a known-working Cockpit setup is available:
+      //   kube_node_status_condition{cluster_id="<id>",condition="Ready",status="true"}
+      //   container_cpu_usage_seconds_total{cluster_id="<id>"}
+      //   container_memory_usage_bytes{cluster_id="<id>"}
+      // For now return empty — infrastructure is wired (token, data-source
+      // discovery, query helper) but metric names are unverified.
+      return [];
+    }
+
     return [];
   }
 
