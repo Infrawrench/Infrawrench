@@ -44,7 +44,6 @@ const manifest: PluginManifest = {
     {
       key: "cockpitQueryToken",
       label: "Cockpit Query Token (optional)",
-      required: false,
       description:
         "Optional Scaleway Cockpit token with the `query_metrics` scope. When set, the resource Metrics tab populates from Cockpit. Create one at console.scaleway.com under Observability → Tokens.",
       sensitive: true,

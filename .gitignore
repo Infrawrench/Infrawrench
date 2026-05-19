@@ -28,3 +28,6 @@ src-tauri/target
 .DS_Store
 Thumbs.db
 .reviews/
+
+# Claude Code agent worktrees
+.claude/worktrees/
