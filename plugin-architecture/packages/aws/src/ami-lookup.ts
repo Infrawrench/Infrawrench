@@ -74,8 +74,12 @@ function ssmPathFor(family: ImageFamily, arch: Arch): string | null {
       return `/aws/service/canonical/ubuntu/server/24.04/stable/current/${ubuntuArch}/hvm/ebs-gp3/ami-id`;
     }
     case "debian-12": {
+      // Debian publishes SSM Public Parameters keyed by codename, not version
+      // number. `bookworm` = 12, `bullseye` = 11. The numeric path returns
+      // nothing; verified via the Debian wiki Cloud/AmazonEC2Image/Bookworm
+      // and SSM parameter listings.
       const debianArch = arch === "x86_64" ? "amd64" : "arm64";
-      return `/aws/service/debian/release/12/latest/${debianArch}`;
+      return `/aws/service/debian/release/bookworm/latest/${debianArch}`;
     }
     case "rhel-9":
     case "sles-15":

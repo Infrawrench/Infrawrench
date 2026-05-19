@@ -3,7 +3,7 @@ import { Sha256 } from "@aws-crypto/sha256-js";
 import { HttpRequest } from "@smithy/protocol-http";
 import { SignatureV4 } from "@smithy/signature-v4";
 import { ensureArray, type AwsCredentials } from "./auth.js";
-import { ec2SshUsername } from "./ssh-username.js";
+import { ec2SshUsernameFromImageName } from "./ssh-username.js";
 
 export interface ListerContext {
   ec2<T>(action: string, params?: Record<string, string>): Promise<T>;
@@ -47,6 +47,41 @@ export async function listEC2Instances(
     (data["reservationSet"] as Record<string, unknown> | undefined)?.["item"],
   ) as Record<string, unknown>[];
 
+  // Batch-resolve AMI names so we can derive SSH usernames from vendor
+  // conventions. One DescribeImages call covers all distinct AMI IDs across
+  // the reservations rather than per-instance.
+  const imageIds = new Set<string>();
+  for (const reservation of reservations) {
+    const instances = ensureArray(
+      (reservation["instancesSet"] as Record<string, unknown> | undefined)?.["item"],
+    ) as Record<string, unknown>[];
+    for (const inst of instances) {
+      const imageId = String(inst["imageId"] ?? "");
+      if (imageId) imageIds.add(imageId);
+    }
+  }
+  const amiNameByImageId = new Map<string, string>();
+  if (imageIds.size > 0) {
+    try {
+      const params: Record<string, string> = {};
+      let i = 1;
+      for (const id of imageIds) {
+        params[`ImageId.${i}`] = id;
+        i++;
+      }
+      const imagesData = await ctx.ec2<Record<string, unknown>>("DescribeImages", params);
+      const imagesSet = imagesData["imagesSet"] as Record<string, unknown> | undefined;
+      for (const img of ensureArray(imagesSet?.["item"]) as Record<string, unknown>[]) {
+        const id = String(img["imageId"] ?? "");
+        const name = String(img["name"] ?? img["description"] ?? "");
+        if (id) amiNameByImageId.set(id, name);
+      }
+    } catch {
+      // DescribeImages permission missing or rate-limited — proceed without
+      // username resolution. The empty fallback path is harmless.
+    }
+  }
+
   const results: ResourceInstance[] = [];
   for (const reservation of reservations) {
     const instances = ensureArray(
@@ -88,7 +123,9 @@ export async function listEC2Instances(
           imageId: String(inst["imageId"] ?? ""),
           vpcId: String(inst["vpcId"] ?? ""),
           subnetId: String(inst["subnetId"] ?? ""),
-          sshUsername: ec2SshUsername(String(inst["imageId"] ?? "")),
+          sshUsername: ec2SshUsernameFromImageName(
+            amiNameByImageId.get(String(inst["imageId"] ?? "")) ?? "",
+          ),
         },
         resolvedOutputs: { publicIp, privateIp, publicDns },
         secretStates: [],

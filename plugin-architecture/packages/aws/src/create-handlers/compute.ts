@@ -1,7 +1,7 @@
 import type { CreateResourceConfig, ResourceInstance } from "@infrawrench/plugin-base";
 import { ensureArray, type AwsCredentials } from "../auth.js";
 import { fetchSigned } from "../signed-request.js";
-import { ec2SshUsername } from "../ssh-username.js";
+import { ec2SshUsername, ec2SshUsernameFromImageName } from "../ssh-username.js";
 import {
   FAMILY_SSH_USERNAME,
   instanceTypeArch,
@@ -827,9 +827,13 @@ export async function computeCreateResource(
         imageId: String(inst["imageId"] ?? ""),
         vpcId: String(inst["vpcId"] ?? ""),
         subnetId: String(inst["subnetId"] ?? ""),
+        // When the user picked a family from the image-picker we know the
+        // username for free; for a raw `ami-…` ID we'd need DescribeImages
+        // for the name to derive it, so we let it fall through to the
+        // host's default rather than spend an extra API call here.
         sshUsername: isImageFamily(imageField)
           ? FAMILY_SSH_USERNAME[imageField]
-          : ec2SshUsername(String(inst["imageId"] ?? "")),
+          : ec2SshUsername(imageField) || ec2SshUsernameFromImageName(imageField),
       },
       resolvedOutputs: {
         publicIp: "",
