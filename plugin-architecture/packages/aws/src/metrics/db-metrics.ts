@@ -49,11 +49,10 @@ export async function rdsInstanceMetrics(
   if (cpu && cpu.points.length > 0) results.push({ ...cpu, unit: "%" });
   if (conns && conns.points.length > 0) results.push({ ...conns, label: "Connections" });
   if (freeStorage && freeStorage.points.length > 0)
-    results.push({ ...freeStorage, label: "Free Storage", unit: " bytes" });
+    results.push({ ...freeStorage, label: "Free Storage", unit: "bytes" });
   if (freeableMem && freeableMem.points.length > 0)
-    results.push({ ...freeableMem, label: "Freeable Memory", unit: " bytes" });
-  if (swap && swap.points.length > 0)
-    results.push({ ...swap, label: "Swap Usage", unit: " bytes" });
+    results.push({ ...freeableMem, label: "Freeable Memory", unit: "bytes" });
+  if (swap && swap.points.length > 0) results.push({ ...swap, label: "Swap Usage", unit: "bytes" });
   if (readIops && readIops.points.length > 0) results.push({ ...readIops, label: "Read IOPS" });
   if (writeIops && writeIops.points.length > 0) results.push({ ...writeIops, label: "Write IOPS" });
   if (readLat && readLat.points.length > 0)
@@ -61,9 +60,9 @@ export async function rdsInstanceMetrics(
   if (writeLat && writeLat.points.length > 0)
     results.push({ ...writeLat, label: "Write Latency", unit: "s" });
   if (netIn && netIn.points.length > 0)
-    results.push({ ...netIn, label: "Network In", unit: " bytes/s" });
+    results.push({ ...netIn, label: "Network In", unit: "bytes/s" });
   if (netOut && netOut.points.length > 0)
-    results.push({ ...netOut, label: "Network Out", unit: " bytes/s" });
+    results.push({ ...netOut, label: "Network Out", unit: "bytes/s" });
   if (burstBal && burstBal.points.length > 0)
     results.push({ ...burstBal, label: "Burst Balance", unit: "%" });
   // ReplicaLag is only emitted on read replicas.

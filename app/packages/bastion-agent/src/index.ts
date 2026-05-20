@@ -213,6 +213,20 @@ class Connection {
     }
   }
 
+  close(): void {
+    if (this.closed) return;
+    if (this.heartbeat) clearInterval(this.heartbeat);
+    try {
+      this.ws.close();
+    } catch {
+      try {
+        this.ws.terminate();
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
   private handleClose(code: number, reason: string): void {
     this.closed = true;
     if (this.heartbeat) clearInterval(this.heartbeat);
@@ -233,7 +247,9 @@ async function main(): Promise<void> {
   const shutdown = (signal: string) => {
     stopping = true;
     log(`received ${signal}, shutting down`);
-    // The Connection's ws.close ultimately fires onClose; just exit after a brief grace.
+    // Ask the active connection to close so handleClose runs (destroying
+    // streams, clearing the heartbeat) before the forced exit fallback.
+    conn?.close();
     setTimeout(() => process.exit(0), 200);
   };
   process.on("SIGTERM", () => shutdown("SIGTERM"));

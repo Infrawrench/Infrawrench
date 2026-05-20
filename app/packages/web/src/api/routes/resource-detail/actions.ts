@@ -146,13 +146,17 @@ export function registerActionRoutes(app: Hono): void {
     if (!ctx.client.exportCredential) {
       return c.json({ error: "Plugin does not support credential export" }, 400);
     }
-    const result = await ctx.client.exportCredential(
-      resourceTypeId,
-      input.resourceId,
-      input.accountId,
-      input.formatId,
-    );
-    return c.json(result);
+    try {
+      const result = await ctx.client.exportCredential(
+        resourceTypeId,
+        input.resourceId,
+        input.accountId,
+        input.formatId,
+      );
+      return c.json(result);
+    } catch (e) {
+      return c.json({ error: e instanceof Error ? e.message : "Credential export failed" }, 400);
+    }
   });
 
   /** POST /api/resources/:pluginId/:typeId/peer-panes */

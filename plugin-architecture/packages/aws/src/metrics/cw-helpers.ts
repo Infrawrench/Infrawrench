@@ -37,7 +37,7 @@ export function makeMetricsContext(
   const now = Date.now();
   const start = timeRange?.startMs ?? now - 3600_000;
   const end = timeRange?.endMs ?? now;
-  const period = Math.max(60, Math.floor((end - start) / 60));
+  const period = Math.max(60, Math.floor((end - start) / 60_000));
 
   const fetchCw = async (
     namespace: string,

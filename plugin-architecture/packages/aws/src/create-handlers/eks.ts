@@ -33,7 +33,7 @@ function readSubnetInfo(items: Record<string, unknown>[]): SubnetInfo[] {
 async function discoverDefaultSubnets(rctx: AwsCreateContext): Promise<SubnetInfo[]> {
   const data = await rctx.ec2<Record<string, unknown>>("DescribeSubnets", {
     "Filter.1.Name": "default-for-az",
-    "Filter.1.Value": "true",
+    "Filter.1.Value.1": "true",
   });
   const set = data["subnetSet"] as Record<string, unknown> | undefined;
   const items = ensureArray(set?.["item"]) as Record<string, unknown>[];
@@ -43,7 +43,7 @@ async function discoverDefaultSubnets(rctx: AwsCreateContext): Promise<SubnetInf
   // Fallback: try the default VPC's subnets even if default-for-az isn't set
   const vpcData = await rctx.ec2<Record<string, unknown>>("DescribeVpcs", {
     "Filter.1.Name": "is-default",
-    "Filter.1.Value": "true",
+    "Filter.1.Value.1": "true",
   });
   const vpcSet = vpcData["vpcSet"] as Record<string, unknown> | undefined;
   const vpcs = ensureArray(vpcSet?.["item"]) as Record<string, unknown>[];
@@ -51,7 +51,7 @@ async function discoverDefaultSubnets(rctx: AwsCreateContext): Promise<SubnetInf
   if (!defaultVpcId) return subnets;
   const subnetData = await rctx.ec2<Record<string, unknown>>("DescribeSubnets", {
     "Filter.1.Name": "vpc-id",
-    "Filter.1.Value": defaultVpcId,
+    "Filter.1.Value.1": defaultVpcId,
   });
   const subnetSet = subnetData["subnetSet"] as Record<string, unknown> | undefined;
   return readSubnetInfo(ensureArray(subnetSet?.["item"]) as Record<string, unknown>[]);
