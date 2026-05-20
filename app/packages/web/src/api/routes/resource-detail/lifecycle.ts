@@ -205,6 +205,7 @@ export function registerLifecycleRoutes(app: Hono): void {
     const input = await c.req.json<{
       sources: Array<{ pluginId: string; resourceTypeId: string; outputKey: string }>;
       accountId: string;
+      regionHint?: string;
     }>();
 
     const results: Array<{
@@ -222,7 +223,11 @@ export function registerLifecycleRoutes(app: Hono): void {
         const ctx = await getClientForAccount(input.accountId, organizationId);
         if (!ctx || ctx.plugin.manifest.id !== source.pluginId) continue;
 
-        const resources = await ctx.client.listResources(source.resourceTypeId, input.accountId);
+        const resources = await ctx.client.listResources(
+          source.resourceTypeId,
+          input.accountId,
+          input.regionHint ? { regionHint: input.regionHint } : undefined,
+        );
         for (const resource of resources) {
           try {
             // Prefer the value the lister already populated — avoids an N+1
@@ -299,6 +304,7 @@ export function registerLifecycleRoutes(app: Hono): void {
       fieldKey: string;
       actionId: string;
       fields: Record<string, string>;
+      actionFields?: Record<string, string>;
       pluginId?: string;
       parentResourceId?: string;
     }>();
@@ -322,6 +328,7 @@ export function registerLifecycleRoutes(app: Hono): void {
       input.actionId,
       input.accountId,
       input.fields,
+      input.actionFields,
     );
     return c.json(result);
   });

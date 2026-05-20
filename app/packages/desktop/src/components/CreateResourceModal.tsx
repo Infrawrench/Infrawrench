@@ -171,12 +171,17 @@ export function CreateResourceModal({
       loadResources: async (
         sources: AssociationSource[],
         acctId: string,
+        opts?: { regionHint?: string },
       ): Promise<ResourcePickerOption[]> => {
         const results: ResourcePickerOption[] = [];
         for (const source of sources) {
           try {
             const client = await getLocalClient(acctId, source.pluginId);
-            const resources = await client.listResources(source.resourceTypeId, acctId);
+            const resources = await client.listResources(
+              source.resourceTypeId,
+              acctId,
+              opts?.regionHint ? { regionHint: opts.regionHint } : undefined,
+            );
             for (const resource of resources) {
               try {
                 const outputValue = client.resolveOutput
@@ -241,6 +246,7 @@ export function CreateResourceModal({
         fieldKey: string,
         actionId: string,
         fields: Record<string, string>,
+        actionFields?: Record<string, string>,
       ) => {
         const client =
           clientRef.current ??
@@ -248,7 +254,14 @@ export function CreateResourceModal({
         if (!client.executeFieldAction) {
           throw new Error("Plugin does not support field actions");
         }
-        return client.executeFieldAction(resourceType.id, fieldKey, actionId, accountId, fields);
+        return client.executeFieldAction(
+          resourceType.id,
+          fieldKey,
+          actionId,
+          accountId,
+          fields,
+          actionFields,
+        );
       },
     };
   }, [
@@ -280,12 +293,16 @@ export function CreateResourceModal({
   }, [callbacks]);
 
   const loadResources = useCallback(
-    (sources: AssociationSource[], acctId: string): Promise<ResourcePickerOption[]> => {
+    (
+      sources: AssociationSource[],
+      acctId: string,
+      opts?: { regionHint?: string },
+    ): Promise<ResourcePickerOption[]> => {
       if (activeCloudOrgId) {
-        return loadCloudPickerResources(activeCloudOrgId, sources, acctId);
+        return loadCloudPickerResources(activeCloudOrgId, sources, acctId, opts);
       }
       return callbacksRef.current.loadResources
-        ? callbacksRef.current.loadResources(sources, acctId)
+        ? callbacksRef.current.loadResources(sources, acctId, opts)
         : Promise.resolve([]);
     },
     [activeCloudOrgId],
@@ -307,11 +324,13 @@ export function CreateResourceModal({
           field={f}
           value={value}
           onChange={onChange}
+          formValues={form.fields}
           resourcePickerProps={resourcePickerProps}
           fieldActionProps={{
             runAction: form.runFieldAction,
             runningByKey: form.fieldActionRunning,
             errorByKey: form.fieldActionError,
+            refreshKeyByKey: form.fieldRefreshKey,
           }}
         />
       )}

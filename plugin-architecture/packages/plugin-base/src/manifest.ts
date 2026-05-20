@@ -254,8 +254,21 @@ export interface PeerPaneContext {
 }
 
 export interface PluginClient {
-  /** List all instances of a resource type for an account */
-  listResources(typeId: string, accountId: string): Promise<ResourceInstance[]>;
+  /**
+   * List all instances of a resource type for an account.
+   *
+   * `opts.regionHint` is a non-binding scope: the host passes it when it knows
+   * the caller only cares about one region (e.g. a create-form resource-picker
+   * after the user has selected a region). Plugins that fan out across regions
+   * should restrict the fan-out to that one region; others can ignore it.
+   * Results from outside the hinted region are still acceptable — the host
+   * filters at the picker layer when it needs strict scoping.
+   */
+  listResources(
+    typeId: string,
+    accountId: string,
+    opts?: { regionHint?: string },
+  ): Promise<ResourceInstance[]>;
   /** Fetch a single resource's current state */
   getResource(typeId: string, resourceId: string, accountId: string): Promise<ResourceInstance>;
   /** Resolve an output value — called by the host's SecretResolver */
@@ -347,6 +360,13 @@ export interface PluginClient {
     actionId: string,
     accountId: string,
     fields: Record<string, string>,
+    /**
+     * Values from the action's own inline form (declared via
+     * `FieldAction.formFields`). Kept separate from the main create-form
+     * `fields` so the two namespaces can't collide. Empty/undefined when the
+     * action has no form panel.
+     */
+    actionFields?: Record<string, string>,
   ): Promise<FieldActionResult>;
   /** Permanently delete a resource. The host is responsible for confirming with the user first. */
   deleteResource?(typeId: string, resourceId: string, accountId: string): Promise<void>;

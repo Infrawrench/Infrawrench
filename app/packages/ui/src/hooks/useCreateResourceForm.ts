@@ -25,6 +25,7 @@ export interface CreateResourceCallbacks {
     fieldKey: string,
     actionId: string,
     fields: Record<string, string>,
+    actionFields?: Record<string, string>,
   ) => Promise<{ value: string; option?: { id: string; label: string } }>;
 }
 
@@ -45,8 +46,22 @@ export interface CreateResourceFormState {
   fieldActionRunning: Record<string, boolean>;
   /** Most-recent error from a failed action, keyed by field key. */
   fieldActionError: Record<string, string | null>;
-  /** Run a field-level action and apply its result to the form state. */
-  runFieldAction: (fieldKey: string, actionId: string) => Promise<void>;
+  /**
+   * Per-field counter incremented on each successful field action. Components
+   * that fetch field options (e.g. the resource picker) can include this as a
+   * dependency to refetch after an inline-create action mints a new resource.
+   */
+  fieldRefreshKey: Record<string, number>;
+  /**
+   * Run a field-level action and apply its result to the form state.
+   * `actionFields` carries values from the action's inline form (when the
+   * action declares `formFields`); omit for plain one-click actions.
+   */
+  runFieldAction: (
+    fieldKey: string,
+    actionId: string,
+    actionFields?: Record<string, string>,
+  ) => Promise<void>;
 }
 
 export function useCreateResourceForm(
@@ -324,15 +339,20 @@ export function useCreateResourceForm(
 
   const [fieldActionRunning, setFieldActionRunning] = useState<Record<string, boolean>>({});
   const [fieldActionError, setFieldActionError] = useState<Record<string, string | null>>({});
+  // Per-field counter bumped on each successful action. The resource-picker
+  // reads this to know it should re-fetch after a "+ Create new …" inline
+  // action mints a new resource, so the newly-minted resource shows up as
+  // selected instead of vanishing into the not-yet-listed pool.
+  const [fieldRefreshKey, setFieldRefreshKey] = useState<Record<string, number>>({});
 
   const runFieldAction = useCallback(
-    async (fieldKey: string, actionId: string) => {
+    async (fieldKey: string, actionId: string, actionFields?: Record<string, string>) => {
       const exec = callbacksRef.current.executeFieldAction;
       if (!exec) return;
       setFieldActionRunning((prev) => ({ ...prev, [fieldKey]: true }));
       setFieldActionError((prev) => ({ ...prev, [fieldKey]: null }));
       try {
-        const result = await exec(fieldKey, actionId, fields);
+        const result = await exec(fieldKey, actionId, fields, actionFields);
         // If the action returned a synthetic option, splice it into the
         // field's options list so the new value can render in the select.
         if (result.option) {
@@ -348,6 +368,7 @@ export function useCreateResourceForm(
           });
         }
         setFields((prev) => ({ ...prev, [fieldKey]: result.value }));
+        setFieldRefreshKey((prev) => ({ ...prev, [fieldKey]: (prev[fieldKey] ?? 0) + 1 }));
       } catch (e) {
         setFieldActionError((prev) => ({ ...prev, [fieldKey]: formatErrorMessage(e) }));
       } finally {
@@ -392,5 +413,6 @@ export function useCreateResourceForm(
     fieldActionRunning,
     fieldActionError,
     runFieldAction,
+    fieldRefreshKey,
   };
 }

@@ -258,6 +258,7 @@ export async function computeGetCreateConfig(
           required: false,
           description: "VPC network to attach the instance to",
           associationSources: [{ pluginId: "aws", resourceTypeId: "vpc", outputKey: "vpcId" }],
+          scopeFromFieldKey: "region",
         },
         {
           key: "securityGroup",
@@ -267,6 +268,68 @@ export async function computeGetCreateConfig(
           description: "Apply an existing security group to the instance",
           associationSources: [
             { pluginId: "aws", resourceTypeId: "security-group", outputKey: "groupId" },
+          ],
+          scopeFromFieldKey: "region",
+          actions: [
+            {
+              id: "create-sg",
+              label: "+ Create new firewall",
+              description:
+                "Create a security group in the selected region, open the chosen ports, and attach it to this instance.",
+              submitLabel: "Create firewall",
+              formFields: [
+                {
+                  key: "sgName",
+                  label: "Name",
+                  kind: "text",
+                  required: true,
+                  placeholder: "e.g. web-server-fw",
+                  description: "Shown in the AWS console; max 255 chars.",
+                },
+                {
+                  key: "sgAllowSsh",
+                  label: "Allow SSH (TCP/22)",
+                  kind: "select",
+                  required: false,
+                  defaultValue: "true",
+                  options: [
+                    { id: "true", label: "Yes" },
+                    { id: "false", label: "No" },
+                  ],
+                },
+                {
+                  key: "sgAllowHttp",
+                  label: "Allow HTTP (TCP/80)",
+                  kind: "select",
+                  required: false,
+                  defaultValue: "false",
+                  options: [
+                    { id: "true", label: "Yes" },
+                    { id: "false", label: "No" },
+                  ],
+                },
+                {
+                  key: "sgAllowHttps",
+                  label: "Allow HTTPS (TCP/443)",
+                  kind: "select",
+                  required: false,
+                  defaultValue: "false",
+                  options: [
+                    { id: "true", label: "Yes" },
+                    { id: "false", label: "No" },
+                  ],
+                },
+                {
+                  key: "sgSourceCidr",
+                  label: "Source CIDR",
+                  kind: "text",
+                  required: false,
+                  defaultValue: "0.0.0.0/0",
+                  description:
+                    "IP range allowed to reach the open ports. 0.0.0.0/0 means anywhere on the internet — restrict to your office/VPN range for production.",
+                },
+              ],
+            },
           ],
         },
       ],

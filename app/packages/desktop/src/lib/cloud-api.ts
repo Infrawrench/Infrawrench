@@ -691,6 +691,12 @@ export async function loadCloudPickerResources(
   orgId: string,
   sources: AssociationSource[],
   accountId: string,
+  opts?: { regionHint?: string },
 ): Promise<ResourcePickerOption[]> {
-  return invoke("cloud_load_picker_resources", { orgId, sources, accountId });
+  return invoke("cloud_load_picker_resources", {
+    orgId,
+    sources,
+    accountId,
+    ...(opts?.regionHint ? { regionHint: opts.regionHint } : {}),
+  });
 }

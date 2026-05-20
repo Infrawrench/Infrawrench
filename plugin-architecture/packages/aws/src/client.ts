@@ -334,13 +334,26 @@ export class AWSClient implements PluginClient {
     "backup-vault": listBackupVaults,
   };
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
+  async listResources(
+    typeId: string,
+    accountId: string,
+    opts?: { regionHint?: string },
+  ): Promise<ResourceInstance[]> {
     const lister = AWSClient.LISTERS[typeId];
     if (!lister) throw new Error(`AWS plugin: unknown resource type "${typeId}"`);
 
     // Global resources have no concept of region — list them once.
     if (AWSClient.GLOBAL_TYPES.has(typeId)) {
       return lister(this.ctxFor(this.creds.region), accountId);
+    }
+
+    // When the host knows the caller only cares about one region (e.g. the
+    // create-form resource picker after the user has selected a region), skip
+    // the fan-out entirely. Spinning up DescribeVpcs/DescribeSecurityGroups in
+    // 30 regions to populate a picker for a single-region resource is the #1
+    // cause of "Loading resources..." spinning forever.
+    if (opts?.regionHint) {
+      return lister(this.ctxFor(opts.regionHint), accountId);
     }
 
     // Regional resources fan out across every enabled region. We process the
@@ -536,9 +549,17 @@ export class AWSClient implements PluginClient {
     fieldKey: string,
     actionId: string,
     _accountId: string,
-    _fields: Record<string, string>,
+    fields: Record<string, string>,
+    actionFields?: Record<string, string>,
   ): Promise<{ value: string; option?: { id: string; label: string } }> {
-    return executeFieldActionImpl(this.creds, typeId, fieldKey, actionId);
+    return executeFieldActionImpl(
+      this.creds,
+      typeId,
+      fieldKey,
+      actionId,
+      fields,
+      actionFields ?? {},
+    );
   }
 
   async deleteResource(typeId: string, resourceId: string, accountId: string): Promise<void> {

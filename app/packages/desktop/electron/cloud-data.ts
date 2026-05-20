@@ -391,15 +391,17 @@ ipcMain.handle(
       orgId,
       sources,
       accountId,
+      regionHint,
     }: {
       orgId: string;
       sources: Array<{ pluginId: string; resourceTypeId: string; outputKey: string }>;
       accountId: string;
+      regionHint?: string;
     },
   ) => {
     return cloudFetch(orgId, "/resources/picker-resources", {
       method: "POST",
-      body: JSON.stringify({ sources, accountId }),
+      body: JSON.stringify({ sources, accountId, ...(regionHint ? { regionHint } : {}) }),
     });
   },
 );

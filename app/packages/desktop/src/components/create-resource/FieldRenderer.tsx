@@ -17,12 +17,14 @@ export function FieldRenderer({
   onChange,
   resourcePickerProps,
   fieldActionProps,
+  formValues,
 }: {
   field: CreateFieldConfig;
   value: string;
   onChange: (v: string) => void;
   resourcePickerProps?: ResourcePickerCallbacks;
   fieldActionProps?: FieldActionCallbacks;
+  formValues?: Record<string, string>;
 }) {
   const [systemKeys, setSystemKeys] = useState<SystemSshKey[]>([]);
   const [cloudAuthed, setCloudAuthed] = useState(false);
@@ -129,6 +131,7 @@ export function FieldRenderer({
       }}
       {...(resourcePickerProps ? { resourcePickerProps } : {})}
       {...(fieldActionProps ? { fieldActionProps } : {})}
+      {...(formValues ? { formValues } : {})}
     />
   );
 }

@@ -230,6 +230,12 @@ const PickerResourcesRequest = strict({
     strict({ pluginId: z.string(), resourceTypeId: z.string(), outputKey: z.string() }),
   ),
   accountId: Uuid,
+  /**
+   * Optional regional scope. When set, plugins that fan out across regions
+   * (e.g. AWS) restrict the listing to this region. Used by create forms to
+   * avoid loading resources from every region for a region-locked field.
+   */
+  regionHint: z.string().optional(),
 }).openapi("PickerResourcesRequest");
 
 const PickerResource = strict({
@@ -265,6 +271,12 @@ const FieldActionRequest = strict({
   fieldKey: z.string(),
   actionId: z.string(),
   fields: z.record(z.string()),
+  /**
+   * Values from the action's inline mini-form (declared via
+   * `FieldAction.formFields`). Kept separate from `fields` so the action's
+   * own field keys can't collide with outer create-form keys.
+   */
+  actionFields: z.record(z.string()).optional(),
   pluginId: z.string().optional(),
   parentResourceId: ResourceId.optional(),
 }).openapi("FieldActionRequest");

@@ -52,10 +52,11 @@ export function CreateResourceModal({
   );
 
   const loadResources = useCallback(
-    (sources: AssociationSource[], acctId: string) =>
+    (sources: AssociationSource[], acctId: string, opts?: { regionHint?: string }) =>
       apiPost<ResourcePickerOption[]>(`/api/org/${orgId}/resources/picker-resources`, {
         sources,
         accountId: acctId,
+        ...(opts?.regionHint ? { regionHint: opts.regionHint } : {}),
       }),
     [orgId],
   );
@@ -102,7 +103,12 @@ export function CreateResourceModal({
         );
         onCreated(created);
       },
-      executeFieldAction: (fieldKey: string, actionId: string, fields: Record<string, string>) =>
+      executeFieldAction: (
+        fieldKey: string,
+        actionId: string,
+        fields: Record<string, string>,
+        actionFields?: Record<string, string>,
+      ) =>
         apiPost<{ value: string; option?: { id: string; label: string } }>(
           `/api/org/${orgId}/resources/field-action`,
           {
@@ -112,6 +118,7 @@ export function CreateResourceModal({
             fieldKey,
             actionId,
             fields,
+            ...(actionFields ? { actionFields } : {}),
             ...(parentResourceId ? { parentResourceId } : {}),
           },
         ),
@@ -132,6 +139,7 @@ export function CreateResourceModal({
           field={f}
           value={value}
           onChange={onChange}
+          formValues={form.fields}
           sshKeyProps={{
             loadKeys: loadSshKeys,
             generateKey: generateSshKey,
@@ -146,6 +154,7 @@ export function CreateResourceModal({
             runAction: form.runFieldAction,
             runningByKey: form.fieldActionRunning,
             errorByKey: form.fieldActionError,
+            refreshKeyByKey: form.fieldRefreshKey,
           }}
         />
       )}

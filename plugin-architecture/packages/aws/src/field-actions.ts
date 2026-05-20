@@ -12,14 +12,23 @@
  */
 
 import type { AwsCredentials } from "./auth.js";
+import { ensureArray } from "./auth.js";
+import { ec2Call } from "./client-transport.js";
 import { generateServiceRole } from "./iam-role-generator.js";
 
 interface FieldActionEntry {
   /** Action id surfaced in `CreateFieldConfig.actions`. */
   actionId: string;
-  /** Build the role for the given resource type. */
+  /**
+   * Mint the resource. `fields` is the outer create form's current values
+   * (region, instance name, …); `actionFields` is the action's own inline
+   * mini-form values (declared via `FieldAction.formFields`). Most existing
+   * entries ignore both — they only mint home-region IAM roles.
+   */
   generate(
     creds: AwsCredentials,
+    fields: Record<string, string>,
+    actionFields: Record<string, string>,
   ): Promise<{ value: string; option?: { id: string; label: string } }>;
 }
 
@@ -164,6 +173,79 @@ const FIELD_ACTIONS: Record<string, FieldActionEntry[]> = {
       },
     },
   ],
+  "ec2-instance:securityGroup": [
+    {
+      actionId: "create-sg",
+      generate: async (creds, fields, actionFields) => {
+        const region = fields["region"] || creds.region;
+        const rcreds: AwsCredentials = { ...creds, region };
+        const name = (actionFields["sgName"] ?? "").trim() || `infrawrench-sg-${Date.now()}`;
+        const description =
+          (actionFields["sgDescription"] ?? "").trim() || "Created by Infrawrench";
+        const cidr = (actionFields["sgSourceCidr"] ?? "").trim() || "0.0.0.0/0";
+
+        // SGs live in a VPC. Prefer the VPC the user picked above; otherwise
+        // fall back to the region's default VPC. The picker stores `vpcId`
+        // as the field value (see ec2-instance schema).
+        let vpcId = (fields["network"] ?? "").trim();
+        if (!vpcId) {
+          const vpcs = await ec2Call<Record<string, unknown>>(rcreds, "DescribeVpcs", {
+            "Filter.1.Name": "is-default",
+            "Filter.1.Value": "true",
+          });
+          const vpcSet = vpcs["vpcSet"] as Record<string, unknown> | undefined;
+          const items = ensureArray(vpcSet?.["item"]) as Record<string, unknown>[];
+          vpcId = String(items[0]?.["vpcId"] ?? "");
+          if (!vpcId) {
+            throw new Error(
+              "No VPC selected and no default VPC found in this region. Pick a VPC above first, or create one in the AWS console.",
+            );
+          }
+        }
+
+        const created = await ec2Call<Record<string, unknown>>(rcreds, "CreateSecurityGroup", {
+          GroupName: name,
+          GroupDescription: description,
+          VpcId: vpcId,
+        });
+        const groupId = String(created["groupId"] ?? "");
+        if (!groupId) throw new Error("CreateSecurityGroup returned no groupId");
+
+        // Authorize one ingress rule per enabled port. AuthorizeSecurityGroupIngress
+        // accepts arrays via `IpPermissions.N.…`; here we batch all enabled
+        // ports into a single call so partial failures don't leave the group
+        // half-configured.
+        const ports: Array<{ from: number; to: number; label: string }> = [];
+        if (actionFields["sgAllowSsh"] === "true") {
+          ports.push({ from: 22, to: 22, label: "SSH" });
+        }
+        if (actionFields["sgAllowHttp"] === "true") {
+          ports.push({ from: 80, to: 80, label: "HTTP" });
+        }
+        if (actionFields["sgAllowHttps"] === "true") {
+          ports.push({ from: 443, to: 443, label: "HTTPS" });
+        }
+        if (ports.length > 0) {
+          const params: Record<string, string> = { GroupId: groupId };
+          ports.forEach((p, i) => {
+            const n = i + 1;
+            params[`IpPermissions.${n}.IpProtocol`] = "tcp";
+            params[`IpPermissions.${n}.FromPort`] = String(p.from);
+            params[`IpPermissions.${n}.ToPort`] = String(p.to);
+            params[`IpPermissions.${n}.IpRanges.1.CidrIp`] = cidr;
+            params[`IpPermissions.${n}.IpRanges.1.Description`] =
+              `${p.label} from ${cidr} (Infrawrench)`;
+          });
+          await ec2Call(rcreds, "AuthorizeSecurityGroupIngress", params);
+        }
+
+        return {
+          value: groupId,
+          option: { id: groupId, label: `${name} (${groupId})` },
+        };
+      },
+    },
+  ],
 };
 
 export async function executeFieldAction(
@@ -171,6 +253,8 @@ export async function executeFieldAction(
   typeId: string,
   fieldKey: string,
   actionId: string,
+  fields: Record<string, string>,
+  actionFields: Record<string, string>,
 ): Promise<{ value: string; option?: { id: string; label: string } }> {
   const entries = FIELD_ACTIONS[`${typeId}:${fieldKey}`] ?? [];
   const entry = entries.find((e) => e.actionId === actionId);
@@ -179,5 +263,5 @@ export async function executeFieldAction(
       `AWS plugin: no field action registered for ${typeId}.${fieldKey} / ${actionId}`,
     );
   }
-  return entry.generate(creds);
+  return entry.generate(creds, fields, actionFields);
 }

@@ -134,6 +134,14 @@ export interface CreateFieldConfig {
   disks?: DiskOption[];
   /** `resource-picker` — resources to pick from (filtered by association sources from the resource type definition) */
   associationSources?: AssociationSource[];
+  /**
+   * `resource-picker` — when set, the picker reads the current form value of
+   * this field and passes it to the host as a regional scope hint. Used to
+   * avoid the picker fanning out across every region for regional resources
+   * (e.g. AWS VPCs/security groups) when the user has already picked a region
+   * in the same form.
+   */
+  scopeFromFieldKey?: string;
   /** `policy-picker` — policies/roles the user can attach. Value is JSON array of `id`s. */
   policies?: PolicyOption[];
   /**
@@ -185,6 +193,20 @@ export interface FieldAction {
   label: string;
   /** Optional helper text shown as a tooltip / aria-label. */
   description?: string;
+  /**
+   * Optional inline mini-form. When present, clicking the action button
+   * expands a panel of these fields instead of firing immediately; the
+   * host calls `executeFieldAction` only after the user submits the panel.
+   * The panel's values are passed to the plugin as `actionFields`, kept
+   * separate from the main create-form values to avoid key collisions.
+   *
+   * Use for "create a thing on the side and select it" flows — e.g. minting
+   * a new security group with a chosen name and port set, then attaching
+   * the new SG to the EC2 instance being created in the outer form.
+   */
+  formFields?: CreateFieldConfig[];
+  /** Label on the panel's submit button. Defaults to "Create". */
+  submitLabel?: string;
 }
 
 /**

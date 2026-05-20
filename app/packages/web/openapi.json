@@ -85,6 +85,10 @@
       "description": "Server-side SSH tunnel lifecycle."
     },
     {
+      "name": "Bastions",
+      "description": "Per-account egress agents — register a bastion, run the agent container on your infra, and bind accounts to it so cloud control-plane traffic exits from your IP."
+    },
+    {
       "name": "Team",
       "description": "Members and invitations."
     },
@@ -372,12 +376,18 @@
           "displayName": {
             "type": "string"
           },
+          "bastionId": {
+            "type": ["string", "null"],
+            "format": "uuid",
+            "description": "Bastion this account's cloud-API egress is routed through. `null` ⇒ direct egress.",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time"
           }
         },
-        "required": ["id", "pluginId", "displayName", "createdAt"],
+        "required": ["id", "pluginId", "displayName", "bastionId", "createdAt"],
         "additionalProperties": false
       },
       "CreateAccountResponse": {
@@ -450,6 +460,12 @@
             "additionalProperties": {
               "type": "string"
             }
+          },
+          "bastionId": {
+            "type": ["string", "null"],
+            "format": "uuid",
+            "description": "Optional bastion id to route this account's cloud API traffic through.",
+            "example": "00000000-0000-0000-0000-000000000000"
           }
         },
         "required": ["pluginId", "displayName", "credentials"],
@@ -466,7 +482,7 @@
         "required": ["ok"],
         "additionalProperties": false
       },
-      "RenamedAccount": {
+      "UpdatedAccount": {
         "type": "object",
         "properties": {
           "id": {
@@ -476,20 +492,30 @@
           },
           "displayName": {
             "type": "string"
+          },
+          "bastionId": {
+            "type": ["string", "null"],
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
           }
         },
-        "required": ["id", "displayName"],
+        "required": ["id", "displayName", "bastionId"],
         "additionalProperties": false
       },
-      "RenameAccountRequest": {
+      "UpdateAccountRequest": {
         "type": "object",
         "properties": {
           "displayName": {
             "type": "string",
             "minLength": 1
+          },
+          "bastionId": {
+            "type": ["string", "null"],
+            "format": "uuid",
+            "description": "Pass `null` to unbind, a uuid to bind, or omit the field to leave the binding unchanged.",
+            "example": "00000000-0000-0000-0000-000000000000"
           }
         },
-        "required": ["displayName"],
         "additionalProperties": false
       },
       "ResourceId": {
@@ -693,6 +719,7 @@
           "azure-vm",
           "azure-vnet",
           "backend-service",
+          "backup-vault",
           "batch-job-queue",
           "bigquery-dataset",
           "bigquery-table",
@@ -719,6 +746,7 @@
           "cloudwatch-log-group",
           "codebuild-project",
           "codepipeline-pipeline",
+          "cognito-user-pool",
           "composer-environment",
           "custom-hostname",
           "d1-database",
@@ -834,6 +862,7 @@
           "rds-instance",
           "redis-instance",
           "redshift-cluster",
+          "route53-health-check",
           "route53-hosted-zone",
           "route53-record-set",
           "s3-bucket",
@@ -1528,6 +1557,9 @@
           "sshHost": {
             "type": ["string", "null"]
           },
+          "sshPrivateHost": {
+            "type": ["string", "null"]
+          },
           "defaultSshUsername": {
             "type": ["string", "null"]
           },
@@ -2098,6 +2130,9 @@
             "type": "string",
             "format": "uuid",
             "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "regionHint": {
+            "type": "string"
           }
         },
         "required": ["sources", "accountId"],
@@ -2187,6 +2222,12 @@
             "type": "string"
           },
           "fields": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "actionFields": {
             "type": "object",
             "additionalProperties": {
               "type": "string"
@@ -3278,6 +3319,102 @@
         "required": ["sshHost", "sshPort", "sshUser", "sshKeyId", "command"],
         "additionalProperties": false
       },
+      "BastionStatus": {
+        "type": "string",
+        "enum": ["pending", "active", "revoked"]
+      },
+      "Bastion": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "name": {
+            "type": "string"
+          },
+          "tokenPrefix": {
+            "type": "string"
+          },
+          "agentVersion": {
+            "type": ["string", "null"]
+          },
+          "lastSeenAt": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          },
+          "status": {
+            "$ref": "#/components/schemas/BastionStatus"
+          },
+          "revokedAt": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "createdByUserId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "connected": {
+            "type": "boolean"
+          },
+          "accountCount": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "tokenPrefix",
+          "agentVersion",
+          "lastSeenAt",
+          "status",
+          "revokedAt",
+          "createdAt",
+          "createdByUserId",
+          "connected",
+          "accountCount"
+        ],
+        "additionalProperties": false
+      },
+      "CreateBastionResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "name": {
+            "type": "string"
+          },
+          "tokenPrefix": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string",
+            "description": "Enrollment token in the form `iwb_<random>`. Pass to the agent container as `BASTION_TOKEN`. Returned once — not recoverable later."
+          }
+        },
+        "required": ["id", "name", "tokenPrefix", "token"],
+        "additionalProperties": false
+      },
+      "CreateBastionRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": ["name"],
+        "additionalProperties": false
+      },
       "RoleSummary": {
         "type": ["object", "null"],
         "properties": {
@@ -3329,6 +3466,10 @@
           "billing:write",
           "ssh-keys:read",
           "ssh-keys:write",
+          "bastions:read",
+          "bastions:write",
+          "chat:read",
+          "chat:write",
           "org:settings:write"
         ],
         "description": "A permission string. Roles may grant exact permissions like the entries in this enum, or wildcards (e.g. `resources:*:read`, `*`)."
@@ -4597,7 +4738,7 @@
       },
       "patch": {
         "tags": ["Accounts"],
-        "summary": "Rename an account",
+        "summary": "Update an account (rename and/or change bastion binding)",
         "parameters": [
           {
             "schema": {
@@ -4626,18 +4767,18 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/RenameAccountRequest"
+                "$ref": "#/components/schemas/UpdateAccountRequest"
               }
             }
           }
         },
         "responses": {
           "200": {
-            "description": "Renamed",
+            "description": "Updated",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RenamedAccount"
+                  "$ref": "#/components/schemas/UpdatedAccount"
                 }
               }
             }
@@ -9320,6 +9461,149 @@
         "operationId": "postOrgOrgIdSshTunnelsExec",
         "x-required-permission": "resources:execute",
         "description": "_Requires permission: `resources:execute`._"
+      }
+    },
+    "/api/org/{orgId}/bastions": {
+      "get": {
+        "tags": ["Bastions"],
+        "summary": "List bastion agents registered to this org",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Bastions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Bastion"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdBastions",
+        "x-required-permission": "bastions:read",
+        "description": "_Requires permission: `bastions:read`._"
+      },
+      "post": {
+        "tags": ["Bastions"],
+        "summary": "Register a new bastion (returns the enrollment token once)",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateBastionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateBastionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdBastions",
+        "x-required-permission": "bastions:write",
+        "description": "_Requires permission: `bastions:write`._"
+      }
+    },
+    "/api/org/{orgId}/bastions/{id}": {
+      "delete": {
+        "tags": ["Bastions"],
+        "summary": "Revoke a bastion — accounts referencing it have their bastion binding cleared",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdBastionsId",
+        "x-required-permission": "bastions:write",
+        "description": "_Requires permission: `bastions:write`._"
       }
     },
     "/api/org/{orgId}/team/me": {
