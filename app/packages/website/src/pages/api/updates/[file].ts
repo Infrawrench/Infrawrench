@@ -33,7 +33,7 @@ export const GET: APIRoute = async ({ params, request, locals }) => {
     const original = await upstream.text();
     const prefix = `../download/${release.tag_name}/`;
     const rewritten = original.replace(
-      /^(\s*(?:url|path):\s*)(\S.*)$/gm,
+      /^(\s*-?\s*(?:url|path):\s*)(\S.*)$/gm,
       (_match, head: string, value: string) => `${head}${prefix}${value.trim()}`,
     );
 
