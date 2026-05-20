@@ -1,5 +1,5 @@
 ---
-import { Apple, Monitor, MessageSquare } from 'lucide-astro';
+import { Apple, Monitor, MessageSquare, Copy } from 'lucide-astro';
 ---
 
 <script>
@@ -26,40 +26,58 @@ import { Apple, Monitor, MessageSquare } from 'lucide-astro';
 
   <!-- Download cards -->
   <div style="max-width: 640px; margin: 32px auto 0; padding: 0 28px;">
-    <div class="download-grid">
-      <div class="download-card">
+    <div class="arch-toggle" role="tablist" aria-label="Architecture">
+      <button type="button" class="arch-toggle-btn" data-arch="arm64" role="tab" aria-selected="true">
+        Apple Silicon / ARM
+      </button>
+      <button type="button" class="arch-toggle-btn" data-arch="x64" role="tab" aria-selected="false">
+        Intel / x64
+      </button>
+    </div>
+
+    <div class="download-grid download-grid-3">
+      <a class="download-card download-card-link" data-download="macos" href="#" aria-disabled="true">
         <Apple size={22} color="#9ca3af" />
         <div class="download-card-name">macOS</div>
-        <div class="download-card-sub">Apple Silicon</div>
-        <div class="coming-soon-badge">Coming Soon</div>
-      </div>
-      <div class="download-card">
-        <Apple size={22} color="#9ca3af" />
-        <div class="download-card-name">macOS</div>
-        <div class="download-card-sub">Intel (x64)</div>
-        <div class="coming-soon-badge">Coming Soon</div>
-      </div>
-      <div class="download-card">
+        <div class="download-card-sub" data-download-sub>.dmg</div>
+        <div class="coming-soon-badge" data-download-badge>Coming Soon</div>
+      </a>
+      <a class="download-card download-card-link" data-download="windows" href="#" aria-disabled="true">
         <svg width="22" height="22" viewBox="0 0 88 88" fill="none" aria-hidden="true">
           <path
             d="M0 12.4L35.7 7.5l.1 34.4-35.7.2zm35.7 33.5l.1 34.5L.1 75.5.1 45.7zm4.3-39L87.3 0v41.5l-47.3.4zm47.3 39.4L87.3 88 40 81.1l-.1-34z"
             fill="#9ca3af"></path>
         </svg>
         <div class="download-card-name">Windows</div>
-        <div class="download-card-sub">x64 · Installer</div>
-        <div class="coming-soon-badge">Coming Soon</div>
-      </div>
-      <div class="download-card">
+        <div class="download-card-sub" data-download-sub>.exe</div>
+        <div class="coming-soon-badge" data-download-badge>Coming Soon</div>
+      </a>
+      <a class="download-card download-card-link" data-download="appimage" href="#" aria-disabled="true">
         <Monitor size={22} color="#9ca3af" />
         <div class="download-card-name">Linux</div>
-        <div class="download-card-sub">AppImage · x64</div>
-        <div class="coming-soon-badge">Coming Soon</div>
-      </div>
+        <div class="download-card-sub" data-download-sub>.AppImage</div>
+        <div class="coming-soon-badge" data-download-badge>Coming Soon</div>
+      </a>
     </div>
 
     <p class="my-4 text-sm text-gray-500">
       Cloud app coming soon.
     </p>
+
+    <!-- Debian / Ubuntu apt install -->
+    <div class="apt-block">
+      <div class="apt-block-header">
+        <div>
+          <div class="apt-block-title">Debian &amp; Ubuntu</div>
+          <div class="apt-block-sub">Install via apt for automatic updates.</div>
+        </div>
+        <button type="button" class="apt-copy-btn" data-apt-copy aria-label="Copy commands">
+          <Copy size={14} />
+          <span data-apt-copy-label>Copy</span>
+        </button>
+      </div>
+      <pre class="apt-code" data-apt-code>Loading install commands…</pre>
+    </div>
 
     <div
       style="margin: 16px auto 0; max-width: 480px; background: #090909; border: 1px solid #151515; border-radius: 10px; padding: 16px 20px; text-align: left; display: flex; align-items: flex-start; gap: 14px;"
@@ -89,3 +107,136 @@ import { Apple, Monitor, MessageSquare } from 'lucide-astro';
     </div>
   </div>
 </section>
+
+<script>
+  type Arch = 'arm64' | 'x64';
+  type PlatformKey =
+    | 'macos-arm64'
+    | 'macos-x64'
+    | 'windows-x64'
+    | 'windows-arm64'
+    | 'linux-x64-appimage'
+    | 'linux-arm64-appimage'
+    | 'linux-x64-deb'
+    | 'linux-arm64-deb'
+    | 'linux-x64-snap';
+
+  type LatestResponse = {
+    version: string;
+    downloads: Partial<Record<PlatformKey, string>>;
+  };
+
+  const PLATFORM_LABELS: Record<'macos' | 'windows' | 'appimage', { arm64: string; x64: string }> = {
+    macos: { arm64: 'Apple Silicon · .dmg', x64: 'Intel (x64) · .dmg' },
+    windows: { arm64: 'ARM64 · .exe', x64: 'x64 · .exe' },
+    appimage: { arm64: 'ARM64 · .AppImage', x64: 'x64 · .AppImage' },
+  };
+
+  const PLATFORM_KEYS: Record<'macos' | 'windows' | 'appimage', Record<Arch, PlatformKey>> = {
+    macos: { arm64: 'macos-arm64', x64: 'macos-x64' },
+    windows: { arm64: 'windows-arm64', x64: 'windows-x64' },
+    appimage: { arm64: 'linux-arm64-appimage', x64: 'linux-x64-appimage' },
+  };
+
+  function detectArch(): Arch {
+    const ua = navigator.userAgent;
+    if (/Mac/.test(ua) && !/Intel/.test(ua)) return 'arm64';
+    if (/Mac/.test(ua)) {
+      // Apple Silicon Macs still report "Intel" in the UA; default to arm64 on recent macOS.
+      return 'arm64';
+    }
+    if (/aarch64|arm64|ARM64/.test(ua)) return 'arm64';
+    return 'x64';
+  }
+
+  let currentArch: Arch = detectArch();
+  let latest: LatestResponse | null = null;
+
+  function applyArch() {
+    document.querySelectorAll<HTMLButtonElement>('.arch-toggle-btn').forEach((btn) => {
+      const isActive = btn.dataset.arch === currentArch;
+      btn.setAttribute('aria-selected', isActive ? 'true' : 'false');
+      btn.toggleAttribute('data-active', isActive);
+    });
+
+    (['macos', 'windows', 'appimage'] as const).forEach((platform) => {
+      const card = document.querySelector<HTMLAnchorElement>(`[data-download="${platform}"]`);
+      if (!card) return;
+      const sub = card.querySelector<HTMLElement>('[data-download-sub]');
+      const badge = card.querySelector<HTMLElement>('[data-download-badge]');
+      if (sub) sub.textContent = PLATFORM_LABELS[platform][currentArch];
+
+      const key = PLATFORM_KEYS[platform][currentArch];
+      const url = latest?.downloads[key];
+      if (url) {
+        card.href = url;
+        card.removeAttribute('aria-disabled');
+        if (badge) badge.style.display = 'none';
+      } else {
+        card.href = '#';
+        card.setAttribute('aria-disabled', 'true');
+        if (badge) badge.style.display = '';
+      }
+    });
+  }
+
+  document.querySelectorAll<HTMLButtonElement>('.arch-toggle-btn').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const arch = btn.dataset.arch as Arch | undefined;
+      if (!arch) return;
+      currentArch = arch;
+      applyArch();
+    });
+  });
+
+  document.querySelectorAll<HTMLAnchorElement>('.download-card-link').forEach((card) => {
+    card.addEventListener('click', (e) => {
+      if (card.getAttribute('aria-disabled') === 'true') e.preventDefault();
+    });
+  });
+
+  applyArch();
+
+  fetch('/api/latest')
+    .then((r) => (r.ok ? (r.json() as Promise<LatestResponse>) : null))
+    .then((data) => {
+      if (!data) return;
+      latest = data;
+      applyArch();
+    })
+    .catch(() => {});
+
+  const aptCodeEl = document.querySelector<HTMLElement>('[data-apt-code]');
+  const aptCopyBtn = document.querySelector<HTMLButtonElement>('[data-apt-copy]');
+  const aptCopyLabel = document.querySelector<HTMLElement>('[data-apt-copy-label]');
+
+  fetch('https://apt.infrawrench.com/infrawrench/setup?dist=desktop&component=stable')
+    .then((r) => (r.ok ? r.text() : null))
+    .then((text) => {
+      if (!aptCodeEl) return;
+      if (!text) {
+        aptCodeEl.textContent = 'Could not load install commands. Visit apt.infrawrench.com for instructions.';
+        return;
+      }
+      aptCodeEl.textContent = `${text.trimEnd()}\nsudo apt install infrawrench`;
+    })
+    .catch(() => {
+      if (aptCodeEl) {
+        aptCodeEl.textContent = 'Could not load install commands. Visit apt.infrawrench.com for instructions.';
+      }
+    });
+
+  if (aptCopyBtn && aptCodeEl) {
+    aptCopyBtn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(aptCodeEl.textContent ?? '');
+        if (aptCopyLabel) aptCopyLabel.textContent = 'Copied';
+        setTimeout(() => {
+          if (aptCopyLabel) aptCopyLabel.textContent = 'Copy';
+        }, 1500);
+      } catch {
+        /* clipboard unavailable */
+      }
+    });
+  }
+</script>
