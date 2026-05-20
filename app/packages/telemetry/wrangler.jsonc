@@ -1,25 +1,19 @@
 {
-	"$schema": "https://unpkg.com/wrangler/config-schema.json",
-	"name": "infrawrench-telemetry",
-	"main": "src/index.ts",
-	"compatibility_date": "2026-05-01",
-	"compatibility_flags": [
-		"nodejs_compat"
-	],
-	"observability": {
-		"enabled": true,
-	},
-	// Bind via:
-	//   wrangler hyperdrive create infrawrench-telemetry --connection-string="postgres://..."
-	// then paste the returned id below.
-	"hyperdrive": [
-		{
-			"binding": "HYPERDRIVE",
-			"id": "REPLACE_WITH_HYPERDRIVE_ID",
-		},
-		{
-			"binding": "HYPERDRIVE",
-			"id": "be27f0976e6e4b0d95010d7ade767d59"
-		},
-	],
+  "$schema": "https://unpkg.com/wrangler/config-schema.json",
+  "name": "infrawrench-telemetry",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-05-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true,
+  },
+  // Bind via:
+  //   wrangler hyperdrive create infrawrench-telemetry --connection-string="postgres://..."
+  // then paste the returned id below.
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "be27f0976e6e4b0d95010d7ade767d59",
+    },
+  ],
 }
