@@ -818,7 +818,6 @@ export async function computeCreateResource(
 
     const instanceId = String(inst["instanceId"] ?? "");
 
-    // Tag with name
     if (fields["name"]) {
       await rctx.ec2("CreateTags", {
         "ResourceId.1": instanceId,
