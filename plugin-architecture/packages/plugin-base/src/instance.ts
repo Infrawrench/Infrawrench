@@ -38,8 +38,8 @@ export interface ResourceWarning {
 
 /**
  * Wider response shape from `createResource`. Plugins may return either a
- * bare `ResourceInstance` (legacy) or a `{ resource, warnings }` envelope
- * when partial success needs to be surfaced. The host normalizes via
+ * bare `ResourceInstance` or a `{ resource, warnings }` envelope when
+ * partial success needs to be surfaced. The host normalizes via
  * {@link normalizeResourceCreateResult}.
  */
 export interface ResourceCreateResult {
