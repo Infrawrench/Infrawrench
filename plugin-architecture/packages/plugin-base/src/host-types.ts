@@ -48,6 +48,64 @@ export interface ProbeStatus {
   error?: string;
 }
 
+/** Kubernetes `kubectl exec` PTY config used by both the web Node server and the desktop Electron main. */
+export interface K8sExecConfig {
+  kubeconfig: string;
+  namespace: string;
+  podName: string;
+  containerName?: string | undefined;
+  cols: number;
+  rows: number;
+}
+
+/** k9s PTY config used by both the web Node server and the desktop Electron main. */
+export interface K9sConfig {
+  kubeconfig: string;
+  namespace?: string | undefined;
+  cols: number;
+  rows: number;
+}
+
+/**
+ * Context handed to a credential rewriter before a plugin client is created.
+ *
+ * Rewriters live in host-side packages (`@infrawrench/server-core` on the web
+ * server, the desktop renderer's own registry) but the shape they receive is
+ * identical across hosts — both web and desktop want to inject the same
+ * account/resource metadata. Keeping the contract in plugin-base lets both
+ * hosts share a single declaration without dragging in DB or filesystem deps.
+ */
+export interface RewriterContext {
+  /** Org the account belongs to. Optional for desktop / single-tenant flows. */
+  orgId?: string | undefined;
+  /** Account whose credentials are being rewritten. Always present. */
+  accountId: string;
+  /**
+   * The resource the credentials will be used against. Set for rewriters
+   * that need resource-level context — e.g. Cloud SQL Auth Proxy needs the
+   * cloudsql-instance's `databaseVersion` field and `connectionName` output.
+   *
+   * Callers that have the parent resource on hand (peer-pane render, resource
+   * detail) populate `resourceFields` / `resourceOutputs` directly so rewriters
+   * never have to round-trip through storage to read what's already in memory.
+   */
+  resourcePluginId?: string | undefined;
+  resourceTypeId?: string | undefined;
+  resourceId?: string | undefined;
+  resourceFields?: Record<string, unknown> | undefined;
+  resourceOutputs?: Record<string, unknown> | undefined;
+}
+
+/** A credential rewriter mutates a plugin's resolved credentials in place before client construction. */
+export interface CredentialRewriter {
+  /**
+   * Mutate `credentials` in place if this rewriter applies to `ctx`. Errors
+   * thrown here propagate to the caller; rewriters that can't apply should
+   * silently return.
+   */
+  rewrite(ctx: RewriterContext, credentials: Record<string, string>): Promise<void>;
+}
+
 /** Why an interactive SSH host-key prompt is being raised. */
 export type HostKeyPromptKind = "first-connect" | "mismatch";
 

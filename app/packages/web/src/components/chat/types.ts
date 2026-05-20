@@ -51,6 +51,7 @@ export interface ConversationSummary {
 export interface SpendStatus {
   monthToDateMicros: number;
   monthlyCapMicros: number | null;
+  /** True when capMicros is set and monthToDateMicros >= capMicros. */
   exceeded: boolean;
 }
 

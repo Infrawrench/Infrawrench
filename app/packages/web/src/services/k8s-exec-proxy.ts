@@ -10,16 +10,8 @@
  * lives in `kubectl-pty-session.ts` and is shared with the k9s proxy.
  */
 import type { WebSocket } from "ws";
+import type { K8sExecConfig } from "@infrawrench/plugin-base";
 import { handleKubectlPtySession } from "./kubectl-pty-session";
-
-interface K8sExecConfig {
-  kubeconfig: string;
-  namespace: string;
-  podName: string;
-  containerName?: string | undefined;
-  cols: number;
-  rows: number;
-}
 
 export async function handleK8sExecSession(ws: WebSocket, config: K8sExecConfig): Promise<void> {
   await handleKubectlPtySession(

@@ -14,18 +14,14 @@ import { db } from "../db/client";
 import { chatUsage, organizations, subscriptions } from "../db/schema";
 import { computeCostMicros, type TokenUsage } from "./pricing";
 import { getStripe } from "../services/stripe";
+import type { SpendStatus } from "../components/chat/types";
+
+export type { SpendStatus };
 
 /** ISO timestamp of the first day of the current month (UTC). */
 function monthStart(): Date {
   const now = new Date();
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-}
-
-interface SpendStatus {
-  monthToDateMicros: number;
-  monthlyCapMicros: number | null;
-  /** True when capMicros is set and monthToDateMicros >= capMicros. */
-  exceeded: boolean;
 }
 
 export async function getMonthlySpend(organizationId: string): Promise<SpendStatus> {
