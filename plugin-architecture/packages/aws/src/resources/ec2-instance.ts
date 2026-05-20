@@ -21,6 +21,21 @@ export const EC2InstanceResourceType: ResourceTypeDefinition = {
     { key: "vpcId", label: "VPC ID", kind: "string", required: false },
     { key: "subnetId", label: "Subnet ID", kind: "string", required: false },
     {
+      key: "securityGroupIds",
+      label: "Security Groups",
+      kind: "string",
+      required: false,
+      description: "Comma-separated list of security group IDs attached to the instance",
+    },
+    {
+      key: "sshAccess",
+      label: "SSH Access",
+      kind: "string",
+      required: false,
+      description:
+        "Whether TCP/22 is reachable per the attached security groups. If this says SSH will time out, open port 22 in one of the security groups (commonly from your office/VPN CIDR or 0.0.0.0/0 for dev).",
+    },
+    {
       key: "network",
       label: "VPC Network",
       kind: "association",

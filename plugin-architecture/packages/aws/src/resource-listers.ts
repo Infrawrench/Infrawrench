@@ -82,6 +82,55 @@ export async function listEC2Instances(
     }
   }
 
+  // Cross-reference security groups so we can flag whether SSH (TCP/22) is
+  // reachable per the SG rules. The #1 cause of "ssh times out" is a missing
+  // inbound rule on port 22, so surfacing this on the instance directly
+  // saves the user from clicking through to each SG to find out.
+  const sshCidrsByGroupId = new Map<string, string[]>();
+  try {
+    const sgData = await ctx.ec2<Record<string, unknown>>("DescribeSecurityGroups");
+    const sgs = ensureArray(
+      (sgData["securityGroupInfo"] as Record<string, unknown> | undefined)?.["item"],
+    ) as Record<string, unknown>[];
+    for (const sg of sgs) {
+      const gid = String(sg["groupId"] ?? "");
+      if (!gid) continue;
+      const rules = ensureArray(
+        (sg["ipPermissions"] as Record<string, unknown> | undefined)?.["item"],
+      ) as Record<string, unknown>[];
+      const cidrs: string[] = [];
+      for (const rule of rules) {
+        const proto = String(rule["ipProtocol"] ?? "");
+        const fromPort = Number(rule["fromPort"] ?? -1);
+        const toPort = Number(rule["toPort"] ?? -1);
+        // `-1` means "all protocols / all ports" (AWS encodes this in
+        // ipProtocol="-1"). Otherwise check the port range covers 22.
+        const allPorts = proto === "-1";
+        const tcp22 = proto === "tcp" && fromPort <= 22 && toPort >= 22;
+        if (!allPorts && !tcp22) continue;
+        const ranges = ensureArray(
+          (rule["ipRanges"] as Record<string, unknown> | undefined)?.["item"],
+        ) as Record<string, unknown>[];
+        for (const r of ranges) {
+          const cidr = String(r["cidrIp"] ?? "");
+          if (cidr) cidrs.push(cidr);
+        }
+        // IPv6 — same shape under a different key.
+        const ranges6 = ensureArray(
+          (rule["ipv6Ranges"] as Record<string, unknown> | undefined)?.["item"],
+        ) as Record<string, unknown>[];
+        for (const r of ranges6) {
+          const cidr = String(r["cidrIpv6"] ?? "");
+          if (cidr) cidrs.push(cidr);
+        }
+      }
+      sshCidrsByGroupId.set(gid, cidrs);
+    }
+  } catch {
+    // SG describe failed (permission, throttle, …); SSH summary just won't
+    // include the rule context.
+  }
+
   const results: ResourceInstance[] = [];
   for (const reservation of reservations) {
     const instances = ensureArray(
@@ -105,6 +154,29 @@ export async function listEC2Instances(
       const privateIp = String(inst["privateIpAddress"] ?? "");
       const publicDns = String(inst["dnsName"] ?? "");
 
+      // Security group membership comes back on the instance under
+      // groupSet.item[].groupId (different from `securityGroups` which only
+      // appears on EC2-Classic instances).
+      const groupSet = inst["groupSet"] as Record<string, unknown> | undefined;
+      const sgIds = (ensureArray(groupSet?.["item"]) as Record<string, unknown>[])
+        .map((g) => String(g["groupId"] ?? ""))
+        .filter((id) => id.length > 0);
+
+      const sshCidrs = new Set<string>();
+      for (const sgId of sgIds) {
+        for (const cidr of sshCidrsByGroupId.get(sgId) ?? []) sshCidrs.add(cidr);
+      }
+      let sshAccess: string;
+      if (sshCidrs.size === 0) {
+        sshAccess =
+          "⚠ Port 22 not exposed by any attached security group — SSH will time out. Add an inbound rule for TCP/22.";
+      } else if (sshCidrs.has("0.0.0.0/0") || sshCidrs.has("::/0")) {
+        sshAccess = "Port 22 open to the world (0.0.0.0/0).";
+      } else {
+        const list = [...sshCidrs].slice(0, 4).join(", ");
+        sshAccess = `Port 22 open from ${list}${sshCidrs.size > 4 ? ` (+${sshCidrs.size - 4} more)` : ""}.`;
+      }
+
       results.push({
         id: ctx.id(accountId, "ec2-instance", instanceId),
         pluginId: "aws",
@@ -123,6 +195,8 @@ export async function listEC2Instances(
           imageId: String(inst["imageId"] ?? ""),
           vpcId: String(inst["vpcId"] ?? ""),
           subnetId: String(inst["subnetId"] ?? ""),
+          securityGroupIds: sgIds.join(", "),
+          sshAccess,
           sshUsername: ec2SshUsernameFromImageName(
             amiNameByImageId.get(String(inst["imageId"] ?? "")) ?? "",
           ),
