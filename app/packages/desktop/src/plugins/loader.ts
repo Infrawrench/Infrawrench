@@ -7,6 +7,7 @@ import type { Plugin, PluginRegistry } from "@infrawrench/plugin-base";
 import { pluginManifestSchema } from "@infrawrench/plugin-base";
 
 import registry from "@blessed-plugins";
+import { DISABLED_PLUGINS, ENABLED_RESOURCE_TYPES } from "../../env";
 
 const blessedRegistry = registry as PluginRegistry;
 
@@ -50,7 +51,10 @@ export async function loadPlugins(): Promise<LoadedPlugin[]> {
 
   const loaded: LoadedPlugin[] = [];
 
+  const disabledPlugins = new Set(DISABLED_PLUGINS);
+
   for (const entry of blessedRegistry.entries) {
+    if (disabledPlugins.has(entry.id)) continue;
     const moduleLoader = PLUGIN_MODULES[entry.packageName];
     if (!moduleLoader) continue;
 
@@ -73,7 +77,15 @@ export async function loadPlugins(): Promise<LoadedPlugin[]> {
       continue;
     }
 
-    loaded.push({ plugin: mod.plugin });
+    const allowlist = ENABLED_RESOURCE_TYPES[entry.id];
+    const filteredPlugin: Plugin = allowlist
+      ? {
+          ...mod.plugin,
+          resourceTypes: mod.plugin.resourceTypes.filter((rt) => allowlist.includes(rt.id)),
+        }
+      : mod.plugin;
+
+    loaded.push({ plugin: filteredPlugin });
   }
 
   _loaded = loaded;

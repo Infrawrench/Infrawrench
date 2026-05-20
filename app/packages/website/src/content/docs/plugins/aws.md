@@ -34,8 +34,14 @@ Use least-privilege policies. For read-only browsing, the `ReadOnlyAccess` manag
 - **SSH terminal** on EC2 instances — [SSH terminal](../features/ssh-terminal.md).
 - **SQL editor** on RDS and Aurora — [SQL editor](../features/sql-editor.md).
 - **File browser** on S3 — [File browsers](../features/file-browsers.md).
+- **Document browser** on DynamoDB tables — scan items, edit/insert/delete documents inline.
+- **DynamoDB schema & indexes tab** — view the primary key, attribute definitions, and existing global/local secondary indexes on a table. Add or delete GSIs from the same page; LSIs are creation-only (DynamoDB rule). The create form also accepts an optional `secondaryIndexesJson` blob so you can declare GSIs and LSIs up front.
 - **Secret export to K8s** is supported for RDS, Aurora, Redshift, ElastiCache, S3, Lambda, SQS, SNS, DynamoDB, ECS, EKS — [Secret export](../features/secret-export-to-kubernetes.md).
 - **Read-only manifest view** for most resources.
+
+<insert [DynamoDB detail page showing the Schema & indexes tab with a primary key section, an attribute definitions table, and a GSI pill with status / keys / projection / throughput stats] here>
+
+<insert [DynamoDB Create resource form with the optional "Secondary indexes (optional)" textarea expanded showing an example JSON value] here>
 
 ## Tips & limits
 

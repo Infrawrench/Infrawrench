@@ -17,6 +17,13 @@
  *    table size).
  *  - `getDocument` / `insertDocument` / `updateDocument` / `deleteDocument` →
  *    map to GetItem / PutItem / PutItem / DeleteItem on the underlying table.
+ *
+ * Also handles two schema-management commands invoked from the "Schema &
+ * indexes" tab via `prompt-nosql-command` actions:
+ *
+ *  - `createIndex` → UpdateTable with a single GlobalSecondaryIndexUpdates
+ *    Create entry. DynamoDB only accepts one index change per call.
+ *  - `deleteIndex` → UpdateTable with a Delete entry for the named GSI.
  */
 import type { AwsCredentials } from "./auth.js";
 import { jsonCall } from "./client-transport.js";
@@ -222,7 +229,108 @@ export async function executeDynamoDbCommand(
         "Cannot drop a DynamoDB collection from the document browser — use the resource Delete action to drop the whole table.",
       );
     }
+    case "createIndex": {
+      const values = parsePromptFormArgs(args);
+      const indexName = stringField(values, "indexName");
+      const pk = stringField(values, "partitionKey");
+      const pkType = stringField(values, "partitionKeyType") || "S";
+      const sk = stringField(values, "sortKey");
+      const skType = stringField(values, "sortKeyType") || "S";
+      const projection = stringField(values, "projection") || "ALL";
+      const includeRaw = stringField(values, "projectionInclude");
+      if (!indexName) throw new Error("Index name is required.");
+      if (!pk) throw new Error("Partition key attribute is required.");
+
+      // DynamoDB requires every key attribute referenced by an index to be
+      // declared in AttributeDefinitions. Merge the existing definitions with
+      // any new ones the user added so we don't drop other indexes' attrs.
+      const { Table } = await jsonCall<{
+        Table: {
+          AttributeDefinitions?: Array<{ AttributeName: string; AttributeType: string }>;
+        };
+      }>(creds, "dynamodb", "DynamoDB_20120810.DescribeTable", { TableName: tableName });
+      const existingAttrs = Table.AttributeDefinitions ?? [];
+      const attrMap = new Map<string, string>();
+      for (const a of existingAttrs) attrMap.set(a.AttributeName, a.AttributeType);
+      attrMap.set(pk, pkType);
+      if (sk) attrMap.set(sk, skType);
+
+      const KeySchema: Array<{ AttributeName: string; KeyType: string }> = [
+        { AttributeName: pk, KeyType: "HASH" },
+      ];
+      if (sk) KeySchema.push({ AttributeName: sk, KeyType: "RANGE" });
+
+      const Projection: Record<string, unknown> = { ProjectionType: projection };
+      if (projection === "INCLUDE") {
+        const cols = includeRaw
+          .split(",")
+          .map((c) => c.trim())
+          .filter((c) => c.length > 0);
+        if (cols.length === 0) {
+          throw new Error("INCLUDE projection requires at least one attribute name.");
+        }
+        Projection["NonKeyAttributes"] = cols;
+      }
+
+      await jsonCall(creds, "dynamodb", "DynamoDB_20120810.UpdateTable", {
+        TableName: tableName,
+        AttributeDefinitions: Array.from(attrMap, ([AttributeName, AttributeType]) => ({
+          AttributeName,
+          AttributeType,
+        })),
+        GlobalSecondaryIndexUpdates: [
+          {
+            Create: {
+              IndexName: indexName,
+              KeySchema,
+              Projection,
+            },
+          },
+        ],
+      });
+      return { ok: true };
+    }
+    case "deleteIndex": {
+      const values = parsePromptFormArgs(args);
+      const indexName = stringField(values, "indexName");
+      if (!indexName) throw new Error("Index name is required.");
+      await jsonCall(creds, "dynamodb", "DynamoDB_20120810.UpdateTable", {
+        TableName: tableName,
+        GlobalSecondaryIndexUpdates: [{ Delete: { IndexName: indexName } }],
+      });
+      return { ok: true };
+    }
     default:
       throw new Error(`Unknown DynamoDB document-browser command: ${command}`);
   }
+}
+
+/**
+ * Decode the `args` array passed by `prompt-nosql-command` actions. The host
+ * sends the modal's field values as `[JSON.stringify(values)]`; this helper
+ * pulls them back out as a plain string map. Returns an empty object if the
+ * args don't match the expected shape so each command can validate its own
+ * required fields with a clearer error message.
+ */
+function parsePromptFormArgs(args: (string | number)[]): Record<string, string> {
+  const raw = args[0];
+  if (typeof raw !== "string") return {};
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      const out: Record<string, string> = {};
+      for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+        if (v == null) continue;
+        out[k] = String(v);
+      }
+      return out;
+    }
+  } catch {
+    // fall through
+  }
+  return {};
+}
+
+function stringField(values: Record<string, string>, key: string): string {
+  return (values[key] ?? "").trim();
 }

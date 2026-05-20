@@ -51,7 +51,7 @@ import {
   navigateToWorkspaceTarget,
   syncWorkspaceRouteFromPath,
 } from "../lib/workspace-tabs";
-import { SHOW_SIGN_IN_BUTTON } from "../../env";
+import { BANNERS, SHOW_SIGN_IN_BUTTON } from "../../env";
 
 export const Route = createRootRoute({
   component: RootLayout,
@@ -392,6 +392,23 @@ function RootLayout() {
             </button>
           </div>
         </div>
+
+        {BANNERS.length > 0 && (
+          <div className="flex-shrink-0 flex flex-col">
+            {BANNERS.map((banner, index) => (
+              <div
+                key={index}
+                className={`px-3 py-1.5 text-xs text-center border-b ${
+                  banner.variant === "warning"
+                    ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30"
+                    : "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/30"
+                }`}
+              >
+                {banner.message}
+              </div>
+            ))}
+          </div>
+        )}
 
         <GlobalTabBar
           tabs={workspaceTabs}

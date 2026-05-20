@@ -5,9 +5,9 @@ export interface FirestoreDocumentBrowserProps {
   databaseLabel: string;
   connected?: boolean;
   /**
-   * When true, the collection sidebar hides the "+ add collection" affordance
-   * and the per-collection drop button — used by drivers (DynamoDB) whose
-   * underlying resource is a single fixed collection.
+   * When true, the collection sidebar is hidden entirely — used by drivers
+   * (DynamoDB) whose underlying resource is a single fixed collection, so the
+   * sidebar would only ever show one un-removable entry.
    */
   singleCollection?: boolean;
   /** Runs a Firestore command. Results are forwarded unchanged from the backend. */
@@ -194,20 +194,20 @@ export function FirestoreDocumentBrowser({
 
   return (
     <div className="flex flex-1 overflow-hidden border-t border-border">
-      <div className="w-64 border-r border-border flex flex-col overflow-hidden flex-shrink-0 bg-surface">
-        <div className="px-3 py-2 border-b border-border/60 flex items-center justify-between">
-          <span className="text-xs font-semibold text-on-surface-tertiary uppercase tracking-wide">
-            Collections
-          </span>
-          <div className="flex items-center gap-1.5">
-            <button
-              onClick={() => void refreshCollections()}
-              className="text-on-surface-faint hover:text-on-surface-secondary transition-colors text-xs leading-none"
-              title="Refresh"
-            >
-              ↻
-            </button>
-            {!singleCollection && (
+      {!singleCollection && (
+        <div className="w-64 border-r border-border flex flex-col overflow-hidden flex-shrink-0 bg-surface">
+          <div className="px-3 py-2 border-b border-border/60 flex items-center justify-between">
+            <span className="text-xs font-semibold text-on-surface-tertiary uppercase tracking-wide">
+              Collections
+            </span>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => void refreshCollections()}
+                className="text-on-surface-faint hover:text-on-surface-secondary transition-colors text-xs leading-none"
+                title="Refresh"
+              >
+                ↻
+              </button>
               <button
                 onClick={() => setShowNewCollection((v) => !v)}
                 className="text-on-surface-faint hover:text-on-surface-secondary transition-colors text-sm leading-none"
@@ -215,69 +215,67 @@ export function FirestoreDocumentBrowser({
               >
                 +
               </button>
-            )}
-          </div>
-        </div>
-        {!singleCollection && showNewCollection && (
-          <div className="px-2 py-2 border-b border-border/60 flex gap-1">
-            <input
-              value={newCollectionName}
-              onChange={(e) => setNewCollectionName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleAddCollection();
-                if (e.key === "Escape") setShowNewCollection(false);
-              }}
-              placeholder="collection name"
-              className="flex-1 min-w-0 bg-surface-raised border border-border-strong rounded px-2 py-1 text-xs text-on-surface-secondary font-mono placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500"
-              autoFocus
-            />
-            <button
-              onClick={handleAddCollection}
-              className="px-2 py-1 rounded bg-blue-600 text-xs text-white hover:bg-blue-500 transition-colors flex-shrink-0"
-            >
-              Add
-            </button>
-          </div>
-        )}
-        <div className="flex-1 overflow-y-auto py-1">
-          {collectionsLoading ? (
-            <div className="px-3 py-2 text-xs text-on-surface-faint">Loading...</div>
-          ) : collections.length === 0 ? (
-            <div className="px-3 py-2 text-xs text-on-surface-faint">
-              {singleCollection ? "Loading table…" : "No collections. Use + to start one."}
             </div>
-          ) : (
-            collections.map((col) => (
-              <div key={col} className="group relative">
-                {droppingCollection === col ? (
-                  <div className="flex items-center gap-1 px-2 py-1.5">
-                    <span className="text-xs text-red-400 truncate flex-1">Delete {col}?</span>
-                    <button
-                      onClick={() => void handleDropCollection(col)}
-                      className="px-1.5 py-0.5 rounded bg-red-600 text-xs text-white hover:bg-red-500 transition-colors flex-shrink-0"
-                    >
-                      Delete
-                    </button>
-                    <button
-                      onClick={() => setDroppingCollection(null)}
-                      className="px-1.5 py-0.5 rounded text-xs text-on-surface-faint hover:text-on-surface-secondary transition-colors flex-shrink-0"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    <button
-                      onClick={() => selectCollection(col)}
-                      className={`w-full text-left px-3 py-1.5 text-xs truncate transition-colors pr-7 ${
-                        col === activeCollection
-                          ? "bg-accent-muted text-accent-on-muted font-medium"
-                          : "text-on-surface-tertiary hover:text-on-surface-secondary hover:bg-surface-overlay"
-                      }`}
-                    >
-                      {col}
-                    </button>
-                    {!singleCollection && (
+          </div>
+          {showNewCollection && (
+            <div className="px-2 py-2 border-b border-border/60 flex gap-1">
+              <input
+                value={newCollectionName}
+                onChange={(e) => setNewCollectionName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleAddCollection();
+                  if (e.key === "Escape") setShowNewCollection(false);
+                }}
+                placeholder="collection name"
+                className="flex-1 min-w-0 bg-surface-raised border border-border-strong rounded px-2 py-1 text-xs text-on-surface-secondary font-mono placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500"
+                autoFocus
+              />
+              <button
+                onClick={handleAddCollection}
+                className="px-2 py-1 rounded bg-blue-600 text-xs text-white hover:bg-blue-500 transition-colors flex-shrink-0"
+              >
+                Add
+              </button>
+            </div>
+          )}
+          <div className="flex-1 overflow-y-auto py-1">
+            {collectionsLoading ? (
+              <div className="px-3 py-2 text-xs text-on-surface-faint">Loading...</div>
+            ) : collections.length === 0 ? (
+              <div className="px-3 py-2 text-xs text-on-surface-faint">
+                No collections. Use + to start one.
+              </div>
+            ) : (
+              collections.map((col) => (
+                <div key={col} className="group relative">
+                  {droppingCollection === col ? (
+                    <div className="flex items-center gap-1 px-2 py-1.5">
+                      <span className="text-xs text-red-400 truncate flex-1">Delete {col}?</span>
+                      <button
+                        onClick={() => void handleDropCollection(col)}
+                        className="px-1.5 py-0.5 rounded bg-red-600 text-xs text-white hover:bg-red-500 transition-colors flex-shrink-0"
+                      >
+                        Delete
+                      </button>
+                      <button
+                        onClick={() => setDroppingCollection(null)}
+                        className="px-1.5 py-0.5 rounded text-xs text-on-surface-faint hover:text-on-surface-secondary transition-colors flex-shrink-0"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => selectCollection(col)}
+                        className={`w-full text-left px-3 py-1.5 text-xs truncate transition-colors pr-7 ${
+                          col === activeCollection
+                            ? "bg-accent-muted text-accent-on-muted font-medium"
+                            : "text-on-surface-tertiary hover:text-on-surface-secondary hover:bg-surface-overlay"
+                        }`}
+                      >
+                        {col}
+                      </button>
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -288,27 +286,30 @@ export function FirestoreDocumentBrowser({
                       >
                         ×
                       </button>
-                    )}
-                  </>
-                )}
-              </div>
-            ))
-          )}
-        </div>
-        <div className="px-3 py-2 border-t border-border/60">
-          <div className="text-xs text-on-surface-faint truncate" title={databaseLabel}>
-            {databaseLabel}
+                    </>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+          <div className="px-3 py-2 border-t border-border/60">
+            <div className="text-xs text-on-surface-faint truncate" title={databaseLabel}>
+              {databaseLabel}
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       <div className="flex-1 flex flex-col overflow-hidden">
         <div className="flex items-center gap-2 px-3 py-2 border-b border-border/60 bg-surface">
           <span className="text-xs text-on-surface-muted flex-shrink-0">
             {activeCollection ? (
               <>
-                Collection: <span className="text-on-surface-secondary">{activeCollection}</span>
+                {singleCollection ? "Table" : "Collection"}:{" "}
+                <span className="text-on-surface-secondary">{activeCollection}</span>
               </>
+            ) : singleCollection ? (
+              "Loading…"
             ) : (
               "Select a collection"
             )}
@@ -377,7 +378,7 @@ export function FirestoreDocumentBrowser({
         <div ref={scrollRef} className="flex-1 overflow-y-auto">
           {!activeCollection ? (
             <div className="flex items-center justify-center h-full text-on-surface-faint text-sm">
-              Select a collection
+              {singleCollection ? "Loading…" : "Select a collection"}
             </div>
           ) : loading ? (
             <div className="flex items-center justify-center h-full text-on-surface-faint text-sm">

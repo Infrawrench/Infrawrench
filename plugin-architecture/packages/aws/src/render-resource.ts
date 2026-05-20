@@ -1,5 +1,6 @@
 import type {
   DetailViewSchema,
+  DetailViewTab,
   ResourceInstance,
   ResourceStatus,
   ResourceTypeDefinition,
@@ -13,6 +14,7 @@ import {
   labeledOutputItems,
   resourceTypeDisplayName,
 } from "@infrawrench/plugin-base";
+import { buildDynamoSchemaTab, decodeIndexesField } from "./dynamodb-detail.js";
 
 const DETAIL_STATUS_MAP: Record<string, ResourceStatus> = {
   // Generic
@@ -93,6 +95,22 @@ export function renderDetail(
 
   const dotStatus = DETAIL_STATUS_MAP[state.toLowerCase()] ?? "info";
 
+  // Plugin-private fields are prefixed with an underscore so the lister can
+  // smuggle structured payloads (e.g. DynamoDB index JSON) through the
+  // resource without them leaking into the generic Details key-value list.
+  const visibleFields: Record<string, string | number | boolean> = {};
+  for (const [k, v] of Object.entries(fields)) {
+    if (!k.startsWith("_")) visibleFields[k] = v;
+  }
+
+  // DynamoDB tables get an extra "Schema & indexes" tab with GSI add/delete
+  // actions. Built here (not inline below) so the underlying _indexesJson
+  // field stays in one place.
+  const dynamoCustomTabs: DetailViewTab[] =
+    resource.resourceTypeId === "dynamodb-table"
+      ? [buildDynamoSchemaTab(decodeIndexesField(fields["_indexesJson"]))]
+      : [];
+
   return {
     title: resource.displayName,
     subtitle: `${resourceTypeDisplayName(resourceTypes, resource.resourceTypeId)} · ${region}`,
@@ -106,7 +124,7 @@ export function renderDetail(
         children: [
           {
             kind: "key-value-list",
-            items: labeledFieldItems(fields, resourceTypes, resource.resourceTypeId),
+            items: labeledFieldItems(visibleFields, resourceTypes, resource.resourceTypeId),
           },
         ],
       },
@@ -145,6 +163,7 @@ export function renderDetail(
             helpText:
               "Scan the table to browse items. Item keys are encoded into the `_name` field — strip it before re-inserting.",
           },
+          customTabs: dynamoCustomTabs,
         }
       : {}),
     // DocumentDB is MongoDB-compatible — render the MongoDB peer browser

@@ -701,6 +701,16 @@ export async function listDynamoDBTables(
         (t["BillingModeSummary"] as Record<string, unknown> | undefined)?.["BillingMode"] ??
           "PROVISIONED",
       );
+      // Stash schema + indexes as JSON so the detail renderer can show a
+      // "Schema & indexes" tab without re-calling DescribeTable. The leading
+      // underscore marks the field as internal — render-resource.ts strips
+      // it before populating the Details key-value list.
+      const indexesPayload = {
+        attributeDefinitions: (t["AttributeDefinitions"] as unknown[]) ?? [],
+        keySchema: (t["KeySchema"] as unknown[]) ?? [],
+        globalSecondaryIndexes: (t["GlobalSecondaryIndexes"] as unknown[]) ?? [],
+        localSecondaryIndexes: (t["LocalSecondaryIndexes"] as unknown[]) ?? [],
+      };
 
       results.push({
         id: ctx.id(accountId, "dynamodb-table", tableName),
@@ -717,6 +727,7 @@ export async function listDynamoDBTables(
           billingMode,
           partitionKey,
           ...(sortKey ? { sortKey } : {}),
+          _indexesJson: JSON.stringify(indexesPayload),
         },
         resolvedOutputs: {
           tableArn: String(t["TableArn"] ?? ""),

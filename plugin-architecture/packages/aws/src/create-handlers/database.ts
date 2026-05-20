@@ -69,6 +69,20 @@ export async function databaseGetCreateConfig(
           ],
           defaultValue: "PAY_PER_REQUEST",
         },
+        {
+          // Optional JSON blob describing GSIs and LSIs at creation time. LSIs
+          // are only configurable at create time (DynamoDB rule), so users who
+          // want them have to supply them here; GSIs can also be added/removed
+          // later via the Schema & indexes tab on the detail page.
+          key: "secondaryIndexesJson",
+          label: "Secondary indexes (optional)",
+          kind: "text",
+          required: false,
+          multiline: true,
+          description:
+            'Optional JSON for GSIs/LSIs. Leave blank to skip. Schema: { "gsis": [{ "name": "byEmail", "partitionKey": "email", "partitionKeyType": "S", "sortKey": "createdAt", "sortKeyType": "S", "projection": "ALL" }], "lsis": [{ "name": "bySortAttr", "sortKey": "score", "sortKeyType": "N", "projection": "KEYS_ONLY" }] }. LSIs are creation-only — they cannot be added later.',
+          placeholder: '{ "gsis": [], "lsis": [] }',
+        },
       ],
     };
   }
@@ -376,26 +390,32 @@ export async function databaseCreateResource(
     const keySchema: Array<{ AttributeName: string; KeyType: string }> = [
       { AttributeName: fields["partitionKey"] ?? "id", KeyType: "HASH" },
     ];
-    const attrDefs: Array<{ AttributeName: string; AttributeType: string }> = [
-      {
-        AttributeName: fields["partitionKey"] ?? "id",
-        AttributeType: fields["partitionKeyType"] ?? "S",
-      },
-    ];
+    // Deduplicate attribute definitions by name — CreateTable rejects payloads
+    // that declare the same attribute twice. We collect via map then flatten.
+    const attrMap = new Map<string, string>();
+    attrMap.set(fields["partitionKey"] ?? "id", fields["partitionKeyType"] ?? "S");
     if (fields["sortKey"]) {
       keySchema.push({ AttributeName: fields["sortKey"], KeyType: "RANGE" });
-      attrDefs.push({
-        AttributeName: fields["sortKey"],
-        AttributeType: fields["sortKeyType"] ?? "S",
-      });
+      attrMap.set(fields["sortKey"], fields["sortKeyType"] ?? "S");
     }
+
+    const isProvisioned = fields["billingMode"] === "PROVISIONED";
+    const parsedIndexes = parseSecondaryIndexesJson(fields["secondaryIndexesJson"] ?? "");
+    const gsis = buildGsiPayloads(parsedIndexes.gsis, attrMap, isProvisioned);
+    const lsis = buildLsiPayloads(parsedIndexes.lsis, attrMap, fields["partitionKey"] ?? "id");
+
     const body: Record<string, unknown> = {
       TableName: fields["tableName"] ?? "",
       KeySchema: keySchema,
-      AttributeDefinitions: attrDefs,
+      AttributeDefinitions: Array.from(attrMap, ([AttributeName, AttributeType]) => ({
+        AttributeName,
+        AttributeType,
+      })),
       BillingMode: fields["billingMode"] ?? "PAY_PER_REQUEST",
+      ...(gsis.length > 0 ? { GlobalSecondaryIndexes: gsis } : {}),
+      ...(lsis.length > 0 ? { LocalSecondaryIndexes: lsis } : {}),
     };
-    if (fields["billingMode"] === "PROVISIONED") {
+    if (isProvisioned) {
       body["ProvisionedThroughput"] = {
         ReadCapacityUnits: 5,
         WriteCapacityUnits: 5,
@@ -764,4 +784,127 @@ export async function databaseCreateResource(
     };
   }
   return null;
+}
+
+/**
+ * Shape the user supplies in `secondaryIndexesJson` on the DynamoDB create
+ * form. Both arrays are optional; missing entries are treated as empty.
+ */
+interface SecondaryIndexInput {
+  name?: string;
+  partitionKey?: string;
+  partitionKeyType?: string;
+  sortKey?: string;
+  sortKeyType?: string;
+  projection?: string;
+  /** Comma-separated or already-split list of non-key attributes for INCLUDE projection. */
+  projectionInclude?: string[] | string;
+}
+
+interface ParsedSecondaryIndexes {
+  gsis: SecondaryIndexInput[];
+  lsis: SecondaryIndexInput[];
+}
+
+function parseSecondaryIndexesJson(raw: string): ParsedSecondaryIndexes {
+  const trimmed = raw.trim();
+  if (!trimmed) return { gsis: [], lsis: [] };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch (e) {
+    throw new Error(
+      `Secondary indexes JSON is not valid JSON: ${(e as Error).message}. Expected shape: { "gsis": [...], "lsis": [...] }`,
+    );
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error('Secondary indexes must be an object with "gsis" and/or "lsis" arrays.');
+  }
+  const obj = parsed as { gsis?: unknown; lsis?: unknown };
+  const gsis = Array.isArray(obj.gsis) ? (obj.gsis as SecondaryIndexInput[]) : [];
+  const lsis = Array.isArray(obj.lsis) ? (obj.lsis as SecondaryIndexInput[]) : [];
+  return { gsis, lsis };
+}
+
+function buildProjection(input: SecondaryIndexInput, indexLabel: string): Record<string, unknown> {
+  const type = (input.projection ?? "ALL").toUpperCase();
+  if (type !== "ALL" && type !== "KEYS_ONLY" && type !== "INCLUDE") {
+    throw new Error(`${indexLabel}: projection must be ALL, KEYS_ONLY, or INCLUDE.`);
+  }
+  const out: Record<string, unknown> = { ProjectionType: type };
+  if (type === "INCLUDE") {
+    const raw = input.projectionInclude;
+    const cols = Array.isArray(raw)
+      ? raw
+      : typeof raw === "string"
+        ? raw
+            .split(",")
+            .map((c) => c.trim())
+            .filter((c) => c.length > 0)
+        : [];
+    if (cols.length === 0) {
+      throw new Error(`${indexLabel}: INCLUDE projection needs projectionInclude attributes.`);
+    }
+    out["NonKeyAttributes"] = cols;
+  }
+  return out;
+}
+
+function buildGsiPayloads(
+  inputs: SecondaryIndexInput[],
+  attrMap: Map<string, string>,
+  isProvisioned: boolean,
+): Array<Record<string, unknown>> {
+  return inputs.map((g, i) => {
+    const label = `GSI #${i + 1}`;
+    const name = (g.name ?? "").trim();
+    const pk = (g.partitionKey ?? "").trim();
+    if (!name) throw new Error(`${label}: missing "name".`);
+    if (!pk) throw new Error(`${label} (${name}): missing "partitionKey".`);
+    attrMap.set(pk, (g.partitionKeyType ?? "S").toUpperCase());
+    const KeySchema: Array<{ AttributeName: string; KeyType: string }> = [
+      { AttributeName: pk, KeyType: "HASH" },
+    ];
+    const sk = (g.sortKey ?? "").trim();
+    if (sk) {
+      attrMap.set(sk, (g.sortKeyType ?? "S").toUpperCase());
+      KeySchema.push({ AttributeName: sk, KeyType: "RANGE" });
+    }
+    const payload: Record<string, unknown> = {
+      IndexName: name,
+      KeySchema,
+      Projection: buildProjection(g, `${label} (${name})`),
+    };
+    // Provisioned tables require per-GSI throughput; on-demand tables inherit
+    // the table's billing mode and reject ProvisionedThroughput on indexes.
+    if (isProvisioned) {
+      payload["ProvisionedThroughput"] = { ReadCapacityUnits: 5, WriteCapacityUnits: 5 };
+    }
+    return payload;
+  });
+}
+
+function buildLsiPayloads(
+  inputs: SecondaryIndexInput[],
+  attrMap: Map<string, string>,
+  tablePartitionKey: string,
+): Array<Record<string, unknown>> {
+  return inputs.map((l, i) => {
+    const label = `LSI #${i + 1}`;
+    const name = (l.name ?? "").trim();
+    const sk = (l.sortKey ?? "").trim();
+    if (!name) throw new Error(`${label}: missing "name".`);
+    if (!sk) throw new Error(`${label} (${name}): missing "sortKey".`);
+    attrMap.set(sk, (l.sortKeyType ?? "S").toUpperCase());
+    // LSIs share the table's partition key — DynamoDB requires it to appear
+    // as the HASH attribute in the LSI's KeySchema.
+    return {
+      IndexName: name,
+      KeySchema: [
+        { AttributeName: tablePartitionKey, KeyType: "HASH" },
+        { AttributeName: sk, KeyType: "RANGE" },
+      ],
+      Projection: buildProjection(l, `${label} (${name})`),
+    };
+  });
 }
