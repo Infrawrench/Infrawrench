@@ -215,6 +215,7 @@ class Connection {
 
   close(): void {
     if (this.closed) return;
+    this.closed = true;
     if (this.heartbeat) clearInterval(this.heartbeat);
     try {
       this.ws.close();

@@ -1,4 +1,7 @@
 import type { Hono } from "hono";
+import { eq, and } from "drizzle-orm";
+import { db } from "../../../db/client";
+import { resources } from "../../../db/schema";
 import {
   getClientForAccount,
   getClientForResource,
@@ -180,13 +183,30 @@ export function registerActionRoutes(app: Hono): void {
     if (!resourceTypeDef?.peerIntegrations?.length) return c.json([]);
 
     // Apply the same requiresFields/showWhen filter the eager /detail route
-    // uses, so we never surface peer tabs that the detail payload hid.
-    const parentResource = await ctx.client
+    // uses, so we never surface peer tabs that the detail payload hid. Mirror
+    // the detail route's resolution order: try the live provider first, then
+    // fall back to the persisted DB fields so transient provider failures or
+    // just-created resources don't make tabs disappear that the initial
+    // detail payload already exposed as stubs.
+    let parentFields: Record<string, unknown> | undefined;
+    const liveParent = await ctx.client
       .getResource(resourceTypeId, resourceId, accountId)
       .catch(() => null);
+    if (liveParent?.fields) {
+      parentFields = liveParent.fields;
+    } else if (!parentResourceId) {
+      const [dbResource] = await db
+        .select({ fieldsJson: resources.fieldsJson })
+        .from(resources)
+        .where(and(eq(resources.id, resourceId), eq(resources.organizationId, organizationId)))
+        .limit(1);
+      if (dbResource?.fieldsJson) {
+        parentFields = dbResource.fieldsJson as Record<string, unknown>;
+      }
+    }
     const visibleIntegrations = filterVisiblePeerIntegrations(
       resourceTypeDef.peerIntegrations,
-      parentResource?.fields,
+      parentFields,
     );
     if (!visibleIntegrations.length) return c.json([]);
 

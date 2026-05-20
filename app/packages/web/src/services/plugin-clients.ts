@@ -45,7 +45,7 @@ export function filterVisiblePeerIntegrations(
     const s = String(v);
     if (i.showWhen.equals != null) return s === i.showWhen.equals;
     if (i.showWhen.prefix != null) return s.startsWith(i.showWhen.prefix);
-    return true;
+    return Boolean(v);
   });
 }
 
