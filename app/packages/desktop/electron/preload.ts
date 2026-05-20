@@ -11,6 +11,7 @@ const INVOKE_CHANNELS = [
   "show_open_dialog",
   "show_save_dialog",
   "open_external_url",
+  "update_install_now",
   // credential helpers — each channel binds plaintext to a specific row + field via AAD
   "account_get_credentials",
   "account_save_credentials",
@@ -141,6 +142,7 @@ const EVENT_LITERALS = new Set<string>([
   "cloud_auth_error",
   "storage_download_progress",
   "ssh_host_key_prompt",
+  "update_available_prompt",
 ]);
 
 const EVENT_PREFIXES: readonly string[] = [

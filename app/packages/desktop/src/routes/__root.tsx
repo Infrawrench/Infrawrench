@@ -26,6 +26,7 @@ import { AddAccountModal } from "../components/AddAccountModal";
 import { GlobalTabBar } from "../components/GlobalTabBar";
 import { DesktopWorkspaceTabsViewport } from "../components/WorkspaceTabsViewport";
 import { SshHostKeyPromptHost } from "../components/SshHostKeyPromptHost";
+import { UpdatePromptHost } from "../components/UpdatePromptHost";
 import { SwipeIndicator } from "../components/SwipeIndicator";
 import { SidebarAccounts } from "../components/SidebarAccounts";
 import { SidebarDashboards } from "../components/SidebarDashboards";
@@ -519,6 +520,7 @@ function RootLayout() {
 
       <SwipeIndicator gesture={swipeGesture} />
       <SshHostKeyPromptHost />
+      <UpdatePromptHost />
     </DndShell>
   );
 }

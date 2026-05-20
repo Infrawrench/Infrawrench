@@ -46,6 +46,12 @@ app.commandLine.appendSwitch("overscroll-history-navigation", "0");
 // renderer's polling loop keeps firing notifications in the background.
 let activePingCount = 0;
 let quitting = false;
+// Set once electron-updater has staged a downloaded update; `before-quit`
+// then calls `quitAndInstall` so the update actually applies on exit.
+// MacUpdater (unlike BaseUpdater on win/linux) does not register a quit hook
+// itself, so `autoInstallOnAppQuit` is effectively a no-op on macOS without this.
+let pendingUpdateInstall: (() => void) | null = null;
+let installingUpdate = false;
 
 function startAutoUpdater() {
   if (!app.isPackaged) return;
@@ -58,6 +64,17 @@ function startAutoUpdater() {
     autoUpdater.autoInstallOnAppQuit = true;
     autoUpdater.on("error", (err) => {
       console.warn("[updater]", err);
+    });
+    autoUpdater.on("update-downloaded", (info) => {
+      pendingUpdateInstall = () => {
+        installingUpdate = true;
+        autoUpdater.quitAndInstall();
+      };
+      for (const win of BrowserWindow.getAllWindows()) {
+        if (!win.webContents.isDestroyed()) {
+          win.webContents.send("update_available_prompt", { version: info.version });
+        }
+      }
     });
     void autoUpdater.checkForUpdatesAndNotify();
     setInterval(
@@ -149,7 +166,17 @@ app.on("window-all-closed", () => {
   app.quit();
 });
 
-app.on("before-quit", () => {
+app.on("before-quit", (event) => {
+  // If an update is staged and the user picked "Later", apply it on quit.
+  // `installingUpdate` is set inside the install callback so the second
+  // before-quit (fired by electron-updater's own quit) falls through cleanly.
+  if (pendingUpdateInstall && !installingUpdate) {
+    event.preventDefault();
+    const install = pendingUpdateInstall;
+    pendingUpdateInstall = null;
+    install();
+    return;
+  }
   quitting = true;
   closeAllTunnels();
   killAllSshShells();
@@ -160,6 +187,14 @@ app.on("before-quit", () => {
 
 ipcMain.handle("set_pings_active", (_e, { count }: { count: number }) => {
   activePingCount = Math.max(0, Math.floor(count));
+});
+
+ipcMain.handle("update_install_now", () => {
+  if (pendingUpdateInstall) {
+    const install = pendingUpdateInstall;
+    pendingUpdateInstall = null;
+    install();
+  }
 });
 
 ipcMain.handle("show_notification", (_e, { title, body }: { title: string; body: string }) => {
