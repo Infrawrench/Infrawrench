@@ -37,6 +37,7 @@ import "./cloud-data";
 import "./cloud-sync";
 import "./cloud-ssh-keys";
 import { teardownAllPfCloudSessions } from "./k8s-pf-cloud";
+import { reportTelemetry } from "./telemetry";
 
 // Disable Chromium's built-in overscroll history navigation — we handle
 // swipe-to-navigate ourselves in the renderer via wheel events.
@@ -147,6 +148,7 @@ app.whenReady().then(() => {
 
   createWindow();
   startAutoUpdater();
+  reportTelemetry();
   app.on("activate", () => {
     const wins = BrowserWindow.getAllWindows();
     if (wins.length === 0) {

@@ -1,0 +1,22 @@
+{
+  "name": "@infrawrench/telemetry",
+  "version": "0.1.0",
+  "license": "BUSL-1.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsgo --noEmit"
+  },
+  "dependencies": {
+    "hono": "^4.12.18",
+    "pg": "^8.20.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260505.1",
+    "@types/pg": "^8.11.0",
+    "typescript": "^5.7.3",
+    "wrangler": "^4.87.0"
+  }
+}

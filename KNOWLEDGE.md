@@ -52,6 +52,7 @@ infrawrench/
 │   ├── server-core/          # @infrawrench/server-core — db client, schema, plugin loader, sync, host services (shared by web + poller)
 │   ├── web/                  # @infrawrench/web — Hono + Vite/React SaaS web app
 │   ├── poller/               # @infrawrench/poller — background resource poller microservice
+│   ├── telemetry/            # @infrawrench/telemetry — Hono on Cloudflare Workers; anonymous desktop ping endpoint (Hyperdrive + Postgres)
 │   └── website/              # @infrawrench/website — Astro on Cloudflare Workers; landing + releases API
 ├── CLAUDE.md                 # Hard rules (keep short)
 └── KNOWLEDGE.md              # This file
