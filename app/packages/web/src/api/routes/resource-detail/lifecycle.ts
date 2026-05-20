@@ -80,6 +80,9 @@ export function registerLifecycleRoutes(app: Hono): void {
     // a gcloud account) are not stored here since they aren't owned by the
     // account's native plugin.
     if (ctx.account.pluginId === input.pluginId) {
+      // The resource row itself is non-critical: if the insert fails, the
+      // detail page falls back to listResources. Log so regressions are
+      // visible.
       try {
         await db
           .insert(resources)
@@ -105,9 +108,15 @@ export function registerLifecycleRoutes(app: Hono): void {
               updatedAt: new Date(),
             },
           });
+      } catch (err) {
+        console.error("[resource-detail] Failed to persist newly created resource:", err);
+      }
 
-        // Encrypt and persist any plaintext secretStates the plugin returned.
-        // Plugins never see ciphertext; the host upgrades plaintext -> literal here.
+      // Secret persistence is critical: plaintext create-time secrets only
+      // exist in this response and can't be reconstructed by listResources.
+      // If any write fails, surface the error so the caller knows the
+      // resource was created upstream but its credentials weren't stored.
+      try {
         for (const state of created.secretStates ?? []) {
           if (state.resolution.kind !== "plaintext") continue;
           const { ciphertext, iv } = await encrypt(
@@ -143,9 +152,19 @@ export function registerLifecycleRoutes(app: Hono): void {
             });
         }
       } catch (err) {
-        // Non-critical — detail page will fall back to listResources.
-        // Log so persistent DB write regressions are visible.
-        console.error("[resource-detail] Failed to persist newly created resource:", err);
+        console.error(
+          "[resource-detail] Failed to persist secret state for created resource:",
+          err,
+        );
+        const detail = err instanceof Error ? err.message : "unknown error";
+        return c.json(
+          {
+            error:
+              `Resource ${created.displayName} was created but its credentials could not be stored (${detail}). ` +
+              `Delete the resource and retry, or set the missing fields manually.`,
+          },
+          500,
+        );
       }
     }
 

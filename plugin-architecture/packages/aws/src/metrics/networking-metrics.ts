@@ -133,16 +133,17 @@ export async function cloudFrontDistributionMetrics(
     { Name: "DistributionId", Value: distId },
     { Name: "Region", Value: "Global" },
   ];
+  const opts = { regionOverride: "us-east-1" } as const;
   const [reqs, bytesDown, bytesUp, totalErr, err4xx, err5xx, cacheHit, originLat] =
     await Promise.all([
-      ctx.fetchCw("AWS/CloudFront", "Requests", dims, "Sum").catch(() => null),
-      ctx.fetchCw("AWS/CloudFront", "BytesDownloaded", dims, "Sum").catch(() => null),
-      ctx.fetchCw("AWS/CloudFront", "BytesUploaded", dims, "Sum").catch(() => null),
-      ctx.fetchCw("AWS/CloudFront", "TotalErrorRate", dims).catch(() => null),
-      ctx.fetchCw("AWS/CloudFront", "4xxErrorRate", dims).catch(() => null),
-      ctx.fetchCw("AWS/CloudFront", "5xxErrorRate", dims).catch(() => null),
-      ctx.fetchCw("AWS/CloudFront", "CacheHitRate", dims).catch(() => null),
-      ctx.fetchCw("AWS/CloudFront", "OriginLatency", dims).catch(() => null),
+      ctx.fetchCw("AWS/CloudFront", "Requests", dims, "Sum", opts).catch(() => null),
+      ctx.fetchCw("AWS/CloudFront", "BytesDownloaded", dims, "Sum", opts).catch(() => null),
+      ctx.fetchCw("AWS/CloudFront", "BytesUploaded", dims, "Sum", opts).catch(() => null),
+      ctx.fetchCw("AWS/CloudFront", "TotalErrorRate", dims, "Average", opts).catch(() => null),
+      ctx.fetchCw("AWS/CloudFront", "4xxErrorRate", dims, "Average", opts).catch(() => null),
+      ctx.fetchCw("AWS/CloudFront", "5xxErrorRate", dims, "Average", opts).catch(() => null),
+      ctx.fetchCw("AWS/CloudFront", "CacheHitRate", dims, "Average", opts).catch(() => null),
+      ctx.fetchCw("AWS/CloudFront", "OriginLatency", dims, "Average", opts).catch(() => null),
     ]);
   const results: MetricSeries[] = [];
   if (reqs && reqs.points.length > 0) results.push({ ...reqs, label: "Requests" });
@@ -239,11 +240,14 @@ export async function route53HealthCheckMetrics(
   const id = String(f.healthCheckId ?? resource.externalId ?? "");
   if (!id) return [];
   const dims = [{ Name: "HealthCheckId", Value: id }];
+  const opts = { regionOverride: "us-east-1" } as const;
   const [status, healthy, connTime, ttfb] = await Promise.all([
-    ctx.fetchCw("AWS/Route53", "HealthCheckStatus", dims, "Minimum").catch(() => null),
-    ctx.fetchCw("AWS/Route53", "HealthCheckPercentageHealthy", dims).catch(() => null),
-    ctx.fetchCw("AWS/Route53", "ConnectionTime", dims).catch(() => null),
-    ctx.fetchCw("AWS/Route53", "TimeToFirstByte", dims).catch(() => null),
+    ctx.fetchCw("AWS/Route53", "HealthCheckStatus", dims, "Minimum", opts).catch(() => null),
+    ctx
+      .fetchCw("AWS/Route53", "HealthCheckPercentageHealthy", dims, "Average", opts)
+      .catch(() => null),
+    ctx.fetchCw("AWS/Route53", "ConnectionTime", dims, "Average", opts).catch(() => null),
+    ctx.fetchCw("AWS/Route53", "TimeToFirstByte", dims, "Average", opts).catch(() => null),
   ]);
   const results: MetricSeries[] = [];
   if (status && status.points.length > 0) results.push({ ...status, label: "Health (1=OK)" });

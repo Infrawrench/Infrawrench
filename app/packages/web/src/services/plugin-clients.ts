@@ -22,6 +22,34 @@ interface PeerPaneResult {
 }
 
 /**
+ * Apply the declarative `requiresFields` / `showWhen` gates from each peer
+ * integration against a parent resource's fields. Used by both the eager
+ * (GET /detail) and lazy (POST /peer-panes) endpoints so they agree on
+ * which peer tabs should appear.
+ */
+export function filterVisiblePeerIntegrations(
+  integrations: PeerPluginIntegration[],
+  fields: Record<string, unknown> | undefined,
+): PeerPluginIntegration[] {
+  const f = fields ?? {};
+  return integrations.filter((i) => {
+    if (i.requiresFields) {
+      for (const key of i.requiresFields) {
+        const v = f[key];
+        if (v == null || v === "") return false;
+      }
+    }
+    if (!i.showWhen) return true;
+    const v = f[i.showWhen.fieldKey];
+    if (v == null || v === "") return false;
+    const s = String(v);
+    if (i.showWhen.equals != null) return s === i.showWhen.equals;
+    if (i.showWhen.prefix != null) return s.startsWith(i.showWhen.prefix);
+    return true;
+  });
+}
+
+/**
  * Resolve peer credentials via the parent client's outputs, run any matching
  * credential rewriters, and instantiate the peer plugin's client. Returns
  * `null` if the peer plugin isn't registered. Shared by `buildPeerPanes`

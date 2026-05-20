@@ -9,6 +9,11 @@ import { jsonCall } from "../client-transport.js";
  * and the SigV4 credentials, plus a pre-bound `fetchCw` helper that knows the
  * window. Handlers should call `fetchCw` for each datapoint series they need
  * and gate inclusion on `points.length > 0` so empty series are dropped.
+ *
+ * Some CloudWatch namespaces (CloudFront, Route 53) only publish in
+ * us-east-1, regardless of the account's configured region. Pass
+ * `regionOverride: "us-east-1"` for those calls so we hit the right
+ * endpoint rather than silently getting an empty series back.
  */
 export interface MetricsContext {
   readonly creds: AwsCredentials;
@@ -20,6 +25,7 @@ export interface MetricsContext {
     metricName: string,
     dimensions: Array<{ Name: string; Value: string }>,
     stat?: string,
+    options?: { regionOverride?: string },
   ): Promise<MetricSeries>;
 }
 
@@ -38,9 +44,13 @@ export function makeMetricsContext(
     metricName: string,
     dimensions: Array<{ Name: string; Value: string }>,
     stat = "Average",
+    options?: { regionOverride?: string },
   ): Promise<MetricSeries> => {
+    const callCreds = options?.regionOverride
+      ? { ...creds, region: options.regionOverride }
+      : creds;
     const data = await jsonCall<Record<string, unknown>>(
-      creds,
+      callCreds,
       "monitoring",
       "GraniteServiceVersion20100801.GetMetricStatistics",
       {

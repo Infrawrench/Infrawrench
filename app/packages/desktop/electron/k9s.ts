@@ -4,9 +4,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { WebContents } from "electron";
 import { spawn, type IPty } from "node-pty";
-import type { K9sConfig } from "@infrawrench/plugin-base" with {
-  "resolution-mode": "import",
-};
+import type { K9sConfig } from "@infrawrench/plugin-base";
 import { buildPtyEnv, ensureNodePtySpawnHelperExecutable, resolveBinaryPath } from "./pty";
 
 interface K9sSession {

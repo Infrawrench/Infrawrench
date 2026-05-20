@@ -8,6 +8,7 @@ import {
   getClientForAccount,
   getClientForResource,
   buildPeerPanes,
+  filterVisiblePeerIntegrations,
 } from "../../services/plugin-clients";
 import { loadSecretStatesForResource } from "../../services/secret-states";
 import type { ResourceInstance, DetailViewSchema, PeerPaneSchema } from "@infrawrench/plugin-base";
@@ -294,22 +295,10 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
   }> = [];
 
   if (resourceTypeDef?.peerIntegrations?.length) {
-    const fields = enrichedInstance.fields ?? {};
-    const visibleIntegrations = resourceTypeDef.peerIntegrations.filter((i) => {
-      if (i.requiresFields) {
-        for (const key of i.requiresFields) {
-          const v = fields[key];
-          if (v == null || v === "") return false;
-        }
-      }
-      if (!i.showWhen) return true;
-      const v = fields[i.showWhen.fieldKey];
-      if (v == null || v === "") return false;
-      const s = String(v);
-      if (i.showWhen.equals != null) return s === i.showWhen.equals;
-      if (i.showWhen.prefix != null) return s.startsWith(i.showWhen.prefix);
-      return true;
-    });
+    const visibleIntegrations = filterVisiblePeerIntegrations(
+      resourceTypeDef.peerIntegrations,
+      enrichedInstance.fields,
+    );
     if (includePeerPanes) {
       const builtPanes = await buildPeerPanes(
         client,

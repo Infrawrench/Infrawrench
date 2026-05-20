@@ -3,6 +3,7 @@ import {
   getClientForAccount,
   getClientForResource,
   buildPeerPanes,
+  filterVisiblePeerIntegrations,
 } from "../../../services/plugin-clients";
 import { getMetricRange } from "@infrawrench/server-core/clickhouse/readers";
 import { requirePermission } from "../../../auth/permissions";
@@ -174,10 +175,21 @@ export function registerActionRoutes(app: Hono): void {
     const resourceTypeDef = ctx.plugin.resourceTypes.find((t) => t.id === resourceTypeId);
     if (!resourceTypeDef?.peerIntegrations?.length) return c.json([]);
 
+    // Apply the same requiresFields/showWhen filter the eager /detail route
+    // uses, so we never surface peer tabs that the detail payload hid.
+    const parentResource = await ctx.client
+      .getResource(resourceTypeId, resourceId, accountId)
+      .catch(() => null);
+    const visibleIntegrations = filterVisiblePeerIntegrations(
+      resourceTypeDef.peerIntegrations,
+      parentResource?.fields,
+    );
+    if (!visibleIntegrations.length) return c.json([]);
+
     const panes = await buildPeerPanes(
       ctx.client,
       ctx.plugin,
-      resourceTypeDef.peerIntegrations,
+      visibleIntegrations,
       resourceTypeId,
       resourceId,
       accountId,
