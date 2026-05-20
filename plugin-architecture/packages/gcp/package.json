@@ -10,9 +10,14 @@
       "require": "./dist/index.cjs"
     },
     "./node-driver": {
-      "types": "./node-driver.d.ts",
-      "import": "./dist/node-driver.js",
-      "require": "./dist/node-driver.cjs"
+      "import": {
+        "types": "./node-driver.d.ts",
+        "default": "./dist/node-driver.js"
+      },
+      "require": {
+        "types": "./node-driver.d.cts",
+        "default": "./dist/node-driver.cjs"
+      }
     }
   },
   "main": "./dist/index.cjs",
@@ -20,7 +25,8 @@
   "types": "./dist/index.d.ts",
   "files": [
     "dist",
-    "node-driver.d.ts"
+    "node-driver.d.ts",
+    "node-driver.d.cts"
   ],
   "scripts": {
     "build": "tsup",
