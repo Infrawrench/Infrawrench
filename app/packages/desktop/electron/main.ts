@@ -49,7 +49,11 @@ let quitting = false;
 
 function startAutoUpdater() {
   if (!app.isPackaged) return;
-  void import("electron-updater").then(({ autoUpdater }) => {
+  // electron-updater exposes `autoUpdater` via a getter on its CJS exports,
+  // which Node's dynamic-import named-export detection misses. Pull it off
+  // `default` (= module.exports) where the getter actually lives.
+  void import("electron-updater").then((mod) => {
+    const { autoUpdater } = mod.default ?? mod;
     autoUpdater.autoDownload = true;
     autoUpdater.autoInstallOnAppQuit = true;
     autoUpdater.on("error", (err) => {
