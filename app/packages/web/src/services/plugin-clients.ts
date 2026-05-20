@@ -4,6 +4,7 @@ import type {
   PeerPluginIntegration,
   Plugin,
   PluginClient,
+  ResourceInstance,
 } from "@infrawrench/plugin-base";
 import { evaluatePeerIntegrationUnreachable } from "@infrawrench/plugin-base";
 import { db } from "../db/client";
@@ -18,6 +19,62 @@ interface PeerPaneResult {
   pluginLogoSvg: string;
   schema: PeerPaneSchema;
   peerPluginId: string;
+}
+
+/**
+ * Resolve peer credentials via the parent client's outputs, run any matching
+ * credential rewriters, and instantiate the peer plugin's client. Returns
+ * `null` if the peer plugin isn't registered. Shared by `buildPeerPanes`
+ * (eager rendering) and `getClientForResource` (HTTP route dispatch).
+ */
+async function buildPeerPluginClient(input: {
+  parentClient: PluginClient;
+  parentPluginId: string;
+  parentResourceTypeId: string;
+  parentResourceId: string;
+  parentResource: ResourceInstance | null;
+  integration: PeerPluginIntegration;
+  accountId: string;
+  organizationId?: string;
+}): Promise<{ client: PluginClient; plugin: Plugin; credentials: Record<string, string> } | null> {
+  const peerCredentials: Record<string, string> = {};
+  for (const mapping of input.integration.credentialMappings) {
+    const value = await input.parentClient.resolveOutput(
+      input.parentResourceTypeId,
+      input.parentResourceId,
+      mapping.outputKey,
+      input.accountId,
+    );
+    peerCredentials[mapping.credentialKey] = value;
+  }
+
+  await applyCredentialRewriters(
+    {
+      ...(input.organizationId !== undefined && { orgId: input.organizationId }),
+      accountId: input.accountId,
+      resourcePluginId: input.parentPluginId,
+      resourceTypeId: input.parentResourceTypeId,
+      resourceId: input.parentResourceId,
+      ...(input.parentResource?.fields !== undefined && {
+        resourceFields: input.parentResource.fields,
+      }),
+      ...(input.parentResource?.resolvedOutputs !== undefined && {
+        resourceOutputs: input.parentResource.resolvedOutputs,
+      }),
+    },
+    peerCredentials,
+  );
+
+  const peerLoaded = await getPlugin(input.integration.pluginId);
+  if (!peerLoaded) return null;
+
+  const peerHostServices = await buildPluginHostServices(
+    peerLoaded.plugin.manifest,
+    peerCredentials,
+    { accountId: input.accountId },
+  );
+  const peerClient = peerLoaded.plugin.createClient(peerCredentials, peerHostServices);
+  return { client: peerClient, plugin: peerLoaded.plugin, credentials: peerCredentials };
 }
 
 /**
@@ -62,39 +119,18 @@ export async function buildPeerPanes(
         return;
       }
       try {
-        const peerCredentials: Record<string, string> = {};
-        for (const mapping of integration.credentialMappings) {
-          const value = await parentClient.resolveOutput(
-            resourceTypeId,
-            resourceId,
-            mapping.outputKey,
-            accountId,
-          );
-          peerCredentials[mapping.credentialKey] = value;
-        }
-
-        await applyCredentialRewriters(
-          {
-            orgId: organizationId,
-            accountId,
-            resourcePluginId: parentPlugin.manifest.id,
-            resourceTypeId,
-            resourceId,
-            resourceFields: parentResource?.fields,
-            resourceOutputs: parentResource?.resolvedOutputs,
-          },
-          peerCredentials,
-        );
-
-        const peerLoaded = await getPlugin(integration.pluginId);
-        if (!peerLoaded) return;
-
-        const peerHostServices = await buildPluginHostServices(
-          peerLoaded.plugin.manifest,
-          peerCredentials,
-          { accountId },
-        );
-        const peerClient = peerLoaded.plugin.createClient(peerCredentials, peerHostServices);
+        const built = await buildPeerPluginClient({
+          parentClient,
+          parentPluginId: parentPlugin.manifest.id,
+          parentResourceTypeId: resourceTypeId,
+          parentResourceId: resourceId,
+          parentResource,
+          integration,
+          accountId,
+          ...(organizationId !== undefined && { organizationId }),
+        });
+        if (!built) return;
+        const { client: peerClient, plugin: peerPlugin } = built;
         if (!peerClient.renderPeerPane) return;
 
         const context = {
@@ -108,7 +144,7 @@ export async function buildPeerPanes(
 
         panes.push({
           tabLabel: integration.tabLabel,
-          pluginLogoSvg: peerLoaded.plugin.manifest.logoSvg,
+          pluginLogoSvg: peerPlugin.manifest.logoSvg,
           schema: { ...peerSchema, supportsYamlImport: !!peerClient.importYaml },
           peerPluginId: integration.pluginId,
         });
@@ -203,49 +239,22 @@ export async function getClientForResource(
   const integration = parentResourceTypeDef?.peerIntegrations?.find((i) => i.pluginId === pluginId);
   if (!integration) return null;
 
-  const peerCredentials: Record<string, string> = {};
-  for (const mapping of integration.credentialMappings) {
-    const value = await parent.client.resolveOutput(
-      parentResource.resourceTypeId,
-      parentResourceId,
-      mapping.outputKey,
-      accountId,
-    );
-    peerCredentials[mapping.credentialKey] = value;
-  }
-
   // Fetch the parent ResourceInstance so the rewriter context carries live
   // fields/outputs (Cloud SQL Auth Proxy needs `connectionName`).
   const parentInstance = await parent.client
     .getResource(parentResource.resourceTypeId, parentResourceId, accountId)
     .catch(() => null);
 
-  await applyCredentialRewriters(
-    {
-      orgId: organizationId,
-      accountId,
-      resourcePluginId: parent.account.pluginId,
-      resourceTypeId: parentResource.resourceTypeId,
-      resourceId: parentResourceId,
-      resourceFields: parentInstance?.fields,
-      resourceOutputs: parentInstance?.resolvedOutputs,
-    },
-    peerCredentials,
-  );
-
-  const peerLoaded = await getPlugin(pluginId);
-  if (!peerLoaded) return null;
-
-  const peerHostServices = await buildPluginHostServices(
-    peerLoaded.plugin.manifest,
-    peerCredentials,
-    { accountId },
-  );
-  const peerClient = peerLoaded.plugin.createClient(peerCredentials, peerHostServices);
-  return {
-    client: peerClient,
-    plugin: peerLoaded.plugin,
-    credentials: peerCredentials,
-    account: parent.account,
-  };
+  const built = await buildPeerPluginClient({
+    parentClient: parent.client,
+    parentPluginId: parent.account.pluginId,
+    parentResourceTypeId: parentResource.resourceTypeId,
+    parentResourceId,
+    parentResource: parentInstance,
+    integration,
+    accountId,
+    organizationId,
+  });
+  if (!built) return null;
+  return { ...built, account: parent.account };
 }
