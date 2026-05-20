@@ -1,7 +1,7 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
 
-export function mapWorkerRoute(
+function mapWorkerRoute(
   route: Record<string, unknown>,
   accountId: string,
   zoneId: string,

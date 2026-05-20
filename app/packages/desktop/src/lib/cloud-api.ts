@@ -118,8 +118,8 @@ interface CloudResourceSyncItem {
   resourceTypeId: string;
   displayName: string;
   externalId: string | null;
-  fieldsJson: unknown;
-  outputsJson: unknown;
+  fieldsJson: Record<string, unknown>;
+  outputsJson: Record<string, unknown>;
   parentResourceId: string | null;
 }
 

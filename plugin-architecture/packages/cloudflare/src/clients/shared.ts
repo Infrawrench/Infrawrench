@@ -2,9 +2,9 @@
  * Shared Cloudflare API client used by all per-feature client modules.
  *
  * Wraps the official `cloudflare` SDK and caches the resolved account ID.
- * A few legacy helpers (`fetch`, `paginate`) remain because the SDK does not
- * expose the R2 object plane — see `r2-client.ts`. New code should prefer
- * the SDK namespaces exposed via `api.cf`.
+ * The `fetch` escape hatch remains because the SDK does not expose the R2
+ * object plane — see `r2-client.ts`. New code should prefer the SDK
+ * namespaces exposed via `api.cf`.
  */
 import Cloudflare from "cloudflare";
 

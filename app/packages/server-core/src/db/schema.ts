@@ -182,10 +182,12 @@ export const resources = pgTable(
     externalId: text("external_id"),
     /** Non-secret fields as JSON */
     fieldsJson: jsonb("fields_json")
+      .$type<Record<string, unknown>>()
       .notNull()
       .default(sql`'{}'::jsonb`),
     /** Resolved outputs cache as JSON */
     outputsJson: jsonb("outputs_json")
+      .$type<Record<string, unknown>>()
       .notNull()
       .default(sql`'{}'::jsonb`),
     parentResourceId: text("parent_resource_id"),

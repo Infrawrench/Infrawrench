@@ -115,5 +115,3 @@ export function sftpDownloadToBuffer(
     sftpDownloadToBufferImpl(config, remotePath, opts),
   );
 }
-
-export type { SftpEntry };

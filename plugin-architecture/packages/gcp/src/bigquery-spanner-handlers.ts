@@ -128,7 +128,7 @@ export async function introspectBigQueryDataset(
   return metas;
 }
 
-export function parseSpannerResourceId(resourceId: string): {
+function parseSpannerResourceId(resourceId: string): {
   instance: string;
   database: string;
 } {
@@ -140,7 +140,7 @@ export function parseSpannerResourceId(resourceId: string): {
   return { instance, database };
 }
 
-export async function spannerRunSql(
+async function spannerRunSql(
   ctx: BigQuerySpannerContext,
   resourceId: string,
   sql: string,

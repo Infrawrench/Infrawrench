@@ -49,7 +49,7 @@ import {
   type AzurePricingCacheEntry,
 } from "./pricing.js";
 import { type AzureCreateContext } from "./create-handlers.js";
-import { ARM, type AzureHttpContext } from "./shared.js";
+import { type AzureHttpContext } from "./shared.js";
 import {
   deleteStorageObject,
   listStorageObjects,
@@ -494,7 +494,3 @@ export class AzureClient implements PluginClient {
     return applyAzureManifest(this.httpCtx, resourceId, manifest);
   }
 }
-
-// Re-export ARM constant for tests / external callers that previously depended
-// on its location in this module.
-export { ARM };

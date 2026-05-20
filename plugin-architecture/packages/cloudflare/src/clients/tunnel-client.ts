@@ -1,7 +1,7 @@
 import type { CredentialExport, ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
 
-export function mapTunnel(t: Record<string, unknown>, accountId: string): ResourceInstance {
+function mapTunnel(t: Record<string, unknown>, accountId: string): ResourceInstance {
   const id = String(t["id"] ?? "");
   const name = String(t["name"] ?? "");
   const connections = Array.isArray(t["connections"]) ? (t["connections"] as Array<unknown>) : [];

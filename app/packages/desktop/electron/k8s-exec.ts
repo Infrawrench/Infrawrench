@@ -4,16 +4,10 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { WebContents } from "electron";
 import { spawn, type IPty } from "node-pty";
+import type { K8sExecConfig } from "@infrawrench/plugin-base" with {
+  "resolution-mode": "import",
+};
 import { buildPtyEnv, ensureNodePtySpawnHelperExecutable, resolveBinaryPath } from "./pty";
-
-interface K8sExecConfig {
-  kubeconfig: string;
-  namespace: string;
-  podName: string;
-  containerName?: string;
-  cols: number;
-  rows: number;
-}
 
 interface K8sExecSession {
   proc: IPty;

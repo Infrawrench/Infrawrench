@@ -2,7 +2,7 @@ import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
 import type { WaitingRoomCreateParams } from "cloudflare/resources/waiting-rooms/waiting-rooms";
 
-export function mapWaitingRoom(
+function mapWaitingRoom(
   room: Record<string, unknown>,
   accountId: string,
   zoneId: string,

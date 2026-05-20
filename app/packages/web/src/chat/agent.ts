@@ -73,7 +73,7 @@ export type AgentEvent =
     }
   | { type: "error"; message: string };
 
-export interface RunAgentInput {
+interface RunAgentInput {
   conversationId: string;
   auth: ToolAuthContext;
   /** If set, write this as a new user message before running the turn. */

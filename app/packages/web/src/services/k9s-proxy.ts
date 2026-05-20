@@ -8,14 +8,8 @@
  * The shared PTY+WS plumbing lives in `kubectl-pty-session.ts`.
  */
 import type { WebSocket } from "ws";
+import type { K9sConfig } from "@infrawrench/plugin-base";
 import { handleKubectlPtySession } from "./kubectl-pty-session";
-
-interface K9sConfig {
-  kubeconfig: string;
-  namespace?: string;
-  cols: number;
-  rows: number;
-}
 
 export async function handleK9sSession(ws: WebSocket, config: K9sConfig): Promise<void> {
   await handleKubectlPtySession(

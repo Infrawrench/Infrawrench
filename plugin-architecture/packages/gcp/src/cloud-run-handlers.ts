@@ -396,7 +396,7 @@ async function deleteCloudRunDomainMapping(
   }
 }
 
-export interface CreateEventarcTriggerOpts {
+interface CreateEventarcTriggerOpts {
   name: string;
   eventSource: string; // "pubsub" | "storage-finalized" | "storage-deleted" | "audit-log" | "custom"
   pubsubTopic?: string;

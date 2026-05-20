@@ -14,7 +14,7 @@ import * as path from "node:path";
 import * as crypto from "node:crypto";
 import type { WebSocket } from "ws";
 
-export interface KubectlPtyMessageTypes {
+interface KubectlPtyMessageTypes {
   /** Server → client when the PTY is ready (k8s-exec only). May be undefined. */
   connected?: string;
   /** Bidirectional data frame type. */
@@ -27,13 +27,13 @@ export interface KubectlPtyMessageTypes {
   resize: string;
 }
 
-export interface KubectlPtyConfig {
+interface KubectlPtyConfig {
   kubeconfig: string;
   cols: number;
   rows: number;
 }
 
-export interface KubectlPtySpawn {
+interface KubectlPtySpawn {
   binary: string;
   /** Build argv given the kubeconfig path (so the path can be inlined as `--kubeconfig`). */
   buildArgs: (kubeconfigPath: string) => string[];

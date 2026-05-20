@@ -36,7 +36,6 @@ const INVOKE_CHANNELS = [
   "ssh_close_tunnel",
   "ssh_get_active_tunnels",
   "ssh_exec_command",
-  "ssh_check_docker_installed",
   "ssh_shell_spawn",
   "ssh_shell_write",
   "ssh_shell_resize",

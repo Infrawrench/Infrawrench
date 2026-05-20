@@ -7,7 +7,7 @@ import type { CloudflareApi } from "./shared.js";
  * operations remain on `api.fetch`. See task spec for details.
  */
 
-export function mapR2Bucket(
+function mapR2Bucket(
   b: Record<string, unknown>,
   accountId: string,
   cfAccountId: string,
@@ -83,14 +83,15 @@ export async function listR2StorageObjects(
 ): Promise<StorageObject[]> {
   const cfAccountId = await api.getAccountId();
   const params = new URLSearchParams({ prefix, delimiter: "/" });
-  const res = await api.fetch<Record<string, unknown>>(
-    `/accounts/${cfAccountId}/r2/buckets/${bucket}/objects?${params.toString()}`,
-  );
+  const res = await api.fetch<{
+    delimited_prefixes?: string[];
+    objects?: Array<Record<string, unknown>>;
+  }>(`/accounts/${cfAccountId}/r2/buckets/${bucket}/objects?${params.toString()}`);
 
   const objects: StorageObject[] = [];
 
   // Directories (common prefixes)
-  const prefixes = (res as unknown as { delimited_prefixes?: string[] })?.delimited_prefixes ?? [];
+  const prefixes = res?.delimited_prefixes ?? [];
   for (const p of prefixes) {
     const name = p.endsWith("/") ? p.slice(prefix.length, -1) : p.slice(prefix.length);
     objects.push({
@@ -103,7 +104,7 @@ export async function listR2StorageObjects(
   }
 
   // Files
-  const items = (res as unknown as { objects?: Array<Record<string, unknown>> })?.objects ?? [];
+  const items = res?.objects ?? [];
   for (const item of items) {
     const key = String(item["key"] ?? "");
     if (key === prefix) continue; // skip the prefix itself

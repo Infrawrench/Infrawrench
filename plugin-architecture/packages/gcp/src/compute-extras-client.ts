@@ -2,7 +2,7 @@ import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { formatGcpError } from "./utils.js";
 import type { GcpClientContext } from "./shared.js";
 
-export interface ManagedInstanceSummary {
+interface ManagedInstanceSummary {
   name: string;
   zone: string;
   externalId: string;
@@ -235,7 +235,7 @@ export async function restartReplaceInstanceGroup(
  * the instance's `setTags` API. If the firewall has no targetTags (applies
  * to all VMs in the network), nothing to do.
  */
-export async function applyFirewallToInstance(
+async function applyFirewallToInstance(
   ctx: GcpClientContext,
   firewall: ResourceInstance,
   instance: ResourceInstance,

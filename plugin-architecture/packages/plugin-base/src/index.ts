@@ -154,6 +154,10 @@ export type {
   ProbeStatus,
   HostKeyPromptKind,
   HostKeyPromptPayload,
+  K8sExecConfig,
+  K9sConfig,
+  CredentialRewriter,
+  RewriterContext,
 } from "./host-types.js";
 
 export {

@@ -232,7 +232,7 @@ export async function listVPCs(ctx: ListerContext, accountId: string): Promise<R
  * Tokens are valid for 14 minutes; the lister refreshes the kubeconfig on
  * each poll cycle so resolvedOutputs always carries a fresh one.
  */
-export async function generateEksToken(
+async function generateEksToken(
   creds: AwsCredentials,
   clusterName: string,
   region: string,
@@ -287,7 +287,7 @@ function toBase64Url(input: string): string {
  * directly so consumers don't need the AWS CLI and aren't subject to the
  * host's AWS_PROFILE / shared config.
  */
-export async function buildEksKubeconfig(
+async function buildEksKubeconfig(
   clusterName: string,
   endpoint: string,
   caData: string,

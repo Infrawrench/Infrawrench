@@ -25,7 +25,7 @@ const SSH_AGENT_RSA_SHA2_512 = 1 << 2;
 // already manages, so users get agent forwarding without configuring an OS
 // ssh-agent. The forwarded surface area equals the key the user logged in
 // with — nothing else is exposed to the remote host.
-export class InProcessAgent extends BaseAgent<ParsedKey> {
+class InProcessAgent extends BaseAgent<ParsedKey> {
   constructor(private readonly keys: ParsedKey[]) {
     super();
   }

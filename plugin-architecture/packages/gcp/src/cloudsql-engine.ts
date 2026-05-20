@@ -1,4 +1,4 @@
-export interface CloudSqlEngineInfo {
+interface CloudSqlEngineInfo {
   /** URL scheme without "://" — postgres, mysql, sqlserver */
   scheme: string;
   /** Default admin username Cloud SQL provisions for the engine */

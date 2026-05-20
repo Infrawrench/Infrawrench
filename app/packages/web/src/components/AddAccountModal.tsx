@@ -8,6 +8,7 @@ import {
 } from "@infrawrench/ui";
 import { apiGet, apiPost } from "@/lib/api";
 import { useOrgId } from "@/lib/useOrgId";
+import type { AccountListItem } from "@/lib/api-types";
 
 interface Props {
   onClose: () => void;
@@ -15,12 +16,6 @@ interface Props {
   prefilledPluginId?: string;
   prefilledCredentials?: Record<string, string>;
   prefilledDisplayName?: string;
-}
-
-interface AccountListItem {
-  id: string;
-  pluginId: string;
-  displayName: string;
 }
 
 interface CreateAccountResponse {

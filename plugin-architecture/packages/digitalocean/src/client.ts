@@ -476,7 +476,6 @@ export class DigitalOceanClient implements PluginClient {
     if (resourceTypeId === "doks-cluster") {
       const clusterId = resourceId.split(":").pop();
       if (!clusterId) return [];
-      // Get nodes
       let dropletIds: string[];
       try {
         const cluster = await this.fetch<{

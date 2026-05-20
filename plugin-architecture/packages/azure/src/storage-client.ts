@@ -7,7 +7,7 @@
  */
 import type { StorageObject } from "@infrawrench/plugin-base";
 
-export interface StorageContext {
+interface StorageContext {
   /** Returns a valid AAD token scoped to `storage.azure.com`. */
   storageToken(): Promise<string>;
 }

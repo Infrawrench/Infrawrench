@@ -6,7 +6,7 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { ARM, type AzureHttpContext } from "./shared.js";
 
-export interface ResolveOutputDeps {
+interface ResolveOutputDeps {
   ctx: AzureHttpContext;
   getResource: (typeId: string, resourceId: string, accountId: string) => Promise<ResourceInstance>;
   /** Exports app-registration client-secret via Graph addPassword. */

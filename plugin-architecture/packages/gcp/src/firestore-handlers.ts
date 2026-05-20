@@ -203,7 +203,7 @@ export async function listFirestoreIndexes(
  * everything in one response. gcloud's `firestore indexes composite list`
  * does the same.
  */
-export async function listFirestoreIndexesForGroup(
+async function listFirestoreIndexesForGroup(
   ctx: FirestoreContext,
   base: string,
   collectionGroup: string,

@@ -11,7 +11,7 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { ARM, type AzureHttpContext } from "./shared.js";
 
-export interface AttachContext extends AzureHttpContext {
+interface AttachContext extends AzureHttpContext {
   getResource(typeId: string, resourceId: string, accountId: string): Promise<ResourceInstance>;
 }
 

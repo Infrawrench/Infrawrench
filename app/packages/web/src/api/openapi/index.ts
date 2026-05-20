@@ -2,8 +2,6 @@ import { OpenAPIRegistry, OpenApiGeneratorV31 } from "@asteasolutions/zod-to-ope
 import { buildDynamicEnums } from "./dynamic";
 import type { BuildContext } from "./context";
 
-export type { BuildContext } from "./context";
-
 type OpenAPIObject = ReturnType<OpenApiGeneratorV31["generateDocument"]>;
 
 import { registerAuthPaths } from "./paths/auth";
@@ -29,7 +27,7 @@ import { registerWsTokenPaths } from "./paths/ws-token";
 import { registerSyncPaths } from "./paths/sync";
 import { registerWebhookPaths } from "./paths/webhooks";
 
-export interface BuildOptions {
+interface BuildOptions {
   /** Server URL(s) to advertise in the spec. */
   servers?: Array<{ url: string; description?: string }>;
   /** Override the spec version (defaults to the package.json version). */

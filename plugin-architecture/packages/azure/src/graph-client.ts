@@ -11,7 +11,7 @@
  */
 import { Client } from "@microsoft/microsoft-graph-client";
 
-export interface GraphTokenProvider {
+interface GraphTokenProvider {
   graphToken(): Promise<string>;
 }
 

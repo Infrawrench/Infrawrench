@@ -2,7 +2,7 @@ import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
 import type { ConfigCreateParams } from "cloudflare/resources/hyperdrive/configs";
 
-export function mapHyperdrive(c: Record<string, unknown>, accountId: string): ResourceInstance {
+function mapHyperdrive(c: Record<string, unknown>, accountId: string): ResourceInstance {
   const id = String(c["id"] ?? "");
   const name = String(c["name"] ?? "");
   const origin = c["origin"] as Record<string, unknown> | undefined;

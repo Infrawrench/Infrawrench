@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Modal } from "@infrawrench/ui";
 import { apiGet } from "@/lib/api";
 import { useOrgId } from "@/lib/useOrgId";
+import type { AccountListItem } from "@/lib/api-types";
 import { AddAccountModal } from "./AddAccountModal";
 
 interface Props {
@@ -17,12 +18,6 @@ interface Props {
   port?: number | undefined;
   onClose: () => void;
   onAdded: () => void;
-}
-
-interface AccountListItem {
-  id: string;
-  pluginId: string;
-  displayName: string;
 }
 
 /**

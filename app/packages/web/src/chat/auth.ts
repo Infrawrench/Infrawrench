@@ -16,7 +16,7 @@ import { db } from "../db/client";
 import { users, organizationMembers } from "../db/schema";
 import { ensureUserFromClaims } from "../api/auth-middleware";
 
-export interface ChatAuthResult {
+interface ChatAuthResult {
   userId: string;
   organizationId: string;
   email?: string;

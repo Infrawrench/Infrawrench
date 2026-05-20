@@ -1,4 +1,1 @@
-export {
-  rewriteCredentialsThroughTunnel,
-  rewriteConnectionForTunnel,
-} from "@infrawrench/server-core/tunnel-resolver";
+export { rewriteConnectionForTunnel } from "@infrawrench/server-core/tunnel-resolver";

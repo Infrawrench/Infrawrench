@@ -3,7 +3,7 @@ import type { AwsCredentials } from "./auth.js";
 import { ensureArray } from "./auth.js";
 import { ec2Call } from "./client-transport.js";
 
-export interface AttachContext {
+interface AttachContext {
   /** Home/default creds — used only for global services. */
   creds: AwsCredentials;
   /** Build creds scoped to a specific region — use this for regional services. */

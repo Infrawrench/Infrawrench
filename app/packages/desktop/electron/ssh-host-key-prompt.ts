@@ -13,8 +13,6 @@ import type { HostKeyPromptKind, HostKeyPromptPayload } from "@infrawrench/plugi
   "resolution-mode": "import",
 };
 
-export type { HostKeyPromptKind, HostKeyPromptPayload };
-
 interface Pending {
   resolve: (accept: boolean) => void;
   timer: NodeJS.Timeout;

@@ -23,7 +23,6 @@ import {
 } from "@infrawrench/server-core/bastion/registry";
 import {
   BASTION_PROTOCOL_VERSION,
-  BASTION_WS_SUBPROTOCOL,
   type BastionMessage,
 } from "@infrawrench/server-core/bastion/protocol";
 
@@ -157,6 +156,3 @@ async function markActive(bastionId: string): Promise<void> {
     .set({ status: "active", lastSeenAt: new Date() })
     .where(eq(bastionVms.id, bastionId));
 }
-
-/** Export the subprotocol so consumers (UI / docs) can advertise it. */
-export { BASTION_WS_SUBPROTOCOL };

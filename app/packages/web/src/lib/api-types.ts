@@ -22,3 +22,14 @@ export interface SshKey {
   ownerName: string;
   createdAt: string;
 }
+
+/**
+ * Minimal account entry returned by `GET /api/org/:orgId/accounts` and used
+ * by modals that need to render an account picker (Add Account, Connect Through
+ * Jumpbox). Components needing more fields should fetch the full account.
+ */
+export interface AccountListItem {
+  id: string;
+  pluginId: string;
+  displayName: string;
+}

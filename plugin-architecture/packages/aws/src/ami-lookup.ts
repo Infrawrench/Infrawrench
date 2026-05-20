@@ -1,7 +1,7 @@
 import { ensureArray } from "./auth.js";
 import type { AwsCreateContext } from "./create-handlers/shared.js";
 
-export type Arch = "x86_64" | "arm64";
+type Arch = "x86_64" | "arm64";
 
 /**
  * Derive CPU architecture from an EC2 instance type.
@@ -24,7 +24,7 @@ export function instanceTypeArch(instanceType: string): Arch {
  * Known image-family slugs. Used as image-picker option ids and as the
  * lookup key when resolving to a real AMI per region/arch at create time.
  */
-export type ImageFamily =
+type ImageFamily =
   | "al2023"
   | "amzn2"
   | "ubuntu-2204"

@@ -2,7 +2,7 @@ import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
 import type { RuleCreateParams } from "cloudflare/resources/email-routing/rules/rules";
 
-export function mapEmailRoutingRule(
+function mapEmailRoutingRule(
   rule: Record<string, unknown>,
   accountId: string,
   zoneId: string,

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { CreateFieldConfig } from "../create.js";
 
 const secretResolutionSchema = z.discriminatedUnion("kind", [
   z.object({
@@ -61,8 +62,7 @@ const hostActionSchema = z.discriminatedUnion("type", [
     // Field definitions follow the CreateFieldConfig shape — kept loose here
     // since create-form validation lives in the TS type system rather than
     // the runtime schema (and the UI tolerates extra fields gracefully).
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    fields: z.array(z.any()),
+    fields: z.array(z.unknown()) as z.ZodType<CreateFieldConfig[]>,
     submitLabel: z.string().optional(),
     danger: z.boolean().optional(),
   }),
@@ -74,9 +74,12 @@ const statusDotSchema = z.object({
   label: z.string().optional(),
 });
 
-// Recursive schema node — use z.ZodTypeAny to avoid circular type alias
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export const schemaNodeSchema: z.ZodType<any> = z.lazy(() =>
+// Recursive schema node — z.lazy needs an explicit annotation to break the
+// self-referential type-inference cycle. We use ZodTypeAny rather than the
+// authoritative SchemaNode type because the schema intentionally omits the
+// rarely-used TableNode variant and exactOptionalPropertyTypes makes the two
+// shapes structurally distinct.
+export const schemaNodeSchema: z.ZodTypeAny = z.lazy(() =>
   z.discriminatedUnion("kind", [
     z.object({
       kind: z.literal("text"),

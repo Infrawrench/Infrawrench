@@ -68,7 +68,6 @@ function formatRegion(slug: string): string {
   return info ? `${info.flag} ${info.location}` : slug;
 }
 
-// Client
 export class PlanetScaleClient implements PluginClient {
   private readonly tokenId: string;
   private readonly tokenSecret: string;

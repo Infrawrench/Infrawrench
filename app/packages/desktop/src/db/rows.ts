@@ -13,24 +13,3 @@ export interface AccountRow {
   encrypted_credentials: string;
   credentials_iv: string;
 }
-
-/**
- * Narrower shape used when only the credentials need to be decrypted
- * (e.g. background metric pollers that already know the plugin_id and name).
- */
-export interface AccountCredsRow {
-  id: string;
-  encrypted_credentials: string;
-  credentials_iv: string;
-}
-
-/**
- * Variant used when the display name isn't needed but the plugin is
- * (e.g. looking up a plugin for a known resource).
- */
-export interface AccountPluginCredsRow {
-  id: string;
-  plugin_id: string;
-  encrypted_credentials: string;
-  credentials_iv: string;
-}
