@@ -99,7 +99,7 @@ export function makeMetricsContext(
     const callCreds = options?.regionOverride
       ? { ...creds, region: options.regionOverride }
       : creds;
-    const { label, datapoints } = await callGetMetricStatistics(callCreds, {
+    const { datapoints } = await callGetMetricStatistics(callCreds, {
       Namespace: namespace,
       MetricName: metricName,
       Dimensions: dimensions,
@@ -108,9 +108,12 @@ export function makeMetricsContext(
       Period: period,
       Statistics: [stat],
     });
+    // CloudWatch returns the measurement unit (Percent, Bytes, etc.) on
+    // each datapoint. The top-level Label is the metric name, not a unit.
+    const unit = datapoints.find((dp) => typeof dp["Unit"] === "string")?.["Unit"];
     return {
       label: metricName,
-      unit: label,
+      unit: String(unit ?? ""),
       points: datapoints
         .map((dp) => ({
           timestamp: new Date(String(dp["Timestamp"])).getTime(),
