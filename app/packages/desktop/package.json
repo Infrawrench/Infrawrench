@@ -1,6 +1,6 @@
 {
   "name": "@infrawrench/desktop",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "license": "BUSL-1.1",
   "private": true,
   "description": "A tool for managing infrastructure.",
