@@ -233,12 +233,8 @@ async function main(): Promise<void> {
   const shutdown = (signal: string) => {
     stopping = true;
     log(`received ${signal}, shutting down`);
-    try {
-      // The Connection's ws.close ultimately fires onClose; just exit after a brief grace.
-      setTimeout(() => process.exit(0), 200);
-    } catch {
-      process.exit(0);
-    }
+    // The Connection's ws.close ultimately fires onClose; just exit after a brief grace.
+    setTimeout(() => process.exit(0), 200);
   };
   process.on("SIGTERM", () => shutdown("SIGTERM"));
   process.on("SIGINT", () => shutdown("SIGINT"));
