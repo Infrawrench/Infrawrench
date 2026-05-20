@@ -2,7 +2,7 @@ import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
 import type { AppCreateParams } from "cloudflare/resources/spectrum/apps";
 
-export function mapSpectrumApplication(
+function mapSpectrumApplication(
   app: Record<string, unknown>,
   accountId: string,
   zoneId: string,

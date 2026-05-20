@@ -6,7 +6,7 @@ export interface CloudArmorContext {
   token: () => Promise<string>;
 }
 
-export interface CloudArmorRuleSummary {
+interface CloudArmorRuleSummary {
   priority: number;
   description: string;
   action: string;
@@ -16,20 +16,20 @@ export interface CloudArmorRuleSummary {
   responseCode: string;
 }
 
-export interface CloudArmorPolicyFullResult {
+interface CloudArmorPolicyFullResult {
   rules: CloudArmorRuleSummary[];
   fingerprint: string;
   error: string;
 }
 
-export interface CloudArmorTargetSummary {
+interface CloudArmorTargetSummary {
   /** Backend service short name. */
   name: string;
   /** Region — empty string for global backend services. */
   region: string;
 }
 
-export interface CloudArmorTargetsResult {
+interface CloudArmorTargetsResult {
   targets: CloudArmorTargetSummary[];
   error: string;
 }

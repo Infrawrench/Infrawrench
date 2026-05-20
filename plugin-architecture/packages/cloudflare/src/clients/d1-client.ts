@@ -1,7 +1,7 @@
 import type { ResourceInstance, SqlTableMeta } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
 
-export function mapD1Database(db: Record<string, unknown>, accountId: string): ResourceInstance {
+function mapD1Database(db: Record<string, unknown>, accountId: string): ResourceInstance {
   const uuid = String(db["uuid"] ?? db["id"] ?? "");
   const name = String(db["name"] ?? "");
   return {

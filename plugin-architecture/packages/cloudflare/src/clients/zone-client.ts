@@ -2,7 +2,7 @@ import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
 import type { Zone } from "cloudflare/resources/zones/zones";
 
-export function mapZone(api: CloudflareApi, z: Zone, accountId: string): ResourceInstance {
+function mapZone(api: CloudflareApi, z: Zone, accountId: string): ResourceInstance {
   const nameservers = Array.isArray(z.name_servers) ? z.name_servers.join(", ") : "";
   // Cache account ID from zone data
   if (z.account?.id && !api.cfAccountId) {

@@ -38,7 +38,3 @@ export function computeCostMicros(usage: TokenUsage): number {
     (usage.cacheWriteTokens / 1_000_000) * RATES.cacheWrite;
   return Math.max(0, Math.round(usd * 1_000_000));
 }
-
-export function getPricing(): typeof RATES {
-  return { ...RATES };
-}

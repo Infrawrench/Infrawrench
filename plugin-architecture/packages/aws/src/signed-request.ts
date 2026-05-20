@@ -19,7 +19,7 @@ import { SignatureV4 } from "@smithy/signature-v4";
 
 import type { AwsCredentials } from "./auth.js";
 
-export interface SignRequestArgs {
+interface SignRequestArgs {
   method: string;
   url: string;
   headers: Record<string, string>;
@@ -28,50 +28,7 @@ export interface SignRequestArgs {
   credentials: AwsCredentials;
 }
 
-/**
- * Tail end of the legacy "sign manually, then fetch raw" pattern still used by
- * a handful of delete/create handlers (e.g. Lambda DELETE, Route53 DELETE,
- * SageMaker DeleteEndpoint). Honors `creds.http` so per-account bastion
- * routing applies. Throws on non-2xx like `fetchSigned`. New code should
- * prefer `fetchSigned` or the typed helpers in `client-transport.ts`.
- */
-export async function signedRawFetch(
-  creds: { http?: import("@infrawrench/plugin-base").HttpHostServices },
-  url: string,
-  init: {
-    method: string;
-    headers: Record<string, string>;
-    body?: string | Uint8Array;
-  },
-  errorContext: string,
-): Promise<{ status: number; body: string }> {
-  if (creds.http) {
-    const result = await creds.http.request({
-      url,
-      method: init.method,
-      headers: init.headers,
-      ...(init.body !== undefined ? { body: init.body } : {}),
-    });
-    if (result.status < 200 || result.status >= 300) {
-      throw new Error(`${errorContext} failed: ${result.status} — ${result.body.slice(0, 400)}`);
-    }
-    return { status: result.status, body: result.body };
-  }
-  const res = await fetch(url, {
-    method: init.method,
-    headers: init.headers,
-    ...(init.body !== undefined ? { body: init.body as BodyInit } : {}),
-  });
-  if (!res.ok) {
-    const detail = await res.text().catch(() => "");
-    throw new Error(
-      `${errorContext} failed: ${res.status}${detail ? ` — ${detail.slice(0, 400)}` : ""}`,
-    );
-  }
-  return { status: res.status, body: await res.text() };
-}
-
-export async function signRequest(req: SignRequestArgs): Promise<Record<string, string>> {
+async function signRequest(req: SignRequestArgs): Promise<Record<string, string>> {
   const { method, url: rawUrl, headers, body, service, credentials } = req;
   const parsedUrl = new URL(rawUrl);
 

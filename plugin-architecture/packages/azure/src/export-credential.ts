@@ -14,7 +14,7 @@ import type { AzureCredentials } from "./auth.js";
 import { ARM, type AzureHttpContext } from "./shared.js";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 
-export interface ExportCredentialContext extends AzureHttpContext {
+interface ExportCredentialContext extends AzureHttpContext {
   getResource(typeId: string, resourceId: string, accountId: string): Promise<ResourceInstance>;
   graphClient: GraphClient;
   creds: AzureCredentials;

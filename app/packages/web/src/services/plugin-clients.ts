@@ -13,7 +13,7 @@ import { getPlugin } from "../plugins/loader";
 import { buildPluginHostServices } from "./host-services";
 import { applyCredentialRewriters } from "./credential-rewriters";
 
-export interface PeerPaneResult {
+interface PeerPaneResult {
   tabLabel: string;
   pluginLogoSvg: string;
   schema: PeerPaneSchema;

@@ -23,7 +23,3 @@ export async function getToolRegistry(): Promise<ToolDefinition[]> {
   cached = tools;
   return tools;
 }
-
-export function clearToolRegistryCache(): void {
-  cached = null;
-}

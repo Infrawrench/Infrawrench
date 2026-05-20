@@ -10,7 +10,7 @@ import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
  * match the value used in `api/routes/api-keys.ts`. */
 const API_KEY_HASH_DOMAIN = "api-key";
 
-export interface ApiAuthResult {
+interface ApiAuthResult {
   userId: string;
   organizationId: string;
   email?: string;

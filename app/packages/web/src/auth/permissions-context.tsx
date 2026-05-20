@@ -10,7 +10,7 @@ import {
 import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
 import { apiGet } from "@/lib/api";
 
-export interface CurrentUserRole {
+interface CurrentUserRole {
   id: string;
   name: string;
   description: string | null;

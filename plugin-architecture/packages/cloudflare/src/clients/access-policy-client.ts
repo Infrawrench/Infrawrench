@@ -2,7 +2,7 @@ import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
 import type { PolicyCreateParams } from "cloudflare/resources/zero-trust/access/applications/policies";
 
-export function mapAccessPolicy(
+function mapAccessPolicy(
   policy: Record<string, unknown>,
   accountId: string,
   appId: string,

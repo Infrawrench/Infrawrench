@@ -23,7 +23,7 @@ export interface SshShellHandle {
   onError: (cb: (err: string) => void) => void;
 }
 
-export interface SshJumpHop {
+interface SshJumpHop {
   host: string;
   port: number;
   username: string;

@@ -2,7 +2,7 @@ import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
 import type { LoadBalancerCreateParams } from "cloudflare/resources/load-balancers/load-balancers";
 
-export function mapLoadBalancer(
+function mapLoadBalancer(
   lb: Record<string, unknown>,
   accountId: string,
   zoneId: string,

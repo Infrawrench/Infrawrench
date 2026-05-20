@@ -2,7 +2,7 @@ import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
 import type { ProjectCreateParams } from "cloudflare/resources/pages/projects/projects";
 
-export function mapPagesProject(p: Record<string, unknown>, accountId: string): ResourceInstance {
+function mapPagesProject(p: Record<string, unknown>, accountId: string): ResourceInstance {
   const name = String(p["name"] ?? "");
   const subdomain = String(p["subdomain"] ?? `${name}.pages.dev`);
   const latestDeploy = p["latest_deployment"] as Record<string, unknown> | undefined;
@@ -69,7 +69,7 @@ export async function deletePagesProject(api: CloudflareApi, externalId: string)
   await api.cf.pages.projects.delete(externalId, { account_id });
 }
 
-export function mapPagesDeployment(
+function mapPagesDeployment(
   d: Record<string, unknown>,
   accountId: string,
   projectName: string,

@@ -21,7 +21,7 @@ function monthStart(): Date {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
 }
 
-export interface SpendStatus {
+interface SpendStatus {
   monthToDateMicros: number;
   monthlyCapMicros: number | null;
   /** True when capMicros is set and monthToDateMicros >= capMicros. */
@@ -51,7 +51,7 @@ export async function getMonthlySpend(organizationId: string): Promise<SpendStat
   };
 }
 
-export interface RecordUsageInput {
+interface RecordUsageInput {
   organizationId: string;
   conversationId: string;
   messageId: string;

@@ -9,7 +9,7 @@
 import type { AwsCredentials } from "./auth.js";
 import { queryPostCall } from "./client-transport.js";
 
-export interface GenerateServiceRoleRequest {
+interface GenerateServiceRoleRequest {
   /** Principal AWS service that's allowed to assume the role, e.g. `lambda.amazonaws.com`. */
   principalService: string | string[];
   /** Managed-policy ARNs to attach (AWS-managed or customer-managed). */
@@ -20,7 +20,7 @@ export interface GenerateServiceRoleRequest {
   description?: string;
 }
 
-export interface GenerateServiceRoleResult {
+interface GenerateServiceRoleResult {
   roleName: string;
   roleArn: string;
 }

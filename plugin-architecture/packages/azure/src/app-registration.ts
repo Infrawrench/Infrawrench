@@ -9,7 +9,7 @@
 import type { Client as GraphClient } from "@microsoft/microsoft-graph-client";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 
-export interface AppRegistrationContext {
+interface AppRegistrationContext {
   graphClient: GraphClient;
   makeId(accountId: string, typeId: string, externalId: string): string;
   now(): string;

@@ -38,7 +38,7 @@ const SSH_AGENT_RSA_SHA2_512 = 1 << 2;
 // Mirror of the desktop in-process agent. Kept duplicated because only
 // @infrawrench/web depends on ssh2 server-side; hoist into server-core if a
 // third caller appears.
-export class InProcessAgent extends BaseAgent<ParsedKey> {
+class InProcessAgent extends BaseAgent<ParsedKey> {
   constructor(
     private readonly keys: ParsedKey[],
     private readonly audit?: AgentAuditContext,

@@ -91,7 +91,7 @@ const DELETE_SPECS: Record<string, ArmResourceSpec> = {
   "azure-firewall": { provider: "Microsoft.Network/azureFirewalls", apiVersion: "2023-09-01" },
 };
 
-export interface DeleteContext extends AzureHttpContext {
+interface DeleteContext extends AzureHttpContext {
   getResource(typeId: string, resourceId: string, accountId: string): Promise<ResourceInstance>;
   graphClient: GraphClient;
 }

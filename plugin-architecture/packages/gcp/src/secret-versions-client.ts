@@ -5,7 +5,7 @@ import type {
 } from "@infrawrench/plugin-base";
 import type { GcpClientContext } from "./shared.js";
 
-export function mapSecretVersion(v: Record<string, unknown>): SecretVersion {
+function mapSecretVersion(v: Record<string, unknown>): SecretVersion {
   const fullName = String(v["name"] ?? "");
   const id = fullName.split("/").pop() ?? "";
   const rawState = String(v["state"] ?? "ENABLED").toUpperCase();
@@ -20,7 +20,7 @@ export function mapSecretVersion(v: Record<string, unknown>): SecretVersion {
   return result;
 }
 
-export function mapKmsKeyVersion(v: Record<string, unknown>, primaryId?: string): SecretVersion {
+function mapKmsKeyVersion(v: Record<string, unknown>, primaryId?: string): SecretVersion {
   const fullName = String(v["name"] ?? "");
   const id = fullName.split("/").pop() ?? "";
   const rawState = String(v["state"] ?? "ENABLED").toUpperCase();

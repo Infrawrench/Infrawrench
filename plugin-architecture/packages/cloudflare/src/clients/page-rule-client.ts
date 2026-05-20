@@ -2,7 +2,7 @@ import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
 import type { PageRuleCreateParams } from "cloudflare/resources/page-rules/page-rules";
 
-export function mapPageRule(
+function mapPageRule(
   rule: Record<string, unknown>,
   accountId: string,
   zoneId: string,

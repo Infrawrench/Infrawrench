@@ -31,11 +31,7 @@ function recordFields(r: RecordResponse, zoneId: string): ResourceInstance {
   };
 }
 
-export function mapDnsRecord(
-  r: RecordResponse,
-  accountId: string,
-  zoneId: string,
-): ResourceInstance {
+function mapDnsRecord(r: RecordResponse, accountId: string, zoneId: string): ResourceInstance {
   const base = recordFields(r, zoneId);
   return {
     ...base,

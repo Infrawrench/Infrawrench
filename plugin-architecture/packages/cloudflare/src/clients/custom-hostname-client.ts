@@ -2,7 +2,7 @@ import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
 import type { CustomHostnameCreateParams } from "cloudflare/resources/custom-hostnames/custom-hostnames";
 
-export function mapCustomHostname(
+function mapCustomHostname(
   h: Record<string, unknown>,
   accountId: string,
   zoneId: string,

@@ -2,10 +2,7 @@ import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
 import type { ApplicationCreateParams } from "cloudflare/resources/zero-trust/access/applications/applications";
 
-export function mapAccessApplication(
-  app: Record<string, unknown>,
-  accountId: string,
-): ResourceInstance {
+function mapAccessApplication(app: Record<string, unknown>, accountId: string): ResourceInstance {
   const id = String(app["id"] ?? "");
   const name = String(app["name"] ?? "");
   const domain = String(app["domain"] ?? "");

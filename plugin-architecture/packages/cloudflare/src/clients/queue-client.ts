@@ -1,7 +1,7 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
 
-export function mapQueue(q: Record<string, unknown>, accountId: string): ResourceInstance {
+function mapQueue(q: Record<string, unknown>, accountId: string): ResourceInstance {
   const id = String(q["queue_id"] ?? q["id"] ?? "");
   const name = String(q["queue_name"] ?? q["name"] ?? "");
   const producers = q["producers"] as Array<unknown> | undefined;

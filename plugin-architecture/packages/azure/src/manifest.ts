@@ -8,11 +8,7 @@
  */
 import { ARM, AZURE_ARM_SPECS, type AzureHttpContext } from "./shared.js";
 
-export function buildAzureArmUrl(
-  subscriptionId: string,
-  typeId: string,
-  externalId: string,
-): string {
+function buildAzureArmUrl(subscriptionId: string, typeId: string, externalId: string): string {
   // SQL database uses a nested provider path, distinct from the (empty)
   // delete-handler entry.
   if (typeId === "azure-sql-database") {

@@ -3,7 +3,7 @@ import type { CloudflareApi } from "./shared.js";
 import type { RulesetCreateParams } from "cloudflare/resources/rulesets/rulesets";
 import type { RuleCreateParams } from "cloudflare/resources/rulesets/rules";
 
-export function mapFirewallRule(
+function mapFirewallRule(
   rule: Record<string, unknown>,
   accountId: string,
   zoneId: string,

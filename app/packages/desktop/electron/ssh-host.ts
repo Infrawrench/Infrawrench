@@ -44,22 +44,6 @@ ipcMain.handle(
   ) => sshExecCommand(config, command),
 );
 
-ipcMain.handle(
-  "ssh_check_docker_installed",
-  async (
-    _e,
-    {
-      config,
-    }: {
-      config: { sshHost: string; sshPort: number; sshUser: string; privateKey: string };
-    },
-  ): Promise<{ installed: boolean; version: string | null }> => {
-    const { stdout, code } = await sshExecCommand(config, "docker --version 2>/dev/null");
-    const installed = code === 0 && stdout.includes("Docker");
-    return { installed, version: installed ? stdout.trim() : null };
-  },
-);
-
 ipcMain.handle("ssh_shell_spawn", (event, config: SshShellConfig) =>
   spawnSshShell(event.sender, config),
 );

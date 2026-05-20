@@ -6,7 +6,7 @@
  * lookups (no server-core DB imports).
  */
 
-export interface RewriterContext {
+interface RewriterContext {
   accountId: string;
   resourcePluginId?: string | undefined;
   resourceTypeId?: string | undefined;
@@ -21,15 +21,11 @@ export interface RewriterContext {
   resourceOutputs?: Record<string, unknown> | undefined;
 }
 
-export interface CredentialRewriter {
+interface CredentialRewriter {
   rewrite(ctx: RewriterContext, credentials: Record<string, string>): Promise<void>;
 }
 
 const rewriters: CredentialRewriter[] = [];
-
-export function registerCredentialRewriter(r: CredentialRewriter): void {
-  rewriters.push(r);
-}
 
 export async function applyCredentialRewriters(
   ctx: RewriterContext,

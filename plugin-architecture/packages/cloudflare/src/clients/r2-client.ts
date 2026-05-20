@@ -7,7 +7,7 @@ import type { CloudflareApi } from "./shared.js";
  * operations remain on `api.fetch`. See task spec for details.
  */
 
-export function mapR2Bucket(
+function mapR2Bucket(
   b: Record<string, unknown>,
   accountId: string,
   cfAccountId: string,

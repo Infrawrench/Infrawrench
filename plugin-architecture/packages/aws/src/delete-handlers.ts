@@ -10,7 +10,7 @@ import {
   queryPostCall,
 } from "./client-transport.js";
 
-export interface DeleteContext {
+interface DeleteContext {
   /** Home/default creds — used only for global services. */
   creds: AwsCredentials;
   /** Build creds scoped to a specific region — use this for regional services. */

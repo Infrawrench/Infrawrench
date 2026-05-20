@@ -33,7 +33,7 @@ import { isPermissionError, shortImage } from "./shared-renderers.js";
  * (gen2) services are backed by Cloud Run and can reuse the same helpers by
  * parsing their own resolvedOutputs into this shape.
  */
-export interface CloudRunDetailInput {
+interface CloudRunDetailInput {
   // Parsed JSON blobs from resolvedOutputs.
   fullService: Record<string, unknown>;
   fullServiceError: string;

@@ -101,7 +101,7 @@ export function k8sKindForType(typeId: string): string {
  * or for non-namespaced resources:
  *   {apiPrefix}/{pluralResource}/{name}
  */
-export function k8sApiPath(typeId: string): {
+function k8sApiPath(typeId: string): {
   prefix: string;
   plural: string;
   namespaced: boolean;
@@ -159,7 +159,7 @@ export function buildResourcePath(resourceId: string): string {
   return `${api.prefix}/${api.plural}/${encodeURIComponent(name)}`;
 }
 
-export function formatAge(isoTimestamp: string | undefined): string {
+function formatAge(isoTimestamp: string | undefined): string {
   if (!isoTimestamp) return "<unknown>";
   const ms = Date.now() - new Date(isoTimestamp).getTime();
   if (isNaN(ms) || ms < 0) return "<unknown>";
@@ -173,7 +173,7 @@ export function formatAge(isoTimestamp: string | undefined): string {
   return `${d}d`;
 }
 
-export function formatEventAge(evt: K8sEvent): string {
+function formatEventAge(evt: K8sEvent): string {
   const ts = evt.lastTimestamp ?? evt.eventTime ?? evt.firstTimestamp;
   return formatAge(ts);
 }
@@ -235,7 +235,7 @@ export function formatDescribe(
   return lines.join("\n");
 }
 
-export function describeFetchError(err: unknown): string {
+function describeFetchError(err: unknown): string {
   if (!(err instanceof Error)) return String(err);
   const cause = (err as { cause?: unknown }).cause;
   if (cause && typeof cause === "object") {

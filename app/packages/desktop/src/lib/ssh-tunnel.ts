@@ -37,22 +37,6 @@ export function sshExecCommand(
 }
 
 /**
- * Narrow alternative to {@link sshExecCommand} for the common "is Docker
- * installed?" probe — uses a dedicated main-side handler so the renderer
- * doesn't need to construct the shell command itself.
- */
-export function sshCheckDockerInstalled(config: {
-  sshHost: string;
-  sshPort: number;
-  sshUser: string;
-  privateKey: string;
-}): Promise<{ installed: boolean; version: string | null }> {
-  return invoke<{ installed: boolean; version: string | null }>("ssh_check_docker_installed", {
-    config: { ...config },
-  });
-}
-
-/**
  * If the account has an ssh_tunnel_configs row, ensures the SSH tunnel is open
  * and returns `tcp://127.0.0.1:{localPort}`. Otherwise returns `rawHost` unchanged.
  */

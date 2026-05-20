@@ -2,7 +2,7 @@ import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
 import type { Namespace } from "cloudflare/resources/kv/namespaces/namespaces";
 
-export function mapKVNamespace(ns: Namespace, accountId: string): ResourceInstance {
+function mapKVNamespace(ns: Namespace, accountId: string): ResourceInstance {
   const raw = ns as unknown as Record<string, unknown>;
   const id = String(raw["id"] ?? "");
   const title = String(raw["title"] ?? "");
