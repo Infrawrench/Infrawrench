@@ -103,8 +103,10 @@ export async function deleteResource(
       await jsonCall(creds, "ssm", "AmazonSSM.DeleteParameter", { Name: externalId });
       break;
     case "cloudwatch-alarm":
-      await jsonCall(creds, "monitoring", "GraniteServiceVersion20100801.DeleteAlarms", {
-        AlarmNames: [externalId],
+      // CloudWatch speaks awsQuery, not JSON-RPC — same protocol pitfall as
+      // GetMetricStatistics / DescribeAlarms.
+      await queryPostCall(creds, "monitoring", "DeleteAlarms", "2010-08-01", {
+        "AlarmNames.member.1": externalId,
       });
       break;
     case "cloudwatch-log-group":

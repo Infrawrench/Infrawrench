@@ -1,6 +1,56 @@
 import type { MetricSeries } from "@infrawrench/plugin-base";
 import type { AwsCredentials } from "../auth.js";
-import { jsonCall } from "../client-transport.js";
+import { queryPostCall } from "../client-transport.js";
+import { ensureArray } from "../xml.js";
+
+/**
+ * CloudWatch (`monitoring`) speaks the AWS Query protocol, not JSON-RPC —
+ * sending a JSON-RPC body returns 404 from the endpoint and silently breaks
+ * every metric series. Build the `Dimensions.member.N` and `Statistics.member.N`
+ * forms the Query API expects.
+ */
+function buildGetMetricStatisticsParams(input: {
+  Namespace: string;
+  MetricName: string;
+  Dimensions: Array<{ Name: string; Value: string }>;
+  StartTime: string;
+  EndTime: string;
+  Period: number;
+  Statistics: string[];
+}): Record<string, string> {
+  const params: Record<string, string> = {
+    Namespace: input.Namespace,
+    MetricName: input.MetricName,
+    StartTime: input.StartTime,
+    EndTime: input.EndTime,
+    Period: String(input.Period),
+  };
+  input.Dimensions.forEach((d, i) => {
+    params[`Dimensions.member.${i + 1}.Name`] = d.Name;
+    params[`Dimensions.member.${i + 1}.Value`] = d.Value;
+  });
+  input.Statistics.forEach((s, i) => {
+    params[`Statistics.member.${i + 1}`] = s;
+  });
+  return params;
+}
+
+export async function callGetMetricStatistics(
+  creds: AwsCredentials,
+  params: Parameters<typeof buildGetMetricStatisticsParams>[0],
+): Promise<{ label: string; datapoints: Array<Record<string, unknown>> }> {
+  const raw = await queryPostCall<Record<string, unknown>>(
+    creds,
+    "monitoring",
+    "GetMetricStatistics",
+    "2010-08-01",
+    buildGetMetricStatisticsParams(params),
+  );
+  const result = (raw["GetMetricStatisticsResult"] as Record<string, unknown> | undefined) ?? {};
+  const datapointsContainer = result["Datapoints"] as Record<string, unknown> | undefined;
+  const datapoints = ensureArray(datapointsContainer?.["member"]) as Array<Record<string, unknown>>;
+  return { label: String(result["Label"] ?? ""), datapoints };
+}
 
 /**
  * Shared CloudWatch fetch context for the per-service metric handlers.
@@ -49,24 +99,18 @@ export function makeMetricsContext(
     const callCreds = options?.regionOverride
       ? { ...creds, region: options.regionOverride }
       : creds;
-    const data = await jsonCall<Record<string, unknown>>(
-      callCreds,
-      "monitoring",
-      "GraniteServiceVersion20100801.GetMetricStatistics",
-      {
-        Namespace: namespace,
-        MetricName: metricName,
-        Dimensions: dimensions,
-        StartTime: new Date(start).toISOString(),
-        EndTime: new Date(end).toISOString(),
-        Period: period,
-        Statistics: [stat],
-      },
-    );
-    const datapoints = (data["Datapoints"] as Array<Record<string, unknown>>) ?? [];
+    const { label, datapoints } = await callGetMetricStatistics(callCreds, {
+      Namespace: namespace,
+      MetricName: metricName,
+      Dimensions: dimensions,
+      StartTime: new Date(start).toISOString(),
+      EndTime: new Date(end).toISOString(),
+      Period: period,
+      Statistics: [stat],
+    });
     return {
       label: metricName,
-      unit: String(data["Label"] ?? ""),
+      unit: label,
       points: datapoints
         .map((dp) => ({
           timestamp: new Date(String(dp["Timestamp"])).getTime(),

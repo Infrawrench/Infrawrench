@@ -1,7 +1,6 @@
 import type { MetricSeries, ResourceInstance } from "@infrawrench/plugin-base";
 import type { AwsCredentials } from "../auth.js";
-import { jsonCall } from "../client-transport.js";
-import type { MetricsContext } from "./cw-helpers.js";
+import { callGetMetricStatistics, type MetricsContext } from "./cw-helpers.js";
 
 /**
  * Storage / backup metric handlers — S3, EFS, AWS Backup.
@@ -37,24 +36,18 @@ export async function s3BucketMetrics(
     m: string,
     d: typeof dimsSize,
   ): Promise<MetricSeries> => {
-    const data = await jsonCall<Record<string, unknown>>(
-      creds,
-      "monitoring",
-      "GraniteServiceVersion20100801.GetMetricStatistics",
-      {
-        Namespace: ns,
-        MetricName: m,
-        Dimensions: d,
-        StartTime: new Date(widerStart).toISOString(),
-        EndTime: new Date(ctx.end).toISOString(),
-        Period: widerPeriod,
-        Statistics: ["Average"],
-      },
-    );
-    const datapoints = (data["Datapoints"] as Array<Record<string, unknown>>) ?? [];
+    const { label, datapoints } = await callGetMetricStatistics(creds, {
+      Namespace: ns,
+      MetricName: m,
+      Dimensions: d,
+      StartTime: new Date(widerStart).toISOString(),
+      EndTime: new Date(ctx.end).toISOString(),
+      Period: widerPeriod,
+      Statistics: ["Average"],
+    });
     return {
       label: m,
-      unit: String(data["Label"] ?? ""),
+      unit: label,
       points: datapoints
         .map((dp) => ({
           timestamp: new Date(String(dp["Timestamp"])).getTime(),
