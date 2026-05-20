@@ -38,8 +38,8 @@ interface ResourceRow {
   resourceTypeId: string;
   displayName: string;
   externalId: string | null;
-  fieldsJson: unknown;
-  outputsJson: unknown;
+  fieldsJson: Record<string, unknown> | null;
+  outputsJson: Record<string, unknown> | null;
   parentResourceId: string | null;
 }
 

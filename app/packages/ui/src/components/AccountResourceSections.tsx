@@ -13,7 +13,7 @@ export interface SectionTypeDef {
 export interface SectionResource {
   id: string;
   displayName: string;
-  fieldsJson?: unknown;
+  fieldsJson?: Record<string, unknown> | null;
   fields?: Record<string, unknown>;
 }
 
@@ -27,8 +27,7 @@ export interface SectionCategoryState<T extends SectionTypeDef, R extends Sectio
 /** Returns the search-relevant fields object from a resource (supports both web and desktop shapes). */
 function getFields(resource: SectionResource): Record<string, unknown> {
   if (resource.fields && typeof resource.fields === "object") return resource.fields;
-  if (resource.fieldsJson && typeof resource.fieldsJson === "object")
-    return resource.fieldsJson as Record<string, unknown>;
+  if (resource.fieldsJson && typeof resource.fieldsJson === "object") return resource.fieldsJson;
   return {};
 }
 

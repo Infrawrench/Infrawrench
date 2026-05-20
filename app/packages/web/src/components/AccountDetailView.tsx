@@ -30,8 +30,8 @@ interface Resource {
   resourceTypeId: string;
   displayName: string;
   externalId: string | null;
-  fieldsJson: unknown;
-  outputsJson: unknown;
+  fieldsJson: Record<string, unknown> | null;
+  outputsJson: Record<string, unknown> | null;
   parentResourceId: string | null;
 }
 
@@ -182,19 +182,15 @@ export function AccountDetailView({
         activeSectionId={activeSectionId}
         onActiveSectionIdChange={onActiveSectionIdChange}
         renderResource={(resource, activeCategory) => {
-          const subtitle = String(
-            (resource.fieldsJson as Record<string, unknown>)?.["host"] ??
-              (resource.fieldsJson as Record<string, unknown>)?.["region"] ??
-              (resource.fieldsJson as Record<string, unknown>)?.["engine"] ??
-              "",
-          );
+          const fields = resource.fieldsJson ?? {};
+          const subtitle = String(fields["host"] ?? fields["region"] ?? fields["engine"] ?? "");
           const draggable: DraggableResource = {
             id: resource.id,
             pluginId: resource.pluginId,
             resourceTypeId: resource.resourceTypeId,
             accountId: account.id,
             displayName: resource.displayName,
-            fields: (resource.fieldsJson as Record<string, unknown>) ?? {},
+            fields,
             ...(resource.externalId != null ? { externalId: resource.externalId } : {}),
             ...(activeCategory.typeDef.attachTargets
               ? { attachTargets: activeCategory.typeDef.attachTargets }

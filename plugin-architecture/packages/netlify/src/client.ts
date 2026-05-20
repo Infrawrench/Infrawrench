@@ -16,139 +16,8 @@ import {
   renderDnsRecordSidebar,
 } from "@infrawrench/plugin-base";
 
-// Browser-compatible replacement for the `@netlify/api` SDK. The official SDK
-// is OpenAPI-generated and uses `module.createRequire` at import time, which
-// is Node-only — it cannot be loaded in Electron's renderer. This shim issues
-// the same REST calls via fetch with the small slice of operations the plugin
-// actually exercises. Method signatures mirror the SDK so the rest of this
-// file is unchanged.
-class NetlifyAPI {
-  private readonly token: string;
-  private readonly baseUrl = "https://api.netlify.com/api/v1";
-  private readonly caCert: string;
-  private readonly http: HttpHostServices | undefined;
-  constructor(
-    token: string,
-    _opts?: { userAgent?: string },
-    caCert?: string,
-    http?: HttpHostServices,
-  ) {
-    this.token = token;
-    this.caCert = caCert ?? "";
-    this.http = http;
-  }
-  private call<T>(method: string, path: string, body?: unknown): Promise<T> {
-    return jsonRestFetch<T>({
-      vendor: "Netlify",
-      url: `${this.baseUrl}${path}`,
-      errorPath: path,
-      headers: {
-        Authorization: `Bearer ${this.token}`,
-        Accept: "application/json",
-        "User-Agent": "Infrawrench/0.1.0",
-      },
-      init: { method, ...(body !== undefined ? { body: JSON.stringify(body) } : {}) },
-      ...(this.caCert && this.http ? { caCert: this.caCert, http: this.http } : {}),
-    });
-  }
-  private query(params: Record<string, unknown>): string {
-    const entries = Object.entries(params).filter(([, v]) => v !== undefined && v !== null);
-    if (entries.length === 0) return "";
-    const sp = new URLSearchParams();
-    for (const [k, v] of entries) sp.set(k, String(v));
-    return `?${sp.toString()}`;
-  }
-
-  // Sites
-  getSite(p: { siteId: string }): Promise<unknown> {
-    return this.call("GET", `/sites/${encodeURIComponent(p.siteId)}`);
-  }
-  listSites(p: { page?: number; per_page?: number }): Promise<unknown> {
-    return this.call("GET", `/sites${this.query(p)}`);
-  }
-  createSite(p: { body: { name: string } }): Promise<unknown> {
-    return this.call("POST", `/sites`, p.body);
-  }
-  deleteSite(p: { siteId: string }): Promise<unknown> {
-    return this.call("DELETE", `/sites/${encodeURIComponent(p.siteId)}`);
-  }
-
-  // Deploys
-  listSiteDeploys(p: { siteId: string; page?: number; per_page?: number }): Promise<unknown> {
-    const { siteId, ...q } = p;
-    return this.call("GET", `/sites/${encodeURIComponent(siteId)}/deploys${this.query(q)}`);
-  }
-  deleteDeploy(p: { deployId: string }): Promise<unknown> {
-    return this.call("DELETE", `/deploys/${encodeURIComponent(p.deployId)}`);
-  }
-
-  // Forms
-  listSiteForms(p: { siteId: string }): Promise<unknown> {
-    return this.call("GET", `/sites/${encodeURIComponent(p.siteId)}/forms`);
-  }
-  deleteSiteForm(p: { siteId: string; formId: string }): Promise<unknown> {
-    return this.call(
-      "DELETE",
-      `/sites/${encodeURIComponent(p.siteId)}/forms/${encodeURIComponent(p.formId)}`,
-    );
-  }
-
-  // DNS
-  getDnsZones(): Promise<unknown> {
-    return this.call("GET", `/dns_zones`);
-  }
-  getDnsRecords(p: { zoneId: string }): Promise<unknown> {
-    return this.call("GET", `/dns_zones/${encodeURIComponent(p.zoneId)}/dns_records`);
-  }
-  createDnsZone(p: { body: { name: string } }): Promise<unknown> {
-    return this.call("POST", `/dns_zones`, p.body);
-  }
-  createDnsRecord(p: {
-    zoneId: string;
-    body: { type: string; hostname: string; value: string; ttl?: number };
-  }): Promise<unknown> {
-    return this.call("POST", `/dns_zones/${encodeURIComponent(p.zoneId)}/dns_records`, p.body);
-  }
-  deleteDnsZone(p: { zoneId: string }): Promise<unknown> {
-    return this.call("DELETE", `/dns_zones/${encodeURIComponent(p.zoneId)}`);
-  }
-  deleteDnsRecord(p: { zoneId: string; dnsRecordId: string }): Promise<unknown> {
-    return this.call(
-      "DELETE",
-      `/dns_zones/${encodeURIComponent(p.zoneId)}/dns_records/${encodeURIComponent(p.dnsRecordId)}`,
-    );
-  }
-
-  // Build hooks
-  listSiteBuildHooks(p: { siteId: string }): Promise<unknown> {
-    return this.call("GET", `/sites/${encodeURIComponent(p.siteId)}/build_hooks`);
-  }
-  createSiteBuildHook(p: {
-    siteId: string;
-    body: { title: string; branch?: string };
-  }): Promise<unknown> {
-    return this.call("POST", `/sites/${encodeURIComponent(p.siteId)}/build_hooks`, p.body);
-  }
-  deleteSiteBuildHook(p: { siteId: string; id: string }): Promise<unknown> {
-    return this.call(
-      "DELETE",
-      `/sites/${encodeURIComponent(p.siteId)}/build_hooks/${encodeURIComponent(p.id)}`,
-    );
-  }
-
-  // Env vars (legacy site-level endpoint, kept for GET parity with the SDK)
-  getSiteEnvVars(p: { siteId: string }): Promise<unknown> {
-    return this.call("GET", `/sites/${encodeURIComponent(p.siteId)}/env`);
-  }
-}
-
-// The `@netlify/api` SDK is OpenAPI-generated and exposes weakly-typed
-// dynamic methods (each response type is inferred via `any` in the runtime
-// methods table). We derive narrow, ergonomic shapes from the swagger
-// schema below to keep the rest of the plugin strongly typed without
-// reaching into the SDK's internal `operations` table.
-//
-// These match the OpenAPI `site`, `deploy`, `form`, `dnsZone`, `dnsRecord`,
+// Narrow shapes for the Netlify REST responses the plugin consumes. These
+// match the OpenAPI `site`, `deploy`, `form`, `dnsZone`, `dnsRecord`,
 // `buildHook`, and `envVar` definitions used by api.netlify.com.
 
 interface NetlifyRepoInfo {
@@ -286,6 +155,136 @@ interface NetlifyEnvVar {
   updated_at?: string;
 }
 
+// Browser-compatible replacement for the `@netlify/api` SDK. The official SDK
+// is OpenAPI-generated and uses `module.createRequire` at import time, which
+// is Node-only — it cannot be loaded in Electron's renderer. This shim issues
+// the same REST calls via fetch with the small slice of operations the plugin
+// actually exercises. Each method declares the narrow response shape so
+// callers don't need to widen via `as unknown as`.
+class NetlifyAPI {
+  private readonly token: string;
+  private readonly baseUrl = "https://api.netlify.com/api/v1";
+  private readonly caCert: string;
+  private readonly http: HttpHostServices | undefined;
+  constructor(
+    token: string,
+    _opts?: { userAgent?: string },
+    caCert?: string,
+    http?: HttpHostServices,
+  ) {
+    this.token = token;
+    this.caCert = caCert ?? "";
+    this.http = http;
+  }
+  private call<T>(method: string, path: string, body?: unknown): Promise<T> {
+    return jsonRestFetch<T>({
+      vendor: "Netlify",
+      url: `${this.baseUrl}${path}`,
+      errorPath: path,
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+        Accept: "application/json",
+        "User-Agent": "Infrawrench/0.1.0",
+      },
+      init: { method, ...(body !== undefined ? { body: JSON.stringify(body) } : {}) },
+      ...(this.caCert && this.http ? { caCert: this.caCert, http: this.http } : {}),
+    });
+  }
+  private query(params: Record<string, unknown>): string {
+    const entries = Object.entries(params).filter(([, v]) => v !== undefined && v !== null);
+    if (entries.length === 0) return "";
+    const sp = new URLSearchParams();
+    for (const [k, v] of entries) sp.set(k, String(v));
+    return `?${sp.toString()}`;
+  }
+
+  // Sites
+  getSite(p: { siteId: string }): Promise<NetlifySite> {
+    return this.call("GET", `/sites/${encodeURIComponent(p.siteId)}`);
+  }
+  listSites(p: { page?: number; per_page?: number }): Promise<NetlifySite[]> {
+    return this.call("GET", `/sites${this.query(p)}`);
+  }
+  createSite(p: { body: { name: string } }): Promise<NetlifySite> {
+    return this.call("POST", `/sites`, p.body);
+  }
+  deleteSite(p: { siteId: string }): Promise<void> {
+    return this.call("DELETE", `/sites/${encodeURIComponent(p.siteId)}`);
+  }
+
+  // Deploys
+  listSiteDeploys(p: {
+    siteId: string;
+    page?: number;
+    per_page?: number;
+  }): Promise<NetlifyDeploy[]> {
+    const { siteId, ...q } = p;
+    return this.call("GET", `/sites/${encodeURIComponent(siteId)}/deploys${this.query(q)}`);
+  }
+  deleteDeploy(p: { deployId: string }): Promise<void> {
+    return this.call("DELETE", `/deploys/${encodeURIComponent(p.deployId)}`);
+  }
+
+  // Forms
+  listSiteForms(p: { siteId: string }): Promise<NetlifyForm[]> {
+    return this.call("GET", `/sites/${encodeURIComponent(p.siteId)}/forms`);
+  }
+  deleteSiteForm(p: { siteId: string; formId: string }): Promise<void> {
+    return this.call(
+      "DELETE",
+      `/sites/${encodeURIComponent(p.siteId)}/forms/${encodeURIComponent(p.formId)}`,
+    );
+  }
+
+  // DNS
+  getDnsZones(): Promise<NetlifyDnsZone[]> {
+    return this.call("GET", `/dns_zones`);
+  }
+  getDnsRecords(p: { zoneId: string }): Promise<NetlifyDnsRecord[]> {
+    return this.call("GET", `/dns_zones/${encodeURIComponent(p.zoneId)}/dns_records`);
+  }
+  createDnsZone(p: { body: { name: string } }): Promise<NetlifyDnsZone> {
+    return this.call("POST", `/dns_zones`, p.body);
+  }
+  createDnsRecord(p: {
+    zoneId: string;
+    body: { type: string; hostname: string; value: string; ttl?: number };
+  }): Promise<NetlifyDnsRecord> {
+    return this.call("POST", `/dns_zones/${encodeURIComponent(p.zoneId)}/dns_records`, p.body);
+  }
+  deleteDnsZone(p: { zoneId: string }): Promise<void> {
+    return this.call("DELETE", `/dns_zones/${encodeURIComponent(p.zoneId)}`);
+  }
+  deleteDnsRecord(p: { zoneId: string; dnsRecordId: string }): Promise<void> {
+    return this.call(
+      "DELETE",
+      `/dns_zones/${encodeURIComponent(p.zoneId)}/dns_records/${encodeURIComponent(p.dnsRecordId)}`,
+    );
+  }
+
+  // Build hooks
+  listSiteBuildHooks(p: { siteId: string }): Promise<NetlifyBuildHook[]> {
+    return this.call("GET", `/sites/${encodeURIComponent(p.siteId)}/build_hooks`);
+  }
+  createSiteBuildHook(p: {
+    siteId: string;
+    body: { title: string; branch?: string };
+  }): Promise<NetlifyBuildHook> {
+    return this.call("POST", `/sites/${encodeURIComponent(p.siteId)}/build_hooks`, p.body);
+  }
+  deleteSiteBuildHook(p: { siteId: string; id: string }): Promise<void> {
+    return this.call(
+      "DELETE",
+      `/sites/${encodeURIComponent(p.siteId)}/build_hooks/${encodeURIComponent(p.id)}`,
+    );
+  }
+
+  // Env vars (legacy site-level endpoint, kept for GET parity with the SDK)
+  getSiteEnvVars(p: { siteId: string }): Promise<NetlifyEnvVar[]> {
+    return this.call("GET", `/sites/${encodeURIComponent(p.siteId)}/env`);
+  }
+}
+
 function mapSiteState(state: string): ResourceStatus {
   switch (state) {
     case "current":
@@ -391,7 +390,7 @@ export class NetlifyClient implements PluginClient {
     // For sites we can fetch directly for freshness
     if (typeId === "netlify-site") {
       const siteId = resourceId.split(":").pop() ?? "";
-      const site = (await this.api.getSite({ siteId })) as NetlifySite;
+      const site = await this.api.getSite({ siteId });
       return this.mapSite(site, accountId);
     }
     // For others, look up in the full list
@@ -409,7 +408,7 @@ export class NetlifyClient implements PluginClient {
   ): Promise<string> {
     if (typeId === "netlify-site") {
       const siteId = resourceId.split(":").pop() ?? "";
-      const site = (await this.api.getSite({ siteId })) as NetlifySite;
+      const site = await this.api.getSite({ siteId });
       if (outputKey === "siteId") return site.id;
       if (outputKey === "siteName") return site.name;
       if (outputKey === "url") return site.url ?? "";
@@ -576,7 +575,7 @@ export class NetlifyClient implements PluginClient {
     if (typeId === "netlify-dns-record") {
       const zoneField = !parentResourceId
         ? await (async () => {
-            const zones = ((await this.api.getDnsZones()) ?? []) as NetlifyDnsZone[];
+            const zones = (await this.api.getDnsZones()) ?? [];
             const zoneOptions = zones.map((z) => ({
               id: z.id,
               label: z.name || z.domain || z.id,
@@ -644,8 +643,7 @@ export class NetlifyClient implements PluginClient {
       const siteField = !parentResourceId
         ? await (async () => {
             const sites = await this.paginateAll<NetlifySite>(
-              async (params) =>
-                ((await this.api.listSites(params)) ?? []) as unknown as NetlifySite[],
+              async (params) => (await this.api.listSites(params)) ?? [],
             );
             const siteOptions = sites.map((s) => ({
               id: s.id,
@@ -689,8 +687,7 @@ export class NetlifyClient implements PluginClient {
       const siteField = !parentResourceId
         ? await (async () => {
             const sites = await this.paginateAll<NetlifySite>(
-              async (params) =>
-                ((await this.api.listSites(params)) ?? []) as unknown as NetlifySite[],
+              async (params) => (await this.api.listSites(params)) ?? [],
             );
             const siteOptions = sites.map((s) => ({
               id: String(s.id),
@@ -754,29 +751,19 @@ export class NetlifyClient implements PluginClient {
   ): Promise<ResourceInstance> {
     const parentExternalId = parentResourceId ? parentResourceId.split(":").slice(2).join(":") : "";
     if (typeId === "netlify-site") {
-      const site = (await this.api.createSite({
-        body: { name: fields["name"] ?? "" },
-      })) as NetlifySite;
+      const site = await this.api.createSite({ body: { name: fields["name"] ?? "" } });
       return this.mapSite(site, accountId);
     }
 
     if (typeId === "netlify-dns-zone") {
-      // The SDK's type for createDnsZone resolves request body to `never`
-      // because the operation has no path/query parameters (a quirk of the
-      // OpenAPI-derived dynamic methods). We pass the body via a cast.
-      const createDnsZone = this.api.createDnsZone as unknown as (p: {
-        body: { name: string };
-      }) => Promise<unknown>;
-      const zone = (await createDnsZone({
-        body: { name: fields["name"] ?? "" },
-      })) as NetlifyDnsZone;
+      const zone = await this.api.createDnsZone({ body: { name: fields["name"] ?? "" } });
       return this.mapDnsZone(zone, accountId);
     }
 
     if (typeId === "netlify-dns-record") {
       const zoneId = fields["zoneId"] || parentExternalId;
       if (!zoneId) throw new Error("Netlify plugin: zoneId is required to create a DNS record");
-      const record = (await this.api.createDnsRecord({
+      const record = await this.api.createDnsRecord({
         zoneId,
         body: {
           type: fields["type"] ?? "",
@@ -784,20 +771,20 @@ export class NetlifyClient implements PluginClient {
           value: fields["value"] ?? "",
           ...(fields["ttl"] ? { ttl: Number(fields["ttl"]) } : {}),
         },
-      })) as NetlifyDnsRecord;
+      });
       return this.mapDnsRecord(record, accountId, zoneId);
     }
 
     if (typeId === "netlify-build-hook") {
       const siteId = fields["siteId"] || parentExternalId;
       if (!siteId) throw new Error("Netlify plugin: siteId is required to create a build hook");
-      const hook = (await this.api.createSiteBuildHook({
+      const hook = await this.api.createSiteBuildHook({
         siteId,
         body: {
           title: fields["title"] ?? "",
           ...(fields["branch"] ? { branch: fields["branch"] } : {}),
         },
-      })) as NetlifyBuildHook;
+      });
       return this.mapBuildHook(hook, accountId, siteId);
     }
 
@@ -939,7 +926,7 @@ export class NetlifyClient implements PluginClient {
 
   private async listSites(accountId: string): Promise<ResourceInstance[]> {
     const sites = await this.paginateAll<NetlifySite>(
-      async (params) => ((await this.api.listSites(params)) ?? []) as unknown as NetlifySite[],
+      async (params) => (await this.api.listSites(params)) ?? [],
     );
     return sites.map((s) => this.mapSite(s, accountId));
   }
@@ -988,15 +975,12 @@ export class NetlifyClient implements PluginClient {
 
   private async listAllDeploys(accountId: string): Promise<ResourceInstance[]> {
     const sites = await this.paginateAll<NetlifySite>(
-      async (params) => ((await this.api.listSites(params)) ?? []) as unknown as NetlifySite[],
+      async (params) => (await this.api.listSites(params)) ?? [],
     );
     const results: ResourceInstance[] = [];
     for (const site of sites) {
       try {
-        const deploys = ((await this.api.listSiteDeploys({
-          siteId: site.id,
-          per_page: 5,
-        })) ?? []) as unknown as NetlifyDeploy[];
+        const deploys = (await this.api.listSiteDeploys({ siteId: site.id, per_page: 5 })) ?? [];
         for (const d of deploys) {
           results.push(this.mapDeploy(d, accountId, site.id));
         }
@@ -1047,13 +1031,12 @@ export class NetlifyClient implements PluginClient {
 
   private async listAllForms(accountId: string): Promise<ResourceInstance[]> {
     const sites = await this.paginateAll<NetlifySite>(
-      async (params) => ((await this.api.listSites(params)) ?? []) as unknown as NetlifySite[],
+      async (params) => (await this.api.listSites(params)) ?? [],
     );
     const results: ResourceInstance[] = [];
     for (const site of sites) {
       try {
-        const forms = ((await this.api.listSiteForms({ siteId: site.id })) ??
-          []) as unknown as NetlifyForm[];
+        const forms = (await this.api.listSiteForms({ siteId: site.id })) ?? [];
         for (const f of forms) {
           results.push(this.mapForm(f, accountId, site.id));
         }
@@ -1090,7 +1073,7 @@ export class NetlifyClient implements PluginClient {
   }
 
   private async listDnsZones(accountId: string): Promise<ResourceInstance[]> {
-    const zones = ((await this.api.getDnsZones()) ?? []) as NetlifyDnsZone[];
+    const zones = (await this.api.getDnsZones()) ?? [];
     return zones.map((z) => this.mapDnsZone(z, accountId));
   }
 
@@ -1126,12 +1109,11 @@ export class NetlifyClient implements PluginClient {
   }
 
   private async listAllDnsRecords(accountId: string): Promise<ResourceInstance[]> {
-    const zones = ((await this.api.getDnsZones()) ?? []) as NetlifyDnsZone[];
+    const zones = (await this.api.getDnsZones()) ?? [];
     const results: ResourceInstance[] = [];
     for (const zone of zones) {
       try {
-        const records = ((await this.api.getDnsRecords({ zoneId: zone.id })) ??
-          []) as unknown as NetlifyDnsRecord[];
+        const records = (await this.api.getDnsRecords({ zoneId: zone.id })) ?? [];
         for (const r of records) {
           results.push(this.mapDnsRecord(r, accountId, zone.id));
         }
@@ -1173,13 +1155,12 @@ export class NetlifyClient implements PluginClient {
 
   private async listAllBuildHooks(accountId: string): Promise<ResourceInstance[]> {
     const sites = await this.paginateAll<NetlifySite>(
-      async (params) => ((await this.api.listSites(params)) ?? []) as unknown as NetlifySite[],
+      async (params) => (await this.api.listSites(params)) ?? [],
     );
     const results: ResourceInstance[] = [];
     for (const site of sites) {
       try {
-        const hooks = ((await this.api.listSiteBuildHooks({ siteId: site.id })) ??
-          []) as unknown as NetlifyBuildHook[];
+        const hooks = (await this.api.listSiteBuildHooks({ siteId: site.id })) ?? [];
         for (const h of hooks) {
           results.push(this.mapBuildHook(h, accountId, site.id));
         }
@@ -1217,13 +1198,12 @@ export class NetlifyClient implements PluginClient {
 
   private async listAllEnvVars(accountId: string): Promise<ResourceInstance[]> {
     const sites = await this.paginateAll<NetlifySite>(
-      async (params) => ((await this.api.listSites(params)) ?? []) as unknown as NetlifySite[],
+      async (params) => (await this.api.listSites(params)) ?? [],
     );
     const results: ResourceInstance[] = [];
     for (const site of sites) {
       try {
-        const envVars = ((await this.api.getSiteEnvVars({ siteId: site.id })) ??
-          []) as unknown as NetlifyEnvVar[];
+        const envVars = (await this.api.getSiteEnvVars({ siteId: site.id })) ?? [];
         for (const ev of envVars) {
           results.push(this.mapEnvVar(ev, accountId, site.id));
         }

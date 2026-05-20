@@ -26,7 +26,7 @@ interface ResourceSummary {
   accountId: string;
   displayName: string;
   externalId?: string | null;
-  fieldsJson?: unknown;
+  fieldsJson?: Record<string, unknown> | null;
 }
 
 interface ResourceTypeMeta {
@@ -526,7 +526,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                                 resourceTypeId: resource.resourceTypeId,
                                 accountId: resource.accountId,
                                 displayName: resource.displayName,
-                                fields: (resource.fieldsJson as Record<string, unknown>) ?? {},
+                                fields: resource.fieldsJson ?? {},
                                 ...(resource.externalId != null
                                   ? { externalId: resource.externalId }
                                   : {}),
