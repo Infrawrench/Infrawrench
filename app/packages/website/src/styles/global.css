@@ -618,23 +618,23 @@ body {
   cursor: not-allowed;
 }
 
-.arch-toggle {
+.card-arch-toggle {
   display: inline-flex;
-  background: #090909;
-  border: 1px solid #161616;
+  background: #050505;
+  border: 1px solid #1a1a1a;
   border-radius: 100px;
-  padding: 3px;
-  gap: 2px;
-  margin: 0 auto;
+  padding: 2px;
+  gap: 1px;
 }
 
-.arch-toggle-btn {
+.card-arch-toggle button {
   background: transparent;
   border: 0;
   color: #6b7280;
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 600;
-  padding: 6px 14px;
+  letter-spacing: 0.04em;
+  padding: 3px 9px;
   border-radius: 100px;
   cursor: pointer;
   transition:
@@ -642,11 +642,11 @@ body {
     color 0.15s;
 }
 
-.arch-toggle-btn:hover {
+.card-arch-toggle button:hover {
   color: #d1d5db;
 }
 
-.arch-toggle-btn[data-active] {
+.card-arch-toggle button[data-active] {
   background: #1f1f1f;
   color: #e5e7eb;
 }
@@ -661,12 +661,21 @@ body {
   overflow: hidden;
 }
 
+.apt-block > summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.apt-block > summary::-webkit-details-marker {
+  display: none;
+}
+
 .apt-block-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 14px 16px 10px;
+  padding: 14px 16px;
 }
 
 .apt-block-title {
@@ -679,6 +688,26 @@ body {
   font-size: 12px;
   color: #6b7280;
   margin-top: 2px;
+}
+
+.apt-chevron {
+  flex-shrink: 0;
+  transition: transform 0.15s;
+}
+
+.apt-block[open] .apt-chevron {
+  transform: rotate(180deg);
+}
+
+.apt-block-body {
+  border-top: 1px solid #151515;
+  background: #050505;
+}
+
+.apt-copy-row {
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px 10px 0;
 }
 
 .apt-copy-btn {
@@ -705,9 +734,7 @@ body {
 
 .apt-code {
   margin: 0;
-  padding: 12px 16px 14px;
-  background: #050505;
-  border-top: 1px solid #151515;
+  padding: 10px 16px 14px;
   font-family: "SF Mono", "Fira Code", "Menlo", monospace;
   font-size: 11.5px;
   line-height: 1.65;
