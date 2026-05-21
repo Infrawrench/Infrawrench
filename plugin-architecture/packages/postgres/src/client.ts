@@ -111,6 +111,7 @@ export class PostgresClient implements PluginClient {
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
     const cs = resource.secretStates.find((s) => s.fieldKey === "connectionString");
+    const hasConnection = !!this.connectionString;
 
     let tables: Array<{ name: string; columns: Array<{ name: string; type: string }> }> = [];
     const tablesJson = resource.resolvedOutputs["__tables__"];
@@ -125,7 +126,7 @@ export class PostgresClient implements PluginClient {
     return {
       title: resource.displayName,
       subtitle: `${String(resource.fields["host"] ?? "PostgreSQL")} · ${String(resource.fields["database"] ?? "")}`,
-      status: { kind: "status-dot", status: "info" },
+      status: { kind: "status-dot", status: hasConnection ? "healthy" : "info" },
       sections: [
         {
           kind: "section",
@@ -144,16 +145,22 @@ export class PostgresClient implements PluginClient {
                         fieldKey: "connectionString",
                         resolution: cs.resolution,
                       }
-                    : "(not set)",
+                    : hasConnection
+                      ? this.connectionString
+                      : "(not set)",
                   sensitive: true,
                 },
               ],
             },
-            {
-              kind: "action",
-              label: "Reroll Connection",
-              action: { type: "reroll-secret", fieldKey: "connectionString" },
-            },
+            ...(cs
+              ? [
+                  {
+                    kind: "action" as const,
+                    label: "Reroll Connection",
+                    action: { type: "reroll-secret" as const, fieldKey: "connectionString" },
+                  },
+                ]
+              : []),
           ],
         },
       ],
