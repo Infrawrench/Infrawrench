@@ -44,6 +44,8 @@ const INVOKE_CHANNELS = [
   "ssh_list_system_keys",
   "ssh_read_system_key",
   "ssh_check_pageant",
+  "ssh_check_1password",
+  "ssh_list_1password_keys",
   "ssh_host_key_decide",
   // sftp
   "sftp_list",

@@ -1,7 +1,7 @@
 /**
  * Shared SSH key source types used by desktop components that let the user
  * pick between system-level keys (~/.ssh), app-managed keys (DB rows),
- * and Pageant (Windows SSH agent).
+ * Pageant (Windows SSH agent), and the 1Password SSH agent.
  */
 
 /** A system-level SSH key discovered from the user's ~/.ssh directory. */
@@ -26,4 +26,5 @@ export type KeySource =
   | { type: "system"; name: string }
   | { type: "app"; id: string; name: string }
   | { type: "pageant" }
+  | { type: "1password" }
   | { type: "cloud"; sshKeyId: string; name: string };

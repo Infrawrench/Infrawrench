@@ -8,7 +8,12 @@ import { SizePicker } from "./SizePicker.js";
 import { DiskSlider } from "./DiskSlider.js";
 import { ImagePicker } from "./ImagePicker.js";
 import { DiskPicker } from "./DiskPicker.js";
-import { SshKeyPicker, type SshKeyEntry, type SystemSshKey } from "./SshKeyPicker.js";
+import {
+  SshKeyPicker,
+  type SshKeyEntry,
+  type SystemSshKey,
+  type AgentSshKey,
+} from "./SshKeyPicker.js";
 import { ResourcePicker, type ResourcePickerOption } from "./ResourcePicker.js";
 import { PolicyPicker } from "./PolicyPicker.js";
 import { KeyValueListPicker } from "./KeyValueListPicker.js";
@@ -21,6 +26,8 @@ export interface SshKeyPickerCallbacks {
   currentUserId?: string;
   /** System-level keys (e.g. from ~/.ssh on desktop). Omit on web. */
   systemKeys?: SystemSshKey[];
+  /** Public keys held by the 1Password SSH agent. Desktop-only. */
+  onePasswordKeys?: AgentSshKey[];
   /** When false, shows a sign-in prompt instead of cloud keys. Defaults to true. */
   cloudEnabled?: boolean;
   /** When false, hides the cloud keys section entirely (e.g. desktop in local-only mode). Defaults to true. */
@@ -293,6 +300,7 @@ export function FieldRenderer({
             deleteKey={sshKeyProps.deleteKey}
             currentUserId={sshKeyProps.currentUserId}
             systemKeys={sshKeyProps.systemKeys}
+            onePasswordKeys={sshKeyProps.onePasswordKeys}
             cloudEnabled={sshKeyProps.cloudEnabled}
             showCloudSection={sshKeyProps.showCloudSection}
             onCloudSignIn={sshKeyProps.onCloudSignIn}

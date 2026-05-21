@@ -22,7 +22,7 @@ You can store named SSH private keys in infrawrench so the [SSH terminal](../fea
 
 ## Using a key
 
-Any time a host asks for a key, the picker lists saved keys first. In desktop mode, it also lists keys found on disk (`~/.ssh/`) and, on Windows, keys loaded in Pageant.
+Any time a host asks for a key, the picker lists saved keys first. In desktop mode, it also lists keys found on disk (`~/.ssh/`), keys exposed by the [1Password SSH agent](../features/ssh-terminal.md#picking-a-key) when it is running, and — on Windows — keys loaded in Pageant.
 
 ## Removing a key
 

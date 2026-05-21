@@ -17,6 +17,13 @@ export interface SystemSshKey {
   publicKey: string;
 }
 
+export interface AgentSshKey {
+  name: string;
+  publicKey: string;
+  /** OpenSSH algorithm name, e.g. "ssh-ed25519". Used for the sublabel. */
+  keyType?: string;
+}
+
 export interface SshKeyPickerProps {
   value: string;
   onChange: (publicKey: string) => void;
@@ -30,6 +37,8 @@ export interface SshKeyPickerProps {
   currentUserId?: string;
   /** System-level keys (e.g. from ~/.ssh on desktop). Omit on web. */
   systemKeys?: SystemSshKey[];
+  /** Public keys held by the 1Password SSH agent. Desktop-only. */
+  onePasswordKeys?: AgentSshKey[];
   /** When false, shows a sign-in prompt instead of cloud keys. Defaults to true. */
   cloudEnabled?: boolean;
   /** When false, hides the cloud keys section entirely (e.g. desktop in local-only mode). Defaults to true. */
@@ -46,6 +55,7 @@ export function SshKeyPicker({
   deleteKey,
   currentUserId,
   systemKeys,
+  onePasswordKeys,
   cloudEnabled = true,
   showCloudSection = true,
   onCloudSignIn,
@@ -142,6 +152,42 @@ export function SshKeyPicker({
 
       <div className="max-h-52 overflow-y-auto">
         {loading && <p className="px-3 py-2 text-xs text-on-surface-faint">Loading keys...</p>}
+
+        {/* 1Password agent keys (desktop only) */}
+        {onePasswordKeys && onePasswordKeys.length > 0 && (
+          <div>
+            <div className="px-3 py-1 bg-surface-overlay/30 border-b border-border-strong/40">
+              <span className="text-[10px] font-semibold text-on-surface-faint uppercase tracking-wide">
+                1Password
+              </span>
+            </div>
+            {onePasswordKeys.map((k) => {
+              const selected = value === k.publicKey;
+              const keyType = k.keyType ?? k.publicKey.split(" ")[0] ?? "";
+              return (
+                <button
+                  key={k.publicKey}
+                  onClick={() => onChange(k.publicKey)}
+                  className={`w-full text-left px-3 py-2.5 text-sm transition-colors flex items-center gap-3 ${
+                    selected
+                      ? "bg-accent-muted text-accent-on-muted"
+                      : "text-on-surface-secondary hover:bg-surface-overlay"
+                  }`}
+                >
+                  <span
+                    className={`w-2 h-2 rounded-full flex-shrink-0 ${selected ? "bg-blue-400" : "bg-surface-sunken"}`}
+                  />
+                  <span className="flex-1 min-w-0">
+                    <span className="font-medium block text-xs">{k.name}</span>
+                    <span className="text-[11px] text-on-surface-faint">
+                      1Password agent{keyType ? ` · ${keyType}` : ""}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {/* System keys section (desktop only) */}
         {systemKeys && systemKeys.length > 0 && (

@@ -707,13 +707,21 @@ The sidebar and account page both listen for `iw:resources-changed` and re-fetch
 
 Resource detail pages now expose SSH as a route-local tab. The bottom-docked SSH panel was replaced with an `Open SSH tab` action that promotes the terminal or quick-connect panel into the main content area.
 
-### Pageant (Windows SSH agent) support
+### External SSH agent support (Pageant, 1Password)
 
-SSH key pickers (`SshKeyPicker.tsx`, `SshQuickConnectPanel.tsx`) surface Pageant as a third `KeySource` variant alongside system (`~/.ssh/`) and saved/app keys. The row only appears on Windows and only when `pageant.exe` is currently running (detected by `ssh_check_pageant` IPC → `electron/pageant.ts`, which shells out to `tasklist` with a 5-second cache).
+SSH key pickers (`SshKeyPicker.tsx`, `SshQuickConnectPanel.tsx`) surface external SSH agents as additional `KeySource` variants alongside system (`~/.ssh/`) and saved/app keys.
 
-When Pageant is selected, the renderer emits the sentinel string `PAGEANT_SENTINEL` (`__pageant__`) as the "private key". Main-process SSH call sites (`ssh-shell.ts`, `ssh-tunnel.ts` in both `openTunnel` and `sshExecCommand`) branch on this sentinel and pass `agent: "pageant"` to `ssh2.Client.connect()` instead of `privateKey`. The sentinel constant lives in `electron/ssh-agent.ts` (main) and `src/lib/ssh-agent.ts` (renderer) — keep them in sync.
+- **Pageant** — Windows-only. Detected by `ssh_check_pageant` IPC → `electron/pageant.ts`, which shells out to `tasklist` with a 5-second cache.
+- **1Password** — any platform. Detected by `ssh_check_1password` IPC → `electron/onepassword-agent.ts`, which checks for the agent socket (macOS: `~/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock`; Linux: `~/.1password/agent.sock` or the snap path; Windows: `$SSH_AUTH_SOCK` if set, else `\\.\pipe\openssh-ssh-agent`) with a 5-second cache.
 
-Desktop-only feature: the web app's server-side ssh2 has no path to reach a user's Pageant instance on their Windows machine.
+Each external agent has a sentinel "private key" string the renderer emits when its row is selected — `PAGEANT_SENTINEL` (`__pageant__`) and `ONEPASSWORD_SENTINEL` (`__1password__`). Main-process SSH call sites branch on these sentinels:
+
+- `ssh-tunnel.ts` (`openTunnel`, `sshExecCommand`) — `withAgentOverride` strips `privateKey` and sets `agent: "pageant"` for Pageant or `agent: <socket path>` for 1Password before handing to `ssh2.Client.connect()`.
+- `ssh-shell.ts` — sets the `connectAgent` for both auth and (optionally) forwarding. When the user enables agent forwarding alongside an external agent, ssh2 routes the forwarded sign-requests through the same agent — so e.g. `git clone git@github.com:…` on the remote authenticates against 1Password and surfaces a biometric prompt on the user's machine. PEM-key auth still uses the in-process `buildInProcessAgent` for forwarding.
+
+The sentinel constants live in `electron/ssh-agent.ts` (main) and `src/lib/ssh-agent.ts` (renderer) — keep them in sync.
+
+Desktop-only feature: the web app's server-side ssh2 has no path to reach a user's local agent.
 
 ---
 

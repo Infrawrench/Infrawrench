@@ -111,6 +111,7 @@ export type {
   SshKeyPickerProps,
   SshKeyEntry,
   SystemSshKey,
+  AgentSshKey,
 } from "./components/create-resource/index.js";
 export { ResourcePicker } from "./components/create-resource/index.js";
 export type {

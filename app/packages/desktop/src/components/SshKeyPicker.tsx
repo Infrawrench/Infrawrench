@@ -2,7 +2,7 @@ import { useState, useEffect, useId } from "react";
 import { deriveSSHUsername, useUIStore, SshKeyRadioItem } from "@infrawrench/ui";
 import { invoke } from "../lib/invoke";
 import { getDb } from "../db/client";
-import { PAGEANT_SENTINEL } from "../lib/ssh-agent";
+import { ONEPASSWORD_SENTINEL, PAGEANT_SENTINEL } from "../lib/ssh-agent";
 import type { SystemKey, AppKey, KeySource, CloudKey } from "../lib/ssh-key-source";
 
 interface SshKeyPickerProps {
@@ -23,6 +23,7 @@ export function SshKeyPicker({
   const [appKeys, setAppKeys] = useState<AppKey[]>([]);
   const [cloudKeys, setCloudKeys] = useState<CloudKey[]>([]);
   const [pageantAvailable, setPageantAvailable] = useState(false);
+  const [onePasswordAvailable, setOnePasswordAvailable] = useState(false);
   const [selectedKey, setSelectedKey] = useState<KeySource | null>(null);
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
   const radioGroupName = useId();
@@ -37,13 +38,15 @@ export function SshKeyPicker({
   }, [activeCloudOrgId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadKeys() {
-    const [sys, db, pageant] = await Promise.all([
+    const [sys, db, pageant, onePassword] = await Promise.all([
       invoke<SystemKey[]>("ssh_list_system_keys"),
       getDb(),
       invoke<boolean>("ssh_check_pageant").catch(() => false),
+      invoke<boolean>("ssh_check_1password").catch(() => false),
     ]);
     setSystemKeys(sys);
     setPageantAvailable(pageant);
+    setOnePasswordAvailable(onePassword);
     const rows = await db.select<{ id: string; name: string }[]>(
       "SELECT id, name FROM ssh_keys ORDER BY created_at ASC",
       [],
@@ -71,9 +74,11 @@ export function SshKeyPicker({
           ? { type: "system", name: sys[0].name }
           : rows[0]
             ? { type: "app", id: rows[0].id, name: rows[0].name }
-            : pageant
-              ? { type: "pageant" }
-              : null;
+            : onePassword
+              ? { type: "1password" }
+              : pageant
+                ? { type: "pageant" }
+                : null;
 
     if (first) {
       setSelectedKey(first);
@@ -99,6 +104,8 @@ export function SshKeyPicker({
   async function resolveAndEmit(source: KeySource) {
     if (source.type === "pageant") {
       onKeyResolved(PAGEANT_SENTINEL);
+    } else if (source.type === "1password") {
+      onKeyResolved(ONEPASSWORD_SENTINEL);
     } else if (source.type === "system") {
       const key = await invoke<string>("ssh_read_system_key", { name: source.name });
       onKeyResolved(key);
@@ -182,10 +189,26 @@ export function SshKeyPicker({
       <div className="flex items-start gap-3">
         <label className="text-xs text-on-surface-muted w-20 shrink-0 pt-1">SSH Key</label>
         <div className="flex-1 space-y-1">
-          {systemKeys.length === 0 && appKeys.length === 0 && !pageantAvailable ? (
+          {systemKeys.length === 0 &&
+          appKeys.length === 0 &&
+          !pageantAvailable &&
+          !onePasswordAvailable ? (
             <p className="text-xs text-on-surface-faint py-1">No keys found.</p>
           ) : (
             <>
+              {onePasswordAvailable && (
+                <div className="space-y-0.5">
+                  <p className="text-xs text-on-surface-faint px-1 pb-0.5">SSH agent</p>
+                  <KeyRow
+                    groupName={radioGroupName}
+                    value="1password"
+                    label="1Password"
+                    sublabel="running — "
+                    selected={selectedKey?.type === "1password"}
+                    onSelect={() => void selectKey({ type: "1password" })}
+                  />
+                </div>
+              )}
               {pageantAvailable && (
                 <div className="space-y-0.5">
                   <p className="text-xs text-on-surface-faint px-1 pb-0.5">Windows SSH Agent</p>

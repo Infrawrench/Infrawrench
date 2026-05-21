@@ -14,6 +14,6 @@ export { ImagePicker } from "./ImagePicker.js";
 export { ImageRow } from "./ImageRow.js";
 export { DiskPicker } from "./DiskPicker.js";
 export { SshKeyPicker } from "./SshKeyPicker.js";
-export type { SshKeyPickerProps, SshKeyEntry, SystemSshKey } from "./SshKeyPicker.js";
+export type { SshKeyPickerProps, SshKeyEntry, SystemSshKey, AgentSshKey } from "./SshKeyPicker.js";
 export { ResourcePicker } from "./ResourcePicker.js";
 export type { ResourcePickerOption } from "./ResourcePicker.js";

@@ -5,6 +5,7 @@ import {
   useUIStore,
   type SshKeyEntry,
   type SystemSshKey,
+  type AgentSshKey,
   type ResourcePickerOption,
   type ResourcePickerCallbacks,
   type FieldActionCallbacks,
@@ -27,6 +28,7 @@ export function FieldRenderer({
   formValues?: Record<string, string>;
 }) {
   const [systemKeys, setSystemKeys] = useState<SystemSshKey[]>([]);
+  const [onePasswordKeys, setOnePasswordKeys] = useState<AgentSshKey[]>([]);
   const [cloudAuthed, setCloudAuthed] = useState(false);
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
 
@@ -64,6 +66,17 @@ export function FieldRenderer({
       }
     }
     void loadSystemKeys();
+
+    async function loadOnePasswordKeys() {
+      try {
+        const keys = await invoke<AgentSshKey[]>("ssh_list_1password_keys");
+        if (!cancelled) setOnePasswordKeys(keys);
+      } catch {
+        /* agent unavailable */
+      }
+    }
+    void loadOnePasswordKeys();
+
     return () => {
       cancelled = true;
     };
@@ -107,6 +120,7 @@ export function FieldRenderer({
         generateKey,
         deleteKey,
         systemKeys,
+        onePasswordKeys,
         cloudEnabled: cloudAuthed && activeCloudOrgId !== null,
         showCloudSection: activeCloudOrgId !== null,
         onCloudSignIn: () => {

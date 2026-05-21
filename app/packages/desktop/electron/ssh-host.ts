@@ -14,7 +14,9 @@ import { sftpList, sftpMkdir, sftpDelete, sftpUpload, sftpDownload } from "./sft
 import type { SftpConfig, SshTunnelConfig } from "@infrawrench/plugin-base" with {
   "resolution-mode": "import",
 };
+import { OpenSSHAgent, type ParsedKey } from "ssh2";
 import { isPageantRunning } from "./pageant";
+import { get1PasswordAgentPath, is1PasswordAgentRunning } from "./onepassword-agent";
 import { isDialogBlessedPath } from "./main-utils";
 
 ipcMain.handle("ssh_open_tunnel", (_e, config: SshTunnelConfig) => openTunnel(config));
@@ -177,3 +179,75 @@ ipcMain.handle("ssh_read_system_key", async (_e, { name }: { name: string }) => 
 });
 
 ipcMain.handle("ssh_check_pageant", () => isPageantRunning());
+
+ipcMain.handle("ssh_check_1password", () => is1PasswordAgentRunning());
+
+interface AgentSshKey {
+  name: string;
+  publicKey: string;
+  keyType: string;
+}
+
+// ssh2's OpenSSHAgent.getIdentities returns `Array<ParsedKey | PublicKeyEntry>`
+// per its types; the runtime hands back ParsedKey instances. Narrow by
+// looking for the ParsedKey shape and unwrap the PublicKeyEntry case if
+// needed.
+function toParsedKey(entry: unknown): ParsedKey | null {
+  if (entry && typeof entry === "object" && "getPublicSSH" in entry) {
+    return entry as ParsedKey;
+  }
+  if (entry && typeof entry === "object" && "pubKey" in entry) {
+    const inner = (entry as { pubKey: unknown }).pubKey;
+    if (inner && typeof inner === "object" && "getPublicSSH" in inner) {
+      return inner as ParsedKey;
+    }
+  }
+  return null;
+}
+
+// Lists the public keys 1Password currently holds, by speaking the OpenSSH
+// agent protocol over its socket. Used by the create-resource SSH-key picker
+// so the user can install a 1Password-managed pubkey on a new VM without
+// having to copy it out of the 1Password app by hand.
+ipcMain.handle("ssh_list_1password_keys", async (): Promise<AgentSshKey[]> => {
+  const sock = get1PasswordAgentPath();
+  if (!sock) return [];
+  return new Promise<AgentSshKey[]>((resolve) => {
+    let settled = false;
+    const finish = (keys: AgentSshKey[]) => {
+      if (settled) return;
+      settled = true;
+      resolve(keys);
+    };
+    try {
+      const agent = new OpenSSHAgent(sock);
+      // Hedge against an unresponsive agent so the picker isn't blocked.
+      const timer = setTimeout(() => {
+        console.warn("[1password-agent] getIdentities timed out");
+        finish([]);
+      }, 2_000);
+      agent.getIdentities((err, identities) => {
+        clearTimeout(timer);
+        if (err || !identities) {
+          if (err) console.warn(`[1password-agent] getIdentities failed: ${err.message}`);
+          finish([]);
+          return;
+        }
+        const out: AgentSshKey[] = [];
+        identities.forEach((entry, i) => {
+          const parsed = toParsedKey(entry);
+          if (!parsed) return;
+          const b64 = parsed.getPublicSSH().toString("base64");
+          const comment = parsed.comment ?? "";
+          const openssh = `${parsed.type} ${b64}${comment ? ` ${comment}` : ""}`;
+          const name = (comment.trim() || `1password-${i + 1}`).slice(0, 64);
+          out.push({ name, publicKey: openssh, keyType: parsed.type });
+        });
+        finish(out);
+      });
+    } catch (e) {
+      console.warn(`[1password-agent] OpenSSHAgent threw: ${(e as Error).message}`);
+      finish([]);
+    }
+  });
+});

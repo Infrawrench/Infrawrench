@@ -1,7 +1,8 @@
 /**
- * Desktop adapter over @infrawrench/ssh-tunnel-core. Adds Pageant-agent
- * support on Windows (privateKey === PAGEANT_SENTINEL) and an sshExecCommand
- * helper that reuses the same connect logic for one-off commands.
+ * Desktop adapter over @infrawrench/ssh-tunnel-core. Adds external-agent
+ * support (Pageant on Windows, 1Password on any platform) via sentinel
+ * private-key strings, plus an sshExecCommand helper that reuses the same
+ * connect logic for one-off commands.
  */
 import { Client as SshClient } from "ssh2";
 import type { ConnectConfig } from "ssh2";
@@ -14,7 +15,8 @@ import {
 import type { SshTunnelConfig } from "@infrawrench/plugin-base" with {
   "resolution-mode": "import",
 };
-import { PAGEANT_SENTINEL } from "./ssh-agent";
+import { ONEPASSWORD_SENTINEL, PAGEANT_SENTINEL } from "./ssh-agent";
+import { get1PasswordAgentPath } from "./onepassword-agent";
 import {
   ensureHostKeyCacheLoaded,
   verifyOrPinHostKeyInteractive,
@@ -25,6 +27,16 @@ function withAgentOverride(opts: ConnectConfig): ConnectConfig {
   if (opts.privateKey === PAGEANT_SENTINEL) {
     const { privateKey: _ignored, ...rest } = opts;
     return { ...rest, agent: "pageant" };
+  }
+  if (opts.privateKey === ONEPASSWORD_SENTINEL) {
+    const sock = get1PasswordAgentPath();
+    if (!sock) {
+      throw new Error(
+        "1Password SSH agent was selected but the agent socket could not be found. Enable the SSH agent in 1Password's Developer settings.",
+      );
+    }
+    const { privateKey: _ignored, ...rest } = opts;
+    return { ...rest, agent: sock };
   }
   return opts;
 }

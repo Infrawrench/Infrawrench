@@ -4,7 +4,8 @@ import { Client as SshClient } from "ssh2";
 import type { ClientChannel } from "ssh2";
 import type { WebContents } from "electron";
 import { forwardOutHop } from "@infrawrench/plugin-ssh";
-import { PAGEANT_SENTINEL } from "./ssh-agent";
+import { ONEPASSWORD_SENTINEL, PAGEANT_SENTINEL } from "./ssh-agent";
+import { get1PasswordAgentPath } from "./onepassword-agent";
 import { buildInProcessAgent } from "./ssh-shell-agent";
 import {
   ensureHostKeyCacheLoaded,
@@ -50,18 +51,21 @@ const shells = new Map<string, ShellRecord>();
  * or through an existing chain via `sock`. Returns the ready client. Each hop
  * gets its own TOFU host-key check.
  */
+type ForwardAgent = ReturnType<typeof buildInProcessAgent> | string | null;
+
 function connectOneHop(opts: {
   host: string;
   port: number;
   username: string;
   privateKey: string;
   sock?: Readable;
-  agent?: ReturnType<typeof buildInProcessAgent> | "pageant" | null;
+  agent?: ForwardAgent;
   agentForward?: boolean;
 }): Promise<SshClient> {
   const client = new SshClient();
   let hostKeyError: HostKeyMismatchError | null = null;
-  const useAgentForAuth = opts.privateKey === PAGEANT_SENTINEL;
+  const useAgentForAuth =
+    opts.privateKey === PAGEANT_SENTINEL || opts.privateKey === ONEPASSWORD_SENTINEL;
   return new Promise((resolve, reject) => {
     client.once("ready", () => resolve(client));
     client.once("error", (err) => {
@@ -104,23 +108,34 @@ export async function spawnSshShell(
 ): Promise<string> {
   await ensureHostKeyCacheLoaded();
 
-  // Agent forwarding settings apply to the final hop only — when forwarding
-  // through jumpboxes we explicitly don't expose the agent on intermediates.
-  const useAgentForAuth = config.privateKey === PAGEANT_SENTINEL;
-  let forwardAgent: ReturnType<typeof buildInProcessAgent> | "pageant" | null = null;
-  if (config.agentForward) {
-    if (useAgentForAuth) {
-      forwardAgent = "pageant";
-    } else {
-      forwardAgent = buildInProcessAgent(config.privateKey);
-      if (!forwardAgent) {
-        throw new Error(
-          "Agent forwarding requested but the selected SSH key could not be loaded into Infrawrench's in-process agent.",
-        );
-      }
+  // When the user picked an external agent (Pageant / 1Password) we route both
+  // auth and (optionally) forwarding through it. For PEM-key auth, forwarding
+  // happens via our in-process agent. Agent forwarding only applies to the
+  // final hop — intermediate hops never see the agent.
+  let connectAgent: ForwardAgent = null;
+  if (config.privateKey === PAGEANT_SENTINEL) {
+    connectAgent = "pageant";
+  } else if (config.privateKey === ONEPASSWORD_SENTINEL) {
+    const sock = get1PasswordAgentPath();
+    if (!sock) {
+      throw new Error(
+        "1Password SSH agent was selected but the agent socket could not be found. Enable the SSH agent in 1Password's Developer settings.",
+      );
+    }
+    connectAgent = sock;
+    if (config.agentForward) console.log("[ssh-shell] agent forwarding: 1Password");
+  } else if (config.agentForward) {
+    connectAgent = buildInProcessAgent(config.privateKey);
+    if (!connectAgent) {
+      throw new Error(
+        "Agent forwarding requested but the selected SSH key could not be loaded into Infrawrench's in-process agent.",
+      );
+    }
+    const inProc = connectAgent;
+    if (typeof inProc !== "string") {
       console.log(
-        `[ssh-shell] agent forwarding: in-process (${forwardAgent.keyCount} key${
-          forwardAgent.keyCount === 1 ? "" : "s"
+        `[ssh-shell] agent forwarding: in-process (${inProc.keyCount} key${
+          inProc.keyCount === 1 ? "" : "s"
         })`,
       );
     }
@@ -165,7 +180,7 @@ export async function spawnSshShell(
       username: config.username,
       privateKey: config.privateKey,
       ...(finalSock ? { sock: finalSock } : {}),
-      agent: forwardAgent,
+      agent: connectAgent,
       agentForward: !!config.agentForward,
     });
   } catch (err) {

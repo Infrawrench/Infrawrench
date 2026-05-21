@@ -2,7 +2,7 @@ import { useState, useEffect, useId } from "react";
 import { deriveSSHUsername, useUIStore, SshKeyRadioItem } from "@infrawrench/ui";
 import { invoke } from "../lib/invoke";
 import { getDb } from "../db/client";
-import { PAGEANT_SENTINEL } from "../lib/ssh-agent";
+import { ONEPASSWORD_SENTINEL, PAGEANT_SENTINEL } from "../lib/ssh-agent";
 import type { SystemKey, AppKey, KeySource, CloudKey } from "../lib/ssh-key-source";
 
 interface SshQuickConnectPanelProps {
@@ -20,6 +20,7 @@ export function SshQuickConnectPanel({
   const [appKeys, setAppKeys] = useState<AppKey[]>([]);
   const [cloudKeys, setCloudKeys] = useState<CloudKey[]>([]);
   const [pageantAvailable, setPageantAvailable] = useState(false);
+  const [onePasswordAvailable, setOnePasswordAvailable] = useState(false);
   const [selectedKey, setSelectedKey] = useState<KeySource | null>(null);
   const [username, setUsername] = useState(defaultUsername ?? "root");
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
@@ -35,13 +36,15 @@ export function SshQuickConnectPanel({
   }, [activeCloudOrgId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadKeys() {
-    const [sys, db, pageant] = await Promise.all([
+    const [sys, db, pageant, onePassword] = await Promise.all([
       invoke<SystemKey[]>("ssh_list_system_keys"),
       getDb(),
       invoke<boolean>("ssh_check_pageant").catch(() => false),
+      invoke<boolean>("ssh_check_1password").catch(() => false),
     ]);
     setSystemKeys(sys);
     setPageantAvailable(pageant);
+    setOnePasswordAvailable(onePassword);
     const rows = await db.select<{ id: string; name: string }[]>(
       "SELECT id, name FROM ssh_keys ORDER BY created_at ASC",
       [],
@@ -65,6 +68,7 @@ export function SshQuickConnectPanel({
       if (appMatch) return { type: "app", id: appMatch.id, name: appMatch.name };
       if (sys[0]) return { type: "system", name: sys[0].name };
       if (rows[0]) return { type: "app", id: rows[0].id, name: rows[0].name };
+      if (onePassword) return { type: "1password" };
       if (pageant) return { type: "pageant" };
       return null;
     });
@@ -115,6 +119,8 @@ export function SshQuickConnectPanel({
     let key: string;
     if (selectedKey.type === "pageant") {
       key = PAGEANT_SENTINEL;
+    } else if (selectedKey.type === "1password") {
+      key = ONEPASSWORD_SENTINEL;
     } else if (selectedKey.type === "system") {
       key = await invoke<string>("ssh_read_system_key", { name: selectedKey.name });
     } else if (selectedKey.type === "app") {
@@ -163,10 +169,26 @@ export function SshQuickConnectPanel({
         <div className="flex items-start gap-3">
           <label className="text-xs text-on-surface-muted w-20 shrink-0 pt-1">SSH Key</label>
           <div className="flex-1 space-y-1">
-            {systemKeys.length === 0 && appKeys.length === 0 && !pageantAvailable ? (
+            {systemKeys.length === 0 &&
+            appKeys.length === 0 &&
+            !pageantAvailable &&
+            !onePasswordAvailable ? (
               <p className="text-xs text-on-surface-faint py-1">No keys found.</p>
             ) : (
               <>
+                {onePasswordAvailable && (
+                  <div className="space-y-0.5">
+                    <p className="text-xs text-on-surface-faint px-1 pb-0.5">SSH agent</p>
+                    <KeyRow
+                      groupName={radioGroupName}
+                      value="1password"
+                      label="1Password"
+                      sublabel="running — "
+                      selected={selectedKey?.type === "1password"}
+                      onSelect={() => setSelectedKey({ type: "1password" })}
+                    />
+                  </div>
+                )}
                 {pageantAvailable && (
                   <div className="space-y-0.5">
                     <p className="text-xs text-on-surface-faint px-1 pb-0.5">Windows SSH Agent</p>
