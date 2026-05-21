@@ -76,7 +76,7 @@ function fingerprint(hostKey: Buffer): string {
  * Never writes. Throws `HostKeyTrustRequiredError` when the host is unknown
  * or when the key has changed.
  */
-export async function verifyHostKey(
+async function verifyHostKey(
   orgId: string,
   host: string,
   port: number,

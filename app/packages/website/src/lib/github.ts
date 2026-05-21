@@ -1,4 +1,4 @@
-export type GhAsset = {
+type GhAsset = {
   id: number;
   name: string;
   size: number;
@@ -6,7 +6,7 @@ export type GhAsset = {
   updated_at: string;
 };
 
-export type GhRelease = {
+type GhRelease = {
   tag_name: string;
   name: string | null;
   body: string | null;
