@@ -53,7 +53,6 @@ export class DatabricksClient implements PluginClient {
   }
 
   private async api<T>(method: string, path: string, body?: Record<string, unknown>): Promise<T> {
-    // Separate path from query string if present
     const url = path.startsWith("http") ? path : `${this.host}${path}`;
     const headers: Record<string, string> = {
       Authorization: `Bearer ${this.token}`,
@@ -298,7 +297,6 @@ export class DatabricksClient implements PluginClient {
     };
     const dotStatus = statusMap[state] ?? "info";
 
-    // Human-readable type label
     const typeLabels: Record<string, string> = {
       "databricks-cluster": "Cluster",
       "databricks-sql-warehouse": "SQL Warehouse",
@@ -379,7 +377,6 @@ export class DatabricksClient implements PluginClient {
     const warehouseId = String(resource.fields["warehouseId"]);
     const start = Date.now();
 
-    // Submit statement
     const result = await this.api<{
       statement_id?: string;
       status?: { state?: string; error?: { message?: string } };
@@ -436,7 +433,6 @@ export class DatabricksClient implements PluginClient {
   }
 
   async introspectResource(resourceId: string, accountId: string): Promise<SqlTableMeta[]> {
-    // Use INFORMATION_SCHEMA to list tables and columns
     try {
       const tablesResult = await this.executeQuery(
         resourceId,

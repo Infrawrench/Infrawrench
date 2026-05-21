@@ -25,7 +25,6 @@ export function SshQuickConnectPanel({
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
   const radioGroupName = useId();
 
-  // Add-key form state
   const [showAddKey, setShowAddKey] = useState(false);
   const [newKeyName, setNewKeyName] = useState("");
   const [newKeyPem, setNewKeyPem] = useState("");

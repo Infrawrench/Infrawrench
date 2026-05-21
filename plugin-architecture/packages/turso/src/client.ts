@@ -306,11 +306,8 @@ export class TursoClient implements PluginClient {
   ): Promise<string> {
     const dbName = resourceId.split(":").slice(2).join(":");
 
-    // Create a non-expiring auth token for this database
     const tokenData = await this.api.databases.createToken(dbName);
 
-    // Return as libsql URL with auth token in query parameter
-    // The driver will parse this to extract url and authToken
     const hostname = `${dbName}-${this.orgName}.turso.io`;
     return `libsql://${hostname}?authToken=${encodeURIComponent(tokenData.jwt)}`;
   }

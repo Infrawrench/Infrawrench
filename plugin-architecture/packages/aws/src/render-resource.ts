@@ -78,7 +78,6 @@ export function renderDetail(
   resourceTypes: ResourceTypeDefinition[],
   region: string,
 ): DetailViewSchema {
-  // Use shared DNS helpers for Route 53 records
   if (resource.resourceTypeId === "route53-record-set") {
     return renderDnsRecordDetail(resource, {});
   }
@@ -184,7 +183,6 @@ export function renderDetail(
 }
 
 export function renderSidebarItem(resource: ResourceInstance): SidebarItemSchema {
-  // Use shared DNS helpers for Route 53 records
   if (resource.resourceTypeId === "route53-record-set") {
     return renderDnsRecordSidebar(resource);
   }

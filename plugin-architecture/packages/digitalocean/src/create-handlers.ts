@@ -86,7 +86,6 @@ export async function doGetCreateConfig(
     }
     const sizes = [...sizesByCategory.values()].flat();
 
-    // Build image list: public distribution images grouped by distro, then private images
     const imageMap = new Map<string, ImageOption[]>();
     for (const img of publicImagesData.images) {
       if (img.status !== "available") continue;
