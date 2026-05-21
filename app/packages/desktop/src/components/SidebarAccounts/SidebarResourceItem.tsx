@@ -42,23 +42,33 @@ export function SidebarResourceItem({
     setDropRef(node);
   }
 
+  const activate = () =>
+    void navigateToWorkspaceTarget(
+      navigate,
+      resourceTabTarget(draggable.accountId, draggable.id),
+      { label: draggable.displayName },
+    );
+
   return (
     <div
       ref={setRefs}
       {...listeners}
       {...attributes}
+      role="button"
+      tabIndex={0}
       className={`flex items-center gap-2 px-3 py-1 text-xs rounded cursor-pointer transition-colors ${
         showDropHint
           ? "bg-accent-muted text-accent-on-muted ring-1 ring-inset ring-blue-500"
           : "text-on-surface-tertiary hover:text-on-surface-secondary hover:bg-surface-overlay"
       } ${isDragging ? "opacity-40" : ""}`}
-      onClick={() =>
-        void navigateToWorkspaceTarget(
-          navigate,
-          resourceTabTarget(draggable.accountId, draggable.id),
-          { label: draggable.displayName },
-        )
-      }
+      onClick={activate}
+      onKeyDown={(e) => {
+        if (isDragging) return;
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          activate();
+        }
+      }}
       onContextMenu={onContextMenu}
     >
       <span className="text-on-surface-faint">⠿</span>

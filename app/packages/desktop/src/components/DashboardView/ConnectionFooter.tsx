@@ -37,7 +37,7 @@ export function ConnectionFooter({
         <span className="w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0" />
         <span className="text-xs text-on-surface-faint">Connected</span>
       </div>
-      {status.stats?.map((stat) => {
+      {status.stats?.map((stat, index) => {
         const color =
           stat.variant === "status-healthy"
             ? "text-green-400"
@@ -47,7 +47,7 @@ export function ConnectionFooter({
                 ? "text-red-400"
                 : "text-on-surface-tertiary";
         return (
-          <div key={stat.label} className="flex justify-between text-xs">
+          <div key={`${stat.label}:${index}`} className="flex justify-between text-xs">
             <span className="text-on-surface-faint">{stat.label}</span>
             <span className={color}>{stat.value}</span>
           </div>
@@ -61,8 +61,8 @@ export function ConnectionFooter({
           )}
         </div>
       )}
-      {status.resourceCounts?.map(({ typeLabel, count }) => (
-        <div key={typeLabel} className="flex justify-between text-xs">
+      {status.resourceCounts?.map(({ typeLabel, count }, index) => (
+        <div key={`${typeLabel}:${index}`} className="flex justify-between text-xs">
           <span className="text-on-surface-faint">{typeLabel}</span>
           <span className="text-on-surface-tertiary">{count}</span>
         </div>

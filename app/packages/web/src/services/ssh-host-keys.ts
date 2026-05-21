@@ -208,8 +208,8 @@ export function makeHostKeyConfigureConnect(
     ...opts,
     hostVerifier: makeHostKeyVerifier(
       organizationId,
-      String(opts.host),
-      Number(opts.port),
+      opts.host ?? "localhost",
+      opts.port ?? 22,
       errorRef,
       tag,
     ),
