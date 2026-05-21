@@ -166,7 +166,12 @@ export function DetailView({
   const hasStorageBrowser = !!schema.storageBrowser && !!renderStorageBrowser;
   const hasDescribe = !!schema.describe && !!onGetDescribe;
   const hasLogs = !!schema.logs && !!onGetLogs;
-  const hasMetrics = !!metricSeries && metricSeries.length > 0;
+  // The tab shows whenever the schema declares the capability — a brand-new
+  // resource that hasn't accumulated any metric data yet would otherwise have
+  // the tab disappear, which reads as "metrics broken" rather than "no data
+  // yet". `metricSeriesEmpty` drives the empty-state placeholder below.
+  const hasMetrics = !!schema.metricsCapability;
+  const metricSeriesEmpty = !metricSeries || metricSeries.length === 0;
   const hasArtifacts = !!schema.artifactRegistry && !!onListArtifacts;
   const hasSecretVersions =
     !!schema.secretVersions &&
@@ -653,19 +658,30 @@ export function DetailView({
           tabIndex={0}
           className="flex-1 overflow-auto p-6 space-y-6"
         >
-          {metricSeries!.map((series, i) => (
-            <MetricChart
-              key={i}
-              node={{
-                kind: "metric-chart",
-                title: series.label,
-                series: [series],
-                timeRangeLabel: schema.metricsCapability?.defaultTimeRangeMs
-                  ? `Last ${Math.round(schema.metricsCapability.defaultTimeRangeMs / 60000)} min`
-                  : undefined,
-              }}
-            />
-          ))}
+          {metricSeriesEmpty ? (
+            <div className="flex flex-col items-center justify-center gap-2 py-16 text-sm text-on-surface-muted">
+              <p>No metric data yet.</p>
+              <p className="text-xs text-on-surface-faint max-w-md text-center">
+                Brand-new resources usually take a few minutes to show up here. Some series (memory,
+                disk, load, filesystem on Droplets) also require the provider's metrics agent to be
+                installed on the host.
+              </p>
+            </div>
+          ) : (
+            metricSeries!.map((series, i) => (
+              <MetricChart
+                key={i}
+                node={{
+                  kind: "metric-chart",
+                  title: series.label,
+                  series: [series],
+                  timeRangeLabel: schema.metricsCapability?.defaultTimeRangeMs
+                    ? `Last ${Math.round(schema.metricsCapability.defaultTimeRangeMs / 60000)} min`
+                    : undefined,
+                }}
+              />
+            ))
+          )}
         </div>
       )}
 
