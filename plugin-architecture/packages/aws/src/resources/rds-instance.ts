@@ -51,21 +51,86 @@ export const RDSInstanceResourceType: ResourceTypeDefinition = {
     { key: "endpoint", label: "Endpoint", sensitive: false },
     { key: "port", label: "Port", sensitive: false },
     { key: "masterUsername", label: "Master Username", sensitive: false },
+    {
+      key: "connectionString",
+      label: "Connection String",
+      sensitive: true,
+      description: "Database connection URI (constructed from engine + endpoint + port)",
+    },
   ],
   dashboardPinnable: true,
   supportsMetrics: true,
   supportsCreate: true,
   iconKey: "database",
-  resourceSqlDriver: {
-    driver: "postgres",
-    connectionStringOutputKey: "endpoint",
-  },
+  peerIntegrations: [
+    {
+      pluginId: "postgres",
+      credentialMappings: [{ outputKey: "connectionString", credentialKey: "connectionString" }],
+      tabLabel: "PostgreSQL",
+      showWhen: { fieldKey: "engine", prefix: "postgres" },
+      unreachableWhen: {
+        fieldsEmpty: ["endpoint"],
+        title: "Instance endpoint is not reachable from this host.",
+        suggestions: [
+          "RDS instances are typically VPC-only — connect from inside the VPC or via an SSH tunnel.",
+          "Enable publicly accessible on the instance (not recommended in production).",
+          "Use an EC2 bastion in the same VPC.",
+        ],
+      },
+    },
+    {
+      pluginId: "mysql",
+      credentialMappings: [{ outputKey: "connectionString", credentialKey: "connectionString" }],
+      tabLabel: "MySQL",
+      showWhen: { fieldKey: "engine", equals: "mysql" },
+      unreachableWhen: {
+        fieldsEmpty: ["endpoint"],
+        title: "Instance endpoint is not reachable from this host.",
+        suggestions: [
+          "RDS instances are typically VPC-only — connect from inside the VPC or via an SSH tunnel.",
+          "Enable publicly accessible on the instance (not recommended in production).",
+          "Use an EC2 bastion in the same VPC.",
+        ],
+      },
+    },
+    {
+      pluginId: "mysql",
+      credentialMappings: [{ outputKey: "connectionString", credentialKey: "connectionString" }],
+      tabLabel: "MariaDB",
+      showWhen: { fieldKey: "engine", equals: "mariadb" },
+      unreachableWhen: {
+        fieldsEmpty: ["endpoint"],
+        title: "Instance endpoint is not reachable from this host.",
+        suggestions: [
+          "RDS instances are typically VPC-only — connect from inside the VPC or via an SSH tunnel.",
+          "Enable publicly accessible on the instance (not recommended in production).",
+          "Use an EC2 bastion in the same VPC.",
+        ],
+      },
+    },
+    {
+      pluginId: "mssql",
+      credentialMappings: [{ outputKey: "connectionString", credentialKey: "connectionString" }],
+      tabLabel: "SQL Server",
+      showWhen: { fieldKey: "engine", prefix: "sqlserver" },
+      unreachableWhen: {
+        fieldsEmpty: ["endpoint"],
+        title: "Instance endpoint is not reachable from this host.",
+        suggestions: [
+          "RDS instances are typically VPC-only — connect from inside the VPC or via an SSH tunnel.",
+          "Enable publicly accessible on the instance (not recommended in production).",
+          "Use an EC2 bastion in the same VPC.",
+        ],
+      },
+    },
+  ],
   secretExportTemplates: [
     {
       id: "connection-url",
       displayName: "Connection URL",
       description: "Database endpoint for connecting",
       entries: [
+        { envKey: "DATABASE_URL", outputKey: "connectionString" },
         { envKey: "DB_HOST", outputKey: "endpoint" },
         { envKey: "DB_PORT", outputKey: "port" },
         { envKey: "DB_USER", outputKey: "masterUsername" },

@@ -506,6 +506,10 @@ export async function listRDSInstances(
   return instances.map((db) => {
     const dbId = String(db["DBInstanceIdentifier"] ?? "");
     const endpoint = db["Endpoint"] as Record<string, unknown> | undefined;
+    const engine = String(db["Engine"] ?? "");
+    const host = String(endpoint?.["Address"] ?? "");
+    const port = String(endpoint?.["Port"] ?? "");
+    const masterUsername = String(db["MasterUsername"] ?? "");
     return {
       id: ctx.id(accountId, "rds-instance", dbId),
       pluginId: "aws",
@@ -515,7 +519,7 @@ export async function listRDSInstances(
       fields: {
         dbInstanceId: dbId,
         region: ctx.region,
-        engine: String(db["Engine"] ?? ""),
+        engine,
         engineVersion: String(db["EngineVersion"] ?? ""),
         instanceClass: String(db["DBInstanceClass"] ?? ""),
         status: String(db["DBInstanceStatus"] ?? ""),
@@ -524,9 +528,10 @@ export async function listRDSInstances(
         multiAZ: String(db["MultiAZ"]) === "true",
       },
       resolvedOutputs: {
-        endpoint: String(endpoint?.["Address"] ?? ""),
-        port: String(endpoint?.["Port"] ?? ""),
-        masterUsername: String(db["MasterUsername"] ?? ""),
+        endpoint: host,
+        port,
+        masterUsername,
+        connectionString: host ? buildRdsConnectionString(engine, masterUsername, host, port) : "",
       },
       secretStates: [],
       externalId: dbId,
@@ -534,6 +539,26 @@ export async function listRDSInstances(
       updatedAt: ctx.now(),
     };
   });
+}
+
+function buildRdsConnectionString(
+  engine: string,
+  username: string,
+  host: string,
+  port: string,
+): string {
+  const userPart = username ? `${username}@` : "";
+  const portPart = port ? `:${port}` : "";
+  if (engine.startsWith("postgres") || engine === "aurora-postgresql") {
+    return `postgresql://${userPart}${host}${portPart}`;
+  }
+  if (engine === "mysql" || engine === "mariadb" || engine === "aurora-mysql") {
+    return `mysql://${userPart}${host}${portPart}`;
+  }
+  if (engine.startsWith("sqlserver")) {
+    return `sqlserver://${userPart}${host}${portPart}`;
+  }
+  return `${host}${portPart}`;
 }
 
 export async function listS3Buckets(
