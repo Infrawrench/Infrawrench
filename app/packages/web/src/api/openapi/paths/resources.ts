@@ -49,6 +49,15 @@ const CredentialFormat = strict({
   mimeType: z.string().optional(),
 }).openapi("CredentialFormat");
 
+const EditableField = strict({
+  key: z.string(),
+  label: z.string(),
+  kind: z.enum(["string", "number", "boolean", "enum", "secret", "association"]),
+  required: z.boolean(),
+  description: z.string().optional(),
+  enumValues: z.array(z.string()).optional(),
+}).openapi("EditableField");
+
 const ResourceDetailResponse = strict({
   detailSchema: JsonObject.openapi({
     description: "Plugin-rendered DetailViewSchema. Free-form by design.",
@@ -63,6 +72,8 @@ const ResourceDetailResponse = strict({
   peerPanes: z.array(PeerPane),
   peerIntegrationStubs: z.array(PeerPaneStub),
   canDelete: z.boolean(),
+  canEdit: z.boolean(),
+  editableFields: z.array(EditableField),
   credentialFormats: z.array(CredentialFormat),
   hasManifestEditor: z.boolean(),
   hasSecretVersions: z.boolean(),
@@ -217,6 +228,21 @@ const CreateResponse = strict({
   displayName: z.string(),
   warnings: z.array(z.string()).optional(),
 }).openapi("CreateResourceResponse");
+
+const UpdateRequest = strict({
+  accountId: Uuid,
+  pluginId: z.string(),
+  resourceTypeId: z.string(),
+  resourceId: ResourceId,
+  fields: z.record(z.string()),
+  parentResourceId: ResourceId.optional(),
+}).openapi("UpdateResourceRequest");
+
+const UpdateResponse = strict({
+  id: ResourceId,
+  displayName: z.string(),
+  fields: z.record(z.string()),
+}).openapi("UpdateResourceResponse");
 
 const CreateConfigRequest = strict({
   accountId: Uuid,
@@ -633,6 +659,24 @@ export function registerResourcePaths(ctx: BuildContext) {
     },
     responses: {
       200: { description: "Created", content: { "application/json": { schema: CreateResponse } } },
+      400: ErrorResponses[400],
+      404: ErrorResponses[404],
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/resources/update",
+    tags: ["Resources"],
+    summary: "Update a resource via its plugin",
+    description:
+      "Applies the supplied field changes upstream and persists the refreshed fields/display name to the DB. The body's `fields` map only carries the keys the caller actually changed.",
+    request: {
+      params: OrgIdParam,
+      body: { content: { "application/json": { schema: UpdateRequest } }, required: true },
+    },
+    responses: {
+      200: { description: "Updated", content: { "application/json": { schema: UpdateResponse } } },
       400: ErrorResponses[400],
       404: ErrorResponses[404],
     },

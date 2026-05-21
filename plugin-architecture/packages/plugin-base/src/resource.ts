@@ -27,6 +27,13 @@ export interface FieldDefinition {
   resolvableFrom?: AssociationSource[];
   /** Whether the field supports a literal string value in addition to output-ref resolution */
   allowLiteral?: boolean;
+  /**
+   * When false, the field is omitted from the host's Edit form even on
+   * resource types that declare `supportsUpdate`. Use for identity/key fields
+   * the provider doesn't allow renaming (e.g. a bucket name). Defaults to
+   * true on update-capable resource types.
+   */
+  editable?: boolean;
 }
 
 export interface ResourceOutput {
@@ -162,6 +169,17 @@ export interface ResourceTypeDefinition {
   outputs: ResourceOutput[];
   /** Set on child resource types — points to the parent type's id */
   parentTypeId?: string;
+  /**
+   * When true on a type with `parentTypeId`, instances appear in the account
+   * sidebar as their own top-level section (in addition to being grouped
+   * under the parent on the parent's detail page). Default false — child
+   * types are sidebar-hidden, matching DO Droplets-inside-Projects: the
+   * project is the navigable parent and droplets only show in its detail
+   * page. Set true for child types the user thinks of as first-class
+   * resources (e.g. snapshots, custom images, child databases of a project)
+   * so they're reachable without first drilling into the parent.
+   */
+  showInSidebar?: boolean;
   /** Whether instances of this type can be pinned directly to a dashboard */
   dashboardPinnable: boolean;
   /** Named icon key within the plugin's icon set, falls back to the plugin logo */
@@ -212,6 +230,13 @@ export interface ResourceTypeDefinition {
    * Set `false` on types whose provider API doesn't support deletion (e.g. GCP KMS key rings).
    */
   supportsDelete?: boolean;
+  /**
+   * Whether instances of this type can be edited via the host's Edit button.
+   * When true the plugin must implement `updateResource` and the host renders
+   * an Edit action on the detail view that opens a form over the resource's
+   * editable fields. Defaults to false.
+   */
+  supportsUpdate?: boolean;
   /** If true, the host will open a built-in SSH terminal for instances of this type */
   supportsTerminal?: boolean;
   /** If true, the host will open a built-in SFTP file browser for instances of this type */

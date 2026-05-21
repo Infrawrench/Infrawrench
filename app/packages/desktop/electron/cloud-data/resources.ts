@@ -45,6 +45,16 @@ ipcMain.handle(
 );
 
 ipcMain.handle(
+  "cloud_update_resource",
+  async (_e, { orgId, body }: { orgId: string; body: unknown }) => {
+    return cloudFetch(orgId, `/resources/update`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
+);
+
+ipcMain.handle(
   "cloud_get_create_config",
   async (
     _e,

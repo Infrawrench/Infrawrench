@@ -55,6 +55,15 @@ interface ResourceDetailResponse {
     peerPluginId: string;
   }[];
   canDelete: boolean;
+  canEdit?: boolean;
+  editableFields?: Array<{
+    key: string;
+    label: string;
+    kind: "string" | "number" | "boolean" | "enum" | "secret" | "association";
+    required: boolean;
+    description?: string;
+    enumValues?: string[];
+  }>;
   credentialFormats?: CredentialFormat[];
   hasManifestEditor: boolean;
   hasSecretVersions?: boolean;
@@ -251,6 +260,8 @@ export function ResourcePanel({
         peerPanes={data.peerPanes}
         peerIntegrationStubs={data.peerIntegrationStubs}
         canDelete={data.canDelete}
+        canEdit={data.canEdit}
+        editableFields={data.editableFields}
         credentialFormats={data.credentialFormats}
         hasManifestEditor={data.hasManifestEditor}
         hasSecretVersions={data.hasSecretVersions}

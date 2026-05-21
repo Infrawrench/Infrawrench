@@ -89,6 +89,7 @@ const INVOKE_CHANNELS = [
   "cloud_get_resource_detail",
   "cloud_describe_resource",
   "cloud_create_resource",
+  "cloud_update_resource",
   "cloud_delete_resource",
   "cloud_get_create_config",
   "cloud_get_create_pricing",

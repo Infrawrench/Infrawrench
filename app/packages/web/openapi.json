@@ -1427,6 +1427,35 @@
           }
         ]
       },
+      "EditableField": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["string", "number", "boolean", "enum", "secret", "association"]
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "description": {
+            "type": "string"
+          },
+          "enumValues": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": ["key", "label", "kind", "required"],
+        "additionalProperties": false
+      },
       "CredentialFormat": {
         "type": "object",
         "properties": {
@@ -1505,6 +1534,15 @@
           },
           "canDelete": {
             "type": "boolean"
+          },
+          "canEdit": {
+            "type": "boolean"
+          },
+          "editableFields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EditableField"
+            }
           },
           "credentialFormats": {
             "type": "array",
@@ -1588,6 +1626,8 @@
           "peerPanes",
           "peerIntegrationStubs",
           "canDelete",
+          "canEdit",
+          "editableFields",
           "credentialFormats",
           "hasManifestEditor",
           "hasSecretVersions",
@@ -2043,6 +2083,55 @@
           }
         },
         "required": ["accountId", "pluginId", "resourceTypeId", "fields"],
+        "additionalProperties": false
+      },
+      "UpdateResourceResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/ResourceId"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "fields": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        },
+        "required": ["id", "displayName", "fields"],
+        "additionalProperties": false
+      },
+      "UpdateResourceRequest": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "pluginId": {
+            "type": "string"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "resourceId": {
+            "$ref": "#/components/schemas/ResourceId"
+          },
+          "fields": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "parentResourceId": {
+            "$ref": "#/components/schemas/ResourceId"
+          }
+        },
+        "required": ["accountId", "pluginId", "resourceTypeId", "resourceId", "fields"],
         "additionalProperties": false
       },
       "CreateConfigRequest": {
@@ -7076,6 +7165,69 @@
         "operationId": "postOrgOrgIdResourcesCreate",
         "x-required-permission": "resources:write",
         "description": "_Requires permission: `resources:write`._"
+      }
+    },
+    "/api/org/{orgId}/resources/update": {
+      "post": {
+        "tags": ["Resources"],
+        "summary": "Update a resource via its plugin",
+        "description": "Applies the supplied field changes upstream and persists the refreshed fields/display name to the DB. The body's `fields` map only carries the keys the caller actually changed.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateResourceRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateResourceResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdResourcesUpdate"
       }
     },
     "/api/org/{orgId}/resources/create-config": {

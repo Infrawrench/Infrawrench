@@ -150,6 +150,9 @@ export type { RouteNavigator } from "./workspace-tabs.js";
 export { CreateResourceModal } from "./components/CreateResourceModal.js";
 export type { CreateResourceModalProps } from "./components/CreateResourceModal.js";
 
+export { EditResourceModal } from "./components/EditResourceModal.js";
+export type { EditResourceModalProps } from "./components/EditResourceModal.js";
+
 export { CredentialExportModal } from "./components/CredentialExportModal.js";
 export type { CredentialExportModalProps } from "./components/CredentialExportModal.js";
 export { useCreateResourceForm } from "./hooks/useCreateResourceForm.js";

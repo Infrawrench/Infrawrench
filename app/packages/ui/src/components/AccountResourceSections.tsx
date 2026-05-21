@@ -7,6 +7,8 @@ export interface SectionTypeDef {
   pluralDisplayName: string;
   parentTypeId?: string | undefined;
   supportsCreate?: boolean | undefined;
+  /** Child types opt in here to surface in the sidebar/account view alongside top-level types. */
+  showInSidebar?: boolean | undefined;
 }
 
 /** Minimal resource shape needed for search filtering. */
@@ -37,8 +39,10 @@ export function getVisibleAccountCategories<T extends SectionTypeDef, R extends 
 ): SectionCategoryState<T, R>[] {
   return categories
     .filter((cat) => {
-      // When not searching, hide child resource types — they appear under their parent detail page
-      if (normalizedQuery.length === 0 && cat.typeDef.parentTypeId) return false;
+      // When not searching, hide child resource types — they appear under their parent detail page.
+      // Exception: types that opted in via `showInSidebar` stay visible as their own section.
+      if (normalizedQuery.length === 0 && cat.typeDef.parentTypeId && !cat.typeDef.showInSidebar)
+        return false;
       if (!cat.loading && cat.resources.length === 0 && !cat.typeDef.supportsCreate) return false;
       return true;
     })

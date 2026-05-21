@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { v4 as uuid } from "uuid";
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and, isNull, or, inArray } from "drizzle-orm";
 import { db } from "../../db/client";
 import { accounts, bastionVms, resources } from "../../db/schema";
 import { refreshAllowlistById } from "@infrawrench/server-core/bastion/registry";
@@ -230,7 +230,24 @@ app.get("/:id/resources", async (c) => {
     eq(resources.organizationId, organizationId),
     isNull(resources.deletedAt),
   ];
-  if (topLevelOnly) conditions.push(isNull(resources.parentResourceId));
+  if (topLevelOnly) {
+    // Top-level resources have no parent. Child types can opt into the
+    // sidebar via `showInSidebar` on their `ResourceTypeDefinition`; include
+    // those resource type ids in the result alongside the parentless rows.
+    const sidebarChildTypeIds = new Set<string>();
+    for (const p of await loadPlugins()) {
+      for (const t of p.plugin.resourceTypes) {
+        if (t.parentTypeId && t.showInSidebar) sidebarChildTypeIds.add(t.id);
+      }
+    }
+    if (sidebarChildTypeIds.size === 0) {
+      conditions.push(isNull(resources.parentResourceId));
+    } else {
+      const sidebarChildClause = inArray(resources.resourceTypeId, [...sidebarChildTypeIds]);
+      const orExpr = or(isNull(resources.parentResourceId), sidebarChildClause);
+      if (orExpr) conditions.push(orExpr);
+    }
+  }
 
   const rows = await db
     .select({

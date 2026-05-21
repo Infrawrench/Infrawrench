@@ -5,6 +5,7 @@ import {
   DraggableChildPill,
   ConfirmDeleteModal,
   CredentialExportModal,
+  EditResourceModal,
   dispatchResourcesChanged,
   buildChildResourceGroups,
   useUIStore,
@@ -24,6 +25,7 @@ import type {
   CredentialFormat,
   CredentialExport,
   DetailViewSchema,
+  FieldDefinition,
   LogsFetchParams,
   LogsFetchResult,
   MetricSeries,
@@ -102,6 +104,8 @@ interface Props {
   peerPanes: PeerPaneServerData[];
   peerIntegrationStubs?: PeerIntegrationStub[] | undefined;
   canDelete: boolean;
+  canEdit?: boolean | undefined;
+  editableFields?: FieldDefinition[] | undefined;
   credentialFormats?: CredentialFormat[] | undefined;
   hasManifestEditor: boolean;
   hasSecretVersions?: boolean | undefined;
@@ -140,6 +144,8 @@ export function ResourceDetailClient({
   peerPanes: serverPeerPanes,
   peerIntegrationStubs,
   canDelete,
+  canEdit,
+  editableFields,
   credentialFormats,
   hasManifestEditor,
   hasSecretVersions,
@@ -168,6 +174,7 @@ export function ResourceDetailClient({
   const navigate = useNavigate();
   const orgId = useOrgId();
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [showExportCredential, setShowExportCredential] = useState(false);
   const [metricSeries, setMetricSeries] = useState<MetricSeries[] | undefined>(undefined);
   const [consoleOpen, setConsoleOpen] = useState(false);
@@ -427,6 +434,19 @@ export function ResourceDetailClient({
       `/api/org/${orgId}/resources/${pluginId}/${resourceTypeId}?resourceId=${encodeURIComponent(resourceId)}&accountId=${accountId}`,
     );
     void navigate({ to: "/org/$orgId/accounts/$accountId", params: { orgId, accountId } });
+    dispatchResourcesChanged({ accountId, resourceTypeId });
+  }
+
+  async function handleUpdate(changedFields: Record<string, string>): Promise<void> {
+    await apiPost(`/api/org/${orgId}/resources/update`, {
+      accountId,
+      pluginId,
+      resourceTypeId,
+      resourceId,
+      fields: changedFields,
+      ...(parentResourceId ? { parentResourceId } : {}),
+    });
+    toast.success(`${resourceTypeLabel} updated.`);
     dispatchResourcesChanged({ accountId, resourceTypeId });
   }
 
@@ -860,7 +880,7 @@ export function ResourceDetailClient({
       )}
 
       {/* Bottom action row */}
-      {(canDelete || (credentialFormats && credentialFormats.length > 0)) &&
+      {(canDelete || canEdit || (credentialFormats && credentialFormats.length > 0)) &&
         !isSshView &&
         !isSftpView && (
           <div className="shrink-0 px-4 py-2 border-t border-border flex items-center justify-end gap-3">
@@ -870,6 +890,14 @@ export function ResourceDetailClient({
                 className="text-xs text-on-surface-faint hover:text-on-surface-secondary transition-colors px-2 py-1 rounded hover:bg-surface-overlay"
               >
                 Get credentials…
+              </button>
+            )}
+            {canEdit && (
+              <button
+                onClick={() => setShowEditModal(true)}
+                className="text-xs text-on-surface-faint hover:text-on-surface-secondary transition-colors px-2 py-1 rounded hover:bg-surface-overlay"
+              >
+                Edit {resourceTypeLabel}…
               </button>
             )}
             {canDelete && (
@@ -889,6 +917,23 @@ export function ResourceDetailClient({
           name={resourceDisplayName}
           onConfirm={handleDelete}
           onClose={() => setConfirmDelete(false)}
+        />
+      )}
+
+      {showEditModal && canEdit && (
+        <EditResourceModal
+          displayName={resourceTypeLabel}
+          fields={editableFields ?? []}
+          initialValues={Object.fromEntries(
+            Object.entries(resourceFields ?? {}).map(([k, v]) => [k, String(v ?? "")]),
+          )}
+          onClose={() => setShowEditModal(false)}
+          onSubmit={async (changed) => {
+            await handleUpdate(changed);
+            // Server-rendered page: a full reload picks up the new fields.
+            // Soft client refresh would need refetching detail; defer to nav.
+            window.location.reload();
+          }}
         />
       )}
 

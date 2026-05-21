@@ -449,6 +449,21 @@ export interface PluginClient {
     parentResourceId?: string,
   ): Promise<ResourceCreateReturn>;
   /**
+   * Apply edits to an existing resource. `fields` carries only the keys the
+   * user changed (host diffs the form against the current values); plugins
+   * should merge against the current upstream state when the provider API
+   * needs a full payload. Returns the refreshed `ResourceInstance` so the
+   * host can persist the new field/display values without a follow-up
+   * `getResource` round-trip. Only called for resource types that declare
+   * `supportsUpdate: true`.
+   */
+  updateResource?(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance>;
+  /**
    * Execute a SQL query against a specific resource without using the node SQL driver.
    * Used for providers with REST-based query APIs (e.g. BigQuery).
    * The host calls this in place of the standard sql driver path when present.

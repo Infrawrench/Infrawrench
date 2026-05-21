@@ -362,6 +362,19 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
   }
 
   const canDelete = !!client.deleteResource && resourceTypeDef?.supportsDelete !== false;
+  const canEdit = !!client.updateResource && !!resourceTypeDef?.supportsUpdate;
+  const editableFields = canEdit
+    ? (resourceTypeDef?.fields ?? [])
+        .filter((f) => f.editable !== false && f.kind !== "secret" && f.kind !== "association")
+        .map((f) => ({
+          key: f.key,
+          label: f.label,
+          kind: f.kind,
+          required: f.required,
+          ...(f.description ? { description: f.description } : {}),
+          ...(f.enumValues ? { enumValues: f.enumValues } : {}),
+        }))
+    : [];
   const credentialFormats =
     client.exportCredential && resourceTypeDef?.credentialFormats
       ? resourceTypeDef.credentialFormats
@@ -452,6 +465,8 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
     peerPanes,
     peerIntegrationStubs,
     canDelete,
+    canEdit,
+    editableFields,
     credentialFormats,
     hasManifestEditor,
     hasSecretVersions,

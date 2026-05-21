@@ -100,6 +100,7 @@ introspect?(): Promise<SqlTableMeta[]>        // SQL schema for editor autocompl
 fetchStats?(): Promise<{ version, size, tableCount }>  // dashboard card stats
 getCreateConfig?(typeId, parentResourceId?): Promise<CreateResourceConfig>  // live API-driven create form
 createResource?(typeId, accountId, fields, parentResourceId?): Promise<ResourceInstance>
+updateResource?(typeId, resourceId, accountId, fields): Promise<ResourceInstance>
 deleteResource?(typeId, resourceId, accountId): Promise<void>
 attachResource?(sourceTypeId, sourceResourceId, targetTypeId, targetResourceId, accountId): Promise<void>
 listStorageObjects?(bucket, prefix): Promise<StorageObject[]>
@@ -146,11 +147,13 @@ Important flags:
 
 - `dashboardPinnable: boolean` — whether users can pin instances to dashboards
 - `supportsCreate?: boolean` — whether the host shows a "+ Create" button
+- `supportsUpdate?: boolean` — whether the host shows an "Edit" button on the resource detail page. When true, the plugin must implement `updateResource`; the host opens `EditResourceModal` over the resource type's `fields`, diffs against the current values, and POSTs only the changed keys via `/api/resources/update` (cloud) or directly to the client (local). Mark individual fields with `editable: false` on `FieldDefinition` to lock them (e.g. provider-immutable identity fields); `secret` and `association` field kinds are also always excluded from the edit form. Currently wired: DigitalOcean `project` (PATCH `/v2/projects/{id}`).
 - `supportsStorageBrowser?: boolean` — whether the host renders the GCS browser panel
 - `supportsTerminal?: boolean` — whether the host renders the SSH terminal panel
 - `sshEndpoint?: { hostOutputKey, privateHostOutputKey?, runningWhen?, defaultUsername?, usernameFieldKey? }` — enables "Connect via SSH" right-click in sidebar; `hostOutputKey` names the resolved output to use as the SSH host (e.g. `"ipv4"`); `privateHostOutputKey` (optional) names the private/internal address output, surfaced by the "Connect through jumpbox" flow so the routed connection can target the VM on its private interface; `defaultUsername` is a static default SSH username (e.g. `"root"`); `usernameFieldKey` points to a per-instance field storing the SSH username (e.g. `"sshUsername"`); resolution precedence: `fields[usernameFieldKey]` > `defaultUsername` > `"root"`
 - `resourceSqlDriver?: { driver, connectionStringOutputKey }` — per-resource SQL editor; the host resolves the connection string from the resource's outputs via `resolveOutput()` and enables the SQL editor tab (unlike manifest-level `sqlDriver` which uses account credentials)
 - `parentTypeId?: string` — child types are shown on their parent's detail page, not on the account page; the host auto-fetches children and renders them as navigable cards with optional create buttons
+- `showInSidebar?: boolean` — on a child type (one with `parentTypeId`), also surface its instances in the sidebar/account view as their own top-level section, additive to the parent-detail-page grouping. Default false → child types are sidebar-hidden (the DO Droplets-inside-Projects model: the project is the navigable parent and droplets only appear in its detail page). Set true for child types the user treats as first-class resources (e.g. snapshots, custom images, NFS shares pinned under a project) so they're reachable from the sidebar without first drilling into the parent. Honored by: `getListableResourceTypes` / `getAccountResourceTypes` / `isCreateOnlyType` in `app/packages/ui/src/utils.ts`, the search filter in `AccountResourceSections.tsx`, the `topLevelOnly=true` branch of `GET /api/accounts/:id/resources` (web), and `listableTopLevelTypes` in `server-core/sync-resources.ts` (dashboard account-pin counts). The parent-detail-page child grouping (`buildChildResourceGroups`) is unchanged — instances appear in both places.
 - `attachTargets?: AttachTarget[]` — resource types this resource can be dragged onto to trigger `client.attachResource`. `AttachTarget = { pluginId, resourceTypeId, matchField?, verb? }`. Drops are restricted to the _same account_; when `matchField` is set, the named field (e.g. `"zone"`) must match between source and target. Currently wired: GCP `gce-disk` → `gce-instance` (attach persistent disk to VM, zone-matched).
 
 **`src/create.ts`** — `CreateResourceConfig`, `CreateFieldConfig`
@@ -358,9 +361,17 @@ All polling is _background_ (no loading flash):
 
 ### DigitalOcean (`@infrawrench/plugin-digitalocean`)
 
-- Resource ID format: `{accountId}:{typeId}:{externalId}`
+- Resource ID format: `{accountId}:{typeId}:{externalId}`. NFS shares are the exception: `externalId = "{region}/{shareId}"` because the API endpoint takes both.
+- Resource types: `project`, `droplet`, `volume`, `snapshot`, `image`, `nfs-share`, `doks-cluster`, `managed-database`, `spaces-bucket`, `domain`, `dns-record`.
 - SSH key upload: `POST /v2/account/keys` — handle 422 (duplicate) by listing existing keys and matching by `public_key`
 - `fetch` helper handles `204 No Content` explicitly to avoid JSON parse error on DELETE
+- **Droplet actions** live in `src/actions.ts`. Parameterless actions (power_on/off/cycle, reboot, shutdown, enable/disable_backups, enable_ipv6, password_reset, plus auto-named snapshot) flow through `invokeAction` from `plugin-action` host actions with `confirmMessage`. Parameterised actions (named snapshot, rename, resize, rebuild, restore, change_backup_policy, volume resize/snapshot) flow through `executeNoSqlCommand` triggered by `prompt-nosql-command` host actions — the host packs the form values as `args[0] = JSON.stringify(values)`; `decodePromptArgs` in `actions.ts` parses them.
+- Volume `detach` action reads `dropletIds` and `region` from the volume's fields populated during `listVolumes` — no extra API call needed.
+- Droplet metrics fan out 16 series in parallel against `/v2/monitoring/metrics/droplet/{name}` covering CPU, load_1/5/15, memory total/available/free/cached, disk_read/write, filesystem_size/free, and all four bandwidth (interface × direction) combinations. Memory/disk/load/filesystem need the DO Metrics Agent on the droplet; `fetchPromMetric` swallows 404s for absent metrics.
+- Droplet list response carries `backup_ids`, `snapshot_ids`, `volume_ids`, `features`, `vcpus`, `memory`, `disk`, `tags` and the `size.price_monthly` — surfaced as flattened fields during `listDroplets` so the detail tabs can render them without follow-up API calls.
+- Snapshots (`/v2/snapshots`) aggregates both droplet and volume snapshots; DO returns `resource_type` and `resource_id` to disambiguate. Delete uses the same `/v2/snapshots/{id}` endpoint regardless of source.
+- Images (`/v2/images?private=true`) lists user-owned images only. Distribution and marketplace images stay in the droplet create form's image-picker (already fetched there).
+- NFS shares (`/v2/nfs`) — list, create (`name`, `region`, `size_gib`, `vpc_ids`, `performance_tier`), delete (passes `?region=` query param). Sizes 50–16,000 GiB; not all regions host NFS — create returns 422 in unsupported ones.
 
 ### Neon (`@infrawrench/plugin-neon`)
 

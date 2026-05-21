@@ -22,10 +22,13 @@ import {
   insertPollOutcome,
 } from "./clickhouse/writers";
 
-/** Returns only top-level resource types (no parent) — duplicated from
- * @infrawrench/ui to avoid a server→React-package dependency. */
-function listableTopLevelTypes<T extends { parentTypeId?: string }>(types: T[]): T[] {
-  return types.filter((t) => !t.parentTypeId);
+/** Returns resource types listed in the sidebar — top-level plus child types
+ * that opted in via `showInSidebar`. Duplicated from @infrawrench/ui to avoid
+ * a server→React-package dependency. */
+function listableTopLevelTypes<T extends { parentTypeId?: string; showInSidebar?: boolean }>(
+  types: T[],
+): T[] {
+  return types.filter((t) => !t.parentTypeId || t.showInSidebar);
 }
 
 /**

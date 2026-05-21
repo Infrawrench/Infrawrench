@@ -251,6 +251,20 @@ export async function createCloudResource(
   return invoke("cloud_create_resource", { orgId, body });
 }
 
+export async function updateCloudResource(
+  orgId: string,
+  body: {
+    accountId: string;
+    pluginId: string;
+    resourceTypeId: string;
+    resourceId: string;
+    fields: Record<string, string>;
+    parentResourceId?: string;
+  },
+): Promise<{ id: string; displayName: string; fields: Record<string, string> }> {
+  return invoke("cloud_update_resource", { orgId, body });
+}
+
 export async function getCloudCreateConfig(
   orgId: string,
   accountId: string,

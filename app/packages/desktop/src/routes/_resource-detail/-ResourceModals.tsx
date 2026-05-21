@@ -1,6 +1,7 @@
 import type {
   AssociationSource,
   CredentialFormat,
+  FieldDefinition,
   PluginClient,
   ResourceInstance,
   ResourceTypeDefinition,
@@ -8,6 +9,7 @@ import type {
 import {
   ConfirmDeleteModal,
   CredentialExportModal,
+  EditResourceModal,
   PromptNoSqlCommandModal,
   dispatchRefreshResource,
   dispatchResourcesChanged,
@@ -42,6 +44,11 @@ interface ResourceModalsProps {
   resourceTypeLabel: string;
   onCloseConfirmDelete: () => void;
   onConfirmDelete: () => void;
+
+  showEditModal: boolean;
+  editableFields: FieldDefinition[];
+  onCloseEditModal: () => void;
+  onSubmitEdit: (changedFields: Record<string, string>) => Promise<void>;
 
   promptModal: PromptNoSqlCommandDetail | null;
   onClosePromptModal: () => void;
@@ -80,6 +87,10 @@ export function ResourceModals({
   resourceTypeLabel,
   onCloseConfirmDelete,
   onConfirmDelete,
+  showEditModal,
+  editableFields,
+  onCloseEditModal,
+  onSubmitEdit,
   promptModal,
   onClosePromptModal,
   onSubmitPromptModal,
@@ -138,6 +149,18 @@ export function ResourceModals({
           name={resource.displayName}
           onConfirm={onConfirmDelete}
           onClose={onCloseConfirmDelete}
+        />
+      )}
+
+      {showEditModal && resource && (
+        <EditResourceModal
+          displayName={resourceTypeLabel}
+          fields={editableFields}
+          initialValues={Object.fromEntries(
+            Object.entries(resource.fields ?? {}).map(([k, v]) => [k, String(v ?? "")]),
+          )}
+          onClose={onCloseEditModal}
+          onSubmit={onSubmitEdit}
         />
       )}
 

@@ -2,6 +2,7 @@ import { z } from "zod";
 import type {
   CredentialFormat,
   DetailViewSchema,
+  FieldDefinition,
   MetricSeries,
   PluginClient,
   ResourceInstance,
@@ -88,6 +89,8 @@ export interface LoaderSetters {
   setSshHost: (s: string | null) => void;
   setSshDefaultUsername: (s: string | null) => void;
   setCanDelete: (b: boolean) => void;
+  setCanEdit: (b: boolean) => void;
+  setEditableFields: (f: FieldDefinition[]) => void;
   setCredentialFormats: (f: CredentialFormat[]) => void;
   setResourceTypeLabel: (s: string) => void;
   setPeerPanes: (v: PeerPaneData[] | ((prev: PeerPaneData[]) => PeerPaneData[])) => void;
@@ -174,6 +177,15 @@ export async function loadCloudResource(orgId: string, params: LoaderParams): Pr
     resourceTypeLabel: string;
     resourceFields?: Record<string, string | number | boolean>;
     canDelete: boolean;
+    canEdit?: boolean;
+    editableFields?: Array<{
+      key: string;
+      label: string;
+      kind: FieldDefinition["kind"];
+      required: boolean;
+      description?: string;
+      enumValues?: string[];
+    }>;
     credentialFormats?: CredentialFormat[];
     hasSqlEditor: boolean;
     hasKvConsole: boolean;
@@ -242,6 +254,17 @@ export async function loadCloudResource(orgId: string, params: LoaderParams): Pr
   setters.setResourceTypeLabel(detail.resourceTypeLabel);
   setters.setSchema(restSchema);
   setters.setCanDelete(detail.canDelete);
+  setters.setCanEdit(detail.canEdit ?? false);
+  setters.setEditableFields(
+    (detail.editableFields ?? []).map((f) => ({
+      key: f.key,
+      label: f.label,
+      kind: f.kind,
+      required: f.required,
+      ...(f.description ? { description: f.description } : {}),
+      ...(f.enumValues ? { enumValues: f.enumValues } : {}),
+    })),
+  );
   setters.setCredentialFormats(detail.credentialFormats ?? []);
   setters.setSshHost(detail.sshHost);
   setters.setSshDefaultUsername(detail.defaultSshUsername);
@@ -430,6 +453,9 @@ export async function loadLocalPeerResource(params: LoaderParams): Promise<void>
   setters.setResourceTypeLabel(peerTypeDef?.displayName ?? "Resource");
   setters.setSchema(detailSchema);
   setters.setCanDelete(!!peerClient.deleteResource);
+  const peerCanEdit = !!peerClient.updateResource && !!peerTypeDef?.supportsUpdate;
+  setters.setCanEdit(peerCanEdit);
+  setters.setEditableFields(peerCanEdit ? (peerTypeDef?.fields ?? []) : []);
   setters.setSshHost(null);
   setters.setSshDefaultUsername(null);
   setters.setPgConnected(sqlReady);
@@ -609,6 +635,9 @@ export async function loadLocalResource(params: LoaderParams): Promise<void> {
   if (!isCancelled()) {
     setters.setHasStorageToken(!!client.getStorageAccessToken);
     setters.setCanDelete(!!client.deleteResource);
+    const canEdit = !!client.updateResource && !!resourceTypeDef?.supportsUpdate;
+    setters.setCanEdit(canEdit);
+    setters.setEditableFields(canEdit ? (resourceTypeDef?.fields ?? []) : []);
     setters.setCredentialFormats(
       client.exportCredential && resourceTypeDef?.credentialFormats
         ? resourceTypeDef.credentialFormats

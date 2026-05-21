@@ -3,6 +3,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import type {
   ResourceInstance,
   DetailViewSchema,
+  FieldDefinition,
   LogsFetchParams,
   LogsFetchResult,
   MetricSeries,
@@ -163,10 +164,13 @@ export function ResourcePanel({
   const setAccountConnected = useUIStore((s) => s.setAccountConnected);
   const removeWorkspaceTabs = useUIStore((s) => s.removeWorkspaceTabs);
   const [canDelete, setCanDelete] = useState(false);
+  const [canEdit, setCanEdit] = useState(false);
+  const [editableFields, setEditableFields] = useState<FieldDefinition[]>([]);
   const [credentialFormats, setCredentialFormats] = useState<CredentialFormat[]>([]);
   const [showExportCredential, setShowExportCredential] = useState(false);
   const [resourceTypeLabel, setResourceTypeLabel] = useState<string>("Resource");
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   const [refreshVersion, setRefreshVersion] = useState(0);
   const [peerPanes, setPeerPanes] = useState<PeerPaneData[]>([]);
   const [childResourceGroups, setChildResourceGroups] = useState<ChildResourceGroup[]>([]);
@@ -239,6 +243,8 @@ export function ResourcePanel({
       setSshHost,
       setSshDefaultUsername,
       setCanDelete,
+      setCanEdit,
+      setEditableFields,
       setCredentialFormats,
       setResourceTypeLabel,
       setPeerPanes,
@@ -974,6 +980,51 @@ export function ResourcePanel({
     }
   }
 
+  async function handleUpdate(changedFields: Record<string, string>): Promise<void> {
+    if (!resource) throw new Error("Resource not loaded");
+    const cloud = cloudCtxRef.current;
+    if (cloud) {
+      const { updateCloudResource } = await import("../lib/cloud-api");
+      await updateCloudResource(cloud.orgId, {
+        accountId,
+        pluginId: cloud.pluginId,
+        resourceTypeId: cloud.resourceTypeId,
+        resourceId: decodedResourceId,
+        fields: changedFields,
+        ...(cloud.parentResourceId ? { parentResourceId: cloud.parentResourceId } : {}),
+      });
+      toast.success(`${resourceTypeLabel} updated.`);
+      dispatchRefreshResource();
+      return;
+    }
+    const client = clientRef.current;
+    if (!client?.updateResource) throw new Error("Plugin does not support updates");
+    const updated = await client.updateResource(
+      resource.resourceTypeId,
+      resource.id,
+      accountId,
+      changedFields,
+    );
+    const db = await getDb();
+    await db.execute(
+      `INSERT OR REPLACE INTO resources
+       (id, plugin_id, resource_type_id, account_id, display_name, external_id, fields_json, outputs_json)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [
+        updated.id,
+        updated.pluginId,
+        updated.resourceTypeId,
+        updated.accountId,
+        updated.displayName,
+        updated.externalId ?? updated.id,
+        JSON.stringify(updated.fields ?? {}),
+        JSON.stringify(updated.resolvedOutputs ?? {}),
+      ],
+    );
+    toast.success(`${resourceTypeLabel} updated.`);
+    dispatchRefreshResource();
+  }
+
   async function handleDelete() {
     if (!resource || !account) return;
     const cloud = cloudCtxRef.current;
@@ -1150,13 +1201,15 @@ export function ResourcePanel({
       )}
 
       {/* Non-SSH bottom panels — hidden when in SSH view */}
-      {!isSshView && !isSftpView && (canDelete || credentialFormats.length > 0) && (
+      {!isSshView && !isSftpView && (canDelete || canEdit || credentialFormats.length > 0) && (
         <ResourceFooterBar
           canDelete={canDelete}
+          canEdit={canEdit}
           hasCredentialFormats={credentialFormats.length > 0}
           resourceTypeLabel={resourceTypeLabel}
           onShowExportCredential={() => setShowExportCredential(true)}
           onConfirmDelete={() => setConfirmDelete(true)}
+          onEdit={() => setShowEditModal(true)}
         />
       )}
 
@@ -1173,6 +1226,10 @@ export function ResourcePanel({
         resourceTypeLabel={resourceTypeLabel}
         onCloseConfirmDelete={() => setConfirmDelete(false)}
         onConfirmDelete={() => handleDelete()}
+        showEditModal={showEditModal}
+        editableFields={editableFields}
+        onCloseEditModal={() => setShowEditModal(false)}
+        onSubmitEdit={(changed) => handleUpdate(changed)}
         promptModal={promptModal}
         onClosePromptModal={() => setPromptModal(null)}
         onSubmitPromptModal={async (values) => {

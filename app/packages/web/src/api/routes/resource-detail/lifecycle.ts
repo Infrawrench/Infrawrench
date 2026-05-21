@@ -1,5 +1,6 @@
 import type { Hono } from "hono";
 import { v4 as uuidv4 } from "uuid";
+import { eq } from "drizzle-orm";
 import { db } from "../../../db/client";
 import { resources, secretFieldStates } from "../../../db/schema";
 import { getClientForAccount, getClientForResource } from "../../../services/plugin-clients";
@@ -169,6 +170,68 @@ export function registerLifecycleRoutes(app: Hono): void {
     }
 
     return c.json({ id: created.id, displayName: created.displayName, warnings });
+  });
+
+  /** POST /api/resources/update */
+  app.post("/update", async (c) => {
+    requirePermission(c, "resources:write");
+    const organizationId = c.get("organizationId");
+    const input = await c.req.json<{
+      accountId: string;
+      pluginId: string;
+      resourceTypeId: string;
+      resourceId: string;
+      fields: Record<string, string>;
+      parentResourceId?: string;
+    }>();
+
+    const ctx = await getClientForResource(
+      input.pluginId,
+      input.accountId,
+      organizationId,
+      input.parentResourceId,
+    );
+    if (!ctx) return c.json({ error: "Account or peer resource not found" }, 404);
+    if (!ctx.client.updateResource)
+      return c.json({ error: "Plugin does not support updates" }, 400);
+
+    let updated;
+    try {
+      updated = await ctx.client.updateResource(
+        input.resourceTypeId,
+        input.resourceId,
+        input.accountId,
+        input.fields,
+      );
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Resource update failed";
+      return c.json({ error: message }, 400);
+    }
+
+    // Mirror the refreshed fields/displayName into the DB so the next page
+    // load sees the new values without waiting for a sync cycle. Peer-managed
+    // resources skip this — they aren't owned by the account's native plugin.
+    if (ctx.account.pluginId === input.pluginId) {
+      try {
+        await db
+          .update(resources)
+          .set({
+            displayName: updated.displayName,
+            fieldsJson: updated.fields ?? {},
+            outputsJson: updated.resolvedOutputs ?? {},
+            updatedAt: new Date(),
+          })
+          .where(eq(resources.id, input.resourceId));
+      } catch (err) {
+        console.error("[resource-detail] Failed to persist updated resource:", err);
+      }
+    }
+
+    return c.json({
+      id: updated.id,
+      displayName: updated.displayName,
+      fields: updated.fields ?? {},
+    });
   });
 
   /** POST /api/resources/create-config */
