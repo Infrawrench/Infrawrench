@@ -44,8 +44,10 @@ export const DropletResourceType: ResourceTypeDefinition = {
   outputs: [
     { key: "ipv4", label: "Public IPv4", sensitive: false },
     { key: "ipv4Private", label: "Private IPv4", sensitive: false },
+    { key: "ipv6", label: "Public IPv6", sensitive: false },
   ],
   parentTypeId: "project",
+  showInSidebar: true,
   dashboardPinnable: true,
   supportsMetrics: true,
   iconKey: "droplet",
@@ -53,6 +55,7 @@ export const DropletResourceType: ResourceTypeDefinition = {
     hostOutputKey: "ipv4",
     privateHostOutputKey: "ipv4Private",
     defaultUsername: "root",
+    runningWhen: { fieldKey: "status", value: "active" },
   },
   supportsCreate: true,
 };

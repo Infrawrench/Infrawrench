@@ -26,6 +26,7 @@ export const VolumeResourceType: ResourceTypeDefinition = {
   ],
   outputs: [],
   parentTypeId: "project",
+  showInSidebar: true,
   dashboardPinnable: true,
   supportsCreate: true,
   iconKey: "volume",

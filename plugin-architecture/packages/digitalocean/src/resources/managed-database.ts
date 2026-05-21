@@ -74,6 +74,7 @@ export const ManagedDatabaseResourceType: ResourceTypeDefinition = {
     },
   ],
   parentTypeId: "project",
+  showInSidebar: true,
   dashboardPinnable: true,
   supportsCreate: true,
   supportsMetrics: true,

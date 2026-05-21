@@ -64,6 +64,7 @@ export const DOKSClusterResourceType: ResourceTypeDefinition = {
     },
   ],
   parentTypeId: "project",
+  showInSidebar: true,
   dashboardPinnable: true,
   iconKey: "kubernetes",
   supportsCreate: true,

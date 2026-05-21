@@ -28,6 +28,7 @@ export const SpacesResourceType: ResourceTypeDefinition = {
     { key: "secretAccessKey", label: "Secret Access Key", sensitive: true },
   ],
   parentTypeId: "project",
+  showInSidebar: true,
   dashboardPinnable: true,
   supportsCreate: true,
   supportsStorageBrowser: true,

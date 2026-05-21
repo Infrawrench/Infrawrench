@@ -26,5 +26,6 @@ export const ProjectResourceType: ResourceTypeDefinition = {
   outputs: [],
   dashboardPinnable: true,
   supportsCreate: true,
+  supportsUpdate: true,
   iconKey: "project",
 };

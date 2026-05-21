@@ -8,7 +8,7 @@ import type {
   SectionNode,
 } from "@infrawrench/plugin-base";
 import { signedS3Fetch } from "@infrawrench/plugin-base";
-import { SPACES_REGIONS, REGION_INFO } from "./constants.js";
+import { SPACES_REGIONS, regionDisplay } from "./constants.js";
 
 export interface DoCreateContext {
   fetch<T>(path: string, options?: RequestInit): Promise<T>;
@@ -21,47 +21,63 @@ export async function doGetCreateConfig(
   parentResourceId?: string,
 ): Promise<CreateResourceConfig> {
   if (typeId === "droplet") {
-    const [regionsData, sizesData, publicImagesData, privateImagesData] = await Promise.all([
-      ctx.fetch<{ regions: Array<{ slug: string; name: string; available: boolean }> }>("/regions"),
-      ctx.fetch<{
-        sizes: Array<{
-          slug: string;
-          memory: number;
-          vcpus: number;
-          disk: number;
-          price_monthly: number;
-          available: boolean;
-          description: string;
-        }>;
-      }>("/sizes"),
-      ctx.fetch<{
-        images: Array<{
-          id: number;
-          slug: string | null;
-          name: string;
-          distribution: string;
-          type: string;
-          public: boolean;
-          status: string;
-        }>;
-      }>("/images?type=distribution&per_page=200"),
-      ctx.fetch<{
-        images: Array<{
-          id: number;
-          slug: string | null;
-          name: string;
-          distribution: string;
-          type: string;
-          public: boolean;
-          status: string;
-        }>;
-      }>("/images?private=true&per_page=200"),
-    ]);
+    // When the user creates a droplet from a project's detail page we already
+    // know the project via parentResourceId — skip the projects fetch and
+    // hide the Project field. From the account base we list projects so the
+    // user can pick one (defaults to whichever project DO marks
+    // `is_default`).
+    const hasParentProject = !!parentResourceId;
+    const [regionsData, sizesData, publicImagesData, privateImagesData, projectsData] =
+      await Promise.all([
+        ctx.fetch<{ regions: Array<{ slug: string; name: string; available: boolean }> }>(
+          "/regions",
+        ),
+        ctx.fetch<{
+          sizes: Array<{
+            slug: string;
+            memory: number;
+            vcpus: number;
+            disk: number;
+            price_monthly: number;
+            available: boolean;
+            description: string;
+          }>;
+        }>("/sizes"),
+        ctx.fetch<{
+          images: Array<{
+            id: number;
+            slug: string | null;
+            name: string;
+            distribution: string;
+            type: string;
+            public: boolean;
+            status: string;
+          }>;
+        }>("/images?type=distribution&per_page=200"),
+        ctx.fetch<{
+          images: Array<{
+            id: number;
+            slug: string | null;
+            name: string;
+            distribution: string;
+            type: string;
+            public: boolean;
+            status: string;
+          }>;
+        }>("/images?private=true&per_page=200"),
+        hasParentProject
+          ? Promise.resolve(null)
+          : ctx
+              .fetch<{
+                projects: Array<{ id: string; name: string; is_default?: boolean }>;
+              }>("/projects")
+              .catch(() => null),
+      ]);
 
     const regions = regionsData.regions
       .filter((r) => r.available)
       .map((r) => {
-        const info = REGION_INFO[r.slug];
+        const info = regionDisplay(r.slug);
         return {
           id: r.slug,
           label: r.name,
@@ -101,9 +117,32 @@ export async function doGetCreateConfig(
 
     const firstRegion = regions[0]?.id;
     const firstSize = sizes[0]?.id;
+    const projectOptions = (projectsData?.projects ?? []).map((p) => ({
+      id: p.id,
+      label: p.is_default ? `${p.name} (default)` : p.name,
+    }));
+    const defaultProjectId =
+      projectsData?.projects.find((p) => p.is_default)?.id ?? projectOptions[0]?.id;
     return {
       fields: [
         { key: "name", label: "Name", kind: "text", required: true },
+        // Project picker only when no parent project context was passed in.
+        // Skipped when the form was opened from a project's detail page — in
+        // that case `parentResourceId` already carries the target project and
+        // `doCreateResourceImpl` will assign the droplet to it.
+        ...(hasParentProject || projectOptions.length === 0
+          ? []
+          : [
+              {
+                key: "projectId",
+                label: "Project",
+                kind: "select" as const,
+                required: false,
+                options: projectOptions,
+                ...(defaultProjectId ? { defaultValue: defaultProjectId } : {}),
+                description: "DigitalOcean project to assign this droplet to.",
+              },
+            ]),
         {
           key: "region",
           label: "Region",
@@ -190,7 +229,7 @@ export async function doGetCreateConfig(
     ]);
 
     const regions = (optionsData.options?.regions ?? []).map((region) => {
-      const info = REGION_INFO[region.slug];
+      const info = regionDisplay(region.slug);
       return {
         id: region.slug,
         label: region.name,
@@ -273,7 +312,7 @@ export async function doGetCreateConfig(
       .filter((r) => r.available)
       .filter((r) => SPACES_REGIONS.includes(r.slug))
       .map((r) => {
-        const info = REGION_INFO[r.slug];
+        const info = regionDisplay(r.slug);
         return {
           id: r.slug,
           label: r.name,
@@ -323,7 +362,7 @@ export async function doGetCreateConfig(
     const regions = regionsData.regions
       .filter((r) => r.available)
       .map((r) => {
-        const info = REGION_INFO[r.slug];
+        const info = regionDisplay(r.slug);
         return {
           id: r.slug,
           label: r.name,
@@ -519,7 +558,7 @@ export async function doGetCreateConfig(
     const regions = regionsData.regions
       .filter((r) => r.available)
       .map((r) => {
-        const info = REGION_INFO[r.slug];
+        const info = regionDisplay(r.slug);
         return {
           id: r.slug,
           label: r.name,
@@ -563,6 +602,81 @@ export async function doGetCreateConfig(
     };
   }
 
+  if (typeId === "nfs-share") {
+    // NFS shares are pinned to a VPC. List both regions (only some are
+    // NFS-eligible — DO returns 422 from create otherwise, surfaced as the
+    // host error) and the account's VPCs so the user can pick.
+    const [regionsData, vpcsData] = await Promise.all([
+      ctx.fetch<{
+        regions: Array<{ slug: string; name: string; available: boolean }>;
+      }>("/regions"),
+      ctx
+        .fetch<{ vpcs: Array<{ id: string; name: string; region: string }> }>("/vpcs?per_page=200")
+        .catch(() => ({ vpcs: [] as Array<{ id: string; name: string; region: string }> })),
+    ]);
+    const regions = regionsData.regions
+      .filter((r) => r.available)
+      .map((r) => {
+        const info = regionDisplay(r.slug);
+        return {
+          id: r.slug,
+          label: r.name,
+          ...(info ? { location: info.location, flag: info.flag } : {}),
+        };
+      });
+    const vpcOptions = vpcsData.vpcs.map((v) => ({
+      id: v.id,
+      label: `${v.name} (${v.region})`,
+    }));
+    return {
+      fields: [
+        { key: "name", label: "Share Name", kind: "text", required: true },
+        {
+          key: "region",
+          label: "Region",
+          kind: "region-picker",
+          required: true,
+          regions,
+          ...(regions[0] ? { defaultValue: regions[0].id } : {}),
+          description:
+            "Only some DO regions host NFS. The create call will 422 in unsupported regions.",
+        },
+        {
+          key: "sizeGib",
+          label: "Size",
+          kind: "disk-slider",
+          required: true,
+          minGb: 50,
+          maxGb: 16000,
+          defaultGb: 50,
+          stepGb: 50,
+          description: "Minimum 50 GiB; max 16,000 GiB.",
+        },
+        {
+          key: "performanceTier",
+          label: "Performance Tier",
+          kind: "select",
+          required: true,
+          defaultValue: "standard",
+          options: [
+            { id: "standard", label: "Standard ($0.15 / GiB-mo)" },
+            { id: "high-performance", label: "High Performance ($0.30 / GiB-mo, GPU-tuned)" },
+          ],
+        },
+        {
+          key: "vpcId",
+          label: "VPC",
+          kind: "select",
+          required: true,
+          options: vpcOptions,
+          ...(vpcOptions[0] ? { defaultValue: vpcOptions[0].id } : {}),
+          description:
+            "Shares are reachable only from droplets/DOKS nodes in this VPC. Multiple VPCs can be added after creation via the DO console.",
+        },
+      ],
+    };
+  }
+
   throw new Error(`No create config for type "${typeId}"`);
 }
 
@@ -596,8 +710,12 @@ async function doCreateResourceImpl(
   // When a child resource is created from its parent's detail page, the form
   // omits the parent-identifying field — recover it by parsing the parent's
   // `{accountId}:{typeId}:{externalId}` id. DO project ids are UUIDs; DO
-  // domain ids are the domain name itself.
-  const parentExternalId = parentResourceId ? parentResourceId.split(":").slice(2).join(":") : "";
+  // domain ids are the domain name itself. Falls back to `fields["projectId"]`
+  // when the form was opened from the account base and the user picked a
+  // project explicitly (currently the droplet create form).
+  const parentExternalId = parentResourceId
+    ? parentResourceId.split(":").slice(2).join(":")
+    : (fields["projectId"] ?? "");
 
   // DigitalOcean projects are an organizational concept. Resources can be
   // created without being assigned to a project (they land in the default
@@ -682,6 +800,11 @@ async function doCreateResourceImpl(
       });
     }
     await assignToProjectIfNeeded(`do:droplet:${String(d["id"])}`);
+    // When the project came from the form picker rather than a parent
+    // detail page, synthesize a parentResourceId so the new droplet nests
+    // correctly under its project in the sidebar/account view.
+    const effectiveParentId =
+      parentResourceId ?? (parentExternalId ? `${accountId}:project:${parentExternalId}` : "");
     return {
       id: `${accountId}:droplet:${String(d["id"])}`,
       pluginId: "digitalocean",
@@ -697,6 +820,7 @@ async function doCreateResourceImpl(
       resolvedOutputs: { ipv4: publicIp, ipv4Private: privateIp },
       secretStates: [],
       externalId: String(d["id"]),
+      ...(effectiveParentId ? { parentResourceId: effectiveParentId } : {}),
       createdAt: String(d["created_at"] ?? new Date().toISOString()),
       updatedAt: String(d["created_at"] ?? new Date().toISOString()),
     };
@@ -747,6 +871,7 @@ async function doCreateResourceImpl(
       },
       secretStates: [],
       externalId: String(cluster["id"]),
+      ...(parentResourceId ? { parentResourceId } : {}),
       createdAt: String(cluster["created_at"] ?? new Date().toISOString()),
       updatedAt: String(cluster["updated_at"] ?? cluster["created_at"] ?? new Date().toISOString()),
     };
@@ -801,6 +926,7 @@ async function doCreateResourceImpl(
       },
       secretStates: [],
       externalId: String(bucketName),
+      ...(parentResourceId ? { parentResourceId } : {}),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -836,6 +962,7 @@ async function doCreateResourceImpl(
       resolvedOutputs: {},
       secretStates: [],
       externalId: String(db["id"]),
+      ...(parentResourceId ? { parentResourceId } : {}),
       createdAt: String(db["created_at"] ?? new Date().toISOString()),
       updatedAt: String(db["created_at"] ?? new Date().toISOString()),
     };
@@ -975,7 +1102,50 @@ async function doCreateResourceImpl(
       resolvedOutputs: {},
       secretStates: [],
       externalId: String(v["id"] ?? ""),
+      ...(parentResourceId ? { parentResourceId } : {}),
       createdAt: String(v["created_at"] ?? now),
+      updatedAt: now,
+    };
+  }
+
+  if (typeId === "nfs-share") {
+    const region = fields["region"] ?? "";
+    const body: Record<string, unknown> = {
+      name: fields["name"],
+      region,
+      size_gib: Number(fields["sizeGib"] ?? 50),
+      vpc_ids: fields["vpcId"] ? [fields["vpcId"]] : [],
+      performance_tier: fields["performanceTier"] ?? "standard",
+    };
+    const data = await ctx.fetch<{ nfs: Record<string, unknown> }>("/nfs", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    const s = data.nfs ?? {};
+    const now = new Date().toISOString();
+    const externalId = `${region}/${String(s["id"] ?? "")}`;
+    return {
+      id: `${accountId}:nfs-share:${externalId}`,
+      pluginId: "digitalocean",
+      resourceTypeId: "nfs-share",
+      accountId,
+      displayName: String(s["name"] ?? fields["name"]),
+      fields: {
+        name: String(s["name"] ?? fields["name"]),
+        region,
+        sizeGib: Number(s["size_gib"] ?? fields["sizeGib"] ?? 0),
+        performanceTier: String(s["performance_tier"] ?? fields["performanceTier"] ?? "standard"),
+        vpcIds: Array.isArray(s["vpc_ids"])
+          ? (s["vpc_ids"] as string[]).join(",")
+          : (fields["vpcId"] ?? ""),
+        mountTarget: "",
+        status: String(s["status"] ?? "creating"),
+      },
+      resolvedOutputs: {},
+      secretStates: [],
+      externalId,
+      ...(parentResourceId ? { parentResourceId } : {}),
+      createdAt: String(s["created_at"] ?? now),
       updatedAt: now,
     };
   }

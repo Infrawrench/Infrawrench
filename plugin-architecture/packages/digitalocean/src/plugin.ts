@@ -1,5 +1,4 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
-import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { DigitalOceanClient } from "./client.js";
 import { ProjectResourceType } from "./resources/project.js";
 import { DropletResourceType } from "./resources/droplet.js";
@@ -9,6 +8,9 @@ import { SpacesResourceType } from "./resources/spaces.js";
 import { DomainResourceType } from "./resources/domain.js";
 import { DnsRecordResourceType } from "./resources/dns-record.js";
 import { VolumeResourceType } from "./resources/volume.js";
+import { SnapshotResourceType } from "./resources/snapshot.js";
+import { ImageResourceType } from "./resources/image.js";
+import { NfsShareResourceType } from "./resources/nfs-share.js";
 
 const manifest: PluginManifest = {
   id: "digitalocean",
@@ -30,7 +32,6 @@ const manifest: PluginManifest = {
       sensitive: true,
       placeholder: "dop_v1_...",
     },
-    caCertCredentialField,
   ],
   rateLimit: { capacity: 60, refillPerSecond: 4 },
 };
@@ -44,11 +45,13 @@ const resourceTypes: ResourceTypeDefinition[] = [
   DomainResourceType,
   DnsRecordResourceType,
   VolumeResourceType,
+  SnapshotResourceType,
+  ImageResourceType,
+  NfsShareResourceType,
 ];
 
 export const plugin: Plugin = {
   manifest,
   resourceTypes,
-  createClient: (credentials, services) =>
-    new DigitalOceanClient(credentials, resourceTypes, services),
+  createClient: (credentials) => new DigitalOceanClient(credentials, resourceTypes),
 };
