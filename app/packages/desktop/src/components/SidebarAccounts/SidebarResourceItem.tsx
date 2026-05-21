@@ -43,11 +43,9 @@ export function SidebarResourceItem({
   }
 
   const activate = () =>
-    void navigateToWorkspaceTarget(
-      navigate,
-      resourceTabTarget(draggable.accountId, draggable.id),
-      { label: draggable.displayName },
-    );
+    void navigateToWorkspaceTarget(navigate, resourceTabTarget(draggable.accountId, draggable.id), {
+      label: draggable.displayName,
+    });
 
   return (
     <div
