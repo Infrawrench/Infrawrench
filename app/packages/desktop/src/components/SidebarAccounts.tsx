@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { invoke } from "../lib/invoke";
-import { useDraggable, useDroppable } from "@dnd-kit/core";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import {
   useUIStore,
@@ -25,29 +24,10 @@ import { DockerSetupModal } from "./DockerSetupModal";
 import { SecretExportModal } from "./SecretExportModal";
 import { SshEnvDeployModal } from "./SshEnvDeployModal";
 import { MetricPingModal } from "./MetricPingModal";
-import {
-  accountTabTarget,
-  navigateToWorkspaceTarget,
-  resourceTabTarget,
-} from "../lib/workspace-tabs";
-
-interface Account {
-  id: string;
-  pluginId: string;
-  displayName: string;
-  encrypted_credentials: string;
-  credentials_iv: string;
-  /** True when this account lives in a cloud workspace — credentials are
-   * server-side, so decrypt/tunnel/secret-export features are disabled here. */
-  cloudManaged?: boolean;
-}
-
-interface PluginGroup {
-  pluginId: string;
-  displayName: string;
-  logoSvg: string;
-  accounts: Account[];
-}
+import { accountTabTarget, navigateToWorkspaceTarget } from "../lib/workspace-tabs";
+import { SidebarResourceItem } from "./SidebarAccounts/SidebarResourceItem";
+import { AccountDraggableRow } from "./SidebarAccounts/AccountDraggableRow";
+import type { Account, PluginGroup } from "./SidebarAccounts/types";
 
 interface SidebarAccountsProps {
   /** Increment this to force a refresh */
@@ -807,182 +787,5 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
         />
       )}
     </>
-  );
-}
-
-function SidebarResourceItem({
-  draggable,
-  acceptsSecretImport,
-  sshHostValue,
-  onContextMenu,
-}: {
-  draggable: DraggableResource;
-  acceptsSecretImport?: boolean;
-  sshHostValue?: string | undefined;
-  onContextMenu?: ((e: React.MouseEvent) => void) | undefined;
-}) {
-  const navigate = useNavigate();
-  const {
-    attributes,
-    listeners,
-    setNodeRef: setDragRef,
-    isDragging,
-  } = useDraggable({
-    id: `sidebar-${draggable.id}`,
-    data: {
-      resource: draggable,
-      workspaceTabTarget: resourceTabTarget(draggable.accountId, draggable.id),
-      dragLabel: draggable.displayName,
-    },
-  });
-
-  const isDropTarget = !!acceptsSecretImport || !!sshHostValue;
-  const { setNodeRef: setDropRef, isOver } = useDroppable({
-    id: `sidebar-resource:${draggable.id}`,
-    disabled: !isDropTarget || isDragging,
-  });
-
-  const showDropHint = isOver && isDropTarget;
-
-  function setRefs(node: HTMLDivElement | null) {
-    setDragRef(node);
-    setDropRef(node);
-  }
-
-  return (
-    <div
-      ref={setRefs}
-      {...listeners}
-      {...attributes}
-      className={`flex items-center gap-2 px-3 py-1 text-xs rounded cursor-pointer transition-colors ${
-        showDropHint
-          ? "bg-accent-muted text-accent-on-muted ring-1 ring-inset ring-blue-500"
-          : "text-on-surface-tertiary hover:text-on-surface-secondary hover:bg-surface-overlay"
-      } ${isDragging ? "opacity-40" : ""}`}
-      onClick={() =>
-        void navigateToWorkspaceTarget(
-          navigate,
-          resourceTabTarget(draggable.accountId, draggable.id),
-          { label: draggable.displayName },
-        )
-      }
-      onContextMenu={onContextMenu}
-    >
-      <span className="text-on-surface-faint">⠿</span>
-      <span className="truncate">{draggable.displayName}</span>
-      {showDropHint && <span className="ml-auto text-accent flex-shrink-0">Drop</span>}
-    </div>
-  );
-}
-
-function AccountDraggableRow({
-  account,
-  group,
-  isExpanded,
-  connected,
-  acceptsSecretImport,
-  onToggleExpand,
-  onNavigate,
-  onDelete,
-}: {
-  account: Account;
-  group: PluginGroup;
-  isExpanded: boolean;
-  connected: boolean;
-  acceptsSecretImport: boolean;
-  onToggleExpand: () => void;
-  onNavigate: () => void;
-  onDelete?: (() => void) | undefined;
-}) {
-  const draggableData: DraggableResource = {
-    id: account.id,
-    pluginId: account.pluginId,
-    resourceTypeId: "__account__",
-    accountId: account.id,
-    displayName: account.displayName,
-    fields: { pluginId: account.pluginId, pluginDisplayName: group.displayName },
-  };
-
-  const {
-    attributes,
-    listeners,
-    setNodeRef: setDragRef,
-    isDragging,
-  } = useDraggable({
-    id: `account-${account.id}`,
-    data: {
-      resource: draggableData,
-      workspaceTabTarget: accountTabTarget(account.id),
-      dragLabel: account.displayName,
-    },
-  });
-
-  const { setNodeRef: setDropRef, isOver } = useDroppable({
-    id: `sidebar-account:${account.id}`,
-    disabled: !acceptsSecretImport || isDragging,
-  });
-
-  const showDropHint = isOver && acceptsSecretImport;
-
-  function setRefs(node: HTMLDivElement | null) {
-    setDragRef(node);
-    setDropRef(node);
-  }
-
-  return (
-    <div
-      ref={setRefs}
-      {...listeners}
-      {...attributes}
-      className={`flex items-center w-full px-4 py-1.5 text-sm transition-colors group cursor-grab active:cursor-grabbing ${
-        showDropHint
-          ? "bg-accent-muted text-accent-on-muted ring-1 ring-inset ring-blue-500"
-          : "text-on-surface-secondary hover:bg-surface-overlay hover:text-on-surface"
-      } ${isDragging ? "opacity-40" : ""}`}
-    >
-      <button
-        draggable={false}
-        onClick={(e) => {
-          e.stopPropagation();
-          onToggleExpand();
-        }}
-        title={isExpanded ? "Collapse" : "Expand resources"}
-        className="w-4 h-4 flex items-center justify-center flex-shrink-0 text-on-surface-faint hover:text-on-surface-tertiary transition-colors mr-1"
-      >
-        <span
-          className="inline-block transition-transform text-xs"
-          style={{ transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)" }}
-        >
-          ▶
-        </span>
-      </button>
-      <button
-        draggable={false}
-        onClick={(e) => {
-          e.stopPropagation();
-          onNavigate();
-        }}
-        className="flex items-center gap-2 flex-1 text-left min-w-0"
-      >
-        <span
-          className={`w-1.5 h-1.5 rounded-full flex-shrink-0 transition-colors ${connected ? "bg-blue-400" : "bg-surface-sunken"}`}
-        />
-        <span className="truncate">{account.displayName}</span>
-      </button>
-      {showDropHint && <span className="text-xs text-accent flex-shrink-0">Drop</span>}
-      {!showDropHint && onDelete && (
-        <button
-          draggable={false}
-          onClick={(e) => {
-            e.stopPropagation();
-            onDelete();
-          }}
-          title="Delete account"
-          className="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded text-on-surface-faint opacity-0 group-hover:opacity-100 hover:text-red-400 hover:bg-red-500/10 transition-all"
-        >
-          ✕
-        </button>
-      )}
-    </div>
   );
 }
