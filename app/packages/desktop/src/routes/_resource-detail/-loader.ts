@@ -379,13 +379,41 @@ export async function loadLocalPeerResource(params: LoaderParams): Promise<void>
   if (isCancelled()) return;
 
   const peerTypeDef = peerLoaded.plugin.resourceTypes.find((t) => t.id === peerType);
-  const detailSchema = peerClient.renderDetail(found);
+  let detailSchema = peerClient.renderDetail(found);
 
   const peerKvDriver = peerLoaded.plugin.manifest.kvDriver;
   const peerKvConnectionString = peerKvDriver
     ? (peerCredentials[peerKvDriver.credentialKey] ?? "")
     : "";
-  refs.connectionString.current = peerKvConnectionString;
+
+  const peerSqlDriver = peerLoaded.plugin.manifest.sqlDriver;
+  const peerSqlConnectionString = peerSqlDriver
+    ? (peerCredentials[peerSqlDriver.credentialKey] ?? "")
+    : "";
+
+  if (peerSqlConnectionString && peerSqlDriver) {
+    refs.connectionString.current = peerSqlConnectionString;
+    refs.sqlDriverId.current = peerSqlDriver.driver;
+  } else {
+    refs.connectionString.current = peerKvConnectionString;
+  }
+
+  let sqlReady = false;
+  if (peerSqlConnectionString && peerSqlDriver) {
+    try {
+      const tables = (await peerClient.introspect?.()) ?? [];
+      if (detailSchema.sqlEditor) {
+        detailSchema = {
+          ...detailSchema,
+          sqlEditor: { ...detailSchema.sqlEditor, tables },
+        };
+      }
+      sqlReady = true;
+    } catch {
+      // Introspection failed — still enable the editor; the user's first query will surface the real error.
+      sqlReady = true;
+    }
+  }
 
   setters.setAccount(accountRow);
   setters.setLogoSvg(peerLoaded.plugin.manifest.logoSvg);
@@ -395,7 +423,7 @@ export async function loadLocalPeerResource(params: LoaderParams): Promise<void>
   setters.setCanDelete(!!peerClient.deleteResource);
   setters.setSshHost(null);
   setters.setSshDefaultUsername(null);
-  setters.setPgConnected(false);
+  setters.setPgConnected(sqlReady);
   setters.setIsKvPlugin(!!peerKvDriver);
   setters.setKvDriverName(peerKvDriver?.driver ?? null);
   setters.setKvConnected(!!peerKvConnectionString);
