@@ -1110,6 +1110,18 @@ export function ResourcePanel({
               onNoSqlCommand={handleNoSqlCommand}
               onChildCreate={(rt) => setCreateChildTarget(rt)}
               onReroll={handleReroll}
+              {...(hasStorageBrowser && account
+                ? {
+                    renderStorageBrowser: () => (
+                      <StorageBrowserContainer
+                        schema={schema}
+                        pluginId={account.plugin_id}
+                        hasStorageToken={hasStorageToken}
+                        getClient={() => clientRef.current!}
+                      />
+                    ),
+                  }
+                : {})}
             />
           </div>
         )}
@@ -1204,15 +1216,6 @@ export function ResourcePanel({
           accountId={accountId}
           peerPlugin={peerPlugin}
           peerParent={peerParent}
-        />
-      )}
-
-      {!isSshView && !isSftpView && hasStorageBrowser && account && (
-        <StorageBrowserContainer
-          schema={schema}
-          pluginId={account.plugin_id}
-          hasStorageToken={hasStorageToken}
-          getClient={() => clientRef.current!}
         />
       )}
 

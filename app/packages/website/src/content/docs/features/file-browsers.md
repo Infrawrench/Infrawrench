@@ -4,9 +4,9 @@ description: Browse, upload, and download objects in cloud object storage and ov
 sidebar_order: 6
 ---
 
-Several plugins expose a file-browser panel on any resource that holds files.
+Several plugins expose a file-browser panel on any resource that holds files. It appears as a **Files** tab on bucket and storage-account resources, alongside Overview and any provider-specific editors (e.g. Bucket Policy on S3-compatible buckets).
 
-<insert [File browser panel with folder tree on the left and file grid on the right] here>
+<insert [File browser tab open showing folder tree and file grid] here>
 
 ## Supported backends
 

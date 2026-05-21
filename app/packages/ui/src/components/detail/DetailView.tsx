@@ -106,10 +106,17 @@ interface DetailViewProps {
    * the shared component.
    */
   renderNoSqlBrowser?: () => React.ReactNode;
+  /**
+   * When `schema.storageBrowser` is set, the host renders the file browser
+   * via this render prop. Lives inside a "Files" tab so it doesn't compete
+   * for vertical space with editors (bucket policy, manifest, SQL).
+   */
+  renderStorageBrowser?: () => React.ReactNode;
 }
 
 type Tab =
   | "overview"
+  | "files"
   | "sql"
   | "manifest"
   | "bucket-policy"
@@ -150,11 +157,13 @@ export function DetailView({
   renderChildResource,
   metricSeries,
   renderNoSqlBrowser,
+  renderStorageBrowser,
 }: DetailViewProps) {
   const { rerollingField, closeReroll } = useUIStore();
   const hasSqlEditor = !!schema.sqlEditor && !!onRunQuery;
   const hasManifestEditor = !!schema.manifestEditor && !!onGetManifest;
   const hasBucketPolicyEditor = !!schema.bucketPolicyEditor && !!onGetManifest;
+  const hasStorageBrowser = !!schema.storageBrowser && !!renderStorageBrowser;
   const hasDescribe = !!schema.describe && !!onGetDescribe;
   const hasLogs = !!schema.logs && !!onGetLogs;
   const hasMetrics = !!metricSeries && metricSeries.length > 0;
@@ -168,6 +177,7 @@ export function DetailView({
   const hasNoSqlBrowser = !!schema.noSqlBrowser && !!renderNoSqlBrowser;
   const customTabs = schema.customTabs ?? [];
   const hasTabs =
+    hasStorageBrowser ||
     hasSqlEditor ||
     hasManifestEditor ||
     hasBucketPolicyEditor ||
@@ -193,6 +203,7 @@ export function DetailView({
 
   // Ordered list of tab keys (matches the visible tab strip).
   const tabKeys: Tab[] = ["overview"];
+  if (hasStorageBrowser) tabKeys.push("files");
   if (hasSqlEditor) tabKeys.push("sql");
   if (hasManifestEditor) tabKeys.push("manifest");
   if (hasBucketPolicyEditor) tabKeys.push("bucket-policy");
@@ -295,6 +306,13 @@ export function DetailView({
                     logoSvg={pluginLogoSvg}
                   >
                     Overview
+                  </TabButton>
+                );
+              }
+              if (key === "files") {
+                return (
+                  <TabButton key={key} {...tabProps} onClick={() => setActiveTab("files")}>
+                    Files
                   </TabButton>
                 );
               }
@@ -561,6 +579,17 @@ export function DetailView({
               schema.sqlEditor!.supportsQueryCost ? onEstimateQueryCost : undefined
             }
           />
+        </div>
+      )}
+
+      {hasStorageBrowser && activeTab === "files" && (
+        <div
+          role="tabpanel"
+          id={panelIdFor("files")}
+          aria-labelledby={tabIdFor("files")}
+          className="flex-1 overflow-hidden flex flex-col"
+        >
+          {renderStorageBrowser!()}
         </div>
       )}
 

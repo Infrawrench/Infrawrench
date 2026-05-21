@@ -808,6 +808,13 @@ export function ResourceDetailClient({
                     },
                   }
                 : {})}
+              {...(hasStorageBrowser && storageBucketName
+                ? {
+                    renderStorageBrowser: () => (
+                      <StorageBrowser accountId={accountId} bucketName={storageBucketName} />
+                    ),
+                  }
+                : {})}
               metricSeries={metricSeries}
             />
           </div>
@@ -830,10 +837,6 @@ export function ResourceDetailClient({
 
       {!isSshView && !isSftpView && hasDockerActions && containerId && (
         <DockerActionsPanel accountId={accountId} containerId={containerId} />
-      )}
-
-      {!isSshView && !isSftpView && hasStorageBrowser && storageBucketName && (
-        <StorageBrowser accountId={accountId} bucketName={storageBucketName} />
       )}
 
       {/* SSH bottom bar — connection info */}

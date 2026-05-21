@@ -1,3 +1,4 @@
+import type React from "react";
 import type {
   DetailViewSchema,
   ResourceInstance,
@@ -65,6 +66,8 @@ interface DetailViewContainerProps {
     fieldKey: string,
     selection: RerollSelection | { kind: "literal"; value: string },
   ) => void;
+  /** Renders the file browser when schema.storageBrowser is set. */
+  renderStorageBrowser?: () => React.ReactNode;
 }
 
 export function DetailViewContainer({
@@ -97,6 +100,7 @@ export function DetailViewContainer({
   onNoSqlCommand,
   onChildCreate,
   onReroll,
+  renderStorageBrowser,
 }: DetailViewContainerProps) {
   const navigate = useNavigate();
   const noSqlBrowser = schema?.noSqlBrowser;
@@ -159,6 +163,7 @@ export function DetailViewContainer({
         {...(schema.manifestEditor || schema.bucketPolicyEditor
           ? { onGetManifest, onApplyManifest }
           : {})}
+        {...(schema.storageBrowser && renderStorageBrowser ? { renderStorageBrowser } : {})}
         {...(schema.describe ? { onGetDescribe } : {})}
         {...(schema.logs ? { onGetLogs } : {})}
         {...(schema.artifactRegistry ? { onListArtifacts } : {})}
