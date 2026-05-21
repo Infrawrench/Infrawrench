@@ -47,10 +47,6 @@ export const PostgresFlexibleServerResourceType: ResourceTypeDefinition = {
   iconKey: "database",
   supportsCreate: true,
   supportsMetrics: true,
-  resourceSqlDriver: {
-    driver: "postgres",
-    connectionStringOutputKey: "connectionString",
-  },
   peerIntegrations: [
     {
       pluginId: "postgres",

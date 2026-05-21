@@ -31,10 +31,6 @@ export const MySQLFlexibleServerResourceType: ResourceTypeDefinition = {
   iconKey: "database",
   supportsCreate: true,
   supportsMetrics: true,
-  resourceSqlDriver: {
-    driver: "mysql",
-    connectionStringOutputKey: "connectionString",
-  },
   peerIntegrations: [
     {
       pluginId: "mysql",

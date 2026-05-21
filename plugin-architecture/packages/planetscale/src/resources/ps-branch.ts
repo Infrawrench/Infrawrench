@@ -39,8 +39,4 @@ export const PsBranchResourceType: ResourceTypeDefinition = {
       entries: [{ envKey: "DATABASE_URL", outputKey: "connectionString" }],
     },
   ],
-  resourceSqlDriver: {
-    driver: "mysql-planetscale",
-    connectionStringOutputKey: "connectionString",
-  },
 };

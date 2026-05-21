@@ -43,10 +43,6 @@ export const SQLDatabaseResourceType: ResourceTypeDefinition = {
   iconKey: "database",
   supportsCreate: true,
   supportsMetrics: true,
-  resourceSqlDriver: {
-    driver: "mssql",
-    connectionStringOutputKey: "connectionString",
-  },
   peerIntegrations: [
     {
       pluginId: "mssql",

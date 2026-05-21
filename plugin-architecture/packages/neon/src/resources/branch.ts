@@ -22,10 +22,6 @@ export const NeonBranchResourceType: ResourceTypeDefinition = {
   supportsCreate: true,
   supportsMetrics: true,
   iconKey: "neon",
-  resourceSqlDriver: {
-    driver: "postgres",
-    connectionStringOutputKey: "connectionString",
-  },
   peerIntegrations: [
     {
       pluginId: "postgres",
