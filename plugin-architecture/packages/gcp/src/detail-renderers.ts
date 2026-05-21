@@ -7,8 +7,8 @@
  * single-line tweaks (e.g. memorystore-redis status, secret-manager-secret
  * versions config) stay inline here.
  *
- * Public surface: `GcpDetailContext` and `gcpRenderDetail`. Both are used
- * by `client.ts`.
+ * Public surface: `gcpRenderDetail`. `GcpDetailContext` lives in
+ * `./detail-context.ts` and is imported directly by consumers.
  */
 import type { DetailViewSchema, ResourceInstance, SqlTableMeta } from "@infrawrench/plugin-base";
 import { labeledFieldItems } from "@infrawrench/plugin-base";
@@ -25,8 +25,6 @@ import {
   renderCloudRouter,
 } from "./network-detail-renderers.js";
 import { renderPubsubSubscription, renderPubsubTopic } from "./pubsub-detail-renderers.js";
-
-export type { GcpDetailContext } from "./detail-context.js";
 import type { GcpDetailContext } from "./detail-context.js";
 
 export function gcpRenderDetail(

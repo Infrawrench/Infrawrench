@@ -13,6 +13,7 @@ import {
 } from "@infrawrench/ui";
 import { apiDelete, apiPatch } from "@/lib/api";
 import { useOrgId } from "@/lib/useOrgId";
+import type { AccountListItem } from "@/lib/api-types";
 import { CreateResourceModal } from "./CreateResourceModal";
 
 export interface ResourceTypeInfo {
@@ -24,7 +25,7 @@ export interface ResourceTypeInfo {
   attachTargets?: import("@infrawrench/plugin-base").AttachTarget[];
 }
 
-interface Resource {
+export interface AccountResource {
   id: string;
   pluginId: string;
   resourceTypeId: string;
@@ -35,10 +36,10 @@ interface Resource {
   parentResourceId: string | null;
 }
 
-export type CategoryState = SectionCategoryState<ResourceTypeInfo, Resource>;
+export type CategoryState = SectionCategoryState<ResourceTypeInfo, AccountResource>;
 
 interface Props {
-  account: { id: string; pluginId: string; displayName: string };
+  account: AccountListItem;
   categories: CategoryState[];
   pluginDisplayName: string;
   pluginLogoSvg: string;

@@ -1,6 +1,6 @@
 import { getCollection, type CollectionEntry } from "astro:content";
 
-export interface DocsSection {
+interface DocsSection {
   slug: string;
   label: string;
   pages: Array<{

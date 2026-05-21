@@ -122,7 +122,7 @@ app.get("/download", async (c) => {
     return c.json({ error: err instanceof Error ? err.message : "Download failed" }, 500);
   }
 
-  const { PassThrough } = await import("node:stream");
+  const { PassThrough, Readable } = await import("node:stream");
   const passthrough = new PassThrough();
   const archive = archiver("zip", { zlib: { level: 6 } });
   archive.pipe(passthrough);
@@ -146,8 +146,7 @@ app.get("/download", async (c) => {
     }
   })();
 
-  // @ts-expect-error -- PassThrough is a Node.js ReadableStream, compatible with Response
-  return new Response(passthrough, {
+  return new Response(Readable.toWeb(passthrough) as ReadableStream, {
     headers: {
       "Content-Type": "application/zip",
       "Content-Disposition": `attachment; filename="download-${Date.now()}.zip"`,

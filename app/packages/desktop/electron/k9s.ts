@@ -51,6 +51,7 @@ export async function spawnK9s(webContents: WebContents, config: K9sConfig): Pro
     }
     throw new Error(
       `Failed to launch k9s: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
     );
   }
 

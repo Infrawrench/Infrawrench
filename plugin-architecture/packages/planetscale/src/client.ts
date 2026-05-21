@@ -524,7 +524,6 @@ export class PlanetScaleClient implements PluginClient {
     const dbName = parts[0] ?? "";
     const branchName = parts.slice(1).join("/");
 
-    // Create a connection password for this branch
     const data = await this.fetch<{ data: PsPassword }>(
       `/organizations/${enc(this.orgName)}/databases/${enc(dbName)}/branches/${enc(branchName)}/passwords`,
       {

@@ -639,6 +639,7 @@ export class OvhClient implements PluginClient {
         const msg = e instanceof Error ? e.message : String(e);
         throw new Error(
           `Cluster ${clusterName} created but node pool creation failed: ${msg}. Delete the cluster and retry, or add a node pool via the OVH console.`,
+          { cause: e },
         );
       }
 

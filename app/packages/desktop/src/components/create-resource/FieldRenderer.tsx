@@ -34,7 +34,6 @@ export function FieldRenderer({
     if (field.kind !== "ssh-key-picker") return;
     let cancelled = false;
 
-    // Check cloud auth status
     invoke<string | null>("cloud_auth_get_token")
       .then((token) => {
         if (!cancelled) setCloudAuthed(!!token);

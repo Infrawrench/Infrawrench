@@ -56,6 +56,7 @@ export async function spawnK8sExec(
     }
     throw new Error(
       `Failed to launch kubectl exec: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
     );
   }
 

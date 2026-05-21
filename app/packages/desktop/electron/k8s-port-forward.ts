@@ -65,6 +65,7 @@ export async function startPortForward(
     }
     throw new Error(
       `Failed to launch kubectl port-forward: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
     );
   }
 

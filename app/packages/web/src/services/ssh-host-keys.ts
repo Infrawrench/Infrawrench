@@ -15,6 +15,7 @@
 import * as crypto from "node:crypto";
 import { v4 as uuid } from "uuid";
 import { and, eq } from "drizzle-orm";
+import type { ConnectConfig } from "ssh2";
 import { db } from "../db/client";
 import { sshHostKeys } from "../db/schema";
 
@@ -75,7 +76,7 @@ function fingerprint(hostKey: Buffer): string {
  * Never writes. Throws `HostKeyTrustRequiredError` when the host is unknown
  * or when the key has changed.
  */
-export async function verifyHostKey(
+async function verifyHostKey(
   orgId: string,
   host: string,
   port: number,
@@ -161,4 +162,56 @@ export async function trustHostKey(
     .update(sshHostKeys)
     .set({ fingerprint: presentedFingerprint })
     .where(eq(sshHostKeys.id, existing.id));
+}
+
+/**
+ * Build an ssh2 `hostVerifier` that routes the presented key through
+ * `verifyHostKey`. On a trust failure, stores the typed error on
+ * `errorRef.value` so the caller can re-throw it instead of the generic ssh2
+ * connect error. `tag` is the log prefix (e.g. `"ssh"`, `"sftp"`).
+ */
+export function makeHostKeyVerifier(
+  organizationId: string,
+  host: string,
+  port: number,
+  errorRef: { value: HostKeyTrustRequiredError | null },
+  tag: string,
+): (hostKey: Buffer, verify: (valid: boolean) => void) => void {
+  return (hostKey, verify) => {
+    verifyHostKey(organizationId, host, port, hostKey).then(
+      () => verify(true),
+      (e: unknown) => {
+        if (e instanceof HostKeyTrustRequiredError) {
+          console.warn(
+            `[${tag}] host key ${e.kind} for ${e.host}:${e.port} ` +
+              `(stored=${e.storedFingerprint ?? "(none)"}, presented=${e.presentedFingerprint})`,
+          );
+          errorRef.value = e;
+        }
+        verify(false);
+      },
+    );
+  };
+}
+
+/**
+ * `configureConnect` callback factory for use with `@infrawrench/ssh-tunnel-core`
+ * and `@infrawrench/sftp-host`. Installs the `makeHostKeyVerifier` on top of
+ * whatever options ssh2 was about to use.
+ */
+export function makeHostKeyConfigureConnect(
+  organizationId: string,
+  errorRef: { value: HostKeyTrustRequiredError | null },
+  tag: string,
+): (opts: ConnectConfig) => ConnectConfig {
+  return (opts) => ({
+    ...opts,
+    hostVerifier: makeHostKeyVerifier(
+      organizationId,
+      opts.host ?? "localhost",
+      opts.port ?? 22,
+      errorRef,
+      tag,
+    ),
+  });
 }

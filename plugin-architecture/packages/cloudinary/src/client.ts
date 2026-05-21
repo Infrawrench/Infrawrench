@@ -8,7 +8,7 @@ import type {
   DashboardStat,
   HostServices,
 } from "@infrawrench/plugin-base";
-import { jsonRestFetch, formatBytes as sharedFormatBytes } from "@infrawrench/plugin-base";
+import { jsonRestFetch, formatBytes } from "@infrawrench/plugin-base";
 
 /** Minimal shapes for the Cloudinary API responses we use. */
 
@@ -790,5 +790,3 @@ export class CloudinaryClient implements PluginClient {
     }));
   }
 }
-
-const formatBytes = sharedFormatBytes;

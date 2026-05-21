@@ -16,8 +16,6 @@ import { computeCostMicros, type TokenUsage } from "./pricing";
 import { getStripe } from "../services/stripe";
 import type { SpendStatus } from "../components/chat/types";
 
-export type { SpendStatus };
-
 /** ISO timestamp of the first day of the current month (UTC). */
 function monthStart(): Date {
   const now = new Date();

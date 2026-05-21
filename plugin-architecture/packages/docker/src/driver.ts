@@ -51,7 +51,7 @@ export const driver = {
           });
         } catch (e: unknown) {
           const msg = e instanceof Error ? e.message : String(e);
-          throw new Error(`Failed to pull image "${image}": ${msg}`);
+          throw new Error(`Failed to pull image "${image}": ${msg}`, { cause: e });
         }
 
         const container = await docker.createContainer({

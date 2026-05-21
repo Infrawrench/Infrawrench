@@ -114,7 +114,7 @@ export class ClickHouseClient implements PluginClient {
       return await result.json<Record<string, unknown>>();
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      throw new Error(`ClickHouse query failed: ${message}`);
+      throw new Error(`ClickHouse query failed: ${message}`, { cause: err });
     } finally {
       await client.close();
     }
@@ -137,7 +137,7 @@ export class ClickHouseClient implements PluginClient {
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      throw new Error(`ClickHouse query failed: ${message}`);
+      throw new Error(`ClickHouse query failed: ${message}`, { cause: err });
     } finally {
       await client.close();
     }

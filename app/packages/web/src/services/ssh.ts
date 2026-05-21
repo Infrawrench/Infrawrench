@@ -7,7 +7,7 @@ import type { PluginClient, SshConfig } from "@infrawrench/plugin-base";
 import { db } from "../db/client";
 import { sshKeys } from "../db/schema";
 import { decrypt, buildAad } from "./encryption";
-import { HostKeyTrustRequiredError, verifyHostKey } from "./ssh-host-keys";
+import { HostKeyTrustRequiredError, makeHostKeyVerifier } from "./ssh-host-keys";
 
 /**
  * Resolve an SSH config for an SFTP/SSH-exec request:
@@ -59,7 +59,7 @@ export function sshExec(
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     const client = new SshClient();
-    let hostKeyError: Error | null = null;
+    const hostKeyErrorRef = { value: null as HostKeyTrustRequiredError | null };
     client.once("ready", () => {
       client.exec(command, (err, stream) => {
         if (err) {
@@ -88,8 +88,8 @@ export function sshExec(
     client.once("error", (err) => {
       // If the connection was aborted because of a host-key mismatch, report
       // that error rather than the generic ssh2 "All configured ..." message.
-      if (hostKeyError) {
-        reject(hostKeyError);
+      if (hostKeyErrorRef.value) {
+        reject(hostKeyErrorRef.value);
         return;
       }
       reject(new Error(`SSH error: ${err.message}`));
@@ -99,23 +99,13 @@ export function sshExec(
       port: config.port,
       username: config.username,
       privateKey: config.privateKey,
-      hostVerifier: (hostKey: Buffer, verify: (valid: boolean) => void) => {
-        verifyHostKey(organizationId, config.host, config.port, hostKey).then(
-          () => verify(true),
-          (e: unknown) => {
-            if (e instanceof HostKeyTrustRequiredError) {
-              console.warn(
-                `[ssh] host key ${e.kind} for ${e.host}:${e.port} ` +
-                  `(stored=${e.storedFingerprint ?? "(none)"}, presented=${e.presentedFingerprint})`,
-              );
-              hostKeyError = e;
-            } else if (e instanceof Error) {
-              hostKeyError = e;
-            }
-            verify(false);
-          },
-        );
-      },
+      hostVerifier: makeHostKeyVerifier(
+        organizationId,
+        config.host,
+        config.port,
+        hostKeyErrorRef,
+        "ssh",
+      ),
     });
   });
 }

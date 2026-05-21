@@ -815,6 +815,7 @@ function parseSecondaryIndexesJson(raw: string): ParsedSecondaryIndexes {
   } catch (e) {
     throw new Error(
       `Secondary indexes JSON is not valid JSON: ${(e as Error).message}. Expected shape: { "gsis": [...], "lsis": [...] }`,
+      { cause: e },
     );
   }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {

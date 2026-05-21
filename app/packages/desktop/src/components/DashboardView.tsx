@@ -6,13 +6,11 @@ import { useDroppable } from "@dnd-kit/core";
 import {
   useUIStore,
   useTabId,
-  SparklineChart,
   SortableDashboardCard,
   SortableContext,
   rectSortingStrategy,
   arrayMove,
   getListableResourceTypes,
-  extractHostLabel,
   formatErrorMessage,
 } from "@infrawrench/ui";
 import { getDb } from "../db/client";
@@ -42,33 +40,8 @@ import {
 } from "../lib/cloud-api";
 import type { SearchResult } from "./SpotlightSearch";
 
-interface PinnedRow {
-  resource_id: string;
-  plugin_id: string;
-  resource_type_id: string;
-  account_id: string;
-  display_name: string;
-  fields_json: string;
-  outputs_json: string;
-}
-
-interface PluginMeta {
-  logoSvg: string;
-  displayName: string;
-  terminalResourceTypeIds: string[];
-}
-
-interface CardStatus {
-  phase: "connecting" | "ok" | "error";
-  resourceCounts?: { typeLabel: string; count: number }[] | undefined;
-  stats?: Array<{ label: string; value: string; variant?: string }> | undefined;
-  sparkline?: Array<{ timestamp: number; value: number }> | undefined;
-  sparklineLabel?: string | undefined;
-  error?: string | undefined;
-  sshTarget?: boolean;
-  resourceId?: string;
-  accountId?: string;
-}
+import { ResourceCard } from "./DashboardView/ResourceCard";
+import type { CardStatus, PinnedRow, PluginMeta } from "./DashboardView/types";
 
 interface DashboardViewProps {
   dashboardId: string;
@@ -772,155 +745,6 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
           />
         )}
       </div>
-    </div>
-  );
-}
-
-function ResourceCard({
-  row,
-  pluginMeta,
-  status,
-  onOpen,
-  onUnpin,
-  onConnect,
-}: {
-  row: PinnedRow;
-  pluginMeta?: PluginMeta | undefined;
-  status?: CardStatus | undefined;
-  onOpen: () => void;
-  onUnpin: () => void;
-  onConnect?: (() => void) | undefined;
-}) {
-  const fields = (() => {
-    try {
-      return JSON.parse(row.fields_json) as Record<string, unknown>;
-    } catch {
-      return {};
-    }
-  })();
-
-  const host = extractHostLabel(fields);
-
-  return (
-    <div className="group relative rounded-2xl border border-border bg-surface-raised hover:border-border-strong transition-colors flex flex-col overflow-hidden">
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          onUnpin();
-        }}
-        title="Remove from dashboard"
-        className="absolute top-2 right-2 w-5 h-5 rounded-full text-on-surface-faint hover:text-on-surface-secondary hover:bg-surface-sunken transition-all opacity-0 group-hover:opacity-100 text-xs flex items-center justify-center"
-      >
-        ✕
-      </button>
-
-      <button onClick={onOpen} className="flex-1 flex flex-col p-5 text-left gap-3">
-        <div className="flex items-center gap-2">
-          {pluginMeta?.logoSvg ? (
-            <div
-              className="w-6 h-6 flex-shrink-0"
-              dangerouslySetInnerHTML={{ __html: pluginMeta.logoSvg }}
-            />
-          ) : (
-            <span className="text-xs text-on-surface-faint font-mono">{row.plugin_id}</span>
-          )}
-          <span className="text-xs text-on-surface-muted">
-            {pluginMeta?.displayName ?? row.plugin_id}
-          </span>
-        </div>
-
-        <div>
-          <p className="text-base font-semibold text-on-surface leading-tight">
-            {row.display_name}
-          </p>
-          {host && <p className="text-xs text-on-surface-muted mt-0.5 truncate">{host}</p>}
-        </div>
-      </button>
-
-      <ConnectionFooter status={status} onConnect={onConnect} />
-    </div>
-  );
-}
-
-function ConnectionFooter({
-  status,
-  onConnect,
-}: {
-  status?: CardStatus | undefined;
-  onConnect?: (() => void) | undefined;
-}) {
-  if (!status) return null;
-
-  if (status.phase === "connecting") {
-    return (
-      <div className="px-5 py-3 border-t border-border flex items-center gap-2">
-        <span className="w-1.5 h-1.5 rounded-full bg-surface-sunken animate-pulse flex-shrink-0" />
-        <span className="text-xs text-on-surface-faint">Connecting…</span>
-      </div>
-    );
-  }
-
-  if (status.phase === "error") {
-    return (
-      <div
-        className="px-5 py-3 border-t border-border flex items-center gap-2"
-        title={status.error}
-      >
-        <span className="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0" />
-        <span className="text-xs text-red-500 truncate">{status.error ?? "Connection failed"}</span>
-      </div>
-    );
-  }
-
-  return (
-    <div className="px-5 py-3 border-t border-border space-y-1">
-      <div className="flex items-center gap-1.5 mb-1">
-        <span className="w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0" />
-        <span className="text-xs text-on-surface-faint">Connected</span>
-      </div>
-      {status.stats?.map((stat) => {
-        const color =
-          stat.variant === "status-healthy"
-            ? "text-green-400"
-            : stat.variant === "status-degraded"
-              ? "text-yellow-400"
-              : stat.variant === "status-error"
-                ? "text-red-400"
-                : "text-on-surface-tertiary";
-        return (
-          <div key={stat.label} className="flex justify-between text-xs">
-            <span className="text-on-surface-faint">{stat.label}</span>
-            <span className={color}>{stat.value}</span>
-          </div>
-        );
-      })}
-      {status.sparkline && status.sparkline.length >= 2 && (
-        <div className="flex items-center gap-2 mt-2.5">
-          <SparklineChart points={status.sparkline} width={120} height={24} />
-          {status.sparklineLabel && (
-            <span className="text-[10px] text-on-surface-faint">{status.sparklineLabel}</span>
-          )}
-        </div>
-      )}
-      {status.resourceCounts?.map(({ typeLabel, count }) => (
-        <div key={typeLabel} className="flex justify-between text-xs">
-          <span className="text-on-surface-faint">{typeLabel}</span>
-          <span className="text-on-surface-tertiary">{count}</span>
-        </div>
-      ))}
-
-      {status.sshTarget && onConnect && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onConnect();
-          }}
-          className="mt-2 w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-100 dark:bg-green-950 border border-green-300 dark:border-green-800 hover:bg-green-200 dark:hover:bg-green-900 hover:border-green-400 dark:hover:border-green-700 text-green-700 dark:text-green-400 hover:text-green-800 dark:hover:text-green-300 text-xs font-medium transition-colors"
-        >
-          <span>⌨</span>
-          Connect
-        </button>
-      )}
     </div>
   );
 }

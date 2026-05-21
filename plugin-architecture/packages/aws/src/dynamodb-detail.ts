@@ -13,7 +13,7 @@ import type {
   SectionNode,
 } from "@infrawrench/plugin-base";
 
-export interface DynamoIndexesPayload {
+interface DynamoIndexesPayload {
   attributeDefinitions: Array<{ AttributeName?: string; AttributeType?: string }>;
   keySchema: Array<{ AttributeName?: string; KeyType?: string }>;
   globalSecondaryIndexes: Array<Record<string, unknown>>;

@@ -1,10 +1,10 @@
-export interface Screenshot {
+interface Screenshot {
   label: string;
   tall: boolean;
   filename: string;
 }
 
-export interface FeatureSection {
+interface FeatureSection {
   id: string;
   label: string;
   icon: string;
@@ -14,13 +14,13 @@ export interface FeatureSection {
   screenshots: Screenshot[];
 }
 
-export interface Provider {
+interface Provider {
   name: string;
   detail: string;
   resources: string[];
 }
 
-export interface ProviderGroup {
+interface ProviderGroup {
   name: string;
   providers: Provider[];
 }

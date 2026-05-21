@@ -8,10 +8,12 @@ import {
 } from "@infrawrench/ui";
 import {
   AccountDetailView,
+  type AccountResource,
   type CategoryState,
   type ResourceTypeInfo,
 } from "@/components/AccountDetailView";
 import { apiGet, apiPost } from "@/lib/api";
+import type { AccountListItem } from "@/lib/api-types";
 
 export const Route = createFileRoute("/org/$orgId/accounts/$accountId")({
   // Rendering is handled by WorkspaceTabsViewport in __root.tsx, which mounts
@@ -26,22 +28,13 @@ export const Route = createFileRoute("/org/$orgId/accounts/$accountId")({
 });
 
 interface AccountMeta {
-  account: { id: string; pluginId: string; displayName: string };
+  account: AccountListItem;
   resourceTypes: ResourceTypeInfo[];
   pluginDisplayName: string;
   pluginLogoSvg: string;
 }
 
-interface ResourceRow {
-  id: string;
-  pluginId: string;
-  resourceTypeId: string;
-  displayName: string;
-  externalId: string | null;
-  fieldsJson: Record<string, unknown> | null;
-  outputsJson: Record<string, unknown> | null;
-  parentResourceId: string | null;
-}
+type ResourceRow = AccountResource;
 
 /** Update URL search params without going through the router (avoids re-render cycles). */
 function patchSearchParams(patch: Record<string, string | undefined>) {

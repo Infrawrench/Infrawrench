@@ -6,12 +6,7 @@ import {
 } from "@infrawrench/ui";
 import { apiGet, apiPost } from "@/lib/api";
 import { useOrgId } from "@/lib/useOrgId";
-
-interface AccountRow {
-  id: string;
-  pluginId: string;
-  displayName: string;
-}
+import type { AccountListItem } from "@/lib/api-types";
 
 /**
  * Web variant of the Firestore Enterprise+MongoDB-compat browser. Lists the
@@ -39,7 +34,7 @@ export function FirestoreMongoPeerBrowser({
     let cancelled = false;
     async function load() {
       try {
-        const rows = await apiGet<AccountRow[]>(`/api/org/${orgId}/accounts`);
+        const rows = await apiGet<AccountListItem[]>(`/api/org/${orgId}/accounts`);
         if (cancelled) return;
         const list = rows.filter((r) => r.pluginId === "mongodb");
         setAccounts(list);

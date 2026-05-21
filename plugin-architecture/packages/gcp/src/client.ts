@@ -51,7 +51,7 @@ import {
 
 import type { GcpCreateContext } from "./create-handlers.js";
 import { gcpGetCreateConfig, gcpCreateResource } from "./create-handlers.js";
-import type { GcpDetailContext } from "./detail-renderers.js";
+import type { GcpDetailContext } from "./detail-context.js";
 import { gcpRenderDetail } from "./detail-renderers.js";
 import type { CloudRunContext } from "./cloud-run-handlers.js";
 import {
