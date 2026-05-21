@@ -97,6 +97,15 @@ export interface PeerPluginIntegration {
     /** Practical next steps, in priority order. Rendered as a bulleted list. */
     suggestions: string[];
   };
+  /**
+   * When true, the host calls the peer plugin's `fetchMetricSeries` (with its
+   * resolved credentials) and merges the returned series into the parent
+   * resource's Metrics tab. Use for peers whose data points are meaningful
+   * alongside the parent's own metrics — e.g. a SQL peer reporting connection
+   * counts on top of the parent's CPU/memory series. Implies the parent gets
+   * a Metrics tab even when its own `supportsMetrics` is false.
+   */
+  exposeMetricsToParent?: boolean;
 }
 
 /**

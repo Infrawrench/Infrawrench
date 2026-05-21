@@ -473,7 +473,9 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
     containerId,
     databaseName,
     storageBucketName,
-    supportsMetrics: (resourceTypeDef?.supportsMetrics ?? false) && !!client.fetchMetricSeries,
+    supportsMetrics:
+      ((resourceTypeDef?.supportsMetrics ?? false) && !!client.fetchMetricSeries) ||
+      (resourceTypeDef?.peerIntegrations?.some((i) => i.exposeMetricsToParent) ?? false),
   });
 });
 

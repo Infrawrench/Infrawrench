@@ -2,10 +2,12 @@ import { and, eq, inArray, isNotNull, isNull, notInArray, sql } from "drizzle-or
 import type {
   DashboardStat,
   MetricSeries,
+  PeerPluginIntegration,
   Plugin,
   PluginClient,
   ResourceInstance,
 } from "@infrawrench/plugin-base";
+import { evaluatePeerIntegrationUnreachable } from "@infrawrench/plugin-base";
 import { db } from "./db/client";
 import { accounts, dashboardPins, resources } from "./db/schema";
 import { decrypt, buildAad } from "./encryption";
@@ -320,10 +322,23 @@ async function refreshPinnedStats(
       .filter((p) => p.resourceTypeId !== "__account__")
       .map(async (p) => {
         const typeDef = plugin.resourceTypes.find((t) => t.id === p.resourceTypeId);
-        const [statsResult, metricsResult] = await Promise.allSettled([
+        const peerMetricIntegrations = (typeDef?.peerIntegrations ?? []).filter(
+          (i) => i.exposeMetricsToParent,
+        );
+        const [statsResult, metricsResult, peerMetricsResult] = await Promise.allSettled([
           fetchStats(p.resourceTypeId, p.resourceId, accountId),
           typeDef?.supportsMetrics && fetchMetrics
             ? fetchMetrics(p.resourceTypeId, p.resourceId, accountId)
+            : Promise.resolve(null),
+          peerMetricIntegrations.length
+            ? fetchPeerMetricSeriesForPoller(
+                client,
+                plugin,
+                peerMetricIntegrations,
+                p.resourceTypeId,
+                p.resourceId,
+                accountId,
+              )
             : Promise.resolve(null),
         ]);
         if (statsResult.status === "fulfilled") {
@@ -335,7 +350,16 @@ async function refreshPinnedStats(
             stats: statsResult.value as DashboardStat[],
           });
         }
-        if (metricsResult.status === "fulfilled" && metricsResult.value) {
+        const ownSeries =
+          metricsResult.status === "fulfilled" && metricsResult.value
+            ? (metricsResult.value as MetricSeries[])
+            : [];
+        const peerSeries =
+          peerMetricsResult.status === "fulfilled" && peerMetricsResult.value
+            ? peerMetricsResult.value
+            : [];
+        const allSeries = [...ownSeries, ...peerSeries];
+        if (allSeries.length) {
           const rows = flattenMetricSeries(
             {
               organizationId,
@@ -344,12 +368,60 @@ async function refreshPinnedStats(
               pluginId: p.pluginId,
               resourceTypeId: p.resourceTypeId,
             },
-            metricsResult.value as MetricSeries[],
+            allSeries,
           );
           await insertMetricPoints(rows);
         }
       }),
   );
+}
+
+/**
+ * Server-side analogue of fetchPeerMetricSeries in the web package — calls
+ * each `exposeMetricsToParent` peer's `fetchMetricSeries` against credentials
+ * resolved from the parent. Series get prefixed with the peer's tab label so
+ * downstream charts can distinguish them from the parent's own metrics.
+ * Peer-resolution errors are swallowed so a broken peer can't poison the
+ * parent's metrics for the cycle.
+ */
+async function fetchPeerMetricSeriesForPoller(
+  parentClient: PluginClient,
+  parentPlugin: Plugin,
+  integrations: PeerPluginIntegration[],
+  resourceTypeId: string,
+  resourceId: string,
+  accountId: string,
+): Promise<MetricSeries[]> {
+  const parentResource = await parentClient
+    .getResource(resourceTypeId, resourceId, accountId)
+    .catch(() => null);
+
+  const results = await Promise.allSettled(
+    integrations.map(async (integration) => {
+      if (evaluatePeerIntegrationUnreachable(integration, parentResource?.fields)) return [];
+      const peerCreds: Record<string, string> = {};
+      for (const mapping of integration.credentialMappings) {
+        peerCreds[mapping.credentialKey] = await parentClient.resolveOutput(
+          resourceTypeId,
+          resourceId,
+          mapping.outputKey,
+          accountId,
+        );
+      }
+      const peerLoaded = await getPlugin(integration.pluginId);
+      if (!peerLoaded) return [];
+      const peerHostServices = await buildPluginHostServices(
+        peerLoaded.plugin.manifest,
+        peerCreds,
+        { accountId },
+      );
+      const peerClient = peerLoaded.plugin.createClient(peerCreds, peerHostServices);
+      if (!peerClient.fetchMetricSeries) return [];
+      const series = await peerClient.fetchMetricSeries(resourceTypeId, resourceId, accountId);
+      return series.map((s) => ({ ...s, label: `${integration.tabLabel} · ${s.label}` }));
+    }),
+  );
+  return results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
 }
 
 /** Manually refresh a single resource by calling getResource on the provider. */

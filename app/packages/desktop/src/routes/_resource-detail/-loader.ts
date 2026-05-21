@@ -891,15 +891,67 @@ export async function loadLocalResource(params: LoaderParams): Promise<void> {
       if (!isCancelled() && !isBackground) setters.setPeerPanes([]);
     }
 
-    if (resourceTypeDef?.supportsMetrics && client.fetchMetricSeries && !isBackground) {
-      client
-        .fetchMetricSeries(enrichedResource.resourceTypeId, enrichedResource.id, accountId)
-        .then((series) => {
-          if (!isCancelled()) setters.setMetricSeries(series);
+    const peerMetricIntegrations = (resourceTypeDef?.peerIntegrations ?? []).filter(
+      (i) => i.exposeMetricsToParent,
+    );
+    const wantsOwnMetrics = !!resourceTypeDef?.supportsMetrics && !!client.fetchMetricSeries;
+    if ((wantsOwnMetrics || peerMetricIntegrations.length > 0) && !isBackground) {
+      Promise.all([
+        wantsOwnMetrics
+          ? client.fetchMetricSeries!(
+              enrichedResource.resourceTypeId,
+              enrichedResource.id,
+              accountId,
+            )
+          : Promise.resolve<MetricSeries[]>([]),
+        peerMetricIntegrations.length > 0
+          ? fetchLocalPeerMetrics(
+              client,
+              peerMetricIntegrations,
+              enrichedResource,
+              accountId,
+            ).catch(() => [] as MetricSeries[])
+          : Promise.resolve<MetricSeries[]>([]),
+      ])
+        .then(([own, peer]) => {
+          if (!isCancelled()) setters.setMetricSeries([...own, ...peer]);
         })
         .catch((err) => {
           if (!isCancelled()) toast.error(`Couldn't load metrics: ${formatErrorMessage(err)}`);
         });
     }
   }
+}
+
+async function fetchLocalPeerMetrics(
+  parentClient: PluginClient,
+  integrations: NonNullable<ResourceTypeDefinition["peerIntegrations"]>,
+  parentResource: ResourceInstance,
+  accountId: string,
+): Promise<MetricSeries[]> {
+  const results = await Promise.allSettled(
+    integrations.map(async (integration) => {
+      const peerCreds: Record<string, string> = {};
+      for (const mapping of integration.credentialMappings) {
+        peerCreds[mapping.credentialKey] = await parentClient.resolveOutput(
+          parentResource.resourceTypeId,
+          parentResource.id,
+          mapping.outputKey,
+          accountId,
+        );
+      }
+      const peerLoaded = await getPlugin(integration.pluginId);
+      if (!peerLoaded) return [];
+      const peerHostServices = buildPluginHostServices(peerLoaded.plugin.manifest, peerCreds);
+      const peerClient = peerLoaded.plugin.createClient(peerCreds, peerHostServices);
+      if (!peerClient.fetchMetricSeries) return [];
+      const series = await peerClient.fetchMetricSeries(
+        parentResource.resourceTypeId,
+        parentResource.id,
+        accountId,
+      );
+      return series.map((s) => ({ ...s, label: `${integration.tabLabel} · ${s.label}` }));
+    }),
+  );
+  return results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
 }

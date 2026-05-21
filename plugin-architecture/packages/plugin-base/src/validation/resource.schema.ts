@@ -49,6 +49,7 @@ const peerPluginIntegrationSchema = z.object({
       suggestions: z.array(z.string().min(1)),
     })
     .optional(),
+  exposeMetricsToParent: z.boolean().optional(),
 });
 
 const secretExportEntrySchema = z.object({
