@@ -160,7 +160,20 @@ export class PostgresClient implements PluginClient {
                     action: { type: "reroll-secret" as const, fieldKey: "connectionString" },
                   },
                 ]
-              : []),
+              : hasConnection
+                ? [
+                    {
+                      kind: "action" as const,
+                      label: "Reroll Connection",
+                      action: {
+                        type: "reroll-parent-output" as const,
+                        outputKey: "connectionString",
+                        confirmMessage:
+                          "This will reset the upstream role password. Open connections may need to reconnect.",
+                      },
+                    },
+                  ]
+                : []),
           ],
         },
       ],

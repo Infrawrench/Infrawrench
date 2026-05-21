@@ -386,6 +386,23 @@ export interface PluginClient {
     plaintext: string,
   ): Promise<void>;
   /**
+   * Reissue an output value upstream — e.g. reset the role password backing
+   * the `connectionString` output. Called by the host when a peer plugin's
+   * Reroll action delegates back to the resource that supplied the credential
+   * (the child has no secretState of its own; the value flows from this
+   * parent's outputs and a literal reroll would only update local state).
+   *
+   * The plugin is responsible for the upstream mutation; the host then
+   * re-resolves the output to pick up the new value. Plugins with no concept
+   * of reissue omit this — the host hides the reroll affordance in that case.
+   */
+  rerollOutput?(
+    typeId: string,
+    resourceId: string,
+    outputKey: string,
+    accountId: string,
+  ): Promise<void>;
+  /**
    * Invoke a plugin-defined action against a resource — e.g. restart VMs in an
    * instance group. `actionId` is plugin-specific. The host calls this in
    * response to an `ActionNode` whose `action` is `{ type: "plugin-action" }`.

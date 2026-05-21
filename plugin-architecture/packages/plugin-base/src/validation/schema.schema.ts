@@ -39,6 +39,11 @@ const kvItemSchema = z.object({
 
 const hostActionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("reroll-secret"), fieldKey: z.string() }),
+  z.object({
+    type: z.literal("reroll-parent-output"),
+    outputKey: z.string(),
+    confirmMessage: z.string().optional(),
+  }),
   z.object({ type: z.literal("open-url"), url: z.string() }),
   z.object({ type: z.literal("copy-to-clipboard"), fieldKey: z.string() }),
   z.object({

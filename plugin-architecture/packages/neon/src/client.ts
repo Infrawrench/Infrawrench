@@ -1019,6 +1019,64 @@ export class NeonClient implements PluginClient {
     return resp.data.password;
   }
 
+  async rerollOutput(
+    typeId: string,
+    resourceId: string,
+    outputKey: string,
+    accountId: string,
+  ): Promise<void> {
+    if (outputKey !== "connectionString" && outputKey !== "password") {
+      throw new Error(`Neon plugin: cannot reroll output "${outputKey}" for type "${typeId}"`);
+    }
+
+    // Resolve project/branch/role from the resource shape. neon-database and
+    // neon-branch both reset the owner of the first database; neon-role resets
+    // itself; neon-project resets the owner of the primary branch's default db.
+    let projectId: string;
+    let branchId: string;
+    let roleName: string;
+
+    if (typeId === "neon-role") {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      projectId = String(resource.fields["projectId"] ?? "");
+      branchId = String(resource.fields["branchId"] ?? "");
+      roleName = String(resource.fields["name"] ?? "");
+    } else if (typeId === "neon-database") {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      projectId = String(resource.fields["projectId"] ?? "");
+      branchId = String(resource.fields["branchId"] ?? "");
+      roleName = String(resource.fields["ownerName"] ?? "neondb_owner");
+    } else if (typeId === "neon-branch") {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      projectId = String(resource.fields["projectId"] ?? "");
+      branchId = String(resource.externalId ?? "");
+      const dbResp = await this.api.listProjectBranchDatabases(projectId, branchId);
+      const db = dbResp.data.databases[0];
+      if (!db) throw new Error("Neon plugin: no databases on branch to reroll");
+      roleName = db.owner_name;
+    } else if (typeId === "neon-project") {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      projectId = String(resource.externalId ?? "");
+      const branchResp = await this.api.listProjectBranches({ projectId });
+      const primary =
+        branchResp.data.branches.find((b) => isDefaultBranch(b)) ?? branchResp.data.branches[0];
+      if (!primary) throw new Error("Neon plugin: no branches to reroll");
+      branchId = primary.id;
+      const dbResp = await this.api.listProjectBranchDatabases(projectId, branchId);
+      const db = dbResp.data.databases[0];
+      if (!db) throw new Error("Neon plugin: no databases on primary branch to reroll");
+      roleName = db.owner_name;
+    } else {
+      throw new Error(`Neon plugin: rerollOutput not supported for type "${typeId}"`);
+    }
+
+    if (!projectId || !branchId || !roleName) {
+      throw new Error("Neon plugin: project/branch/role required to reset password");
+    }
+
+    await this.api.resetProjectBranchRolePassword(projectId, branchId, roleName);
+  }
+
   private renderProjectDetail(resource: ResourceInstance): DetailViewSchema {
     const regionId = String(resource.fields["region"] ?? "");
     const regionInfo = NEON_REGIONS[regionId];

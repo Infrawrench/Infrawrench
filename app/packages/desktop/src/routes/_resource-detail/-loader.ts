@@ -58,6 +58,15 @@ export interface LoaderRefs {
       parentResourceOutputs: Record<string, unknown>;
     } | null;
   };
+  /**
+   * Set in peer-pane mode to a closure that delegates a reroll request back
+   * to the parent — maps the child's credentialKey to the parent output key
+   * via the integration's credentialMappings and calls `parentClient.rerollOutput`.
+   * Cleared on every navigation; null in non-peer mode.
+   */
+  peerParentReroll: {
+    current: ((outputKey: string) => Promise<void>) | null;
+  };
 }
 
 export interface LoaderSetters {
@@ -432,6 +441,18 @@ export async function loadLocalPeerResource(params: LoaderParams): Promise<void>
   setters.setChildResourceGroups([]);
   setters.setPeerPanes([]);
   refs.localPeerCtx.current = null;
+  refs.peerParentReroll.current = async (outputKey: string) => {
+    const mapping = integration.credentialMappings.find((m) => m.credentialKey === outputKey);
+    if (!mapping) {
+      throw new Error(`No parent output mapped to credential "${outputKey}"`);
+    }
+    if (!parentClient.rerollOutput) {
+      throw new Error(
+        `${parentLoaded.plugin.manifest.displayName} does not support rerolling outputs`,
+      );
+    }
+    await parentClient.rerollOutput(parentTypeId, peerParent!, mapping.outputKey, accountId);
+  };
   setAccountConnected(accountId, true);
 
   if (tabId) {

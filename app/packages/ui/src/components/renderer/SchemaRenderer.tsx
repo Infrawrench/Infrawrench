@@ -21,6 +21,7 @@ import {
   dispatchNavigateToResource,
   dispatchPromptNoSqlCommand,
   dispatchRefreshResource,
+  dispatchRerollParentOutput,
 } from "../../utils.js";
 
 function CopyButton({ value }: { value: string }) {
@@ -81,6 +82,12 @@ function useActionDispatch() {
     switch (action.type) {
       case "reroll-secret":
         if (resourceId) openReroll(resourceId, action.fieldKey);
+        break;
+      case "reroll-parent-output":
+        dispatchRerollParentOutput({
+          outputKey: action.outputKey,
+          ...(action.confirmMessage ? { confirmMessage: action.confirmMessage } : {}),
+        });
         break;
       case "open-url":
         window.open(action.url, "_blank", "noopener,noreferrer");

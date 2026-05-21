@@ -171,11 +171,13 @@ export {
   NAVIGATE_TO_RESOURCE_EVENT,
   INVOKE_PLUGIN_ACTION_EVENT,
   PROMPT_NOSQL_COMMAND_EVENT,
+  REROLL_PARENT_OUTPUT_EVENT,
   dispatchResourcesChanged,
   dispatchRefreshResource,
   dispatchNavigateToResource,
   dispatchInvokePluginAction,
   dispatchPromptNoSqlCommand,
+  dispatchRerollParentOutput,
   getAccountResourceTypes,
   getListableResourceTypes,
   isCreateOnlyType,
@@ -189,6 +191,7 @@ export type {
   NavigateToResourceDetail,
   InvokePluginActionDetail,
   PromptNoSqlCommandDetail,
+  RerollParentOutputDetail,
 } from "./utils.js";
 
 export { useChartTheme } from "./chart-theme.js";

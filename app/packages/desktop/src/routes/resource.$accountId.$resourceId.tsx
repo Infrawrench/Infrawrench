@@ -41,6 +41,7 @@ import {
   NAVIGATE_TO_RESOURCE_EVENT,
   INVOKE_PLUGIN_ACTION_EVENT,
   PROMPT_NOSQL_COMMAND_EVENT,
+  REROLL_PARENT_OUTPUT_EVENT,
   dispatchResourcesChanged,
   dispatchRefreshResource,
   resourceTabTitle,
@@ -51,6 +52,7 @@ import {
   type NavigateToResourceDetail,
   type InvokePluginActionDetail,
   type PromptNoSqlCommandDetail,
+  type RerollParentOutputDetail,
   type ResourcePickerOption,
   type RerollSelection,
   useUIStore,
@@ -184,6 +186,7 @@ export function ResourcePanel({
     parentResourceFields: Record<string, unknown>;
     parentResourceOutputs: Record<string, unknown>;
   } | null>(null);
+  const peerParentRerollRef = useRef<((outputKey: string) => Promise<void>) | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -193,6 +196,7 @@ export function ResourcePanel({
     if (!isBackground) {
       peerPanesHydratingRef.current = false;
       localPeerCtxRef.current = null;
+      peerParentRerollRef.current = null;
       cloudCtxRef.current = null;
       clientRef.current = null;
       setLoading(true);
@@ -214,6 +218,7 @@ export function ResourcePanel({
       cloudCtx: cloudCtxRef,
       dockerHost: dockerHostRef,
       localPeerCtx: localPeerCtxRef,
+      peerParentReroll: peerParentRerollRef,
     };
     const setters: LoaderSetters = {
       setAccount,
@@ -388,6 +393,31 @@ export function ResourcePanel({
     window.addEventListener(INVOKE_PLUGIN_ACTION_EVENT, handler);
     return () => window.removeEventListener(INVOKE_PLUGIN_ACTION_EVENT, handler);
   }, [accountId, decodedResourceId, resource]);
+
+  useEffect(() => {
+    async function handler(e: Event) {
+      const detail = (e as CustomEvent<RerollParentOutputDetail>).detail;
+      if (!detail) return;
+      const reroll = peerParentRerollRef.current;
+      if (!reroll) {
+        toast.error("Reroll has no upstream parent to delegate to.");
+        return;
+      }
+      const message =
+        detail.confirmMessage ??
+        "Reset the upstream credential? This may invalidate cached connections.";
+      if (!window.confirm(message)) return;
+      try {
+        await reroll(detail.outputKey);
+        toast.success("Upstream credential rerolled.");
+        dispatchRefreshResource();
+      } catch (err) {
+        toast.error(`Reroll failed: ${formatErrorMessage(err)}`);
+      }
+    }
+    window.addEventListener(REROLL_PARENT_OUTPUT_EVENT, handler);
+    return () => window.removeEventListener(REROLL_PARENT_OUTPUT_EVENT, handler);
+  }, []);
 
   const handleNoSqlCommand = useCallback(
     async (command: string, args: (string | number)[]): Promise<unknown> => {

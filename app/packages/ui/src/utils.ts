@@ -74,6 +74,22 @@ export function dispatchInvokePluginAction(detail: InvokePluginActionDetail): vo
 }
 
 /**
+ * Event fired when a `reroll-parent-output` schema action is clicked. The
+ * resource detail page listens; in peer context it walks up to the parent and
+ * calls `parentClient.rerollOutput`.
+ */
+export const REROLL_PARENT_OUTPUT_EVENT = "iw:reroll-parent-output";
+
+export interface RerollParentOutputDetail {
+  outputKey: string;
+  confirmMessage?: string;
+}
+
+export function dispatchRerollParentOutput(detail: RerollParentOutputDetail): void {
+  window.dispatchEvent(new CustomEvent(REROLL_PARENT_OUTPUT_EVENT, { detail }));
+}
+
+/**
  * Event fired when a `prompt-nosql-command` schema action is clicked. The
  * detail page listens, prompts for each field, and invokes the NoSQL command
  * via its host (web/desktop).

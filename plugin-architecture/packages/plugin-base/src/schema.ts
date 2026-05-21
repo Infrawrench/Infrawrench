@@ -12,6 +12,22 @@ import type { CreateFieldConfig } from "./create.js";
 
 export type HostAction =
   | { type: "reroll-secret"; fieldKey: string }
+  | {
+      /**
+       * Reissue an output upstream by delegating to whichever resource supplied
+       * the current credential. Emitted by peer plugins when the resource is
+       * peer-spawned (no local secretState) and the connection flowed in from
+       * a parent's outputs — e.g. a `pg-database` opened from a Neon database.
+       * The host walks up to the parent and calls `parentClient.rerollOutput`,
+       * mapping `outputKey` (on the child) through the integration's
+       * `credentialMappings` to the parent output that originally produced it.
+       * If the parent doesn't implement `rerollOutput`, the host hides the
+       * action.
+       */
+      type: "reroll-parent-output";
+      outputKey: string;
+      confirmMessage?: string;
+    }
   | { type: "open-url"; url: string }
   | { type: "copy-to-clipboard"; fieldKey: string }
   | {
