@@ -29,5 +29,5 @@ export const DISABLED_PLUGINS: string[] = [
 ];
 
 export const ENABLED_RESOURCE_TYPES: Record<string, string[]> = {
-  aws: ["ec2-instance", "eks-cluster"],
+  aws: ["ec2-instance", "eks-cluster", "dynamodb-table"],
 };
