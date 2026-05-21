@@ -84,6 +84,7 @@ export { ImportYamlModal } from "./components/ImportYamlModal.js";
 export type { ImportYamlModalProps } from "./components/ImportYamlModal.js";
 export type { QueryResult } from "./components/detail/SqlEditorView.js";
 export { ManifestEditorView } from "./components/detail/ManifestEditorView.js";
+export { BucketPolicyEditor } from "./components/detail/BucketPolicyEditor.js";
 export { DescribeView } from "./components/detail/DescribeView.js";
 export { LogsView } from "./components/detail/LogsView.js";
 export { ArtifactRegistryView } from "./components/detail/ArtifactRegistryView.js";

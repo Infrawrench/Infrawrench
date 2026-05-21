@@ -15,6 +15,7 @@ Several plugins expose a file-browser panel on any resource that holds files.
 - **Cloudflare R2** buckets
 - **Azure Blob Storage** containers
 - **DigitalOcean Spaces** (S3-compatible)
+- **Scaleway Object Storage** (S3-compatible)
 - **SFTP** over SSH — **desktop only**
 
 ## What you can do

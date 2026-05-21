@@ -88,8 +88,10 @@ import {
 import { listAllIAMPolicies, policiesToOptions } from "./iam-policies.js";
 import {
   deleteStorageObject,
+  getBucketPolicy,
   listStorageObjects,
   makeStorageFolder,
+  putBucketPolicy,
   uploadStorageObject,
 } from "./s3-storage.js";
 import {
@@ -636,6 +638,18 @@ export class AWSClient implements PluginClient {
     const parts = resourceId.split(":");
     const typeId = parts[1] ?? "";
 
+    if (typeId === "s3-bucket") {
+      const externalId = parts.slice(2).join(":");
+      const raw = await getBucketPolicy(this.creds, externalId);
+      if (!raw) return "";
+      // Pretty-print the JSON so the editor opens nicely formatted.
+      try {
+        return JSON.stringify(JSON.parse(raw), null, 2);
+      } catch {
+        return raw;
+      }
+    }
+
     const resource = await this.getResource(typeId, resourceId, accountId);
     return JSON.stringify(
       {
@@ -648,5 +662,15 @@ export class AWSClient implements PluginClient {
       null,
       2,
     );
+  }
+
+  async applyManifest(resourceId: string, _accountId: string, manifest: string): Promise<void> {
+    const parts = resourceId.split(":");
+    const typeId = parts[1] ?? "";
+    if (typeId !== "s3-bucket") {
+      throw new Error(`AWS plugin: applyManifest not supported for type "${typeId}"`);
+    }
+    const externalId = parts.slice(2).join(":");
+    return putBucketPolicy(this.creds, externalId, manifest);
   }
 }

@@ -352,6 +352,31 @@ export interface ManifestEditorCapability {
 }
 
 /**
+ * When present on a DetailViewSchema, the host renders the interactive
+ * "Bucket Policy" tab — statement builder + JSON toggle + templates + lint
+ * banner + plain-English summary. The plugin still loads/stores the raw JSON
+ * via `getManifest()` / `applyManifest()` on PluginClient; this capability
+ * just swaps the tab UI for the structured editor.
+ *
+ * Used by S3-compatible buckets across plugins (AWS S3, DigitalOcean Spaces,
+ * Scaleway Object Storage). All three vendors use AWS-style policy JSON +
+ * `arn:aws:s3:::bucket` ARNs, so the editor is vendor-agnostic; `vendor` is
+ * surfaced for vendor-specific copy and template tweaks.
+ */
+export interface BucketPolicyEditorCapability {
+  /**
+   * Canonical bucket ARN used as the default `Resource` in new statements and
+   * as the basis for the `bucket/*` object-resource shorthand. For S3-
+   * compatible vendors this is `arn:aws:s3:::{bucket}`.
+   */
+  bucketArn: string;
+  /** Short bucket name (without ARN prefix). Drives plain-English summaries. */
+  bucketName: string;
+  /** Vendor flavour — drives template availability and copy. */
+  vendor: "aws-s3" | "do-spaces" | "scaleway-os";
+}
+
+/**
  * When present on a DetailViewSchema, the host renders a "Describe" tab that
  * shows the plain-text describe output (kubectl-style: object status, events,
  * related objects). The plugin must implement describeResource() on PluginClient.
@@ -477,6 +502,8 @@ export interface DetailViewSchema {
   artifactRegistry?: ArtifactRegistryCapability;
   /** If present, the host renders a Monaco manifest editor tab */
   manifestEditor?: ManifestEditorCapability;
+  /** If present, the host renders the interactive bucket-policy editor tab */
+  bucketPolicyEditor?: BucketPolicyEditorCapability;
   /** If present, the host renders a "Describe" tab with plain-text describe output. */
   describe?: DescribeCapability;
   /** If present, the host renders a "Logs" tab with plain-text log output. */

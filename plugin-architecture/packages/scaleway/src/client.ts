@@ -11,7 +11,18 @@ import type {
   DashboardStat,
   MetricSeries,
 } from "@infrawrench/plugin-base";
-import { labeledFieldItems, signedS3Fetch } from "@infrawrench/plugin-base";
+import {
+  deleteS3Object,
+  getS3BucketPolicy,
+  labeledFieldItems,
+  listS3Objects,
+  makeS3Folder,
+  pathStyleUrl,
+  putS3BucketPolicy,
+  signedS3Fetch,
+  uploadS3Object,
+} from "@infrawrench/plugin-base";
+import type { S3StorageConfig, StorageObject } from "@infrawrench/plugin-base";
 import type { Client, Region, Zone } from "@scaleway/sdk-client";
 import { createClient } from "@scaleway/sdk-client";
 import { Instancev1 } from "@scaleway/sdk-instance";
@@ -37,6 +48,13 @@ export class ScalewayClient implements PluginClient {
 
   // Cache of discovered Cockpit data-source URLs keyed by region slug.
   private cockpitDataSourceCache: Map<string, string> = new Map();
+
+  /**
+   * Cache of Object Storage bucket name → region populated by
+   * `listObjectStorageBuckets`. Storage verbs only receive the bucket name,
+   * but Scaleway S3 endpoints are region-specific.
+   */
+  private readonly objectStorageBucketRegions = new Map<string, string>();
 
   // Lazily-initialised SDK client. We avoid eager creation because Scaleway's
   // assertValidSettings rejects non-UUID project IDs / secrets used in tests.
@@ -850,7 +868,7 @@ export class ScalewayClient implements PluginClient {
     else if (state === "stopped" || state === "error" || state === "locked" || state === "deleting")
       statusKind = "error";
 
-    return {
+    const detail: DetailViewSchema = {
       title: resource.displayName,
       subtitle: `${resource.resourceTypeId} · ${String(fields["zone"] ?? fields["region"] ?? "")}`,
       status: { kind: "status-dot", status: statusKind },
@@ -868,6 +886,21 @@ export class ScalewayClient implements PluginClient {
       ],
       headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
+
+    if (resource.resourceTypeId === "object-storage-bucket") {
+      const bucketName = String(fields["name"] ?? "");
+      if (bucketName) {
+        detail.storageBrowser = { bucketName };
+        detail.bucketPolicyEditor = {
+          bucketArn: `arn:aws:s3:::${bucketName}`,
+          bucketName,
+          vendor: "scaleway-os",
+        };
+      }
+      delete detail.status;
+    }
+
+    return detail;
   }
 
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema {
@@ -1464,6 +1497,7 @@ export class ScalewayClient implements PluginClient {
           buckets.push({ name: m[1]!, creationDate: m[2]! });
         }
         for (const b of buckets) {
+          this.objectStorageBucketRegions.set(b.name, region);
           results.push({
             id: `${accountId}:object-storage-bucket:${region}/${b.name}`,
             pluginId: "scaleway",
@@ -1488,5 +1522,100 @@ export class ScalewayClient implements PluginClient {
       }
     }
     return results;
+  }
+
+  // ── Object Storage (S3-compatible) storage browser ──────────────────────
+
+  private async getObjectStorageConfig(bucket: string): Promise<S3StorageConfig> {
+    this.assertS3Credentials();
+    let region = this.objectStorageBucketRegions.get(bucket);
+    if (!region) {
+      // Cold cache: probe each region's S3 endpoint until one acknowledges
+      // the bucket (HEAD against `{host}/{bucket}` returns 200 for hits,
+      // 404/301 otherwise). Stops at the first match.
+      for (const candidate of Object.keys(ScalewayClient.REGION_INFO)) {
+        try {
+          const res = await signedS3Fetch({
+            accessKey: this.accessKey,
+            secretKey: this.secretKey,
+            region: candidate,
+            method: "HEAD",
+            url: `https://s3.${candidate}.scw.cloud/${bucket}`,
+          });
+          if (res.ok || res.status === 403) {
+            // 403 still confirms the bucket exists in this region; ACLs are a
+            // separate question that the storage verbs will surface later.
+            region = candidate;
+            break;
+          }
+        } catch {
+          // Network or signing failure — try the next region.
+        }
+      }
+      if (!region) {
+        throw new Error(
+          `Scaleway plugin: could not locate Object Storage bucket "${bucket}" in any known region. ` +
+            "Verify the bucket exists and the account credentials have read access.",
+        );
+      }
+      this.objectStorageBucketRegions.set(bucket, region);
+    }
+    return {
+      accessKey: this.accessKey,
+      secretKey: this.secretKey,
+      region,
+      buildUrl: pathStyleUrl((r) => `s3.${r}.scw.cloud`)(region),
+    };
+  }
+
+  async listStorageObjects(bucket: string, prefix: string): Promise<StorageObject[]> {
+    const cfg = await this.getObjectStorageConfig(bucket);
+    return listS3Objects(cfg, bucket, prefix);
+  }
+
+  async uploadStorageObject(bucket: string, key: string, file: File): Promise<void> {
+    const cfg = await this.getObjectStorageConfig(bucket);
+    return uploadS3Object(cfg, bucket, key, file);
+  }
+
+  async makeStorageFolder(bucket: string, key: string): Promise<void> {
+    const cfg = await this.getObjectStorageConfig(bucket);
+    return makeS3Folder(cfg, bucket, key);
+  }
+
+  async deleteStorageObject(bucket: string, key: string): Promise<void> {
+    const cfg = await this.getObjectStorageConfig(bucket);
+    return deleteS3Object(cfg, bucket, key);
+  }
+
+  async getManifest(resourceId: string, _accountId: string): Promise<string> {
+    const parts = resourceId.split(":");
+    const typeId = parts[1] ?? "";
+    if (typeId !== "object-storage-bucket") {
+      throw new Error(`Scaleway plugin: getManifest not supported for type "${typeId}"`);
+    }
+    // externalId is `{region}/{bucketName}` — peel the bucket name off.
+    const externalId = parts.slice(2).join(":");
+    const bucket = externalId.includes("/") ? externalId.split("/").slice(1).join("/") : externalId;
+    const cfg = await this.getObjectStorageConfig(bucket);
+    const raw = await getS3BucketPolicy(cfg, bucket);
+    if (!raw) return "";
+    try {
+      return JSON.stringify(JSON.parse(raw), null, 2);
+    } catch {
+      return raw;
+    }
+  }
+
+  async applyManifest(resourceId: string, _accountId: string, manifest: string): Promise<void> {
+    const parts = resourceId.split(":");
+    const typeId = parts[1] ?? "";
+    if (typeId !== "object-storage-bucket") {
+      throw new Error(`Scaleway plugin: applyManifest not supported for type "${typeId}"`);
+    }
+    const externalId = parts.slice(2).join(":");
+    const bucket = externalId.includes("/") ? externalId.split("/").slice(1).join("/") : externalId;
+    const cfg = await this.getObjectStorageConfig(bucket);
+    return putS3BucketPolicy(cfg, bucket, manifest);
   }
 }

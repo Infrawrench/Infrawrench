@@ -85,6 +85,7 @@ export type {
   ArtifactEntry,
   ArtifactRegistryCapability,
   ManifestEditorCapability,
+  BucketPolicyEditorCapability,
   DescribeCapability,
   LogsCapability,
   SecretVersion,
@@ -146,6 +147,18 @@ export type { JsonRestFetchOptions } from "./http.js";
 
 export { signedS3Fetch } from "./signed-s3-request.js";
 export type { SignedS3FetchOptions } from "./signed-s3-request.js";
+
+export {
+  listS3Objects,
+  uploadS3Object,
+  deleteS3Object,
+  makeS3Folder,
+  getS3BucketPolicy,
+  putS3BucketPolicy,
+  virtualHostedUrl,
+  pathStyleUrl,
+} from "./s3-storage-helpers.js";
+export type { S3StorageConfig } from "./s3-storage-helpers.js";
 
 export type {
   SftpConfig,

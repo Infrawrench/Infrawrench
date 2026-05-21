@@ -393,7 +393,7 @@ All polling is _background_ (no loading flash):
 - Kapsule and RDB APIs are region-scoped (`/k8s/v1/regions/{region}/clusters`, `/rdb/v1/regions/{region}/instances`); all 3 regions polled in parallel
 - Resource ID format: `{accountId}:{typeId}:{zone_or_region}/{providerId}`
 - Instance delete uses `terminate` action (also releases IP); Kapsule delete passes `with_additional_resources: true`
-- Object Storage uses S3-compatible API at `s3.{region}.scw.cloud`; bucket listing via Scaleway REST API
+- Object Storage uses S3-compatible API at `s3.{region}.scw.cloud` with path-style addressing; storage browser + bucket policy editor wired via `plugin-base/s3-storage-helpers.ts`
 - Commercial types fetched from `/instance/v1/zones/{zone}/products/servers` for create form
 - Instance status mapping: running/ready→healthy, starting/stopping/provisioning/creating→provisioning, stopped/error/locked/deleting→error
 
@@ -999,7 +999,7 @@ Each `ResourceTypeDefinition` can declare optional capabilities the host UI surf
 - **`secretExportTemplates`** — env-var-style secrets the resource can produce when dropped onto a K8s cluster or SSH target. Conventional names: `DATABASE_URL` for DB URIs, `KUBECONFIG_DATA` for kubeconfigs, `AWS_*` for S3-compatible buckets.
 - **`resourceSqlDriver`** — enables a SQL editor tab in the detail view, resolving the connection string per-resource. Pair with the matching `peerIntegrations` entry.
 - **`sshEndpoint`** + **`supportsTerminal`** + **`supportsSftpBrowser`** — for compute resources; host output key, running-state guard, default username.
-- **`supportsStorageBrowser`** — S3-compatible buckets (R2, Spaces, Scaleway Object Storage).
+- **`supportsStorageBrowser`** — S3-compatible buckets (AWS S3, R2, Spaces, Scaleway Object Storage, GCS, Azure Blob). For S3-compatible vendors (S3 / Spaces / Scaleway), object verbs share `plugin-base/s3-storage-helpers.ts` and only differ in the URL builder: virtual-hosted (`{bucket}.{host}/{key}` — S3, Spaces) vs path-style (`{host}/{bucket}/{key}` — Scaleway). Each client also caches `bucketName → region` to avoid fanning out across regions on every storage call. The plugin's `renderDetail` must explicitly inject `storageBrowser: { bucketName }` into the schema — `supportsStorageBrowser: true` on the resource type only declares the capability for filtering/feature flags, it does not make the host render the panel.
 - **`supportsMetrics`** — turn on the Metrics tab; the plugin's `fetchMetricSeries` must return a useful series for this `resourceTypeId`.
 - **`unreachableWhen`** — declarative "tab renders but can't connect from here" guidance. Use for resources with private-only endpoints.
 

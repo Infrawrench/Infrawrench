@@ -3,7 +3,6 @@ import type {
   DetailViewSchema,
   LogsFetchParams,
   LogsFetchResult,
-  ManifestEditorCapability,
   MetricSeries,
   QueryCostEstimate,
   SecretVersion,
@@ -14,6 +13,7 @@ import { SchemaRenderer, StatusDotNodeRenderer } from "../renderer/SchemaRendere
 import { AssociationPicker } from "./AssociationPicker.js";
 import { SqlEditorView, type QueryResult } from "./SqlEditorView.js";
 import { ManifestEditorView } from "./ManifestEditorView.js";
+import { BucketPolicyEditor } from "./BucketPolicyEditor.js";
 import { DescribeView } from "./DescribeView.js";
 import { LogsView } from "./LogsView.js";
 import { SecretVersionsView } from "./SecretVersionsView.js";
@@ -112,6 +112,7 @@ type Tab =
   | "overview"
   | "sql"
   | "manifest"
+  | "bucket-policy"
   | "describe"
   | "logs"
   | "metrics"
@@ -153,6 +154,7 @@ export function DetailView({
   const { rerollingField, closeReroll } = useUIStore();
   const hasSqlEditor = !!schema.sqlEditor && !!onRunQuery;
   const hasManifestEditor = !!schema.manifestEditor && !!onGetManifest;
+  const hasBucketPolicyEditor = !!schema.bucketPolicyEditor && !!onGetManifest;
   const hasDescribe = !!schema.describe && !!onGetDescribe;
   const hasLogs = !!schema.logs && !!onGetLogs;
   const hasMetrics = !!metricSeries && metricSeries.length > 0;
@@ -168,6 +170,7 @@ export function DetailView({
   const hasTabs =
     hasSqlEditor ||
     hasManifestEditor ||
+    hasBucketPolicyEditor ||
     hasDescribe ||
     hasLogs ||
     hasMetrics ||
@@ -192,6 +195,7 @@ export function DetailView({
   const tabKeys: Tab[] = ["overview"];
   if (hasSqlEditor) tabKeys.push("sql");
   if (hasManifestEditor) tabKeys.push("manifest");
+  if (hasBucketPolicyEditor) tabKeys.push("bucket-policy");
   if (hasDescribe) tabKeys.push("describe");
   if (hasLogs) tabKeys.push("logs");
   if (hasMetrics) tabKeys.push("metrics");
@@ -304,7 +308,14 @@ export function DetailView({
               if (key === "manifest") {
                 return (
                   <TabButton key={key} {...tabProps} onClick={() => setActiveTab("manifest")}>
-                    Manifest
+                    {schema.manifestEditor?.resourceKind ?? "Manifest"}
+                  </TabButton>
+                );
+              }
+              if (key === "bucket-policy") {
+                return (
+                  <TabButton key={key} {...tabProps} onClick={() => setActiveTab("bucket-policy")}>
+                    Bucket Policy
                   </TabButton>
                 );
               }
@@ -562,6 +573,21 @@ export function DetailView({
         >
           <ManifestEditorView
             capability={schema.manifestEditor!}
+            onGetManifest={onGetManifest!}
+            onApplyManifest={onApplyManifest}
+          />
+        </div>
+      )}
+
+      {hasBucketPolicyEditor && activeTab === "bucket-policy" && (
+        <div
+          role="tabpanel"
+          id={panelIdFor("bucket-policy")}
+          aria-labelledby={tabIdFor("bucket-policy")}
+          className="flex-1 overflow-hidden"
+        >
+          <BucketPolicyEditor
+            capability={schema.bucketPolicyEditor!}
             onGetManifest={onGetManifest!}
             onApplyManifest={onApplyManifest}
           />

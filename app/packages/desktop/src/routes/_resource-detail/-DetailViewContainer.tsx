@@ -156,7 +156,9 @@ export function DetailViewContainer({
               onEstimateQueryCost,
             }
           : {})}
-        {...(schema.manifestEditor ? { onGetManifest, onApplyManifest } : {})}
+        {...(schema.manifestEditor || schema.bucketPolicyEditor
+          ? { onGetManifest, onApplyManifest }
+          : {})}
         {...(schema.describe ? { onGetDescribe } : {})}
         {...(schema.logs ? { onGetLogs } : {})}
         {...(schema.artifactRegistry ? { onListArtifacts } : {})}

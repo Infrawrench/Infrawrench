@@ -12,7 +12,9 @@ For resources where the provider’s canonical shape is a document (Kubernetes m
 
 - **Kubernetes** — every resource type (Pod, Deployment, StatefulSet, Service, Ingress, ConfigMap, Secret, DaemonSet, Job, CronJob, Namespace, and more) has an editable manifest.
 - **Cloudflare** — zone settings and worker scripts.
-- **AWS / Azure** — read-only manifest view. Use it to inspect, not to edit.
+- **AWS / Azure** — read-only manifest view for other resource types. Use it to inspect, not to edit.
+
+S3-compatible buckets (AWS S3, DigitalOcean Spaces, Scaleway Object Storage) have a dedicated **Bucket Policy** tab instead of a generic manifest editor — see [Bucket policy editor](./bucket-policy-editor.md).
 
 ## Editor features
 

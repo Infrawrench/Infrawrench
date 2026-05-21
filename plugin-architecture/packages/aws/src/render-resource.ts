@@ -153,6 +153,19 @@ export function renderDetail(
           },
         }
       : {}),
+    ...(resource.resourceTypeId === "s3-bucket"
+      ? (() => {
+          const bucketName = resource.externalId ?? String(fields["name"] ?? resource.displayName);
+          return {
+            storageBrowser: { bucketName },
+            bucketPolicyEditor: {
+              bucketArn: `arn:aws:s3:::${bucketName}`,
+              bucketName,
+              vendor: "aws-s3" as const,
+            },
+          };
+        })()
+      : {}),
     ...(resource.resourceTypeId === "dynamodb-table"
       ? {
           noSqlBrowser: {

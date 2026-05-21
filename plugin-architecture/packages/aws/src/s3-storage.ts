@@ -136,6 +136,62 @@ export async function makeStorageFolder(
   await s3Put(creds, bucket, folderKey, "");
 }
 
+export async function getBucketPolicy(creds: AwsCredentials, bucket: string): Promise<string> {
+  // S3 returns 404 + NoSuchBucketPolicy when no policy is set, and `fetchSigned`
+  // throws on non-2xx with the body inlined in the message — catch that and
+  // surface an empty editor instead of an error banner.
+  const host = `${bucket}.s3.${creds.region}.amazonaws.com`;
+  try {
+    const res = await fetchSigned({
+      method: "GET",
+      url: `https://${host}/?policy=`,
+      headers: { Host: host },
+      service: "s3",
+      credentials: creds,
+    });
+    return await res.text();
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (/NoSuchBucketPolicy/i.test(msg) || /\b404\b/.test(msg)) return "";
+    throw e;
+  }
+}
+
+export async function putBucketPolicy(
+  creds: AwsCredentials,
+  bucket: string,
+  policy: string,
+): Promise<void> {
+  const host = `${bucket}.s3.${creds.region}.amazonaws.com`;
+  const trimmed = policy.trim();
+  if (!trimmed) {
+    // `fetchSigned` already throws with the body inlined on non-2xx — except
+    // a 404 here just means "no policy to delete", which we treat as success.
+    try {
+      await fetchSigned({
+        method: "DELETE",
+        url: `https://${host}/?policy=`,
+        headers: { Host: host },
+        service: "s3",
+        credentials: creds,
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (/NoSuchBucketPolicy/i.test(msg) || /\b404\b/.test(msg)) return;
+      throw e;
+    }
+    return;
+  }
+  await fetchSigned({
+    method: "PUT",
+    url: `https://${host}/?policy=`,
+    headers: { Host: host, "Content-Type": "application/json" },
+    body: trimmed,
+    service: "s3",
+    credentials: creds,
+  });
+}
+
 export async function deleteStorageObject(
   creds: AwsCredentials,
   bucket: string,

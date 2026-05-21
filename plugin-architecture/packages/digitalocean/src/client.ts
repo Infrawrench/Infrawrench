@@ -14,14 +14,22 @@ import type {
 } from "@infrawrench/plugin-base";
 import {
   dnsRecordBadgeColor,
+  deleteS3Object,
   formatDnsTtl,
+  getS3BucketPolicy,
   jsonRestFetch,
   labeledFieldItems,
+  listS3Objects,
+  makeS3Folder,
+  putS3BucketPolicy,
   resourceTypeDisplayName,
   renderDnsRecordDetail as sharedRenderDnsRecordDetail,
   renderDnsRecordSidebar,
   signedS3Fetch,
+  uploadS3Object,
+  virtualHostedUrl,
 } from "@infrawrench/plugin-base";
+import type { S3StorageConfig, StorageObject } from "@infrawrench/plugin-base";
 import { DOKSClusterResourceType } from "./resources/doks-cluster.js";
 import { ManagedDatabaseResourceType } from "./resources/managed-database.js";
 import { SPACES_REGIONS } from "./constants.js";
@@ -39,6 +47,12 @@ export class DigitalOceanClient implements PluginClient {
   private readonly baseUrl = "https://api.digitalocean.com/v2";
   private readonly caCert: string;
   private readonly services: HostServices | undefined;
+  /**
+   * Cache of bucket name → region populated by `listSpacesBuckets`. Storage
+   * verbs only receive the bucket name, but Spaces endpoints are region-
+   * specific; consulting the cache avoids a multi-region fan-out per call.
+   */
+  private readonly spacesBucketRegions = new Map<string, string>();
 
   constructor(
     credentials: Record<string, string>,
@@ -615,6 +629,16 @@ export class DigitalOceanClient implements PluginClient {
       headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
 
+    if (resource.resourceTypeId === "spaces-bucket") {
+      const bucketName = resource.externalId ?? String(fields["name"] ?? resource.displayName);
+      detail.storageBrowser = { bucketName };
+      detail.bucketPolicyEditor = {
+        bucketArn: `arn:aws:s3:::${bucketName}`,
+        bucketName,
+        vendor: "do-spaces",
+      };
+    }
+
     // MongoDB-engined managed databases get the inline MongoDB peer browser \u2014
     // user links one of their MongoDB accounts and browses documents in place.
     if (
@@ -847,6 +871,7 @@ export class DigitalOceanClient implements PluginClient {
       const { name, createdAt, region } = entry;
       if (!name || !createdAt || seen.has(name)) continue;
       seen.add(name);
+      this.spacesBucketRegions.set(name, region);
       buckets.push({
         id: `${accountId}:spaces-bucket:${name}`,
         pluginId: "digitalocean",
@@ -968,6 +993,93 @@ export class DigitalOceanClient implements PluginClient {
       createdAt: String(v["created_at"] ?? new Date().toISOString()),
       updatedAt: String(v["created_at"] ?? new Date().toISOString()),
     }));
+  }
+
+  // ── Spaces (S3-compatible) storage browser ──────────────────────────────
+
+  private async getSpacesConfig(bucket: string): Promise<S3StorageConfig> {
+    const accessKey = this.credentials["spacesAccessKeyId"];
+    const secretKey = this.credentials["spacesSecretAccessKey"];
+    if (!accessKey || !secretKey) {
+      throw new Error(
+        "DigitalOcean plugin: Spaces storage requires S3-compatible credentials " +
+          '("spacesAccessKeyId" and "spacesSecretAccessKey"). ' +
+          "Generate these in the DigitalOcean console under API > Spaces Keys.",
+      );
+    }
+    let region = this.spacesBucketRegions.get(bucket);
+    if (!region) {
+      // Cold cache: a list against any region returns 301 with the home region
+      // in the `x-amz-bucket-region` header. The signing region doesn't have to
+      // match the bucket region for this probe — S3 surfaces the redirect for
+      // any signed GET on the bucket root.
+      const probeRegion = SPACES_REGIONS[0] ?? "nyc3";
+      const probeHost = `${bucket}.${probeRegion}.digitaloceanspaces.com`;
+      const res = await signedS3Fetch({
+        accessKey,
+        secretKey,
+        region: probeRegion,
+        method: "HEAD",
+        url: `https://${probeHost}/`,
+      });
+      const reported = res.headers.get("x-amz-bucket-region");
+      region = reported || probeRegion;
+      this.spacesBucketRegions.set(bucket, region);
+    }
+    return {
+      accessKey,
+      secretKey,
+      region,
+      buildUrl: virtualHostedUrl((r) => `${r}.digitaloceanspaces.com`)(region),
+    };
+  }
+
+  async listStorageObjects(bucket: string, prefix: string): Promise<StorageObject[]> {
+    const cfg = await this.getSpacesConfig(bucket);
+    return listS3Objects(cfg, bucket, prefix);
+  }
+
+  async uploadStorageObject(bucket: string, key: string, file: File): Promise<void> {
+    const cfg = await this.getSpacesConfig(bucket);
+    return uploadS3Object(cfg, bucket, key, file);
+  }
+
+  async makeStorageFolder(bucket: string, key: string): Promise<void> {
+    const cfg = await this.getSpacesConfig(bucket);
+    return makeS3Folder(cfg, bucket, key);
+  }
+
+  async deleteStorageObject(bucket: string, key: string): Promise<void> {
+    const cfg = await this.getSpacesConfig(bucket);
+    return deleteS3Object(cfg, bucket, key);
+  }
+
+  async getManifest(resourceId: string, _accountId: string): Promise<string> {
+    const parts = resourceId.split(":");
+    const typeId = parts[1] ?? "";
+    if (typeId !== "spaces-bucket") {
+      throw new Error(`DigitalOcean plugin: getManifest not supported for type "${typeId}"`);
+    }
+    const bucket = parts.slice(2).join(":");
+    const cfg = await this.getSpacesConfig(bucket);
+    const raw = await getS3BucketPolicy(cfg, bucket);
+    if (!raw) return "";
+    try {
+      return JSON.stringify(JSON.parse(raw), null, 2);
+    } catch {
+      return raw;
+    }
+  }
+
+  async applyManifest(resourceId: string, _accountId: string, manifest: string): Promise<void> {
+    const parts = resourceId.split(":");
+    const typeId = parts[1] ?? "";
+    if (typeId !== "spaces-bucket") {
+      throw new Error(`DigitalOcean plugin: applyManifest not supported for type "${typeId}"`);
+    }
+    const bucket = parts.slice(2).join(":");
+    const cfg = await this.getSpacesConfig(bucket);
+    return putS3BucketPolicy(cfg, bucket, manifest);
   }
 
   // Satisfy the required fields from DOKSClusterResourceType and ManagedDatabaseResourceType
