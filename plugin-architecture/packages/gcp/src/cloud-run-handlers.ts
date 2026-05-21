@@ -470,9 +470,10 @@ async function createEventarcTrigger(
         try {
           const extra = JSON.parse(opts.customFilters) as Array<Record<string, unknown>>;
           if (Array.isArray(extra)) eventFilters.push(...extra);
-        } catch {
+        } catch (e) {
           throw new Error(
             'Custom filters must be a JSON array, e.g. [{"attribute":"x","value":"y"}]',
+            { cause: e },
           );
         }
       }

@@ -634,7 +634,7 @@ export const cloudBuildCreateResourceHandlers: Record<
         parsed = yaml.load(inlineConfig);
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
-        throw new Error(`Inline build config is not valid YAML/JSON: ${msg}`);
+        throw new Error(`Inline build config is not valid YAML/JSON: ${msg}`, { cause: e });
       }
       if (!parsed || typeof parsed !== "object") {
         throw new Error("Inline build config must be a YAML mapping with steps: [...]");

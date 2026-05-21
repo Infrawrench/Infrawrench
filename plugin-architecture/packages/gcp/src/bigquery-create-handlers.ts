@@ -146,7 +146,7 @@ export const bigqueryCreateResourceHandlers: Record<
       try {
         parsed = JSON.parse(schemaJson);
       } catch (e) {
-        throw new Error(`Schema JSON is not valid JSON: ${(e as Error).message}`);
+        throw new Error(`Schema JSON is not valid JSON: ${(e as Error).message}`, { cause: e });
       }
       if (!Array.isArray(parsed))
         throw new Error("Schema JSON must be an array of field definitions");

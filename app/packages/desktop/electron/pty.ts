@@ -45,6 +45,7 @@ export function ensureNodePtySpawnHelperExecutable(): void {
         `node-pty spawn-helper is not executable at ${helperPath}: ${
           error instanceof Error ? error.message : String(error)
         }`,
+        { cause: error },
       );
     }
   }

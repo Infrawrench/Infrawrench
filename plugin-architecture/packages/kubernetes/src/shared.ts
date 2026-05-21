@@ -300,6 +300,7 @@ export class K8sFetcher {
       } catch (err) {
         throw new Error(
           `Kubernetes API unreachable at ${server}${path}: ${describeFetchError(err)}`,
+          { cause: err },
         );
       }
       if (result.status < 200 || result.status >= 300) {
@@ -316,7 +317,12 @@ export class K8sFetcher {
         signal: AbortSignal.timeout(30_000),
       });
     } catch (err) {
-      throw new Error(`Kubernetes API unreachable at ${server}${path}: ${describeFetchError(err)}`);
+      throw new Error(
+        `Kubernetes API unreachable at ${server}${path}: ${describeFetchError(err)}`,
+        {
+          cause: err,
+        },
+      );
     }
     if (!res.ok)
       throw new Error(`K8s API error ${res.status} at ${server}${path}: ${await res.text()}`);
@@ -354,6 +360,7 @@ export class K8sFetcher {
       } catch (err) {
         throw new Error(
           `Kubernetes API unreachable at ${server}${path}: ${describeFetchError(err)}`,
+          { cause: err },
         );
       }
       if (result.status < 200 || result.status >= 300) {
@@ -366,7 +373,12 @@ export class K8sFetcher {
     try {
       res = await fetch(`${server}${path}`, { headers });
     } catch (err) {
-      throw new Error(`Kubernetes API unreachable at ${server}${path}: ${describeFetchError(err)}`);
+      throw new Error(
+        `Kubernetes API unreachable at ${server}${path}: ${describeFetchError(err)}`,
+        {
+          cause: err,
+        },
+      );
     }
     if (!res.ok)
       throw new Error(`K8s API error ${res.status} at ${server}${path}: ${await res.text()}`);

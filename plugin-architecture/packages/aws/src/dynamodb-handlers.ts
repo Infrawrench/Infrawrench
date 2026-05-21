@@ -196,7 +196,7 @@ export async function executeDynamoDbCommand(
       try {
         parsed = JSON.parse(json);
       } catch (e) {
-        throw new Error(`Invalid JSON: ${(e as Error).message}`);
+        throw new Error(`Invalid JSON: ${(e as Error).message}`, { cause: e });
       }
       if (parsed == null || typeof parsed !== "object" || Array.isArray(parsed)) {
         throw new Error("Document must be a JSON object");

@@ -97,6 +97,7 @@ export async function assertHostNotInternal(host: string): Promise<void> {
   } catch (e) {
     throw new Error(
       `Failed to resolve SSH host ${trimmed}: ${e instanceof Error ? e.message : "DNS error"}`,
+      { cause: e },
     );
   }
   if (addrs.length === 0) {
