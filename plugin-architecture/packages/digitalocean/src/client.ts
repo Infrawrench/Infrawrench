@@ -13,6 +13,7 @@ import type {
   StatusDotNode,
   SizeOption,
   ImageOption,
+  HostServices,
 } from "@infrawrench/plugin-base";
 import {
   dnsRecordBadgeColor,
@@ -38,7 +39,12 @@ import { SnapshotResourceType } from "./resources/snapshot.js";
 import { ImageResourceType } from "./resources/image.js";
 import { NfsShareResourceType } from "./resources/nfs-share.js";
 import { SPACES_REGIONS } from "./constants.js";
-import { type DoCreateContext, doGetCreateConfig, doCreateResource } from "./create-handlers.js";
+import {
+  type DoCreateContext,
+  doGetCreateConfig,
+  doCreateResource,
+  estimateDoDatabaseMonthlyPrice,
+} from "./create-handlers.js";
 import {
   type ActionContext,
   invokeDropletAction,
@@ -59,6 +65,81 @@ function parseJsonArray<T>(value: unknown): T[] {
   } catch {
     return [];
   }
+}
+
+/**
+ * DO's managed-database `connection.uri` doesn't always carry the credentials
+ * inline — MongoDB clusters in particular hand back `mongodb+srv://host/...`
+ * with the `user`/`password` exposed only as sibling fields, and feeding that
+ * password-less URI to the mongo driver fails with `Password cannot be
+ * empty`. Splice the userinfo back in when we have the parts but the URI
+ * lacks them. URIs that already include credentials are returned untouched.
+ *
+ * Done with string manipulation rather than the `URL` class because
+ * `mongodb+srv://` is a non-special scheme — the WHATWG URL parser doesn't
+ * round-trip the username/password setters on non-special URLs, so a
+ * `new URL(...); u.username = ...; u.toString()` no-ops here.
+ */
+function ensureUriCredentials(
+  uri: string,
+  user: string | undefined,
+  password: string | undefined,
+): string {
+  if (!uri) return uri;
+  if (!user && !password) return uri;
+  const schemeMatch = /^([a-z][a-z0-9+.-]*:\/\/)(.*)$/i.exec(uri);
+  if (!schemeMatch) return uri;
+  const scheme = schemeMatch[1]!;
+  const remainder = schemeMatch[2]!;
+  // Split userinfo off the authority. Only the *last* `@` before the next
+  // path/query/fragment terminator separates userinfo from host, because
+  // `@` is allowed (percent-encoded) in passwords.
+  const authorityEnd = remainder.search(/[/?#]/);
+  const authority = authorityEnd === -1 ? remainder : remainder.slice(0, authorityEnd);
+  const tail = authorityEnd === -1 ? "" : remainder.slice(authorityEnd);
+  const atIdx = authority.lastIndexOf("@");
+  const userinfo = atIdx === -1 ? "" : authority.slice(0, atIdx);
+  const host = atIdx === -1 ? authority : authority.slice(atIdx + 1);
+  // If the URI already has both halves of userinfo, leave it alone.
+  if (userinfo.includes(":") && userinfo.split(":", 2)[1]) return uri;
+  const encodedUser = user ? encodeURIComponent(user) : "";
+  const encodedPassword = password ? encodeURIComponent(password) : "";
+  const newUserinfo = `${encodedUser}:${encodedPassword}`;
+  return `${scheme}${newUserinfo}@${host}${tail}`;
+}
+
+/**
+ * Normalize DO's `kafkas://` (or `kafka://`) connection.uri to a form the
+ * infrawrench kafka plugin's driver can consume: explicit
+ * `sasl=scram-sha-256` and `ssl=true` query params. DO's Managed Kafka
+ * uses SASL/SCRAM-SHA-256 over TLS — but the driver can't infer the
+ * mechanism from the URI alone, so we tag it here.
+ */
+function normalizeKafkaUri(uri: string): string {
+  if (!uri) return uri;
+  let normalized = uri.startsWith("kafkas://") ? `kafka://${uri.slice("kafkas://".length)}` : uri;
+  const queryIdx = normalized.indexOf("?");
+  const base = queryIdx === -1 ? normalized : normalized.slice(0, queryIdx);
+  const params = new URLSearchParams(queryIdx === -1 ? "" : normalized.slice(queryIdx + 1));
+  if (!params.has("sasl")) params.set("sasl", "scram-sha-256");
+  if (!params.has("ssl")) params.set("ssl", "true");
+  normalized = `${base}?${params.toString()}`;
+  return normalized;
+}
+
+/** True when `uri` has a non-empty password in its userinfo. */
+function uriHasPassword(uri: string): boolean {
+  if (!uri) return false;
+  const schemeMatch = /^[a-z][a-z0-9+.-]*:\/\/(.*)$/i.exec(uri);
+  if (!schemeMatch) return false;
+  const remainder = schemeMatch[1]!;
+  const authorityEnd = remainder.search(/[/?#]/);
+  const authority = authorityEnd === -1 ? remainder : remainder.slice(0, authorityEnd);
+  const atIdx = authority.lastIndexOf("@");
+  if (atIdx === -1) return false;
+  const userinfo = authority.slice(0, atIdx);
+  const colonIdx = userinfo.indexOf(":");
+  return colonIdx !== -1 && userinfo.length > colonIdx + 1;
 }
 
 /** "May 21, 2026" — what people actually read off a backup card. */
@@ -102,6 +183,136 @@ function dropletStatusDot(status: string): StatusDotNode {
 }
 
 /**
+ * Map a DOKS cluster's `status.state` value to a host status-dot.
+ * Source enum: running / provisioning / degraded / error / deleted /
+ * deleting / upgrading
+ * (per cluster_read.yml in digitalocean/openapi).
+ */
+function doksStatusDot(state: string): StatusDotNode {
+  switch (state) {
+    case "running":
+      return { kind: "status-dot", status: "healthy", label: "Running" };
+    case "provisioning":
+      return { kind: "status-dot", status: "provisioning", label: "Provisioning" };
+    case "upgrading":
+      return { kind: "status-dot", status: "provisioning", label: "Upgrading" };
+    case "degraded":
+      return { kind: "status-dot", status: "degraded", label: "Degraded" };
+    case "error":
+      return { kind: "status-dot", status: "error", label: "Error" };
+    case "deleting":
+      return { kind: "status-dot", status: "provisioning", label: "Deleting" };
+    case "deleted":
+      return { kind: "status-dot", status: "info", label: "Deleted" };
+    default:
+      return { kind: "status-dot", status: "info" };
+  }
+}
+
+/**
+ * Volumes don't have a documented status field on the response (verified in
+ * digitalocean/openapi/volumes/models/volume_base.yml). The closest signal
+ * for "in use vs free" is the `droplet_ids` array — non-empty = attached.
+ * Both attached and detached are operational ("healthy") for the purpose
+ * of the host's status gating; the label just disambiguates.
+ */
+function volumeStatusDot(attached: boolean): StatusDotNode {
+  return attached
+    ? { kind: "status-dot", status: "healthy", label: "Attached" }
+    : { kind: "status-dot", status: "healthy", label: "Available" };
+}
+
+/**
+ * Map a DO managed-database `status` value to a host status-dot.
+ * Source enum: creating / online / resizing / migrating / forking
+ * (per database_cluster_read.yml in digitalocean/openapi).
+ */
+function managedDatabaseStatusDot(status: string): StatusDotNode {
+  switch (status) {
+    case "online":
+      return { kind: "status-dot", status: "healthy", label: "Online" };
+    case "creating":
+      return { kind: "status-dot", status: "provisioning", label: "Creating" };
+    case "resizing":
+      return { kind: "status-dot", status: "provisioning", label: "Resizing" };
+    case "migrating":
+      return { kind: "status-dot", status: "provisioning", label: "Migrating" };
+    case "forking":
+      return { kind: "status-dot", status: "provisioning", label: "Forking" };
+    default:
+      return { kind: "status-dot", status: "info" };
+  }
+}
+
+/**
+ * Map a DO custom-image `status` value to a host status-dot.
+ * Source enum: NEW / available / pending / deleted / retired
+ * (per images/models/image.yml in digitalocean/openapi).
+ */
+function imageStatusDot(status: string): StatusDotNode {
+  switch (status) {
+    case "available":
+      return { kind: "status-dot", status: "healthy", label: "Available" };
+    case "NEW":
+    case "pending":
+      return { kind: "status-dot", status: "provisioning", label: "Pending" };
+    case "deleted":
+      return { kind: "status-dot", status: "info", label: "Deleted" };
+    case "retired":
+      return { kind: "status-dot", status: "info", label: "Retired" };
+    default:
+      return { kind: "status-dot", status: "info" };
+  }
+}
+
+/**
+ * Map a DO NFS share `status` value to a host status-dot.
+ * Source enum: CREATING / ACTIVE / FAILED / DELETED
+ * (per nfs/models/nfs_response.yml in digitalocean/openapi).
+ */
+function nfsShareStatusDot(status: string): StatusDotNode {
+  switch (status) {
+    case "ACTIVE":
+      return { kind: "status-dot", status: "healthy", label: "Active" };
+    case "CREATING":
+      return { kind: "status-dot", status: "provisioning", label: "Creating" };
+    case "FAILED":
+      return { kind: "status-dot", status: "error", label: "Failed" };
+    case "DELETED":
+      return { kind: "status-dot", status: "info", label: "Deleted" };
+    default:
+      return { kind: "status-dot", status: "info" };
+  }
+}
+
+/**
+ * Dispatch a resource to its per-type status-dot mapper. Single place so
+ * `renderDetail` and `renderSidebarItem` agree on what to show, and adding
+ * a new resource type is a one-line case.
+ */
+function doStatusDot(resource: ResourceInstance): StatusDotNode {
+  const fields = resource.fields;
+  switch (resource.resourceTypeId) {
+    case "droplet":
+      return dropletStatusDot(String(fields["status"] ?? ""));
+    case "doks-cluster":
+      return doksStatusDot(String(fields["status"] ?? ""));
+    case "managed-database":
+      return managedDatabaseStatusDot(String(fields["status"] ?? ""));
+    case "image":
+      return imageStatusDot(String(fields["status"] ?? ""));
+    case "nfs-share":
+      return nfsShareStatusDot(String(fields["status"] ?? ""));
+    case "volume":
+      return volumeStatusDot(!!String(fields["dropletIds"] ?? ""));
+    case "domain":
+      return { kind: "status-dot", status: "healthy", label: "Active" };
+    default:
+      return { kind: "status-dot", status: "info" };
+  }
+}
+
+/**
  * DigitalOcean plugin client.
  * Created per account (per API token) by the host.
  * All API calls are made server-side — the token never reaches the browser.
@@ -136,12 +347,19 @@ export class DigitalOceanClient implements PluginClient {
     distributionImages?: { value: ImageOption[]; expiresAt: number };
   } = {};
 
-  constructor(credentials: Record<string, string>, resourceTypes: ResourceTypeDefinition[] = []) {
+  private readonly services: HostServices | undefined;
+
+  constructor(
+    credentials: Record<string, string>,
+    resourceTypes: ResourceTypeDefinition[] = [],
+    services?: HostServices,
+  ) {
     const token = credentials["apiToken"];
     if (!token) throw new Error("DigitalOcean plugin: missing apiToken credential");
     this.token = token;
     this.credentials = credentials;
     this.resourceTypes = resourceTypes;
+    this.services = services;
   }
 
   private async fetch<T>(path: string, options?: RequestInit): Promise<T> {
@@ -233,6 +451,8 @@ export class DigitalOceanClient implements PluginClient {
         return this.listImages(accountId);
       case "nfs-share":
         return this.listNfsShares(accountId);
+      case "db-user":
+        return this.listDatabaseUsers(accountId);
       default:
         throw new Error(`DigitalOcean plugin: unknown resource type "${typeId}"`);
     }
@@ -261,6 +481,60 @@ export class DigitalOceanClient implements PluginClient {
         // and keeps the existing behaviour for non-droplet types.
       }
     }
+    // Spaces buckets aren't exposed via the REST API, and a freshly-created
+    // bucket can be missing from `listSpacesBuckets` for tens of seconds
+    // while regional S3 endpoints converge on the new key/bucket — which
+    // surfaced as a post-create 404 on the bucket detail page. HEAD the
+    // bucket directly via the S3 virtual-hosted endpoint instead; iterate
+    // the known Spaces regions and accept the first 200. This is cheap (no
+    // body), and `spacesBucketRegions` caches the resolved region so
+    // subsequent calls don't fan out.
+    if (typeId === "spaces-bucket" && externalId) {
+      const accessKeyId = this.credentials["spacesAccessKeyId"];
+      const secretAccessKey = this.credentials["spacesSecretAccessKey"];
+      if (accessKeyId && secretAccessKey) {
+        const cachedRegion = this.spacesBucketRegions.get(externalId);
+        const regionsToProbe = cachedRegion
+          ? [cachedRegion, ...SPACES_REGIONS.filter((r) => r !== cachedRegion)]
+          : SPACES_REGIONS;
+        for (const region of regionsToProbe) {
+          const url = `https://${externalId}.${region}.digitaloceanspaces.com/`;
+          const res = await signedS3Fetch({
+            accessKey: accessKeyId,
+            secretKey: secretAccessKey,
+            region,
+            method: "HEAD",
+            url,
+          }).catch(() => null);
+          if (res && res.ok) {
+            this.spacesBucketRegions.set(externalId, region);
+            const projectMap = await this.getProjectUrnMap();
+            const parentResourceId = this.parentResourceIdForUrn(
+              accountId,
+              `do:space:${externalId}`,
+              projectMap,
+            );
+            return {
+              id: `${accountId}:spaces-bucket:${externalId}`,
+              pluginId: "digitalocean",
+              resourceTypeId: "spaces-bucket",
+              accountId,
+              displayName: externalId,
+              fields: { name: externalId, region, accessControl: "private" },
+              resolvedOutputs: {
+                endpoint: `https://${externalId}.${region}.digitaloceanspaces.com`,
+              },
+              secretStates: [],
+              externalId,
+              ...(parentResourceId ? { parentResourceId } : {}),
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            };
+          }
+        }
+      }
+      // Fall through — listResources may have a different cached state.
+    }
     const all = await this.listResources(typeId, accountId);
     const found = all.find((r) => r.id === resourceId);
     if (!found) throw new Error(`DigitalOcean plugin: resource ${typeId}/${resourceId} not found`);
@@ -271,26 +545,105 @@ export class DigitalOceanClient implements PluginClient {
     typeId: string,
     resourceId: string,
     outputKey: string,
-    _accountId: string,
+    accountId: string,
   ): Promise<string> {
+    // resolveOutput receives the full `{accountId}:{typeId}:{externalId}`
+    // resource id from the host. DO's REST endpoints take the bare external
+    // id (the cluster/database UUID), so peel the prefix off before
+    // interpolating — passing the full id produced
+    // `/kubernetes/clusters/{accountId}:doks-cluster:{uuid}/kubeconfig`,
+    // which 404s as "cluster not found".
+    const externalId = resourceId.split(":").slice(2).join(":");
+
     if (typeId === "doks-cluster" && outputKey === "kubeconfig") {
-      const data = await this.fetch<{ kubeconfig: string }>(
-        `/kubernetes/clusters/${resourceId}/kubeconfig`,
-      );
-      return data.kubeconfig;
+      // The kubeconfig endpoint returns raw `application/yaml` text, not a
+      // JSON envelope (verified in digitalocean/openapi
+      // resources/kubernetes/responses/kubeconfig.yml). Bypass
+      // jsonRestFetch and read the body as text directly.
+      const res = await fetch(`${this.baseUrl}/kubernetes/clusters/${externalId}/kubeconfig`, {
+        headers: { Authorization: `Bearer ${this.token}`, Accept: "application/yaml" },
+      });
+      const body = await res.text();
+      if (!res.ok) {
+        throw new Error(
+          `DO API error ${res.status} for /kubernetes/clusters/${externalId}/kubeconfig: ${body}`,
+        );
+      }
+      return body;
     }
 
     if (typeId === "managed-database") {
       const data = await this.fetch<{
         database: {
+          engine?: string;
           connection: Record<string, string>;
           private_connection?: Record<string, string>;
         };
-      }>(`/databases/${resourceId}`);
+      }>(`/databases/${externalId}`);
       const conn = data.database.connection;
+      const engine = String(data.database.engine ?? "");
       switch (outputKey) {
-        case "connectionString":
-          return conn["uri"] ?? "";
+        case "connectionString": {
+          let uri = ensureUriCredentials(conn["uri"] ?? "", conn["user"], conn["password"]);
+          // DO's `/databases/{id}` response can hand back `connection.uri`
+          // as `mongodb+srv://doadmin:@host` with no password — the
+          // credential lives on the per-user endpoint instead. Try that
+          // before failing so the user doesn't have to paste a connection
+          // string manually.
+          let usersSnapshot: Array<{ name?: string; hasPassword: boolean }> = [];
+          if (!uriHasPassword(uri) && conn["user"]) {
+            try {
+              const usersData = await this.fetch<{
+                users?: Array<{ name?: string; password?: string }>;
+              }>(`/databases/${externalId}/users`);
+              const list = usersData.users ?? [];
+              usersSnapshot = list.map((u) => ({
+                ...(u.name != null ? { name: u.name } : {}),
+                hasPassword: !!u.password,
+              }));
+              const match = list.find((u) => u.name === conn["user"]);
+              if (match?.password) {
+                uri = ensureUriCredentials(conn["uri"] ?? "", conn["user"], match.password);
+              }
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : String(err);
+              throw new Error(
+                "DigitalOcean's `/databases/{id}/users` endpoint failed — this usually means " +
+                  "the API token lacks the `database:view_credentials` scope. In the DO token UI, " +
+                  "regenerate the token and explicitly tick that scope (it's *not* included by " +
+                  `default in "Full Access"). Underlying error: ${msg}`,
+              );
+            }
+          }
+          // Last-ditch fallback: pull a password from a db-user resource
+          // we minted ourselves and persisted via secretStates. Lets the
+          // peer-pane work even when DO refuses to expose existing
+          // passwords (no view_credentials scope, post-rotation, etc.).
+          if (!uriHasPassword(uri)) {
+            const minted = await this.findMintedDatabaseUser(externalId, accountId);
+            if (minted) {
+              uri = ensureUriCredentials(conn["uri"] ?? "", minted.name, minted.password);
+            }
+          }
+          if (!uriHasPassword(uri)) {
+            const usersDump =
+              usersSnapshot.length > 0
+                ? usersSnapshot
+                    .map((u) => `${u.name ?? "?"} (password: ${u.hasPassword ? "yes" : "empty"})`)
+                    .join(", ")
+                : "(no users returned)";
+            throw new Error(
+              "DigitalOcean returned no password for this database's default user. " +
+                "Open the cluster's detail page and add a user under the 'DB Users' section — " +
+                "Infrawrench will capture the password DO mints and use it here. " +
+                `Existing users on the cluster: ${usersDump}.`,
+            );
+          }
+          if (engine === "kafka") {
+            uri = normalizeKafkaUri(uri);
+          }
+          return uri;
+        }
         case "host":
           return conn["host"] ?? "";
         case "port":
@@ -302,10 +655,27 @@ export class DigitalOceanClient implements PluginClient {
         case "database":
           return conn["database"] ?? "";
         case "caCertificate": {
+          // DO returns the CA as base64-encoded PEM (the openapi spec
+          // declares `format: byte` for this field — see
+          // databases/models/ca.yml). Decode it so consumers (pg, mysql2)
+          // receive raw PEM with the `-----BEGIN CERTIFICATE-----`
+          // header they expect. Forwarding the base64 directly used to
+          // produce "self signed certificate in certificate chain"
+          // because the TLS layer couldn't parse the cert at all.
           const caData = await this.fetch<{ ca: { certificate: string } }>(
-            `/databases/${resourceId}/ca`,
+            `/databases/${externalId}/ca`,
           );
-          return caData.ca.certificate;
+          const raw = caData.ca.certificate ?? "";
+          // Already PEM? Pass through. Otherwise base64 → utf8.
+          // `atob` is the cross-runtime decoder (Node ≥18 + browser);
+          // we can't import `Buffer` here because this plugin is shared
+          // with the renderer.
+          if (raw.includes("-----BEGIN")) return raw;
+          try {
+            return atob(raw);
+          } catch {
+            return raw;
+          }
         }
       }
     }
@@ -313,7 +683,7 @@ export class DigitalOceanClient implements PluginClient {
     if (typeId === "spaces-bucket") {
       // Spaces credentials are account-level (from the Spaces API keys), not bucket-specific
       if (outputKey === "endpoint") {
-        const resource = await this.getResource(typeId, resourceId, _accountId);
+        const resource = await this.getResource(typeId, resourceId, accountId);
         const region = String(resource.fields["region"] ?? "nyc3");
         return `https://${region}.digitaloceanspaces.com`;
       }
@@ -325,9 +695,55 @@ export class DigitalOceanClient implements PluginClient {
       return "ns1.digitalocean.com, ns2.digitalocean.com, ns3.digitalocean.com";
     }
 
+    if (typeId === "db-user" && outputKey === "password") {
+      // We never look the password up from DO — it's only available the
+      // instant the user was created. The plaintext lives in our local
+      // secret store, keyed by the resource id.
+      const value = await this.services?.secrets?.getPlaintext(resourceId, "password");
+      if (!value) {
+        throw new Error(
+          "No stored password for this user. Passwords are only captured at create time; " +
+            "DigitalOcean doesn't expose existing user passwords after the fact.",
+        );
+      }
+      return value;
+    }
+
     throw new Error(
       `DigitalOcean plugin: cannot resolve output "${outputKey}" for type "${typeId}"`,
     );
+  }
+
+  /**
+   * Look through every db-user we've persisted for the given cluster and
+   * return the first one with a stored password. Used by managed-database's
+   * `connectionString` resolver when DO refuses to hand back the original
+   * doadmin credentials. The cluster's user list is fetched live (we don't
+   * trust local cache for membership) but the password comes from the host's
+   * secret store via `services.secrets.getPlaintext`.
+   */
+  private async findMintedDatabaseUser(
+    clusterId: string,
+    accountId: string,
+  ): Promise<{ name: string; password: string } | null> {
+    const secrets = this.services?.secrets;
+    if (!secrets) return null;
+    let users: Array<{ name?: string }> = [];
+    try {
+      const resp = await this.fetch<{ users?: Array<{ name?: string }> }>(
+        `/databases/${clusterId}/users`,
+      );
+      users = resp.users ?? [];
+    } catch {
+      return null;
+    }
+    for (const u of users) {
+      if (!u.name) continue;
+      const id = `${accountId}:db-user:${clusterId}:${u.name}`;
+      const password = await secrets.getPlaintext(id, "password");
+      if (password) return { name: u.name, password };
+    }
+    return null;
   }
 
   private get createCtx(): DoCreateContext {
@@ -339,6 +755,34 @@ export class DigitalOceanClient implements PluginClient {
 
   async getCreateConfig(typeId: string, parentResourceId?: string): Promise<CreateResourceConfig> {
     return doGetCreateConfig(this.createCtx, typeId, parentResourceId);
+  }
+
+  /**
+   * Compute the form's estimated monthly cost. The size-picker only carries
+   * the per-node price; the cost panel needs to multiply by node count for
+   * resource types that scale horizontally (managed-database, doks-cluster).
+   * Droplet has its own per-size price already shown in the picker; for it
+   * we return the picked size's price directly so the panel matches.
+   */
+  async getCreateCostEstimate(
+    typeId: string,
+    fields: Record<string, string>,
+  ): Promise<number | null> {
+    if (typeId === "managed-database") {
+      const slug = fields["size"] ?? "";
+      const memMatch = /(\d+)gb/i.exec(slug);
+      const memoryGb = memMatch ? Number(memMatch[1]) : 0;
+      const perNode = estimateDoDatabaseMonthlyPrice(slug, memoryGb);
+      const nodes = Math.max(1, Number(fields["nodeCount"] ?? 1));
+      return perNode > 0 ? perNode * nodes : null;
+    }
+    if (typeId === "doks-cluster") {
+      // Cluster control plane is free; cost is node count × droplet size price.
+      // We don't have a size price lookup for DOKS sizes here — defer to the
+      // sidebar's picker price which the host already shows.
+      return null;
+    }
+    return null;
   }
 
   async exportCredential(
@@ -364,7 +808,7 @@ export class DigitalOceanClient implements PluginClient {
       const name = `infrawrench-${bucketName}-${Date.now().toString(36)}`;
       const resp = await this.fetch<{
         key?: { name: string; access_key: string; secret_key?: string };
-      }>("/v2/spaces/keys", {
+      }>("/spaces/keys", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -420,6 +864,22 @@ export class DigitalOceanClient implements PluginClient {
       case "managed-database":
         await this.fetch<unknown>(`/databases/${externalId}`, { method: "DELETE" });
         break;
+      case "db-user": {
+        // Composite id: `{accountId}:db-user:{clusterId}:{username}`. The
+        // parent cluster id is the second-to-last segment, the username the
+        // last. We can't reuse `externalId.split(":").pop()` alone because the
+        // delete endpoint needs both.
+        const parts = resourceId.split(":");
+        const username = parts[parts.length - 1] ?? "";
+        const clusterId = parts[parts.length - 2] ?? "";
+        if (!username || !clusterId) {
+          throw new Error("Cannot parse db-user resource ID");
+        }
+        await this.fetch<unknown>(`/databases/${clusterId}/users/${encodeURIComponent(username)}`, {
+          method: "DELETE",
+        });
+        break;
+      }
       case "spaces-bucket": {
         // Spaces are managed via the S3-compatible API, not the DO REST API.
         const accessKeyId = this.credentials["spacesAccessKeyId"];
@@ -572,6 +1032,46 @@ export class DigitalOceanClient implements PluginClient {
       await this.fetch(`/volumes/${volumeId}/actions`, {
         method: "POST",
         body: JSON.stringify({ type: "attach", droplet_id: dropletId, region: volumeRegion }),
+      });
+      return;
+    }
+    if (sourceTypeId === "nfs-share" && targetTypeId === "droplet") {
+      // DO scopes NFS access at VPC level (per nfs_actions.yml: `attach`
+      // takes `vpc_id`). Resolve the droplet's vpc_uuid and register
+      // it on the share's allowed VPCs. The share's externalId is
+      // `{region}/{shareId}`; extract the trailing id.
+      const [share, droplet] = await Promise.all([
+        this.getResource(sourceTypeId, sourceResourceId, accountId),
+        this.getResource(targetTypeId, targetResourceId, accountId),
+      ]);
+      const shareRegion = String(share.fields["region"] ?? "");
+      const dropletRegion = String(droplet.fields["region"] ?? "");
+      if (shareRegion && dropletRegion && shareRegion !== dropletRegion) {
+        throw new Error(
+          `NFS share region ${shareRegion} does not match droplet region ${dropletRegion} — droplets can only mount shares in their own region.`,
+        );
+      }
+      const dropletVpc = String(droplet.fields["vpcUuid"] ?? "");
+      if (!dropletVpc) {
+        throw new Error(
+          "Couldn't determine the droplet's VPC — refresh the droplet and try again.",
+        );
+      }
+      // Idempotent: if this VPC is already on the share's allow list,
+      // there's nothing to do. DO would return 422 otherwise.
+      const allowedVpcs = String(share.fields["vpcIds"] ?? "")
+        .split(",")
+        .filter(Boolean);
+      if (allowedVpcs.includes(dropletVpc)) return;
+      const shareExternalId = share.externalId ?? sourceResourceId.split(":").slice(2).join(":");
+      // externalId is `{region}/{id}` — peel off the region prefix to
+      // get the bare share id for the actions URL.
+      const shareId = shareExternalId.includes("/")
+        ? shareExternalId.split("/")[1]!
+        : shareExternalId;
+      await this.fetch(`/nfs/${shareId}/actions`, {
+        method: "POST",
+        body: JSON.stringify({ type: "attach", vpc_id: dropletVpc, region: shareRegion }),
       });
       return;
     }
@@ -728,6 +1228,44 @@ export class DigitalOceanClient implements PluginClient {
       default:
         return [];
     }
+  }
+
+  /**
+   * Logs tab for managed-databases. DO doesn't expose process logs over the
+   * API — only the cluster event stream (creates, scale events, maintenance,
+   * power cycles). We surface that as the closest available signal.
+   */
+  async getLogs(
+    typeId: string,
+    resourceId: string,
+    _accountId: string,
+    params: { tailLines?: number },
+  ): Promise<{ text: string; containers: string[]; activeContainer: string }> {
+    if (typeId !== "managed-database") {
+      return { text: "", containers: [], activeContainer: "" };
+    }
+    const externalId = resourceId.split(":").slice(2).join(":");
+    const resp = await this.fetch<{
+      events?: Array<{
+        id?: string;
+        event_type?: string;
+        cluster_name?: string;
+        create_time?: string;
+      }>;
+    }>(`/databases/${externalId}/events`);
+    const events = resp.events ?? [];
+    const tail = params.tailLines ?? 200;
+    const lines = events
+      .slice(-tail)
+      .map(
+        (e) =>
+          `${e.create_time ?? "?"}  ${e.event_type ?? "unknown"}  ${e.cluster_name ?? ""}  (${e.id ?? ""})`,
+      );
+    const text =
+      lines.length > 0
+        ? lines.join("\n") + "\n"
+        : "No cluster events yet. DO emits an event for create, scale, maintenance, and power-cycle actions — try again after one of those happens.\n";
+    return { text, containers: ["events"], activeContainer: "events" };
   }
 
   async fetchMetricSeries(
@@ -1125,10 +1663,7 @@ export class DigitalOceanClient implements PluginClient {
     const detail: DetailViewSchema = {
       title: resource.displayName,
       subtitle: `${resourceTypeDisplayName(this.resourceTypes, resource.resourceTypeId)} \u00B7 ${String(fields["region"] ?? "")}`,
-      status:
-        resource.resourceTypeId === "droplet"
-          ? dropletStatusDot(String(fields["status"] ?? ""))
-          : { kind: "status-dot", status: "info" },
+      status: doStatusDot(resource),
       sections: [
         {
           kind: "section",
@@ -1166,21 +1701,92 @@ export class DigitalOceanClient implements PluginClient {
       };
     }
 
-    // MongoDB-engined managed databases get the inline MongoDB peer browser \u2014
-    // user links one of their MongoDB accounts and browses documents in place.
-    if (
-      resource.resourceTypeId === "managed-database" &&
-      String(fields["engine"] ?? "") === "mongodb"
-    ) {
-      detail.noSqlBrowser = {
-        driver: "mongodb-peer",
-        databaseLabel: String(fields["name"] ?? resource.externalId ?? ""),
-        helpText:
-          "Link a MongoDB account in your sidebar to browse this database inline. The account must be reachable from your network \u2014 for trusted-sources-only clusters, connect from inside the VPC.",
-      };
+    // MongoDB-engined managed databases used to also surface a separate
+    // inline "Documents" tab driven by the host's `mongodb-peer` browser.
+    // That duplicated the MongoDB peer-pane tab declared by this resource's
+    // peerIntegration with the MongoDB plugin (which now implements
+    // renderPeerPane) so we drop the inline one to keep a single, working
+    // entry point. The MongoDB peer-pane lists databases and clicking one
+    // opens the existing MongoDocumentBrowser.
+
+    if (resource.resourceTypeId === "managed-database") {
+      this.applyManagedDatabaseDetail(detail, resource);
+    } else if (resource.resourceTypeId === "db-user") {
+      this.applyDatabaseUserDetail(detail, resource);
     }
 
     return detail;
+  }
+
+  /**
+   * Adds the events log + a banner that nudges the user to mint a connection
+   * user when DO's inline connection.uri lacks a password (the common case
+   * for tokens without `database:view_credentials`). The "DB Users" section
+   * is rendered automatically by the host as a child-resource group thanks
+   * to `db-user.parentTypeId === "managed-database"`.
+   */
+  private applyManagedDatabaseDetail(detail: DetailViewSchema, resource: ResourceInstance): void {
+    const status = String(resource.fields["status"] ?? "");
+    const online = status === "online";
+
+    // Events log — DO doesn't expose process-level logs, but the cluster's
+    // event stream covers backups, maintenance, scale events, etc. That's
+    // useful as a "what's been happening to my cluster" feed.
+    detail.logs = { defaultTailLines: 200 };
+
+    // Pre-online clusters can't accept POST /users yet. Inform the user via
+    // a non-blocking banner rather than throwing on click.
+    if (!online) {
+      detail.sections.push({
+        kind: "section",
+        title: "Connection setup",
+        children: [
+          {
+            kind: "text",
+            variant: "muted",
+            content:
+              `Cluster status: ${status || "unknown"}. Once it flips to "online" you can mint a ` +
+              "connection user under the DB Users section below — Infrawrench captures DO's " +
+              "one-shot password and uses it for the peer-pane connection string. Until then, " +
+              "the MongoDB / Postgres / MySQL peer-pane tabs will report no credentials.",
+          },
+        ],
+      });
+    } else {
+      detail.sections.push({
+        kind: "section",
+        title: "Connection setup",
+        children: [
+          {
+            kind: "text",
+            variant: "muted",
+            content:
+              "Mint a user under the DB Users section so peer-pane tabs have a credentialed " +
+              "connection string. DO only exposes a user's password once — Infrawrench captures " +
+              "it at create time and persists it locally.",
+          },
+        ],
+      });
+    }
+  }
+
+  /** A db-user's detail view is mostly its connection-credential summary. */
+  private applyDatabaseUserDetail(detail: DetailViewSchema, resource: ResourceInstance): void {
+    detail.subtitle = `Database user · ${String(resource.fields["role"] ?? "user")}`;
+    detail.sections.push({
+      kind: "section",
+      title: "Credential",
+      children: [
+        {
+          kind: "text",
+          variant: "muted",
+          content:
+            "The password DO returned at create time is stored locally and used to fill in the " +
+            "cluster's connection string. DO doesn't expose passwords for users it didn't create " +
+            "via this flow, so pre-existing users (including `doadmin`) show no stored password.",
+        },
+      ],
+    });
   }
 
   /**
@@ -1980,30 +2586,18 @@ export class DigitalOceanClient implements PluginClient {
     if (resource.resourceTypeId === "dns-record") {
       return renderDnsRecordSidebar(resource);
     }
-    if (resource.resourceTypeId === "domain") {
-      return {
-        id: resource.id,
-        label: resource.displayName,
-        status: { kind: "status-dot", status: "healthy", label: "Active" },
-      };
-    }
-    if (resource.resourceTypeId === "droplet") {
-      return {
-        id: resource.id,
-        label: resource.displayName,
-        status: dropletStatusDot(String(resource.fields["status"] ?? "")),
-      };
-    }
     return {
       id: resource.id,
       label: resource.displayName,
-      status: { kind: "status-dot", status: "info" },
+      status: doStatusDot(resource),
     };
   }
 
   private async listProjects(accountId: string): Promise<ResourceInstance[]> {
-    const data = await this.fetch<{ projects: Array<Record<string, unknown>> }>("/projects");
-    return data.projects.map((p) => ({
+    const data = await this.fetch<{ projects?: Array<Record<string, unknown>> | null }>(
+      "/projects",
+    );
+    return (data.projects ?? []).map((p) => ({
       id: `${accountId}:project:${String(p["id"])}`,
       pluginId: "digitalocean",
       resourceTypeId: "project",
@@ -2027,10 +2621,10 @@ export class DigitalOceanClient implements PluginClient {
     // DO's /droplets default page size is 20 — without per_page, a freshly-
     // created droplet on page 2 looks like it doesn't exist.
     const [data, projectMap] = await Promise.all([
-      this.fetch<{ droplets: Array<Record<string, unknown>> }>("/droplets?per_page=200"),
+      this.fetch<{ droplets?: Array<Record<string, unknown>> | null }>("/droplets?per_page=200"),
       this.getProjectUrnMap(),
     ]);
-    return data.droplets.map((d) => this.mapDroplet(d, accountId, projectMap));
+    return (data.droplets ?? []).map((d) => this.mapDroplet(d, accountId, projectMap));
   }
 
   /**
@@ -2104,6 +2698,9 @@ export class DigitalOceanClient implements PluginClient {
         backupPolicyPlan: backupPolicy?.plan ?? "",
         backupPolicyHour: backupPolicy?.hour != null ? String(backupPolicy.hour) : "",
         backupPolicyWeekday: backupPolicy?.weekday ?? "",
+        // VPC the droplet lives in — used by the NFS-share→droplet drop
+        // target to derive the share-level `attach` action's `vpc_id`.
+        vpcUuid: String(d["vpc_uuid"] ?? ""),
       },
       resolvedOutputs: {
         ...(ipv4 ? { ipv4 } : {}),
@@ -2233,16 +2830,19 @@ export class DigitalOceanClient implements PluginClient {
 
   private async listDOKSClusters(accountId: string): Promise<ResourceInstance[]> {
     const [data, projectMap] = await Promise.all([
-      this.fetch<{ kubernetes_clusters: Array<Record<string, unknown>> }>("/kubernetes/clusters"),
+      this.fetch<{ kubernetes_clusters?: Array<Record<string, unknown>> | null }>(
+        "/kubernetes/clusters",
+      ),
       this.getProjectUrnMap(),
     ]);
-    return data.kubernetes_clusters.map((c) => {
+    return (data.kubernetes_clusters ?? []).map((c) => {
       const nodePool = (c["node_pools"] as Array<Record<string, unknown>> | undefined)?.[0];
       const parentResourceId = this.parentResourceIdForUrn(
         accountId,
         `do:kubernetes:${String(c["id"])}`,
         projectMap,
       );
+      const statusObj = c["status"] as { state?: string; message?: string } | undefined;
       return {
         id: `${accountId}:doks-cluster:${String(c["id"])}`,
         pluginId: "digitalocean",
@@ -2255,6 +2855,7 @@ export class DigitalOceanClient implements PluginClient {
           version: String(c["version"] ?? ""),
           nodePoolSize: String(nodePool?.["size"] ?? ""),
           nodeCount: Number(nodePool?.["count"] ?? 0),
+          status: String(statusObj?.state ?? ""),
         },
         resolvedOutputs: {},
         secretStates: [],
@@ -2267,11 +2868,14 @@ export class DigitalOceanClient implements PluginClient {
   }
 
   private async listManagedDatabases(accountId: string): Promise<ResourceInstance[]> {
+    // DO returns `{ "databases": null }` for accounts that have never had
+    // one (instead of an empty array), which made `.map` throw and the
+    // account section render "Cannot read properties of null".
     const [data, projectMap] = await Promise.all([
-      this.fetch<{ databases: Array<Record<string, unknown>> }>("/databases"),
+      this.fetch<{ databases?: Array<Record<string, unknown>> | null }>("/databases"),
       this.getProjectUrnMap(),
     ]);
-    return data.databases.map((db) => {
+    return (data.databases ?? []).map((db) => {
       const parentResourceId = this.parentResourceIdForUrn(
         accountId,
         `do:dbaas:${String(db["id"])}`,
@@ -2290,6 +2894,7 @@ export class DigitalOceanClient implements PluginClient {
           region: String(db["region"] ?? ""),
           size: String(db["size"] ?? ""),
           nodeCount: Number(db["num_nodes"] ?? 1),
+          status: String(db["status"] ?? ""),
         },
         resolvedOutputs: {},
         secretStates: [],
@@ -2301,6 +2906,51 @@ export class DigitalOceanClient implements PluginClient {
     });
   }
 
+  /**
+   * Fan out across every cluster to enumerate its users. DO has no "list users
+   * across all my clusters" endpoint — only per-cluster — so we re-use the
+   * already-fetched cluster list and parallelise the per-cluster calls. Failed
+   * lookups are skipped silently so one mid-provision cluster (which 409s on
+   * /users until it's online) doesn't blow up the whole sidebar.
+   */
+  private async listDatabaseUsers(accountId: string): Promise<ResourceInstance[]> {
+    const data = await this.fetch<{ databases?: Array<Record<string, unknown>> | null }>(
+      "/databases",
+    );
+    const clusters = data.databases ?? [];
+    const userLists = await Promise.allSettled(
+      clusters.map(async (db) => {
+        const clusterId = String(db["id"] ?? "");
+        if (!clusterId) return [] as ResourceInstance[];
+        const resp = await this.fetch<{
+          users?: Array<{ name?: string; role?: string }>;
+        }>(`/databases/${clusterId}/users`);
+        const now = String(db["created_at"] ?? new Date().toISOString());
+        return (resp.users ?? []).map<ResourceInstance>((u) => ({
+          id: `${accountId}:db-user:${clusterId}:${u.name ?? ""}`,
+          pluginId: "digitalocean",
+          resourceTypeId: "db-user",
+          accountId,
+          displayName: u.name ?? "(unnamed)",
+          fields: {
+            name: u.name ?? "",
+            role: u.role ?? "",
+          },
+          resolvedOutputs: {},
+          // The list endpoint never returns the password — only the per-user
+          // `POST /users` response does. We can't reconstruct it after the
+          // fact, so existing users (incl. doadmin) are persisted without one.
+          secretStates: [],
+          externalId: u.name ?? "",
+          parentResourceId: `${accountId}:managed-database:${clusterId}`,
+          createdAt: now,
+          updatedAt: now,
+        }));
+      }),
+    );
+    return userLists.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+  }
+
   private async listSpacesBuckets(accountId: string): Promise<ResourceInstance[]> {
     const accessKeyId = this.credentials["spacesAccessKeyId"];
     const secretAccessKey = this.credentials["spacesSecretAccessKey"];
@@ -2308,7 +2958,12 @@ export class DigitalOceanClient implements PluginClient {
 
     const projectMap = await this.getProjectUrnMap();
 
-    const perRegion = await Promise.all(
+    // Per-region fan-out is tolerant of individual region failures —
+    // freshly-minted Spaces keys can take longer to propagate to some
+    // regions than others, and we'd previously blow up the whole list
+    // call (and the post-create detail page) on a single 403. We log
+    // the failures but never throw from the per-region results.
+    const settled = await Promise.allSettled(
       SPACES_REGIONS.map(async (region) => {
         const host = `${region}.digitaloceanspaces.com`;
         const res = await signedS3Fetch({
@@ -2319,19 +2974,39 @@ export class DigitalOceanClient implements PluginClient {
           url: `https://${host}/`,
         });
         if (!res.ok) {
-          throw new Error(
-            `Spaces S3 API error ${res.status} listing buckets in ${region}: ${await res.text()}`,
-          );
+          // Bury the body so it doesn't appear in the host's toast as
+          // "Spaces S3 API error 403 listing buckets in nyc1: …" while
+          // the user is looking at the bucket they just created in fra1.
+          throw new Error(`Spaces ${region} returned ${res.status}`);
         }
         const xml = await res.text();
-        const entries = [
-          ...xml.matchAll(
-            /<Bucket>\s*<Name>([^<]+)<\/Name>\s*<CreationDate>([^<]+)<\/CreationDate>\s*<\/Bucket>/g,
-          ),
-        ];
-        return entries.map(([, name, createdAt]) => ({ name, createdAt, region }));
+        // Parse each `<Bucket>…</Bucket>` block independently then extract
+        // `<Name>` / `<CreationDate>` from inside. DO's S3 ListAllMyBuckets
+        // response can include additional child elements (e.g.
+        // `<BucketRegion>`) which a tighter regex would have rejected,
+        // making the bucket invisible after creation.
+        const items: Array<{ name: string; createdAt: string; region: string }> = [];
+        for (const block of xml.matchAll(/<Bucket\b[^>]*>([\s\S]*?)<\/Bucket>/g)) {
+          const inner = block[1] ?? "";
+          const name = /<Name>\s*([^<]+?)\s*<\/Name>/.exec(inner)?.[1];
+          const createdAt = /<CreationDate>\s*([^<]+?)\s*<\/CreationDate>/.exec(inner)?.[1];
+          if (name && createdAt) items.push({ name, createdAt, region });
+        }
+        return items;
       }),
     );
+    const perRegion: Array<Array<{ name: string; createdAt: string; region: string }>> = [];
+    for (let i = 0; i < settled.length; i++) {
+      const r = settled[i]!;
+      if (r.status === "fulfilled") {
+        perRegion.push(r.value);
+      } else {
+        console.warn(
+          `[do.listSpacesBuckets] region ${SPACES_REGIONS[i]} unavailable, skipping: ${r.reason instanceof Error ? r.reason.message : String(r.reason)}`,
+        );
+        perRegion.push([]);
+      }
+    }
 
     // Dedupe by bucket name: if DO's endpoint returns the same bucket from multiple
     // regions, keep the first occurrence (regions iterated in SPACES_REGIONS order).

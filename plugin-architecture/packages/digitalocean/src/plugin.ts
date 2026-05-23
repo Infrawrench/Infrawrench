@@ -4,6 +4,7 @@ import { ProjectResourceType } from "./resources/project.js";
 import { DropletResourceType } from "./resources/droplet.js";
 import { DOKSClusterResourceType } from "./resources/doks-cluster.js";
 import { ManagedDatabaseResourceType } from "./resources/managed-database.js";
+import { DatabaseUserResourceType } from "./resources/db-user.js";
 import { SpacesResourceType } from "./resources/spaces.js";
 import { DomainResourceType } from "./resources/domain.js";
 import { DnsRecordResourceType } from "./resources/dns-record.js";
@@ -41,6 +42,7 @@ const resourceTypes: ResourceTypeDefinition[] = [
   DropletResourceType,
   DOKSClusterResourceType,
   ManagedDatabaseResourceType,
+  DatabaseUserResourceType,
   SpacesResourceType,
   DomainResourceType,
   DnsRecordResourceType,
@@ -53,5 +55,6 @@ const resourceTypes: ResourceTypeDefinition[] = [
 export const plugin: Plugin = {
   manifest,
   resourceTypes,
-  createClient: (credentials) => new DigitalOceanClient(credentials, resourceTypes),
+  createClient: (credentials, services) =>
+    new DigitalOceanClient(credentials, resourceTypes, services),
 };

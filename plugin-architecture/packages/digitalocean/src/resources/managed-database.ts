@@ -82,13 +82,23 @@ export const ManagedDatabaseResourceType: ResourceTypeDefinition = {
   peerIntegrations: [
     {
       pluginId: "postgres",
-      credentialMappings: [{ outputKey: "connectionString", credentialKey: "connectionString" }],
+      // DO signs managed-DB certs with its own internal CA. Map the
+      // caCertificate output into the Postgres plugin's caCert credential
+      // so TLS chain verification stays on with DO's CA trusted, instead
+      // of failing with "self signed certificate in certificate chain".
+      credentialMappings: [
+        { outputKey: "connectionString", credentialKey: "connectionString" },
+        { outputKey: "caCertificate", credentialKey: "caCert" },
+      ],
       tabLabel: "PostgreSQL",
       showWhen: { fieldKey: "engine", equals: "pg" },
     },
     {
       pluginId: "mysql",
-      credentialMappings: [{ outputKey: "connectionString", credentialKey: "connectionString" }],
+      credentialMappings: [
+        { outputKey: "connectionString", credentialKey: "connectionString" },
+        { outputKey: "caCertificate", credentialKey: "caCert" },
+      ],
       tabLabel: "MySQL",
       showWhen: { fieldKey: "engine", equals: "mysql" },
     },
@@ -103,6 +113,31 @@ export const ManagedDatabaseResourceType: ResourceTypeDefinition = {
       credentialMappings: [{ outputKey: "connectionString", credentialKey: "connectionString" }],
       tabLabel: "MongoDB",
       showWhen: { fieldKey: "engine", equals: "mongodb" },
+    },
+    {
+      // DO managed OpenSearch exposes a doadmin user + a TLS endpoint on
+      // port 25060. The connection.uri is shaped like
+      // `https://doadmin:<pw>@cluster-host:25060` so the OpenSearch plugin
+      // can pull credentials out of the URL via parseConfig().
+      pluginId: "opensearch",
+      credentialMappings: [
+        { outputKey: "connectionString", credentialKey: "endpoint" },
+        { outputKey: "caCertificate", credentialKey: "caCertificate" },
+      ],
+      tabLabel: "OpenSearch",
+      showWhen: { fieldKey: "engine", equals: "opensearch" },
+    },
+    {
+      // DO managed Kafka uses SASL/SCRAM-SHA-256 over TLS on port 25073;
+      // the connection.uri is shaped like
+      // `kafkas://username:password@cluster-host:25073`. The DO client's
+      // resolveOutput normalizes the URI for kafka engines so it includes
+      // explicit `sasl=scram-sha-256&ssl=true` params the kafka plugin
+      // driver understands.
+      pluginId: "kafka",
+      credentialMappings: [{ outputKey: "connectionString", credentialKey: "connectionString" }],
+      tabLabel: "Kafka",
+      showWhen: { fieldKey: "engine", equals: "kafka" },
     },
   ],
   secretExportTemplates: [

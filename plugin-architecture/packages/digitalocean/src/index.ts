@@ -3,6 +3,7 @@ export { ProjectResourceType } from "./resources/project.js";
 export { DropletResourceType } from "./resources/droplet.js";
 export { DOKSClusterResourceType } from "./resources/doks-cluster.js";
 export { ManagedDatabaseResourceType } from "./resources/managed-database.js";
+export { DatabaseUserResourceType } from "./resources/db-user.js";
 export { SpacesResourceType } from "./resources/spaces.js";
 export { DomainResourceType } from "./resources/domain.js";
 export { DnsRecordResourceType } from "./resources/dns-record.js";

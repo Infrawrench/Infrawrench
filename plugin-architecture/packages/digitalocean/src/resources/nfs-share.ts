@@ -30,4 +30,18 @@ export const NfsShareResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   supportsCreate: true,
   iconKey: "nfs",
+  // Drop an NFS share onto a droplet to allow that droplet's VPC to
+  // mount it. DO grants NFS access at VPC scope, not per-droplet (per
+  // nfs_actions.yml: `attach` action takes vpc_id), so the plugin
+  // resolves the droplet's vpc_uuid and registers it on the share's
+  // allowed VPCs. Region match isn't enforced by DO here, but a share
+  // is only reachable from droplets sharing its region — the drop hint
+  // would mislead otherwise, so the host enforces matchField=region.
+  attachTargets: [
+    {
+      pluginId: "digitalocean",
+      resourceTypeId: "droplet",
+      matchField: "region",
+    },
+  ],
 };

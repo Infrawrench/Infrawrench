@@ -319,14 +319,14 @@ export async function executeVolumeCommand(
 ): Promise<unknown> {
   const id = externalIdOf(resourceId);
   const values = decodePromptArgs(args);
-  const volume = await ctx.getResource("volume", resourceId, accountId);
-  const region = String(volume.fields["region"] ?? "");
   switch (command) {
     case "volume-resize": {
       const newSize = Number(values["sizeGb"]);
       if (!Number.isFinite(newSize) || newSize <= 0) {
         throw new Error("New size in GiB is required");
       }
+      const volume = await ctx.getResource("volume", resourceId, accountId);
+      const region = String(volume.fields["region"] ?? "");
       const resp = await ctx.fetch<unknown>(`/volumes/${id}/actions`, {
         method: "POST",
         body: JSON.stringify({ type: "resize", size_gigabytes: newSize, region }),

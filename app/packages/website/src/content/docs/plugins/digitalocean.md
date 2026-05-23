@@ -14,7 +14,7 @@ The most approachable cloud plugin — a single API token is all you need.
 - **Custom images** — your account-owned images (uploaded ISOs, snapshots promoted to images, backups). Distribution and marketplace images are still selectable from the droplet create form.
 - **Network File Storage (NFS)** — create POSIX-compliant NFSv4.1 shares (standard or high-performance tier), pinned to a VPC, mountable across multiple Droplets and DOKS nodes. The share detail page surfaces the mount target and a ready-to-paste `mount -t nfs` command.
 - **Kubernetes (DOKS)** — clusters, with kubeconfig output for the [Kubernetes plugin](./kubernetes.md).
-- **Managed databases** — Postgres, MySQL, Redis, MongoDB. Connection strings are outputs you can reference from the matching client plugins.
+- **Managed databases** — Postgres, MySQL, Redis, MongoDB, Kafka, OpenSearch. Connection strings are outputs you can reference from the matching client plugins.
 - **Spaces** — S3-compatible object storage, with the [file browser](../features/file-browsers.md).
 - **DNS** — domains and records.
 - **Projects** — list, create, edit (name / description / purpose / environment) and delete. Use the **Edit Project…** button at the bottom of the project detail page to rename or repurpose without leaving Infrawrench.
@@ -33,6 +33,28 @@ The droplet detail page adds:
 <insert [DigitalOcean droplet detail page with the Actions tab open showing Power, Snapshot & Image, Configuration, and Backups sections] here>
 
 <insert [DigitalOcean droplet Metrics tab with CPU, load, memory, bandwidth, and filesystem charts] here>
+
+## Managed databases
+
+Cluster create, list, and delete is straightforward — pick engine, region, node size, node count. Two things to know once the cluster is live:
+
+### Users (and where the password comes from)
+
+DO returns a freshly-minted password **exactly once**, the moment a user is created — there's no endpoint that returns existing user passwords (not even with `database:view_credentials` ticked). To make the peer-pane MongoDB / Postgres / MySQL tabs work, Infrawrench leans on users it created itself:
+
+1. Open the cluster's detail page → **DB Users** section → **+ Create**.
+2. Pick a username (default is `infrawrench-xxxxxx`). DO mints the password, Infrawrench captures it from the response and stores it encrypted in your local secret store.
+3. The cluster's `connectionString` output is then built from `mongodb+srv://<that-user>:<that-password>@host/db` and the peer-pane tabs start working.
+
+`doadmin` and any other pre-existing user will show up in the DB Users list with no stored password — DO never re-exposes their credentials. Use them by typing the password yourself (from a DO console download or your own records) elsewhere, or mint a new user via the above flow.
+
+### Logs tab
+
+DO doesn't expose process-level logs over the API. The Logs tab surfaces the cluster's **event stream** (`/v2/databases/{id}/events`) — creates, scale events, maintenance, power cycles. Useful as a "what's been happening to this cluster" feed, not a query log.
+
+<insert [DigitalOcean managed-database detail page with the DB Users section expanded showing a freshly-minted user] here>
+
+<insert [DigitalOcean managed-database Logs tab showing the cluster event stream] here>
 
 ## NFS shares
 
@@ -58,6 +80,7 @@ After creation, the share's detail page renders the mount target and a copy-past
 
 - **SSH terminal** on Droplets.
 - **SQL editor** on managed Postgres and MySQL (via output reference to the [Postgres](./postgres.md) / [MySQL](./mysql.md) plugins).
+- **OpenSearch tab** on managed OpenSearch clusters — indices, search, snapshots via the [OpenSearch plugin](./opensearch.md). Endpoint and CA cert flow through automatically.
 - **File browser** on Spaces.
 - **Secret export to K8s** for managed databases and Spaces.
 

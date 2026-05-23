@@ -15,6 +15,80 @@ export interface DoCreateContext {
   credentials: Record<string, string>;
 }
 
+/**
+ * Estimate the per-node monthly price (USD) of a DigitalOcean managed-database
+ * node from its size slug. DO doesn't expose DB pricing via /v2 — the only
+ * source of truth is www.digitalocean.com/pricing/managed-databases — so this
+ * is a slug-pattern + memory heuristic verified against DO's published rates
+ * for the well-defined tiers:
+ *
+ *   - Standard nodes (db-s-…): ~$15.20/mo per GiB of memory
+ *     (db-s-1vcpu-1gb=$15, db-s-2vcpu-4gb=$60, db-s-4vcpu-8gb=$120,
+ *      db-s-6vcpu-16gb=$240, db-s-8vcpu-32gb=$480; verified May 2026)
+ *   - Memory-optimized (db-r-…): ~$30.45/mo per GiB
+ *   - Burstable (db-b-…): ~$8/mo per GiB
+ *
+ * Returns 0 (the picker reads this as "no price chip") whenever the slug
+ * doesn't match a tier we have verified rates for. Engines with their own
+ * namespacing (do-kafka-…, mongodb-…, opensearch-…, valkey-…) all price
+ * differently from the Standard tier, so rather than fake a number we
+ * just omit the chip — "$0/mo" on a c-96-intel-sized SKU is more
+ * misleading than no chip at all.
+ */
+export function estimateDoDatabaseMonthlyPrice(slug: string, memoryGb: number): number {
+  if (!memoryGb) return 0;
+  if (/^db-r-/i.test(slug)) return memoryGb * 30.45;
+  if (/^db-b-/i.test(slug)) return memoryGb * 8;
+  if (/^db-s-/i.test(slug)) return memoryGb * 15.2;
+  // Anything else (engine-namespaced slugs, future tiers, etc.) — bail.
+  return 0;
+}
+
+/**
+ * Build a "Project" select field for the create form. Returned as a
+ * single-element array so callers can spread it into their fields list
+ * (`...projectField`); empty when a `parentResourceId` was already passed
+ * in (the form was opened from a project's detail page so the target is
+ * implicit) or when the account has no projects at all (DO assigns to
+ * the default project automatically). Default option is the project DO
+ * marks `is_default`, falling back to the first listed project.
+ *
+ * The field key is fixed as `projectId` so `doCreateResourceImpl` can
+ * resolve it generically: when there's no parentResourceId it reads
+ * `fields["projectId"]` as the project to assign to, and synthesizes a
+ * matching `parentResourceId` on the returned ResourceInstance so the
+ * new resource nests under its project in the sidebar.
+ */
+async function buildProjectField(
+  ctx: DoCreateContext,
+  parentResourceId: string | undefined,
+): Promise<CreateResourceConfig["fields"]> {
+  if (parentResourceId) return [];
+  const projectsData = await ctx
+    .fetch<{
+      projects?: Array<{ id: string; name: string; is_default?: boolean }> | null;
+    }>("/projects")
+    .catch(() => null);
+  const projects = projectsData?.projects ?? [];
+  if (projects.length === 0) return [];
+  const options = projects.map((p) => ({
+    id: p.id,
+    label: p.is_default ? `${p.name} (default)` : p.name,
+  }));
+  const defaultProjectId = projects.find((p) => p.is_default)?.id ?? options[0]?.id;
+  return [
+    {
+      key: "projectId",
+      label: "Project",
+      kind: "select" as const,
+      required: false,
+      options,
+      ...(defaultProjectId ? { defaultValue: defaultProjectId } : {}),
+      description: "DigitalOcean project to assign this resource to.",
+    },
+  ];
+}
+
 export async function doGetCreateConfig(
   ctx: DoCreateContext,
   typeId: string,
@@ -26,8 +100,7 @@ export async function doGetCreateConfig(
     // hide the Project field. From the account base we list projects so the
     // user can pick one (defaults to whichever project DO marks
     // `is_default`).
-    const hasParentProject = !!parentResourceId;
-    const [regionsData, sizesData, publicImagesData, privateImagesData, projectsData] =
+    const [regionsData, sizesData, publicImagesData, privateImagesData, projectField] =
       await Promise.all([
         ctx.fetch<{ regions: Array<{ slug: string; name: string; available: boolean }> }>(
           "/regions",
@@ -65,13 +138,7 @@ export async function doGetCreateConfig(
             status: string;
           }>;
         }>("/images?private=true&per_page=200"),
-        hasParentProject
-          ? Promise.resolve(null)
-          : ctx
-              .fetch<{
-                projects: Array<{ id: string; name: string; is_default?: boolean }>;
-              }>("/projects")
-              .catch(() => null),
+        buildProjectField(ctx, parentResourceId),
       ]);
 
     const regions = regionsData.regions
@@ -90,13 +157,18 @@ export async function doGetCreateConfig(
       if (!s.available) continue;
       const cat = s.description || "Standard";
       if (!sizesByCategory.has(cat)) sizesByCategory.set(cat, []);
+      // DO returns price_monthly: 0 for some sizes (notably the highest-tier
+      // CPU-Optimized SKUs like c-96-intel that are quoted-only). Omit
+      // priceMonthly entirely when the value isn't a positive number — the
+      // picker renders "$0/mo" otherwise, which is worse than no chip.
+      const price = Number(s.price_monthly);
       sizesByCategory.get(cat)!.push({
         id: s.slug,
         label: s.slug,
         vcpus: s.vcpus,
         memoryMb: s.memory,
         diskGb: s.disk,
-        priceMonthly: s.price_monthly,
+        ...(Number.isFinite(price) && price > 0 ? { priceMonthly: price } : {}),
         category: cat,
       });
     }
@@ -117,32 +189,10 @@ export async function doGetCreateConfig(
 
     const firstRegion = regions[0]?.id;
     const firstSize = sizes[0]?.id;
-    const projectOptions = (projectsData?.projects ?? []).map((p) => ({
-      id: p.id,
-      label: p.is_default ? `${p.name} (default)` : p.name,
-    }));
-    const defaultProjectId =
-      projectsData?.projects.find((p) => p.is_default)?.id ?? projectOptions[0]?.id;
     return {
       fields: [
         { key: "name", label: "Name", kind: "text", required: true },
-        // Project picker only when no parent project context was passed in.
-        // Skipped when the form was opened from a project's detail page — in
-        // that case `parentResourceId` already carries the target project and
-        // `doCreateResourceImpl` will assign the droplet to it.
-        ...(hasParentProject || projectOptions.length === 0
-          ? []
-          : [
-              {
-                key: "projectId",
-                label: "Project",
-                kind: "select" as const,
-                required: false,
-                options: projectOptions,
-                ...(defaultProjectId ? { defaultValue: defaultProjectId } : {}),
-                description: "DigitalOcean project to assign this droplet to.",
-              },
-            ]),
+        ...projectField,
         {
           key: "region",
           label: "Region",
@@ -207,7 +257,7 @@ export async function doGetCreateConfig(
   }
 
   if (typeId === "doks-cluster") {
-    const [optionsData, sizesData] = await Promise.all([
+    const [optionsData, sizesData, projectField] = await Promise.all([
       ctx.fetch<{
         options?: {
           regions?: Array<{ slug: string; name: string }>;
@@ -226,6 +276,7 @@ export async function doGetCreateConfig(
           description: string;
         }>;
       }>("/sizes"),
+      buildProjectField(ctx, parentResourceId),
     ]);
 
     const regions = (optionsData.options?.regions ?? []).map((region) => {
@@ -243,13 +294,14 @@ export async function doGetCreateConfig(
       if (!size.available || !availableSizeSlugs.has(size.slug)) continue;
       const category = size.description || "Standard";
       if (!sizesByCategory.has(category)) sizesByCategory.set(category, []);
+      const price = Number(size.price_monthly);
       sizesByCategory.get(category)!.push({
         id: size.slug,
         label: size.slug,
         vcpus: size.vcpus,
         memoryMb: size.memory,
         diskGb: size.disk,
-        priceMonthly: size.price_monthly,
+        ...(Number.isFinite(price) && price > 0 ? { priceMonthly: price } : {}),
         category,
       });
     }
@@ -266,6 +318,7 @@ export async function doGetCreateConfig(
     return {
       fields: [
         { key: "name", label: "Name", kind: "text", required: true },
+        ...projectField,
         {
           key: "region",
           label: "Region",
@@ -305,9 +358,10 @@ export async function doGetCreateConfig(
   }
 
   if (typeId === "spaces-bucket") {
-    const regionsData = await ctx.fetch<{
-      regions: Array<{ slug: string; name: string; available: boolean }>;
-    }>("/regions");
+    const [regionsData, projectField] = await Promise.all([
+      ctx.fetch<{ regions: Array<{ slug: string; name: string; available: boolean }> }>("/regions"),
+      buildProjectField(ctx, parentResourceId),
+    ]);
     const spacesRegions = regionsData.regions
       .filter((r) => r.available)
       .filter((r) => SPACES_REGIONS.includes(r.slug))
@@ -329,6 +383,7 @@ export async function doGetCreateConfig(
           required: true,
           description: "Globally unique bucket name (lowercase, hyphens, 3-63 characters)",
         },
+        ...projectField,
         {
           key: "region",
           label: "Region",
@@ -342,49 +397,157 @@ export async function doGetCreateConfig(
   }
 
   if (typeId === "managed-database") {
-    const [regionsData, sizesData] = await Promise.all([
+    // Database node sizes come from /v2/databases/options, NOT /v2/sizes
+    // (which lists droplet sizes — none of those carry the `db-` prefix,
+    // so the picker was always empty). The options endpoint groups sizes
+    // by engine and layout (num_nodes); we take the union across every
+    // engine so a single picker covers all engines the user can pick
+    // above. DO will reject mismatched engine+size combos at create time
+    // with a clear message.
+    const [regionsData, optionsData, projectField] = await Promise.all([
       ctx.fetch<{
         regions: Array<{ slug: string; name: string; available: boolean }>;
       }>("/regions"),
       ctx.fetch<{
-        sizes: Array<{
-          slug: string;
-          memory: number;
-          vcpus: number;
-          disk: number;
-          price_monthly: number;
-          available: boolean;
-          description: string;
-        }>;
-      }>("/sizes"),
+        options?: Record<
+          string,
+          {
+            regions?: string[];
+            layouts?: Array<{ num_nodes?: number; sizes?: string[] }>;
+            versions?: string[];
+          }
+        > | null;
+      }>("/databases/options"),
+      buildProjectField(ctx, parentResourceId),
     ]);
 
+    // DO's `/regions` lists legacy datacenters (nyc1, nyc2, ams2, sfo1,
+    // sfo2, sgp2) as available because they still serve droplets, but
+    // none of them host managed databases. DO's create endpoint rejects
+    // these with `region '<slug>' is not valid` regardless of engine, so
+    // they're excluded unconditionally before the per-engine tagging.
+    const NON_DBAAS_REGIONS = new Set(["nyc1", "nyc2", "ams2", "sfo1", "sfo2", "sgp2"]);
+
+    // Per-engine region availability lets the picker reactively filter by
+    // the chosen engine field so users can't pick an engine+region combo
+    // DO will reject. Primary source is /databases/options.{engine}.regions.
+    //
+    // DO migrated Redis storage to Valkey; the options endpoint surfaces
+    // the live list under a `valkey` key, but the create-time engine value
+    // the API still accepts (and that the picker above offers) is `redis`.
+    // Mirror the slugs under both names so the filter matches whichever
+    // label DO is currently using.
+    const engineAliases: Record<string, string[]> = {
+      valkey: ["valkey", "redis"],
+      redis: ["valkey", "redis"],
+    };
+    const engineRegions = new Map<string, Set<string>>();
+    for (const [engine, info] of Object.entries(optionsData.options ?? {})) {
+      const labels = engineAliases[engine] ?? [engine];
+      for (const slug of info.regions ?? []) {
+        if (NON_DBAAS_REGIONS.has(slug)) continue;
+        if (!engineRegions.has(slug)) engineRegions.set(slug, new Set());
+        const set = engineRegions.get(slug)!;
+        for (const label of labels) set.add(label);
+      }
+    }
+
+    // Final per-engine fallback for accounts where /databases/options
+    // doesn't return a `regions` list (we've seen this happen even though
+    // DO's own OpenAPI spec declares the field). These slugs are the
+    // current DBaaS-supported regions from DO's public docs; they're
+    // intentionally narrow so we err on the side of "show fewer regions
+    // than the API would accept" rather than "let DO reject a pick".
+    const FALLBACK_ENGINE_REGIONS: Record<string, string[]> = {
+      pg: ["ams3", "blr1", "fra1", "lon1", "nyc3", "sfo3", "sgp1", "syd1", "tor1"],
+      mysql: ["ams3", "blr1", "fra1", "lon1", "nyc3", "sfo3", "sgp1", "syd1", "tor1"],
+      redis: ["ams3", "blr1", "fra1", "lon1", "nyc3", "sfo3", "sgp1", "syd1", "tor1"],
+      valkey: ["ams3", "blr1", "fra1", "lon1", "nyc3", "sfo3", "sgp1", "syd1", "tor1"],
+      mongodb: ["ams3", "blr1", "fra1", "lon1", "nyc3", "sfo3", "sgp1", "syd1", "tor1"],
+      kafka: ["ams3", "fra1", "lon1", "nyc3", "sfo3", "sgp1", "syd1", "tor1"],
+      opensearch: ["ams3", "fra1", "lon1", "nyc3", "sfo3", "sgp1", "syd1", "tor1"],
+    };
+    for (const [engine, slugs] of Object.entries(FALLBACK_ENGINE_REGIONS)) {
+      const labels = engineAliases[engine] ?? [engine];
+      // Only fill from the fallback when the API gave us nothing for any of
+      // this engine's labels — preserves the live list when DO does return
+      // accurate per-engine regions.
+      const haveLive = labels.some((label) =>
+        [...engineRegions.values()].some((set) => set.has(label)),
+      );
+      if (haveLive) continue;
+      for (const slug of slugs) {
+        if (NON_DBAAS_REGIONS.has(slug)) continue;
+        if (!engineRegions.has(slug)) engineRegions.set(slug, new Set());
+        const set = engineRegions.get(slug)!;
+        for (const label of labels) set.add(label);
+      }
+    }
+
+    const dbCapableSlugs = engineRegions.size > 0 ? new Set(engineRegions.keys()) : null;
     const regions = regionsData.regions
       .filter((r) => r.available)
+      // DBaaS isn't offered in DO's legacy datacenters — exclude them
+      // regardless of whether the per-engine map came from the API or the
+      // hardcoded fallback above.
+      .filter((r) => !NON_DBAAS_REGIONS.has(r.slug))
+      // When we have a per-engine list, drop regions no engine supports.
+      .filter((r) => !dbCapableSlugs || dbCapableSlugs.has(r.slug))
       .map((r) => {
         const info = regionDisplay(r.slug);
+        const engines = engineRegions.get(r.slug);
         return {
           id: r.slug,
           label: r.name,
           ...(info ? { location: info.location, flag: info.flag } : {}),
+          ...(engines ? { availableFor: [...engines].sort() } : {}),
         };
       });
 
-    const dbSizes = sizesData.sizes
-      .filter((s) => s.available && s.slug.startsWith("db-"))
-      .map((s) => ({
-        id: s.slug,
-        label: s.slug,
-        vcpus: s.vcpus,
-        memoryMb: s.memory,
-        diskGb: s.disk,
-        priceMonthly: s.price_monthly,
-        category: s.description || "Database",
-      }));
+    // Union of every size slug DO lists for any engine, then filter to
+    // actually-DB-shaped slugs. DO's options endpoint can include
+    // droplet-style slugs (e.g. c-96-intel) under certain engines'
+    // layouts — those are real provisioning targets on DO's side but
+    // they show up unparseable in the picker (0 vCPU / 0 MB / no price)
+    // because their slug doesn't carry the inline {N}vcpu / {N}gb
+    // pattern. Until we have a real per-engine size catalog, restrict
+    // the picker to slugs we can both display sensibly and price.
+    const sizeSet = new Set<string>();
+    for (const engine of Object.values(optionsData.options ?? {})) {
+      for (const layout of engine.layouts ?? []) {
+        for (const slug of layout.sizes ?? []) sizeSet.add(slug);
+      }
+    }
+    const dbSizes = [...sizeSet]
+      .map((slug) => {
+        // Slugs look like "db-s-1vcpu-1gb" / "db-r-2vcpu-16gb".
+        const vcpuMatch = /(\d+)\s*v?cpu/i.exec(slug);
+        const memMatch = /(\d+)gb/i.exec(slug);
+        const vcpus = vcpuMatch ? Number(vcpuMatch[1]) : 0;
+        const memoryGb = memMatch ? Number(memMatch[1]) : 0;
+        const price = estimateDoDatabaseMonthlyPrice(slug, memoryGb);
+        return {
+          id: slug,
+          label: slug,
+          vcpus,
+          memoryMb: memoryGb * 1024,
+          diskGb: 0,
+          ...(price > 0 ? { priceMonthly: price } : {}),
+          category: slug.split("-").slice(0, 2).join("-") || "Database",
+          _parsable: vcpus > 0 && memoryGb > 0,
+        };
+      })
+      // Drop anything we couldn't parse vCPU/memory out of — those are
+      // droplet slugs DO returned that aren't representable as DB nodes
+      // in this picker, and would show "0 vCPUs / 0 MB" otherwise.
+      .filter((s) => s._parsable)
+      .map(({ _parsable: _, ...rest }) => rest)
+      .sort((a, b) => a.vcpus - b.vcpus || a.memoryMb - b.memoryMb || a.id.localeCompare(b.id));
 
     return {
       fields: [
         { key: "name", label: "Name", kind: "text", required: true },
+        ...projectField,
         {
           key: "engine",
           label: "Engine",
@@ -406,6 +569,7 @@ export async function doGetCreateConfig(
           kind: "region-picker",
           required: true,
           regions,
+          filterByFieldKey: "engine",
           ...(regions[0] ? { defaultValue: regions[0].id } : {}),
         },
         {
@@ -425,6 +589,25 @@ export async function doGetCreateConfig(
           minValue: 1,
           maxValue: 5,
           stepValue: 1,
+        },
+      ],
+    };
+  }
+
+  if (typeId === "db-user") {
+    return {
+      fields: [
+        {
+          key: "name",
+          label: "Username",
+          kind: "text",
+          required: true,
+          description:
+            "Letters, digits, and `_-` only. Must be unique within the cluster. DO will " +
+            "auto-generate the password and we'll persist it locally so the cluster's " +
+            "connection string can use it.",
+          placeholder: "infrawrench",
+          defaultValue: `infrawrench-${Math.random().toString(36).slice(2, 8)}`,
         },
       ],
     };
@@ -552,9 +735,10 @@ export async function doGetCreateConfig(
   }
 
   if (typeId === "volume") {
-    const regionsData = await ctx.fetch<{
-      regions: Array<{ slug: string; name: string; available: boolean }>;
-    }>("/regions");
+    const [regionsData, projectField] = await Promise.all([
+      ctx.fetch<{ regions: Array<{ slug: string; name: string; available: boolean }> }>("/regions"),
+      buildProjectField(ctx, parentResourceId),
+    ]);
     const regions = regionsData.regions
       .filter((r) => r.available)
       .map((r) => {
@@ -568,6 +752,7 @@ export async function doGetCreateConfig(
     return {
       fields: [
         { key: "name", label: "Volume Name", kind: "text", required: true },
+        ...projectField,
         {
           key: "region",
           label: "Region",
@@ -606,13 +791,14 @@ export async function doGetCreateConfig(
     // NFS shares are pinned to a VPC. List both regions (only some are
     // NFS-eligible — DO returns 422 from create otherwise, surfaced as the
     // host error) and the account's VPCs so the user can pick.
-    const [regionsData, vpcsData] = await Promise.all([
+    const [regionsData, vpcsData, projectField] = await Promise.all([
       ctx.fetch<{
         regions: Array<{ slug: string; name: string; available: boolean }>;
       }>("/regions"),
       ctx
         .fetch<{ vpcs: Array<{ id: string; name: string; region: string }> }>("/vpcs?per_page=200")
         .catch(() => ({ vpcs: [] as Array<{ id: string; name: string; region: string }> })),
+      buildProjectField(ctx, parentResourceId),
     ]);
     const regions = regionsData.regions
       .filter((r) => r.available)
@@ -631,6 +817,7 @@ export async function doGetCreateConfig(
     return {
       fields: [
         { key: "name", label: "Share Name", kind: "text", required: true },
+        ...projectField,
         {
           key: "region",
           label: "Region",
@@ -688,6 +875,10 @@ export async function doCreateResource(
   parentResourceId?: string,
 ): Promise<ResourceCreateResult> {
   const warnings: ResourceWarning[] = [];
+  // Mutable cell — handlers that mint sidecar credentials (e.g. spaces-bucket
+  // auto-creating an account-wide Spaces key) write into it, and the wrapper
+  // forwards them up to the host as `credentialUpdates` on the result.
+  const credentialUpdatesRef: { value?: Record<string, string> } = {};
   const resource = await doCreateResourceImpl(
     ctx,
     typeId,
@@ -695,8 +886,13 @@ export async function doCreateResource(
     fields,
     parentResourceId,
     warnings,
+    credentialUpdatesRef,
   );
-  return { resource, warnings };
+  return {
+    resource,
+    warnings,
+    ...(credentialUpdatesRef.value ? { credentialUpdates: credentialUpdatesRef.value } : {}),
+  };
 }
 
 async function doCreateResourceImpl(
@@ -706,16 +902,25 @@ async function doCreateResourceImpl(
   fields: Record<string, string>,
   parentResourceId: string | undefined,
   warnings: ResourceWarning[],
+  credentialUpdatesRef: { value?: Record<string, string> },
 ): Promise<ResourceInstance> {
   // When a child resource is created from its parent's detail page, the form
   // omits the parent-identifying field — recover it by parsing the parent's
   // `{accountId}:{typeId}:{externalId}` id. DO project ids are UUIDs; DO
   // domain ids are the domain name itself. Falls back to `fields["projectId"]`
   // when the form was opened from the account base and the user picked a
-  // project explicitly (currently the droplet create form).
+  // project explicitly via the build-helper-added field.
   const parentExternalId = parentResourceId
     ? parentResourceId.split(":").slice(2).join(":")
     : (fields["projectId"] ?? "");
+
+  // For project-assignable types, build a synthetic parentResourceId from
+  // the picked project so the new resource nests under its project in the
+  // sidebar/account view even when the form was opened from the account
+  // base. Type-specific create branches below thread this onto the
+  // returned ResourceInstance via `parentResourceId: effectiveParentId`.
+  const effectiveParentId =
+    parentResourceId ?? (parentExternalId ? `${accountId}:project:${parentExternalId}` : "");
 
   // DigitalOcean projects are an organizational concept. Resources can be
   // created without being assigned to a project (they land in the default
@@ -800,11 +1005,6 @@ async function doCreateResourceImpl(
       });
     }
     await assignToProjectIfNeeded(`do:droplet:${String(d["id"])}`);
-    // When the project came from the form picker rather than a parent
-    // detail page, synthesize a parentResourceId so the new droplet nests
-    // correctly under its project in the sidebar/account view.
-    const effectiveParentId =
-      parentResourceId ?? (parentExternalId ? `${accountId}:project:${parentExternalId}` : "");
     return {
       id: `${accountId}:droplet:${String(d["id"])}`,
       pluginId: "digitalocean",
@@ -871,23 +1071,70 @@ async function doCreateResourceImpl(
       },
       secretStates: [],
       externalId: String(cluster["id"]),
-      ...(parentResourceId ? { parentResourceId } : {}),
+      ...(effectiveParentId ? { parentResourceId: effectiveParentId } : {}),
       createdAt: String(cluster["created_at"] ?? new Date().toISOString()),
       updatedAt: String(cluster["updated_at"] ?? cluster["created_at"] ?? new Date().toISOString()),
     };
   }
 
   if (typeId === "spaces-bucket") {
-    // Spaces are managed via the S3-compatible API, not the DO REST API.
-    // This requires separate Spaces access key credentials.
-    const accessKeyId = ctx.credentials["spacesAccessKeyId"] as string | undefined;
-    const secretAccessKey = ctx.credentials["spacesSecretAccessKey"] as string | undefined;
+    // Spaces buckets are created via the S3-compatible API — DO's REST API
+    // (/v2/spaces/...) only exposes access-key CRUD, no bucket operations
+    // (verified in digitalocean/openapi/spaces/). The S3 PUT needs a pair
+    // of Spaces keys distinct from the API token; modelled as
+    // `spacesAccessKeyId` / `spacesSecretAccessKey` on the account.
+    //
+    // When the pair is missing we mint an account-wide key via POST
+    // /spaces/keys (PAT scope: spaces_keys:create) and return it via
+    // `credentialUpdates` so the host persists it. A freshly-minted key
+    // takes a few seconds to propagate to DO's S3 auth backend, so after
+    // minting we probe with a cheap authenticated call (ListAllMyBuckets
+    // GET against the regional endpoint) before the bucket PUT, then
+    // retry the PUT on transient 403 in case propagation finishes mid-
+    // flight.
+    let accessKeyId = ctx.credentials["spacesAccessKeyId"] as string | undefined;
+    let secretAccessKey = ctx.credentials["spacesSecretAccessKey"] as string | undefined;
+    let mintedCredentialUpdates: Record<string, string> | undefined;
+    let keyJustMinted = false;
     if (!accessKeyId || !secretAccessKey) {
-      throw new Error(
-        "DigitalOcean plugin: Spaces management requires S3-compatible credentials " +
-          '("spacesAccessKeyId" and "spacesSecretAccessKey"). ' +
-          "Generate these in the DigitalOcean console under API > Spaces Keys.",
-      );
+      const name = `infrawrench-spaces-${Date.now().toString(36)}`;
+      // POST /spaces/keys with NO grants (or grants: []) mints a "No Grant
+      // Key" — DO's spec for an unauthorized key with zero permissions,
+      // which is what was producing the AccessDenied response on the
+      // bucket PUT. The correct shape for an account-wide full-access
+      // key (the equivalent of the legacy console-generated "Spaces
+      // access key") is a single grant with empty bucket + "fullaccess".
+      const mintResp = await ctx
+        .fetch<{
+          key?: { access_key?: string; secret_key?: string };
+        }>("/spaces/keys", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name,
+            grants: [{ bucket: "", permission: "fullaccess" }],
+          }),
+        })
+        .catch((err: unknown) => {
+          const message = err instanceof Error ? err.message : String(err);
+          throw new Error(
+            `DigitalOcean plugin: couldn't auto-generate Spaces access keys via POST /spaces/keys (${message}). ` +
+              "Make sure the API token has the spaces_keys:create scope, or generate a key manually in the DO console (API > Spaces Keys) and edit this account.",
+          );
+        });
+      const minted = mintResp.key;
+      if (!minted?.access_key || !minted?.secret_key) {
+        throw new Error(
+          "DigitalOcean plugin: POST /spaces/keys returned no key. Generate one in the DO console (API > Spaces Keys) and edit this account.",
+        );
+      }
+      accessKeyId = minted.access_key;
+      secretAccessKey = minted.secret_key;
+      mintedCredentialUpdates = {
+        spacesAccessKeyId: accessKeyId,
+        spacesSecretAccessKey: secretAccessKey,
+      };
+      keyJustMinted = true;
     }
 
     const bucketName = fields["name"];
@@ -896,21 +1143,117 @@ async function doCreateResourceImpl(
     const host = `${bucketName}.${region}.digitaloceanspaces.com`;
     const endpoint = `https://${host}`;
 
-    const res = await signedS3Fetch({
-      accessKey: accessKeyId,
-      secretKey: secretAccessKey,
-      region,
-      method: "PUT",
-      url: `${endpoint}/`,
-    });
-    if (!res.ok) {
+    // Wait for a freshly-minted key to propagate. ListAllMyBuckets is the
+    // cheapest authenticated probe — it doesn't require any pre-existing
+    // bucket and returns 200 with an empty body on a brand-new account.
+    if (keyJustMinted) {
+      const regionalEndpoint = `https://${region}.digitaloceanspaces.com/`;
+      const maxAttempts = 15;
+      let ready = false;
+      for (let i = 0; i < maxAttempts; i++) {
+        const probe = await signedS3Fetch({
+          accessKey: accessKeyId,
+          secretKey: secretAccessKey,
+          region,
+          method: "GET",
+          url: regionalEndpoint,
+        }).catch(() => null);
+        if (probe && probe.ok) {
+          ready = true;
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
+      if (!ready) {
+        throw new Error(
+          "DigitalOcean plugin: auto-generated Spaces key isn't usable yet (still propagating after 30s). " +
+            "The key has been saved on your account — retry the bucket create in a minute, or paste an existing Spaces key in the DO console (API > Spaces Keys) and edit this account.",
+        );
+      }
+    }
+
+    // Retry the bucket PUT on transient 403 — propagation can finish a
+    // beat after the probe succeeds, especially if the user's account
+    // has never used Spaces before.
+    const tryPut = async (
+      access: string,
+      secret: string,
+      attempts: number,
+    ): Promise<{ ok: true } | { ok: false; status: number; text: string }> => {
+      for (let i = 0; i < attempts; i++) {
+        const r = await signedS3Fetch({
+          accessKey: access,
+          secretKey: secret,
+          region,
+          method: "PUT",
+          url: `${endpoint}/`,
+        });
+        if (r.ok) return { ok: true };
+        if (r.status !== 403 || i === attempts - 1) {
+          return { ok: false, status: r.status, text: await r.text() };
+        }
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+      }
+      return { ok: false, status: 0, text: "no attempts" };
+    };
+    let putResult = await tryPut(accessKeyId, secretAccessKey, keyJustMinted ? 4 : 1);
+
+    // Recovery for the previous "no grant key" leak: an earlier version
+    // of this handler minted account-wide keys without the
+    // `[{ bucket: "", permission: "fullaccess" }]` grant, producing a
+    // valid key with zero permissions. Those keys are still saved on
+    // affected accounts and will 403 every Spaces call. If a stored
+    // (i.e. not-just-minted) key 403s on bucket creation, mint a
+    // fresh full-access one, surface the replacement via
+    // `credentialUpdates`, and retry once.
+    if (!putResult.ok && putResult.status === 403 && !keyJustMinted) {
+      const name = `infrawrench-spaces-${Date.now().toString(36)}`;
+      const mintResp = await ctx
+        .fetch<{
+          key?: { access_key?: string; secret_key?: string };
+        }>("/spaces/keys", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name,
+            grants: [{ bucket: "", permission: "fullaccess" }],
+          }),
+        })
+        .catch(() => null);
+      const replacement = mintResp?.key;
+      if (replacement?.access_key && replacement?.secret_key) {
+        accessKeyId = replacement.access_key;
+        secretAccessKey = replacement.secret_key;
+        mintedCredentialUpdates = {
+          spacesAccessKeyId: accessKeyId,
+          spacesSecretAccessKey: secretAccessKey,
+        };
+        // Wait for the replacement key to propagate, same as the
+        // first-time mint path.
+        const regionalEndpoint = `https://${region}.digitaloceanspaces.com/`;
+        for (let i = 0; i < 15; i++) {
+          const probe = await signedS3Fetch({
+            accessKey: accessKeyId,
+            secretKey: secretAccessKey,
+            region,
+            method: "GET",
+            url: regionalEndpoint,
+          }).catch(() => null);
+          if (probe && probe.ok) break;
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+        }
+        putResult = await tryPut(accessKeyId, secretAccessKey, 4);
+      }
+    }
+
+    if (!putResult.ok) {
       throw new Error(
-        `Spaces S3 API error ${res.status} creating bucket "${bucketName}": ${await res.text()}`,
+        `Spaces S3 API error ${putResult.status} creating bucket "${bucketName}": ${putResult.text}`,
       );
     }
 
     await assignToProjectIfNeeded(`do:space:${bucketName}`);
-    return {
+    const resource: ResourceInstance = {
       id: `${accountId}:spaces-bucket:${bucketName}`,
       pluginId: "digitalocean",
       resourceTypeId: "spaces-bucket",
@@ -926,10 +1269,17 @@ async function doCreateResourceImpl(
       },
       secretStates: [],
       externalId: String(bucketName),
-      ...(parentResourceId ? { parentResourceId } : {}),
+      ...(effectiveParentId ? { parentResourceId: effectiveParentId } : {}),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
+    // Forward the minted credentials to the wrapping `doCreateResource`
+    // so the host can persist them on the account. Returning a bare
+    // ResourceInstance from this branch alone loses them.
+    if (mintedCredentialUpdates) {
+      credentialUpdatesRef.value = mintedCredentialUpdates;
+    }
+    return resource;
   }
 
   if (typeId === "managed-database") {
@@ -962,9 +1312,62 @@ async function doCreateResourceImpl(
       resolvedOutputs: {},
       secretStates: [],
       externalId: String(db["id"]),
-      ...(parentResourceId ? { parentResourceId } : {}),
+      ...(effectiveParentId ? { parentResourceId: effectiveParentId } : {}),
       createdAt: String(db["created_at"] ?? new Date().toISOString()),
       updatedAt: String(db["created_at"] ?? new Date().toISOString()),
+    };
+  }
+
+  if (typeId === "db-user") {
+    // The parent cluster id arrives via the standard {accountId}:{typeId}:{externalId}
+    // composite — for managed-database that's the cluster's UUID. The form
+    // doesn't expose a cluster picker because db-user is always created from
+    // a cluster's detail page.
+    if (!parentResourceId) {
+      throw new Error("db-user must be created from a managed-database's detail page");
+    }
+    const clusterId = parentExternalId;
+    if (!clusterId) {
+      throw new Error("Could not parse cluster id from parentResourceId");
+    }
+    const username = String(fields["name"] ?? "").trim();
+    if (!username) throw new Error("Username is required");
+    const resp = await ctx.fetch<{
+      user?: { name?: string; role?: string; password?: string };
+    }>(`/databases/${clusterId}/users`, {
+      method: "POST",
+      body: JSON.stringify({ name: username }),
+    });
+    const user = resp.user ?? {};
+    const password = String(user.password ?? "");
+    // The whole point of routing user creation through Infrawrench is to
+    // capture the password DO surfaces exactly once. Refuse to persist the
+    // resource if it didn't come back — better a clear error here than a
+    // silently-useless user record.
+    if (!password) {
+      throw new Error(
+        "DigitalOcean did not return a password for the new user. Confirm the API token has " +
+          "`database:view_credentials` scope and try again.",
+      );
+    }
+    const name = String(user.name ?? username);
+    const now = new Date().toISOString();
+    return {
+      id: `${accountId}:db-user:${clusterId}:${name}`,
+      pluginId: "digitalocean",
+      resourceTypeId: "db-user",
+      accountId,
+      displayName: name,
+      fields: {
+        name,
+        role: String(user.role ?? ""),
+      },
+      resolvedOutputs: {},
+      secretStates: [{ fieldKey: "password", resolution: { kind: "plaintext", value: password } }],
+      externalId: name,
+      parentResourceId: `${accountId}:managed-database:${clusterId}`,
+      createdAt: now,
+      updatedAt: now,
     };
   }
 
@@ -1102,7 +1505,7 @@ async function doCreateResourceImpl(
       resolvedOutputs: {},
       secretStates: [],
       externalId: String(v["id"] ?? ""),
-      ...(parentResourceId ? { parentResourceId } : {}),
+      ...(effectiveParentId ? { parentResourceId: effectiveParentId } : {}),
       createdAt: String(v["created_at"] ?? now),
       updatedAt: now,
     };
@@ -1144,7 +1547,7 @@ async function doCreateResourceImpl(
       resolvedOutputs: {},
       secretStates: [],
       externalId,
-      ...(parentResourceId ? { parentResourceId } : {}),
+      ...(effectiveParentId ? { parentResourceId: effectiveParentId } : {}),
       createdAt: String(s["created_at"] ?? now),
       updatedAt: now,
     };
