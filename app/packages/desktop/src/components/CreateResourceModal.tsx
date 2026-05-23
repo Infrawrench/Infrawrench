@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { createPluginClient } from "../lib/plugin-client";
+import { invoke } from "../lib/invoke";
 import {
   CreateResourceModal as SharedCreateResourceModal,
   toast,
@@ -235,7 +236,32 @@ export function CreateResourceModal({
           fields,
           parentResourceId,
         );
-        const { resource, warnings } = normalizeResourceCreateResult(createReturn);
+        const { resource, warnings, credentialUpdates } =
+          normalizeResourceCreateResult(createReturn);
+        // Merge auto-minted account credentials (e.g. DO Spaces keys
+        // created on first bucket-create) into the saved account row
+        // before persisting the resource. If this fails the resource
+        // still got created upstream, but subsequent ops that rely on
+        // these creds will error until the user re-runs — surface as a
+        // warning rather than swallowing.
+        if (credentialUpdates && Object.keys(credentialUpdates).length > 0) {
+          try {
+            const existing = await invoke<Record<string, string>>("account_get_credentials", {
+              accountId,
+            });
+            await invoke<void>("account_save_credentials", {
+              accountId,
+              credentials: { ...existing, ...credentialUpdates },
+            });
+            // Drop the cached plugin client so the next operation
+            // picks up the new credentials.
+            clientRef.current = null;
+          } catch (err) {
+            toast.warning(
+              `Created ${resource.displayName} but couldn't save the new credentials to the account: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          }
+        }
         await persistCreatedResource(resource);
         for (const w of warnings) {
           toast.warning(w.message);

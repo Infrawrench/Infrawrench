@@ -1,10 +1,10 @@
 import type { Hono } from "hono";
 import { v4 as uuidv4 } from "uuid";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { db } from "../../../db/client";
-import { resources, secretFieldStates } from "../../../db/schema";
+import { accounts, resources, secretFieldStates } from "../../../db/schema";
 import { getClientForAccount, getClientForResource } from "../../../services/plugin-clients";
-import { encrypt, buildAad } from "../../../services/encryption";
+import { encrypt, decrypt, buildAad } from "../../../services/encryption";
 import { normalizeResourceCreateResult } from "@infrawrench/plugin-base";
 import { requirePermission } from "../../../auth/permissions";
 
@@ -74,7 +74,46 @@ export function registerLifecycleRoutes(app: Hono): void {
       return c.json({ error: message }, 400);
     }
 
-    const { resource: created, warnings } = normalizeResourceCreateResult(createReturn);
+    const {
+      resource: created,
+      warnings,
+      credentialUpdates,
+    } = normalizeResourceCreateResult(createReturn);
+
+    // If the plugin minted sidecar credentials during creation (e.g. DO
+    // auto-generating Spaces S3 keys on first bucket-create), merge them
+    // into the account's encrypted credentials row. We do this before
+    // persisting the resource so the next ctx fetch for this account sees
+    // the new keys. A failure here is non-fatal: the resource still got
+    // created upstream and the user can edit the account to paste the
+    // keys manually.
+    if (credentialUpdates && Object.keys(credentialUpdates).length > 0) {
+      try {
+        const [acct] = await db
+          .select()
+          .from(accounts)
+          .where(
+            and(eq(accounts.id, input.accountId), eq(accounts.organizationId, organizationId)),
+          );
+        if (acct) {
+          const aad = buildAad("account", acct.id, "credentials");
+          const plaintext = await decrypt(acct.encryptedCredentials, acct.credentialsIv, aad);
+          const existing = JSON.parse(plaintext) as Record<string, string>;
+          const merged = { ...existing, ...credentialUpdates };
+          const { ciphertext, iv } = await encrypt(JSON.stringify(merged), aad);
+          await db
+            .update(accounts)
+            .set({ encryptedCredentials: ciphertext, credentialsIv: iv, updatedAt: new Date() })
+            .where(eq(accounts.id, acct.id));
+        }
+      } catch (err) {
+        console.error("[resource-detail] Failed to persist auto-minted credentials:", err);
+        warnings.push({
+          code: "do.credential-persist-failed",
+          message: `Couldn't save auto-generated account credentials: ${err instanceof Error ? err.message : String(err)}. Edit the account to add them manually.`,
+        });
+      }
+    }
 
     // Persist top-level (non-peer) resources to DB so the detail page can find
     // them without waiting for the next sync. Peer resources (e.g. k8s-pod on
