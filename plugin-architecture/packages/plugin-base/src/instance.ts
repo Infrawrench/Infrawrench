@@ -45,6 +45,16 @@ export interface ResourceWarning {
 export interface ResourceCreateResult {
   resource: ResourceInstance;
   warnings: ResourceWarning[];
+  /**
+   * When set, the host merges these keys into the account's stored
+   * credentials and persists the encrypted row before returning the new
+   * resource to the user. Used by providers that auto-mint sidecar
+   * credentials during creation — e.g. the DigitalOcean plugin mints an
+   * account-wide Spaces S3 key on first bucket-create so the user doesn't
+   * have to paste one manually. Existing keys are preserved; only the
+   * keys present in this map are overwritten.
+   */
+  credentialUpdates?: Record<string, string>;
 }
 
 export type ResourceCreateReturn = ResourceInstance | ResourceCreateResult;

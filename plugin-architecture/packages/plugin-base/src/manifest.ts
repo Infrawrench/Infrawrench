@@ -44,6 +44,16 @@ export interface SqlDriverDeclaration {
   driver: string;
   /** The key in the account credentials that holds the connection string/URI. */
   credentialKey: string;
+  /**
+   * Optional credential key that holds a PEM-encoded CA certificate to trust
+   * for TLS chain verification. Use for managed-DB providers that sign with
+   * their own internal CA (DigitalOcean, AWS RDS with default certs, etc.) —
+   * the host passes the value through to the driver so cert verification
+   * stays *on* with the vendor CA explicitly trusted, instead of being
+   * disabled outright. When unset or empty, the driver uses the system
+   * trust store.
+   */
+  caCertKey?: string;
 }
 
 /**

@@ -10,11 +10,30 @@
  * it never contains plugin-specific logic.
  */
 
+/**
+ * Optional per-call options for a SQL driver. Currently used to pass a
+ * vendor-provided CA cert (e.g. DigitalOcean's managed-DB CA) so the driver
+ * can keep chain verification on while trusting a non-public CA. Drivers
+ * that don't understand a given option should ignore it.
+ */
+export interface SqlNodeDriverOptions {
+  caCert?: string;
+}
+
 /** SQL database driver — runs queries against a live connection string. */
 export interface SqlNodeDriver {
   readonly id: string;
-  query(connectionString: string, sql: string): Promise<Record<string, unknown>[]>;
-  execute(connectionString: string, sql: string, params: unknown[]): Promise<number>;
+  query(
+    connectionString: string,
+    sql: string,
+    options?: SqlNodeDriverOptions,
+  ): Promise<Record<string, unknown>[]>;
+  execute(
+    connectionString: string,
+    sql: string,
+    params: unknown[],
+    options?: SqlNodeDriverOptions,
+  ): Promise<number>;
 }
 
 /** Key-value / Redis-compatible driver. */

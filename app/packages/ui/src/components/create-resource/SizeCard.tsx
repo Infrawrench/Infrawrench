@@ -69,7 +69,7 @@ export function SizeCard({
         {size.diskGb != null && (
           <span className="text-[10px] text-on-surface-faint">{size.diskGb} GB disk</span>
         )}
-        {size.priceMonthly != null && (
+        {size.priceMonthly != null && size.priceMonthly > 0 && (
           <span
             className={`text-[10px] ml-auto ${selected ? "text-accent" : "text-on-surface-muted"}`}
           >

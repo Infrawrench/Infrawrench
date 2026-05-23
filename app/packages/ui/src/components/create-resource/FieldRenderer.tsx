@@ -265,7 +265,14 @@ export function FieldRenderer({
         ))}
 
       {field.kind === "region-picker" && field.regions && (
-        <RegionPicker regions={field.regions} value={value} onChange={onChange} />
+        <RegionPicker
+          regions={field.regions}
+          value={value}
+          onChange={onChange}
+          {...(field.filterByFieldKey
+            ? { filterValue: formValues?.[field.filterByFieldKey] ?? "" }
+            : {})}
+        />
       )}
 
       {field.kind === "size-picker" && field.sizes && (

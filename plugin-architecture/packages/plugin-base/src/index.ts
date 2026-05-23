@@ -102,6 +102,7 @@ export type {
 
 export type {
   SqlNodeDriver,
+  SqlNodeDriverOptions,
   KvNodeDriver,
   DockerNodeDriver,
   K8sNodeDriver,

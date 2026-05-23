@@ -24,6 +24,13 @@ export interface RegionOption {
   location?: string;
   /** Emoji flag, e.g. "🇺🇸" */
   flag?: string;
+  /**
+   * Optional tag list used by `region-picker` together with the field's
+   * `filterByFieldKey` to hide regions that don't match the picked sibling
+   * value (e.g. region availability per managed-DB engine on DigitalOcean).
+   * When omitted the region is shown for every filter value.
+   */
+  availableFor?: string[];
 }
 
 export interface ImageOption {
@@ -142,6 +149,14 @@ export interface CreateFieldConfig {
    * in the same form.
    */
   scopeFromFieldKey?: string;
+  /**
+   * `region-picker` — when set, the picker reads the current form value of
+   * this field and hides any region whose `availableFor` list doesn't include
+   * that value. Lets a sibling field (e.g. managed-DB `engine`) reactively
+   * narrow the region list so users can't pick combinations the provider
+   * would reject (e.g. Redis in a region where DO doesn't host Redis).
+   */
+  filterByFieldKey?: string;
   /** `policy-picker` — policies/roles the user can attach. Value is JSON array of `id`s. */
   policies?: PolicyOption[];
   /**
