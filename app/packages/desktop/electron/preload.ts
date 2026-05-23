@@ -84,6 +84,8 @@ const INVOKE_CHANNELS = [
   "cloud_create_account",
   "cloud_delete_account",
   "cloud_rename_account",
+  "cloud_get_account_credentials",
+  "cloud_update_account_credentials",
   "cloud_sync_account_type",
   "cloud_list_account_resources",
   "cloud_get_resource_detail",

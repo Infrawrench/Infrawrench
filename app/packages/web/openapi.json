@@ -791,6 +791,7 @@
           "hyperdrive",
           "iam-role",
           "iam-user",
+          "image",
           "instance",
           "instance-group",
           "instance-template",
@@ -843,6 +844,7 @@
           "netlify-env-var",
           "netlify-form",
           "netlify-site",
+          "nfs-share",
           "object-storage-bucket",
           "opensearch-domain",
           "page-rule",
@@ -871,6 +873,7 @@
           "secrets-manager-secret",
           "security-group",
           "server",
+          "snapshot",
           "sns-topic",
           "spaces-bucket",
           "spanner-backup",
@@ -4953,6 +4956,97 @@
         },
         "operationId": "getOrgOrgIdAccountsIdCredentials",
         "x-required-permission": "secrets:read"
+      },
+      "put": {
+        "tags": ["Accounts"],
+        "summary": "Rotate the credentials an account uses to talk to the upstream provider",
+        "description": "Replaces the encrypted credentials blob in place. Used to swap a stale or narrowly-scoped token for a freshly-minted one without recreating the account (preserves existing resources, pins, dashboards, sync history).\n\n_Requires permission: `secrets:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "credentials": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "description": "Complete credentials map. Sensitive fields the caller doesn't want to change should be re-sent with their previous value (the server doesn't merge with the existing blob)."
+                  }
+                },
+                "required": ["credentials"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean",
+                      "enum": [true]
+                    }
+                  },
+                  "required": ["ok"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdAccountsIdCredentials",
+        "x-required-permission": "secrets:write"
       }
     },
     "/api/org/{orgId}/accounts/{id}/resources": {

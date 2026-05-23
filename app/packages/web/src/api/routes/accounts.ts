@@ -218,6 +218,38 @@ app.get("/:id/credentials", async (c) => {
   return c.json(JSON.parse(plaintext));
 });
 
+/**
+ * PUT /api/accounts/:id/credentials — rotate the credentials this account
+ * uses to talk to the upstream provider. Used to swap a stale or
+ * narrowly-scoped API token for a freshly-minted one without losing the
+ * account's existing resources, pins, dashboards, or sync history.
+ */
+app.put("/:id/credentials", async (c) => {
+  requirePermission(c, "secrets:write");
+  const organizationId = c.get("organizationId");
+  const accountId = c.req.param("id");
+  const body = await c.req.json<{ credentials?: Record<string, string> }>();
+  const credentials = body.credentials;
+  if (!credentials || typeof credentials !== "object") {
+    return c.json({ error: "credentials object is required" }, 400);
+  }
+  const [existing] = await db
+    .select({ id: accounts.id })
+    .from(accounts)
+    .where(and(eq(accounts.id, accountId), eq(accounts.organizationId, organizationId)))
+    .limit(1);
+  if (!existing) return c.json({ error: "Account not found" }, 404);
+  const { ciphertext, iv } = await encrypt(
+    JSON.stringify(credentials),
+    buildAad("account", accountId, "credentials"),
+  );
+  await db
+    .update(accounts)
+    .set({ encryptedCredentials: ciphertext, credentialsIv: iv })
+    .where(and(eq(accounts.id, accountId), eq(accounts.organizationId, organizationId)));
+  return c.json({ ok: true });
+});
+
 /** GET /api/accounts/:id/resources — list resources for account */
 app.get("/:id/resources", async (c) => {
   requirePermission(c, "resources:read");

@@ -230,6 +230,43 @@ export function registerAccountPaths(ctx: BuildContext) {
   });
 
   registry.registerPath({
+    method: "put",
+    path: "/api/org/{orgId}/accounts/{id}/credentials",
+    tags: ["Accounts"],
+    summary: "Rotate the credentials an account uses to talk to the upstream provider",
+    description:
+      "Replaces the encrypted credentials blob in place. Used to swap a stale or " +
+      "narrowly-scoped token for a freshly-minted one without recreating the account " +
+      "(preserves existing resources, pins, dashboards, sync history).",
+    request: {
+      params: OrgIdParam.extend({ id: Uuid.openapi({ param: { name: "id", in: "path" } }) }),
+      body: {
+        content: {
+          "application/json": {
+            schema: strict({
+              credentials: z.record(z.string()).openapi({
+                description:
+                  "Complete credentials map. Sensitive fields the caller doesn't want " +
+                  "to change should be re-sent with their previous value (the server " +
+                  "doesn't merge with the existing blob).",
+              }),
+            }),
+          },
+        },
+        required: true,
+      },
+    },
+    responses: {
+      200: {
+        description: "Updated",
+        content: { "application/json": { schema: strict({ ok: z.literal(true) }) } },
+      },
+      400: ErrorResponses[400],
+      404: ErrorResponses[404],
+    },
+  });
+
+  registry.registerPath({
     method: "get",
     path: "/api/org/{orgId}/accounts/{id}/resources",
     tags: ["Accounts"],

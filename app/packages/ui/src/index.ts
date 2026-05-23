@@ -56,6 +56,7 @@ export type {
   BastionOption,
   AccountReferenceOption,
 } from "./components/AddAccountModal.js";
+export { EditCredentialsModal } from "./components/EditCredentialsModal.js";
 export { DockerActionsPanel } from "./components/DockerActionsPanel.js";
 export { KvConsole, tokenize, formatRedisResult } from "./components/KvConsole.js";
 export type { KvConsoleProps } from "./components/KvConsole.js";

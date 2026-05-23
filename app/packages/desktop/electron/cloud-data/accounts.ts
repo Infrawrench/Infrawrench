@@ -89,3 +89,37 @@ ipcMain.handle(
     );
   },
 );
+
+ipcMain.handle(
+  "cloud_get_account_credentials",
+  async (_e, { orgId, accountId }: { orgId: string; accountId: string }) => {
+    return (
+      (await cloudFetch<Record<string, string>>(
+        orgId,
+        `/accounts/${encodeURIComponent(accountId)}/credentials`,
+      )) ?? {}
+    );
+  },
+);
+
+ipcMain.handle(
+  "cloud_update_account_credentials",
+  async (
+    _e,
+    {
+      orgId,
+      accountId,
+      credentials,
+    }: {
+      orgId: string;
+      accountId: string;
+      credentials: Record<string, string>;
+    },
+  ) => {
+    await cloudFetch(orgId, `/accounts/${encodeURIComponent(accountId)}/credentials`, {
+      method: "PUT",
+      body: JSON.stringify({ credentials }),
+    });
+    return { ok: true };
+  },
+);

@@ -6,8 +6,10 @@ import {
   useUIStore,
   useTabId,
   ConfirmDeleteModal,
+  EditCredentialsModal,
   RESOURCES_CHANGED_EVENT,
   dispatchResourcesChanged,
+  dispatchRefreshResource,
   AccountResourceSections,
   type DraggableResource,
   formatErrorMessage,
@@ -24,6 +26,7 @@ import {
   listCloudAccountResources,
   deleteCloudAccount,
   renameCloudAccount,
+  updateCloudAccountCredentials,
   pinCloudResource,
   unpinCloudResource,
   listCloudDashboards,
@@ -72,6 +75,10 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
   const [pinned, setPinned] = useState<Set<string>>(new Set());
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [createTarget, setCreateTarget] = useState<ResourceTypeDefinition | null>(null);
+  const [editCredsState, setEditCredsState] = useState<{
+    plugin: import("@infrawrench/ui").PluginInfo;
+    current: Record<string, string>;
+  } | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(account?.display_name ?? "");
   const [isSaving, setIsSaving] = useState(false);
@@ -639,6 +646,60 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
     }
   }
 
+  async function openEditCredentials() {
+    if (!account) return;
+    try {
+      const loaded = await getPlugin(account.plugin_id);
+      if (!loaded) throw new Error(`Plugin "${account.plugin_id}" not loaded`);
+      const manifest = loaded.plugin.manifest;
+      const current = activeCloudOrgId
+        ? await invoke<Record<string, string>>("cloud_get_account_credentials", {
+            orgId: activeCloudOrgId,
+            accountId,
+          }).catch(() => ({}) as Record<string, string>)
+        : await invoke<Record<string, string>>("account_get_credentials", { accountId });
+      setEditCredsState({
+        plugin: {
+          id: manifest.id,
+          displayName: manifest.displayName,
+          logoSvg: manifest.logoSvg,
+          credentialFields: manifest.credentialFields.map((f) => ({
+            key: f.key,
+            label: f.label,
+            ...(f.description !== undefined ? { description: f.description } : {}),
+            ...(f.placeholder !== undefined ? { placeholder: f.placeholder } : {}),
+            ...(f.sensitive !== undefined ? { sensitive: f.sensitive } : {}),
+            ...(f.multiline !== undefined ? { multiline: f.multiline } : {}),
+            ...(f.defaultValue !== undefined ? { defaultValue: f.defaultValue } : {}),
+            ...(f.optional !== undefined ? { optional: f.optional } : {}),
+            ...(f.regions !== undefined ? { regions: f.regions } : {}),
+            ...(f.accountReference !== undefined ? { accountReference: f.accountReference } : {}),
+          })),
+        },
+        current,
+      });
+    } catch (err) {
+      toast.error(`Couldn't open credentials: ${formatErrorMessage(err)}`);
+    }
+  }
+
+  async function saveCredentials(credentials: Record<string, string>) {
+    if (activeCloudOrgId) {
+      await updateCloudAccountCredentials(activeCloudOrgId, accountId, credentials);
+    } else {
+      await invoke<void>("account_save_credentials", { accountId, credentials });
+    }
+    toast.success("Credentials updated");
+    backgroundLoadRef.current = true;
+    setLoadVersion((v) => v + 1);
+    // Resource detail tabs and the sidebar bind credentials at mount-time, so
+    // a save here doesn't auto-propagate. Force open tabs to re-fetch and
+    // rebuild their plugin clients with the new credentials — otherwise the
+    // user's next click into a peer pane still uses the old (broken) token.
+    dispatchRefreshResource();
+    dispatchResourcesChanged({ accountId });
+  }
+
   function openDetail(resource: ResourceInstance) {
     void navigateToWorkspaceTarget(navigate, resourceTabTarget(accountId, resource.id), {
       label: resource.displayName,
@@ -703,12 +764,20 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
         </div>
         <div className="flex items-center gap-1">
           {!isEditing && (
-            <button
-              onClick={() => setIsEditing(true)}
-              className="text-xs text-on-surface-faint hover:text-on-surface transition-colors px-2 py-1 rounded hover:bg-surface-overlay"
-            >
-              Rename
-            </button>
+            <>
+              <button
+                onClick={() => setIsEditing(true)}
+                className="text-xs text-on-surface-faint hover:text-on-surface transition-colors px-2 py-1 rounded hover:bg-surface-overlay"
+              >
+                Rename
+              </button>
+              <button
+                onClick={() => void openEditCredentials()}
+                className="text-xs text-on-surface-faint hover:text-on-surface transition-colors px-2 py-1 rounded hover:bg-surface-overlay"
+              >
+                Update credentials
+              </button>
+            </>
           )}
           <button
             onClick={() => setConfirmDelete(true)}
@@ -931,6 +1000,16 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
           name={account.display_name}
           onConfirm={() => deleteAccount()}
           onClose={() => setConfirmDelete(false)}
+        />
+      )}
+
+      {editCredsState && account && (
+        <EditCredentialsModal
+          plugin={editCredsState.plugin}
+          accountDisplayName={account.display_name}
+          currentCredentials={editCredsState.current}
+          onSave={saveCredentials}
+          onClose={() => setEditCredsState(null)}
         />
       )}
     </div>

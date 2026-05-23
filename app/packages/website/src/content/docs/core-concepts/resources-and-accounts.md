@@ -16,6 +16,12 @@ An **account** is one set of credentials for one provider. Examples:
 
 You can have many accounts per provider (for example, two DigitalOcean accounts: personal and work). Each account lives under the same plugin but is isolated — its resources only show up grouped under that account.
 
+### Rotating an account's credentials
+
+When you regenerate a token upstream (rotation schedule, scope upgrade, leaked secret), open the account detail page and click **Update credentials**. The form prefills non-sensitive fields and leaves sensitive ones blank with a "leave blank to keep current value" placeholder so you only have to retype the bits you're changing. Synced resources, pins, dashboards, and SSH-tunnel bindings stay intact.
+
+<insert [Account detail page header showing the Rename / Update credentials / Remove buttons] here>
+
 ## Resource
 
 A **resource** is anything the plugin can list or create: a Droplet, an EC2 instance, a DNS record, a Postgres database, a Kubernetes pod. Every resource belongs to exactly one account.

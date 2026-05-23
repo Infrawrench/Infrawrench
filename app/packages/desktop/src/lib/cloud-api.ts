@@ -143,6 +143,14 @@ export async function renameCloudAccount(
   return invoke("cloud_rename_account", { orgId, accountId, displayName });
 }
 
+export async function updateCloudAccountCredentials(
+  orgId: string,
+  accountId: string,
+  credentials: Record<string, string>,
+): Promise<void> {
+  await invoke("cloud_update_account_credentials", { orgId, accountId, credentials });
+}
+
 export async function listCloudDashboards(orgId: string): Promise<CloudDashboard[]> {
   return invoke("cloud_list_dashboards", { orgId });
 }

@@ -3,15 +3,17 @@ import { useNavigate } from "@tanstack/react-router";
 import {
   ResourcePill,
   ConfirmDeleteModal,
+  EditCredentialsModal,
   dispatchResourcesChanged,
   AccountResourceSections,
   type DraggableResource,
   type SectionCategoryState,
+  type PluginInfo,
   useUIStore,
   formatErrorMessage,
   toast,
 } from "@infrawrench/ui";
-import { apiDelete, apiPatch } from "@/lib/api";
+import { apiDelete, apiGet, apiPatch, apiPut } from "@/lib/api";
 import { useOrgId } from "@/lib/useOrgId";
 import type { AccountListItem } from "@/lib/api-types";
 import { CreateResourceModal } from "./CreateResourceModal";
@@ -65,6 +67,10 @@ export function AccountDetailView({
   const orgId = useOrgId();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [createTarget, setCreateTarget] = useState<ResourceTypeInfo | null>(null);
+  const [editCredsState, setEditCredsState] = useState<{
+    plugin: PluginInfo;
+    current: Record<string, string>;
+  } | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(account.displayName);
   const [isSaving, setIsSaving] = useState(false);
@@ -74,6 +80,26 @@ export function AccountDetailView({
     useUIStore.getState().bumpAccounts();
     dispatchResourcesChanged();
     void navigate({ to: "/org/$orgId", params: { orgId } });
+  }
+
+  async function openEditCredentials() {
+    try {
+      const [plugins, current] = await Promise.all([
+        apiGet<PluginInfo[]>(`/api/org/${orgId}/plugins`),
+        apiGet<Record<string, string>>(`/api/org/${orgId}/accounts/${account.id}/credentials`),
+      ]);
+      const plugin = plugins.find((p) => p.id === account.pluginId);
+      if (!plugin) throw new Error(`Plugin "${account.pluginId}" not loaded`);
+      setEditCredsState({ plugin, current });
+    } catch (e) {
+      toast.error(`Couldn't open credentials: ${formatErrorMessage(e)}`);
+    }
+  }
+
+  async function saveCredentials(credentials: Record<string, string>) {
+    await apiPut(`/api/org/${orgId}/accounts/${account.id}/credentials`, { credentials });
+    toast.success("Credentials updated");
+    dispatchResourcesChanged({ accountId: account.id });
   }
 
   async function handleRename() {
@@ -151,12 +177,20 @@ export function AccountDetailView({
         </div>
         <div className="flex items-center gap-1">
           {!isEditing && (
-            <button
-              onClick={() => setIsEditing(true)}
-              className="px-3 py-1.5 text-xs text-on-surface-muted hover:text-on-surface hover:bg-surface-overlay rounded transition-colors"
-            >
-              Rename
-            </button>
+            <>
+              <button
+                onClick={() => setIsEditing(true)}
+                className="px-3 py-1.5 text-xs text-on-surface-muted hover:text-on-surface hover:bg-surface-overlay rounded transition-colors"
+              >
+                Rename
+              </button>
+              <button
+                onClick={() => void openEditCredentials()}
+                className="px-3 py-1.5 text-xs text-on-surface-muted hover:text-on-surface hover:bg-surface-overlay rounded transition-colors"
+              >
+                Update credentials
+              </button>
+            </>
           )}
           <button
             onClick={() => setConfirmDelete(true)}
@@ -173,6 +207,16 @@ export function AccountDetailView({
           name={account.displayName}
           onConfirm={handleDeleteAccount}
           onClose={() => setConfirmDelete(false)}
+        />
+      )}
+
+      {editCredsState && (
+        <EditCredentialsModal
+          plugin={editCredsState.plugin}
+          accountDisplayName={account.displayName}
+          currentCredentials={editCredsState.current}
+          onSave={saveCredentials}
+          onClose={() => setEditCredsState(null)}
         />
       )}
 

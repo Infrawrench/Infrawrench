@@ -167,6 +167,7 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "DELETE /accounts/{id}": "accounts:delete",
   "PATCH /accounts/{id}": "accounts:write",
   "GET /accounts/{id}/credentials": "secrets:read",
+  "PUT /accounts/{id}/credentials": "secrets:write",
   "GET /accounts/{id}/resources": "resources:read",
   "POST /accounts/{id}/sync": "resources:read",
   "GET /accounts/{id}/detail": "accounts:read",
