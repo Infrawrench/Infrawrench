@@ -1,0 +1,491 @@
+import type {
+  PluginClient,
+  HostServices,
+  ResourceInstance,
+  ResourceCreateReturn,
+  DetailViewSchema,
+  SidebarItemSchema,
+  DashboardStat,
+  MetricSeries,
+  PeerPaneContext,
+  PeerPaneSchema,
+  PeerPaneResource,
+} from "@infrawrench/plugin-base";
+
+/**
+ * Kafka plugin client.
+ *
+ * Uses the KV host services channel to execute Kafka Admin operations. The
+ * driver (driver.ts) interprets the `cmd` string as an Admin operation name
+ * and parses simple string/number arguments.
+ *
+ * Command protocol:
+ *   cmd = operation name (e.g. "describeCluster", "listTopics", "createTopic")
+ *   args = positional args; complex values are JSON-encoded strings
+ */
+export class KafkaClient implements PluginClient {
+  private readonly connectionString: string;
+  private readonly services: HostServices | undefined;
+
+  constructor(credentials: Record<string, string>, services?: HostServices) {
+    const cs = credentials["connectionString"];
+    if (!cs) throw new Error("Kafka plugin: missing connectionString credential");
+    this.connectionString = cs;
+    this.services = services;
+  }
+
+  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
+    switch (typeId) {
+      case "kafka-cluster":
+        return this.listClusters(accountId);
+      case "kafka-topic":
+        return this.listTopics(accountId);
+      case "kafka-consumer-group":
+        return this.listConsumerGroups(accountId);
+      default:
+        throw new Error(`Kafka plugin: unknown resource type "${typeId}"`);
+    }
+  }
+
+  async getResource(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+  ): Promise<ResourceInstance> {
+    const all = await this.listResources(typeId, accountId);
+    const found = all.find((r) => r.id === resourceId);
+    if (!found) throw new Error(`Kafka plugin: resource ${typeId}/${resourceId} not found`);
+    return found;
+  }
+
+  async resolveOutput(typeId: string, resourceId: string, outputKey: string): Promise<string> {
+    if (typeId === "kafka-cluster") {
+      if (outputKey === "connectionString") return this.connectionString;
+      if (outputKey === "bootstrapServers") return parseBootstrapServers(this.connectionString);
+      if (outputKey === "clusterId") {
+        const kv = this.services?.kv;
+        if (!kv) return "";
+        try {
+          const raw = (await kv.command("describeCluster")) as { clusterId?: string };
+          return raw.clusterId ?? "";
+        } catch {
+          return "";
+        }
+      }
+    }
+    if (typeId === "kafka-topic") {
+      const name = topicNameFromId(resourceId);
+      if (outputKey === "name") return name;
+      if (outputKey === "partitionCount") {
+        const kv = this.services?.kv;
+        if (!kv) return "";
+        try {
+          const raw = (await kv.command("describeTopic", name)) as {
+            partitions?: unknown[];
+          };
+          return String(raw.partitions?.length ?? 0);
+        } catch {
+          return "";
+        }
+      }
+    }
+    if (typeId === "kafka-consumer-group") {
+      if (outputKey === "groupId") return groupIdFromId(resourceId);
+    }
+    throw new Error(`Kafka plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+  }
+
+  async createResource(
+    typeId: string,
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceCreateReturn> {
+    if (typeId !== "kafka-topic") {
+      throw new Error(`Kafka plugin: createResource not supported for type "${typeId}"`);
+    }
+    const kv = this.services?.kv;
+    if (!kv) throw new Error("Kafka KV service not available");
+    const name = (fields["name"] ?? "").trim();
+    if (!name) throw new Error("Topic name is required");
+    const partitions = fields["partitions"] ? Number(fields["partitions"]) : 1;
+    const replicationFactor = fields["replicationFactor"] ? Number(fields["replicationFactor"]) : 1;
+    await kv.command("createTopic", name, partitions, replicationFactor);
+    const now = new Date().toISOString();
+    return {
+      id: topicId(accountId, name),
+      pluginId: "kafka",
+      resourceTypeId: "kafka-topic",
+      accountId,
+      displayName: name,
+      fields: { name, partitions, replicationFactor },
+      resolvedOutputs: {},
+      secretStates: [],
+      externalId: name,
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
+
+  async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
+    const kv = this.services?.kv;
+    if (!kv) throw new Error("Kafka KV service not available");
+    if (typeId === "kafka-topic") {
+      await kv.command("deleteTopic", topicNameFromId(resourceId));
+      return;
+    }
+    if (typeId === "kafka-consumer-group") {
+      await kv.command("deleteGroup", groupIdFromId(resourceId));
+      return;
+    }
+    throw new Error(`Kafka plugin: deleteResource not supported for type "${typeId}"`);
+  }
+
+  renderDetail(resource: ResourceInstance): DetailViewSchema {
+    switch (resource.resourceTypeId) {
+      case "kafka-cluster":
+        return this.renderClusterDetail(resource);
+      case "kafka-topic":
+        return this.renderTopicDetail(resource);
+      case "kafka-consumer-group":
+        return this.renderConsumerGroupDetail(resource);
+      default:
+        throw new Error(`Kafka plugin: unknown resource type "${resource.resourceTypeId}"`);
+    }
+  }
+
+  renderSidebarItem(resource: ResourceInstance): SidebarItemSchema {
+    return {
+      id: resource.id,
+      label: resource.displayName,
+      status: { kind: "status-dot", status: "info" },
+    };
+  }
+
+  async renderPeerPane(context: PeerPaneContext): Promise<PeerPaneSchema> {
+    const topics = await this.listTopics(context.accountId).catch(() => []);
+    const groups = await this.listConsumerGroups(context.accountId).catch(() => []);
+    const toPeer = (instances: ResourceInstance[]): PeerPaneResource[] =>
+      instances.map((inst) => ({
+        id: inst.id,
+        pluginId: inst.pluginId,
+        resourceTypeId: inst.resourceTypeId,
+        displayName: inst.displayName,
+        subtitle: "",
+        status: "healthy",
+        fields: inst.fields,
+      }));
+    return {
+      resourceGroups: [
+        {
+          title: `Topics (${topics.length})`,
+          resourceTypeId: "kafka-topic",
+          pluginId: "kafka",
+          items: toPeer(topics),
+        },
+        {
+          title: `Consumer Groups (${groups.length})`,
+          resourceTypeId: "kafka-consumer-group",
+          pluginId: "kafka",
+          items: toPeer(groups),
+        },
+      ],
+    };
+  }
+
+  async fetchDashboardStats(
+    resourceTypeId: string,
+    _resourceId: string,
+    accountId: string,
+  ): Promise<DashboardStat[]> {
+    const kv = this.services?.kv;
+    if (!kv || resourceTypeId !== "kafka-cluster") {
+      return [
+        { label: "Brokers", value: "" },
+        { label: "Topics", value: "" },
+        { label: "Groups", value: "" },
+      ];
+    }
+    try {
+      const cluster = (await kv.command("describeCluster")) as {
+        brokers?: unknown[];
+      };
+      const [topics, groups] = await Promise.all([
+        this.listTopics(accountId).catch(() => []),
+        this.listConsumerGroups(accountId).catch(() => []),
+      ]);
+      return [
+        { label: "Brokers", value: String(cluster.brokers?.length ?? 0) },
+        { label: "Topics", value: String(topics.length) },
+        { label: "Groups", value: String(groups.length) },
+      ];
+    } catch {
+      return [
+        { label: "Brokers", value: "" },
+        { label: "Topics", value: "" },
+        { label: "Groups", value: "" },
+      ];
+    }
+  }
+
+  async fetchMetricSeries(
+    resourceTypeId: string,
+    _resourceId: string,
+    accountId: string,
+  ): Promise<MetricSeries[]> {
+    if (resourceTypeId !== "kafka-cluster") return [];
+    const kv = this.services?.kv;
+    if (!kv) return [];
+    const ts = Date.now();
+    try {
+      const cluster = (await kv.command("describeCluster")) as { brokers?: unknown[] };
+      const topics = await this.listTopics(accountId).catch(() => []);
+      const groups = await this.listConsumerGroups(accountId).catch(() => []);
+      return [
+        { label: "Brokers", points: [{ timestamp: ts, value: cluster.brokers?.length ?? 0 }] },
+        { label: "Topics", points: [{ timestamp: ts, value: topics.length }] },
+        { label: "Consumer groups", points: [{ timestamp: ts, value: groups.length }] },
+      ];
+    } catch {
+      return [];
+    }
+  }
+
+  // ---------- internal helpers ----------
+
+  private async listClusters(accountId: string): Promise<ResourceInstance[]> {
+    const now = new Date().toISOString();
+    const bootstrap = parseBootstrapServers(this.connectionString);
+    const fields: Record<string, string | number | boolean> = {
+      bootstrapServers: bootstrap,
+    };
+    const resolvedOutputs: Record<string, string> = {
+      bootstrapServers: bootstrap,
+    };
+    const kv = this.services?.kv;
+    if (kv) {
+      try {
+        const cluster = (await kv.command("describeCluster")) as {
+          clusterId?: string;
+          brokers?: unknown[];
+          controller?: number;
+        };
+        if (cluster.clusterId) {
+          fields["clusterId"] = cluster.clusterId;
+          resolvedOutputs["clusterId"] = cluster.clusterId;
+        }
+        if (typeof cluster.controller === "number") fields["controllerId"] = cluster.controller;
+        if (cluster.brokers) fields["brokerCount"] = cluster.brokers.length;
+      } catch {
+        /* fall through with bootstrap-only fields */
+      }
+    }
+    const externalId = typeof fields["clusterId"] === "string" ? fields["clusterId"] : null;
+    return [
+      {
+        id: clusterId(accountId),
+        pluginId: "kafka",
+        resourceTypeId: "kafka-cluster",
+        accountId,
+        displayName: bootstrap || "Kafka",
+        fields,
+        resolvedOutputs,
+        secretStates: [],
+        ...(externalId ? { externalId } : {}),
+        createdAt: now,
+        updatedAt: now,
+      },
+    ];
+  }
+
+  private async listTopics(accountId: string): Promise<ResourceInstance[]> {
+    const kv = this.services?.kv;
+    if (!kv) return [];
+    const now = new Date().toISOString();
+    const names = (await kv.command("listTopics")) as string[];
+    const parent = clusterId(accountId);
+    return names
+      .filter((name) => !name.startsWith("__"))
+      .sort()
+      .map((name) => ({
+        id: topicId(accountId, name),
+        pluginId: "kafka",
+        resourceTypeId: "kafka-topic",
+        accountId,
+        displayName: name,
+        fields: { name },
+        resolvedOutputs: {},
+        secretStates: [],
+        externalId: name,
+        parentResourceId: parent,
+        createdAt: now,
+        updatedAt: now,
+      }));
+  }
+
+  private async listConsumerGroups(accountId: string): Promise<ResourceInstance[]> {
+    const kv = this.services?.kv;
+    if (!kv) return [];
+    const now = new Date().toISOString();
+    const raw = (await kv.command("listGroups")) as Array<{
+      groupId: string;
+      protocolType: string;
+    }>;
+    const parent = clusterId(accountId);
+    return raw.map((g) => ({
+      id: groupResourceId(accountId, g.groupId),
+      pluginId: "kafka",
+      resourceTypeId: "kafka-consumer-group",
+      accountId,
+      displayName: g.groupId,
+      fields: { groupId: g.groupId, protocol: g.protocolType ?? "" },
+      resolvedOutputs: {},
+      secretStates: [],
+      externalId: g.groupId,
+      parentResourceId: parent,
+      createdAt: now,
+      updatedAt: now,
+    }));
+  }
+
+  private renderClusterDetail(resource: ResourceInstance): DetailViewSchema {
+    const cs = resource.secretStates.find((s) => s.fieldKey === "connectionString");
+    const bootstrap = String(resource.fields["bootstrapServers"] ?? "");
+    const clusterIdValue = String(resource.fields["clusterId"] ?? "");
+    const controllerId = resource.fields["controllerId"];
+    const brokerCount = resource.fields["brokerCount"];
+    return {
+      title: resource.displayName,
+      subtitle: clusterIdValue ? `Cluster ${clusterIdValue}` : bootstrap,
+      status: { kind: "status-dot", status: "healthy" },
+      sections: [
+        {
+          kind: "section",
+          title: "Connection",
+          children: [
+            {
+              kind: "key-value-list",
+              items: [
+                { key: "Bootstrap Servers", value: bootstrap || "—" },
+                {
+                  key: "Connection URL",
+                  value: cs
+                    ? {
+                        kind: "secret-placeholder",
+                        fieldKey: "connectionString",
+                        resolution: cs.resolution,
+                      }
+                    : this.connectionString,
+                  sensitive: true,
+                },
+                ...(clusterIdValue ? [{ key: "Cluster ID", value: clusterIdValue }] : []),
+                ...(controllerId != null
+                  ? [{ key: "Controller", value: String(controllerId) }]
+                  : []),
+                ...(brokerCount != null ? [{ key: "Brokers", value: String(brokerCount) }] : []),
+              ],
+            },
+          ],
+        },
+      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+    };
+  }
+
+  private renderTopicDetail(resource: ResourceInstance): DetailViewSchema {
+    const name = String(resource.fields["name"] ?? resource.displayName);
+    const partitions = resource.fields["partitions"];
+    const replicationFactor = resource.fields["replicationFactor"];
+    return {
+      title: name,
+      subtitle: "Topic",
+      status: { kind: "status-dot", status: "healthy" },
+      sections: [
+        {
+          kind: "section",
+          title: "Topic",
+          children: [
+            {
+              kind: "key-value-list",
+              items: [
+                { key: "Name", value: name },
+                ...(partitions != null ? [{ key: "Partitions", value: String(partitions) }] : []),
+                ...(replicationFactor != null
+                  ? [{ key: "Replication factor", value: String(replicationFactor) }]
+                  : []),
+              ],
+            },
+          ],
+        },
+      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+    };
+  }
+
+  private renderConsumerGroupDetail(resource: ResourceInstance): DetailViewSchema {
+    const groupId = String(resource.fields["groupId"] ?? resource.displayName);
+    const state = resource.fields["state"];
+    const protocol = resource.fields["protocol"];
+    const members = resource.fields["members"];
+    return {
+      title: groupId,
+      subtitle: "Consumer group",
+      status: { kind: "status-dot", status: "healthy" },
+      sections: [
+        {
+          kind: "section",
+          title: "Group",
+          children: [
+            {
+              kind: "key-value-list",
+              items: [
+                { key: "Group ID", value: groupId },
+                ...(state ? [{ key: "State", value: String(state) }] : []),
+                ...(protocol ? [{ key: "Protocol", value: String(protocol) }] : []),
+                ...(members != null ? [{ key: "Members", value: String(members) }] : []),
+              ],
+            },
+          ],
+        },
+      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+    };
+  }
+}
+
+function clusterId(accountId: string): string {
+  return `${accountId}:kafka-cluster:cluster`;
+}
+
+function topicId(accountId: string, name: string): string {
+  return `${accountId}:kafka-topic:${name}`;
+}
+
+function topicNameFromId(resourceId: string): string {
+  return resourceId.split(":").slice(2).join(":");
+}
+
+function groupResourceId(accountId: string, groupId: string): string {
+  return `${accountId}:kafka-consumer-group:${groupId}`;
+}
+
+function groupIdFromId(resourceId: string): string {
+  return resourceId.split(":").slice(2).join(":");
+}
+
+/**
+ * Parse the bootstrap broker list from a kafka:// URL. The plugin uses a
+ * custom URL scheme; the brokers may live in the hostname or in a
+ * `brokers=` query param (the latter supports multi-broker lists since
+ * commas aren't allowed in a URL host).
+ */
+export function parseBootstrapServers(connectionString: string): string {
+  try {
+    const u = new URL(connectionString);
+    const fromQuery = u.searchParams.get("brokers");
+    if (fromQuery) return fromQuery;
+    const host = u.host || u.pathname.replace(/^\/+/, "");
+    return host;
+  } catch {
+    return connectionString;
+  }
+}

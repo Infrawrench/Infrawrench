@@ -9,6 +9,7 @@ import { plugin as digitaloceanPlugin } from "@infrawrench/plugin-digitalocean";
 import { plugin as dockerPlugin } from "@infrawrench/plugin-docker";
 import { plugin as gcpPlugin } from "@infrawrench/plugin-gcp";
 import { plugin as hetznerPlugin } from "@infrawrench/plugin-hetzner";
+import { plugin as kafkaPlugin } from "@infrawrench/plugin-kafka";
 import { plugin as kubernetesPlugin } from "@infrawrench/plugin-kubernetes";
 import { plugin as memcachedPlugin } from "@infrawrench/plugin-memcached";
 import { plugin as mongodbPlugin } from "@infrawrench/plugin-mongodb";
@@ -29,6 +30,7 @@ import { plugin as vercelPlugin } from "@infrawrench/plugin-vercel";
 import { plugin as netlifyPlugin } from "@infrawrench/plugin-netlify";
 import { plugin as cloudinaryPlugin } from "@infrawrench/plugin-cloudinary";
 import { plugin as clickhousePlugin } from "@infrawrench/plugin-clickhouse";
+import { plugin as opensearchPlugin } from "@infrawrench/plugin-opensearch";
 
 const blessedRegistry = registry as PluginRegistry;
 
@@ -39,6 +41,7 @@ const PLUGIN_MODULES: Record<string, Plugin> = {
   "@infrawrench/plugin-docker": dockerPlugin,
   "@infrawrench/plugin-gcp": gcpPlugin,
   "@infrawrench/plugin-hetzner": hetznerPlugin,
+  "@infrawrench/plugin-kafka": kafkaPlugin,
   "@infrawrench/plugin-kubernetes": kubernetesPlugin,
   "@infrawrench/plugin-memcached": memcachedPlugin,
   "@infrawrench/plugin-mongodb": mongodbPlugin,
@@ -59,6 +62,7 @@ const PLUGIN_MODULES: Record<string, Plugin> = {
   "@infrawrench/plugin-netlify": netlifyPlugin,
   "@infrawrench/plugin-cloudinary": cloudinaryPlugin,
   "@infrawrench/plugin-clickhouse": clickhousePlugin,
+  "@infrawrench/plugin-opensearch": opensearchPlugin,
 };
 
 export interface LoadedPlugin {

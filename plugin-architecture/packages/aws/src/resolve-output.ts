@@ -1,6 +1,6 @@
 import type { CredentialExport, ResourceInstance } from "@infrawrench/plugin-base";
 import type { AwsCredentials } from "./auth.js";
-import { jsonCall } from "./client-transport.js";
+import { jsonCall, jsonGetCall } from "./client-transport.js";
 
 interface ResolveOutputContext {
   /** Home/default creds — used only for global services. */
@@ -82,6 +82,35 @@ export async function resolveOutput(
   if (typeId === "iam-user" && outputKey === "accessKey") {
     const exp = await ctx.exportCredential(typeId, resourceId, accountId, "access-key");
     return exp.content;
+  }
+  if (typeId === "msk-cluster" && outputKey === "bootstrapBrokers") {
+    const resource = await ctx.getResource(typeId, resourceId, accountId);
+    const arn = String(resource.resolvedOutputs["clusterArn"] ?? "");
+    if (!arn) return "";
+    const region = String(resource.fields["region"] ?? ctx.creds.region);
+    const creds = ctx.credsFor(region);
+    try {
+      const detail = await jsonGetCall<{
+        BootstrapBrokerString?: string;
+        BootstrapBrokerStringTls?: string;
+        BootstrapBrokerStringSaslScram?: string;
+        BootstrapBrokerStringSaslIam?: string;
+        BootstrapBrokerStringPublicSaslScram?: string;
+        BootstrapBrokerStringPublicSaslIam?: string;
+      }>(creds, "kafka", `/v1/clusters/${encodeURIComponent(arn)}/bootstrap-brokers`);
+      // Prefer SCRAM (kafkajs can speak it) → TLS-only → public variants → IAM (informational).
+      return (
+        detail.BootstrapBrokerStringSaslScram ??
+        detail.BootstrapBrokerStringPublicSaslScram ??
+        detail.BootstrapBrokerStringTls ??
+        detail.BootstrapBrokerString ??
+        detail.BootstrapBrokerStringSaslIam ??
+        detail.BootstrapBrokerStringPublicSaslIam ??
+        ""
+      );
+    } catch {
+      return "";
+    }
   }
   const resource = await ctx.getResource(typeId, resourceId, accountId);
   const value = resource.resolvedOutputs[outputKey];

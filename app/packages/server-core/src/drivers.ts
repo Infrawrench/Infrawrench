@@ -14,6 +14,7 @@ import { driver as pgDriver } from "@infrawrench/plugin-postgres/driver";
 import { driver as mysqlDriver } from "@infrawrench/plugin-mysql/driver";
 import { driver as mssqlDriver } from "@infrawrench/plugin-mssql/driver";
 import { driver as redisDriver } from "@infrawrench/plugin-redis/driver";
+import { driver as kafkaDriver } from "@infrawrench/plugin-kafka/driver";
 import { driver as memcachedDriver } from "@infrawrench/plugin-memcached/driver";
 import { driver as mongodbDriver } from "@infrawrench/plugin-mongodb/driver";
 import { driver as dockerDriver } from "@infrawrench/plugin-docker/driver";
@@ -34,6 +35,7 @@ export const kvDrivers = new Map<string, KvNodeDriver>([
   [redisDriver.id, redisDriver],
   [memcachedDriver.id, memcachedDriver],
   [mongodbDriver.id, mongodbDriver],
+  [kafkaDriver.id, kafkaDriver],
 ]);
 
 export const dockerDrivers = new Map<string, DockerNodeDriver>([[dockerDriver.id, dockerDriver]]);

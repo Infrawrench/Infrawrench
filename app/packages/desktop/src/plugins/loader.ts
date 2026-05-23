@@ -17,6 +17,7 @@ const PLUGIN_MODULES: Record<string, () => Promise<{ plugin: Plugin }>> = {
   "@infrawrench/plugin-docker": () => import("@infrawrench/plugin-docker"),
   "@infrawrench/plugin-gcp": () => import("@infrawrench/plugin-gcp"),
   "@infrawrench/plugin-hetzner": () => import("@infrawrench/plugin-hetzner"),
+  "@infrawrench/plugin-kafka": () => import("@infrawrench/plugin-kafka"),
   "@infrawrench/plugin-kubernetes": () => import("@infrawrench/plugin-kubernetes"),
   "@infrawrench/plugin-memcached": () => import("@infrawrench/plugin-memcached"),
   "@infrawrench/plugin-mongodb": () => import("@infrawrench/plugin-mongodb"),
@@ -38,6 +39,7 @@ const PLUGIN_MODULES: Record<string, () => Promise<{ plugin: Plugin }>> = {
   "@infrawrench/plugin-netlify": () => import("@infrawrench/plugin-netlify"),
   "@infrawrench/plugin-cloudinary": () => import("@infrawrench/plugin-cloudinary"),
   "@infrawrench/plugin-clickhouse": () => import("@infrawrench/plugin-clickhouse"),
+  "@infrawrench/plugin-opensearch": () => import("@infrawrench/plugin-opensearch"),
 };
 
 interface LoadedPlugin {

@@ -42,6 +42,14 @@
       "blessedBy": "astrid"
     },
     {
+      "id": "kafka",
+      "packageName": "@infrawrench/plugin-kafka",
+      "version": "0.1.0",
+      "checksum": "sha256-placeholder-replace-with-real-checksum",
+      "blessedAt": "2026-05-23T00:00:00Z",
+      "blessedBy": "astrid"
+    },
+    {
       "id": "kubernetes",
       "packageName": "@infrawrench/plugin-kubernetes",
       "version": "0.1.0",
@@ -199,6 +207,14 @@
       "version": "0.1.0",
       "checksum": "sha256-placeholder-replace-with-real-checksum",
       "blessedAt": "2026-04-12T00:00:00Z",
+      "blessedBy": "astrid"
+    },
+    {
+      "id": "opensearch",
+      "packageName": "@infrawrench/plugin-opensearch",
+      "version": "0.1.0",
+      "checksum": "sha256-placeholder-replace-with-real-checksum",
+      "blessedAt": "2026-05-23T00:00:00Z",
       "blessedBy": "astrid"
     },
     {

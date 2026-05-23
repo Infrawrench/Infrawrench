@@ -45,7 +45,8 @@ infrawrench/
 │   ├── vercel/               # @infrawrench/plugin-vercel
 │   ├── netlify/              # @infrawrench/plugin-netlify
 │   ├── cloudinary/           # @infrawrench/plugin-cloudinary
-│   └── clickhouse/           # @infrawrench/plugin-clickhouse
+│   ├── clickhouse/           # @infrawrench/plugin-clickhouse
+│   └── kafka/                # @infrawrench/plugin-kafka
 ├── app/packages/
 │   ├── desktop/              # @infrawrench/desktop — Electron app
 │   ├── ui/                   # @infrawrench/ui — shared React components (incl. Toast feature)

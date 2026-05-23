@@ -1,0 +1,43 @@
+{
+  "name": "@infrawrench/plugin-kafka",
+  "version": "0.1.0",
+  "license": "BUSL-1.1",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./driver": {
+      "types": "./dist/driver.d.cts",
+      "import": "./dist/driver.js",
+      "require": "./dist/driver.cjs"
+    }
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsgo --noEmit",
+    "test": "vitest run",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@infrawrench/plugin-base": "workspace:*"
+  },
+  "peerDependencies": {
+    "kafkajs": ">=2.2.4"
+  },
+  "devDependencies": {
+    "kafkajs": "^2.2.4",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  }
+}

@@ -43,6 +43,7 @@ const MOCK_CREDENTIALS: Record<string, Record<string, string>> = {
   mongodb: { connectionString: "mongodb://localhost:27017/test" },
   redis: { connectionString: "redis://localhost:6379" },
   memcached: { connectionString: "localhost:11211" },
+  kafka: { connectionString: "kafka://localhost:9092" },
   neon: { apiKey: "neon_test_key" },
   planetscale: {
     serviceTokenId: "test-id",
