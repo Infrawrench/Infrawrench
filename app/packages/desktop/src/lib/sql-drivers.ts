@@ -6,8 +6,14 @@ export function sqlQuery(
   driverId: string,
   connectionString: string,
   sql: string,
+  options?: { caCert?: string },
 ): Promise<Record<string, unknown>[]> {
-  return invoke<Record<string, unknown>[]>("plugin_sql_query", { driverId, connectionString, sql });
+  return invoke<Record<string, unknown>[]>("plugin_sql_query", {
+    driverId,
+    connectionString,
+    sql,
+    ...(options?.caCert ? { caCert: options.caCert } : {}),
+  });
 }
 
 export function sqlExecute(
@@ -15,15 +21,27 @@ export function sqlExecute(
   connectionString: string,
   sql: string,
   params: unknown[],
+  options?: { caCert?: string },
 ): Promise<number> {
-  return invoke<number>("plugin_sql_execute", { driverId, connectionString, sql, params });
+  return invoke<number>("plugin_sql_execute", {
+    driverId,
+    connectionString,
+    sql,
+    params,
+    ...(options?.caCert ? { caCert: options.caCert } : {}),
+  });
 }
 
-export function buildHostServices(driverId: string, connectionString: string): HostServices {
+export function buildHostServices(
+  driverId: string,
+  connectionString: string,
+  options: { caCert?: string } = {},
+): HostServices {
+  const sqlOpts = options.caCert ? { caCert: options.caCert } : undefined;
   return {
     sql: {
-      query: (sql) => sqlQuery(driverId, connectionString, sql),
-      execute: (sql, params) => sqlExecute(driverId, connectionString, sql, params),
+      query: (sql) => sqlQuery(driverId, connectionString, sql, sqlOpts),
+      execute: (sql, params) => sqlExecute(driverId, connectionString, sql, params, sqlOpts),
     },
   };
 }
@@ -191,7 +209,15 @@ export function buildPluginHostServices(
   }
   if (manifest.sqlDriver) {
     const connectionString = credentials[manifest.sqlDriver.credentialKey] ?? "";
-    return { ...buildHostServices(manifest.sqlDriver.driver, connectionString), ...base };
+    const caCert = manifest.sqlDriver.caCertKey
+      ? (credentials[manifest.sqlDriver.caCertKey] ?? "")
+      : "";
+    return {
+      ...buildHostServices(manifest.sqlDriver.driver, connectionString, {
+        ...(caCert ? { caCert } : {}),
+      }),
+      ...base,
+    };
   }
   if (manifest.kvDriver) {
     const connectionString = credentials[manifest.kvDriver.credentialKey] ?? "";

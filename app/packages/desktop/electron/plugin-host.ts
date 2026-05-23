@@ -18,11 +18,17 @@ ipcMain.handle(
       driverId,
       connectionString,
       sql,
-    }: { driverId: string; connectionString: string; sql: string },
+      caCert,
+    }: {
+      driverId: string;
+      connectionString: string;
+      sql: string;
+      caCert?: string;
+    },
   ) => {
     const driver = sqlDrivers.get(driverId);
     if (!driver) throw new Error(`No SQL driver registered for "${driverId}"`);
-    return driver.query(connectionString, sql);
+    return driver.query(connectionString, sql, caCert ? { caCert } : undefined);
   },
 );
 
@@ -35,11 +41,18 @@ ipcMain.handle(
       connectionString,
       sql,
       params,
-    }: { driverId: string; connectionString: string; sql: string; params?: unknown[] },
+      caCert,
+    }: {
+      driverId: string;
+      connectionString: string;
+      sql: string;
+      params?: unknown[];
+      caCert?: string;
+    },
   ) => {
     const driver = sqlDrivers.get(driverId);
     if (!driver) throw new Error(`No SQL driver registered for "${driverId}"`);
-    return driver.execute(connectionString, sql, params ?? []);
+    return driver.execute(connectionString, sql, params ?? [], caCert ? { caCert } : undefined);
   },
 );
 

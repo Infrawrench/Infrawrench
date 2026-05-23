@@ -21,13 +21,20 @@ import { decrypt, buildAad } from "./encryption";
 import { getDispatcherFor } from "./bastion/registry";
 import { BastionDisconnectedError } from "./bastion/errors";
 
-export function buildHostServices(driverId: string, connectionString: string): HostServices {
+export function buildHostServices(
+  driverId: string,
+  connectionString: string,
+  options: { caCert?: string } = {},
+): HostServices {
   const driver = sqlDrivers.get(driverId);
   if (!driver) throw new Error(`Unknown SQL driver: ${driverId}`);
+  // Pull caCert out into a single SqlNodeDriverOptions value so we don't
+  // rebuild it on every query.
+  const sqlOptions = options.caCert ? { caCert: options.caCert } : undefined;
   return {
     sql: {
-      query: (sql) => driver.query(connectionString, sql),
-      execute: (sql, params) => driver.execute(connectionString, sql, params),
+      query: (sql) => driver.query(connectionString, sql, sqlOptions),
+      execute: (sql, params) => driver.execute(connectionString, sql, params, sqlOptions),
     },
   };
 }
@@ -237,8 +244,13 @@ export async function buildPluginHostServices(
   }
   if (manifest.sqlDriver) {
     const connectionString = credentials[manifest.sqlDriver.credentialKey] ?? "";
+    const caCert = manifest.sqlDriver.caCertKey
+      ? (credentials[manifest.sqlDriver.caCertKey] ?? "")
+      : "";
     return {
-      ...buildHostServices(manifest.sqlDriver.driver, connectionString),
+      ...buildHostServices(manifest.sqlDriver.driver, connectionString, {
+        ...(caCert ? { caCert } : {}),
+      }),
       ...base,
     };
   }

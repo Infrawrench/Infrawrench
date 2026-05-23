@@ -22,10 +22,21 @@ const manifest: PluginManifest = {
       sensitive: true,
       placeholder: "mysql://user:pass@host:3306/dbname",
     },
+    {
+      key: "caCert",
+      label: "CA Certificate",
+      description:
+        "Optional PEM-encoded CA certificate to trust for TLS chain verification. Required for vendor-managed CAs (e.g. DigitalOcean managed MySQL); leave empty to rely on the system trust store.",
+      sensitive: false,
+      multiline: true,
+      optional: true,
+      placeholder: "-----BEGIN CERTIFICATE-----\n...",
+    },
   ],
   sqlDriver: {
     driver: "mysql",
     credentialKey: "connectionString",
+    caCertKey: "caCert",
   },
 };
 

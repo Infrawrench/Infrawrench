@@ -1,5 +1,5 @@
 import { Pool } from "pg";
-import type { SqlNodeDriver } from "@infrawrench/plugin-base";
+import type { SqlNodeDriver, SqlNodeDriverOptions } from "@infrawrench/plugin-base";
 
 /**
  * Bound connect + statement so a misconfigured target (most commonly: Cloud
@@ -14,10 +14,18 @@ import type { SqlNodeDriver } from "@infrawrench/plugin-base";
 const CONNECT_TIMEOUT_MS = 10_000;
 const STATEMENT_TIMEOUT_MS = 60_000;
 
-function sanitizePgUrl(cs: string): string {
+function sanitizePgUrl(cs: string, hasExplicitSsl: boolean): string {
   try {
     const u = new URL(cs);
     u.searchParams.delete("channel_binding");
+    // When the caller provides an explicit `ssl` config (with a CA), strip
+    // `sslmode` from the URI. pg-connection-string would otherwise infer
+    // a partial `ssl: { rejectUnauthorized: false }` from `sslmode=require`
+    // that, depending on pg version, can mask the explicit ssl option we
+    // hand in via the Pool config — leaving the connection running with
+    // the system trust store and producing the "self signed certificate
+    // in certificate chain" error even with a CA in hand.
+    if (hasExplicitSsl) u.searchParams.delete("sslmode");
     return u.toString();
   } catch {
     return cs;
@@ -45,13 +53,21 @@ function isConnectTimeoutError(err: unknown): boolean {
 
 async function runWithTimeout<T>(
   connectionString: string,
+  options: SqlNodeDriverOptions | undefined,
   fn: (pool: Pool) => Promise<T>,
 ): Promise<T> {
+  const caCert = options?.caCert?.trim();
+  // When a vendor CA is provided (e.g. DO's managed-DB CA), trust *only*
+  // that CA and keep chain verification on — TLS is encrypted AND the
+  // server identity is verified against the expected CA. Without one,
+  // pg uses the system trust store via the connection-string `sslmode`.
+  const ssl = caCert ? { ca: caCert, rejectUnauthorized: true } : undefined;
   const pool = new Pool({
-    connectionString: sanitizePgUrl(connectionString),
+    connectionString: sanitizePgUrl(connectionString, !!ssl),
     max: 1,
     connectionTimeoutMillis: CONNECT_TIMEOUT_MS,
     statement_timeout: STATEMENT_TIMEOUT_MS,
+    ...(ssl ? { ssl } : {}),
   });
   let timer: NodeJS.Timeout | undefined;
   try {
@@ -82,14 +98,23 @@ async function runWithTimeout<T>(
 export const driver = {
   id: "postgres",
 
-  async query(connectionString: string, sql: string): Promise<Record<string, unknown>[]> {
-    return runWithTimeout(connectionString, async (pool) => {
+  async query(
+    connectionString: string,
+    sql: string,
+    options?: SqlNodeDriverOptions,
+  ): Promise<Record<string, unknown>[]> {
+    return runWithTimeout(connectionString, options, async (pool) => {
       return (await pool.query(sql)).rows as Record<string, unknown>[];
     });
   },
 
-  async execute(connectionString: string, sql: string, params: unknown[]): Promise<number> {
-    return runWithTimeout(connectionString, async (pool) => {
+  async execute(
+    connectionString: string,
+    sql: string,
+    params: unknown[],
+    options?: SqlNodeDriverOptions,
+  ): Promise<number> {
+    return runWithTimeout(connectionString, options, async (pool) => {
       return (await pool.query(sql, params)).rowCount ?? 0;
     });
   },

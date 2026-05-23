@@ -25,10 +25,21 @@ const manifest: PluginManifest = {
       sensitive: true,
       placeholder: "postgresql://user:pass@host:5432/dbname",
     },
+    {
+      key: "caCert",
+      label: "CA Certificate",
+      description:
+        "Optional PEM-encoded CA certificate to trust for the TLS connection. Required for vendor-managed CAs (e.g. DigitalOcean managed PostgreSQL); leave empty to rely on the system trust store.",
+      sensitive: false,
+      multiline: true,
+      optional: true,
+      placeholder: "-----BEGIN CERTIFICATE-----\n...",
+    },
   ],
   sqlDriver: {
     driver: "postgres",
     credentialKey: "connectionString",
+    caCertKey: "caCert",
   },
 };
 
