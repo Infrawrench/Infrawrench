@@ -6,6 +6,9 @@ import type {
   SidebarItemSchema,
   SqlTableMeta,
   DashboardStat,
+  PeerPaneContext,
+  PeerPaneSchema,
+  PeerPaneResource,
 } from "@infrawrench/plugin-base";
 
 export class MySQLClient implements PluginClient {
@@ -106,6 +109,45 @@ export class MySQLClient implements PluginClient {
       id: resource.id,
       label: resource.displayName,
       status: { kind: "status-dot", status: "info" },
+    };
+  }
+
+  async renderPeerPane(context: PeerPaneContext): Promise<PeerPaneSchema> {
+    let host = "";
+    try {
+      host = new URL(this.connectionString).hostname;
+    } catch {
+      /* connectionString may not be a parseable URL */
+    }
+
+    const databases: PeerPaneResource[] = [];
+    const sql = this.services?.sql;
+    if (sql) {
+      const rows = (await sql.query("SHOW DATABASES")) as { Database: string }[];
+      const systemDbs = new Set(["information_schema", "performance_schema", "mysql", "sys"]);
+      for (const row of rows) {
+        if (systemDbs.has(row.Database)) continue;
+        databases.push({
+          id: `${context.accountId}:mysql-database:${row.Database}`,
+          pluginId: "mysql",
+          resourceTypeId: "mysql-database",
+          displayName: row.Database,
+          subtitle: host,
+          status: "healthy",
+          fields: { host, database: row.Database },
+        });
+      }
+    }
+
+    return {
+      resourceGroups: [
+        {
+          title: `Databases (${databases.length})`,
+          resourceTypeId: "mysql-database",
+          pluginId: "mysql",
+          items: databases,
+        },
+      ],
     };
   }
 

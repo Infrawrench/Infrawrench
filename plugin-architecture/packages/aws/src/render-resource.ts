@@ -178,20 +178,12 @@ export function renderDetail(
           customTabs: dynamoCustomTabs,
         }
       : {}),
-    // DocumentDB is MongoDB-compatible — render the MongoDB peer browser
-    // inline so users can browse collections without leaving the resource.
-    // Note: DocumentDB clusters are VPC-only, so the user's MongoDB account
-    // needs network reachability (jumpbox or peered VPC).
-    ...(resource.resourceTypeId === "documentdb-cluster"
-      ? {
-          noSqlBrowser: {
-            driver: "mongodb-peer" as const,
-            databaseLabel: String(fields["clusterIdentifier"] ?? resource.externalId ?? ""),
-            helpText:
-              "DocumentDB speaks the MongoDB wire protocol. Link a MongoDB account in your sidebar (with VPC reachability to the cluster) to browse documents inline.",
-          },
-        }
-      : {}),
+    // DocumentDB used to also surface a separate inline "Documents" tab via
+    // the host's `mongodb-peer` browser. That duplicated the MongoDB
+    // peer-pane tab declared by this resource type's peerIntegration with
+    // the MongoDB plugin (which now implements renderPeerPane), so the
+    // inline tab is dropped — the peer-pane lists databases and opens each
+    // in the existing MongoDocumentBrowser.
   };
 }
 

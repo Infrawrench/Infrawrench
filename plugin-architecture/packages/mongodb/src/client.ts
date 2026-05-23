@@ -6,6 +6,9 @@ import type {
   SidebarItemSchema,
   DashboardStat,
   MetricSeries,
+  PeerPaneContext,
+  PeerPaneSchema,
+  PeerPaneResource,
 } from "@infrawrench/plugin-base";
 
 /**
@@ -98,6 +101,45 @@ export class MongoDBClient implements PluginClient {
       id: resource.id,
       label: resource.displayName,
       status: { kind: "status-dot", status: "healthy" },
+    };
+  }
+
+  async renderPeerPane(context: PeerPaneContext): Promise<PeerPaneSchema> {
+    let host = "";
+    try {
+      host = new URL(this.connectionString).hostname;
+    } catch {
+      /* connectionString may not be a parseable URI */
+    }
+
+    const databases: PeerPaneResource[] = [];
+    const kv = this.services?.kv;
+    if (kv) {
+      const raw = await kv.command("listDatabases", "admin");
+      const result = raw as { databases?: Array<{ name: string }> };
+      for (const db of result.databases ?? []) {
+        if (["admin", "local", "config"].includes(db.name)) continue;
+        databases.push({
+          id: `${context.accountId}:mongodb-database:${db.name}`,
+          pluginId: "mongodb",
+          resourceTypeId: "mongodb-database",
+          displayName: db.name,
+          subtitle: host,
+          status: "healthy",
+          fields: { host, database: db.name },
+        });
+      }
+    }
+
+    return {
+      resourceGroups: [
+        {
+          title: `Databases (${databases.length})`,
+          resourceTypeId: "mongodb-database",
+          pluginId: "mongodb",
+          items: databases,
+        },
+      ],
     };
   }
 
