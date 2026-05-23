@@ -292,23 +292,39 @@ export class OpenSearchClient implements PluginClient {
     const nodesSection: SectionNode = {
       kind: "section",
       title: `Nodes (${nodes.length})`,
-      children: [buildNodesTable(nodes)],
+      children:
+        nodes.length > 0
+          ? [buildNodesTable(nodes)]
+          : [{ kind: "text", variant: "muted", content: "No nodes reported." }],
     };
 
     const indicesSection: SectionNode = {
       kind: "section",
       title: `Indices (${indices.length})`,
-      children: [buildIndicesTable(indices)],
+      children:
+        indices.length > 0
+          ? [buildIndicesTable(indices)]
+          : [{ kind: "text", variant: "muted", content: "No indices found." }],
     };
 
+    const repoCount = Object.keys(repos).length;
     const snapshotsTab: DetailViewTab = {
       id: "snapshots",
       label: "Snapshots",
       sections: [
         {
           kind: "section",
-          title: `Snapshot repositories (${Object.keys(repos).length})`,
-          children: [buildReposTable(repos)],
+          title: `Snapshot repositories (${repoCount})`,
+          children:
+            repoCount > 0
+              ? [buildReposTable(repos)]
+              : [
+                  {
+                    kind: "text",
+                    variant: "muted",
+                    content: "No snapshot repositories registered.",
+                  },
+                ],
         },
       ],
       headerActions: [
