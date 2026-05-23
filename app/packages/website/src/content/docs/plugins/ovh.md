@@ -10,6 +10,7 @@ sidebar_order: 7
 - Managed Kubernetes
 - Object Storage
 - Load Balancers
+- Public Cloud Databases (PostgreSQL, MySQL, MongoDB, Redis, Kafka, OpenSearch, Cassandra, M3DB, Grafana)
 
 ## Credentials
 
@@ -26,6 +27,7 @@ Generate API credentials at the [OVH API token page](https://www.ovh.com/auth/ap
 
 - **SSH terminal** on public cloud instances.
 - **File browser** on Object Storage.
+- **Peer-plugin tabs** on managed databases — PostgreSQL, MySQL, MongoDB, Redis, Kafka, and [OpenSearch](./opensearch.md) clusters open the matching client plugin's tab with the endpoint pre-filled. OVH never returns user passwords after creation, so the peer tab works for users whose password Infrawrench captured at create time; pre-existing users need a rotated password pasted in.
 
 ## Tips & limits
 

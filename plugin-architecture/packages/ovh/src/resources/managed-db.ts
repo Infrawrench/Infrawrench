@@ -105,6 +105,33 @@ export const ManagedDbResourceType: ResourceTypeDefinition = {
       tabLabel: "MongoDB",
       showWhen: { fieldKey: "engine", equals: "mongodb" },
     },
+    {
+      // OVH Public Cloud Databases returns the OpenSearch endpoint as
+      // `https://<host>:<port>` in `endpoint.uri`. Password is set/rotated
+      // by the user (OVH never returns it back) — see ovh client.ts where
+      // resolveOutput("password") returns ""; users either let OpenSearch
+      // plugin's credentials carry the password they set, or rotate it.
+      pluginId: "opensearch",
+      credentialMappings: [
+        { outputKey: "connectionString", credentialKey: "endpoint" },
+        { outputKey: "username", credentialKey: "username" },
+        { outputKey: "password", credentialKey: "password" },
+      ],
+      tabLabel: "OpenSearch",
+      showWhen: { fieldKey: "engine", equals: "opensearch" },
+    },
+    {
+      // OVH Managed Kafka uses SASL/SCRAM-SHA-512 over TLS — OVH's docs
+      // (databases / kafka / connection guides) call SCRAM-SHA-512 out
+      // explicitly. The ovh client normalizes the endpoint.uri for kafka
+      // engines so it includes `sasl=scram-sha-512&ssl=true` for the
+      // kafka plugin driver. Password isn't returned by OVH after
+      // creation, same as other OVH managed DBs.
+      pluginId: "kafka",
+      credentialMappings: [{ outputKey: "connectionString", credentialKey: "connectionString" }],
+      tabLabel: "Kafka",
+      showWhen: { fieldKey: "engine", equals: "kafka" },
+    },
   ],
   secretExportTemplates: [
     {

@@ -23,6 +23,23 @@ function ovhSshUsername(imageName: string): string {
 }
 
 /**
+ * Normalize an OVH managed-Kafka `endpoint.uri` to the form the kafka
+ * plugin's driver expects: explicit `sasl=scram-sha-512` and `ssl=true`
+ * query params. OVH's Kafka offering uses SASL/SCRAM-SHA-512 over TLS.
+ */
+function normalizeKafkaUri(uri: string): string {
+  if (!uri) return uri;
+  let normalized = uri.startsWith("kafkas://") ? `kafka://${uri.slice("kafkas://".length)}` : uri;
+  const queryIdx = normalized.indexOf("?");
+  const base = queryIdx === -1 ? normalized : normalized.slice(0, queryIdx);
+  const params = new URLSearchParams(queryIdx === -1 ? "" : normalized.slice(queryIdx + 1));
+  if (!params.has("sasl")) params.set("sasl", "scram-sha-512");
+  if (!params.has("ssl")) params.set("ssl", "true");
+  normalized = `${base}?${params.toString()}`;
+  return normalized;
+}
+
+/**
  * OVHcloud plugin client.
  * Created per account (per credential set) by the host.
  *
@@ -202,9 +219,13 @@ export class OvhClient implements PluginClient {
         this.cloudPath(`/database/service/${externalId}`),
       );
       const endpoint = svc.endpoints?.[0];
+      const engine = String(svc.engine ?? "");
       switch (outputKey) {
-        case "connectionString":
-          return endpoint?.uri ?? "";
+        case "connectionString": {
+          const uri = endpoint?.uri ?? "";
+          if (engine === "kafka") return normalizeKafkaUri(uri);
+          return uri;
+        }
         case "host":
           return endpoint?.domain ?? "";
         case "port":
@@ -925,14 +946,12 @@ export class OvhClient implements PluginClient {
       headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
 
-    if (resource.resourceTypeId === "managed-db" && String(fields["engine"] ?? "") === "mongodb") {
-      detail.noSqlBrowser = {
-        driver: "mongodb-peer",
-        databaseLabel: String(fields["description"] ?? resource.externalId ?? ""),
-        helpText:
-          "Link a MongoDB account in your sidebar to browse this database inline. The account must be reachable from your network.",
-      };
-    }
+    // MongoDB-engined OVH managed databases used to also surface a separate
+    // inline "Documents" tab via the host's `mongodb-peer` browser. That
+    // duplicated the MongoDB peer-pane tab declared by this resource type's
+    // peerIntegration with the MongoDB plugin (which now implements
+    // renderPeerPane), so the inline tab is dropped — the peer-pane lists
+    // databases and opens each in the existing MongoDocumentBrowser.
 
     return detail;
   }
