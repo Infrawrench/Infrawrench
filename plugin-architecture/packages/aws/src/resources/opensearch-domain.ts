@@ -24,6 +24,19 @@ export const OpenSearchDomainResourceType: ResourceTypeDefinition = {
   iconKey: "search",
   supportsCreate: true,
   supportsMetrics: true,
+  peerIntegrations: [
+    {
+      // Forwards the domain endpoint to the OpenSearch plugin. Auth is set
+      // by the user in the OpenSearch tab credentials — typically AWS
+      // SigV4 (service "es") for IAM-only domains, or basic auth when
+      // fine-grained access control is enabled with an internal user
+      // database. The OpenSearch plugin's `authMode` credential picks
+      // which scheme to use.
+      pluginId: "opensearch",
+      credentialMappings: [{ outputKey: "endpoint", credentialKey: "endpoint" }],
+      tabLabel: "OpenSearch",
+    },
+  ],
   secretExportTemplates: [
     {
       id: "opensearch-endpoint",

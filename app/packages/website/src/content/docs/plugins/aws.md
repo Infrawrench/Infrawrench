@@ -10,7 +10,7 @@ The AWS plugin covers the services most teams live in day to day.
 
 - **Compute** — EC2 instances, Auto Scaling Groups, Lambda functions, ECS services.
 - **Kubernetes** — EKS clusters (links to the [Kubernetes plugin](./kubernetes.md) for pod-level access).
-- **Databases** — RDS (Postgres, MySQL, MariaDB, SQL Server, Oracle), Aurora, Redshift, DynamoDB, ElastiCache (Redis / Memcached).
+- **Databases** — RDS (Postgres, MySQL, MariaDB, SQL Server, Oracle), Aurora, Redshift, DynamoDB, ElastiCache (Redis / Memcached), OpenSearch Service domains.
 - **Storage** — S3 buckets, EBS volumes, EFS file systems.
 - **Networking** — VPC, Subnets, Security Groups, Internet / NAT Gateways, Elastic IPs, Load Balancers, API Gateway, CloudFront.
 - **Messaging** — SQS, SNS.
@@ -35,6 +35,7 @@ Use least-privilege policies. For read-only browsing, the `ReadOnlyAccess` manag
 - **SQL editor** on RDS and Aurora — [SQL editor](../features/sql-editor.md).
 - **File browser** on S3 — [File browsers](../features/file-browsers.md).
 - **Document browser** on DynamoDB tables — scan items, edit/insert/delete documents inline.
+- **OpenSearch tab** on OpenSearch Service domains — indices, search, snapshots via the [OpenSearch plugin](./opensearch.md). The domain's endpoint flows through automatically; auth still has to be filled in on the OpenSearch tab (basic auth when fine-grained access control is on, or AWS SigV4 — service `es` — using the same IAM credentials).
 - **DynamoDB schema & indexes tab** — view the primary key, attribute definitions, and existing global/local secondary indexes on a table. Add or delete GSIs from the same page; LSIs are creation-only (DynamoDB rule). The create form also accepts an optional `secondaryIndexesJson` blob so you can declare GSIs and LSIs up front.
 - **Secret export to K8s** is supported for RDS, Aurora, Redshift, ElastiCache, S3, Lambda, SQS, SNS, DynamoDB, ECS, EKS — [Secret export](../features/secret-export-to-kubernetes.md).
 - **Read-only manifest view** for most resources.
