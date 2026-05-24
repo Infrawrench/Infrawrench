@@ -17,7 +17,8 @@ import type {
 import { sqlDrivers, kvDrivers, dockerDrivers, k8sDrivers } from "./drivers";
 import { db } from "./db/client";
 import { accounts, secretFieldStates } from "./db/schema";
-import { decrypt, buildAad } from "./encryption";
+import { randomUUID } from "node:crypto";
+import { decrypt, encrypt, buildAad } from "./encryption";
 import { getDispatcherFor } from "./bastion/registry";
 import { BastionDisconnectedError } from "./bastion/errors";
 
@@ -91,6 +92,39 @@ const secretHostServices: SecretHostServices = {
       console.error(`[host-services] Failed to decrypt secret ${resourceId}:${fieldKey}:`, err);
       return null;
     }
+  },
+  async setPlaintext(resourceId: string, fieldKey: string, value: string) {
+    const { ciphertext, iv } = await encrypt(
+      value,
+      buildAad("secretField", `${resourceId}:${fieldKey}`, "value"),
+    );
+    await db
+      .insert(secretFieldStates)
+      .values({
+        id: randomUUID(),
+        resourceId,
+        fieldKey,
+        resolutionKind: "literal",
+        encryptedValue: ciphertext,
+        valueIv: iv,
+      })
+      .onConflictDoUpdate({
+        target: [secretFieldStates.resourceId, secretFieldStates.fieldKey],
+        set: {
+          resolutionKind: "literal",
+          encryptedValue: ciphertext,
+          valueIv: iv,
+          sourcePluginId: null,
+          sourceResourceTypeId: null,
+          sourceResourceId: null,
+          sourceAccountId: null,
+          sourceOutputKey: null,
+          cachedEncryptedValue: null,
+          cachedValueIv: null,
+          cachedAt: null,
+          updatedAt: new Date(),
+        },
+      });
   },
 };
 

@@ -223,6 +223,16 @@ export interface HttpHostServices {
  */
 export interface SecretHostServices {
   getPlaintext(resourceId: string, fieldKey: string): Promise<string | null>;
+  /**
+   * Persist a plaintext secret against a resource + field, encrypted at rest
+   * by the host. Used by plugins that mint a long-lived credential they want
+   * to reuse across sessions and (in the cloud host) across an org's members
+   * — e.g. a single agent endpoint access key shared by everyone's Playground
+   * instead of minting a fresh one per session. The value never leaves the
+   * host process; web/desktop clients only ever trigger the server-side read.
+   * Optional so older host builds without a write path still satisfy the type.
+   */
+  setPlaintext?(resourceId: string, fieldKey: string, value: string): Promise<void>;
 }
 
 export interface HostServices {
@@ -437,6 +447,25 @@ export interface PluginClient {
     command: string,
     args: (string | number)[],
   ): Promise<unknown>;
+  /**
+   * Send one round-trip in a chat conversation, streaming token deltas back
+   * to the host. Called by the host's Playground tab when the user submits a
+   * message. The plugin receives the full message history (including the
+   * latest user turn) and yields:
+   *   - zero or more `{ kind: "delta", text }` events as tokens arrive,
+   *   - then exactly one terminal event: `{ kind: "done", message, usage? }`
+   *     on success, or `{ kind: "error", message }` on failure.
+   *
+   * Plugins that can't stream natively can yield a single `delta` carrying
+   * the full text followed by `done`. The host's wire protocol (Electron
+   * IPC / NDJSON over HTTP) preserves the stream end-to-end.
+   */
+  streamChatMessage?(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+    messages: ChatMessage[],
+  ): AsyncIterable<ChatStreamEvent>;
   /**
    * Attach a resource of `sourceTypeId` onto a resource of `targetTypeId` — e.g. a
    * persistent disk onto a VM. Only called when both resources live in the same
@@ -670,6 +699,8 @@ export interface Plugin {
 import type { ResourceCreateReturn, ResourceInstance } from "./instance.js";
 import type {
   ArtifactEntry,
+  ChatMessage,
+  ChatStreamEvent,
   DashboardStat,
   DetailViewSchema,
   MetricSeries,

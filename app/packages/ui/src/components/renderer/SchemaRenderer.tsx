@@ -118,6 +118,8 @@ function useActionDispatch() {
           fields: action.fields,
           ...(action.title ? { title: action.title } : {}),
           ...(action.description ? { description: action.description } : {}),
+          ...(action.descriptionVariant ? { descriptionVariant: action.descriptionVariant } : {}),
+          ...(action.blocked ? { blocked: action.blocked } : {}),
           ...(action.submitLabel ? { submitLabel: action.submitLabel } : {}),
           ...(action.danger ? { danger: action.danger } : {}),
         });
@@ -137,7 +139,20 @@ function TextNodeRenderer({ node }: { node: TextNode }) {
     muted: "text-xs text-on-surface-muted",
   };
   const cls = classes[node.variant ?? "body"] ?? classes["body"];
-  if (node.variant === "mono") return <pre className={cls}>{node.content}</pre>;
+  if (node.variant === "mono") {
+    // When copyable, float a copy button in the top-right of the block.
+    if (node.copyable) {
+      return (
+        <div className="relative">
+          <pre className={cls}>{node.content}</pre>
+          <div className="absolute top-2 right-2">
+            <CopyButton value={node.content} />
+          </div>
+        </div>
+      );
+    }
+    return <pre className={cls}>{node.content}</pre>;
+  }
   // Block <p> so sibling spacing (space-y-* on parent sections) actually
   // produces a visible gap — inline <span>s ignore vertical margins.
   return <p className={cls}>{node.content}</p>;

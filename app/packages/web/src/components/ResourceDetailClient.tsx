@@ -22,6 +22,8 @@ import {
 } from "@infrawrench/ui";
 import type {
   ArtifactEntry,
+  ChatMessage,
+  ChatStreamEvent,
   CredentialFormat,
   CredentialExport,
   DetailViewSchema,
@@ -355,6 +357,92 @@ export function ResourceDetailClient({
       );
     },
     [orgId, accountId, resourceId, pluginId, resourceTypeId, parentResourceId],
+  );
+
+  // POST + NDJSON streaming chat. Server writes one ChatStreamEvent per
+  // line; we read with `ReadableStream.getReader()` and yield each event as
+  // it arrives so the ChatPanel can append tokens live.
+  const handleChatStream = useCallback(
+    (messages: ChatMessage[], signal: AbortSignal): AsyncIterable<ChatStreamEvent> => {
+      const url = `/api/org/${orgId}/resources/chat-stream`;
+      const body = JSON.stringify({
+        pluginId,
+        accountId,
+        resourceTypeId,
+        resourceId,
+        messages,
+        ...(parentResourceId ? { parentResourceId } : {}),
+      });
+      return {
+        async *[Symbol.asyncIterator]() {
+          let res: Response;
+          try {
+            res = await fetch(url, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body,
+              signal,
+              credentials: "include",
+            });
+          } catch (err) {
+            yield {
+              kind: "error",
+              message: err instanceof Error ? err.message : String(err),
+            };
+            return;
+          }
+          if (!res.ok || !res.body) {
+            const text = await res.text().catch(() => "");
+            yield {
+              kind: "error",
+              message: `Server returned ${res.status}: ${text || res.statusText}`,
+            };
+            return;
+          }
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+          try {
+            for (;;) {
+              const { value, done } = await reader.read();
+              if (done) break;
+              buffer += decoder.decode(value, { stream: true });
+              const lines = buffer.split("\n");
+              buffer = lines.pop() ?? "";
+              for (const line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed) continue;
+                try {
+                  yield JSON.parse(trimmed) as ChatStreamEvent;
+                } catch {
+                  // Skip malformed event lines.
+                }
+              }
+            }
+            if (buffer.trim()) {
+              try {
+                yield JSON.parse(buffer.trim()) as ChatStreamEvent;
+              } catch {
+                /* skip */
+              }
+            }
+          } catch (err) {
+            if (signal.aborted) return;
+            yield {
+              kind: "error",
+              message: err instanceof Error ? err.message : String(err),
+            };
+          } finally {
+            try {
+              reader.releaseLock();
+            } catch {
+              /* releaseLock can throw if already released */
+            }
+          }
+        },
+      };
+    },
+    [orgId, pluginId, accountId, resourceTypeId, resourceId, parentResourceId],
   );
 
   const handleListArtifacts = useCallback(
@@ -782,6 +870,7 @@ export function ResourceDetailClient({
                 : {})}
               {...(detailSchema.describe ? { onGetDescribe: handleGetDescribe } : {})}
               {...(detailSchema.logs ? { onGetLogs: handleGetLogs } : {})}
+              {...(detailSchema.chatPanel ? { onChatStream: handleChatStream } : {})}
               {...(hasArtifactRegistry ? { onListArtifacts: handleListArtifacts } : {})}
               {...(hasSecretVersions
                 ? {

@@ -8,6 +8,10 @@ export interface PromptNoSqlCommandModalProps {
   title: string;
   /** Optional descriptive text shown above the fields (e.g. destructive action warning). */
   description?: string;
+  /** Styling for `description`. `"error"` renders a red warning banner. Defaults to muted info text. */
+  descriptionVariant?: "info" | "error";
+  /** When true, render as an informational dialog — no fields, no submit, just a Close button. */
+  blocked?: boolean;
   /** Field definitions — same shape as the standard create modal. */
   fields: CreateFieldConfig[];
   /** Submit button label. Defaults to "Submit". */
@@ -35,6 +39,8 @@ export interface PromptNoSqlCommandModalProps {
 export function PromptNoSqlCommandModal({
   title,
   description,
+  descriptionVariant = "info",
+  blocked = false,
   fields,
   submitLabel = "Submit",
   danger = false,
@@ -102,12 +108,22 @@ export function PromptNoSqlCommandModal({
         }`}
       >
         <div
-          className={`px-5 py-4 flex-shrink-0 ${visibleFields.length > 0 ? "border-b border-border/60" : ""}`}
+          className={`px-5 py-4 flex-shrink-0 ${!blocked && visibleFields.length > 0 ? "border-b border-border/60" : ""}`}
         >
           <h2 className="text-sm font-semibold text-on-surface">{title}</h2>
-          {description && <p className="text-xs text-on-surface-muted mt-1.5">{description}</p>}
+          {description &&
+            (descriptionVariant === "error" ? (
+              <div className="mt-2 flex items-start gap-2 rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2">
+                <span className="text-red-400 text-sm leading-none mt-0.5" aria-hidden>
+                  &#9888;
+                </span>
+                <p className="text-xs text-red-300">{description}</p>
+              </div>
+            ) : (
+              <p className="text-xs text-on-surface-muted mt-1.5">{description}</p>
+            ))}
         </div>
-        {splitPane ? (
+        {blocked ? null : splitPane ? (
           <div className="flex flex-1 min-h-0 overflow-hidden">
             <div className="w-[440px] flex-shrink-0 overflow-y-auto px-5 py-4 border-r border-border space-y-4">
               {regularFields.map((f) => (
@@ -151,22 +167,34 @@ export function PromptNoSqlCommandModal({
           )
         )}
         <div className="px-5 py-3 border-t border-border/60 flex justify-end gap-2 flex-shrink-0">
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={submitting}
-            className="px-3 py-1.5 rounded text-xs text-on-surface-secondary hover:bg-surface-overlay transition-colors disabled:opacity-50"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={() => void handleSubmit()}
-            disabled={submitting}
-            className={submitClasses}
-          >
-            {submitting ? "Working…" : submitLabel}
-          </button>
+          {blocked ? (
+            <button
+              type="button"
+              onClick={onCancel}
+              className="px-3 py-1.5 rounded text-xs text-on-surface-secondary hover:bg-surface-overlay transition-colors"
+            >
+              Close
+            </button>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={onCancel}
+                disabled={submitting}
+                className="px-3 py-1.5 rounded text-xs text-on-surface-secondary hover:bg-surface-overlay transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleSubmit()}
+                disabled={submitting}
+                className={submitClasses}
+              >
+                {submitting ? "Working…" : submitLabel}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </Modal>

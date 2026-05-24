@@ -92,6 +92,78 @@ export function registerActionRoutes(app: Hono): void {
     }
   });
 
+  /**
+   * POST /api/resources/chat-stream — stream a chat turn against a resource
+   * that exposes the chatPanel capability (e.g. a DigitalOcean Gradient AI
+   * agent). The response is NDJSON: each line is a JSON-encoded
+   * ChatStreamEvent (`{"kind":"delta","text":"…"}` / `{"kind":"done",…}` /
+   * `{"kind":"error",…}`). The browser-side ChatPanel reads line-by-line via
+   * ReadableStream.getReader() + TextDecoder.
+   */
+  app.post("/chat-stream", async (c) => {
+    requirePermission(c, "resources:execute");
+    const organizationId = c.get("organizationId");
+    const input = await c.req.json<{
+      pluginId: string;
+      accountId: string;
+      resourceTypeId: string;
+      resourceId: string;
+      messages: Array<{ role: "system" | "user" | "assistant"; content: string }>;
+      parentResourceId?: string;
+    }>();
+    const ctx = await getClientForResource(
+      input.pluginId,
+      input.accountId,
+      organizationId,
+      input.parentResourceId,
+    );
+    if (!ctx) return c.json({ error: "Account not found" }, 404);
+    if (!ctx.client.streamChatMessage) {
+      return c.json({ error: "Plugin does not support chat" }, 400);
+    }
+
+    // Hand the underlying ReadableStream off to Hono — we serialise each
+    // plugin-yielded event as one NDJSON line, flushed immediately so the
+    // browser sees tokens as they arrive. Aborting the response (user
+    // clicked Stop or navigated away) closes the iterator on the next
+    // backpressure cycle, which Node handles via the AbortSignal we don't
+    // wire here (plugins currently ignore aborts; the cleanup story is to
+    // let the in-flight HTTP request finish).
+    const stream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        const encoder = new TextEncoder();
+        const writeEvent = (event: unknown): void => {
+          controller.enqueue(encoder.encode(JSON.stringify(event) + "\n"));
+        };
+        try {
+          const iter = ctx.client.streamChatMessage!(
+            input.resourceTypeId,
+            input.resourceId,
+            input.accountId,
+            input.messages,
+          );
+          for await (const event of iter) {
+            writeEvent(event);
+          }
+        } catch (err) {
+          writeEvent({
+            kind: "error",
+            message: err instanceof Error ? err.message : String(err),
+          });
+        } finally {
+          controller.close();
+        }
+      },
+    });
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "application/x-ndjson",
+        "Cache-Control": "no-cache, no-store",
+        "X-Accel-Buffering": "no",
+      },
+    });
+  });
+
   /** POST /api/resources/attach — attach a resource onto a same-account target (e.g. disk → VM). */
   app.post("/attach", async (c) => {
     requirePermission(c, "resources:write");

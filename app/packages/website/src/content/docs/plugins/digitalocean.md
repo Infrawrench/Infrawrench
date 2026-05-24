@@ -14,7 +14,13 @@ The most approachable cloud plugin — a single API token is all you need.
 - **Custom images** — your account-owned images (uploaded ISOs, snapshots promoted to images, backups). Distribution and marketplace images are still selectable from the droplet create form.
 - **Network File Storage (NFS)** — create POSIX-compliant NFSv4.1 shares (standard or high-performance tier), pinned to a VPC, mountable across multiple Droplets and DOKS nodes. The share detail page surfaces the mount target and a ready-to-paste `mount -t nfs` command.
 - **Kubernetes (DOKS)** — clusters, with kubeconfig output for the [Kubernetes plugin](./kubernetes.md).
-- **Managed databases** — Postgres, MySQL, Redis, MongoDB, Kafka, OpenSearch. Connection strings are outputs you can reference from the matching client plugins.
+- **Managed databases** — Postgres, MySQL, Redis, MongoDB, Kafka, OpenSearch, and Weaviate (private preview). Connection strings are outputs you can reference from the matching client plugins.
+- **Agent Platform** — list, create, and delete Gradient AI agents. The agent's deployment URL is surfaced as an output you can reference from other resources.
+- **Knowledge Bases** — list, create, and delete RAG knowledge bases. The `kbaas.do-ai.run/v1/{uuid}/retrieve` hybrid retrieval endpoint is exposed as an output.
+- **Inference Router** — list, create, and delete model routers (the "right model per call" auto-routing layer that balances cost and latency across multiple foundation models).
+- **Dedicated Inference** — list, create, and delete dedicated GPU-backed model deployments. Public and private VPC endpoints are exposed as outputs.
+- **Batch Inference jobs** — list and cancel async batch jobs running against OpenAI or Anthropic provider APIs.
+- **Model API Keys** — list, create, and delete the keys used to authenticate against `inference.do-ai.run` (serverless inference + OpenAI-compatible SDK access). The secret is shown once at creation and persisted encrypted locally.
 - **Spaces** — S3-compatible object storage, with the [file browser](../features/file-browsers.md).
 - **DNS** — domains and records.
 - **Projects** — list, create, edit (name / description / purpose / environment) and delete. Use the **Edit Project…** button at the bottom of the project detail page to rename or repurpose without leaving Infrawrench.
@@ -68,6 +74,105 @@ Create a share from any project's NFS sidebar group:
 After creation, the share's detail page renders the mount target and a copy-paste `sudo mount -t nfs -o nfsvers=4.1 …` command sized for the share.
 
 <insert [DigitalOcean NFS share detail page showing the mount target and mount command] here>
+
+## Gradient AI Platform & Inference Engine
+
+DigitalOcean's AI surface area covers two adjacent products that share the same control plane:
+
+- **Gradient AI Platform** (formerly the GenAI Platform) — agents, knowledge bases, and the inference router. Managed via `/v2/gen-ai/…`.
+- **Inference Engine** — serverless inference (`inference.do-ai.run/v1/…`), batch inference jobs, and Dedicated Inference deployments (`/v2/dedicated-inferences`).
+
+Infrawrench groups them in the sidebar so you can manage agents, knowledge bases, routers, dedicated GPU deployments, batch jobs, and model API keys side by side. None of these resources are project-scoped from the DO API's perspective, so they all show up as top-level groups under the account.
+
+### Agents
+
+The Agent Platform lets you assemble a chat-style endpoint by pairing a foundation model with an instruction (system prompt), zero or more knowledge bases, and optional function/agent routes. The create form asks for:
+
+- **Name** — must be unique within the team.
+- **Workspace** — every agent belongs to a workspace. New accounts have none; leaving the picker empty auto-creates a `default` workspace (matching the DO console's behaviour), or use **+ New workspace** to pick a name explicitly.
+- **Region** — only regions where Gradient AI is deployed appear here (the list is pulled live from `/v2/gen-ai/regions`).
+- **Model source** — choose between a **single foundation model** (picked from `/v2/gen-ai/models?usecases=MODEL_USECASE_AGENT` — Anthropic, OpenAI, and DO-hosted Meta models all appear) or an **Inference Router** (picked from your existing routers, or created inline via the **+ New router** button next to the picker — name, optional description, optional fallback models, all without leaving the agent form). The two are mutually exclusive in DO's API; routing through a router supersedes any single-model selection.
+- **Instruction** — long-form system prompt. Optional; defaults to empty.
+
+You can also swap an existing agent's model for a router (or vice versa) post-creation via **Edit Agent** on the detail page — the change goes through `PUT /v2/gen-ai/agents/{uuid}` and takes effect immediately.
+
+#### Agent detail page
+
+The agent detail page covers everything the DO console's Overview, Observability, and Resources tabs do, mapped onto Infrawrench's standard chrome:
+
+- **Playground tab** — chat directly with the deployed agent. Tokens stream in live (OpenAI-compatible SSE under the hood). The first time anyone opens it on an agent, Infrawrench mints a single `infrawrench-playground` endpoint access key and stores it encrypted; on the cloud workspace that key is reused org-wide so the team isn't minting a new token every session (the secret stays server-side and is never exposed to other users). Cmd/Ctrl+Enter sends, Stop cancels mid-stream, New chat resets the history. Per-turn token usage is shown under each assistant reply when the gateway returns it.
+- **Endpoint section** — copyable Deployment URL and OpenAI-compatible base URL (`…/api/v1`), each with a one-click copy button. A **Make Public** / **Make Private** header action flips the agent's endpoint via `PUT /v2/gen-ai/agents/{uuid}/deployment_visibility`; the button label always shows the next action, never the current state.
+- **Embed section** — when the endpoint is public, Infrawrench renders DigitalOcean's chatbot widget `<script>` snippet (the same one the DO console offers) as a copyable code block. Paste it into your site's HTML to embed the chatbot. For private endpoints the section explains that you need to make the endpoint public first.
+- **Endpoint Access Keys** — listed inside the agent as the `agent-api-key` child resource. Create from inside the agent's detail page (the agent UUID is implicit); the secret is returned once on create and persisted encrypted in the local secret store. Delete from the row's context menu.
+- **Metrics tab** — auto-rendered because `supportsMetrics: true`. Pulls from `/v2/gen-ai/agents/{uuid}/usage` with the host's selected time range and renders up to six series: per-bucket Input/Output/Total tokens plus aggregate Throughput (tokens/s), Latency, and Time-to-first-token. Agents with no traffic show the host's standard empty state — no errors.
+- **Knowledge Bases section** — lists every attached KB with a Detach button per row. Attach a KB either by dragging it onto the agent in the sidebar or via the **+ Attach knowledge base** header action.
+- **Function Routes section** — lists each function route's name, FaaS target (`namespace/name`), and description, with a Detach button. **+ Add function route** opens a prompt with function name, FaaS name + namespace, optional input/output JSON Schemas.
+- **Agent Routes (child agents) section** — routes from this agent to others, with optional `route_name` and `if_case`. **+ Route to child agent** opens a picker plus the two optional fields.
+- **Settings** — the standard **Edit Agent** button (name, description, instruction, temperature, max_tokens, k, model/router swap) goes through `PUT /v2/gen-ai/agents/{uuid}`.
+
+After creation the agent's deployment URL is exposed as the `deploymentUrl` output and the `agentEndpoint` alias — the latter matches the OpenAI-compatible base URL, so you can paste it straight into any OpenAI SDK that takes a `baseURL`.
+
+<insert [DigitalOcean Agent detail page with deployment URL and attached knowledge bases visible] here>
+
+### Knowledge Bases
+
+Create a knowledge base from the sidebar group. The form takes:
+
+- **Name** and optional **tags**.
+- **Region** — same region list as agents.
+- **Embedding model** — picked from `/v2/gen-ai/models?usecases=MODEL_USECASE_KNOWLEDGEBASE`.
+
+Knowledge bases back onto an OpenSearch vector store (the `database_id` field exposes the backing cluster UUID). The `retrievalEndpoint` output is the hybrid retrieval URL — `https://kbaas.do-ai.run/v1/{uuid}/retrieve` — which supports both semantic and lexical search.
+
+Data sources (web crawls, file uploads, Dropbox / Google Drive OAuth links) and indexing jobs are managed in the DO console for now — Infrawrench focuses on the lifecycle and discovery of the knowledge base itself.
+
+<insert [DigitalOcean Knowledge Base detail page showing the retrieval endpoint output] here>
+
+### Inference Router
+
+The router is DO's "automatic model selection" layer — point your application at a single endpoint and the router picks the cheapest model that can handle each prompt. Create one when:
+
+- Your workload has **mixed prompt complexity** (some prompts are trivially answerable by smaller models, some need frontier models).
+- You want **automatic fallback** when a model is unavailable.
+
+The create form takes a name, optional description, target region, and an initial list of fallback model UUIDs. Routing policies (the "if prompt matches X, use model Y" rules) are managed in the DO console.
+
+### Dedicated Inference
+
+Dedicated Inference is the always-on, GPU-backed sibling of serverless inference. Move to it when your request volume is steady, latency SLOs are strict, or you need bring-your-own-model. The create form pulls live data from `/v2/dedicated-inferences/sizes` (regions + GPU sizes + monthly price) and `/v2/dedicated-inferences/accelerators` (which models each GPU size supports):
+
+- **Region** — only Gradient AI regions appear.
+- **GPU Size** — the picker shows GPU count and monthly price.
+- **Model** — selectable from the accelerator catalog. Pasting a Hugging Face model ID also works for BYOM.
+- **Public endpoint** — when on, both public and private VPC FQDNs are exposed; otherwise only the private one.
+- **VPC** — optional; defaults to the region's default VPC.
+- **Hugging Face token** — only needed for gated HF models.
+
+Once provisioning completes, the `publicEndpointUrl` and `privateEndpointUrl` outputs are populated.
+
+<insert [DigitalOcean Dedicated Inference create form showing the GPU size picker with prices] here>
+
+### Batch Inference
+
+Batch jobs let you submit large async workloads against OpenAI or Anthropic provider APIs and get results back within 24 hours at a significantly lower cost than real-time inference. Infrawrench lists every batch job under the account (newest first, 100 per page), with provider, endpoint, status, and request counts. Jobs can be **cancelled** from the detail page but not edited — JSONL input files and outputs are uploaded/downloaded via the DO console or the `inference.do-ai.run/v1/batches/files` endpoints directly.
+
+### Model API Keys
+
+These are the keys used to authenticate against `https://inference.do-ai.run/v1/*` (serverless inference, including the OpenAI-compatible SDK shim). Create one with just a name; the secret value is returned in the `POST /v2/gen-ai/models/api_keys` response **once**, captured by Infrawrench, and persisted encrypted in your local secret store. After that point only the key info (name, last-used timestamp) is visible on the detail page — the secret itself is reveal-once.
+
+For account-wide API access (`/v2/...`) keep using the personal access token you added when you set up the plugin.
+
+<insert [DigitalOcean Model API Key detail page with the reveal-once secret value chip] here>
+
+### Vector Databases (Weaviate / OpenSearch / PostgreSQL)
+
+DO's managed vector database offerings are managed through the existing **Managed Database** group. The engine picker now includes:
+
+- **Weaviate** (private preview, requires sign-up at digitalocean.com — selecting it in regions that don't host Weaviate yet will return 422).
+- **OpenSearch** — already supported; pair with the [OpenSearch plugin](./opensearch.md) for indices, search, and vector k-NN.
+- **PostgreSQL** with `pgvector` — already supported via the [Postgres plugin](./postgres.md).
+
+The connection string and CA certificate outputs flow the same way as the other managed databases, so the same peer-pane tabs and secret-export templates work.
 
 ## Credentials
 

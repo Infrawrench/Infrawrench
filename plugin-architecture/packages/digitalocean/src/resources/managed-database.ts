@@ -12,7 +12,7 @@ export const ManagedDatabaseResourceType: ResourceTypeDefinition = {
       label: "Engine",
       kind: "enum",
       required: true,
-      enumValues: ["pg", "mysql", "redis", "mongodb", "kafka", "opensearch"],
+      enumValues: ["pg", "mysql", "redis", "mongodb", "kafka", "opensearch", "weaviate"],
     },
     {
       key: "version",

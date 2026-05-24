@@ -123,6 +123,9 @@ const httpHostServices = { http: { request: httpRequest } };
  * same way on desktop and web.
  */
 const secretHostServices: SecretHostServices = {
+  async setPlaintext(resourceId: string, fieldKey: string, value: string): Promise<void> {
+    await persistPlaintextSecret(resourceId, fieldKey, value);
+  },
   async getPlaintext(resourceId: string, fieldKey: string): Promise<string | null> {
     try {
       const db = await getDb();

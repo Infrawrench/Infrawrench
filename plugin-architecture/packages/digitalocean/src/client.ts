@@ -6,6 +6,9 @@ import type {
   SidebarItemSchema,
   CreateResourceConfig,
   SectionNode,
+  ActionNode,
+  ChatMessage,
+  ChatStreamEvent,
   ResourceTypeDefinition,
   DashboardStat,
   MetricSeries,
@@ -57,6 +60,14 @@ import {
  * Best-effort JSON-array parse for catalog data stuffed into resolvedOutputs
  * by enrichDetail. Returns [] on any error so the picker degrades gracefully.
  */
+function safeParseJson(value: string): unknown {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+}
+
 function parseJsonArray<T>(value: unknown): T[] {
   if (typeof value !== "string" || !value) return [];
   try {
@@ -307,6 +318,74 @@ function doStatusDot(resource: ResourceInstance): StatusDotNode {
       return volumeStatusDot(!!String(fields["dropletIds"] ?? ""));
     case "domain":
       return { kind: "status-dot", status: "healthy", label: "Active" };
+    case "gen-ai-agent": {
+      const status = String(fields["status"] ?? "").toLowerCase();
+      if (status.includes("running") || status === "active" || status === "deployed") {
+        return { kind: "status-dot", status: "healthy", label: "Deployed" };
+      }
+      if (status.includes("provision") || status.includes("creat")) {
+        return { kind: "status-dot", status: "provisioning", label: "Provisioning" };
+      }
+      if (status.includes("error") || status.includes("fail")) {
+        return { kind: "status-dot", status: "error", label: status || "Error" };
+      }
+      return { kind: "status-dot", status: "info", label: status || "Unknown" };
+    }
+    case "gen-ai-knowledge-base": {
+      const status = String(fields["lastIndexingStatus"] ?? "").toLowerCase();
+      if (status === "indexing_status_completed" || status === "completed") {
+        return { kind: "status-dot", status: "healthy", label: "Indexed" };
+      }
+      if (status.includes("indexing") || status.includes("pending")) {
+        return { kind: "status-dot", status: "provisioning", label: "Indexing" };
+      }
+      if (status.includes("error") || status.includes("fail")) {
+        return { kind: "status-dot", status: "error", label: "Indexing failed" };
+      }
+      return { kind: "status-dot", status: "info", label: "Ready" };
+    }
+    case "gen-ai-model-router":
+      return { kind: "status-dot", status: "healthy", label: "Active" };
+    case "dedicated-inference": {
+      const status = String(fields["status"] ?? "");
+      switch (status) {
+        case "active":
+          return { kind: "status-dot", status: "healthy", label: "Active" };
+        case "provisioning":
+        case "new":
+        case "updating":
+          return { kind: "status-dot", status: "provisioning", label: status };
+        case "deleting":
+          return { kind: "status-dot", status: "provisioning", label: "Deleting" };
+        case "error":
+          return { kind: "status-dot", status: "error", label: "Error" };
+        default:
+          return { kind: "status-dot", status: "info", label: status || "Unknown" };
+      }
+    }
+    case "inference-batch": {
+      const status = String(fields["status"] ?? "");
+      switch (status) {
+        case "completed":
+          return { kind: "status-dot", status: "healthy", label: "Completed" };
+        case "in_progress":
+        case "validating":
+        case "finalizing":
+          return { kind: "status-dot", status: "provisioning", label: status };
+        case "cancelling":
+          return { kind: "status-dot", status: "provisioning", label: "Cancelling" };
+        case "cancelled":
+          return { kind: "status-dot", status: "info", label: "Cancelled" };
+        case "expired":
+          return { kind: "status-dot", status: "degraded", label: "Expired" };
+        case "failed":
+          return { kind: "status-dot", status: "error", label: "Failed" };
+        default:
+          return { kind: "status-dot", status: "info", label: status || "Unknown" };
+      }
+    }
+    case "model-api-key":
+      return { kind: "status-dot", status: "healthy", label: "Active" };
     default:
       return { kind: "status-dot", status: "info" };
   }
@@ -363,13 +442,41 @@ export class DigitalOceanClient implements PluginClient {
   }
 
   private async fetch<T>(path: string, options?: RequestInit): Promise<T> {
-    return jsonRestFetch<T>({
-      vendor: "DO",
-      url: `${this.baseUrl}${path}`,
-      errorPath: path,
-      headers: { Authorization: `Bearer ${this.token}` },
-      ...(options ? { init: options } : {}),
-    });
+    try {
+      return await jsonRestFetch<T>({
+        vendor: "DO",
+        url: `${this.baseUrl}${path}`,
+        errorPath: path,
+        headers: { Authorization: `Bearer ${this.token}` },
+        ...(options ? { init: options } : {}),
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      // DO's generic `{"id":"forbidden","message":"failed to create agent"}`
+      // tells the user nothing actionable. Translate the common cause —
+      // missing GenAI scopes on the personal access token — into a
+      // pointer at the fix. Same root cause for the other gen-ai and
+      // dedicated-inference endpoints, so cover both.
+      if (
+        message.includes("403") &&
+        (path.startsWith("/gen-ai/") || path.startsWith("/dedicated-inferences"))
+      ) {
+        const product = path.startsWith("/dedicated-inferences")
+          ? "Dedicated Inference"
+          : "Gradient AI";
+        throw new Error(
+          `${message}\n\n` +
+            `Hint: this is almost always the API token's scope. DigitalOcean ` +
+            `${product} endpoints need the \`genai:create\` / \`genai:read\` / ` +
+            `\`genai:update\` / \`genai:delete\` scopes (and ` +
+            `\`dedicated_inference:*\` for Dedicated Inference), which older ` +
+            `personal access tokens don't include. Mint a new token at ` +
+            `https://cloud.digitalocean.com/account/api/tokens with the GenAI ` +
+            `(or "Full Access") scope and update this account's credentials.`,
+        );
+      }
+      throw err;
+    }
   }
 
   /**
@@ -453,9 +560,331 @@ export class DigitalOceanClient implements PluginClient {
         return this.listNfsShares(accountId);
       case "db-user":
         return this.listDatabaseUsers(accountId);
+      case "gen-ai-agent":
+        return this.listGenAiAgents(accountId);
+      case "gen-ai-knowledge-base":
+        return this.listGenAiKnowledgeBases(accountId);
+      case "gen-ai-model-router":
+        return this.listGenAiModelRouters(accountId);
+      case "dedicated-inference":
+        return this.listDedicatedInferences(accountId);
+      case "inference-batch":
+        return this.listInferenceBatches(accountId);
+      case "model-api-key":
+        return this.listModelApiKeys(accountId);
+      case "agent-api-key":
+        return this.listAgentApiKeys(accountId);
       default:
         throw new Error(`DigitalOcean plugin: unknown resource type "${typeId}"`);
     }
+  }
+
+  /**
+   * Like `fetch`, but tolerates the "feature not enabled for this account"
+   * shape DO returns for early-access products (GenAI / Dedicated Inference)
+   * — 401/403/404 collapses to an empty list so the sidebar group doesn't
+   * become an error spinner for everyone who hasn't opted into the product.
+   */
+  private async fetchOrEmpty<T>(path: string, fallback: T): Promise<T> {
+    try {
+      return await this.fetch<T>(path);
+    } catch {
+      return fallback;
+    }
+  }
+
+  private async listGenAiAgents(accountId: string): Promise<ResourceInstance[]> {
+    const data = await this.fetchOrEmpty<{
+      agents?: Array<Record<string, unknown>> | null;
+    }>("/gen-ai/agents?per_page=200", { agents: [] });
+    return (data.agents ?? []).map((a) => {
+      const uuid = String(a["uuid"] ?? a["id"] ?? "");
+      const model = a["model"] as Record<string, unknown> | undefined;
+      const router = a["model_router"] as Record<string, unknown> | undefined;
+      const deployment = a["deployment"] as Record<string, unknown> | undefined;
+      const knowledgeBases = Array.isArray(a["knowledge_bases"])
+        ? (a["knowledge_bases"] as unknown[])
+        : [];
+      const deploymentUrl = String(deployment?.["url"] ?? "");
+      return {
+        id: `${accountId}:gen-ai-agent:${uuid}`,
+        pluginId: "digitalocean",
+        resourceTypeId: "gen-ai-agent",
+        accountId,
+        displayName: String(a["name"] ?? uuid),
+        fields: {
+          name: String(a["name"] ?? ""),
+          region: String(a["region"] ?? ""),
+          description: String(a["description"] ?? ""),
+          instruction: String(a["instruction"] ?? ""),
+          modelUuid: String(model?.["uuid"] ?? ""),
+          modelName: String(model?.["name"] ?? ""),
+          modelRouterUuid: String(router?.["uuid"] ?? ""),
+          modelRouterName: String(router?.["name"] ?? ""),
+          projectId: String(a["project_id"] ?? ""),
+          temperature: Number(a["temperature"] ?? 0),
+          maxTokens: Number(a["max_tokens"] ?? 0),
+          k: Number(a["k"] ?? 0),
+          status: String(deployment?.["status"] ?? a["status"] ?? ""),
+          deploymentVisibility: String(deployment?.["visibility"] ?? ""),
+          knowledgeBaseCount: knowledgeBases.length,
+          deploymentUrl,
+        },
+        resolvedOutputs: {
+          ...(deploymentUrl ? { deploymentUrl } : {}),
+          ...(deploymentUrl ? { agentEndpoint: deploymentUrl } : {}),
+        },
+        secretStates: [],
+        externalId: uuid,
+        createdAt: String(a["created_at"] ?? new Date().toISOString()),
+        updatedAt: String(a["updated_at"] ?? a["created_at"] ?? new Date().toISOString()),
+      };
+    });
+  }
+
+  private async listGenAiKnowledgeBases(accountId: string): Promise<ResourceInstance[]> {
+    const data = await this.fetchOrEmpty<{
+      knowledge_bases?: Array<Record<string, unknown>> | null;
+    }>("/gen-ai/knowledge_bases?per_page=200", { knowledge_bases: [] });
+    return (data.knowledge_bases ?? []).map((kb) => {
+      const uuid = String(kb["uuid"] ?? kb["id"] ?? "");
+      const lastJob = kb["last_indexing_job"] as Record<string, unknown> | undefined;
+      const tags = Array.isArray(kb["tags"]) ? (kb["tags"] as string[]) : [];
+      const dataSources = Array.isArray(kb["data_sources"])
+        ? (kb["data_sources"] as unknown[]).length
+        : 0;
+      return {
+        id: `${accountId}:gen-ai-knowledge-base:${uuid}`,
+        pluginId: "digitalocean",
+        resourceTypeId: "gen-ai-knowledge-base",
+        accountId,
+        displayName: String(kb["name"] ?? uuid),
+        fields: {
+          name: String(kb["name"] ?? ""),
+          region: String(kb["region"] ?? ""),
+          embeddingModelUuid: String(kb["embedding_model_uuid"] ?? ""),
+          databaseId: String(kb["database_id"] ?? ""),
+          projectId: String(kb["project_id"] ?? ""),
+          isPublic: kb["is_public"] ? "yes" : "no",
+          lastIndexingStatus: String(lastJob?.["status"] ?? ""),
+          dataSourceCount: dataSources,
+          tags: tags.join(","),
+        },
+        resolvedOutputs: uuid
+          ? { retrievalEndpoint: `https://kbaas.do-ai.run/v1/${uuid}/retrieve` }
+          : {},
+        secretStates: [],
+        externalId: uuid,
+        createdAt: String(kb["created_at"] ?? new Date().toISOString()),
+        updatedAt: String(kb["updated_at"] ?? kb["created_at"] ?? new Date().toISOString()),
+      };
+    });
+  }
+
+  private async listGenAiModelRouters(accountId: string): Promise<ResourceInstance[]> {
+    const data = await this.fetchOrEmpty<{
+      model_routers?: Array<Record<string, unknown>> | null;
+    }>("/gen-ai/models/routers?per_page=200", { model_routers: [] });
+    return (data.model_routers ?? []).map((r) => {
+      const uuid = String(r["uuid"] ?? r["id"] ?? "");
+      const regions = Array.isArray(r["regions"]) ? (r["regions"] as string[]) : [];
+      const config = r["config"] as Record<string, unknown> | undefined;
+      const fallback = Array.isArray(config?.["fallback_models"])
+        ? (config?.["fallback_models"] as string[])
+        : [];
+      const policies = Array.isArray(config?.["policies"])
+        ? (config?.["policies"] as unknown[]).length
+        : 0;
+      return {
+        id: `${accountId}:gen-ai-model-router:${uuid}`,
+        pluginId: "digitalocean",
+        resourceTypeId: "gen-ai-model-router",
+        accountId,
+        displayName: String(r["name"] ?? uuid),
+        fields: {
+          name: String(r["name"] ?? ""),
+          description: String(r["description"] ?? ""),
+          regions: regions.join(","),
+          fallbackModels: fallback.join(","),
+          policyCount: policies,
+        },
+        resolvedOutputs: {},
+        secretStates: [],
+        externalId: uuid,
+        createdAt: String(r["created_at"] ?? new Date().toISOString()),
+        updatedAt: String(r["updated_at"] ?? r["created_at"] ?? new Date().toISOString()),
+      };
+    });
+  }
+
+  private async listDedicatedInferences(accountId: string): Promise<ResourceInstance[]> {
+    const data = await this.fetchOrEmpty<{
+      dedicated_inferences?: Array<Record<string, unknown>> | null;
+    }>("/dedicated-inferences?per_page=200", { dedicated_inferences: [] });
+    return (data.dedicated_inferences ?? []).map((d) => {
+      const id = String(d["id"] ?? "");
+      const spec = (d["spec"] ?? d["pending_deployment_spec"]) as
+        | Record<string, unknown>
+        | undefined;
+      const deployments = Array.isArray(spec?.["model_deployments"])
+        ? (spec?.["model_deployments"] as Array<Record<string, unknown>>)
+        : [];
+      const endpoints = d["endpoints"] as Record<string, unknown> | undefined;
+      const publicEndpoint = String(endpoints?.["public_endpoint_fqdn"] ?? "");
+      const privateEndpoint = String(endpoints?.["private_endpoint_fqdn"] ?? "");
+      const modelSummary = deployments
+        .map((m) => String(m["model_id"] ?? m["model_uuid"] ?? m["model_name"] ?? ""))
+        .filter(Boolean)
+        .join(", ");
+      return {
+        id: `${accountId}:dedicated-inference:${id}`,
+        pluginId: "digitalocean",
+        resourceTypeId: "dedicated-inference",
+        accountId,
+        displayName: String(spec?.["name"] ?? id),
+        fields: {
+          name: String(spec?.["name"] ?? ""),
+          region: String(d["region"] ?? ""),
+          vpcUuid: String(d["vpc_uuid"] ?? ""),
+          enablePublicEndpoint: spec?.["enable_public_endpoint"] ? "yes" : "no",
+          modelCount: deployments.length,
+          modelSummary,
+          publicEndpoint,
+          privateEndpoint,
+          status: String(d["status"] ?? ""),
+        },
+        resolvedOutputs: {
+          ...(publicEndpoint ? { publicEndpointUrl: publicEndpoint } : {}),
+          ...(privateEndpoint ? { privateEndpointUrl: privateEndpoint } : {}),
+        },
+        secretStates: [],
+        externalId: id,
+        createdAt: String(d["created_at"] ?? new Date().toISOString()),
+        updatedAt: String(d["updated_at"] ?? d["created_at"] ?? new Date().toISOString()),
+      };
+    });
+  }
+
+  /**
+   * The Batch Inference API lives on a separate host (inference.do-ai.run)
+   * and uses the same bearer token as the management plane. The endpoint
+   * paginates with `after` cursors instead of page/per_page — we only fetch
+   * the first page (newest 100) for the sidebar; the detail page can drill
+   * in for older jobs.
+   */
+  private async listInferenceBatches(accountId: string): Promise<ResourceInstance[]> {
+    try {
+      const res = await fetch("https://inference.do-ai.run/v1/batches?limit=100", {
+        headers: { Authorization: `Bearer ${this.token}` },
+      });
+      if (!res.ok) return [];
+      const data = (await res.json()) as {
+        data?: Array<Record<string, unknown>> | null;
+      };
+      return (data.data ?? []).map((b) => {
+        const batchId = String(b["batch_id"] ?? b["id"] ?? "");
+        const counts = b["request_counts"] as Record<string, unknown> | undefined;
+        return {
+          id: `${accountId}:inference-batch:${batchId}`,
+          pluginId: "digitalocean",
+          resourceTypeId: "inference-batch",
+          accountId,
+          displayName: batchId,
+          fields: {
+            provider: String(b["provider"] ?? ""),
+            endpoint: String(b["endpoint"] ?? ""),
+            completionWindow: String(b["completion_window"] ?? "24h"),
+            inputFileId: String(b["input_file_id"] ?? ""),
+            outputFileId: String(b["output_file_id"] ?? ""),
+            errorFileId: String(b["error_file_id"] ?? ""),
+            status: String(b["status"] ?? ""),
+            totalRequests: Number(counts?.["total"] ?? 0),
+            completedRequests: Number(counts?.["completed"] ?? 0),
+            failedRequests: Number(counts?.["failed"] ?? 0),
+          },
+          resolvedOutputs: {},
+          secretStates: [],
+          externalId: batchId,
+          createdAt: String(b["created_at"] ?? new Date().toISOString()),
+          updatedAt: String(b["updated_at"] ?? b["created_at"] ?? new Date().toISOString()),
+        };
+      });
+    } catch {
+      return [];
+    }
+  }
+
+  private async listModelApiKeys(accountId: string): Promise<ResourceInstance[]> {
+    const data = await this.fetchOrEmpty<{
+      api_key_infos?: Array<Record<string, unknown>> | null;
+    }>("/gen-ai/models/api_keys?per_page=200", { api_key_infos: [] });
+    return (data.api_key_infos ?? []).map((k) => {
+      const uuid = String(k["uuid"] ?? k["id"] ?? "");
+      return {
+        id: `${accountId}:model-api-key:${uuid}`,
+        pluginId: "digitalocean",
+        resourceTypeId: "model-api-key",
+        accountId,
+        displayName: String(k["name"] ?? uuid),
+        fields: {
+          name: String(k["name"] ?? ""),
+          createdBy: String(k["created_by"] ?? ""),
+          lastUsedAt: String(k["last_used_at"] ?? ""),
+        },
+        resolvedOutputs: {},
+        secretStates: [],
+        externalId: uuid,
+        createdAt: String(k["created_at"] ?? new Date().toISOString()),
+        updatedAt: String(k["created_at"] ?? new Date().toISOString()),
+      };
+    });
+  }
+
+  /**
+   * Agent-scoped API keys (the per-agent bearer tokens used by client SDKs
+   * to call an agent's deployment endpoint). DO exposes them only per agent,
+   * not as a flat list — so we fan out across every agent and concat. One
+   * failed lookup doesn't blank the rest. Composite externalId
+   * `{agentUuid}/{keyUuid}` mirrors `nfs-share`'s `{region}/{shareId}` shape.
+   */
+  private async listAgentApiKeys(accountId: string): Promise<ResourceInstance[]> {
+    const agentList = await this.fetchOrEmpty<{
+      agents?: Array<Record<string, unknown>> | null;
+    }>("/gen-ai/agents?per_page=200", { agents: [] });
+    const agents = agentList.agents ?? [];
+    const keyLists = await Promise.allSettled(
+      agents.map(async (a) => {
+        const agentUuid = String(a["uuid"] ?? a["id"] ?? "");
+        if (!agentUuid) return [] as ResourceInstance[];
+        const resp = await this.fetch<{
+          api_key_infos?: Array<Record<string, unknown>> | null;
+        }>(`/gen-ai/agents/${agentUuid}/api_keys?per_page=200`);
+        const now = new Date().toISOString();
+        return (resp.api_key_infos ?? []).map<ResourceInstance>((k) => {
+          const keyUuid = String(k["uuid"] ?? k["id"] ?? "");
+          return {
+            id: `${accountId}:agent-api-key:${agentUuid}/${keyUuid}`,
+            pluginId: "digitalocean",
+            resourceTypeId: "agent-api-key",
+            accountId,
+            displayName: String(k["name"] ?? keyUuid),
+            fields: {
+              name: String(k["name"] ?? ""),
+              createdBy: String(k["created_by"] ?? ""),
+            },
+            resolvedOutputs: {},
+            // Secret isn't returned by the list endpoint — only on create
+            // and regenerate. Existing keys have no recoverable secret.
+            secretStates: [],
+            externalId: `${agentUuid}/${keyUuid}`,
+            parentResourceId: `${accountId}:gen-ai-agent:${agentUuid}`,
+            createdAt: String(k["created_at"] ?? now),
+            updatedAt: String(k["created_at"] ?? now),
+          };
+        });
+      }),
+    );
+    return keyLists.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
   }
 
   async getResource(
@@ -957,6 +1386,45 @@ export class DigitalOceanClient implements PluginClient {
         });
         break;
       }
+      case "gen-ai-agent":
+        await this.fetch<unknown>(`/gen-ai/agents/${externalId}`, { method: "DELETE" });
+        break;
+      case "gen-ai-knowledge-base":
+        await this.fetch<unknown>(`/gen-ai/knowledge_bases/${externalId}`, { method: "DELETE" });
+        break;
+      case "gen-ai-model-router":
+        await this.fetch<unknown>(`/gen-ai/models/routers/${externalId}`, { method: "DELETE" });
+        break;
+      case "dedicated-inference":
+        await this.fetch<unknown>(`/dedicated-inferences/${externalId}`, { method: "DELETE" });
+        break;
+      case "inference-batch": {
+        // Batch jobs are cancelled rather than deleted. The endpoint lives
+        // on the data-plane host, so bypass `this.fetch` (which targets
+        // api.digitalocean.com) and call it directly with the same bearer.
+        const res = await fetch(`https://inference.do-ai.run/v1/batches/${externalId}/cancel`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${this.token}` },
+        });
+        if (!res.ok && res.status !== 404) {
+          throw new Error(`DO API error ${res.status} cancelling batch ${externalId}`);
+        }
+        break;
+      }
+      case "model-api-key":
+        await this.fetch<unknown>(`/gen-ai/models/api_keys/${externalId}`, { method: "DELETE" });
+        break;
+      case "agent-api-key": {
+        // Composite externalId `{agentUuid}/{keyUuid}` — both halves are
+        // required because DO scopes the endpoint to the parent agent.
+        const parts = externalId.split("/");
+        const agentUuid = parts[0]!;
+        const keyUuid = parts[1]!;
+        await this.fetch<unknown>(`/gen-ai/agents/${agentUuid}/api_keys/${keyUuid}`, {
+          method: "DELETE",
+        });
+        break;
+      }
       default:
         throw new Error(`DigitalOcean plugin: deleteResource not supported for type "${typeId}"`);
     }
@@ -969,6 +1437,99 @@ export class DigitalOceanClient implements PluginClient {
     fields: Record<string, string>,
   ): Promise<ResourceInstance> {
     const externalId = resourceId.split(":").pop() ?? "";
+
+    if (typeId === "gen-ai-agent") {
+      // DO's PUT /v2/gen-ai/agents/{uuid} accepts only the fields supplied —
+      // map the editable resource fields to the API's snake_case keys. A
+      // `model_uuid`/`model_router_uuid` change is the swap-router flow: if
+      // both are touched in the same edit, the explicit user intent is to
+      // pick whichever side has a non-empty value (router wins ties, since
+      // setting a router supersedes the model).
+      const fieldMap: Record<string, string> = {
+        name: "name",
+        description: "description",
+        instruction: "instruction",
+        temperature: "temperature",
+        maxTokens: "max_tokens",
+        k: "k",
+      };
+      const body: Record<string, unknown> = {};
+      for (const [src, dst] of Object.entries(fieldMap)) {
+        if (fields[src] !== undefined) body[dst] = fields[src];
+      }
+      // temperature / max_tokens / k are typed `string` in the host diff but
+      // the API wants numbers — coerce, dropping empty strings.
+      for (const key of ["temperature", "max_tokens", "k"] as const) {
+        if (body[key] !== undefined) {
+          const n = Number(body[key]);
+          if (Number.isFinite(n)) body[key] = n;
+          else delete body[key];
+        }
+      }
+      // Swap between a model and a router. `model_uuid` and
+      // `model_router_uuid` are mutually exclusive in DO's API — picking a
+      // router moves model_uuid to "" and vice versa. If only one side
+      // changed, send only that side; if both, prefer router when set.
+      const routerTouched = fields["modelRouterUuid"] !== undefined;
+      const modelTouched = fields["modelUuid"] !== undefined;
+      if (routerTouched && fields["modelRouterUuid"]) {
+        body["model_router_uuid"] = fields["modelRouterUuid"];
+      } else if (modelTouched && fields["modelUuid"]) {
+        body["model_uuid"] = fields["modelUuid"];
+      } else if (routerTouched && !fields["modelRouterUuid"] && fields["modelUuid"]) {
+        // Router was cleared but a model UUID is still present — switch back
+        // to the single-model path explicitly.
+        body["model_uuid"] = fields["modelUuid"];
+      }
+      const data = await this.fetch<{ agent: Record<string, unknown> }>(
+        `/gen-ai/agents/${externalId}`,
+        {
+          method: "PUT",
+          body: JSON.stringify(body),
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+      const a = data.agent ?? {};
+      const uuid = String(a["uuid"] ?? externalId);
+      const model = a["model"] as Record<string, unknown> | undefined;
+      const router = a["model_router"] as Record<string, unknown> | undefined;
+      const deployment = a["deployment"] as Record<string, unknown> | undefined;
+      const deploymentUrl = String(deployment?.["url"] ?? "");
+      const knowledgeBases = Array.isArray(a["knowledge_bases"])
+        ? (a["knowledge_bases"] as unknown[])
+        : [];
+      return {
+        id: `${accountId}:gen-ai-agent:${uuid}`,
+        pluginId: "digitalocean",
+        resourceTypeId: "gen-ai-agent",
+        accountId,
+        displayName: String(a["name"] ?? uuid),
+        fields: {
+          name: String(a["name"] ?? ""),
+          region: String(a["region"] ?? ""),
+          description: String(a["description"] ?? ""),
+          instruction: String(a["instruction"] ?? ""),
+          modelUuid: String(model?.["uuid"] ?? ""),
+          modelName: String(model?.["name"] ?? ""),
+          modelRouterUuid: String(router?.["uuid"] ?? ""),
+          modelRouterName: String(router?.["name"] ?? ""),
+          projectId: String(a["project_id"] ?? ""),
+          temperature: Number(a["temperature"] ?? 0),
+          maxTokens: Number(a["max_tokens"] ?? 0),
+          k: Number(a["k"] ?? 0),
+          status: String(deployment?.["status"] ?? a["status"] ?? ""),
+          deploymentVisibility: String(deployment?.["visibility"] ?? ""),
+          knowledgeBaseCount: knowledgeBases.length,
+          deploymentUrl,
+        },
+        resolvedOutputs: deploymentUrl ? { deploymentUrl, agentEndpoint: deploymentUrl } : {},
+        secretStates: [],
+        externalId: uuid,
+        createdAt: String(a["created_at"] ?? new Date().toISOString()),
+        updatedAt: String(a["updated_at"] ?? new Date().toISOString()),
+      };
+    }
+
     if (typeId !== "project") {
       throw new Error(`DigitalOcean plugin: updateResource not supported for type "${typeId}"`);
     }
@@ -1075,6 +1636,17 @@ export class DigitalOceanClient implements PluginClient {
       });
       return;
     }
+    if (sourceTypeId === "gen-ai-knowledge-base" && targetTypeId === "gen-ai-agent") {
+      const kbUuid = sourceResourceId.split(":").slice(2).join(":");
+      const agentUuid = targetResourceId.split(":").slice(2).join(":");
+      if (!kbUuid || !agentUuid) {
+        throw new Error("Cannot determine knowledge base or agent UUID for attachment.");
+      }
+      await this.fetch(`/gen-ai/agents/${agentUuid}/knowledge_bases/${kbUuid}`, {
+        method: "POST",
+      });
+      return;
+    }
     throw new Error(
       `DigitalOcean plugin: attachResource not supported for ${sourceTypeId} → ${targetTypeId}`,
     );
@@ -1087,6 +1659,76 @@ export class DigitalOceanClient implements PluginClient {
     parentResourceId?: string,
   ): Promise<ResourceCreateResult> {
     return doCreateResource(this.createCtx, typeId, accountId, fields, parentResourceId);
+  }
+
+  /**
+   * Inline field actions. The agent create form's Inference Router picker
+   * exposes a "+ New router" action that mints an Inference Router on the
+   * side (without leaving the agent form) and returns the new router's
+   * UUID + label so the host can splice it into the picker's options and
+   * select it. Other actions can be added here as they're declared.
+   */
+  async executeFieldAction(
+    typeId: string,
+    _fieldKey: string,
+    actionId: string,
+    _accountId: string,
+    _fields: Record<string, string>,
+    actionFields?: Record<string, string>,
+  ): Promise<{ value: string; option?: { id: string; label: string } }> {
+    if (typeId === "gen-ai-agent" && actionId === "create-workspace") {
+      const af = actionFields ?? {};
+      const name = String(af["name"] ?? "").trim();
+      if (!name) throw new Error("Workspace name is required.");
+      const body: Record<string, unknown> = {
+        name,
+        ...(af["description"] ? { description: af["description"] } : {}),
+      };
+      const data = await this.fetch<{ workspace: Record<string, unknown> }>("/gen-ai/workspaces", {
+        method: "POST",
+        body: JSON.stringify(body),
+        headers: { "Content-Type": "application/json" },
+      });
+      const w = data.workspace ?? {};
+      const uuid = String(w["uuid"] ?? "");
+      if (!uuid) throw new Error("DigitalOcean did not return a workspace UUID.");
+      return {
+        value: uuid,
+        option: { id: uuid, label: String(w["name"] ?? name) },
+      };
+    }
+    if (typeId === "gen-ai-agent" && actionId === "create-inference-router") {
+      const af = actionFields ?? {};
+      const name = String(af["name"] ?? "").trim();
+      if (!name) throw new Error("Router name is required.");
+      const fallback = String(af["fallbackModels"] ?? "")
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean);
+      const body: Record<string, unknown> = {
+        name,
+        ...(af["description"] ? { description: af["description"] } : {}),
+        ...(fallback.length ? { fallback_models: fallback } : {}),
+      };
+      const data = await this.fetch<{ model_router: Record<string, unknown> }>(
+        "/gen-ai/models/routers",
+        {
+          method: "POST",
+          body: JSON.stringify(body),
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+      const r = data.model_router ?? {};
+      const uuid = String(r["uuid"] ?? "");
+      if (!uuid) throw new Error("DigitalOcean did not return a router UUID.");
+      return {
+        value: uuid,
+        option: { id: uuid, label: String(r["name"] ?? name) },
+      };
+    }
+    throw new Error(
+      `DigitalOcean plugin: executeFieldAction not supported for "${typeId}" / "${actionId}".`,
+    );
   }
 
   private get actionCtx(): ActionContext {
@@ -1113,6 +1755,36 @@ export class DigitalOceanClient implements PluginClient {
     if (typeId === "volume") {
       return invokeVolumeAction(this.actionCtx, resourceId, accountId, actionId);
     }
+    if (typeId === "gen-ai-agent") {
+      const agentUuid = resourceId.split(":").slice(2).join(":");
+      if (actionId === "make-public" || actionId === "make-private") {
+        const visibility = actionId === "make-public" ? "VISIBILITY_PUBLIC" : "VISIBILITY_PRIVATE";
+        await this.fetch<unknown>(`/gen-ai/agents/${agentUuid}/deployment_visibility`, {
+          method: "PUT",
+          body: JSON.stringify({ visibility }),
+          headers: { "Content-Type": "application/json" },
+        });
+        return;
+      }
+      if (actionId === "regenerate-key") {
+        // Not exposed as a header action on the agent itself, but on the
+        // child key — kept here for symmetry once the row-action lands.
+        return;
+      }
+    }
+    if (typeId === "agent-api-key" && actionId === "regenerate") {
+      // Composite resourceId — parse {agentUuid}/{keyUuid} from the
+      // externalId, then PUT .../regenerate. DO returns a fresh secret_key
+      // on this call (one-shot, same as create).
+      const externalId = resourceId.split(":").slice(2).join(":");
+      const parts = externalId.split("/");
+      const agentUuid = parts[0]!;
+      const keyUuid = parts[1]!;
+      await this.fetch<unknown>(`/gen-ai/agents/${agentUuid}/api_keys/${keyUuid}/regenerate`, {
+        method: "PUT",
+      });
+      return;
+    }
     throw new Error(`DigitalOcean plugin: invokeAction not supported for type "${typeId}"`);
   }
 
@@ -1135,7 +1807,319 @@ export class DigitalOceanClient implements PluginClient {
     if (typeId === "volume") {
       return executeVolumeCommand(this.actionCtx, resourceId, accountId, command, args);
     }
+    if (typeId === "gen-ai-agent") {
+      const agentUuid = resourceId.split(":").slice(2).join(":");
+      const first = args[0];
+      const values: Record<string, string> =
+        typeof first === "string" && first
+          ? (() => {
+              try {
+                const parsed = JSON.parse(first) as Record<string, string>;
+                return parsed && typeof parsed === "object" ? parsed : {};
+              } catch {
+                return {};
+              }
+            })()
+          : {};
+      if (command === "attach-knowledge-base") {
+        const kbUuid = String(values["knowledgeBaseUuid"] ?? "");
+        if (!kbUuid) throw new Error("Pick a knowledge base.");
+        await this.fetch(`/gen-ai/agents/${agentUuid}/knowledge_bases/${kbUuid}`, {
+          method: "POST",
+        });
+        return;
+      }
+      if (command === "detach-knowledge-base") {
+        const kbUuid = String(values["knowledgeBaseUuid"] ?? "");
+        if (!kbUuid) throw new Error("Missing knowledge base UUID.");
+        await this.fetch(`/gen-ai/agents/${agentUuid}/knowledge_bases/${kbUuid}`, {
+          method: "DELETE",
+        });
+        return;
+      }
+      if (command === "attach-child-agent") {
+        const childUuid = String(values["childAgentUuid"] ?? "");
+        if (!childUuid) throw new Error("Pick an agent to route to.");
+        const body: Record<string, string> = {};
+        if (values["routeName"]) body["route_name"] = values["routeName"];
+        if (values["ifCase"]) body["if_case"] = values["ifCase"];
+        await this.fetch(`/gen-ai/agents/${agentUuid}/child_agents/${childUuid}`, {
+          method: "POST",
+          body: JSON.stringify(body),
+          headers: { "Content-Type": "application/json" },
+        });
+        return;
+      }
+      if (command === "detach-child-agent") {
+        const childUuid = String(values["childAgentUuid"] ?? "");
+        if (!childUuid) throw new Error("Missing child agent UUID.");
+        await this.fetch(`/gen-ai/agents/${agentUuid}/child_agents/${childUuid}`, {
+          method: "DELETE",
+        });
+        return;
+      }
+      if (command === "attach-function") {
+        // The form's value keys map straight onto the DO request body.
+        const name = String(values["functionName"] ?? "").trim();
+        const faasName = String(values["faasName"] ?? "").trim();
+        const faasNamespace = String(values["faasNamespace"] ?? "").trim();
+        if (!name || !faasName || !faasNamespace) {
+          throw new Error(
+            "Function name, FaaS function name, and FaaS namespace are all required.",
+          );
+        }
+        const body: Record<string, unknown> = {
+          function_name: name,
+          faas_name: faasName,
+          faas_namespace: faasNamespace,
+          ...(values["description"] ? { description: values["description"] } : {}),
+          ...(values["inputSchema"] ? { input_schema: safeParseJson(values["inputSchema"]) } : {}),
+          ...(values["outputSchema"]
+            ? { output_schema: safeParseJson(values["outputSchema"]) }
+            : {}),
+        };
+        await this.fetch(`/gen-ai/agents/${agentUuid}/functions`, {
+          method: "POST",
+          body: JSON.stringify(body),
+          headers: { "Content-Type": "application/json" },
+        });
+        return;
+      }
+      if (command === "detach-function") {
+        const fnUuid = String(values["functionUuid"] ?? "");
+        if (!fnUuid) throw new Error("Missing function UUID.");
+        await this.fetch(`/gen-ai/agents/${agentUuid}/functions/${fnUuid}`, {
+          method: "DELETE",
+        });
+        return;
+      }
+    }
     throw new Error(`DigitalOcean plugin: executeNoSqlCommand not supported for type "${typeId}"`);
+  }
+
+  /**
+   * In-memory fallback cache of `{ agentUuid → secret_key }` for hosts that
+   * don't expose a secret write path. The durable store is the host's
+   * encrypted secret-field state, keyed on the agent resource id under the
+   * `PLAYGROUND_KEY_FIELD` field — that's org-scoped on the cloud host so
+   * every team member's Playground reuses one minted key instead of each
+   * session minting its own.
+   */
+  private readonly playgroundKeyCache = new Map<string, string>();
+
+  private static readonly PLAYGROUND_KEY_FIELD = "__playgroundEndpointKey";
+
+  /**
+   * Resolve an endpoint access key for the Playground, in priority order:
+   *   1. in-memory session cache (cheapest),
+   *   2. the host's persisted secret store (shared across sessions; org-wide
+   *      on the cloud host — the secret stays server-side and is never sent
+   *      to other users' browsers),
+   *   3. mint a fresh `infrawrench-playground` key, persist it, and cache it.
+   *
+   * The persisted-then-reused design is what stops us minting "a ton of
+   * tokens" — one key per agent is created once and shared.
+   */
+  private async getOrMintPlaygroundKey(
+    agentUuid: string,
+    agentResourceId: string,
+  ): Promise<string> {
+    const field = DigitalOceanClient.PLAYGROUND_KEY_FIELD;
+
+    const cached = this.playgroundKeyCache.get(agentUuid);
+    if (cached) return cached;
+
+    // Reuse a previously-persisted key when the host exposes secret storage.
+    const stored = await this.services?.secrets?.getPlaintext(agentResourceId, field);
+    if (stored) {
+      this.playgroundKeyCache.set(agentUuid, stored);
+      return stored;
+    }
+
+    const name = `infrawrench-playground`;
+    // The agent-API-key create response nests the secret inside
+    // `api_key_info.secret_key` (unlike model API keys, which return a
+    // top-level `secret_key`). Read both spots to be safe.
+    const data = await this.fetch<{
+      api_key_info?: { secret_key?: string };
+      secret_key?: string;
+    }>(`/gen-ai/agents/${agentUuid}/api_keys`, {
+      method: "POST",
+      body: JSON.stringify({ name }),
+      headers: { "Content-Type": "application/json" },
+    });
+    const secret = String(data.api_key_info?.secret_key ?? data.secret_key ?? "");
+    if (!secret) {
+      throw new Error(
+        "DigitalOcean didn't return an endpoint access key secret. Confirm the API token has the `genai:create` scope and try again.",
+      );
+    }
+    this.playgroundKeyCache.set(agentUuid, secret);
+    // Persist for reuse (best-effort — if the host has no write path or it
+    // fails, we still chat this session via the in-memory cache).
+    if (this.services?.secrets?.setPlaintext) {
+      try {
+        await this.services.secrets.setPlaintext(agentResourceId, field, secret);
+      } catch {
+        /* non-fatal — session cache covers this run */
+      }
+    }
+    return secret;
+  }
+
+  /**
+   * Stream tokens from a deployed agent's OpenAI-compatible chat completions
+   * endpoint. DO's agents.do-ai.run gateway implements SSE (`stream: true`)
+   * exactly like OpenAI — `data: {json}\n\n` lines, terminating with
+   * `data: [DONE]`. We parse it incrementally and yield `delta` events as
+   * each `choices[0].delta.content` chunk arrives, then a single `done` with
+   * the assembled message.
+   */
+  // The body of the iterable is an async generator so plugins (and the
+  // host's IPC bridge) can `for await (const event of stream) { … }`.
+  async *streamChatMessage(
+    typeId: string,
+    resourceId: string,
+    _accountId: string,
+    messages: ChatMessage[],
+  ): AsyncGenerator<ChatStreamEvent, void, unknown> {
+    if (typeId !== "gen-ai-agent") {
+      yield {
+        kind: "error",
+        message: `DigitalOcean plugin: streamChatMessage not supported for type "${typeId}".`,
+      };
+      return;
+    }
+    const agentUuid = resourceId.split(":").slice(2).join(":");
+    if (!agentUuid) {
+      yield { kind: "error", message: "Couldn't determine the agent UUID." };
+      return;
+    }
+
+    // Resolve the deployment URL + endpoint access key. The deployment URL
+    // already includes the `agents.do-ai.run` host; we tack `/api/v1/chat/
+    // completions` on (matches DO's OpenAI-compatible path).
+    let deploymentUrl: string;
+    let secretKey: string;
+    try {
+      const agentRes = await this.fetch<{
+        agent: { deployment?: { url?: string } };
+      }>(`/gen-ai/agents/${agentUuid}`);
+      deploymentUrl = String(agentRes.agent?.deployment?.url ?? "");
+      if (!deploymentUrl) {
+        yield {
+          kind: "error",
+          message:
+            "Agent has no deployment URL yet. Wait for the agent to finish provisioning and reload.",
+        };
+        return;
+      }
+      secretKey = await this.getOrMintPlaygroundKey(agentUuid, resourceId);
+    } catch (err) {
+      yield { kind: "error", message: err instanceof Error ? err.message : String(err) };
+      return;
+    }
+
+    const endpoint = `${deploymentUrl.replace(/\/+$/, "")}/api/v1/chat/completions`;
+    const body = JSON.stringify({
+      messages: messages.map((m) => ({ role: m.role, content: m.content })),
+      stream: true,
+      // Asking the gateway to return usage in the final chunk — DO mirrors
+      // OpenAI's `stream_options.include_usage` opt-in here. Some gateways
+      // ignore it, in which case we just skip the usage payload.
+      stream_options: { include_usage: true },
+    });
+
+    let res: Response;
+    try {
+      res = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${secretKey}`,
+          "Content-Type": "application/json",
+          Accept: "text/event-stream",
+        },
+        body,
+      });
+    } catch (err) {
+      yield { kind: "error", message: err instanceof Error ? err.message : String(err) };
+      return;
+    }
+
+    if (!res.ok || !res.body) {
+      const errText = await res.text().catch(() => "");
+      yield {
+        kind: "error",
+        message: `Agent endpoint returned ${res.status}: ${errText || res.statusText}`,
+      };
+      return;
+    }
+
+    // Parse SSE chunks. The OpenAI-compatible stream format is
+    // `data: {json}\n\n` lines until `data: [DONE]`. We accumulate the
+    // `choices[0].delta.content` strings into `assembled` so we can hand
+    // the host the full message in the terminal `done` event.
+    const decoder = new TextDecoder();
+    const reader = res.body.getReader();
+    let buffer = "";
+    let assembled = "";
+    let usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number } | undefined;
+
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        // SSE messages are separated by blank lines. Split on `\n\n`,
+        // keeping the trailing partial in `buffer` for the next read.
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop() ?? "";
+        for (const part of parts) {
+          const line = part.trim();
+          if (!line.startsWith("data:")) continue;
+          const payload = line.slice(5).trim();
+          if (payload === "[DONE]") continue;
+          try {
+            const parsed = JSON.parse(payload) as {
+              choices?: Array<{ delta?: { content?: string } }>;
+              usage?: {
+                prompt_tokens?: number;
+                completion_tokens?: number;
+                total_tokens?: number;
+              };
+            };
+            const delta = parsed.choices?.[0]?.delta?.content;
+            if (delta) {
+              assembled += delta;
+              yield { kind: "delta", text: delta };
+            }
+            if (parsed.usage) {
+              usage = {};
+              if (parsed.usage.prompt_tokens !== undefined) {
+                usage.inputTokens = parsed.usage.prompt_tokens;
+              }
+              if (parsed.usage.completion_tokens !== undefined) {
+                usage.outputTokens = parsed.usage.completion_tokens;
+              }
+              if (parsed.usage.total_tokens !== undefined) {
+                usage.totalTokens = parsed.usage.total_tokens;
+              }
+            }
+          } catch {
+            // Malformed SSE chunk — skip rather than abort the whole stream.
+          }
+        }
+      }
+    } catch (err) {
+      yield { kind: "error", message: err instanceof Error ? err.message : String(err) };
+      return;
+    }
+
+    yield {
+      kind: "done",
+      message: { role: "assistant", content: assembled },
+      ...(usage ? { usage } : {}),
+    };
   }
 
   async fetchDashboardStats(
@@ -1478,6 +2462,91 @@ export class DigitalOceanClient implements PluginClient {
       return series.filter((s): s is MetricSeries => s != null);
     }
 
+    if (resourceTypeId === "gen-ai-agent") {
+      const agentUuid = resourceId.split(":").slice(2).join(":");
+      if (!agentUuid) return [];
+      const startIso = new Date(timeRange?.startMs ?? now - 3_600_000).toISOString();
+      const stopIso = new Date(timeRange?.endMs ?? now).toISOString();
+      try {
+        const resp = await this.fetch<{
+          usage?: {
+            usage?: Array<{
+              start?: string;
+              end?: string;
+              tokens?: number | string;
+              input_tokens?: number | string;
+              output_tokens?: number | string;
+            }>;
+            total_tokens?: number | string;
+            total_input_tokens?: number | string;
+            total_output_tokens?: number | string;
+            throughput_tokens_per_second?: number | string;
+            latency_seconds?: number | string;
+            time_to_first_token_seconds?: number | string;
+          };
+        }>(
+          `/gen-ai/agents/${agentUuid}/usage?start=${encodeURIComponent(startIso)}&stop=${encodeURIComponent(stopIso)}`,
+        );
+        const usage = resp.usage ?? {};
+        const buckets = Array.isArray(usage.usage) ? usage.usage : [];
+
+        // Convert a bucket array to a MetricSeries — DO returns one row per
+        // sampling window with `start`/`end` ISO timestamps plus the token
+        // counts. Use the window start as the chart x-coordinate.
+        const bucketSeries = (
+          label: string,
+          unit: string,
+          pick: (b: (typeof buckets)[number]) => unknown,
+        ): MetricSeries | null => {
+          const points = buckets
+            .map((b) => {
+              const ts = Date.parse(String(b.start ?? b.end ?? ""));
+              if (!Number.isFinite(ts)) return null;
+              const v = Number(pick(b));
+              if (!Number.isFinite(v)) return null;
+              return { timestamp: ts, value: v };
+            })
+            .filter((p): p is { timestamp: number; value: number } => p !== null);
+          if (points.length === 0) return null;
+          return { label, unit, points };
+        };
+
+        // For aggregate single-number stats DO returns alongside the bucket
+        // series, emit a flat one-point line so the chart still renders.
+        const flatSeries = (label: string, unit: string, raw: unknown): MetricSeries | null => {
+          const v = Number(raw);
+          if (!Number.isFinite(v)) return null;
+          return { label, unit, points: [{ timestamp: now, value: v }] };
+        };
+
+        const series = [
+          bucketSeries("Input tokens", "tokens", (b) => b.input_tokens),
+          bucketSeries("Output tokens", "tokens", (b) => b.output_tokens),
+          bucketSeries("Total tokens", "tokens", (b) => b.tokens),
+          flatSeries("Throughput", "tokens/s", usage.throughput_tokens_per_second),
+          flatSeries("Latency (avg)", "s", usage.latency_seconds),
+          flatSeries("Time to first token (avg)", "s", usage.time_to_first_token_seconds),
+        ].filter((s): s is MetricSeries => s != null);
+
+        // If only the flat totals came back (no buckets), surface the
+        // totals as one-point lines so the user sees something.
+        if (buckets.length === 0) {
+          const totals = [
+            flatSeries("Total input tokens", "tokens", usage.total_input_tokens),
+            flatSeries("Total output tokens", "tokens", usage.total_output_tokens),
+            flatSeries("Total tokens", "tokens", usage.total_tokens),
+          ].filter((s): s is MetricSeries => s != null);
+          return [...totals, ...series];
+        }
+        return series;
+      } catch {
+        // /usage 404s for agents that have never received a request — that's
+        // a legitimate empty state, not an error. The host renders an
+        // empty-metrics message rather than failing the tab.
+        return [];
+      }
+    }
+
     return [];
   }
 
@@ -1490,6 +2559,9 @@ export class DigitalOceanClient implements PluginClient {
    * renderDetail can read them without going async.
    */
   async enrichDetail(resource: ResourceInstance): Promise<ResourceInstance> {
+    if (resource.resourceTypeId === "gen-ai-agent") {
+      return this.enrichGenAiAgent(resource);
+    }
     if (resource.resourceTypeId !== "droplet") return resource;
 
     const now = Date.now();
@@ -1649,6 +2721,127 @@ export class DigitalOceanClient implements PluginClient {
     };
   }
 
+  /**
+   * Fan out a `GET /v2/gen-ai/agents/{uuid}` to pull attached KBs, function
+   * routes, child agents, and other agents (for the "attach child" picker)
+   * for the detail view. Failures degrade gracefully — the detail still
+   * renders without these sections rather than blanking the page.
+   */
+  private async enrichGenAiAgent(resource: ResourceInstance): Promise<ResourceInstance> {
+    const agentUuid = resource.externalId ?? resource.id.split(":").pop() ?? "";
+    if (!agentUuid) return resource;
+    const [fullRes, allAgentsRes, allKbsRes] = await Promise.all([
+      this.fetch<{ agent: Record<string, unknown> }>(`/gen-ai/agents/${agentUuid}`).catch(
+        () => null,
+      ),
+      this.fetch<{ agents?: Array<{ uuid?: string; name?: string }> }>(
+        "/gen-ai/agents?per_page=200",
+      ).catch(() => ({ agents: [] })),
+      this.fetch<{ knowledge_bases?: Array<{ uuid?: string; name?: string }> }>(
+        "/gen-ai/knowledge_bases?per_page=200",
+      ).catch(() => ({ knowledge_bases: [] })),
+    ]);
+    const a = fullRes?.agent ?? {};
+    const kbs = Array.isArray(a["knowledge_bases"])
+      ? (a["knowledge_bases"] as Array<Record<string, unknown>>)
+      : [];
+    const functions = Array.isArray(a["functions"])
+      ? (a["functions"] as Array<Record<string, unknown>>)
+      : [];
+    const childAgents = Array.isArray(a["child_agents"])
+      ? (a["child_agents"] as Array<Record<string, unknown>>)
+      : [];
+    const allAgents = (allAgentsRes.agents ?? []).filter(
+      (other) => String(other.uuid ?? "") !== agentUuid,
+    );
+    const allKbs = allKbsRes.knowledge_bases ?? [];
+    // The chatbot identifier + config power the public embed snippet. The
+    // identifier lives in `chatbot_identifiers[].agent_chatbot_identifier`.
+    const chatbotIdentifiers = Array.isArray(a["chatbot_identifiers"])
+      ? (a["chatbot_identifiers"] as Array<Record<string, unknown>>)
+      : [];
+    const chatbotId = String(chatbotIdentifiers[0]?.["agent_chatbot_identifier"] ?? "");
+    const chatbot = (a["chatbot"] ?? {}) as Record<string, unknown>;
+    return {
+      ...resource,
+      resolvedOutputs: {
+        ...resource.resolvedOutputs,
+        __attachedKbs__: JSON.stringify(kbs.map((k) => ({ uuid: k["uuid"], name: k["name"] }))),
+        __functions__: JSON.stringify(
+          functions.map((f) => ({
+            uuid: f["uuid"],
+            function_name: f["function_name"],
+            description: f["description"],
+            faas_name: f["faas_name"],
+            faas_namespace: f["faas_namespace"],
+          })),
+        ),
+        __childAgents__: JSON.stringify(
+          childAgents.map((c) => ({
+            uuid: c["uuid"],
+            name: c["name"],
+            route_name: c["route_name"],
+            if_case: c["if_case"],
+          })),
+        ),
+        __allAgents__: JSON.stringify(allAgents),
+        __allKbs__: JSON.stringify(allKbs),
+        ...(chatbotId ? { __chatbotId__: chatbotId } : {}),
+        __chatbot__: JSON.stringify({
+          name: String(chatbot["name"] ?? a["name"] ?? ""),
+          primary_color: String(chatbot["primary_color"] ?? "#031B4E"),
+          secondary_color: String(chatbot["secondary_color"] ?? "#E5E8ED"),
+          button_background_color: String(chatbot["button_background_color"] ?? "#0061EB"),
+          starting_message: String(chatbot["starting_message"] ?? ""),
+          logo: String(chatbot["logo"] ?? ""),
+        }),
+      },
+    };
+  }
+
+  /**
+   * Build DigitalOcean's embeddable chatbot `<script>` snippet for a public
+   * agent. Mirrors what the DO control panel offers under "Embed". Only valid
+   * for public agents with a chatbot identifier — the widget script is served
+   * from the agent's own deployment host.
+   */
+  private buildAgentEmbedScript(
+    deploymentUrl: string,
+    chatbotId: string,
+    chatbot: {
+      name?: string;
+      primary_color?: string;
+      secondary_color?: string;
+      button_background_color?: string;
+      starting_message?: string;
+      logo?: string;
+    },
+    agentUuid: string,
+  ): string {
+    let origin = deploymentUrl;
+    try {
+      origin = new URL(deploymentUrl).origin;
+    } catch {
+      /* fall back to the raw url */
+    }
+    const attr = (k: string, v: string): string => `  data-${k}="${v.replace(/"/g, "&quot;")}"`;
+    const lines = [
+      "<script",
+      `  src="${origin}/static/chatbot/widget.js"`,
+      attr("agent-id", agentUuid),
+      attr("chatbot-id", chatbotId),
+      attr("name", `${chatbot.name ?? "Agent"} Chatbot`),
+      attr("primary-color", chatbot.primary_color ?? "#031B4E"),
+      attr("secondary-color", chatbot.secondary_color ?? "#E5E8ED"),
+      attr("button-background-color", chatbot.button_background_color ?? "#0061EB"),
+      ...(chatbot.starting_message ? [attr("starting-message", chatbot.starting_message)] : []),
+      attr("logo", chatbot.logo || "/static/chatbot/icons/default-agent.svg"),
+      "  async>",
+      "</script>",
+    ];
+    return lines.join("\n");
+  }
+
   renderDetail(resource: ResourceInstance): DetailViewSchema {
     if (resource.resourceTypeId === "domain") {
       return this.renderDomainDetail(resource);
@@ -1702,6 +2895,8 @@ export class DigitalOceanClient implements PluginClient {
       this.applyManagedDatabaseDetail(detail, resource);
     } else if (resource.resourceTypeId === "db-user") {
       this.applyDatabaseUserDetail(detail, resource);
+    } else if (resource.resourceTypeId === "gen-ai-agent") {
+      this.applyGenAiAgentDetail(detail, resource);
     }
 
     return detail;
@@ -1776,6 +2971,442 @@ export class DigitalOceanClient implements PluginClient {
         },
       ],
     });
+  }
+
+  /**
+   * Agent detail page: visibility toggle in the header, attached-resource
+   * sections (knowledge bases, function routes, child agents) populated by
+   * `enrichGenAiAgent`, and "+ Attach"/"+ Add"/"+ Route" header actions.
+   */
+  private applyGenAiAgentDetail(detail: DetailViewSchema, resource: ResourceInstance): void {
+    const fields = resource.fields;
+    const outputs = resource.resolvedOutputs ?? {};
+
+    // Wire the Playground chat tab. Disabled while the deployment is still
+    // provisioning — the agents.do-ai.run hostname only resolves once status
+    // flips to running.
+    const status = String(fields["status"] ?? "").toUpperCase();
+    const deploymentReady = status === "STATUS_RUNNING" || status === "RUNNING";
+    const modelLabel = String(fields["modelName"] ?? fields["modelRouterName"] ?? "");
+    detail.chatPanel = {
+      tabLabel: "Playground",
+      subtitle: modelLabel ? `Chat with this agent · ${modelLabel}` : "Chat with this agent",
+      greeting:
+        "Hi! This is the deployed agent — try out a prompt to see how it responds. The full conversation history is sent on each turn.",
+      inputPlaceholder: "Send a message…",
+      ...(deploymentReady
+        ? {}
+        : {
+            disabledReason:
+              "The agent is still deploying. Wait for the status to flip to Running and reload this tab.",
+          }),
+    };
+    const visibility = String(fields["deploymentVisibility"] ?? "");
+    const isPublic = visibility === "VISIBILITY_PUBLIC";
+
+    interface AttachedKb {
+      uuid?: string;
+      name?: string;
+    }
+    interface AttachedFn {
+      uuid?: string;
+      function_name?: string;
+      description?: string;
+      faas_name?: string;
+      faas_namespace?: string;
+    }
+    interface AttachedChild {
+      uuid?: string;
+      name?: string;
+      route_name?: string;
+      if_case?: string;
+    }
+    interface PickerAgent {
+      uuid?: string;
+      name?: string;
+    }
+    interface PickerKb {
+      uuid?: string;
+      name?: string;
+    }
+    const attachedKbs = parseJsonArray<AttachedKb>(outputs["__attachedKbs__"]);
+    const functions = parseJsonArray<AttachedFn>(outputs["__functions__"]);
+    const childAgents = parseJsonArray<AttachedChild>(outputs["__childAgents__"]);
+    const allAgents = parseJsonArray<PickerAgent>(outputs["__allAgents__"]);
+    const allKbs = parseJsonArray<PickerKb>(outputs["__allKbs__"]);
+
+    // Knowledge bases not already attached — used as the picker options
+    // for the "Attach knowledge base" prompt.
+    const attachedKbUuids = new Set(attachedKbs.map((k) => String(k.uuid ?? "")));
+    const unattachedKbs = allKbs.filter((k) => !attachedKbUuids.has(String(k.uuid ?? "")));
+    const attachedChildUuids = new Set(childAgents.map((c) => String(c.uuid ?? "")));
+    const unattachedAgents = allAgents.filter((a) => !attachedChildUuids.has(String(a.uuid ?? "")));
+
+    // Header — Refresh, visibility toggle, attach buttons. Visibility flips
+    // between Public and Private; the label tracks the *current* state so
+    // the button always shows the action that will happen.
+    detail.headerActions = [
+      { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
+      {
+        kind: "action",
+        label: isPublic ? "Make Private" : "Make Public",
+        variant: "ghost",
+        action: {
+          type: "plugin-action",
+          actionId: isPublic ? "make-private" : "make-public",
+          confirmMessage: isPublic
+            ? "Make this agent's endpoint private? Existing public chatbot links will stop working."
+            : "Make this agent's endpoint public? Anyone with the URL will be able to chat with it.",
+          successMessage: `Endpoint is now ${isPublic ? "Private" : "Public"}.`,
+        },
+      },
+      {
+        kind: "action",
+        label: "+ Attach knowledge base",
+        variant: "ghost",
+        action: {
+          type: "prompt-nosql-command",
+          command: "attach-knowledge-base",
+          title: "Attach knowledge base",
+          description:
+            unattachedKbs.length === 0
+              ? "No knowledge bases available to attach. Create one in the Knowledge Bases section first, or drag an existing one onto this agent."
+              : "Pick a knowledge base to attach to this agent.",
+          ...(unattachedKbs.length === 0
+            ? { descriptionVariant: "error" as const, blocked: true }
+            : {}),
+          fields: [
+            {
+              key: "knowledgeBaseUuid",
+              label: "Knowledge Base",
+              kind: "select",
+              required: true,
+              options: unattachedKbs.map((k) => ({
+                id: String(k.uuid ?? ""),
+                label: String(k.name ?? k.uuid ?? ""),
+              })),
+            },
+          ],
+        },
+      },
+      {
+        kind: "action",
+        label: "+ Add function route",
+        variant: "ghost",
+        action: {
+          type: "prompt-nosql-command",
+          command: "attach-function",
+          title: "Add function route",
+          fields: [
+            { key: "functionName", label: "Function name", kind: "text", required: true },
+            { key: "description", label: "Description", kind: "text", required: false },
+            {
+              key: "faasName",
+              label: "FaaS function name",
+              kind: "text",
+              required: true,
+              description: "DigitalOcean Functions name (e.g. `weather/lookup`).",
+            },
+            {
+              key: "faasNamespace",
+              label: "FaaS namespace",
+              kind: "text",
+              required: true,
+              description: "Functions namespace this agent should call.",
+            },
+            {
+              key: "inputSchema",
+              label: "Input JSON Schema",
+              kind: "text",
+              required: false,
+              multiline: true,
+              description: "Optional JSON Schema describing the function's arguments.",
+            },
+            {
+              key: "outputSchema",
+              label: "Output JSON Schema",
+              kind: "text",
+              required: false,
+              multiline: true,
+            },
+          ],
+        },
+      },
+      {
+        kind: "action",
+        label: "+ Route to child agent",
+        variant: "ghost",
+        action: {
+          type: "prompt-nosql-command",
+          command: "attach-child-agent",
+          title: "Attach child agent",
+          description:
+            unattachedAgents.length === 0
+              ? "No other agents to route to. Create another agent first."
+              : "Route this agent's requests to a child agent under specific conditions.",
+          ...(unattachedAgents.length === 0
+            ? { descriptionVariant: "error" as const, blocked: true }
+            : {}),
+          fields: [
+            {
+              key: "childAgentUuid",
+              label: "Child agent",
+              kind: "select",
+              required: true,
+              options: unattachedAgents.map((a) => ({
+                id: String(a.uuid ?? ""),
+                label: String(a.name ?? a.uuid ?? ""),
+              })),
+            },
+            {
+              key: "routeName",
+              label: "Route name",
+              kind: "text",
+              required: false,
+              description: "Display label for this route — visible to the agent during routing.",
+            },
+            {
+              key: "ifCase",
+              label: "If case",
+              kind: "text",
+              required: false,
+              description:
+                "Optional condition string the parent agent uses when deciding to route here.",
+            },
+          ],
+        },
+      },
+    ];
+
+    // Endpoint section — copyable deployment URL + the OpenAI-compatible
+    // base URL. Both are `copyable` so the host renders a copy button.
+    const deploymentUrl = String(outputs["deploymentUrl"] ?? fields["deploymentUrl"] ?? "");
+    if (deploymentUrl) {
+      let baseUrl = deploymentUrl;
+      try {
+        baseUrl = `${new URL(deploymentUrl).origin}/api/v1`;
+      } catch {
+        baseUrl = `${deploymentUrl.replace(/\/+$/, "")}/api/v1`;
+      }
+      detail.sections.push({
+        kind: "section",
+        title: "Endpoint",
+        children: [
+          {
+            kind: "key-value-list",
+            items: [
+              { key: "Deployment URL", value: deploymentUrl, copyable: true },
+              { key: "OpenAI base URL", value: baseUrl, copyable: true },
+            ],
+          },
+        ],
+      });
+    }
+
+    // Embed section — DigitalOcean's public chatbot <script> snippet. Only
+    // valid once the agent's endpoint is public (private agents need an
+    // access key the public widget can't supply) and a chatbot identifier
+    // exists. Rendered as a copyable mono block.
+    const chatbotId = String(outputs["__chatbotId__"] ?? "");
+    if (isPublic && chatbotId && deploymentUrl) {
+      const chatbot = (() => {
+        try {
+          return JSON.parse(String(outputs["__chatbot__"] ?? "{}")) as Record<string, string>;
+        } catch {
+          return {};
+        }
+      })();
+      const agentUuid = resource.externalId ?? resource.id.split(":").pop() ?? "";
+      const script = this.buildAgentEmbedScript(deploymentUrl, chatbotId, chatbot, agentUuid);
+      detail.sections.push({
+        kind: "section",
+        title: "Embed (public chatbot)",
+        children: [
+          {
+            kind: "text",
+            variant: "muted",
+            content:
+              "Drop this snippet into your site's HTML to embed the chatbot widget. Works because the endpoint is public.",
+          },
+          { kind: "text", variant: "mono", content: script, copyable: true },
+        ],
+      });
+    } else if (chatbotId && deploymentUrl) {
+      // Has a chatbot but the endpoint is private — tell the user how to
+      // enable the embed rather than silently hiding it.
+      detail.sections.push({
+        kind: "section",
+        title: "Embed (public chatbot)",
+        children: [
+          {
+            kind: "text",
+            variant: "muted",
+            content:
+              "The embeddable chatbot widget is only available for public endpoints. Use the Make Public header action, then reload to copy the snippet.",
+          },
+        ],
+      });
+    }
+
+    // Knowledge bases section — one row per attached KB with an inline
+    // Detach button. The detach button reuses prompt-nosql-command so we
+    // can confirm before the DELETE.
+    if (attachedKbs.length > 0) {
+      detail.sections.push({
+        kind: "section",
+        title: "Knowledge Bases",
+        children: [
+          {
+            kind: "table",
+            columns: [
+              { key: "name", label: "Name" },
+              { key: "uuid", label: "UUID", mono: true },
+              { key: "action", label: "", width: "narrow" },
+            ],
+            rows: attachedKbs.map((k) => ({
+              cells: {
+                name: String(k.name ?? k.uuid ?? ""),
+                uuid: String(k.uuid ?? ""),
+                action: {
+                  kind: "action",
+                  label: "Detach",
+                  variant: "ghost",
+                  action: {
+                    type: "prompt-nosql-command",
+                    command: "detach-knowledge-base",
+                    title: "Detach knowledge base",
+                    description: `Detach "${k.name ?? k.uuid}" from this agent? The knowledge base itself isn't deleted.`,
+                    submitLabel: "Detach",
+                    danger: true,
+                    fields: [
+                      {
+                        key: "knowledgeBaseUuid",
+                        label: "Knowledge Base UUID",
+                        kind: "text",
+                        required: true,
+                        hidden: true,
+                        defaultValue: String(k.uuid ?? ""),
+                      },
+                    ],
+                  },
+                } as ActionNode,
+              },
+            })),
+          },
+        ],
+      });
+    } else {
+      detail.sections.push({
+        kind: "section",
+        title: "Knowledge Bases",
+        children: [
+          {
+            kind: "text",
+            variant: "muted",
+            content:
+              "No knowledge bases attached. Drag a knowledge base from the sidebar onto this agent, or use the '+ Attach knowledge base' header action.",
+          },
+        ],
+      });
+    }
+
+    // Function routes section.
+    if (functions.length > 0) {
+      detail.sections.push({
+        kind: "section",
+        title: "Function Routes",
+        children: [
+          {
+            kind: "table",
+            columns: [
+              { key: "name", label: "Function" },
+              { key: "target", label: "FaaS target" },
+              { key: "description", label: "Description" },
+              { key: "action", label: "", width: "narrow" },
+            ],
+            rows: functions.map((f) => ({
+              cells: {
+                name: String(f.function_name ?? f.uuid ?? ""),
+                target: `${String(f.faas_namespace ?? "")}/${String(f.faas_name ?? "")}`,
+                description: String(f.description ?? ""),
+                action: {
+                  kind: "action",
+                  label: "Detach",
+                  variant: "ghost",
+                  action: {
+                    type: "prompt-nosql-command",
+                    command: "detach-function",
+                    title: "Detach function route",
+                    description: `Remove function route "${f.function_name ?? f.uuid}" from this agent?`,
+                    submitLabel: "Remove",
+                    danger: true,
+                    fields: [
+                      {
+                        key: "functionUuid",
+                        label: "Function UUID",
+                        kind: "text",
+                        required: true,
+                        hidden: true,
+                        defaultValue: String(f.uuid ?? ""),
+                      },
+                    ],
+                  },
+                } as ActionNode,
+              },
+            })),
+          },
+        ],
+      });
+    }
+
+    // Child agents (agent routes) section.
+    if (childAgents.length > 0) {
+      detail.sections.push({
+        kind: "section",
+        title: "Agent Routes",
+        children: [
+          {
+            kind: "table",
+            columns: [
+              { key: "route", label: "Route" },
+              { key: "agent", label: "Child agent" },
+              { key: "if", label: "If case" },
+              { key: "action", label: "", width: "narrow" },
+            ],
+            rows: childAgents.map((c) => ({
+              cells: {
+                route: String(c.route_name ?? c.name ?? c.uuid ?? ""),
+                agent: String(c.name ?? c.uuid ?? ""),
+                if: String(c.if_case ?? ""),
+                action: {
+                  kind: "action",
+                  label: "Detach",
+                  variant: "ghost",
+                  action: {
+                    type: "prompt-nosql-command",
+                    command: "detach-child-agent",
+                    title: "Detach child agent",
+                    description: `Remove route to "${c.name ?? c.uuid}"?`,
+                    submitLabel: "Detach",
+                    danger: true,
+                    fields: [
+                      {
+                        key: "childAgentUuid",
+                        label: "Child Agent UUID",
+                        kind: "text",
+                        required: true,
+                        hidden: true,
+                        defaultValue: String(c.uuid ?? ""),
+                      },
+                    ],
+                  },
+                } as ActionNode,
+              },
+            })),
+          },
+        ],
+      });
+    }
   }
 
   /**

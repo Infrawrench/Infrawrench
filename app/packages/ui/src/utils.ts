@@ -105,6 +105,8 @@ export interface PromptNoSqlCommandDetail {
   command: string;
   title?: string;
   description?: string;
+  descriptionVariant?: "info" | "error";
+  blocked?: boolean;
   fields: import("@infrawrench/plugin-base").CreateFieldConfig[];
   submitLabel?: string;
   danger?: boolean;

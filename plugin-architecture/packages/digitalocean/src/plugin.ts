@@ -12,6 +12,13 @@ import { VolumeResourceType } from "./resources/volume.js";
 import { SnapshotResourceType } from "./resources/snapshot.js";
 import { ImageResourceType } from "./resources/image.js";
 import { NfsShareResourceType } from "./resources/nfs-share.js";
+import { GenAiAgentResourceType } from "./resources/gen-ai-agent.js";
+import { GenAiKnowledgeBaseResourceType } from "./resources/gen-ai-knowledge-base.js";
+import { GenAiModelRouterResourceType } from "./resources/gen-ai-model-router.js";
+import { DedicatedInferenceResourceType } from "./resources/dedicated-inference.js";
+import { InferenceBatchResourceType } from "./resources/inference-batch.js";
+import { ModelApiKeyResourceType } from "./resources/model-api-key.js";
+import { AgentApiKeyResourceType } from "./resources/agent-api-key.js";
 
 const manifest: PluginManifest = {
   id: "digitalocean",
@@ -50,6 +57,13 @@ const resourceTypes: ResourceTypeDefinition[] = [
   SnapshotResourceType,
   ImageResourceType,
   NfsShareResourceType,
+  GenAiAgentResourceType,
+  GenAiKnowledgeBaseResourceType,
+  GenAiModelRouterResourceType,
+  DedicatedInferenceResourceType,
+  InferenceBatchResourceType,
+  ModelApiKeyResourceType,
+  AgentApiKeyResourceType,
 ];
 
 export const plugin: Plugin = {

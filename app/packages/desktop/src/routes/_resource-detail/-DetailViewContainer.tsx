@@ -10,6 +10,8 @@ import type {
   QueryCostEstimate,
   SecretVersion,
   SecretVersionMutation,
+  ChatMessage,
+  ChatStreamEvent,
 } from "@infrawrench/plugin-base";
 import {
   DetailView,
@@ -61,6 +63,7 @@ interface DetailViewContainerProps {
   ) => Promise<SecretVersion>;
   onOpenConsole: () => void;
   onNoSqlCommand: (command: string, args: (string | number)[]) => Promise<unknown>;
+  onChatStream: (messages: ChatMessage[], signal: AbortSignal) => AsyncIterable<ChatStreamEvent>;
   onChildCreate: (typeDef: ResourceTypeDefinition) => void;
   onReroll?: (
     fieldKey: string,
@@ -98,6 +101,7 @@ export function DetailViewContainer({
   onModifySecretVersion,
   onOpenConsole,
   onNoSqlCommand,
+  onChatStream,
   onChildCreate,
   onReroll,
   renderStorageBrowser,
@@ -181,6 +185,7 @@ export function DetailViewContainer({
         cloudParentResourceId
           ? { onOpenConsole }
           : {})}
+        {...(schema.chatPanel ? { onChatStream } : {})}
         {...(noSqlBrowser
           ? {
               renderNoSqlBrowser: () => {

@@ -1,0 +1,96 @@
+import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+
+export const GenAiAgentResourceType: ResourceTypeDefinition = {
+  id: "gen-ai-agent",
+  displayName: "Agent",
+  pluralDisplayName: "Agents",
+  description:
+    "A DigitalOcean Gradient AI Platform agent — a deployed conversational endpoint built on a foundation model, optionally augmented with knowledge bases, function routes, and child agents.",
+  fields: [
+    { key: "name", label: "Name", kind: "string", required: true },
+    { key: "region", label: "Region", kind: "string", required: false },
+    {
+      key: "modelUuid",
+      label: "Model",
+      kind: "string",
+      required: false,
+      description: "Foundation model UUID powering the agent",
+    },
+    {
+      key: "modelName",
+      label: "Model Name",
+      kind: "string",
+      required: false,
+      editable: false,
+    },
+    {
+      key: "modelRouterUuid",
+      label: "Inference Router",
+      kind: "string",
+      required: false,
+      description:
+        "Optional Inference Router UUID. When set, the router decides which model serves each call; modelUuid is ignored.",
+    },
+    {
+      key: "modelRouterName",
+      label: "Router Name",
+      kind: "string",
+      required: false,
+      editable: false,
+    },
+    { key: "description", label: "Description", kind: "string", required: false },
+    {
+      key: "instruction",
+      label: "Instruction",
+      kind: "string",
+      required: false,
+      description: "System prompt / behaviour guidance for the agent",
+    },
+    { key: "projectId", label: "Project ID", kind: "string", required: false, editable: false },
+    { key: "temperature", label: "Temperature", kind: "number", required: false },
+    { key: "maxTokens", label: "Max Tokens", kind: "number", required: false },
+    { key: "k", label: "Top-k", kind: "number", required: false },
+    { key: "status", label: "Status", kind: "string", required: false, editable: false },
+    {
+      key: "deploymentVisibility",
+      label: "Endpoint Visibility",
+      kind: "string",
+      required: false,
+      editable: false,
+      description: "Public or Private. Toggleable via the Make Public/Private header action.",
+    },
+    {
+      key: "knowledgeBaseCount",
+      label: "Knowledge Bases",
+      kind: "number",
+      required: false,
+      editable: false,
+    },
+    {
+      key: "deploymentUrl",
+      label: "Deployment URL",
+      kind: "string",
+      required: false,
+      editable: false,
+    },
+  ],
+  outputs: [
+    {
+      key: "deploymentUrl",
+      label: "Deployment URL",
+      sensitive: false,
+      description: "Public chatbot URL for this agent",
+    },
+    {
+      key: "agentEndpoint",
+      label: "Agent Endpoint",
+      sensitive: false,
+      description: "OpenAI-compatible base URL for this agent's inference endpoint",
+    },
+  ],
+  dashboardPinnable: true,
+  supportsCreate: true,
+  supportsUpdate: true,
+  supportsMetrics: true,
+  iconKey: "agent",
+};

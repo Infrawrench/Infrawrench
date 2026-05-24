@@ -98,6 +98,9 @@ export type {
   TableColumn,
   TableRow,
   TableNode,
+  ChatPanelCapability,
+  ChatMessage,
+  ChatStreamEvent,
 } from "./schema.js";
 
 export type {

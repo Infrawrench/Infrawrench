@@ -168,6 +168,10 @@ export function ResourceModals({
         <PromptNoSqlCommandModal
           title={promptModal.title ?? promptModal.command}
           {...(promptModal.description ? { description: promptModal.description } : {})}
+          {...(promptModal.descriptionVariant
+            ? { descriptionVariant: promptModal.descriptionVariant }
+            : {})}
+          {...(promptModal.blocked ? { blocked: promptModal.blocked } : {})}
           fields={promptModal.fields}
           submitLabel={promptModal.submitLabel ?? "Submit"}
           danger={!!promptModal.danger}

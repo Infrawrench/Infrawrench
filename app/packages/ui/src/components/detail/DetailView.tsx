@@ -1,5 +1,7 @@
 import React, { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import type {
+  ChatMessage,
+  ChatStreamEvent,
   DetailViewSchema,
   LogsFetchParams,
   LogsFetchResult,
@@ -16,6 +18,7 @@ import { ManifestEditorView } from "./ManifestEditorView.js";
 import { BucketPolicyEditor } from "./BucketPolicyEditor.js";
 import { DescribeView } from "./DescribeView.js";
 import { LogsView } from "./LogsView.js";
+import { ChatPanel } from "./ChatPanel.js";
 import { SecretVersionsView } from "./SecretVersionsView.js";
 import {
   ArtifactRegistryView,
@@ -112,6 +115,13 @@ interface DetailViewProps {
    * for vertical space with editors (bucket policy, manifest, SQL).
    */
   renderStorageBrowser?: () => React.ReactNode;
+  /**
+   * When `schema.chatPanel` is set, the host wires this to a streaming
+   * chat protocol — Electron IPC on desktop, NDJSON-over-fetch on web.
+   * Each call returns an async iterable of stream events the host's
+   * `ChatPanel` consumes incrementally.
+   */
+  onChatStream?: (messages: ChatMessage[], signal: AbortSignal) => AsyncIterable<ChatStreamEvent>;
 }
 
 type Tab =
@@ -126,6 +136,7 @@ type Tab =
   | "artifacts"
   | "secret-versions"
   | "nosql-browser"
+  | "chat"
   | `peer:${number}`
   | `custom:${string}`;
 
@@ -158,6 +169,7 @@ export function DetailView({
   metricSeries,
   renderNoSqlBrowser,
   renderStorageBrowser,
+  onChatStream,
 }: DetailViewProps) {
   const { rerollingField, closeReroll } = useUIStore();
   const hasSqlEditor = !!schema.sqlEditor && !!onRunQuery;
@@ -180,6 +192,7 @@ export function DetailView({
     !!onAddSecretVersion &&
     !!onModifySecretVersion;
   const hasNoSqlBrowser = !!schema.noSqlBrowser && !!renderNoSqlBrowser;
+  const hasChatPanel = !!schema.chatPanel && !!onChatStream;
   const customTabs = schema.customTabs ?? [];
   const hasTabs =
     hasStorageBrowser ||
@@ -192,6 +205,7 @@ export function DetailView({
     hasArtifacts ||
     hasSecretVersions ||
     hasNoSqlBrowser ||
+    hasChatPanel ||
     customTabs.length > 0 ||
     peerPanes.length > 0;
   const [activeTab, setActiveTab] = useState<Tab>("overview");
@@ -218,6 +232,7 @@ export function DetailView({
   if (hasArtifacts) tabKeys.push("artifacts");
   if (hasSecretVersions) tabKeys.push("secret-versions");
   if (hasNoSqlBrowser) tabKeys.push("nosql-browser");
+  if (hasChatPanel) tabKeys.push("chat");
   for (const tab of customTabs) tabKeys.push(`custom:${tab.id}` as Tab);
   for (let i = 0; i < peerPanes.length; i++) tabKeys.push(`peer:${i}` as Tab);
 
@@ -385,6 +400,13 @@ export function DetailView({
                 return (
                   <TabButton key={key} {...tabProps} onClick={() => setActiveTab("nosql-browser")}>
                     Documents
+                  </TabButton>
+                );
+              }
+              if (key === "chat") {
+                return (
+                  <TabButton key={key} {...tabProps} onClick={() => setActiveTab("chat")}>
+                    {schema.chatPanel?.tabLabel ?? "Playground"}
                   </TabButton>
                 );
               }
@@ -727,6 +749,17 @@ export function DetailView({
         </div>
       )}
 
+      {hasChatPanel && activeTab === "chat" && (
+        <div
+          role="tabpanel"
+          id={panelIdFor("chat")}
+          aria-labelledby={tabIdFor("chat")}
+          className="flex-1 flex flex-col overflow-hidden"
+        >
+          <ChatPanel capability={schema.chatPanel!} onStream={onChatStream!} />
+        </div>
+      )}
+
       {customTabs.map((tab) =>
         activeTab === `custom:${tab.id}` ? (
           <div
@@ -870,6 +903,8 @@ function dispatchPillAction(action: HostAction): void {
         fields: action.fields,
         ...(action.title ? { title: action.title } : {}),
         ...(action.description ? { description: action.description } : {}),
+        ...(action.descriptionVariant ? { descriptionVariant: action.descriptionVariant } : {}),
+        ...(action.blocked ? { blocked: action.blocked } : {}),
         ...(action.submitLabel ? { submitLabel: action.submitLabel } : {}),
         ...(action.danger ? { danger: action.danger } : {}),
       });

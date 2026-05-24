@@ -70,7 +70,13 @@ import {
 } from "../lib/sql-drivers";
 import { createPluginClient } from "../lib/plugin-client";
 import { applyCredentialRewriters } from "../lib/credential-rewriters";
-import type { PluginClient, PeerPaneContext, AssociationSource } from "@infrawrench/plugin-base";
+import type {
+  PluginClient,
+  PeerPaneContext,
+  AssociationSource,
+  ChatMessage,
+  ChatStreamEvent,
+} from "@infrawrench/plugin-base";
 import type { PeerPaneData } from "@infrawrench/ui";
 import {
   accountTabTarget,
@@ -98,6 +104,15 @@ import {
   type LoaderSetters,
 } from "./_resource-detail/-loader";
 import type { CloudCtx, QuickSshConnection, SshConfig } from "./_resource-detail/-types";
+
+/** A one-event async iterable that yields a chat-stream `error` and stops. */
+function errorChatIterable(message: string): AsyncIterable<ChatStreamEvent> {
+  return {
+    async *[Symbol.asyncIterator]() {
+      yield { kind: "error", message };
+    },
+  };
+}
 
 export const Route = createFileRoute("/resource/$accountId/$resourceId")({
   // Rendering is handled by WorkspaceTabsViewport in __root.tsx, which mounts
@@ -660,6 +675,34 @@ export function ResourcePanel({
     return client.describeResource(resource?.resourceTypeId ?? "", decodedResourceId, accountId);
   }, [decodedResourceId, accountId, resource]);
 
+  // Bridge the plugin's `streamChatMessage` async iterable into the
+  // ChatPanel's `onStream` callback. Local plugin clients run in-process so
+  // we just forward the iterable. Cloud-routed accounts route through the
+  // Infrawrench server's NDJSON chat stream endpoint.
+  const handleChatStream = useCallback(
+    (messages: ChatMessage[], signal: AbortSignal): AsyncIterable<ChatStreamEvent> => {
+      const cloud = cloudCtxRef.current;
+      const res = resource;
+      if (!res) {
+        return errorChatIterable("Resource not loaded");
+      }
+      if (cloud) {
+        // Cloud-synced chat streaming is not wired through the desktop
+        // → cloud bridge yet. Locally-added DO accounts work as-is.
+        return errorChatIterable(
+          "Chat over a cloud-synced account isn't supported yet from the desktop app. Run this agent against a locally-added DigitalOcean account.",
+        );
+      }
+      const client = clientRef.current;
+      if (!client?.streamChatMessage) {
+        return errorChatIterable("Plugin does not support chat.");
+      }
+      void signal; // local plugin clients ignore aborts for now
+      return client.streamChatMessage(res.resourceTypeId, decodedResourceId, accountId, messages);
+    },
+    [accountId, decodedResourceId, resource],
+  );
+
   const handleGetLogs = useCallback(
     async (params: LogsFetchParams): Promise<LogsFetchResult> => {
       const cloud = cloudCtxRef.current;
@@ -1159,6 +1202,7 @@ export function ResourcePanel({
               onModifySecretVersion={handleModifySecretVersion}
               onOpenConsole={() => setConsoleOpen(true)}
               onNoSqlCommand={handleNoSqlCommand}
+              onChatStream={handleChatStream}
               onChildCreate={(rt) => setCreateChildTarget(rt)}
               onReroll={handleReroll}
               {...(hasStorageBrowser && account

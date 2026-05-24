@@ -63,6 +63,20 @@ export type HostAction =
       title?: string;
       /** Descriptive text shown above the form (e.g. destructive-action warning). */
       description?: string;
+      /**
+       * Styling for `description`. `"error"` renders it as a red warning
+       * banner (use for empty-state / blocked prompts like "nothing to
+       * attach"); defaults to muted info text.
+       */
+      descriptionVariant?: "info" | "error";
+      /**
+       * When true, the prompt is informational only — the host hides the
+       * form fields and the submit button, leaving just the title,
+       * description, and a single Close button. Use when the action can't
+       * proceed (e.g. nothing available to pick). Pair with
+       * `descriptionVariant: "error"` to explain why.
+       */
+      blocked?: boolean;
       fields: CreateFieldConfig[];
       /** Submit button label. Defaults to "Submit". */
       submitLabel?: string;
@@ -74,6 +88,8 @@ export interface TextNode {
   kind: "text";
   content: string;
   variant?: "heading" | "subheading" | "body" | "mono" | "muted";
+  /** When true, the host renders a copy button that copies `content`. Pairs well with `variant: "mono"` for code/snippet blocks. */
+  copyable?: boolean;
 }
 
 export interface BadgeNode {
@@ -516,7 +532,55 @@ export interface DetailViewSchema {
   noSqlBrowser?: NoSqlBrowserCapability;
   /** Plugin-defined tabs rendered alongside Overview / SQL / Logs / etc. */
   customTabs?: DetailViewTab[];
+  /** If present, the host renders a "Playground" tab with a chat interface. */
+  chatPanel?: ChatPanelCapability;
 }
+
+/**
+ * A chat playground tab for resources that expose a conversational endpoint
+ * (DigitalOcean Gradient AI agents, future AWS Bedrock agents, etc.). The
+ * plugin owns the wire protocol — the host calls `streamChatMessage` with
+ * the conversation history and renders deltas as they arrive.
+ */
+export interface ChatPanelCapability {
+  /** Label for the tab. Defaults to "Playground". */
+  tabLabel?: string;
+  /** One-line copy shown at the top of the chat pane (e.g. model + endpoint). */
+  subtitle?: string;
+  /** Pre-filled assistant intro shown before the user's first turn. */
+  greeting?: string;
+  /** Placeholder text in the input. Defaults to "Send a message…". */
+  inputPlaceholder?: string;
+  /** Disable the input and render this message instead. Used when the resource isn't ready (still provisioning, no endpoint key available, etc.). */
+  disabledReason?: string;
+}
+
+/** A single chat turn sent to or received from the plugin. */
+export interface ChatMessage {
+  role: "system" | "user" | "assistant";
+  content: string;
+}
+
+/**
+ * Event in the streaming chat protocol. Plugins yield zero or more `delta`
+ * events as tokens arrive, then a single terminal `done` (or `error`) event.
+ * Plugins that can't stream natively can yield one `delta` with the full
+ * text then `done`.
+ */
+export type ChatStreamEvent =
+  | { kind: "delta"; text: string }
+  | {
+      kind: "done";
+      /** The complete assistant turn. Hosts append this to the visible history. */
+      message: ChatMessage;
+      /** Optional usage metadata surfaced under the input. */
+      usage?: {
+        inputTokens?: number;
+        outputTokens?: number;
+        totalTokens?: number;
+      };
+    }
+  | { kind: "error"; message: string };
 
 /**
  * When present on a DetailViewSchema, the host renders a NoSQL document
