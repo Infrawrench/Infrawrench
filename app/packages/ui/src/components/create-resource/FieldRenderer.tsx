@@ -276,7 +276,14 @@ export function FieldRenderer({
       )}
 
       {field.kind === "size-picker" && field.sizes && (
-        <SizePicker sizes={field.sizes} value={value} onChange={onChange} />
+        <SizePicker
+          sizes={field.sizes}
+          value={value}
+          onChange={onChange}
+          {...(field.filterByFieldKey
+            ? { filterValue: formValues?.[field.filterByFieldKey] ?? "" }
+            : {})}
+        />
       )}
 
       {field.kind === "disk-slider" && (

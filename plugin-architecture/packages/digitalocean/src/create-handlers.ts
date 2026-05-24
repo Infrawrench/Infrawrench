@@ -504,23 +504,28 @@ export async function doGetCreateConfig(
         };
       });
 
-    // Union of every size slug DO lists for any engine, then filter to
-    // actually-DB-shaped slugs. DO's options endpoint can include
-    // droplet-style slugs (e.g. c-96-intel) under certain engines'
-    // layouts — those are real provisioning targets on DO's side but
-    // they show up unparseable in the picker (0 vCPU / 0 MB / no price)
-    // because their slug doesn't carry the inline {N}vcpu / {N}gb
-    // pattern. Until we have a real per-engine size catalog, restrict
-    // the picker to slugs we can both display sensibly and price.
-    const sizeSet = new Set<string>();
-    for (const engine of Object.values(optionsData.options ?? {})) {
-      for (const layout of engine.layouts ?? []) {
-        for (const slug of layout.sizes ?? []) sizeSet.add(slug);
+    // Tag each size slug with the engines it's valid for, so the picker can
+    // reactively filter when the engine field changes. Kafka and OpenSearch
+    // use engine-specific size slugs (e.g. `db-r-*` is invalid for them);
+    // submitting the wrong combo got us `invalid layout and size combination:
+    // plan does not match cluster type` from DO.
+    const sizeEngines = new Map<string, Set<string>>();
+    for (const [engine, info] of Object.entries(optionsData.options ?? {})) {
+      const labels = engineAliases[engine] ?? [engine];
+      for (const layout of info.layouts ?? []) {
+        for (const slug of layout.sizes ?? []) {
+          if (!sizeEngines.has(slug)) sizeEngines.set(slug, new Set());
+          const set = sizeEngines.get(slug)!;
+          for (const label of labels) set.add(label);
+        }
       }
     }
-    const dbSizes = [...sizeSet]
-      .map((slug) => {
-        // Slugs look like "db-s-1vcpu-1gb" / "db-r-2vcpu-16gb".
+    const dbSizes = [...sizeEngines.entries()]
+      .map(([slug, engines]) => {
+        // Slugs look like "db-s-1vcpu-1gb" / "db-r-2vcpu-16gb" / engine-namespaced
+        // variants for Kafka/OpenSearch. Older slugs encode vCPU + memory inline;
+        // the picker drops anything we can't parse so the chips don't read
+        // "0 vCPUs / 0 MB" for unknown shapes.
         const vcpuMatch = /(\d+)\s*v?cpu/i.exec(slug);
         const memMatch = /(\d+)gb/i.exec(slug);
         const vcpus = vcpuMatch ? Number(vcpuMatch[1]) : 0;
@@ -534,12 +539,10 @@ export async function doGetCreateConfig(
           diskGb: 0,
           ...(price > 0 ? { priceMonthly: price } : {}),
           category: slug.split("-").slice(0, 2).join("-") || "Database",
+          availableFor: [...engines].sort(),
           _parsable: vcpus > 0 && memoryGb > 0,
         };
       })
-      // Drop anything we couldn't parse vCPU/memory out of — those are
-      // droplet slugs DO returned that aren't representable as DB nodes
-      // in this picker, and would show "0 vCPUs / 0 MB" otherwise.
       .filter((s) => s._parsable)
       .map(({ _parsable: _, ...rest }) => rest)
       .sort((a, b) => a.vcpus - b.vcpus || a.memoryMb - b.memoryMb || a.id.localeCompare(b.id));
@@ -578,6 +581,7 @@ export async function doGetCreateConfig(
           kind: "size-picker",
           required: true,
           sizes: dbSizes,
+          filterByFieldKey: "engine",
           ...(dbSizes[0] ? { defaultValue: dbSizes[0].id } : {}),
         },
         {

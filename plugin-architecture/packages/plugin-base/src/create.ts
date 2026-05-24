@@ -14,6 +14,13 @@ export interface SizeOption {
   diskGb?: number;
   priceMonthly?: number;
   category?: string;
+  /**
+   * Optional tag list used by `size-picker` together with the field's
+   * `filterByFieldKey` to hide sizes that don't match the picked sibling
+   * value (e.g. DO managed-DB sizes that are only valid for one engine).
+   * When omitted the size is shown for every filter value.
+   */
+  availableFor?: string[];
 }
 
 export interface RegionOption {
