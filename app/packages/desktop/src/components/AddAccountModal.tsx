@@ -6,6 +6,7 @@ import {
 } from "@infrawrench/ui";
 import { invoke } from "../lib/invoke";
 import { getDb } from "../db/client";
+import type { AccountRow } from "../db/rows";
 import { loadPlugins } from "../plugins/loader";
 import { createCloudAccount } from "../lib/cloud-api";
 
@@ -18,11 +19,7 @@ interface Props {
   prefilledDisplayName?: string;
 }
 
-interface LocalAccountRow {
-  id: string;
-  plugin_id: string;
-  display_name: string;
-}
+type LocalAccountRow = Pick<AccountRow, "id" | "plugin_id" | "display_name">;
 
 export function AddAccountModal({
   onClose,

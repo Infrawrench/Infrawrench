@@ -7,17 +7,12 @@ import {
   RESOURCES_CHANGED_EVENT,
   OrgSwitcher,
   toast,
+  type Account,
+  type Dashboard,
   type OrgEntry,
 } from "@infrawrench/ui";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import { AddAccountModal } from "./AddAccountModal";
-
-interface AccountSummary {
-  id: string;
-  pluginId: string;
-  displayName: string;
-  createdAt: string;
-}
 
 interface ResourceSummary {
   id: string;
@@ -43,13 +38,7 @@ interface PluginGroup {
   pluginId: string;
   displayName: string;
   logoSvg: string;
-  accounts: AccountSummary[];
-}
-
-interface DashboardEntry {
-  id: string;
-  name: string;
-  isDefault: boolean;
+  accounts: Account[];
 }
 
 interface WebSidebarProps {
@@ -71,7 +60,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
   const [showAddAccount, setShowAddAccount] = useState(false);
 
   // Dashboard state
-  const [dashboardList, setDashboardList] = useState<DashboardEntry[]>([]);
+  const [dashboardList, setDashboardList] = useState<Dashboard[]>([]);
   const [addingDashboard, setAddingDashboard] = useState(false);
   const [newDashboardName, setNewDashboardName] = useState("");
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -103,7 +92,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
 
   useEffect(() => {
     if (!apiBase) return;
-    apiGet<DashboardEntry[]>(`${apiBase}/dashboards`).then(setDashboardList).catch(console.error);
+    apiGet<Dashboard[]>(`${apiBase}/dashboards`).then(setDashboardList).catch(console.error);
   }, [apiBase, dashboardPinsVersion]);
 
   useEffect(() => {
@@ -113,7 +102,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
       setLoading(true);
       try {
         const [accts, pluginList] = await Promise.all([
-          apiGet<AccountSummary[]>(`${apiBase}/accounts`),
+          apiGet<Account[]>(`${apiBase}/accounts`),
           apiGet<Array<{ id: string; displayName: string; logoSvg: string }>>(
             `${apiBase}/accounts/plugins`,
           ),

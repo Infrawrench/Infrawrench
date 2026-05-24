@@ -1,11 +1,6 @@
+import type { Dashboard } from "@infrawrench/ui";
 import type { ProbeStatus } from "@infrawrench/plugin-base";
 import { invoke } from "./invoke";
-
-interface CloudDashboard {
-  id: string;
-  name: string;
-  isDefault: boolean;
-}
 
 interface CloudDashboardPin {
   pinId: string;
@@ -17,7 +12,7 @@ interface CloudDashboardPin {
 }
 
 interface CloudDashboardFull {
-  dashboard: CloudDashboard & { organizationId: string; createdAt?: string };
+  dashboard: Dashboard & { organizationId: string; createdAt?: string };
   pins: CloudDashboardPin[];
 }
 
@@ -40,7 +35,7 @@ interface CloudEnrichedPin extends CloudDashboardPin {
   status: ProbeStatus;
 }
 
-export async function listCloudDashboards(orgId: string): Promise<CloudDashboard[]> {
+export async function listCloudDashboards(orgId: string): Promise<Dashboard[]> {
   return invoke("cloud_list_dashboards", { orgId });
 }
 
@@ -51,10 +46,7 @@ export async function getCloudDashboard(
   return invoke("cloud_get_dashboard", { orgId, dashboardId });
 }
 
-export async function createCloudDashboard(
-  orgId: string,
-  name: string,
-): Promise<CloudDashboard | null> {
+export async function createCloudDashboard(orgId: string, name: string): Promise<Dashboard | null> {
   return invoke("cloud_create_dashboard", { orgId, name });
 }
 

@@ -2,10 +2,12 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { SpotlightSearch as SharedSpotlightSearch, type SpotlightResult } from "@infrawrench/ui";
 import { invoke } from "../lib/invoke";
 import { getDb } from "../db/client";
-type AccountRow = { id: string; plugin_id: string; display_name: string };
+import type { AccountRow as FullAccountRow } from "../db/rows";
 import { loadPlugins } from "../plugins/loader";
 import { buildHostServices } from "../lib/sql-drivers";
 import { pinResource, type DraggableResource } from "../lib/pins";
+
+type AccountRow = Pick<FullAccountRow, "id" | "plugin_id" | "display_name">;
 
 export type SearchResult = SpotlightResult;
 

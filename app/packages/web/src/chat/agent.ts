@@ -15,6 +15,7 @@ import { db } from "../db/client";
 import { chatConversations, chatMessages, chatPendingActions } from "../db/schema";
 import { getToolRegistry } from "../tools/registry";
 import type { ToolAuthContext, ToolDefinition, ToolResult } from "../tools/types";
+import type { ContentBlock as AnthropicContentBlock } from "../components/chat/types";
 import { recordUsage } from "./billing";
 
 const DEFAULT_MODEL = "claude-sonnet-4-6";
@@ -30,21 +31,6 @@ Style:
 - Prefer the most specific tool for the job (e.g. \`gcp_create_secret_manager_secret\` over \`create_resource\` when both are available).
 
 You operate in the user's organization. Resources, accounts, and outputs belong to them.`;
-
-type AnthropicContentBlock =
-  | { type: "text"; text: string }
-  | {
-      type: "tool_use";
-      id: string;
-      name: string;
-      input: Record<string, unknown>;
-    }
-  | {
-      type: "tool_result";
-      tool_use_id: string;
-      content: string | Array<{ type: "text"; text: string }>;
-      is_error?: boolean;
-    };
 
 interface ConversationMessageRow {
   id: string;

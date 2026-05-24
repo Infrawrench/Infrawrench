@@ -1,11 +1,5 @@
+import type { Account } from "@infrawrench/ui";
 import { invoke } from "./invoke";
-
-interface CloudAccount {
-  id: string;
-  pluginId: string;
-  displayName: string;
-  createdAt: string;
-}
 
 interface CloudResource {
   id: string;
@@ -45,7 +39,7 @@ interface CloudResourceSyncItem {
   parentResourceId: string | null;
 }
 
-export async function listCloudAccounts(orgId: string): Promise<CloudAccount[]> {
+export async function listCloudAccounts(orgId: string): Promise<Account[]> {
   return invoke("cloud_list_accounts", { orgId });
 }
 

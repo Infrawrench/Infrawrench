@@ -1,35 +1,9 @@
 /**
  * Shared client-side TypeScript types for API responses.
  *
- * These mirror the response shape produced by the server routes — if you
- * change the shape on the server, update these types too.
+ * The canonical definitions live in `@infrawrench/ui` (the one package both
+ * the web SPA and the desktop app depend on). This module re-exports them
+ * so existing `@/lib/api-types` imports keep working.
  */
 
-/**
- * An SSH key entry as returned by `GET /api/org/:orgId/ssh-keys`.
- * Mirrors the full shape produced by `app/packages/web/src/api/routes/ssh-keys.ts`.
- * Components that only need a subset can `Pick<SshKey, ...>`.
- */
-export interface SshKey {
-  id: string;
-  name: string;
-  keyType: string;
-  isImported: boolean;
-  fingerprint: string | null;
-  publicKey: string;
-  userId: string;
-  ownerEmail: string;
-  ownerName: string;
-  createdAt: string;
-}
-
-/**
- * Minimal account entry returned by `GET /api/org/:orgId/accounts` and used
- * by modals that need to render an account picker (Add Account, Connect Through
- * Jumpbox). Components needing more fields should fetch the full account.
- */
-export interface AccountListItem {
-  id: string;
-  pluginId: string;
-  displayName: string;
-}
+export type { Account, AccountListItem, Dashboard, SshKey } from "@infrawrench/ui";

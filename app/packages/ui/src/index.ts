@@ -234,3 +234,5 @@ export type {
   SshKeyRadioItemProps,
   SshKeyRadioOption,
 } from "./components/SshKeyRadioGroup.js";
+
+export type { Account, AccountListItem, Dashboard, SshKey } from "./api-types.js";
