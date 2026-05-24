@@ -178,12 +178,6 @@ export function renderDetail(
           customTabs: dynamoCustomTabs,
         }
       : {}),
-    // DocumentDB used to also surface a separate inline "Documents" tab via
-    // the host's `mongodb-peer` browser. That duplicated the MongoDB
-    // peer-pane tab declared by this resource type's peerIntegration with
-    // the MongoDB plugin (which now implements renderPeerPane), so the
-    // inline tab is dropped — the peer-pane lists databases and opens each
-    // in the existing MongoDocumentBrowser.
   };
 }
 

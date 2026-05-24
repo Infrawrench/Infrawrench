@@ -250,8 +250,6 @@ export class KafkaClient implements PluginClient {
     }
   }
 
-  // ---------- internal helpers ----------
-
   private async listClusters(accountId: string): Promise<ResourceInstance[]> {
     const now = new Date().toISOString();
     const bootstrap = parseBootstrapServers(this.connectionString);

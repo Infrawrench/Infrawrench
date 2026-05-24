@@ -1444,12 +1444,9 @@ export class DigitalOceanClient implements PluginClient {
     }
 
     if (resourceTypeId === "managed-database") {
-      // The DO managed-DB monitoring endpoints are engine-scoped and use the
-      // pattern `/v2/monitoring/metrics/database/{engine}/{metric}` with
-      // `db_id` + `aggregate` + `start` + `end` as query params. The earlier
-      // implementation used `/database/{metric}?cluster_uuid=...` which
-      // doesn't exist — the API responded 404 and we silently returned
-      // nothing.
+      // DO managed-DB monitoring endpoints are engine-scoped:
+      // `/v2/monitoring/metrics/database/{engine}/{metric}` with
+      // `db_id` + `aggregate` + `start` + `end` query params.
       // Ref: https://docs.digitalocean.com/reference/pydo/reference/monitoring/get_database_mysql_cpu_usage/
       const resource = await this.getResource(resourceTypeId, resourceId, accountId);
       const dbId = resource.externalId ?? resourceId.split(":").pop();
@@ -1701,14 +1698,6 @@ export class DigitalOceanClient implements PluginClient {
       };
     }
 
-    // MongoDB-engined managed databases used to also surface a separate
-    // inline "Documents" tab driven by the host's `mongodb-peer` browser.
-    // That duplicated the MongoDB peer-pane tab declared by this resource's
-    // peerIntegration with the MongoDB plugin (which now implements
-    // renderPeerPane) so we drop the inline one to keep a single, working
-    // entry point. The MongoDB peer-pane lists databases and clicking one
-    // opens the existing MongoDocumentBrowser.
-
     if (resource.resourceTypeId === "managed-database") {
       this.applyManagedDatabaseDetail(detail, resource);
     } else if (resource.resourceTypeId === "db-user") {
@@ -1900,7 +1889,6 @@ export class DigitalOceanClient implements PluginClient {
     });
     detail.headerActions = headerActions;
 
-    // === Actions tab \u2014 every droplet lifecycle action that isn't on the bar.
     const lifecycleSections: SectionNode[] = [
       {
         kind: "section",
@@ -2220,10 +2208,9 @@ export class DigitalOceanClient implements PluginClient {
       },
     ];
 
-    // === Backups, Snapshots, Volumes \u2014 referenced from the fields we pulled
-    // out of the listDroplets response. Each id renders as a key-value row with
-    // its own restore/detach action so users can act without navigating away.
-    // (backupIds/snapshotIds were already collected above for the restore picker.)
+    // Backups/Snapshots/Volumes render as key-value rows with restore/detach
+    // actions inline. backupIds/snapshotIds were collected above for the
+    // restore picker.
     const volumeIds = String(fields["volumeIds"] ?? "")
       .split(",")
       .filter(Boolean);

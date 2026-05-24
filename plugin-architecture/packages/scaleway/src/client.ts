@@ -498,9 +498,6 @@ export class ScalewayClient implements PluginClient {
       if (!serverId || !volumeId || !instanceZone) {
         throw new Error("Cannot determine zone/instance/volume id for attachment");
       }
-      // The SDK's attachVolume helper reads the server's current volume map,
-      // appends the new volume slot, and PATCHes the server — exactly what
-      // the hand-rolled code below used to do.
       await this.instanceApi().attachVolume({
         zone: instanceZone as Zone,
         serverId,

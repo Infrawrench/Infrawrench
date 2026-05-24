@@ -128,13 +128,6 @@ export function renderAzureDetail(
     };
   }
 
-  // Cosmos DB with MongoDB API used to also surface a separate inline
-  // "Documents" tab driven by the host's `mongodb-peer` browser. The
-  // MongoDB peer-pane tab declared by this resource's peerIntegration
-  // already covers that flow (lists databases via the MongoDB plugin and
-  // opens each in the existing MongoDocumentBrowser), so we drop the
-  // duplicate inline tab here.
-
   return detail;
 }
 
