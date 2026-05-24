@@ -377,6 +377,10 @@ export function ResourcePanel({
     async function handler(e: Event) {
       const detail = (e as CustomEvent<InvokePluginActionDetail>).detail;
       if (!detail) return;
+      // Scope to this panel — the workspace mounts every open tab, so an
+      // unscoped action would run once per mounted panel (against the wrong
+      // resource for non-matching panels).
+      if (detail.resourceId && detail.resourceId !== decodedResourceId) return;
       if (detail.confirmMessage && !window.confirm(detail.confirmMessage)) return;
       const cloud = cloudCtxRef.current;
       const res = resource;
@@ -537,11 +541,15 @@ export function ResourcePanel({
     function handler(e: Event) {
       const detail = (e as CustomEvent<PromptNoSqlCommandDetail>).detail;
       if (!detail) return;
+      // The workspace keeps every open tab's panel mounted, so this global
+      // event reaches all of them. Only the panel whose resource matches
+      // should react — otherwise N panels each open their own modal.
+      if (detail.resourceId && detail.resourceId !== decodedResourceId) return;
       setPromptModal(detail);
     }
     window.addEventListener(PROMPT_NOSQL_COMMAND_EVENT, handler);
     return () => window.removeEventListener(PROMPT_NOSQL_COMMAND_EVENT, handler);
-  }, []);
+  }, [decodedResourceId]);
 
   const handleRunQuery = useCallback(
     async (sql: string): Promise<QueryResult> => {

@@ -88,7 +88,8 @@ export type CreateFieldKind =
   | "resource-picker" // associate with an existing resource (e.g. VPC network)
   | "policy-picker" // multi-select IAM policies/roles — value is JSON array of IDs
   | "key-value-list" // list of rows with a text key + one-of-N value toggle — value is JSON array
-  | "code"; // syntax-highlighted code editor (rendered in a split side-pane)
+  | "code" // syntax-highlighted code editor (rendered in a split side-pane)
+  | "json-schema"; // structured JSON Schema builder — value is a JSON Schema object string
 
 /**
  * Output format for a `datetime` field. Controls what the picker submits as

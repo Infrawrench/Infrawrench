@@ -17,6 +17,7 @@ import {
 import { ResourcePicker, type ResourcePickerOption } from "./ResourcePicker.js";
 import { PolicyPicker } from "./PolicyPicker.js";
 import { KeyValueListPicker } from "./KeyValueListPicker.js";
+import { JsonSchemaEditor } from "./JsonSchemaEditor.js";
 
 export interface SshKeyPickerCallbacks {
   loadKeys: () => Promise<SshKeyEntry[]>;
@@ -371,6 +372,8 @@ export function FieldRenderer({
           {...(field.maxEntries !== undefined ? { maxEntries: field.maxEntries } : {})}
         />
       )}
+
+      {field.kind === "json-schema" && <JsonSchemaEditor value={value} onChange={onChange} />}
 
       {actionsBar}
     </div>

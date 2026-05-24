@@ -72,6 +72,14 @@ export interface InvokePluginActionDetail {
   actionId: string;
   confirmMessage?: string;
   successMessage?: string;
+  /**
+   * Full id of the resource the action targets. The desktop workspace keeps
+   * every open tab's detail panel mounted at once, and all of them listen on
+   * this global event — so handlers must ignore events whose `resourceId`
+   * doesn't match their own panel, or one click runs the action in every
+   * mounted panel (against the wrong resource). Omitted = legacy/unscoped.
+   */
+  resourceId?: string;
 }
 
 export function dispatchInvokePluginAction(detail: InvokePluginActionDetail): void {
@@ -110,6 +118,13 @@ export interface PromptNoSqlCommandDetail {
   fields: import("@infrawrench/plugin-base").CreateFieldConfig[];
   submitLabel?: string;
   danger?: boolean;
+  /**
+   * Full id of the resource this prompt targets. Mounted detail panels ignore
+   * events whose `resourceId` doesn't match — otherwise the desktop's
+   * always-mounted tabs each open their own copy of the modal. Omitted =
+   * legacy/unscoped (every listener responds).
+   */
+  resourceId?: string;
 }
 
 export function dispatchPromptNoSqlCommand(detail: PromptNoSqlCommandDetail): void {

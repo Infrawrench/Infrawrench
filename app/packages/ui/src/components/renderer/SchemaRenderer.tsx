@@ -110,6 +110,7 @@ function useActionDispatch() {
           actionId: action.actionId,
           ...(action.confirmMessage ? { confirmMessage: action.confirmMessage } : {}),
           ...(action.successMessage ? { successMessage: action.successMessage } : {}),
+          ...(resourceId ? { resourceId } : {}),
         });
         break;
       case "prompt-nosql-command":
@@ -122,6 +123,7 @@ function useActionDispatch() {
           ...(action.blocked ? { blocked: action.blocked } : {}),
           ...(action.submitLabel ? { submitLabel: action.submitLabel } : {}),
           ...(action.danger ? { danger: action.danger } : {}),
+          ...(resourceId ? { resourceId } : {}),
         });
         break;
     }

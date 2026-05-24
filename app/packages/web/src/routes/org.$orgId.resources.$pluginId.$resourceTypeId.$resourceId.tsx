@@ -197,6 +197,7 @@ export function ResourcePanel({
     async function handlePluginAction(e: Event) {
       const detail = (e as CustomEvent<InvokePluginActionDetail>).detail;
       if (!accountId) return;
+      if (detail.resourceId && detail.resourceId !== resourceId) return;
       if (detail.confirmMessage && !window.confirm(detail.confirmMessage)) return;
       try {
         await apiPost(`/api/org/${orgId}/resources/invoke-action`, {
@@ -218,6 +219,7 @@ export function ResourcePanel({
     function handlePromptNoSqlCommand(e: Event) {
       const detail = (e as CustomEvent<PromptNoSqlCommandDetail>).detail;
       if (!accountId) return;
+      if (detail.resourceId && detail.resourceId !== resourceId) return;
       setPromptModal(detail);
     }
 
