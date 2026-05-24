@@ -51,13 +51,13 @@ export interface LintFinding {
 /* Parse / serialize                                                          */
 /* -------------------------------------------------------------------------- */
 
-export interface ParsedPolicy {
+interface ParsedPolicy {
   doc: BucketPolicyDoc;
   /** Set when JSON is unparseable; doc is `EMPTY_POLICY`. */
   parseError?: string;
 }
 
-export const EMPTY_POLICY: BucketPolicyDoc = { Version: "2012-10-17", Statement: [] };
+const EMPTY_POLICY: BucketPolicyDoc = { Version: "2012-10-17", Statement: [] };
 
 export function parsePolicy(raw: string): ParsedPolicy {
   const trimmed = raw.trim();
@@ -422,7 +422,7 @@ export interface PolicyTemplate {
   ) => BucketPolicyStatement[];
 }
 
-export const POLICY_TEMPLATES: PolicyTemplate[] = [
+const POLICY_TEMPLATES: PolicyTemplate[] = [
   {
     id: "public-read-all-objects",
     label: "Public read of all objects",

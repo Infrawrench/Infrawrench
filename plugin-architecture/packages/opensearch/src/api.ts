@@ -26,7 +26,7 @@ export interface OpenSearchConfig {
   skipTlsVerify?: boolean;
 }
 
-export interface OpenSearchResponse<T = unknown> {
+interface OpenSearchResponse<T = unknown> {
   status: number;
   body: T;
   raw: string;
@@ -139,7 +139,7 @@ async function signSigv4(
   return signed.headers as Record<string, string>;
 }
 
-export interface RequestOpts {
+interface RequestOpts {
   method?: "GET" | "POST" | "PUT" | "DELETE" | "HEAD";
   /** Body — JSON-serialised if an object, sent as-is if a string. */
   body?: unknown;

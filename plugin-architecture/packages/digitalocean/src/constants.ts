@@ -8,7 +8,7 @@ export const SPACES_REGIONS: string[] = ["nyc3", "sfo3", "ams3", "fra1", "sgp1",
  * on slug-prefix heuristics so brand-new regions DO adds (always slug-prefixed
  * by city: e.g. a future `mad1`) still get a flag without a code change.
  */
-export const REGION_INFO: Record<string, { location: string; flag: string }> = {
+const REGION_INFO: Record<string, { location: string; flag: string }> = {
   nyc1: { location: "New York City, USA", flag: "🇺🇸" },
   nyc2: { location: "New York City, USA", flag: "🇺🇸" },
   nyc3: { location: "New York City, USA", flag: "🇺🇸" },
