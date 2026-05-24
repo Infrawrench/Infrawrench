@@ -1,4 +1,4 @@
-I want to clean up my codebase and improve code quality. This is a complex task, so we'll need 9 subagents. Make a sub agent for each of the following:
+I want to clean up my codebase and improve code quality. This is a complex task, so we'll need 9 subagents; if there will be merge conflicts, still run them in parallel and handle that later. Make a sub agent for each of the following:
 
 1. Deduplicate and consolidate all code, and implement DRY where it reduces complexity
 2. Find all type definitions and consolidate any that should be shared
