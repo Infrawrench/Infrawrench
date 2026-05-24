@@ -2730,7 +2730,7 @@ export class DigitalOceanClient implements PluginClient {
   private async enrichGenAiAgent(resource: ResourceInstance): Promise<ResourceInstance> {
     const agentUuid = resource.externalId ?? resource.id.split(":").pop() ?? "";
     if (!agentUuid) return resource;
-    const [fullRes, allAgentsRes, allKbsRes] = await Promise.all([
+    const [fullRes, allAgentsRes, allKbsRes, namespacesRes] = await Promise.all([
       this.fetch<{ agent: Record<string, unknown> }>(`/gen-ai/agents/${agentUuid}`).catch(
         () => null,
       ),
@@ -2740,6 +2740,13 @@ export class DigitalOceanClient implements PluginClient {
       this.fetch<{ knowledge_bases?: Array<{ uuid?: string; name?: string }> }>(
         "/gen-ai/knowledge_bases?per_page=200",
       ).catch(() => ({ knowledge_bases: [] })),
+      // Functions namespaces power the "Add function route" namespace picker.
+      // Listing the individual functions within a namespace isn't exposed by
+      // the /v2 API (that needs the per-namespace OpenWhisk key), so we only
+      // pick the namespace; the function name stays a free-text field.
+      this.fetch<{
+        namespaces?: Array<{ namespace?: string; label?: string; region?: string }>;
+      }>("/functions/namespaces").catch(() => ({ namespaces: [] })),
     ]);
     const a = fullRes?.agent ?? {};
     const kbs = Array.isArray(a["knowledge_bases"])
@@ -2786,6 +2793,13 @@ export class DigitalOceanClient implements PluginClient {
         ),
         __allAgents__: JSON.stringify(allAgents),
         __allKbs__: JSON.stringify(allKbs),
+        __functionNamespaces__: JSON.stringify(
+          (namespacesRes.namespaces ?? []).map((n) => ({
+            namespace: n.namespace,
+            label: n.label,
+            region: n.region,
+          })),
+        ),
         ...(chatbotId ? { __chatbotId__: chatbotId } : {}),
         __chatbot__: JSON.stringify({
           name: String(chatbot["name"] ?? a["name"] ?? ""),
@@ -3029,11 +3043,23 @@ export class DigitalOceanClient implements PluginClient {
       uuid?: string;
       name?: string;
     }
+    interface FunctionNamespace {
+      namespace?: string;
+      label?: string;
+      region?: string;
+    }
     const attachedKbs = parseJsonArray<AttachedKb>(outputs["__attachedKbs__"]);
     const functions = parseJsonArray<AttachedFn>(outputs["__functions__"]);
     const childAgents = parseJsonArray<AttachedChild>(outputs["__childAgents__"]);
     const allAgents = parseJsonArray<PickerAgent>(outputs["__allAgents__"]);
     const allKbs = parseJsonArray<PickerKb>(outputs["__allKbs__"]);
+    const functionNamespaces = parseJsonArray<FunctionNamespace>(outputs["__functionNamespaces__"]);
+    const namespaceOptions = functionNamespaces
+      .filter((n) => n.namespace)
+      .map((n) => ({
+        id: String(n.namespace),
+        label: n.label ? `${n.label} (${n.region ?? "?"})` : String(n.namespace),
+      }));
 
     // Knowledge bases not already attached — used as the picker options
     // for the "Attach knowledge base" prompt.
@@ -3107,27 +3133,39 @@ export class DigitalOceanClient implements PluginClient {
               required: true,
               description: "DigitalOcean Functions name (e.g. `weather/lookup`).",
             },
-            {
-              key: "faasNamespace",
-              label: "FaaS namespace",
-              kind: "text",
-              required: true,
-              description: "Functions namespace this agent should call.",
-            },
+            namespaceOptions.length > 0
+              ? {
+                  key: "faasNamespace",
+                  label: "FaaS namespace",
+                  kind: "select" as const,
+                  required: true,
+                  options: namespaceOptions,
+                  ...(namespaceOptions[0] ? { defaultValue: namespaceOptions[0].id } : {}),
+                  description: "Pick one of this account's DigitalOcean Functions namespaces.",
+                }
+              : {
+                  key: "faasNamespace",
+                  label: "FaaS namespace",
+                  kind: "text" as const,
+                  required: true,
+                  description:
+                    "Functions namespace id (fn-…). No namespaces found on this account — create one in DigitalOcean Functions first.",
+                },
             {
               key: "inputSchema",
               label: "Input JSON Schema",
-              kind: "text",
+              kind: "code",
+              codeLanguage: "json",
               required: false,
-              multiline: true,
               description: "Optional JSON Schema describing the function's arguments.",
             },
             {
               key: "outputSchema",
               label: "Output JSON Schema",
-              kind: "text",
+              kind: "code",
+              codeLanguage: "json",
               required: false,
-              multiline: true,
+              description: "Optional JSON Schema describing the function's return value.",
             },
           ],
         },
