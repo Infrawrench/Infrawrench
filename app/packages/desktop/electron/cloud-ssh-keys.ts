@@ -1,6 +1,6 @@
 import { ipcMain } from "electron";
-import { getAccessToken, forceRefreshAccessToken } from "./cloud-auth";
-import { CLOUD_URL } from "../env";
+import { cloudFetch } from "./cloud-data/shared";
+
 interface CloudSshKey {
   id: string;
   name: string;
@@ -12,57 +12,22 @@ interface CloudSshKey {
   privateKey?: string;
 }
 
-async function cloudFetch<T>(orgId: string, path: string, init?: RequestInit): Promise<T> {
-  let token = await getAccessToken();
-  if (!token) throw new Error("Not authenticated to Infrawrench Cloud");
-
-  const url = `${CLOUD_URL}/api/org/${encodeURIComponent(orgId)}${path}`;
-  const buildInit = (t: string): RequestInit => ({
-    ...init,
-    headers: {
-      Authorization: `Bearer ${t}`,
-      "Content-Type": "application/json",
-      ...init?.headers,
-    },
-  });
-  let res = await fetch(url, buildInit(token));
-  if (res.status === 401) {
-    const refreshed = await forceRefreshAccessToken();
-    if (!refreshed) throw new Error("Not authenticated to Infrawrench Cloud");
-    token = refreshed;
-    res = await fetch(url, buildInit(token));
-  }
-
-  if (!res.ok) {
-    const text = await res.text();
-    let message: string;
-    try {
-      message = (JSON.parse(text) as { error?: string }).error ?? text;
-    } catch {
-      message = text;
-    }
-    throw new Error(`${res.status} ${message}`);
-  }
-
-  const text = await res.text();
-  if (!text) return undefined as T;
-  return JSON.parse(text) as T;
-}
-
 ipcMain.handle(
   "cloud_ssh_keys_list",
   async (_e, { orgId }: { orgId: string }): Promise<CloudSshKey[]> => {
-    return cloudFetch<CloudSshKey[]>(orgId, "/ssh-keys");
+    return (await cloudFetch<CloudSshKey[]>(orgId, "/ssh-keys")) ?? [];
   },
 );
 
 ipcMain.handle(
   "cloud_ssh_keys_create",
   async (_e, { orgId, name }: { orgId: string; name: string }): Promise<CloudSshKey> => {
-    return cloudFetch<CloudSshKey>(orgId, "/ssh-keys", {
+    const result = await cloudFetch<CloudSshKey>(orgId, "/ssh-keys", {
       method: "POST",
       body: JSON.stringify({ name }),
     });
+    if (!result) throw new Error("Cloud SSH key creation returned no response body");
+    return result;
   },
 );
 

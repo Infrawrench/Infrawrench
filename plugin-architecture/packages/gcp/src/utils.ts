@@ -1,6 +1,28 @@
 import type { ResourceStatus } from "@infrawrench/plugin-base";
 
 /**
+ * Authenticated fetch against a GCP REST endpoint. Adds the OAuth token from
+ * the context and a JSON Content-Type; callers pass the absolute URL and any
+ * fetch init they need. Returns the raw `Response` so callers can branch on
+ * status before/after reading the body.
+ */
+export async function gcpFetch(
+  ctx: { token: () => Promise<string> },
+  url: string,
+  init?: RequestInit,
+): Promise<Response> {
+  const tok = await ctx.token();
+  return fetch(url, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${tok}`,
+      "Content-Type": "application/json",
+      ...(init?.headers ?? {}),
+    },
+  });
+}
+
+/**
  * Read a GCP error response and return a single-line human message.
  * Prefers `error.message` from the standard Google API error shape, falling back
  * to raw text truncated so it doesn't dominate the UI. Activation URLs in the

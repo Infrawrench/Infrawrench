@@ -1,6 +1,6 @@
 import yaml from "js-yaml";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
-import { parseFormArg } from "./utils.js";
+import { gcpFetch, parseFormArg } from "./utils.js";
 
 export interface CloudRunContext {
   project: string;
@@ -84,18 +84,6 @@ function parseServiceFullName(fullName: string): {
   const m = /^projects\/([^/]+)\/locations\/([^/]+)\/services\/([^/]+)$/.exec(fullName);
   if (!m) return null;
   return { project: m[1]!, region: m[2]!, service: m[3]! };
-}
-
-async function gcpFetch(ctx: CloudRunContext, url: string, init?: RequestInit): Promise<Response> {
-  const tok = await ctx.token();
-  return fetch(url, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${tok}`,
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-    },
-  });
 }
 
 export async function fetchCloudRunServiceFull(

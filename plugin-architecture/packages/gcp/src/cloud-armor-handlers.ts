@@ -1,5 +1,5 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
-import { parseFormArg } from "./utils.js";
+import { gcpFetch, parseFormArg } from "./utils.js";
 
 export interface CloudArmorContext {
   project: string;
@@ -40,22 +40,6 @@ function policyName(resource: ResourceInstance): string {
   const slash = ext.indexOf("/");
   if (slash >= 0) return ext.slice(slash + 1);
   return String(resource.fields["name"] ?? resource.displayName);
-}
-
-async function gcpFetch(
-  ctx: CloudArmorContext,
-  url: string,
-  init?: RequestInit,
-): Promise<Response> {
-  const tok = await ctx.token();
-  return fetch(url, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${tok}`,
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-    },
-  });
 }
 
 interface RawRule {
