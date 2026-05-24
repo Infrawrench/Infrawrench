@@ -23,6 +23,7 @@ import { EmailRoutingRuleResourceType } from "./resources/email-routing-rule.js"
 import { WaitingRoomResourceType } from "./resources/waiting-room.js";
 import { SpectrumApplicationResourceType } from "./resources/spectrum-application.js";
 import { LogpushJobResourceType } from "./resources/logpush-job.js";
+import { WorkersAiModelResourceType } from "./resources/workers-ai-model.js";
 
 const manifest: PluginManifest = {
   id: "cloudflare",
@@ -73,6 +74,7 @@ const resourceTypes: ResourceTypeDefinition[] = [
   WaitingRoomResourceType,
   SpectrumApplicationResourceType,
   LogpushJobResourceType,
+  WorkersAiModelResourceType,
 ];
 
 export const plugin: Plugin = {

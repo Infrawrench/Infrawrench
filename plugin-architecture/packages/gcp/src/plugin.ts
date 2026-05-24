@@ -44,6 +44,7 @@ import { BackendServiceResourceType } from "./resources/backend-service.js";
 import { ForwardingRuleResourceType } from "./resources/forwarding-rule.js";
 import { MemorystoreMemcachedResourceType } from "./resources/memorystore-memcached.js";
 import { VertexAiEndpointResourceType } from "./resources/vertex-ai-endpoint.js";
+import { VertexGeminiModelResourceType } from "./resources/vertex-gemini-model.js";
 import { ComposerEnvironmentResourceType } from "./resources/composer-environment.js";
 import { WorkflowResourceType } from "./resources/workflow.js";
 import { CloudDeployPipelineResourceType } from "./resources/cloud-deploy-pipeline.js";
@@ -144,6 +145,7 @@ const resourceTypes: ResourceTypeDefinition[] = [
   ComposerEnvironmentResourceType,
   // AI/ML
   VertexAiEndpointResourceType,
+  VertexGeminiModelResourceType,
   // Developer Tools
   ArtifactRegistryRepoResourceType,
   // IAM

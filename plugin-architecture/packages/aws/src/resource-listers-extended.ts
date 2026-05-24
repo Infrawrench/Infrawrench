@@ -1,6 +1,7 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { ensureArray } from "./auth.js";
 import type { ListerContext } from "./resource-listers.js";
+import { fetchSigned } from "./signed-request.js";
 
 export async function listRoute53HostedZones(
   ctx: ListerContext,
@@ -1667,6 +1668,75 @@ export async function listSageMakerEndpoints(
       updatedAt: ctx.now(),
     };
   });
+}
+
+/**
+ * List Bedrock foundation models via the control-plane
+ * `GET /foundation-models` endpoint (signed under service `bedrock`). We sign
+ * directly with `fetchSigned` rather than going through the SDK-backed
+ * `client-transport` helpers because the Bedrock endpoint follows the plain
+ * `bedrock.<region>.amazonaws.com` host pattern and pulling in
+ * `@aws-sdk/client-bedrock` just for an endpoint resolver isn't worth it.
+ *
+ * Filtered to models the Converse API can drive directly by `modelId`:
+ *   - `outputModalities` includes "TEXT" (skip image/embedding-only models)
+ *   - `inferenceTypesSupported` includes "ON_DEMAND" (models that require an
+ *     inference profile or provisioned throughput can't be Converse'd by bare
+ *     modelId, so listing them would only produce failing chat sessions).
+ */
+export async function listBedrockModels(
+  ctx: ListerContext,
+  accountId: string,
+): Promise<ResourceInstance[]> {
+  const host = `bedrock.${ctx.region}.amazonaws.com`;
+  const res = await fetchSigned({
+    method: "GET",
+    url: `https://${host}/foundation-models`,
+    headers: { Host: host },
+    service: "bedrock",
+    credentials: ctx.creds,
+  });
+  const data = (await res.json()) as {
+    modelSummaries?: Array<Record<string, unknown>>;
+  };
+  const summaries = data.modelSummaries ?? [];
+
+  return summaries
+    .filter((m) => {
+      const outputModalities = Array.isArray(m["outputModalities"])
+        ? (m["outputModalities"] as string[])
+        : [];
+      const inferenceTypes = Array.isArray(m["inferenceTypesSupported"])
+        ? (m["inferenceTypesSupported"] as string[])
+        : [];
+      return outputModalities.includes("TEXT") && inferenceTypes.includes("ON_DEMAND");
+    })
+    .map((m) => {
+      const modelId = String(m["modelId"] ?? "");
+      const modelName = String(m["modelName"] ?? modelId);
+      return {
+        id: ctx.id(accountId, "bedrock-model", modelId),
+        pluginId: "aws",
+        resourceTypeId: "bedrock-model",
+        accountId,
+        displayName: modelName,
+        fields: {
+          modelId,
+          modelName,
+          region: ctx.region,
+          providerName: String(m["providerName"] ?? ""),
+          streamingSupported: Boolean(m["responseStreamingSupported"]),
+          // Static "active" — foundation models are catalog entries with no
+          // lifecycle, so the host renders a healthy dot via the status map.
+          status: "active",
+        },
+        resolvedOutputs: {},
+        secretStates: [],
+        externalId: modelId,
+        createdAt: ctx.now(),
+        updatedAt: ctx.now(),
+      };
+    });
 }
 
 export async function listRoute53HealthChecks(

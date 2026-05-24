@@ -12,6 +12,7 @@ sidebar_order: 3
 - **Analytics** — BigQuery datasets and tables.
 - **App hosting** — App Engine services.
 - **Storage** — Cloud Storage buckets.
+- **AI/ML** — Vertex AI endpoints and a curated list of Vertex AI Gemini chat models.
 
 ## Credentials
 
@@ -27,6 +28,9 @@ You can optionally set a **Project ID** to override the project embedded in the 
 - **SQL editor** on Cloud SQL (Postgres, MySQL, SQL Server) — direct connection to the instance's public IP using the embedded root password (see below).
 - **File browser** on GCS buckets.
 - **Secret export to K8s** for Cloud SQL and GCS (with service account key export as a secret).
+- **Gemini Playground** on Vertex AI Gemini models — open any model under **AI/ML** and use the **Playground** tab to chat with it. Responses stream token-by-token through Vertex AI's OpenAI-compatible chat endpoint (`us-central1`), authorized with the account's service account. The whole conversation history is sent on each turn. The service account needs the **Vertex AI User** role (`roles/aiplatform.user`) and the Vertex AI API enabled on the project.
+
+<insert [GCP Gemini model detail page with the Playground tab open, showing a streamed assistant reply] here>
 
 ## Cloud SQL connectivity
 

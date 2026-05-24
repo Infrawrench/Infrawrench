@@ -17,6 +17,8 @@ import type {
   ResourceStatus,
   LogsFetchParams,
   LogsFetchResult,
+  ChatMessage,
+  ChatStreamEvent,
 } from "@infrawrench/plugin-base";
 import type { HostServices } from "@infrawrench/plugin-base";
 import {
@@ -91,6 +93,14 @@ import {
   attachResource as runAttachResource,
 } from "./compute-extras-client.js";
 import { enrichDetail as runEnrichDetail } from "./enrich-detail-client.js";
+import { VERTEX_GEMINI_MODELS } from "./resources/vertex-gemini-model.js";
+
+/**
+ * Default Vertex AI region used for the Gemini chat playground. Vertex's
+ * OpenAI-compatible chat endpoint is regionalised; us-central1 carries every
+ * curated Gemini model, so we anchor to it unless we learn otherwise.
+ */
+const VERTEX_DEFAULT_LOCATION = "us-central1";
 
 export class GcpClient implements PluginClient {
   private readonly key: ServiceAccountKey;
@@ -324,6 +334,8 @@ export class GcpClient implements PluginClient {
         return listers.listMemorystoreMemcached(ctx, accountId, p);
       case "vertex-ai-endpoint":
         return listers.listVertexAiEndpoints(ctx, accountId, p);
+      case "vertex-gemini-model":
+        return this.listVertexGeminiModels(accountId);
       case "composer-environment":
         return listers.listComposerEnvironments(ctx, accountId, p);
       case "workflow":
@@ -768,6 +780,171 @@ export class GcpClient implements PluginClient {
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
     return gcpRenderDetail(this.detailCtx, resource);
+  }
+
+  /**
+   * Curated Gemini chat models surfaced as resources. No live API call — see
+   * `VERTEX_GEMINI_MODELS` for why the catalog is static. Each model gets a
+   * stable healthy status so the sidebar doesn't churn.
+   */
+  private listVertexGeminiModels(accountId: string): ResourceInstance[] {
+    const now = this.now();
+    return VERTEX_GEMINI_MODELS.map((m) => ({
+      id: this.id(accountId, "vertex-gemini-model", m.modelId),
+      pluginId: "gcp",
+      resourceTypeId: "vertex-gemini-model",
+      accountId,
+      displayName: m.modelId,
+      fields: {
+        modelId: m.modelId,
+        description: m.description,
+        status: "READY",
+      },
+      resolvedOutputs: {},
+      secretStates: [],
+      externalId: m.modelId,
+      createdAt: now,
+      updatedAt: now,
+    }));
+  }
+
+  /**
+   * Stream a Gemini chat completion through Vertex AI's OpenAI-compatible
+   * endpoint. The wire format mirrors OpenAI's SSE
+   * (`data: {json}\n\n` … `data: [DONE]`, with `choices[0].delta.content`
+   * deltas and a trailing `usage` block), so the parser is the same shape as
+   * the DigitalOcean Gradient AI playground.
+   */
+  async *streamChatMessage(
+    typeId: string,
+    resourceId: string,
+    _accountId: string,
+    messages: ChatMessage[],
+  ): AsyncGenerator<ChatStreamEvent, void, unknown> {
+    if (typeId !== "vertex-gemini-model") {
+      yield {
+        kind: "error",
+        message: `GCP plugin: streamChatMessage not supported for type "${typeId}".`,
+      };
+      return;
+    }
+    const modelId = resourceId.split(":").slice(2).join(":");
+    if (!modelId) {
+      yield { kind: "error", message: "Couldn't determine the Gemini model id." };
+      return;
+    }
+
+    const location = VERTEX_DEFAULT_LOCATION;
+    let token: string;
+    try {
+      token = await this.token();
+    } catch (err) {
+      yield { kind: "error", message: err instanceof Error ? err.message : String(err) };
+      return;
+    }
+
+    const endpoint =
+      `https://${location}-aiplatform.googleapis.com/v1/projects/${this.project}` +
+      `/locations/${location}/endpoints/openapi/chat/completions`;
+    const body = JSON.stringify({
+      model: `google/${modelId}`,
+      messages: messages.map((m) => ({ role: m.role, content: m.content })),
+      stream: true,
+    });
+
+    let res: Response;
+    try {
+      res = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          Accept: "text/event-stream",
+        },
+        body,
+      });
+    } catch (err) {
+      yield { kind: "error", message: err instanceof Error ? err.message : String(err) };
+      return;
+    }
+
+    if (!res.ok || !res.body) {
+      const errText = await res.text().catch(() => "");
+      yield {
+        kind: "error",
+        message: `Vertex AI returned ${res.status}: ${errText || res.statusText}`,
+      };
+      return;
+    }
+
+    // Parse the OpenAI-compatible SSE stream: `data: {json}\n\n` lines until
+    // `data: [DONE]`. Accumulate `choices[0].delta.content` so the terminal
+    // `done` event carries the full assistant turn.
+    const decoder = new TextDecoder();
+    const reader = res.body.getReader();
+    let buffer = "";
+    let assembled = "";
+    let usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number } | undefined;
+
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop() ?? "";
+        for (const part of parts) {
+          const line = part.trim();
+          if (!line.startsWith("data:")) continue;
+          const payload = line.slice(5).trim();
+          if (payload === "[DONE]") continue;
+          try {
+            const parsed = JSON.parse(payload) as {
+              choices?: Array<{ delta?: { content?: string } }>;
+              usage?: {
+                prompt_tokens?: number;
+                completion_tokens?: number;
+                total_tokens?: number;
+              };
+            };
+            const delta = parsed.choices?.[0]?.delta?.content;
+            if (delta) {
+              assembled += delta;
+              yield { kind: "delta", text: delta };
+            }
+            if (parsed.usage) {
+              // exactOptionalPropertyTypes is on — only assign keys we have.
+              const next: {
+                inputTokens?: number;
+                outputTokens?: number;
+                totalTokens?: number;
+              } = {};
+              if (parsed.usage.prompt_tokens !== undefined) {
+                next.inputTokens = parsed.usage.prompt_tokens;
+              }
+              if (parsed.usage.completion_tokens !== undefined) {
+                next.outputTokens = parsed.usage.completion_tokens;
+              }
+              if (parsed.usage.total_tokens !== undefined) {
+                next.totalTokens = parsed.usage.total_tokens;
+              }
+              usage = next;
+            }
+          } catch {
+            // Malformed SSE chunk — skip rather than abort the whole stream.
+          }
+        }
+      }
+    } catch (err) {
+      yield { kind: "error", message: err instanceof Error ? err.message : String(err) };
+      return;
+    }
+
+    yield {
+      kind: "done",
+      message: { role: "assistant", content: assembled },
+      ...(usage ? { usage } : {}),
+    };
   }
 
   async executeQuery(

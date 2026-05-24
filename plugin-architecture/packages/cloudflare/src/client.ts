@@ -10,6 +10,8 @@ import type {
   DashboardStat,
   CredentialExport,
   MetricSeries,
+  ChatMessage,
+  ChatStreamEvent,
 } from "@infrawrench/plugin-base";
 import {
   dnsRecordBadgeColor,
@@ -44,6 +46,7 @@ import {
   renderAccessPolicyDetail,
   renderSpectrumApplicationDetail,
   renderLogpushJobDetail,
+  renderWorkersAiModelDetail,
 } from "./detail-renderers.js";
 import { CloudflareApi } from "./clients/shared.js";
 import * as zoneApi from "./clients/zone-client.js";
@@ -68,6 +71,7 @@ import * as emailRoutingApi from "./clients/email-routing-client.js";
 import * as waitingRoomApi from "./clients/waiting-room-client.js";
 import * as spectrumApi from "./clients/spectrum-client.js";
 import * as logpushApi from "./clients/logpush-client.js";
+import * as workersAiApi from "./clients/workers-ai-client.js";
 
 export class CloudflareClient implements PluginClient {
   private readonly api: CloudflareApi;
@@ -128,6 +132,8 @@ export class CloudflareClient implements PluginClient {
         return spectrumApi.listAllSpectrumApplications(this.api, accountId);
       case "logpush-job":
         return logpushApi.listAllLogpushJobs(this.api, accountId);
+      case "workers-ai-model":
+        return workersAiApi.listWorkersAiModels(this.api, accountId);
       default:
         throw new Error(`Cloudflare plugin: unknown resource type "${typeId}"`);
     }
@@ -274,6 +280,8 @@ export class CloudflareClient implements PluginClient {
         return renderSpectrumApplicationDetail(resource);
       case "logpush-job":
         return renderLogpushJobDetail(resource);
+      case "workers-ai-model":
+        return renderWorkersAiModelDetail(resource);
       default:
         return renderGenericDetail(resource, this.resourceTypes);
     }
@@ -2098,6 +2106,143 @@ export class CloudflareClient implements PluginClient {
       },
     ];
     return series.filter((s) => s.points.some((p) => p.value > 0));
+  }
+
+  /**
+   * Stream a chat completion from a Workers AI text-generation model. Backs
+   * the host-rendered "Playground" tab on `workers-ai-model` resources.
+   *
+   * Hits the OpenAI-compatible endpoint
+   * `POST /accounts/{id}/ai/v1/chat/completions` with `stream: true` and
+   * parses the SSE response (`data: {json}\n\n` lines, terminated by
+   * `data: [DONE]`), accumulating `choices[0].delta.content` and capturing
+   * the final `usage` block when present.
+   */
+  async *streamChatMessage(
+    typeId: string,
+    resourceId: string,
+    _accountId: string,
+    messages: ChatMessage[],
+  ): AsyncGenerator<ChatStreamEvent, void, unknown> {
+    if (typeId !== "workers-ai-model") {
+      yield {
+        kind: "error",
+        message: `Cloudflare plugin: streamChatMessage not supported for type "${typeId}".`,
+      };
+      return;
+    }
+
+    // Resource id: `${infrawrenchAccountId}:workers-ai-model:${@cf/...}`. The
+    // model name itself contains slashes but no colons, so everything after
+    // the second colon is the model name.
+    const model = resourceId.split(":").slice(2).join(":");
+    if (!model) {
+      yield { kind: "error", message: "Couldn't determine the Workers AI model name." };
+      return;
+    }
+
+    let cfAccountId: string;
+    try {
+      cfAccountId = await this.api.getAccountId();
+    } catch (err) {
+      yield { kind: "error", message: err instanceof Error ? err.message : String(err) };
+      return;
+    }
+
+    const endpoint = `https://api.cloudflare.com/client/v4/accounts/${cfAccountId}/ai/v1/chat/completions`;
+    const body = JSON.stringify({
+      model,
+      messages: messages.map((m) => ({ role: m.role, content: m.content })),
+      stream: true,
+    });
+
+    let res: Response;
+    try {
+      res = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.api.apiToken}`,
+          "Content-Type": "application/json",
+          Accept: "text/event-stream",
+        },
+        body,
+      });
+    } catch (err) {
+      yield { kind: "error", message: err instanceof Error ? err.message : String(err) };
+      return;
+    }
+
+    if (!res.ok || !res.body) {
+      const errText = await res.text().catch(() => "");
+      yield {
+        kind: "error",
+        message: `Workers AI endpoint returned ${res.status}: ${errText || res.statusText}`,
+      };
+      return;
+    }
+
+    // Parse SSE chunks. OpenAI-compatible stream format is `data: {json}\n\n`
+    // lines until `data: [DONE]`. Accumulate `choices[0].delta.content` so we
+    // can hand the host the full message in the terminal `done` event.
+    const decoder = new TextDecoder();
+    const reader = res.body.getReader();
+    let buffer = "";
+    let assembled = "";
+    let usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number } | undefined;
+
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop() ?? "";
+        for (const part of parts) {
+          const line = part.trim();
+          if (!line.startsWith("data:")) continue;
+          const payload = line.slice(5).trim();
+          if (payload === "[DONE]") continue;
+          try {
+            const parsed = JSON.parse(payload) as {
+              choices?: Array<{ delta?: { content?: string } }>;
+              usage?: {
+                prompt_tokens?: number;
+                completion_tokens?: number;
+                total_tokens?: number;
+              };
+            };
+            const delta = parsed.choices?.[0]?.delta?.content;
+            if (delta) {
+              assembled += delta;
+              yield { kind: "delta", text: delta };
+            }
+            if (parsed.usage) {
+              usage = {};
+              if (parsed.usage.prompt_tokens !== undefined) {
+                usage.inputTokens = parsed.usage.prompt_tokens;
+              }
+              if (parsed.usage.completion_tokens !== undefined) {
+                usage.outputTokens = parsed.usage.completion_tokens;
+              }
+              if (parsed.usage.total_tokens !== undefined) {
+                usage.totalTokens = parsed.usage.total_tokens;
+              }
+            }
+          } catch {
+            // Malformed SSE chunk — skip rather than abort the whole stream.
+          }
+        }
+      }
+    } catch (err) {
+      yield { kind: "error", message: err instanceof Error ? err.message : String(err) };
+      return;
+    }
+
+    yield {
+      kind: "done",
+      message: { role: "assistant", content: assembled },
+      ...(usage ? { usage } : {}),
+    };
   }
 
   /** List DNS records for a specific zone */

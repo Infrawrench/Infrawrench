@@ -53,6 +53,7 @@ import { DocumentDBClusterResourceType } from "./resources/documentdb-cluster.js
 import { MQBrokerResourceType } from "./resources/mq-broker.js";
 import { BatchJobQueueResourceType } from "./resources/batch-job-queue.js";
 import { SageMakerEndpointResourceType } from "./resources/sagemaker-endpoint.js";
+import { BedrockModelResourceType } from "./resources/bedrock-model.js";
 import { Route53HealthCheckResourceType } from "./resources/route53-health-check.js";
 import { CognitoUserPoolResourceType } from "./resources/cognito-user-pool.js";
 import { BackupVaultResourceType } from "./resources/backup-vault.js";
@@ -162,6 +163,7 @@ const resourceTypes: ResourceTypeDefinition[] = [
   CloudTrailTrailResourceType,
   // ML
   SageMakerEndpointResourceType,
+  BedrockModelResourceType,
   // DNS & Health
   Route53HealthCheckResourceType,
   // Identity

@@ -175,6 +175,44 @@ export function renderWorkerDetail(resource: ResourceInstance): DetailViewSchema
   };
 }
 
+export function renderWorkersAiModelDetail(resource: ResourceInstance): DetailViewSchema {
+  const fields = resource.fields;
+  const name = String(fields["name"] ?? resource.displayName);
+  const description = String(fields["description"] ?? "");
+  return {
+    title: name,
+    subtitle: "Workers AI Model",
+    // Models have no lifecycle state — they're always available to call.
+    status: { kind: "status-dot", status: "healthy", label: "Available" },
+    sections: [
+      {
+        kind: "section",
+        title: "Model Details",
+        children: [
+          {
+            kind: "key-value-list",
+            items: [
+              { key: "Model", value: name, copyable: true },
+              { key: "Task", value: String(fields["task"] ?? "Text Generation") },
+              ...(description ? [{ key: "Description", value: description }] : []),
+            ],
+          },
+        ],
+      },
+    ],
+    // Host auto-renders a "Playground" tab whenever chatPanel is set. No
+    // disabledReason — Workers AI models are always callable.
+    chatPanel: {
+      tabLabel: "Playground",
+      subtitle: `Chat with ${name}`,
+      greeting:
+        "Hi! This is the Workers AI model playground — send a prompt to see how it responds. The full conversation history is sent on each turn.",
+      inputPlaceholder: "Send a message…",
+    },
+    headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+  };
+}
+
 export function renderR2BucketDetail(resource: ResourceInstance): DetailViewSchema {
   const fields = resource.fields;
   return {

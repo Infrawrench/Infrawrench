@@ -7,6 +7,7 @@ import { PipelineResourceType } from "./resources/pipeline.js";
 import { CatalogResourceType } from "./resources/catalog.js";
 import { SchemaResourceType } from "./resources/schema.js";
 import { TableResourceType } from "./resources/table.js";
+import { ServingEndpointResourceType } from "./resources/serving-endpoint.js";
 
 const manifest: PluginManifest = {
   id: "databricks",
@@ -49,6 +50,7 @@ const resourceTypes: ResourceTypeDefinition[] = [
   CatalogResourceType,
   SchemaResourceType,
   TableResourceType,
+  ServingEndpointResourceType,
 ];
 
 export const plugin: Plugin = {

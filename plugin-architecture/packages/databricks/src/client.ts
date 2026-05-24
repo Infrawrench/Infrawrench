@@ -9,12 +9,15 @@ import type {
   DashboardStat,
   CreateResourceConfig,
   HostServices,
+  ChatMessage,
+  ChatStreamEvent,
 } from "@infrawrench/plugin-base";
 import { labeledFieldItems, labeledOutputItems } from "@infrawrench/plugin-base";
 import type { ListerContext } from "./resource-listers.js";
 import {
   listClusters,
   listSqlWarehouses,
+  listServingEndpoints,
   listJobs,
   listPipelines,
   listCatalogs,
@@ -117,6 +120,7 @@ export class DatabricksClient implements PluginClient {
   > = {
     "databricks-cluster": listClusters,
     "databricks-sql-warehouse": listSqlWarehouses,
+    "databricks-serving-endpoint": listServingEndpoints,
     "databricks-job": listJobs,
     "databricks-pipeline": listPipelines,
     "databricks-catalog": listCatalogs,
@@ -300,6 +304,7 @@ export class DatabricksClient implements PluginClient {
     const typeLabels: Record<string, string> = {
       "databricks-cluster": "Cluster",
       "databricks-sql-warehouse": "SQL Warehouse",
+      "databricks-serving-endpoint": "Model Serving Endpoint",
       "databricks-job": "Job",
       "databricks-pipeline": "Pipeline",
       "databricks-catalog": "Catalog",
@@ -345,6 +350,22 @@ export class DatabricksClient implements PluginClient {
       headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
 
+    if (resource.resourceTypeId === "databricks-serving-endpoint") {
+      const ready = String(fields["state"] ?? "") === "READY";
+      detail.chatPanel = {
+        tabLabel: "Playground",
+        subtitle: `Chat with ${resource.displayName}`,
+        greeting:
+          "Send a prompt to test this serving endpoint. The full conversation is sent each turn.",
+        inputPlaceholder: "Send a message…",
+        ...(ready
+          ? {}
+          : {
+              disabledReason: "Endpoint isn't READY yet. Wait for it to come online and reload.",
+            }),
+      };
+    }
+
     return detail;
   }
 
@@ -365,6 +386,120 @@ export class DatabricksClient implements PluginClient {
         kind: "status-dot",
         status: statusMap[state] ?? "info",
       },
+    };
+  }
+
+  async *streamChatMessage(
+    typeId: string,
+    resourceId: string,
+    _accountId: string,
+    messages: ChatMessage[],
+  ): AsyncGenerator<ChatStreamEvent, void, unknown> {
+    if (typeId !== "databricks-serving-endpoint") {
+      yield {
+        kind: "error",
+        message: `Databricks plugin: streamChatMessage not supported for type "${typeId}".`,
+      };
+      return;
+    }
+    const name = resourceId.split(":").slice(2).join(":");
+    if (!name) {
+      yield { kind: "error", message: "Couldn't determine the serving endpoint name." };
+      return;
+    }
+
+    const endpoint = `${this.host}/serving-endpoints/${encodeURIComponent(name)}/invocations`;
+    const body = JSON.stringify({
+      messages: messages.map((m) => ({ role: m.role, content: m.content })),
+      stream: true,
+    });
+
+    let res: Response;
+    try {
+      res = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.token}`,
+          "Content-Type": "application/json",
+          Accept: "text/event-stream",
+        },
+        body,
+      });
+    } catch (err) {
+      yield { kind: "error", message: err instanceof Error ? err.message : String(err) };
+      return;
+    }
+
+    if (!res.ok || !res.body) {
+      const errText = await res.text().catch(() => "");
+      yield {
+        kind: "error",
+        message: `Serving endpoint returned ${res.status}: ${errText || res.statusText}`,
+      };
+      return;
+    }
+
+    // Parse the OpenAI-compatible SSE stream: `data: {json}\n\n` lines until
+    // `data: [DONE]`. Accumulate `choices[0].delta.content` into `assembled`
+    // so the terminal `done` event carries the full assistant turn.
+    const decoder = new TextDecoder();
+    const reader = res.body.getReader();
+    let buffer = "";
+    let assembled = "";
+    let usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number } | undefined;
+
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop() ?? "";
+        for (const part of parts) {
+          const line = part.trim();
+          if (!line.startsWith("data:")) continue;
+          const payload = line.slice(5).trim();
+          if (payload === "[DONE]") continue;
+          try {
+            const parsed = JSON.parse(payload) as {
+              choices?: Array<{ delta?: { content?: string } }>;
+              usage?: {
+                prompt_tokens?: number;
+                completion_tokens?: number;
+                total_tokens?: number;
+              };
+            };
+            const delta = parsed.choices?.[0]?.delta?.content;
+            if (delta) {
+              assembled += delta;
+              yield { kind: "delta", text: delta };
+            }
+            if (parsed.usage) {
+              usage = {};
+              if (parsed.usage.prompt_tokens !== undefined) {
+                usage.inputTokens = parsed.usage.prompt_tokens;
+              }
+              if (parsed.usage.completion_tokens !== undefined) {
+                usage.outputTokens = parsed.usage.completion_tokens;
+              }
+              if (parsed.usage.total_tokens !== undefined) {
+                usage.totalTokens = parsed.usage.total_tokens;
+              }
+            }
+          } catch {
+            // Malformed SSE chunk — skip rather than abort the whole stream.
+          }
+        }
+      }
+    } catch (err) {
+      yield { kind: "error", message: err instanceof Error ? err.message : String(err) };
+      return;
+    }
+
+    yield {
+      kind: "done",
+      message: { role: "assistant", content: assembled },
+      ...(usage ? { usage } : {}),
     };
   }
 

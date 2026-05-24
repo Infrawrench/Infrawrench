@@ -270,5 +270,17 @@ export function gcpRenderDetail(
     renderPubsubSubscription(ctx, resource, base);
   }
 
+  if (resource.resourceTypeId === "vertex-gemini-model") {
+    const modelId = String(fields["modelId"] ?? resource.displayName);
+    base.chatPanel = {
+      tabLabel: "Playground",
+      subtitle: `Chat with ${modelId}`,
+      greeting:
+        "Hi! This streams from Vertex AI's OpenAI-compatible Gemini endpoint. " +
+        "Send a prompt — the full conversation history is included on each turn.",
+      inputPlaceholder: "Send a message…",
+    };
+  }
+
   return base;
 }

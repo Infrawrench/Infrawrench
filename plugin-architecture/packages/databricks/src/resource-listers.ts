@@ -117,6 +117,47 @@ export async function listSqlWarehouses(
   });
 }
 
+export async function listServingEndpoints(
+  ctx: ListerContext,
+  accountId: string,
+): Promise<ResourceInstance[]> {
+  const data = await ctx.api<{ endpoints?: Record<string, unknown>[] }>(
+    "GET",
+    "/api/2.0/serving-endpoints",
+  );
+  const endpoints = data.endpoints ?? [];
+
+  return endpoints.map((e) => {
+    const name = String(e["name"] ?? "");
+    const stateObj = e["state"] as Record<string, unknown> | undefined;
+    const ready = String(stateObj?.["ready"] ?? "");
+    const state = ready === "READY" ? "READY" : ready === "NOT_READY" ? "NOT_READY" : "UNKNOWN";
+
+    return {
+      id: ctx.id(accountId, "databricks-serving-endpoint", name),
+      pluginId: "databricks",
+      resourceTypeId: "databricks-serving-endpoint",
+      accountId,
+      displayName: name,
+      fields: {
+        name,
+        state,
+        task: String(e["task"] ?? ""),
+        creator: String(e["creator"] ?? ""),
+      },
+      resolvedOutputs: {},
+      secretStates: [],
+      externalId: name,
+      createdAt: e["creation_timestamp"]
+        ? new Date(Number(e["creation_timestamp"])).toISOString()
+        : ctx.now(),
+      updatedAt: e["last_updated_timestamp"]
+        ? new Date(Number(e["last_updated_timestamp"])).toISOString()
+        : ctx.now(),
+    };
+  });
+}
+
 export async function listJobs(ctx: ListerContext, accountId: string): Promise<ResourceInstance[]> {
   const data = await ctx.api<{ jobs?: Record<string, unknown>[]; has_more?: boolean }>(
     "GET",

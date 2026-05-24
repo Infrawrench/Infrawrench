@@ -11,6 +11,8 @@ import type {
   MetricSeries,
   CredentialExport,
   HostServices,
+  ChatMessage,
+  ChatStreamEvent,
 } from "@infrawrench/plugin-base";
 import type { AwsCredentials } from "./auth.js";
 import type { ListerContext } from "./resource-listers.js";
@@ -69,6 +71,7 @@ import {
   listMQBrokers,
   listBatchJobQueues,
   listSageMakerEndpoints,
+  listBedrockModels,
   listRoute53HealthChecks,
   listCognitoUserPools,
   listBackupVaults,
@@ -108,6 +111,7 @@ import { resolveOutput as resolveOutputImpl } from "./resolve-output.js";
 import { deleteResource as deleteResourceImpl } from "./delete-handlers.js";
 import { executeFieldAction as executeFieldActionImpl } from "./field-actions.js";
 import { executeDynamoDbCommand } from "./dynamodb-handlers.js";
+import { fetchSigned } from "./signed-request.js";
 
 export class AWSClient implements PluginClient {
   private readonly creds: AwsCredentials;
@@ -331,6 +335,7 @@ export class AWSClient implements PluginClient {
     "mq-broker": listMQBrokers,
     "batch-job-queue": listBatchJobQueues,
     "sagemaker-endpoint": listSageMakerEndpoints,
+    "bedrock-model": listBedrockModels,
     "route53-health-check": listRoute53HealthChecks,
     "cognito-user-pool": listCognitoUserPools,
     "backup-vault": listBackupVaults,
@@ -672,5 +677,95 @@ export class AWSClient implements PluginClient {
     }
     const externalId = parts.slice(2).join(":");
     return putBucketPolicy(this.creds, externalId, manifest);
+  }
+
+  /**
+   * Chat with a Bedrock foundation model via the (non-streaming) Converse API.
+   * We make a single signed POST to `bedrock-runtime.<region>/model/<id>/
+   * converse` — Converse is signed under the `bedrock` service name, same as
+   * the control-plane list call. Bedrock's streaming variant uses the binary
+   * `application/vnd.amazon.eventstream` framing, so we deliberately use the
+   * plain-JSON non-streaming call and surface the whole reply as one delta.
+   */
+  async *streamChatMessage(
+    typeId: string,
+    resourceId: string,
+    _accountId: string,
+    messages: ChatMessage[],
+  ): AsyncGenerator<ChatStreamEvent, void, unknown> {
+    if (typeId !== "bedrock-model") {
+      yield {
+        kind: "error",
+        message: `AWS plugin: streamChatMessage not supported for type "${typeId}".`,
+      };
+      return;
+    }
+    // resourceId is `${accountId}:bedrock-model:${modelId}`. modelIds contain
+    // colons (e.g. `anthropic.claude-3-5-sonnet-20240620-v1:0`), so rejoin
+    // everything past the type segment.
+    const modelId = resourceId.split(":").slice(2).join(":");
+    if (!modelId) {
+      yield { kind: "error", message: "Couldn't determine the Bedrock model id." };
+      return;
+    }
+
+    // Map our ChatMessage[] into Converse's shape: system turns collapse into
+    // the top-level `system` array; user/assistant turns become content blocks.
+    const systemBlocks = messages
+      .filter((m) => m.role === "system")
+      .map((m) => ({ text: m.content }));
+    const conversation = messages
+      .filter((m) => m.role !== "system")
+      .map((m) => ({ role: m.role, content: [{ text: m.content }] }));
+    const body: Record<string, unknown> = {
+      messages: conversation,
+      inferenceConfig: { maxTokens: 1024 },
+      ...(systemBlocks.length > 0 ? { system: systemBlocks } : {}),
+    };
+
+    const host = `bedrock-runtime.${this.creds.region}.amazonaws.com`;
+    let res: Response;
+    try {
+      res = await fetchSigned({
+        method: "POST",
+        url: `https://${host}/model/${encodeURIComponent(modelId)}/converse`,
+        headers: { Host: host, "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        service: "bedrock",
+        credentials: this.creds,
+      });
+    } catch (err) {
+      yield { kind: "error", message: err instanceof Error ? err.message : String(err) };
+      return;
+    }
+
+    let parsed: {
+      output?: { message?: { content?: Array<{ text?: string }> } };
+      usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number };
+    };
+    try {
+      parsed = (await res.json()) as typeof parsed;
+    } catch (err) {
+      yield { kind: "error", message: err instanceof Error ? err.message : String(err) };
+      return;
+    }
+
+    const text = (parsed.output?.message?.content ?? []).map((block) => block.text ?? "").join("");
+    yield { kind: "delta", text };
+
+    // exactOptionalPropertyTypes is on, so only attach usage keys that the
+    // response actually carried rather than assigning `undefined`.
+    const usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number } = {};
+    if (typeof parsed.usage?.inputTokens === "number") usage.inputTokens = parsed.usage.inputTokens;
+    if (typeof parsed.usage?.outputTokens === "number") {
+      usage.outputTokens = parsed.usage.outputTokens;
+    }
+    if (typeof parsed.usage?.totalTokens === "number") usage.totalTokens = parsed.usage.totalTokens;
+
+    yield {
+      kind: "done",
+      message: { role: "assistant", content: text },
+      ...(Object.keys(usage).length > 0 ? { usage } : {}),
+    };
   }
 }

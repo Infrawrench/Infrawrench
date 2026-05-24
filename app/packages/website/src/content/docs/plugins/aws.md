@@ -16,6 +16,7 @@ The AWS plugin covers the services most teams live in day to day.
 - **Messaging** — SQS, SNS.
 - **Secrets & identity** — Secrets Manager, IAM users / roles / policies, KMS keys.
 - **CI/CD** — CodeBuild, CodePipeline, Step Functions, Glue, CloudFormation stacks.
+- **ML & AI** — SageMaker endpoints, Bedrock foundation models (chat playground).
 
 ## Credentials
 
@@ -38,6 +39,7 @@ Use least-privilege policies. For read-only browsing, the `ReadOnlyAccess` manag
 - **OpenSearch tab** on OpenSearch Service domains — indices, search, snapshots via the [OpenSearch plugin](./opensearch.md). The domain's endpoint flows through automatically; auth still has to be filled in on the OpenSearch tab (basic auth when fine-grained access control is on, or AWS SigV4 — service `es` — using the same IAM credentials).
 - **DynamoDB schema & indexes tab** — view the primary key, attribute definitions, and existing global/local secondary indexes on a table. Add or delete GSIs from the same page; LSIs are creation-only (DynamoDB rule). The create form also accepts an optional `secondaryIndexesJson` blob so you can declare GSIs and LSIs up front.
 - **Secret export to K8s** is supported for RDS, Aurora, Redshift, ElastiCache, S3, Lambda, SQS, SNS, DynamoDB, ECS, EKS — [Secret export](../features/secret-export-to-kubernetes.md).
+- **Bedrock playground** on Bedrock foundation models — the list shows on-demand, text-output models in your account's region; open one and use the **Playground** tab to chat with it through the Converse API. Replies arrive as a single whole message (non-streaming), and the full conversation history is sent on each turn. Models that require an inference profile or provisioned throughput are filtered out, since they can't be called by bare model ID.
 - **Read-only manifest view** for most resources.
 
 <insert [DynamoDB detail page showing the Schema & indexes tab with a primary key section, an attribute definitions table, and a GSI pill with status / keys / projection / throughput stats] here>

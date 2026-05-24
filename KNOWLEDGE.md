@@ -394,6 +394,16 @@ All polling is _background_ (no loading flash):
 - Desktop host: the renderer holds the plugin client in-process, so `onChatStream` forwards the iterable directly. Cloud-synced (Infrawrench-sync) accounts surface an explicit "chat over cloud-synced isn't wired yet" error — local DO accounts work as-is.
 - Web host: NDJSON over POST. `POST /api/org/:orgId/resources/chat-stream` writes one JSON-encoded `ChatStreamEvent` per line; the browser parses with `ReadableStream.getReader()` + `TextDecoder`, splitting on `\n`. `Content-Type: application/x-ndjson` + `X-Accel-Buffering: no` keeps proxies from buffering.
 
+### Providers that wire `streamChatMessage`
+
+All reuse the DO SSE-parsing structure; the chat-capable resource sets `detail.chatPanel` in its `renderDetail`/detail-renderer.
+
+- **DigitalOcean** `gen-ai-agent` — see below.
+- **Databricks** `databricks-serving-endpoint` (new) — lister `listServingEndpoints` (`GET /api/2.0/serving-endpoints`); chat POSTs `{host}/serving-endpoints/{name}/invocations` with `{messages, stream:true}` (OpenAI-compatible SSE), bearer PAT. `disabledReason` until `state.ready === "READY"`.
+- **Cloudflare** `workers-ai-model` (new) — one resource per Text-Generation model from `GET /accounts/{id}/ai/models/search?task=Text Generation`; chat POSTs `/accounts/{id}/ai/v1/chat/completions` with `{model: "@cf/…", messages, stream:true}` (OpenAI-compatible SSE), bearer API token.
+- **GCP** `vertex-gemini-model` (new) — curated static catalog of Gemini model ids (`gemini-2.5-pro/flash`, `gemini-2.0-flash[-lite]`, `gemini-1.5-pro/flash`); chat POSTs the Vertex OpenAI-compatible endpoint `…/locations/{loc}/endpoints/openapi/chat/completions` with `{model: "google/{id}", messages, stream:true}`, OAuth2 bearer, project from creds, location `us-central1`.
+- **AWS** `bedrock-model` (new) — lister filters `GET bedrock.{region}.amazonaws.com/foundation-models` to `outputModalities⊇TEXT` + `inferenceTypesSupported⊇ON_DEMAND`; chat is **non-streaming** (Bedrock's stream is the binary `vnd.amazon.eventstream` protocol — skipped) via SigV4-signed `POST bedrock-runtime.{region}.amazonaws.com/model/{modelId}/converse` (reuses the existing `fetchSigned` helper with `service: "bedrock"`), maps `ChatMessage[]` → Converse `{messages:[{role,content:[{text}]}], system?, inferenceConfig:{maxTokens}}`, yields one `delta` with the full reply then `done` + usage.
+
 ### DO agent implementation
 
 - `applyGenAiAgentDetail` sets `detail.chatPanel` with model-name subtitle and a `disabledReason` while the deployment is provisioning (status not yet `STATUS_RUNNING`).
