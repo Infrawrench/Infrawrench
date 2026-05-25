@@ -1127,53 +1127,39 @@ export async function doGetCreateConfig(
   }
 
   if (typeId === "gen-ai-model-router") {
-    const [models, regions] = await Promise.all([
-      ctx
-        .fetch<{
-          models?: Array<{ uuid?: string; name?: string }>;
-        }>("/gen-ai/models?usecases=MODEL_USECASE_SERVERLESS&per_page=200")
-        .catch(() => ({ models: [] })),
-      ctx
-        .fetch<{
-          regions?: Array<{ region: string; serves_inference?: boolean }>;
-        }>("/gen-ai/regions")
-        .catch(() => ({ regions: [] })),
-    ]);
-    const modelOptions = (models.models ?? []).map((m) => ({
-      id: String(m.uuid ?? ""),
-      label: String(m.name ?? ""),
-    }));
-    const regionOptions = (regions.regions ?? [])
-      .filter((r) => r.serves_inference !== false)
-      .map((r) => {
-        const info = regionDisplay(r.region);
-        return {
-          id: r.region,
-          label: r.region,
-          ...(info ? { location: info.location, flag: info.flag } : {}),
-        };
-      });
+    // No region picker — DO deploys routers to all regions and rejects any
+    // explicit `regions`. Fallback/policy models must come from DO's router
+    // presets (arbitrary serverless model UUIDs are rejected as "not found"),
+    // so we offer a preset picker and pass its config through on create.
+    const presetsRes = await ctx
+      .fetch<{
+        presets?: Array<{ slug?: string; display_name?: string; short_description?: string }>;
+      }>("/gen-ai/models/routers/presets?per_page=200")
+      .catch(() => ({ presets: [] }));
+    const presetOptions = (presetsRes.presets ?? [])
+      .filter((p) => p.slug)
+      .map((p) => ({
+        id: String(p.slug),
+        label: p.display_name ? String(p.display_name) : String(p.slug),
+      }));
     return {
       fields: [
         { key: "name", label: "Router Name", kind: "text", required: true },
         { key: "description", label: "Description", kind: "text", required: false },
-        {
-          key: "region",
-          label: "Region",
-          kind: "region-picker",
-          required: true,
-          regions: regionOptions,
-          ...(regionOptions[0] ? { defaultValue: regionOptions[0].id } : {}),
-        },
-        {
-          key: "fallbackModels",
-          label: "Fallback Models",
-          kind: "select",
-          required: false,
-          options: modelOptions,
-          description:
-            "Comma-separated list of foundation-model UUIDs to fall back on when no policy matches.",
-        },
+        ...(presetOptions.length > 0
+          ? [
+              {
+                key: "presetSlug",
+                label: "Routing preset",
+                kind: "select" as const,
+                required: false,
+                options: [{ id: "", label: "None — configure models later" }, ...presetOptions],
+                defaultValue: presetOptions[0]?.id ?? "",
+                description:
+                  "Prefills the router with DigitalOcean's recommended models and routing policies. You can refine them later in the DO console.",
+              },
+            ]
+          : []),
       ],
     };
   }
@@ -1271,12 +1257,6 @@ export async function doGetCreateConfig(
           description: "Required only for gated Hugging Face models.",
         },
       ],
-    };
-  }
-
-  if (typeId === "model-api-key") {
-    return {
-      fields: [{ key: "name", label: "Key Name", kind: "text", required: true }],
     };
   }
 
@@ -2149,17 +2129,32 @@ async function doCreateResourceImpl(
   }
 
   if (typeId === "gen-ai-model-router") {
-    const fallback = String(fields["fallbackModels"] ?? "")
-      .split(",")
-      .map((t) => t.trim())
-      .filter(Boolean);
-    const regions = fields["region"] ? [fields["region"]] : [];
+    // `regions` is deprecated (omit). Models come from a chosen preset's
+    // config — its fallback_models/policies use identifiers DO accepts;
+    // passing raw serverless model UUIDs gets rejected as "model not found".
     const body: Record<string, unknown> = {
       name: fields["name"],
       ...(fields["description"] ? { description: fields["description"] } : {}),
-      ...(regions.length ? { regions } : {}),
-      ...(fallback.length ? { fallback_models: fallback } : {}),
     };
+    const presetSlug = String(fields["presetSlug"] ?? "").trim();
+    if (presetSlug) {
+      const presetsRes = await ctx
+        .fetch<{
+          presets?: Array<{
+            slug?: string;
+            config?: { fallback_models?: unknown[]; policies?: unknown[] };
+          }>;
+        }>("/gen-ai/models/routers/presets?per_page=200")
+        .catch(() => ({ presets: [] }));
+      const preset = (presetsRes.presets ?? []).find((p) => p.slug === presetSlug);
+      const cfg = preset?.config;
+      if (Array.isArray(cfg?.fallback_models) && cfg.fallback_models.length > 0) {
+        body["fallback_models"] = cfg.fallback_models;
+      }
+      if (Array.isArray(cfg?.policies) && cfg.policies.length > 0) {
+        body["policies"] = cfg.policies;
+      }
+    }
     const data = await ctx.fetch<{ model_router: Record<string, unknown> }>(
       "/gen-ai/models/routers",
       { method: "POST", body: JSON.stringify(body) },
@@ -2167,6 +2162,12 @@ async function doCreateResourceImpl(
     const r = data.model_router ?? {};
     const uuid = String(r["uuid"] ?? "");
     const now = new Date().toISOString();
+    const respConfig = r["config"] as
+      | { policies?: unknown[]; fallback_models?: unknown[] }
+      | undefined;
+    const respFallback = Array.isArray(respConfig?.fallback_models)
+      ? (respConfig.fallback_models as string[])
+      : [];
     return {
       id: `${accountId}:gen-ai-model-router:${uuid}`,
       pluginId: "digitalocean",
@@ -2176,9 +2177,9 @@ async function doCreateResourceImpl(
       fields: {
         name: String(r["name"] ?? fields["name"]),
         description: String(r["description"] ?? fields["description"] ?? ""),
-        regions: regions.join(","),
-        fallbackModels: fallback.join(","),
-        policyCount: 0,
+        regions: "all",
+        fallbackModels: respFallback.join(","),
+        policyCount: Array.isArray(respConfig?.policies) ? respConfig.policies.length : 0,
       },
       resolvedOutputs: {},
       secretStates: [],
@@ -2236,43 +2237,6 @@ async function doCreateResourceImpl(
       secretStates: [],
       externalId: id,
       createdAt: String(d["created_at"] ?? now),
-      updatedAt: now,
-    };
-  }
-
-  if (typeId === "model-api-key") {
-    const data = await ctx.fetch<{
-      api_key_info?: Record<string, unknown>;
-      secret_key?: string;
-    }>("/gen-ai/models/api_keys", {
-      method: "POST",
-      body: JSON.stringify({ name: fields["name"] }),
-    });
-    const info = data.api_key_info ?? {};
-    const uuid = String(info["uuid"] ?? "");
-    const now = new Date().toISOString();
-    return {
-      id: `${accountId}:model-api-key:${uuid}`,
-      pluginId: "digitalocean",
-      resourceTypeId: "model-api-key",
-      accountId,
-      displayName: String(info["name"] ?? fields["name"]),
-      fields: {
-        name: String(info["name"] ?? fields["name"]),
-        createdBy: String(info["created_by"] ?? ""),
-        lastUsedAt: "",
-      },
-      resolvedOutputs: data.secret_key ? { secretKey: data.secret_key } : {},
-      secretStates: data.secret_key
-        ? [
-            {
-              fieldKey: "secretKey",
-              resolution: { kind: "plaintext", value: data.secret_key },
-            },
-          ]
-        : [],
-      externalId: uuid,
-      createdAt: String(info["created_at"] ?? now),
       updatedAt: now,
     };
   }

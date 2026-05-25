@@ -16,11 +16,11 @@ The most approachable cloud plugin — a single API token is all you need.
 - **Kubernetes (DOKS)** — clusters, with kubeconfig output for the [Kubernetes plugin](./kubernetes.md).
 - **Managed databases** — Postgres, MySQL, Redis, MongoDB, Kafka, OpenSearch, and Weaviate (private preview). Connection strings are outputs you can reference from the matching client plugins.
 - **Agent Platform** — list, create, and delete Gradient AI agents. The agent's deployment URL is surfaced as an output you can reference from other resources.
-- **Knowledge Bases** — list, create, and delete RAG knowledge bases. The `kbaas.do-ai.run/v1/{uuid}/retrieve` hybrid retrieval endpoint is exposed as an output.
+- **Knowledge Bases** — list, create, edit, and delete RAG knowledge bases; manage their data sources (Spaces buckets, web crawls), trigger and cancel indexing jobs, and watch indexing history. The `kbaas.do-ai.run/v1/{uuid}/retrieve` hybrid retrieval endpoint is exposed as an output.
 - **Inference Router** — list, create, and delete model routers (the "right model per call" auto-routing layer that balances cost and latency across multiple foundation models).
 - **Dedicated Inference** — list, create, and delete dedicated GPU-backed model deployments. Public and private VPC endpoints are exposed as outputs.
 - **Batch Inference jobs** — list and cancel async batch jobs running against OpenAI or Anthropic provider APIs.
-- **Model API Keys** — list, create, and delete the keys used to authenticate against `inference.do-ai.run` (serverless inference + OpenAI-compatible SDK access). The secret is shown once at creation and persisted encrypted locally.
+- **Model API Keys** — list and delete the keys used to authenticate against `inference.do-ai.run` (serverless inference + OpenAI-compatible SDK access). Creating new keys is done in DigitalOcean's Model Studio (DO retired the create API), so Infrawrench surfaces the existing keys for review/cleanup rather than creating them.
 - **Spaces** — S3-compatible object storage, with the [file browser](../features/file-browsers.md).
 - **DNS** — domains and records.
 - **Projects** — list, create, edit (name / description / purpose / environment) and delete. Use the **Edit Project…** button at the bottom of the project detail page to rename or repurpose without leaving Infrawrench.
@@ -124,9 +124,19 @@ Create a knowledge base from the sidebar group. The form takes:
 
 Knowledge bases back onto an OpenSearch vector store (the `database_id` field exposes the backing cluster UUID). The `retrievalEndpoint` output is the hybrid retrieval URL — `https://kbaas.do-ai.run/v1/{uuid}/retrieve` — which supports both semantic and lexical search.
 
-Data sources (web crawls, file uploads, Dropbox / Google Drive OAuth links) and indexing jobs are managed in the DO console for now — Infrawrench focuses on the lifecycle and discovery of the knowledge base itself.
+The **Name** and **tags** are editable from the detail page (region and embedding model are fixed at creation — changing them would force a recreate). The detail page also manages the knowledge base's content:
 
-<insert [DigitalOcean Knowledge Base detail page showing the retrieval endpoint output] here>
+- **Data Sources** — a table of every source feeding the index, each with its last indexing status and per-row **Reindex** / **Remove** actions. Add a source with the header actions:
+  - **+ Add Spaces source** — index files in a DigitalOcean Spaces bucket. If the account has Spaces API keys configured the bucket is a picker; otherwise enter the bucket name and pick its region. An optional folder/object path scopes indexing to part of the bucket.
+  - **+ Add web source** — crawl a public website from a seed URL. Pick the crawl scope (Scoped, Path, Domain, Subdomains, or Sitemap) and whether to index media. The crawler indexes up to ~5,500 pages.
+- **Reindex all** — start an indexing job over every data source. Existing embeddings stay queryable while the job runs.
+- **Indexing Jobs** — recent indexing history with status, per-job source progress, token usage, and a **Cancel** action for jobs still pending or in progress.
+
+Adding a source automatically kicks off indexing, so you usually don't need **Reindex** unless the underlying bucket or website content changed.
+
+File uploads and Dropbox / Google Drive OAuth sources still require the DO console — those need presigned-upload and OAuth flows Infrawrench doesn't model yet.
+
+<insert [DigitalOcean Knowledge Base detail page showing the data sources table, indexing jobs, and the add-source header actions] here>
 
 ### Inference Router
 
@@ -135,7 +145,15 @@ The router is DO's "automatic model selection" layer — point your application 
 - Your workload has **mixed prompt complexity** (some prompts are trivially answerable by smaller models, some need frontier models).
 - You want **automatic fallback** when a model is unavailable.
 
-The create form takes a name, optional description, target region, and an initial list of fallback model UUIDs. Routing policies (the "if prompt matches X, use model Y" rules) are managed in the DO console.
+The create form takes a name, optional description, and a **routing preset** — DigitalOcean's presets prefill the router with a recommended set of models and routing policies (routers are always deployed to all regions, so there's no region picker). Pick "None" to create a bare router and configure it later.
+
+The router detail page shows a **Routing Policies** table (each task → its candidate models → whether it prefers the cheapest, fastest, or balanced option) and a **Fallback Models** table for requests that don't match a policy. You can manage policies right here:
+
+- **+ Add policy** (header) — pick a task, a selection preference (Balanced / Cheapest / Fastest), and the models it may route to (leave the model list empty to use the task's recommended defaults).
+- **Edit** (per row) — change a policy's models or preference.
+- **Remove** (per row) — drop a policy so its requests fall through to the fallback models.
+
+Tasks and their router-eligible models come from DigitalOcean's task presets, so the model choices are always valid.
 
 ### Dedicated Inference
 
@@ -158,7 +176,7 @@ Batch jobs let you submit large async workloads against OpenAI or Anthropic prov
 
 ### Model API Keys
 
-These are the keys used to authenticate against `https://inference.do-ai.run/v1/*` (serverless inference, including the OpenAI-compatible SDK shim). Create one with just a name; the secret value is returned in the `POST /v2/gen-ai/models/api_keys` response **once**, captured by Infrawrench, and persisted encrypted in your local secret store. After that point only the key info (name, last-used timestamp) is visible on the detail page — the secret itself is reveal-once.
+These are the keys used to authenticate against `https://inference.do-ai.run/v1/*` (serverless inference, including the OpenAI-compatible SDK shim). DigitalOcean **retired** the create-key API endpoint — new keys are minted in DigitalOcean's Model Studio. Infrawrench lists your existing model access keys (name, last-used timestamp) and lets you delete them for cleanup; it no longer offers a create form.
 
 For account-wide API access (`/v2/...`) keep using the personal access token you added when you set up the plugin.
 

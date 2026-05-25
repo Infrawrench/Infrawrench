@@ -5,6 +5,7 @@ import type {
   DetailViewSchema,
   SidebarItemSchema,
   CreateResourceConfig,
+  CreateFieldConfig,
   SectionNode,
   ActionNode,
   ChatMessage,
@@ -689,12 +690,39 @@ export class DigitalOceanClient implements PluginClient {
       const uuid = String(r["uuid"] ?? r["id"] ?? "");
       const regions = Array.isArray(r["regions"]) ? (r["regions"] as string[]) : [];
       const config = r["config"] as Record<string, unknown> | undefined;
-      const fallback = Array.isArray(config?.["fallback_models"])
-        ? (config?.["fallback_models"] as string[])
+      const fallbackRaw = Array.isArray(config?.["fallback_models"])
+        ? (config?.["fallback_models"] as unknown[])
         : [];
-      const policies = Array.isArray(config?.["policies"])
-        ? (config?.["policies"] as unknown[]).length
-        : 0;
+      const policiesRaw = Array.isArray(config?.["policies"])
+        ? (config?.["policies"] as Array<Record<string, unknown>>)
+        : [];
+      // Normalize each policy for the detail-page viewer. `models` entries can
+      // be plain id strings or objects ({uuid,name}); flatten to {id,name}.
+      const policies = policiesRaw.map((p) => {
+        const models = Array.isArray(p["models"]) ? (p["models"] as unknown[]) : [];
+        const custom = p["custom_task"] as Record<string, unknown> | undefined;
+        const selection = p["selection_policy"] as Record<string, unknown> | undefined;
+        return {
+          task: String(p["task_slug"] ?? custom?.["name"] ?? custom?.["slug"] ?? ""),
+          prefer: String(selection?.["prefer"] ?? ""),
+          models: models.map((m) =>
+            typeof m === "string"
+              ? { id: m, name: "" }
+              : {
+                  id: String((m as Record<string, unknown>)["uuid"] ?? ""),
+                  name: String((m as Record<string, unknown>)["name"] ?? ""),
+                },
+          ),
+        };
+      });
+      const fallback = fallbackRaw.map((m) =>
+        typeof m === "string"
+          ? { id: m, name: "" }
+          : {
+              id: String((m as Record<string, unknown>)["uuid"] ?? ""),
+              name: String((m as Record<string, unknown>)["name"] ?? ""),
+            },
+      );
       return {
         id: `${accountId}:gen-ai-model-router:${uuid}`,
         pluginId: "digitalocean",
@@ -705,10 +733,13 @@ export class DigitalOceanClient implements PluginClient {
           name: String(r["name"] ?? ""),
           description: String(r["description"] ?? ""),
           regions: regions.join(","),
-          fallbackModels: fallback.join(","),
-          policyCount: policies,
+          fallbackModels: fallback.map((m) => m.name || m.id).join(", "),
+          policyCount: policies.length,
         },
-        resolvedOutputs: {},
+        resolvedOutputs: {
+          __policies__: JSON.stringify(policies),
+          __fallbackModels__: JSON.stringify(fallback),
+        },
         secretStates: [],
         externalId: uuid,
         createdAt: String(r["created_at"] ?? new Date().toISOString()),
@@ -1530,6 +1561,63 @@ export class DigitalOceanClient implements PluginClient {
       };
     }
 
+    if (typeId === "gen-ai-knowledge-base") {
+      // PUT /v2/gen-ai/knowledge_bases/{uuid} accepts only name, tags,
+      // project_id, and database_id — region + embedding model are immutable
+      // (they're locked `editable: false` on the resource type). `tags` is a
+      // comma-separated string in the host diff; split it into the API's array.
+      const body: Record<string, unknown> = { uuid: externalId };
+      if (fields["name"] !== undefined) body["name"] = fields["name"];
+      if (fields["projectId"] !== undefined) body["project_id"] = fields["projectId"];
+      if (fields["databaseId"] !== undefined) body["database_id"] = fields["databaseId"];
+      if (fields["tags"] !== undefined) {
+        body["tags"] = fields["tags"]
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean);
+      }
+      const data = await this.fetch<{ knowledge_base: Record<string, unknown> }>(
+        `/gen-ai/knowledge_bases/${externalId}`,
+        {
+          method: "PUT",
+          body: JSON.stringify(body),
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+      const kb = data.knowledge_base ?? {};
+      const uuid = String(kb["uuid"] ?? externalId);
+      const lastJob = kb["last_indexing_job"] as Record<string, unknown> | undefined;
+      const tags = Array.isArray(kb["tags"]) ? (kb["tags"] as string[]) : [];
+      const dataSources = Array.isArray(kb["data_sources"])
+        ? (kb["data_sources"] as unknown[]).length
+        : 0;
+      return {
+        id: `${accountId}:gen-ai-knowledge-base:${uuid}`,
+        pluginId: "digitalocean",
+        resourceTypeId: "gen-ai-knowledge-base",
+        accountId,
+        displayName: String(kb["name"] ?? uuid),
+        fields: {
+          name: String(kb["name"] ?? ""),
+          region: String(kb["region"] ?? ""),
+          embeddingModelUuid: String(kb["embedding_model_uuid"] ?? ""),
+          databaseId: String(kb["database_id"] ?? ""),
+          projectId: String(kb["project_id"] ?? ""),
+          isPublic: kb["is_public"] ? "yes" : "no",
+          lastIndexingStatus: String(lastJob?.["status"] ?? ""),
+          dataSourceCount: dataSources,
+          tags: tags.join(","),
+        },
+        resolvedOutputs: uuid
+          ? { retrievalEndpoint: `https://kbaas.do-ai.run/v1/${uuid}/retrieve` }
+          : {},
+        secretStates: [],
+        externalId: uuid,
+        createdAt: String(kb["created_at"] ?? new Date().toISOString()),
+        updatedAt: String(kb["updated_at"] ?? new Date().toISOString()),
+      };
+    }
+
     if (typeId !== "project") {
       throw new Error(`DigitalOcean plugin: updateResource not supported for type "${typeId}"`);
     }
@@ -1891,6 +1979,233 @@ export class DigitalOceanClient implements PluginClient {
         await this.fetch(`/gen-ai/agents/${agentUuid}/functions/${fnUuid}`, {
           method: "DELETE",
         });
+        return;
+      }
+    }
+    if (typeId === "gen-ai-knowledge-base") {
+      const kbUuid = resourceId.split(":").slice(2).join(":");
+      const first = args[0];
+      const values: Record<string, string> =
+        typeof first === "string" && first
+          ? (() => {
+              try {
+                const parsed = JSON.parse(first) as Record<string, string>;
+                return parsed && typeof parsed === "object" ? parsed : {};
+              } catch {
+                return {};
+              }
+            })()
+          : {};
+
+      if (command === "add-spaces-source") {
+        // Two paths: the resource picker submits `spacesBucket` = the bucket's
+        // `bucketRef` output (`name|region`); manual entry submits
+        // `spacesBucketName` + `spacesRegion` separately.
+        const picked = String(values["spacesBucket"] ?? "").trim();
+        let bucketName = "";
+        let region = "";
+        if (picked.includes("|")) {
+          const [n, r] = picked.split("|");
+          bucketName = String(n ?? "").trim();
+          region = String(r ?? "").trim();
+        } else {
+          bucketName = String(values["spacesBucketName"] ?? picked).trim();
+          region = String(values["spacesRegion"] ?? "").trim();
+        }
+        if (!bucketName) throw new Error("Pick or enter a Spaces bucket.");
+        if (!region) throw new Error("Pick the bucket's region.");
+        const itemPath = String(values["itemPath"] ?? "").trim();
+        const body = {
+          knowledge_base_uuid: kbUuid,
+          spaces_data_source: {
+            bucket_name: bucketName,
+            region,
+            ...(itemPath ? { item_path: itemPath } : {}),
+          },
+        };
+        await this.fetch(`/gen-ai/knowledge_bases/${kbUuid}/data_sources`, {
+          method: "POST",
+          body: JSON.stringify(body),
+          headers: { "Content-Type": "application/json" },
+        });
+        return;
+      }
+
+      if (command === "add-web-source") {
+        const baseUrl = String(values["baseUrl"] ?? "").trim();
+        if (!baseUrl) throw new Error("Enter a base URL to crawl.");
+        const crawlingOption = String(values["crawlingOption"] ?? "SCOPED").trim() || "SCOPED";
+        const body = {
+          knowledge_base_uuid: kbUuid,
+          web_crawler_data_source: {
+            base_url: baseUrl,
+            crawling_option: crawlingOption,
+            embed_media: String(values["embedMedia"] ?? "no") === "yes",
+          },
+        };
+        await this.fetch(`/gen-ai/knowledge_bases/${kbUuid}/data_sources`, {
+          method: "POST",
+          body: JSON.stringify(body),
+          headers: { "Content-Type": "application/json" },
+        });
+        return;
+      }
+
+      if (command === "remove-data-source") {
+        const dsUuid = String(values["dataSourceUuid"] ?? "").trim();
+        if (!dsUuid) throw new Error("Missing data source UUID.");
+        await this.fetch(`/gen-ai/knowledge_bases/${kbUuid}/data_sources/${dsUuid}`, {
+          method: "DELETE",
+        });
+        return;
+      }
+
+      if (command === "start-indexing" || command === "reindex-source") {
+        // Omitting data_source_uuids reindexes every source; the per-source
+        // reindex passes the one uuid the row carried.
+        const dsUuid = String(values["dataSourceUuid"] ?? "").trim();
+        const body: Record<string, unknown> = { knowledge_base_uuid: kbUuid };
+        if (dsUuid) body["data_source_uuids"] = [dsUuid];
+        await this.fetch(`/gen-ai/indexing_jobs`, {
+          method: "POST",
+          body: JSON.stringify(body),
+          headers: { "Content-Type": "application/json" },
+        });
+        return;
+      }
+
+      if (command === "cancel-indexing") {
+        const jobUuid = String(values["jobUuid"] ?? "").trim();
+        if (!jobUuid) throw new Error("Missing indexing job UUID.");
+        await this.fetch(`/gen-ai/indexing_jobs/${jobUuid}/cancel`, {
+          method: "PUT",
+          body: JSON.stringify({ uuid: jobUuid }),
+          headers: { "Content-Type": "application/json" },
+        });
+        return;
+      }
+    }
+
+    if (typeId === "gen-ai-model-router") {
+      const routerUuid = resourceId.split(":").slice(2).join(":");
+      const first = args[0];
+      const values: Record<string, string> =
+        typeof first === "string" && first
+          ? (() => {
+              try {
+                const parsed = JSON.parse(first) as Record<string, string>;
+                return parsed && typeof parsed === "object" ? parsed : {};
+              } catch {
+                return {};
+              }
+            })()
+          : {};
+
+      // The update endpoint replaces the whole `policies` array, so we read
+      // the current router, mutate the list, and PUT it back. Existing
+      // policies are normalized to the request shape (models as id strings);
+      // `fallback_models` is passed through verbatim so we don't disturb it.
+      interface ApiPolicy {
+        task_slug?: string;
+        selection_policy?: { prefer?: string };
+        models?: unknown[];
+        custom_task?: unknown;
+      }
+      const loadRouter = async (): Promise<{
+        name: string;
+        description: string;
+        policies: ApiPolicy[];
+        fallback: unknown[];
+      }> => {
+        const data = await this.fetch<{ model_router?: Record<string, unknown> }>(
+          `/gen-ai/models/routers/${routerUuid}`,
+        );
+        const r = data.model_router ?? {};
+        const cfg = (r["config"] ?? {}) as { policies?: ApiPolicy[]; fallback_models?: unknown[] };
+        return {
+          name: String(r["name"] ?? ""),
+          description: String(r["description"] ?? ""),
+          policies: Array.isArray(cfg.policies) ? cfg.policies : [],
+          fallback: Array.isArray(cfg.fallback_models) ? cfg.fallback_models : [],
+        };
+      };
+      // Coerce a policy's `models` (id strings or {uuid} objects) to id strings.
+      const modelIdsOf = (p: ApiPolicy): string[] =>
+        (p.models ?? [])
+          .map((m) =>
+            typeof m === "string" ? m : String((m as Record<string, unknown>)["uuid"] ?? ""),
+          )
+          .filter(Boolean);
+      const normalize = (p: ApiPolicy): ApiPolicy => ({
+        task_slug: String(p.task_slug ?? ""),
+        selection_policy: { prefer: p.selection_policy?.prefer ?? "none" },
+        models: modelIdsOf(p),
+        ...(p.custom_task ? { custom_task: p.custom_task } : {}),
+      });
+      const putRouter = async (
+        cur: { name: string; description: string; fallback: unknown[] },
+        policies: ApiPolicy[],
+      ): Promise<void> => {
+        await this.fetch(`/gen-ai/models/routers/${routerUuid}`, {
+          method: "PUT",
+          body: JSON.stringify({
+            uuid: routerUuid,
+            name: cur.name,
+            ...(cur.description ? { description: cur.description } : {}),
+            fallback_models: cur.fallback,
+            policies,
+          }),
+          headers: { "Content-Type": "application/json" },
+        });
+      };
+
+      if (command === "save-router-policy") {
+        const task = String(values["task"] ?? "").trim();
+        if (!task) throw new Error("Pick a task for this policy.");
+        const prefer = String(values["prefer"] ?? "none").trim() || "none";
+        let models: string[] = [];
+        try {
+          const parsed = JSON.parse(String(values["modelIds"] ?? "[]")) as unknown;
+          if (Array.isArray(parsed)) models = parsed.map(String).filter(Boolean);
+        } catch {
+          /* empty / malformed → fall back to the task's default models below */
+        }
+        const originalTask = String(values["originalTask"] ?? "").trim();
+
+        const cur = await loadRouter();
+        // No models picked → use the task preset's recommended default set.
+        if (models.length === 0) {
+          const presets = await this.fetch<{
+            tasks?: Array<{ task_slug?: string; models?: string[] }>;
+          }>("/gen-ai/models/routers/tasks/presets?per_page=200").catch(() => ({ tasks: [] }));
+          const preset = (presets.tasks ?? []).find((t) => t.task_slug === task);
+          models = Array.isArray(preset?.models) ? preset!.models.map(String) : [];
+        }
+        if (models.length === 0) {
+          throw new Error(
+            "No models selected and the task has no default models — pick at least one model.",
+          );
+        }
+        const next = cur.policies
+          .map(normalize)
+          // Drop the policy we're replacing (matched by its original task slug
+          // on edit, or the new task slug on add to avoid duplicates).
+          .filter((p) => p.task_slug !== (originalTask || task) && p.task_slug !== task);
+        next.push({
+          task_slug: task,
+          selection_policy: { prefer },
+          models,
+        });
+        await putRouter(cur, next);
+        return;
+      }
+
+      if (command === "remove-router-policy") {
+        const task = String(values["task"] ?? "").trim();
+        if (!task) throw new Error("Missing task slug.");
+        const cur = await loadRouter();
+        const next = cur.policies.map(normalize).filter((p) => p.task_slug !== task);
+        await putRouter(cur, next);
         return;
       }
     }
@@ -2562,6 +2877,12 @@ export class DigitalOceanClient implements PluginClient {
     if (resource.resourceTypeId === "gen-ai-agent") {
       return this.enrichGenAiAgent(resource);
     }
+    if (resource.resourceTypeId === "gen-ai-knowledge-base") {
+      return this.enrichGenAiKnowledgeBase(resource);
+    }
+    if (resource.resourceTypeId === "gen-ai-model-router") {
+      return this.enrichGenAiModelRouter(resource);
+    }
     if (resource.resourceTypeId !== "droplet") return resource;
 
     const now = Date.now();
@@ -2814,6 +3135,135 @@ export class DigitalOceanClient implements PluginClient {
   }
 
   /**
+   * Fetch the router's task presets (valid task slugs + their router-eligible
+   * default models) and a model uuid→name map so the policy add/edit form can
+   * offer real pickers. Stashed as `__taskPresets__` / `__routerModelOptions__`
+   * for the synchronous renderDetail. Best-effort — degrades to empty.
+   */
+  private async enrichGenAiModelRouter(resource: ResourceInstance): Promise<ResourceInstance> {
+    const [taskRes, modelsRes] = await Promise.all([
+      this.fetch<{
+        tasks?: Array<{
+          task_slug?: string;
+          name?: string;
+          models?: string[];
+          selection_policy?: { prefer?: string };
+        }>;
+      }>("/gen-ai/models/routers/tasks/presets?per_page=200").catch(() => ({ tasks: [] })),
+      this.fetch<{ models?: Array<{ uuid?: string; name?: string }> }>(
+        "/gen-ai/models?usecases=MODEL_USECASE_SERVERLESS&per_page=200",
+      ).catch(() => ({ models: [] })),
+    ]);
+    const nameById = new Map<string, string>();
+    for (const m of modelsRes.models ?? []) {
+      if (m.uuid) nameById.set(String(m.uuid), String(m.name ?? m.uuid));
+    }
+    const tasks = (taskRes.tasks ?? [])
+      .filter((t) => t.task_slug)
+      .map((t) => ({
+        task_slug: String(t.task_slug),
+        name: String(t.name ?? t.task_slug),
+        models: Array.isArray(t.models) ? t.models.map(String) : [],
+        prefer: String(t.selection_policy?.prefer ?? ""),
+      }));
+    // Union of every task's router-eligible models → the multi-select catalog.
+    const modelIds = new Set<string>();
+    for (const t of tasks) for (const id of t.models) modelIds.add(id);
+    const routerModelOptions = [...modelIds].map((id) => ({
+      id,
+      label: nameById.get(id) ?? id,
+    }));
+    return {
+      ...resource,
+      resolvedOutputs: {
+        ...resource.resolvedOutputs,
+        __taskPresets__: JSON.stringify(tasks),
+        __routerModelOptions__: JSON.stringify(routerModelOptions),
+      },
+    };
+  }
+
+  /**
+   * Fan out the per-KB management calls for the detail view: its data sources
+   * (GET /v2/gen-ai/knowledge_bases/{uuid}/data_sources) and recent indexing
+   * jobs (GET .../indexing_jobs), plus a best-effort Spaces-bucket list so the
+   * "Add Spaces source" form can offer a picker. All calls degrade to empty on
+   * error so the detail page still renders. Results are stashed as JSON strings
+   * in resolvedOutputs for the synchronous renderDetail to read back.
+   */
+  private async enrichGenAiKnowledgeBase(resource: ResourceInstance): Promise<ResourceInstance> {
+    const kbUuid = resource.externalId ?? resource.id.split(":").pop() ?? "";
+    if (!kbUuid) return resource;
+    const [dsRes, jobsRes, buckets] = await Promise.all([
+      this.fetch<{ knowledge_base_data_sources?: Array<Record<string, unknown>> }>(
+        `/gen-ai/knowledge_bases/${kbUuid}/data_sources?per_page=100`,
+      ).catch(() => ({ knowledge_base_data_sources: [] })),
+      this.fetch<{ jobs?: Array<Record<string, unknown>> }>(
+        `/gen-ai/knowledge_bases/${kbUuid}/indexing_jobs`,
+      ).catch(() => ({ jobs: [] })),
+      // Best-effort — returns [] when the account has no Spaces keys configured.
+      this.listSpacesBuckets(resource.accountId).catch(() => [] as ResourceInstance[]),
+    ]);
+
+    // Flatten each data source to the handful of display/identity fields the
+    // table needs. DO nests the actual source under one of the *_data_source
+    // keys; derive a single type + human summary from whichever is present.
+    const dataSources = (dsRes.knowledge_base_data_sources ?? []).map((d) => {
+      const spaces = d["spaces_data_source"] as Record<string, unknown> | undefined;
+      const web = d["web_crawler_data_source"] as Record<string, unknown> | undefined;
+      const file = d["file_upload_data_source"] as Record<string, unknown> | undefined;
+      const lastJob = d["last_datasource_indexing_job"] as Record<string, unknown> | undefined;
+      let type = "Unknown";
+      let summary = "";
+      if (web) {
+        type = "Web crawler";
+        summary = String(web["base_url"] ?? "");
+      } else if (spaces) {
+        type = "Spaces bucket";
+        const bucket = String(spaces["bucket_name"] ?? "");
+        const path = String(spaces["item_path"] ?? "");
+        summary = path ? `${bucket}/${path}` : bucket;
+      } else if (file) {
+        type = "File upload";
+        summary = String(file["original_file_name"] ?? "");
+      }
+      return {
+        uuid: String(d["uuid"] ?? ""),
+        type,
+        summary,
+        status: String(lastJob?.["status"] ?? ""),
+        created_at: String(d["created_at"] ?? ""),
+      };
+    });
+
+    const indexingJobs = (jobsRes.jobs ?? []).map((j) => ({
+      uuid: String(j["uuid"] ?? ""),
+      status: String(j["status"] ?? ""),
+      phase: String(j["phase"] ?? ""),
+      total_datasources: Number(j["total_datasources"] ?? 0),
+      completed_datasources: Number(j["completed_datasources"] ?? 0),
+      tokens: String(j["total_tokens"] ?? j["tokens"] ?? ""),
+      created_at: String(j["created_at"] ?? ""),
+      finished_at: String(j["finished_at"] ?? ""),
+    }));
+
+    const spacesBuckets = buckets.map((b) => ({
+      name: b.externalId ?? String(b.fields["name"] ?? ""),
+      region: String(b.fields["region"] ?? ""),
+    }));
+
+    return {
+      ...resource,
+      resolvedOutputs: {
+        ...resource.resolvedOutputs,
+        __dataSources__: JSON.stringify(dataSources),
+        __indexingJobs__: JSON.stringify(indexingJobs),
+        __spacesBuckets__: JSON.stringify(spacesBuckets),
+      },
+    };
+  }
+
+  /**
    * Build DigitalOcean's embeddable chatbot `<script>` snippet for a public
    * agent. Mirrors what the DO control panel offers under "Embed". Only valid
    * for public agents with a chatbot identifier — the widget script is served
@@ -2911,9 +3361,261 @@ export class DigitalOceanClient implements PluginClient {
       this.applyDatabaseUserDetail(detail, resource);
     } else if (resource.resourceTypeId === "gen-ai-agent") {
       this.applyGenAiAgentDetail(detail, resource);
+    } else if (resource.resourceTypeId === "gen-ai-knowledge-base") {
+      this.applyGenAiKnowledgeBaseDetail(detail, resource);
+    } else if (resource.resourceTypeId === "gen-ai-model-router") {
+      this.applyGenAiModelRouterDetail(detail, resource);
     }
 
     return detail;
+  }
+
+  /**
+   * Inference-router detail page: a "Routing Policies" table (task → models →
+   * selection preference) and a "Fallback Models" section. Both are read from
+   * the router's `config`, stashed as `__policies__` / `__fallbackModels__`
+   * during listGenAiModelRouters.
+   */
+  private applyGenAiModelRouterDetail(detail: DetailViewSchema, resource: ResourceInstance): void {
+    const outputs = resource.resolvedOutputs ?? {};
+    interface PolicyModel {
+      id?: string;
+      name?: string;
+    }
+    interface Policy {
+      task?: string;
+      prefer?: string;
+      models?: PolicyModel[];
+    }
+    interface TaskPreset {
+      task_slug?: string;
+      name?: string;
+      models?: string[];
+      prefer?: string;
+    }
+    const policies = parseJsonArray<Policy>(outputs["__policies__"]);
+    const fallback = parseJsonArray<PolicyModel>(outputs["__fallbackModels__"]);
+    const taskPresets = parseJsonArray<TaskPreset>(outputs["__taskPresets__"]);
+    const modelOptions = parseJsonArray<{ id?: string; label?: string }>(
+      outputs["__routerModelOptions__"],
+    );
+
+    const modelLabel = (m: PolicyModel): string => {
+      const name = String(m.name ?? "").trim();
+      const id = String(m.id ?? "").trim();
+      if (name && id) return `${name}`;
+      return name || id || "—";
+    };
+    const preferLabel = (p: string): string => {
+      switch (p) {
+        case "cheapest":
+          return "Cheapest";
+        case "fastest":
+          return "Fastest";
+        case "none":
+        case "":
+          return "Balanced";
+        default:
+          return p;
+      }
+    };
+
+    // Pickers shared by the Add and per-row Edit policy forms.
+    const taskOptions = taskPresets
+      .filter((t) => t.task_slug)
+      .map((t) => ({ id: String(t.task_slug), label: String(t.name ?? t.task_slug) }));
+    const preferOptions = [
+      { id: "none", label: "Balanced (default)" },
+      { id: "cheapest", label: "Cheapest" },
+      { id: "fastest", label: "Fastest" },
+    ];
+    const modelPolicyOptions = modelOptions
+      .filter((o) => o.id)
+      .map((o) => ({ id: String(o.id), label: String(o.label ?? o.id) }));
+    const canEditPolicies = taskOptions.length > 0;
+
+    // Build the field set for the add/edit policy prompt. `originalTask` is a
+    // hidden marker the handler uses to replace the right policy on edit.
+    const policyFields = (
+      preset: { task?: string; prefer?: string; modelIds?: string[] } = {},
+    ): CreateFieldConfig[] => [
+      {
+        key: "originalTask",
+        label: "",
+        kind: "text",
+        required: false,
+        hidden: true,
+        defaultValue: preset.task ?? "",
+      },
+      {
+        key: "task",
+        label: "Task",
+        kind: "select",
+        required: true,
+        options: taskOptions,
+        ...((preset.task ?? taskOptions[0]?.id)
+          ? { defaultValue: preset.task ?? taskOptions[0]!.id }
+          : {}),
+        description: "Which kind of request this policy routes.",
+      },
+      {
+        key: "prefer",
+        label: "Selection preference",
+        kind: "select",
+        required: true,
+        options: preferOptions,
+        defaultValue: preset.prefer && preset.prefer !== "" ? preset.prefer : "none",
+      },
+      {
+        key: "modelIds",
+        label: "Models",
+        kind: "policy-picker",
+        required: false,
+        policies: modelPolicyOptions.map((o) => ({
+          id: o.id,
+          label: o.label,
+          category: "Router-eligible models",
+        })),
+        ...(preset.modelIds && preset.modelIds.length > 0
+          ? { defaultValue: JSON.stringify(preset.modelIds) }
+          : {}),
+        description:
+          "Models this task may route to. Leave empty to use the task's recommended default models.",
+      },
+    ];
+
+    detail.headerActions = [
+      { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
+      {
+        kind: "action",
+        label: "+ Add policy",
+        variant: "ghost",
+        action: {
+          type: "prompt-nosql-command",
+          command: "save-router-policy",
+          title: "Add routing policy",
+          ...(canEditPolicies
+            ? {
+                description:
+                  "Route a class of requests to specific models with a cost/latency preference.",
+              }
+            : {
+                description: "No router task presets are available on this account.",
+                descriptionVariant: "error" as const,
+                blocked: true,
+              }),
+          fields: canEditPolicies ? policyFields() : [],
+        },
+      },
+    ];
+
+    if (policies.length > 0) {
+      detail.sections.push({
+        kind: "section",
+        title: "Routing Policies",
+        children: [
+          {
+            kind: "table",
+            columns: [
+              { key: "task", label: "Task" },
+              { key: "models", label: "Models" },
+              { key: "prefer", label: "Prefers", width: "narrow" },
+              { key: "edit", label: "", width: "narrow" },
+              { key: "remove", label: "", width: "narrow" },
+            ],
+            rows: policies.map((p) => {
+              const taskSlug = String(p.task ?? "");
+              const modelIds = (p.models ?? []).map((m) => String(m.id ?? "")).filter(Boolean);
+              const editAction: ActionNode | string = canEditPolicies
+                ? {
+                    kind: "action",
+                    label: "Edit",
+                    variant: "ghost",
+                    action: {
+                      type: "prompt-nosql-command",
+                      command: "save-router-policy",
+                      title: `Edit policy: ${taskSlug || "default"}`,
+                      submitLabel: "Save",
+                      fields: policyFields({
+                        task: taskSlug,
+                        prefer: String(p.prefer ?? ""),
+                        modelIds,
+                      }),
+                    },
+                  }
+                : "";
+              return {
+                cells: {
+                  task: taskSlug || "Default",
+                  models: (p.models ?? []).map(modelLabel).join(", ") || "—",
+                  prefer: preferLabel(String(p.prefer ?? "")),
+                  edit: editAction,
+                  remove: {
+                    kind: "action",
+                    label: "Remove",
+                    variant: "ghost",
+                    action: {
+                      type: "prompt-nosql-command",
+                      command: "remove-router-policy",
+                      title: "Remove routing policy",
+                      description: `Remove the "${taskSlug || "default"}" policy? Requests for this task fall through to the fallback models.`,
+                      submitLabel: "Remove",
+                      danger: true,
+                      fields: [
+                        {
+                          key: "task",
+                          label: "Task",
+                          kind: "text",
+                          required: true,
+                          hidden: true,
+                          defaultValue: taskSlug,
+                        },
+                      ],
+                    },
+                  } as ActionNode,
+                },
+              };
+            }),
+          },
+        ],
+      });
+    } else {
+      detail.sections.push({
+        kind: "section",
+        title: "Routing Policies",
+        children: [
+          {
+            kind: "text",
+            variant: "muted",
+            content:
+              "No per-task routing policies configured. Requests fall through to the fallback models — use “+ Add policy” to route specific tasks to specific models.",
+          },
+        ],
+      });
+    }
+
+    detail.sections.push({
+      kind: "section",
+      title: "Fallback Models",
+      children: [
+        fallback.length > 0
+          ? {
+              kind: "table",
+              columns: [
+                { key: "model", label: "Model" },
+                { key: "id", label: "ID", mono: true },
+              ],
+              rows: fallback.map((m) => ({
+                cells: { model: modelLabel(m), id: String(m.id ?? "") },
+              })),
+            }
+          : {
+              kind: "text",
+              variant: "muted",
+              content: "No fallback models set.",
+            },
+      ],
+    });
   }
 
   /**
@@ -3439,6 +4141,375 @@ export class DigitalOceanClient implements PluginClient {
                 } as ActionNode,
               },
             })),
+          },
+        ],
+      });
+    }
+  }
+
+  /**
+   * Knowledge base detail page: data-source management (add Spaces/web
+   * sources, per-source reindex/remove), an indexing-job history table, and
+   * the hybrid retrieval endpoint. The data-source + job lists are populated
+   * by `enrichGenAiKnowledgeBase`; actions flow through `executeNoSqlCommand`.
+   */
+  private applyGenAiKnowledgeBaseDetail(
+    detail: DetailViewSchema,
+    resource: ResourceInstance,
+  ): void {
+    const outputs = resource.resolvedOutputs ?? {};
+
+    interface DataSourceRow {
+      uuid?: string;
+      type?: string;
+      summary?: string;
+      status?: string;
+      created_at?: string;
+    }
+    interface JobRow {
+      uuid?: string;
+      status?: string;
+      phase?: string;
+      total_datasources?: number;
+      completed_datasources?: number;
+      tokens?: string;
+      created_at?: string;
+      finished_at?: string;
+    }
+    interface BucketOpt {
+      name?: string;
+      region?: string;
+    }
+    const dataSources = parseJsonArray<DataSourceRow>(outputs["__dataSources__"]);
+    const jobs = parseJsonArray<JobRow>(outputs["__indexingJobs__"]);
+    const buckets = parseJsonArray<BucketOpt>(outputs["__spacesBuckets__"]);
+
+    const formatIndexStatus = (raw: string): string => {
+      switch (raw) {
+        case "INDEX_JOB_STATUS_COMPLETED":
+          return "Completed";
+        case "INDEX_JOB_STATUS_IN_PROGRESS":
+          return "Indexing";
+        case "INDEX_JOB_STATUS_PENDING":
+          return "Pending";
+        case "INDEX_JOB_STATUS_FAILED":
+          return "Failed";
+        case "INDEX_JOB_STATUS_CANCELLED":
+          return "Cancelled";
+        case "INDEX_JOB_STATUS_PARTIAL":
+          return "Partial";
+        case "INDEX_JOB_STATUS_NO_CHANGES":
+          return "No changes";
+        default:
+          return raw ? raw.replace(/^INDEX_JOB_STATUS_/, "") : "—";
+      }
+    };
+
+    // The Spaces source can be picked from the account's actual buckets
+    // (a resource selector — submits the bucket's `bucketRef` output =
+    // `name|region`) or typed by hand. A `bucketSource` toggle gates the
+    // two; default to "pick" when we discovered buckets during enrich,
+    // otherwise "manual" (no Spaces keys → nothing to pick). Both pick and
+    // manual fields are `required: false` because only one is visible at a
+    // time; the handler validates the resolved bucket name + region.
+    const hasBuckets = buckets.some((b) => b.name);
+    const spacesSourceFields: CreateFieldConfig[] = [
+      {
+        key: "bucketSource",
+        label: "Bucket source",
+        kind: "select",
+        required: true,
+        defaultValue: hasBuckets ? "pick" : "manual",
+        options: [
+          { id: "pick", label: "Pick from my Spaces buckets" },
+          { id: "manual", label: "Enter bucket name manually" },
+        ],
+        ...(hasBuckets
+          ? {}
+          : {
+              description:
+                "No Spaces buckets are listable — add Spaces API keys to this account to pick from a list.",
+            }),
+      },
+      {
+        // Resource selector — lists the account's Spaces buckets and submits
+        // the chosen bucket's `bucketRef` output (`name|region`), which the
+        // handler splits back apart.
+        key: "spacesBucket",
+        label: "Spaces bucket",
+        kind: "resource-picker",
+        required: false,
+        associationSources: [
+          { pluginId: "digitalocean", resourceTypeId: "spaces-bucket", outputKey: "bucketRef" },
+        ],
+        showWhen: { fieldKey: "bucketSource", fieldValue: "pick" },
+      },
+      {
+        key: "spacesBucketName",
+        label: "Spaces bucket name",
+        kind: "text",
+        required: false,
+        description: "Name of the DigitalOcean Spaces bucket to index.",
+        showWhen: { fieldKey: "bucketSource", fieldValue: "manual" },
+      },
+      {
+        key: "spacesRegion",
+        label: "Bucket region",
+        kind: "region-picker",
+        required: false,
+        regions: SPACES_REGIONS.map((r) => ({ id: r, label: r })),
+        ...(SPACES_REGIONS[0] ? { defaultValue: SPACES_REGIONS[0] } : {}),
+        showWhen: { fieldKey: "bucketSource", fieldValue: "manual" },
+      },
+    ];
+
+    detail.headerActions = [
+      { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
+      {
+        kind: "action",
+        label: "Reindex all",
+        variant: "ghost",
+        action: {
+          type: "prompt-nosql-command",
+          command: "start-indexing",
+          title: "Reindex all data sources",
+          description:
+            dataSources.length === 0
+              ? "This knowledge base has no data sources yet. Add a Spaces bucket or web source first."
+              : "Start an indexing job over every data source in this knowledge base. Existing embeddings stay queryable while the job runs.",
+          ...(dataSources.length === 0
+            ? { descriptionVariant: "error" as const, blocked: true }
+            : { submitLabel: "Reindex all" }),
+          fields: [],
+        },
+      },
+      {
+        kind: "action",
+        label: "+ Add Spaces source",
+        variant: "ghost",
+        action: {
+          type: "prompt-nosql-command",
+          command: "add-spaces-source",
+          title: "Add Spaces bucket data source",
+          description:
+            "Index files stored in a DigitalOcean Spaces bucket. Indexing starts automatically after the source is added.",
+          submitLabel: "Add source",
+          fields: [
+            ...spacesSourceFields,
+            {
+              key: "itemPath",
+              label: "Folder / object path",
+              kind: "text",
+              required: false,
+              description: "Optional path within the bucket to scope indexing (e.g. `docs/`).",
+            },
+          ],
+        },
+      },
+      {
+        kind: "action",
+        label: "+ Add web source",
+        variant: "ghost",
+        action: {
+          type: "prompt-nosql-command",
+          command: "add-web-source",
+          title: "Add web crawler data source",
+          description:
+            "Crawl a public website and index its pages (up to 5,500). Indexing starts automatically after the source is added.",
+          submitLabel: "Add source",
+          fields: [
+            {
+              key: "baseUrl",
+              label: "Base URL",
+              kind: "text",
+              required: true,
+              description: "Seed URL to crawl, e.g. https://example.com/docs.",
+            },
+            {
+              key: "crawlingOption",
+              label: "Crawl scope",
+              kind: "select",
+              required: true,
+              options: [
+                { id: "SCOPED", label: "Scoped — only the base URL" },
+                { id: "PATH", label: "Path — base URL + pages under its path" },
+                { id: "DOMAIN", label: "Domain — base URL + same-domain pages" },
+                { id: "SUBDOMAINS", label: "Subdomains — base URL + any subdomain" },
+                { id: "SITEMAP", label: "Sitemap — URLs discovered in the sitemap" },
+              ],
+              defaultValue: "SCOPED",
+            },
+            {
+              key: "embedMedia",
+              label: "Index media (images, etc.)",
+              kind: "select",
+              required: false,
+              options: [
+                { id: "no", label: "No" },
+                { id: "yes", label: "Yes" },
+              ],
+              defaultValue: "no",
+            },
+          ],
+        },
+      },
+    ];
+
+    // Retrieval endpoint — copyable so the user can wire it into their own
+    // RAG client without hunting through DO's console.
+    const retrieval = String(outputs["retrievalEndpoint"] ?? "");
+    if (retrieval) {
+      detail.sections.push({
+        kind: "section",
+        title: "Retrieval",
+        children: [
+          {
+            kind: "key-value-list",
+            items: [{ key: "Hybrid retrieval endpoint", value: retrieval, copyable: true }],
+          },
+        ],
+      });
+    }
+
+    // Data sources table — per-row Reindex + Remove actions.
+    if (dataSources.length > 0) {
+      detail.sections.push({
+        kind: "section",
+        title: "Data Sources",
+        children: [
+          {
+            kind: "table",
+            columns: [
+              { key: "type", label: "Type" },
+              { key: "summary", label: "Source" },
+              { key: "status", label: "Last index" },
+              { key: "reindex", label: "", width: "narrow" },
+              { key: "remove", label: "", width: "narrow" },
+            ],
+            rows: dataSources.map((d) => ({
+              cells: {
+                type: String(d.type ?? ""),
+                summary: String(d.summary ?? ""),
+                status: formatIndexStatus(String(d.status ?? "")),
+                reindex: {
+                  kind: "action",
+                  label: "Reindex",
+                  variant: "ghost",
+                  action: {
+                    type: "prompt-nosql-command",
+                    command: "reindex-source",
+                    title: "Reindex data source",
+                    description: `Start an indexing job for "${d.summary ?? d.uuid}"?`,
+                    submitLabel: "Reindex",
+                    fields: [
+                      {
+                        key: "dataSourceUuid",
+                        label: "Data Source UUID",
+                        kind: "text",
+                        required: true,
+                        hidden: true,
+                        defaultValue: String(d.uuid ?? ""),
+                      },
+                    ],
+                  },
+                } as ActionNode,
+                remove: {
+                  kind: "action",
+                  label: "Remove",
+                  variant: "ghost",
+                  action: {
+                    type: "prompt-nosql-command",
+                    command: "remove-data-source",
+                    title: "Remove data source",
+                    description: `Remove "${d.summary ?? d.uuid}" from this knowledge base? Its indexed embeddings will be deleted on the next index.`,
+                    submitLabel: "Remove",
+                    danger: true,
+                    fields: [
+                      {
+                        key: "dataSourceUuid",
+                        label: "Data Source UUID",
+                        kind: "text",
+                        required: true,
+                        hidden: true,
+                        defaultValue: String(d.uuid ?? ""),
+                      },
+                    ],
+                  },
+                } as ActionNode,
+              },
+            })),
+          },
+        ],
+      });
+    } else {
+      detail.sections.push({
+        kind: "section",
+        title: "Data Sources",
+        children: [
+          {
+            kind: "text",
+            variant: "muted",
+            content:
+              "No data sources yet. Use '+ Add Spaces source' or '+ Add web source' above to index content into this knowledge base.",
+          },
+        ],
+      });
+    }
+
+    // Indexing jobs history — most-recent first. Includes a Cancel action for
+    // jobs that are still pending/in-progress.
+    if (jobs.length > 0) {
+      detail.sections.push({
+        kind: "section",
+        title: "Indexing Jobs",
+        children: [
+          {
+            kind: "table",
+            columns: [
+              { key: "status", label: "Status" },
+              { key: "progress", label: "Sources" },
+              { key: "tokens", label: "Tokens" },
+              { key: "created", label: "Started" },
+              { key: "action", label: "", width: "narrow" },
+            ],
+            rows: jobs.map((j) => {
+              const status = String(j.status ?? "");
+              const running =
+                status === "INDEX_JOB_STATUS_IN_PROGRESS" || status === "INDEX_JOB_STATUS_PENDING";
+              return {
+                cells: {
+                  status: formatIndexStatus(status),
+                  progress: `${j.completed_datasources ?? 0}/${j.total_datasources ?? 0}`,
+                  tokens: String(j.tokens ?? ""),
+                  created: String(j.created_at ?? ""),
+                  action: running
+                    ? ({
+                        kind: "action",
+                        label: "Cancel",
+                        variant: "ghost",
+                        action: {
+                          type: "prompt-nosql-command",
+                          command: "cancel-indexing",
+                          title: "Cancel indexing job",
+                          description: "Cancel this running indexing job?",
+                          submitLabel: "Cancel job",
+                          danger: true,
+                          fields: [
+                            {
+                              key: "jobUuid",
+                              label: "Job UUID",
+                              kind: "text",
+                              required: true,
+                              hidden: true,
+                              defaultValue: String(j.uuid ?? ""),
+                            },
+                          ],
+                        },
+                      } as ActionNode)
+                    : "",
+                },
+              };
+            }),
           },
         ],
       });
@@ -4689,6 +5760,9 @@ export class DigitalOceanClient implements PluginClient {
         },
         resolvedOutputs: {
           endpoint: `https://${name}.${region}.digitaloceanspaces.com`,
+          // `name|region` — consumed by the KB "Add Spaces source" resource
+          // picker so the handler gets both halves without a region lookup.
+          bucketRef: `${name}|${region}`,
         },
         secretStates: [],
         externalId: name,
