@@ -52,6 +52,7 @@ If you've added a managed-Kafka resource elsewhere (Aiven, Confluent Cloud, MSK)
 
 - **Sidebar lists Topics and Consumer Groups** under the cluster — the cluster itself is the top-level entry per account.
 - **Create topic** from the cluster's detail view — pick partition count and replication factor.
+- **Create topic from a peer pane** — when Kafka is surfaced as a peer of another resource (e.g. a DigitalOcean Managed Database's **Kafka** tab), the Topics group shows a **+ Create Topic** button even when the cluster is empty, so a fresh cluster isn't a dead-end. Consumer groups have no create button — they form when a consumer subscribes.
 - **Delete topic / group** from the resource's own detail view.
 
 <insert [Cluster detail view showing brokers, topics, and consumer groups] here>

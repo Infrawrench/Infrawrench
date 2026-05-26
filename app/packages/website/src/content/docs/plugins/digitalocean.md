@@ -14,7 +14,7 @@ The most approachable cloud plugin — a single API token is all you need.
 - **Custom images** — your account-owned images (uploaded ISOs, snapshots promoted to images, backups). Distribution and marketplace images are still selectable from the droplet create form.
 - **Network File Storage (NFS)** — create POSIX-compliant NFSv4.1 shares (standard or high-performance tier), pinned to a VPC, mountable across multiple Droplets and DOKS nodes. The share detail page surfaces the mount target and a ready-to-paste `mount -t nfs` command.
 - **Kubernetes (DOKS)** — clusters, with kubeconfig output for the [Kubernetes plugin](./kubernetes.md).
-- **Managed databases** — Postgres, MySQL, Redis, MongoDB, Kafka, OpenSearch, and Weaviate (private preview). Connection strings are outputs you can reference from the matching client plugins.
+- **Managed databases** — Postgres, MySQL, Valkey (Redis-compatible caching), MongoDB, Kafka, OpenSearch, and Weaviate (private preview). Connection strings are outputs you can reference from the matching client plugins. DigitalOcean retired Managed Redis on 30 June 2025, so the create form provisions Valkey clusters; pre-migration Redis clusters still appear and connect through the same Redis plugin.
 - **Agent Platform** — list, create, and delete Gradient AI agents. The agent's deployment URL is surfaced as an output you can reference from other resources.
 - **Knowledge Bases** — list, create, edit, and delete RAG knowledge bases; manage their data sources (Spaces buckets, web crawls), trigger and cancel indexing jobs, and watch indexing history. The `kbaas.do-ai.run/v1/{uuid}/retrieve` hybrid retrieval endpoint is exposed as an output.
 - **Inference Router** — list, create, and delete model routers (the "right model per call" auto-routing layer that balances cost and latency across multiple foundation models).
@@ -46,13 +46,12 @@ Cluster create, list, and delete is straightforward — pick engine, region, nod
 
 ### Users (and where the password comes from)
 
-DO returns a freshly-minted password **exactly once**, the moment a user is created — there's no endpoint that returns existing user passwords (not even with `database:view_credentials` ticked). To make the peer-pane MongoDB / Postgres / MySQL tabs work, Infrawrench leans on users it created itself:
+DigitalOcean reveals a database user's credential **exactly once**, at creation — the `/users` list always shows empty passwords, and `doadmin` / `do-readonly` never expose theirs.
 
-1. Open the cluster's detail page → **DB Users** section → **+ Create**.
-2. Pick a username (default is `infrawrench-xxxxxx`). DO mints the password, Infrawrench captures it from the response and stores it encrypted in your local secret store.
-3. The cluster's `connectionString` output is then built from `mongodb+srv://<that-user>:<that-password>@host/db` and the peer-pane tabs start working.
+- **Postgres / MySQL** — the password comes back inline on the cluster, so the peer-pane tab (SQL editor) just works. Nothing to do.
+- **MongoDB / Valkey / OpenSearch / Kafka** — DO doesn't hand back the built-in user's password, so the peer-pane tab needs a user you mint. Click **+ Make connection user** in the cluster's header: Infrawrench creates the user, captures the credential DO returns once (a password, or for Kafka the mTLS cert/key), and stores it encrypted in your local secret store. The cluster's `connectionString` is then built from that user and the tab starts working. No more "DO returned no password" dead-ends. **Kafka** users also carry an ACL, so the form adds **Topic** and **Permission** fields — they default to `admin` on every topic (`*`) so the user works immediately, but you can narrow them (e.g. `produceconsume` on `events-*`) before creating. Kafka connections use **SASL/SCRAM-SHA-256** over TLS (the port DigitalOcean exposes via the API); this needs the user's password, which DO only returns when your API token has the **`database:view_credentials`** scope — note it is _not_ included in "Full Access" by default, so regenerate the token with that scope ticked if Kafka reports a missing password.
 
-`doadmin` and any other pre-existing user will show up in the DB Users list with no stored password — DO never re-exposes their credentials. Use them by typing the password yourself (from a DO console download or your own records) elsewhere, or mint a new user via the above flow.
+You can also mint users from the **DB Users** section on the detail page; the "Make connection user" button is just the one-click version wired to capture + store the credential.
 
 ### Logs tab
 
