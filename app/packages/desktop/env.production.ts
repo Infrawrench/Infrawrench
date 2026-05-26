@@ -14,7 +14,6 @@ export const BANNERS: { message: string; variant?: "info" | "warning" }[] = [
 
 export const DISABLED_PLUGINS: string[] = [
   "azure",
-  "digitalocean",
   "hetzner",
   "scaleway",
   "cloudflare",

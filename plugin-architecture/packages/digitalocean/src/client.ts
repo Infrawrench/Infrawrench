@@ -38,7 +38,7 @@ import {
 } from "@infrawrench/plugin-base";
 import type { S3StorageConfig, StorageObject } from "@infrawrench/plugin-base";
 import { DOKSClusterResourceType } from "./resources/doks-cluster.js";
-import { ManagedDatabaseResourceType } from "./resources/managed-database.js";
+import { ManagedDatabaseResourceType, kafkaAclFields } from "./resources/managed-database.js";
 import { SnapshotResourceType } from "./resources/snapshot.js";
 import { ImageResourceType } from "./resources/image.js";
 import { NfsShareResourceType } from "./resources/nfs-share.js";
@@ -118,25 +118,6 @@ function ensureUriCredentials(
   const encodedPassword = password ? encodeURIComponent(password) : "";
   const newUserinfo = `${encodedUser}:${encodedPassword}`;
   return `${scheme}${newUserinfo}@${host}${tail}`;
-}
-
-/**
- * Normalize DO's `kafkas://` (or `kafka://`) connection.uri to a form the
- * infrawrench kafka plugin's driver can consume: explicit
- * `sasl=scram-sha-256` and `ssl=true` query params. DO's Managed Kafka
- * uses SASL/SCRAM-SHA-256 over TLS — but the driver can't infer the
- * mechanism from the URI alone, so we tag it here.
- */
-function normalizeKafkaUri(uri: string): string {
-  if (!uri) return uri;
-  let normalized = uri.startsWith("kafkas://") ? `kafka://${uri.slice("kafkas://".length)}` : uri;
-  const queryIdx = normalized.indexOf("?");
-  const base = queryIdx === -1 ? normalized : normalized.slice(0, queryIdx);
-  const params = new URLSearchParams(queryIdx === -1 ? "" : normalized.slice(queryIdx + 1));
-  if (!params.has("sasl")) params.set("sasl", "scram-sha-256");
-  if (!params.has("ssl")) params.set("ssl", "true");
-  normalized = `${base}?${params.toString()}`;
-  return normalized;
 }
 
 /** True when `uri` has a non-empty password in its userinfo. */
@@ -1044,23 +1025,64 @@ export class DigitalOceanClient implements PluginClient {
       const engine = String(data.database.engine ?? "");
       switch (outputKey) {
         case "connectionString": {
+          // Kafka connects over SASL/SCRAM-SHA-256. DO's Kafka connection block
+          // leaves `uri` EMPTY (multi-listener cluster) and only fills
+          // `host`/`port`, so we build the bootstrap from those. That port is
+          // the SASL_SSL listener; SSL/mTLS is on a separate port DO doesn't
+          // expose via the API, so a client cert alone can't connect here. SASL
+          // needs the minted user's password, which DO only returns when the
+          // token carries `database:view_credentials`.
+          if (engine === "kafka") {
+            const host = conn["host"] ?? "";
+            const port = conn["port"] ?? "";
+            const authority = host && port ? `${host}:${port}` : host;
+            if (!authority) {
+              throw new Error(
+                "DigitalOcean returned no broker endpoint (host/port) for this Kafka cluster.",
+              );
+            }
+            const minted = await this.findMintedDatabaseUser(externalId, accountId);
+            const user = minted?.password ? minted.name : (conn["user"] ?? "");
+            const password = minted?.password || conn["password"] || "";
+            if (user && password) {
+              // DO signs broker certs with its own CA, so pass it along (base64
+              // in `ssl_ca`) for the driver to verify against — otherwise the
+              // TLS handshake fails with "self signed certificate in chain".
+              const ca = await this.resolveCaCertificate(externalId).catch(() => "");
+              const params = new URLSearchParams({ sasl: "scram-sha-256", ssl: "true" });
+              if (ca) params.set("ssl_ca", btoa(ca));
+              return `kafka://${encodeURIComponent(user)}:${encodeURIComponent(password)}@${authority}?${params.toString()}`;
+            }
+            // We may have captured the user's mTLS cert/key, but without the
+            // SASL password there's nothing usable on this (SASL_SSL) port.
+            const hadCertOnly = !!(minted?.accessCert && minted?.accessKey);
+            throw new Error(
+              hadCertOnly
+                ? "This Kafka user was created with an mTLS certificate but no SASL password, so " +
+                    "Infrawrench can't connect — DigitalOcean serves mTLS on a separate port it " +
+                    "doesn't expose via the API. Regenerate your DO API token with the " +
+                    "`database:view_credentials` scope ticked (it's NOT in “Full Access” by default), " +
+                    "then click “Make connection user” again so DO returns the SASL password."
+                : "DigitalOcean doesn't expose a password for this Kafka cluster. Click “Make " +
+                    "connection user” on the cluster detail page — with the `database:view_credentials` " +
+                    "token scope, Infrawrench captures the SASL password and the connection works.",
+            );
+          }
           let uri = ensureUriCredentials(conn["uri"] ?? "", conn["user"], conn["password"]);
-          // DO's `/databases/{id}` response can hand back `connection.uri`
-          // as `mongodb+srv://doadmin:@host` with no password — the
-          // credential lives on the per-user endpoint instead. Try that
-          // before failing so the user doesn't have to paste a connection
-          // string manually.
-          let usersSnapshot: Array<{ name?: string; hasPassword: boolean }> = [];
-          if (!uriHasPassword(uri) && conn["user"]) {
+          // Postgres/MySQL hand the password back inline on the cluster (or on
+          // the default user via /users) — for those we capture it directly.
+          // Mongo/Redis/OpenSearch/Kafka never expose the default user's
+          // password this way, so we DON'T poke /users for them (it just
+          // produces noise + confusing scope errors); they rely entirely on a
+          // user minted through the "Make connection user" button, whose
+          // credential we persisted ourselves.
+          const captureFromDefault = engine === "pg" || engine === "mysql";
+          if (captureFromDefault && !uriHasPassword(uri) && conn["user"]) {
             try {
               const usersData = await this.fetch<{
                 users?: Array<{ name?: string; password?: string }>;
               }>(`/databases/${externalId}/users`);
               const list = usersData.users ?? [];
-              usersSnapshot = list.map((u) => ({
-                ...(u.name != null ? { name: u.name } : {}),
-                hasPassword: !!u.password,
-              }));
               const match = list.find((u) => u.name === conn["user"]);
               if (match?.password) {
                 uri = ensureUriCredentials(conn["uri"] ?? "", conn["user"], match.password);
@@ -1075,10 +1097,10 @@ export class DigitalOceanClient implements PluginClient {
               );
             }
           }
-          // Last-ditch fallback: pull a password from a db-user resource
-          // we minted ourselves and persisted via secretStates. Lets the
-          // peer-pane work even when DO refuses to expose existing
-          // passwords (no view_credentials scope, post-rotation, etc.).
+          // Use a user we minted ourselves (via "Make connection user" or the
+          // DB Users section) and persisted via the secret store. This is the
+          // primary path for mongo/redis/opensearch/kafka and a fallback for
+          // pg/mysql when DO won't re-expose the default user's password.
           if (!uriHasPassword(uri)) {
             const minted = await this.findMintedDatabaseUser(externalId, accountId);
             if (minted) {
@@ -1086,21 +1108,15 @@ export class DigitalOceanClient implements PluginClient {
             }
           }
           if (!uriHasPassword(uri)) {
-            const usersDump =
-              usersSnapshot.length > 0
-                ? usersSnapshot
-                    .map((u) => `${u.name ?? "?"} (password: ${u.hasPassword ? "yes" : "empty"})`)
-                    .join(", ")
-                : "(no users returned)";
             throw new Error(
-              "DigitalOcean returned no password for this database's default user. " +
-                "Open the cluster's detail page and add a user under the 'DB Users' section — " +
-                "Infrawrench will capture the password DO mints and use it here. " +
-                `Existing users on the cluster: ${usersDump}.`,
+              captureFromDefault
+                ? "DigitalOcean returned no password for this database's default user. Use the " +
+                    "“Make connection user” button on the cluster detail page (or the DB Users " +
+                    "section) and Infrawrench will capture and store the credential."
+                : `DigitalOcean doesn't expose a password for ${engine} clusters' default user. ` +
+                    "Click “Make connection user” on the cluster detail page — Infrawrench creates a " +
+                    "user, captures the credential DO mints once, and stores it for this connection.",
             );
-          }
-          if (engine === "kafka") {
-            uri = normalizeKafkaUri(uri);
           }
           return uri;
         }
@@ -1114,29 +1130,8 @@ export class DigitalOceanClient implements PluginClient {
           return conn["password"] ?? "";
         case "database":
           return conn["database"] ?? "";
-        case "caCertificate": {
-          // DO returns the CA as base64-encoded PEM (the openapi spec
-          // declares `format: byte` for this field — see
-          // databases/models/ca.yml). Decode it so consumers (pg, mysql2)
-          // receive raw PEM with the `-----BEGIN CERTIFICATE-----`
-          // header they expect. Forwarding the base64 directly used to
-          // produce "self signed certificate in certificate chain"
-          // because the TLS layer couldn't parse the cert at all.
-          const caData = await this.fetch<{ ca: { certificate: string } }>(
-            `/databases/${externalId}/ca`,
-          );
-          const raw = caData.ca.certificate ?? "";
-          // Already PEM? Pass through. Otherwise base64 → utf8.
-          // `atob` is the cross-runtime decoder (Node ≥18 + browser);
-          // we can't import `Buffer` here because this plugin is shared
-          // with the renderer.
-          if (raw.includes("-----BEGIN")) return raw;
-          try {
-            return atob(raw);
-          } catch {
-            return raw;
-          }
-        }
+        case "caCertificate":
+          return this.resolveCaCertificate(externalId);
       }
     }
 
@@ -1176,16 +1171,23 @@ export class DigitalOceanClient implements PluginClient {
 
   /**
    * Look through every db-user we've persisted for the given cluster and
-   * return the first one with a stored password. Used by managed-database's
+   * return the first one with a stored credential. Used by managed-database's
    * `connectionString` resolver when DO refuses to hand back the original
    * doadmin credentials. The cluster's user list is fetched live (we don't
-   * trust local cache for membership) but the password comes from the host's
-   * secret store via `services.secrets.getPlaintext`.
+   * trust local cache for membership) but the secrets come from the host's
+   * store via `services.secrets.getPlaintext`. For Kafka we also surface the
+   * mTLS `accessCert`/`accessKey`, since DO returns those even when the SASL
+   * password is gated behind `database:view_credentials`.
    */
   private async findMintedDatabaseUser(
     clusterId: string,
     accountId: string,
-  ): Promise<{ name: string; password: string } | null> {
+  ): Promise<{
+    name: string;
+    password: string;
+    accessCert?: string;
+    accessKey?: string;
+  } | null> {
     const secrets = this.services?.secrets;
     if (!secrets) return null;
     let users: Array<{ name?: string }> = [];
@@ -1200,10 +1202,41 @@ export class DigitalOceanClient implements PluginClient {
     for (const u of users) {
       if (!u.name) continue;
       const id = `${accountId}:db-user:${clusterId}:${u.name}`;
-      const password = await secrets.getPlaintext(id, "password");
-      if (password) return { name: u.name, password };
+      const [password, accessCert, accessKey] = await Promise.all([
+        secrets.getPlaintext(id, "password"),
+        secrets.getPlaintext(id, "accessCert"),
+        secrets.getPlaintext(id, "accessKey"),
+      ]);
+      if (password || (accessCert && accessKey)) {
+        return {
+          name: u.name,
+          password: password ?? "",
+          ...(accessCert ? { accessCert } : {}),
+          ...(accessKey ? { accessKey } : {}),
+        };
+      }
     }
     return null;
+  }
+
+  /**
+   * Fetch + decode a managed-database cluster's CA certificate. DO returns it
+   * base64-encoded (openapi `format: byte`); we hand back raw PEM so TLS layers
+   * (pg, mysql2, kafkajs) can parse it. Shared by the `caCertificate` output
+   * and the Kafka mTLS connection-string builder.
+   */
+  private async resolveCaCertificate(clusterId: string): Promise<string> {
+    const caData = await this.fetch<{ ca: { certificate: string } }>(`/databases/${clusterId}/ca`);
+    const raw = caData.ca.certificate ?? "";
+    // Already PEM? Pass through. Otherwise base64 → utf8. `atob` is the
+    // cross-runtime decoder (Node ≥18 + browser); we can't import `Buffer`
+    // here because this plugin is shared with the renderer.
+    if (raw.includes("-----BEGIN")) return raw;
+    try {
+      return atob(raw);
+    } catch {
+      return raw;
+    }
   }
 
   private get createCtx(): DoCreateContext {
@@ -1894,6 +1927,88 @@ export class DigitalOceanClient implements PluginClient {
     }
     if (typeId === "volume") {
       return executeVolumeCommand(this.actionCtx, resourceId, accountId, command, args);
+    }
+    if (typeId === "managed-database" && command === "make-db-user") {
+      // Mint a DB user and persist whatever credential DO surfaces once at
+      // creation: a SCRAM `password` (mongo/redis/opensearch/kafka-SASL) and,
+      // for Kafka mTLS, the `access_cert` + `access_key`. We store via the
+      // host secret service keyed to the db-user id so `findMintedDatabaseUser`
+      // resolves it for the connection string. This is the reliable path for
+      // engines where DO never exposes the default user's password.
+      const clusterId = resourceId.split(":").slice(2).join(":");
+      const first = args[0];
+      const values: Record<string, string> =
+        typeof first === "string" && first
+          ? (() => {
+              try {
+                const parsed = JSON.parse(first) as Record<string, string>;
+                return parsed && typeof parsed === "object" ? parsed : {};
+              } catch {
+                return {};
+              }
+            })()
+          : {};
+      const name = String(values["name"] ?? "").trim();
+      if (!name) throw new Error("Username is required.");
+      const secrets = this.services?.secrets;
+      if (!secrets?.setPlaintext) {
+        throw new Error("This host can't persist credentials, so the user couldn't be stored.");
+      }
+      // Kafka is the odd one out: its `/users` endpoint requires a `settings`
+      // block with at least one ACL or DO rejects with 422 "settings is
+      // required". Every other engine creates the user from just `{ name }`.
+      // We detect the engine off the cluster and, for Kafka, attach an ACL
+      // (defaults to admin on `*` so the minted user can actually drive the
+      // console; the form lets the user narrow the topic/permission).
+      const body: Record<string, unknown> = { name };
+      let engine = "";
+      try {
+        const cluster = await this.fetch<{ database?: { engine?: string } }>(
+          `/databases/${clusterId}`,
+        );
+        engine = String(cluster.database?.engine ?? "");
+      } catch {
+        /* fall back to no settings; non-Kafka engines don't need them */
+      }
+      if (engine === "kafka") {
+        const topic = String(values["topic"] ?? "").trim() || "*";
+        const permission = String(values["permission"] ?? "").trim() || "admin";
+        body["settings"] = { acl: [{ topic, permission }] };
+      }
+      const resp = await this.fetch<{
+        user?: {
+          name?: string;
+          password?: string;
+          access_cert?: string;
+          access_key?: string;
+        };
+      }>(`/databases/${clusterId}/users`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      const user = resp.user ?? {};
+      const uname = String(user.name ?? name);
+      const dbUserId = `${accountId}:db-user:${clusterId}:${uname}`;
+      let stored = false;
+      if (user.password) {
+        await secrets.setPlaintext(dbUserId, "password", String(user.password));
+        stored = true;
+      }
+      if (user.access_cert) {
+        await secrets.setPlaintext(dbUserId, "accessCert", String(user.access_cert));
+        stored = true;
+      }
+      if (user.access_key) {
+        await secrets.setPlaintext(dbUserId, "accessKey", String(user.access_key));
+        stored = true;
+      }
+      if (!stored) {
+        throw new Error(
+          "DigitalOcean returned no credential for the new user. Ensure the API token has the " +
+            "`database:view_credentials` scope, then try again.",
+        );
+      }
+      return;
     }
     if (typeId === "gen-ai-agent") {
       const agentUuid = resourceId.split(":").slice(2).join(":");
@@ -2755,6 +2870,7 @@ export class DigitalOceanClient implements PluginClient {
         pg: "postgresql",
         mysql: "mysql",
         redis: "redis",
+        valkey: "valkey",
         mongodb: "mongodb",
         kafka: "kafka",
         opensearch: "opensearch",
@@ -3619,54 +3735,62 @@ export class DigitalOceanClient implements PluginClient {
   }
 
   /**
-   * Adds the events log + a banner that nudges the user to mint a connection
-   * user when DO's inline connection.uri lacks a password (the common case
-   * for tokens without `database:view_credentials`). The "DB Users" section
-   * is rendered automatically by the host as a child-resource group thanks
-   * to `db-user.parentTypeId === "managed-database"`.
+   * Adds the events log and, for engines whose built-in user has no password
+   * (mongo/redis/opensearch/kafka), a "Make connection user" header action.
+   * The "DB Users" section is rendered automatically by the host as a
+   * child-resource group thanks to `db-user.parentTypeId === "managed-database"`.
    */
   private applyManagedDatabaseDetail(detail: DetailViewSchema, resource: ResourceInstance): void {
     const status = String(resource.fields["status"] ?? "");
     const online = status === "online";
+    const engine = String(resource.fields["engine"] ?? "");
+    // Mongo/Redis/OpenSearch/Kafka never hand back the default user's password,
+    // so peer-pane connections depend on a user minted (+ captured) here.
+    // pg/mysql get their password inline, so they don't need the button.
+    const needsMintButton =
+      online && ["mongodb", "redis", "valkey", "opensearch", "kafka"].includes(engine);
 
     // Events log — DO doesn't expose process-level logs, but the cluster's
     // event stream covers backups, maintenance, scale events, etc. That's
-    // useful as a "what's been happening to my cluster" feed.
-    detail.logs = { defaultTailLines: 200 };
+    // useful as a "what's been happening to my cluster" feed. MongoDB
+    // clusters reject the events endpoint (422 "operation is not supported
+    // for this cluster type"), so skip the Logs tab for them.
+    if (engine !== "mongodb") {
+      detail.logs = { defaultTailLines: 200 };
+    }
 
-    // Pre-online clusters can't accept POST /users yet. Inform the user via
-    // a non-blocking banner rather than throwing on click.
-    if (!online) {
-      detail.sections.push({
-        kind: "section",
-        title: "Connection setup",
-        children: [
-          {
-            kind: "text",
-            variant: "muted",
-            content:
-              `Cluster status: ${status || "unknown"}. Once it flips to "online" you can mint a ` +
-              "connection user under the DB Users section below — Infrawrench captures DO's " +
-              "one-shot password and uses it for the peer-pane connection string. Until then, " +
-              "the MongoDB / Postgres / MySQL peer-pane tabs will report no credentials.",
+    if (needsMintButton) {
+      detail.headerActions = [
+        ...(detail.headerActions ?? []),
+        {
+          kind: "action",
+          label: "+ Make connection user",
+          variant: "ghost",
+          action: {
+            type: "prompt-nosql-command",
+            command: "make-db-user",
+            title: "Create connection user",
+            description:
+              "DigitalOcean reveals a database user's credential exactly once, at creation. " +
+              "Infrawrench creates the user, captures that credential, and stores it locally so " +
+              "this cluster's peer-pane connection works.",
+            submitLabel: "Create user",
+            fields: [
+              {
+                key: "name",
+                label: "Username",
+                kind: "text",
+                required: true,
+                defaultValue: `infrawrench-${Math.random().toString(36).slice(2, 8)}`,
+                description: "Letters, digits, and `_-` only. Must be unique within the cluster.",
+              },
+              // Kafka requires an ACL on the user; surface topic + permission so
+              // it's editable, defaulting to full access on every topic.
+              ...(engine === "kafka" ? kafkaAclFields() : []),
+            ],
           },
-        ],
-      });
-    } else {
-      detail.sections.push({
-        kind: "section",
-        title: "Connection setup",
-        children: [
-          {
-            kind: "text",
-            variant: "muted",
-            content:
-              "Mint a user under the DB Users section so peer-pane tabs have a credentialed " +
-              "connection string. DO only exposes a user's password once — Infrawrench captures " +
-              "it at create time and persists it locally.",
-          },
-        ],
-      });
+        },
+      ];
     }
   }
 

@@ -1,4 +1,69 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import type {
+  CreateFieldConfig,
+  PeerGuidanceAction,
+  ResourceTypeDefinition,
+} from "@infrawrench/plugin-base";
+
+// Kafka's `/users` endpoint requires a `settings.acl` block or DO 422s with
+// "settings is required". These editable fields default to full access on
+// every topic so the minted user works out of the box; the user can narrow
+// scope before submitting. The `make-db-user` handler reads `topic`/`permission`
+// and only sends `settings` when the cluster engine is Kafka.
+export function kafkaAclFields(): CreateFieldConfig[] {
+  return [
+    {
+      key: "topic",
+      label: "Topic",
+      kind: "text",
+      required: false,
+      defaultValue: "*",
+      description: "Topic name or regex this user can access. `*` matches every topic.",
+    },
+    {
+      key: "permission",
+      label: "Permission",
+      kind: "select",
+      required: false,
+      defaultValue: "admin",
+      options: [
+        { id: "admin", label: "Admin — produce, consume, and manage topics" },
+        { id: "produceconsume", label: "Produce & consume" },
+        { id: "produce", label: "Produce only" },
+        { id: "consume", label: "Consume only" },
+      ],
+    },
+  ];
+}
+
+// Shown as a CTA in the peer pane when the connection string can't resolve
+// (mongo/redis/opensearch/kafka never expose the built-in user's password).
+// Mirrors the cluster-detail header action; dispatches `make-db-user` to the
+// parent managed-database, which mints + persists the credential.
+const makeConnectionUserAction: PeerGuidanceAction = {
+  label: "+ Make connection user",
+  command: "make-db-user",
+  title: "Create connection user",
+  description:
+    "DigitalOcean reveals a database user's credential exactly once, at creation. " +
+    "Infrawrench creates the user, captures that credential, and stores it locally so this " +
+    "tab can connect.",
+  submitLabel: "Create user",
+  fields: [
+    {
+      key: "name",
+      label: "Username",
+      kind: "text",
+      required: true,
+      description: "Letters, digits, and `_-` only. Must be unique within the cluster.",
+    },
+  ],
+};
+
+// Kafka variant: same flow, plus the ACL fields DO requires for Kafka users.
+const makeKafkaConnectionUserAction: PeerGuidanceAction = {
+  ...makeConnectionUserAction,
+  fields: [...makeConnectionUserAction.fields, ...kafkaAclFields()],
+};
 
 export const ManagedDatabaseResourceType: ResourceTypeDefinition = {
   id: "managed-database",
@@ -12,7 +77,7 @@ export const ManagedDatabaseResourceType: ResourceTypeDefinition = {
       label: "Engine",
       kind: "enum",
       required: true,
-      enumValues: ["pg", "mysql", "redis", "mongodb", "kafka", "opensearch", "weaviate"],
+      enumValues: ["pg", "mysql", "redis", "valkey", "mongodb", "kafka", "opensearch", "weaviate"],
     },
     {
       key: "version",
@@ -103,16 +168,28 @@ export const ManagedDatabaseResourceType: ResourceTypeDefinition = {
       showWhen: { fieldKey: "engine", equals: "mysql" },
     },
     {
+      // DO retired Managed Redis on 2025-06-30; new clusters report
+      // engine=valkey, while pre-migration clusters may still report redis.
+      // Valkey is wire-compatible with Redis, so the same plugin drives both.
+      pluginId: "redis",
+      credentialMappings: [{ outputKey: "connectionString", credentialKey: "connectionString" }],
+      tabLabel: "Valkey",
+      showWhen: { fieldKey: "engine", equals: "valkey" },
+      credentialSetupAction: makeConnectionUserAction,
+    },
+    {
       pluginId: "redis",
       credentialMappings: [{ outputKey: "connectionString", credentialKey: "connectionString" }],
       tabLabel: "Redis",
       showWhen: { fieldKey: "engine", equals: "redis" },
+      credentialSetupAction: makeConnectionUserAction,
     },
     {
       pluginId: "mongodb",
       credentialMappings: [{ outputKey: "connectionString", credentialKey: "connectionString" }],
       tabLabel: "MongoDB",
       showWhen: { fieldKey: "engine", equals: "mongodb" },
+      credentialSetupAction: makeConnectionUserAction,
     },
     {
       // DO managed OpenSearch exposes a doadmin user + a TLS endpoint on
@@ -126,6 +203,7 @@ export const ManagedDatabaseResourceType: ResourceTypeDefinition = {
       ],
       tabLabel: "OpenSearch",
       showWhen: { fieldKey: "engine", equals: "opensearch" },
+      credentialSetupAction: makeConnectionUserAction,
     },
     {
       // DO managed Kafka uses SASL/SCRAM-SHA-256 over TLS on port 25073;
@@ -138,6 +216,7 @@ export const ManagedDatabaseResourceType: ResourceTypeDefinition = {
       credentialMappings: [{ outputKey: "connectionString", credentialKey: "connectionString" }],
       tabLabel: "Kafka",
       showWhen: { fieldKey: "engine", equals: "kafka" },
+      credentialSetupAction: makeKafkaConnectionUserAction,
     },
   ],
   secretExportTemplates: [

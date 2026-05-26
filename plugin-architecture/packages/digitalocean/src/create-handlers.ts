@@ -9,6 +9,7 @@ import type {
 } from "@infrawrench/plugin-base";
 import { signedS3Fetch } from "@infrawrench/plugin-base";
 import { SPACES_REGIONS, regionDisplay } from "./constants.js";
+import { kafkaAclFields } from "./resources/managed-database.js";
 
 export interface DoCreateContext {
   fetch<T>(path: string, options?: RequestInit): Promise<T>;
@@ -432,11 +433,14 @@ export async function doGetCreateConfig(
     // the chosen engine field so users can't pick an engine+region combo
     // DO will reject. Primary source is /databases/options.{engine}.regions.
     //
-    // DO migrated Redis storage to Valkey; the options endpoint surfaces
-    // the live list under a `valkey` key, but the create-time engine value
-    // the API still accepts (and that the picker above offers) is `redis`.
-    // Mirror the slugs under both names so the filter matches whichever
-    // label DO is currently using.
+    // DO discontinued Managed Redis on 2025-06-30 and fully replaced it with
+    // Valkey (a drop-in Redis-compatible engine). The legacy `redis` engine
+    // can no longer be provisioned — POST /databases with engine=redis rejects
+    // every region with `region '<slug>' is not valid` because the retired
+    // engine has no valid region set. So the picker creates `valkey` clusters
+    // (the engine value DO now accepts). The options endpoint surfaces the
+    // live region/size list under a `valkey` key; we mirror slugs under both
+    // names so the filter still matches any legacy `redis` clusters DO reports.
     const engineAliases: Record<string, string[]> = {
       valkey: ["valkey", "redis"],
       redis: ["valkey", "redis"],
@@ -559,7 +563,7 @@ export async function doGetCreateConfig(
           options: [
             { id: "pg", label: "PostgreSQL" },
             { id: "mysql", label: "MySQL" },
-            { id: "redis", label: "Redis" },
+            { id: "valkey", label: "Valkey (Redis-compatible caching)" },
             { id: "mongodb", label: "MongoDB" },
             { id: "kafka", label: "Kafka" },
             { id: "opensearch", label: "OpenSearch" },
@@ -599,6 +603,22 @@ export async function doGetCreateConfig(
   }
 
   if (typeId === "db-user") {
+    // Kafka users carry an ACL; surface the topic/permission fields so the
+    // child-section create form matches the make-connection-user flow.
+    let kafkaFields: CreateResourceConfig["fields"] = [];
+    if (parentResourceId) {
+      const clusterId = parentResourceId.split(":").slice(2).join(":");
+      try {
+        const cluster = await ctx.fetch<{ database?: { engine?: string } }>(
+          `/databases/${clusterId}`,
+        );
+        if (String(cluster.database?.engine ?? "") === "kafka") {
+          kafkaFields = kafkaAclFields();
+        }
+      } catch {
+        /* fall back to the bare username form */
+      }
+    }
     return {
       fields: [
         {
@@ -613,6 +633,7 @@ export async function doGetCreateConfig(
           placeholder: "infrawrench",
           defaultValue: `infrawrench-${Math.random().toString(36).slice(2, 8)}`,
         },
+        ...kafkaFields,
       ],
     };
   }
@@ -1757,11 +1778,28 @@ async function doCreateResourceImpl(
     }
     const username = String(fields["name"] ?? "").trim();
     if (!username) throw new Error("Username is required");
+    // Kafka users require a `settings.acl` block or DO rejects with 422
+    // "settings is required". Default to full access on every topic; the
+    // engine is read off the cluster so other engines stay on the bare
+    // `{ name }` body they expect.
+    const userBody: Record<string, unknown> = { name: username };
+    try {
+      const cluster = await ctx.fetch<{ database?: { engine?: string } }>(
+        `/databases/${clusterId}`,
+      );
+      if (String(cluster.database?.engine ?? "") === "kafka") {
+        const topic = String(fields["topic"] ?? "").trim() || "*";
+        const permission = String(fields["permission"] ?? "").trim() || "admin";
+        userBody["settings"] = { acl: [{ topic, permission }] };
+      }
+    } catch {
+      /* non-Kafka engines don't need settings; ignore lookup failures */
+    }
     const resp = await ctx.fetch<{
       user?: { name?: string; role?: string; password?: string };
     }>(`/databases/${clusterId}/users`, {
       method: "POST",
-      body: JSON.stringify({ name: username }),
+      body: JSON.stringify(userBody),
     });
     const user = resp.user ?? {};
     const password = String(user.password ?? "");
