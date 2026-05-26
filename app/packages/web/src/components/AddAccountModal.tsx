@@ -8,7 +8,7 @@ import {
 } from "@infrawrench/ui";
 import { apiGet, apiPost } from "@/lib/api";
 import { useOrgId } from "@/lib/useOrgId";
-import type { AccountListItem } from "@/lib/api-types";
+import type { AccountListItem, Bastion } from "@/lib/api-types";
 
 interface Props {
   onClose: () => void;
@@ -23,12 +23,8 @@ interface CreateAccountResponse {
   syncError?: { message: string };
 }
 
-interface BastionListItem {
-  id: string;
-  name: string;
-  connected: boolean;
-  status: string;
-}
+/** Just the fields the "Egress via" picker needs from the `Bastion` row. */
+type BastionListItem = Pick<Bastion, "id" | "name" | "connected" | "status">;
 
 export function AddAccountModal({
   onClose,

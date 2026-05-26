@@ -15,17 +15,15 @@ import {
 } from "@infrawrench/ui";
 import { apiDelete, apiGet, apiPatch, apiPut } from "@/lib/api";
 import { useOrgId } from "@/lib/useOrgId";
-import type { AccountListItem } from "@/lib/api-types";
+import type { AccountListItem, ResourceTypeSummary } from "@/lib/api-types";
 import { CreateResourceModal } from "./CreateResourceModal";
 
-export interface ResourceTypeInfo {
-  id: string;
-  displayName: string;
-  pluralDisplayName: string;
-  parentTypeId: string | undefined;
-  supportsCreate: boolean;
-  attachTargets?: import("@infrawrench/plugin-base").AttachTarget[];
-}
+/**
+ * Account-page resource type entry. This is the canonical `ResourceTypeSummary`
+ * wire shape (from `GET /accounts/:id/detail`) — re-exported under the local
+ * historical name so existing imports keep working.
+ */
+export type ResourceTypeInfo = ResourceTypeSummary;
 
 export interface AccountResource {
   id: string;

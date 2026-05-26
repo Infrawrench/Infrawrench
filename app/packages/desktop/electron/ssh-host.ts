@@ -182,6 +182,13 @@ ipcMain.handle("ssh_check_pageant", () => isPageantRunning());
 
 ipcMain.handle("ssh_check_1password", () => is1PasswordAgentRunning());
 
+/**
+ * Wire shape for `ssh_list_1password_keys` IPC. The renderer-side mirror is
+ * `AgentSshKey` exported from `@infrawrench/ui` (see
+ * `app/packages/ui/src/components/create-resource/SshKeyPicker.tsx`). The two
+ * shapes must stay in sync — keep this definition identical to the UI one
+ * (the renderer treats `keyType` as optional, which is a superset of this).
+ */
 interface AgentSshKey {
   name: string;
   publicKey: string;

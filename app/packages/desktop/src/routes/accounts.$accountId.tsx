@@ -357,14 +357,8 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
               if (cancelled) return;
               const byType = new Map<string, ResourceInstance[]>();
               for (const r of rows) {
-                const fields =
-                  typeof r.fieldsJson === "string"
-                    ? (JSON.parse(r.fieldsJson) as Record<string, string | number | boolean>)
-                    : ((r.fieldsJson ?? {}) as Record<string, string | number | boolean>);
-                const outputs =
-                  typeof r.outputsJson === "string"
-                    ? (JSON.parse(r.outputsJson) as Record<string, string>)
-                    : ((r.outputsJson ?? {}) as Record<string, string>);
+                const fields = (r.fieldsJson ?? {}) as Record<string, string | number | boolean>;
+                const outputs = (r.outputsJson ?? {}) as Record<string, string>;
                 const instance: ResourceInstance = {
                   id: r.id,
                   pluginId: r.pluginId,

@@ -3,20 +3,7 @@ import { useState, useEffect } from "react";
 import { Modal } from "@infrawrench/ui";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import { useOrgId } from "@/lib/useOrgId";
-
-interface Bastion {
-  id: string;
-  name: string;
-  tokenPrefix: string;
-  agentVersion: string | null;
-  lastSeenAt: string | null;
-  status: "pending" | "active" | "revoked";
-  revokedAt: string | null;
-  createdAt: string;
-  createdByUserId: string;
-  connected: boolean;
-  accountCount: number;
-}
+import type { Bastion } from "@/lib/api-types";
 
 interface CreatedBastion {
   id: string;

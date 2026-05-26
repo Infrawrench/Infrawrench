@@ -59,3 +59,69 @@ export interface SshKey {
   ownerName: string;
   createdAt: string;
 }
+
+/**
+ * A bastion agent as returned by `GET /api/org/:orgId/bastions`. Tracks
+ * registration metadata plus a live `connected` flag indicating whether the
+ * agent currently has a WebSocket session to the cloud server.
+ */
+export interface Bastion {
+  id: string;
+  name: string;
+  tokenPrefix: string;
+  agentVersion: string | null;
+  lastSeenAt: string | null;
+  status: "pending" | "active" | "revoked";
+  revokedAt: string | null;
+  createdAt: string;
+  createdByUserId: string;
+  /** True iff an agent is currently connected to this bastion's WebSocket. */
+  connected: boolean;
+  /** Number of accounts in this org that have this bastion attached. */
+  accountCount: number;
+}
+
+/**
+ * A single resource as returned by `GET /api/org/:orgId/accounts/:id/resources`
+ * and `POST /api/org/:orgId/accounts/:id/sync-type/:typeId`. The `fieldsJson` /
+ * `outputsJson` values arrive as already-parsed JSON objects on the wire (the
+ * server returns them as objects, not strings, per the `JsonObject` OpenAPI
+ * schema).
+ */
+export interface Resource {
+  id: string;
+  pluginId: string;
+  resourceTypeId: string;
+  accountId: string;
+  displayName: string;
+  externalId: string | null;
+  fieldsJson: Record<string, unknown>;
+  outputsJson: Record<string, unknown>;
+  parentResourceId: string | null;
+}
+
+/**
+ * A resource type entry inside `AccountDetail.resourceTypes` and the equivalent
+ * shape consumed by `AccountDetailView`. `parentTypeId` is set when this type's
+ * instances are children of a parent type; `attachTargets` carries drag-drop
+ * compatibility.
+ */
+export interface ResourceTypeSummary {
+  id: string;
+  displayName: string;
+  pluralDisplayName: string;
+  parentTypeId: string | undefined;
+  supportsCreate: boolean;
+  attachTargets?: import("@infrawrench/plugin-base").AttachTarget[];
+}
+
+/**
+ * `GET /api/org/:orgId/accounts/:id/detail` — account metadata plus the list
+ * of resource types this plugin exposes. Used to render the per-account page.
+ */
+export interface AccountDetail {
+  account: { id: string; pluginId: string; displayName: string };
+  resourceTypes: ResourceTypeSummary[];
+  pluginDisplayName: string;
+  pluginLogoSvg: string;
+}

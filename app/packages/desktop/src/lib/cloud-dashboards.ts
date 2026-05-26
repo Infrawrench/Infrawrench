@@ -28,8 +28,15 @@ interface CloudEnrichedPin extends CloudDashboardPin {
   pluginId: string;
   resourceTypeId: string;
   accountId: string;
-  fieldsJson: string;
-  outputsJson: string;
+  /**
+   * Server returns these as already-parsed JSON objects (the `jsonb` Postgres
+   * columns deserialize through `cloudFetch`). The desktop side previously
+   * declared `string` here and the consumer in `DashboardView.tsx` defensively
+   * coerced either case — kept that coercion but the canonical wire shape is
+   * a parsed object.
+   */
+  fieldsJson: Record<string, unknown>;
+  outputsJson: Record<string, unknown>;
   pluginLogoSvg: string;
   pluginDisplayName: string;
   status: ProbeStatus;

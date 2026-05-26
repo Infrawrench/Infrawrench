@@ -6,4 +6,13 @@
  * so existing `@/lib/api-types` imports keep working.
  */
 
-export type { Account, AccountListItem, Dashboard, SshKey } from "@infrawrench/ui";
+export type {
+  Account,
+  AccountListItem,
+  Dashboard,
+  SshKey,
+  Bastion,
+  Resource,
+  ResourceTypeSummary,
+  AccountDetail,
+} from "@infrawrench/ui";

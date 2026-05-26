@@ -162,12 +162,8 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
             resource_type_id: e.resourceTypeId,
             account_id: e.accountId,
             display_name: e.displayName,
-            fields_json:
-              typeof e.fieldsJson === "string" ? e.fieldsJson : JSON.stringify(e.fieldsJson ?? {}),
-            outputs_json:
-              typeof e.outputsJson === "string"
-                ? e.outputsJson
-                : JSON.stringify(e.outputsJson ?? {}),
+            fields_json: JSON.stringify(e.fieldsJson ?? {}),
+            outputs_json: JSON.stringify(e.outputsJson ?? {}),
           });
           const isSshTarget = !!meta[e.pluginId]?.terminalResourceTypeIds.includes(
             e.resourceTypeId,

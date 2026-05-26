@@ -1,43 +1,11 @@
-import type { Account } from "@infrawrench/ui";
+import type { Account, AccountDetail, Resource } from "@infrawrench/ui";
 import { invoke } from "./invoke";
 
-interface CloudResource {
-  id: string;
-  pluginId: string;
-  resourceTypeId: string;
-  accountId: string;
-  displayName: string;
-  externalId: string | null;
-  fieldsJson: string;
-  outputsJson: string;
-  parentResourceId: string | null;
-}
-
-interface CloudResourceTypeSummary {
-  id: string;
-  displayName: string;
-  pluralDisplayName: string;
-  parentTypeId?: string | null;
-  supportsCreate: boolean;
-}
-
-interface CloudAccountDetail {
-  account: { id: string; pluginId: string; displayName: string };
-  resourceTypes: CloudResourceTypeSummary[];
-  pluginDisplayName: string;
-  pluginLogoSvg: string;
-}
-
-interface CloudResourceSyncItem {
-  id: string;
-  pluginId: string;
-  resourceTypeId: string;
-  displayName: string;
-  externalId: string | null;
-  fieldsJson: Record<string, unknown>;
-  outputsJson: Record<string, unknown>;
-  parentResourceId: string | null;
-}
+/**
+ * `POST /accounts/:id/sync-type/:typeId` returns the same `Resource` shape
+ * minus the `accountId` field (the caller already knows which account).
+ */
+type CloudResourceSyncItem = Omit<Resource, "accountId">;
 
 export async function listCloudAccounts(orgId: string): Promise<Account[]> {
   return invoke("cloud_list_accounts", { orgId });
@@ -55,14 +23,14 @@ export async function createCloudAccount(
 export async function listCloudAccountResources(
   orgId: string,
   accountId: string,
-): Promise<CloudResource[]> {
+): Promise<Resource[]> {
   return invoke("cloud_list_account_resources", { orgId, accountId });
 }
 
 export async function getCloudAccountDetail(
   orgId: string,
   accountId: string,
-): Promise<CloudAccountDetail | null> {
+): Promise<AccountDetail | null> {
   return invoke("cloud_get_account_detail", { orgId, accountId });
 }
 
