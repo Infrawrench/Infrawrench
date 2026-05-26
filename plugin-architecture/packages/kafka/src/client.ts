@@ -10,6 +10,7 @@ import type {
   PeerPaneContext,
   PeerPaneSchema,
   PeerPaneResource,
+  CreateResourceConfig,
 } from "@infrawrench/plugin-base";
 
 /**
@@ -95,6 +96,44 @@ export class KafkaClient implements PluginClient {
     throw new Error(`Kafka plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
   }
 
+  getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
+    if (typeId !== "kafka-topic") {
+      throw new Error(`Kafka plugin: createResource not supported for type "${typeId}"`);
+    }
+    return Promise.resolve({
+      fields: [
+        {
+          key: "name",
+          label: "Topic Name",
+          kind: "text",
+          required: true,
+          placeholder: "events",
+          description: "Letters, digits, `.`, `_`, and `-`. Must be unique within the cluster.",
+        },
+        {
+          key: "partitions",
+          label: "Partitions",
+          kind: "number",
+          required: true,
+          defaultValue: "3",
+          minValue: 1,
+          stepValue: 1,
+          description: "More partitions allow more parallel consumers; can't be reduced later.",
+        },
+        {
+          key: "replicationFactor",
+          label: "Replication Factor",
+          kind: "number",
+          required: true,
+          defaultValue: "1",
+          minValue: 1,
+          stepValue: 1,
+          description: "Copies of each partition. Must be ≤ the number of brokers in the cluster.",
+        },
+      ],
+    });
+  }
+
   async createResource(
     typeId: string,
     accountId: string,
@@ -162,7 +201,11 @@ export class KafkaClient implements PluginClient {
   }
 
   async renderPeerPane(context: PeerPaneContext): Promise<PeerPaneSchema> {
-    const topics = await this.listTopics(context.accountId).catch(() => []);
+    // Let listTopics throw: an empty cluster returns `[]`, so a thrown error
+    // means the connection/auth actually failed — surface it as a pane error
+    // instead of a misleading "connected, nothing to show". Consumer-group
+    // listing is secondary (separate ACLs on some clusters), so keep it soft.
+    const topics = await this.listTopics(context.accountId);
     const groups = await this.listConsumerGroups(context.accountId).catch(() => []);
     const toPeer = (instances: ResourceInstance[]): PeerPaneResource[] =>
       instances.map((inst) => ({
@@ -181,8 +224,13 @@ export class KafkaClient implements PluginClient {
           resourceTypeId: "kafka-topic",
           pluginId: "kafka",
           items: toPeer(topics),
+          // Surface a "+ Create" button (incl. when empty) so a fresh cluster
+          // isn't a dead-end — topics are created via the Admin API.
+          supportsCreate: true,
         },
         {
+          // Consumer groups aren't created directly — they materialise when a
+          // consumer subscribes — so no create button here.
           title: `Consumer Groups (${groups.length})`,
           resourceTypeId: "kafka-consumer-group",
           pluginId: "kafka",

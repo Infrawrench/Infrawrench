@@ -18,10 +18,11 @@ const REQUEST_TIMEOUT_MS = 12000;
  *   fetchOffsets          (groupId)                       → [{ topic, partition, offset, … }]
  *   deleteGroup           (groupId)                       → { ok: true }
  */
-function buildKafkaConfig(connectionString: string): KafkaConfig {
+export function buildKafkaConfig(connectionString: string): KafkaConfig {
   let bootstrap = connectionString;
   let sasl: SASLOptions | undefined;
   let ssl = false;
+  let caPem = "";
 
   try {
     const u = new URL(connectionString);
@@ -52,6 +53,20 @@ function buildKafkaConfig(connectionString: string): KafkaConfig {
 
     const sslParam = u.searchParams.get("ssl");
     ssl = sslParam === "true" || sslParam === "1" || u.protocol === "kafkas:";
+
+    // `ssl_ca` carries a base64-encoded CA PEM (a URL can't hold a multiline
+    // cert). Managed providers like DigitalOcean sign broker certs with their
+    // own CA, so without trusting it the TLS handshake fails with "self signed
+    // certificate in certificate chain". When present we verify against it.
+    const sslCa = u.searchParams.get("ssl_ca");
+    if (sslCa) {
+      try {
+        caPem = atob(sslCa);
+        ssl = true;
+      } catch {
+        /* ignore a malformed CA param — fall back to system trust store */
+      }
+    }
   } catch {
     // Fall back to treating the raw string as a broker list.
   }
@@ -74,7 +89,8 @@ function buildKafkaConfig(connectionString: string): KafkaConfig {
     logLevel: logLevel.ERROR,
     retry: { retries: 0 },
   };
-  if (ssl) config.ssl = true;
+  if (caPem) config.ssl = { ca: [caPem], rejectUnauthorized: true };
+  else if (ssl) config.ssl = true;
   if (sasl) config.sasl = sasl;
   return config;
 }
@@ -147,6 +163,33 @@ function scheduleEviction(connectionString: string) {
   }, IDLE_TIMEOUT);
 }
 
+/** Tear down + forget a pooled admin so the next call reconnects from scratch. */
+function dropAdmin(connectionString: string): void {
+  const entry = adminPool.get(connectionString);
+  if (!entry) return;
+  if (entry.timer) clearTimeout(entry.timer);
+  adminPool.delete(connectionString);
+  void entry.admin.disconnect().catch(() => {});
+}
+
+/**
+ * True when an error means the pooled socket is dead (the broker closed an
+ * idle connection, or the network dropped). Reusing such an entry surfaces as
+ * `KafkaJSConnectionClosedError: Closed connection` on the *next* operation —
+ * which looked like "create topic is broken" even though listing had just
+ * worked on the same pooled client. We retry these once on a fresh connection.
+ */
+function isStaleConnectionError(err: unknown): boolean {
+  const name = err instanceof Error ? err.name : "";
+  const msg = err instanceof Error ? err.message : String(err);
+  return (
+    name === "KafkaJSConnectionClosedError" ||
+    /closed connection|connection closed|connection timeout|broken pipe|ECONNRESET|EPIPE/i.test(msg)
+  );
+}
+
+type KafkaAdmin = ReturnType<Kafka["admin"]>;
+
 export const driver = {
   id: "kafka",
 
@@ -155,78 +198,93 @@ export const driver = {
     cmd: string,
     args: (string | number)[],
   ): Promise<unknown> {
-    const entry = getAdmin(connectionString);
-    try {
-      await entry.connected;
-      const admin = entry.admin;
-
-      switch (cmd) {
-        case "describeCluster": {
-          return await admin.describeCluster();
+    // Retry once: pooled admin clients go stale when the broker closes an idle
+    // socket, so the first op after a pause can fail with "Closed connection".
+    // Dropping the entry and reconnecting recovers transparently.
+    for (let attempt = 0; ; attempt++) {
+      const entry = getAdmin(connectionString);
+      try {
+        await entry.connected;
+        return await runAdminCommand(entry.admin, cmd, args);
+      } catch (err) {
+        if (attempt === 0 && isStaleConnectionError(err)) {
+          dropAdmin(connectionString);
+          continue;
         }
-
-        case "listTopics": {
-          return await admin.listTopics();
-        }
-
-        case "describeTopic": {
-          const name = String(args[0] ?? "");
-          if (!name) throw new Error("describeTopic requires a topic name");
-          const meta = await admin.fetchTopicMetadata({ topics: [name] });
-          return meta.topics[0] ?? null;
-        }
-
-        case "createTopic": {
-          const name = String(args[0] ?? "");
-          if (!name) throw new Error("createTopic requires a name");
-          const numPartitions = Number(args[1] ?? 1);
-          const replicationFactor = Number(args[2] ?? 1);
-          await admin.createTopics({
-            topics: [{ topic: name, numPartitions, replicationFactor }],
-            waitForLeaders: true,
-          });
-          return { ok: true };
-        }
-
-        case "deleteTopic": {
-          const name = String(args[0] ?? "");
-          if (!name) throw new Error("deleteTopic requires a name");
-          await admin.deleteTopics({ topics: [name] });
-          return { ok: true };
-        }
-
-        case "listGroups": {
-          const result = await admin.listGroups();
-          return result.groups;
-        }
-
-        case "describeGroup": {
-          const groupId = String(args[0] ?? "");
-          if (!groupId) throw new Error("describeGroup requires a groupId");
-          const result = await admin.describeGroups([groupId]);
-          return result.groups[0] ?? null;
-        }
-
-        case "fetchOffsets": {
-          const groupId = String(args[0] ?? "");
-          if (!groupId) throw new Error("fetchOffsets requires a groupId");
-          return await admin.fetchOffsets({ groupId });
-        }
-
-        case "deleteGroup": {
-          const groupId = String(args[0] ?? "");
-          if (!groupId) throw new Error("deleteGroup requires a groupId");
-          await admin.deleteGroups([groupId]);
-          return { ok: true };
-        }
-
-        default:
-          throw new Error(`Kafka driver: unknown command "${cmd}"`);
+        throw describeFailure(err, connectionString);
+      } finally {
+        scheduleEviction(connectionString);
       }
-    } catch (err) {
-      throw describeFailure(err, connectionString);
-    } finally {
-      scheduleEviction(connectionString);
     }
   },
 } satisfies KvNodeDriver;
+
+async function runAdminCommand(
+  admin: KafkaAdmin,
+  cmd: string,
+  args: (string | number)[],
+): Promise<unknown> {
+  switch (cmd) {
+    case "describeCluster": {
+      return await admin.describeCluster();
+    }
+
+    case "listTopics": {
+      return await admin.listTopics();
+    }
+
+    case "describeTopic": {
+      const name = String(args[0] ?? "");
+      if (!name) throw new Error("describeTopic requires a topic name");
+      const meta = await admin.fetchTopicMetadata({ topics: [name] });
+      return meta.topics[0] ?? null;
+    }
+
+    case "createTopic": {
+      const name = String(args[0] ?? "");
+      if (!name) throw new Error("createTopic requires a name");
+      const numPartitions = Number(args[1] ?? 1);
+      const replicationFactor = Number(args[2] ?? 1);
+      await admin.createTopics({
+        topics: [{ topic: name, numPartitions, replicationFactor }],
+        waitForLeaders: true,
+      });
+      return { ok: true };
+    }
+
+    case "deleteTopic": {
+      const name = String(args[0] ?? "");
+      if (!name) throw new Error("deleteTopic requires a name");
+      await admin.deleteTopics({ topics: [name] });
+      return { ok: true };
+    }
+
+    case "listGroups": {
+      const result = await admin.listGroups();
+      return result.groups;
+    }
+
+    case "describeGroup": {
+      const groupId = String(args[0] ?? "");
+      if (!groupId) throw new Error("describeGroup requires a groupId");
+      const result = await admin.describeGroups([groupId]);
+      return result.groups[0] ?? null;
+    }
+
+    case "fetchOffsets": {
+      const groupId = String(args[0] ?? "");
+      if (!groupId) throw new Error("fetchOffsets requires a groupId");
+      return await admin.fetchOffsets({ groupId });
+    }
+
+    case "deleteGroup": {
+      const groupId = String(args[0] ?? "");
+      if (!groupId) throw new Error("deleteGroup requires a groupId");
+      await admin.deleteGroups([groupId]);
+      return { ok: true };
+    }
+
+    default:
+      throw new Error(`Kafka driver: unknown command "${cmd}"`);
+  }
+}
