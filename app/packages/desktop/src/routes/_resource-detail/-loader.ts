@@ -3,6 +3,7 @@ import type {
   CredentialFormat,
   DetailViewSchema,
   FieldDefinition,
+  HostServices,
   MetricSeries,
   PluginClient,
   ResourceInstance,
@@ -36,6 +37,7 @@ import {
   buildHostServices,
   buildKvHostServices,
   buildPluginHostServices,
+  secretHostServices,
   sqlQuery,
 } from "../../lib/sql-drivers";
 import { resolveTunneledHost } from "../../lib/ssh-tunnel";
@@ -614,7 +616,7 @@ export async function loadLocalResource(params: LoaderParams): Promise<void> {
     refs.dockerHost.current = effectiveCs;
   }
 
-  const hostServices =
+  const driverHostServices =
     sqlDriverDecl && cs
       ? buildHostServices(sqlDriverDecl.driver, cs)
       : kvDriverDecl && cs
@@ -622,6 +624,10 @@ export async function loadLocalResource(params: LoaderParams): Promise<void> {
         : dockerDriverDecl && effectiveCs
           ? buildDockerHostServices(dockerDriverDecl.driver, effectiveCs)
           : undefined;
+  // Always include the secret host service so plugins can persist/read their
+  // own secret-field state (e.g. DigitalOcean minting a managed-DB connection
+  // user). Driver-specific services (sql/kv/docker) merge on top when present.
+  const hostServices: HostServices = { ...(driverHostServices ?? {}), secrets: secretHostServices };
 
   if (cs) {
     refs.connectionString.current = cs;

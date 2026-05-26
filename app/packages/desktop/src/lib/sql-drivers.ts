@@ -122,7 +122,7 @@ const httpHostServices = { http: { request: httpRequest } };
  * `ctx.hostServices.secrets.getPlaintext(resourceId, fieldKey)` works the
  * same way on desktop and web.
  */
-const secretHostServices: SecretHostServices = {
+export const secretHostServices: SecretHostServices = {
   async setPlaintext(resourceId: string, fieldKey: string, value: string): Promise<void> {
     await persistPlaintextSecret(resourceId, fieldKey, value);
   },

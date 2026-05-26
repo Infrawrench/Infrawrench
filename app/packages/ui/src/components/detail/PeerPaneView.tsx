@@ -9,6 +9,7 @@ import type { DraggableResource } from "../../dnd/types.js";
 import { ErrorNotice } from "../ErrorNotice.js";
 import { ImportYamlModal } from "../ImportYamlModal.js";
 import type { PeerPaneData } from "./detail-types.js";
+import { dispatchPromptNoSqlCommand } from "../../utils.js";
 
 export interface PeerPanePortForwardEntry {
   sessionId: string;
@@ -176,6 +177,28 @@ export function PeerPaneView({
               ))}
             </ul>
           )}
+          {guidance.action && (
+            <button
+              type="button"
+              onClick={() =>
+                dispatchPromptNoSqlCommand({
+                  command: guidance.action!.command,
+                  fields: guidance.action!.fields,
+                  ...(guidance.action!.title ? { title: guidance.action!.title } : {}),
+                  ...(guidance.action!.description
+                    ? { description: guidance.action!.description }
+                    : {}),
+                  ...(guidance.action!.submitLabel
+                    ? { submitLabel: guidance.action!.submitLabel }
+                    : {}),
+                  resourceId: parentResourceId,
+                })
+              }
+              className="ml-5 px-4 py-2 text-sm font-medium text-white bg-accent-blue rounded-md hover:bg-accent-blue/90 transition-colors"
+            >
+              {guidance.action.label}
+            </button>
+          )}
         </div>
       </div>
     );
@@ -249,6 +272,19 @@ export function PeerPaneView({
           )}
         </div>
       </div>
+
+      {visibleGroups.length === 0 && (
+        <div className="rounded-2xl border border-border bg-surface-raised/40 px-6 py-10 text-center">
+          <p className="text-sm text-on-surface-secondary">Connected — nothing to show here yet.</p>
+          <p className="text-xs text-on-surface-muted mt-1.5">
+            {resourceGroups.length > 0
+              ? `No ${resourceGroups
+                  .map((g) => g.title.replace(/\s*\(\d+\)\s*$/, "").toLowerCase())
+                  .join(" / ")} found. Create one in the provider, then refresh.`
+              : "Create a resource in the provider, then refresh."}
+          </p>
+        </div>
+      )}
 
       {visibleGroups.map((group) => {
         const groupKey = `${group.pluginId}:${group.resourceTypeId}`;

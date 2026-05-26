@@ -180,6 +180,25 @@ export async function buildPeerPanes(
         const peerLoaded = await getPlugin(integration.pluginId);
         if (!peerLoaded) return;
         const message = err instanceof Error ? err.message : String(err);
+        // When the integration declares a credential-setup CTA (e.g. "Make
+        // connection user"), surface it as guidance + a button instead of a
+        // bare error, so the fix is one click away inside the pane.
+        if (integration.credentialSetupAction) {
+          panes.push({
+            tabLabel: integration.tabLabel,
+            pluginLogoSvg: peerLoaded.plugin.manifest.logoSvg,
+            schema: {
+              resourceGroups: [],
+              guidance: {
+                title: message,
+                suggestions: [],
+                action: integration.credentialSetupAction,
+              },
+            },
+            peerPluginId: integration.pluginId,
+          });
+          return;
+        }
         panes.push({
           tabLabel: integration.tabLabel,
           pluginLogoSvg: peerLoaded.plugin.manifest.logoSvg,

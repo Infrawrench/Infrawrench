@@ -976,6 +976,24 @@ export function ResourcePanel({
             const peerLoaded = await getPlugin(integration.pluginId);
             if (!peerLoaded) return;
             const message = err instanceof Error ? err.message : String(err);
+            // Credential-setup CTA (e.g. "Make connection user") → guidance +
+            // button in-pane instead of a bare error.
+            if (integration.credentialSetupAction) {
+              resolved.push({
+                tabLabel: integration.tabLabel,
+                pluginLogoSvg: peerLoaded.plugin.manifest.logoSvg,
+                credentials: {},
+                schema: {
+                  resourceGroups: [],
+                  guidance: {
+                    title: message,
+                    suggestions: [],
+                    action: integration.credentialSetupAction,
+                  },
+                },
+              });
+              return;
+            }
             resolved.push({
               tabLabel: integration.tabLabel,
               pluginLogoSvg: peerLoaded.plugin.manifest.logoSvg,
@@ -1290,6 +1308,12 @@ export function ResourcePanel({
           // fields.
           if (!promptModal) return;
           await handleNoSqlCommand(promptModal.command, [JSON.stringify(values)]);
+          // Re-hydrate after a successful command so side effects land in the
+          // view. Critical for "Make connection user": the minted credential
+          // is persisted during the command, and only a refresh re-runs the
+          // peer pane's resolveOutput to pick it up — without this the pane
+          // stays stuck on the same "no password" guidance forever.
+          dispatchRefreshResource();
         }}
         loadPromptResources={loadPromptResources}
         showTunnelModal={showTunnelModal}
