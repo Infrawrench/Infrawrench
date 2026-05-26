@@ -75,6 +75,7 @@ export type {
   DetailViewSchema,
   SidebarItemSchema,
   PeerPaneSchema,
+  PeerGuidanceAction,
   PeerPaneResourceGroup,
   PeerPaneResource,
   SqlEditorCapability,

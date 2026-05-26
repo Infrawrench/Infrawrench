@@ -1,3 +1,5 @@
+import type { PeerGuidanceAction } from "./schema.js";
+
 export type FieldKind = "string" | "number" | "boolean" | "enum" | "secret" | "association";
 
 /** Describes a specific plugin/resource-type/output that can provide a value */
@@ -104,6 +106,16 @@ export interface PeerPluginIntegration {
     /** Practical next steps, in priority order. Rendered as a bulleted list. */
     suggestions: string[];
   };
+  /**
+   * Optional call-to-action shown in the peer pane when credential resolution
+   * FAILS (the integration's outputs couldn't produce a working credential).
+   * Instead of a bare error, the host renders the error text plus this button;
+   * clicking it dispatches the action's `command` to the parent resource's
+   * `executeNoSqlCommand`. Use for fixes the user can trigger in-place — e.g.
+   * minting a DB connection user for engines where DO never exposes the
+   * built-in user's password.
+   */
+  credentialSetupAction?: PeerGuidanceAction;
   /**
    * When true, the host calls the peer plugin's `fetchMetricSeries` (with its
    * resolved credentials) and merges the returned series into the parent

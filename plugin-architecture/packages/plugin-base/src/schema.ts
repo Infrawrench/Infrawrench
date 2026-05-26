@@ -665,9 +665,33 @@ export interface PeerPaneSchema {
   resourceGroups: PeerPaneResourceGroup[];
   /**
    * Static guidance shown in place of the resource groups. Populated by the
-   * host when a `PeerPluginIntegration.unreachableWhen` matches — the peer
-   * plugin isn't invoked at all in that case. Provider-agnostic; carries the
-   * provider's text verbatim.
+   * host when a `PeerPluginIntegration.unreachableWhen` matches, or when
+   * credential resolution failed and the integration declared a
+   * `credentialSetupAction` (the optional CTA below). Provider-agnostic;
+   * carries the provider's text verbatim.
    */
-  guidance?: { title: string; suggestions: string[] };
+  guidance?: { title: string; suggestions: string[]; action?: PeerGuidanceAction };
+}
+
+/**
+ * A call-to-action button rendered inside a peer pane's guidance state — e.g.
+ * "Make connection user" when a managed-DB peer can't connect because no
+ * credentialed user has been minted. Clicking it opens the host's
+ * prompt-nosql-command modal and dispatches `command` to the PARENT resource's
+ * `executeNoSqlCommand` (the peer pane supplies the parent resource id), so the
+ * provider that owns the parent handles the fix in-place.
+ */
+export interface PeerGuidanceAction {
+  /** Button label, e.g. "Make connection user". */
+  label: string;
+  /** NoSQL command dispatched to the parent resource on submit. */
+  command: string;
+  /** Modal title. */
+  title?: string;
+  /** Modal description. */
+  description?: string;
+  /** Submit button label. */
+  submitLabel?: string;
+  /** Form fields (same shape as the create modal). */
+  fields: CreateFieldConfig[];
 }
