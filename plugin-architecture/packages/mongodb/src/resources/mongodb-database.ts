@@ -15,6 +15,7 @@ export const MongoDBDatabaseResourceType: ResourceTypeDefinition = {
     { key: "serverVersion", label: "Server Version", sensitive: false },
   ],
   dashboardPinnable: true,
+  supportsCreate: true,
   supportsMetrics: true,
   iconKey: "mongodb",
 };

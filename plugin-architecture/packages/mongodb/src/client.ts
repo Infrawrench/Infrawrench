@@ -9,6 +9,7 @@ import type {
   PeerPaneContext,
   PeerPaneSchema,
   PeerPaneResource,
+  CreateResourceConfig,
 } from "@infrawrench/plugin-base";
 
 /**
@@ -70,6 +71,67 @@ export class MongoDBClient implements PluginClient {
     const dbName = resourceId.split(":").pop();
     if (!dbName) throw new Error("Cannot parse database name");
     await kv.command("dropDatabase", dbName);
+  }
+
+  getCreateConfig(_typeId: string): Promise<CreateResourceConfig> {
+    // Mongo has no "create database" call — a database springs into existence
+    // when its first collection is created. So we ask for both and create the
+    // collection.
+    return Promise.resolve({
+      fields: [
+        {
+          key: "database",
+          label: "Database name",
+          kind: "text",
+          required: true,
+          description: "New database to create. Materialised by its first collection.",
+        },
+        {
+          key: "collection",
+          label: "First collection",
+          kind: "text",
+          required: true,
+          defaultValue: "documents",
+          description: "MongoDB needs at least one collection for the database to exist.",
+        },
+      ],
+    });
+  }
+
+  async createResource(
+    typeId: string,
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
+    if (typeId !== "mongodb-database") {
+      throw new Error(`MongoDB plugin: createResource not supported for type "${typeId}"`);
+    }
+    const kv = this.services?.kv;
+    if (!kv) throw new Error("MongoDB KV service not available");
+    const dbName = String(fields["database"] ?? "").trim();
+    const collection = String(fields["collection"] ?? "").trim() || "documents";
+    if (!dbName) throw new Error("Database name is required");
+    await kv.command("createCollection", dbName, collection);
+    let host = "";
+    try {
+      host = new URL(this.connectionString).hostname;
+    } catch {
+      /* connectionString may not be parseable */
+    }
+    const now = new Date().toISOString();
+    return {
+      id: `${accountId}:mongodb-database:${dbName}`,
+      pluginId: "mongodb",
+      resourceTypeId: "mongodb-database",
+      accountId,
+      displayName: dbName,
+      fields: { host, database: dbName },
+      resolvedOutputs: { connectionString: this.connectionString },
+      secretStates: [],
+      externalId: dbName,
+      createdAt: now,
+      updatedAt: now,
+    };
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
@@ -138,6 +200,10 @@ export class MongoDBClient implements PluginClient {
           resourceTypeId: "mongodb-database",
           pluginId: "mongodb",
           items: databases,
+          // Surface a "+ Create" button (incl. when empty) so users can mint a
+          // database + first collection right here instead of hitting a
+          // dead-end on a fresh cluster.
+          supportsCreate: true,
         },
       ],
     };

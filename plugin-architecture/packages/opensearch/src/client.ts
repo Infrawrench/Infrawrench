@@ -5,6 +5,9 @@ import type {
   DetailViewTab,
   HostServices,
   MetricSeries,
+  PeerPaneContext,
+  PeerPaneResource,
+  PeerPaneSchema,
   PluginClient,
   ResourceInstance,
   ResourceStatus,
@@ -377,10 +380,11 @@ export class OpenSearchClient implements PluginClient {
             {
               key: "mapping",
               label: "Mapping (JSON, optional)",
-              kind: "text",
+              kind: "code",
+              codeLanguage: "json",
               required: false,
-              multiline: true,
-              placeholder: '{ "properties": { "title": { "type": "text" } } }',
+              description:
+                'Optional index mappings, e.g. { "properties": { "title": { "type": "text" } } }. Leave blank to let OpenSearch infer types.',
             },
           ],
           submitLabel: "Create",
@@ -415,9 +419,9 @@ export class OpenSearchClient implements PluginClient {
             {
               key: "query",
               label: "Query DSL (JSON)",
-              kind: "text",
+              kind: "code",
+              codeLanguage: "json",
               required: true,
-              multiline: true,
               defaultValue: '{ "query": { "match_all": {} } }',
             },
             {
@@ -450,6 +454,32 @@ export class OpenSearchClient implements PluginClient {
       id: resource.id,
       label: resource.displayName,
       status: { kind: "status-dot", status: healthToStatus(health as ClusterHealth["status"]) },
+    };
+  }
+
+  // Embedded as a tab inside a managed-DB cluster (e.g. DigitalOcean OpenSearch).
+  // OpenSearch exposes a single cluster — surface it as one pill that navigates
+  // into the cluster detail (indices, nodes, snapshots).
+  async renderPeerPane(context: PeerPaneContext): Promise<PeerPaneSchema> {
+    const clusters = await this.listResources("opensearch-cluster", context.accountId);
+    const items: PeerPaneResource[] = clusters.map((c) => ({
+      id: c.id,
+      pluginId: c.pluginId,
+      resourceTypeId: c.resourceTypeId,
+      displayName: c.displayName,
+      subtitle: this.endpointHost(),
+      status: healthToStatus(c.fields["status"] as ClusterHealth["status"] | undefined),
+      fields: c.fields,
+    }));
+    return {
+      resourceGroups: [
+        {
+          title: `OpenSearch (${items.length})`,
+          resourceTypeId: "opensearch-cluster",
+          pluginId: "opensearch",
+          items,
+        },
+      ],
     };
   }
 
