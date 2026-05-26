@@ -3,12 +3,15 @@ import type { CloudflareApi } from "./shared.js";
 import type { RecordResponse, RecordCreateParams } from "cloudflare/resources/dns/records";
 
 function recordFields(r: RecordResponse, zoneId: string): ResourceInstance {
+  const type = r.type ?? "";
+  const name = r.name ?? "";
+  // `content` and `proxied` are only present on certain record types in the
+  // discriminated union (A/AAAA/CNAME etc.) — read them through a permissive
+  // view so we can extract them uniformly without a giant per-type switch.
   const rec = r as unknown as Record<string, unknown>;
-  const type = String(rec["type"] ?? "");
-  const name = String(rec["name"] ?? "");
   const content = String(rec["content"] ?? "");
   return {
-    id: `:dns-record:${zoneId}/${String(rec["id"])}`,
+    id: `:dns-record:${zoneId}/${r.id}`,
     pluginId: "cloudflare",
     resourceTypeId: "dns-record",
     accountId: "",
@@ -17,17 +20,17 @@ function recordFields(r: RecordResponse, zoneId: string): ResourceInstance {
       type,
       name,
       content,
-      ttl: Number(rec["ttl"] ?? 1),
+      ttl: Number(r.ttl ?? 1),
       proxied: Boolean(rec["proxied"]),
       ...(rec["priority"] !== undefined ? { priority: Number(rec["priority"]) } : {}),
       zoneName: String(rec["zone_name"] ?? ""),
-      ...(rec["comment"] ? { comment: String(rec["comment"]) } : {}),
+      ...(r.comment ? { comment: r.comment } : {}),
     },
     resolvedOutputs: {},
     secretStates: [],
-    externalId: `${zoneId}/${String(rec["id"])}`,
-    createdAt: String(rec["created_on"] ?? new Date().toISOString()),
-    updatedAt: String(rec["modified_on"] ?? new Date().toISOString()),
+    externalId: `${zoneId}/${r.id}`,
+    createdAt: r.created_on ?? new Date().toISOString(),
+    updatedAt: r.modified_on ?? new Date().toISOString(),
   };
 }
 
@@ -35,7 +38,7 @@ function mapDnsRecord(r: RecordResponse, accountId: string, zoneId: string): Res
   const base = recordFields(r, zoneId);
   return {
     ...base,
-    id: `${accountId}:dns-record:${zoneId}/${String((r as unknown as { id: string }).id)}`,
+    id: `${accountId}:dns-record:${zoneId}/${r.id}`,
     accountId,
     parentResourceId: `${accountId}:zone:${zoneId}`,
   };

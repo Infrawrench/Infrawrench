@@ -55,7 +55,7 @@ export async function listAllAccessPolicies(
   const account_id = await api.getAccountId();
   const results: ResourceInstance[] = [];
   for await (const app of api.cf.zeroTrust.access.applications.list({ account_id })) {
-    const appId = String((app as unknown as { id: string }).id ?? "");
+    const appId = app.id ?? "";
     try {
       for await (const policy of api.cf.zeroTrust.access.applications.policies.list(appId, {
         account_id,

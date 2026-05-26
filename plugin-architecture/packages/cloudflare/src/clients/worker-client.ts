@@ -9,8 +9,7 @@ export async function listWorkers(
   const account_id = await api.getAccountId();
   const out: ResourceInstance[] = [];
   for await (const s of api.cf.workers.scripts.list({ account_id })) {
-    const raw = s as unknown as Record<string, unknown>;
-    const name = String(raw["id"] ?? raw["script_name"] ?? "");
+    const name = s.id ?? "";
     out.push({
       id: `${accountId}:worker:${name}`,
       pluginId: "cloudflare",
@@ -19,16 +18,16 @@ export async function listWorkers(
       displayName: name,
       fields: {
         name,
-        createdOn: String(raw["created_on"] ?? ""),
-        modifiedOn: String(raw["modified_on"] ?? ""),
-        compatibilityDate: String(raw["compatibility_date"] ?? ""),
+        createdOn: s.created_on ?? "",
+        modifiedOn: s.modified_on ?? "",
+        compatibilityDate: s.compatibility_date ?? "",
         routes: "",
       },
       resolvedOutputs: {},
       secretStates: [],
       externalId: name,
-      createdAt: String(raw["created_on"] ?? new Date().toISOString()),
-      updatedAt: String(raw["modified_on"] ?? new Date().toISOString()),
+      createdAt: s.created_on ?? new Date().toISOString(),
+      updatedAt: s.modified_on ?? new Date().toISOString(),
     });
   }
   return out;

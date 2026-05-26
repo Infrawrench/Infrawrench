@@ -110,7 +110,7 @@ export async function listAllPagesDeployments(
   const account_id = await api.getAccountId();
   const results: ResourceInstance[] = [];
   for await (const project of api.cf.pages.projects.list({ account_id })) {
-    const projectName = String((project as unknown as { name?: string }).name ?? "");
+    const projectName = project.name;
     try {
       let count = 0;
       for await (const d of api.cf.pages.projects.deployments.list(projectName, { account_id })) {

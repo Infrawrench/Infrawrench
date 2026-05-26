@@ -559,7 +559,7 @@ export class DatabricksClient implements PluginClient {
     const rows = dataArray.map((row) => {
       const obj: Record<string, unknown> = {};
       for (let i = 0; i < columns.length; i++) {
-        obj[columns[i]!.name] = (row as unknown[])[i];
+        obj[columns[i]!.name] = row[i];
       }
       return obj;
     });
