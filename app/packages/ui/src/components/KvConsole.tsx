@@ -12,6 +12,47 @@ export interface KvConsoleProps {
   onCommand: (command: string, args: (string | number)[]) => Promise<unknown>;
 }
 
+interface ConsoleProfile {
+  /** Title shown in the console header, e.g. "Redis Console". */
+  label: string;
+  /** Example commands shown in the empty state. */
+  examples: string;
+  /** Greyed-out input placeholder when idle. */
+  placeholder: string;
+}
+
+// Per-driver console copy so the panel reflects the actual datastore instead of
+// always saying "Redis". The command set differs per driver (the Kafka driver
+// takes Admin ops, Mongo takes operation names), so the examples differ too.
+const CONSOLE_PROFILES: Record<string, ConsoleProfile> = {
+  redis: { label: "Redis", examples: "PING, KEYS *, GET mykey", placeholder: "PING" },
+  memcached: {
+    label: "Memcached",
+    examples: "STATS, get key, set key 0 0 3",
+    placeholder: "STATS",
+  },
+  mongodb: {
+    label: "MongoDB",
+    examples: "listDatabases, dbStats, serverVersion",
+    placeholder: "listDatabases",
+  },
+  kafka: {
+    label: "Kafka",
+    examples: "listTopics, describeCluster, describeTopic <name>",
+    placeholder: "listTopics",
+  },
+};
+
+function consoleProfile(driverName: string): ConsoleProfile {
+  return (
+    CONSOLE_PROFILES[driverName] ?? {
+      label: driverName ? driverName.charAt(0).toUpperCase() + driverName.slice(1) : "Console",
+      examples: "type a command and press Enter",
+      placeholder: "command",
+    }
+  );
+}
+
 export function KvConsole({ driverName, connected = true, onCommand }: KvConsoleProps) {
   const [input, setInput] = useState("");
   const [lines, setLines] = useState<ConsoleLine[]>([]);
@@ -73,8 +114,7 @@ export function KvConsole({ driverName, connected = true, onCommand }: KvConsole
     }
   }
 
-  const driverLabel =
-    driverName === "memcached" ? "Memcached" : driverName === "mongodb" ? "MongoDB" : "Redis";
+  const profile = consoleProfile(driverName);
 
   return (
     <div
@@ -86,7 +126,7 @@ export function KvConsole({ driverName, connected = true, onCommand }: KvConsole
         <span
           className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${connected ? "bg-blue-400" : "bg-surface-sunken"}`}
         />
-        <span className="text-xs text-on-surface-muted font-medium">{driverLabel} Console</span>
+        <span className="text-xs text-on-surface-muted font-medium">{profile.label} Console</span>
         {lines.length > 0 && (
           <button
             onClick={() => setLines([])}
@@ -104,8 +144,7 @@ export function KvConsole({ driverName, connected = true, onCommand }: KvConsole
       >
         {lines.length === 0 && (
           <span className="text-on-surface-faint">
-            Type a {driverName === "memcached" ? "Memcached" : "Redis"} command and press Enter —
-            e.g. PING, KEYS *, GET mykey
+            Type a {profile.label} command and press Enter — e.g. {profile.examples}
           </span>
         )}
         {lines.map((line, i) => (
@@ -133,7 +172,7 @@ export function KvConsole({ driverName, connected = true, onCommand }: KvConsole
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={connected ? (driverName === "memcached" ? "STATS" : "PING") : "connecting…"}
+          placeholder={connected ? profile.placeholder : "connecting…"}
           disabled={!connected || running}
           className="flex-1 bg-transparent font-mono text-xs text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none disabled:opacity-40"
           autoComplete="off"
