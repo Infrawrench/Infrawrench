@@ -204,7 +204,9 @@ async function spannerRunSql(
     fetch(`https://spanner.googleapis.com/v1/${sessionName}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${tok}` },
-    }).catch(() => {});
+    }).catch((err: unknown) => {
+      console.error(`[gcp/spanner] session cleanup failed for ${sessionName}:`, err);
+    });
   }
 }
 

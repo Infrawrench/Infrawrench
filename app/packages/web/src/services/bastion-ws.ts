@@ -72,7 +72,9 @@ function setupBastionAgentSocket(
 
   // Mark the bastion active on first connect; we mark it again on every
   // message to keep `lastSeenAt` fresh (cheap because it's a single UPDATE).
-  void markActive(bastion.bastionId).catch(() => {});
+  void markActive(bastion.bastionId).catch((err: unknown) => {
+    console.error(`[bastion] markActive failed for ${bastion.bastionId}:`, err);
+  });
 
   // Heartbeat — kill the connection if we don't hear a pong in time.
   let lastSeenMs = Date.now();
@@ -109,7 +111,9 @@ function setupBastionAgentSocket(
         .update(bastionVms)
         .set({ agentVersion: msg.agentVersion, lastSeenAt: new Date() })
         .where(eq(bastionVms.id, bastion.bastionId))
-        .catch(() => {});
+        .catch((err: unknown) => {
+          console.error(`[bastion] agent-info update failed for ${bastion.bastionId}:`, err);
+        });
       return;
     }
     // Everything else (opened/data/closed/open-failed) is for the dispatcher.

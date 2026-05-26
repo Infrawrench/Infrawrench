@@ -68,7 +68,8 @@ async function tick() {
           credentials = await invoke<Record<string, string>>("account_get_credentials", {
             accountId,
           });
-        } catch {
+        } catch (err) {
+          console.error(`metric-pinger: credential fetch failed for account ${accountId}`, err);
           return;
         }
 

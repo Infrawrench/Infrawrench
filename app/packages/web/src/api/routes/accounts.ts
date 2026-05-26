@@ -102,7 +102,9 @@ app.post("/", async (c) => {
   // the refreshed destination allowlist so the agent immediately starts
   // accepting traffic to this plugin's cloud APIs.
   if (validatedBastionId) {
-    void refreshAllowlistById(validatedBastionId).catch(() => {});
+    void refreshAllowlistById(validatedBastionId).catch((err) => {
+      console.error(`[accounts] refreshAllowlistById(${validatedBastionId}) failed:`, err);
+    });
   }
 
   // Sync resources before returning so the UI has data immediately. If the
@@ -188,10 +190,15 @@ app.patch("/:id", async (c) => {
   if (!updated) return c.json({ error: "Account not found" }, 404);
   if (body.bastionId !== undefined) {
     if (oldBastionId && oldBastionId !== updates.bastionId) {
-      void refreshAllowlistById(oldBastionId).catch(() => {});
+      void refreshAllowlistById(oldBastionId).catch((err) => {
+        console.error(`[accounts] refreshAllowlistById(${oldBastionId}) failed:`, err);
+      });
     }
     if (updates.bastionId) {
-      void refreshAllowlistById(updates.bastionId).catch(() => {});
+      const newBastionId = updates.bastionId;
+      void refreshAllowlistById(newBastionId).catch((err) => {
+        console.error(`[accounts] refreshAllowlistById(${newBastionId}) failed:`, err);
+      });
     }
   }
   return c.json(updated);

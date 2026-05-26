@@ -181,7 +181,9 @@ app.post("/conversations/:id/messages", async (c) => {
       .update(chatConversations)
       .set({ title: body.text.slice(0, 60) })
       .where(and(eq(chatConversations.id, conversationId), eq(chatConversations.title, "New chat")))
-      .catch(() => undefined);
+      .catch((err: unknown) => {
+        console.error(`[chat] auto-rename failed for ${conversationId}:`, err);
+      });
   }
 
   return streamSSE(c, async (stream) => {

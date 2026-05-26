@@ -95,7 +95,9 @@ app.get("/download", async (c) => {
       await storageDriver.downloadFile(bucket, key, accessToken, tmpPath);
       const { readFile, unlink } = await import("node:fs/promises");
       const data = await readFile(tmpPath);
-      unlink(tmpPath).catch(() => {});
+      unlink(tmpPath).catch((err: unknown) => {
+        console.error(`[storage] tmp cleanup failed for ${tmpPath}:`, err);
+      });
 
       return new Response(data, {
         headers: {
