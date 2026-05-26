@@ -12,6 +12,11 @@ class FakeSshClient extends EventEmitter {
 
 vi.mock("ssh2", () => ({
   Client: vi.fn(() => new FakeSshClient()),
+  // The shared `in-process-agent.ts` (re-exported from index) imports
+  // `BaseAgent` and `utils.parseKey`. They're not exercised by this suite,
+  // but the module's top-level `import { utils }` evaluates eagerly.
+  BaseAgent: class {},
+  utils: { parseKey: vi.fn() },
 }));
 
 import { openTunnel } from "../index.js";

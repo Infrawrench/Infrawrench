@@ -4,6 +4,13 @@
  * connect override on Windows. Adapters in each consumer add their
  * domain-specific surface (lookup helpers, exec helpers).
  */
+export {
+  InProcessAgent,
+  buildInProcessAgent,
+  type InProcessAgentOptions,
+  type SignOutcome,
+} from "./in-process-agent.js";
+
 import * as net from "node:net";
 import * as crypto from "node:crypto";
 import { Client as SshClient, type ConnectConfig } from "ssh2";
