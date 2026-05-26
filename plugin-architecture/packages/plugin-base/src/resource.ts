@@ -1,13 +1,9 @@
 import type { PeerGuidanceAction } from "./schema.js";
+import type { AssociationSource } from "./create.js";
+
+export type { AssociationSource };
 
 export type FieldKind = "string" | "number" | "boolean" | "enum" | "secret" | "association";
-
-/** Describes a specific plugin/resource-type/output that can provide a value */
-export interface AssociationSource {
-  pluginId: string;
-  resourceTypeId: string;
-  outputKey: string;
-}
 
 export interface FieldDefinition {
   key: string;

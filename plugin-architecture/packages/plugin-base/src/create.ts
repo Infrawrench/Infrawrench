@@ -100,7 +100,12 @@ export type CreateFieldKind =
  */
 export type DatetimeMode = "datetime" | "date" | "epoch-ms";
 
-import type { AssociationSource } from "./resource.js";
+/** Describes a specific plugin/resource-type/output that can provide a value */
+export interface AssociationSource {
+  pluginId: string;
+  resourceTypeId: string;
+  outputKey: string;
+}
 
 export interface CreateFieldConfig {
   /** Key used in the `fields` map passed to `createResource` */
