@@ -99,7 +99,6 @@ export function DockerSetupModal({
       });
       setDockerVersion(ver);
 
-      // Step 4: Open SSH tunnel and create account
       appendLog("Opening SSH tunnel to Docker...");
 
       let newAccountId: string;

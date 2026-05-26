@@ -152,9 +152,8 @@ async function pullChanges(token: string): Promise<void> {
     await setSyncState("last_sync_version", String(maxVersion));
   }
 
-  // TODO: Upsert pulled data into local SQLite (requires re-encrypting
-  // credentials with the local master key). This is the pull-side implementation
-  // that will be completed alongside the full sync integration.
+  // TODO: upsert pulled data into local SQLite (needs re-encrypt with the
+  // local master key).
 }
 
 async function runSyncCycle(): Promise<void> {

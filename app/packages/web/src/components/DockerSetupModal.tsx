@@ -103,7 +103,6 @@ export function DockerSetupModal({
       });
       setDockerVersion(ver);
 
-      // Step 4: Create tunneled Docker account
       appendLog("Creating SSH tunnel to Docker...");
       const credentials = { dockerHost: "tcp://localhost:2375" };
 
