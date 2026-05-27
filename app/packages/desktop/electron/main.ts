@@ -125,16 +125,27 @@ app.whenReady().then(() => {
     const hasACAO = Object.keys(headers).some(
       (k) => k.toLowerCase() === "access-control-allow-origin",
     );
+
+    // Always relax the allowed request-header list. Some providers (e.g.
+    // Cloudflare) DO return their own CORS headers, but with an allow-list that
+    // omits the headers their SDK injects — Cloudflare's `api-version` and the
+    // Stainless `x-stainless-*` telemetry headers — so the browser blocks the
+    // preflight even though ACAO is present. Replace any upstream value (delete
+    // case-insensitively first to avoid emitting a duplicate header).
+    //
+    // AWS SigV4 requests carry x-amz-* headers (content-sha256, date, target,
+    // security-token, user-agent) and Authorization; AWS returns no CORS
+    // headers at all, so these double as the synthesized set for that case.
+    for (const k of Object.keys(headers)) {
+      if (k.toLowerCase() === "access-control-allow-headers") delete headers[k];
+    }
+    headers["Access-Control-Allow-Headers"] = [
+      "Authorization, Content-Type, Accept, Api-Version, X-Amz-Content-Sha256, X-Amz-Date, X-Amz-Target, X-Amz-Security-Token, X-Amz-User-Agent, X-Amz-Algorithm, X-Amz-Credential, X-Amz-Signature, X-Amz-SignedHeaders, X-Stainless-Arch, X-Stainless-Lang, X-Stainless-Os, X-Stainless-Package-Version, X-Stainless-Retry-Count, X-Stainless-Runtime, X-Stainless-Runtime-Version, X-Stainless-Timeout",
+    ];
+
     if (!hasACAO) {
       headers["Access-Control-Allow-Origin"] = ["*"];
       headers["Access-Control-Allow-Methods"] = ["DELETE, GET, HEAD, OPTIONS, POST, PUT, PATCH"];
-      // AWS SigV4 requests carry x-amz-* headers (content-sha256, date, target,
-      // security-token, user-agent) and Authorization. Without listing these
-      // here, the browser blocks every preflight against AWS endpoints — AWS
-      // itself returns no CORS headers, so we synthesize a permissive set.
-      headers["Access-Control-Allow-Headers"] = [
-        "Authorization, Content-Type, Accept, X-Amz-Content-Sha256, X-Amz-Date, X-Amz-Target, X-Amz-Security-Token, X-Amz-User-Agent, X-Amz-Algorithm, X-Amz-Credential, X-Amz-Signature, X-Amz-SignedHeaders",
-      ];
       // OPTIONS preflight must return 200 OK — GCP compute and similar reject
       // cross-origin requests with 403, which the browser refuses even when
       // CORS headers are present.
