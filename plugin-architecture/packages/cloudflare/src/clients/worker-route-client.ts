@@ -33,7 +33,7 @@ export async function listAllWorkerRoutes(
   accountId: string,
 ): Promise<ResourceInstance[]> {
   const results: ResourceInstance[] = [];
-  for await (const zone of api.cf.zones.list()) {
+  for (const zone of await api.listZones()) {
     const zoneId = zone.id;
     try {
       for await (const route of api.cf.workers.routes.list({ zone_id: zoneId })) {

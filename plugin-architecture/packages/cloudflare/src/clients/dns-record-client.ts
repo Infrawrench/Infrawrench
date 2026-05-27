@@ -49,7 +49,7 @@ export async function listAllDnsRecords(
   accountId: string,
 ): Promise<ResourceInstance[]> {
   const results: ResourceInstance[] = [];
-  for await (const zone of api.cf.zones.list()) {
+  for (const zone of await api.listZones()) {
     const zoneId = zone.id;
     for await (const r of api.cf.dns.records.list({ zone_id: zoneId })) {
       results.push(mapDnsRecord(r, accountId, zoneId));

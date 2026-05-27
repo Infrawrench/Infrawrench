@@ -38,7 +38,7 @@ export async function listAllCustomHostnames(
   accountId: string,
 ): Promise<ResourceInstance[]> {
   const results: ResourceInstance[] = [];
-  for await (const zone of api.cf.zones.list()) {
+  for (const zone of await api.listZones()) {
     const zoneId = zone.id;
     try {
       for await (const h of api.cf.customHostnames.list({ zone_id: zoneId })) {

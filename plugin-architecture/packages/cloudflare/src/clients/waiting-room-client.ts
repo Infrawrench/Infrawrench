@@ -39,7 +39,7 @@ export async function listAllWaitingRooms(
   accountId: string,
 ): Promise<ResourceInstance[]> {
   const results: ResourceInstance[] = [];
-  for await (const zone of api.cf.zones.list()) {
+  for (const zone of await api.listZones()) {
     const zoneId = zone.id;
     try {
       for await (const room of api.cf.waitingRooms.list({ zone_id: zoneId })) {

@@ -38,7 +38,7 @@ export async function listZones(
   accountId: string,
 ): Promise<ResourceInstance[]> {
   const out: ResourceInstance[] = [];
-  for await (const z of api.cf.zones.list()) {
+  for (const z of await api.listZones()) {
     out.push(mapZone(api, z, accountId));
   }
   return out;

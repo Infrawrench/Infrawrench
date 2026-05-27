@@ -49,7 +49,7 @@ export async function listAllPageRules(
   accountId: string,
 ): Promise<ResourceInstance[]> {
   const results: ResourceInstance[] = [];
-  for await (const zone of api.cf.zones.list()) {
+  for (const zone of await api.listZones()) {
     const zoneId = zone.id;
     try {
       const rules = await api.cf.pageRules.list({ zone_id: zoneId });

@@ -42,7 +42,7 @@ export async function listAllLogpushJobs(
   accountId: string,
 ): Promise<ResourceInstance[]> {
   const results: ResourceInstance[] = [];
-  for await (const zone of api.cf.zones.list()) {
+  for (const zone of await api.listZones()) {
     const zoneId = zone.id;
     try {
       for await (const job of api.cf.logpush.jobs.list({ zone_id: zoneId })) {

@@ -54,7 +54,7 @@ export async function listAllEmailRoutingRules(
   accountId: string,
 ): Promise<ResourceInstance[]> {
   const results: ResourceInstance[] = [];
-  for await (const zone of api.cf.zones.list()) {
+  for (const zone of await api.listZones()) {
     const zoneId = zone.id;
     try {
       for await (const rule of api.cf.emailRouting.rules.list({ zone_id: zoneId })) {

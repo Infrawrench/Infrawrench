@@ -42,7 +42,7 @@ export async function listAllSSLCertificates(
   accountId: string,
 ): Promise<ResourceInstance[]> {
   const results: ResourceInstance[] = [];
-  for await (const zone of api.cf.zones.list()) {
+  for (const zone of await api.listZones()) {
     const zoneId = zone.id;
     const zoneName = zone.name;
     try {
@@ -79,7 +79,7 @@ export async function createSSLCertificate(
   });
   // Look up the zone name for display purposes.
   let zoneName = "";
-  for await (const z of api.cf.zones.list()) {
+  for (const z of await api.listZones()) {
     if (z.id === zoneId) {
       zoneName = z.name;
       break;
