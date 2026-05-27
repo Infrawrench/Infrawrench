@@ -104,12 +104,18 @@ export function LogsView({ capability, onGetLogs }: Props) {
               type="checkbox"
               checked={previous}
               onChange={(e) => setPrevious(e.target.checked)}
+              aria-label="Previous"
             />
             Previous
           </label>
         )}
         <label className="flex items-center gap-1 text-xs text-on-surface-tertiary cursor-pointer">
-          <input type="checkbox" checked={follow} onChange={(e) => setFollow(e.target.checked)} />
+          <input
+            type="checkbox"
+            checked={follow}
+            onChange={(e) => setFollow(e.target.checked)}
+            aria-label="Follow"
+          />
           Follow
         </label>
         <div className="ml-auto flex items-center gap-2">

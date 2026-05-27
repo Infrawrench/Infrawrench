@@ -280,9 +280,9 @@ export function ConnectResourceModal({
               {/* Template picker */}
               {templates.length > 1 && (
                 <div className="space-y-2">
-                  <label className="text-xs font-medium text-on-surface-tertiary uppercase tracking-wider">
+                  <span className="text-xs font-medium text-on-surface-tertiary uppercase tracking-wider">
                     Template
-                  </label>
+                  </span>
                   <div className="space-y-1.5">
                     {templates.map((tpl) => (
                       <label
@@ -300,6 +300,7 @@ export function ConnectResourceModal({
                           checked={selectedTemplateId === tpl.id}
                           onChange={() => handleTemplateChange(tpl.id)}
                           className="mt-0.5 accent-blue-500"
+                          aria-label={tpl.displayName}
                         />
                         <div>
                           <div className="text-sm font-medium text-on-surface">
@@ -320,9 +321,9 @@ export function ConnectResourceModal({
               {/* Secret keys preview / editor */}
               {selectedTemplate && (
                 <div className="space-y-2">
-                  <label className="text-xs font-medium text-on-surface-tertiary uppercase tracking-wider">
+                  <span className="text-xs font-medium text-on-surface-tertiary uppercase tracking-wider">
                     Keys ({selectedTemplate.entries.length})
-                  </label>
+                  </span>
                   <div className="rounded-lg border border-border-strong divide-y divide-border">
                     {selectedTemplate.entries.map((entry) => (
                       <div key={entry.outputKey} className="flex items-center gap-3 px-3 py-2">
@@ -336,6 +337,7 @@ export function ConnectResourceModal({
                             }))
                           }
                           className="flex-1 bg-transparent text-sm font-mono text-on-surface outline-none"
+                          aria-label={`Environment variable key for ${camelToTitle(entry.outputKey)}`}
                         />
                         <span className="text-xs text-on-surface-faint">from</span>
                         <span className="text-xs text-on-surface-muted font-mono">
@@ -351,9 +353,9 @@ export function ConnectResourceModal({
               {mode === "secret-export" && (
                 <>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-on-surface-tertiary uppercase tracking-wider">
+                    <span className="text-xs font-medium text-on-surface-tertiary uppercase tracking-wider">
                       Namespace
-                    </label>
+                    </span>
                     {namespaces.length > 0 ? (
                       <select
                         value={namespace}
@@ -373,14 +375,21 @@ export function ConnectResourceModal({
                         onChange={(e) => setNamespace(e.target.value)}
                         placeholder="default"
                         className="w-full rounded-lg border border-border-strong bg-surface-overlay px-3 py-2 text-sm text-on-surface outline-none focus:border-blue-500"
+                        aria-label="Namespace"
                       />
                     )}
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-on-surface-tertiary uppercase tracking-wider">
+                    <label
+                      id="connect-resource-secret-name-label"
+                      htmlFor="connect-resource-secret-name"
+                      className="text-xs font-medium text-on-surface-tertiary uppercase tracking-wider"
+                    >
                       Secret Name
                     </label>
                     <input
+                      id="connect-resource-secret-name"
+                      aria-labelledby="connect-resource-secret-name-label"
                       type="text"
                       value={secretName}
                       onChange={(e) => setSecretName(e.target.value)}
@@ -396,9 +405,9 @@ export function ConnectResourceModal({
                 <>
                   {/* SSH key picker */}
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-on-surface-tertiary uppercase tracking-wider">
+                    <span className="text-xs font-medium text-on-surface-tertiary uppercase tracking-wider">
                       SSH Key
-                    </label>
+                    </span>
                     {sshKeys.length === 0 ? (
                       <p className="text-xs text-on-surface-faint">
                         No SSH keys found. Go to Settings to add one.
@@ -419,10 +428,16 @@ export function ConnectResourceModal({
 
                   {/* Username */}
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-on-surface-tertiary uppercase tracking-wider">
+                    <label
+                      id="connect-resource-ssh-username-label"
+                      htmlFor="connect-resource-ssh-username"
+                      className="text-xs font-medium text-on-surface-tertiary uppercase tracking-wider"
+                    >
                       SSH Username
                     </label>
                     <input
+                      id="connect-resource-ssh-username"
+                      aria-labelledby="connect-resource-ssh-username-label"
                       type="text"
                       value={sshUsername}
                       onChange={(e) => setSshUsername(e.target.value)}
@@ -433,10 +448,14 @@ export function ConnectResourceModal({
 
                   {/* Format */}
                   <div className="flex gap-3 items-center">
-                    <label className="text-xs font-medium text-on-surface-tertiary uppercase tracking-wider">
+                    <label
+                      htmlFor="connect-resource-format"
+                      className="text-xs font-medium text-on-surface-tertiary uppercase tracking-wider"
+                    >
                       Format
                     </label>
                     <select
+                      id="connect-resource-format"
                       value={format}
                       onChange={(e) => setFormat(e.target.value as "dotenv" | "profile")}
                       className="rounded-lg border border-border-strong bg-surface-overlay px-3 py-1.5 text-sm text-on-surface outline-none focus:border-blue-500"
@@ -448,11 +467,17 @@ export function ConnectResourceModal({
 
                   {/* File path + append */}
                   <div className="space-y-1.5">
-                    <label className="text-xs font-medium text-on-surface-tertiary uppercase tracking-wider">
+                    <label
+                      id="connect-resource-file-path-label"
+                      htmlFor="connect-resource-file-path"
+                      className="text-xs font-medium text-on-surface-tertiary uppercase tracking-wider"
+                    >
                       File Path
                     </label>
                     <div className="flex gap-2 items-center">
                       <input
+                        id="connect-resource-file-path"
+                        aria-labelledby="connect-resource-file-path-label"
                         type="text"
                         value={filePath}
                         onChange={(e) => setFilePath(e.target.value)}
@@ -465,6 +490,7 @@ export function ConnectResourceModal({
                           checked={append}
                           onChange={(e) => setAppend(e.target.checked)}
                           className="accent-blue-500"
+                          aria-label="Append"
                         />
                         Append
                       </label>

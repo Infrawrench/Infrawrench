@@ -273,6 +273,7 @@ export function ConversationView({ orgId, conversationId }: Props): React.ReactE
             placeholder="Ask anything about your infrastructure…"
             rows={2}
             className="flex-1 bg-surface-overlay border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
+            aria-label="Message"
           />
           <button
             type="button"

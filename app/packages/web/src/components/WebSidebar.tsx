@@ -374,6 +374,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                   <div key={dash.id} className="mx-2 px-3 py-1">
                     <input
                       ref={renameRef}
+                      aria-label="Dashboard name"
                       value={renameValue}
                       onChange={(e) => setRenameValue(e.target.value)}
                       onBlur={() => void handleRename()}
@@ -416,6 +417,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
               <div className="mx-2 px-3 py-1.5">
                 <input
                   ref={newDashboardRef}
+                  aria-label="New dashboard name"
                   value={newDashboardName}
                   onChange={(e) => setNewDashboardName(e.target.value)}
                   placeholder="Dashboard name..."

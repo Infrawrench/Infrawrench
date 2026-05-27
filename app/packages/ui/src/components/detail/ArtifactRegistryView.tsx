@@ -85,6 +85,7 @@ export function ArtifactRegistryView({ capability, onListArtifacts }: Props) {
             if (e.key === "Enter") void load({ reset: true });
           }}
           placeholder="Filter by prefix…"
+          aria-label="Filter by prefix"
           className="flex-1 px-3 py-1.5 rounded text-sm bg-surface-overlay border border-border text-on-surface placeholder:text-on-surface-faint focus:outline-none focus:border-border-strong"
         />
         <button

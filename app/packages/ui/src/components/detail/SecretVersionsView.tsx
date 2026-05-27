@@ -345,6 +345,7 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
                 value={newValue}
                 onChange={(e) => setNewValue(e.target.value)}
                 placeholder="Paste the secret value here…"
+                aria-label="Secret value"
                 rows={8}
                 className="w-full rounded border border-border-strong bg-surface-sunken/60 text-xs font-mono p-3 text-on-surface focus:outline-none focus:border-blue-500"
               />
@@ -358,6 +359,7 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
                     const file = e.target.files?.[0];
                     if (file) void handleFile(file);
                   }}
+                  aria-label="Load secret value from file"
                   className="text-xs"
                 />
               </label>

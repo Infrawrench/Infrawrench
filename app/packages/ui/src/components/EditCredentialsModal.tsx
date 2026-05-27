@@ -160,6 +160,7 @@ export function EditCredentialsModal({
                     placeholder={f.sensitive ? "Leave blank to keep current value" : f.placeholder}
                     rows={6}
                     className="w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-xs text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-border-strong font-mono resize-none"
+                    aria-label={f.label}
                   />
                 ) : (
                   <input
@@ -170,6 +171,7 @@ export function EditCredentialsModal({
                     placeholder={f.sensitive ? "Leave blank to keep current value" : f.placeholder}
                     autoComplete="off"
                     className="w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-border-strong"
+                    aria-label={f.label}
                   />
                 )}
               </div>

@@ -82,6 +82,7 @@ export function SshKeyRadioItem({
         value={value}
         checked={selected}
         onChange={() => onSelect()}
+        aria-label={label}
         className="sr-only peer"
       />
       <span aria-hidden="true" className="text-xs shrink-0">

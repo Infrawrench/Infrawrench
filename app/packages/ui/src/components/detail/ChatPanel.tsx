@@ -207,6 +207,7 @@ export function ChatPanel({ capability, onStream }: Props) {
           <div className="flex items-end gap-2">
             <textarea
               ref={textareaRef}
+              aria-label="Message"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}

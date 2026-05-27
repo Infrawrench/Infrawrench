@@ -194,8 +194,16 @@ export function SshEnvDeployModal({
               />
 
               <div className="flex items-center gap-3">
-                <label className="text-xs text-on-surface-muted w-20 shrink-0">SSH Port</label>
+                <label
+                  id="ssh-env-deploy-port-label"
+                  htmlFor="ssh-env-deploy-port"
+                  className="text-xs text-on-surface-muted w-20 shrink-0"
+                >
+                  SSH Port
+                </label>
                 <input
+                  id="ssh-env-deploy-port"
+                  aria-labelledby="ssh-env-deploy-port-label"
                   type="number"
                   value={sshPort}
                   onChange={(e) => setSshPort(Number(e.target.value))}
@@ -206,7 +214,7 @@ export function SshEnvDeployModal({
               {/* Template picker */}
               {templates.length > 1 && (
                 <div className="space-y-2">
-                  <label className="text-xs text-on-surface-muted">Template</label>
+                  <span className="text-xs text-on-surface-muted">Template</span>
                   <div className="space-y-1">
                     {templates.map((tpl) => (
                       <button
@@ -240,6 +248,7 @@ export function SshEnvDeployModal({
                       <div key={entry.outputKey} className="flex items-center gap-3 px-3 py-2">
                         <input
                           type="text"
+                          aria-label={`Environment variable name for ${camelToTitle(entry.outputKey)}`}
                           value={editableKeys[entry.outputKey] ?? entry.envKey}
                           onChange={(e) =>
                             setEditableKeys((prev) => ({
@@ -261,7 +270,7 @@ export function SshEnvDeployModal({
 
               {/* Format */}
               <div className="space-y-2">
-                <label className="text-xs text-on-surface-muted">Format</label>
+                <span className="text-xs text-on-surface-muted">Format</span>
                 <div className="flex gap-2">
                   <button
                     type="button"
@@ -298,8 +307,16 @@ export function SshEnvDeployModal({
 
               {/* File path */}
               <div className="flex items-center gap-3">
-                <label className="text-xs text-on-surface-muted w-20 shrink-0">File path</label>
+                <label
+                  id="ssh-env-deploy-file-path-label"
+                  htmlFor="ssh-env-deploy-file-path"
+                  className="text-xs text-on-surface-muted w-20 shrink-0"
+                >
+                  File path
+                </label>
                 <input
+                  id="ssh-env-deploy-file-path"
+                  aria-labelledby="ssh-env-deploy-file-path-label"
                   value={filePath}
                   onChange={(e) => setFilePath(e.target.value)}
                   className="flex-1 bg-surface-overlay border border-border-strong rounded-lg px-3 py-1.5 text-sm text-on-surface-secondary font-mono focus:outline-none focus:border-border-strong"
@@ -309,7 +326,7 @@ export function SshEnvDeployModal({
 
               {/* Append toggle */}
               <div className="flex items-center gap-3">
-                <label className="text-xs text-on-surface-muted w-20 shrink-0">Mode</label>
+                <span className="text-xs text-on-surface-muted w-20 shrink-0">Mode</span>
                 <div className="flex gap-2">
                   <button
                     type="button"

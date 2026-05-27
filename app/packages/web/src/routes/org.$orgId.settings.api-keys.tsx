@@ -258,7 +258,7 @@ function CreateApiKeyModal({
             />
           </div>
           <div>
-            <label className="block text-xs text-on-surface-tertiary mb-2">Scopes</label>
+            <span className="block text-xs text-on-surface-tertiary mb-2">Scopes</span>
             <div className="space-y-2">
               {AVAILABLE_SCOPES.map((scope) => (
                 <label
@@ -276,6 +276,7 @@ function CreateApiKeyModal({
                         return next;
                       });
                     }}
+                    aria-label={scope.label}
                     className="rounded border-border-strong"
                   />
                   {scope.label}

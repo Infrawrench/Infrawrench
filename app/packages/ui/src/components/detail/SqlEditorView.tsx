@@ -276,6 +276,7 @@ export function SqlEditorView({
         <div className="px-3 py-2 border-b border-border">
           <input
             type="text"
+            aria-label="Search tables"
             placeholder="Search tables…"
             value={tableSearch}
             onChange={(e) => setTableSearch(e.target.value)}
@@ -435,6 +436,7 @@ export function SqlEditorView({
           </div>
           <textarea
             ref={textareaRef}
+            aria-label="SQL query"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -538,6 +540,7 @@ export function SqlEditorView({
                             return (
                               <td key={col} className="px-1 py-0.5">
                                 <input
+                                  aria-label={`Edit ${col}`}
                                   value={editValues[col] ?? ""}
                                   onChange={(e) =>
                                     setEditValues((prev) => ({ ...prev, [col]: e.target.value }))

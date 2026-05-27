@@ -21,11 +21,11 @@ function SettingsGeneralPage() {
       <h1 className="text-xl font-semibold mb-6">General</h1>
       <div className="space-y-4">
         <div>
-          <label className="block text-xs text-on-surface-tertiary mb-1">Email</label>
+          <span className="block text-xs text-on-surface-tertiary mb-1">Email</span>
           <p className="text-sm text-on-surface-secondary">{session.email}</p>
         </div>
         <div>
-          <label className="block text-xs text-on-surface-tertiary mb-1">Organization ID</label>
+          <span className="block text-xs text-on-surface-tertiary mb-1">Organization ID</span>
           <p className="text-sm text-on-surface-secondary font-mono">{orgId}</p>
         </div>
       </div>

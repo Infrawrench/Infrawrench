@@ -26,6 +26,7 @@ export function SelectPicker({
       <div className="px-3 py-2 border-b border-border-strong bg-surface-overlay/50 flex items-center gap-2">
         <input
           type="text"
+          aria-label="Search options"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search options…"

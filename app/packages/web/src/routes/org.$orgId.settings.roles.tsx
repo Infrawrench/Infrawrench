@@ -251,16 +251,32 @@ function RoleEditor({ role, orgId, groups, onClose, onSaved, onError }: RoleEdit
 
         <div className="space-y-4">
           <div>
-            <label className="block text-xs text-on-surface-tertiary mb-1">Name</label>
+            <label
+              id="role-name-label"
+              htmlFor="role-name"
+              className="block text-xs text-on-surface-tertiary mb-1"
+            >
+              Name
+            </label>
             <input
+              id="role-name"
+              aria-labelledby="role-name-label"
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-sm"
             />
           </div>
           <div>
-            <label className="block text-xs text-on-surface-tertiary mb-1">Description</label>
+            <label
+              id="role-description-label"
+              htmlFor="role-description"
+              className="block text-xs text-on-surface-tertiary mb-1"
+            >
+              Description
+            </label>
             <input
+              id="role-description"
+              aria-labelledby="role-description-label"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               className="w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-sm"
@@ -268,7 +284,7 @@ function RoleEditor({ role, orgId, groups, onClose, onSaved, onError }: RoleEdit
           </div>
 
           <div>
-            <label className="block text-xs text-on-surface-tertiary mb-2">Permissions</label>
+            <span className="block text-xs text-on-surface-tertiary mb-2">Permissions</span>
             <div className="space-y-3 max-h-80 overflow-auto pr-2">
               {groups.map((g) => (
                 <div key={g.category}>
@@ -285,6 +301,7 @@ function RoleEditor({ role, orgId, groups, onClose, onSaved, onError }: RoleEdit
                           type="checkbox"
                           checked={permissions.has(p)}
                           onChange={() => toggle(p)}
+                          aria-label={p}
                         />
                         <code>{p}</code>
                       </label>
@@ -296,11 +313,17 @@ function RoleEditor({ role, orgId, groups, onClose, onSaved, onError }: RoleEdit
           </div>
 
           <div>
-            <label className="block text-xs text-on-surface-tertiary mb-1">
+            <label
+              id="role-extra-permission-label"
+              htmlFor="role-extra-permission"
+              className="block text-xs text-on-surface-tertiary mb-1"
+            >
               Wildcard or custom permission
             </label>
             <div className="flex gap-2">
               <input
+                id="role-extra-permission"
+                aria-labelledby="role-extra-permission-label"
                 value={extraInput}
                 onChange={(e) => setExtraInput(e.target.value)}
                 placeholder="e.g. resources:*:read or *"

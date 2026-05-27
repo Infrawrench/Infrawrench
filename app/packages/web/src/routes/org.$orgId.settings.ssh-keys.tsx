@@ -175,13 +175,13 @@ function SshKeysPage() {
             </p>
             <div className="space-y-3">
               <div>
-                <label className="block text-xs text-on-surface-muted mb-1">Public Key</label>
+                <span className="block text-xs text-on-surface-muted mb-1">Public Key</span>
                 <div className="bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 font-mono text-xs text-on-surface-secondary break-all select-all max-h-20 overflow-auto">
                   {generatedKey.publicKey}
                 </div>
               </div>
               <div>
-                <label className="block text-xs text-on-surface-muted mb-1">Private Key</label>
+                <span className="block text-xs text-on-surface-muted mb-1">Private Key</span>
                 <div className="bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 font-mono text-xs text-on-surface-secondary break-all select-all max-h-32 overflow-auto whitespace-pre">
                   {generatedKey.privateKey}
                 </div>
@@ -252,8 +252,16 @@ function GenerateKeyModal({
         </div>
         <div className="p-5 space-y-4">
           <div>
-            <label className="block text-xs text-on-surface-tertiary mb-1">Key name</label>
+            <label
+              id="generate-ssh-key-name-label"
+              htmlFor="generate-ssh-key-name"
+              className="block text-xs text-on-surface-tertiary mb-1"
+            >
+              Key name
+            </label>
             <input
+              id="generate-ssh-key-name"
+              aria-labelledby="generate-ssh-key-name-label"
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -327,8 +335,16 @@ function ImportKeyModal({ onClose, onImported }: { onClose: () => void; onImport
         </div>
         <div className="p-5 space-y-4">
           <div>
-            <label className="block text-xs text-on-surface-tertiary mb-1">Key name</label>
+            <label
+              id="import-ssh-key-name-label"
+              htmlFor="import-ssh-key-name"
+              className="block text-xs text-on-surface-tertiary mb-1"
+            >
+              Key name
+            </label>
             <input
+              id="import-ssh-key-name"
+              aria-labelledby="import-ssh-key-name-label"
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -337,8 +353,16 @@ function ImportKeyModal({ onClose, onImported }: { onClose: () => void; onImport
             />
           </div>
           <div>
-            <label className="block text-xs text-on-surface-tertiary mb-1">Public key</label>
+            <label
+              id="import-ssh-public-key-label"
+              htmlFor="import-ssh-public-key"
+              className="block text-xs text-on-surface-tertiary mb-1"
+            >
+              Public key
+            </label>
             <textarea
+              id="import-ssh-public-key"
+              aria-labelledby="import-ssh-public-key-label"
               value={publicKey}
               onChange={(e) => setPublicKey(e.target.value)}
               placeholder="ssh-ed25519 AAAA... user@host"

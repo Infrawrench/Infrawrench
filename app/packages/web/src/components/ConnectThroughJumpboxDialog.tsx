@@ -102,6 +102,7 @@ export function ConnectThroughJumpboxDialog({
             <input
               id="ctj-name"
               type="text"
+              aria-label="New SSH account name"
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-sm text-on-surface-secondary focus:outline-none focus:border-border-strong"
@@ -146,6 +147,7 @@ export function ConnectThroughJumpboxDialog({
                   <input
                     type="radio"
                     name="ctj-address"
+                    aria-label={`Private address (${privateHost})`}
                     checked={useAddress === "private"}
                     onChange={() => setUseAddress("private")}
                   />
@@ -157,6 +159,7 @@ export function ConnectThroughJumpboxDialog({
                   <input
                     type="radio"
                     name="ctj-address"
+                    aria-label={`Public address (${publicHost})`}
                     checked={useAddress === "public"}
                     onChange={() => setUseAddress("public")}
                   />

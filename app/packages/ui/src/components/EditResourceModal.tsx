@@ -171,6 +171,7 @@ function EditField({ field, value, onChange }: EditFieldProps) {
             type="checkbox"
             checked={checked}
             onChange={(e) => onChange(e.target.checked ? "true" : "false")}
+            aria-label={field.label}
           />
           <span>{field.label}</span>
         </label>
@@ -205,6 +206,7 @@ function EditField({ field, value, onChange }: EditFieldProps) {
           value={value}
           onChange={(e) => onChange(e.target.value)}
           className={inputClass}
+          aria-label={field.label}
         />
         {descriptionEl}
       </div>
@@ -220,6 +222,7 @@ function EditField({ field, value, onChange }: EditFieldProps) {
         value={value}
         onChange={(e) => onChange(e.target.value)}
         className={inputClass}
+        aria-label={field.label}
       />
       {descriptionEl}
     </div>

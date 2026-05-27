@@ -67,6 +67,7 @@ export function RegionPicker({
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search by location or zone…"
           className="flex-1 bg-transparent text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none"
+          aria-label="Search regions"
         />
         {selected && !search && (
           <span className="text-xs text-accent flex-shrink-0 flex items-center gap-1">

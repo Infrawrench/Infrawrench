@@ -241,6 +241,7 @@ export function MongoDocumentBrowser({
                 if (e.key === "Enter") void handleCreateCollection();
                 if (e.key === "Escape") setShowNewCollection(false);
               }}
+              aria-label="Collection name"
               placeholder="collection name"
               className="flex-1 min-w-0 bg-surface-raised border border-border-strong rounded px-2 py-1 text-xs text-on-surface-secondary font-mono placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500"
               autoFocus
@@ -336,6 +337,7 @@ export function MongoDocumentBrowser({
             onKeyDown={(e) => {
               if (e.key === "Enter") handleApplyFilter();
             }}
+            aria-label="Filter query"
             placeholder='{ "field": "value" }'
             className="flex-1 bg-surface-raised border border-border-strong rounded px-2 py-1 text-xs text-on-surface-secondary font-mono placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500"
             spellCheck={false}
@@ -389,6 +391,7 @@ export function MongoDocumentBrowser({
               value={insertDocText}
               onChange={(e) => setInsertDocText(e.target.value)}
               rows={6}
+              aria-label="Document JSON to insert"
               className="w-full bg-surface-raised border border-border-strong rounded-lg px-3 py-2 text-xs text-on-surface-secondary font-mono placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500 resize-y"
               spellCheck={false}
               placeholder='{ "key": "value" }'
@@ -601,6 +604,7 @@ function DocumentRow({
                 value={editText}
                 onChange={(e) => setEditText(e.target.value)}
                 rows={10}
+                aria-label="Document JSON"
                 className="w-full bg-surface-raised border border-border-strong rounded-lg px-3 py-2 text-xs text-on-surface-secondary font-mono focus:outline-none focus:border-blue-500 resize-y"
                 spellCheck={false}
               />

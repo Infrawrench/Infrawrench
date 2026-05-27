@@ -121,7 +121,7 @@ export function SshTunnelModal({
           <div className="p-6 space-y-4">
             {/* SSH Key picker */}
             <div className="flex items-start gap-3">
-              <label className="text-xs text-on-surface-muted w-20 shrink-0 pt-1">SSH Key</label>
+              <span className="text-xs text-on-surface-muted w-20 shrink-0 pt-1">SSH Key</span>
               <div className="flex-1 space-y-1">
                 {loadingKeys ? (
                   <p className="text-xs text-on-surface-faint py-1">Loading keys…</p>
@@ -152,8 +152,16 @@ export function SshTunnelModal({
 
             {/* Username */}
             <div className="flex items-center gap-3">
-              <label className="text-xs text-on-surface-muted w-20 shrink-0">Username</label>
+              <label
+                id="ssh-tunnel-username-label"
+                htmlFor="ssh-tunnel-username"
+                className="text-xs text-on-surface-muted w-20 shrink-0"
+              >
+                Username
+              </label>
               <input
+                id="ssh-tunnel-username"
+                aria-labelledby="ssh-tunnel-username-label"
                 value={sshUser}
                 onChange={(e) => setSshUser(e.target.value)}
                 className="flex-1 bg-surface-overlay border border-border-strong rounded-lg px-3 py-1.5 text-sm text-on-surface-secondary font-mono focus:outline-none focus:border-border-strong"
@@ -164,8 +172,16 @@ export function SshTunnelModal({
 
             {/* SSH Port */}
             <div className="flex items-center gap-3">
-              <label className="text-xs text-on-surface-muted w-20 shrink-0">SSH Port</label>
+              <label
+                id="ssh-tunnel-port-label"
+                htmlFor="ssh-tunnel-port"
+                className="text-xs text-on-surface-muted w-20 shrink-0"
+              >
+                SSH Port
+              </label>
               <input
+                id="ssh-tunnel-port"
+                aria-labelledby="ssh-tunnel-port-label"
                 type="number"
                 value={sshPort}
                 onChange={(e) => setSshPort(Number(e.target.value))}
@@ -175,7 +191,7 @@ export function SshTunnelModal({
 
             {/* Service selector */}
             <div>
-              <label className="block text-xs text-on-surface-muted mb-2">Target Service</label>
+              <span className="block text-xs text-on-surface-muted mb-2">Target Service</span>
               <div className="grid grid-cols-3 gap-2">
                 {(
                   Object.entries(SSH_TUNNEL_PRESETS) as [
@@ -204,8 +220,16 @@ export function SshTunnelModal({
 
             {service === "custom" && (
               <div className="flex items-center gap-3">
-                <label className="text-xs text-on-surface-muted w-20 shrink-0">Remote Port</label>
+                <label
+                  id="ssh-tunnel-remote-port-label"
+                  htmlFor="ssh-tunnel-remote-port"
+                  className="text-xs text-on-surface-muted w-20 shrink-0"
+                >
+                  Remote Port
+                </label>
                 <input
+                  id="ssh-tunnel-remote-port"
+                  aria-labelledby="ssh-tunnel-remote-port-label"
                   type="number"
                   value={customPort}
                   onChange={(e) => setCustomPort(Number(e.target.value))}

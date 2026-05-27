@@ -225,8 +225,16 @@ function CreateBastionModal({
         </div>
         <div className="p-5 space-y-4">
           <div>
-            <label className="block text-xs text-on-surface-tertiary mb-1">Name</label>
+            <label
+              id="bastion-name-label"
+              htmlFor="bastion-name"
+              className="block text-xs text-on-surface-tertiary mb-1"
+            >
+              Name
+            </label>
             <input
+              id="bastion-name"
+              aria-labelledby="bastion-name-label"
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -289,7 +297,7 @@ function CreatedBastionModal({
           <span className="text-green-500"> Connected </span>
           once the agent dials in. The token is shown only this once.
         </p>
-        <label className="block text-xs text-on-surface-muted mb-1">Run command</label>
+        <span className="block text-xs text-on-surface-muted mb-1">Run command</span>
         <div className="bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 font-mono text-xs text-on-surface-secondary break-all select-all max-h-40 overflow-auto whitespace-pre">
           {dockerRun}
         </div>

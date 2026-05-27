@@ -175,8 +175,16 @@ export function SshKeyPicker({
     <div className="space-y-3">
       {/* Username */}
       <div className="flex items-center gap-3">
-        <label className="text-xs text-on-surface-muted w-20 shrink-0">Username</label>
+        <label
+          id="ssh-key-picker-username-label"
+          htmlFor="ssh-key-picker-username"
+          className="text-xs text-on-surface-muted w-20 shrink-0"
+        >
+          Username
+        </label>
         <input
+          id="ssh-key-picker-username"
+          aria-labelledby="ssh-key-picker-username-label"
           value={username}
           onChange={(e) => onUsernameChange(e.target.value)}
           className="flex-1 bg-surface-overlay border border-border-strong rounded-lg px-3 py-1.5 text-sm text-on-surface-secondary font-mono focus:outline-none focus:border-border-strong"
@@ -187,7 +195,7 @@ export function SshKeyPicker({
 
       {/* Key picker */}
       <div className="flex items-start gap-3">
-        <label className="text-xs text-on-surface-muted w-20 shrink-0 pt-1">SSH Key</label>
+        <span className="text-xs text-on-surface-muted w-20 shrink-0 pt-1">SSH Key</span>
         <div className="flex-1 space-y-1">
           {systemKeys.length === 0 &&
           appKeys.length === 0 &&
@@ -283,12 +291,14 @@ export function SshKeyPicker({
                 className="w-full bg-surface-overlay border border-border-strong rounded px-2 py-1 text-xs text-on-surface-secondary font-mono focus:outline-none focus:border-border-strong"
                 placeholder="Key name (e.g. my-droplet-key)"
                 spellCheck={false}
+                aria-label="Key name"
               />
               <textarea
                 value={newKeyPem}
                 onChange={(e) => setNewKeyPem(e.target.value)}
                 className="w-full bg-surface-overlay border border-border-strong rounded px-2 py-1.5 text-xs text-on-surface-secondary font-mono focus:outline-none focus:border-border-strong resize-none"
                 rows={5}
+                aria-label="Private key (PEM)"
                 placeholder={
                   "-----BEGIN OPENSSH PRIVATE KEY-----\n...\n-----END OPENSSH PRIVATE KEY-----"
                 }

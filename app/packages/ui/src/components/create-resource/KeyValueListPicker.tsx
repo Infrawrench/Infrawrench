@@ -97,6 +97,7 @@ export function KeyValueListPicker({
               value={entry.key}
               onChange={(e) => update(i, { key: e.target.value })}
               placeholder={keyPlaceholder}
+              aria-label={keyLabel ?? keyPlaceholder ?? keyName}
               className="w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500"
             />
           </div>

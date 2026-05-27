@@ -66,6 +66,7 @@ export function ImportYamlModal({ title, onClose, onSubmit, onApplied }: ImportY
           <input
             ref={fileInputRef}
             type="file"
+            aria-label="Load YAML file"
             accept=".yaml,.yml,text/yaml,application/x-yaml"
             className="hidden"
             onChange={handleFilePick}
@@ -83,6 +84,7 @@ export function ImportYamlModal({ title, onClose, onSubmit, onApplied }: ImportY
         </div>
 
         <textarea
+          aria-label="YAML content"
           value={yamlText}
           onChange={(e) => setYamlText(e.target.value)}
           disabled={busy}

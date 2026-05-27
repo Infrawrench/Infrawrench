@@ -114,6 +114,7 @@ export function AccountResourceSections<T extends SectionTypeDef, R extends Sect
           value={searchQuery}
           onChange={(event) => setSearchQuery(event.target.value)}
           placeholder="Search sections or resources..."
+          aria-label="Search sections or resources"
           className="w-full md:max-w-sm bg-surface-raised border border-border rounded-md px-3 py-2 text-sm text-on-surface-secondary placeholder:text-on-surface-muted focus:outline-none focus:border-blue-500"
         />
         {visibleCategories.length > 0 && (

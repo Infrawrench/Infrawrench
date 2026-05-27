@@ -310,6 +310,7 @@ export function FileBrowser({
         <input
           id="file-browser-path"
           type="text"
+          aria-label="Path"
           value={pathInput}
           onChange={(e) => setPathInput(e.target.value)}
           onFocus={() => setPathEditing(true)}
@@ -335,6 +336,7 @@ export function FileBrowser({
 
         <input
           type="text"
+          aria-label="Filter files"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Filter…"
@@ -377,6 +379,7 @@ export function FileBrowser({
                 <input
                   ref={fileInputRef}
                   type="file"
+                  aria-label="Upload files"
                   multiple
                   className="hidden"
                   onChange={(e) => {
@@ -390,6 +393,7 @@ export function FileBrowser({
                   <input
                     ref={folderInputRef}
                     type="file"
+                    aria-label="Upload folder"
                     // @ts-expect-error webkitdirectory non-standard
                     webkitdirectory=""
                     multiple
@@ -502,6 +506,7 @@ export function FileBrowser({
                       <span className="text-yellow-600">▶</span>
                       <input
                         ref={newFolderInputRef}
+                        aria-label="Folder name"
                         value={newFolderName}
                         onChange={(e) => setNewFolderName(e.target.value)}
                         onKeyDown={(e) => {
@@ -597,6 +602,7 @@ export function FileBrowser({
                     <td className="px-3 py-1.5">
                       <input
                         type="checkbox"
+                        aria-label={`Select folder ${d.name}`}
                         checked={isSel}
                         onChange={(e) =>
                           toggleSelect(
@@ -676,6 +682,7 @@ export function FileBrowser({
                     <td className="px-3 py-1.5">
                       <input
                         type="checkbox"
+                        aria-label={`Select file ${f.name}`}
                         checked={isSel}
                         onChange={(e) =>
                           toggleSelect(

@@ -198,6 +198,7 @@ export function AssociationPicker({
                 onChange={(e) => setLiteralValue(e.target.value)}
                 placeholder={`Paste ${fieldKey} value...`}
                 className="w-full h-40 bg-surface-overlay border border-border-strong rounded-lg p-3 text-sm font-mono text-on-surface-secondary placeholder:text-on-surface-faint resize-none focus:outline-none focus:border-blue-500"
+                aria-label={`${fieldKey} value`}
               />
             </div>
           )}

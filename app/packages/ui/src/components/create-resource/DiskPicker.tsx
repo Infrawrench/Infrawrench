@@ -29,6 +29,7 @@ export function DiskPicker({
       <div className="px-3 py-2 border-b border-border-strong bg-surface-overlay/50">
         <input
           type="text"
+          aria-label="Search disks"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search disks…"

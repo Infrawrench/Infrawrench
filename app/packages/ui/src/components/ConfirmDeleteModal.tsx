@@ -45,6 +45,7 @@ export function ConfirmDeleteModal({ kind, name, onConfirm, onClose }: ConfirmDe
         </label>
         <input
           id="confirm-delete-input"
+          aria-label={`Type ${name} to confirm`}
           autoFocus
           type="text"
           value={typed}

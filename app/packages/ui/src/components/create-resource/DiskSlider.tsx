@@ -26,6 +26,7 @@ export function DiskSlider({
         </div>
         <input
           type="range"
+          aria-label="Disk size in GB"
           min={min}
           max={max}
           step={step}

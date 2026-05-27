@@ -129,9 +129,7 @@ export function CredentialExportModal({
             <>
               {formats.length > 1 && (
                 <div className="space-y-2">
-                  <label className="block text-xs font-medium text-on-surface-tertiary">
-                    Format
-                  </label>
+                  <span className="block text-xs font-medium text-on-surface-tertiary">Format</span>
                   <div className="space-y-2">
                     {formats.map((f) => (
                       <label
@@ -145,6 +143,7 @@ export function CredentialExportModal({
                         <input
                           type="radio"
                           name="cred-format"
+                          aria-label={f.label}
                           value={f.id}
                           checked={selectedFormatId === f.id}
                           onChange={() => setSelectedFormatId(f.id)}

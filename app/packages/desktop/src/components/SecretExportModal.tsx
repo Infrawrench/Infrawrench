@@ -226,9 +226,9 @@ export function SecretExportModal({
               {/* Template picker */}
               {templates.length > 1 && (
                 <div className="space-y-2">
-                  <label className="text-xs font-medium text-on-surface-tertiary uppercase tracking-wider">
+                  <span className="text-xs font-medium text-on-surface-tertiary uppercase tracking-wider">
                     Template
-                  </label>
+                  </span>
                   <div className="space-y-1.5">
                     {templates.map((tpl) => (
                       <label
@@ -245,6 +245,7 @@ export function SecretExportModal({
                           value={tpl.id}
                           checked={selectedTemplateId === tpl.id}
                           onChange={() => handleTemplateChange(tpl.id)}
+                          aria-label={tpl.displayName}
                           className="mt-0.5 accent-blue-500"
                         />
                         <div>
@@ -281,6 +282,7 @@ export function SecretExportModal({
                               [entry.outputKey]: e.target.value,
                             }))
                           }
+                          aria-label={`Secret key for ${camelToTitle(entry.outputKey)}`}
                           className="flex-1 bg-transparent text-sm font-mono text-on-surface outline-none"
                         />
                         <span className="text-xs text-on-surface-faint">from</span>
@@ -295,11 +297,17 @@ export function SecretExportModal({
 
               {/* Namespace */}
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-on-surface-tertiary uppercase tracking-wider">
+                <label
+                  id="secret-export-namespace-label"
+                  htmlFor="secret-export-namespace"
+                  className="text-xs font-medium text-on-surface-tertiary uppercase tracking-wider"
+                >
                   Namespace
                 </label>
                 {namespaces.length > 0 ? (
                   <select
+                    id="secret-export-namespace"
+                    aria-labelledby="secret-export-namespace-label"
                     value={namespace}
                     onChange={(e) => setNamespace(e.target.value)}
                     className="w-full rounded-lg border border-border-strong bg-surface-overlay px-3 py-2 text-sm text-on-surface outline-none focus:border-blue-500"
@@ -312,6 +320,8 @@ export function SecretExportModal({
                   </select>
                 ) : (
                   <input
+                    id="secret-export-namespace"
+                    aria-labelledby="secret-export-namespace-label"
                     type="text"
                     value={namespace}
                     onChange={(e) => setNamespace(e.target.value)}
@@ -323,10 +333,16 @@ export function SecretExportModal({
 
               {/* Secret name */}
               <div className="space-y-1.5">
-                <label className="text-xs font-medium text-on-surface-tertiary uppercase tracking-wider">
+                <label
+                  id="secret-export-name-label"
+                  htmlFor="secret-export-name"
+                  className="text-xs font-medium text-on-surface-tertiary uppercase tracking-wider"
+                >
                   Secret Name
                 </label>
                 <input
+                  id="secret-export-name"
+                  aria-labelledby="secret-export-name-label"
                   type="text"
                   value={secretName}
                   onChange={(e) => setSecretName(e.target.value)}

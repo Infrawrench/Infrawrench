@@ -42,6 +42,7 @@ export function ImagePicker({
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search images…"
+          aria-label="Search images"
           className="flex-1 bg-transparent text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none"
         />
         {selectedImage && !search && (

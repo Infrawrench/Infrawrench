@@ -171,6 +171,7 @@ export function KvConsole({ driverName, connected = true, onCommand }: KvConsole
         <span className="text-on-surface-faint font-mono text-xs flex-shrink-0">{">"}</span>
         <input
           ref={inputRef}
+          aria-label={`${profile.label} console command`}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}

@@ -346,6 +346,7 @@ export function SshKeyPicker({
               onChange={(e) => setNewName(e.target.value)}
               className="w-full bg-surface-overlay border border-border-strong rounded px-2 py-1.5 text-xs text-on-surface-secondary font-mono focus:outline-none focus:border-border-strong"
               placeholder="Key name (e.g. deploy-key)"
+              aria-label="Key name"
               spellCheck={false}
               autoFocus
             />

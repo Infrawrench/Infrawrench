@@ -225,6 +225,7 @@ export function MetricPingModal({
                   onChange={(e) => setMinStr(e.target.value)}
                   placeholder="—"
                   className="bg-surface-sunken border border-border rounded px-2 py-1.5 text-sm text-on-surface"
+                  aria-label="Min (alert when below)"
                 />
               </label>
               <label className="flex flex-col gap-1 flex-1">
@@ -235,6 +236,7 @@ export function MetricPingModal({
                   onChange={(e) => setMaxStr(e.target.value)}
                   placeholder="—"
                   className="bg-surface-sunken border border-border rounded px-2 py-1.5 text-sm text-on-surface"
+                  aria-label="Max (alert when above)"
                 />
               </label>
             </div>

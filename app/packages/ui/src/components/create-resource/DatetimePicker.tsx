@@ -55,6 +55,7 @@ export function DatetimePicker({
         onChange={(e) => onChange(inputValueToStored(e.target.value, mode))}
         placeholder={placeholder}
         className={INPUT_CLASSES}
+        aria-label={mode === "date" ? "Date" : "Date and time"}
       />
       {mode !== "date" && (
         <p className="text-[11px] text-on-surface-faint">

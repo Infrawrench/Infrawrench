@@ -98,6 +98,7 @@ export function PolicyPicker({
       <div className="px-3 py-2 border-b border-border-strong bg-surface-overlay/50 flex items-center gap-2">
         <input
           type="text"
+          aria-label="Search policies"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder={`Search ${policies.length} policies…`}
@@ -183,7 +184,13 @@ function PolicyRow({
           : "text-on-surface-secondary hover:bg-surface-overlay"
       }`}
     >
-      <input type="checkbox" checked={selected} onChange={onToggle} className="sr-only" />
+      <input
+        type="checkbox"
+        aria-label={policy.label}
+        checked={selected}
+        onChange={onToggle}
+        className="sr-only"
+      />
       <span
         aria-hidden="true"
         className={`mt-0.5 w-3.5 h-3.5 rounded border flex-shrink-0 flex items-center justify-center ${

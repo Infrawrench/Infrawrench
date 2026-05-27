@@ -86,7 +86,13 @@ function AgentForwardToolbar({ checked, onChange }: { checked: boolean; onChange
   return (
     <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 border-b border-border/60 bg-surface/40">
       <label className="flex items-center gap-2 text-xs text-on-surface-muted cursor-pointer select-none">
-        <input type="checkbox" checked={checked} onChange={onChange} className="accent-green-600" />
+        <input
+          type="checkbox"
+          aria-label="Forward SSH agent"
+          checked={checked}
+          onChange={onChange}
+          className="accent-green-600"
+        />
         <span>Forward SSH agent</span>
       </label>
       <span

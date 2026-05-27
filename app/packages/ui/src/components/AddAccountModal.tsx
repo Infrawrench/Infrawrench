@@ -255,6 +255,7 @@ export function AddAccountModal({
                     <input
                       id="add-account-name"
                       type="text"
+                      aria-label="Account name"
                       value={accountName}
                       onChange={(e) => setAccountName(e.target.value)}
                       placeholder={`My ${selected.displayName} account`}
@@ -327,6 +328,7 @@ export function AddAccountModal({
                         ) : f.multiline ? (
                           <textarea
                             id={fieldId}
+                            aria-label={f.label}
                             value={fieldValues[f.key] ?? ""}
                             onChange={(e) =>
                               setFieldValues((v) => ({ ...v, [f.key]: e.target.value }))
@@ -338,6 +340,7 @@ export function AddAccountModal({
                         ) : (
                           <input
                             id={fieldId}
+                            aria-label={f.label}
                             type={f.sensitive ? "password" : "text"}
                             value={fieldValues[f.key] ?? ""}
                             onChange={(e) =>

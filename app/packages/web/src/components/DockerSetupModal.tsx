@@ -147,8 +147,16 @@ export function DockerSetupModal({
             {step === "credentials" && (
               <>
                 <div className="flex items-center gap-3">
-                  <label className="text-xs text-on-surface-muted w-20 shrink-0">Name</label>
+                  <label
+                    id="docker-setup-name-label"
+                    htmlFor="docker-setup-name"
+                    className="text-xs text-on-surface-muted w-20 shrink-0"
+                  >
+                    Name
+                  </label>
                   <input
+                    id="docker-setup-name"
+                    aria-labelledby="docker-setup-name-label"
                     value={accountName}
                     onChange={(e) => setAccountName(e.target.value)}
                     className="flex-1 bg-surface-overlay border border-border-strong rounded-lg px-3 py-1.5 text-sm text-on-surface-secondary focus:outline-none focus:border-border-strong"
@@ -159,9 +167,7 @@ export function DockerSetupModal({
 
                 {/* SSH Key picker */}
                 <div className="flex items-start gap-3">
-                  <label className="text-xs text-on-surface-muted w-20 shrink-0 pt-1">
-                    SSH Key
-                  </label>
+                  <span className="text-xs text-on-surface-muted w-20 shrink-0 pt-1">SSH Key</span>
                   <div className="flex-1 space-y-1">
                     {loadingKeys ? (
                       <p className="text-xs text-on-surface-faint py-1">Loading keys…</p>
@@ -192,8 +198,16 @@ export function DockerSetupModal({
 
                 {/* Username */}
                 <div className="flex items-center gap-3">
-                  <label className="text-xs text-on-surface-muted w-20 shrink-0">Username</label>
+                  <label
+                    id="docker-setup-username-label"
+                    htmlFor="docker-setup-username"
+                    className="text-xs text-on-surface-muted w-20 shrink-0"
+                  >
+                    Username
+                  </label>
                   <input
+                    id="docker-setup-username"
+                    aria-labelledby="docker-setup-username-label"
                     value={sshUser}
                     onChange={(e) => setSshUser(e.target.value)}
                     className="flex-1 bg-surface-overlay border border-border-strong rounded-lg px-3 py-1.5 text-sm text-on-surface-secondary font-mono focus:outline-none focus:border-border-strong"
@@ -203,8 +217,16 @@ export function DockerSetupModal({
                 </div>
 
                 <div className="flex items-center gap-3">
-                  <label className="text-xs text-on-surface-muted w-20 shrink-0">SSH Port</label>
+                  <label
+                    id="docker-setup-ssh-port-label"
+                    htmlFor="docker-setup-ssh-port"
+                    className="text-xs text-on-surface-muted w-20 shrink-0"
+                  >
+                    SSH Port
+                  </label>
                   <input
+                    id="docker-setup-ssh-port"
+                    aria-labelledby="docker-setup-ssh-port-label"
                     type="number"
                     value={sshPort}
                     onChange={(e) => setSshPort(Number(e.target.value))}

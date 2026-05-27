@@ -142,8 +142,16 @@ export function SshQuickConnectPanel({
       <div className="px-4 pb-4 pt-3 space-y-3 bg-surface/60">
         {/* Username */}
         <div className="flex items-center gap-3">
-          <label className="text-xs text-on-surface-muted w-20 shrink-0">Username</label>
+          <label
+            id="ssh-quick-connect-username-label"
+            htmlFor="ssh-quick-connect-username"
+            className="text-xs text-on-surface-muted w-20 shrink-0"
+          >
+            Username
+          </label>
           <input
+            id="ssh-quick-connect-username"
+            aria-labelledby="ssh-quick-connect-username-label"
             value={username}
             onChange={(e) => {
               const next = e.target.value;
@@ -167,7 +175,7 @@ export function SshQuickConnectPanel({
 
         {/* Key picker */}
         <div className="flex items-start gap-3">
-          <label className="text-xs text-on-surface-muted w-20 shrink-0 pt-1">SSH Key</label>
+          <span className="text-xs text-on-surface-muted w-20 shrink-0 pt-1">SSH Key</span>
           <div className="flex-1 space-y-1">
             {systemKeys.length === 0 &&
             appKeys.length === 0 &&
@@ -283,6 +291,7 @@ export function SshQuickConnectPanel({
                   onChange={(e) => setNewKeyName(e.target.value)}
                   className="w-full bg-surface-overlay border border-border-strong rounded px-2 py-1 text-xs text-on-surface-secondary font-mono focus:outline-none focus:border-border-strong"
                   placeholder="Key name (e.g. my-droplet-key)"
+                  aria-label="Key name"
                   spellCheck={false}
                 />
                 <textarea
@@ -290,6 +299,7 @@ export function SshQuickConnectPanel({
                   onChange={(e) => setNewKeyPem(e.target.value)}
                   className="w-full bg-surface-overlay border border-border-strong rounded px-2 py-1.5 text-xs text-on-surface-secondary font-mono focus:outline-none focus:border-border-strong resize-none"
                   rows={5}
+                  aria-label="Private key"
                   placeholder={
                     "-----BEGIN OPENSSH PRIVATE KEY-----\n...\n-----END OPENSSH PRIVATE KEY-----"
                   }

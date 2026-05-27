@@ -78,6 +78,7 @@ export function JsonSchemaEditor({ value, onChange }: JsonSchemaEditorProps) {
               value={row.name}
               onChange={(e) => update(i, { name: e.target.value })}
               placeholder="property name"
+              aria-label="Property name"
               spellCheck={false}
               className="flex-1 min-w-0 bg-surface-overlay border border-border-strong rounded-lg px-3 py-1.5 text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500"
             />
@@ -97,6 +98,7 @@ export function JsonSchemaEditor({ value, onChange }: JsonSchemaEditorProps) {
                 type="checkbox"
                 checked={row.required}
                 onChange={(e) => update(i, { required: e.target.checked })}
+                aria-label="Required"
                 className="accent-blue-500"
               />
             </label>
@@ -115,6 +117,7 @@ export function JsonSchemaEditor({ value, onChange }: JsonSchemaEditorProps) {
             value={row.description}
             onChange={(e) => update(i, { description: e.target.value })}
             placeholder="description (optional)"
+            aria-label="Property description"
             spellCheck={false}
             className="w-full bg-surface-overlay/60 border border-border rounded-lg px-3 py-1 text-xs text-on-surface-tertiary placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500"
           />

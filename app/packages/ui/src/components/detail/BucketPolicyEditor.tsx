@@ -551,6 +551,7 @@ function StatementForm({ statement, bucketArn, onChange }: StatementFormProps) {
           value={statement.Sid ?? ""}
           onChange={(e) => patch("Sid", e.target.value || undefined)}
           placeholder="MyStatement"
+          aria-label="Statement ID (Sid)"
           className="w-full bg-surface border border-border-strong rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-blue-500"
         />
       </Row>
@@ -598,6 +599,7 @@ function StatementForm({ statement, bucketArn, onChange }: StatementFormProps) {
             <textarea
               value={editablePrincipal.values}
               onChange={(e) => setPrincipal(editablePrincipal.mode, e.target.value)}
+              aria-label="Principal ARNs"
               placeholder={
                 editablePrincipal.mode === "aws"
                   ? "arn:aws:iam::123456789012:root\narn:aws:iam::123456789012:role/MyRole"
@@ -713,6 +715,7 @@ function ActionPicker({
             }
           }}
           placeholder="s3:GetObject…"
+          aria-label="Add an action"
           className="w-full bg-surface border border-border-strong rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-blue-500"
         />
         {open && suggestions.length > 0 && (
@@ -803,6 +806,7 @@ function ResourceEditor({
             value={v}
             onChange={(e) => updateAt(i, e.target.value)}
             placeholder={`${bucketArn}/some/prefix/*`}
+            aria-label="Resource ARN"
             className="flex-1 bg-surface border border-border-strong rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-blue-500"
           />
           <button
@@ -931,12 +935,14 @@ function ConditionEditor({
             value={row.key}
             onChange={(e) => update(i, { key: e.target.value })}
             placeholder="aws:SecureTransport"
+            aria-label="Condition key"
             className="bg-surface border border-border-strong rounded px-1.5 py-1 text-xs font-mono focus:outline-none focus:border-blue-500"
           />
           <input
             value={row.value}
             onChange={(e) => update(i, { value: e.target.value })}
             placeholder="false  (comma-separated for multiple values)"
+            aria-label="Condition value"
             className="bg-surface border border-border-strong rounded px-1.5 py-1 text-xs font-mono focus:outline-none focus:border-blue-500"
           />
           <button
@@ -1039,6 +1045,7 @@ function TemplatePickerModal({
                     })
                   }
                   placeholder={field.placeholder}
+                  aria-label={field.label}
                   className="w-full bg-surface border border-border-strong rounded px-2 py-1 text-sm font-mono focus:outline-none focus:border-blue-500"
                 />
               </div>

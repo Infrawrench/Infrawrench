@@ -186,8 +186,16 @@ export function DockerSetupModal({
           {step === "credentials" && (
             <>
               <div className="flex items-center gap-3">
-                <label className="text-xs text-on-surface-muted w-20 shrink-0">Name</label>
+                <label
+                  id="docker-setup-name-label"
+                  htmlFor="docker-setup-name"
+                  className="text-xs text-on-surface-muted w-20 shrink-0"
+                >
+                  Name
+                </label>
                 <input
+                  id="docker-setup-name"
+                  aria-labelledby="docker-setup-name-label"
                   value={accountName}
                   onChange={(e) => setAccountName(e.target.value)}
                   className="flex-1 bg-surface-overlay border border-border-strong rounded-lg px-3 py-1.5 text-sm text-on-surface-secondary focus:outline-none focus:border-border-strong"
@@ -204,8 +212,16 @@ export function DockerSetupModal({
               />
 
               <div className="flex items-center gap-3">
-                <label className="text-xs text-on-surface-muted w-20 shrink-0">SSH Port</label>
+                <label
+                  id="docker-setup-ssh-port-label"
+                  htmlFor="docker-setup-ssh-port"
+                  className="text-xs text-on-surface-muted w-20 shrink-0"
+                >
+                  SSH Port
+                </label>
                 <input
+                  id="docker-setup-ssh-port"
+                  aria-labelledby="docker-setup-ssh-port-label"
                   type="number"
                   value={sshPort}
                   onChange={(e) => setSshPort(Number(e.target.value))}

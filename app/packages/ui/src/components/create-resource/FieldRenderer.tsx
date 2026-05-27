@@ -189,6 +189,7 @@ export function FieldRenderer({
       {field.kind === "text" &&
         (field.multiline ? (
           <textarea
+            aria-label={field.label}
             value={value}
             onChange={(e) => onChange(e.target.value)}
             placeholder={field.placeholder ?? field.label}
@@ -199,6 +200,7 @@ export function FieldRenderer({
         ) : (
           <input
             type="text"
+            aria-label={field.label}
             value={value}
             onChange={(e) => onChange(e.target.value)}
             placeholder={field.placeholder ?? field.label}
@@ -209,6 +211,7 @@ export function FieldRenderer({
       {field.kind === "password" && (
         <input
           type="password"
+          aria-label={field.label}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={field.placeholder ?? field.label}
@@ -231,6 +234,7 @@ export function FieldRenderer({
         <input
           type="number"
           inputMode="numeric"
+          aria-label={field.label}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={field.label}
@@ -322,6 +326,7 @@ export function FieldRenderer({
           />
         ) : (
           <textarea
+            aria-label={field.label}
             value={value}
             onChange={(e) => onChange(e.target.value)}
             placeholder="Paste SSH public key..."

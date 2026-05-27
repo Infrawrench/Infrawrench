@@ -147,6 +147,7 @@ export function SidebarDashboards() {
         <div className="mx-2 px-3 py-1.5">
           <input
             ref={newInputRef}
+            aria-label="New dashboard name"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             placeholder="Dashboard name…"

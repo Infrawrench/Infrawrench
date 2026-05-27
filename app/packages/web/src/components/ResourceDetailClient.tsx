@@ -672,6 +672,7 @@ export function ResourceDetailClient({
               <label className="flex items-center gap-2 text-xs text-on-surface-muted cursor-pointer select-none">
                 <input
                   type="checkbox"
+                  aria-label="Forward SSH agent"
                   checked={agentForward}
                   onChange={toggleAgentForward}
                   className="accent-green-600"

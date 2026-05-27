@@ -222,6 +222,7 @@ export function FirestoreDocumentBrowser({
           {showNewCollection && (
             <div className="p-2 border-b border-border/60 flex gap-1">
               <input
+                aria-label="New collection name"
                 value={newCollectionName}
                 onChange={(e) => setNewCollectionName(e.target.value)}
                 onKeyDown={(e) => {
@@ -360,6 +361,7 @@ export function FirestoreDocumentBrowser({
               </button>
             </div>
             <textarea
+              aria-label="Document JSON"
               value={insertDocText}
               onChange={(e) => setInsertDocText(e.target.value)}
               rows={6}
@@ -570,6 +572,7 @@ function FirestoreDocumentRow({
           {editing ? (
             <div className="space-y-2">
               <textarea
+                aria-label="Edit document JSON"
                 value={editText}
                 onChange={(e) => setEditText(e.target.value)}
                 rows={10}

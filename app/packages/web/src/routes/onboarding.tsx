@@ -36,10 +36,16 @@ function OnboardingPage() {
           Organizations let you manage infrastructure and collaborate with your team.
         </p>
 
-        <label className="block text-sm font-medium text-on-surface-secondary mb-2">
+        <label
+          id="onboarding-org-name-label"
+          htmlFor="onboarding-org-name"
+          className="block text-sm font-medium text-on-surface-secondary mb-2"
+        >
           Organization name
         </label>
         <input
+          id="onboarding-org-name"
+          aria-labelledby="onboarding-org-name-label"
           type="text"
           value={name}
           onChange={(e) => setName(e.target.value)}

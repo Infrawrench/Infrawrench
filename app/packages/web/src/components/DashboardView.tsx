@@ -153,6 +153,7 @@ export function DashboardView({
           {editingName ? (
             <input
               autoFocus
+              aria-label="Dashboard name"
               defaultValue={dashboardName}
               onBlur={(e) => void saveName(e.target.value)}
               onKeyDown={(e) => {

@@ -146,6 +146,7 @@ export function AccountDetailView({
                     setIsEditing(false);
                   }
                 }}
+                aria-label="Account name"
                 className="px-2 py-1 text-lg font-semibold bg-transparent border border-border rounded focus:outline-none focus:border-accent"
                 autoFocus
                 disabled={isSaving}

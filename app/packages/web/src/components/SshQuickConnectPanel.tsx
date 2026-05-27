@@ -64,8 +64,16 @@ export function SshQuickConnectPanel({
 
         {/* Username */}
         <div className="flex items-center gap-3">
-          <label className="text-xs text-on-surface-muted w-20 shrink-0">Username</label>
+          <label
+            id="ssh-quick-connect-username-label"
+            htmlFor="ssh-quick-connect-username"
+            className="text-xs text-on-surface-muted w-20 shrink-0"
+          >
+            Username
+          </label>
           <input
+            id="ssh-quick-connect-username"
+            aria-labelledby="ssh-quick-connect-username-label"
             value={username}
             onChange={(e) => {
               const next = e.target.value;
@@ -81,7 +89,7 @@ export function SshQuickConnectPanel({
 
         {/* Key picker */}
         <div className="flex items-start gap-3">
-          <label className="text-xs text-on-surface-muted w-20 shrink-0 pt-1">SSH Key</label>
+          <span className="text-xs text-on-surface-muted w-20 shrink-0 pt-1">SSH Key</span>
           <div className="flex-1 space-y-1">
             {keys.length === 0 ? (
               <p className="text-xs text-on-surface-faint py-1">
