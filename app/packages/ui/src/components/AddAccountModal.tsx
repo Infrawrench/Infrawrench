@@ -18,6 +18,7 @@ export interface PluginInfo {
     optional?: boolean;
     regions?: Array<{ id: string; label: string; location?: string; flag?: string }>;
     accountReference?: { pluginId: string };
+    helpLink?: { label: string; url: string };
   }>;
 }
 
@@ -73,6 +74,12 @@ interface AddAccountModalProps {
    * `prefilledPluginId` for the jumpbox flow).
    */
   prefilledDisplayName?: string;
+  /**
+   * Opens a credential field's `helpLink` URL. Desktop routes this through the
+   * Electron shell's external-URL handler; web can omit it and fall back to the
+   * anchor's native new-tab behavior.
+   */
+  onOpenExternal?: (url: string) => void;
 }
 
 type Step = "pick-plugin" | "enter-credentials";
@@ -87,6 +94,7 @@ export function AddAccountModal({
   prefilledPluginId,
   prefilledCredentials,
   prefilledDisplayName,
+  onOpenExternal,
 }: AddAccountModalProps) {
   const [step, setStep] = useState<Step>(prefilledPluginId ? "enter-credentials" : "pick-plugin");
   const [plugins, setPlugins] = useState<PluginInfo[]>([]);
@@ -264,6 +272,25 @@ export function AddAccountModal({
                         </label>
                         {f.description && (
                           <p className="text-xs text-on-surface-faint mb-1">{f.description}</p>
+                        )}
+                        {f.helpLink && (
+                          <a
+                            href={f.helpLink.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={
+                              onOpenExternal
+                                ? (e) => {
+                                    e.preventDefault();
+                                    onOpenExternal(f.helpLink!.url);
+                                  }
+                                : undefined
+                            }
+                            className="inline-flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 mb-1"
+                          >
+                            {f.helpLink.label}
+                            <span aria-hidden="true">↗</span>
+                          </a>
                         )}
                         {f.accountReference ? (
                           (() => {

@@ -27,6 +27,7 @@ const CredentialField = strict({
   multiline: z.boolean().optional(),
   defaultValue: z.string().optional(),
   regions: z.array(CredentialFieldRegion).optional(),
+  helpLink: strict({ label: z.string(), url: z.string() }).optional(),
 }).openapi("CredentialField");
 
 const PluginSummary = strict({

@@ -69,6 +69,7 @@ export function AddAccountModal({
         ...(f.regions !== undefined ? { regions: f.regions } : {}),
         ...(f.optional !== undefined ? { optional: f.optional } : {}),
         ...(f.accountReference !== undefined ? { accountReference: f.accountReference } : {}),
+        ...(f.helpLink !== undefined ? { helpLink: f.helpLink } : {}),
       })),
     }));
   }, []);
@@ -99,6 +100,7 @@ export function AddAccountModal({
       loadPlugins={handleLoadPlugins}
       saveAccount={saveAccount}
       accounts={accounts}
+      onOpenExternal={(url) => void invoke("open_external_url", { url })}
       {...(prefilledPluginId ? { prefilledPluginId } : {})}
       {...(prefilledCredentials ? { prefilledCredentials } : {})}
       {...(prefilledDisplayName ? { prefilledDisplayName } : {})}

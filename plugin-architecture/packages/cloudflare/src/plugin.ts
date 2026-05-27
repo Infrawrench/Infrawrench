@@ -25,6 +25,37 @@ import { SpectrumApplicationResourceType } from "./resources/spectrum-applicatio
 import { LogpushJobResourceType } from "./resources/logpush-job.js";
 import { WorkersAiModelResourceType } from "./resources/workers-ai-model.js";
 
+// Deep link to Cloudflare's "Create Token" page (user/profile tokens) with the
+// scopes this plugin uses pre-selected. Format per Cloudflare's token-template
+// docs: the profile token page plus a URL-encoded `permissionGroupKeys` JSON
+// array of { key, type }. `accountId=*` / `zoneId=all` apply the token to every
+// account and zone. Edit covers the resources the plugin can create/delete;
+// analytics is read-only (zone/Workers metrics).
+const CREATE_TOKEN_SCOPES = [
+  { key: "zone", type: "edit" },
+  { key: "dns", type: "edit" },
+  { key: "ssl_and_certificates", type: "edit" },
+  { key: "page_rules", type: "edit" },
+  { key: "load_balancers", type: "edit" },
+  { key: "access", type: "edit" },
+  { key: "workers_scripts", type: "edit" },
+  { key: "workers_kv_storage", type: "edit" },
+  { key: "workers_r2", type: "edit" },
+  { key: "workers_routes", type: "edit" },
+  { key: "d1", type: "edit" },
+  { key: "queues", type: "edit" },
+  { key: "pages", type: "edit" },
+  { key: "argotunnel", type: "edit" },
+  { key: "analytics", type: "read" },
+];
+
+const CREATE_TOKEN_URL = `https://dash.cloudflare.com/profile/api-tokens?${new URLSearchParams({
+  permissionGroupKeys: JSON.stringify(CREATE_TOKEN_SCOPES),
+  accountId: "*",
+  zoneId: "all",
+  name: "Infrawrench",
+}).toString()}`;
+
 const manifest: PluginManifest = {
   id: "cloudflare",
   version: "0.3.0",
@@ -42,9 +73,13 @@ const manifest: PluginManifest = {
       key: "apiToken",
       label: "API Token",
       description:
-        "A Cloudflare API token. For full functionality, grant permissions: Zone:Read, DNS:Edit, Workers Scripts:Read, Pages:Read, R2:Read, D1:Read, Queues:Read, Access:Read, Load Balancers:Read. Create at dash.cloudflare.com/profile/api-tokens.",
+        "A Cloudflare API token. Use the link below to open Cloudflare's token creator with the recommended scopes pre-filled, then paste the generated token here.",
       sensitive: true,
       placeholder: "Scoped API token...",
+      helpLink: {
+        label: "Create a token with these scopes",
+        url: CREATE_TOKEN_URL,
+      },
     },
   ],
   rateLimit: { capacity: 80, refillPerSecond: 6 },

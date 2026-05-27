@@ -17,9 +17,11 @@ The Cloudflare plugin is broad — 24 resource types across DNS, edge compute, s
 
 ## Credentials
 
-Cloudflare dashboard → **My Profile → API Tokens → Create Token**. Use the “Edit zone DNS” template for DNS-only, or a custom token with the permissions matching the resources you plan to manage.
+The API token field in the **Add account** and **Update credentials** forms shows a **“Create a token with these scopes”** link. Click it to open Cloudflare's token creator with the scopes this plugin uses already selected — review them, create the token, and paste it back into the field. (Cloudflare only ever shows the token value once, at creation time.)
 
-<insert [Cloudflare Add-account form with API token field] here>
+If you'd rather scope a token by hand, go to the Cloudflare dashboard → **My Profile → API Tokens → Create Token** and grant the permissions matching the resources you plan to manage.
+
+<insert [Cloudflare Add-account form with the API token field and the "Create a token with these scopes" link highlighted] here>
 
 ## Notable flows
 

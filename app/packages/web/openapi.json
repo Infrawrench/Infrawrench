@@ -142,14 +142,21 @@
             "example": "00000000-0000-0000-0000-000000000000"
           },
           "email": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "email"
           },
           "needsOnboarding": {
             "type": "boolean"
           }
         },
-        "required": ["userId", "email", "needsOnboarding"],
+        "required": [
+          "userId",
+          "email",
+          "needsOnboarding"
+        ],
         "additionalProperties": false
       },
       "Error": {
@@ -160,12 +167,18 @@
             "description": "Human-readable error message"
           }
         },
-        "required": ["error"],
+        "required": [
+          "error"
+        ],
         "additionalProperties": false
       },
       "OrganizationRole": {
         "type": "string",
-        "enum": ["owner", "admin", "member"]
+        "enum": [
+          "owner",
+          "admin",
+          "member"
+        ]
       },
       "OrgMembership": {
         "type": "object",
@@ -182,7 +195,11 @@
             "$ref": "#/components/schemas/OrganizationRole"
           }
         },
-        "required": ["id", "displayName", "role"],
+        "required": [
+          "id",
+          "displayName",
+          "role"
+        ],
         "additionalProperties": false
       },
       "Organization": {
@@ -197,7 +214,10 @@
             "type": "string"
           }
         },
-        "required": ["id", "displayName"],
+        "required": [
+          "id",
+          "displayName"
+        ],
         "additionalProperties": false
       },
       "CreateOrgRequest": {
@@ -209,7 +229,9 @@
             "example": "Acme Inc"
           }
         },
-        "required": ["displayName"],
+        "required": [
+          "displayName"
+        ],
         "additionalProperties": false
       },
       "InvitationDetail": {
@@ -232,7 +254,10 @@
             "format": "date-time"
           },
           "acceptedAt": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "date-time"
           },
           "organizationId": {
@@ -270,11 +295,16 @@
                 "type": "string"
               }
             },
-            "required": ["id", "displayName"],
+            "required": [
+              "id",
+              "displayName"
+            ],
             "additionalProperties": false
           }
         },
-        "required": ["organization"],
+        "required": [
+          "organization"
+        ],
         "additionalProperties": false
       },
       "AcceptInvitationRequest": {
@@ -284,7 +314,9 @@
             "type": "string"
           }
         },
-        "required": ["token"],
+        "required": [
+          "token"
+        ],
         "additionalProperties": false
       },
       "CredentialFieldRegion": {
@@ -303,7 +335,10 @@
             "type": "string"
           }
         },
-        "required": ["id", "label"],
+        "required": [
+          "id",
+          "label"
+        ],
         "additionalProperties": false
       },
       "CredentialField": {
@@ -335,9 +370,28 @@
             "items": {
               "$ref": "#/components/schemas/CredentialFieldRegion"
             }
+          },
+          "helpLink": {
+            "type": "object",
+            "properties": {
+              "label": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "label",
+              "url"
+            ],
+            "additionalProperties": false
           }
         },
-        "required": ["key", "label"],
+        "required": [
+          "key",
+          "label"
+        ],
         "additionalProperties": false
       },
       "PluginSummary": {
@@ -359,7 +413,12 @@
             }
           }
         },
-        "required": ["id", "displayName", "logoSvg", "credentialFields"],
+        "required": [
+          "id",
+          "displayName",
+          "logoSvg",
+          "credentialFields"
+        ],
         "additionalProperties": false
       },
       "Account": {
@@ -377,7 +436,10 @@
             "type": "string"
           },
           "bastionId": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "uuid",
             "description": "Bastion this account's cloud-API egress is routed through. `null` ⇒ direct egress.",
             "example": "00000000-0000-0000-0000-000000000000"
@@ -387,7 +449,13 @@
             "format": "date-time"
           }
         },
-        "required": ["id", "pluginId", "displayName", "bastionId", "createdAt"],
+        "required": [
+          "id",
+          "pluginId",
+          "displayName",
+          "bastionId",
+          "createdAt"
+        ],
         "additionalProperties": false
       },
       "CreateAccountResponse": {
@@ -405,11 +473,15 @@
                 "type": "string"
               }
             },
-            "required": ["message"],
+            "required": [
+              "message"
+            ],
             "additionalProperties": false
           }
         },
-        "required": ["id"],
+        "required": [
+          "id"
+        ],
         "additionalProperties": false
       },
       "PluginId": {
@@ -426,6 +498,7 @@
           "fly",
           "gcp",
           "hetzner",
+          "kafka",
           "kubernetes",
           "memcached",
           "mongodb",
@@ -433,6 +506,7 @@
           "mysql",
           "neon",
           "netlify",
+          "opensearch",
           "ovh",
           "planetscale",
           "postgres",
@@ -462,13 +536,20 @@
             }
           },
           "bastionId": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "uuid",
             "description": "Optional bastion id to route this account's cloud API traffic through.",
             "example": "00000000-0000-0000-0000-000000000000"
           }
         },
-        "required": ["pluginId", "displayName", "credentials"],
+        "required": [
+          "pluginId",
+          "displayName",
+          "credentials"
+        ],
         "additionalProperties": false
       },
       "Ok": {
@@ -476,10 +557,14 @@
         "properties": {
           "ok": {
             "type": "boolean",
-            "enum": [true]
+            "enum": [
+              true
+            ]
           }
         },
-        "required": ["ok"],
+        "required": [
+          "ok"
+        ],
         "additionalProperties": false
       },
       "UpdatedAccount": {
@@ -494,12 +579,19 @@
             "type": "string"
           },
           "bastionId": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "uuid",
             "example": "00000000-0000-0000-0000-000000000000"
           }
         },
-        "required": ["id", "displayName", "bastionId"],
+        "required": [
+          "id",
+          "displayName",
+          "bastionId"
+        ],
         "additionalProperties": false
       },
       "UpdateAccountRequest": {
@@ -510,7 +602,10 @@
             "minLength": 1
           },
           "bastionId": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "uuid",
             "description": "Pass `null` to unbind, a uuid to bind, or omit the field to leave the binding unchanged.",
             "example": "00000000-0000-0000-0000-000000000000"
@@ -551,7 +646,10 @@
             "type": "string"
           },
           "externalId": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "fieldsJson": {
             "$ref": "#/components/schemas/JsonObject"
@@ -565,7 +663,10 @@
                 "$ref": "#/components/schemas/ResourceId"
               },
               {
-                "type": ["string", "null"]
+                "type": [
+                  "string",
+                  "null"
+                ]
               }
             ]
           }
@@ -591,7 +692,9 @@
             "minimum": 0
           }
         },
-        "required": ["synced"],
+        "required": [
+          "synced"
+        ],
         "additionalProperties": false
       },
       "ResourceTypeSummary": {
@@ -630,12 +733,19 @@
                   "type": "string"
                 }
               },
-              "required": ["pluginId", "resourceTypeId"],
+              "required": [
+                "pluginId",
+                "resourceTypeId"
+              ],
               "additionalProperties": false
             }
           }
         },
-        "required": ["id", "displayName", "supportsCreate"],
+        "required": [
+          "id",
+          "displayName",
+          "supportsCreate"
+        ],
         "additionalProperties": false
       },
       "AccountDetail": {
@@ -656,7 +766,11 @@
                 "type": "string"
               }
             },
-            "required": ["id", "pluginId", "displayName"],
+            "required": [
+              "id",
+              "pluginId",
+              "displayName"
+            ],
             "additionalProperties": false
           },
           "resourceTypes": {
@@ -672,7 +786,12 @@
             "type": "string"
           }
         },
-        "required": ["account", "resourceTypes", "pluginDisplayName", "pluginLogoSvg"],
+        "required": [
+          "account",
+          "resourceTypes",
+          "pluginDisplayName",
+          "pluginLogoSvg"
+        ],
         "additionalProperties": false
       },
       "ResourceTypeId": {
@@ -681,6 +800,7 @@
           "access-application",
           "access-policy",
           "acm-certificate",
+          "agent-api-key",
           "alb",
           "alert-policy",
           "alloydb-cluster",
@@ -721,6 +841,7 @@
           "backend-service",
           "backup-vault",
           "batch-job-queue",
+          "bedrock-model",
           "bigquery-dataset",
           "bigquery-table",
           "bigtable-instance",
@@ -755,9 +876,12 @@
           "databricks-job",
           "databricks-pipeline",
           "databricks-schema",
+          "databricks-serving-endpoint",
           "databricks-sql-warehouse",
           "databricks-table",
           "dataflow-job",
+          "db-user",
+          "dedicated-inference",
           "dns-record",
           "docker-container",
           "documentdb-cluster",
@@ -785,6 +909,9 @@
           "gce-instance",
           "gcp-service-account",
           "gcs-bucket",
+          "gen-ai-agent",
+          "gen-ai-knowledge-base",
+          "gen-ai-model-router",
           "gke-cluster",
           "glue-database",
           "health-check",
@@ -792,6 +919,7 @@
           "iam-role",
           "iam-user",
           "image",
+          "inference-batch",
           "instance",
           "instance-group",
           "instance-template",
@@ -808,6 +936,9 @@
           "k8s-secret",
           "k8s-service",
           "k8s-statefulset",
+          "kafka-cluster",
+          "kafka-consumer-group",
+          "kafka-topic",
           "kapsule-cluster",
           "kinesis-stream",
           "kms-key",
@@ -825,6 +956,7 @@
           "memcached-instance",
           "memorystore-memcached",
           "memorystore-redis",
+          "model-api-key",
           "mongodb-database",
           "mq-broker",
           "msk-cluster",
@@ -846,6 +978,7 @@
           "netlify-site",
           "nfs-share",
           "object-storage-bucket",
+          "opensearch-cluster",
           "opensearch-domain",
           "page-rule",
           "pages-deployment",
@@ -899,6 +1032,7 @@
           "vercel-project",
           "vercel-team",
           "vertex-ai-endpoint",
+          "vertex-gemini-model",
           "volume",
           "vpc",
           "vpc-network",
@@ -906,6 +1040,7 @@
           "waiting-room",
           "worker",
           "worker-route",
+          "workers-ai-model",
           "workflow",
           "zone"
         ],
@@ -927,7 +1062,11 @@
             "type": "boolean"
           }
         },
-        "required": ["id", "name", "isDefault"],
+        "required": [
+          "id",
+          "name",
+          "isDefault"
+        ],
         "additionalProperties": false
       },
       "DashboardFull": {
@@ -958,7 +1097,10 @@
             "format": "date-time"
           },
           "deletedAt": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "date-time"
           },
           "syncVersion": {
@@ -1001,7 +1143,14 @@
             "type": "integer"
           }
         },
-        "required": ["pinId", "resourceId", "gridX", "gridY", "gridW", "gridH"],
+        "required": [
+          "pinId",
+          "resourceId",
+          "gridX",
+          "gridY",
+          "gridW",
+          "gridH"
+        ],
         "additionalProperties": false
       },
       "DashboardWithPins": {
@@ -1017,7 +1166,10 @@
             }
           }
         },
-        "required": ["dashboard", "pins"],
+        "required": [
+          "dashboard",
+          "pins"
+        ],
         "additionalProperties": false
       },
       "PinRequest": {
@@ -1038,7 +1190,10 @@
             "type": "integer"
           }
         },
-        "required": ["dashboardId", "resourceId"],
+        "required": [
+          "dashboardId",
+          "resourceId"
+        ],
         "additionalProperties": false
       },
       "ReorderRequest": {
@@ -1051,7 +1206,9 @@
             }
           }
         },
-        "required": ["resourceIds"],
+        "required": [
+          "resourceIds"
+        ],
         "additionalProperties": false
       },
       "UnpinRequest": {
@@ -1066,7 +1223,10 @@
             "$ref": "#/components/schemas/ResourceId"
           }
         },
-        "required": ["dashboardId", "resourceId"],
+        "required": [
+          "dashboardId",
+          "resourceId"
+        ],
         "additionalProperties": false
       },
       "ValidateTabsResponse": {
@@ -1079,7 +1239,9 @@
             }
           }
         },
-        "required": ["validTabIds"],
+        "required": [
+          "validTabIds"
+        ],
         "additionalProperties": false
       },
       "TabTarget": {
@@ -1087,7 +1249,11 @@
         "properties": {
           "kind": {
             "type": "string",
-            "enum": ["dashboard", "account", "resource"]
+            "enum": [
+              "dashboard",
+              "account",
+              "resource"
+            ]
           },
           "dashboardId": {
             "type": "string",
@@ -1103,7 +1269,9 @@
             "$ref": "#/components/schemas/ResourceId"
           }
         },
-        "required": ["kind"],
+        "required": [
+          "kind"
+        ],
         "additionalProperties": false
       },
       "ValidateTabsRequest": {
@@ -1121,12 +1289,17 @@
                   "$ref": "#/components/schemas/TabTarget"
                 }
               },
-              "required": ["id", "target"],
+              "required": [
+                "id",
+                "target"
+              ],
               "additionalProperties": false
             }
           }
         },
-        "required": ["tabs"],
+        "required": [
+          "tabs"
+        ],
         "additionalProperties": false
       },
       "ProbeStatus": {
@@ -1134,7 +1307,11 @@
         "properties": {
           "phase": {
             "type": "string",
-            "enum": ["ok", "loading", "error"]
+            "enum": [
+              "ok",
+              "loading",
+              "error"
+            ]
           },
           "error": {
             "type": "string"
@@ -1157,7 +1334,10 @@
                   "type": "number"
                 }
               },
-              "required": ["ts", "value"],
+              "required": [
+                "ts",
+                "value"
+              ],
               "additionalProperties": false
             }
           },
@@ -1176,12 +1356,17 @@
                   "type": "integer"
                 }
               },
-              "required": ["typeId", "count"],
+              "required": [
+                "typeId",
+                "count"
+              ],
               "additionalProperties": false
             }
           }
         },
-        "required": ["phase"],
+        "required": [
+          "phase"
+        ],
         "additionalProperties": false
       },
       "PinFull": {
@@ -1277,12 +1462,18 @@
                   "type": "number"
                 }
               },
-              "required": ["timestamp", "value"],
+              "required": [
+                "timestamp",
+                "value"
+              ],
               "additionalProperties": false
             }
           }
         },
-        "required": ["label", "points"],
+        "required": [
+          "label",
+          "points"
+        ],
         "additionalProperties": false
       },
       "PinRangeResponse": {
@@ -1295,7 +1486,9 @@
             }
           }
         },
-        "required": ["series"],
+        "required": [
+          "series"
+        ],
         "additionalProperties": false
       },
       "ProbeRequest": {
@@ -1321,17 +1514,31 @@
                   "type": "string"
                 }
               },
-              "required": ["resourceId", "accountId", "pluginId", "resourceTypeId"],
+              "required": [
+                "resourceId",
+                "accountId",
+                "pluginId",
+                "resourceTypeId"
+              ],
               "additionalProperties": false
             }
           }
         },
-        "required": ["items"],
+        "required": [
+          "items"
+        ],
         "additionalProperties": false
       },
       "ResourceStatus": {
         "type": "string",
-        "enum": ["healthy", "warning", "error", "unknown", "pending", "stopped"],
+        "enum": [
+          "healthy",
+          "warning",
+          "error",
+          "unknown",
+          "pending",
+          "stopped"
+        ],
         "description": "Normalized status reported by a plugin's renderSidebarItem/renderDetail."
       },
       "StatusDot": {
@@ -1339,7 +1546,9 @@
         "properties": {
           "kind": {
             "type": "string",
-            "enum": ["status-dot"]
+            "enum": [
+              "status-dot"
+            ]
           },
           "status": {
             "$ref": "#/components/schemas/ResourceStatus"
@@ -1348,7 +1557,10 @@
             "type": "string"
           }
         },
-        "required": ["kind", "status"],
+        "required": [
+          "kind",
+          "status"
+        ],
         "additionalProperties": false
       },
       "ChildResourceRef": {
@@ -1375,7 +1587,13 @@
             "$ref": "#/components/schemas/StatusDot"
           }
         },
-        "required": ["id", "displayName", "resourceTypeId", "pluginId", "accountId"],
+        "required": [
+          "id",
+          "displayName",
+          "resourceTypeId",
+          "pluginId",
+          "accountId"
+        ],
         "additionalProperties": false
       },
       "ChildTypeRef": {
@@ -1394,7 +1612,11 @@
             "type": "boolean"
           }
         },
-        "required": ["id", "displayName", "supportsCreate"],
+        "required": [
+          "id",
+          "displayName",
+          "supportsCreate"
+        ],
         "additionalProperties": false
       },
       "PeerPaneStub": {
@@ -1410,7 +1632,11 @@
             "type": "string"
           }
         },
-        "required": ["tabLabel", "pluginLogoSvg", "peerPluginId"],
+        "required": [
+          "tabLabel",
+          "pluginLogoSvg",
+          "peerPluginId"
+        ],
         "additionalProperties": false
       },
       "PeerPane": {
@@ -1425,7 +1651,9 @@
                 "$ref": "#/components/schemas/JsonObject"
               }
             },
-            "required": ["schema"],
+            "required": [
+              "schema"
+            ],
             "additionalProperties": false
           }
         ]
@@ -1441,7 +1669,14 @@
           },
           "kind": {
             "type": "string",
-            "enum": ["string", "number", "boolean", "enum", "secret", "association"]
+            "enum": [
+              "string",
+              "number",
+              "boolean",
+              "enum",
+              "secret",
+              "association"
+            ]
           },
           "required": {
             "type": "boolean"
@@ -1456,7 +1691,12 @@
             }
           }
         },
-        "required": ["key", "label", "kind", "required"],
+        "required": [
+          "key",
+          "label",
+          "kind",
+          "required"
+        ],
         "additionalProperties": false
       },
       "CredentialFormat": {
@@ -1478,7 +1718,10 @@
             "type": "string"
           }
         },
-        "required": ["id", "label"],
+        "required": [
+          "id",
+          "label"
+        ],
         "additionalProperties": false
       },
       "ResourceDetail": {
@@ -1596,13 +1839,22 @@
             "type": "boolean"
           },
           "sshHost": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "sshPrivateHost": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "defaultSshUsername": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "containerId": {
             "type": "string"
@@ -1661,7 +1913,9 @@
             "type": "string"
           }
         },
-        "required": ["manifest"],
+        "required": [
+          "manifest"
+        ],
         "additionalProperties": false
       },
       "ApplyManifestRequest": {
@@ -1682,7 +1936,11 @@
             "$ref": "#/components/schemas/ResourceId"
           }
         },
-        "required": ["accountId", "resourceId", "manifest"],
+        "required": [
+          "accountId",
+          "resourceId",
+          "manifest"
+        ],
         "additionalProperties": false
       },
       "ImportYamlRequest": {
@@ -1700,7 +1958,10 @@
             "$ref": "#/components/schemas/ResourceId"
           }
         },
-        "required": ["accountId", "yaml"],
+        "required": [
+          "accountId",
+          "yaml"
+        ],
         "additionalProperties": false
       },
       "DescribeResponse": {
@@ -1710,7 +1971,9 @@
             "type": "string"
           }
         },
-        "required": ["text"],
+        "required": [
+          "text"
+        ],
         "additionalProperties": false
       },
       "DescribeRequest": {
@@ -1728,7 +1991,10 @@
             "$ref": "#/components/schemas/ResourceId"
           }
         },
-        "required": ["accountId", "resourceId"],
+        "required": [
+          "accountId",
+          "resourceId"
+        ],
         "additionalProperties": false
       },
       "LogsResponse": {
@@ -1747,7 +2013,9 @@
             "type": "boolean"
           }
         },
-        "required": ["lines"],
+        "required": [
+          "lines"
+        ],
         "additionalProperties": false
       },
       "LogsRequest": {
@@ -1775,7 +2043,10 @@
             "type": "boolean"
           }
         },
-        "required": ["accountId", "resourceId"],
+        "required": [
+          "accountId",
+          "resourceId"
+        ],
         "additionalProperties": false
       },
       "SecretVersion": {
@@ -1786,13 +2057,21 @@
           },
           "state": {
             "type": "string",
-            "enum": ["ENABLED", "DISABLED", "DESTROYED"]
+            "enum": [
+              "ENABLED",
+              "DISABLED",
+              "DESTROYED"
+            ]
           },
           "createdAt": {
             "type": "string"
           }
         },
-        "required": ["id", "state", "createdAt"],
+        "required": [
+          "id",
+          "state",
+          "createdAt"
+        ],
         "additionalProperties": false
       },
       "SecretVersionsResponse": {
@@ -1805,7 +2084,9 @@
             }
           }
         },
-        "required": ["versions"],
+        "required": [
+          "versions"
+        ],
         "additionalProperties": false
       },
       "SecretAccessResponse": {
@@ -1815,7 +2096,9 @@
             "type": "string"
           }
         },
-        "required": ["value"],
+        "required": [
+          "value"
+        ],
         "additionalProperties": false
       },
       "SecretAccessRequest": {
@@ -1836,7 +2119,11 @@
             "$ref": "#/components/schemas/ResourceId"
           }
         },
-        "required": ["accountId", "resourceId", "versionId"],
+        "required": [
+          "accountId",
+          "resourceId",
+          "versionId"
+        ],
         "additionalProperties": false
       },
       "SecretVersionResponse": {
@@ -1846,7 +2133,9 @@
             "$ref": "#/components/schemas/SecretVersion"
           }
         },
-        "required": ["version"],
+        "required": [
+          "version"
+        ],
         "additionalProperties": false
       },
       "SecretAddRequest": {
@@ -1867,7 +2156,11 @@
             "$ref": "#/components/schemas/ResourceId"
           }
         },
-        "required": ["accountId", "resourceId", "value"],
+        "required": [
+          "accountId",
+          "resourceId",
+          "value"
+        ],
         "additionalProperties": false
       },
       "SecretModifyRequest": {
@@ -1886,13 +2179,22 @@
           },
           "action": {
             "type": "string",
-            "enum": ["enable", "disable", "destroy"]
+            "enum": [
+              "enable",
+              "disable",
+              "destroy"
+            ]
           },
           "parentResourceId": {
             "$ref": "#/components/schemas/ResourceId"
           }
         },
-        "required": ["accountId", "resourceId", "versionId", "action"],
+        "required": [
+          "accountId",
+          "resourceId",
+          "versionId",
+          "action"
+        ],
         "additionalProperties": false
       },
       "InvokeActionRequest": {
@@ -1919,7 +2221,13 @@
             "$ref": "#/components/schemas/ResourceId"
           }
         },
-        "required": ["pluginId", "accountId", "resourceTypeId", "resourceId", "actionId"],
+        "required": [
+          "pluginId",
+          "accountId",
+          "resourceTypeId",
+          "resourceId",
+          "actionId"
+        ],
         "additionalProperties": false
       },
       "NoSqlCommandRequest": {
@@ -1959,7 +2267,14 @@
             "$ref": "#/components/schemas/ResourceId"
           }
         },
-        "required": ["pluginId", "accountId", "resourceTypeId", "resourceId", "command", "args"],
+        "required": [
+          "pluginId",
+          "accountId",
+          "resourceTypeId",
+          "resourceId",
+          "command",
+          "args"
+        ],
         "additionalProperties": false
       },
       "AttachRequest": {
@@ -2018,7 +2333,11 @@
             "type": "string"
           }
         },
-        "required": ["content", "filename", "mimeType"],
+        "required": [
+          "content",
+          "filename",
+          "mimeType"
+        ],
         "additionalProperties": false
       },
       "ExportCredentialRequest": {
@@ -2039,7 +2358,11 @@
             "$ref": "#/components/schemas/ResourceId"
           }
         },
-        "required": ["resourceId", "accountId", "formatId"],
+        "required": [
+          "resourceId",
+          "accountId",
+          "formatId"
+        ],
         "additionalProperties": false
       },
       "CreateResourceResponse": {
@@ -2058,7 +2381,10 @@
             }
           }
         },
-        "required": ["id", "displayName"],
+        "required": [
+          "id",
+          "displayName"
+        ],
         "additionalProperties": false
       },
       "CreateResourceRequest": {
@@ -2085,7 +2411,12 @@
             "$ref": "#/components/schemas/ResourceId"
           }
         },
-        "required": ["accountId", "pluginId", "resourceTypeId", "fields"],
+        "required": [
+          "accountId",
+          "pluginId",
+          "resourceTypeId",
+          "fields"
+        ],
         "additionalProperties": false
       },
       "UpdateResourceResponse": {
@@ -2104,7 +2435,11 @@
             }
           }
         },
-        "required": ["id", "displayName", "fields"],
+        "required": [
+          "id",
+          "displayName",
+          "fields"
+        ],
         "additionalProperties": false
       },
       "UpdateResourceRequest": {
@@ -2134,7 +2469,13 @@
             "$ref": "#/components/schemas/ResourceId"
           }
         },
-        "required": ["accountId", "pluginId", "resourceTypeId", "resourceId", "fields"],
+        "required": [
+          "accountId",
+          "pluginId",
+          "resourceTypeId",
+          "resourceId",
+          "fields"
+        ],
         "additionalProperties": false
       },
       "CreateConfigRequest": {
@@ -2155,7 +2496,10 @@
             "$ref": "#/components/schemas/ResourceId"
           }
         },
-        "required": ["accountId", "resourceTypeId"],
+        "required": [
+          "accountId",
+          "resourceTypeId"
+        ],
         "additionalProperties": false
       },
       "PickerResource": {
@@ -2214,7 +2558,11 @@
                   "type": "string"
                 }
               },
-              "required": ["pluginId", "resourceTypeId", "outputKey"],
+              "required": [
+                "pluginId",
+                "resourceTypeId",
+                "outputKey"
+              ],
               "additionalProperties": false
             }
           },
@@ -2227,7 +2575,10 @@
             "type": "string"
           }
         },
-        "required": ["sources", "accountId"],
+        "required": [
+          "sources",
+          "accountId"
+        ],
         "additionalProperties": false
       },
       "CreatePricingRequest": {
@@ -2259,7 +2610,11 @@
                   "type": "number"
                 }
               },
-              "required": ["id", "vcpus", "memoryMb"],
+              "required": [
+                "id",
+                "vcpus",
+                "memoryMb"
+              ],
               "additionalProperties": false
             }
           },
@@ -2270,7 +2625,11 @@
             "$ref": "#/components/schemas/ResourceId"
           }
         },
-        "required": ["accountId", "resourceTypeId", "sizes"],
+        "required": [
+          "accountId",
+          "resourceTypeId",
+          "sizes"
+        ],
         "additionalProperties": false
       },
       "FieldActionResponse": {
@@ -2289,11 +2648,16 @@
                 "type": "string"
               }
             },
-            "required": ["id", "label"],
+            "required": [
+              "id",
+              "label"
+            ],
             "additionalProperties": false
           }
         },
-        "required": ["value"],
+        "required": [
+          "value"
+        ],
         "additionalProperties": false
       },
       "FieldActionRequest": {
@@ -2332,7 +2696,13 @@
             "$ref": "#/components/schemas/ResourceId"
           }
         },
-        "required": ["accountId", "resourceTypeId", "fieldKey", "actionId", "fields"],
+        "required": [
+          "accountId",
+          "resourceTypeId",
+          "fieldKey",
+          "actionId",
+          "fields"
+        ],
         "additionalProperties": false
       },
       "CreateCostEstimateRequest": {
@@ -2359,7 +2729,11 @@
             "$ref": "#/components/schemas/ResourceId"
           }
         },
-        "required": ["accountId", "resourceTypeId", "fields"],
+        "required": [
+          "accountId",
+          "resourceTypeId",
+          "fields"
+        ],
         "additionalProperties": false
       },
       "PeerPanesRequest": {
@@ -2377,7 +2751,10 @@
             "$ref": "#/components/schemas/ResourceId"
           }
         },
-        "required": ["accountId", "resourceId"],
+        "required": [
+          "accountId",
+          "resourceId"
+        ],
         "additionalProperties": false
       },
       "MetricSeries": {
@@ -2401,12 +2778,18 @@
                   "type": "number"
                 }
               },
-              "required": ["ts", "value"],
+              "required": [
+                "ts",
+                "value"
+              ],
               "additionalProperties": false
             }
           }
         },
-        "required": ["label", "points"],
+        "required": [
+          "label",
+          "points"
+        ],
         "additionalProperties": false
       },
       "MetricsResponse": {
@@ -2419,7 +2802,9 @@
             }
           }
         },
-        "required": ["series"],
+        "required": [
+          "series"
+        ],
         "additionalProperties": false
       },
       "MetricsRequest": {
@@ -2443,7 +2828,10 @@
             "$ref": "#/components/schemas/ResourceId"
           }
         },
-        "required": ["accountId", "resourceId"],
+        "required": [
+          "accountId",
+          "resourceId"
+        ],
         "additionalProperties": false
       },
       "SqlQueryResponse": {
@@ -2460,7 +2848,9 @@
             "minimum": 0
           }
         },
-        "required": ["rows"],
+        "required": [
+          "rows"
+        ],
         "additionalProperties": false
       },
       "SqlQueryRequest": {
@@ -2481,7 +2871,10 @@
             "type": "string"
           }
         },
-        "required": ["accountId", "sql"],
+        "required": [
+          "accountId",
+          "sql"
+        ],
         "additionalProperties": false
       },
       "SqlExecuteResponse": {
@@ -2492,7 +2885,9 @@
             "minimum": 0
           }
         },
-        "required": ["affectedRows"],
+        "required": [
+          "affectedRows"
+        ],
         "additionalProperties": false
       },
       "SqlExecuteRequest": {
@@ -2527,7 +2922,11 @@
             "type": "string"
           }
         },
-        "required": ["accountId", "resourceId", "sql"],
+        "required": [
+          "accountId",
+          "resourceId",
+          "sql"
+        ],
         "additionalProperties": false
       },
       "KvCommandResponse": {
@@ -2578,7 +2977,11 @@
             "$ref": "#/components/schemas/ResourceId"
           }
         },
-        "required": ["accountId", "command", "args"],
+        "required": [
+          "accountId",
+          "command",
+          "args"
+        ],
         "additionalProperties": false
       },
       "DockerCommandResponse": {
@@ -2613,7 +3016,10 @@
             "$ref": "#/components/schemas/JsonObject"
           }
         },
-        "required": ["accountId", "op"],
+        "required": [
+          "accountId",
+          "op"
+        ],
         "additionalProperties": false
       },
       "StorageObject": {
@@ -2633,7 +3039,9 @@
             "type": "string"
           }
         },
-        "required": ["key"],
+        "required": [
+          "key"
+        ],
         "additionalProperties": false
       },
       "StorageListRequest": {
@@ -2651,7 +3059,11 @@
             "type": "string"
           }
         },
-        "required": ["accountId", "bucket", "prefix"],
+        "required": [
+          "accountId",
+          "bucket",
+          "prefix"
+        ],
         "additionalProperties": false
       },
       "StoragePathRequest": {
@@ -2669,7 +3081,11 @@
             "type": "string"
           }
         },
-        "required": ["accountId", "bucket", "key"],
+        "required": [
+          "accountId",
+          "bucket",
+          "key"
+        ],
         "additionalProperties": false
       },
       "ArtifactsListRequest": {
@@ -2693,7 +3109,11 @@
             "type": "string"
           }
         },
-        "required": ["accountId", "resourceId", "resourceTypeId"],
+        "required": [
+          "accountId",
+          "resourceId",
+          "resourceTypeId"
+        ],
         "additionalProperties": false
       },
       "SftpEntry": {
@@ -2712,7 +3132,10 @@
             "type": "string"
           }
         },
-        "required": ["name", "isDir"],
+        "required": [
+          "name",
+          "isDir"
+        ],
         "additionalProperties": false
       },
       "SftpListRequest": {
@@ -2738,7 +3161,10 @@
             "type": "string"
           }
         },
-        "required": ["accountId", "path"],
+        "required": [
+          "accountId",
+          "path"
+        ],
         "additionalProperties": false
       },
       "SftpPathRequest": {
@@ -2764,7 +3190,10 @@
             "type": "string"
           }
         },
-        "required": ["accountId", "path"],
+        "required": [
+          "accountId",
+          "path"
+        ],
         "additionalProperties": false
       },
       "SftpDeleteRequest": {
@@ -2779,7 +3208,9 @@
                 "type": "boolean"
               }
             },
-            "required": ["isDir"],
+            "required": [
+              "isDir"
+            ],
             "additionalProperties": false
           }
         ]
@@ -2835,7 +3266,11 @@
             "type": "string"
           }
         },
-        "required": ["resourceId", "fieldKey", "plaintextValue"],
+        "required": [
+          "resourceId",
+          "fieldKey",
+          "plaintextValue"
+        ],
         "additionalProperties": false
       },
       "SearchHit": {
@@ -2908,12 +3343,19 @@
                   "type": "string"
                 }
               },
-              "required": ["outputKey", "envKey"],
+              "required": [
+                "outputKey",
+                "envKey"
+              ],
               "additionalProperties": false
             }
           }
         },
-        "required": ["id", "label", "entries"],
+        "required": [
+          "id",
+          "label",
+          "entries"
+        ],
         "additionalProperties": false
       },
       "ConnectTemplatesResponse": {
@@ -2938,7 +3380,12 @@
             }
           }
         },
-        "required": ["templates", "effectiveResourceTypeId", "supportsSecretImport", "namespaces"],
+        "required": [
+          "templates",
+          "effectiveResourceTypeId",
+          "supportsSecretImport",
+          "namespaces"
+        ],
         "additionalProperties": false
       },
       "ConnectTemplatesRequest": {
@@ -2959,7 +3406,12 @@
             "type": "string"
           }
         },
-        "required": ["sourcePluginId", "sourceResourceTypeId", "targetAccountId", "targetPluginId"],
+        "required": [
+          "sourcePluginId",
+          "sourceResourceTypeId",
+          "targetAccountId",
+          "targetPluginId"
+        ],
         "additionalProperties": false
       },
       "ConnectSecretExportRequest": {
@@ -3062,7 +3514,10 @@
           },
           "format": {
             "type": "string",
-            "enum": ["dotenv", "profile"]
+            "enum": [
+              "dotenv",
+              "profile"
+            ]
           },
           "filePath": {
             "type": "string"
@@ -3107,7 +3562,12 @@
             "description": "Raw file bytes"
           }
         },
-        "required": ["accountId", "bucket", "key", "file"],
+        "required": [
+          "accountId",
+          "bucket",
+          "key",
+          "file"
+        ],
         "additionalProperties": false
       },
       "SftpUploadForm": {
@@ -3137,7 +3597,11 @@
             "type": "string"
           }
         },
-        "required": ["accountId", "remotePath", "file"],
+        "required": [
+          "accountId",
+          "remotePath",
+          "file"
+        ],
         "additionalProperties": false
       },
       "SshKeyType": {
@@ -3171,7 +3635,10 @@
             "type": "boolean"
           },
           "fingerprint": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "publicKey": {
             "type": "string"
@@ -3232,7 +3699,14 @@
             "description": "Returned once. Not persisted in plaintext."
           }
         },
-        "required": ["id", "name", "keyType", "fingerprint", "publicKey", "privateKey"],
+        "required": [
+          "id",
+          "name",
+          "keyType",
+          "fingerprint",
+          "publicKey",
+          "privateKey"
+        ],
         "additionalProperties": false
       },
       "GenerateSshKeyRequest": {
@@ -3243,7 +3717,9 @@
             "minLength": 1
           }
         },
-        "required": ["name"],
+        "required": [
+          "name"
+        ],
         "additionalProperties": false
       },
       "ImportedSshKey": {
@@ -3268,10 +3744,19 @@
           },
           "isImported": {
             "type": "boolean",
-            "enum": [true]
+            "enum": [
+              true
+            ]
           }
         },
-        "required": ["id", "name", "keyType", "fingerprint", "publicKey", "isImported"],
+        "required": [
+          "id",
+          "name",
+          "keyType",
+          "fingerprint",
+          "publicKey",
+          "isImported"
+        ],
         "additionalProperties": false
       },
       "ImportSshKeyRequest": {
@@ -3285,7 +3770,10 @@
             "type": "string"
           }
         },
-        "required": ["name", "publicKey"],
+        "required": [
+          "name",
+          "publicKey"
+        ],
         "additionalProperties": false
       },
       "SshTunnelCreateAccountResponse": {
@@ -3297,7 +3785,9 @@
             "example": "00000000-0000-0000-0000-000000000000"
           }
         },
-        "required": ["accountId"],
+        "required": [
+          "accountId"
+        ],
         "additionalProperties": false
       },
       "SshTunnelCreateAccountRequest": {
@@ -3366,7 +3856,11 @@
             "type": "integer"
           }
         },
-        "required": ["localPort", "sshHost", "remotePort"],
+        "required": [
+          "localPort",
+          "sshHost",
+          "remotePort"
+        ],
         "additionalProperties": false
       },
       "SshExecResponse": {
@@ -3382,7 +3876,10 @@
             "type": "integer"
           }
         },
-        "required": ["stdout", "code"],
+        "required": [
+          "stdout",
+          "code"
+        ],
         "additionalProperties": false
       },
       "SshExecRequest": {
@@ -3408,12 +3905,22 @@
             "type": "string"
           }
         },
-        "required": ["sshHost", "sshPort", "sshUser", "sshKeyId", "command"],
+        "required": [
+          "sshHost",
+          "sshPort",
+          "sshUser",
+          "sshKeyId",
+          "command"
+        ],
         "additionalProperties": false
       },
       "BastionStatus": {
         "type": "string",
-        "enum": ["pending", "active", "revoked"]
+        "enum": [
+          "pending",
+          "active",
+          "revoked"
+        ]
       },
       "Bastion": {
         "type": "object",
@@ -3430,17 +3937,26 @@
             "type": "string"
           },
           "agentVersion": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "lastSeenAt": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "date-time"
           },
           "status": {
             "$ref": "#/components/schemas/BastionStatus"
           },
           "revokedAt": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "date-time"
           },
           "createdAt": {
@@ -3493,7 +4009,12 @@
             "description": "Enrollment token in the form `iwb_<random>`. Pass to the agent container as `BASTION_TOKEN`. Returned once — not recoverable later."
           }
         },
-        "required": ["id", "name", "tokenPrefix", "token"],
+        "required": [
+          "id",
+          "name",
+          "tokenPrefix",
+          "token"
+        ],
         "additionalProperties": false
       },
       "CreateBastionRequest": {
@@ -3504,11 +4025,16 @@
             "minLength": 1
           }
         },
-        "required": ["name"],
+        "required": [
+          "name"
+        ],
         "additionalProperties": false
       },
       "RoleSummary": {
-        "type": ["object", "null"],
+        "type": [
+          "object",
+          "null"
+        ],
         "properties": {
           "id": {
             "type": "string",
@@ -3519,16 +4045,28 @@
             "type": "string"
           },
           "description": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "isSystem": {
             "type": "boolean"
           },
           "systemKey": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
-        "required": ["id", "name", "description", "isSystem", "systemKey"],
+        "required": [
+          "id",
+          "name",
+          "description",
+          "isSystem",
+          "systemKey"
+        ],
         "additionalProperties": false
       },
       "Permission": {
@@ -3586,7 +4124,12 @@
             }
           }
         },
-        "required": ["userId", "email", "role", "permissions"],
+        "required": [
+          "userId",
+          "email",
+          "role",
+          "permissions"
+        ],
         "additionalProperties": false
       },
       "PermissionCatalog": {
@@ -3599,7 +4142,9 @@
             }
           }
         },
-        "required": ["permissions"],
+        "required": [
+          "permissions"
+        ],
         "additionalProperties": false
       },
       "Role": {
@@ -3617,7 +4162,9 @@
                 }
               }
             },
-            "required": ["permissions"],
+            "required": [
+              "permissions"
+            ],
             "additionalProperties": false
           }
         ]
@@ -3639,7 +4186,10 @@
             }
           }
         },
-        "required": ["name", "permissions"],
+        "required": [
+          "name",
+          "permissions"
+        ],
         "additionalProperties": false
       },
       "RoleUpdateRequest": {
@@ -3649,7 +4199,10 @@
             "type": "string"
           },
           "description": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "permissions": {
             "type": "array",
@@ -3673,21 +4226,33 @@
             "format": "email"
           },
           "displayName": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "role": {
             "$ref": "#/components/schemas/OrganizationRole"
           },
           "roleId": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "uuid",
             "example": "00000000-0000-0000-0000-000000000000"
           },
           "roleName": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "roleSystemKey": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "createdAt": {
             "type": "string",
@@ -3722,15 +4287,24 @@
             "$ref": "#/components/schemas/OrganizationRole"
           },
           "roleId": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "uuid",
             "example": "00000000-0000-0000-0000-000000000000"
           },
           "roleName": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "acceptedAt": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "date-time"
           },
           "expiresAt": {
@@ -3766,7 +4340,10 @@
             "type": "string"
           }
         },
-        "required": ["id", "token"],
+        "required": [
+          "id",
+          "token"
+        ],
         "additionalProperties": false
       },
       "InviteRequest": {
@@ -3785,7 +4362,9 @@
             "example": "00000000-0000-0000-0000-000000000000"
           }
         },
-        "required": ["email"],
+        "required": [
+          "email"
+        ],
         "additionalProperties": false
       },
       "RoleChangeRequest": {
@@ -3803,25 +4382,42 @@
         "additionalProperties": false
       },
       "Subscription": {
-        "type": ["object", "null"],
+        "type": [
+          "object",
+          "null"
+        ],
         "properties": {
           "status": {
             "type": "string",
-            "enum": ["trialing", "active", "past_due", "canceled", "unpaid"]
+            "enum": [
+              "trialing",
+              "active",
+              "past_due",
+              "canceled",
+              "unpaid"
+            ]
           },
           "seatCount": {
             "type": "integer",
             "minimum": 0
           },
           "currentPeriodEnd": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "date-time"
           },
           "stripeCustomerId": {
             "type": "string"
           }
         },
-        "required": ["status", "seatCount", "currentPeriodEnd", "stripeCustomerId"],
+        "required": [
+          "status",
+          "seatCount",
+          "currentPeriodEnd",
+          "stripeCustomerId"
+        ],
         "additionalProperties": false
       },
       "StripeRedirectUrl": {
@@ -3832,7 +4428,9 @@
             "format": "uri"
           }
         },
-        "required": ["url"],
+        "required": [
+          "url"
+        ],
         "additionalProperties": false
       },
       "AuditEntry": {
@@ -3844,12 +4442,18 @@
             "example": "00000000-0000-0000-0000-000000000000"
           },
           "userId": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "uuid",
             "example": "00000000-0000-0000-0000-000000000000"
           },
           "apiKeyId": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "uuid",
             "example": "00000000-0000-0000-0000-000000000000"
           },
@@ -3868,22 +4472,34 @@
                 "$ref": "#/components/schemas/JsonObject"
               },
               {
-                "type": ["object", "null"]
+                "type": [
+                  "object",
+                  "null"
+                ]
               }
             ]
           },
           "ipAddress": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "createdAt": {
             "type": "string",
             "format": "date-time"
           },
           "userName": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "userEmail": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "email"
           }
         },
@@ -3916,7 +4532,10 @@
             "minimum": 0
           }
         },
-        "required": ["entries", "total"],
+        "required": [
+          "entries",
+          "total"
+        ],
         "additionalProperties": false
       },
       "ApiKey": {
@@ -3940,19 +4559,31 @@
             }
           },
           "lastUsedAt": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "date-time"
           },
           "expiresAt": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "date-time"
           },
           "revokedAt": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "date-time"
           },
           "legacyHashSunsetAt": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "date-time",
             "description": "Cutover date past which a key still on the legacy SHA-256 hash will be refused. Null once rehashed to HMAC."
           },
@@ -3992,7 +4623,10 @@
             "description": "Plaintext key. Returned once. Format: `iwk_<base64url>`."
           }
         },
-        "required": ["id", "key"],
+        "required": [
+          "id",
+          "key"
+        ],
         "additionalProperties": false
       },
       "CreateApiKeyRequest": {
@@ -4013,7 +4647,10 @@
             "format": "date-time"
           }
         },
-        "required": ["name", "scopes"],
+        "required": [
+          "name",
+          "scopes"
+        ],
         "additionalProperties": false
       },
       "SyncedAccount": {
@@ -4040,7 +4677,10 @@
             "type": "integer"
           },
           "deletedAt": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "date-time"
           },
           "updatedAt": {
@@ -4081,7 +4721,10 @@
             "type": "string"
           },
           "externalId": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "fieldsJson": {
             "$ref": "#/components/schemas/JsonObject"
@@ -4095,7 +4738,10 @@
                 "$ref": "#/components/schemas/ResourceId"
               },
               {
-                "type": ["string", "null"]
+                "type": [
+                  "string",
+                  "null"
+                ]
               }
             ]
           },
@@ -4103,7 +4749,10 @@
             "type": "integer"
           },
           "deletedAt": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "date-time"
           },
           "updatedAt": {
@@ -4145,7 +4794,10 @@
             "type": "integer"
           },
           "deletedAt": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "date-time"
           },
           "updatedAt": {
@@ -4153,7 +4805,14 @@
             "format": "date-time"
           }
         },
-        "required": ["id", "name", "isDefault", "syncVersion", "deletedAt", "updatedAt"],
+        "required": [
+          "id",
+          "name",
+          "isDefault",
+          "syncVersion",
+          "deletedAt",
+          "updatedAt"
+        ],
         "additionalProperties": false
       },
       "SyncPullResponse": {
@@ -4190,7 +4849,13 @@
             }
           }
         },
-        "required": ["accounts", "resources", "dashboards", "dashboardPins", "associations"],
+        "required": [
+          "accounts",
+          "resources",
+          "dashboards",
+          "dashboardPins",
+          "associations"
+        ],
         "additionalProperties": false
       },
       "SyncPullRequest": {
@@ -4201,7 +4866,9 @@
             "minimum": 0
           }
         },
-        "required": ["lastSyncVersion"],
+        "required": [
+          "lastSyncVersion"
+        ],
         "additionalProperties": false
       },
       "SyncPushAccount": {
@@ -4229,11 +4896,20 @@
             "format": "date-time"
           },
           "deletedAt": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "date-time"
           }
         },
-        "required": ["id", "pluginId", "displayName", "credentials", "updatedAt"],
+        "required": [
+          "id",
+          "pluginId",
+          "displayName",
+          "credentials",
+          "updatedAt"
+        ],
         "additionalProperties": false
       },
       "SyncPushResource": {
@@ -4257,7 +4933,10 @@
             "type": "string"
           },
           "externalId": {
-            "type": ["string", "null"]
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "fieldsJson": {
             "$ref": "#/components/schemas/JsonObject"
@@ -4271,7 +4950,10 @@
                 "$ref": "#/components/schemas/ResourceId"
               },
               {
-                "type": ["string", "null"]
+                "type": [
+                  "string",
+                  "null"
+                ]
               }
             ]
           },
@@ -4280,7 +4962,10 @@
             "format": "date-time"
           },
           "deletedAt": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "date-time"
           }
         },
@@ -4315,11 +5000,19 @@
             "format": "date-time"
           },
           "deletedAt": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "format": "date-time"
           }
         },
-        "required": ["id", "name", "isDefault", "updatedAt"],
+        "required": [
+          "id",
+          "name",
+          "isDefault",
+          "updatedAt"
+        ],
         "additionalProperties": false
       },
       "SyncPushRequest": {
@@ -4354,7 +5047,9 @@
             "minimum": 0
           }
         },
-        "required": ["maxSyncVersion"],
+        "required": [
+          "maxSyncVersion"
+        ],
         "additionalProperties": false
       }
     },
@@ -4363,7 +5058,9 @@
   "paths": {
     "/api/auth/sign-in": {
       "get": {
-        "tags": ["Auth"],
+        "tags": [
+          "Auth"
+        ],
         "summary": "Start the WorkOS sign-in flow",
         "description": "Redirects (302) to the WorkOS authorization URL. Public.",
         "security": [],
@@ -4377,7 +5074,9 @@
     },
     "/callback": {
       "get": {
-        "tags": ["Auth"],
+        "tags": [
+          "Auth"
+        ],
         "summary": "WorkOS OAuth callback",
         "description": "Exchanges an authorization code for a session and sets the `wos-session` cookie. Public.",
         "security": [],
@@ -4422,7 +5121,9 @@
     },
     "/api/auth/me": {
       "get": {
-        "tags": ["Auth"],
+        "tags": [
+          "Auth"
+        ],
         "summary": "Current session + onboarding status",
         "responses": {
           "200": {
@@ -4451,7 +5152,9 @@
     },
     "/api/auth/orgs": {
       "get": {
-        "tags": ["Auth"],
+        "tags": [
+          "Auth"
+        ],
         "summary": "Organizations the current user belongs to",
         "responses": {
           "200": {
@@ -4483,7 +5186,9 @@
     },
     "/api/auth/sign-out": {
       "post": {
-        "tags": ["Auth"],
+        "tags": [
+          "Auth"
+        ],
         "summary": "Clear the session cookie",
         "responses": {
           "200": {
@@ -4495,10 +5200,14 @@
                   "properties": {
                     "ok": {
                       "type": "boolean",
-                      "enum": [true]
+                      "enum": [
+                        true
+                      ]
                     }
                   },
-                  "required": ["ok"],
+                  "required": [
+                    "ok"
+                  ],
                   "additionalProperties": false
                 }
               }
@@ -4510,7 +5219,9 @@
     },
     "/api/orgs": {
       "post": {
-        "tags": ["Organizations"],
+        "tags": [
+          "Organizations"
+        ],
         "summary": "Create a new organization",
         "description": "The caller becomes the `owner` of the new organization.",
         "requestBody": {
@@ -4560,7 +5271,9 @@
     },
     "/api/invitations/by-token/{token}": {
       "get": {
-        "tags": ["Invitations"],
+        "tags": [
+          "Invitations"
+        ],
         "summary": "Get invitation details by token",
         "parameters": [
           {
@@ -4599,7 +5312,9 @@
     },
     "/api/invitations/accept": {
       "post": {
-        "tags": ["Invitations"],
+        "tags": [
+          "Invitations"
+        ],
         "summary": "Accept an invitation",
         "requestBody": {
           "required": true,
@@ -4648,7 +5363,9 @@
     },
     "/api/org/{orgId}/accounts/plugins": {
       "get": {
-        "tags": ["Accounts"],
+        "tags": [
+          "Accounts"
+        ],
         "summary": "List installed plugins and their credential fields",
         "parameters": [
           {
@@ -4685,7 +5402,9 @@
     },
     "/api/org/{orgId}/accounts": {
       "get": {
-        "tags": ["Accounts"],
+        "tags": [
+          "Accounts"
+        ],
         "summary": "List accounts in this organization",
         "parameters": [
           {
@@ -4720,7 +5439,9 @@
         "description": "_Requires permission: `accounts:read`._"
       },
       "post": {
-        "tags": ["Accounts"],
+        "tags": [
+          "Accounts"
+        ],
         "summary": "Create an account",
         "description": "Stores encrypted credentials and triggers a first sync. `syncError` is set if the initial sync failed (the account row is still created).\n\n_Requires permission: `accounts:write`._",
         "parameters": [
@@ -4787,7 +5508,9 @@
     },
     "/api/org/{orgId}/accounts/{id}": {
       "delete": {
-        "tags": ["Accounts"],
+        "tags": [
+          "Accounts"
+        ],
         "summary": "Delete an account",
         "parameters": [
           {
@@ -4829,7 +5552,9 @@
         "description": "_Requires permission: `accounts:delete`._"
       },
       "patch": {
-        "tags": ["Accounts"],
+        "tags": [
+          "Accounts"
+        ],
         "summary": "Update an account (rename and/or change bastion binding)",
         "parameters": [
           {
@@ -4903,7 +5628,9 @@
     },
     "/api/org/{orgId}/accounts/{id}/credentials": {
       "get": {
-        "tags": ["Accounts"],
+        "tags": [
+          "Accounts"
+        ],
         "summary": "Fetch the decrypted credentials for an account",
         "description": "Returns the credentials map as it was originally submitted. Sensitive — gate access carefully.\n\n_Requires permission: `secrets:read`._",
         "parameters": [
@@ -4958,7 +5685,9 @@
         "x-required-permission": "secrets:read"
       },
       "put": {
-        "tags": ["Accounts"],
+        "tags": [
+          "Accounts"
+        ],
         "summary": "Rotate the credentials an account uses to talk to the upstream provider",
         "description": "Replaces the encrypted credentials blob in place. Used to swap a stale or narrowly-scoped token for a freshly-minted one without recreating the account (preserves existing resources, pins, dashboards, sync history).\n\n_Requires permission: `secrets:write`._",
         "parameters": [
@@ -4999,7 +5728,9 @@
                     "description": "Complete credentials map. Sensitive fields the caller doesn't want to change should be re-sent with their previous value (the server doesn't merge with the existing blob)."
                   }
                 },
-                "required": ["credentials"],
+                "required": [
+                  "credentials"
+                ],
                 "additionalProperties": false
               }
             }
@@ -5015,10 +5746,14 @@
                   "properties": {
                     "ok": {
                       "type": "boolean",
-                      "enum": [true]
+                      "enum": [
+                        true
+                      ]
                     }
                   },
-                  "required": ["ok"],
+                  "required": [
+                    "ok"
+                  ],
                   "additionalProperties": false
                 }
               }
@@ -5051,7 +5786,9 @@
     },
     "/api/org/{orgId}/accounts/{id}/resources": {
       "get": {
-        "tags": ["Accounts"],
+        "tags": [
+          "Accounts"
+        ],
         "summary": "List cached resources for an account",
         "parameters": [
           {
@@ -5078,7 +5815,10 @@
           {
             "schema": {
               "type": "string",
-              "enum": ["true", "false"],
+              "enum": [
+                "true",
+                "false"
+              ],
               "description": "If `true`, only resources with no `parentResourceId` are returned."
             },
             "required": false,
@@ -5108,7 +5848,9 @@
     },
     "/api/org/{orgId}/accounts/{id}/sync": {
       "post": {
-        "tags": ["Accounts"],
+        "tags": [
+          "Accounts"
+        ],
         "summary": "Sync all resource types for an account",
         "parameters": [
           {
@@ -5152,7 +5894,9 @@
     },
     "/api/org/{orgId}/accounts/{id}/detail": {
       "get": {
-        "tags": ["Accounts"],
+        "tags": [
+          "Accounts"
+        ],
         "summary": "Account metadata + resource type list",
         "parameters": [
           {
@@ -5206,7 +5950,9 @@
     },
     "/api/org/{orgId}/accounts/{id}/sync-type/{typeId}": {
       "post": {
-        "tags": ["Accounts"],
+        "tags": [
+          "Accounts"
+        ],
         "summary": "Sync a single resource type and return its resources",
         "parameters": [
           {
@@ -5281,7 +6027,9 @@
     },
     "/api/org/{orgId}/dashboards": {
       "get": {
-        "tags": ["Dashboards"],
+        "tags": [
+          "Dashboards"
+        ],
         "summary": "List dashboards",
         "parameters": [
           {
@@ -5316,7 +6064,9 @@
         "description": "_Requires permission: `dashboards:read`._"
       },
       "post": {
-        "tags": ["Dashboards"],
+        "tags": [
+          "Dashboards"
+        ],
         "summary": "Create a dashboard",
         "parameters": [
           {
@@ -5343,7 +6093,9 @@
                     "minLength": 1
                   }
                 },
-                "required": ["name"],
+                "required": [
+                  "name"
+                ],
                 "additionalProperties": false
               }
             }
@@ -5368,7 +6120,9 @@
     },
     "/api/org/{orgId}/dashboards/default/full": {
       "get": {
-        "tags": ["Dashboards"],
+        "tags": [
+          "Dashboards"
+        ],
         "summary": "Get-or-create the default dashboard with its pins",
         "parameters": [
           {
@@ -5402,7 +6156,9 @@
     },
     "/api/org/{orgId}/dashboards/{id}": {
       "get": {
-        "tags": ["Dashboards"],
+        "tags": [
+          "Dashboards"
+        ],
         "summary": "Get a dashboard with its pins",
         "parameters": [
           {
@@ -5454,7 +6210,9 @@
         "description": "_Requires permission: `dashboards:read`._"
       },
       "delete": {
-        "tags": ["Dashboards"],
+        "tags": [
+          "Dashboards"
+        ],
         "summary": "Delete a dashboard",
         "description": "Cannot delete the default dashboard.\n\n_Requires permission: `dashboards:write`._",
         "parameters": [
@@ -5518,7 +6276,9 @@
     },
     "/api/org/{orgId}/dashboards/{id}/rename": {
       "post": {
-        "tags": ["Dashboards"],
+        "tags": [
+          "Dashboards"
+        ],
         "summary": "Rename a dashboard",
         "parameters": [
           {
@@ -5555,7 +6315,9 @@
                     "minLength": 1
                   }
                 },
-                "required": ["name"],
+                "required": [
+                  "name"
+                ],
                 "additionalProperties": false
               }
             }
@@ -5580,7 +6342,9 @@
     },
     "/api/org/{orgId}/dashboards/pin": {
       "post": {
-        "tags": ["Dashboards"],
+        "tags": [
+          "Dashboards"
+        ],
         "summary": "Pin a resource to a dashboard",
         "parameters": [
           {
@@ -5634,7 +6398,9 @@
     },
     "/api/org/{orgId}/dashboards/{id}/reorder": {
       "post": {
-        "tags": ["Dashboards"],
+        "tags": [
+          "Dashboards"
+        ],
         "summary": "Reorder dashboard pins",
         "parameters": [
           {
@@ -5698,7 +6464,9 @@
     },
     "/api/org/{orgId}/dashboards/unpin": {
       "post": {
-        "tags": ["Dashboards"],
+        "tags": [
+          "Dashboards"
+        ],
         "summary": "Unpin a resource",
         "parameters": [
           {
@@ -5752,7 +6520,9 @@
     },
     "/api/org/{orgId}/dashboards/validate-tabs": {
       "post": {
-        "tags": ["Dashboards"],
+        "tags": [
+          "Dashboards"
+        ],
         "summary": "Validate workspace tab targets still exist",
         "parameters": [
           {
@@ -5796,7 +6566,9 @@
     },
     "/api/org/{orgId}/dashboards/pin/{pinId}": {
       "get": {
-        "tags": ["Dashboards"],
+        "tags": [
+          "Dashboards"
+        ],
         "summary": "Full enriched pin data + cached probe status",
         "parameters": [
           {
@@ -5850,7 +6622,9 @@
     },
     "/api/org/{orgId}/dashboards/pin/{pinId}/range": {
       "get": {
-        "tags": ["Dashboards"],
+        "tags": [
+          "Dashboards"
+        ],
         "summary": "Historical metric series for a pinned resource",
         "description": "Returns per-series metric points between fromMs and toMs. The backend auto-routes between raw, 1-minute, and 1-hour rollups based on span: ≤2h raw, ≤7d 1m, >7d 1h.",
         "parameters": [
@@ -5877,7 +6651,10 @@
           },
           {
             "schema": {
-              "type": ["integer", "null"]
+              "type": [
+                "integer",
+                "null"
+              ]
             },
             "required": false,
             "name": "fromMs",
@@ -5885,7 +6662,10 @@
           },
           {
             "schema": {
-              "type": ["integer", "null"]
+              "type": [
+                "integer",
+                "null"
+              ]
             },
             "required": false,
             "name": "toMs",
@@ -5929,7 +6709,9 @@
     },
     "/api/org/{orgId}/dashboards/probe": {
       "post": {
-        "tags": ["Dashboards"],
+        "tags": [
+          "Dashboards"
+        ],
         "summary": "Read cached stats/metrics for dashboard cards",
         "parameters": [
           {
@@ -5976,7 +6758,9 @@
     },
     "/api/org/{orgId}/resources/{pluginId}/{typeId}/detail": {
       "get": {
-        "tags": ["Resources"],
+        "tags": [
+          "Resources"
+        ],
         "summary": "Full resource detail page payload",
         "description": "Performs a live `listResources` against the provider, falls back to DB on failure, and returns the plugin's `renderDetail` schema plus host-derived flags (SQL/KV/SSH availability, child resources, peer panes, etc).\n\n_Requires permission: `resources:read`._",
         "parameters": [
@@ -6036,7 +6820,10 @@
           {
             "schema": {
               "type": "string",
-              "enum": ["true", "false"],
+              "enum": [
+                "true",
+                "false"
+              ],
               "description": "Default true. If false, peer panes are returned as stubs."
             },
             "required": false,
@@ -6082,7 +6869,9 @@
     },
     "/api/org/{orgId}/resources/{pluginId}/{typeId}/manifest": {
       "get": {
-        "tags": ["Resources"],
+        "tags": [
+          "Resources"
+        ],
         "summary": "Fetch the raw manifest (YAML/JSON) for a resource",
         "parameters": [
           {
@@ -6176,7 +6965,9 @@
         "description": "_Requires permission: `resources:read`._"
       },
       "post": {
-        "tags": ["Resources"],
+        "tags": [
+          "Resources"
+        ],
         "summary": "Apply an edited manifest to a resource",
         "parameters": [
           {
@@ -6256,7 +7047,9 @@
     },
     "/api/org/{orgId}/resources/{pluginId}/import-yaml": {
       "post": {
-        "tags": ["Resources"],
+        "tags": [
+          "Resources"
+        ],
         "summary": "Bulk-import resources from YAML (kubectl apply -f equivalent)",
         "parameters": [
           {
@@ -6328,7 +7121,9 @@
     },
     "/api/org/{orgId}/resources/{pluginId}/{typeId}/describe": {
       "post": {
-        "tags": ["Resources"],
+        "tags": [
+          "Resources"
+        ],
         "summary": "Get human-readable describe text for a resource",
         "parameters": [
           {
@@ -6408,7 +7203,9 @@
     },
     "/api/org/{orgId}/resources/{pluginId}/{typeId}/logs": {
       "post": {
-        "tags": ["Resources"],
+        "tags": [
+          "Resources"
+        ],
         "summary": "Fetch logs for a resource",
         "parameters": [
           {
@@ -6488,7 +7285,9 @@
     },
     "/api/org/{orgId}/resources/{pluginId}/{typeId}/secret-versions": {
       "get": {
-        "tags": ["Resources"],
+        "tags": [
+          "Resources"
+        ],
         "summary": "List secret versions for a versioned-secret resource",
         "parameters": [
           {
@@ -6584,7 +7383,9 @@
     },
     "/api/org/{orgId}/resources/{pluginId}/{typeId}/secret-versions/access": {
       "post": {
-        "tags": ["Resources"],
+        "tags": [
+          "Resources"
+        ],
         "summary": "Reveal the plaintext value of a specific version (one-time)",
         "parameters": [
           {
@@ -6664,7 +7465,9 @@
     },
     "/api/org/{orgId}/resources/{pluginId}/{typeId}/secret-versions/add": {
       "post": {
-        "tags": ["Resources"],
+        "tags": [
+          "Resources"
+        ],
         "summary": "Add a new secret version",
         "parameters": [
           {
@@ -6744,7 +7547,9 @@
     },
     "/api/org/{orgId}/resources/{pluginId}/{typeId}/secret-versions/modify": {
       "post": {
-        "tags": ["Resources"],
+        "tags": [
+          "Resources"
+        ],
         "summary": "Enable/disable/destroy a secret version",
         "parameters": [
           {
@@ -6824,7 +7629,9 @@
     },
     "/api/org/{orgId}/resources/{pluginId}/{typeId}": {
       "delete": {
-        "tags": ["Resources"],
+        "tags": [
+          "Resources"
+        ],
         "summary": "Delete a resource via the plugin",
         "parameters": [
           {
@@ -6920,7 +7727,9 @@
     },
     "/api/org/{orgId}/resources/invoke-action": {
       "post": {
-        "tags": ["Resources"],
+        "tags": [
+          "Resources"
+        ],
         "summary": "Invoke a plugin-defined action on a resource",
         "parameters": [
           {
@@ -6984,7 +7793,9 @@
     },
     "/api/org/{orgId}/resources/nosql-command": {
       "post": {
-        "tags": ["Resources"],
+        "tags": [
+          "Resources"
+        ],
         "summary": "Run a NoSQL document-browser command (e.g. MongoDB shell)",
         "parameters": [
           {
@@ -7021,7 +7832,9 @@
                       "$ref": "#/components/schemas/JsonObject"
                     }
                   },
-                  "required": ["result"],
+                  "required": [
+                    "result"
+                  ],
                   "additionalProperties": false
                 }
               }
@@ -7055,7 +7868,9 @@
     },
     "/api/org/{orgId}/resources/attach": {
       "post": {
-        "tags": ["Resources"],
+        "tags": [
+          "Resources"
+        ],
         "summary": "Attach a resource onto another (e.g. disk → VM)",
         "parameters": [
           {
@@ -7119,7 +7934,9 @@
     },
     "/api/org/{orgId}/resources/{pluginId}/{typeId}/export-credential": {
       "post": {
-        "tags": ["Resources"],
+        "tags": [
+          "Resources"
+        ],
         "summary": "Export a credential file for a resource (one-time reveal)",
         "parameters": [
           {
@@ -7199,7 +8016,9 @@
     },
     "/api/org/{orgId}/resources/create": {
       "post": {
-        "tags": ["Resources"],
+        "tags": [
+          "Resources"
+        ],
         "summary": "Create a new resource via its plugin",
         "parameters": [
           {
@@ -7263,7 +8082,9 @@
     },
     "/api/org/{orgId}/resources/update": {
       "post": {
-        "tags": ["Resources"],
+        "tags": [
+          "Resources"
+        ],
         "summary": "Update a resource via its plugin",
         "description": "Applies the supplied field changes upstream and persists the refreshed fields/display name to the DB. The body's `fields` map only carries the keys the caller actually changed.",
         "parameters": [
@@ -7326,7 +8147,9 @@
     },
     "/api/org/{orgId}/resources/create-config": {
       "post": {
-        "tags": ["Resources"],
+        "tags": [
+          "Resources"
+        ],
         "summary": "Get the dynamic create form for a resource type",
         "description": "Calls the plugin's `getCreateConfig`. The returned `CreateResourceConfig` is plugin-shaped — see `JsonObject`.\n\n_Requires permission: `resources:write`._",
         "parameters": [
@@ -7390,7 +8213,9 @@
     },
     "/api/org/{orgId}/resources/picker-resources": {
       "post": {
-        "tags": ["Resources"],
+        "tags": [
+          "Resources"
+        ],
         "summary": "Fetch options for a `resource-picker` field",
         "parameters": [
           {
@@ -7437,7 +8262,9 @@
     },
     "/api/org/{orgId}/resources/create-pricing": {
       "post": {
-        "tags": ["Resources"],
+        "tags": [
+          "Resources"
+        ],
         "summary": "Pricing per size for a create form",
         "parameters": [
           {
@@ -7484,7 +8311,9 @@
     },
     "/api/org/{orgId}/resources/field-action": {
       "post": {
-        "tags": ["Resources"],
+        "tags": [
+          "Resources"
+        ],
         "summary": "Execute an in-form field action (e.g. generate an IAM role)",
         "description": "Calls the plugin's `executeFieldAction`. Returns `{ value }` to assign to the field; for `select` fields the optional `option` should be spliced into the options list so the new value can be displayed.",
         "parameters": [
@@ -7547,7 +8376,9 @@
     },
     "/api/org/{orgId}/resources/create-cost-estimate": {
       "post": {
-        "tags": ["Resources"],
+        "tags": [
+          "Resources"
+        ],
         "summary": "Cost estimate for the current create form values",
         "parameters": [
           {
@@ -7586,12 +8417,17 @@
                           "$ref": "#/components/schemas/JsonObject"
                         },
                         {
-                          "type": ["object", "null"]
+                          "type": [
+                            "object",
+                            "null"
+                          ]
                         }
                       ]
                     }
                   },
-                  "required": ["estimate"],
+                  "required": [
+                    "estimate"
+                  ],
                   "additionalProperties": false
                 }
               }
@@ -7605,7 +8441,9 @@
     },
     "/api/org/{orgId}/resources/{pluginId}/{typeId}/peer-panes": {
       "post": {
-        "tags": ["Resources"],
+        "tags": [
+          "Resources"
+        ],
         "summary": "Lazy-fetch peer-integration panes for a resource",
         "parameters": [
           {
@@ -7678,7 +8516,9 @@
     },
     "/api/org/{orgId}/resources/{pluginId}/{typeId}/metrics": {
       "post": {
-        "tags": ["Resources"],
+        "tags": [
+          "Resources"
+        ],
         "summary": "Fetch metric series for a resource",
         "parameters": [
           {
@@ -7758,7 +8598,9 @@
     },
     "/api/org/{orgId}/sql/query": {
       "post": {
-        "tags": ["Connections"],
+        "tags": [
+          "Connections"
+        ],
         "summary": "Run a read-only SQL query",
         "description": "Routes to the right driver: REST `executeQuery` (BigQuery, Databricks), per-resource SQL driver (Neon, Turso) or account-level SQL driver (Postgres, MySQL).\n\n_Requires permission: `resources:execute`._",
         "parameters": [
@@ -7830,7 +8672,9 @@
     },
     "/api/org/{orgId}/sql/execute": {
       "post": {
-        "tags": ["Connections"],
+        "tags": [
+          "Connections"
+        ],
         "summary": "Run an INSERT/UPDATE/DELETE/DDL statement",
         "parameters": [
           {
@@ -7894,7 +8738,9 @@
     },
     "/api/org/{orgId}/sql/estimate": {
       "post": {
-        "tags": ["Connections"],
+        "tags": [
+          "Connections"
+        ],
         "summary": "Dry-run cost estimate (e.g. BigQuery byte scan)",
         "parameters": [
           {
@@ -7958,7 +8804,9 @@
     },
     "/api/org/{orgId}/kv/command": {
       "post": {
-        "tags": ["Connections"],
+        "tags": [
+          "Connections"
+        ],
         "summary": "Run a Redis-style KV command",
         "parameters": [
           {
@@ -8022,7 +8870,9 @@
     },
     "/api/org/{orgId}/docker/command": {
       "post": {
-        "tags": ["Connections"],
+        "tags": [
+          "Connections"
+        ],
         "summary": "Run a Docker daemon operation",
         "parameters": [
           {
@@ -8086,7 +8936,9 @@
     },
     "/api/org/{orgId}/storage/list": {
       "post": {
-        "tags": ["Connections"],
+        "tags": [
+          "Connections"
+        ],
         "summary": "List objects in a bucket / prefix",
         "parameters": [
           {
@@ -8153,7 +9005,9 @@
     },
     "/api/org/{orgId}/storage/mkdir": {
       "post": {
-        "tags": ["Connections"],
+        "tags": [
+          "Connections"
+        ],
         "summary": "Create a folder marker in a bucket",
         "parameters": [
           {
@@ -8217,7 +9071,9 @@
     },
     "/api/org/{orgId}/storage/delete": {
       "post": {
-        "tags": ["Connections"],
+        "tags": [
+          "Connections"
+        ],
         "summary": "Delete a storage object",
         "parameters": [
           {
@@ -8281,7 +9137,9 @@
     },
     "/api/org/{orgId}/artifacts/list": {
       "post": {
-        "tags": ["Connections"],
+        "tags": [
+          "Connections"
+        ],
         "summary": "List artifact-registry items for a resource",
         "parameters": [
           {
@@ -8355,7 +9213,9 @@
     },
     "/api/org/{orgId}/sftp/list": {
       "post": {
-        "tags": ["Connections"],
+        "tags": [
+          "Connections"
+        ],
         "summary": "List a directory over SFTP",
         "parameters": [
           {
@@ -8422,7 +9282,9 @@
     },
     "/api/org/{orgId}/sftp/mkdir": {
       "post": {
-        "tags": ["Connections"],
+        "tags": [
+          "Connections"
+        ],
         "summary": "Create a directory over SFTP",
         "parameters": [
           {
@@ -8486,7 +9348,9 @@
     },
     "/api/org/{orgId}/sftp/delete": {
       "post": {
-        "tags": ["Connections"],
+        "tags": [
+          "Connections"
+        ],
         "summary": "Delete a file or directory over SFTP",
         "parameters": [
           {
@@ -8550,7 +9414,9 @@
     },
     "/api/org/{orgId}/associations": {
       "post": {
-        "tags": ["Associations"],
+        "tags": [
+          "Associations"
+        ],
         "summary": "Wire one resource's output into another resource's secret field",
         "parameters": [
           {
@@ -8604,7 +9470,9 @@
     },
     "/api/org/{orgId}/associations/literal": {
       "post": {
-        "tags": ["Associations"],
+        "tags": [
+          "Associations"
+        ],
         "summary": "Set a secret field to a literal plaintext value",
         "parameters": [
           {
@@ -8658,7 +9526,9 @@
     },
     "/api/org/{orgId}/search": {
       "get": {
-        "tags": ["Search"],
+        "tags": [
+          "Search"
+        ],
         "summary": "Search resources across all accounts (capped at 50 hits)",
         "parameters": [
           {
@@ -8703,7 +9573,9 @@
     },
     "/api/org/{orgId}/connect/templates": {
       "post": {
-        "tags": ["Connect"],
+        "tags": [
+          "Connect"
+        ],
         "summary": "List secret-export templates and target capabilities",
         "parameters": [
           {
@@ -8757,7 +9629,9 @@
     },
     "/api/org/{orgId}/connect/secret-export": {
       "post": {
-        "tags": ["Connect"],
+        "tags": [
+          "Connect"
+        ],
         "summary": "Materialize source outputs as a secret in the target (e.g. K8s)",
         "parameters": [
           {
@@ -8821,7 +9695,9 @@
     },
     "/api/org/{orgId}/connect/env-deploy": {
       "post": {
-        "tags": ["Connect"],
+        "tags": [
+          "Connect"
+        ],
         "summary": "Deploy env vars from a source resource to an SSH target",
         "parameters": [
           {
@@ -8885,7 +9761,9 @@
     },
     "/api/org/{orgId}/v1/storage/upload": {
       "post": {
-        "tags": ["Storage"],
+        "tags": [
+          "Storage"
+        ],
         "summary": "Upload a file to object storage",
         "description": "Multipart/form-data. Plugin must implement `uploadStorageObject`.\n\n_Requires permission: `storage:write`._",
         "parameters": [
@@ -8949,7 +9827,9 @@
     },
     "/api/org/{orgId}/v1/storage/download": {
       "get": {
-        "tags": ["Storage"],
+        "tags": [
+          "Storage"
+        ],
         "summary": "Download one or many objects (zipped if more than one)",
         "parameters": [
           {
@@ -9047,7 +9927,9 @@
     },
     "/api/org/{orgId}/v1/sftp/upload": {
       "post": {
-        "tags": ["SFTP"],
+        "tags": [
+          "SFTP"
+        ],
         "summary": "Upload a file via SFTP",
         "parameters": [
           {
@@ -9111,7 +9993,9 @@
     },
     "/api/org/{orgId}/v1/sftp/download": {
       "get": {
-        "tags": ["SFTP"],
+        "tags": [
+          "SFTP"
+        ],
         "summary": "Download one or many files via SFTP (zipped if more than one)",
         "parameters": [
           {
@@ -9235,7 +10119,9 @@
     },
     "/api/org/{orgId}/ssh-keys": {
       "get": {
-        "tags": ["SSH keys"],
+        "tags": [
+          "SSH keys"
+        ],
         "summary": "List org SSH keys",
         "parameters": [
           {
@@ -9270,7 +10156,9 @@
         "description": "_Requires permission: `ssh-keys:read`._"
       },
       "post": {
-        "tags": ["SSH keys"],
+        "tags": [
+          "SSH keys"
+        ],
         "summary": "Generate a new Ed25519 keypair (private key returned once)",
         "parameters": [
           {
@@ -9324,7 +10212,9 @@
     },
     "/api/org/{orgId}/ssh-keys/import": {
       "post": {
-        "tags": ["SSH keys"],
+        "tags": [
+          "SSH keys"
+        ],
         "summary": "Import an existing public key",
         "parameters": [
           {
@@ -9378,7 +10268,9 @@
     },
     "/api/org/{orgId}/ssh-keys/{id}": {
       "delete": {
-        "tags": ["SSH keys"],
+        "tags": [
+          "SSH keys"
+        ],
         "summary": "Delete an SSH key (owner only)",
         "parameters": [
           {
@@ -9422,7 +10314,9 @@
     },
     "/api/org/{orgId}/ssh-tunnels/create-account": {
       "post": {
-        "tags": ["SSH tunnels"],
+        "tags": [
+          "SSH tunnels"
+        ],
         "summary": "Create an account whose traffic is tunneled over SSH",
         "description": "Verifies the SSH connection works before persisting.\n\n_Requires permission: `accounts:write`._",
         "parameters": [
@@ -9486,7 +10380,9 @@
     },
     "/api/org/{orgId}/ssh-tunnels/open": {
       "post": {
-        "tags": ["SSH tunnels"],
+        "tags": [
+          "SSH tunnels"
+        ],
         "summary": "Re-open the tunnel for an existing account",
         "parameters": [
           {
@@ -9514,7 +10410,9 @@
                     "example": "00000000-0000-0000-0000-000000000000"
                   }
                 },
-                "required": ["accountId"],
+                "required": [
+                  "accountId"
+                ],
                 "additionalProperties": false
               }
             }
@@ -9535,7 +10433,10 @@
                       "type": "integer"
                     }
                   },
-                  "required": ["tunnelId", "localPort"],
+                  "required": [
+                    "tunnelId",
+                    "localPort"
+                  ],
                   "additionalProperties": false
                 }
               }
@@ -9559,7 +10460,9 @@
     },
     "/api/org/{orgId}/ssh-tunnels/close": {
       "post": {
-        "tags": ["SSH tunnels"],
+        "tags": [
+          "SSH tunnels"
+        ],
         "summary": "Close a tunnel by id",
         "parameters": [
           {
@@ -9585,7 +10488,9 @@
                     "type": "string"
                   }
                 },
-                "required": ["tunnelId"],
+                "required": [
+                  "tunnelId"
+                ],
                 "additionalProperties": false
               }
             }
@@ -9610,7 +10515,9 @@
     },
     "/api/org/{orgId}/ssh-tunnels/active": {
       "get": {
-        "tags": ["SSH tunnels"],
+        "tags": [
+          "SSH tunnels"
+        ],
         "summary": "List active tunnels for this org",
         "parameters": [
           {
@@ -9647,7 +10554,9 @@
     },
     "/api/org/{orgId}/ssh-tunnels/exec": {
       "post": {
-        "tags": ["SSH tunnels"],
+        "tags": [
+          "SSH tunnels"
+        ],
         "summary": "Run a command over SSH using an org SSH key",
         "parameters": [
           {
@@ -9711,7 +10620,9 @@
     },
     "/api/org/{orgId}/bastions": {
       "get": {
-        "tags": ["Bastions"],
+        "tags": [
+          "Bastions"
+        ],
         "summary": "List bastion agents registered to this org",
         "parameters": [
           {
@@ -9746,7 +10657,9 @@
         "description": "_Requires permission: `bastions:read`._"
       },
       "post": {
-        "tags": ["Bastions"],
+        "tags": [
+          "Bastions"
+        ],
         "summary": "Register a new bastion (returns the enrollment token once)",
         "parameters": [
           {
@@ -9800,7 +10713,9 @@
     },
     "/api/org/{orgId}/bastions/{id}": {
       "delete": {
-        "tags": ["Bastions"],
+        "tags": [
+          "Bastions"
+        ],
         "summary": "Revoke a bastion — accounts referencing it have their bastion binding cleared",
         "parameters": [
           {
@@ -9854,7 +10769,9 @@
     },
     "/api/org/{orgId}/team/me": {
       "get": {
-        "tags": ["Team"],
+        "tags": [
+          "Team"
+        ],
         "summary": "Current user's effective permissions and role",
         "parameters": [
           {
@@ -9886,7 +10803,9 @@
     },
     "/api/org/{orgId}/team/permissions": {
       "get": {
-        "tags": ["Team"],
+        "tags": [
+          "Team"
+        ],
         "summary": "List all permission strings the server recognises",
         "parameters": [
           {
@@ -9920,7 +10839,9 @@
     },
     "/api/org/{orgId}/team/roles": {
       "get": {
-        "tags": ["Team"],
+        "tags": [
+          "Team"
+        ],
         "summary": "List roles (system + custom)",
         "parameters": [
           {
@@ -9955,7 +10876,9 @@
         "description": "_Requires permission: `team:read`._"
       },
       "post": {
-        "tags": ["Team"],
+        "tags": [
+          "Team"
+        ],
         "summary": "Create a custom role",
         "parameters": [
           {
@@ -9999,7 +10922,9 @@
     },
     "/api/org/{orgId}/team/roles/{id}": {
       "patch": {
-        "tags": ["Team"],
+        "tags": [
+          "Team"
+        ],
         "summary": "Edit a custom role",
         "parameters": [
           {
@@ -10071,7 +10996,9 @@
         "description": "_Requires permission: `team:role:write`._"
       },
       "delete": {
-        "tags": ["Team"],
+        "tags": [
+          "Team"
+        ],
         "summary": "Delete a custom role (must have no members or pending invitations)",
         "parameters": [
           {
@@ -10145,7 +11072,9 @@
     },
     "/api/org/{orgId}/team/members": {
       "get": {
-        "tags": ["Team"],
+        "tags": [
+          "Team"
+        ],
         "summary": "List org members",
         "parameters": [
           {
@@ -10182,7 +11111,9 @@
     },
     "/api/org/{orgId}/team/invitations": {
       "get": {
-        "tags": ["Team"],
+        "tags": [
+          "Team"
+        ],
         "summary": "List pending and historical invitations",
         "parameters": [
           {
@@ -10217,7 +11148,9 @@
         "description": "_Requires permission: `team:read`._"
       },
       "post": {
-        "tags": ["Team"],
+        "tags": [
+          "Team"
+        ],
         "summary": "Create an invitation (token valid for 7 days)",
         "parameters": [
           {
@@ -10261,7 +11194,9 @@
     },
     "/api/org/{orgId}/team/members/{id}": {
       "delete": {
-        "tags": ["Team"],
+        "tags": [
+          "Team"
+        ],
         "summary": "Remove a member from the org",
         "parameters": [
           {
@@ -10305,7 +11240,9 @@
     },
     "/api/org/{orgId}/team/members/{id}/role": {
       "patch": {
-        "tags": ["Team"],
+        "tags": [
+          "Team"
+        ],
         "summary": "Change a member's role",
         "parameters": [
           {
@@ -10359,7 +11296,9 @@
     },
     "/api/org/{orgId}/team/invitations/{id}": {
       "delete": {
-        "tags": ["Team"],
+        "tags": [
+          "Team"
+        ],
         "summary": "Revoke a pending invitation",
         "parameters": [
           {
@@ -10413,7 +11352,9 @@
     },
     "/api/org/{orgId}/billing/status": {
       "get": {
-        "tags": ["Billing"],
+        "tags": [
+          "Billing"
+        ],
         "summary": "Get the current subscription (or `null` for free tier)",
         "parameters": [
           {
@@ -10447,7 +11388,9 @@
     },
     "/api/org/{orgId}/billing/checkout": {
       "post": {
-        "tags": ["Billing"],
+        "tags": [
+          "Billing"
+        ],
         "summary": "Start a Stripe Checkout session",
         "parameters": [
           {
@@ -10491,7 +11434,9 @@
     },
     "/api/org/{orgId}/billing/portal": {
       "post": {
-        "tags": ["Billing"],
+        "tags": [
+          "Billing"
+        ],
         "summary": "Get a Stripe customer portal URL",
         "parameters": [
           {
@@ -10535,7 +11480,9 @@
     },
     "/api/org/{orgId}/audit-logs": {
       "get": {
-        "tags": ["Audit"],
+        "tags": [
+          "Audit"
+        ],
         "summary": "List audit log entries (paginated, filterable)",
         "parameters": [
           {
@@ -10632,7 +11579,9 @@
     },
     "/api/org/{orgId}/api-keys": {
       "get": {
-        "tags": ["API keys"],
+        "tags": [
+          "API keys"
+        ],
         "summary": "List API keys (no plaintext)",
         "parameters": [
           {
@@ -10665,7 +11614,9 @@
         "operationId": "getOrgOrgIdApiKeys"
       },
       "post": {
-        "tags": ["API keys"],
+        "tags": [
+          "API keys"
+        ],
         "summary": "Create an API key (plaintext returned once)",
         "parameters": [
           {
@@ -10707,7 +11658,9 @@
     },
     "/api/org/{orgId}/api-keys/{id}/revoke": {
       "post": {
-        "tags": ["API keys"],
+        "tags": [
+          "API keys"
+        ],
         "summary": "Revoke an API key",
         "parameters": [
           {
@@ -10749,7 +11702,9 @@
     },
     "/api/org/{orgId}/api-keys/{id}/rotate": {
       "post": {
-        "tags": ["API keys"],
+        "tags": [
+          "API keys"
+        ],
         "summary": "Rotate an API key (revokes old, returns new)",
         "parameters": [
           {
@@ -10801,7 +11756,9 @@
     },
     "/api/org/{orgId}/ws-token": {
       "post": {
-        "tags": ["WebSocket"],
+        "tags": [
+          "WebSocket"
+        ],
         "summary": "Mint a short-lived token for the WebSocket gateway",
         "parameters": [
           {
@@ -10828,7 +11785,9 @@
                       "type": "string"
                     }
                   },
-                  "required": ["token"],
+                  "required": [
+                    "token"
+                  ],
                   "additionalProperties": false
                 }
               }
@@ -10842,7 +11801,9 @@
     },
     "/api/v1/sync/pull": {
       "post": {
-        "tags": ["Sync"],
+        "tags": [
+          "Sync"
+        ],
         "summary": "Pull changes since `lastSyncVersion`",
         "description": "Authenticated by API key (`sync:read` scope).\n\n_Requires permission: `resources:read`._",
         "security": [
@@ -10888,7 +11849,9 @@
     },
     "/api/v1/sync/push": {
       "post": {
-        "tags": ["Sync"],
+        "tags": [
+          "Sync"
+        ],
         "summary": "Push local changes to the server",
         "description": "Authenticated by API key (`sync:write` scope). Last-write-wins.\n\n_Requires permission: `resources:write`._",
         "security": [
@@ -10934,7 +11897,9 @@
     },
     "/api/v1/sync/status": {
       "get": {
-        "tags": ["Sync"],
+        "tags": [
+          "Sync"
+        ],
         "summary": "Highest known sync version on the server",
         "security": [
           {
@@ -10970,7 +11935,9 @@
     },
     "/api/v1/webhooks/stripe": {
       "post": {
-        "tags": ["Webhooks"],
+        "tags": [
+          "Webhooks"
+        ],
         "summary": "Stripe webhook endpoint",
         "description": "Public; verifies Stripe signature in `Stripe-Signature` header.",
         "security": [],
@@ -11003,10 +11970,14 @@
                   "properties": {
                     "received": {
                       "type": "boolean",
-                      "enum": [true]
+                      "enum": [
+                        true
+                      ]
                     }
                   },
-                  "required": ["received"],
+                  "required": [
+                    "received"
+                  ],
                   "additionalProperties": false
                 }
               }

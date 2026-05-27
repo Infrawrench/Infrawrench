@@ -38,6 +38,7 @@ app.get("/plugins", async (c) => {
         regions: f.regions,
         optional: f.optional,
         accountReference: f.accountReference,
+        helpLink: f.helpLink,
       })),
     })),
   );

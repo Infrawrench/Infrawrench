@@ -14,6 +14,12 @@ interface EditCredentialsModalProps {
   /** Persist the new credentials; called with the merged credentials map. */
   onSave: (credentials: Record<string, string>) => Promise<void>;
   onClose: () => void;
+  /**
+   * Opens a credential field's `helpLink` URL. Desktop routes this through the
+   * Electron shell's external-URL handler; web can omit it and fall back to the
+   * anchor's native new-tab behavior.
+   */
+  onOpenExternal?: (url: string) => void;
 }
 
 /**
@@ -31,6 +37,7 @@ export function EditCredentialsModal({
   currentCredentials,
   onSave,
   onClose,
+  onOpenExternal,
 }: EditCredentialsModalProps) {
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
@@ -118,6 +125,25 @@ export function EditCredentialsModal({
                 </label>
                 {f.description && (
                   <p className="text-xs text-on-surface-faint mb-1">{f.description}</p>
+                )}
+                {f.helpLink && (
+                  <a
+                    href={f.helpLink.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={
+                      onOpenExternal
+                        ? (e) => {
+                            e.preventDefault();
+                            onOpenExternal(f.helpLink!.url);
+                          }
+                        : undefined
+                    }
+                    className="inline-flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 mb-1"
+                  >
+                    {f.helpLink.label}
+                    <span aria-hidden="true">↗</span>
+                  </a>
                 )}
                 {f.regions && f.regions.length > 0 ? (
                   <RegionPicker

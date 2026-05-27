@@ -29,6 +29,13 @@ export interface CredentialField {
   accountReference?: { pluginId: string };
   /** Field is optional — the modal accepts an empty value and skips validation. */
   optional?: boolean;
+  /**
+   * Optional external link rendered beneath the field — e.g. a deep link to the
+   * provider's "create token" page with the scopes this plugin needs pre-filled.
+   * Opened through the host's external-URL handler so it works in both the web
+   * app and the desktop shell.
+   */
+  helpLink?: { label: string; url: string };
 }
 
 /**

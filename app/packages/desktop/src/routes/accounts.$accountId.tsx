@@ -668,6 +668,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
             ...(f.optional !== undefined ? { optional: f.optional } : {}),
             ...(f.regions !== undefined ? { regions: f.regions } : {}),
             ...(f.accountReference !== undefined ? { accountReference: f.accountReference } : {}),
+            ...(f.helpLink !== undefined ? { helpLink: f.helpLink } : {}),
           })),
         },
         current,
@@ -1004,6 +1005,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
           currentCredentials={editCredsState.current}
           onSave={saveCredentials}
           onClose={() => setEditCredsState(null)}
+          onOpenExternal={(url) => void invoke("open_external_url", { url })}
         />
       )}
     </div>
