@@ -124,7 +124,7 @@ export function SshTunnelModal({
               <label className="text-xs text-on-surface-muted w-20 shrink-0 pt-1">SSH Key</label>
               <div className="flex-1 space-y-1">
                 {loadingKeys ? (
-                  <p className="text-xs text-on-surface-faint py-1">Loading keys...</p>
+                  <p className="text-xs text-on-surface-faint py-1">Loading keys…</p>
                 ) : keys.length === 0 ? (
                   <p className="text-xs text-on-surface-faint py-1">
                     No SSH keys found. Go to Settings to create one.
@@ -185,6 +185,7 @@ export function SshTunnelModal({
                 ).map(([key, p]) => (
                   <button
                     key={key}
+                    type="button"
                     onClick={() => setService(key)}
                     className={`px-3 py-2 rounded-lg text-xs border transition-colors ${
                       service === key
@@ -222,6 +223,7 @@ export function SshTunnelModal({
 
           <div className="p-6 border-t border-border flex justify-end gap-3">
             <button
+              type="button"
               onClick={onClose}
               disabled={connecting}
               className="px-4 py-2 text-sm text-on-surface-tertiary hover:text-on-surface-secondary transition-colors"
@@ -229,6 +231,7 @@ export function SshTunnelModal({
               Cancel
             </button>
             <button
+              type="button"
               onClick={() => void onConfirm()}
               disabled={connecting || !selectedKeyId}
               className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors disabled:opacity-50"

@@ -735,6 +735,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
                 disabled={isSaving}
               />
               <button
+                type="button"
                 onClick={handleRename}
                 disabled={isSaving}
                 className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
@@ -742,6 +743,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
                 Save
               </button>
               <button
+                type="button"
                 onClick={() => {
                   setEditName(account?.display_name ?? "");
                   setIsEditing(false);
@@ -761,12 +763,14 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
           {!isEditing && (
             <>
               <button
+                type="button"
                 onClick={() => setIsEditing(true)}
                 className="text-xs text-on-surface-faint hover:text-on-surface transition-colors px-2 py-1 rounded hover:bg-surface-overlay"
               >
                 Rename
               </button>
               <button
+                type="button"
                 onClick={() => void openEditCredentials()}
                 className="text-xs text-on-surface-faint hover:text-on-surface transition-colors px-2 py-1 rounded hover:bg-surface-overlay"
               >
@@ -775,6 +779,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
             </>
           )}
           <button
+            type="button"
             onClick={() => setConfirmDelete(true)}
             className="text-xs text-on-surface-faint hover:text-red-400 transition-colors px-2 py-1 rounded hover:bg-red-500/10"
           >
@@ -836,6 +841,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
         )}
         renderCreateButton={(typeDef) => (
           <button
+            type="button"
             key={`create-${typeDef.id}`}
             onClick={() => setCreateTarget(typeDef)}
             className="flex items-center gap-1.5 pl-3 pr-3 py-1.5 rounded-full border border-dashed border-border-strong text-on-surface-faint hover:border-blue-600 hover:text-accent transition-colors text-sm"
@@ -895,6 +901,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
         >
           {contextMenu.sshHost && (
             <button
+              type="button"
               role="menuitem"
               className="w-full px-3 py-2 text-xs text-on-surface-secondary hover:bg-surface-sunken text-left flex items-center gap-2"
               onClick={() => {
@@ -913,6 +920,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
           )}
           {contextMenu.sshHost && (
             <button
+              type="button"
               role="menuitem"
               className="w-full px-3 py-2 text-xs text-on-surface-secondary hover:bg-surface-sunken text-left flex items-center gap-2"
               onClick={() => {
@@ -931,6 +939,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
           )}
           {contextMenu.pingTarget && (
             <button
+              type="button"
               role="menuitem"
               className="w-full px-3 py-2 text-xs text-on-surface-secondary hover:bg-surface-sunken text-left flex items-center gap-2"
               onClick={() => {

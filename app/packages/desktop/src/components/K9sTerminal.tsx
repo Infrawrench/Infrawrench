@@ -159,6 +159,7 @@ export function K9sTerminal({ kubeconfig, cloudContext, namespace }: K9sTerminal
             Install `k9s` locally to use the embedded Kubernetes terminal view.
           </p>
           <button
+            type="button"
             onClick={() => void invoke("open_external_url", { url: K9S_INSTALL_URL })}
             className="px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-sm font-medium text-white transition-colors"
           >

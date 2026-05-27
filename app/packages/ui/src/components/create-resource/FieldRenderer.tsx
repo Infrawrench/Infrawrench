@@ -439,7 +439,7 @@ function ResourcePickerResolver({
   }, [sourcesKey, accountId, loadResources, regionHint, refreshKey]);
 
   if (loading) {
-    return <p className="text-xs text-on-surface-faint py-1">Loading resources...</p>;
+    return <p className="text-xs text-on-surface-faint py-1">Loading resources…</p>;
   }
 
   if (error) {

@@ -93,8 +93,9 @@ export function GlobalTabBar({
         })
       )}
       <button
+        type="button"
         onClick={onNew}
-        className="ml-1 self-center w-5 h-5 flex items-center justify-center rounded text-on-surface-faint hover:text-on-surface-secondary hover:bg-surface-sunken transition-colors text-base leading-none"
+        className="ml-1 self-center size-5 flex items-center justify-center rounded text-on-surface-faint hover:text-on-surface-secondary hover:bg-surface-sunken transition-colors text-base leading-none"
         aria-label="New tab"
         title="New tab"
       >
@@ -152,11 +153,12 @@ function TabBarItem({
         <span className="truncate text-xs font-medium">{tab.title}</span>
       </button>
       <button
+        type="button"
         onClick={(e) => {
           e.stopPropagation();
           onClose(tab.id);
         }}
-        className="shrink-0 mr-2 w-3.5 h-3.5 flex items-center justify-center rounded text-on-surface-faint hover:text-on-surface-secondary hover:bg-surface-sunken transition-colors opacity-0 group-hover:opacity-100"
+        className="shrink-0 mr-2 size-3.5 flex items-center justify-center rounded text-on-surface-faint hover:text-on-surface-secondary hover:bg-surface-sunken transition-colors opacity-0 group-hover:opacity-100"
         aria-label={`Close tab ${tab.title}`}
         title={`Close ${tab.title}`}
       >

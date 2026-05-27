@@ -56,6 +56,7 @@ export function CreateResourceModal({
               </div>
             )}
             <button
+              type="button"
               onClick={onClose}
               className="text-on-surface-faint hover:text-on-surface-secondary text-xl leading-none"
               aria-label="Close"
@@ -72,9 +73,9 @@ export function CreateResourceModal({
                 <div className="flex items-center gap-3 text-sm text-on-surface-muted py-8 justify-center">
                   <span
                     aria-hidden="true"
-                    className="animate-spin inline-block w-4 h-4 rounded-full border-2 border-border-strong border-t-gray-300"
+                    className="animate-spin inline-block size-4 rounded-full border-2 border-border-strong border-t-gray-300"
                   />
-                  Fetching available options...
+                  Fetching available options…
                 </div>
               ) : form.configError ? (
                 errorEl(form.configError, { textClassName: "text-sm text-red-400" })
@@ -98,8 +99,8 @@ export function CreateResourceModal({
           <div className="overflow-y-auto flex-1 px-6 py-5">
             {form.loadingConfig ? (
               <div className="flex items-center gap-3 text-sm text-on-surface-muted py-8 justify-center">
-                <span className="animate-spin inline-block w-4 h-4 rounded-full border-2 border-border-strong border-t-gray-300" />
-                Fetching available options...
+                <span className="animate-spin inline-block size-4 rounded-full border-2 border-border-strong border-t-gray-300" />
+                Fetching available options…
               </div>
             ) : form.configError ? (
               errorEl(form.configError, { textClassName: "text-sm text-red-400" })
@@ -122,12 +123,14 @@ export function CreateResourceModal({
             })}
           <div className="flex gap-3">
             <button
+              type="button"
               onClick={onClose}
               className="flex-1 px-4 py-2 text-sm text-on-surface-tertiary hover:text-on-surface-secondary bg-surface-overlay hover:bg-surface-sunken rounded-lg transition-colors"
             >
               Cancel
             </button>
             <button
+              type="button"
               onClick={() => void form.handleCreate()}
               disabled={form.creating || form.loadingConfig || !!form.configError || !form.isValid}
               className="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded-lg transition-colors"

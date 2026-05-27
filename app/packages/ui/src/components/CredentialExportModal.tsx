@@ -115,6 +115,7 @@ export function CredentialExportModal({
             </p>
           </div>
           <button
+            type="button"
             onClick={onClose}
             className="text-on-surface-faint hover:text-on-surface-secondary text-xl leading-none"
             aria-label="Close"
@@ -204,6 +205,7 @@ export function CredentialExportModal({
                           </code>
                           {f.sensitive && (
                             <button
+                              type="button"
                               onClick={() => toggleReveal(i)}
                               aria-label={`${revealed.has(i) ? "Hide" : "Reveal"} credential for ${f.label}`}
                               className="text-[10px] uppercase tracking-wide text-on-surface-faint hover:text-on-surface-secondary px-2 py-1 rounded hover:bg-surface-overlay flex-shrink-0"
@@ -212,6 +214,7 @@ export function CredentialExportModal({
                             </button>
                           )}
                           <button
+                            type="button"
                             onClick={() => copy(f.value, i)}
                             aria-label={`Copy ${f.label}`}
                             className="text-[10px] uppercase tracking-wide text-on-surface-faint hover:text-on-surface-secondary px-2 py-1 rounded hover:bg-surface-overlay flex-shrink-0"
@@ -243,12 +246,14 @@ export function CredentialExportModal({
           {!result ? (
             <>
               <button
+                type="button"
                 onClick={onClose}
                 className="flex-1 px-4 py-2 text-sm text-on-surface-tertiary hover:text-on-surface-secondary bg-surface-overlay hover:bg-surface-sunken rounded-lg transition-colors"
               >
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={() => void handleGenerate()}
                 disabled={loading || !selectedFormat}
                 className="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded-lg transition-colors"
@@ -259,12 +264,14 @@ export function CredentialExportModal({
           ) : (
             <>
               <button
+                type="button"
                 onClick={() => void copy(result.content, "all")}
                 className="flex-1 px-4 py-2 text-sm text-on-surface-tertiary hover:text-on-surface-secondary bg-surface-overlay hover:bg-surface-sunken rounded-lg transition-colors"
               >
                 {copied === "all" ? "Copied" : "Copy file"}
               </button>
               <button
+                type="button"
                 onClick={download}
                 className="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors"
               >

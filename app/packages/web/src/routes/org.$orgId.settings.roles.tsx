@@ -84,6 +84,7 @@ function RolesPage() {
         <h1 className="text-xl font-semibold">Roles</h1>
         {canEdit && (
           <button
+            type="button"
             onClick={() => setCreating(true)}
             className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg"
           >
@@ -99,7 +100,7 @@ function RolesPage() {
       )}
 
       {loading ? (
-        <p className="text-sm text-on-surface-faint">Loading...</p>
+        <p className="text-sm text-on-surface-faint">Loading…</p>
       ) : (
         <div className="space-y-3">
           {roles.map((role) => (
@@ -126,12 +127,14 @@ function RolesPage() {
                 {canEdit && !role.isSystem && (
                   <div className="flex gap-2">
                     <button
+                      type="button"
                       onClick={() => setEditing(role)}
                       className="text-xs text-on-surface-tertiary hover:text-on-surface"
                     >
                       Edit
                     </button>
                     <button
+                      type="button"
                       onClick={() => void handleDelete(role)}
                       className="text-xs text-red-400 hover:text-red-500"
                     >
@@ -237,6 +240,7 @@ function RoleEditor({ role, orgId, groups, onClose, onSaved, onError }: RoleEdit
             {role ? `Edit role: ${role.name}` : "New role"}
           </h2>
           <button
+            type="button"
             onClick={onClose}
             aria-label="Close"
             className="text-on-surface-tertiary hover:text-on-surface"
@@ -303,6 +307,7 @@ function RoleEditor({ role, orgId, groups, onClose, onSaved, onError }: RoleEdit
                 className="flex-1 bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-sm font-mono"
               />
               <button
+                type="button"
                 onClick={addExtra}
                 className="px-3 py-1.5 text-xs bg-surface-overlay hover:bg-surface-raised border border-border-strong rounded-lg"
               >
@@ -318,6 +323,7 @@ function RoleEditor({ role, orgId, groups, onClose, onSaved, onError }: RoleEdit
                   >
                     {p}
                     <button
+                      type="button"
                       onClick={() => toggle(p)}
                       className="text-on-surface-tertiary hover:text-on-surface"
                     >
@@ -331,6 +337,7 @@ function RoleEditor({ role, orgId, groups, onClose, onSaved, onError }: RoleEdit
 
           <div className="flex justify-end gap-2 pt-2">
             <button
+              type="button"
               onClick={onClose}
               disabled={saving}
               className="px-3 py-1.5 text-sm border border-border-strong rounded-lg text-on-surface-tertiary"
@@ -338,6 +345,7 @@ function RoleEditor({ role, orgId, groups, onClose, onSaved, onError }: RoleEdit
               Cancel
             </button>
             <button
+              type="button"
               onClick={() => void save()}
               disabled={saving}
               className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg"

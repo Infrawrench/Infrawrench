@@ -295,6 +295,7 @@ export function SqlEditorView({
                 <div key={table.name}>
                   <div className="flex items-center group">
                     <button
+                      type="button"
                       onClick={() => toggleTableExpand(table.name)}
                       aria-expanded={expanded}
                       aria-label={`${expanded ? "Collapse" : "Expand"} ${table.name} columns`}
@@ -303,7 +304,7 @@ export function SqlEditorView({
                       {table.columns.length > 0 && (
                         <svg
                           aria-hidden="true"
-                          className={`w-2.5 h-2.5 transition-transform ${expanded ? "rotate-90" : ""}`}
+                          className={`size-2.5 transition-transform ${expanded ? "rotate-90" : ""}`}
                           viewBox="0 0 6 10"
                           fill="none"
                         >
@@ -317,8 +318,9 @@ export function SqlEditorView({
                       )}
                     </button>
                     <button
+                      type="button"
                       onClick={() => clickTable(table.name)}
-                      className="flex-1 text-left px-1 py-1 text-xs text-on-surface-secondary hover:text-white hover:bg-surface-overlay rounded truncate leading-tight"
+                      className="flex-1 text-left p-1 text-xs text-on-surface-secondary hover:text-white hover:bg-surface-overlay rounded truncate leading-tight"
                     >
                       {table.name}
                     </button>
@@ -395,6 +397,7 @@ export function SqlEditorView({
               )}
               {result && result.rows.length > 0 && (
                 <button
+                  type="button"
                   onClick={() => {
                     const cols = Object.keys(result.rows[0]!);
                     const name = parseTableName(query) ?? "query";
@@ -409,6 +412,7 @@ export function SqlEditorView({
               )}
               {onEstimateQueryCost && (
                 <button
+                  type="button"
                   onClick={() => runEstimate(query)}
                   disabled={estimating}
                   title={
@@ -420,6 +424,7 @@ export function SqlEditorView({
                 </button>
               )}
               <button
+                type="button"
                 onClick={() => runQuery(query)}
                 disabled={running}
                 className="px-3 py-1 text-xs font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-md transition-colors whitespace-nowrap"
@@ -497,6 +502,7 @@ export function SqlEditorView({
                             {isEditing ? (
                               <div className="flex flex-col gap-0.5">
                                 <button
+                                  type="button"
                                   onClick={() => saveEdit(row)}
                                   disabled={saving}
                                   className="text-accent hover:text-accent-on-muted text-xs leading-none disabled:opacity-40"
@@ -505,6 +511,7 @@ export function SqlEditorView({
                                   {saving ? "…" : "✓"}
                                 </button>
                                 <button
+                                  type="button"
                                   onClick={cancelEdit}
                                   className="text-on-surface-muted hover:text-on-surface-secondary text-xs leading-none"
                                   title="Cancel"
@@ -514,6 +521,7 @@ export function SqlEditorView({
                               </div>
                             ) : (
                               <button
+                                type="button"
                                 onClick={() => startEdit(i, row)}
                                 className="text-on-surface-faint hover:text-on-surface-secondary opacity-0 group-hover:opacity-100 transition-all text-xs"
                                 title="Edit row"

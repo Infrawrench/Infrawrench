@@ -128,6 +128,7 @@ export function ResourcePill({
         ) : (
           <>
             <button
+              type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 onPin();
@@ -144,6 +145,7 @@ export function ResourcePill({
             </button>
 
             <button
+              type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 onOpen();

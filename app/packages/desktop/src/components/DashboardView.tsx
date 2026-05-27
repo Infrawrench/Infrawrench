@@ -667,6 +667,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
 
         {!isHome && (
           <button
+            type="button"
             onClick={() => void deleteDashboard()}
             title="Delete dashboard"
             className="text-xs text-on-surface-faint hover:text-red-400 transition-colors px-2 py-1 rounded hover:bg-red-500/10"
@@ -679,6 +680,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
       <div className="flex-1 overflow-auto px-8 py-6">
         {pinned.length === 0 ? (
           <button
+            type="button"
             onClick={() => setSpotlightMode("pin")}
             className={`w-full flex flex-col items-center justify-center h-64 rounded-2xl border-2 border-dashed transition-colors ${isOver ? "border-blue-500 text-accent" : "border-border text-on-surface-faint hover:border-border-strong hover:text-on-surface-muted"}`}
           >
@@ -711,6 +713,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
               ))}
 
               <button
+                type="button"
                 onClick={() => setSpotlightMode("pin")}
                 className={`rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-1.5 transition-colors min-h-[140px] ${isOver ? "border-blue-500 text-accent bg-accent-muted" : "border-border text-on-surface-faint hover:border-border-strong hover:text-on-surface-muted"}`}
               >

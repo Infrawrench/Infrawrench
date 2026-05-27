@@ -311,6 +311,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
   if (sidebarCollapsed) {
     return (
       <button
+        type="button"
         onClick={toggleSidebar}
         className="w-8 border-r border-border flex items-center justify-center text-on-surface-faint hover:text-on-surface-tertiary transition-colors flex-shrink-0"
         aria-label="Expand sidebar"
@@ -323,7 +324,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
   return (
     <>
       <aside className="w-60 border-r border-border flex flex-col overflow-hidden flex-shrink-0">
-        <div className="flex items-center justify-between px-1 py-1 border-b border-border">
+        <div className="flex items-center justify-between p-1 border-b border-border">
           <div className="flex-1 min-w-0">
             <OrgSwitcher
               orgs={orgs}
@@ -334,6 +335,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
             />
           </div>
           <button
+            type="button"
             onClick={toggleSidebar}
             className="text-on-surface-faint hover:text-on-surface-tertiary transition-colors text-xs px-2"
             aria-label="Collapse sidebar"
@@ -350,9 +352,10 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                 Dashboards
               </span>
               <button
+                type="button"
                 onClick={() => setAddingDashboard(true)}
                 title="New dashboard"
-                className="text-on-surface-faint hover:text-on-surface-secondary text-sm leading-none w-5 h-5 flex items-center justify-center rounded hover:bg-surface-overlay transition-colors"
+                className="text-on-surface-faint hover:text-on-surface-secondary text-sm leading-none size-5 flex items-center justify-center rounded hover:bg-surface-overlay transition-colors"
               >
                 +
               </button>
@@ -431,14 +434,14 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
           </div>
 
           {/* Plugin groups */}
-          {loading && <div className="px-3 py-2 text-xs text-on-surface-faint">Loading...</div>}
+          {loading && <div className="px-3 py-2 text-xs text-on-surface-faint">Loading…</div>}
 
           {groups.map((group) => (
             <div key={group.pluginId} className="mb-3">
               {/* Plugin header */}
               <div className="flex items-center gap-2 px-3 py-1">
                 <div
-                  className="w-4 h-4 flex-shrink-0"
+                  className="size-4 flex-shrink-0"
                   dangerouslySetInnerHTML={{ __html: group.logoSvg }}
                   aria-hidden="true"
                 />
@@ -457,11 +460,12 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                     {/* Account row */}
                     <div className="flex items-center w-full px-4 py-1.5 text-sm transition-colors group text-on-surface-secondary hover:bg-surface-overlay hover:text-on-surface">
                       <button
+                        type="button"
                         onClick={() => void toggleExpand(account.id)}
                         aria-expanded={isExpanded}
                         aria-controls={`web-sidebar-account-${account.id}`}
                         aria-label={isExpanded ? "Collapse account" : "Expand account"}
-                        className="w-4 h-4 flex items-center justify-center flex-shrink-0 text-on-surface-faint hover:text-on-surface-tertiary transition-colors mr-1"
+                        className="size-4 flex items-center justify-center flex-shrink-0 text-on-surface-faint hover:text-on-surface-tertiary transition-colors mr-1"
                       >
                         <span
                           aria-hidden="true"
@@ -472,6 +476,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                         </span>
                       </button>
                       <button
+                        type="button"
                         onClick={() =>
                           void navigate({
                             to: "/org/$orgId/accounts/$accountId",
@@ -480,7 +485,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                         }
                         className="flex items-center gap-2 flex-1 text-left min-w-0"
                       >
-                        <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-surface-sunken" />
+                        <span className="size-1.5 rounded-full flex-shrink-0 bg-surface-sunken" />
                         <span className="truncate">{account.displayName}</span>
                       </button>
                     </div>
@@ -489,7 +494,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                     {isExpanded && (
                       <div id={`web-sidebar-account-${account.id}`} className="pl-8 pb-1">
                         {resourceState?.loading && (
-                          <div className="px-3 py-1 text-xs text-on-surface-faint">Loading...</div>
+                          <div className="px-3 py-1 text-xs text-on-surface-faint">Loading…</div>
                         )}
                         {resourceState && !resourceState.loading && resourceState.error && (
                           <div className="px-3 py-1 text-xs text-red-400">
@@ -549,6 +554,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
         {/* Add account button pinned to the bottom */}
         <div className="border-t border-border p-2">
           <button
+            type="button"
             onClick={() => setShowAddAccount(true)}
             className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-on-surface-muted hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
           >
@@ -556,6 +562,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
             Add account
           </button>
           <button
+            type="button"
             onClick={() => void navigate({ to: "/org/$orgId/chat", params: { orgId: orgId! } })}
             className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-on-surface-muted hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
           >
@@ -563,6 +570,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
             Chat
           </button>
           <button
+            type="button"
             onClick={() => void navigate({ to: "/org/$orgId/settings", params: { orgId: orgId! } })}
             className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-on-surface-muted hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
           >

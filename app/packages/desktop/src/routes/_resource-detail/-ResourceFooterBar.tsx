@@ -21,6 +21,7 @@ export function ResourceFooterBar({
     <div className="shrink-0 px-4 py-2 border-t border-border flex items-center justify-end gap-3">
       {hasCredentialFormats && (
         <button
+          type="button"
           onClick={onShowExportCredential}
           className="text-xs text-on-surface-faint hover:text-on-surface-secondary transition-colors px-2 py-1 rounded hover:bg-surface-overlay"
         >
@@ -29,6 +30,7 @@ export function ResourceFooterBar({
       )}
       {canEdit && (
         <button
+          type="button"
           onClick={onEdit}
           className="text-xs text-on-surface-faint hover:text-on-surface-secondary transition-colors px-2 py-1 rounded hover:bg-surface-overlay"
         >
@@ -37,6 +39,7 @@ export function ResourceFooterBar({
       )}
       {canDelete && (
         <button
+          type="button"
           onClick={onConfirmDelete}
           className="text-xs text-on-surface-faint hover:text-red-400 transition-colors px-2 py-1 rounded hover:bg-red-500/10"
         >

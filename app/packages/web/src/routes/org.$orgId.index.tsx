@@ -42,8 +42,7 @@ function HomePage() {
     return () => window.removeEventListener(RESOURCES_CHANGED_EVENT, onChanged);
   }, [orgId]);
 
-  if (!data)
-    return <div className="p-6 text-on-surface-muted text-sm animate-pulse">Loading...</div>;
+  if (!data) return <div className="p-6 text-on-surface-muted text-sm animate-pulse">Loading…</div>;
 
   return (
     <DashboardView

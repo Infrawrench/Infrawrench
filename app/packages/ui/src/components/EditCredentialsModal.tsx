@@ -93,15 +93,16 @@ export function EditCredentialsModal({
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <div className="flex items-center gap-2 min-w-0">
             <div
-              className="w-5 h-5 flex-shrink-0"
+              className="size-5 flex-shrink-0"
               aria-hidden="true"
               dangerouslySetInnerHTML={{ __html: plugin.logoSvg }}
             />
             <h2 className="text-sm font-semibold text-on-surface-secondary truncate">
-              Update credentials — {accountDisplayName}
+              Update credentials: {accountDisplayName}
             </h2>
           </div>
           <button
+            type="button"
             onClick={onClose}
             className="text-on-surface-faint hover:text-on-surface-tertiary text-lg leading-none"
             aria-label="Close"
@@ -179,6 +180,7 @@ export function EditCredentialsModal({
 
           <div className="flex gap-2 pt-1">
             <button
+              type="button"
               onClick={onClose}
               disabled={saving}
               className="flex-1 px-3 py-2 text-sm text-on-surface-tertiary hover:text-on-surface-secondary border border-border-strong rounded-lg hover:border-border-strong transition-colors"
@@ -186,6 +188,7 @@ export function EditCredentialsModal({
               Cancel
             </button>
             <button
+              type="button"
               onClick={() => void save()}
               disabled={saving}
               className="flex-1 px-3 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"

@@ -138,12 +138,14 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
         </span>
         <div className="ml-auto flex items-center gap-2">
           <button
+            type="button"
             onClick={() => void fetchVersions()}
             className="px-3 py-1 text-xs text-on-surface-tertiary hover:text-white border border-border-strong rounded-md transition-colors"
           >
             Reload
           </button>
           <button
+            type="button"
             onClick={() => setShowAdd(true)}
             className="px-3 py-1 text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-md transition-colors"
           >
@@ -181,7 +183,7 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
               {sorted.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="px-3 py-6 text-center text-xs text-on-surface-muted">
-                    No versions yet — click “Add version” to create one.
+                    No versions yet, click “Add version” to create one.
                   </td>
                 </tr>
               ) : (
@@ -222,6 +224,7 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
                         <div className="flex items-center justify-end gap-1.5">
                           {capability.supportsReveal !== false && (
                             <button
+                              type="button"
                               disabled={destroyed || isBusy}
                               onClick={() => void handleAccess(v)}
                               className="px-2 py-1 text-xs text-on-surface-tertiary hover:text-white border border-border-strong rounded-md transition-colors disabled:opacity-40"
@@ -231,6 +234,7 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
                           )}
                           {v.state === "enabled" && (
                             <button
+                              type="button"
                               disabled={isBusy}
                               onClick={() => void handleModify(v, "disable")}
                               className="px-2 py-1 text-xs text-on-surface-tertiary hover:text-white border border-border-strong rounded-md transition-colors disabled:opacity-40"
@@ -240,6 +244,7 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
                           )}
                           {v.state === "disabled" && (
                             <button
+                              type="button"
                               disabled={isBusy}
                               onClick={() => void handleModify(v, "enable")}
                               className="px-2 py-1 text-xs text-on-surface-tertiary hover:text-white border border-border-strong rounded-md transition-colors disabled:opacity-40"
@@ -248,6 +253,7 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
                             </button>
                           )}
                           <button
+                            type="button"
                             disabled={destroyed || isBusy}
                             onClick={() => setConfirm({ version: v, action: "destroy" })}
                             className="px-2 py-1 text-xs text-red-300 hover:text-red-100 border border-red-900/60 rounded-md transition-colors disabled:opacity-40"
@@ -272,10 +278,11 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
               <div>
                 <h2 className="text-sm font-semibold text-on-surface">Version {reveal.id}</h2>
                 <p className="text-xs text-on-surface-muted mt-0.5">
-                  Plaintext secret value — close when done.
+                  Plaintext secret value, close when done.
                 </p>
               </div>
               <button
+                type="button"
                 onClick={() => setReveal(null)}
                 className="text-on-surface-faint hover:text-on-surface-tertiary text-sm"
                 aria-label="Close"
@@ -288,12 +295,14 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
             </pre>
             <div className="flex items-center justify-end gap-2">
               <button
+                type="button"
                 onClick={() => void navigator.clipboard.writeText(reveal.value)}
                 className="px-3 py-1.5 text-xs text-on-surface-tertiary hover:text-white border border-border-strong rounded-md transition-colors"
               >
                 Copy
               </button>
               <button
+                type="button"
                 onClick={() => setReveal(null)}
                 className="px-3 py-1.5 text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-md transition-colors"
               >
@@ -311,6 +320,7 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
             <p className="text-xs text-red-400 font-mono whitespace-pre-wrap">{revealError}</p>
             <div className="flex items-center justify-end">
               <button
+                type="button"
                 onClick={() => setRevealError(null)}
                 className="px-3 py-1.5 text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-md transition-colors"
               >
@@ -357,6 +367,7 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
             )}
             <div className="flex items-center justify-end gap-2">
               <button
+                type="button"
                 disabled={adding}
                 onClick={() => setShowAdd(false)}
                 className="px-3 py-1.5 text-xs text-on-surface-tertiary hover:text-white border border-border-strong rounded-md transition-colors disabled:opacity-40"
@@ -364,6 +375,7 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
                 Cancel
               </button>
               <button
+                type="button"
                 disabled={adding}
                 onClick={() => void handleAdd()}
                 className="px-3 py-1.5 text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-md transition-colors disabled:opacity-40"
@@ -386,12 +398,14 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
             </p>
             <div className="flex items-center justify-end gap-2">
               <button
+                type="button"
                 onClick={() => setConfirm(null)}
                 className="px-3 py-1.5 text-xs text-on-surface-tertiary hover:text-white border border-border-strong rounded-md transition-colors"
               >
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={() => void handleModify(confirm.version, confirm.action)}
                 className="px-3 py-1.5 text-xs font-medium bg-red-600 hover:bg-red-500 text-white rounded-md transition-colors"
               >

@@ -37,6 +37,7 @@ export function DockerActionsPanel({ containerId, onCommand }: DockerActionsPane
       </h3>
       <div className="flex gap-2 flex-wrap">
         <button
+          type="button"
           onClick={() => void run("startContainer", "Start")}
           disabled={state === "running"}
           className="px-3 py-1.5 text-xs bg-green-600/20 hover:bg-green-600/30 border border-green-400 dark:border-green-600/40 text-green-400 rounded-lg transition-colors disabled:opacity-50"
@@ -44,6 +45,7 @@ export function DockerActionsPanel({ containerId, onCommand }: DockerActionsPane
           Start
         </button>
         <button
+          type="button"
           onClick={() => void run("stopContainer", "Stop")}
           disabled={state === "running"}
           className="px-3 py-1.5 text-xs bg-yellow-600/20 hover:bg-yellow-600/30 border border-yellow-600/40 text-yellow-400 rounded-lg transition-colors disabled:opacity-50"
@@ -51,6 +53,7 @@ export function DockerActionsPanel({ containerId, onCommand }: DockerActionsPane
           Stop
         </button>
         <button
+          type="button"
           onClick={() => void run("restartContainer", "Restart")}
           disabled={state === "running"}
           className="px-3 py-1.5 text-xs bg-accent-muted hover:bg-accent-muted border border-accent-muted-border text-accent rounded-lg transition-colors disabled:opacity-50"

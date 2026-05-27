@@ -40,7 +40,7 @@ export { AccountResourceSections } from "./components/AccountResourceSections.js
 export {
   getVisibleAccountCategories,
   pickDefaultAccountSectionId,
-} from "./components/AccountResourceSections.js";
+} from "./components/AccountResourceSections.utils.js";
 export type {
   AccountResourceSectionsProps,
   SectionTypeDef,
@@ -58,7 +58,8 @@ export type {
 } from "./components/AddAccountModal.js";
 export { EditCredentialsModal } from "./components/EditCredentialsModal.js";
 export { DockerActionsPanel } from "./components/DockerActionsPanel.js";
-export { KvConsole, tokenize, formatRedisResult } from "./components/KvConsole.js";
+export { KvConsole } from "./components/KvConsole.js";
+export { tokenize, formatRedisResult } from "./components/KvConsole.utils.js";
 export type { KvConsoleProps } from "./components/KvConsole.js";
 export { MongoDocumentBrowser } from "./components/MongoDocumentBrowser.js";
 export type { MongoDocumentBrowserProps } from "./components/MongoDocumentBrowser.js";
@@ -76,7 +77,8 @@ export type {
   ChildResource,
   ChildResourceGroup,
 } from "./components/detail/DetailView.js";
-export { PeerPaneView, replacePeerPaneTrailingCount } from "./components/detail/PeerPaneView.js";
+export { PeerPaneView } from "./components/detail/PeerPaneView.js";
+export { replacePeerPaneTrailingCount } from "./components/detail/PeerPaneView.utils.js";
 export type {
   PeerPaneViewProps,
   PeerPanePortForwardEntry,

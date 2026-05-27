@@ -165,7 +165,7 @@ export function PeerPaneView({
       <div className="py-12 px-6 max-w-2xl">
         <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-6 space-y-4">
           <div className="flex items-start gap-3">
-            <div className="w-2 h-2 rounded-full bg-amber-400 flex-shrink-0 mt-1.5" />
+            <div className="size-2 rounded-full bg-amber-400 flex-shrink-0 mt-1.5" />
             <p className="text-sm font-medium text-on-surface leading-relaxed">{guidance.title}</p>
           </div>
           {guidance.suggestions.length > 0 && (
@@ -207,7 +207,7 @@ export function PeerPaneView({
   if (isProvisioning) {
     return (
       <div className="flex flex-col items-center justify-center py-16 px-6 text-center space-y-4">
-        <div className="w-10 h-10 rounded-full border-2 border-blue-400/30 border-t-blue-400 animate-spin" />
+        <div className="size-10 rounded-full border-2 border-blue-400/30 border-t-blue-400 animate-spin" />
         <div className="space-y-1.5">
           <p className="text-sm font-medium text-on-surface-secondary">Cluster is provisioning</p>
           <p className="text-xs text-on-surface-muted max-w-xs">
@@ -261,6 +261,7 @@ export function PeerPaneView({
           )}
           {k9s && (
             <button
+              type="button"
               onClick={() => {
                 if (!k9s.disabled) k9s.onOpen();
               }}
@@ -275,7 +276,7 @@ export function PeerPaneView({
 
       {visibleGroups.length === 0 && (
         <div className="rounded-2xl border border-border bg-surface-raised/40 px-6 py-10 text-center">
-          <p className="text-sm text-on-surface-secondary">Connected — nothing to show here yet.</p>
+          <p className="text-sm text-on-surface-secondary">Connected, nothing to show here yet.</p>
           <p className="text-xs text-on-surface-muted mt-1.5">
             {resourceGroups.length > 0
               ? `No ${resourceGroups
@@ -331,6 +332,7 @@ export function PeerPaneView({
               <div className="flex items-center gap-2">
                 {group.supportsCreate && onCreate && (
                   <button
+                    type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       onCreate(group);
@@ -405,7 +407,7 @@ export function PeerPaneView({
               className="flex items-center justify-between gap-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-2.5"
             >
               <div className="flex items-center gap-2 min-w-0">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse flex-shrink-0" />
+                <span className="size-2 rounded-full bg-emerald-400 animate-pulse flex-shrink-0" />
                 <span className="text-sm text-on-surface-secondary font-medium truncate">
                   {pf.resourceName}
                 </span>
@@ -413,6 +415,7 @@ export function PeerPaneView({
               </div>
               <div className="flex items-center gap-3 flex-shrink-0">
                 <button
+                  type="button"
                   onClick={() => {
                     void navigator.clipboard.writeText(`localhost:${pf.localPort}`);
                   }}
@@ -422,6 +425,7 @@ export function PeerPaneView({
                   localhost:{pf.localPort} → {pf.remotePort}
                 </button>
                 <button
+                  type="button"
                   onClick={() => portForward.onStop(pf.sessionId)}
                   className="px-2 py-0.5 rounded text-xs text-red-400 hover:text-red-500 dark:text-red-300 hover:bg-red-500/10 transition-colors"
                 >
@@ -476,6 +480,7 @@ function NamespaceGrid({
         {userNs.map((ns) => (
           <button
             key={ns.id}
+            type="button"
             onClick={() => onSelect(ns.displayName)}
             className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
               activeNamespace === ns.displayName
@@ -488,7 +493,7 @@ function NamespaceGrid({
               <span
                 role="img"
                 aria-label={`Status: ${ns.status}`}
-                className={`ml-1.5 inline-block w-1.5 h-1.5 rounded-full ${statusClassName(ns.status)}`}
+                className={`ml-1.5 inline-block size-1.5 rounded-full ${statusClassName(ns.status)}`}
               />
             )}
           </button>
@@ -497,6 +502,7 @@ function NamespaceGrid({
       {systemNs.length > 0 && (
         <div>
           <button
+            type="button"
             onClick={() => setShowSystem(!showSystem)}
             className="text-xs text-on-surface-faint hover:text-on-surface-tertiary transition-colors"
           >
@@ -508,6 +514,7 @@ function NamespaceGrid({
               {systemNs.map((ns) => (
                 <button
                   key={ns.id}
+                  type="button"
                   onClick={() => onSelect(ns.displayName)}
                   className={`px-2.5 py-1 rounded-lg text-xs transition-colors ${
                     activeNamespace === ns.displayName
@@ -589,7 +596,7 @@ function PeerResourcePill({
       }`}
     >
       <span
-        className="w-4 h-4 flex-shrink-0"
+        className="size-4 flex-shrink-0"
         dangerouslySetInnerHTML={{ __html: pane.pluginLogoSvg }}
         aria-hidden
       />
@@ -602,7 +609,7 @@ function PeerResourcePill({
             <span
               role="img"
               aria-label={`Status: ${resource.status}`}
-              className={`w-2 h-2 rounded-full flex-shrink-0 ${statusClassName(resource.status)}`}
+              className={`size-2 rounded-full flex-shrink-0 ${statusClassName(resource.status)}`}
             />
           )}
         </div>
@@ -653,7 +660,7 @@ function PeerResourcePill({
             event.stopPropagation();
             onStopPortForward(activePortForward.sessionId);
           }}
-          className="ml-1 w-6 h-6 rounded-full bg-red-100 dark:bg-red-900/50 hover:bg-red-200 dark:hover:bg-red-800/50 text-xs text-red-500 dark:text-red-300 transition-colors"
+          className="ml-1 size-6 rounded-full bg-red-100 dark:bg-red-900/50 hover:bg-red-200 dark:hover:bg-red-800/50 text-xs text-red-500 dark:text-red-300 transition-colors"
           title="Stop port forward"
         >
           ■
@@ -661,10 +668,6 @@ function PeerResourcePill({
       )}
     </div>
   );
-}
-
-export function replacePeerPaneTrailingCount(title: string, count: number): string {
-  return /\(\d+\)$/.test(title) ? title.replace(/\(\d+\)$/, `(${count})`) : title;
 }
 
 function getGroupDisplayTitle(title: string, itemCount: number): string {

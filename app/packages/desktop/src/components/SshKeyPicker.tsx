@@ -296,6 +296,7 @@ export function SshKeyPicker({
               />
               <div className="flex gap-2 justify-end">
                 <button
+                  type="button"
                   onClick={() => {
                     setShowAddKey(false);
                     setNewKeyName("");
@@ -306,6 +307,7 @@ export function SshKeyPicker({
                   Cancel
                 </button>
                 <button
+                  type="button"
                   onClick={() => void saveAppKey()}
                   disabled={saving || !newKeyName.trim() || !newKeyPem.trim()}
                   className="px-3 py-1 rounded bg-surface-sunken hover:bg-surface-sunken text-xs text-on-surface-secondary disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
@@ -316,6 +318,7 @@ export function SshKeyPicker({
             </div>
           ) : (
             <button
+              type="button"
               onClick={() => setShowAddKey(true)}
               className="mt-1 text-xs text-on-surface-faint hover:text-on-surface-tertiary transition-colors"
             >
@@ -356,6 +359,7 @@ function KeyRow({
       trailing={
         onDelete ? (
           <button
+            type="button"
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();

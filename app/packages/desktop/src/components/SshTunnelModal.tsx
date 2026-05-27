@@ -183,6 +183,7 @@ export function SshTunnelModal({
                 ][]
               ).map(([key, p]) => (
                 <button
+                  type="button"
                   key={key}
                   onClick={() => setService(key)}
                   className={`px-3 py-2 rounded-lg text-xs border transition-colors ${
@@ -223,6 +224,7 @@ export function SshTunnelModal({
 
         <div className="p-6 border-t border-border flex justify-end gap-3">
           <button
+            type="button"
             onClick={onClose}
             disabled={connecting}
             className="px-4 py-2 text-sm text-on-surface-tertiary hover:text-on-surface-secondary transition-colors"
@@ -230,6 +232,7 @@ export function SshTunnelModal({
             Cancel
           </button>
           <button
+            type="button"
             onClick={() => void onConfirm()}
             disabled={
               connecting || (keySource?.type !== "cloud" && !privateKey.trim()) || !keySource

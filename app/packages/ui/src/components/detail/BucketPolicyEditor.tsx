@@ -193,6 +193,7 @@ export function BucketPolicyEditor({ capability, onGetManifest, onApplyManifest 
           {loadError}
         </div>
         <button
+          type="button"
           onClick={() => void fetchPolicy()}
           className="px-3 py-1.5 text-xs text-on-surface-tertiary hover:text-white border border-border-strong rounded-md transition-colors"
         >
@@ -218,6 +219,7 @@ export function BucketPolicyEditor({ capability, onGetManifest, onApplyManifest 
 
         <div className="flex items-center ml-3 rounded border border-border-strong overflow-hidden">
           <button
+            type="button"
             onClick={() => (mode === "json" ? switchToVisual() : undefined)}
             className={`px-2 py-1 text-xs ${
               mode === "visual"
@@ -228,6 +230,7 @@ export function BucketPolicyEditor({ capability, onGetManifest, onApplyManifest 
             Visual
           </button>
           <button
+            type="button"
             onClick={() => (mode === "visual" ? switchToJson() : undefined)}
             className={`px-2 py-1 text-xs ${
               mode === "json"
@@ -248,6 +251,7 @@ export function BucketPolicyEditor({ capability, onGetManifest, onApplyManifest 
             </span>
           )}
           <button
+            type="button"
             onClick={() => void fetchPolicy()}
             disabled={applying}
             className="px-3 py-1 text-xs text-on-surface-tertiary hover:text-white border border-border-strong rounded transition-colors disabled:opacity-50"
@@ -256,6 +260,7 @@ export function BucketPolicyEditor({ capability, onGetManifest, onApplyManifest 
           </button>
           {onApplyManifest && (
             <button
+              type="button"
               onClick={() => void handleApply()}
               disabled={applying || !dirty || lintErrors.length > 0}
               className="px-3 py-1 text-xs font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded transition-colors whitespace-nowrap"
@@ -320,12 +325,14 @@ export function BucketPolicyEditor({ capability, onGetManifest, onApplyManifest 
 
               <div className="flex items-center gap-2 pt-2">
                 <button
+                  type="button"
                   onClick={addBlankStatement}
                   className="px-3 py-1 text-xs text-on-surface-tertiary hover:text-white border border-border-strong rounded transition-colors"
                 >
                   + Add statement
                 </button>
                 <button
+                  type="button"
                   onClick={() => setTemplatePickerOpen(true)}
                   className="px-3 py-1 text-xs text-on-surface-tertiary hover:text-white border border-border-strong rounded transition-colors"
                 >
@@ -341,7 +348,7 @@ export function BucketPolicyEditor({ capability, onGetManifest, onApplyManifest 
               </div>
               <div className="flex-1 overflow-y-auto p-3 space-y-2 text-xs">
                 {doc.Statement.length === 0 ? (
-                  <div className="text-on-surface-faint italic">No effect — no policy is set.</div>
+                  <div className="text-on-surface-faint italic">No effect: no policy is set.</div>
                 ) : (
                   doc.Statement.map((stmt, i) => (
                     <div
@@ -468,6 +475,7 @@ function StatementCard({
         </span>
         <span className="flex items-center gap-1 shrink-0">
           <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
               onMoveUp();
@@ -479,6 +487,7 @@ function StatementCard({
             ↑
           </button>
           <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
               onMoveDown();
@@ -490,6 +499,7 @@ function StatementCard({
             ↓
           </button>
           <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
               onDelete();
@@ -550,6 +560,7 @@ function StatementForm({ statement, bucketArn, onChange }: StatementFormProps) {
           {(["Allow", "Deny"] as const).map((e) => (
             <button
               key={e}
+              type="button"
               onClick={() => patch("Effect", e)}
               className={`px-2 py-1 ${
                 statement.Effect === e
@@ -676,6 +687,7 @@ function ActionPicker({
           >
             {a}
             <button
+              type="button"
               onClick={() => remove(a)}
               className="text-on-surface-faint hover:text-red-400"
               title="Remove"
@@ -763,6 +775,7 @@ function ResourceEditor({
     <div className="space-y-1.5">
       <div className="flex gap-1.5 flex-wrap">
         <button
+          type="button"
           onClick={() => toggle(bucketArn)}
           className={`text-xs px-2 py-0.5 rounded border ${
             values.includes(bucketArn)
@@ -773,6 +786,7 @@ function ResourceEditor({
           Bucket (`{bucketArn.split(":::").pop()}`)
         </button>
         <button
+          type="button"
           onClick={() => toggle(objectArn)}
           className={`text-xs px-2 py-0.5 rounded border ${
             values.includes(objectArn)
@@ -792,6 +806,7 @@ function ResourceEditor({
             className="flex-1 bg-surface border border-border-strong rounded px-2 py-1 text-xs font-mono focus:outline-none focus:border-blue-500"
           />
           <button
+            type="button"
             onClick={() => removeAt(i)}
             className="text-on-surface-faint hover:text-red-400 text-xs px-1"
             title="Remove"
@@ -801,6 +816,7 @@ function ResourceEditor({
         </div>
       ))}
       <button
+        type="button"
         onClick={add}
         className="text-xs text-on-surface-tertiary hover:text-on-surface-secondary"
       >
@@ -924,6 +940,7 @@ function ConditionEditor({
             className="bg-surface border border-border-strong rounded px-1.5 py-1 text-xs font-mono focus:outline-none focus:border-blue-500"
           />
           <button
+            type="button"
             onClick={() => remove(i)}
             className="text-on-surface-faint hover:text-red-400 text-xs px-1"
             title="Remove"
@@ -933,6 +950,7 @@ function ConditionEditor({
         </div>
       ))}
       <button
+        type="button"
         onClick={add}
         className="text-xs text-on-surface-tertiary hover:text-on-surface-secondary"
       >
@@ -969,6 +987,7 @@ function TemplatePickerModal({
         <div className="flex items-center justify-between px-4 py-2 border-b border-border">
           <h2 className="text-sm font-semibold">Choose a template</h2>
           <button
+            type="button"
             onClick={onClose}
             className="text-on-surface-faint hover:text-on-surface-secondary text-sm"
           >
@@ -1026,12 +1045,14 @@ function TemplatePickerModal({
             ))}
             <div className="flex items-center justify-end gap-2 pt-2">
               <button
+                type="button"
                 onClick={() => onPendingChange(null)}
                 className="px-3 py-1 text-xs text-on-surface-tertiary hover:text-white border border-border-strong rounded"
               >
                 Back
               </button>
               <button
+                type="button"
                 onClick={() => onApply(pending.template, pending.inputs)}
                 className="px-3 py-1 text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white rounded"
               >

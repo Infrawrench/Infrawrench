@@ -717,6 +717,7 @@ export function ResourceDetailClient({
             ) : !sshHost ? (
               <div className="flex items-center justify-center h-full">
                 <button
+                  type="button"
                   onClick={async () => {
                     const { token } = await apiPost<{ token: string }>(
                       `/api/org/${orgId}/ws-token`,
@@ -744,6 +745,7 @@ export function ResourceDetailClient({
           <div className="shrink-0 flex justify-end gap-2 px-4 py-2 border-b border-border bg-surface">
             {hasSftpBrowser && (
               <button
+                type="button"
                 onClick={openSftpTab}
                 className="px-3 py-1.5 text-xs text-on-surface-muted hover:text-on-surface-secondary border border-border hover:border-border-strong rounded-lg transition-colors"
               >
@@ -752,6 +754,7 @@ export function ResourceDetailClient({
             )}
             {hasSshPanel && (
               <button
+                type="button"
                 onClick={openSshTab}
                 className="px-3 py-1.5 text-xs text-on-surface-muted hover:text-on-surface-secondary border border-border hover:border-border-strong rounded-lg transition-colors"
               >
@@ -760,6 +763,7 @@ export function ResourceDetailClient({
             )}
             {sshHost && (
               <button
+                type="button"
                 onClick={() => setShowSshTunnel(true)}
                 className="px-3 py-1.5 text-xs text-on-surface-muted hover:text-on-surface-secondary border border-border hover:border-border-strong rounded-lg transition-colors"
               >
@@ -768,6 +772,7 @@ export function ResourceDetailClient({
             )}
             {sshHost && (
               <button
+                type="button"
                 onClick={() => setShowJumpboxDialog(true)}
                 className="px-3 py-1.5 text-xs text-on-surface-muted hover:text-on-surface-secondary border border-border hover:border-border-strong rounded-lg transition-colors"
               >
@@ -776,6 +781,7 @@ export function ResourceDetailClient({
             )}
             {sshHost && (
               <button
+                type="button"
                 onClick={() => setShowDockerSetup(true)}
                 className="px-3 py-1.5 text-xs text-on-surface-muted hover:text-on-surface-secondary border border-border hover:border-border-strong rounded-lg transition-colors"
               >
@@ -783,6 +789,7 @@ export function ResourceDetailClient({
               </button>
             )}
             <button
+              type="button"
               onClick={() => setShowDropSpotlight(true)}
               className="px-3 py-1.5 text-xs text-on-surface-muted hover:text-on-surface-secondary border border-border hover:border-border-strong rounded-lg transition-colors"
             >
@@ -951,7 +958,7 @@ export function ResourceDetailClient({
       {/* SSH bottom bar — connection info */}
       {isSshView && (wsToken || sshQuickConnect) && (
         <div className="shrink-0 flex items-center gap-3 px-4 py-2 border-t border-border bg-surface">
-          <span className="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0" />
+          <span className="size-1.5 rounded-full bg-green-500 shrink-0" />
           <span className="text-xs font-mono text-on-surface-tertiary">
             {sshQuickConnect && sshHost
               ? `${sshQuickConnect.username}@${sshHost}:22`
@@ -959,6 +966,7 @@ export function ResourceDetailClient({
           </span>
           {sshQuickConnect && (
             <button
+              type="button"
               onClick={() => setSshQuickConnect(null)}
               className="ml-auto text-xs text-on-surface-faint hover:text-on-surface-secondary transition-colors"
             >
@@ -975,6 +983,7 @@ export function ResourceDetailClient({
           <div className="shrink-0 px-4 py-2 border-t border-border flex items-center justify-end gap-3">
             {credentialFormats && credentialFormats.length > 0 && (
               <button
+                type="button"
                 onClick={() => setShowExportCredential(true)}
                 className="text-xs text-on-surface-faint hover:text-on-surface-secondary transition-colors px-2 py-1 rounded hover:bg-surface-overlay"
               >
@@ -983,6 +992,7 @@ export function ResourceDetailClient({
             )}
             {canEdit && (
               <button
+                type="button"
                 onClick={() => setShowEditModal(true)}
                 className="text-xs text-on-surface-faint hover:text-on-surface-secondary transition-colors px-2 py-1 rounded hover:bg-surface-overlay"
               >
@@ -991,6 +1001,7 @@ export function ResourceDetailClient({
             )}
             {canDelete && (
               <button
+                type="button"
                 onClick={() => setConfirmDelete(true)}
                 className="text-xs text-on-surface-faint hover:text-red-400 transition-colors px-2 py-1 rounded hover:bg-red-500/10"
               >
@@ -1149,7 +1160,7 @@ export function ResourceDetailClient({
           <div className="w-[min(1100px,92vw)] h-[min(720px,82vh)] overflow-hidden rounded-2xl border border-border-strong bg-surface shadow-2xl flex flex-col">
             <div className="flex items-center justify-between border-b border-border px-4 py-3">
               <h2 className="text-sm font-semibold text-on-surface">
-                Console — {resourceDisplayName}
+                Console: {resourceDisplayName}
               </h2>
               <button
                 type="button"
@@ -1201,7 +1212,7 @@ export function ResourceDetailClient({
         <Modal onClose={() => setK9sPane(null)}>
           <div className="w-[min(1100px,92vw)] h-[min(720px,82vh)] overflow-hidden rounded-2xl border border-border-strong bg-surface shadow-2xl flex flex-col">
             <div className="flex items-center justify-between border-b border-border px-4 py-3">
-              <h2 className="text-sm font-semibold text-on-surface">k9s — {resourceDisplayName}</h2>
+              <h2 className="text-sm font-semibold text-on-surface">k9s: {resourceDisplayName}</h2>
               <button
                 type="button"
                 onClick={() => setK9sPane(null)}

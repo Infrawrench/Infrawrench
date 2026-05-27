@@ -546,7 +546,7 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
           <div key={group.pluginId} className="mb-3">
             <div className="flex items-center gap-2 px-3 py-1">
               <div
-                className="w-4 h-4 flex-shrink-0"
+                className="size-4 flex-shrink-0"
                 dangerouslySetInnerHTML={{ __html: group.logoSvg }}
               />
               <span className="text-xs font-medium text-on-surface-muted uppercase tracking-wide">
@@ -657,6 +657,7 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
         >
           {contextMenu.sshHost && (
             <button
+              type="button"
               className="w-full px-3 py-2 text-xs text-on-surface-secondary hover:bg-surface-sunken text-left flex items-center gap-2"
               onClick={() => {
                 setTunnelTarget({
@@ -675,6 +676,7 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
           )}
           {contextMenu.sshHost && (
             <button
+              type="button"
               className="w-full px-3 py-2 text-xs text-on-surface-secondary hover:bg-surface-sunken text-left flex items-center gap-2"
               onClick={() => {
                 setDockerSetupTarget({
@@ -693,6 +695,7 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
           )}
           {contextMenu.supportsMetrics && (
             <button
+              type="button"
               className="w-full px-3 py-2 text-xs text-on-surface-secondary hover:bg-surface-sunken text-left flex items-center gap-2"
               onClick={() => {
                 setPingTarget({

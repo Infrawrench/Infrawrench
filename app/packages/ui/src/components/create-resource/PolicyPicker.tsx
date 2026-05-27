@@ -81,6 +81,7 @@ export function PolicyPicker({
                   {label}
                 </span>
                 <button
+                  type="button"
                   onClick={() => remove(id)}
                   className="text-accent-on-muted/70 hover:text-accent-on-muted"
                   aria-label={`Remove ${label}`}
@@ -110,7 +111,7 @@ export function PolicyPicker({
       <div className="max-h-64 overflow-y-auto">
         {filtered ? (
           filtered.length === 0 ? (
-            <p className="px-3 py-3 text-xs text-on-surface-faint">No matches</p>
+            <p className="p-3 text-xs text-on-surface-faint">No matches</p>
           ) : (
             filtered.map((p) => (
               <PolicyRow
@@ -190,7 +191,7 @@ function PolicyRow({
         }`}
       >
         {selected && (
-          <svg viewBox="0 0 12 12" className="w-2.5 h-2.5 text-white" fill="none">
+          <svg viewBox="0 0 12 12" className="size-2.5 text-white" fill="none">
             <path
               d="M2 6.5L5 9.5L10 3.5"
               stroke="currentColor"

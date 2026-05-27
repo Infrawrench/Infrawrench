@@ -297,6 +297,7 @@ export function SshQuickConnectPanel({
                 />
                 <div className="flex gap-2 justify-end">
                   <button
+                    type="button"
                     onClick={() => {
                       setShowAddKey(false);
                       setNewKeyName("");
@@ -307,6 +308,7 @@ export function SshQuickConnectPanel({
                     Cancel
                   </button>
                   <button
+                    type="button"
                     onClick={() => void saveAppKey()}
                     disabled={saving || !newKeyName.trim() || !newKeyPem.trim()}
                     className="px-3 py-1 rounded bg-surface-sunken hover:bg-surface-sunken text-xs text-on-surface-secondary disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
@@ -317,6 +319,7 @@ export function SshQuickConnectPanel({
               </div>
             ) : (
               <button
+                type="button"
                 onClick={() => setShowAddKey(true)}
                 className="mt-1 text-xs text-on-surface-faint hover:text-on-surface-tertiary transition-colors"
               >
@@ -329,6 +332,7 @@ export function SshQuickConnectPanel({
         {/* Connect button */}
         <div className="flex justify-end pt-1">
           <button
+            type="button"
             onClick={() => void connect()}
             disabled={!selectedKey}
             className="px-4 py-1.5 rounded-lg bg-green-100 dark:bg-green-900 border border-green-300 dark:border-green-700 hover:bg-green-200 dark:hover:bg-green-800 hover:border-green-400 dark:hover:border-green-600 text-green-700 dark:text-green-300 hover:text-green-800 dark:hover:text-green-200 text-xs font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
@@ -371,6 +375,7 @@ function KeyRow({
       trailing={
         onDelete ? (
           <button
+            type="button"
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();

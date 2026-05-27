@@ -503,6 +503,7 @@ export function DetailView({
                 </h3>
                 {group.createAction && (
                   <button
+                    type="button"
                     onClick={() => dispatchPillAction(group.createAction!)}
                     className="text-xs text-on-surface-faint hover:text-accent transition-colors"
                   >
@@ -557,6 +558,7 @@ export function DetailView({
                 </h3>
                 {group.supportsCreate && onChildCreate && (
                   <button
+                    type="button"
                     onClick={() => onChildCreate(group)}
                     className="text-xs text-on-surface-faint hover:text-accent transition-colors"
                   >
@@ -948,6 +950,7 @@ function ChildResourcePill({
   }
   return (
     <button
+      type="button"
       onClick={onClick}
       className="group flex items-center gap-2 pl-3 pr-3 py-1.5 rounded-full border border-border-strong bg-surface-raised hover:border-border-strong transition-colors text-left"
     >

@@ -88,6 +88,7 @@ export function ArtifactRegistryView({ capability, onListArtifacts }: Props) {
           className="flex-1 px-3 py-1.5 rounded text-sm bg-surface-overlay border border-border text-on-surface placeholder:text-on-surface-faint focus:outline-none focus:border-border-strong"
         />
         <button
+          type="button"
           onClick={() => void load({ reset: true })}
           disabled={loading}
           className="px-3 py-1.5 text-xs font-medium rounded-md bg-surface-overlay hover:bg-surface-sunken text-on-surface-secondary border border-border disabled:opacity-50 transition-colors"
@@ -170,6 +171,7 @@ export function ArtifactRegistryView({ capability, onListArtifacts }: Props) {
       {nextPageToken && (
         <div className="shrink-0 px-4 py-2 border-t border-border flex justify-center">
           <button
+            type="button"
             onClick={() => void load({ reset: false, pageToken: nextPageToken })}
             disabled={loadingMore}
             className="px-4 py-1.5 text-xs font-medium rounded-md bg-surface-overlay hover:bg-surface-sunken text-on-surface-secondary border border-border disabled:opacity-50 transition-colors"

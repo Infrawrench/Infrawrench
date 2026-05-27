@@ -41,7 +41,7 @@ export function DraggableChildPill({ child, onOpen, extraDragData }: DraggableCh
       <div className="flex items-center gap-2 min-w-0">
         {child.status && (
           <span
-            className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+            className={`size-1.5 rounded-full flex-shrink-0 ${
               child.status.status === "healthy"
                 ? "bg-blue-400"
                 : child.status.status === "error"
@@ -62,6 +62,7 @@ export function DraggableChildPill({ child, onOpen, extraDragData }: DraggableCh
         )}
       </div>
       <button
+        type="button"
         onClick={(e) => {
           e.stopPropagation();
           onOpen();

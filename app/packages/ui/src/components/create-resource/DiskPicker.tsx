@@ -50,7 +50,7 @@ export function DiskPicker({
             }`}
           >
             <span
-              className={`w-2 h-2 rounded-full flex-shrink-0 ${value === d.id ? "bg-blue-400" : "bg-surface-sunken"}`}
+              className={`size-2 rounded-full flex-shrink-0 ${value === d.id ? "bg-blue-400" : "bg-surface-sunken"}`}
             />
             <span className="flex-1 min-w-0">
               <span className="font-medium truncate block">{d.label}</span>
@@ -61,9 +61,7 @@ export function DiskPicker({
             </span>
           </button>
         ))}
-        {filtered.length === 0 && (
-          <p className="px-3 py-3 text-xs text-on-surface-faint">No matches</p>
-        )}
+        {filtered.length === 0 && <p className="p-3 text-xs text-on-surface-faint">No matches</p>}
       </div>
     </div>
   );

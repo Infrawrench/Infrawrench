@@ -46,6 +46,7 @@ export function OrgSwitcher({
   return (
     <div ref={ref} className="relative">
       <button
+        type="button"
         onClick={() => setOpen((v) => !v)}
         className="w-full flex items-center justify-between px-3 py-2 text-sm font-semibold text-on-surface-secondary hover:bg-surface-overlay transition-colors rounded-md"
       >
@@ -57,6 +58,7 @@ export function OrgSwitcher({
         <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-surface-raised border border-border-strong rounded-lg shadow-xl overflow-hidden">
           {showLocalOption && (
             <button
+              type="button"
               onClick={() => {
                 onSwitch(null);
                 setOpen(false);
@@ -77,6 +79,7 @@ export function OrgSwitcher({
           {orgs.map((org) => (
             <button
               key={org.id}
+              type="button"
               onClick={() => {
                 onSwitch(org.id);
                 setOpen(false);
@@ -97,6 +100,7 @@ export function OrgSwitcher({
             <>
               <div className="border-t border-border" />
               <button
+                type="button"
                 onClick={() => {
                   onCreateOrg();
                   setOpen(false);

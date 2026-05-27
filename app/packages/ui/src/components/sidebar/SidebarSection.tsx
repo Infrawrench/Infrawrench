@@ -34,13 +34,14 @@ export function SidebarSection({
     <div className="mb-2">
       {/* Plugin + account header */}
       <button
+        type="button"
         onClick={() => setExpanded((e) => !e)}
         aria-expanded={expanded}
         aria-controls={panelId}
         className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-on-surface-muted hover:text-on-surface-secondary transition-colors"
       >
         <span
-          className="w-4 h-4 flex-shrink-0"
+          className="size-4 flex-shrink-0"
           dangerouslySetInnerHTML={{ __html: pluginLogoSvg }}
           aria-hidden
         />
@@ -81,6 +82,7 @@ function ResourceTypeGroup({
   return (
     <div>
       <button
+        type="button"
         onClick={() => setExpanded((e) => !e)}
         aria-expanded={expanded}
         aria-controls={panelId}

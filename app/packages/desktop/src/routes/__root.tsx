@@ -378,15 +378,17 @@ function RootLayout() {
             style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
           >
             <button
+              type="button"
               onClick={() => router.history.back()}
-              className="w-6 h-6 flex items-center justify-center rounded text-on-surface-tertiary hover:text-on-surface hover:bg-surface-sunken transition-colors text-base leading-none font-medium"
+              className="size-6 flex items-center justify-center rounded text-on-surface-tertiary hover:text-on-surface hover:bg-surface-sunken transition-colors text-base leading-none font-medium"
               aria-label="Go back"
             >
               ‹
             </button>
             <button
+              type="button"
               onClick={() => router.history.forward()}
-              className="w-6 h-6 flex items-center justify-center rounded text-on-surface-tertiary hover:text-on-surface hover:bg-surface-sunken transition-colors text-base leading-none font-medium"
+              className="size-6 flex items-center justify-center rounded text-on-surface-tertiary hover:text-on-surface hover:bg-surface-sunken transition-colors text-base leading-none font-medium"
               aria-label="Go forward"
             >
               ›
@@ -424,7 +426,7 @@ function RootLayout() {
         <div className="flex flex-1 overflow-hidden">
           {!sidebarCollapsed && (
             <aside className="w-60 border-r border-border flex flex-col overflow-hidden flex-shrink-0">
-              <div className="flex items-center justify-between px-1 py-1 border-b border-border">
+              <div className="flex items-center justify-between p-1 border-b border-border">
                 <div
                   className="flex-1 min-w-0"
                   style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
@@ -439,6 +441,7 @@ function RootLayout() {
                   />
                 </div>
                 <button
+                  type="button"
                   onClick={toggleSidebar}
                   className="text-on-surface-faint hover:text-on-surface-tertiary transition-colors text-xs px-2"
                   style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
@@ -455,6 +458,7 @@ function RootLayout() {
 
               <div className="border-t border-border p-2">
                 <button
+                  type="button"
                   onClick={() => setShowAddAccount(true)}
                   className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-on-surface-muted hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
                 >
@@ -463,6 +467,7 @@ function RootLayout() {
                 </button>
                 {SHOW_SIGN_IN_BUTTON && !cloudAuthenticated && (
                   <button
+                    type="button"
                     onClick={() => {
                       void startCloudAuth().then(() => {
                         const poll = setInterval(() => {
@@ -491,6 +496,7 @@ function RootLayout() {
 
           {sidebarCollapsed && (
             <button
+              type="button"
               onClick={toggleSidebar}
               className="w-8 border-r border-border flex items-center justify-center text-on-surface-faint hover:text-on-surface-tertiary transition-colors flex-shrink-0"
               aria-label="Expand sidebar"

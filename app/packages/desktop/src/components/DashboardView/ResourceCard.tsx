@@ -30,21 +30,22 @@ export function ResourceCard({
   return (
     <div className="group relative rounded-2xl border border-border bg-surface-raised hover:border-border-strong transition-colors flex flex-col overflow-hidden">
       <button
+        type="button"
         onClick={(e) => {
           e.stopPropagation();
           onUnpin();
         }}
         title="Remove from dashboard"
-        className="absolute top-2 right-2 w-5 h-5 rounded-full text-on-surface-faint hover:text-on-surface-secondary hover:bg-surface-sunken transition-all opacity-0 group-hover:opacity-100 text-xs flex items-center justify-center"
+        className="absolute top-2 right-2 size-5 rounded-full text-on-surface-faint hover:text-on-surface-secondary hover:bg-surface-sunken transition-all opacity-0 group-hover:opacity-100 text-xs flex items-center justify-center"
       >
         ✕
       </button>
 
-      <button onClick={onOpen} className="flex-1 flex flex-col p-5 text-left gap-3">
+      <button type="button" onClick={onOpen} className="flex-1 flex flex-col p-5 text-left gap-3">
         <div className="flex items-center gap-2">
           {pluginMeta?.logoSvg ? (
             <div
-              className="w-6 h-6 flex-shrink-0"
+              className="size-6 flex-shrink-0"
               dangerouslySetInnerHTML={{ __html: pluginMeta.logoSvg }}
             />
           ) : (

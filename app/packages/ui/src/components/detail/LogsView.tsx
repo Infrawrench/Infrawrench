@@ -114,6 +114,7 @@ export function LogsView({ capability, onGetLogs }: Props) {
         </label>
         <div className="ml-auto flex items-center gap-2">
           <button
+            type="button"
             onClick={() => {
               if (text) void navigator.clipboard.writeText(text);
             }}
@@ -122,6 +123,7 @@ export function LogsView({ capability, onGetLogs }: Props) {
             Copy
           </button>
           <button
+            type="button"
             onClick={() => {
               setLoading(true);
               void fetchLogs();

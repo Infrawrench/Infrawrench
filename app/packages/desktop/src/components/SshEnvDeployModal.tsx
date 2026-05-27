@@ -211,6 +211,7 @@ export function SshEnvDeployModal({
                     {templates.map((tpl) => (
                       <button
                         key={tpl.id}
+                        type="button"
                         onClick={() => handleTemplateChange(tpl.id)}
                         className={`w-full text-left rounded-lg border p-2 text-xs transition-colors ${
                           selectedTemplateId === tpl.id
@@ -263,6 +264,7 @@ export function SshEnvDeployModal({
                 <label className="text-xs text-on-surface-muted">Format</label>
                 <div className="flex gap-2">
                   <button
+                    type="button"
                     onClick={() => {
                       setFormat("dotenv");
                       if (filePath === "~/.profile") setFilePath("~/.env");
@@ -277,6 +279,7 @@ export function SshEnvDeployModal({
                     <div className="text-on-surface-faint mt-0.5">KEY=value</div>
                   </button>
                   <button
+                    type="button"
                     onClick={() => {
                       setFormat("profile");
                       if (filePath === "~/.env") setFilePath("~/.profile");
@@ -309,6 +312,7 @@ export function SshEnvDeployModal({
                 <label className="text-xs text-on-surface-muted w-20 shrink-0">Mode</label>
                 <div className="flex gap-2">
                   <button
+                    type="button"
                     onClick={() => setAppend(true)}
                     className={`px-3 py-1.5 rounded-lg text-xs border transition-colors ${
                       append
@@ -319,6 +323,7 @@ export function SshEnvDeployModal({
                     Append
                   </button>
                   <button
+                    type="button"
                     onClick={() => setAppend(false)}
                     className={`px-3 py-1.5 rounded-lg text-xs border transition-colors ${
                       !append
@@ -345,6 +350,7 @@ export function SshEnvDeployModal({
         {!loadError && (
           <div className="p-6 border-t border-border flex justify-end gap-3">
             <button
+              type="button"
               onClick={onClose}
               disabled={deploying}
               className="px-4 py-2 text-sm text-on-surface-tertiary hover:text-on-surface-secondary transition-colors"
@@ -352,6 +358,7 @@ export function SshEnvDeployModal({
               Cancel
             </button>
             <button
+              type="button"
               onClick={() => void handleDeploy()}
               disabled={deploying || !privateKey.trim() || !selectedTemplate || !filePath.trim()}
               className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors disabled:opacity-50"

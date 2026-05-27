@@ -345,6 +345,7 @@ export function FileBrowser({
           <div className="flex items-center gap-1 flex-shrink-0">
             {onMakeFolder && (
               <button
+                type="button"
                 onClick={() => {
                   setNewFolderActive(true);
                   setNewFolderName("");
@@ -358,6 +359,7 @@ export function FileBrowser({
             {onUpload && (
               <>
                 <button
+                  type="button"
                   onClick={() => fileInputRef.current?.click()}
                   className="px-2 py-0.5 text-xs text-on-surface-tertiary hover:text-on-surface-secondary border border-border-strong hover:border-border-strong rounded transition-colors"
                 >
@@ -365,6 +367,7 @@ export function FileBrowser({
                 </button>
                 {showFolderUpload && (
                   <button
+                    type="button"
                     onClick={() => folderInputRef.current?.click()}
                     className="px-2 py-0.5 text-xs text-on-surface-tertiary hover:text-on-surface-secondary border border-border-strong hover:border-border-strong rounded transition-colors"
                   >
@@ -412,6 +415,7 @@ export function FileBrowser({
           <div className="flex items-center gap-2 ml-auto">
             {onBatchDownload && (
               <button
+                type="button"
                 onClick={() => void handleDownload([...selected])}
                 disabled={bulkWorking}
                 className="px-2.5 py-1 text-xs text-on-surface-secondary hover:text-white border border-border-strong hover:border-border-strong rounded transition-colors disabled:opacity-40"
@@ -426,6 +430,7 @@ export function FileBrowser({
                     Delete {selected.size} item{selected.size !== 1 ? "s" : ""}?
                   </span>
                   <button
+                    type="button"
                     onClick={() => void handleBulkDelete()}
                     disabled={bulkWorking}
                     className="px-2.5 py-1 text-xs bg-red-600 hover:bg-red-500 text-white rounded transition-colors disabled:opacity-40"
@@ -433,6 +438,7 @@ export function FileBrowser({
                     {bulkWorking ? "Deleting…" : "Confirm"}
                   </button>
                   <button
+                    type="button"
                     onClick={() => setConfirmBulkDelete(false)}
                     className="px-2 py-1 text-xs text-on-surface-muted hover:text-on-surface-secondary transition-colors"
                   >
@@ -441,6 +447,7 @@ export function FileBrowser({
                 </span>
               ) : (
                 <button
+                  type="button"
                   onClick={() => setConfirmBulkDelete(true)}
                   disabled={bulkWorking}
                   className="px-2.5 py-1 text-xs text-red-500 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 border border-red-300 dark:border-red-900/50 hover:border-red-400 dark:hover:border-red-700/50 rounded transition-colors disabled:opacity-40"
@@ -449,6 +456,7 @@ export function FileBrowser({
                 </button>
               ))}
             <button
+              type="button"
               onClick={() => setSelected(new Set())}
               className="text-xs text-on-surface-faint hover:text-on-surface-tertiary transition-colors"
             >
@@ -476,7 +484,7 @@ export function FileBrowser({
                       if (el) el.indeterminate = someSelected;
                     }}
                     onChange={toggleAll}
-                    className="w-3 h-3 accent-blue-500 cursor-pointer"
+                    className="size-3 accent-blue-500 cursor-pointer"
                   />
                 </th>
                 <th className="text-left px-2 py-1.5 font-medium">Name</th>
@@ -507,12 +515,14 @@ export function FileBrowser({
                         className="bg-surface-overlay border border-border-strong rounded px-2 py-0.5 text-xs text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500"
                       />
                       <button
+                        type="button"
                         onClick={() => void handleMakeFolder()}
                         className="px-2 py-0.5 text-xs bg-blue-600 hover:bg-blue-500 text-white rounded transition-colors"
                       >
                         Create
                       </button>
                       <button
+                        type="button"
                         onClick={() => {
                           setNewFolderActive(false);
                           setNewFolderName("");
@@ -597,7 +607,7 @@ export function FileBrowser({
                           )
                         }
                         onClick={(e) => e.stopPropagation()}
-                        className="w-3 h-3 accent-blue-500 cursor-pointer"
+                        className="size-3 accent-blue-500 cursor-pointer"
                       />
                     </td>
                     <td className="px-2 py-1.5">
@@ -613,13 +623,14 @@ export function FileBrowser({
                         <span className="text-on-surface-secondary truncate">{d.name}/</span>
                       </button>
                     </td>
-                    <td className="px-4 py-1.5 text-right text-on-surface-faint">—</td>
+                    <td className="px-4 py-1.5 text-right text-on-surface-faint">-</td>
                     <td className="px-4 py-1.5 text-right">
                       {onDelete &&
                         (confirmDeleteKey === d.key ? (
                           <span className="flex items-center justify-end gap-1.5">
                             <span className="text-on-surface-muted text-xs">Delete folder?</span>
                             <button
+                              type="button"
                               onClick={() => void handleDelete(d.key, true)}
                               disabled={deleting}
                               className="text-xs text-red-400 hover:text-red-500 dark:text-red-300 disabled:opacity-40"
@@ -627,6 +638,7 @@ export function FileBrowser({
                               {deleting ? "…" : "Yes"}
                             </button>
                             <button
+                              type="button"
                               onClick={() => setConfirmDeleteKey(null)}
                               className="text-xs text-on-surface-faint hover:text-on-surface-tertiary"
                             >
@@ -635,6 +647,7 @@ export function FileBrowser({
                           </span>
                         ) : (
                           <button
+                            type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               setConfirmDeleteKey(d.key);
@@ -672,7 +685,7 @@ export function FileBrowser({
                               (e.nativeEvent as MouseEvent).shiftKey,
                           )
                         }
-                        className="w-3 h-3 accent-blue-500 cursor-pointer"
+                        className="size-3 accent-blue-500 cursor-pointer"
                       />
                     </td>
                     <td className="px-2 py-1.5">
@@ -695,6 +708,7 @@ export function FileBrowser({
                       {onDelete && confirmDeleteKey === f.key ? (
                         <span className="flex items-center justify-end gap-1.5">
                           <button
+                            type="button"
                             onClick={() => void handleDelete(f.key, false)}
                             disabled={deleting}
                             className="text-xs text-red-400 hover:text-red-500 dark:text-red-300 disabled:opacity-40"
@@ -702,6 +716,7 @@ export function FileBrowser({
                             {deleting ? "…" : "Delete"}
                           </button>
                           <button
+                            type="button"
                             onClick={() => setConfirmDeleteKey(null)}
                             className="text-xs text-on-surface-faint hover:text-on-surface-tertiary"
                           >
@@ -716,6 +731,7 @@ export function FileBrowser({
                           <span className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
                             {onBatchDownload && (
                               <button
+                                type="button"
                                 onClick={() => void handleDownload([f.key])}
                                 className="text-on-surface-faint hover:text-accent transition-colors px-1"
                                 title="Download"
@@ -726,6 +742,7 @@ export function FileBrowser({
                             )}
                             {onDelete && (
                               <button
+                                type="button"
                                 onClick={() => setConfirmDeleteKey(f.key)}
                                 className="text-on-surface-faint hover:text-red-400 transition-colors px-1"
                                 title="Delete"

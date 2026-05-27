@@ -48,7 +48,7 @@ function BillingPage() {
   }
 
   if (sub === undefined) {
-    return <p className="text-sm text-on-surface-faint">Loading...</p>;
+    return <p className="text-sm text-on-surface-faint">Loading…</p>;
   }
 
   const isActive = sub?.status === "active";
@@ -95,6 +95,7 @@ function BillingPage() {
       <div className="flex gap-3">
         {isFree ? (
           <button
+            type="button"
             onClick={() => void handleUpgrade()}
             disabled={loading}
             className="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
@@ -103,6 +104,7 @@ function BillingPage() {
           </button>
         ) : (
           <button
+            type="button"
             onClick={() => void handleManage()}
             disabled={loading}
             className="px-4 py-2 text-sm font-medium border border-border-strong text-on-surface-secondary hover:text-on-surface hover:border-border-strong rounded-lg transition-colors"

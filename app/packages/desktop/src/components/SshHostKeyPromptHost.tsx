@@ -46,7 +46,7 @@ export function SshHostKeyPromptHost() {
       <div className="bg-surface-raised border border-border-strong rounded-xl shadow-2xl w-[520px] p-6">
         <div className="flex items-start gap-3 mb-4">
           <div
-            className={`mt-0.5 w-2 h-2 rounded-full flex-shrink-0 ${
+            className={`mt-0.5 size-2 rounded-full flex-shrink-0 ${
               isMismatch ? "bg-red-500" : "bg-amber-400"
             }`}
             aria-hidden
@@ -75,6 +75,7 @@ export function SshHostKeyPromptHost() {
 
         <div className="flex justify-end gap-2 mt-6">
           <button
+            type="button"
             onClick={() => void decide(false)}
             disabled={busy}
             className="px-3 py-1.5 text-xs text-on-surface-tertiary hover:text-on-surface-secondary transition-colors rounded-lg"
@@ -82,6 +83,7 @@ export function SshHostKeyPromptHost() {
             Deny
           </button>
           <button
+            type="button"
             onClick={() => void decide(true)}
             disabled={busy}
             className={`px-3 py-1.5 text-xs text-white rounded-lg transition-colors disabled:opacity-40 ${

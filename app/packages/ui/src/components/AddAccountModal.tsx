@@ -186,6 +186,7 @@ export function AddAccountModal({
             {step === "pick-plugin" ? "Add account" : `Add ${selected?.displayName} account`}
           </h2>
           <button
+            type="button"
             onClick={onClose}
             className="text-on-surface-faint hover:text-on-surface-tertiary text-lg leading-none"
             aria-label="Close"
@@ -206,7 +207,7 @@ export function AddAccountModal({
                 autoFocus
               />
               {plugins.length === 0 ? (
-                <p className="text-xs text-on-surface-faint">Loading plugins...</p>
+                <p className="text-xs text-on-surface-faint">Loading plugins…</p>
               ) : (
                 <div className="flex flex-wrap gap-2 max-h-[320px] overflow-y-auto">
                   {plugins
@@ -214,12 +215,13 @@ export function AddAccountModal({
                     .sort((a, b) => a.displayName.localeCompare(b.displayName))
                     .map((p) => (
                       <button
+                        type="button"
                         key={p.id}
                         onClick={() => pickPlugin(p)}
                         className="flex items-center gap-2 px-3 py-2 rounded-full border border-border-strong hover:border-border-strong hover:bg-surface-overlay transition-colors"
                       >
                         <div
-                          className="w-5 h-5 flex-shrink-0"
+                          className="size-5 flex-shrink-0"
                           aria-hidden="true"
                           dangerouslySetInnerHTML={{ __html: p.logoSvg }}
                         />
@@ -382,12 +384,14 @@ export function AddAccountModal({
 
                   <div className="flex gap-2 pt-1">
                     <button
+                      type="button"
                       onClick={() => setStep("pick-plugin")}
                       className="flex-1 px-3 py-2 text-sm text-on-surface-tertiary hover:text-on-surface-secondary border border-border-strong rounded-lg hover:border-border-strong transition-colors"
                     >
                       Back
                     </button>
                     <button
+                      type="button"
                       onClick={() => void save()}
                       disabled={saving || !isValid}
                       className="flex-1 px-3 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"

@@ -44,7 +44,7 @@ export function FirestoreMongoPeerShell({
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center text-on-surface-faint text-sm">
-        Loading MongoDB accounts...
+        Loading MongoDB accounts…
       </div>
     );
   }
@@ -71,6 +71,7 @@ export function FirestoreMongoPeerShell({
               {accounts.map((a) => (
                 <button
                   key={a.id}
+                  type="button"
                   onClick={() => onLink(a.id)}
                   className="w-full text-left px-3 py-2 rounded border border-border-strong bg-surface-overlay hover:bg-surface-sunken text-sm text-on-surface-secondary transition-colors"
                 >
@@ -105,6 +106,7 @@ export function FirestoreMongoPeerShell({
         </span>
         <div className="flex-1" />
         <button
+          type="button"
           onClick={onUnlink}
           className="text-xs text-on-surface-faint hover:text-on-surface-secondary transition-colors"
         >

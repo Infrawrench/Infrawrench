@@ -127,7 +127,7 @@ export function AccountDetailView({
       <div className="flex items-center gap-3 mb-6">
         {pluginLogoSvg && (
           <div
-            className="w-8 h-8 flex-shrink-0"
+            className="size-8 flex-shrink-0"
             aria-hidden="true"
             dangerouslySetInnerHTML={{ __html: pluginLogoSvg }}
           />
@@ -151,6 +151,7 @@ export function AccountDetailView({
                 disabled={isSaving}
               />
               <button
+                type="button"
                 onClick={handleRename}
                 disabled={isSaving}
                 className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
@@ -158,6 +159,7 @@ export function AccountDetailView({
                 Save
               </button>
               <button
+                type="button"
                 onClick={() => {
                   setEditName(account.displayName);
                   setIsEditing(false);
@@ -177,12 +179,14 @@ export function AccountDetailView({
           {!isEditing && (
             <>
               <button
+                type="button"
                 onClick={() => setIsEditing(true)}
                 className="px-3 py-1.5 text-xs text-on-surface-muted hover:text-on-surface hover:bg-surface-overlay rounded transition-colors"
               >
                 Rename
               </button>
               <button
+                type="button"
                 onClick={() => void openEditCredentials()}
                 className="px-3 py-1.5 text-xs text-on-surface-muted hover:text-on-surface hover:bg-surface-overlay rounded transition-colors"
               >
@@ -191,6 +195,7 @@ export function AccountDetailView({
             </>
           )}
           <button
+            type="button"
             onClick={() => setConfirmDelete(true)}
             className="px-3 py-1.5 text-xs text-red-500 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 hover:bg-red-100 dark:hover:bg-red-950/50 rounded transition-colors"
           >
@@ -260,6 +265,7 @@ export function AccountDetailView({
         }}
         renderCreateButton={(typeDef) => (
           <button
+            type="button"
             key={`create-${typeDef.id}`}
             onClick={() => setCreateTarget(typeDef)}
             className="flex items-center gap-1.5 pl-3 pr-3 py-1.5 rounded-full border border-dashed border-border-strong text-on-surface-faint hover:border-blue-600 hover:text-accent transition-colors text-sm"

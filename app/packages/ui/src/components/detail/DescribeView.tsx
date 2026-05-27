@@ -44,6 +44,7 @@ export function DescribeView({ capability, onGetDescribe }: Props) {
       <div className="flex flex-col items-center justify-center h-full gap-3">
         <div className="text-red-400 text-sm font-mono whitespace-pre-wrap max-w-lg">{error}</div>
         <button
+          type="button"
           onClick={() => void fetchDescribe()}
           className="px-3 py-1.5 text-xs text-on-surface-tertiary hover:text-white border border-border-strong hover:border-border-strong rounded-md transition-colors"
         >
@@ -64,6 +65,7 @@ export function DescribeView({ capability, onGetDescribe }: Props) {
         </span>
         <div className="ml-auto flex items-center gap-2">
           <button
+            type="button"
             onClick={() => {
               if (text) void navigator.clipboard.writeText(text);
             }}
@@ -72,6 +74,7 @@ export function DescribeView({ capability, onGetDescribe }: Props) {
             Copy
           </button>
           <button
+            type="button"
             onClick={() => void fetchDescribe()}
             className="px-3 py-1 text-xs text-on-surface-tertiary hover:text-white border border-border-strong hover:border-border-strong rounded-md transition-colors"
           >

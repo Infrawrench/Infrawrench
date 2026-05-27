@@ -137,6 +137,7 @@ function TeamPage() {
               ))}
             </select>
             <button
+              type="button"
               onClick={() => void handleInvite()}
               disabled={inviting}
               className="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
@@ -153,7 +154,7 @@ function TeamPage() {
         Members ({members.length})
       </h2>
       {loading ? (
-        <p className="text-sm text-on-surface-faint">Loading...</p>
+        <p className="text-sm text-on-surface-faint">Loading…</p>
       ) : (
         <div className="border border-border rounded-xl overflow-hidden mb-6">
           <table className="w-full">
@@ -209,6 +210,7 @@ function TeamPage() {
                     <td className="px-4 py-2 text-right">
                       {canRemove && !isOwner && (
                         <button
+                          type="button"
                           onClick={() => void handleRemove(member.id)}
                           className="text-xs text-red-400 hover:text-red-500 dark:text-red-300"
                         >
@@ -268,6 +270,7 @@ function TeamPage() {
                       <td className="px-4 py-2 text-right">
                         {canInvite && (
                           <button
+                            type="button"
                             onClick={() => void handleRevokeInvite(invite.id)}
                             className="text-xs text-red-400 hover:text-red-500 dark:text-red-300"
                           >

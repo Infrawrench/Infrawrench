@@ -25,9 +25,7 @@ export function K8sConsoleModal({
     >
       <div className="w-[min(1100px,92vw)] h-[min(720px,82vh)] overflow-hidden rounded-2xl border border-border-strong bg-surface shadow-2xl flex flex-col">
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
-          <h2 className="text-sm font-semibold text-on-surface">
-            Console — {resource.displayName}
-          </h2>
+          <h2 className="text-sm font-semibold text-on-surface">Console: {resource.displayName}</h2>
           <button
             type="button"
             onClick={onClose}

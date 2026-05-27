@@ -152,7 +152,7 @@ export function MetricPingModal({
     <Modal onClose={onClose}>
       <div className="bg-surface-overlay border border-border rounded-xl shadow-2xl p-5 w-[28rem] max-w-[90vw]">
         <h2 className="text-sm font-semibold text-on-surface mb-3">
-          Ping when out of range — {resourceDisplayName}
+          Ping when out of range: {resourceDisplayName}
         </h2>
         {existing.length > 0 && (
           <div className="flex flex-col gap-1 mb-3">
@@ -174,6 +174,7 @@ export function MetricPingModal({
                       {p.metric_label} <span className="text-on-surface-faint">({range})</span>
                     </span>
                     <button
+                      type="button"
                       onClick={() => void handleRemove(p.id)}
                       className="text-xs text-red-400 hover:text-red-300 px-2 py-0.5 rounded hover:bg-surface-overlay"
                     >
@@ -240,12 +241,14 @@ export function MetricPingModal({
             {error && <div className="text-sm text-red-400">{error}</div>}
             <div className="flex justify-end gap-2 pt-2">
               <button
+                type="button"
                 onClick={onClose}
                 className="px-3 py-1.5 text-sm text-on-surface-secondary rounded hover:bg-surface-sunken transition-colors"
               >
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={() => void handleSave()}
                 disabled={saving}
                 className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-500 transition-colors disabled:opacity-50"

@@ -164,7 +164,7 @@ export function DockerSetupModal({
                   </label>
                   <div className="flex-1 space-y-1">
                     {loadingKeys ? (
-                      <p className="text-xs text-on-surface-faint py-1">Loading keys...</p>
+                      <p className="text-xs text-on-surface-faint py-1">Loading keys…</p>
                     ) : keys.length === 0 ? (
                       <p className="text-xs text-on-surface-faint py-1">
                         No SSH keys found. Go to Settings to create one.
@@ -257,9 +257,7 @@ export function DockerSetupModal({
                     </div>
                   ))}
                   {isRunning && (
-                    <div className="text-xs font-mono text-accent animate-pulse mt-1">
-                      Working...
-                    </div>
+                    <div className="text-xs font-mono text-accent animate-pulse mt-1">Working…</div>
                   )}
                 </div>
 
@@ -278,6 +276,7 @@ export function DockerSetupModal({
 
           <div className="p-6 border-t border-border flex justify-end gap-3">
             <button
+              type="button"
               onClick={onClose}
               disabled={isRunning}
               className="px-4 py-2 text-sm text-on-surface-tertiary hover:text-on-surface-secondary transition-colors disabled:opacity-50"
@@ -286,6 +285,7 @@ export function DockerSetupModal({
             </button>
             {step === "credentials" && (
               <button
+                type="button"
                 onClick={() => void startSetup()}
                 disabled={!selectedKeyId || !sshUser.trim() || !accountName.trim()}
                 className="px-4 py-2 text-sm bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors disabled:opacity-50"
@@ -295,6 +295,7 @@ export function DockerSetupModal({
             )}
             {step === "done" && createdAccountId && (
               <button
+                type="button"
                 onClick={() => onComplete(createdAccountId)}
                 className="px-4 py-2 text-sm bg-green-600 hover:bg-green-500 text-white rounded-lg transition-colors"
               >
@@ -303,6 +304,7 @@ export function DockerSetupModal({
             )}
             {error && step !== "credentials" && (
               <button
+                type="button"
                 onClick={() => {
                   setError(null);
                   setStep("credentials");

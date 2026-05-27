@@ -32,6 +32,7 @@ export function K8sExecTerminal({
     let term: import("@xterm/xterm").Terminal | null = null;
     let disposed = false;
     let connected = false;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
     async function init() {
       const { Terminal } = await import("@xterm/xterm");
@@ -136,7 +137,7 @@ export function K8sExecTerminal({
                   term?.write(
                     `\x1b[90mWaiting for pod to be ready… (retrying in ${RETRY_DELAY_MS / 1000}s)\x1b[0m\r\n`,
                   );
-                  setTimeout(() => {
+                  retryTimer = setTimeout(() => {
                     if (!disposed && ws.readyState === WebSocket.OPEN) openExecSession(ws);
                   }, RETRY_DELAY_MS);
                 } else {
@@ -179,6 +180,7 @@ export function K8sExecTerminal({
 
     return () => {
       disposed = true;
+      if (retryTimer) clearTimeout(retryTimer);
       cleanup?.then((fn) => fn?.());
       wsRef.current?.close();
       term?.dispose();

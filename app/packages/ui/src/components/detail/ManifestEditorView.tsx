@@ -92,7 +92,7 @@ export function ManifestEditorView({ capability, onGetManifest, onApplyManifest 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full text-on-surface-faint text-sm">
-        Loading {kindLabel.toLowerCase()} manifest...
+        Loading {kindLabel.toLowerCase()} manifest…
       </div>
     );
   }
@@ -102,6 +102,7 @@ export function ManifestEditorView({ capability, onGetManifest, onApplyManifest 
       <div className="flex flex-col items-center justify-center h-full gap-3">
         <div className="text-red-400 text-sm font-mono whitespace-pre-wrap max-w-lg">{error}</div>
         <button
+          type="button"
           onClick={() => void fetchManifest()}
           className="px-3 py-1.5 text-xs text-on-surface-tertiary hover:text-white border border-border-strong hover:border-border-strong rounded-md transition-colors"
         >
@@ -132,6 +133,7 @@ export function ManifestEditorView({ capability, onGetManifest, onApplyManifest 
             </span>
           )}
           <button
+            type="button"
             onClick={() => void fetchManifest()}
             disabled={applying}
             className="px-3 py-1 text-xs text-on-surface-tertiary hover:text-white border border-border-strong hover:border-border-strong rounded-md transition-colors disabled:opacity-50"
@@ -140,6 +142,7 @@ export function ManifestEditorView({ capability, onGetManifest, onApplyManifest 
           </button>
           {!readOnly && (
             <button
+              type="button"
               onClick={() => void handleApply()}
               disabled={applying || !dirty}
               className="px-3 py-1 text-xs font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-md transition-colors whitespace-nowrap"

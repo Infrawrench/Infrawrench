@@ -61,6 +61,7 @@ export function ConfirmDeleteModal({ kind, name, onConfirm, onClose }: ConfirmDe
 
         <div className="flex justify-end gap-2 mt-4">
           <button
+            type="button"
             onClick={onClose}
             disabled={deleting}
             className="px-3 py-1.5 text-xs text-on-surface-tertiary hover:text-on-surface-secondary transition-colors rounded-lg"
@@ -68,6 +69,7 @@ export function ConfirmDeleteModal({ kind, name, onConfirm, onClose }: ConfirmDe
             Cancel
           </button>
           <button
+            type="button"
             onClick={() => void handleConfirm()}
             disabled={!matches || deleting}
             className="px-3 py-1.5 text-xs bg-red-600 hover:bg-red-500 disabled:opacity-40 disabled:hover:bg-red-600 text-white rounded-lg transition-colors"

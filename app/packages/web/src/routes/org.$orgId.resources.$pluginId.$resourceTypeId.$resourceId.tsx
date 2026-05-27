@@ -141,6 +141,7 @@ export function ResourcePanel({
     setError(null);
     let retries = 0;
     let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
     function load() {
       apiGet<ResourceDetailResponse>(detailUrl)
@@ -152,7 +153,7 @@ export function ResourcePanel({
           // Retry up to 3 times on "not found" — resource may still be propagating
           if (retries < 3 && e.message?.includes("not found")) {
             retries++;
-            setTimeout(load, 1000 * retries);
+            retryTimer = setTimeout(load, 1000 * retries);
           } else {
             setError(e.message);
           }
@@ -161,6 +162,7 @@ export function ResourcePanel({
     load();
     return () => {
       cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
     };
   }, [detailUrl]);
 

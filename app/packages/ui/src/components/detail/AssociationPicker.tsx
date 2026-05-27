@@ -85,6 +85,7 @@ export function AssociationPicker({
             Reroll <code className="text-accent">{fieldKey}</code>
           </h2>
           <button
+            type="button"
             onClick={onCancel}
             className="text-on-surface-faint hover:text-on-surface-tertiary transition-colors flex-shrink-0"
             aria-label="Close"
@@ -159,6 +160,7 @@ export function AssociationPicker({
               ) : (
                 providerResources.map((resource) => (
                   <button
+                    type="button"
                     key={resource.resourceId}
                     onClick={() => setSelectedProviderId(resource.resourceId)}
                     className={`w-full flex items-center gap-3 p-3 rounded-lg border transition-colors text-left ${
@@ -168,7 +170,7 @@ export function AssociationPicker({
                     }`}
                   >
                     <span
-                      className="w-6 h-6 flex-shrink-0"
+                      className="size-6 flex-shrink-0"
                       dangerouslySetInnerHTML={{ __html: resource.pluginLogoSvg }}
                       aria-hidden
                     />
@@ -204,12 +206,14 @@ export function AssociationPicker({
         {/* Footer */}
         <div className="flex gap-2 p-4 border-t border-border">
           <button
+            type="button"
             onClick={onCancel}
             className="flex-1 py-2 rounded-lg border border-border-strong text-sm text-on-surface-tertiary hover:text-on-surface-secondary transition-colors"
           >
             Cancel
           </button>
           <button
+            type="button"
             onClick={handleConfirm}
             disabled={mode === "provider" ? !selectedProviderId : !literalValue.trim()}
             className="flex-1 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-sm text-white transition-colors"

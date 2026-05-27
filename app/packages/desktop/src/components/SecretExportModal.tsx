@@ -204,6 +204,7 @@ export function SecretExportModal({
         <div className="flex items-center justify-between border-b border-border px-5 py-4">
           <h2 className="text-base font-semibold text-on-surface">Create Kubernetes Secret</h2>
           <button
+            type="button"
             onClick={onClose}
             className="text-on-surface-muted hover:text-on-surface-secondary transition-colors text-lg leading-none"
           >
@@ -346,18 +347,20 @@ export function SecretExportModal({
         {!loadError && (
           <div className="flex justify-end gap-3 border-t border-border px-5 py-4">
             <button
+              type="button"
               onClick={onClose}
               className="px-4 py-2 rounded-lg text-sm text-on-surface-secondary hover:text-on-surface transition-colors"
             >
               Cancel
             </button>
             <button
+              type="button"
               onClick={() => void handleCreate()}
               disabled={creating || !secretName || !namespace || !selectedTemplate}
               className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:bg-surface-sunken disabled:text-on-surface-muted text-sm font-medium text-white transition-colors flex items-center gap-2"
             >
               {creating && (
-                <span className="animate-spin inline-block w-3.5 h-3.5 rounded-full border-2 border-border-strong border-t-white" />
+                <span className="animate-spin inline-block size-3.5 rounded-full border-2 border-border-strong border-t-white" />
               )}
               {resolving ? "Resolving outputs..." : creating ? "Creating..." : "Create Secret"}
             </button>

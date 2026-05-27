@@ -137,6 +137,7 @@ export function SshKeyPicker({
     <div className="border border-border-strong rounded-lg overflow-hidden">
       {/* None option */}
       <button
+        type="button"
         onClick={() => onChange("")}
         className={`w-full text-left px-3 py-2.5 text-sm transition-colors flex items-center gap-2 border-b border-border-strong/40 ${
           noneSelected
@@ -151,7 +152,7 @@ export function SshKeyPicker({
       </button>
 
       <div className="max-h-52 overflow-y-auto">
-        {loading && <p className="px-3 py-2 text-xs text-on-surface-faint">Loading keys...</p>}
+        {loading && <p className="px-3 py-2 text-xs text-on-surface-faint">Loading keys…</p>}
 
         {/* 1Password agent keys (desktop only) */}
         {onePasswordKeys && onePasswordKeys.length > 0 && (
@@ -166,6 +167,7 @@ export function SshKeyPicker({
               const keyType = k.keyType ?? k.publicKey.split(" ")[0] ?? "";
               return (
                 <button
+                  type="button"
                   key={k.publicKey}
                   onClick={() => onChange(k.publicKey)}
                   className={`w-full text-left px-3 py-2.5 text-sm transition-colors flex items-center gap-3 ${
@@ -202,6 +204,7 @@ export function SshKeyPicker({
               const keyType = k.publicKey.split(" ")[0] ?? "";
               return (
                 <button
+                  type="button"
                   key={k.name}
                   onClick={() => onChange(k.publicKey)}
                   className={`w-full text-left px-3 py-2.5 text-sm transition-colors flex items-center gap-3 ${
@@ -243,6 +246,7 @@ export function SshKeyPicker({
                 </span>
                 {onCloudSignIn && (
                   <button
+                    type="button"
                     onClick={onCloudSignIn}
                     className="text-xs text-accent hover:text-accent-on-muted transition-colors"
                   >
@@ -307,19 +311,21 @@ export function SshKeyPicker({
       {showCloudSection && cloudEnabled && generatedPrivateKey && (
         <div className="border-t border-border-strong/40 p-3 space-y-2 bg-yellow-100 dark:bg-yellow-900/10">
           <p className="text-xs text-yellow-400 font-medium">
-            Save this private key now — it won't be shown again.
+            Save this private key now, it won't be shown again.
           </p>
           <pre className="w-full bg-surface-raised border border-border-strong rounded px-2 py-1.5 text-[10px] text-on-surface-secondary font-mono overflow-x-auto max-h-32 overflow-y-auto select-all whitespace-pre">
             {generatedPrivateKey}
           </pre>
           <div className="flex gap-2 justify-end">
             <button
+              type="button"
               onClick={handleCopyPrivateKey}
               className="px-3 py-1 rounded bg-surface-sunken hover:bg-surface-sunken text-xs text-on-surface-secondary transition-colors"
             >
               Copy
             </button>
             <button
+              type="button"
               onClick={handleDismissPrivateKey}
               className="px-3 py-1 rounded bg-surface-sunken hover:bg-surface-sunken text-xs text-on-surface-secondary transition-colors"
             >
@@ -346,6 +352,7 @@ export function SshKeyPicker({
             {error && <p className="text-xs text-red-400">{error}</p>}
             <div className="flex gap-2 justify-end">
               <button
+                type="button"
                 onClick={() => {
                   setShowGenerate(false);
                   setNewName("");
@@ -356,6 +363,7 @@ export function SshKeyPicker({
                 Cancel
               </button>
               <button
+                type="button"
                 onClick={() => void handleGenerate()}
                 disabled={generating || !newName.trim()}
                 className="px-3 py-1 rounded bg-surface-sunken hover:bg-surface-sunken text-xs text-on-surface-secondary disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
@@ -366,6 +374,7 @@ export function SshKeyPicker({
           </div>
         ) : (
           <button
+            type="button"
             onClick={() => setShowGenerate(true)}
             className="w-full px-3 py-2 text-xs text-on-surface-faint hover:text-on-surface-tertiary hover:bg-surface-overlay/50 transition-colors text-left border-t border-border-strong/40"
           >

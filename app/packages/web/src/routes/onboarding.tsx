@@ -54,6 +54,7 @@ function OnboardingPage() {
         {error && <p className="text-xs text-red-400 mb-4">{error}</p>}
 
         <button
+          type="button"
           onClick={() => void handleCreate()}
           disabled={creating || !name.trim()}
           className="w-full px-4 py-3 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg transition-colors"

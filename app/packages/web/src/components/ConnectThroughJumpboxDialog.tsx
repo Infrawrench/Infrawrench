@@ -81,6 +81,7 @@ export function ConnectThroughJumpboxDialog({
             Connect through jumpbox
           </h2>
           <button
+            type="button"
             onClick={onClose}
             className="text-on-surface-faint hover:text-on-surface-tertiary text-lg leading-none"
             aria-label="Close"
@@ -115,7 +116,7 @@ export function ConnectThroughJumpboxDialog({
               <p className="text-xs text-on-surface-faint">Loading…</p>
             ) : sshAccounts.length === 0 ? (
               <p className="text-xs text-on-surface-faint">
-                No SSH accounts yet. Add one from the sidebar first — that account becomes the
+                No SSH accounts yet. Add one from the sidebar first; that account becomes the
                 jumpbox.
               </p>
             ) : (
@@ -169,12 +170,14 @@ export function ConnectThroughJumpboxDialog({
 
           <div className="flex gap-2 pt-1">
             <button
+              type="button"
               onClick={onClose}
               className="flex-1 px-3 py-2 text-sm text-on-surface-tertiary hover:text-on-surface-secondary border border-border-strong rounded-lg hover:border-border-strong transition-colors"
             >
               Cancel
             </button>
             <button
+              type="button"
               onClick={() => setShowAddAccount(true)}
               disabled={!jumpboxId || !name.trim()}
               className="flex-1 px-3 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"

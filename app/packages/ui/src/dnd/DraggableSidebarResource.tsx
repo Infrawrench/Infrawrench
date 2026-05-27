@@ -67,6 +67,7 @@ export function DraggableSidebarResource({
   return (
     <div ref={setDropRef}>
       <button
+        type="button"
         ref={setDragRef}
         {...listeners}
         {...attributes}

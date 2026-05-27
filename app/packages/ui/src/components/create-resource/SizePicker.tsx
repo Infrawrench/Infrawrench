@@ -87,6 +87,7 @@ export function SizePicker({
           return (
             <div key={cat}>
               <button
+                type="button"
                 onClick={() => toggleCat(cat)}
                 className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-surface-overlay/60 transition-colors"
               >

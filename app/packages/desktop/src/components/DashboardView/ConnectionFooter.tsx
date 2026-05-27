@@ -13,7 +13,7 @@ export function ConnectionFooter({
   if (status.phase === "connecting") {
     return (
       <div className="px-5 py-3 border-t border-border flex items-center gap-2">
-        <span className="w-1.5 h-1.5 rounded-full bg-surface-sunken animate-pulse flex-shrink-0" />
+        <span className="size-1.5 rounded-full bg-surface-sunken animate-pulse flex-shrink-0" />
         <span className="text-xs text-on-surface-faint">Connecting…</span>
       </div>
     );
@@ -25,7 +25,7 @@ export function ConnectionFooter({
         className="px-5 py-3 border-t border-border flex items-center gap-2"
         title={status.error}
       >
-        <span className="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0" />
+        <span className="size-1.5 rounded-full bg-red-500 flex-shrink-0" />
         <span className="text-xs text-red-500 truncate">{status.error ?? "Connection failed"}</span>
       </div>
     );
@@ -34,7 +34,7 @@ export function ConnectionFooter({
   return (
     <div className="px-5 py-3 border-t border-border space-y-1">
       <div className="flex items-center gap-1.5 mb-1">
-        <span className="w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0" />
+        <span className="size-1.5 rounded-full bg-blue-400 flex-shrink-0" />
         <span className="text-xs text-on-surface-faint">Connected</span>
       </div>
       {status.stats?.map((stat, index) => {
@@ -70,6 +70,7 @@ export function ConnectionFooter({
 
       {status.sshTarget && onConnect && (
         <button
+          type="button"
           onClick={(e) => {
             e.stopPropagation();
             onConnect();

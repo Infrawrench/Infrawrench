@@ -20,8 +20,9 @@ export function DashboardCard({ card, pluginLogoSvg }: DashboardCardProps) {
 
   return (
     <button
+      type="button"
       onClick={() => selectResource(card.pluginId, card.resourceTypeId, card.resourceId)}
-      className="group relative flex flex-col items-center justify-center gap-2 p-4 rounded-xl border border-border bg-surface-raised hover:border-border-strong hover:bg-surface-raised transition-all w-40 h-40 cursor-pointer"
+      className="group relative flex flex-col items-center justify-center gap-2 p-4 rounded-xl border border-border bg-surface-raised hover:border-border-strong hover:bg-surface-raised transition-all size-40 cursor-pointer"
     >
       {/* Corner badges */}
       {card.badges && card.badges.length > 0 && (
@@ -39,7 +40,7 @@ export function DashboardCard({ card, pluginLogoSvg }: DashboardCardProps) {
 
       {/* Plugin logo */}
       <div
-        className="w-10 h-10 flex-shrink-0"
+        className="size-10 flex-shrink-0"
         dangerouslySetInnerHTML={{ __html: pluginLogoSvg }}
         aria-hidden
       />

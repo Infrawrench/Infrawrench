@@ -69,13 +69,14 @@ export function AccountDraggableRow({
       } ${isDragging ? "opacity-40" : ""}`}
     >
       <button
+        type="button"
         draggable={false}
         onClick={(e) => {
           e.stopPropagation();
           onToggleExpand();
         }}
         title={isExpanded ? "Collapse" : "Expand resources"}
-        className="w-4 h-4 flex items-center justify-center flex-shrink-0 text-on-surface-faint hover:text-on-surface-tertiary transition-colors mr-1"
+        className="size-4 flex items-center justify-center flex-shrink-0 text-on-surface-faint hover:text-on-surface-tertiary transition-colors mr-1"
       >
         <span
           className="inline-block transition-transform text-xs"
@@ -85,6 +86,7 @@ export function AccountDraggableRow({
         </span>
       </button>
       <button
+        type="button"
         draggable={false}
         onClick={(e) => {
           e.stopPropagation();
@@ -93,20 +95,21 @@ export function AccountDraggableRow({
         className="flex items-center gap-2 flex-1 text-left min-w-0"
       >
         <span
-          className={`w-1.5 h-1.5 rounded-full flex-shrink-0 transition-colors ${connected ? "bg-blue-400" : "bg-surface-sunken"}`}
+          className={`size-1.5 rounded-full flex-shrink-0 transition-colors ${connected ? "bg-blue-400" : "bg-surface-sunken"}`}
         />
         <span className="truncate">{account.displayName}</span>
       </button>
       {showDropHint && <span className="text-xs text-accent flex-shrink-0">Drop</span>}
       {!showDropHint && onDelete && (
         <button
+          type="button"
           draggable={false}
           onClick={(e) => {
             e.stopPropagation();
             onDelete();
           }}
           title="Delete account"
-          className="flex-shrink-0 w-5 h-5 flex items-center justify-center rounded text-on-surface-faint opacity-0 group-hover:opacity-100 hover:text-red-400 hover:bg-red-500/10 transition-all"
+          className="flex-shrink-0 size-5 flex items-center justify-center rounded text-on-surface-faint opacity-0 group-hover:opacity-100 hover:text-red-400 hover:bg-red-500/10 transition-all"
         >
           ✕
         </button>

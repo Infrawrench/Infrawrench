@@ -187,7 +187,7 @@ export function FirestoreDocumentBrowser({
   if (!connected) {
     return (
       <div className="flex-1 flex items-center justify-center text-on-surface-faint text-sm">
-        Connecting to Firestore...
+        Connecting to Firestore…
       </div>
     );
   }
@@ -202,6 +202,7 @@ export function FirestoreDocumentBrowser({
             </span>
             <div className="flex items-center gap-1.5">
               <button
+                type="button"
                 onClick={() => void refreshCollections()}
                 className="text-on-surface-faint hover:text-on-surface-secondary transition-colors text-xs leading-none"
                 title="Refresh"
@@ -209,6 +210,7 @@ export function FirestoreDocumentBrowser({
                 ↻
               </button>
               <button
+                type="button"
                 onClick={() => setShowNewCollection((v) => !v)}
                 className="text-on-surface-faint hover:text-on-surface-secondary transition-colors text-sm leading-none"
                 title="Add collection"
@@ -218,7 +220,7 @@ export function FirestoreDocumentBrowser({
             </div>
           </div>
           {showNewCollection && (
-            <div className="px-2 py-2 border-b border-border/60 flex gap-1">
+            <div className="p-2 border-b border-border/60 flex gap-1">
               <input
                 value={newCollectionName}
                 onChange={(e) => setNewCollectionName(e.target.value)}
@@ -231,6 +233,7 @@ export function FirestoreDocumentBrowser({
                 autoFocus
               />
               <button
+                type="button"
                 onClick={handleAddCollection}
                 className="px-2 py-1 rounded bg-blue-600 text-xs text-white hover:bg-blue-500 transition-colors flex-shrink-0"
               >
@@ -240,7 +243,7 @@ export function FirestoreDocumentBrowser({
           )}
           <div className="flex-1 overflow-y-auto py-1">
             {collectionsLoading ? (
-              <div className="px-3 py-2 text-xs text-on-surface-faint">Loading...</div>
+              <div className="px-3 py-2 text-xs text-on-surface-faint">Loading…</div>
             ) : collections.length === 0 ? (
               <div className="px-3 py-2 text-xs text-on-surface-faint">
                 No collections. Use + to start one.
@@ -252,12 +255,14 @@ export function FirestoreDocumentBrowser({
                     <div className="flex items-center gap-1 px-2 py-1.5">
                       <span className="text-xs text-red-400 truncate flex-1">Delete {col}?</span>
                       <button
+                        type="button"
                         onClick={() => void handleDropCollection(col)}
                         className="px-1.5 py-0.5 rounded bg-red-600 text-xs text-white hover:bg-red-500 transition-colors flex-shrink-0"
                       >
                         Delete
                       </button>
                       <button
+                        type="button"
                         onClick={() => setDroppingCollection(null)}
                         className="px-1.5 py-0.5 rounded text-xs text-on-surface-faint hover:text-on-surface-secondary transition-colors flex-shrink-0"
                       >
@@ -267,6 +272,7 @@ export function FirestoreDocumentBrowser({
                   ) : (
                     <>
                       <button
+                        type="button"
                         onClick={() => selectCollection(col)}
                         className={`w-full text-left px-3 py-1.5 text-xs truncate transition-colors pr-7 ${
                           col === activeCollection
@@ -277,6 +283,7 @@ export function FirestoreDocumentBrowser({
                         {col}
                       </button>
                       <button
+                        type="button"
                         onClick={(e) => {
                           e.stopPropagation();
                           setDroppingCollection(col);
@@ -316,6 +323,7 @@ export function FirestoreDocumentBrowser({
           </span>
           <div className="flex-1" />
           <button
+            type="button"
             onClick={() => void fetchDocuments()}
             className="px-2 py-1 rounded text-xs text-on-surface-muted hover:text-on-surface-secondary transition-colors"
             title="Refresh"
@@ -324,6 +332,7 @@ export function FirestoreDocumentBrowser({
           </button>
           {activeCollection && (
             <button
+              type="button"
               onClick={() => setShowInsertDoc((v) => !v)}
               className="px-2.5 py-1 rounded bg-blue-600/80 border border-blue-500/50 text-xs text-white hover:bg-blue-600 transition-colors"
             >
@@ -333,13 +342,14 @@ export function FirestoreDocumentBrowser({
         </div>
 
         {showInsertDoc && activeCollection && (
-          <div className="px-3 py-3 border-b border-border/60 bg-surface/80">
+          <div className="p-3 border-b border-border/60 bg-surface/80">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs text-on-surface-tertiary font-medium">
                 Insert Document into{" "}
                 <span className="text-on-surface-secondary">{activeCollection}</span>
               </span>
               <button
+                type="button"
                 onClick={() => {
                   setShowInsertDoc(false);
                   setInsertError(null);
@@ -360,6 +370,7 @@ export function FirestoreDocumentBrowser({
             {insertError && <div className="text-xs text-red-400 mt-1">{insertError}</div>}
             <div className="flex justify-end mt-2">
               <button
+                type="button"
                 onClick={() => void handleInsertDocument()}
                 className="px-3 py-1.5 rounded bg-blue-600 text-xs text-white hover:bg-blue-500 transition-colors"
               >
@@ -382,7 +393,7 @@ export function FirestoreDocumentBrowser({
             </div>
           ) : loading ? (
             <div className="flex items-center justify-center h-full text-on-surface-faint text-sm">
-              Loading...
+              Loading…
             </div>
           ) : documents.length === 0 ? (
             <div className="flex items-center justify-center h-full text-on-surface-faint text-sm">
@@ -414,6 +425,7 @@ export function FirestoreDocumentBrowser({
             </span>
             <div className="flex items-center gap-1.5">
               <button
+                type="button"
                 onClick={() => setPage((p) => Math.max(0, p - 1))}
                 disabled={page === 0}
                 className="px-2 py-0.5 rounded text-xs text-on-surface-tertiary hover:text-on-surface-secondary hover:bg-surface-overlay disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
@@ -424,6 +436,7 @@ export function FirestoreDocumentBrowser({
                 {page + 1} / {totalPages}
               </span>
               <button
+                type="button"
                 onClick={() => setPage((p) => p + 1)}
                 disabled={!hasMore}
                 className="px-2 py-0.5 rounded text-xs text-on-surface-tertiary hover:text-on-surface-secondary hover:bg-surface-overlay disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
@@ -527,6 +540,7 @@ function FirestoreDocumentRow({
           </div>
         </button>
         <button
+          type="button"
           onClick={(e) => {
             e.stopPropagation();
             startEdit();
@@ -539,6 +553,7 @@ function FirestoreDocumentRow({
           Edit
         </button>
         <button
+          type="button"
           onClick={(e) => {
             e.stopPropagation();
             onDelete();
@@ -564,12 +579,14 @@ function FirestoreDocumentRow({
               {editError && <div className="text-xs text-red-400">{editError}</div>}
               <div className="flex gap-2 justify-end">
                 <button
+                  type="button"
                   onClick={() => setEditing(false)}
                   className="px-2.5 py-1 rounded text-xs text-on-surface-faint hover:text-on-surface-secondary transition-colors"
                 >
                   Cancel
                 </button>
                 <button
+                  type="button"
                   onClick={() => void handleSave()}
                   disabled={saving}
                   className="px-3 py-1 rounded bg-blue-600 text-xs text-white hover:bg-blue-500 disabled:opacity-50 transition-colors"

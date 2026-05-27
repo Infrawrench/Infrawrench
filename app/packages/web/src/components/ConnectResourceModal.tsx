@@ -228,6 +228,7 @@ export function ConnectResourceModal({
             {mode === "secret-export" ? "Create Kubernetes Secret" : "Deploy Credentials via SSH"}
           </h2>
           <button
+            type="button"
             onClick={onClose}
             className="text-on-surface-muted hover:text-on-surface-secondary transition-colors text-lg leading-none"
           >
@@ -237,7 +238,7 @@ export function ConnectResourceModal({
 
         <div className="px-5 py-4 space-y-5">
           {loadingTemplates ? (
-            <div className="text-sm text-on-surface-muted animate-pulse">Loading...</div>
+            <div className="text-sm text-on-surface-muted animate-pulse">Loading…</div>
           ) : loadError ? (
             <p className="text-sm text-red-400">{loadError}</p>
           ) : (
@@ -252,6 +253,7 @@ export function ConnectResourceModal({
               {canSwitchMode && (
                 <div className="flex gap-2">
                   <button
+                    type="button"
                     onClick={() => setMode("secret-export")}
                     className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
                       mode === "secret-export"
@@ -262,6 +264,7 @@ export function ConnectResourceModal({
                     K8s Secret
                   </button>
                   <button
+                    type="button"
                     onClick={() => setMode("env-deploy")}
                     className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
                       mode === "env-deploy"
@@ -482,12 +485,14 @@ export function ConnectResourceModal({
         {!loadError && !loadingTemplates && (
           <div className="flex justify-end gap-3 border-t border-border px-5 py-4">
             <button
+              type="button"
               onClick={onClose}
               className="px-4 py-2 rounded-lg text-sm text-on-surface-secondary hover:text-on-surface transition-colors"
             >
               Cancel
             </button>
             <button
+              type="button"
               onClick={() => void handleSubmit()}
               disabled={
                 submitting ||
@@ -498,7 +503,7 @@ export function ConnectResourceModal({
               className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:bg-surface-sunken disabled:text-on-surface-muted text-sm font-medium text-white transition-colors flex items-center gap-2"
             >
               {submitting && (
-                <span className="animate-spin inline-block w-3.5 h-3.5 rounded-full border-2 border-border-strong border-t-white" />
+                <span className="animate-spin inline-block size-3.5 rounded-full border-2 border-border-strong border-t-white" />
               )}
               {submitting ? "Connecting..." : mode === "secret-export" ? "Create Secret" : "Deploy"}
             </button>

@@ -14,8 +14,7 @@ function SettingsGeneralPage() {
     apiGet<{ email: string }>("/api/auth/me").then(setSession);
   }, []);
 
-  if (!session)
-    return <div className="text-on-surface-muted text-sm animate-pulse">Loading...</div>;
+  if (!session) return <div className="text-on-surface-muted text-sm animate-pulse">Loading…</div>;
 
   return (
     <div>

@@ -47,12 +47,14 @@ function SshKeysPage() {
         </div>
         <div className="flex gap-2">
           <button
+            type="button"
             onClick={() => setShowImport(true)}
             className="px-3 py-1.5 text-sm font-medium border border-border hover:bg-surface-overlay text-on-surface-secondary rounded-lg transition-colors"
           >
             Import Key
           </button>
           <button
+            type="button"
             onClick={() => setShowGenerate(true)}
             className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
           >
@@ -62,7 +64,7 @@ function SshKeysPage() {
       </div>
 
       {loading ? (
-        <p className="text-sm text-on-surface-faint">Loading...</p>
+        <p className="text-sm text-on-surface-faint">Loading…</p>
       ) : keys.length === 0 ? (
         <p className="text-sm text-on-surface-muted">
           No SSH keys yet. Generate a new keypair or import an existing public key.
@@ -119,6 +121,7 @@ function SshKeysPage() {
                   <td className="px-4 py-2 text-right">
                     <div className="flex gap-2 justify-end">
                       <button
+                        type="button"
                         onClick={() => {
                           void navigator.clipboard.writeText(key.publicKey);
                         }}
@@ -127,6 +130,7 @@ function SshKeysPage() {
                         Copy public key
                       </button>
                       <button
+                        type="button"
                         onClick={() => void handleDelete(key.id)}
                         className="text-xs text-red-400 hover:text-red-500 dark:text-red-300"
                       >
@@ -184,6 +188,7 @@ function SshKeysPage() {
               </div>
             </div>
             <button
+              type="button"
               onClick={() => {
                 void navigator.clipboard.writeText(generatedKey.privateKey);
               }}
@@ -237,6 +242,7 @@ function GenerateKeyModal({
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <h2 className="text-sm font-semibold text-on-surface-secondary">Generate SSH Key</h2>
           <button
+            type="button"
             onClick={onClose}
             aria-label="Close"
             className="text-on-surface-faint hover:text-on-surface-tertiary text-lg"
@@ -261,6 +267,7 @@ function GenerateKeyModal({
           </p>
           {error && <p className="text-xs text-red-400">{error}</p>}
           <button
+            type="button"
             onClick={() => void handleCreate()}
             disabled={saving}
             className="w-full px-3 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
@@ -310,6 +317,7 @@ function ImportKeyModal({ onClose, onImported }: { onClose: () => void; onImport
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <h2 className="text-sm font-semibold text-on-surface-secondary">Import SSH Key</h2>
           <button
+            type="button"
             onClick={onClose}
             aria-label="Close"
             className="text-on-surface-faint hover:text-on-surface-tertiary text-lg"
@@ -345,6 +353,7 @@ function ImportKeyModal({ onClose, onImported }: { onClose: () => void; onImport
           </p>
           {error && <p className="text-xs text-red-400">{error}</p>}
           <button
+            type="button"
             onClick={() => void handleImport()}
             disabled={saving}
             className="w-full px-3 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"

@@ -121,7 +121,7 @@ function AuditLogPage() {
             {loading ? (
               <tr>
                 <td colSpan={4} className="px-4 py-8 text-center text-sm text-on-surface-faint">
-                  Loading...
+                  Loading…
                 </td>
               </tr>
             ) : entries.length === 0 ? (
@@ -157,6 +157,7 @@ function AuditLogPage() {
           <p className="text-xs text-on-surface-muted">{total} events</p>
           <div className="flex gap-2">
             <button
+              type="button"
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1}
               aria-label="Previous page"
@@ -172,6 +173,7 @@ function AuditLogPage() {
               {page} / {totalPages}
             </span>
             <button
+              type="button"
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page >= totalPages}
               aria-label="Next page"

@@ -71,11 +71,11 @@ function SshHostKeysPage() {
       )}
 
       {loading ? (
-        <p className="text-sm text-on-surface-faint">Loading...</p>
+        <p className="text-sm text-on-surface-faint">Loading…</p>
       ) : pins.length === 0 ? (
         <p className="text-sm text-on-surface-muted">
           No SSH hosts trusted yet. The first time you connect to a host, you&apos;ll be asked to
-          verify its fingerprint — the trusted pin will appear here.
+          verify its fingerprint; the trusted pin will appear here.
         </p>
       ) : (
         <div className="border border-border rounded-xl overflow-hidden">
@@ -117,6 +117,7 @@ function SshHostKeysPage() {
                   <td className="px-4 py-2 text-right">
                     <div className="flex gap-3 justify-end">
                       <button
+                        type="button"
                         onClick={() => {
                           void navigator.clipboard.writeText(pin.fingerprint);
                         }}
@@ -125,6 +126,7 @@ function SshHostKeysPage() {
                         Copy fingerprint
                       </button>
                       <button
+                        type="button"
                         onClick={() => setConfirmId(pin.id)}
                         disabled={deletingId === pin.id}
                         className="text-xs text-red-400 hover:text-red-500 dark:text-red-300 disabled:opacity-50"

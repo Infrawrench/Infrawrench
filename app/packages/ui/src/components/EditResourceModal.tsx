@@ -87,6 +87,7 @@ export function EditResourceModal({
         <div className="flex items-center justify-between px-6 py-4 border-b border-border flex-shrink-0">
           <h2 className="text-base font-semibold text-on-surface">Edit {displayName}</h2>
           <button
+            type="button"
             onClick={onClose}
             className="text-on-surface-faint hover:text-on-surface-secondary text-xl leading-none"
             aria-label="Close"
@@ -120,12 +121,14 @@ export function EditResourceModal({
           )}
           <div className="flex gap-3">
             <button
+              type="button"
               onClick={onClose}
               className="flex-1 px-4 py-2 text-sm text-on-surface-tertiary hover:text-on-surface-secondary bg-surface-overlay hover:bg-surface-sunken rounded-lg transition-colors"
             >
               Cancel
             </button>
             <button
+              type="button"
               onClick={() => void handleSubmit()}
               disabled={saving || !hasChanges || !isValid}
               className="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded-lg transition-colors"

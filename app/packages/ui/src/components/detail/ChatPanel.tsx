@@ -164,6 +164,7 @@ export function ChatPanel({ capability, onStream }: Props) {
         <div className="ml-auto flex items-center gap-2">
           {streaming && (
             <button
+              type="button"
               onClick={stop}
               className="px-3 py-1 text-xs text-on-surface-tertiary hover:text-white border border-border-strong hover:border-border-strong rounded-md transition-colors"
             >
@@ -172,6 +173,7 @@ export function ChatPanel({ capability, onStream }: Props) {
           )}
           {turns.length > 0 && !streaming && (
             <button
+              type="button"
               onClick={reset}
               className="px-3 py-1 text-xs text-on-surface-tertiary hover:text-white border border-border-strong hover:border-border-strong rounded-md transition-colors"
             >
@@ -184,7 +186,7 @@ export function ChatPanel({ capability, onStream }: Props) {
       <div
         ref={scrollRef}
         onScroll={handleScroll}
-        className="flex-1 min-h-0 overflow-auto px-4 py-4 space-y-4"
+        className="flex-1 min-h-0 overflow-auto p-4 space-y-4"
       >
         {turns.length === 0 && capability.greeting && (
           <div className="text-sm text-on-surface-tertiary italic max-w-2xl">
@@ -213,6 +215,7 @@ export function ChatPanel({ capability, onStream }: Props) {
               className="flex-1 resize-none bg-surface-overlay text-on-surface text-sm border border-border-strong rounded-md px-3 py-2 focus:outline-none focus:border-accent-blue placeholder:text-on-surface-faint"
             />
             <button
+              type="button"
               onClick={() => void send()}
               disabled={!input.trim() || streaming}
               className="px-4 py-2 text-sm font-medium text-white bg-accent-blue rounded-md hover:bg-accent-blue/90 disabled:bg-surface-overlay disabled:text-on-surface-faint disabled:cursor-not-allowed transition-colors"

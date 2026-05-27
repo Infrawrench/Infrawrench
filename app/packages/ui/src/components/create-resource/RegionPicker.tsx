@@ -89,7 +89,7 @@ export function RegionPicker({
             }`}
           >
             <span
-              className={`w-2 h-2 rounded-full flex-shrink-0 ${value === r.id ? "bg-blue-400" : "bg-surface-sunken"}`}
+              className={`size-2 rounded-full flex-shrink-0 ${value === r.id ? "bg-blue-400" : "bg-surface-sunken"}`}
             />
             {r.flag && <span className="text-base leading-none flex-shrink-0">{r.flag}</span>}
             <span className="min-w-0 flex-1">
@@ -106,9 +106,7 @@ export function RegionPicker({
             </span>
           </button>
         ))}
-        {filtered.length === 0 && (
-          <p className="px-3 py-3 text-xs text-on-surface-faint">No matches</p>
-        )}
+        {filtered.length === 0 && <p className="p-3 text-xs text-on-surface-faint">No matches</p>}
       </div>
     </div>
   );

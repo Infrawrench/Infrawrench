@@ -18,7 +18,7 @@ export function SshConnectionBar({
       <span
         role="status"
         aria-label="SSH connected"
-        className="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0"
+        className="size-1.5 rounded-full bg-green-500 shrink-0"
       />
       <span className="text-xs font-mono text-on-surface-tertiary">
         {sshConfig
@@ -29,6 +29,7 @@ export function SshConnectionBar({
       </span>
       {quickSshConnection && (
         <button
+          type="button"
           onClick={onDisconnect}
           className="ml-auto text-xs text-on-surface-faint hover:text-on-surface-secondary transition-colors"
         >

@@ -171,6 +171,7 @@ export function DashboardView({
                 {dashboardName}
               </h1>
               <button
+                type="button"
                 onClick={() => setEditingName(true)}
                 aria-label="Rename dashboard"
                 className="text-xs text-on-surface-faint hover:text-on-surface-muted transition-colors px-2 py-1 rounded hover:bg-surface-overlay"
@@ -183,6 +184,7 @@ export function DashboardView({
 
         {!isHome && (
           <button
+            type="button"
             onClick={() => void deleteDashboard()}
             title="Delete dashboard"
             className="text-xs text-on-surface-faint hover:text-red-400 transition-colors px-2 py-1 rounded hover:bg-red-500/10"
@@ -197,6 +199,7 @@ export function DashboardView({
         <DroppableDashboardArea dashboardId={dashboardId}>
           {pins.length === 0 ? (
             <button
+              type="button"
               onClick={() => setSpotlightMode("pin")}
               className="w-full flex flex-col items-center justify-center h-64 rounded-2xl border-2 border-dashed border-border text-on-surface-faint hover:border-border-strong hover:text-on-surface-muted transition-colors"
             >
@@ -235,6 +238,7 @@ export function DashboardView({
                 ))}
 
                 <button
+                  type="button"
                   onClick={() => setSpotlightMode("pin")}
                   className="rounded-2xl border-2 border-dashed border-border text-on-surface-faint hover:border-border-strong hover:text-on-surface-muted flex flex-col items-center justify-center gap-1.5 transition-colors min-h-[140px]"
                 >
@@ -326,6 +330,7 @@ function PinCard({
   return (
     <div className="group relative rounded-2xl border border-border bg-surface-raised hover:border-border-strong transition-colors flex flex-col overflow-hidden">
       <button
+        type="button"
         onClick={async () => {
           setUnpinning(true);
           try {
@@ -337,16 +342,20 @@ function PinCard({
         disabled={unpinning}
         title="Remove from dashboard"
         aria-label="Remove from dashboard"
-        className="absolute top-2 right-2 w-5 h-5 rounded-full text-on-surface-faint hover:text-on-surface-secondary hover:bg-surface-sunken transition-all opacity-0 group-hover:opacity-100 text-xs flex items-center justify-center z-10"
+        className="absolute top-2 right-2 size-5 rounded-full text-on-surface-faint hover:text-on-surface-secondary hover:bg-surface-sunken transition-all opacity-0 group-hover:opacity-100 text-xs flex items-center justify-center z-10"
       >
         &#10005;
       </button>
 
-      <button onClick={() => onOpen(detail)} className="flex-1 flex flex-col p-5 text-left gap-3">
+      <button
+        type="button"
+        onClick={() => onOpen(detail)}
+        className="flex-1 flex flex-col p-5 text-left gap-3"
+      >
         <div className="flex items-center gap-2">
           {detail.pluginLogoSvg ? (
             <div
-              className="w-6 h-6 flex-shrink-0"
+              className="size-6 flex-shrink-0"
               aria-hidden="true"
               dangerouslySetInnerHTML={{ __html: detail.pluginLogoSvg }}
             />
@@ -377,7 +386,7 @@ function ConnectionFooter({ status }: { status: ProbeStatus }) {
         title={status.error}
       >
         <span
-          className="w-1.5 h-1.5 rounded-full bg-red-500 flex-shrink-0"
+          className="size-1.5 rounded-full bg-red-500 flex-shrink-0"
           role="img"
           aria-label="Error"
         />
@@ -390,7 +399,7 @@ function ConnectionFooter({ status }: { status: ProbeStatus }) {
     <div className="px-5 py-3 border-t border-border space-y-1">
       <div className="flex items-center gap-1.5 mb-1">
         <span
-          className="w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0"
+          className="size-1.5 rounded-full bg-blue-400 flex-shrink-0"
           role="img"
           aria-label="Connected"
         />

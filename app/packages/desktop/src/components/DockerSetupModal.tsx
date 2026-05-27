@@ -258,7 +258,7 @@ export function DockerSetupModal({
                   </div>
                 ))}
                 {isRunning && (
-                  <div className="text-xs font-mono text-accent animate-pulse mt-1">Working...</div>
+                  <div className="text-xs font-mono text-accent animate-pulse mt-1">Working…</div>
                 )}
               </div>
 
@@ -279,6 +279,7 @@ export function DockerSetupModal({
 
         <div className="p-6 border-t border-border flex justify-end gap-3">
           <button
+            type="button"
             onClick={onClose}
             disabled={isRunning}
             className="px-4 py-2 text-sm text-on-surface-tertiary hover:text-on-surface-secondary transition-colors disabled:opacity-50"
@@ -287,6 +288,7 @@ export function DockerSetupModal({
           </button>
           {step === "credentials" && (
             <button
+              type="button"
               onClick={() => void startSetup()}
               disabled={
                 (!isCloudKey && !privateKey.trim()) ||
@@ -303,6 +305,7 @@ export function DockerSetupModal({
             <>
               <div className="relative">
                 <button
+                  type="button"
                   onClick={() => {
                     if (pinnedToDashboard) return;
                     void (async () => {
@@ -345,6 +348,7 @@ export function DockerSetupModal({
                     {dashboards.map((d) => (
                       <button
                         key={d.id}
+                        type="button"
                         onClick={() => {
                           setShowDashboardPicker(false);
                           void (async () => {
@@ -373,6 +377,7 @@ export function DockerSetupModal({
                 )}
               </div>
               <button
+                type="button"
                 onClick={() => onComplete(createdAccountId)}
                 className="px-4 py-2 text-sm bg-green-600 hover:bg-green-500 text-white rounded-lg transition-colors"
               >
@@ -382,6 +387,7 @@ export function DockerSetupModal({
           )}
           {error && step !== "credentials" && (
             <button
+              type="button"
               onClick={() => {
                 setError(null);
                 setStep("credentials");
@@ -403,7 +409,7 @@ function StepIndicator({ label, active, done }: { label: string; active: boolean
       className={`flex items-center gap-1.5 ${active ? "text-accent" : done ? "text-green-400" : "text-on-surface-faint"}`}
     >
       <span
-        className={`w-1.5 h-1.5 rounded-full ${active ? "bg-blue-400 animate-pulse" : done ? "bg-green-400" : "bg-surface-sunken"}`}
+        className={`size-1.5 rounded-full ${active ? "bg-blue-400 animate-pulse" : done ? "bg-green-400" : "bg-surface-sunken"}`}
       />
       {label}
     </div>

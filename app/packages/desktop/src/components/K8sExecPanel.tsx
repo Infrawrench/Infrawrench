@@ -47,6 +47,7 @@ export function K8sExecPanel({
 
     let session: K8sSessionHandle | null = null;
     let disposed = false;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
     requestAnimationFrame(() => {
       if (disposed) return;
@@ -124,7 +125,7 @@ export function K8sExecPanel({
                 term.write(
                   `\x1b[90mWaiting for pod to be ready… (retrying in ${RETRY_DELAY_MS / 1000}s)\x1b[0m\r\n`,
                 );
-                setTimeout(() => attemptConnect(retriesLeft - 1), RETRY_DELAY_MS);
+                retryTimer = setTimeout(() => attemptConnect(retriesLeft - 1), RETRY_DELAY_MS);
               } else {
                 term.write("\r\n\x1b[90m[Session closed]\x1b[0m\r\n");
               }
@@ -160,6 +161,7 @@ export function K8sExecPanel({
 
     return () => {
       disposed = true;
+      if (retryTimer) clearTimeout(retryTimer);
       resizeObserver.disconnect();
       onData.dispose();
       altScroll.dispose();

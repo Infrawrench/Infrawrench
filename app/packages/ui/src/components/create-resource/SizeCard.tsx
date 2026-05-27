@@ -22,6 +22,7 @@ export function SizeCard({
 
   return (
     <button
+      type="button"
       onClick={onSelect}
       className={`text-left p-3 rounded-lg border transition-all ${
         selected

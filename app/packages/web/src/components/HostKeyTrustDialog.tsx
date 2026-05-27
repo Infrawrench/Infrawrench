@@ -71,7 +71,7 @@ export function HostKeyTrustDialog({
 
         <div className="p-6 space-y-4">
           {isMismatch ? (
-            <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-3 space-y-2">
+            <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 space-y-2">
               <p className="text-xs text-red-300 font-medium">
                 The fingerprint of this host's SSH key does not match the one you previously
                 trusted.
@@ -84,7 +84,7 @@ export function HostKeyTrustDialog({
               </p>
             </div>
           ) : (
-            <div className="rounded-lg border border-border-strong bg-surface-overlay/50 px-3 py-3">
+            <div className="rounded-lg border border-border-strong bg-surface-overlay/50 p-3">
               <p className="text-xs text-on-surface-tertiary">
                 You haven't connected to this host before. Confirm that the fingerprint below
                 matches what you expect (for example, the value printed by your cloud provider or
@@ -117,6 +117,7 @@ export function HostKeyTrustDialog({
 
         <div className="p-6 border-t border-border flex justify-end gap-3">
           <button
+            type="button"
             onClick={onCanceled}
             disabled={submitting}
             className="px-4 py-2 text-sm text-on-surface-tertiary hover:text-on-surface-secondary transition-colors disabled:opacity-50"
@@ -124,6 +125,7 @@ export function HostKeyTrustDialog({
             Cancel
           </button>
           <button
+            type="button"
             onClick={() => void onConfirm()}
             disabled={submitting}
             className={`px-4 py-2 text-sm text-white rounded-lg transition-colors disabled:opacity-50 ${

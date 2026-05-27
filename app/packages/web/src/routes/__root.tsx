@@ -76,7 +76,7 @@ function RootLayout() {
 
     return (
       <div className="flex h-screen items-center justify-center bg-surface text-on-surface-tertiary">
-        <div className="animate-pulse text-sm">Loading...</div>
+        <div className="animate-pulse text-sm">Loading…</div>
       </div>
     );
   }
@@ -90,7 +90,7 @@ function RootLayout() {
   if (!pathname.startsWith("/org/")) {
     return (
       <div className="flex h-screen items-center justify-center bg-surface text-on-surface-tertiary">
-        <div className="animate-pulse text-sm">Loading...</div>
+        <div className="animate-pulse text-sm">Loading…</div>
       </div>
     );
   }

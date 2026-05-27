@@ -49,7 +49,7 @@ function InviteAcceptPage() {
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center bg-surface text-on-surface-tertiary">
-        <div className="animate-pulse text-sm">Loading...</div>
+        <div className="animate-pulse text-sm">Loading…</div>
       </div>
     );
   }
@@ -76,6 +76,7 @@ function InviteAcceptPage() {
             You're already a member of {invite.organizationName}.
           </p>
           <button
+            type="button"
             onClick={() =>
               void navigate({ to: "/org/$orgId", params: { orgId: invite.organizationId } })
             }
@@ -106,6 +107,7 @@ function InviteAcceptPage() {
           <p className="text-sm text-red-400">This invitation has expired.</p>
         ) : (
           <button
+            type="button"
             onClick={() => void handleAccept()}
             disabled={accepting}
             className="w-full px-4 py-3 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"

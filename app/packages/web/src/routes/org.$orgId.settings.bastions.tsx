@@ -54,11 +54,12 @@ function BastionsPage() {
           <h1 className="text-xl font-semibold">Bastions</h1>
           <p className="text-sm text-on-surface-muted mt-1">
             Outbound proxy agents you run on your own infrastructure. Bind an account to a bastion
-            to make its cloud-API traffic exit from your IP — for source-IP allowlists or private
+            to make its cloud-API traffic exit from your IP, for source-IP allowlists or private
             networks.
           </p>
         </div>
         <button
+          type="button"
           onClick={() => setShowCreate(true)}
           className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
         >
@@ -67,10 +68,10 @@ function BastionsPage() {
       </div>
 
       {loading ? (
-        <p className="text-sm text-on-surface-faint">Loading...</p>
+        <p className="text-sm text-on-surface-faint">Loading…</p>
       ) : bastions.length === 0 ? (
         <p className="text-sm text-on-surface-muted">
-          No bastions registered. Click <strong>New Bastion</strong> to create one — you&apos;ll be
+          No bastions registered. Click <strong>New Bastion</strong> to create one; you&apos;ll be
           handed a <code>docker run</code> command to start the agent.
         </p>
       ) : (
@@ -120,6 +121,7 @@ function BastionsPage() {
                   </td>
                   <td className="px-4 py-2 text-right">
                     <button
+                      type="button"
                       onClick={() => void handleDelete(b.id)}
                       className="text-xs text-red-400 hover:text-red-500 dark:text-red-300"
                     >
@@ -155,7 +157,7 @@ function StatusBadge({ bastion }: { bastion: Bastion }) {
   if (bastion.connected) {
     return (
       <span className="inline-flex items-center gap-1.5 text-xs">
-        <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+        <span className="size-1.5 rounded-full bg-green-500" />
         <span className="text-on-surface-secondary">Connected</span>
       </span>
     );
@@ -163,14 +165,14 @@ function StatusBadge({ bastion }: { bastion: Bastion }) {
   if (bastion.status === "pending" && !bastion.lastSeenAt) {
     return (
       <span className="inline-flex items-center gap-1.5 text-xs">
-        <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+        <span className="size-1.5 rounded-full bg-amber-500" />
         <span className="text-on-surface-tertiary">Awaiting first connect</span>
       </span>
     );
   }
   return (
     <span className="inline-flex items-center gap-1.5 text-xs">
-      <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+      <span className="size-1.5 rounded-full bg-red-500" />
       <span className="text-on-surface-tertiary">Offline</span>
     </span>
   );
@@ -213,6 +215,7 @@ function CreateBastionModal({
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <h2 className="text-sm font-semibold text-on-surface-secondary">Register a bastion</h2>
           <button
+            type="button"
             onClick={onClose}
             aria-label="Close"
             className="text-on-surface-faint hover:text-on-surface-tertiary text-lg"
@@ -233,11 +236,12 @@ function CreateBastionModal({
           </div>
           <p className="text-xs text-on-surface-muted">
             You&apos;ll receive a one-time enrollment token and a <code>docker run</code> command to
-            start the agent container on your infrastructure. The token cannot be retrieved again —
+            start the agent container on your infrastructure. The token cannot be retrieved again;
             copy it then.
           </p>
           {error && <p className="text-xs text-red-400">{error}</p>}
           <button
+            type="button"
             onClick={() => void handleCreate()}
             disabled={saving}
             className="w-full px-3 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
@@ -278,7 +282,7 @@ function CreatedBastionModal({
     <Modal onClose={onClose}>
       <div className="bg-surface-raised border border-border-strong rounded-xl w-full max-w-2xl shadow-2xl p-5">
         <h2 className="text-sm font-semibold text-on-surface-secondary mb-3">
-          Bastion created — start the agent
+          Bastion created: start the agent
         </h2>
         <p className="text-xs text-on-surface-tertiary mb-3">
           Copy the command below and run it on any Docker host. The bastion will appear as
@@ -290,6 +294,7 @@ function CreatedBastionModal({
           {dockerRun}
         </div>
         <button
+          type="button"
           onClick={() => {
             void navigator.clipboard.writeText(dockerRun);
           }}

@@ -53,7 +53,7 @@ export function ImagePicker({
         {filtered ? (
           // Flat search results
           filtered.length === 0 ? (
-            <p className="px-3 py-3 text-xs text-on-surface-faint">No matches</p>
+            <p className="p-3 text-xs text-on-surface-faint">No matches</p>
           ) : (
             filtered.map((img) => (
               <ImageRow

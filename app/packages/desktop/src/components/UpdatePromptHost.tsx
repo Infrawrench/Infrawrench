@@ -46,6 +46,7 @@ export function UpdatePromptHost() {
 
         <div className="flex justify-end gap-2 mt-6">
           <button
+            type="button"
             onClick={() => setPending(null)}
             disabled={busy}
             className="px-3 py-1.5 text-xs text-on-surface-tertiary hover:text-on-surface-secondary transition-colors rounded-lg"
@@ -53,6 +54,7 @@ export function UpdatePromptHost() {
             Later
           </button>
           <button
+            type="button"
             onClick={() => void restartNow()}
             disabled={busy}
             className="px-3 py-1.5 text-xs text-white rounded-lg transition-colors bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:hover:bg-emerald-600"

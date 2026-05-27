@@ -38,7 +38,7 @@ function CopyButton({ value }: { value: string }) {
       onClick={onClick}
       aria-label={copied ? "Copied" : "Copy"}
       title={copied ? "Copied" : "Copy"}
-      className={`flex-shrink-0 inline-flex items-center justify-center w-6 h-6 rounded transition-colors ${
+      className={`flex-shrink-0 inline-flex items-center justify-center size-6 rounded transition-colors ${
         copied
           ? "text-emerald-400 bg-emerald-500/10"
           : "text-on-surface-faint hover:text-on-surface-secondary hover:bg-surface-overlay"
@@ -52,7 +52,7 @@ function CopyButton({ value }: { value: string }) {
           strokeWidth="2"
           strokeLinecap="round"
           strokeLinejoin="round"
-          className="w-3.5 h-3.5"
+          className="size-3.5"
           aria-hidden="true"
         >
           <path d="M3 8l3.5 3.5L13 5" />
@@ -65,7 +65,7 @@ function CopyButton({ value }: { value: string }) {
           strokeWidth="1.5"
           strokeLinecap="round"
           strokeLinejoin="round"
-          className="w-3.5 h-3.5"
+          className="size-3.5"
           aria-hidden="true"
         >
           <rect x="5" y="5" width="9" height="9" rx="1.5" />
@@ -192,7 +192,7 @@ export function StatusDotNodeRenderer({ node }: { node: StatusDotNode }) {
   const dot = STATUS_COLORS[node.status] ?? STATUS_COLORS["unknown"];
   return (
     <span className="inline-flex items-center gap-1.5">
-      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${dot}`} />
+      <span className={`size-2 rounded-full flex-shrink-0 ${dot}`} />
       {node.label && <span className="text-xs text-on-surface-tertiary">{node.label}</span>}
     </span>
   );
@@ -213,6 +213,7 @@ function KVItemRenderer({ item, resourceId }: { item: KVItem; resourceId?: strin
             : "•••••"}
         </span>
         <button
+          type="button"
           onClick={() => {
             const placeholder =
               item.value as import("@infrawrench/plugin-base").SecretValuePlaceholder;
@@ -263,6 +264,7 @@ function ActionNodeRenderer({ node, resourceId }: { node: ActionNode; resourceId
   const cls = variantClasses[node.variant ?? "default"] ?? variantClasses["default"];
   return (
     <button
+      type="button"
       onClick={() => dispatch(node.action, resourceId)}
       className={`px-3 py-1.5 rounded text-sm transition-colors ${cls}`}
     >
@@ -332,7 +334,7 @@ function TableNodeRenderer({ node, resourceId }: { node: TableNode; resourceId?:
             <tr>
               <td
                 colSpan={node.columns.length}
-                className="px-4 py-4 text-center text-xs text-on-surface-muted"
+                className="p-4 text-center text-xs text-on-surface-muted"
               >
                 No rows
               </td>
@@ -364,7 +366,7 @@ function TableNodeRenderer({ node, resourceId }: { node: TableNode; resourceId?:
                           className={textCls}
                           style={indent ? { paddingLeft: `${indent}px` } : undefined}
                         >
-                          {cellValue || <span className="text-on-surface-faint">—</span>}
+                          {cellValue || <span className="text-on-surface-faint">-</span>}
                         </span>
                       )}
                     </td>

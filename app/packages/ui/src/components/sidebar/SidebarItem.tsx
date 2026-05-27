@@ -19,6 +19,7 @@ export function SidebarItem({ item, pluginId, resourceTypeId, depth = 0 }: Sideb
   return (
     <div>
       <button
+        type="button"
         onClick={() => {
           selectResource(pluginId, resourceTypeId, item.id);
           if (hasChildren) setExpanded((e) => !e);

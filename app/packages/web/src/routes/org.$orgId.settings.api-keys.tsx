@@ -66,6 +66,7 @@ function ApiKeysPage() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-semibold">API Keys</h1>
         <button
+          type="button"
           onClick={() => setShowCreate(true)}
           className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
         >
@@ -74,7 +75,7 @@ function ApiKeysPage() {
       </div>
 
       {loading ? (
-        <p className="text-sm text-on-surface-faint">Loading...</p>
+        <p className="text-sm text-on-surface-faint">Loading…</p>
       ) : keys.length === 0 ? (
         <p className="text-sm text-on-surface-muted">No API keys yet.</p>
       ) : (
@@ -128,12 +129,14 @@ function ApiKeysPage() {
                     {!key.revokedAt && (
                       <div className="flex gap-2 justify-end">
                         <button
+                          type="button"
                           onClick={() => void handleRotate(key.id)}
                           className="text-xs text-on-surface-tertiary hover:text-on-surface-secondary"
                         >
                           Rotate
                         </button>
                         <button
+                          type="button"
                           onClick={() => void handleRevoke(key.id)}
                           className="text-xs text-red-400 hover:text-red-500 dark:text-red-300"
                         >
@@ -173,6 +176,7 @@ function ApiKeysPage() {
               {newKey}
             </div>
             <button
+              type="button"
               onClick={() => {
                 void navigator.clipboard.writeText(newKey);
               }}
@@ -230,6 +234,7 @@ function CreateApiKeyModal({
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <h2 className="text-sm font-semibold text-on-surface-secondary">Create API Key</h2>
           <button
+            type="button"
             onClick={onClose}
             aria-label="Close"
             className="text-on-surface-faint hover:text-on-surface-tertiary text-lg"
@@ -284,6 +289,7 @@ function CreateApiKeyModal({
             </p>
           )}
           <button
+            type="button"
             onClick={() => void handleCreate()}
             disabled={saving}
             className="w-full px-3 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"

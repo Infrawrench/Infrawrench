@@ -210,7 +210,7 @@ export function MongoDocumentBrowser({
   if (!connected) {
     return (
       <div className="flex-1 flex items-center justify-center text-on-surface-faint text-sm">
-        Connecting to MongoDB...
+        Connecting to MongoDB…
       </div>
     );
   }
@@ -224,6 +224,7 @@ export function MongoDocumentBrowser({
             Collections
           </span>
           <button
+            type="button"
             onClick={() => setShowNewCollection((v) => !v)}
             className="text-on-surface-faint hover:text-on-surface-secondary transition-colors text-sm leading-none"
             title="Create collection"
@@ -232,7 +233,7 @@ export function MongoDocumentBrowser({
           </button>
         </div>
         {showNewCollection && (
-          <div className="px-2 py-2 border-b border-border/60 flex gap-1">
+          <div className="p-2 border-b border-border/60 flex gap-1">
             <input
               value={newCollectionName}
               onChange={(e) => setNewCollectionName(e.target.value)}
@@ -245,6 +246,7 @@ export function MongoDocumentBrowser({
               autoFocus
             />
             <button
+              type="button"
               onClick={() => void handleCreateCollection()}
               className="px-2 py-1 rounded bg-blue-600 text-xs text-white hover:bg-blue-500 transition-colors flex-shrink-0"
             >
@@ -254,7 +256,7 @@ export function MongoDocumentBrowser({
         )}
         <div className="flex-1 overflow-y-auto py-1">
           {collectionsLoading ? (
-            <div className="px-3 py-2 text-xs text-on-surface-faint">Loading...</div>
+            <div className="px-3 py-2 text-xs text-on-surface-faint">Loading…</div>
           ) : collections.length === 0 ? (
             <div className="px-3 py-2 text-xs text-on-surface-faint">No collections</div>
           ) : (
@@ -264,12 +266,14 @@ export function MongoDocumentBrowser({
                   <div className="flex items-center gap-1 px-2 py-1.5">
                     <span className="text-xs text-red-400 truncate flex-1">Drop {col}?</span>
                     <button
+                      type="button"
                       onClick={() => void handleDropCollection(col)}
                       className="px-1.5 py-0.5 rounded bg-red-600 text-xs text-white hover:bg-red-500 transition-colors flex-shrink-0"
                     >
                       Drop
                     </button>
                     <button
+                      type="button"
                       onClick={() => setDroppingCollection(null)}
                       className="px-1.5 py-0.5 rounded text-xs text-on-surface-faint hover:text-on-surface-secondary transition-colors flex-shrink-0"
                     >
@@ -279,6 +283,7 @@ export function MongoDocumentBrowser({
                 ) : (
                   <>
                     <button
+                      type="button"
                       onClick={() => selectCollection(col)}
                       className={`w-full text-left px-3 py-1.5 text-xs truncate transition-colors pr-7 ${
                         col === activeCollection
@@ -289,6 +294,7 @@ export function MongoDocumentBrowser({
                       {col}
                     </button>
                     <button
+                      type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         setDroppingCollection(col);
@@ -335,12 +341,14 @@ export function MongoDocumentBrowser({
             spellCheck={false}
           />
           <button
+            type="button"
             onClick={handleApplyFilter}
             className="px-2.5 py-1 rounded bg-surface-overlay border border-border-strong text-xs text-on-surface-secondary hover:bg-surface-sunken hover:border-border-strong transition-colors"
           >
             Apply
           </button>
           <button
+            type="button"
             onClick={() => void fetchDocuments()}
             className="px-2 py-1 rounded text-xs text-on-surface-muted hover:text-on-surface-secondary transition-colors"
             title="Refresh"
@@ -349,6 +357,7 @@ export function MongoDocumentBrowser({
           </button>
           {activeCollection && (
             <button
+              type="button"
               onClick={() => setShowInsertDoc((v) => !v)}
               className="px-2.5 py-1 rounded bg-blue-600/80 border border-blue-500/50 text-xs text-white hover:bg-blue-600 transition-colors"
             >
@@ -359,13 +368,14 @@ export function MongoDocumentBrowser({
 
         {/* Insert document editor */}
         {showInsertDoc && activeCollection && (
-          <div className="px-3 py-3 border-b border-border/60 bg-surface/80">
+          <div className="p-3 border-b border-border/60 bg-surface/80">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs text-on-surface-tertiary font-medium">
                 Insert Document into{" "}
                 <span className="text-on-surface-secondary">{activeCollection}</span>
               </span>
               <button
+                type="button"
                 onClick={() => {
                   setShowInsertDoc(false);
                   setInsertError(null);
@@ -386,6 +396,7 @@ export function MongoDocumentBrowser({
             {insertError && <div className="text-xs text-red-400 mt-1">{insertError}</div>}
             <div className="flex justify-end mt-2">
               <button
+                type="button"
                 onClick={() => void handleInsertDocument()}
                 className="px-3 py-1.5 rounded bg-blue-600 text-xs text-white hover:bg-blue-500 transition-colors"
               >
@@ -410,7 +421,7 @@ export function MongoDocumentBrowser({
             </div>
           ) : loading ? (
             <div className="flex items-center justify-center h-full text-on-surface-faint text-sm">
-              Loading...
+              Loading…
             </div>
           ) : documents.length === 0 ? (
             <div className="flex items-center justify-center h-full text-on-surface-faint text-sm">
@@ -442,6 +453,7 @@ export function MongoDocumentBrowser({
             </span>
             <div className="flex items-center gap-1.5">
               <button
+                type="button"
                 onClick={() => setPage((p) => Math.max(0, p - 1))}
                 disabled={page === 0}
                 className="px-2 py-0.5 rounded text-xs text-on-surface-tertiary hover:text-on-surface-secondary hover:bg-surface-overlay disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
@@ -452,6 +464,7 @@ export function MongoDocumentBrowser({
                 {page + 1} / {totalPages}
               </span>
               <button
+                type="button"
                 onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
                 disabled={page >= totalPages - 1}
                 className="px-2 py-0.5 rounded text-xs text-on-surface-tertiary hover:text-on-surface-secondary hover:bg-surface-overlay disabled:opacity-30 disabled:hover:bg-transparent transition-colors"
@@ -555,6 +568,7 @@ function DocumentRow({
           </div>
         </button>
         <button
+          type="button"
           onClick={(e) => {
             e.stopPropagation();
             startEdit();
@@ -567,6 +581,7 @@ function DocumentRow({
           Edit
         </button>
         <button
+          type="button"
           onClick={(e) => {
             e.stopPropagation();
             onDelete();
@@ -592,12 +607,14 @@ function DocumentRow({
               {editError && <div className="text-xs text-red-400">{editError}</div>}
               <div className="flex gap-2 justify-end">
                 <button
+                  type="button"
                   onClick={() => setEditing(false)}
                   className="px-2.5 py-1 rounded text-xs text-on-surface-faint hover:text-on-surface-secondary transition-colors"
                 >
                   Cancel
                 </button>
                 <button
+                  type="button"
                   onClick={() => void handleSave()}
                   disabled={saving}
                   className="px-3 py-1 rounded bg-blue-600 text-xs text-white hover:bg-blue-500 disabled:opacity-50 transition-colors"
