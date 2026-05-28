@@ -117,7 +117,7 @@ function CellContent({ col, child }: { col: ChildTableColumn; child: ChildResour
   }
 }
 
-export interface ChildResourceTableProps {
+interface ChildResourceTableProps {
   spec: ChildTableSchema;
   group: ChildResourceGroup | undefined;
   onRowClick?: (child: ChildResource) => void;

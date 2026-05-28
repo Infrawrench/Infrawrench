@@ -8,4 +8,4 @@
  * and is consumed identically (with an `onSign` hook for audit logging) by
  * `app/packages/web/src/services/ssh-agent.ts`.
  */
-export { buildInProcessAgent, InProcessAgent } from "@infrawrench/ssh-tunnel-core";
+export { buildInProcessAgent } from "@infrawrench/ssh-tunnel-core";

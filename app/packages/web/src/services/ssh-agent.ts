@@ -15,8 +15,6 @@ import {
 } from "@infrawrench/ssh-tunnel-core";
 import { logAudit } from "@/services/audit";
 
-export type { InProcessAgent } from "@infrawrench/ssh-tunnel-core";
-
 /**
  * Context recorded on every forwarded sign-request so users can see exactly
  * which key the cloud proxy used to authenticate on their behalf. Optional —

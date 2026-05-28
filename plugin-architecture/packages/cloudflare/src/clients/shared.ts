@@ -26,7 +26,7 @@ import type { Zone } from "cloudflare/resources/zones/zones";
  * brittle. Anything else (5xx, network, malformed JSON) returns false so
  * those real bugs continue to surface.
  */
-export function isCloudflareAuthError(err: unknown): boolean {
+function isCloudflareAuthError(err: unknown): boolean {
   if (err == null || typeof err !== "object") return false;
   const e = err as {
     status?: unknown;
@@ -61,7 +61,7 @@ export function isCloudflareAuthError(err: unknown): boolean {
  * instead of an empty tab with no explanation. Other resource-type tabs are
  * loaded as independent promises, so this never breaks adjacent tabs.
  */
-export class CloudflareMissingPermissionError extends Error {
+class CloudflareMissingPermissionError extends Error {
   readonly resourceLabel: string;
   readonly scope: string;
   constructor(resourceLabel: string, scope: string) {

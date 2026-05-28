@@ -1,6 +1,6 @@
 import type { PublishMessagePayload, PublishMessageResult } from "@infrawrench/plugin-base";
 
-export interface PublishContext {
+interface PublishContext {
   token: () => Promise<string>;
   project: string;
 }

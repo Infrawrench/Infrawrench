@@ -4,7 +4,7 @@ import type {
   ResourceInstance,
 } from "@infrawrench/plugin-base";
 
-export interface PublishContext {
+interface PublishContext {
   /** AAD token scoped to `https://servicebus.azure.net/.default`. */
   serviceBusToken: () => Promise<string>;
 }
