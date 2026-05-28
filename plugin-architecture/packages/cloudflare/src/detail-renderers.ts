@@ -106,26 +106,55 @@ export function renderZoneDetail(resource: ResourceInstance): DetailViewSchema {
     });
   }
 
-  const recordCount = resource.resolvedOutputs["__recordCount__"];
-  if (recordCount) {
-    sections.push({
-      kind: "section",
-      title: "DNS Records",
-      children: [
-        {
-          kind: "text",
-          content: `${recordCount} records in this zone. Expand this zone in the sidebar to browse individual records.`,
-          variant: "muted",
-        },
-      ],
-    });
-  }
-
   return {
     title: resource.displayName,
     subtitle: `Zone · ${String(fields["plan"] ?? "Free")}`,
     status: { kind: "status-dot", status: dnsZoneStatus(status), label: status },
     sections,
+    childTables: [
+      {
+        title: "DNS Records",
+        typeId: "dns-record",
+        emptyText: "No DNS records in this zone yet.",
+        columns: [
+          {
+            key: "type",
+            label: "Type",
+            width: "narrow",
+            source: { kind: "field", fieldKey: "type" },
+            format: "type-badge",
+          },
+          {
+            key: "name",
+            label: "Name",
+            width: "auto",
+            source: { kind: "field", fieldKey: "name" },
+            stripSuffixFromFieldKey: "zoneName",
+          },
+          {
+            key: "content",
+            label: "Content",
+            width: "wide",
+            source: { kind: "field", fieldKey: "content" },
+            format: "mono",
+          },
+          {
+            key: "proxied",
+            label: "Proxy",
+            width: "narrow",
+            source: { kind: "field", fieldKey: "proxied" },
+            format: "proxy-status",
+          },
+          {
+            key: "ttl",
+            label: "TTL",
+            width: "narrow",
+            source: { kind: "field", fieldKey: "ttl" },
+            format: "ttl",
+          },
+        ],
+      },
+    ],
     manifestEditor: { language: "json", resourceKind: "Zone Settings" },
     headerActions: [
       { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },

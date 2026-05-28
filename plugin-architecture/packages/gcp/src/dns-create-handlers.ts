@@ -1,4 +1,5 @@
 import type { CreateResourceConfig, ResourceInstance } from "@infrawrench/plugin-base";
+import { dnsContentField } from "@infrawrench/plugin-base";
 import type { GcpCreateContext } from "./create-context.js";
 
 export const dnsCreateConfigHandlers: Record<
@@ -86,13 +87,12 @@ export const dnsCreateConfigHandlers: Record<
         minValue: 1,
         maxValue: 86400,
       },
-      {
+      ...dnsContentField({
         key: "rrdatas",
         label: "Data",
-        kind: "text",
-        required: true,
+        placeholder: "Comma-separated record data (e.g. 1.2.3.4)",
         description: "Comma-separated record data (e.g. 1.2.3.4)",
-      },
+      }),
     );
     return { fields };
   },

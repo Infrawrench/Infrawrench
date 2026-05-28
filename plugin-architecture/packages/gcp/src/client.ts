@@ -725,6 +725,87 @@ export class GcpClient implements PluginClient {
     return gcpCreateResource(this.createCtx, typeId, accountId, fields, parentResourceId);
   }
 
+  async updateResource(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
+    if (typeId === "cloud-dns-record-set") {
+      // Cloud DNS record sets are immutable — "update" is a change transaction
+      // that deletes the existing rrset and adds the replacement. externalId
+      // format: "{zoneName}/{type}:{name}".
+      const externalId = resourceId.split(":").slice(2).join(":");
+      const slash = externalId.indexOf("/");
+      const zoneName = externalId.slice(0, slash);
+      const recordKey = externalId.slice(slash + 1);
+      const colon = recordKey.indexOf(":");
+      const type = recordKey.slice(0, colon);
+      const name = recordKey.slice(colon + 1);
+      const p = this.project;
+      const tok = await this.token();
+
+      // Fetch the current rrset so the deletion matches exactly and we keep
+      // the existing TTL unless the caller changed it.
+      const getRes = await fetch(
+        `https://dns.googleapis.com/dns/v1/projects/${p}/managedZones/${zoneName}/rrsets/${encodeURIComponent(name)}/${type}`,
+        { headers: { Authorization: `Bearer ${tok}` } },
+      );
+      if (!getRes.ok) throw new Error(`Cloud DNS API ${getRes.status}: ${await getRes.text()}`);
+      const current = (await getRes.json()) as Record<string, unknown>;
+      const ttl =
+        fields["ttl"] !== undefined && fields["ttl"] !== ""
+          ? Number(fields["ttl"])
+          : Number(current["ttl"] ?? 300);
+      const rrdatas =
+        fields["rrdatas"] !== undefined
+          ? fields["rrdatas"]
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean)
+          : ((current["rrdatas"] as string[]) ?? []);
+
+      const changeRes = await fetch(
+        `https://dns.googleapis.com/dns/v1/projects/${p}/managedZones/${zoneName}/changes`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            deletions: [
+              { name, type, ttl: Number(current["ttl"] ?? ttl), rrdatas: current["rrdatas"] ?? [] },
+            ],
+            additions: [{ name, type, ttl, rrdatas }],
+          }),
+        },
+      );
+      if (!changeRes.ok)
+        throw new Error(`Cloud DNS API ${changeRes.status}: ${await changeRes.text()}`);
+
+      const shortName = name.replace(/\.$/, "");
+      const now = new Date().toISOString();
+      return {
+        id: resourceId,
+        pluginId: "gcp",
+        resourceTypeId: "cloud-dns-record-set",
+        accountId,
+        displayName: `${type} ${shortName}`,
+        fields: {
+          type,
+          name: shortName,
+          rrdatas: rrdatas.join(", "),
+          ttl,
+          zoneName,
+        },
+        resolvedOutputs: {},
+        secretStates: [],
+        externalId,
+        createdAt: now,
+        updatedAt: now,
+      };
+    }
+    throw new Error(`GCP plugin: updateResource not supported for type "${typeId}"`);
+  }
+
   async executeFieldAction(
     typeId: string,
     fieldKey: string,

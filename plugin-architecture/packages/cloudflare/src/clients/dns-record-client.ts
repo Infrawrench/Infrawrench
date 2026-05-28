@@ -115,6 +115,28 @@ export async function createDnsRecord(
   return mapDnsRecord(record, accountId, zoneId);
 }
 
+export async function updateDnsRecord(
+  api: CloudflareApi,
+  externalId: string,
+  accountId: string,
+  fields: Record<string, string>,
+): Promise<ResourceInstance> {
+  const [zoneId, recordId] = externalId.split("/");
+  if (!zoneId || !recordId) throw new Error("Invalid DNS record ID");
+  // Cloudflare's edit endpoint (PATCH) merges only the supplied keys, so the
+  // reconciler can push a fresh `content` without re-sending the whole record.
+  const body: Record<string, unknown> = { zone_id: zoneId };
+  if (fields["type"] !== undefined) body["type"] = fields["type"];
+  if (fields["name"] !== undefined) body["name"] = fields["name"];
+  if (fields["content"] !== undefined) body["content"] = fields["content"];
+  if (fields["ttl"] !== undefined) body["ttl"] = Number(fields["ttl"]);
+  if (fields["proxied"] !== undefined) body["proxied"] = fields["proxied"] === "true";
+  if (fields["priority"] !== undefined && fields["priority"] !== "")
+    body["priority"] = Number(fields["priority"]);
+  const record = await api.cf.dns.records.edit(recordId, body as never);
+  return mapDnsRecord(record, accountId, zoneId);
+}
+
 export async function deleteDnsRecord(api: CloudflareApi, externalId: string): Promise<void> {
   const [zoneId, recordId] = externalId.split("/");
   if (!zoneId || !recordId) throw new Error("Invalid DNS record ID");

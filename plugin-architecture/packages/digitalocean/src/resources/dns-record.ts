@@ -21,5 +21,6 @@ export const DnsRecordResourceType: ResourceTypeDefinition = {
   parentTypeId: "domain",
   dashboardPinnable: false,
   supportsCreate: true,
+  supportsUpdate: true,
   iconKey: "dns-record",
 };

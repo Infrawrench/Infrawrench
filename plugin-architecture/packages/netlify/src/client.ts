@@ -12,6 +12,7 @@ import type {
 } from "@infrawrench/plugin-base";
 import {
   jsonRestFetch,
+  dnsContentField,
   renderDnsRecordDetail,
   renderDnsRecordSidebar,
 } from "@infrawrench/plugin-base";
@@ -621,13 +622,11 @@ export class NetlifyClient implements PluginClient {
             required: true,
             description: "e.g. www or @ for the root",
           },
-          {
+          ...dnsContentField({
             key: "value",
             label: "Value",
-            kind: "text",
-            required: true,
-            description: "e.g. 192.168.1.1 for A records",
-          },
+            placeholder: "e.g. 192.168.1.1 for A records",
+          }),
           {
             key: "ttl",
             label: "TTL (seconds)",

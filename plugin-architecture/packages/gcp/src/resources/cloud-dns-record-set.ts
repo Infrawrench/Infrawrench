@@ -17,4 +17,5 @@ export const CloudDnsRecordSetResourceType: ResourceTypeDefinition = {
   dashboardPinnable: false,
   iconKey: "dns-record",
   supportsCreate: true,
+  supportsUpdate: true,
 };

@@ -23,4 +23,5 @@ export const Route53RecordSetResourceType: ResourceTypeDefinition = {
   dashboardPinnable: false,
   iconKey: "dns",
   supportsCreate: true,
+  supportsUpdate: true,
 };

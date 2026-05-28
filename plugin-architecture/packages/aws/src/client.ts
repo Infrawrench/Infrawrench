@@ -547,6 +547,56 @@ export class AWSClient implements PluginClient {
     return awsCreateResource(this.createCtx, typeId, accountId, fields, parentResourceId);
   }
 
+  async updateResource(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
+    if (typeId === "route53-record-set") {
+      // Merge the changed field(s) over the current record, then UPSERT the
+      // whole record set (Route 53 has no partial update). `value` is the
+      // create-form key; the stored resource field is `values`.
+      const current = await this.getResource(typeId, resourceId, accountId);
+      const cur = current.fields;
+      const hostedZoneId = String(cur["hostedZoneId"] ?? "");
+      const recordName = String(cur["name"] ?? "");
+      const recordType = String(cur["type"] ?? "A");
+      const ttl = String(cur["ttl"] ?? "300");
+      const value = fields["value"] ?? String(cur["values"] ?? "");
+      const host = hostForService(this.creds, "route53");
+      const url = `https://${host}/2013-04-01/hostedzone/${hostedZoneId}/rrset`;
+      const bodyXml = [
+        `<?xml version="1.0" encoding="UTF-8"?>`,
+        `<ChangeResourceRecordSetsRequest xmlns="https://route53.amazonaws.com/doc/2013-04-01/">`,
+        `<ChangeBatch><Changes><Change>`,
+        `<Action>UPSERT</Action>`,
+        `<ResourceRecordSet>`,
+        `<Name>${recordName}</Name>`,
+        `<Type>${recordType}</Type>`,
+        `<TTL>${ttl}</TTL>`,
+        `<ResourceRecords><ResourceRecord><Value>${value}</Value></ResourceRecord></ResourceRecords>`,
+        `</ResourceRecordSet>`,
+        `</Change></Changes></ChangeBatch>`,
+        `</ChangeResourceRecordSetsRequest>`,
+      ].join("");
+      await fetchSigned({
+        method: "POST",
+        url,
+        headers: { Host: host, "Content-Type": "application/xml" },
+        body: bodyXml,
+        service: "route53",
+        credentials: this.creds,
+      });
+      return {
+        ...current,
+        fields: { ...cur, values: value },
+        updatedAt: new Date().toISOString(),
+      };
+    }
+    throw new Error(`AWS plugin: updateResource not supported for type "${typeId}"`);
+  }
+
   async getCreateCostEstimate(
     typeId: string,
     fields: Record<string, string>,

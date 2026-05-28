@@ -7,7 +7,7 @@ import type {
   ImageOption,
   SectionNode,
 } from "@infrawrench/plugin-base";
-import { signedS3Fetch } from "@infrawrench/plugin-base";
+import { signedS3Fetch, dnsContentField } from "@infrawrench/plugin-base";
 import { SPACES_REGIONS, regionDisplay } from "./constants.js";
 import { kafkaAclFields } from "./resources/managed-database.js";
 
@@ -695,13 +695,11 @@ export async function doGetCreateConfig(
         required: true,
         description: "e.g. www or @ for the root",
       },
-      {
+      ...dnsContentField({
         key: "data",
         label: "Value",
-        kind: "text",
-        required: true,
-        description: "e.g. 192.168.1.1 for A records",
-      },
+        placeholder: "e.g. 192.168.1.1 for A records",
+      }),
       {
         key: "ttl",
         label: "TTL",

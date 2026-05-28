@@ -17,6 +17,7 @@ import type {
   PublishMessageResult,
 } from "@infrawrench/plugin-base";
 import {
+  dnsContentField,
   dnsRecordBadgeColor,
   dnsZoneStatus,
   renderDnsRecordDetail,
@@ -502,13 +503,11 @@ export class CloudflareClient implements PluginClient {
           required: true,
           description: 'Record name (e.g. "@" for root, "www" for subdomain)',
         },
-        {
+        ...dnsContentField({
           key: "content",
           label: "Content",
-          kind: "text",
-          required: true,
-          description: "Record value (e.g. IP address, hostname)",
-        },
+          placeholder: "IP address, hostname, or text value",
+        }),
         {
           key: "ttl",
           label: "TTL",
@@ -1249,6 +1248,19 @@ export class CloudflareClient implements PluginClient {
       default:
         throw new Error(`Cloudflare plugin: createResource not supported for type "${typeId}"`);
     }
+  }
+
+  async updateResource(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
+    const externalId = resourceId.split(":").slice(2).join(":");
+    if (typeId === "dns-record") {
+      return dnsRecordApi.updateDnsRecord(this.api, externalId, accountId, fields);
+    }
+    throw new Error(`Cloudflare plugin: updateResource not supported for type "${typeId}"`);
   }
 
   async publishMessage(

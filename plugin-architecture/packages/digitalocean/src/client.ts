@@ -1651,6 +1651,55 @@ export class DigitalOceanClient implements PluginClient {
       };
     }
 
+    if (typeId === "dns-record") {
+      // externalId format: "{domainName}/{recordId}"
+      const parts = externalId.split("/");
+      const domainName = parts[0]!;
+      const recordId = parts[1]!;
+      const body: Record<string, unknown> = {};
+      if (fields["type"] !== undefined) body["type"] = fields["type"];
+      if (fields["name"] !== undefined) body["name"] = fields["name"];
+      if (fields["data"] !== undefined) body["data"] = fields["data"];
+      if (fields["ttl"] !== undefined && fields["ttl"] !== "") body["ttl"] = Number(fields["ttl"]);
+      if (fields["priority"] !== undefined && fields["priority"] !== "")
+        body["priority"] = Number(fields["priority"]);
+      const data = await this.fetch<{ domain_record: Record<string, unknown> }>(
+        `/domains/${domainName}/records/${recordId}`,
+        {
+          method: "PUT",
+          body: JSON.stringify(body),
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+      const r = data.domain_record ?? {};
+      const type = String(r["type"] ?? fields["type"] ?? "");
+      const name = String(r["name"] ?? "@");
+      const displayName = name === "@" ? domainName : `${name}.${domainName}`;
+      return {
+        id: resourceId,
+        pluginId: "digitalocean",
+        resourceTypeId: "dns-record",
+        accountId,
+        displayName: `${type} ${displayName}`,
+        fields: {
+          type,
+          name: displayName,
+          data: String(r["data"] ?? fields["data"] ?? ""),
+          ttl: Number(r["ttl"] ?? 1800),
+          ...(r["priority"] !== undefined && r["priority"] !== null
+            ? { priority: Number(r["priority"]) }
+            : {}),
+          domainName,
+        },
+        resolvedOutputs: {},
+        secretStates: [],
+        externalId,
+        parentResourceId: `${accountId}:domain:${domainName}`,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+    }
+
     if (typeId !== "project") {
       throw new Error(`DigitalOcean plugin: updateResource not supported for type "${typeId}"`);
     }

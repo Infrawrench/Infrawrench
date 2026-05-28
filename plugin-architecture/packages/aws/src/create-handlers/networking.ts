@@ -1,4 +1,5 @@
 import type { CreateResourceConfig, ResourceInstance } from "@infrawrench/plugin-base";
+import { dnsContentField } from "@infrawrench/plugin-base";
 import { parseXml, ensureArray } from "../auth.js";
 import { fetchSigned } from "../signed-request.js";
 import { AWS_REGIONS } from "../constants.js";
@@ -272,13 +273,11 @@ export async function networkingGetCreateConfig(
         minValue: 0,
         maxValue: 2147483647,
       },
-      {
+      ...dnsContentField({
         key: "value",
         label: "Value",
-        kind: "text",
-        required: true,
-        description: "Record value (e.g. IP address)",
-      },
+        placeholder: "Record value (e.g. IP address)",
+      }),
     );
     return { fields };
   }
