@@ -107,6 +107,29 @@ export interface AssociationSource {
   outputKey: string;
 }
 
+/**
+ * A single show/hide predicate evaluated against the current form values.
+ * Matches when the named field's value equals `fieldValue`, is included in
+ * `fieldValues`, or (for `fieldValuesNot`) is NOT included in that list. When
+ * multiple of these are set they are AND-ed together.
+ */
+export interface ShowWhenCondition {
+  fieldKey: string;
+  fieldValue?: string;
+  fieldValues?: string[];
+  fieldValuesNot?: string[];
+}
+
+/**
+ * A field visibility rule. Either a single condition, or a compound `allOf`
+ * (every condition must match) / `anyOf` (at least one must match). Lets fields
+ * express conditions like "show when type is A/AAAA/CNAME AND mode is custom".
+ */
+export type ShowWhenRule =
+  | ShowWhenCondition
+  | { allOf: ShowWhenCondition[] }
+  | { anyOf: ShowWhenCondition[] };
+
 export interface CreateFieldConfig {
   /** Key used in the `fields` map passed to `createResource` */
   key: string;
@@ -117,11 +140,11 @@ export interface CreateFieldConfig {
   defaultValue?: string;
   placeholder?: string;
   /**
-   * When set, this field is only shown when `fieldKey` equals `fieldValue`
-   * (or matches any value in `fieldValues` — used for multi-value gating).
+   * When set, this field is only shown when the rule matches the current form
+   * values. Supports a single condition or a compound `allOf` / `anyOf`.
    * Hidden fields are excluded from the submitted form data.
    */
-  showWhen?: { fieldKey: string; fieldValue?: string; fieldValues?: string[] };
+  showWhen?: ShowWhenRule;
   /**
    * When true, the field is not rendered in the form UI but its
    * `defaultValue` is still submitted. Use for fields whose value is
@@ -129,6 +152,21 @@ export interface CreateFieldConfig {
    * and would just be noise to show the user.
    */
   hidden?: boolean;
+  /**
+   * When true, this field is a UI-only control (e.g. a mode toggle) and its
+   * value is stripped from the submitted form data. The host never passes
+   * transient fields to `createResource`.
+   */
+  transient?: boolean;
+  /**
+   * `resource-picker` — when true, the picker emits a *live output reference*
+   * encoding the picked resource's identity (plugin/type/id/account/output)
+   * rather than the flattened literal value. The host persists this as an
+   * output-ref association so the field tracks the source's value over time.
+   * Also makes the picker search across every account whose plugin matches a
+   * source, not just the account the resource is being created in.
+   */
+  referenceMode?: boolean;
   /** `text` — render as a multi-line textarea instead of an input (e.g. JSON blobs). */
   multiline?: boolean;
   /** `select` options */

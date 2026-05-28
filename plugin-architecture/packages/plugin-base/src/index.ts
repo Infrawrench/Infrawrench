@@ -71,6 +71,8 @@ export type {
   DashboardStat,
   DashboardCardSchema,
   ChildGroupSchema,
+  ChildTableSchema,
+  ChildTableColumn,
   DetailViewTab,
   DetailViewSchema,
   SidebarItemSchema,
@@ -126,6 +128,8 @@ export type {
   CreateSizePricingRequest,
   CreateFieldConfig,
   CreateFieldKind,
+  ShowWhenCondition,
+  ShowWhenRule,
   DatetimeMode,
   SizeOption,
   RegionOption,
@@ -135,6 +139,14 @@ export type {
   FieldAction,
   FieldActionResult,
 } from "./create.js";
+
+export {
+  encodeOutputRef,
+  parseOutputRef,
+  isOutputRefValue,
+  OUTPUT_REF_PREFIX,
+} from "./output-ref.js";
+export type { OutputRefValue } from "./output-ref.js";
 
 export type { PluginRegistry, PluginRegistryEntry } from "./registry.js";
 
@@ -153,6 +165,15 @@ export {
   renderDnsRecordSidebar,
 } from "./dns.js";
 export type { DnsRecordDetailOptions } from "./dns.js";
+
+export {
+  dnsContentField,
+  PICKABLE_DNS_TYPES,
+  DNS_IPV4_SOURCES,
+  DNS_IPV6_SOURCES,
+  DNS_HOSTNAME_SOURCES,
+} from "./dns-helpers.js";
+export type { DnsContentFieldOptions } from "./dns-helpers.js";
 
 export { jsonRestFetch, formatBytes, caCertCredentialField } from "./http.js";
 export type { JsonRestFetchOptions } from "./http.js";

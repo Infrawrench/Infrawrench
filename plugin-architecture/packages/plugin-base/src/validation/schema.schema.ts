@@ -200,6 +200,30 @@ export const queryExecuteResultSchema = z.object({
   affectedRows: z.number().optional(),
 });
 
+const childTableSchema = z.object({
+  title: z.string(),
+  typeId: z.string(),
+  columns: z.array(
+    z.object({
+      key: z.string(),
+      label: z.string(),
+      width: z.enum(["auto", "narrow", "wide"]).optional(),
+      source: z.union([
+        z.object({ kind: z.literal("field"), fieldKey: z.string() }),
+        z.object({ kind: z.literal("external-id") }),
+        z.object({ kind: z.literal("display-name") }),
+      ]),
+      format: z
+        .enum(["text", "mono", "type-badge", "proxy-status", "ttl", "boolean-yesno"])
+        .optional(),
+      stripSuffixFromFieldKey: z.string().optional(),
+    }),
+  ),
+  emptyText: z.string().optional(),
+  createLabel: z.string().optional(),
+  onRowClick: z.enum(["navigate", "none"]).optional(),
+});
+
 export const detailViewSchema = z.object({
   title: z.string(),
   subtitle: z.string().optional(),
@@ -217,6 +241,7 @@ export const detailViewSchema = z.object({
       }),
     )
     .optional(),
+  childTables: z.array(childTableSchema).optional(),
   headerActions: z.array(actionNodeSchema).optional(),
   metricsCapability: z.object({ defaultTimeRangeMs: z.number().optional() }).optional(),
   noSqlBrowser: z
@@ -244,6 +269,7 @@ export const detailViewSchema = z.object({
             }),
           )
           .optional(),
+        childTables: z.array(childTableSchema).optional(),
         headerActions: z.array(actionNodeSchema).optional(),
       }),
     )

@@ -518,6 +518,59 @@ export interface ChildGroupSchema {
 }
 
 /**
+ * How a single column of a {@link ChildTableSchema} sources and formats its
+ * cell value from a child {@link ResourceInstance}.
+ */
+export interface ChildTableColumn {
+  /** Stable column id — also used as the table header key. */
+  key: string;
+  /** Header label. */
+  label: string;
+  width?: "auto" | "narrow" | "wide";
+  /** Where the raw cell value comes from on each child resource. */
+  source: { kind: "field"; fieldKey: string } | { kind: "external-id" } | { kind: "display-name" };
+  /**
+   * Optional formatter applied to the raw string:
+   *   - "mono"          — monospace text
+   *   - "type-badge"    — colored pill keyed by DNS record type (A/AAAA/CNAME/MX/TXT…)
+   *   - "proxy-status"  — orange-cloud / grey-cloud indicator for boolean values
+   *   - "ttl"           — formats numeric seconds via the same rules as `formatDnsTtl`
+   *   - "boolean-yesno" — renders truthy/falsy as "Yes"/"No"
+   * Defaults to plain text.
+   */
+  format?: "text" | "mono" | "type-badge" | "proxy-status" | "ttl" | "boolean-yesno";
+  /**
+   * When set, strip the value of this sibling field (plus a leading dot) from
+   * the end of the cell value — used to display the short record name ("www")
+   * instead of the FQDN ("www.example.com"). A value equal to the suffix
+   * renders as "@" (the zone apex).
+   */
+  stripSuffixFromFieldKey?: string;
+}
+
+/**
+ * A Cloudflare-dashboard-style table of a resource's child instances, rendered
+ * in place of the auto-injected pill group for the same `typeId`. The host
+ * pulls the rows from the child resources it already loads (the same source
+ * that feeds the pill groups) and suppresses the matching pill group. The
+ * per-row "+ Create" button and row navigation reuse the host's existing
+ * child-create / navigate handlers — no new host action is required.
+ */
+export interface ChildTableSchema {
+  /** Heading shown above the table. */
+  title: string;
+  /** Child resource type whose instances populate the rows. */
+  typeId: string;
+  columns: ChildTableColumn[];
+  /** Shown when there are no child resources of this type. */
+  emptyText?: string;
+  /** Overrides the "+ Create {displayName}" header button label. */
+  createLabel?: string;
+  /** Row click target. Defaults to navigating to the child resource. */
+  onRowClick?: "navigate" | "none";
+}
+
+/**
  * A plugin-defined tab on the detail view. Tab bodies reuse the same
  * structure as the Overview tab — `SectionNode[]` + labeled pill groups.
  * Each tab can also declare its own header actions that show up in the
@@ -532,6 +585,8 @@ export interface DetailViewTab {
   sections?: SectionNode[];
   /** Labeled pill groups rendered after the sections (per-group create buttons, etc.). */
   childGroups?: ChildGroupSchema[];
+  /** Child-resource tables rendered after the sections, replacing matching pill groups. */
+  childTables?: ChildTableSchema[];
   /** Header actions visible in the top bar when this tab is active. */
   headerActions?: ActionNode[];
 }
@@ -546,6 +601,12 @@ export interface DetailViewSchema {
   children?: DashboardCardSchema[];
   /** Labeled groups of pseudo-resource pills — each group has its own "+ Create" button. */
   childGroups?: ChildGroupSchema[];
+  /**
+   * Child resources rendered as dashboard-style tables instead of pills. Each
+   * entry's `typeId` matches an auto-injected child group, which the host then
+   * suppresses from the pill render.
+   */
+  childTables?: ChildTableSchema[];
   headerActions?: ActionNode[];
   /** If present, the host renders a SQL editor tab alongside the overview */
   sqlEditor?: SqlEditorCapability;
