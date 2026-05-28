@@ -38,6 +38,10 @@ Any resource that produces a credential-ish value. Common ones:
 - PlanetScale branches — `connectionString`
 - Turso databases — `url`, `authToken`
 
+## DNS records
+
+DNS record content uses the same machinery. When you create an **A**, **AAAA**, or **CNAME** record, the value field is a resource picker that searches across your accounts for IP- or hostname-producing resources. Picking one stores a live reference, so the record tracks the source's address and is re-applied at the provider when it changes. See [DNS records](../features/dns-records.md).
+
 ## When to use a literal instead
 
 - The upstream resource is not managed by infrawrench.

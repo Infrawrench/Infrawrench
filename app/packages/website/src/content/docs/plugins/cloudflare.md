@@ -25,7 +25,8 @@ If you'd rather scope a token by hand, go to the Cloudflare dashboard → **My P
 
 ## Notable flows
 
-- **DNS record editor** with type-aware fields (A, AAAA, CNAME, MX, TXT, SRV, CAA).
+- **DNS records table** — a zone's records render as a Cloudflare-style table (type, name, content, proxy, TTL) with inline create and delete. See [DNS records](../features/dns-records.md).
+- **DNS record editor** with type-aware fields (A, AAAA, CNAME, MX, TXT, SRV, CAA). A/AAAA/CNAME values can be [pointed at another resource](../features/dns-records.md) (e.g. an AWS Elastic IP) and tracked live.
 - **Worker script editing** in Monaco with deploy.
 - **R2 file browser** and **secret export to K8s** for bucket credentials.
 - **KV namespace browser** — open any Workers KV namespace and use the **Keys** tab to list keys (cursor-paginated, with optional prefix filter), view stored values, add or overwrite a key, and delete keys. Backed by Cloudflare's `/storage/kv/namespaces/{id}/keys` and `/values/{key}` REST endpoints. Values are treated as UTF-8 text.
