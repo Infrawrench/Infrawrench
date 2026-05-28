@@ -34,6 +34,7 @@ import { searchRoutes } from "./routes/search";
 import { connectRoutes } from "./routes/connect";
 import { sshTunnelRoutes } from "./routes/ssh-tunnels";
 import { bastionRoutes } from "./routes/bastions";
+import { twilioRoutes } from "./routes/twilio";
 
 // API-key-authed; handles its own auth.
 import { syncRoutes } from "./routes/sync";
@@ -129,6 +130,7 @@ orgScoped.route("/search", searchRoutes);
 orgScoped.route("/connect", connectRoutes);
 orgScoped.route("/ssh-tunnels", sshTunnelRoutes);
 orgScoped.route("/bastions", bastionRoutes);
+orgScoped.route("/twilio", twilioRoutes);
 
 api.route("/api/org/:orgId", orgScoped);
 

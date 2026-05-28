@@ -481,6 +481,109 @@ export const sshHostKeys = pgTable(
   }),
 );
 
+export const twilioSettings = pgTable("twilio_settings", {
+  organizationId: text("organization_id")
+    .primaryKey()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  enabled: boolean("enabled").notNull().default(false),
+  /** AES-256-GCM encrypted Twilio Account SID. AAD: `twilio:<orgId>:accountSid`. */
+  encryptedAccountSid: text("encrypted_account_sid"),
+  accountSidIv: text("account_sid_iv"),
+  /** AES-256-GCM encrypted Twilio auth token. AAD: `twilio:<orgId>:authToken`. */
+  encryptedAuthToken: text("encrypted_auth_token"),
+  authTokenIv: text("auth_token_iv"),
+  /** E.164 number messages/calls originate from (Twilio number). */
+  fromNumber: text("from_number"),
+  /** Page after this many distinct sync failures in `windowMinutes`. */
+  failureThreshold: integer("failure_threshold").notNull().default(3),
+  windowMinutes: integer("window_minutes").notNull().default(10),
+  /** Minimum minutes between re-pages for the same open incident. */
+  cooldownMinutes: integer("cooldown_minutes").notNull().default(60),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const twilioRecipients = pgTable(
+  "twilio_recipients",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    displayName: text("display_name").notNull(),
+    /** E.164 phone number (e.g. `+15551234567`). */
+    phoneNumber: text("phone_number").notNull(),
+    sms: boolean("sms").notNull().default(true),
+    voice: boolean("voice").notNull().default(true),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("twilio_recipients_org_idx").on(t.organizationId),
+  }),
+);
+
+/**
+ * Rolling-window record of poller sync failures, used by the Twilio pager to
+ * decide whether a (account, resourceType) has crossed its threshold. Rows
+ * older than the org's `windowMinutes` are deleted on each tick.
+ */
+export const accountSyncFailures = pgTable(
+  "account_sync_failures",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    resourceTypeId: text("resource_type_id").notNull(),
+    failedAt: timestamp("failed_at").notNull().defaultNow(),
+    error: text("error"),
+  },
+  (t) => ({
+    orgAccountTypeIdx: index("account_sync_failures_org_account_type_idx").on(
+      t.organizationId,
+      t.accountId,
+      t.resourceTypeId,
+    ),
+    failedAtIdx: index("account_sync_failures_failed_at_idx").on(t.failedAt),
+  }),
+);
+
+/**
+ * One row per open or resolved incident. While `closedAt` is null the
+ * incident is open; the pager re-pages every `cooldownMinutes` until the next
+ * successful sync of the same (account, resourceType) closes it.
+ */
+export const pagingIncidents = pgTable(
+  "paging_incidents",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => accounts.id, { onDelete: "cascade" }),
+    resourceTypeId: text("resource_type_id").notNull(),
+    openedAt: timestamp("opened_at").notNull().defaultNow(),
+    /** Set when the next successful sync of this (account, type) clears the incident. */
+    closedAt: timestamp("closed_at"),
+    /** Last time we actually sent SMS/voice for this incident. */
+    pagedAt: timestamp("paged_at"),
+    /** Truncated error message captured when the incident was opened. */
+    error: text("error"),
+  },
+  (t) => ({
+    openIncidentIdx: uniqueIndex("paging_incidents_open_unique")
+      .on(t.accountId, t.resourceTypeId)
+      .where(sql`closed_at IS NULL`),
+    orgIdx: index("paging_incidents_org_idx").on(t.organizationId),
+  }),
+);
+
 export const sshTunnelConfigs = pgTable(
   "ssh_tunnel_configs",
   {
