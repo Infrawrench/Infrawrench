@@ -2,6 +2,19 @@ import { ipcMain } from "electron";
 import { cloudFetch } from "./shared";
 
 ipcMain.handle(
+  "cloud_tunnel_ssh_attach",
+  async (_e, { orgId, body }: { orgId: string; body: unknown }) =>
+    cloudFetch(orgId, "/resources/tunnel-ssh-attach", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+);
+
+ipcMain.handle("cloud_list_ssh_keys", async (_e, { orgId }: { orgId: string }) =>
+  cloudFetch(orgId, "/ssh-keys", { method: "GET" }),
+);
+
+ipcMain.handle(
   "cloud_get_resource_detail",
   async (
     _e,

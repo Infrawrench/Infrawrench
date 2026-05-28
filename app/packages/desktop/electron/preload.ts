@@ -107,6 +107,8 @@ const INVOKE_CHANNELS = [
   "cloud_secret_export",
   "cloud_env_deploy",
   "cloud_load_picker_resources",
+  "cloud_tunnel_ssh_attach",
+  "cloud_list_ssh_keys",
   "cloud_pin_resource",
   "cloud_unpin_resource",
   "cloud_get_pin",

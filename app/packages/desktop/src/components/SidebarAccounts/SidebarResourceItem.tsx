@@ -1,5 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
-import { useDraggable, useDroppable } from "@dnd-kit/core";
+import { useDraggable, useDroppable, useDndContext } from "@dnd-kit/core";
 import type { DraggableResource } from "@infrawrench/ui";
 import { navigateToWorkspaceTarget, resourceTabTarget } from "../../lib/workspace-tabs";
 
@@ -29,10 +29,20 @@ export function SidebarResourceItem({
     },
   });
 
-  const isDropTarget = !!acceptsSecretImport || !!sshHostValue;
+  // When a Cloudflare Tunnel (or other SSH-tunnel source) is being dragged and
+  // this row is an SSH host, become a cross-account "set up SSH tunnel" target.
+  const { active } = useDndContext();
+  const activeResource = active?.data.current?.resource as DraggableResource | undefined;
+  const tunnelAttachOk =
+    !!activeResource?.isTunnelSshSource &&
+    !!draggable.isSshHost &&
+    activeResource.id !== draggable.id;
+
+  const isDropTarget = !!acceptsSecretImport || !!sshHostValue || tunnelAttachOk;
   const { setNodeRef: setDropRef, isOver } = useDroppable({
-    id: `sidebar-resource:${draggable.id}`,
+    id: tunnelAttachOk ? `tunnel-ssh-attach:${draggable.id}` : `sidebar-resource:${draggable.id}`,
     disabled: !isDropTarget || isDragging,
+    ...(tunnelAttachOk ? { data: { target: draggable } } : {}),
   });
 
   const showDropHint = isOver && isDropTarget;
@@ -71,7 +81,11 @@ export function SidebarResourceItem({
     >
       <span className="text-on-surface-faint">⠿</span>
       <span className="truncate">{draggable.displayName}</span>
-      {showDropHint && <span className="ml-auto text-accent flex-shrink-0">Drop</span>}
+      {showDropHint && (
+        <span className="ml-auto text-accent flex-shrink-0">
+          {tunnelAttachOk ? "Set up SSH tunnel" : "Drop"}
+        </span>
+      )}
     </div>
   );
 }

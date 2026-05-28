@@ -51,6 +51,29 @@ export async function updateCloudResource(
   return invoke("cloud_update_resource", { orgId, body });
 }
 
+export async function cloudTunnelSshAttach(
+  orgId: string,
+  body: {
+    tunnel: { accountId: string; pluginId: string; resourceId: string };
+    host: { accountId: string; pluginId: string; resourceTypeId: string; resourceId: string };
+    hostname: string;
+    zoneId: string;
+    sshUsername: string;
+    sshKeyId?: string;
+  },
+): Promise<{
+  steps: Array<{ label: string; ok: boolean; detail?: string }>;
+  connectCommand?: string;
+}> {
+  return invoke("cloud_tunnel_ssh_attach", { orgId, body });
+}
+
+export async function cloudListSshKeys(
+  orgId: string,
+): Promise<Array<{ id: string; name: string }>> {
+  return invoke("cloud_list_ssh_keys", { orgId });
+}
+
 export async function getCloudCreateConfig(
   orgId: string,
   accountId: string,

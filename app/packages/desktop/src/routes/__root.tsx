@@ -12,6 +12,7 @@ import {
   normalizeResourceId,
   resourceTabTitle,
   toast,
+  TunnelSshAttachModal,
   useUIStore,
   useWorkspaceTabDocumentTitle,
   useWorkspaceTabHandlers,
@@ -19,6 +20,8 @@ import {
   OrgSwitcher,
   type OrgEntry,
   type DraggableResource,
+  type TunnelSshAttachZone,
+  type TunnelSshAttachKey,
   type WorkspaceTab,
   type WorkspaceTabTarget,
 } from "@infrawrench/ui";
@@ -146,6 +149,13 @@ function RootLayout() {
   const hash = useRouterState({ select: (state) => state.location.hash });
   const [showAddAccount, setShowAddAccount] = useState(false);
   const [tabsValidated, setTabsValidated] = useState(false);
+  const [tunnelAttach, setTunnelAttach] = useState<{
+    tunnel: DraggableResource;
+    host: DraggableResource;
+    zones: TunnelSshAttachZone[];
+    sshKeys: TunnelSshAttachKey[];
+    defaultUsername: string;
+  } | null>(null);
 
   const [cloudOrgs, setCloudOrgs] = useState<CloudOrg[]>([]);
   const [activeOrgId, setActiveOrgId] = useState<string | null>(
@@ -289,6 +299,40 @@ function RootLayout() {
     );
   }
 
+  async function handleTunnelSshAttach(tunnel: DraggableResource, host: DraggableResource) {
+    const orgId = useUIStore.getState().activeCloudOrgId;
+    if (!orgId) {
+      toast.error("Set up SSH over tunnel runs through the cloud", {
+        description: "Sign in to an organization to use this.",
+      });
+      return;
+    }
+    try {
+      const { getCloudCreateConfig, cloudListSshKeys } = await import("../lib/cloud-resources");
+      const [config, keys] = await Promise.all([
+        getCloudCreateConfig(orgId, tunnel.accountId, "dns-record", "cloudflare") as Promise<{
+          fields?: Array<{ key: string; options?: { id: string; label: string }[] }>;
+        }>,
+        cloudListSshKeys(orgId),
+      ]);
+      const zones: TunnelSshAttachZone[] = (
+        config.fields?.find((f) => f.key === "zoneId")?.options ?? []
+      ).map((o) => ({ id: o.id, label: o.label }));
+      const sshKeys: TunnelSshAttachKey[] = (keys ?? []).map((k) => ({ id: k.id, label: k.name }));
+      setTunnelAttach({
+        tunnel,
+        host,
+        zones,
+        sshKeys,
+        defaultUsername: String(host.fields["sshUsername"] ?? "root"),
+      });
+    } catch (e) {
+      toast.error("Couldn't start SSH tunnel setup", {
+        description: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+
   function handleTabDrop(event: DragEndEvent) {
     const { active, over } = event;
     if (!over) return;
@@ -359,6 +403,7 @@ function RootLayout() {
       }}
       onSecretDrop={handleSecretDrop}
       onResourceAttach={handleResourceAttach}
+      onTunnelSshAttach={(t, h) => void handleTunnelSshAttach(t, h)}
       onTabDrop={handleTabDrop}
     >
       <div className="flex flex-col h-screen bg-surface text-on-surface select-none">
@@ -527,6 +572,36 @@ function RootLayout() {
       <SwipeIndicator gesture={swipeGesture} />
       <SshHostKeyPromptHost />
       <UpdatePromptHost />
+      {tunnelAttach && (
+        <TunnelSshAttachModal
+          tunnelName={tunnelAttach.tunnel.displayName}
+          hostName={tunnelAttach.host.displayName}
+          zones={tunnelAttach.zones}
+          sshKeys={tunnelAttach.sshKeys}
+          showSshKeyPicker
+          defaultUsername={tunnelAttach.defaultUsername}
+          onClose={() => setTunnelAttach(null)}
+          onRun={async (params) => {
+            const orgId = useUIStore.getState().activeCloudOrgId;
+            if (!orgId) throw new Error("Not signed in to an organization");
+            const { cloudTunnelSshAttach } = await import("../lib/cloud-resources");
+            return cloudTunnelSshAttach(orgId, {
+              tunnel: {
+                accountId: tunnelAttach.tunnel.accountId,
+                pluginId: tunnelAttach.tunnel.pluginId,
+                resourceId: tunnelAttach.tunnel.id,
+              },
+              host: {
+                accountId: tunnelAttach.host.accountId,
+                pluginId: tunnelAttach.host.pluginId,
+                resourceTypeId: tunnelAttach.host.resourceTypeId,
+                resourceId: tunnelAttach.host.id,
+              },
+              ...params,
+            });
+          }}
+        />
+      )}
     </DndShell>
   );
 }

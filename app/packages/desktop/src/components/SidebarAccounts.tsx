@@ -59,6 +59,7 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
     >
   >({});
   const [kubeconfigTypeIds, setKubeconfigTypeIds] = useState<Set<string>>(new Set());
+  const [tunnelSshSourceTypeIds, setTunnelSshSourceTypeIds] = useState<Set<string>>(new Set());
   const [metricsTypeIds, setMetricsTypeIds] = useState<Set<string>>(new Set());
   const [resourceSshHosts, setResourceSshHosts] = useState<Record<string, string>>({});
   const [resourceSshUsernames, setResourceSshUsernames] = useState<Record<string, string>>({});
@@ -180,15 +181,18 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
 
         const kcTypes = new Set<string>();
         const metricTypes = new Set<string>();
+        const tunnelSshTypes = new Set<string>();
         for (const p of plugins) {
           for (const rt of p.plugin.resourceTypes) {
             if (rt.outputs?.some((o) => o.key === "kubeconfig")) kcTypes.add(rt.id);
             if (rt.supportsMetrics) metricTypes.add(rt.id);
+            if (rt.sshTunnelAttachSource) tunnelSshTypes.add(rt.id);
           }
         }
         if (!cancelled) {
           setKubeconfigTypeIds(kcTypes);
           setMetricsTypeIds(metricTypes);
+          setTunnelSshSourceTypeIds(tunnelSshTypes);
         }
 
         const groupMap = new Map<string, PluginGroup>();
@@ -605,6 +609,12 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
                           displayName: resource.displayName,
                           fields: resource.fields,
                           externalId: resource.externalId,
+                          ...(sshEndpointByTypeId[resource.resourceTypeId]
+                            ? { isSshHost: true }
+                            : {}),
+                          ...(tunnelSshSourceTypeIds.has(resource.resourceTypeId)
+                            ? { isTunnelSshSource: true }
+                            : {}),
                         };
                         const sshHost = resourceSshHosts[resource.id];
                         const supportsMetrics = metricsTypeIds.has(resource.resourceTypeId);
