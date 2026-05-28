@@ -312,18 +312,46 @@ export function formatErrorMessage(error: unknown): string {
 }
 
 /** Evaluate whether a create-form field should be visible based on showWhen conditions. */
-export function evaluateShowWhen(
-  field: {
-    showWhen?: { fieldKey: string; fieldValue?: string; fieldValues?: string[] };
-  },
+interface ShowWhenConditionLike {
+  fieldKey: string;
+  fieldValue?: string;
+  fieldValues?: string[];
+  fieldValuesNot?: string[];
+}
+
+type ShowWhenRuleLike =
+  | ShowWhenConditionLike
+  | { allOf: ShowWhenConditionLike[] }
+  | { anyOf: ShowWhenConditionLike[] };
+
+function evaluateShowWhenCondition(
+  cond: ShowWhenConditionLike,
   fields: Record<string, string>,
 ): boolean {
-  if (!field.showWhen) return true;
-  const current = fields[field.showWhen.fieldKey];
-  if (field.showWhen.fieldValues && field.showWhen.fieldValues.length > 0) {
-    return field.showWhen.fieldValues.includes(current ?? "");
+  const current = fields[cond.fieldKey] ?? "";
+  if (cond.fieldValuesNot && cond.fieldValuesNot.length > 0) {
+    if (cond.fieldValuesNot.includes(current)) return false;
   }
-  return current === field.showWhen.fieldValue;
+  if (cond.fieldValues && cond.fieldValues.length > 0) {
+    return cond.fieldValues.includes(current);
+  }
+  if (cond.fieldValue !== undefined) {
+    return current === cond.fieldValue;
+  }
+  // Only a `fieldValuesNot` constraint (or an empty condition) — the negative
+  // check above already decided it; here it passed.
+  return true;
+}
+
+export function evaluateShowWhen(
+  field: { showWhen?: ShowWhenRuleLike },
+  fields: Record<string, string>,
+): boolean {
+  const rule = field.showWhen;
+  if (!rule) return true;
+  if ("allOf" in rule) return rule.allOf.every((c) => evaluateShowWhenCondition(c, fields));
+  if ("anyOf" in rule) return rule.anyOf.some((c) => evaluateShowWhenCondition(c, fields));
+  return evaluateShowWhenCondition(rule, fields);
 }
 
 /** Build the initial field values from a CreateResourceConfig's field definitions. */
@@ -390,6 +418,7 @@ interface ChildResourceInput {
   resourceTypeId: string;
   accountId: string;
   status?: { kind: "status-dot"; status: string; label?: string } | undefined;
+  fields?: Record<string, unknown> | undefined;
 }
 
 /** Minimal child type info for building groups. */

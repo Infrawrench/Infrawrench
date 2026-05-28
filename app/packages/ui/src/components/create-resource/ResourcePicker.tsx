@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { encodeOutputRef, parseOutputRef } from "@infrawrench/plugin-base";
 
 export interface ResourcePickerOption {
   id: string;
@@ -14,10 +15,17 @@ export function ResourcePicker({
   resources,
   value,
   onChange,
+  /**
+   * When true, selecting a resource emits an encoded *live output reference*
+   * (identity + value) instead of the flattened literal. The host persists it
+   * as an association so the consuming field tracks the source over time.
+   */
+  referenceMode = false,
 }: {
   resources: ResourcePickerOption[];
   value: string;
   onChange: (v: string) => void;
+  referenceMode?: boolean;
 }) {
   const [search, setSearch] = useState("");
   const filtered = useMemo(() => {
@@ -25,7 +33,29 @@ export function ResourcePicker({
     return q ? resources.filter((r) => r.label.toLowerCase().includes(q)) : resources;
   }, [resources, search]);
 
-  const selectedResource = resources.find((r) => r.outputValue === value);
+  const handleSelect = (r: ResourcePickerOption) => {
+    if (referenceMode) {
+      onChange(
+        encodeOutputRef({
+          pluginId: r.pluginId,
+          resourceTypeId: r.resourceTypeId,
+          resourceId: r.id,
+          accountId: r.accountId,
+          outputKey: r.outputKey,
+          value: r.outputValue,
+        }),
+      );
+    } else {
+      onChange(r.outputValue);
+    }
+  };
+
+  // In reference mode the form value is an encoded ref — match the selected row
+  // by its resource id. Otherwise match by the literal output value.
+  const refValue = referenceMode ? parseOutputRef(value) : null;
+  const selectedResource = referenceMode
+    ? resources.find((r) => r.id === refValue?.resourceId)
+    : resources.find((r) => r.outputValue === value);
 
   if (resources.length === 0) {
     return <p className="text-sm text-on-surface-faint py-1">No compatible resources found.</p>;
@@ -51,7 +81,7 @@ export function ResourcePicker({
               type="button"
               role="option"
               aria-selected={selectedResource?.id === r.id}
-              onClick={() => onChange(r.outputValue)}
+              onClick={() => handleSelect(r)}
               className={`w-full text-left px-3 py-2.5 text-sm transition-colors flex items-center gap-3 ${
                 selectedResource?.id === r.id
                   ? "bg-accent-muted text-accent-on-muted"

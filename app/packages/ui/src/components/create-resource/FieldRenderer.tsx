@@ -41,7 +41,7 @@ export interface ResourcePickerCallbacks {
   loadResources: (
     sources: AssociationSource[],
     accountId: string,
-    opts?: { regionHint?: string },
+    opts?: { regionHint?: string; crossAccount?: boolean },
   ) => Promise<ResourcePickerOption[]>;
   /** Account ID to load resources from */
   accountId?: string;
@@ -349,6 +349,7 @@ export function FieldRenderer({
               field.scopeFromFieldKey ? (formValues?.[field.scopeFromFieldKey] ?? "") : ""
             }
             refreshKey={fieldActionProps?.refreshKeyByKey?.[field.key] ?? 0}
+            referenceMode={field.referenceMode ?? false}
           />
         )}
 
@@ -393,13 +394,14 @@ function ResourcePickerResolver({
   onChange,
   regionHint,
   refreshKey,
+  referenceMode,
 }: {
   sources: AssociationSource[];
   accountId: string;
   loadResources: (
     sources: AssociationSource[],
     accountId: string,
-    opts?: { regionHint?: string },
+    opts?: { regionHint?: string; crossAccount?: boolean },
   ) => Promise<ResourcePickerOption[]>;
   value: string;
   onChange: (v: string) => void;
@@ -407,6 +409,11 @@ function ResourcePickerResolver({
   regionHint: string;
   /** Bumped by the form to force a refetch after a "+ Create new …" action. */
   refreshKey: number;
+  /**
+   * When true the picker emits live output references and searches across every
+   * account whose plugin matches a source (not just the creating account).
+   */
+  referenceMode: boolean;
 }) {
   const [resources, setResources] = useState<ResourcePickerOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -421,7 +428,10 @@ function ResourcePickerResolver({
     let mounted = true;
     setLoading(true);
     setError(null);
-    loadResources(sources, accountId, regionHint ? { regionHint } : undefined)
+    loadResources(sources, accountId, {
+      ...(regionHint ? { regionHint } : {}),
+      ...(referenceMode ? { crossAccount: true } : {}),
+    })
       .then((opts) => {
         if (!mounted) return;
         setResources(opts);
@@ -458,12 +468,21 @@ function ResourcePickerResolver({
   if (resources.length === 0) {
     return (
       <p className="text-xs text-on-surface-faint py-1">
-        No matching resources found in this account.
+        {referenceMode
+          ? "No matching resources found across your accounts. Switch to a custom value."
+          : "No matching resources found in this account."}
       </p>
     );
   }
 
-  return <ResourcePicker resources={resources} value={value} onChange={onChange} />;
+  return (
+    <ResourcePicker
+      resources={resources}
+      value={value}
+      onChange={onChange}
+      referenceMode={referenceMode}
+    />
+  );
 }
 
 /**

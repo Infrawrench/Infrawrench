@@ -385,6 +385,9 @@ export function useCreateResourceForm(
       const submitFields: Record<string, string> = {};
       const cfg = configWithPricing ?? config;
       for (const f of cfg?.fields ?? []) {
+        // Transient fields (e.g. a mode toggle) are UI-only controls — never
+        // submit them to the plugin.
+        if (f.transient) continue;
         if (!evaluateShowWhen(f, fields)) continue;
         if (fields[f.key] !== undefined) submitFields[f.key] = fields[f.key]!;
       }

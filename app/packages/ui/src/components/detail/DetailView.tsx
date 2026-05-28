@@ -16,6 +16,7 @@ import type {
 import { MetricChart } from "../charts/MetricChart.js";
 import { SchemaRenderer, StatusDotNodeRenderer } from "../renderer/SchemaRenderer.js";
 import { AssociationPicker } from "./AssociationPicker.js";
+import { ChildResourceTable } from "./ChildResourceTable.js";
 import { SqlEditorView, type QueryResult } from "./SqlEditorView.js";
 import { ManifestEditorView } from "./ManifestEditorView.js";
 import { BucketPolicyEditor } from "./BucketPolicyEditor.js";
@@ -110,6 +111,8 @@ interface DetailViewProps {
   onChildClick?: (child: ChildResource) => void;
   /** Called when the user clicks "Create" for a child resource type */
   onChildCreate?: (group: ChildResourceGroup) => void;
+  /** Called when the user deletes a child resource from a child table */
+  onChildDelete?: (child: ChildResource) => void | Promise<void>;
   /** Custom renderer for child resource pills — allows the host to provide draggable pills */
   renderChildResource?: (child: ChildResource, group: ChildResourceGroup) => React.ReactNode;
   /** Time-series metric data — rendered as charts in a Metrics tab when present */
@@ -191,6 +194,7 @@ export function DetailView({
   childResourceGroups = [],
   onChildClick,
   onChildCreate,
+  onChildDelete,
   renderChildResource,
   metricSeries,
   renderNoSqlBrowser,
@@ -598,45 +602,61 @@ export function DetailView({
             </div>
           ))}
 
-          {childResourceGroups.map((group) => (
-            <div key={group.typeId}>
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-xs font-semibold uppercase tracking-wide text-on-surface-muted">
-                  {group.pluralDisplayName}
-                </h3>
-                {group.supportsCreate && onChildCreate && (
-                  <button
-                    type="button"
-                    onClick={() => onChildCreate(group)}
-                    className="text-xs text-on-surface-faint hover:text-accent transition-colors"
-                  >
-                    + Create {group.displayName}
-                  </button>
-                )}
-              </div>
-              {group.resources.length === 0 ? (
-                <p className="text-xs text-on-surface-faint">
-                  No {group.pluralDisplayName.toLowerCase()} yet.
-                </p>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {group.resources.map((child) =>
-                    renderChildResource ? (
-                      <React.Fragment key={child.id}>
-                        {renderChildResource(child, group)}
-                      </React.Fragment>
-                    ) : (
-                      <ChildResourcePill
-                        key={child.id}
-                        child={child}
-                        onClick={() => onChildClick?.(child)}
-                      />
-                    ),
+          {schema.childTables?.map((tableSpec) => {
+            const group = childResourceGroups.find((g) => g.typeId === tableSpec.typeId);
+            return (
+              <ChildResourceTable
+                key={`table:${tableSpec.typeId}`}
+                spec={tableSpec}
+                group={group}
+                onRowClick={onChildClick}
+                {...(onChildCreate ? { onCreate: onChildCreate } : {})}
+                {...(onChildDelete ? { onDelete: onChildDelete } : {})}
+              />
+            );
+          })}
+
+          {childResourceGroups
+            .filter((group) => !schema.childTables?.some((t) => t.typeId === group.typeId))
+            .map((group) => (
+              <div key={group.typeId}>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-on-surface-muted">
+                    {group.pluralDisplayName}
+                  </h3>
+                  {group.supportsCreate && onChildCreate && (
+                    <button
+                      type="button"
+                      onClick={() => onChildCreate(group)}
+                      className="text-xs text-on-surface-faint hover:text-accent transition-colors"
+                    >
+                      + Create {group.displayName}
+                    </button>
                   )}
                 </div>
-              )}
-            </div>
-          ))}
+                {group.resources.length === 0 ? (
+                  <p className="text-xs text-on-surface-faint">
+                    No {group.pluralDisplayName.toLowerCase()} yet.
+                  </p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {group.resources.map((child) =>
+                      renderChildResource ? (
+                        <React.Fragment key={child.id}>
+                          {renderChildResource(child, group)}
+                        </React.Fragment>
+                      ) : (
+                        <ChildResourcePill
+                          key={child.id}
+                          child={child}
+                          onClick={() => onChildClick?.(child)}
+                        />
+                      ),
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
         </div>
       )}
 

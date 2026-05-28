@@ -21,6 +21,8 @@ export interface ChildResource {
   accountId: string;
   status?: StatusDotNode | undefined;
   subtitle?: string | undefined;
+  /** Non-secret field values — populated when the detail renders a child table. */
+  fields?: Record<string, unknown> | undefined;
 }
 
 /** A group of child resources by type */
