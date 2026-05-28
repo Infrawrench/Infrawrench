@@ -159,6 +159,14 @@ export type { CreateResourceModalProps } from "./components/CreateResourceModal.
 
 export { EditResourceModal } from "./components/EditResourceModal.js";
 export type { EditResourceModalProps } from "./components/EditResourceModal.js";
+export { TunnelSshAttachModal } from "./components/detail/TunnelSshAttachModal.js";
+export type {
+  TunnelSshAttachModalProps,
+  TunnelSshAttachResult,
+  TunnelSshAttachStep,
+  TunnelSshAttachZone,
+  TunnelSshAttachKey,
+} from "./components/detail/TunnelSshAttachModal.js";
 
 export { CredentialExportModal } from "./components/CredentialExportModal.js";
 export type { CredentialExportModalProps } from "./components/CredentialExportModal.js";

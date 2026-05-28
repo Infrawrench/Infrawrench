@@ -113,6 +113,10 @@ export interface ResourceTypeSummary {
   parentTypeId: string | undefined;
   supportsCreate: boolean;
   attachTargets?: import("@infrawrench/plugin-base").AttachTarget[];
+  /** True when this type declares an sshEndpoint — a valid SSH-tunnel drop target. */
+  isSshHost?: boolean;
+  /** True when this type can be dragged onto SSH hosts to set up a tunnel. */
+  sshTunnelAttachSource?: boolean;
 }
 
 /**

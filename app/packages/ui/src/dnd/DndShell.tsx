@@ -23,6 +23,8 @@ export interface DndShellProps {
   ) => void;
   /** Called when a resource is dropped onto another resource of the same account to attach it */
   onResourceAttach?: (source: DraggableResource, target: DraggableResource) => void;
+  /** Called when an SSH-tunnel source (e.g. Cloudflare Tunnel) is dropped onto an SSH host */
+  onTunnelSshAttach?: (tunnel: DraggableResource, host: DraggableResource) => void;
   /** Called for tab bar drops (desktop: tab reorder/pin) */
   onTabDrop?: (event: DragEndEvent) => void;
 }
@@ -32,6 +34,7 @@ export function DndShell({
   onPinToDashboard,
   onSecretDrop,
   onResourceAttach,
+  onTunnelSshAttach,
   onTabDrop,
 }: DndShellProps) {
   const [dragPreview, setDragPreview] = useState<string | null>(null);
@@ -74,6 +77,15 @@ export function DndShell({
 
     // Secret import drops — handled by PeerPaneView directly
     if (overId.startsWith("secret-import:")) return;
+
+    // Tunnel → SSH host drops — cross-account; orchestrated by the host
+    if (overId.startsWith("tunnel-ssh-attach:")) {
+      if (!resource) return;
+      const target = over.data.current?.target as DraggableResource | undefined;
+      if (!target || resource.id === target.id) return;
+      onTunnelSshAttach?.(resource, target);
+      return;
+    }
 
     // Attach drops — dragging a resource onto a same-account target resource
     if (overId.startsWith("attach-target:")) {

@@ -1,0 +1,270 @@
+import { useMemo, useState } from "react";
+import { Modal } from "../Modal.js";
+import { ErrorNotice } from "../ErrorNotice.js";
+
+export interface TunnelSshAttachStep {
+  label: string;
+  ok: boolean;
+  detail?: string;
+}
+
+export interface TunnelSshAttachResult {
+  steps: TunnelSshAttachStep[];
+  /** Final client-side connect command to show the user. */
+  connectCommand?: string;
+}
+
+export interface TunnelSshAttachZone {
+  id: string;
+  label: string;
+}
+
+export interface TunnelSshAttachKey {
+  id: string;
+  label: string;
+}
+
+export interface TunnelSshAttachModalProps {
+  tunnelName: string;
+  hostName: string;
+  /** CF zones in the tunnel's account — the hostname's parent zone. */
+  zones: TunnelSshAttachZone[];
+  /** SSH keys to authenticate the install (web/org keystore). Empty on desktop (agent-based). */
+  sshKeys: TunnelSshAttachKey[];
+  /** When false, hide the SSH key picker (desktop uses the local agent/1Password). */
+  showSshKeyPicker: boolean;
+  /** Prefilled SSH username derived from the host's sshEndpoint. */
+  defaultUsername: string;
+  onRun: (params: {
+    hostname: string;
+    zoneId: string;
+    sshUsername: string;
+    sshKeyId?: string;
+  }) => Promise<TunnelSshAttachResult>;
+  onClose: () => void;
+}
+
+const inputClass =
+  "w-full px-3 py-2 text-sm bg-surface-overlay border border-border rounded-lg text-on-surface focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500";
+
+/**
+ * Confirm + run the "set up SSH over a Cloudflare Tunnel" flow: point the
+ * tunnel's ingress at the host's SSH, create the routing DNS record, then SSH
+ * into the host and install/run cloudflared. The install script is shown for
+ * transparency; the user clicks Run.
+ */
+export function TunnelSshAttachModal({
+  tunnelName,
+  hostName,
+  zones,
+  sshKeys,
+  showSshKeyPicker,
+  defaultUsername,
+  onRun,
+  onClose,
+}: TunnelSshAttachModalProps) {
+  const [hostname, setHostname] = useState("");
+  const [zoneId, setZoneId] = useState(zones[0]?.id ?? "");
+  const [sshUsername, setSshUsername] = useState(defaultUsername);
+  const [sshKeyId, setSshKeyId] = useState(sshKeys[0]?.id ?? "");
+  const [running, setRunning] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<TunnelSshAttachResult | null>(null);
+
+  const scriptPreview = useMemo(
+    () =>
+      [
+        "# On the host (run via SSH):",
+        "curl -fsSL -o cloudflared … (arch-detected .deb or binary)",
+        "sudo dpkg -i cloudflared.deb   # or install the binary",
+        "sudo cloudflared service install <TUNNEL_TOKEN>",
+      ].join("\n"),
+    [],
+  );
+
+  const canRun =
+    hostname.trim().length > 0 &&
+    zoneId.length > 0 &&
+    sshUsername.trim().length > 0 &&
+    (!showSshKeyPicker || sshKeyId.length > 0) &&
+    !running;
+
+  const handleRun = async () => {
+    if (!canRun) return;
+    setRunning(true);
+    setError(null);
+    setResult(null);
+    try {
+      const res = await onRun({
+        hostname: hostname.trim(),
+        zoneId,
+        sshUsername: sshUsername.trim(),
+        ...(showSshKeyPicker ? { sshKeyId } : {}),
+      });
+      setResult(res);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to set up the tunnel");
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  return (
+    <Modal onClose={onClose}>
+      <div className="bg-surface-raised border border-border-strong rounded-xl shadow-2xl flex flex-col w-[560px] max-h-[80vh]">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border flex-shrink-0">
+          <h2 className="text-base font-semibold text-on-surface">Set up SSH over tunnel</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="text-on-surface-faint hover:text-on-surface-secondary text-xl leading-none"
+            aria-label="Close"
+          >
+            &times;
+          </button>
+        </div>
+
+        <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
+          <p className="text-xs text-on-surface-muted">
+            Routes <span className="text-on-surface">{hostName}</span>&rsquo;s SSH through tunnel{" "}
+            <span className="text-on-surface">{tunnelName}</span>. The host must currently be
+            SSH-reachable (we connect to install cloudflared) and the SSH user needs sudo. Linux
+            only.
+          </p>
+
+          {result ? (
+            <div className="space-y-3">
+              {result.steps.map((s, i) => (
+                <div key={i} className="flex items-start gap-2 text-sm">
+                  <span className={s.ok ? "text-emerald-400" : "text-red-400"}>
+                    {s.ok ? "✓" : "✗"}
+                  </span>
+                  <div>
+                    <div className="text-on-surface-secondary">{s.label}</div>
+                    {s.detail && (
+                      <div className="text-xs text-on-surface-faint font-mono break-words whitespace-pre-wrap">
+                        {s.detail}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {result.connectCommand && (
+                <div>
+                  <p className="text-xs font-medium text-on-surface-secondary mb-1">Connect with</p>
+                  <code className="block text-xs font-mono bg-surface-overlay border border-border rounded p-2 text-accent break-all">
+                    {result.connectCommand}
+                  </code>
+                </div>
+              )}
+            </div>
+          ) : (
+            <>
+              <div>
+                <label className="block text-xs font-medium text-on-surface-secondary mb-1.5">
+                  Public hostname<span className="text-red-500 ml-0.5">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={hostname}
+                  onChange={(e) => setHostname(e.target.value)}
+                  placeholder="ssh.example.com"
+                  className={inputClass}
+                  aria-label="Public hostname"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-on-surface-secondary mb-1.5">
+                  Zone<span className="text-red-500 ml-0.5">*</span>
+                </label>
+                <select
+                  value={zoneId}
+                  onChange={(e) => setZoneId(e.target.value)}
+                  className={inputClass}
+                  aria-label="Zone"
+                >
+                  {zones.length === 0 && <option value="">No zones found</option>}
+                  {zones.map((z) => (
+                    <option key={z.id} value={z.id}>
+                      {z.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-on-surface-secondary mb-1.5">
+                  SSH username<span className="text-red-500 ml-0.5">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={sshUsername}
+                  onChange={(e) => setSshUsername(e.target.value)}
+                  placeholder="ubuntu"
+                  className={inputClass}
+                  aria-label="SSH username"
+                />
+              </div>
+              {showSshKeyPicker && (
+                <div>
+                  <label className="block text-xs font-medium text-on-surface-secondary mb-1.5">
+                    SSH key<span className="text-red-500 ml-0.5">*</span>
+                  </label>
+                  <select
+                    value={sshKeyId}
+                    onChange={(e) => setSshKeyId(e.target.value)}
+                    className={inputClass}
+                    aria-label="SSH key"
+                  >
+                    {sshKeys.length === 0 && <option value="">No SSH keys in this org</option>}
+                    {sshKeys.map((k) => (
+                      <option key={k.id} value={k.id}>
+                        {k.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <div>
+                <p className="text-xs font-medium text-on-surface-secondary mb-1">
+                  Runs on the host
+                </p>
+                <pre className="text-[11px] font-mono bg-surface-overlay border border-border rounded p-2 text-on-surface-faint whitespace-pre-wrap">
+                  {scriptPreview}
+                </pre>
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="px-6 py-4 border-t border-border flex-shrink-0">
+          {error && (
+            <ErrorNotice
+              message={error}
+              className="mb-3 rounded bg-red-100 dark:bg-red-900/20 px-3 py-2 max-h-40 overflow-y-auto"
+              textClassName="text-xs text-red-500 dark:text-red-300 leading-relaxed break-words"
+            />
+          )}
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 px-4 py-2 text-sm text-on-surface-tertiary hover:text-on-surface-secondary bg-surface-overlay hover:bg-surface-sunken rounded-lg transition-colors"
+            >
+              {result ? "Close" : "Cancel"}
+            </button>
+            {!result && (
+              <button
+                type="button"
+                onClick={() => void handleRun()}
+                disabled={!canRun}
+                className="flex-1 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded-lg transition-colors"
+              >
+                {running ? "Setting up…" : "Run"}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </Modal>
+  );
+}

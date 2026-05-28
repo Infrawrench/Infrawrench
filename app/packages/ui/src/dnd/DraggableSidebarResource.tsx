@@ -50,19 +50,31 @@ export function DraggableSidebarResource({
     (!attachMatch.matchField ||
       String(activeResource?.fields?.[attachMatch.matchField] ?? "") ===
         String(resource.fields[attachMatch.matchField] ?? ""));
-  const isDropTarget = secretDropOk || attachDropOk;
-  const effectiveDroppableId = attachDropOk
-    ? `attach-target:${resource.id}`
-    : (droppableId ?? `sidebar-resource:${resource.id}`);
+  // Tunnel → SSH host: account-independent (the tunnel and host usually live in
+  // different provider accounts).
+  const tunnelAttachDropOk =
+    !!activeResource?.isTunnelSshSource &&
+    !!resource.isSshHost &&
+    activeResource?.id !== resource.id;
+  const isDropTarget = secretDropOk || attachDropOk || tunnelAttachDropOk;
+  const effectiveDroppableId = tunnelAttachDropOk
+    ? `tunnel-ssh-attach:${resource.id}`
+    : attachDropOk
+      ? `attach-target:${resource.id}`
+      : (droppableId ?? `sidebar-resource:${resource.id}`);
 
   const { setNodeRef: setDropRef, isOver } = useDroppable({
     id: effectiveDroppableId,
     disabled: !isDropTarget,
-    ...(attachDropOk ? { data: { target: resource } } : {}),
+    ...(attachDropOk || tunnelAttachDropOk ? { data: { target: resource } } : {}),
   });
 
   const showDropHint = isOver && isDropTarget && !isDragging;
-  const dropHintLabel = attachDropOk ? (attachMatch?.verb ?? "Attach") : "Drop";
+  const dropHintLabel = tunnelAttachDropOk
+    ? "Set up SSH tunnel"
+    : attachDropOk
+      ? (attachMatch?.verb ?? "Attach")
+      : "Drop";
 
   return (
     <div ref={setDropRef}>
