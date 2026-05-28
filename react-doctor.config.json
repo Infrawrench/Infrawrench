@@ -1,0 +1,14 @@
+{
+  "ignore": {
+    "overrides": [
+      {
+        "files": ["**/routes/**", "**/src/routes/**"],
+        "rules": ["react-doctor/only-export-components"]
+      },
+      {
+        "files": ["**/UpdatePromptHost.tsx", "**/SshHostKeyPromptHost.tsx"],
+        "rules": ["react-doctor/effect-needs-cleanup"]
+      }
+    ]
+  }
+}
