@@ -58,6 +58,8 @@ export async function cloudTunnelSshAttach(
     host: { accountId: string; pluginId: string; resourceTypeId: string; resourceId: string };
     hostname: string;
     zoneId: string;
+    serviceType?: "http" | "https" | "ssh" | "tcp";
+    port?: string;
     sshUsername: string;
     sshKeyId?: string;
   },

@@ -1,10 +1,10 @@
 ---
-title: SSH over a Cloudflare Tunnel
-description: Drag a Cloudflare Tunnel onto a server to expose its SSH over Cloudflare's edge — no inbound ports.
+title: Expose a service over a Cloudflare Tunnel
+description: Drag a Cloudflare Tunnel onto a server to expose HTTP, SSH, or TCP over Cloudflare's edge — no inbound ports.
 sidebar_order: 9
 ---
 
-You can wire a server's SSH through a [Cloudflare Tunnel](../plugins/cloudflare.md) by **dragging the tunnel onto the server** — across accounts and providers. Infrawrench sets up the tunnel routing and installs `cloudflared` on the box for you.
+You can wire a server's service — **HTTP, HTTPS, SSH, or TCP** — through a [Cloudflare Tunnel](../plugins/cloudflare.md) by **dragging the tunnel onto the server**, across accounts and providers. Infrawrench sets up the tunnel routing and installs `cloudflared` on the box for you.
 
 ## How it works
 
@@ -12,22 +12,22 @@ Drag a **Tunnel** (from your Cloudflare account) onto any server resource that s
 
 In the form you pick:
 
-- a **public hostname** (e.g. `ssh.example.com`),
-- the **zone** it belongs to (your Cloudflare zones),
-- the **SSH username** (prefilled from the server), and
-- the **SSH key** used to connect for the install.
+- the **service** to expose — HTTP, HTTPS, SSH, or TCP — and its **local port** (e.g. `http://localhost:8080`, `ssh://localhost:22`),
+- a **public hostname** (e.g. `app.example.com`),
+- the **zone** it belongs to (your Cloudflare zones), and
+- the **SSH username + key** used to connect _for the install_ (the SSH key authenticates the box so we can install cloudflared — it isn't necessarily what you're exposing).
 
 On **Run**, infrawrench:
 
-1. points the tunnel's ingress at the host's SSH (`ssh://localhost:22`),
+1. points the tunnel's ingress at the chosen service (e.g. `http://localhost:8080`),
 2. creates a proxied DNS `CNAME` routing the hostname to the tunnel, and
 3. connects to the server over SSH and installs + starts `cloudflared` with the tunnel token.
 
-When it's done you get the connect command:
+When it's done you get the way to reach it:
 
-```
-ssh -o ProxyCommand="cloudflared access ssh --hostname ssh.example.com" user@ssh.example.com
-```
+- **HTTP/HTTPS** — just open `https://app.example.com` in a browser (Cloudflare terminates TLS; no client needed).
+- **SSH** — `ssh -o ProxyCommand="cloudflared access ssh --hostname app.example.com" user@app.example.com`
+- **TCP** — `cloudflared access tcp --hostname app.example.com --url localhost:<port>`
 
 <insert [Dragging a Cloudflare Tunnel onto a server resource in the sidebar, showing the "Set up SSH tunnel" drop hint] here>
 

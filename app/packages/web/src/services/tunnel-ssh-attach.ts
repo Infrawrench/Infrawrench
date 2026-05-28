@@ -19,15 +19,29 @@ export interface TunnelSshAttachResult {
   connectCommand?: string;
 }
 
+export type TunnelServiceType = "http" | "https" | "ssh" | "tcp";
+
 export interface TunnelSshAttachInput {
   organizationId: string;
   tunnel: { accountId: string; pluginId: string; resourceId: string };
   host: { accountId: string; pluginId: string; resourceTypeId: string; resourceId: string };
   hostname: string;
   zoneId: string;
+  /** What the tunnel exposes on the host. Defaults to ssh. */
+  serviceType?: TunnelServiceType;
+  /** Local port the service listens on. Defaults per serviceType. */
+  port?: string;
+  /** SSH username used to connect for the cloudflared install. */
   sshUsername: string;
   sshKeyId?: string;
 }
+
+const DEFAULT_PORT: Record<TunnelServiceType, string> = {
+  http: "80",
+  https: "443",
+  ssh: "22",
+  tcp: "0",
+};
 
 /**
  * Build the host-side install script. Detects arch, installs cloudflared (deb
@@ -51,9 +65,24 @@ export function buildCloudflaredInstallScript(token: string): string {
   ].join("\n");
 }
 
-/** Connect command the user runs locally once the tunnel is up. */
-export function tunnelConnectCommand(hostname: string, username: string): string {
-  return `ssh -o ProxyCommand="cloudflared access ssh --hostname ${hostname}" ${username}@${hostname}`;
+/** How to reach the service once the tunnel is up — depends on the protocol. */
+export function tunnelConnectCommand(
+  serviceType: TunnelServiceType,
+  hostname: string,
+  username: string,
+  port: string,
+): string {
+  switch (serviceType) {
+    case "http":
+    case "https":
+      // HTTP(S) is reachable directly in a browser — Cloudflare terminates TLS.
+      return `https://${hostname}`;
+    case "tcp":
+      return `cloudflared access tcp --hostname ${hostname} --url localhost:${port}`;
+    case "ssh":
+    default:
+      return `ssh -o ProxyCommand="cloudflared access ssh --hostname ${hostname}" ${username}@${hostname}`;
+  }
 }
 
 export async function runTunnelSshAttach(
@@ -61,6 +90,9 @@ export async function runTunnelSshAttach(
 ): Promise<TunnelSshAttachResult> {
   const steps: TunnelSshAttachStep[] = [];
   const tunnelId = input.tunnel.resourceId.split(":").slice(2).join(":");
+  const serviceType: TunnelServiceType = input.serviceType ?? "ssh";
+  const port = input.port && input.port.length > 0 ? input.port : DEFAULT_PORT[serviceType];
+  const service = `${serviceType}://localhost:${port}`;
 
   const cf = await getClientForAccount(input.tunnel.accountId, input.organizationId);
   if (!cf) {
@@ -69,14 +101,15 @@ export async function runTunnelSshAttach(
     };
   }
 
-  // 1. Tunnel ingress → ssh://localhost:22 for the hostname.
+  // 1. Tunnel ingress → <service> for the hostname.
   try {
     if (!cf.client.updateResource) throw new Error("Cloudflare plugin can't update the tunnel");
     await cf.client.updateResource("tunnel", input.tunnel.resourceId, input.tunnel.accountId, {
-      sshIngressHostname: input.hostname,
+      ingressHostname: input.hostname,
+      ingressService: service,
     });
     steps.push({
-      label: `Set tunnel ingress → ssh://localhost:22 for ${input.hostname}`,
+      label: `Set tunnel ingress → ${service} for ${input.hostname}`,
       ok: true,
     });
   } catch (e) {
@@ -154,7 +187,10 @@ export async function runTunnelSshAttach(
     return { steps };
   }
 
-  return { steps, connectCommand: tunnelConnectCommand(input.hostname, input.sshUsername) };
+  return {
+    steps,
+    connectCommand: tunnelConnectCommand(serviceType, input.hostname, input.sshUsername, port),
+  };
 }
 
 function errMsg(e: unknown): string {

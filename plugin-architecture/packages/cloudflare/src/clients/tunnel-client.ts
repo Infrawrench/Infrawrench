@@ -71,16 +71,19 @@ export async function getTunnelToken(
 
 /**
  * Set (replace) the tunnel's remotely-managed ingress so `hostname` routes to
- * the local SSH server on the machine running cloudflared. A catch-all
- * `http_status:404` rule is required by Cloudflare as the last entry.
+ * a local `service` on the machine running cloudflared — e.g.
+ * `ssh://localhost:22`, `http://localhost:8080`, `https://localhost:443`,
+ * `tcp://localhost:5432`. A catch-all `http_status:404` rule is required by
+ * Cloudflare as the last entry.
  *
  * Uses the raw PUT helper because the SDK's per-config typing is a moving
  * target; the `/configurations` endpoint accepts `{ config: { ingress } }`.
  */
-export async function setTunnelSshIngress(
+export async function setTunnelIngress(
   api: CloudflareApi,
   tunnelExternalId: string,
   hostname: string,
+  service: string,
 ): Promise<void> {
   const account_id = await api.getAccountId();
   await api.cf.put<unknown, unknown>(
@@ -88,7 +91,7 @@ export async function setTunnelSshIngress(
     {
       body: {
         config: {
-          ingress: [{ hostname, service: "ssh://localhost:22" }, { service: "http_status:404" }],
+          ingress: [{ hostname, service }, { service: "http_status:404" }],
         },
       },
     },

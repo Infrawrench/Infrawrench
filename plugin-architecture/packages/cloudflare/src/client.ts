@@ -1261,10 +1261,16 @@ export class CloudflareClient implements PluginClient {
       return dnsRecordApi.updateDnsRecord(this.api, externalId, accountId, fields);
     }
     if (typeId === "tunnel") {
-      // `sshIngressHostname` is the SSH-attach orchestrator's signal to point
-      // this tunnel's ingress at the local SSH server for that hostname.
-      if (fields["sshIngressHostname"]) {
-        await tunnelApi.setTunnelSshIngress(this.api, externalId, fields["sshIngressHostname"]);
+      // The tunnel-attach orchestrator points this tunnel's ingress at a local
+      // service (`ingressService`, e.g. ssh://localhost:22 or http://localhost:8080)
+      // for `ingressHostname`.
+      if (fields["ingressHostname"] && fields["ingressService"]) {
+        await tunnelApi.setTunnelIngress(
+          this.api,
+          externalId,
+          fields["ingressHostname"],
+          fields["ingressService"],
+        );
       }
       return this.getResource(typeId, resourceId, accountId);
     }

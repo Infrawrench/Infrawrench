@@ -166,6 +166,7 @@ export type {
   TunnelSshAttachStep,
   TunnelSshAttachZone,
   TunnelSshAttachKey,
+  TunnelServiceType,
 } from "./components/detail/TunnelSshAttachModal.js";
 
 export { CredentialExportModal } from "./components/CredentialExportModal.js";

@@ -24,6 +24,15 @@ export interface TunnelSshAttachKey {
   label: string;
 }
 
+export type TunnelServiceType = "http" | "https" | "ssh" | "tcp";
+
+const SERVICE_OPTIONS: { id: TunnelServiceType; label: string; defaultPort: string }[] = [
+  { id: "http", label: "HTTP", defaultPort: "80" },
+  { id: "https", label: "HTTPS", defaultPort: "443" },
+  { id: "ssh", label: "SSH", defaultPort: "22" },
+  { id: "tcp", label: "TCP", defaultPort: "" },
+];
+
 export interface TunnelSshAttachModalProps {
   tunnelName: string;
   hostName: string;
@@ -38,6 +47,8 @@ export interface TunnelSshAttachModalProps {
   onRun: (params: {
     hostname: string;
     zoneId: string;
+    serviceType: TunnelServiceType;
+    port: string;
     sshUsername: string;
     sshKeyId?: string;
   }) => Promise<TunnelSshAttachResult>;
@@ -65,11 +76,19 @@ export function TunnelSshAttachModal({
 }: TunnelSshAttachModalProps) {
   const [hostname, setHostname] = useState("");
   const [zoneId, setZoneId] = useState(zones[0]?.id ?? "");
+  const [serviceType, setServiceType] = useState<TunnelServiceType>("ssh");
+  const [port, setPort] = useState("22");
   const [sshUsername, setSshUsername] = useState(defaultUsername);
   const [sshKeyId, setSshKeyId] = useState(sshKeys[0]?.id ?? "");
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<TunnelSshAttachResult | null>(null);
+
+  // Switching service resets the port to that service's default.
+  const onServiceChange = (next: TunnelServiceType) => {
+    setServiceType(next);
+    setPort(SERVICE_OPTIONS.find((s) => s.id === next)?.defaultPort ?? "");
+  };
 
   const scriptPreview = useMemo(
     () =>
@@ -85,6 +104,7 @@ export function TunnelSshAttachModal({
   const canRun =
     hostname.trim().length > 0 &&
     zoneId.length > 0 &&
+    port.trim().length > 0 &&
     sshUsername.trim().length > 0 &&
     (!showSshKeyPicker || sshKeyId.length > 0) &&
     !running;
@@ -98,6 +118,8 @@ export function TunnelSshAttachModal({
       const res = await onRun({
         hostname: hostname.trim(),
         zoneId,
+        serviceType,
+        port: port.trim(),
         sshUsername: sshUsername.trim(),
         ...(showSshKeyPicker ? { sshKeyId } : {}),
       });
@@ -113,7 +135,7 @@ export function TunnelSshAttachModal({
     <Modal onClose={onClose}>
       <div className="bg-surface-raised border border-border-strong rounded-xl shadow-2xl flex flex-col w-[560px] max-h-[80vh]">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border flex-shrink-0">
-          <h2 className="text-base font-semibold text-on-surface">Set up SSH over tunnel</h2>
+          <h2 className="text-base font-semibold text-on-surface">Expose over Cloudflare Tunnel</h2>
           <button
             type="button"
             onClick={onClose}
@@ -126,8 +148,9 @@ export function TunnelSshAttachModal({
 
         <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
           <p className="text-xs text-on-surface-muted">
-            Routes <span className="text-on-surface">{hostName}</span>&rsquo;s SSH through tunnel{" "}
-            <span className="text-on-surface">{tunnelName}</span>. The host must currently be
+            Routes a public hostname through tunnel{" "}
+            <span className="text-on-surface">{tunnelName}</span> to a service on{" "}
+            <span className="text-on-surface">{hostName}</span>. The host must currently be
             SSH-reachable (we connect to install cloudflared) and the SSH user needs sudo. Linux
             only.
           </p>
@@ -191,9 +214,51 @@ export function TunnelSshAttachModal({
                   ))}
                 </select>
               </div>
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <label className="block text-xs font-medium text-on-surface-secondary mb-1.5">
+                    Service<span className="text-red-500 ml-0.5">*</span>
+                  </label>
+                  <select
+                    value={serviceType}
+                    onChange={(e) => onServiceChange(e.target.value as TunnelServiceType)}
+                    className={inputClass}
+                    aria-label="Service"
+                  >
+                    {SERVICE_OPTIONS.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="w-28">
+                  <label className="block text-xs font-medium text-on-surface-secondary mb-1.5">
+                    Local port<span className="text-red-500 ml-0.5">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={port}
+                    onChange={(e) => setPort(e.target.value)}
+                    placeholder="8080"
+                    className={inputClass}
+                    aria-label="Local port"
+                  />
+                </div>
+              </div>
+              <p className="-mt-3 text-xs text-on-surface-faint">
+                Exposes{" "}
+                <span className="font-mono">{`${serviceType}://localhost:${port || "?"}`}</span> on
+                the host. HTTP/HTTPS are reachable directly in a browser; SSH/TCP use a{" "}
+                <span className="font-mono">cloudflared access</span> client.
+              </p>
               <div>
                 <label className="block text-xs font-medium text-on-surface-secondary mb-1.5">
                   SSH username<span className="text-red-500 ml-0.5">*</span>
+                  <span className="text-on-surface-faint font-normal">
+                    {" "}
+                    (to install cloudflared)
+                  </span>
                 </label>
                 <input
                   type="text"
