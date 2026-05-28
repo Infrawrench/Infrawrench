@@ -7,6 +7,7 @@ import {
   index,
   uniqueIndex,
   jsonb,
+  check,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
@@ -481,27 +482,44 @@ export const sshHostKeys = pgTable(
   }),
 );
 
-export const twilioSettings = pgTable("twilio_settings", {
-  organizationId: text("organization_id")
-    .primaryKey()
-    .references(() => organizations.id, { onDelete: "cascade" }),
-  enabled: boolean("enabled").notNull().default(false),
-  /** AES-256-GCM encrypted Twilio Account SID. AAD: `twilio:<orgId>:accountSid`. */
-  encryptedAccountSid: text("encrypted_account_sid"),
-  accountSidIv: text("account_sid_iv"),
-  /** AES-256-GCM encrypted Twilio auth token. AAD: `twilio:<orgId>:authToken`. */
-  encryptedAuthToken: text("encrypted_auth_token"),
-  authTokenIv: text("auth_token_iv"),
-  /** E.164 number messages/calls originate from (Twilio number). */
-  fromNumber: text("from_number"),
-  /** Page after this many distinct sync failures in `windowMinutes`. */
-  failureThreshold: integer("failure_threshold").notNull().default(3),
-  windowMinutes: integer("window_minutes").notNull().default(10),
-  /** Minimum minutes between re-pages for the same open incident. */
-  cooldownMinutes: integer("cooldown_minutes").notNull().default(60),
-  createdAt: timestamp("created_at").notNull().defaultNow(),
-  updatedAt: timestamp("updated_at").notNull().defaultNow(),
-});
+export const twilioSettings = pgTable(
+  "twilio_settings",
+  {
+    organizationId: text("organization_id")
+      .primaryKey()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    enabled: boolean("enabled").notNull().default(false),
+    /** AES-256-GCM encrypted Twilio Account SID. AAD: `twilio:<orgId>:accountSid`. */
+    encryptedAccountSid: text("encrypted_account_sid"),
+    accountSidIv: text("account_sid_iv"),
+    /** AES-256-GCM encrypted Twilio auth token. AAD: `twilio:<orgId>:authToken`. */
+    encryptedAuthToken: text("encrypted_auth_token"),
+    authTokenIv: text("auth_token_iv"),
+    /** E.164 number messages/calls originate from (Twilio number). */
+    fromNumber: text("from_number"),
+    /** Page after this many distinct sync failures in `windowMinutes`. */
+    failureThreshold: integer("failure_threshold").notNull().default(3),
+    windowMinutes: integer("window_minutes").notNull().default(10),
+    /** Minimum minutes between re-pages for the same open incident. */
+    cooldownMinutes: integer("cooldown_minutes").notNull().default(60),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    failureThresholdPositive: check(
+      "twilio_settings_failure_threshold_positive",
+      sql`${t.failureThreshold} > 0`,
+    ),
+    windowMinutesPositive: check(
+      "twilio_settings_window_minutes_positive",
+      sql`${t.windowMinutes} > 0`,
+    ),
+    cooldownMinutesPositive: check(
+      "twilio_settings_cooldown_minutes_positive",
+      sql`${t.cooldownMinutes} > 0`,
+    ),
+  }),
+);
 
 export const twilioRecipients = pgTable(
   "twilio_recipients",

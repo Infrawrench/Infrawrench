@@ -3259,7 +3259,20 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "twilio_settings_failure_threshold_positive": {
+          "name": "twilio_settings_failure_threshold_positive",
+          "value": "\"twilio_settings\".\"failure_threshold\" > 0"
+        },
+        "twilio_settings_window_minutes_positive": {
+          "name": "twilio_settings_window_minutes_positive",
+          "value": "\"twilio_settings\".\"window_minutes\" > 0"
+        },
+        "twilio_settings_cooldown_minutes_positive": {
+          "name": "twilio_settings_cooldown_minutes_positive",
+          "value": "\"twilio_settings\".\"cooldown_minutes\" > 0"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.twilio_recipients": {

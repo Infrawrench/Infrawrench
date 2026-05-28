@@ -102,6 +102,15 @@ function truncate(s: string, max = 500): string {
   return s.length <= max ? s : `${s.slice(0, max - 1)}…`;
 }
 
+/** Mask all but the last 4 digits of a phone number for logging. */
+function maskPhone(phone: string): string {
+  if (phone.length <= 4) return "****";
+  return `${"*".repeat(phone.length - 4)}${phone.slice(-4)}`;
+}
+
+/** Abort Twilio requests after 10s so a hung connection can't stall paging. */
+const TWILIO_REQUEST_TIMEOUT_MS = 10_000;
+
 /** Build the human-readable page text. Twilio SMS allows 1600 chars; we keep it short. */
 function formatPageBody(args: {
   accountLabel: string;
@@ -134,6 +143,7 @@ async function sendSms({ creds, to, body }: SendSmsArgs): Promise<void> {
     `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(creds.accountSid)}/Messages.json`,
     {
       method: "POST",
+      signal: AbortSignal.timeout(TWILIO_REQUEST_TIMEOUT_MS),
       headers: {
         Authorization: basicAuth(creds.accountSid, creds.authToken),
         "Content-Type": "application/x-www-form-urlencoded",
@@ -171,6 +181,7 @@ async function sendCall({ creds, to, say }: SendCallArgs): Promise<void> {
     `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(creds.accountSid)}/Calls.json`,
     {
       method: "POST",
+      signal: AbortSignal.timeout(TWILIO_REQUEST_TIMEOUT_MS),
       headers: {
         Authorization: basicAuth(creds.accountSid, creds.authToken),
         "Content-Type": "application/x-www-form-urlencoded",
@@ -184,33 +195,45 @@ async function sendCall({ creds, to, say }: SendCallArgs): Promise<void> {
   }
 }
 
-/** Send SMS and voice to every recipient that opted into each. Errors per
- * recipient are logged but do not abort the rest. */
+interface FanOutResult {
+  attempted: number;
+  succeeded: number;
+  failed: number;
+}
+
+/**
+ * Send SMS and voice to every recipient that opted into each. Errors per
+ * recipient are logged (with the phone number masked) but do not abort the
+ * rest; the caller uses `succeeded` to decide whether the page actually
+ * landed (e.g. whether to set `pagedAt` on an incident).
+ */
 async function fanOutPage(
   creds: TwilioCreds,
   recipients: Recipient[],
   body: string,
-): Promise<void> {
-  await Promise.allSettled(
-    recipients.flatMap((r) => {
-      const jobs: Array<Promise<void>> = [];
-      if (r.sms) {
-        jobs.push(
-          sendSms({ creds, to: r.phoneNumber, body }).catch((err: unknown) => {
-            console.error(`[twilio-pager] SMS to ${r.phoneNumber} failed:`, err);
-          }),
-        );
-      }
-      if (r.voice) {
-        jobs.push(
-          sendCall({ creds, to: r.phoneNumber, say: body }).catch((err: unknown) => {
-            console.error(`[twilio-pager] Voice call to ${r.phoneNumber} failed:`, err);
-          }),
-        );
-      }
-      return jobs;
-    }),
-  );
+): Promise<FanOutResult> {
+  const jobs: Array<Promise<void>> = [];
+  for (const r of recipients) {
+    if (r.sms) {
+      jobs.push(
+        sendSms({ creds, to: r.phoneNumber, body }).catch((err: unknown) => {
+          console.error(`[twilio-pager] SMS to ${maskPhone(r.phoneNumber)} failed:`, err);
+          throw err;
+        }),
+      );
+    }
+    if (r.voice) {
+      jobs.push(
+        sendCall({ creds, to: r.phoneNumber, say: body }).catch((err: unknown) => {
+          console.error(`[twilio-pager] Voice call to ${maskPhone(r.phoneNumber)} failed:`, err);
+          throw err;
+        }),
+      );
+    }
+  }
+  const settled = await Promise.allSettled(jobs);
+  const succeeded = settled.filter((s) => s.status === "fulfilled").length;
+  return { attempted: jobs.length, succeeded, failed: jobs.length - succeeded };
 }
 
 export interface NotePollOutcomeArgs {
@@ -346,12 +369,21 @@ export async function notePollOutcome(args: NotePollOutcomeArgs): Promise<void> 
       windowMinutes: Math.round(settings.windowMs / 60_000),
     });
 
-    await fanOutPage(settings.creds, recipients, body);
+    const result = await fanOutPage(settings.creds, recipients, body);
 
-    await db
-      .update(pagingIncidents)
-      .set({ pagedAt: now })
-      .where(eq(pagingIncidents.id, incidentId));
+    // Only mark the incident as paged if at least one transport succeeded —
+    // otherwise the cooldown gate would suppress retries even though the
+    // recipients never actually heard from us.
+    if (result.succeeded > 0) {
+      await db
+        .update(pagingIncidents)
+        .set({ pagedAt: now })
+        .where(eq(pagingIncidents.id, incidentId));
+    } else {
+      console.error(
+        `[twilio-pager] all ${result.attempted} deliveries failed for incident ${incidentId}; will retry on next poll`,
+      );
+    }
   } catch (err) {
     console.error("[twilio-pager] notePollOutcome failed:", err);
   }
@@ -382,6 +414,7 @@ async function closeOpenIncident(
 export async function sendTestPage(organizationId: string): Promise<{
   recipientCount: number;
   attempted: number;
+  succeeded: number;
 }> {
   const settings = await loadSettings(organizationId);
   if (!settings) throw new Error("Twilio paging is not configured");
@@ -391,9 +424,15 @@ export async function sendTestPage(organizationId: string): Promise<{
   if (recipients.length === 0) throw new Error("No recipients configured");
 
   const body = "infrawrench: test page. Your Twilio paging configuration is working.";
-  await fanOutPage(settings.creds, recipients, body);
-  const attempted = recipients.reduce((n, r) => n + (r.sms ? 1 : 0) + (r.voice ? 1 : 0), 0);
-  return { recipientCount: recipients.length, attempted };
+  const result = await fanOutPage(settings.creds, recipients, body);
+  if (result.succeeded === 0) {
+    throw new Error(`Test page failed: 0/${result.attempted} deliveries succeeded`);
+  }
+  return {
+    recipientCount: recipients.length,
+    attempted: result.attempted,
+    succeeded: result.succeeded,
+  };
 }
 
 /**

@@ -91,16 +91,19 @@ app.put("/", async (c) => {
   if (body.failureThreshold != null) patch.failureThreshold = body.failureThreshold;
   if (body.windowMinutes != null) patch.windowMinutes = body.windowMinutes;
   if (body.cooldownMinutes != null) patch.cooldownMinutes = body.cooldownMinutes;
-  if (body.accountSid) {
-    if (body.accountSid.length > 100)
-      return c.json({ error: "accountSid is too long" }, 400);
-    const enc = await encryptTwilioCredential(organizationId, "accountSid", body.accountSid.trim());
+  if (body.accountSid !== undefined) {
+    const accountSid = body.accountSid.trim();
+    if (!accountSid) return c.json({ error: "accountSid cannot be empty" }, 400);
+    if (accountSid.length > 100) return c.json({ error: "accountSid is too long" }, 400);
+    const enc = await encryptTwilioCredential(organizationId, "accountSid", accountSid);
     patch.encryptedAccountSid = enc.ciphertext;
     patch.accountSidIv = enc.iv;
   }
-  if (body.authToken) {
-    if (body.authToken.length > 200) return c.json({ error: "authToken is too long" }, 400);
-    const enc = await encryptTwilioCredential(organizationId, "authToken", body.authToken.trim());
+  if (body.authToken !== undefined) {
+    const authToken = body.authToken.trim();
+    if (!authToken) return c.json({ error: "authToken cannot be empty" }, 400);
+    if (authToken.length > 200) return c.json({ error: "authToken is too long" }, 400);
+    const enc = await encryptTwilioCredential(organizationId, "authToken", authToken);
     patch.encryptedAuthToken = enc.ciphertext;
     patch.authTokenIv = enc.iv;
   }

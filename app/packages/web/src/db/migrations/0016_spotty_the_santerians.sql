@@ -54,4 +54,7 @@ CREATE INDEX "account_sync_failures_org_account_type_idx" ON "account_sync_failu
 CREATE INDEX "account_sync_failures_failed_at_idx" ON "account_sync_failures" USING btree ("failed_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "paging_incidents_open_unique" ON "paging_incidents" USING btree ("account_id","resource_type_id") WHERE closed_at IS NULL;--> statement-breakpoint
 CREATE INDEX "paging_incidents_org_idx" ON "paging_incidents" USING btree ("organization_id");--> statement-breakpoint
-CREATE INDEX "twilio_recipients_org_idx" ON "twilio_recipients" USING btree ("organization_id");
+CREATE INDEX "twilio_recipients_org_idx" ON "twilio_recipients" USING btree ("organization_id");--> statement-breakpoint
+ALTER TABLE "twilio_settings" ADD CONSTRAINT "twilio_settings_failure_threshold_positive" CHECK ("failure_threshold" > 0);--> statement-breakpoint
+ALTER TABLE "twilio_settings" ADD CONSTRAINT "twilio_settings_window_minutes_positive" CHECK ("window_minutes" > 0);--> statement-breakpoint
+ALTER TABLE "twilio_settings" ADD CONSTRAINT "twilio_settings_cooldown_minutes_positive" CHECK ("cooldown_minutes" > 0);

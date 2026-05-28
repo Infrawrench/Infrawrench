@@ -28,22 +28,33 @@ function PagingPage() {
   const [settings, setSettings] = useState<PagingSettings | null>(null);
   const [recipients, setRecipients] = useState<Recipient[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
-    const [s, r] = await Promise.all([
-      apiGet<PagingSettings>(`/api/org/${orgId}/twilio`),
-      apiGet<Recipient[]>(`/api/org/${orgId}/twilio/recipients`),
-    ]);
-    setSettings(s);
-    setRecipients(r);
-    setLoading(false);
+    setLoadError(null);
+    try {
+      const [s, r] = await Promise.all([
+        apiGet<PagingSettings>(`/api/org/${orgId}/twilio`),
+        apiGet<Recipient[]>(`/api/org/${orgId}/twilio/recipients`),
+      ]);
+      setSettings(s);
+      setRecipients(r);
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : "Failed to load paging settings");
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
     void load();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orgId]);
 
+  if (loadError) {
+    return <p className="text-sm text-red-400">{loadError}</p>;
+  }
   if (loading || !settings) {
     return <p className="text-sm text-on-surface-faint">Loading...</p>;
   }
@@ -58,17 +69,9 @@ function PagingPage() {
         </p>
       </div>
 
-      <SettingsForm
-        orgId={orgId}
-        initial={settings}
-        onSaved={() => void load()}
-      />
+      <SettingsForm orgId={orgId} initial={settings} onSaved={() => void load()} />
 
-      <RecipientsSection
-        orgId={orgId}
-        recipients={recipients}
-        onChanged={() => void load()}
-      />
+      <RecipientsSection orgId={orgId} recipients={recipients} onChanged={() => void load()} />
 
       <TestSection orgId={orgId} settings={settings} recipientCount={recipients.length} />
     </div>
@@ -126,11 +129,7 @@ function SettingsForm({
       <h2 className="text-sm font-semibold text-on-surface-secondary">Twilio configuration</h2>
 
       <label className="flex items-center gap-2 text-sm text-on-surface-secondary">
-        <input
-          type="checkbox"
-          checked={enabled}
-          onChange={(e) => setEnabled(e.target.checked)}
-        />
+        <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
         <span>Paging enabled</span>
       </label>
 
@@ -157,10 +156,7 @@ function SettingsForm({
         </Field>
       </div>
 
-      <Field
-        label="From number (E.164)"
-        hint="The Twilio number SMS and calls originate from."
-      >
+      <Field label="From number (E.164)" hint="The Twilio number SMS and calls originate from.">
         <input
           type="text"
           value={fromNumber}
@@ -176,7 +172,7 @@ function SettingsForm({
             type="number"
             min={1}
             value={failureThreshold}
-            onChange={(e) => setFailureThreshold(parseInt(e.target.value || "1", 10))}
+            onChange={(e) => setFailureThreshold(parsePositiveInt(e.target.value))}
             className={inputClass}
           />
         </Field>
@@ -185,7 +181,7 @@ function SettingsForm({
             type="number"
             min={1}
             value={windowMinutes}
-            onChange={(e) => setWindowMinutes(parseInt(e.target.value || "1", 10))}
+            onChange={(e) => setWindowMinutes(parsePositiveInt(e.target.value))}
             className={inputClass}
           />
         </Field>
@@ -194,7 +190,7 @@ function SettingsForm({
             type="number"
             min={1}
             value={cooldownMinutes}
-            onChange={(e) => setCooldownMinutes(parseInt(e.target.value || "1", 10))}
+            onChange={(e) => setCooldownMinutes(parsePositiveInt(e.target.value))}
             className={inputClass}
           />
         </Field>
@@ -373,11 +369,7 @@ function TestSection({
         credentials and add at least one recipient first.
       </p>
       {message && (
-        <p
-          className={`text-xs ${
-            message.kind === "ok" ? "text-green-400" : "text-red-400"
-          }`}
-        >
+        <p className={`text-xs ${message.kind === "ok" ? "text-green-400" : "text-red-400"}`}>
           {message.text}
         </p>
       )}
@@ -397,6 +389,13 @@ function TestSection({
 
 const inputClass =
   "w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-border-strong";
+
+/** Parse a positive integer from a numeric input. Falls back to 1 on empty or
+ * non-numeric input so transient typing states don't poison the API payload. */
+function parsePositiveInt(value: string): number {
+  const n = Number(value);
+  return Number.isInteger(n) && n >= 1 ? n : 1;
+}
 
 function Field({
   label,
