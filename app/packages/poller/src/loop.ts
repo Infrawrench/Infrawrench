@@ -61,6 +61,7 @@ export class PollerLoop {
           id: accounts.id,
           organizationId: accounts.organizationId,
           pluginId: accounts.pluginId,
+          displayName: accounts.displayName,
           pollFailureCount: accounts.pollFailureCount,
         })
         .from(accounts)

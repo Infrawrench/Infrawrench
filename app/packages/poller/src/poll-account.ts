@@ -3,6 +3,7 @@ import { db } from "@infrawrench/server-core/db/client";
 import { accounts } from "@infrawrench/server-core/db/schema";
 import { syncAccountResources } from "@infrawrench/server-core/sync-resources";
 import { getPlugin } from "@infrawrench/server-core/plugin-loader";
+import { notePollOutcome } from "@infrawrench/server-core/twilio-pager";
 import { TokenBucketRegistry, defaultBucketConfig, type BucketConfig } from "./token-bucket";
 
 const BASE_INTERVAL_MS = 15_000;
@@ -13,6 +14,7 @@ export interface PollAccountRow {
   id: string;
   organizationId: string;
   pluginId: string;
+  displayName: string;
   pollFailureCount: number;
 }
 
@@ -46,13 +48,23 @@ export async function pollAccount(
 
   const result = await syncAccountResources(account.id, account.organizationId, {
     canListType: () => buckets.tryTake(account.pluginId, account.id, config),
-    onTypeDone: (_typeId, outcome, err) => {
+    onTypeDone: (typeId, outcome, err) => {
       if (outcome === "error" && err && isTransientError(err)) {
         transientFailure = true;
         if (isRateLimitError(err)) {
           buckets.penalize(account.pluginId, account.id, PENALTY_DURATION_MS);
         }
       }
+      // Fire-and-forget — the pager swallows its own errors so it can never
+      // block or break the poll loop.
+      void notePollOutcome({
+        organizationId: account.organizationId,
+        accountId: account.id,
+        accountLabel: account.displayName,
+        resourceTypeId: typeId,
+        outcome,
+        ...(err ? { error: err } : {}),
+      });
     },
   });
 

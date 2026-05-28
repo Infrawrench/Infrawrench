@@ -17,6 +17,7 @@
     "./bastion/protocol": "./src/bastion/protocol.ts",
     "./bastion/errors": "./src/bastion/errors.ts",
     "./sync-resources": "./src/sync-resources.ts",
+    "./twilio-pager": "./src/twilio-pager.ts",
     "./plugin-loader": "./src/plugin-loader.ts",
     "./permissions": "./src/permissions/index.ts",
     "./permissions/catalog": "./src/permissions/catalog.ts",
