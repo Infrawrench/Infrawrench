@@ -69,6 +69,32 @@ export async function getTunnelToken(
   return await api.cf.zeroTrust.tunnels.cloudflared.token.get(tunnelExternalId, { account_id });
 }
 
+/**
+ * Set (replace) the tunnel's remotely-managed ingress so `hostname` routes to
+ * the local SSH server on the machine running cloudflared. A catch-all
+ * `http_status:404` rule is required by Cloudflare as the last entry.
+ *
+ * Uses the raw PUT helper because the SDK's per-config typing is a moving
+ * target; the `/configurations` endpoint accepts `{ config: { ingress } }`.
+ */
+export async function setTunnelSshIngress(
+  api: CloudflareApi,
+  tunnelExternalId: string,
+  hostname: string,
+): Promise<void> {
+  const account_id = await api.getAccountId();
+  await api.cf.put<unknown, unknown>(
+    `/accounts/${account_id}/cfd_tunnel/${tunnelExternalId}/configurations`,
+    {
+      body: {
+        config: {
+          ingress: [{ hostname, service: "ssh://localhost:22" }, { service: "http_status:404" }],
+        },
+      },
+    },
+  );
+}
+
 export async function exportTunnelCredential(
   api: CloudflareApi,
   resource: ResourceInstance,

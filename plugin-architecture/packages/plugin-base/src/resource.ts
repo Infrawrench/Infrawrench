@@ -228,6 +228,13 @@ export interface ResourceTypeDefinition {
      */
     usernameFieldKey?: string;
   };
+  /**
+   * When true, instances of this type can be dragged onto any resource that
+   * declares `sshEndpoint` to set up an SSH-over-tunnel (e.g. a Cloudflare
+   * Tunnel dropped on a server). The host orchestrates the cross-account wiring;
+   * the drop is account-independent. Set on the Cloudflare `tunnel` type.
+   */
+  sshTunnelAttachSource?: boolean;
   /** If true, the host will show a storage browser and fetch storage stats for dashboard cards of this type */
   supportsStorageBrowser?: boolean;
   /** If true, the host will offer a "Create" button for this resource type */

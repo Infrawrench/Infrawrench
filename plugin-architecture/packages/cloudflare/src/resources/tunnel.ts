@@ -19,6 +19,8 @@ export const TunnelResourceType: ResourceTypeDefinition = {
   ],
   dashboardPinnable: true,
   supportsCreate: true,
+  // Drag a tunnel onto any SSH host (EC2, droplet, …) to wire up SSH-over-tunnel.
+  sshTunnelAttachSource: true,
   credentialFormats: [
     {
       id: "tunnel-token",

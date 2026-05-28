@@ -1260,6 +1260,14 @@ export class CloudflareClient implements PluginClient {
     if (typeId === "dns-record") {
       return dnsRecordApi.updateDnsRecord(this.api, externalId, accountId, fields);
     }
+    if (typeId === "tunnel") {
+      // `sshIngressHostname` is the SSH-attach orchestrator's signal to point
+      // this tunnel's ingress at the local SSH server for that hostname.
+      if (fields["sshIngressHostname"]) {
+        await tunnelApi.setTunnelSshIngress(this.api, externalId, fields["sshIngressHostname"]);
+      }
+      return this.getResource(typeId, resourceId, accountId);
+    }
     throw new Error(`Cloudflare plugin: updateResource not supported for type "${typeId}"`);
   }
 
