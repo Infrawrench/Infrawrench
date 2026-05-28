@@ -10,6 +10,7 @@ import {
 } from "../../../services/plugin-clients";
 import { getMetricRange } from "@infrawrench/server-core/clickhouse/readers";
 import { requirePermission } from "../../../auth/permissions";
+import { runTunnelSshAttach } from "../../../services/tunnel-ssh-attach";
 
 /**
  * Cross-cutting per-resource action routes:
@@ -238,6 +239,31 @@ export function registerActionRoutes(app: Hono): void {
       return c.json({ error: e instanceof Error ? e.message : "Attach failed" }, 400);
     }
     return c.json({ ok: true });
+  });
+
+  /**
+   * POST /api/resources/tunnel-ssh-attach — set up SSH over a Cloudflare Tunnel:
+   * tunnel ingress + routing DNS, then install/run cloudflared on the host over
+   * SSH. Spans the tunnel's account and the host's account. The tunnel token is
+   * resolved server-side and never returned to the client.
+   */
+  app.post("/tunnel-ssh-attach", async (c) => {
+    requirePermission(c, "resources:write");
+    const organizationId = c.get("organizationId");
+    const input = await c.req.json<{
+      tunnel: { accountId: string; pluginId: string; resourceId: string };
+      host: { accountId: string; pluginId: string; resourceTypeId: string; resourceId: string };
+      hostname: string;
+      zoneId: string;
+      sshUsername: string;
+      sshKeyId?: string;
+    }>();
+    try {
+      const result = await runTunnelSshAttach({ organizationId, ...input });
+      return c.json(result);
+    } catch (e) {
+      return c.json({ error: e instanceof Error ? e.message : "Tunnel SSH setup failed" }, 400);
+    }
   });
 
   /** POST /api/resources/:pluginId/:typeId/export-credential */

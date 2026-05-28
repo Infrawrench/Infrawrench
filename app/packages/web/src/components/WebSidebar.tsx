@@ -32,6 +32,8 @@ interface ResourceTypeMeta {
     matchField?: string;
     verb?: string;
   }>;
+  isSshHost?: boolean;
+  sshTunnelAttachSource?: boolean;
 }
 
 interface PluginGroup {
@@ -528,6 +530,10 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                                   : {}),
                                 ...(typeMeta?.attachTargets
                                   ? { attachTargets: typeMeta.attachTargets }
+                                  : {}),
+                                ...(typeMeta?.isSshHost ? { isSshHost: true } : {}),
+                                ...(typeMeta?.sshTunnelAttachSource
+                                  ? { isTunnelSshSource: true }
                                   : {}),
                               }}
                               onClick={() =>

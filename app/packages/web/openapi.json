@@ -648,6 +648,12 @@
               "required": ["pluginId", "resourceTypeId"],
               "additionalProperties": false
             }
+          },
+          "isSshHost": {
+            "type": "boolean"
+          },
+          "sshTunnelAttachSource": {
+            "type": "boolean"
           }
         },
         "required": ["id", "displayName", "supportsCreate"],
@@ -1608,6 +1614,9 @@
           "hasArtifactRegistry": {
             "type": "boolean"
           },
+          "hasKvBrowser": {
+            "type": "boolean"
+          },
           "hasKvConsole": {
             "type": "boolean"
           },
@@ -1671,6 +1680,7 @@
           "hasSqlEditor",
           "hasStorageBrowser",
           "hasArtifactRegistry",
+          "hasKvBrowser",
           "hasKvConsole",
           "isMongoDb",
           "hasDockerActions",

@@ -3,12 +3,16 @@ import { createRootRoute, Outlet, useNavigate, useRouterState } from "@tanstack/
 import {
   DndShell,
   GlobalTabBar,
+  TunnelSshAttachModal,
   useUIStore,
   useWorkspaceTabDocumentTitle,
   useWorkspaceTabHandlers,
   workspaceTabTargetsEqual,
   dispatchResourcesChanged,
   type DraggableResource,
+  type TunnelSshAttachResult,
+  type TunnelSshAttachZone,
+  type TunnelSshAttachKey,
   type WorkspaceTab,
 } from "@infrawrench/ui";
 import { WebSidebar } from "@/components/WebSidebar";
@@ -29,6 +33,14 @@ interface AuthMe {
   userId: string;
   email: string;
   needsOnboarding: boolean;
+}
+
+interface TunnelAttachState {
+  tunnel: DraggableResource;
+  host: DraggableResource;
+  zones: TunnelSshAttachZone[];
+  sshKeys: TunnelSshAttachKey[];
+  defaultUsername: string;
 }
 
 function RootLayout() {
@@ -99,6 +111,7 @@ function RootLayout() {
 }
 
 function AuthenticatedShell() {
+  const [tunnelAttach, setTunnelAttach] = useState<TunnelAttachState | null>(null);
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const hash = useRouterState({ select: (s) => s.location.hash });
@@ -228,8 +241,43 @@ function AuthenticatedShell() {
     }
   }
 
+  async function handleTunnelSshAttach(tunnel: DraggableResource, host: DraggableResource) {
+    if (!orgId) return;
+    try {
+      const [config, keysResp] = await Promise.all([
+        apiPost<{ fields?: Array<{ key: string; options?: { id: string; label: string }[] }> }>(
+          `/api/org/${orgId}/resources/create-config`,
+          { accountId: tunnel.accountId, resourceTypeId: "dns-record", pluginId: "cloudflare" },
+        ),
+        apiGet<Array<{ id: string; name: string }>>(`/api/org/${orgId}/ssh-keys`),
+      ]);
+      const zones: TunnelSshAttachZone[] = (
+        config.fields?.find((f) => f.key === "zoneId")?.options ?? []
+      ).map((o) => ({ id: o.id, label: o.label }));
+      const sshKeys: TunnelSshAttachKey[] = (keysResp ?? []).map((k) => ({
+        id: k.id,
+        label: k.name,
+      }));
+      setTunnelAttach({
+        tunnel,
+        host,
+        zones,
+        sshKeys,
+        defaultUsername: String(host.fields["sshUsername"] ?? "root"),
+      });
+    } catch (e) {
+      window.alert(
+        `Couldn't start SSH tunnel setup: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+  }
+
   return (
-    <DndShell onPinToDashboard={handlePinToDashboard} onResourceAttach={handleResourceAttach}>
+    <DndShell
+      onPinToDashboard={handlePinToDashboard}
+      onResourceAttach={handleResourceAttach}
+      onTunnelSshAttach={(t, h) => void handleTunnelSshAttach(t, h)}
+    >
       <div className="flex flex-col h-screen bg-surface text-on-surface">
         <GlobalTabBar
           tabs={workspaceTabs}
@@ -252,6 +300,33 @@ function AuthenticatedShell() {
         </div>
       </div>
       {spotlightOpen && <SpotlightSearch mode="navigate" onClose={() => setSpotlightOpen(false)} />}
+      {tunnelAttach && orgId && (
+        <TunnelSshAttachModal
+          tunnelName={tunnelAttach.tunnel.displayName}
+          hostName={tunnelAttach.host.displayName}
+          zones={tunnelAttach.zones}
+          sshKeys={tunnelAttach.sshKeys}
+          showSshKeyPicker
+          defaultUsername={tunnelAttach.defaultUsername}
+          onClose={() => setTunnelAttach(null)}
+          onRun={(params) =>
+            apiPost<TunnelSshAttachResult>(`/api/org/${orgId}/resources/tunnel-ssh-attach`, {
+              tunnel: {
+                accountId: tunnelAttach.tunnel.accountId,
+                pluginId: tunnelAttach.tunnel.pluginId,
+                resourceId: tunnelAttach.tunnel.id,
+              },
+              host: {
+                accountId: tunnelAttach.host.accountId,
+                pluginId: tunnelAttach.host.pluginId,
+                resourceTypeId: tunnelAttach.host.resourceTypeId,
+                resourceId: tunnelAttach.host.id,
+              },
+              ...params,
+            })
+          }
+        />
+      )}
     </DndShell>
   );
 }

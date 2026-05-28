@@ -106,6 +106,8 @@ const ResourceTypeSummary = strict({
       }),
     )
     .optional(),
+  isSshHost: z.boolean().optional(),
+  sshTunnelAttachSource: z.boolean().optional(),
 }).openapi("ResourceTypeSummary");
 
 const AccountDetail = strict({

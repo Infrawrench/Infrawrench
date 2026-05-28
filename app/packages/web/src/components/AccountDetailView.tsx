@@ -244,6 +244,8 @@ export function AccountDetailView({
             ...(activeCategory.typeDef.attachTargets
               ? { attachTargets: activeCategory.typeDef.attachTargets }
               : {}),
+            ...(activeCategory.typeDef.isSshHost ? { isSshHost: true } : {}),
+            ...(activeCategory.typeDef.sshTunnelAttachSource ? { isTunnelSshSource: true } : {}),
           };
           return (
             <ResourcePill

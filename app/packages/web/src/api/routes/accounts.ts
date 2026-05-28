@@ -336,6 +336,8 @@ app.get("/:id/detail", async (c) => {
       parentTypeId: rt.parentTypeId,
       supportsCreate: rt.supportsCreate ?? false,
       ...(rt.attachTargets ? { attachTargets: rt.attachTargets } : {}),
+      ...(rt.sshEndpoint ? { isSshHost: true } : {}),
+      ...(rt.sshTunnelAttachSource ? { sshTunnelAttachSource: true } : {}),
     })) ?? [];
 
   return c.json({
