@@ -343,7 +343,11 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
     pluginId: string;
     accountId: string;
     status?: { kind: "status-dot"; status: string; label?: string };
+    fields?: Record<string, unknown>;
   }> = [];
+  // Only ship per-child field bags when the detail view actually renders a
+  // child table for that type — otherwise it's wasted payload.
+  const childTableTypeIds = new Set((finalSchema.childTables ?? []).map((t) => t.typeId));
   for (let i = 0; i < childResults.length; i++) {
     const result = childResults[i]!;
     if (result.status !== "fulfilled") continue;
@@ -357,6 +361,7 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
         pluginId: r.pluginId,
         accountId: r.accountId,
         ...(sidebar.status ? { status: sidebar.status } : {}),
+        ...(childTableTypeIds.has(r.resourceTypeId) ? { fields: r.fields ?? {} } : {}),
       });
     }
   }

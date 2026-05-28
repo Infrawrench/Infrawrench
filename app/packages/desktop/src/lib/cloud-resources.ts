@@ -279,12 +279,13 @@ export async function loadCloudPickerResources(
   orgId: string,
   sources: AssociationSource[],
   accountId: string,
-  opts?: { regionHint?: string },
+  opts?: { regionHint?: string; crossAccount?: boolean },
 ): Promise<ResourcePickerOption[]> {
   return invoke("cloud_load_picker_resources", {
     orgId,
     sources,
     accountId,
     ...(opts?.regionHint ? { regionHint: opts.regionHint } : {}),
+    ...(opts?.crossAccount ? { crossAccount: true } : {}),
   });
 }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useRouter } from "@tanstack/react-router";
 import {
   DetailView,
   DraggableChildPill,
@@ -74,6 +74,7 @@ interface ChildResourceData {
   pluginId: string;
   accountId: string;
   status?: { kind: "status-dot"; status: string; label?: string } | undefined;
+  fields?: Record<string, unknown> | undefined;
 }
 
 interface ChildTypeData {
@@ -178,6 +179,7 @@ export function ResourceDetailClient({
   parentResourceId,
 }: Props) {
   const navigate = useNavigate();
+  const router = useRouter();
   const orgId = useOrgId();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -369,6 +371,20 @@ export function ResourceDetailClient({
   const handleChildCreate = useCallback((group: ChildResourceGroup) => {
     setCreateTarget(group);
   }, []);
+
+  const handleChildDelete = useCallback(
+    async (child: ChildResource): Promise<void> => {
+      await apiDelete(
+        `/api/org/${orgId}/resources/${child.pluginId}/${child.resourceTypeId}?resourceId=${encodeURIComponent(
+          child.id,
+        )}&accountId=${encodeURIComponent(child.accountId || accountId)}&parentResourceId=${encodeURIComponent(resourceId)}`,
+      );
+      toast.success("Deleted.");
+      dispatchResourcesChanged({ accountId, resourceTypeId: child.resourceTypeId });
+      void router.invalidate();
+    },
+    [orgId, accountId, resourceId],
+  );
 
   const handleGetManifest = useCallback(async (): Promise<string> => {
     const result = await apiGet<{ manifest: string }>(
@@ -950,6 +966,7 @@ export function ResourceDetailClient({
               childResourceGroups={childResourceGroups}
               onChildClick={handleChildClick}
               onChildCreate={handleChildCreate}
+              onChildDelete={handleChildDelete}
               renderChildResource={(child) => (
                 <DraggableChildPill child={child} onOpen={() => handleChildClick(child)} />
               )}

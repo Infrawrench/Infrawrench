@@ -52,11 +52,16 @@ export function CreateResourceModal({
   );
 
   const loadResources = useCallback(
-    (sources: AssociationSource[], acctId: string, opts?: { regionHint?: string }) =>
+    (
+      sources: AssociationSource[],
+      acctId: string,
+      opts?: { regionHint?: string; crossAccount?: boolean },
+    ) =>
       apiPost<ResourcePickerOption[]>(`/api/org/${orgId}/resources/picker-resources`, {
         sources,
         accountId: acctId,
         ...(opts?.regionHint ? { regionHint: opts.regionHint } : {}),
+        ...(opts?.crossAccount ? { crossAccount: true } : {}),
       }),
     [orgId],
   );

@@ -452,6 +452,7 @@ export async function loadLocalResource(params: LoaderParams): Promise<void> {
                 resourceTypeId: r.resourceTypeId,
                 accountId: r.accountId,
                 status: sidebar.status,
+                fields: r.fields ?? {},
               });
             }
           } catch {

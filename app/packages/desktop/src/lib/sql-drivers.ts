@@ -193,6 +193,77 @@ export async function persistPlaintextSecret(
   );
 }
 
+/**
+ * Persist a live output reference for a create-form field that was picked in
+ * reference mode. Writes the output-ref `secret_field_states` row (with the
+ * pick-time value cached) plus a best-effort `associations` topology row. The
+ * reconciler reads the secret_field_states row to re-resolve the source value.
+ */
+export async function persistOutputRef(
+  resourceId: string,
+  fieldKey: string,
+  ref: {
+    pluginId: string;
+    resourceTypeId: string;
+    resourceId: string;
+    accountId: string;
+    outputKey: string;
+    value: string;
+  },
+): Promise<void> {
+  const { ciphertext, iv } = await invoke<{ ciphertext: string; iv: string }>(
+    "secret_field_encrypt",
+    { resourceId, fieldKey, plaintext: ref.value },
+  );
+  const db = await getDb();
+  await db.execute(
+    `INSERT INTO secret_field_states
+       (id, resource_id, field_key, resolution_kind,
+        source_plugin_id, source_resource_type_id, source_resource_id, source_account_id, source_output_key,
+        cached_encrypted_value, cached_value_iv, cached_at)
+     VALUES ($1, $2, $3, 'output-ref', $4, $5, $6, $7, $8, $9, $10, datetime('now'))
+     ON CONFLICT(resource_id, field_key) DO UPDATE SET
+       resolution_kind = 'output-ref',
+       encrypted_value = NULL,
+       value_iv = NULL,
+       source_plugin_id = excluded.source_plugin_id,
+       source_resource_type_id = excluded.source_resource_type_id,
+       source_resource_id = excluded.source_resource_id,
+       source_account_id = excluded.source_account_id,
+       source_output_key = excluded.source_output_key,
+       cached_encrypted_value = excluded.cached_encrypted_value,
+       cached_value_iv = excluded.cached_value_iv,
+       cached_at = datetime('now'),
+       updated_at = datetime('now')`,
+    [
+      crypto.randomUUID(),
+      resourceId,
+      fieldKey,
+      ref.pluginId,
+      ref.resourceTypeId,
+      ref.resourceId,
+      ref.accountId,
+      ref.outputKey,
+      ciphertext,
+      iv,
+    ],
+  );
+  // Best-effort topology row — the provider FK may not exist locally yet.
+  try {
+    await db.execute(
+      `INSERT INTO associations (id, consumer_resource_id, consumer_field_key, provider_resource_id, provider_output_key)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT(consumer_resource_id, consumer_field_key) DO UPDATE SET
+         provider_resource_id = excluded.provider_resource_id,
+         provider_output_key = excluded.provider_output_key,
+         updated_at = datetime('now')`,
+      [crypto.randomUUID(), resourceId, fieldKey, ref.resourceId, ref.outputKey],
+    );
+  } catch {
+    /* provider resource not in local DB yet — topology row is optional */
+  }
+}
+
 /** Inspects the plugin manifest and builds the appropriate HostServices for use with createClient(). */
 export function buildPluginHostServices(
   manifest: PluginManifest,

@@ -93,16 +93,23 @@ ipcMain.handle(
       sources,
       accountId,
       regionHint,
+      crossAccount,
     }: {
       orgId: string;
       sources: Array<{ pluginId: string; resourceTypeId: string; outputKey: string }>;
       accountId: string;
       regionHint?: string;
+      crossAccount?: boolean;
     },
   ) => {
     return cloudFetch(orgId, "/resources/picker-resources", {
       method: "POST",
-      body: JSON.stringify({ sources, accountId, ...(regionHint ? { regionHint } : {}) }),
+      body: JSON.stringify({
+        sources,
+        accountId,
+        ...(regionHint ? { regionHint } : {}),
+        ...(crossAccount ? { crossAccount: true } : {}),
+      }),
     });
   },
 );

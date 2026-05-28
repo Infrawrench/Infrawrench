@@ -1243,6 +1243,32 @@ export function ResourcePanel({
     });
   }
 
+  async function handleChildDelete(child: {
+    id: string;
+    pluginId: string;
+    resourceTypeId: string;
+    accountId: string;
+  }): Promise<void> {
+    const cloud = cloudCtxRef.current;
+    if (cloud) {
+      await deleteCloudResource(
+        cloud.orgId,
+        child.pluginId,
+        child.resourceTypeId,
+        child.id,
+        child.accountId || accountId,
+      );
+    } else {
+      const client = await createPluginClient(child.accountId || accountId, child.pluginId);
+      if (!client.deleteResource) throw new Error("Plugin does not support deletion");
+      await client.deleteResource(child.resourceTypeId, child.id, child.accountId || accountId);
+      const db = await getDb();
+      await db.execute("DELETE FROM resources WHERE id = $1", [child.id]);
+    }
+    dispatchResourcesChanged({ accountId, resourceTypeId: child.resourceTypeId });
+    setRefreshVersion((v) => v + 1);
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full text-on-surface-muted text-sm animate-pulse">
@@ -1345,6 +1371,7 @@ export function ResourcePanel({
               onChatStream={handleChatStream}
               onPublishMessage={handlePublishMessage}
               onChildCreate={(rt) => setCreateChildTarget(rt)}
+              onChildDelete={handleChildDelete}
               onReroll={handleReroll}
               {...(hasStorageBrowser && account
                 ? {

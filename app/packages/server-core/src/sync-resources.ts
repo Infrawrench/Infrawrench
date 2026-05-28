@@ -9,8 +9,8 @@ import type {
 } from "@infrawrench/plugin-base";
 import { evaluatePeerIntegrationUnreachable } from "@infrawrench/plugin-base";
 import { db } from "./db/client";
-import { accounts, dashboardPins, resources } from "./db/schema";
-import { decrypt, buildAad } from "./encryption";
+import { accounts, dashboardPins, resources, secretFieldStates } from "./db/schema";
+import { decrypt, encrypt, buildAad } from "./encryption";
 import { getPlugin } from "./plugin-loader";
 import { buildPluginHostServices } from "./host-services";
 import { rewriteCredentialsThroughTunnel } from "./tunnel-resolver";
@@ -238,6 +238,15 @@ export async function syncAccountResources(
 
   await refreshPinnedStats(accountId, organizationId, plugin, client);
 
+  // Re-resolve live output references owned by this account's resources and
+  // push any changed values back to the provider. Wrapped so a reconcile
+  // failure can never break the poll cycle.
+  try {
+    await reconcileAccountReferences(accountId, organizationId);
+  } catch (err) {
+    console.error("[sync] reconcileAccountReferences failed:", err);
+  }
+
   await insertPollOutcome({
     organizationId,
     accountId,
@@ -425,6 +434,137 @@ async function fetchPeerMetricSeriesForPoller(
     }),
   );
   return results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+}
+
+/**
+ * Re-resolve every live output reference whose *consumer* resource belongs to
+ * this account, and when the source's current value differs from the cached
+ * one, push the new value back to the provider via the consumer plugin's
+ * `updateResource`. This is what makes an A record track a server's IP, a CNAME
+ * track a load balancer's hostname, etc.
+ *
+ * The source resource usually lives in a *different* account/provider, so we
+ * load a client for `source_account_id` to resolve it. Per-reference failures
+ * (provider down, output gone, plugin can't update) are swallowed — one broken
+ * reference must not stall the rest.
+ */
+export async function reconcileAccountReferences(
+  accountId: string,
+  organizationId: string,
+): Promise<void> {
+  const refs = await db
+    .select({
+      consumerId: resources.id,
+      consumerPluginId: resources.pluginId,
+      consumerTypeId: resources.resourceTypeId,
+      consumerAccountId: resources.accountId,
+      fieldKey: secretFieldStates.fieldKey,
+      sourcePluginId: secretFieldStates.sourcePluginId,
+      sourceTypeId: secretFieldStates.sourceResourceTypeId,
+      sourceResourceId: secretFieldStates.sourceResourceId,
+      sourceAccountId: secretFieldStates.sourceAccountId,
+      sourceOutputKey: secretFieldStates.sourceOutputKey,
+      cachedEncryptedValue: secretFieldStates.cachedEncryptedValue,
+      cachedValueIv: secretFieldStates.cachedValueIv,
+    })
+    .from(secretFieldStates)
+    .innerJoin(resources, eq(secretFieldStates.resourceId, resources.id))
+    .where(
+      and(
+        eq(resources.accountId, accountId),
+        eq(resources.organizationId, organizationId),
+        eq(secretFieldStates.resolutionKind, "output-ref"),
+        isNull(resources.deletedAt),
+      ),
+    );
+
+  if (refs.length === 0) return;
+
+  // Cache one client per source account across the batch.
+  const sourceClients = new Map<string, Awaited<ReturnType<typeof loadAccountClient>> | null>();
+  const getSourceClient = async (acctId: string) => {
+    if (!sourceClients.has(acctId)) {
+      try {
+        sourceClients.set(acctId, await loadAccountClient(acctId, organizationId));
+      } catch {
+        sourceClients.set(acctId, null);
+      }
+    }
+    return sourceClients.get(acctId) ?? null;
+  };
+
+  for (const ref of refs) {
+    if (
+      !ref.sourceAccountId ||
+      !ref.sourceTypeId ||
+      !ref.sourceResourceId ||
+      !ref.sourceOutputKey
+    ) {
+      continue;
+    }
+    try {
+      const source = await getSourceClient(ref.sourceAccountId);
+      if (!source) continue;
+
+      const newValue = await source.client.resolveOutput(
+        ref.sourceTypeId,
+        ref.sourceResourceId,
+        ref.sourceOutputKey,
+        ref.sourceAccountId,
+      );
+      if (!newValue) continue;
+
+      let oldValue: string | null = null;
+      if (ref.cachedEncryptedValue && ref.cachedValueIv) {
+        try {
+          oldValue = await decrypt(
+            ref.cachedEncryptedValue,
+            ref.cachedValueIv,
+            buildAad("secretField", `${ref.consumerId}:${ref.fieldKey}`, "cache"),
+          );
+        } catch {
+          oldValue = null;
+        }
+      }
+      if (oldValue === newValue) continue;
+
+      // Push the new value to the consumer's provider.
+      const consumer = await loadAccountClient(ref.consumerAccountId, organizationId);
+      if (!consumer.client.updateResource) continue;
+      const updated = await consumer.client.updateResource(
+        ref.consumerTypeId,
+        ref.consumerId,
+        ref.consumerAccountId,
+        { [ref.fieldKey]: newValue },
+      );
+      await upsertResource(organizationId, ref.consumerAccountId, updated);
+
+      // Refresh the SWR cache so the next cycle only acts on genuine changes.
+      const cache = await encrypt(
+        newValue,
+        buildAad("secretField", `${ref.consumerId}:${ref.fieldKey}`, "cache"),
+      );
+      await db
+        .update(secretFieldStates)
+        .set({
+          cachedEncryptedValue: cache.ciphertext,
+          cachedValueIv: cache.iv,
+          cachedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(secretFieldStates.resourceId, ref.consumerId),
+            eq(secretFieldStates.fieldKey, ref.fieldKey),
+          ),
+        );
+    } catch (err) {
+      console.error(
+        `[sync] Failed to reconcile reference ${ref.consumerId}.${ref.fieldKey}:`,
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
 }
 
 /** Manually refresh a single resource by calling getResource on the provider. */

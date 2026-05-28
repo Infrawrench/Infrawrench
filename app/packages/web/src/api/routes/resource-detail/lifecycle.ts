@@ -1,11 +1,12 @@
 import type { Hono } from "hono";
 import { v4 as uuidv4 } from "uuid";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { db } from "../../../db/client";
-import { accounts, resources, secretFieldStates } from "../../../db/schema";
+import { accounts, associations, resources, secretFieldStates } from "../../../db/schema";
 import { getClientForAccount, getClientForResource } from "../../../services/plugin-clients";
 import { encrypt, decrypt, buildAad } from "../../../services/encryption";
-import { normalizeResourceCreateResult } from "@infrawrench/plugin-base";
+import { normalizeResourceCreateResult, parseOutputRef } from "@infrawrench/plugin-base";
+import type { OutputRefValue } from "@infrawrench/plugin-base";
 import { requirePermission } from "../../../auth/permissions";
 
 /**
@@ -61,12 +62,27 @@ export function registerLifecycleRoutes(app: Hono): void {
     if (!ctx.client.createResource)
       return c.json({ error: "Plugin does not support creation" }, 400);
 
+    // Reference-mode picker fields arrive encoded. Flatten them to the literal
+    // value resolved at pick time so the plugin sees a normal string, but
+    // remember the identity so we can persist a live output-ref association.
+    const resolvedFields: Record<string, string> = {};
+    const refFields: Array<{ fieldKey: string; ref: OutputRefValue }> = [];
+    for (const [fieldKey, value] of Object.entries(input.fields)) {
+      const ref = typeof value === "string" ? parseOutputRef(value) : null;
+      if (ref) {
+        resolvedFields[fieldKey] = ref.value;
+        refFields.push({ fieldKey, ref });
+      } else {
+        resolvedFields[fieldKey] = value;
+      }
+    }
+
     let createReturn;
     try {
       createReturn = await ctx.client.createResource(
         input.resourceTypeId,
         input.accountId,
-        input.fields,
+        resolvedFields,
         input.parentResourceId,
       );
     } catch (e) {
@@ -206,6 +222,79 @@ export function registerLifecycleRoutes(app: Hono): void {
           500,
         );
       }
+
+      // Persist live output references for picker-in-reference-mode fields. The
+      // secret_field_states row is the source of truth the reconciler reads;
+      // the associations row is best-effort topology (its provider FK can fail
+      // if the source resource hasn't been synced into this org yet).
+      for (const { fieldKey, ref } of refFields) {
+        try {
+          const cache = await encrypt(
+            ref.value,
+            buildAad("secretField", `${created.id}:${fieldKey}`, "cache"),
+          );
+          await db
+            .insert(secretFieldStates)
+            .values({
+              id: uuidv4(),
+              resourceId: created.id,
+              fieldKey,
+              resolutionKind: "output-ref",
+              sourcePluginId: ref.pluginId,
+              sourceResourceTypeId: ref.resourceTypeId,
+              sourceResourceId: ref.resourceId,
+              sourceAccountId: ref.accountId,
+              sourceOutputKey: ref.outputKey,
+              cachedEncryptedValue: cache.ciphertext,
+              cachedValueIv: cache.iv,
+              cachedAt: new Date(),
+            })
+            .onConflictDoUpdate({
+              target: [secretFieldStates.resourceId, secretFieldStates.fieldKey],
+              set: {
+                resolutionKind: "output-ref",
+                encryptedValue: null,
+                valueIv: null,
+                sourcePluginId: ref.pluginId,
+                sourceResourceTypeId: ref.resourceTypeId,
+                sourceResourceId: ref.resourceId,
+                sourceAccountId: ref.accountId,
+                sourceOutputKey: ref.outputKey,
+                cachedEncryptedValue: cache.ciphertext,
+                cachedValueIv: cache.iv,
+                cachedAt: new Date(),
+                updatedAt: new Date(),
+              },
+            });
+          // Best-effort topology row — provider FK may not exist yet.
+          try {
+            await db
+              .insert(associations)
+              .values({
+                id: uuidv4(),
+                consumerResourceId: created.id,
+                consumerFieldKey: fieldKey,
+                providerResourceId: ref.resourceId,
+                providerOutputKey: ref.outputKey,
+              })
+              .onConflictDoUpdate({
+                target: [associations.consumerResourceId, associations.consumerFieldKey],
+                set: {
+                  providerResourceId: ref.resourceId,
+                  providerOutputKey: ref.outputKey,
+                  updatedAt: new Date(),
+                },
+              });
+          } catch (assocErr) {
+            console.warn(
+              "[resource-detail] Skipped association topology row (provider not yet synced):",
+              assocErr instanceof Error ? assocErr.message : assocErr,
+            );
+          }
+        } catch (err) {
+          console.error("[resource-detail] Failed to persist output reference:", err);
+        }
+      }
     }
 
     return c.json({ id: created.id, displayName: created.displayName, warnings });
@@ -308,6 +397,12 @@ export function registerLifecycleRoutes(app: Hono): void {
       sources: Array<{ pluginId: string; resourceTypeId: string; outputKey: string }>;
       accountId: string;
       regionHint?: string;
+      /**
+       * When true, search every account in the org whose plugin matches a
+       * source — used by reference-mode pickers (e.g. DNS content) where the
+       * target resource usually lives in a different account/provider.
+       */
+      crossAccount?: boolean;
     }>();
 
     const results: Array<{
@@ -320,45 +415,73 @@ export function registerLifecycleRoutes(app: Hono): void {
       outputValue: string;
     }> = [];
 
-    for (const source of input.sources) {
-      try {
-        const ctx = await getClientForAccount(input.accountId, organizationId);
-        if (!ctx || ctx.plugin.manifest.id !== source.pluginId) continue;
+    // Resolve the set of (accountId) to search per source. Single-account mode
+    // only ever uses the creating account; cross-account mode fans out to all
+    // org accounts whose pluginId matches the source.
+    let accountsByPlugin: Map<string, string[]> | null = null;
+    const accountNames = new Map<string, string>();
+    if (input.crossAccount) {
+      accountsByPlugin = new Map();
+      const rows = await db
+        .select({ id: accounts.id, pluginId: accounts.pluginId, displayName: accounts.displayName })
+        .from(accounts)
+        .where(and(eq(accounts.organizationId, organizationId), isNull(accounts.deletedAt)));
+      for (const row of rows) {
+        const list = accountsByPlugin.get(row.pluginId) ?? [];
+        list.push(row.id);
+        accountsByPlugin.set(row.pluginId, list);
+        accountNames.set(row.id, row.displayName);
+      }
+    }
 
-        const resources = await ctx.client.listResources(
-          source.resourceTypeId,
-          input.accountId,
-          input.regionHint ? { regionHint: input.regionHint } : undefined,
-        );
-        for (const resource of resources) {
-          try {
-            // Prefer the value the lister already populated — avoids an N+1
-            // re-list when resolveOutput would just re-fetch the same data.
-            const preResolved = resource.resolvedOutputs[source.outputKey];
-            const outputValue =
-              preResolved != null && String(preResolved) !== ""
-                ? String(preResolved)
-                : await ctx.client.resolveOutput(
-                    source.resourceTypeId,
-                    resource.id,
-                    source.outputKey,
-                    input.accountId,
-                  );
-            results.push({
-              id: resource.id,
-              label: resource.displayName,
-              pluginId: source.pluginId,
-              resourceTypeId: source.resourceTypeId,
-              accountId: input.accountId,
-              outputKey: source.outputKey,
-              outputValue,
-            });
-          } catch {
-            // Skip resources where output can't be resolved
+    for (const source of input.sources) {
+      const targetAccountIds = accountsByPlugin
+        ? (accountsByPlugin.get(source.pluginId) ?? [])
+        : [input.accountId];
+
+      for (const acctId of targetAccountIds) {
+        try {
+          const ctx = await getClientForAccount(acctId, organizationId);
+          if (!ctx || ctx.plugin.manifest.id !== source.pluginId) continue;
+
+          const resources = await ctx.client.listResources(
+            source.resourceTypeId,
+            acctId,
+            input.regionHint ? { regionHint: input.regionHint } : undefined,
+          );
+          for (const resource of resources) {
+            try {
+              // Prefer the value the lister already populated — avoids an N+1
+              // re-list when resolveOutput would just re-fetch the same data.
+              const preResolved = resource.resolvedOutputs[source.outputKey];
+              const outputValue =
+                preResolved != null && String(preResolved) !== ""
+                  ? String(preResolved)
+                  : await ctx.client.resolveOutput(
+                      source.resourceTypeId,
+                      resource.id,
+                      source.outputKey,
+                      acctId,
+                    );
+              if (!outputValue) continue;
+              results.push({
+                id: resource.id,
+                label: accountsByPlugin
+                  ? `${resource.displayName} · ${accountNames.get(acctId) ?? acctId}`
+                  : resource.displayName,
+                pluginId: source.pluginId,
+                resourceTypeId: source.resourceTypeId,
+                accountId: acctId,
+                outputKey: source.outputKey,
+                outputValue,
+              });
+            } catch {
+              // Skip resources where output can't be resolved
+            }
           }
+        } catch {
+          // Skip accounts/sources that fail
         }
-      } catch {
-        // Skip sources that fail
       }
     }
 

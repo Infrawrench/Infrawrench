@@ -24,9 +24,10 @@ import type {
   ResourceInstance,
   ResourceTypeDefinition,
 } from "@infrawrench/plugin-base";
-import { normalizeResourceCreateResult } from "@infrawrench/plugin-base";
+import { normalizeResourceCreateResult, parseOutputRef } from "@infrawrench/plugin-base";
+import type { OutputRefValue } from "@infrawrench/plugin-base";
 import { getDb } from "../db/client";
-import { persistPlaintextSecret } from "../lib/sql-drivers";
+import { persistPlaintextSecret, persistOutputRef } from "../lib/sql-drivers";
 
 /**
  * Persist a freshly-created resource + its plaintext secret states into the
@@ -172,42 +173,72 @@ export function CreateResourceModal({
       loadResources: async (
         sources: AssociationSource[],
         acctId: string,
-        opts?: { regionHint?: string },
+        opts?: { regionHint?: string; crossAccount?: boolean },
       ): Promise<ResourcePickerOption[]> => {
         const results: ResourcePickerOption[] = [];
-        for (const source of sources) {
+
+        // In cross-account mode, search every local account whose plugin
+        // matches a source (a DNS record usually points at a resource in a
+        // different account/provider). Otherwise only the creating account.
+        let accountsByPlugin: Map<string, Array<{ id: string; name: string }>> | null = null;
+        if (opts?.crossAccount) {
+          accountsByPlugin = new Map();
           try {
-            const client = await getLocalClient(acctId, source.pluginId);
-            const resources = await client.listResources(
-              source.resourceTypeId,
-              acctId,
-              opts?.regionHint ? { regionHint: opts.regionHint } : undefined,
-            );
-            for (const resource of resources) {
-              try {
-                const outputValue = client.resolveOutput
-                  ? await client.resolveOutput(
-                      source.resourceTypeId,
-                      resource.id,
-                      source.outputKey,
-                      acctId,
-                    )
-                  : String(resource.resolvedOutputs[source.outputKey] ?? "");
-                results.push({
-                  id: resource.id,
-                  label: resource.displayName,
-                  pluginId: source.pluginId,
-                  resourceTypeId: source.resourceTypeId,
-                  accountId: acctId,
-                  outputKey: source.outputKey,
-                  outputValue,
-                });
-              } catch {
-                /* skip resources that can't be resolved */
-              }
+            const db = await getDb();
+            const rows = await db.select<
+              Array<{ id: string; plugin_id: string; display_name: string }>
+            >("SELECT id, plugin_id, display_name FROM accounts ORDER BY display_name");
+            for (const row of rows) {
+              const list = accountsByPlugin.get(row.plugin_id) ?? [];
+              list.push({ id: row.id, name: row.display_name });
+              accountsByPlugin.set(row.plugin_id, list);
             }
           } catch {
-            /* skip sources that fail (e.g. different plugin not loaded for this account) */
+            accountsByPlugin = null;
+          }
+        }
+
+        for (const source of sources) {
+          const targets = accountsByPlugin
+            ? (accountsByPlugin.get(source.pluginId) ?? [])
+            : [{ id: acctId, name: "" }];
+          for (const target of targets) {
+            try {
+              const client = await getLocalClient(target.id, source.pluginId);
+              const resources = await client.listResources(
+                source.resourceTypeId,
+                target.id,
+                opts?.regionHint ? { regionHint: opts.regionHint } : undefined,
+              );
+              for (const resource of resources) {
+                try {
+                  const outputValue = client.resolveOutput
+                    ? await client.resolveOutput(
+                        source.resourceTypeId,
+                        resource.id,
+                        source.outputKey,
+                        target.id,
+                      )
+                    : String(resource.resolvedOutputs[source.outputKey] ?? "");
+                  if (!outputValue) continue;
+                  results.push({
+                    id: resource.id,
+                    label: target.name
+                      ? `${resource.displayName} · ${target.name}`
+                      : resource.displayName,
+                    pluginId: source.pluginId,
+                    resourceTypeId: source.resourceTypeId,
+                    accountId: target.id,
+                    outputKey: source.outputKey,
+                    outputValue,
+                  });
+                } catch {
+                  /* skip resources that can't be resolved */
+                }
+              }
+            } catch {
+              /* skip accounts/sources that fail */
+            }
           }
         }
         return results;
@@ -230,10 +261,23 @@ export function CreateResourceModal({
           clientRef.current ??
           (clientFactory ? await clientFactory() : await createPluginClient(accountId, pluginId));
         if (!client.createResource) throw new Error("Plugin does not support resource creation");
+        // Flatten reference-mode picker values to their pick-time literal for
+        // the plugin, remembering the identity to persist as a live output ref.
+        const resolvedFields: Record<string, string> = {};
+        const refFields: Array<{ fieldKey: string; ref: OutputRefValue }> = [];
+        for (const [fieldKey, value] of Object.entries(fields)) {
+          const ref = parseOutputRef(value);
+          if (ref) {
+            resolvedFields[fieldKey] = ref.value;
+            refFields.push({ fieldKey, ref });
+          } else {
+            resolvedFields[fieldKey] = value;
+          }
+        }
         const createReturn = await client.createResource(
           resourceType.id,
           accountId,
-          fields,
+          resolvedFields,
           parentResourceId,
         );
         const { resource, warnings, credentialUpdates } =
@@ -263,6 +307,13 @@ export function CreateResourceModal({
           }
         }
         await persistCreatedResource(resource);
+        for (const { fieldKey, ref } of refFields) {
+          try {
+            await persistOutputRef(resource.id, fieldKey, ref);
+          } catch (err) {
+            console.error("[create] Failed to persist output reference:", err);
+          }
+        }
         for (const w of warnings) {
           toast.warning(w.message);
         }
