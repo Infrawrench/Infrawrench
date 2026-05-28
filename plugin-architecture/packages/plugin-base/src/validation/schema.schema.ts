@@ -270,6 +270,7 @@ export const detailViewSchema = z.object({
           )
           .optional(),
         childTables: z.array(childTableSchema).optional(),
+        childResourceTypeIds: z.array(z.string()).optional(),
         headerActions: z.array(actionNodeSchema).optional(),
       }),
     )

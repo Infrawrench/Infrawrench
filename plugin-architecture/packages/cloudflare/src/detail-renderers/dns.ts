@@ -99,6 +99,37 @@ export function renderZoneDetail(resource: ResourceInstance): DetailViewSchema {
         ],
       },
     ],
+    // Split the zone's many child resource types across tabs so the Overview
+    // stays a clean summary instead of one long scroll. The DNS table is
+    // claimed by the DNS tab; each tab owns a themed set of child types.
+    customTabs: [
+      { id: "dns", label: "DNS", childResourceTypeIds: ["dns-record"] },
+      {
+        id: "traffic",
+        label: "Traffic",
+        childResourceTypeIds: [
+          "load-balancer",
+          "worker-route",
+          "spectrum-application",
+          "waiting-room",
+        ],
+      },
+      {
+        id: "rules",
+        label: "Rules & WAF",
+        childResourceTypeIds: ["page-rule", "firewall-rule"],
+      },
+      {
+        id: "ssl",
+        label: "SSL & Hostnames",
+        childResourceTypeIds: ["ssl-certificate", "custom-hostname"],
+      },
+      {
+        id: "email-logs",
+        label: "Email & Logs",
+        childResourceTypeIds: ["email-routing-rule", "logpush-job"],
+      },
+    ],
     manifestEditor: { language: "json", resourceKind: "Zone Settings" },
     headerActions: [
       { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },

@@ -298,6 +298,47 @@ export function DetailView({
     tabRefs.current[next]?.focus();
   };
 
+  // Child resource type IDs a custom tab has claimed — those groups/tables
+  // render in that tab, not on Overview.
+  const tabClaimedTypeIds = new Set<string>();
+  for (const t of customTabs)
+    for (const id of t.childResourceTypeIds ?? []) tabClaimedTypeIds.add(id);
+
+  // Render the child-tables + auto child-groups whose typeId passes `predicate`,
+  // in that order. Used by Overview (unclaimed types) and custom tabs (their
+  // claimed types).
+  const renderChildArea = (predicate: (typeId: string) => boolean) => {
+    const tables = (schema.childTables ?? []).filter((t) => predicate(t.typeId));
+    const tableTypeIds = new Set(tables.map((t) => t.typeId));
+    const groups = childResourceGroups.filter(
+      (g) => predicate(g.typeId) && !tableTypeIds.has(g.typeId),
+    );
+    return (
+      <>
+        {tables.map((tableSpec) => (
+          <ChildResourceTable
+            key={`table:${tableSpec.typeId}`}
+            spec={tableSpec}
+            group={childResourceGroups.find((g) => g.typeId === tableSpec.typeId)}
+            onRowClick={onChildClick}
+            {...(onChildCreate ? { onCreate: onChildCreate } : {})}
+            {...(onChildDelete ? { onDelete: onChildDelete } : {})}
+            {...(onChildEdit ? { onEdit: onChildEdit } : {})}
+          />
+        ))}
+        {groups.map((group) => (
+          <AutoChildGroup
+            key={group.typeId}
+            group={group}
+            {...(onChildCreate ? { onChildCreate } : {})}
+            {...(onChildClick ? { onChildClick } : {})}
+            {...(renderChildResource ? { renderChildResource } : {})}
+          />
+        ))}
+      </>
+    );
+  };
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Header — title row + (separate) tab row, so the tab strip always
@@ -605,62 +646,7 @@ export function DetailView({
             </div>
           ))}
 
-          {schema.childTables?.map((tableSpec) => {
-            const group = childResourceGroups.find((g) => g.typeId === tableSpec.typeId);
-            return (
-              <ChildResourceTable
-                key={`table:${tableSpec.typeId}`}
-                spec={tableSpec}
-                group={group}
-                onRowClick={onChildClick}
-                {...(onChildCreate ? { onCreate: onChildCreate } : {})}
-                {...(onChildDelete ? { onDelete: onChildDelete } : {})}
-                {...(onChildEdit ? { onEdit: onChildEdit } : {})}
-              />
-            );
-          })}
-
-          {childResourceGroups
-            .filter((group) => !schema.childTables?.some((t) => t.typeId === group.typeId))
-            .map((group) => (
-              <div key={group.typeId}>
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-xs font-semibold uppercase tracking-wide text-on-surface-muted">
-                    {group.pluralDisplayName}
-                  </h3>
-                  {group.supportsCreate && onChildCreate && (
-                    <button
-                      type="button"
-                      onClick={() => onChildCreate(group)}
-                      className="text-xs text-on-surface-faint hover:text-accent transition-colors"
-                    >
-                      + Create {group.displayName}
-                    </button>
-                  )}
-                </div>
-                {group.resources.length === 0 ? (
-                  <p className="text-xs text-on-surface-faint">
-                    No {group.pluralDisplayName.toLowerCase()} yet.
-                  </p>
-                ) : (
-                  <div className="flex flex-wrap gap-2">
-                    {group.resources.map((child) =>
-                      renderChildResource ? (
-                        <React.Fragment key={child.id}>
-                          {renderChildResource(child, group)}
-                        </React.Fragment>
-                      ) : (
-                        <ChildResourcePill
-                          key={child.id}
-                          child={child}
-                          onClick={() => onChildClick?.(child)}
-                        />
-                      ),
-                    )}
-                  </div>
-                )}
-              </div>
-            ))}
+          {renderChildArea((typeId) => !tabClaimedTypeIds.has(typeId))}
         </div>
       )}
 
@@ -875,6 +861,9 @@ export function DetailView({
             {tab.sections?.map((section, i) => (
               <SchemaRenderer key={i} node={section} resourceId={resourceId} />
             ))}
+            {tab.childResourceTypeIds && tab.childResourceTypeIds.length > 0
+              ? renderChildArea((typeId) => tab.childResourceTypeIds!.includes(typeId))
+              : null}
             {tab.childGroups?.map((group, gi) => (
               <div key={gi}>
                 <div className="flex items-center justify-between mb-3">
@@ -970,6 +959,61 @@ export function DetailView({
           }}
           onCancel={closeReroll}
         />
+      )}
+    </div>
+  );
+}
+
+/**
+ * One auto-injected child-resource group: a labelled header (with an optional
+ * "+ Create" button) over a wrap of resource pills. Shared by the Overview tab
+ * and any custom tab that claims the group via `childResourceTypeIds`.
+ */
+function AutoChildGroup({
+  group,
+  onChildCreate,
+  onChildClick,
+  renderChildResource,
+}: {
+  group: ChildResourceGroup;
+  onChildCreate?: (group: ChildResourceGroup) => void;
+  onChildClick?: (child: ChildResource) => void;
+  renderChildResource?: (child: ChildResource, group: ChildResourceGroup) => React.ReactNode;
+}) {
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-on-surface-muted">
+          {group.pluralDisplayName}
+        </h3>
+        {group.supportsCreate && onChildCreate && (
+          <button
+            type="button"
+            onClick={() => onChildCreate(group)}
+            className="text-xs text-on-surface-faint hover:text-accent transition-colors"
+          >
+            + Create {group.displayName}
+          </button>
+        )}
+      </div>
+      {group.resources.length === 0 ? (
+        <p className="text-xs text-on-surface-faint">
+          No {group.pluralDisplayName.toLowerCase()} yet.
+        </p>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {group.resources.map((child) =>
+            renderChildResource ? (
+              <React.Fragment key={child.id}>{renderChildResource(child, group)}</React.Fragment>
+            ) : (
+              <ChildResourcePill
+                key={child.id}
+                child={child}
+                onClick={() => onChildClick?.(child)}
+              />
+            ),
+          )}
+        </div>
       )}
     </div>
   );

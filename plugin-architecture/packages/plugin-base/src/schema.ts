@@ -593,6 +593,12 @@ export interface DetailViewTab {
   childGroups?: ChildGroupSchema[];
   /** Child-resource tables rendered after the sections, replacing matching pill groups. */
   childTables?: ChildTableSchema[];
+  /**
+   * Auto-injected child-resource groups (and any matching `childTables`) for
+   * these resource type IDs render inside this tab instead of on Overview.
+   * Lets a plugin split a long list of child types across multiple tabs.
+   */
+  childResourceTypeIds?: string[];
   /** Header actions visible in the top bar when this tab is active. */
   headerActions?: ActionNode[];
 }
