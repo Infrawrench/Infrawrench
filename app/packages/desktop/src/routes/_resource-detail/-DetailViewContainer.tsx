@@ -12,6 +12,8 @@ import type {
   SecretVersionMutation,
   ChatMessage,
   ChatStreamEvent,
+  PublishMessagePayload,
+  PublishMessageResult,
 } from "@infrawrench/plugin-base";
 import {
   DetailView,
@@ -64,6 +66,7 @@ interface DetailViewContainerProps {
   onOpenConsole: () => void;
   onNoSqlCommand: (command: string, args: (string | number)[]) => Promise<unknown>;
   onChatStream: (messages: ChatMessage[], signal: AbortSignal) => AsyncIterable<ChatStreamEvent>;
+  onPublishMessage: (payload: PublishMessagePayload) => Promise<PublishMessageResult>;
   onChildCreate: (typeDef: ResourceTypeDefinition) => void;
   onReroll?: (
     fieldKey: string,
@@ -102,6 +105,7 @@ export function DetailViewContainer({
   onOpenConsole,
   onNoSqlCommand,
   onChatStream,
+  onPublishMessage,
   onChildCreate,
   onReroll,
   renderStorageBrowser,
@@ -186,6 +190,7 @@ export function DetailViewContainer({
           ? { onOpenConsole }
           : {})}
         {...(schema.chatPanel ? { onChatStream } : {})}
+        {...(schema.publishPanel ? { onPublishMessage } : {})}
         {...(noSqlBrowser
           ? {
               renderNoSqlBrowser: () => {

@@ -679,6 +679,27 @@ All reuse the DO SSE-parsing structure; the chat-capable resource sets `detail.c
 
 ---
 
+## Publish capability (cross-plugin)
+
+`@infrawrench/plugin-base` exposes a `publishPanel?: PublishPanelCapability` field on `DetailViewSchema` and a matching `publishMessage?` method on `PluginClient`. Mirrors the chat capability shape, but for one-shot request/response sends rather than streaming.
+
+- The capability declares `tabLabel`, `subtitle`, `bodyFormat: "json" | "text"`, `defaultBody`, `helpText`, `submitLabel`, and an `extraFields: PublishPanelField[]` array. Field kinds are `text` / `number` / `select` / `key-value-list`. The `PublishPanel` React component (`@infrawrench/ui`) renders these above a textarea-based body editor, validates JSON locally when `bodyFormat === "json"`, and surfaces provider errors inline. Successful sends accumulate in a "Recent sends" list under the form (per-session, not persisted).
+- `publishMessage(typeId, resourceId, accountId, payload)` returns `Promise<PublishMessageResult>` where `payload.body` is the raw text and `payload.extras` is a `Record<string, string | Record<string, string>>` keyed by field id. Plugins throw on validation/provider errors; the host turns those into a red banner under the form.
+- Web host: `POST /api/org/:orgId/resources/publish-message` is a single JSON round-trip (no NDJSON — publish isn't streaming). Server bubbles plugin errors back as a 400 with `{ error }`. Apipost throws on non-2xx so the panel sees them as exceptions.
+- Desktop host: forwards directly to the in-process plugin client. Cloud-synced accounts aren't bridged yet — the panel throws "not supported yet" the same way chat does.
+
+### Providers that wire `publishMessage`
+
+- **Cloudflare** `queue` — pushes via `api.cf.queues.messages.push(externalId, …)` with `content_type: "json" | "text"`, optional `delay_seconds`. The queue detail page also gained a **Consumers** custom tab (data piped through `resolvedOutputs.__consumers__` as JSON in `getResource("queue", …)` since `renderDetail` is sync), a **Settings** section surfacing `delivery_delay` / `delivery_paused` / `message_retention_period` from `Queue.settings`, and a paused-state status dot.
+- **AWS** `sqs-queue` / `sns-topic` / `kinesis-stream` / `eventbridge-rule` — all in `publish-handlers.ts`. SQS uses `jsonCall(creds, "sqs", "AmazonSQS.SendMessage", …)`. SNS uses `queryPostCall(creds, "sns", "Publish", "2010-03-31", …)` with `MessageAttributes.entry.N.…` form-style flattening. Kinesis uses `jsonCall(…, "Kinesis_20131202.PutRecord", { StreamName, Data: base64, PartitionKey })`. EventBridge uses `jsonCall(…, "AWSEvents.PutEvents", { Entries: [{ Source, DetailType, Detail, EventBusName }] })` and surfaces per-entry `ErrorCode`/`ErrorMessage` from `FailedEntryCount`.
+- **GCP** `pubsub-topic` — POSTs `pubsub.googleapis.com/v1/projects/{project}/topics/{name}:publish` with `messages: [{ data: base64, attributes?, orderingKey? }]`. `cloud-tasks-queue` POSTs `cloudtasks.googleapis.com/v2/{queueName}/tasks` with `{ task: { httpRequest: { httpMethod, url, headers?, body? } } }`. Both use the management-API bearer token (`https://www.googleapis.com/auth/cloud-platform` scope).
+- **Azure** `azure-service-bus` / `azure-event-hub` — both POST to the namespace's data-plane host derived from `serviceBusEndpoint`. The renderer makes the user type the queue/topic/hub name as an `extraField` (namespaces hold many; we don't pre-list). Auth uses a separate AAD token cache scoped to `https://servicebus.azure.net/.default` (`fetchServiceBusAccessToken` in `auth.ts`, fourth token cache alongside ARM/storage/graph).
+- **Kafka** `kafka-topic` — adds a `produce` driver command to `driver.ts` that spins up a one-shot `kafka.producer()` per call (not pooled — produce-from-UI is rare and the connect cost is fine). The client calls `kv.command("produce", topic, body, key, headersJson)` and surfaces `{ partition, offset }` in the result summary.
+
+The desktop → cloud bridge for publish isn't wired yet (no Tauri command). Same constraint as the chat panel; add `cloud_publish_message` when needed.
+
+---
+
 ## CORS in Electron
 
 Electron's renderer runs from `file://` (or `http://localhost:5173` in dev). External APIs (GCP, DO) block cross-origin requests.

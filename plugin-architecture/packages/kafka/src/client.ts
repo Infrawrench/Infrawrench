@@ -11,6 +11,8 @@ import type {
   PeerPaneSchema,
   PeerPaneResource,
   CreateResourceConfig,
+  PublishMessagePayload,
+  PublishMessageResult,
 } from "@infrawrench/plugin-base";
 
 /**
@@ -463,7 +465,68 @@ export class KafkaClient implements PluginClient {
           ],
         },
       ],
+      publishPanel: {
+        tabLabel: "Produce",
+        subtitle: `Produce a record to ${name}`,
+        bodyFormat: "text",
+        defaultBody: '{"hello":"world"}',
+        helpText:
+          "Sent through kafkajs producer.send. Body is the record value; headers are sent as Kafka record headers.",
+        submitLabel: "Produce",
+        extraFields: [
+          {
+            key: "key",
+            label: "Key",
+            kind: "text",
+            optional: true,
+            helpText: "Optional Kafka message key — drives partition assignment.",
+          },
+          {
+            key: "headers",
+            label: "Headers",
+            kind: "key-value-list",
+            helpText: "Sent as Kafka record headers.",
+          },
+        ],
+      },
       headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+    };
+  }
+
+  async publishMessage(
+    typeId: string,
+    resourceId: string,
+    _accountId: string,
+    payload: PublishMessagePayload,
+  ): Promise<PublishMessageResult> {
+    if (typeId !== "kafka-topic") {
+      throw new Error(`Kafka plugin: publishMessage not supported for type "${typeId}"`);
+    }
+    const kv = this.services?.kv;
+    if (!kv) throw new Error("Kafka plugin: KV host services unavailable.");
+    const topic = topicNameFromId(resourceId);
+    const key = typeof payload.extras["key"] === "string" ? (payload.extras["key"] as string) : "";
+    const headersObj =
+      payload.extras["headers"] && typeof payload.extras["headers"] === "object"
+        ? (payload.extras["headers"] as Record<string, string>)
+        : {};
+    // Drop blank header keys so the producer doesn't trip on them.
+    const cleanHeaders: Record<string, string> = {};
+    for (const [k, v] of Object.entries(headersObj)) {
+      if (k.trim()) cleanHeaders[k] = v;
+    }
+    const headersJson = Object.keys(cleanHeaders).length > 0 ? JSON.stringify(cleanHeaders) : "";
+    const result = (await kv.command("produce", topic, payload.body, key, headersJson)) as {
+      partition?: number;
+      offset?: string;
+    };
+    const id =
+      result.partition !== undefined && result.offset !== undefined
+        ? `partition ${result.partition} offset ${result.offset}`
+        : undefined;
+    return {
+      ...(id ? { id } : {}),
+      summary: id ? `Produced — ${id}` : "Record produced.",
     };
   }
 

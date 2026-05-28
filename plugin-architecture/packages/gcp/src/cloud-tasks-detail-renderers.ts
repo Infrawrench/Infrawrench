@@ -151,4 +151,43 @@ export function renderCloudTasksQueue(resource: ResourceInstance, base: DetailVi
     ],
   };
   base.customTabs = [...(base.customTabs ?? []), tasksTab];
+
+  base.publishPanel = {
+    tabLabel: "Create task",
+    subtitle: `Enqueue an HTTP task on ${resource.displayName}`,
+    bodyFormat: "text",
+    defaultBody: '{"hello":"world"}',
+    helpText:
+      "Creates a task whose target is the URL below. The body is sent as the HTTP request payload (Cloud Tasks base64-encodes it on the wire).",
+    submitLabel: "Create task",
+    extraFields: [
+      {
+        key: "url",
+        label: "Target URL",
+        kind: "text",
+        placeholder: "https://example.com/handler",
+        helpText: "Required. Cloud Tasks will POST/PUT the body to this URL.",
+      },
+      {
+        key: "method",
+        label: "HTTP method",
+        kind: "select",
+        defaultValue: "POST",
+        options: [
+          { value: "POST", label: "POST" },
+          { value: "PUT", label: "PUT" },
+          { value: "PATCH", label: "PATCH" },
+          { value: "DELETE", label: "DELETE" },
+          { value: "GET", label: "GET" },
+          { value: "HEAD", label: "HEAD" },
+        ],
+      },
+      {
+        key: "headers",
+        label: "Headers",
+        kind: "key-value-list",
+        helpText: "HTTP headers Cloud Tasks should set on the dispatch.",
+      },
+    ],
+  };
 }

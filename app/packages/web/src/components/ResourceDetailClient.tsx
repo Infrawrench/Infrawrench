@@ -460,6 +460,24 @@ export function ResourceDetailClient({
     [orgId, accountId, resourceId, resourceTypeId],
   );
 
+  const handlePublishMessage = useCallback(
+    async (payload: { body: string; extras: Record<string, string | Record<string, string>> }) => {
+      const res = await apiPost<{ result?: { id?: string; summary?: string } }>(
+        `/api/org/${orgId}/resources/publish-message`,
+        {
+          pluginId,
+          accountId,
+          resourceTypeId,
+          resourceId,
+          payload,
+          ...(parentResourceId ? { parentResourceId } : {}),
+        },
+      );
+      return res.result ?? {};
+    },
+    [orgId, pluginId, accountId, resourceTypeId, resourceId, parentResourceId],
+  );
+
   const handleListSecretVersions = useCallback(async (): Promise<SecretVersion[]> => {
     const r = await apiGet<{ versions: SecretVersion[] }>(
       `/api/org/${orgId}/resources/${pluginId}/${resourceTypeId}/secret-versions?resourceId=${encodeURIComponent(resourceId)}&accountId=${accountId}${parentResourceId ? `&parentResourceId=${encodeURIComponent(parentResourceId)}` : ""}`,
@@ -879,6 +897,7 @@ export function ResourceDetailClient({
               {...(detailSchema.describe ? { onGetDescribe: handleGetDescribe } : {})}
               {...(detailSchema.logs ? { onGetLogs: handleGetLogs } : {})}
               {...(detailSchema.chatPanel ? { onChatStream: handleChatStream } : {})}
+              {...(detailSchema.publishPanel ? { onPublishMessage: handlePublishMessage } : {})}
               {...(hasArtifactRegistry ? { onListArtifacts: handleListArtifacts } : {})}
               {...(hasSecretVersions
                 ? {

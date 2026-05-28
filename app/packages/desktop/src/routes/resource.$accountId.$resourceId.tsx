@@ -76,6 +76,8 @@ import type {
   AssociationSource,
   ChatMessage,
   ChatStreamEvent,
+  PublishMessagePayload,
+  PublishMessageResult,
 } from "@infrawrench/plugin-base";
 import type { PeerPaneData } from "@infrawrench/ui";
 import {
@@ -711,6 +713,26 @@ export function ResourcePanel({
     [accountId, decodedResourceId, resource],
   );
 
+  // Forward the Publish tab's send to the plugin's publishMessage. Cloud-
+  // synced accounts aren't bridged yet (no `cloud_publish_message` Tauri
+  // command) — same constraint as chat, with a clear error.
+  const handlePublishMessage = useCallback(
+    async (payload: PublishMessagePayload): Promise<PublishMessageResult> => {
+      const cloud = cloudCtxRef.current;
+      const res = resource;
+      if (!res) throw new Error("Resource not loaded");
+      if (cloud) {
+        throw new Error(
+          "Publishing over a cloud-synced account isn't supported yet from the desktop app. Run this against a locally-added account.",
+        );
+      }
+      const client = clientRef.current;
+      if (!client?.publishMessage) throw new Error("Plugin does not support publishing.");
+      return client.publishMessage(res.resourceTypeId, decodedResourceId, accountId, payload);
+    },
+    [accountId, decodedResourceId, resource],
+  );
+
   const handleGetLogs = useCallback(
     async (params: LogsFetchParams): Promise<LogsFetchResult> => {
       const cloud = cloudCtxRef.current;
@@ -1229,6 +1251,7 @@ export function ResourcePanel({
               onOpenConsole={() => setConsoleOpen(true)}
               onNoSqlCommand={handleNoSqlCommand}
               onChatStream={handleChatStream}
+              onPublishMessage={handlePublishMessage}
               onChildCreate={(rt) => setCreateChildTarget(rt)}
               onReroll={handleReroll}
               {...(hasStorageBrowser && account

@@ -6,6 +6,8 @@ import type {
   LogsFetchParams,
   LogsFetchResult,
   MetricSeries,
+  PublishMessagePayload,
+  PublishMessageResult,
   QueryCostEstimate,
   SecretVersion,
   SecretVersionMutation,
@@ -19,6 +21,7 @@ import { BucketPolicyEditor } from "./BucketPolicyEditor.js";
 import { DescribeView } from "./DescribeView.js";
 import { LogsView } from "./LogsView.js";
 import { ChatPanel } from "./ChatPanel.js";
+import { PublishPanel } from "./PublishPanel.js";
 import { SecretVersionsView } from "./SecretVersionsView.js";
 import {
   ArtifactRegistryView,
@@ -122,6 +125,13 @@ interface DetailViewProps {
    * `ChatPanel` consumes incrementally.
    */
   onChatStream?: (messages: ChatMessage[], signal: AbortSignal) => AsyncIterable<ChatStreamEvent>;
+  /**
+   * When `schema.publishPanel` is set, the host wires this to publish one
+   * message to the resource (Cloudflare Queue, SQS topic, …). Plugins throw
+   * on validation/provider errors — the panel renders the thrown message
+   * inline.
+   */
+  onPublishMessage?: (payload: PublishMessagePayload) => Promise<PublishMessageResult>;
 }
 
 type Tab =
@@ -137,6 +147,7 @@ type Tab =
   | "secret-versions"
   | "nosql-browser"
   | "chat"
+  | "publish"
   | `peer:${number}`
   | `custom:${string}`;
 
@@ -170,6 +181,7 @@ export function DetailView({
   renderNoSqlBrowser,
   renderStorageBrowser,
   onChatStream,
+  onPublishMessage,
 }: DetailViewProps) {
   const { rerollingField, closeReroll } = useUIStore();
   const hasSqlEditor = !!schema.sqlEditor && !!onRunQuery;
@@ -193,6 +205,7 @@ export function DetailView({
     !!onModifySecretVersion;
   const hasNoSqlBrowser = !!schema.noSqlBrowser && !!renderNoSqlBrowser;
   const hasChatPanel = !!schema.chatPanel && !!onChatStream;
+  const hasPublishPanel = !!schema.publishPanel && !!onPublishMessage;
   const customTabs = schema.customTabs ?? [];
   const hasTabs =
     hasStorageBrowser ||
@@ -206,6 +219,7 @@ export function DetailView({
     hasSecretVersions ||
     hasNoSqlBrowser ||
     hasChatPanel ||
+    hasPublishPanel ||
     customTabs.length > 0 ||
     peerPanes.length > 0;
   const [activeTab, setActiveTab] = useState<Tab>("overview");
@@ -233,6 +247,7 @@ export function DetailView({
   if (hasSecretVersions) tabKeys.push("secret-versions");
   if (hasNoSqlBrowser) tabKeys.push("nosql-browser");
   if (hasChatPanel) tabKeys.push("chat");
+  if (hasPublishPanel) tabKeys.push("publish");
   for (const tab of customTabs) tabKeys.push(`custom:${tab.id}` as Tab);
   for (let i = 0; i < peerPanes.length; i++) tabKeys.push(`peer:${i}` as Tab);
 
@@ -407,6 +422,13 @@ export function DetailView({
                 return (
                   <TabButton key={key} {...tabProps} onClick={() => setActiveTab("chat")}>
                     {schema.chatPanel?.tabLabel ?? "Playground"}
+                  </TabButton>
+                );
+              }
+              if (key === "publish") {
+                return (
+                  <TabButton key={key} {...tabProps} onClick={() => setActiveTab("publish")}>
+                    {schema.publishPanel?.tabLabel ?? "Publish"}
                   </TabButton>
                 );
               }
@@ -759,6 +781,17 @@ export function DetailView({
           className="flex-1 flex flex-col overflow-hidden"
         >
           <ChatPanel capability={schema.chatPanel!} onStream={onChatStream!} />
+        </div>
+      )}
+
+      {hasPublishPanel && activeTab === "publish" && (
+        <div
+          role="tabpanel"
+          id={panelIdFor("publish")}
+          aria-labelledby={tabIdFor("publish")}
+          className="flex-1 flex flex-col overflow-hidden"
+        >
+          <PublishPanel capability={schema.publishPanel!} onPublish={onPublishMessage!} />
         </div>
       )}
 

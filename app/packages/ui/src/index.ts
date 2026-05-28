@@ -91,6 +91,7 @@ export { BucketPolicyEditor } from "./components/detail/BucketPolicyEditor.js";
 export { DescribeView } from "./components/detail/DescribeView.js";
 export { LogsView } from "./components/detail/LogsView.js";
 export { ChatPanel } from "./components/detail/ChatPanel.js";
+export { PublishPanel } from "./components/detail/PublishPanel.js";
 export { ArtifactRegistryView } from "./components/detail/ArtifactRegistryView.js";
 export type {
   ArtifactListParams,

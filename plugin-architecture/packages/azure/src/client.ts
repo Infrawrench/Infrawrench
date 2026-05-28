@@ -34,13 +34,17 @@ import type {
   CreateSizePricingRequest,
   DashboardStat,
   CredentialExport,
+  PublishMessagePayload,
+  PublishMessageResult,
 } from "@infrawrench/plugin-base";
 import {
   fetchAccessToken,
   fetchGraphAccessToken,
+  fetchServiceBusAccessToken,
   fetchStorageAccessToken,
   type AzureCredentials,
 } from "./auth.js";
+import { publishServiceBus, publishEventHub } from "./publish-handlers.js";
 import type { ListerContext } from "./resource-listers.js";
 import * as listers from "./resource-listers.js";
 import {
@@ -84,6 +88,7 @@ export class AzureClient implements PluginClient {
   private tokenCache: TokenCache | null = null;
   private storageTokenCache: TokenCache | null = null;
   private graphTokenCache: TokenCache | null = null;
+  private serviceBusTokenCache: TokenCache | null = null;
   private pricingRateCache = new Map<string, AzurePricingCacheEntry>();
   private pricingRateInFlight = new Map<string, Promise<AzurePricingRates>>();
 
@@ -118,6 +123,17 @@ export class AzureClient implements PluginClient {
     }
     const t = await fetchStorageAccessToken(this.creds);
     this.storageTokenCache = { token: t, expiresAt: now + 3_600_000 };
+    return t;
+  }
+
+  /** Service Bus / Event Hubs data-plane token — separate audience from ARM. */
+  private async serviceBusToken(): Promise<string> {
+    const now = Date.now();
+    if (this.serviceBusTokenCache && this.serviceBusTokenCache.expiresAt > now + 60_000) {
+      return this.serviceBusTokenCache.token;
+    }
+    const t = await fetchServiceBusAccessToken(this.creds);
+    this.serviceBusTokenCache = { token: t, expiresAt: now + 3_600_000 };
     return t;
   }
 
@@ -464,6 +480,19 @@ export class AzureClient implements PluginClient {
       resourceId,
       accountId,
     );
+  }
+
+  async publishMessage(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+    payload: PublishMessagePayload,
+  ): Promise<PublishMessageResult> {
+    const resource = await this.getResource(typeId, resourceId, accountId);
+    const ctx = { serviceBusToken: () => this.serviceBusToken() };
+    if (typeId === "azure-service-bus") return publishServiceBus(ctx, resource, payload);
+    if (typeId === "azure-event-hub") return publishEventHub(ctx, resource, payload);
+    throw new Error(`Azure plugin: publishMessage not supported for type "${typeId}"`);
   }
 
   exportCredential(

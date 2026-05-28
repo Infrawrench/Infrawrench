@@ -17,6 +17,7 @@ const REQUEST_TIMEOUT_MS = 12000;
  *   describeGroup         (groupId)                       → { groupId, state, protocol, members }
  *   fetchOffsets          (groupId)                       → [{ topic, partition, offset, … }]
  *   deleteGroup           (groupId)                       → { ok: true }
+ *   produce               (topic, value, key, headersJson) → { partition, offset }
  */
 export function buildKafkaConfig(connectionString: string): KafkaConfig {
   let bootstrap = connectionString;
@@ -198,6 +199,9 @@ export const driver = {
     cmd: string,
     args: (string | number)[],
   ): Promise<unknown> {
+    if (cmd === "produce") {
+      return runProduceCommand(connectionString, args);
+    }
     // Retry once: pooled admin clients go stale when the broker closes an idle
     // socket, so the first op after a pause can fail with "Closed connection".
     // Dropping the entry and reconnecting recovers transparently.
@@ -218,6 +222,58 @@ export const driver = {
     }
   },
 } satisfies KvNodeDriver;
+
+/**
+ * One-shot produce. Args: [topic, value, key, headersJson].
+ *
+ * We spin up a producer per call rather than pooling it — produce-from-the-
+ * UI is rare, and the connect cost (~connection + metadata fetch) is fine
+ * for a one-off send.
+ */
+async function runProduceCommand(
+  connectionString: string,
+  args: (string | number)[],
+): Promise<{ partition?: number; offset?: string }> {
+  const topic = String(args[0] ?? "");
+  if (!topic) throw new Error("produce requires a topic name");
+  const value = String(args[1] ?? "");
+  const key = args[2] !== undefined && String(args[2]).length > 0 ? String(args[2]) : undefined;
+  const headersJson = args[3] !== undefined ? String(args[3]) : "";
+  let headers: Record<string, string> | undefined;
+  if (headersJson) {
+    try {
+      headers = JSON.parse(headersJson) as Record<string, string>;
+    } catch {
+      // Treat malformed headers JSON as "no headers" rather than failing the
+      // whole call — keeps the UI responsive to a typo in the side input.
+    }
+  }
+
+  const kafka = new Kafka(buildKafkaConfig(connectionString));
+  const producer = kafka.producer();
+  try {
+    await producer.connect();
+    const result = await producer.send({
+      topic,
+      messages: [
+        {
+          value,
+          ...(key !== undefined ? { key } : {}),
+          ...(headers ? { headers } : {}),
+        },
+      ],
+    });
+    const first = result[0];
+    return {
+      ...(first && typeof first.partition === "number" ? { partition: first.partition } : {}),
+      ...(first && first.baseOffset !== undefined ? { offset: String(first.baseOffset) } : {}),
+    };
+  } catch (err) {
+    throw describeFailure(err, connectionString);
+  } finally {
+    await producer.disconnect().catch(() => {});
+  }
+}
 
 async function runAdminCommand(
   admin: KafkaAdmin,

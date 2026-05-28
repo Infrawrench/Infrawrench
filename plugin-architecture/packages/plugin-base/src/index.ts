@@ -102,6 +102,10 @@ export type {
   ChatPanelCapability,
   ChatMessage,
   ChatStreamEvent,
+  PublishPanelCapability,
+  PublishPanelField,
+  PublishMessagePayload,
+  PublishMessageResult,
 } from "./schema.js";
 
 export type {

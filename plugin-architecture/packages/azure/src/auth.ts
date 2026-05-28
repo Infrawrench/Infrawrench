@@ -64,3 +64,12 @@ export function fetchGraphAccessToken(creds: AzureCredentials): Promise<string> 
 export function fetchAcrAccessToken(creds: AzureCredentials): Promise<string> {
   return exchangeAadToken(creds, "https://containerregistry.azure.net/.default", "Azure ACR auth");
 }
+
+/**
+ * AAD access token scoped to Service Bus / Event Hubs data plane (both use
+ * the same audience). Used to POST messages into queues/topics/hubs via the
+ * REST API.
+ */
+export function fetchServiceBusAccessToken(creds: AzureCredentials): Promise<string> {
+  return exchangeAadToken(creds, "https://servicebus.azure.net/.default", "Azure Service Bus auth");
+}

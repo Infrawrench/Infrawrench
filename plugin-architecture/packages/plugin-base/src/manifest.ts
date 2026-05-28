@@ -474,6 +474,21 @@ export interface PluginClient {
     messages: ChatMessage[],
   ): AsyncIterable<ChatStreamEvent>;
   /**
+   * Publish one message to a pub/sub resource — Cloudflare Queue, AWS SQS/SNS/
+   * Kinesis/EventBridge, GCP Pub/Sub topic, GCP Cloud Tasks, Azure Service
+   * Bus / Event Hub, Kafka topic, etc. Called by the host's Publish tab when
+   * the user clicks Send. The plugin parses `payload.body` according to the
+   * declared `bodyFormat` and pulls plugin-specific extras (subject,
+   * partition key, attributes, ...) out of `payload.extras`. Returns a short
+   * confirmation that the host renders under the form.
+   */
+  publishMessage?(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+    payload: PublishMessagePayload,
+  ): Promise<PublishMessageResult>;
+  /**
    * Attach a resource of `sourceTypeId` onto a resource of `targetTypeId` — e.g. a
    * persistent disk onto a VM. Only called when both resources live in the same
    * account and the source type declares the target in its `attachTargets`.
@@ -712,6 +727,8 @@ import type {
   DetailViewSchema,
   MetricSeries,
   PeerPaneSchema,
+  PublishMessagePayload,
+  PublishMessageResult,
   QueryCostEstimate,
   SecretVersion,
   SecretVersionMutation,

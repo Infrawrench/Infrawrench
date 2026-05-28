@@ -13,6 +13,8 @@ import type {
   HostServices,
   ChatMessage,
   ChatStreamEvent,
+  PublishMessagePayload,
+  PublishMessageResult,
 } from "@infrawrench/plugin-base";
 import type { AwsCredentials } from "./auth.js";
 import type { ListerContext } from "./resource-listers.js";
@@ -111,6 +113,7 @@ import { resolveOutput as resolveOutputImpl } from "./resolve-output.js";
 import { deleteResource as deleteResourceImpl } from "./delete-handlers.js";
 import { executeFieldAction as executeFieldActionImpl } from "./field-actions.js";
 import { executeDynamoDbCommand } from "./dynamodb-handlers.js";
+import { publishSqs, publishSns, publishKinesis, publishEventBridge } from "./publish-handlers.js";
 import { fetchSigned } from "./signed-request.js";
 
 export class AWSClient implements PluginClient {
@@ -567,6 +570,36 @@ export class AWSClient implements PluginClient {
       fields,
       actionFields ?? {},
     );
+  }
+
+  async publishMessage(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+    payload: PublishMessagePayload,
+  ): Promise<PublishMessageResult> {
+    const resource = await this.getResource(typeId, resourceId, accountId);
+    const ctx = {
+      credsFor: (region: string) => this.credsFor(region),
+      defaultRegion: this.creds.region,
+      resource: {
+        fields: resource.fields,
+        ...(resource.externalId !== undefined ? { externalId: resource.externalId } : {}),
+        displayName: resource.displayName,
+      },
+    };
+    switch (typeId) {
+      case "sqs-queue":
+        return publishSqs(ctx, payload);
+      case "sns-topic":
+        return publishSns(ctx, payload);
+      case "kinesis-stream":
+        return publishKinesis(ctx, payload);
+      case "eventbridge-rule":
+        return publishEventBridge(ctx, payload);
+      default:
+        throw new Error(`AWS plugin: publishMessage not supported for type "${typeId}"`);
+    }
   }
 
   async deleteResource(typeId: string, resourceId: string, accountId: string): Promise<void> {

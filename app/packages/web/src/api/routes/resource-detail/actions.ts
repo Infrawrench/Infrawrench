@@ -164,6 +164,50 @@ export function registerActionRoutes(app: Hono): void {
     });
   });
 
+  /**
+   * POST /api/resources/publish-message — send one message to a pub/sub
+   * resource (Cloudflare Queue, AWS SQS/SNS/Kinesis/EventBridge, GCP Pub/Sub,
+   * Azure Service Bus / Event Hub, Kafka). The browser-side PublishPanel
+   * posts the body + extras here; the plugin's publishMessage handles the
+   * provider call and returns a one-line summary.
+   */
+  app.post("/publish-message", async (c) => {
+    requirePermission(c, "resources:execute");
+    const organizationId = c.get("organizationId");
+    const input = await c.req.json<{
+      pluginId: string;
+      accountId: string;
+      resourceTypeId: string;
+      resourceId: string;
+      payload: {
+        body: string;
+        extras: Record<string, string | Record<string, string>>;
+      };
+      parentResourceId?: string;
+    }>();
+    const ctx = await getClientForResource(
+      input.pluginId,
+      input.accountId,
+      organizationId,
+      input.parentResourceId,
+    );
+    if (!ctx) return c.json({ error: "Account not found" }, 404);
+    if (!ctx.client.publishMessage) {
+      return c.json({ error: "Plugin does not support publishing" }, 400);
+    }
+    try {
+      const result = await ctx.client.publishMessage(
+        input.resourceTypeId,
+        input.resourceId,
+        input.accountId,
+        input.payload,
+      );
+      return c.json({ result });
+    } catch (e) {
+      return c.json({ error: e instanceof Error ? e.message : "Publish failed" }, 400);
+    }
+  });
+
   /** POST /api/resources/attach — attach a resource onto a same-account target (e.g. disk → VM). */
   app.post("/attach", async (c) => {
     requirePermission(c, "resources:write");

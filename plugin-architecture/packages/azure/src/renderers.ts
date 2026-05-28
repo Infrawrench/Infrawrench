@@ -128,6 +128,60 @@ export function renderAzureDetail(
     };
   }
 
+  if (resource.resourceTypeId === "azure-service-bus") {
+    detail.publishPanel = {
+      tabLabel: "Send",
+      subtitle: `Send a message into a queue or topic inside ${resource.displayName}`,
+      bodyFormat: "json",
+      defaultBody: '{\n  "hello": "world"\n}',
+      helpText:
+        "Posted to the Service Bus REST API. The body becomes the message payload — JSON is recommended for SDK consumers.",
+      submitLabel: "Send",
+      extraFields: [
+        {
+          key: "entity",
+          label: "Queue or topic name",
+          kind: "text",
+          placeholder: "my-queue",
+          helpText: "The queue or topic inside this namespace that the message should land in.",
+        },
+        {
+          key: "properties",
+          label: "Application properties",
+          kind: "key-value-list",
+          helpText: "Sent as BrokerProperties on the message.",
+        },
+      ],
+    };
+  }
+
+  if (resource.resourceTypeId === "azure-event-hub") {
+    detail.publishPanel = {
+      tabLabel: "Send",
+      subtitle: `Send an event into a hub inside ${resource.displayName}`,
+      bodyFormat: "json",
+      defaultBody: '{\n  "event": "test"\n}',
+      helpText: "Posted to the Event Hubs REST API. The body becomes the event payload.",
+      submitLabel: "Send event",
+      extraFields: [
+        {
+          key: "hub",
+          label: "Event hub name",
+          kind: "text",
+          placeholder: "my-hub",
+          helpText: "The event hub inside this namespace that should receive the event.",
+        },
+        {
+          key: "partitionKey",
+          label: "Partition key",
+          kind: "text",
+          optional: true,
+          helpText: "Optional. Events with the same key land on the same partition.",
+        },
+      ],
+    };
+  }
+
   return detail;
 }
 

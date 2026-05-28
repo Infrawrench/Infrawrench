@@ -534,6 +534,13 @@ export interface DetailViewSchema {
   customTabs?: DetailViewTab[];
   /** If present, the host renders a "Playground" tab with a chat interface. */
   chatPanel?: ChatPanelCapability;
+  /**
+   * If present, the host renders a "Publish" tab with a body editor + Send
+   * button. Backs onto `PluginClient.publishMessage`. Used for pub/sub
+   * resources (Cloudflare Queues, AWS SQS/SNS/Kinesis/EventBridge, GCP
+   * Pub/Sub & Cloud Tasks, Azure Service Bus & Event Hub, Kafka topics).
+   */
+  publishPanel?: PublishPanelCapability;
 }
 
 /**
@@ -553,6 +560,74 @@ export interface ChatPanelCapability {
   inputPlaceholder?: string;
   /** Disable the input and render this message instead. Used when the resource isn't ready (still provisioning, no endpoint key available, etc.). */
   disabledReason?: string;
+}
+
+/**
+ * A plugin-defined extra input rendered alongside the message body in the
+ * publish panel — e.g. SNS Subject, Kinesis PartitionKey, SQS DelaySeconds,
+ * Service Bus queue picker.
+ */
+export interface PublishPanelField {
+  /** Key returned in PublishMessagePayload.extras. */
+  key: string;
+  /** Label shown above the input. */
+  label: string;
+  /** Form input shape. */
+  kind: "text" | "number" | "select" | "key-value-list";
+  /** Placeholder for "text" and "number". */
+  placeholder?: string;
+  /** Default value for "text", "number", "select". */
+  defaultValue?: string;
+  /** Option list for "select". */
+  options?: Array<{ value: string; label: string }>;
+  /** Short note rendered under the input. */
+  helpText?: string;
+  /** Field is optional — empty values are passed through unchanged. */
+  optional?: boolean;
+}
+
+/**
+ * Publish-panel tab — a JSON/text body editor plus an optional set of
+ * plugin-defined extra inputs. The plugin handles the send via
+ * `PluginClient.publishMessage`.
+ */
+export interface PublishPanelCapability {
+  /** Label for the tab. Defaults to "Publish". */
+  tabLabel?: string;
+  /** One-line copy shown at the top of the pane. */
+  subtitle?: string;
+  /** Body editor mode. Defaults to "json". */
+  bodyFormat?: "json" | "text";
+  /** Pre-filled body content. */
+  defaultBody?: string;
+  /** Help text shown above the body editor (e.g. shape constraints). */
+  helpText?: string;
+  /** Submit button label. Defaults to "Send". */
+  submitLabel?: string;
+  /** Extra inputs rendered above the body editor. */
+  extraFields?: PublishPanelField[];
+  /** Disable the input and render this message instead. */
+  disabledReason?: string;
+}
+
+/**
+ * Payload sent to `PluginClient.publishMessage`. `body` is the raw text the
+ * user typed (JSON-serialised if `bodyFormat` was "json" — the plugin is
+ * responsible for parsing). `extras` carries values from `extraFields`,
+ * keyed by the field's `key`. Key-value list fields arrive as a nested
+ * `Record<string, string>`.
+ */
+export interface PublishMessagePayload {
+  body: string;
+  extras: Record<string, string | Record<string, string>>;
+}
+
+/** Result of a successful publish — surfaced under the form. */
+export interface PublishMessageResult {
+  /** Provider-assigned id (message id, sequence number, etc.). */
+  id?: string;
+  /** One-line summary shown under the form on success. */
+  summary?: string;
 }
 
 /** A single chat turn sent to or received from the plugin. */

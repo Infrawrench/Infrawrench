@@ -432,39 +432,160 @@ export function renderD1DatabaseDetail(resource: ResourceInstance): DetailViewSc
   };
 }
 
+interface ParsedQueueConsumer {
+  consumerId: string;
+  type: string;
+  scriptName?: string;
+  deadLetterQueue?: string;
+  createdOn?: string;
+  batchSize?: number;
+  maxConcurrency?: number | null;
+  maxRetries?: number;
+  maxWaitTimeMs?: number;
+  retryDelay?: number;
+  visibilityTimeoutMs?: number;
+}
+
 export function renderQueueDetail(resource: ResourceInstance): DetailViewSchema {
   const fields = resource.fields;
-  return {
-    title: resource.displayName,
-    subtitle: "Cloudflare Queue",
-    status: { kind: "status-dot", status: "healthy", label: "Active" },
-    sections: [
+  const paused = Boolean(fields["deliveryPaused"]);
+
+  let consumers: ParsedQueueConsumer[] = [];
+  const consumersJson = resource.resolvedOutputs?.["__consumers__"];
+  if (typeof consumersJson === "string" && consumersJson.length > 0) {
+    try {
+      consumers = JSON.parse(consumersJson) as ParsedQueueConsumer[];
+    } catch {
+      /* ignore malformed consumer payload */
+    }
+  }
+
+  const overviewSection: SectionNode = {
+    kind: "section",
+    title: "Queue Details",
+    children: [
       {
-        kind: "section",
-        title: "Queue Details",
-        children: [
-          {
-            kind: "key-value-list",
-            items: [
-              { key: "Name", value: String(fields["name"] ?? ""), copyable: true },
-              { key: "Queue ID", value: resource.externalId ?? "", copyable: true },
-              ...(fields["producersTotal"] !== undefined
-                ? [{ key: "Producers", value: String(fields["producersTotal"]) }]
-                : []),
-              ...(fields["consumersTotal"] !== undefined
-                ? [{ key: "Consumers", value: String(fields["consumersTotal"]) }]
-                : []),
-              ...(fields["createdOn"]
-                ? [{ key: "Created", value: String(fields["createdOn"]) }]
-                : []),
-              ...(fields["modifiedOn"]
-                ? [{ key: "Modified", value: String(fields["modifiedOn"]) }]
-                : []),
-            ],
-          },
+        kind: "key-value-list",
+        items: [
+          { key: "Name", value: String(fields["name"] ?? ""), copyable: true },
+          { key: "Queue ID", value: resource.externalId ?? "", copyable: true },
+          ...(fields["producersTotal"] !== undefined
+            ? [{ key: "Producers", value: String(fields["producersTotal"]) }]
+            : []),
+          ...(fields["consumersTotal"] !== undefined
+            ? [{ key: "Consumers", value: String(fields["consumersTotal"]) }]
+            : []),
+          ...(fields["createdOn"] ? [{ key: "Created", value: String(fields["createdOn"]) }] : []),
+          ...(fields["modifiedOn"]
+            ? [{ key: "Modified", value: String(fields["modifiedOn"]) }]
+            : []),
         ],
       },
     ],
+  };
+
+  const settingsSection: SectionNode = {
+    kind: "section",
+    title: "Settings",
+    children: [
+      {
+        kind: "key-value-list",
+        items: [
+          { key: "Delivery Delay", value: `${Number(fields["deliveryDelay"] ?? 0)} s` },
+          {
+            key: "Retention Period",
+            value: `${Number(fields["messageRetentionPeriod"] ?? 0)} s`,
+          },
+          { key: "Delivery Paused", value: paused ? "Yes" : "No" },
+        ],
+      },
+    ],
+  };
+
+  const consumersTable: SectionNode = {
+    kind: "section",
+    title: consumers.length > 0 ? "Consumers" : "No consumers configured",
+    children:
+      consumers.length === 0
+        ? [
+            {
+              kind: "text",
+              content:
+                "Bind this queue to a Worker (or set up a pull consumer) to start processing messages. New consumers show up here on next refresh.",
+              variant: "muted",
+            },
+          ]
+        : [
+            {
+              kind: "table",
+              columns: [
+                { key: "name", label: "Consumer", width: "wide" },
+                { key: "type", label: "Type", width: "narrow" },
+                { key: "batch", label: "Batch", width: "narrow" },
+                { key: "retries", label: "Retries", width: "narrow" },
+                { key: "retryDelay", label: "Retry Delay", width: "narrow" },
+                { key: "dlq", label: "Dead Letter Queue", width: "wide" },
+              ],
+              rows: consumers.map((c) => ({
+                cells: {
+                  name: c.scriptName ?? c.consumerId ?? "(pull)",
+                  type: c.type,
+                  batch: c.batchSize !== undefined ? String(c.batchSize) : "—",
+                  retries: c.maxRetries !== undefined ? String(c.maxRetries) : "—",
+                  retryDelay: c.retryDelay !== undefined ? `${c.retryDelay} s` : "—",
+                  dlq: c.deadLetterQueue && c.deadLetterQueue.length > 0 ? c.deadLetterQueue : "—",
+                },
+              })),
+            },
+          ],
+  };
+
+  return {
+    title: resource.displayName,
+    subtitle: "Cloudflare Queue",
+    status: {
+      kind: "status-dot",
+      status: paused ? "degraded" : "healthy",
+      label: paused ? "Delivery paused" : "Active",
+    },
+    sections: [overviewSection, settingsSection],
+    customTabs: [
+      {
+        id: "consumers",
+        label: `Consumers${consumers.length > 0 ? ` (${consumers.length})` : ""}`,
+        sections: [consumersTable],
+      },
+    ],
+    publishPanel: {
+      tabLabel: "Publish",
+      subtitle: `Push a test message to ${resource.displayName}`,
+      bodyFormat: "json",
+      defaultBody: '{\n  "hello": "world"\n}',
+      helpText:
+        "Pushed via the Cloudflare Queues HTTP API. Workers bound as consumers will receive the message on their next batch.",
+      submitLabel: "Push message",
+      extraFields: [
+        {
+          key: "format",
+          label: "Body format",
+          kind: "select",
+          defaultValue: "json",
+          options: [
+            { value: "json", label: "JSON" },
+            { value: "text", label: "Plain text" },
+          ],
+          helpText: "Sent as the `content_type` field on the push call.",
+        },
+        {
+          key: "delaySeconds",
+          label: "Delay (seconds)",
+          kind: "number",
+          placeholder: "0",
+          optional: true,
+          helpText: "Optional — delay before the message becomes available to consumers.",
+        },
+      ],
+    },
     headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
   };
 }

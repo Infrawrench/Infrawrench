@@ -191,6 +191,129 @@ export function renderDetail(
           },
         }
       : {}),
+    ...(resource.resourceTypeId === "sqs-queue"
+      ? {
+          publishPanel: {
+            tabLabel: "Send",
+            subtitle: `Send a test message to ${resource.displayName}`,
+            bodyFormat: "json" as const,
+            defaultBody: '{\n  "hello": "world"\n}',
+            helpText:
+              "Posted as the `MessageBody` of a single SendMessage call. JSON is sent as a string — consumers parse it themselves.",
+            submitLabel: "Send message",
+            extraFields: [
+              {
+                key: "delaySeconds",
+                label: "Delay (seconds)",
+                kind: "number" as const,
+                optional: true,
+                placeholder: "0",
+                helpText: "0–900. Maps to `DelaySeconds` on SendMessage.",
+              },
+              {
+                key: "messageGroupId",
+                label: "Message Group Id",
+                kind: "text" as const,
+                optional: true,
+                helpText: "Required for FIFO queues. Leave blank for standard queues.",
+              },
+              {
+                key: "attributes",
+                label: "Message attributes",
+                kind: "key-value-list" as const,
+                helpText:
+                  "Each entry becomes a String-typed MessageAttribute on the SendMessage call.",
+              },
+            ],
+          },
+        }
+      : {}),
+    ...(resource.resourceTypeId === "sns-topic"
+      ? {
+          publishPanel: {
+            tabLabel: "Publish",
+            subtitle: `Publish to ${resource.displayName}`,
+            bodyFormat: "text" as const,
+            defaultBody: "Hello from Infrawrench.",
+            helpText:
+              "Posted via SNS Publish. Pass JSON in the body if your subscribers expect structured data.",
+            submitLabel: "Publish",
+            extraFields: [
+              {
+                key: "subject",
+                label: "Subject",
+                kind: "text" as const,
+                optional: true,
+                helpText: "Optional — used by email subscribers as the email subject.",
+              },
+              {
+                key: "attributes",
+                label: "Message attributes",
+                kind: "key-value-list" as const,
+                helpText: "String-typed attributes attached to the message.",
+              },
+            ],
+          },
+        }
+      : {}),
+    ...(resource.resourceTypeId === "kinesis-stream"
+      ? {
+          publishPanel: {
+            tabLabel: "Put record",
+            subtitle: `Put a record into ${resource.displayName}`,
+            bodyFormat: "json" as const,
+            defaultBody: '{\n  "event": "test"\n}',
+            helpText:
+              "Posted via Kinesis PutRecord. The body is base64-encoded and sent as the record `Data`.",
+            submitLabel: "Put record",
+            extraFields: [
+              {
+                key: "partitionKey",
+                label: "Partition key",
+                kind: "text" as const,
+                placeholder: "user-123",
+                helpText: "Used by Kinesis to assign the record to a shard.",
+              },
+            ],
+          },
+        }
+      : {}),
+    ...(resource.resourceTypeId === "eventbridge-rule"
+      ? {
+          publishPanel: {
+            tabLabel: "Put event",
+            subtitle: `Put an event onto the bus matched by ${resource.displayName}`,
+            bodyFormat: "json" as const,
+            defaultBody: '{\n  "userId": "abc-123",\n  "action": "test"\n}',
+            helpText:
+              "Posted via EventBridge PutEvents. The body becomes the event `Detail`. Rules match on Source + DetailType.",
+            submitLabel: "Put event",
+            extraFields: [
+              {
+                key: "source",
+                label: "Source",
+                kind: "text" as const,
+                placeholder: "infrawrench.test",
+                helpText: "Required. EventBridge uses this for rule matching.",
+              },
+              {
+                key: "detailType",
+                label: "Detail type",
+                kind: "text" as const,
+                placeholder: "test-event",
+                helpText: "Required. Pairs with Source for rule matching.",
+              },
+              {
+                key: "eventBusName",
+                label: "Event bus name",
+                kind: "text" as const,
+                optional: true,
+                helpText: "Defaults to the bus the rule lives on, or `default`.",
+              },
+            ],
+          },
+        }
+      : {}),
   };
 }
 

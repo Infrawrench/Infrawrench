@@ -19,6 +19,8 @@ import type {
   LogsFetchResult,
   ChatMessage,
   ChatStreamEvent,
+  PublishMessagePayload,
+  PublishMessageResult,
 } from "@infrawrench/plugin-base";
 import type { HostServices } from "@infrawrench/plugin-base";
 import {
@@ -63,6 +65,7 @@ import {
 } from "./cloud-run-handlers.js";
 import type { CloudArmorContext } from "./cloud-armor-handlers.js";
 import { executeCloudArmorCommand } from "./cloud-armor-handlers.js";
+import { publishPubsubTopic, publishCloudTasksQueue } from "./publish-handlers.js";
 
 import type { GcpClientContext } from "./shared.js";
 import { deleteResource as runDeleteResource } from "./delete-client.js";
@@ -498,6 +501,34 @@ export class GcpClient implements PluginClient {
 
   async deleteResource(typeId: string, resourceId: string, accountId: string): Promise<void> {
     return runDeleteResource(this.sharedCtx, typeId, resourceId, accountId);
+  }
+
+  async publishMessage(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+    payload: PublishMessagePayload,
+  ): Promise<PublishMessageResult> {
+    const externalId = resourceId.split(":").slice(2).join(":");
+    if (typeId === "pubsub-topic") {
+      return publishPubsubTopic(
+        { token: () => this.token(), project: this.project },
+        externalId,
+        payload,
+      );
+    }
+    if (typeId === "cloud-tasks-queue") {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      return publishCloudTasksQueue(
+        { token: () => this.token(), project: this.project },
+        {
+          ...(resource.externalId !== undefined ? { externalId: resource.externalId } : {}),
+          fields: resource.fields,
+        },
+        payload,
+      );
+    }
+    throw new Error(`GCP plugin: publishMessage not supported for type "${typeId}"`);
   }
 
   async executeNoSqlCommand(

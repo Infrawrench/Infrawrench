@@ -31,6 +31,7 @@ Create a service principal (Azure Portal → Microsoft Entra ID → App registra
 - **File browser** on Blob Storage.
 - **Secret export to K8s** for SQL Database and Storage accounts.
 - **Read-only manifest view** on every resource.
+- **Send test messages** to queues or topics inside a Service Bus namespace, and events into hubs inside an Event Hub namespace, from a **Send** tab on the detail page — see [Send test messages](../features/send-test-message.md). The service principal needs the **Azure Service Bus Data Sender** or **Azure Event Hubs Data Sender** role on the namespace.
 
 ## Tips & limits
 

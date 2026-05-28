@@ -29,6 +29,7 @@ You can optionally set a **Project ID** to override the project embedded in the 
 - **File browser** on GCS buckets.
 - **Secret export to K8s** for Cloud SQL and GCS (with service account key export as a secret).
 - **Gemini Playground** on Vertex AI Gemini models — open any model under **AI/ML** and use the **Playground** tab to chat with it. Responses stream token-by-token through Vertex AI's OpenAI-compatible chat endpoint (`us-central1`), authorized with the account's service account. The whole conversation history is sent on each turn. The service account needs the **Vertex AI User** role (`roles/aiplatform.user`) and the Vertex AI API enabled on the project.
+- **Send test messages** to Pub/Sub topics and Cloud Tasks queues from a **Publish** / **Create task** tab on the detail page — see [Send test messages](../features/send-test-message.md). The service account needs `roles/pubsub.publisher` and `roles/cloudtasks.enqueuer` respectively.
 
 <insert [GCP Gemini model detail page with the Playground tab open, showing a streamed assistant reply] here>
 
