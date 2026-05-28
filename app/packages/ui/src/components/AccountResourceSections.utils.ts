@@ -2,7 +2,7 @@ import type {
   SectionCategoryState,
   SectionResource,
   SectionTypeDef,
-} from "./AccountResourceSections.js";
+} from "./AccountResourceSections.types.js";
 
 /** Returns the search-relevant fields object from a resource (supports both web and desktop shapes). */
 function getFields(resource: SectionResource): Record<string, unknown> {
