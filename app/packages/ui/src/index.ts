@@ -250,4 +250,5 @@ export type {
   Resource,
   ResourceTypeSummary,
   AccountDetail,
+  Recipient,
 } from "./api-types.js";

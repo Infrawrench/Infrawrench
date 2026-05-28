@@ -1,6 +1,7 @@
 import { createFileRoute, useParams } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api";
+import type { Recipient } from "@infrawrench/ui";
 
 interface PagingSettings {
   enabled: boolean;
@@ -9,14 +10,6 @@ interface PagingSettings {
   windowMinutes: number;
   cooldownMinutes: number;
   credentialsConfigured: boolean;
-}
-
-interface Recipient {
-  id: string;
-  displayName: string;
-  phoneNumber: string;
-  sms: boolean;
-  voice: boolean;
 }
 
 export const Route = createFileRoute("/org/$orgId/settings/paging")({

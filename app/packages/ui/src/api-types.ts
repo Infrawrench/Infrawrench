@@ -125,3 +125,16 @@ export interface AccountDetail {
   pluginDisplayName: string;
   pluginLogoSvg: string;
 }
+
+/**
+ * A paging recipient as returned by `GET /api/org/:orgId/twilio/recipients`
+ * (and created via `POST .../recipients`). Mirrors the server-side
+ * `Recipient` shape in `@infrawrench/server-core`'s twilio-pager.
+ */
+export interface Recipient {
+  id: string;
+  displayName: string;
+  phoneNumber: string;
+  sms: boolean;
+  voice: boolean;
+}
