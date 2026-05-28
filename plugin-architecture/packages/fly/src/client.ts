@@ -274,7 +274,6 @@ export class FlyClient implements PluginClient {
         method: "POST",
         body: JSON.stringify(body),
       });
-      // Fetch the created app to get full details
       const app = await this.fetch<FlyApp>(`/v1/apps/${fields["name"]}`);
       return this.mapApp(app, accountId);
     }

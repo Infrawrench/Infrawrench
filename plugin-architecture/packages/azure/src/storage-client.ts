@@ -86,7 +86,6 @@ export async function uploadStorageObject(
   file: File,
 ): Promise<void> {
   const tok = await ctx.storageToken();
-  // Find the first container, then upload blob
   const containerName = key.split("/")[0] ?? "$root";
   const blobName = key.split("/").slice(1).join("/") || key;
   const url = `https://${bucket}.blob.core.windows.net/${containerName}/${blobName}`;

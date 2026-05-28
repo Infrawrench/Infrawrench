@@ -149,7 +149,6 @@ export async function resolveOutput(
       return `https://storage.googleapis.com/${String(resource.fields["name"] ?? resource.displayName)}`;
     }
     if (outputKey === "serviceAccountKey") {
-      // Create a new service account key via the IAM API
       const tok = await ctx.token();
       const email = ctx.serviceAccountKey.client_email;
       const res = await fetch(

@@ -940,7 +940,6 @@ export class NeonClient implements PluginClient {
     const branchId = String(resource.fields["branchId"] ?? "");
     const dbName = String(resource.fields["name"] ?? "");
 
-    // Get the role name for this database
     const roleName = String(resource.fields["ownerName"] ?? "neondb_owner");
 
     const resp = await this.api.getConnectionUri({
@@ -963,13 +962,11 @@ export class NeonClient implements PluginClient {
     const resource = await this.getResource("neon-project", resourceId, accountId);
     const projectId = String(resource.externalId ?? "");
 
-    // Find the primary branch
     const branchResp = await this.api.listProjectBranches({ projectId });
     const primary =
       branchResp.data.branches.find((b) => isDefaultBranch(b)) ?? branchResp.data.branches[0];
     if (!primary) throw new Error("Neon plugin: no branches found on project");
 
-    // Find the first database on that branch
     const dbResp = await this.api.listProjectBranchDatabases(projectId, primary.id);
     const db = dbResp.data.databases[0];
     if (!db) throw new Error("Neon plugin: no databases found on primary branch");
@@ -995,7 +992,6 @@ export class NeonClient implements PluginClient {
     const projectId = String(resource.fields["projectId"] ?? "");
     const branchId = String(resource.externalId ?? "");
 
-    // Find the first database on this branch
     const dbResp = await this.api.listProjectBranchDatabases(projectId, branchId);
     const db = dbResp.data.databases[0];
     if (!db) throw new Error("Neon plugin: no databases found on this branch");

@@ -836,13 +836,7 @@ export class ScalewayClient implements PluginClient {
     }
 
     if (resourceTypeId === "kapsule-cluster") {
-      // TODO: Verify Cockpit PromQL metric names for Kapsule clusters.
-      // Candidate queries once a known-working Cockpit setup is available:
-      //   kube_node_status_condition{cluster_id="<id>",condition="Ready",status="true"}
-      //   container_cpu_usage_seconds_total{cluster_id="<id>"}
-      //   container_memory_usage_bytes{cluster_id="<id>"}
-      // For now return empty — infrastructure is wired (token, data-source
-      // discovery, query helper) but metric names are unverified.
+      // Cockpit PromQL metric names for Kapsule clusters are unverified against a live setup.
       return [];
     }
 

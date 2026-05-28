@@ -78,7 +78,6 @@ export async function createAppService(
   const runtime = fields["runtime"] ?? "NODE|20-lts";
   const sku = fields["sku"] ?? "B1";
 
-  // Create an App Service Plan first
   const planName = `${name}-plan`;
   await ctx.put(
     `${ARM}/subscriptions/${ctx.subscriptionId}/resourceGroups/${rg}/providers/Microsoft.Web/serverfarms/${planName}?api-version=2023-01-01`,
@@ -90,7 +89,6 @@ export async function createAppService(
     },
   );
 
-  // Create the Web App
   const result = await ctx.put<Record<string, unknown>>(
     `${ARM}/subscriptions/${ctx.subscriptionId}/resourceGroups/${rg}/providers/Microsoft.Web/sites/${name}?api-version=2023-01-01`,
     {

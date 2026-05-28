@@ -652,7 +652,6 @@ export const networkingCreateResourceHandlers: Record<
     const sourceSubnetworkIpRangesToNat =
       fields["sourceSubnetworkIpRangesToNat"] ?? "ALL_SUBNETWORKS_ALL_IP_RANGES";
     const tok = await ctx.token();
-    // Get the existing router, patch with new NAT
     const router = await ctx.get<Record<string, unknown>>(
       `https://compute.googleapis.com/compute/v1/projects/${p}/regions/${region}/routers/${routerName}`,
     );
