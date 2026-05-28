@@ -1,5 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
+import { collectPerZone } from "./shared.js";
 import type { LoadBalancerCreateParams } from "cloudflare/resources/load-balancers/load-balancers";
 
 function mapLoadBalancer(
@@ -42,18 +43,18 @@ export async function listAllLoadBalancers(
   api: CloudflareApi,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const results: ResourceInstance[] = [];
-  for (const zone of await api.listZones()) {
-    const zoneId = zone.id;
-    try {
+  return collectPerZone(
+    api,
+    async (zoneId) => {
+      const part: ResourceInstance[] = [];
       for await (const lb of api.cf.loadBalancers.list({ zone_id: zoneId })) {
-        results.push(mapLoadBalancer(lb as unknown as Record<string, unknown>, accountId, zoneId));
+        part.push(mapLoadBalancer(lb as unknown as Record<string, unknown>, accountId, zoneId));
       }
-    } catch {
-      // Skip zones where we can't read load balancers
-    }
-  }
-  return results;
+      return part;
+    },
+    "load balancers",
+    "Zone · Load Balancers:Read",
+  );
 }
 
 export async function createLoadBalancer(

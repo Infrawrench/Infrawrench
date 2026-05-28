@@ -1,5 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
+import { collectPerZone } from "./shared.js";
 
 function mapSSLCertificate(
   cert: Record<string, unknown>,
@@ -41,13 +42,12 @@ export async function listAllSSLCertificates(
   api: CloudflareApi,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const results: ResourceInstance[] = [];
-  for (const zone of await api.listZones()) {
-    const zoneId = zone.id;
-    const zoneName = zone.name;
-    try {
+  return collectPerZone(
+    api,
+    async (zoneId, zoneName) => {
+      const part: ResourceInstance[] = [];
       for await (const cert of api.cf.customCertificates.list({ zone_id: zoneId })) {
-        results.push(
+        part.push(
           mapSSLCertificate(
             cert as unknown as Record<string, unknown>,
             accountId,
@@ -56,11 +56,11 @@ export async function listAllSSLCertificates(
           ),
         );
       }
-    } catch {
-      // Skip zones where we can't read certificates
-    }
-  }
-  return results;
+      return part;
+    },
+    "SSL certificates",
+    "Zone · SSL and Certificates:Read",
+  );
 }
 
 export async function createSSLCertificate(

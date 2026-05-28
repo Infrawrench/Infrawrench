@@ -1,5 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
+import { collectPerZone } from "./shared.js";
 import type { PageRuleCreateParams } from "cloudflare/resources/page-rules/page-rules";
 
 function mapPageRule(
@@ -48,19 +49,19 @@ export async function listAllPageRules(
   api: CloudflareApi,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const results: ResourceInstance[] = [];
-  for (const zone of await api.listZones()) {
-    const zoneId = zone.id;
-    try {
+  return collectPerZone(
+    api,
+    async (zoneId) => {
+      const part: ResourceInstance[] = [];
       const rules = await api.cf.pageRules.list({ zone_id: zoneId });
       for (const rule of rules) {
-        results.push(mapPageRule(rule as unknown as Record<string, unknown>, accountId, zoneId));
+        part.push(mapPageRule(rule as unknown as Record<string, unknown>, accountId, zoneId));
       }
-    } catch {
-      // Skip zones where we can't read page rules
-    }
-  }
-  return results;
+      return part;
+    },
+    "page rules",
+    "Zone · Page Rules:Read",
+  );
 }
 
 export async function createPageRule(

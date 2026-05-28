@@ -1,5 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
+import { withAuthErrorHint } from "./shared.js";
 import type { Zone } from "cloudflare/resources/zones/zones";
 
 function mapZone(api: CloudflareApi, z: Zone, accountId: string): ResourceInstance {
@@ -37,11 +38,17 @@ export async function listZones(
   api: CloudflareApi,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const out: ResourceInstance[] = [];
-  for (const z of await api.listZones()) {
-    out.push(mapZone(api, z, accountId));
-  }
-  return out;
+  return withAuthErrorHint(
+    async () => {
+      const out: ResourceInstance[] = [];
+      for (const z of await api.listZones()) {
+        out.push(mapZone(api, z, accountId));
+      }
+      return out;
+    },
+    "zones",
+    "Zone · Zone:Read",
+  );
 }
 
 export async function getZone(

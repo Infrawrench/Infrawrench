@@ -1,5 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
+import { collectPerZone, withAuthErrorHint } from "./shared.js";
 import type { RecordResponse, RecordCreateParams } from "cloudflare/resources/dns/records";
 
 function recordFields(r: RecordResponse, zoneId: string): ResourceInstance {
@@ -48,14 +49,18 @@ export async function listAllDnsRecords(
   api: CloudflareApi,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const results: ResourceInstance[] = [];
-  for (const zone of await api.listZones()) {
-    const zoneId = zone.id;
-    for await (const r of api.cf.dns.records.list({ zone_id: zoneId })) {
-      results.push(mapDnsRecord(r, accountId, zoneId));
-    }
-  }
-  return results;
+  return collectPerZone(
+    api,
+    async (zoneId) => {
+      const part: ResourceInstance[] = [];
+      for await (const r of api.cf.dns.records.list({ zone_id: zoneId })) {
+        part.push(mapDnsRecord(r, accountId, zoneId));
+      }
+      return part;
+    },
+    "DNS records",
+    "Zone · DNS:Read",
+  );
 }
 
 export async function listDnsRecordsForZone(
@@ -63,11 +68,17 @@ export async function listDnsRecordsForZone(
   zoneId: string,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const results: ResourceInstance[] = [];
-  for await (const r of api.cf.dns.records.list({ zone_id: zoneId })) {
-    results.push(mapDnsRecord(r, accountId, zoneId));
-  }
-  return results;
+  return withAuthErrorHint(
+    async () => {
+      const results: ResourceInstance[] = [];
+      for await (const r of api.cf.dns.records.list({ zone_id: zoneId })) {
+        results.push(mapDnsRecord(r, accountId, zoneId));
+      }
+      return results;
+    },
+    "DNS records",
+    "Zone · DNS:Read",
+  );
 }
 
 export async function getDnsRecord(

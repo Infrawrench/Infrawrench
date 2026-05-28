@@ -1,5 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
+import { collectPerZone } from "./shared.js";
 import type { CustomHostnameCreateParams } from "cloudflare/resources/custom-hostnames/custom-hostnames";
 
 function mapCustomHostname(
@@ -37,18 +38,18 @@ export async function listAllCustomHostnames(
   api: CloudflareApi,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const results: ResourceInstance[] = [];
-  for (const zone of await api.listZones()) {
-    const zoneId = zone.id;
-    try {
+  return collectPerZone(
+    api,
+    async (zoneId) => {
+      const part: ResourceInstance[] = [];
       for await (const h of api.cf.customHostnames.list({ zone_id: zoneId })) {
-        results.push(mapCustomHostname(h as unknown as Record<string, unknown>, accountId, zoneId));
+        part.push(mapCustomHostname(h as unknown as Record<string, unknown>, accountId, zoneId));
       }
-    } catch {
-      // Skip zones where we can't read custom hostnames
-    }
-  }
-  return results;
+      return part;
+    },
+    "custom hostnames",
+    "Zone · SSL and Certificates:Read",
+  );
 }
 
 export async function createCustomHostname(

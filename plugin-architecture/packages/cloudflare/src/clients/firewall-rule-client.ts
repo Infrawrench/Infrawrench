@@ -1,5 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
+import { collectPerZone } from "./shared.js";
 import type { RulesetCreateParams } from "cloudflare/resources/rulesets/rulesets";
 import type { RuleCreateParams } from "cloudflare/resources/rulesets/rules";
 
@@ -49,10 +50,10 @@ export async function listAllFirewallRules(
   api: CloudflareApi,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const results: ResourceInstance[] = [];
-  for (const zone of await api.listZones()) {
-    const zoneId = zone.id;
-    try {
+  return collectPerZone(
+    api,
+    async (zoneId) => {
+      const part: ResourceInstance[] = [];
       const customRuleset = await findCustomRuleset(api, zoneId);
       if (customRuleset) {
         const rsId = String(customRuleset["id"]);
@@ -60,14 +61,14 @@ export async function listAllFirewallRules(
         const full = fullRuleset as unknown as Record<string, unknown>;
         const rules = (full["rules"] as Array<Record<string, unknown>>) ?? [];
         for (const rule of rules) {
-          results.push(mapFirewallRule(rule, accountId, zoneId, rsId));
+          part.push(mapFirewallRule(rule, accountId, zoneId, rsId));
         }
       }
-    } catch {
-      // Skip zones where we can't read firewall rules
-    }
-  }
-  return results;
+      return part;
+    },
+    "firewall rules",
+    "Zone · Zone WAF:Read",
+  );
 }
 
 export async function createFirewallRule(

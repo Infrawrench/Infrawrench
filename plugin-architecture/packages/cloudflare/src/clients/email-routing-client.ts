@@ -1,5 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
+import { collectPerZone } from "./shared.js";
 import type { RuleCreateParams } from "cloudflare/resources/email-routing/rules/rules";
 
 function mapEmailRoutingRule(
@@ -53,20 +54,20 @@ export async function listAllEmailRoutingRules(
   api: CloudflareApi,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const results: ResourceInstance[] = [];
-  for (const zone of await api.listZones()) {
-    const zoneId = zone.id;
-    try {
+  return collectPerZone(
+    api,
+    async (zoneId) => {
+      const part: ResourceInstance[] = [];
       for await (const rule of api.cf.emailRouting.rules.list({ zone_id: zoneId })) {
-        results.push(
+        part.push(
           mapEmailRoutingRule(rule as unknown as Record<string, unknown>, accountId, zoneId),
         );
       }
-    } catch {
-      // Skip zones where email routing is not enabled
-    }
-  }
-  return results;
+      return part;
+    },
+    "email routing rules",
+    "Zone · Email Routing Rules:Read",
+  );
 }
 
 export async function createEmailRoutingRule(

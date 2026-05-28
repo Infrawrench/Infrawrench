@@ -1,5 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
+import { collectPerZone } from "./shared.js";
 import type { AppCreateParams } from "cloudflare/resources/spectrum/apps";
 
 function mapSpectrumApplication(
@@ -46,20 +47,20 @@ export async function listAllSpectrumApplications(
   api: CloudflareApi,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const results: ResourceInstance[] = [];
-  for (const zone of await api.listZones()) {
-    const zoneId = zone.id;
-    try {
+  return collectPerZone(
+    api,
+    async (zoneId) => {
+      const part: ResourceInstance[] = [];
       for await (const app of api.cf.spectrum.apps.list({ zone_id: zoneId })) {
-        results.push(
+        part.push(
           mapSpectrumApplication(app as unknown as Record<string, unknown>, accountId, zoneId),
         );
       }
-    } catch {
-      // Skip zones where Spectrum is not enabled
-    }
-  }
-  return results;
+      return part;
+    },
+    "Spectrum applications",
+    "Zone · Spectrum:Read",
+  );
 }
 
 export async function createSpectrumApplication(

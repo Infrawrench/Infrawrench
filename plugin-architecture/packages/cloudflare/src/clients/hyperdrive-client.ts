@@ -1,5 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
+import { withAuthErrorHint } from "./shared.js";
 import type { ConfigCreateParams } from "cloudflare/resources/hyperdrive/configs";
 
 function mapHyperdrive(c: Record<string, unknown>, accountId: string): ResourceInstance {
@@ -34,12 +35,18 @@ export async function listHyperdrives(
   api: CloudflareApi,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const account_id = await api.getAccountId();
-  const results: ResourceInstance[] = [];
-  for await (const c of api.cf.hyperdrive.configs.list({ account_id })) {
-    results.push(mapHyperdrive(c as unknown as Record<string, unknown>, accountId));
-  }
-  return results;
+  return withAuthErrorHint(
+    async () => {
+      const account_id = await api.getAccountId();
+      const results: ResourceInstance[] = [];
+      for await (const c of api.cf.hyperdrive.configs.list({ account_id })) {
+        results.push(mapHyperdrive(c as unknown as Record<string, unknown>, accountId));
+      }
+      return results;
+    },
+    "Hyperdrive configs",
+    "Account · Hyperdrive:Read",
+  );
 }
 
 export async function createHyperdrive(

@@ -1,5 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
+import { collectPerZone } from "./shared.js";
 
 function mapLogpushJob(
   job: Record<string, unknown>,
@@ -41,19 +42,19 @@ export async function listAllLogpushJobs(
   api: CloudflareApi,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const results: ResourceInstance[] = [];
-  for (const zone of await api.listZones()) {
-    const zoneId = zone.id;
-    try {
+  return collectPerZone(
+    api,
+    async (zoneId) => {
+      const part: ResourceInstance[] = [];
       for await (const job of api.cf.logpush.jobs.list({ zone_id: zoneId })) {
         if (!job) continue;
-        results.push(mapLogpushJob(job as unknown as Record<string, unknown>, accountId, zoneId));
+        part.push(mapLogpushJob(job as unknown as Record<string, unknown>, accountId, zoneId));
       }
-    } catch {
-      // Skip zones where logpush is not available
-    }
-  }
-  return results;
+      return part;
+    },
+    "logpush jobs",
+    "Zone · Logs:Read",
+  );
 }
 
 export async function createLogpushJob(

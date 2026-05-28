@@ -1,5 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
+import { collectPerZone } from "./shared.js";
 import type { WaitingRoomCreateParams } from "cloudflare/resources/waiting-rooms/waiting-rooms";
 
 function mapWaitingRoom(
@@ -38,18 +39,18 @@ export async function listAllWaitingRooms(
   api: CloudflareApi,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const results: ResourceInstance[] = [];
-  for (const zone of await api.listZones()) {
-    const zoneId = zone.id;
-    try {
+  return collectPerZone(
+    api,
+    async (zoneId) => {
+      const part: ResourceInstance[] = [];
       for await (const room of api.cf.waitingRooms.list({ zone_id: zoneId })) {
-        results.push(mapWaitingRoom(room as unknown as Record<string, unknown>, accountId, zoneId));
+        part.push(mapWaitingRoom(room as unknown as Record<string, unknown>, accountId, zoneId));
       }
-    } catch {
-      // Skip zones where waiting rooms aren't enabled
-    }
-  }
-  return results;
+      return part;
+    },
+    "waiting rooms",
+    "Zone · Waiting Rooms:Read",
+  );
 }
 
 export async function createWaitingRoom(

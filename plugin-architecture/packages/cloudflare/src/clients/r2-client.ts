@@ -83,16 +83,35 @@ export async function listR2StorageObjects(
 ): Promise<StorageObject[]> {
   const cfAccountId = await api.getAccountId();
   const params = new URLSearchParams({ prefix, delimiter: "/" });
-  const res = await api.fetch<{
-    delimited_prefixes?: string[];
-    objects?: Array<Record<string, unknown>>;
-  }>(`/accounts/${cfAccountId}/r2/buckets/${bucket}/objects?${params.toString()}`);
+  // The list-objects endpoint puts objects in the envelope's `result` array
+  // (not a nested `objects` field) and common prefixes in
+  // `result_info.delimited`. `api.fetch` only returns `result`, so go through
+  // raw fetch to access `result_info`.
+  const path = `/accounts/${cfAccountId}/r2/buckets/${bucket}/objects?${params.toString()}`;
+  const res = await fetch(`${api.baseUrl}${path}`, {
+    headers: {
+      Authorization: `Bearer ${api.apiToken}`,
+      "Content-Type": "application/json",
+    },
+  });
+  if (!res.ok) {
+    throw new Error(`Cloudflare API error ${res.status} for ${path}: ${await res.text()}`);
+  }
+  const envelope = (await res.json()) as {
+    success: boolean;
+    result?: Array<Record<string, unknown>>;
+    result_info?: { delimited?: string[] };
+    errors?: Array<{ message: string }>;
+  };
+  if (!envelope.success) {
+    const msgs = envelope.errors?.map((e) => e.message).join(", ") ?? "unknown error";
+    throw new Error(`Cloudflare API error for ${path}: ${msgs}`);
+  }
 
   const objects: StorageObject[] = [];
 
   // Directories (common prefixes)
-  const prefixes = res?.delimited_prefixes ?? [];
-  for (const p of prefixes) {
+  for (const p of envelope.result_info?.delimited ?? []) {
     const name = p.endsWith("/") ? p.slice(prefix.length, -1) : p.slice(prefix.length);
     objects.push({
       key: p,
@@ -104,19 +123,19 @@ export async function listR2StorageObjects(
   }
 
   // Files
-  const items = res?.objects ?? [];
-  for (const item of items) {
+  for (const item of envelope.result ?? []) {
     const key = String(item["key"] ?? "");
     if (key === prefix) continue; // skip the prefix itself
     const name = key.slice(prefix.length);
     if (!name) continue;
+    const httpMeta = item["http_metadata"] as { contentType?: string } | undefined;
     objects.push({
       key,
       name,
       size: Number(item["size"] ?? 0),
-      lastModified: String(item["uploaded"] ?? ""),
+      lastModified: String(item["last_modified"] ?? ""),
       isDirectory: false,
-      contentType: String(item["httpMetadata"]?.toString() ?? ""),
+      contentType: String(httpMeta?.contentType ?? ""),
     });
   }
 
