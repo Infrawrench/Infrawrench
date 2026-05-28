@@ -36,7 +36,10 @@ function isCloudflareAuthError(err: unknown): boolean {
   if (e.status === 401 || e.status === 403) return true;
   if (Array.isArray(e.errors)) {
     for (const item of e.errors) {
-      if (item && typeof item === "object" && item.code === 10000) return true;
+      // 10000 — generic "Authentication error"; 9109 — "Unauthorized to access
+      // requested resource" (returned when the token lacks a per-resource scope).
+      if (item && typeof item === "object" && (item.code === 10000 || item.code === 9109))
+        return true;
     }
   }
   // The raw-fetch path (see `CloudflareApi.fetch`) wraps the body into a plain
@@ -66,7 +69,7 @@ class CloudflareMissingPermissionError extends Error {
   readonly scope: string;
   constructor(resourceLabel: string, scope: string) {
     super(
-      `This API token doesn't have the ${scope} permission, so ${resourceLabel} can't be listed. ` +
+      `This API token doesn't have the ${scope} permission, so ${resourceLabel} can't be loaded. ` +
         `Add it in Cloudflare → My Profile → API Tokens (edit the token, add the ${scope} permission, save) ` +
         `and try again.`,
     );

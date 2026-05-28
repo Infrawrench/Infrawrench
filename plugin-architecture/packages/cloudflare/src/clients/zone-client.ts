@@ -81,8 +81,12 @@ export async function deleteZone(api: CloudflareApi, externalId: string): Promis
 export async function getZoneManifest(api: CloudflareApi, externalId: string): Promise<string> {
   // The SDK only exposes per-setting `get`/`edit`. Fetching the full settings
   // collection in one call is much cheaper, so we use the generic raw helper.
-  const settings = await api.cf.get<unknown, Record<string, unknown>>(
-    `/zones/${externalId}/settings`,
+  // Tokens scoped to DNS-only routinely lack Zone Settings:Read (Cloudflare
+  // error 9109), so surface the friendly scope hint instead of a raw 403 body.
+  const settings = await withAuthErrorHint(
+    () => api.cf.get<unknown, Record<string, unknown>>(`/zones/${externalId}/settings`),
+    "zone settings",
+    "Zone · Zone Settings:Read",
   );
   return JSON.stringify(settings, null, 2);
 }
@@ -95,11 +99,17 @@ export async function applyZoneManifest(
   const settings = JSON.parse(manifest) as Array<{ id: string; value: unknown }>;
   if (!Array.isArray(settings))
     throw new Error("Zone settings must be an array of {id, value} objects");
-  for (const setting of settings) {
-    await api.cf.zones.settings.edit(setting.id, {
-      zone_id: externalId,
-      // SDK exposes a discriminated union per setting; cast through unknown.
-      value: setting.value,
-    } as Parameters<typeof api.cf.zones.settings.edit>[1]);
-  }
+  await withAuthErrorHint(
+    async () => {
+      for (const setting of settings) {
+        await api.cf.zones.settings.edit(setting.id, {
+          zone_id: externalId,
+          // SDK exposes a discriminated union per setting; cast through unknown.
+          value: setting.value,
+        } as Parameters<typeof api.cf.zones.settings.edit>[1]);
+      }
+    },
+    "zone settings",
+    "Zone · Zone Settings:Edit",
+  );
 }
