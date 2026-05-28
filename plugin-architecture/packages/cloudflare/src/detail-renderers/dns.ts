@@ -59,6 +59,7 @@ export function renderZoneDetail(resource: ResourceInstance): DetailViewSchema {
         title: "DNS Records",
         typeId: "dns-record",
         emptyText: "No DNS records in this zone yet.",
+        onRowClick: "edit",
         columns: [
           {
             key: "type",

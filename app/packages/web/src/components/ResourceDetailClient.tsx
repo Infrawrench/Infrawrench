@@ -82,6 +82,7 @@ interface ChildTypeData {
   displayName: string;
   pluralDisplayName: string;
   supportsCreate: boolean;
+  fields?: FieldDefinition[];
 }
 
 interface PeerPaneServerData {
@@ -371,6 +372,23 @@ export function ResourceDetailClient({
   const handleChildCreate = useCallback((group: ChildResourceGroup) => {
     setCreateTarget(group);
   }, []);
+
+  const handleChildEdit = useCallback(
+    async (child: ChildResource, changedFields: Record<string, string>): Promise<void> => {
+      await apiPost(`/api/org/${orgId}/resources/update`, {
+        accountId: child.accountId || accountId,
+        pluginId: child.pluginId,
+        resourceTypeId: child.resourceTypeId,
+        resourceId: child.id,
+        fields: changedFields,
+        parentResourceId: resourceId,
+      });
+      toast.success("Saved.");
+      dispatchResourcesChanged({ accountId, resourceTypeId: child.resourceTypeId });
+      void router.invalidate();
+    },
+    [orgId, accountId, resourceId],
+  );
 
   const handleChildDelete = useCallback(
     async (child: ChildResource): Promise<void> => {
@@ -967,6 +985,7 @@ export function ResourceDetailClient({
               onChildClick={handleChildClick}
               onChildCreate={handleChildCreate}
               onChildDelete={handleChildDelete}
+              onChildEdit={handleChildEdit}
               renderChildResource={(child) => (
                 <DraggableChildPill child={child} onOpen={() => handleChildClick(child)} />
               )}

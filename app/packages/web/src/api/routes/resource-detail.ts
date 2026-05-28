@@ -330,6 +330,9 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
       displayName: rt.displayName,
       pluralDisplayName: rt.pluralDisplayName,
       supportsCreate: rt.supportsCreate ?? false,
+      // Ship the field schema for child types that support update, so the
+      // detail view can render an inline edit form for child-table rows.
+      ...(rt.supportsUpdate ? { fields: rt.fields } : {}),
     }));
 
   const childResults = await Promise.allSettled(

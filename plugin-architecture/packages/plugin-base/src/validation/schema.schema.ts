@@ -221,7 +221,7 @@ const childTableSchema = z.object({
   ),
   emptyText: z.string().optional(),
   createLabel: z.string().optional(),
-  onRowClick: z.enum(["navigate", "none"]).optional(),
+  onRowClick: z.enum(["navigate", "edit", "none"]).optional(),
 });
 
 export const detailViewSchema = z.object({

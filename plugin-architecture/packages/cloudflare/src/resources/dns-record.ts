@@ -12,7 +12,7 @@ export const DnsRecordResourceType: ResourceTypeDefinition = {
     { key: "ttl", label: "TTL", kind: "number", required: true },
     { key: "proxied", label: "Proxied", kind: "boolean", required: false },
     { key: "priority", label: "Priority", kind: "number", required: false },
-    { key: "zoneName", label: "Zone", kind: "string", required: false },
+    { key: "zoneName", label: "Zone", kind: "string", required: false, editable: false },
     { key: "comment", label: "Comment", kind: "string", required: false },
   ],
   outputs: [],

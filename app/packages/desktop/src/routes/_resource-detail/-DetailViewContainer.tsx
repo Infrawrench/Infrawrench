@@ -75,6 +75,7 @@ interface DetailViewContainerProps {
   onDeleteKvKey?: (key: string) => Promise<void>;
   onChildCreate: (typeDef: ResourceTypeDefinition) => void;
   onChildDelete?: (child: ChildResource) => void | Promise<void>;
+  onChildEdit?: (child: ChildResource, changedFields: Record<string, string>) => Promise<void>;
   onReroll?: (
     fieldKey: string,
     selection: RerollSelection | { kind: "literal"; value: string },
@@ -119,6 +120,7 @@ export function DetailViewContainer({
   onDeleteKvKey,
   onChildCreate,
   onChildDelete,
+  onChildEdit,
   onReroll,
   renderStorageBrowser,
 }: DetailViewContainerProps) {
@@ -159,6 +161,7 @@ export function DetailViewContainer({
           });
         }}
         {...(onChildDelete ? { onChildDelete } : {})}
+        {...(onChildEdit ? { onChildEdit } : {})}
         renderChildResource={(child: ChildResource) => (
           <DraggableChildPill
             child={child}

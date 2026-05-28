@@ -1269,6 +1269,51 @@ export function ResourcePanel({
     setRefreshVersion((v) => v + 1);
   }
 
+  async function handleChildEdit(
+    child: { id: string; pluginId: string; resourceTypeId: string; accountId: string },
+    changedFields: Record<string, string>,
+  ): Promise<void> {
+    const cloud = cloudCtxRef.current;
+    if (cloud) {
+      const { updateCloudResource } = await import("../lib/cloud-api");
+      await updateCloudResource(cloud.orgId, {
+        accountId: child.accountId || accountId,
+        pluginId: child.pluginId,
+        resourceTypeId: child.resourceTypeId,
+        resourceId: child.id,
+        fields: changedFields,
+        parentResourceId: decodedResourceId,
+      });
+    } else {
+      const client = await createPluginClient(child.accountId || accountId, child.pluginId);
+      if (!client.updateResource) throw new Error("Plugin does not support updates");
+      const updated = await client.updateResource(
+        child.resourceTypeId,
+        child.id,
+        child.accountId || accountId,
+        changedFields,
+      );
+      const db = await getDb();
+      await db.execute(
+        `INSERT OR REPLACE INTO resources
+         (id, plugin_id, resource_type_id, account_id, display_name, external_id, fields_json, outputs_json)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [
+          updated.id,
+          updated.pluginId,
+          updated.resourceTypeId,
+          updated.accountId,
+          updated.displayName,
+          updated.externalId ?? updated.id,
+          JSON.stringify(updated.fields ?? {}),
+          JSON.stringify(updated.resolvedOutputs ?? {}),
+        ],
+      );
+    }
+    dispatchResourcesChanged({ accountId, resourceTypeId: child.resourceTypeId });
+    setRefreshVersion((v) => v + 1);
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full text-on-surface-muted text-sm animate-pulse">
@@ -1372,6 +1417,7 @@ export function ResourcePanel({
               onPublishMessage={handlePublishMessage}
               onChildCreate={(rt) => setCreateChildTarget(rt)}
               onChildDelete={handleChildDelete}
+              onChildEdit={handleChildEdit}
               onReroll={handleReroll}
               {...(hasStorageBrowser && account
                 ? {

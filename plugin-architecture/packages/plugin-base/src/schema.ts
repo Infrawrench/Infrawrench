@@ -566,8 +566,14 @@ export interface ChildTableSchema {
   emptyText?: string;
   /** Overrides the "+ Create {displayName}" header button label. */
   createLabel?: string;
-  /** Row click target. Defaults to navigating to the child resource. */
-  onRowClick?: "navigate" | "none";
+  /**
+   * Row click target:
+   *   - "navigate" (default) — open the child's detail page
+   *   - "edit" — open an inline edit form on the current page (requires the
+   *     child type to support update)
+   *   - "none" — rows aren't clickable
+   */
+  onRowClick?: "navigate" | "edit" | "none";
 }
 
 /**

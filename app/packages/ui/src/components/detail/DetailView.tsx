@@ -113,6 +113,8 @@ interface DetailViewProps {
   onChildCreate?: (group: ChildResourceGroup) => void;
   /** Called when the user deletes a child resource from a child table */
   onChildDelete?: (child: ChildResource) => void | Promise<void>;
+  /** Submit handler for a child table's inline edit form (changed fields only) */
+  onChildEdit?: (child: ChildResource, changedFields: Record<string, string>) => Promise<void>;
   /** Custom renderer for child resource pills — allows the host to provide draggable pills */
   renderChildResource?: (child: ChildResource, group: ChildResourceGroup) => React.ReactNode;
   /** Time-series metric data — rendered as charts in a Metrics tab when present */
@@ -195,6 +197,7 @@ export function DetailView({
   onChildClick,
   onChildCreate,
   onChildDelete,
+  onChildEdit,
   renderChildResource,
   metricSeries,
   renderNoSqlBrowser,
@@ -612,6 +615,7 @@ export function DetailView({
                 onRowClick={onChildClick}
                 {...(onChildCreate ? { onCreate: onChildCreate } : {})}
                 {...(onChildDelete ? { onDelete: onChildDelete } : {})}
+                {...(onChildEdit ? { onEdit: onChildEdit } : {})}
               />
             );
           })}

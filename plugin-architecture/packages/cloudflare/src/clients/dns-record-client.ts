@@ -133,6 +133,7 @@ export async function updateDnsRecord(
   if (fields["proxied"] !== undefined) body["proxied"] = fields["proxied"] === "true";
   if (fields["priority"] !== undefined && fields["priority"] !== "")
     body["priority"] = Number(fields["priority"]);
+  if (fields["comment"] !== undefined) body["comment"] = fields["comment"];
   const record = await api.cf.dns.records.edit(recordId, body as never);
   return mapDnsRecord(record, accountId, zoneId);
 }

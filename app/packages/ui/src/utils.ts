@@ -427,6 +427,7 @@ interface ChildTypeInput {
   displayName: string;
   pluralDisplayName: string;
   supportsCreate?: boolean | undefined;
+  fields?: unknown[] | undefined;
 }
 
 /**
@@ -442,6 +443,7 @@ export function buildChildResourceGroups(
   pluralDisplayName: string;
   supportsCreate: boolean;
   resources: ChildResourceInput[];
+  fields?: unknown[] | undefined;
 }> {
   return childTypes
     .map((ct) => ({
@@ -450,6 +452,7 @@ export function buildChildResourceGroups(
       pluralDisplayName: ct.pluralDisplayName,
       supportsCreate: !!ct.supportsCreate,
       resources: childResources.filter((r) => r.resourceTypeId === ct.id),
+      ...(ct.fields ? { fields: ct.fields } : {}),
     }))
     .filter((g) => g.resources.length > 0 || g.supportsCreate);
 }

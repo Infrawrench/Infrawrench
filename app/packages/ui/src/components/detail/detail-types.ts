@@ -1,4 +1,4 @@
-import type { PeerPaneSchema, StatusDotNode } from "@infrawrench/plugin-base";
+import type { FieldDefinition, PeerPaneSchema, StatusDotNode } from "@infrawrench/plugin-base";
 
 export interface PeerPaneData {
   tabLabel: string;
@@ -32,6 +32,8 @@ export interface ChildResourceGroup {
   pluralDisplayName: string;
   supportsCreate: boolean;
   resources: ChildResource[];
+  /** Field schema for the child type — populates the inline edit form. */
+  fields?: FieldDefinition[] | undefined;
 }
 
 export interface RerollSelection {

@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import type { ChildTableColumn, ChildTableSchema } from "@infrawrench/plugin-base";
 import { dnsRecordBadgeColor, formatDnsTtl } from "@infrawrench/plugin-base";
 import type { ChildResource, ChildResourceGroup } from "./detail-types.js";
+import { EditResourceModal } from "../EditResourceModal.js";
 
 const BADGE_COLORS: Record<string, string> = {
   green:
@@ -123,6 +124,11 @@ interface ChildResourceTableProps {
   onRowClick?: (child: ChildResource) => void;
   onCreate?: (group: ChildResourceGroup) => void;
   onDelete?: (child: ChildResource) => void | Promise<void>;
+  /**
+   * Submit handler for the inline edit form (used when `spec.onRowClick` is
+   * "edit"). Receives only the changed fields. Throw to surface an error.
+   */
+  onEdit?: (child: ChildResource, changedFields: Record<string, string>) => Promise<void>;
 }
 
 /**
@@ -137,12 +143,22 @@ export function ChildResourceTable({
   onRowClick,
   onCreate,
   onDelete,
+  onEdit,
 }: ChildResourceTableProps) {
   const rows = group?.resources ?? [];
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [editing, setEditing] = useState<ChildResource | null>(null);
   const canCreate = !!group?.supportsCreate && !!onCreate;
   const canDelete = !!onDelete;
+  // Edit mode requires the plugin to opt in AND the host to provide both a
+  // submit handler and the child type's field schema.
+  const editMode = spec.onRowClick === "edit" && !!onEdit && !!group?.fields;
   const clickable = spec.onRowClick !== "none";
+
+  const handleRowClick = (child: ChildResource) => {
+    if (editMode) setEditing(child);
+    else if (spec.onRowClick !== "none") onRowClick?.(child);
+  };
 
   const handleDelete = async (child: ChildResource) => {
     if (!onDelete) return;
@@ -204,7 +220,7 @@ export function ChildResourceTable({
               {rows.map((child) => (
                 <tr
                   key={child.id}
-                  onClick={clickable ? () => onRowClick?.(child) : undefined}
+                  onClick={clickable ? () => handleRowClick(child) : undefined}
                   className={`border-b border-border last:border-0 ${
                     clickable ? "cursor-pointer hover:bg-surface-overlay/40" : ""
                   }`}
@@ -240,6 +256,23 @@ export function ChildResourceTable({
             </tbody>
           </table>
         </div>
+      )}
+
+      {editing && onEdit && group?.fields && (
+        <EditResourceModal
+          displayName={group.displayName}
+          fields={group.fields}
+          initialValues={Object.fromEntries(
+            Object.entries(editing.fields ?? {}).map(([k, v]) => [
+              k,
+              v === undefined || v === null ? "" : String(v),
+            ]),
+          )}
+          onSubmit={async (changed) => {
+            await onEdit(editing, changed);
+          }}
+          onClose={() => setEditing(null)}
+        />
       )}
     </div>
   );
