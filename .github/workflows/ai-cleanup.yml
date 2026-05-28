@@ -45,7 +45,7 @@ jobs:
           claude_refresh_token: ${{ secrets.CLAUDE_REFRESH_TOKEN }}
           claude_expires_at: ${{ secrets.CLAUDE_EXPIRES_AT }}
           secrets_admin_pat: ${{ secrets.SECRETS_ADMIN_PAT}}
-          model: "claude-opus-4-7[1m]"
+          model: "claude-opus-4-8[1m]"
 
       - name: Run git push just in case
         run: git push
