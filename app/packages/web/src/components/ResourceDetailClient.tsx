@@ -15,6 +15,7 @@ import {
   formatErrorMessage,
   toast,
   type QueryResult,
+  type KvBrowserListParams,
   type ChildResource,
   type ChildResourceGroup,
   type NavigateToResourceDetail,
@@ -28,6 +29,7 @@ import type {
   CredentialExport,
   DetailViewSchema,
   FieldDefinition,
+  KvListResult,
   LogsFetchParams,
   LogsFetchResult,
   MetricSeries,
@@ -116,6 +118,7 @@ interface Props {
   hasSqlEditor?: boolean | undefined;
   hasStorageBrowser?: boolean | undefined;
   hasArtifactRegistry?: boolean | undefined;
+  hasKvBrowser?: boolean | undefined;
   hasKvConsole?: boolean | undefined;
   kvDriverName?: string | undefined;
   isMongoDb?: boolean | undefined;
@@ -156,6 +159,7 @@ export function ResourceDetailClient({
   hasSqlEditor,
   hasStorageBrowser,
   hasArtifactRegistry,
+  hasKvBrowser,
   hasKvConsole,
   kvDriverName,
   isMongoDb,
@@ -268,6 +272,56 @@ export function ResourceDetailClient({
       });
     },
     [orgId, accountId, resourceId],
+  );
+
+  const handleListKvKeys = useCallback(
+    async (params: KvBrowserListParams): Promise<KvListResult> => {
+      return apiPost<KvListResult>(`/api/org/${orgId}/kv-browser/list`, {
+        accountId,
+        resourceTypeId,
+        resourceId,
+        ...params,
+      });
+    },
+    [orgId, accountId, resourceId, resourceTypeId],
+  );
+
+  const handleGetKvValue = useCallback(
+    async (key: string): Promise<string> => {
+      const r = await apiPost<{ value: string }>(`/api/org/${orgId}/kv-browser/get`, {
+        accountId,
+        resourceTypeId,
+        resourceId,
+        key,
+      });
+      return r.value;
+    },
+    [orgId, accountId, resourceId, resourceTypeId],
+  );
+
+  const handlePutKvValue = useCallback(
+    async (key: string, value: string): Promise<void> => {
+      await apiPost(`/api/org/${orgId}/kv-browser/put`, {
+        accountId,
+        resourceTypeId,
+        resourceId,
+        key,
+        value,
+      });
+    },
+    [orgId, accountId, resourceId, resourceTypeId],
+  );
+
+  const handleDeleteKvKey = useCallback(
+    async (key: string): Promise<void> => {
+      await apiPost(`/api/org/${orgId}/kv-browser/delete`, {
+        accountId,
+        resourceTypeId,
+        resourceId,
+        key,
+      });
+    },
+    [orgId, accountId, resourceId, resourceTypeId],
   );
 
   const handleChildClick = useCallback(
@@ -826,6 +880,14 @@ export function ResourceDetailClient({
                     onRunQuery: handleRunQuery,
                     onExecute: handleExecute,
                     onEstimateQueryCost: handleEstimateQueryCost,
+                  }
+                : {})}
+              {...(hasKvBrowser
+                ? {
+                    onListKvKeys: handleListKvKeys,
+                    onGetKvValue: handleGetKvValue,
+                    onPutKvValue: handlePutKvValue,
+                    onDeleteKvKey: handleDeleteKvKey,
                   }
                 : {})}
               peerPanes={peerPanes}

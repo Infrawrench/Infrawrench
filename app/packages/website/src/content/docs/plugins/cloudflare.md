@@ -28,10 +28,18 @@ If you'd rather scope a token by hand, go to the Cloudflare dashboard → **My P
 - **DNS record editor** with type-aware fields (A, AAAA, CNAME, MX, TXT, SRV, CAA).
 - **Worker script editing** in Monaco with deploy.
 - **R2 file browser** and **secret export to K8s** for bucket credentials.
+- **KV namespace browser** — open any Workers KV namespace and use the **Keys** tab to list keys (cursor-paginated, with optional prefix filter), view stored values, add or overwrite a key, and delete keys. Backed by Cloudflare's `/storage/kv/namespaces/{id}/keys` and `/values/{key}` REST endpoints. Values are treated as UTF-8 text.
 - **Zone setting patches** — field-by-field, partial failures reported individually.
+
+<insert [Cloudflare KV namespace detail page with the Keys tab open, showing a list of keys with the value of a selected key displayed] here>
+
 - **Workers AI Playground** — open any model under **Workers AI Models** and use the **Playground** tab to chat with it. Responses stream token-by-token through Cloudflare's OpenAI-compatible chat endpoint (`/ai/v1/chat/completions`), authorized with the account's API token. The whole conversation history is sent on each turn, and per-turn token usage is shown under each assistant reply when Cloudflare returns it. The token needs the **Workers AI:Read** permission to list models and run completions.
 
 <insert [Cloudflare Workers AI model detail page with the Playground tab open, showing a streamed assistant reply] here>
+
+- **Queue detail page** — opens with the queue's settings (delivery delay, retention period, pause state) inline, a **Consumers** tab listing every bound Worker or pull consumer with its batch size, retry policy, and dead-letter queue, and a **Publish** tab for pushing a one-off test message into the queue. Backed by the Cloudflare Queues HTTP API (`GET /queues/{id}`, `GET /queues/{id}/consumers`, `POST /queues/{id}/messages`). The token needs the **Queues:Edit** permission to publish.
+
+<insert [Cloudflare Queue detail page with the Consumers tab open, showing a table of Worker consumers and their retry settings] here>
 
 ## Metrics
 

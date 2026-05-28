@@ -32,6 +32,10 @@ import {
   cloudSqlExecute,
   cloudSqlEstimate,
   cloudListArtifacts,
+  cloudKvBrowserList,
+  cloudKvBrowserGet,
+  cloudKvBrowserPut,
+  cloudKvBrowserDelete,
   listCloudSecretVersions,
   accessCloudSecretVersion,
   addCloudSecretVersion,
@@ -605,6 +609,90 @@ export function ResourcePanel({
       return sqlExecute(driverId, cs, sql, params);
     },
     [decodedResourceId, accountId],
+  );
+
+  const handleListKvKeys = useCallback(
+    async (params: { prefix?: string; cursor?: string; limit?: number }) => {
+      const cloud = cloudCtxRef.current;
+      const res = resource;
+      if (!res) throw new Error("Resource not loaded");
+      if (cloud) {
+        return (await cloudKvBrowserList(cloud.orgId, {
+          accountId,
+          resourceTypeId: res.resourceTypeId,
+          resourceId: decodedResourceId,
+          ...params,
+        })) as Awaited<ReturnType<NonNullable<PluginClient["listKvKeys"]>>>;
+      }
+      const client = clientRef.current;
+      if (!client?.listKvKeys) throw new Error("Plugin does not support KV listing");
+      return client.listKvKeys(res.resourceTypeId, decodedResourceId, accountId, params);
+    },
+    [accountId, decodedResourceId, resource],
+  );
+
+  const handleGetKvValue = useCallback(
+    async (key: string): Promise<string> => {
+      const cloud = cloudCtxRef.current;
+      const res = resource;
+      if (!res) throw new Error("Resource not loaded");
+      if (cloud) {
+        const r = (await cloudKvBrowserGet(cloud.orgId, {
+          accountId,
+          resourceTypeId: res.resourceTypeId,
+          resourceId: decodedResourceId,
+          key,
+        })) as { value: string };
+        return r.value;
+      }
+      const client = clientRef.current;
+      if (!client?.getKvValue) throw new Error("Plugin does not support KV reads");
+      return client.getKvValue(res.resourceTypeId, decodedResourceId, accountId, key);
+    },
+    [accountId, decodedResourceId, resource],
+  );
+
+  const handlePutKvValue = useCallback(
+    async (key: string, value: string): Promise<void> => {
+      const cloud = cloudCtxRef.current;
+      const res = resource;
+      if (!res) throw new Error("Resource not loaded");
+      if (cloud) {
+        await cloudKvBrowserPut(cloud.orgId, {
+          accountId,
+          resourceTypeId: res.resourceTypeId,
+          resourceId: decodedResourceId,
+          key,
+          value,
+        });
+        return;
+      }
+      const client = clientRef.current;
+      if (!client?.putKvValue) throw new Error("Plugin does not support KV writes");
+      return client.putKvValue(res.resourceTypeId, decodedResourceId, accountId, key, value);
+    },
+    [accountId, decodedResourceId, resource],
+  );
+
+  const handleDeleteKvKey = useCallback(
+    async (key: string): Promise<void> => {
+      const cloud = cloudCtxRef.current;
+      const res = resource;
+      if (!res) throw new Error("Resource not loaded");
+      if (cloud) {
+        await cloudKvBrowserDelete(cloud.orgId, {
+          accountId,
+          resourceTypeId: res.resourceTypeId,
+          resourceId: decodedResourceId,
+          key,
+        });
+        return;
+      }
+      const client = clientRef.current;
+      if (!client?.deleteKvKey) throw new Error("Plugin does not support KV deletes");
+      return client.deleteKvKey(res.resourceTypeId, decodedResourceId, accountId, key);
+    },
+    [accountId, decodedResourceId, resource],
   );
 
   const handleEstimateQueryCost = useCallback(
@@ -1239,6 +1327,10 @@ export function ResourcePanel({
               onRunQuery={handleRunQuery}
               onExecute={handleExecute}
               onEstimateQueryCost={handleEstimateQueryCost}
+              onListKvKeys={handleListKvKeys}
+              onGetKvValue={handleGetKvValue}
+              onPutKvValue={handlePutKvValue}
+              onDeleteKvKey={handleDeleteKvKey}
               onGetManifest={handleGetManifest}
               onApplyManifest={handleApplyManifest}
               onGetDescribe={handleGetDescribe}

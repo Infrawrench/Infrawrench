@@ -225,6 +225,97 @@ app.post("/docker/command", async (c) => {
   return c.json({ result });
 });
 
+/** POST /api/kv-browser/list */
+app.post("/kv-browser/list", async (c) => {
+  requirePermission(c, "resources:read");
+  const organizationId = c.get("organizationId");
+  const input = await c.req.json<{
+    accountId: string;
+    resourceTypeId: string;
+    resourceId: string;
+    prefix?: string;
+    cursor?: string;
+    limit?: number;
+  }>();
+  const ctx = await getClientForAccount(input.accountId, organizationId);
+  if (!ctx) return c.json({ error: "Account not found" }, 404);
+  if (!ctx.client.listKvKeys) return c.json({ error: "Plugin does not support KV listing" }, 400);
+  const params: { prefix?: string; cursor?: string; limit?: number } = {};
+  if (input.prefix != null) params.prefix = input.prefix;
+  if (input.cursor != null) params.cursor = input.cursor;
+  if (input.limit != null) params.limit = input.limit;
+  const result = await ctx.client.listKvKeys(
+    input.resourceTypeId,
+    input.resourceId,
+    input.accountId,
+    params,
+  );
+  return c.json(result);
+});
+
+/** POST /api/kv-browser/get */
+app.post("/kv-browser/get", async (c) => {
+  requirePermission(c, "resources:read");
+  const organizationId = c.get("organizationId");
+  const input = await c.req.json<{
+    accountId: string;
+    resourceTypeId: string;
+    resourceId: string;
+    key: string;
+  }>();
+  const ctx = await getClientForAccount(input.accountId, organizationId);
+  if (!ctx) return c.json({ error: "Account not found" }, 404);
+  if (!ctx.client.getKvValue) return c.json({ error: "Plugin does not support KV reads" }, 400);
+  const value = await ctx.client.getKvValue(
+    input.resourceTypeId,
+    input.resourceId,
+    input.accountId,
+    input.key,
+  );
+  return c.json({ value });
+});
+
+/** POST /api/kv-browser/put */
+app.post("/kv-browser/put", async (c) => {
+  requirePermission(c, "resources:execute");
+  const organizationId = c.get("organizationId");
+  const input = await c.req.json<{
+    accountId: string;
+    resourceTypeId: string;
+    resourceId: string;
+    key: string;
+    value: string;
+  }>();
+  const ctx = await getClientForAccount(input.accountId, organizationId);
+  if (!ctx) return c.json({ error: "Account not found" }, 404);
+  if (!ctx.client.putKvValue) return c.json({ error: "Plugin does not support KV writes" }, 400);
+  await ctx.client.putKvValue(
+    input.resourceTypeId,
+    input.resourceId,
+    input.accountId,
+    input.key,
+    input.value,
+  );
+  return c.json({ ok: true });
+});
+
+/** POST /api/kv-browser/delete */
+app.post("/kv-browser/delete", async (c) => {
+  requirePermission(c, "resources:execute");
+  const organizationId = c.get("organizationId");
+  const input = await c.req.json<{
+    accountId: string;
+    resourceTypeId: string;
+    resourceId: string;
+    key: string;
+  }>();
+  const ctx = await getClientForAccount(input.accountId, organizationId);
+  if (!ctx) return c.json({ error: "Account not found" }, 404);
+  if (!ctx.client.deleteKvKey) return c.json({ error: "Plugin does not support KV deletes" }, 400);
+  await ctx.client.deleteKvKey(input.resourceTypeId, input.resourceId, input.accountId, input.key);
+  return c.json({ ok: true });
+});
+
 /** POST /api/storage/list */
 app.post("/storage/list", async (c) => {
   requirePermission(c, "storage:read");

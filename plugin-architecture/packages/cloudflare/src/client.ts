@@ -12,6 +12,7 @@ import type {
   MetricSeries,
   ChatMessage,
   ChatStreamEvent,
+  KvListResult,
   PublishMessagePayload,
   PublishMessageResult,
 } from "@infrawrench/plugin-base";
@@ -1368,6 +1369,47 @@ export class CloudflareClient implements PluginClient {
 
   async listStorageObjects(bucket: string, prefix: string): Promise<StorageObject[]> {
     return r2Api.listR2StorageObjects(this.api, bucket, prefix);
+  }
+
+  async listKvKeys(
+    _resourceTypeId: string,
+    resourceId: string,
+    _accountId: string,
+    params?: { prefix?: string; cursor?: string; limit?: number },
+  ): Promise<KvListResult> {
+    const namespaceId = resourceId.split(":").pop() ?? "";
+    return kvApi.listKVKeys(this.api, namespaceId, params ?? {});
+  }
+
+  async getKvValue(
+    _resourceTypeId: string,
+    resourceId: string,
+    _accountId: string,
+    key: string,
+  ): Promise<string> {
+    const namespaceId = resourceId.split(":").pop() ?? "";
+    return kvApi.getKVValue(this.api, namespaceId, key);
+  }
+
+  async putKvValue(
+    _resourceTypeId: string,
+    resourceId: string,
+    _accountId: string,
+    key: string,
+    value: string,
+  ): Promise<void> {
+    const namespaceId = resourceId.split(":").pop() ?? "";
+    return kvApi.putKVValue(this.api, namespaceId, key, value);
+  }
+
+  async deleteKvKey(
+    _resourceTypeId: string,
+    resourceId: string,
+    _accountId: string,
+    key: string,
+  ): Promise<void> {
+    const namespaceId = resourceId.split(":").pop() ?? "";
+    return kvApi.deleteKVKey(this.api, namespaceId, key);
   }
 
   async deleteStorageObject(bucket: string, key: string): Promise<void> {

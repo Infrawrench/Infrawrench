@@ -7,6 +7,7 @@ import type {
   LogsFetchParams,
   LogsFetchResult,
   ArtifactEntry,
+  KvListResult,
   QueryCostEstimate,
   SecretVersion,
   SecretVersionMutation,
@@ -21,6 +22,7 @@ import {
   FirestoreDocumentBrowser,
   type ChildResource,
   type ChildResourceGroup,
+  type KvBrowserListParams,
   type PeerPaneData,
   type QueryResult,
   type RerollSelection,
@@ -67,6 +69,10 @@ interface DetailViewContainerProps {
   onNoSqlCommand: (command: string, args: (string | number)[]) => Promise<unknown>;
   onChatStream: (messages: ChatMessage[], signal: AbortSignal) => AsyncIterable<ChatStreamEvent>;
   onPublishMessage: (payload: PublishMessagePayload) => Promise<PublishMessageResult>;
+  onListKvKeys?: (params: KvBrowserListParams) => Promise<KvListResult>;
+  onGetKvValue?: (key: string) => Promise<string>;
+  onPutKvValue?: (key: string, value: string) => Promise<void>;
+  onDeleteKvKey?: (key: string) => Promise<void>;
   onChildCreate: (typeDef: ResourceTypeDefinition) => void;
   onReroll?: (
     fieldKey: string,
@@ -106,6 +112,10 @@ export function DetailViewContainer({
   onNoSqlCommand,
   onChatStream,
   onPublishMessage,
+  onListKvKeys,
+  onGetKvValue,
+  onPutKvValue,
+  onDeleteKvKey,
   onChildCreate,
   onReroll,
   renderStorageBrowser,
@@ -191,6 +201,14 @@ export function DetailViewContainer({
           : {})}
         {...(schema.chatPanel ? { onChatStream } : {})}
         {...(schema.publishPanel ? { onPublishMessage } : {})}
+        {...(schema.kvBrowser && onListKvKeys && onGetKvValue && onPutKvValue && onDeleteKvKey
+          ? {
+              onListKvKeys,
+              onGetKvValue,
+              onPutKvValue,
+              onDeleteKvKey,
+            }
+          : {})}
         {...(noSqlBrowser
           ? {
               renderNoSqlBrowser: () => {

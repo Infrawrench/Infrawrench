@@ -3,6 +3,7 @@ import type {
   ChatMessage,
   ChatStreamEvent,
   DetailViewSchema,
+  KvListResult,
   LogsFetchParams,
   LogsFetchResult,
   MetricSeries,
@@ -28,6 +29,7 @@ import {
   type ArtifactListParams,
   type ArtifactListResult,
 } from "./ArtifactRegistryView.js";
+import { KvBrowserView, type KvBrowserListParams } from "./KvBrowserView.js";
 import { useUIStore } from "../../store/ui.store.js";
 import {
   dispatchInvokePluginAction,
@@ -76,6 +78,14 @@ interface DetailViewProps {
   onGetLogs?: (params: LogsFetchParams) => Promise<LogsFetchResult>;
   /** List artifacts — used by the Artifacts tab when schema.artifactRegistry is set */
   onListArtifacts?: (params: ArtifactListParams) => Promise<ArtifactListResult>;
+  /** List KV keys — used by the Keys tab when schema.kvBrowser is set */
+  onListKvKeys?: (params: KvBrowserListParams) => Promise<KvListResult>;
+  /** Read a single KV value (UTF-8) — used by the Keys tab */
+  onGetKvValue?: (key: string) => Promise<string>;
+  /** Create or overwrite a KV value — used by the Keys tab */
+  onPutKvValue?: (key: string, value: string) => Promise<void>;
+  /** Delete a KV key — used by the Keys tab */
+  onDeleteKvKey?: (key: string) => Promise<void>;
   /** List secret versions — used by the Versions tab when schema.secretVersions is set */
   onListSecretVersions?: () => Promise<SecretVersion[]>;
   /** Access a secret version's plaintext value */
@@ -144,6 +154,7 @@ type Tab =
   | "logs"
   | "metrics"
   | "artifacts"
+  | "kv-browser"
   | "secret-versions"
   | "nosql-browser"
   | "chat"
@@ -165,6 +176,10 @@ export function DetailView({
   onGetDescribe,
   onGetLogs,
   onListArtifacts,
+  onListKvKeys,
+  onGetKvValue,
+  onPutKvValue,
+  onDeleteKvKey,
   onListSecretVersions,
   onAccessSecretVersion,
   onAddSecretVersion,
@@ -197,6 +212,8 @@ export function DetailView({
   const hasMetrics = !!schema.metricsCapability;
   const metricSeriesEmpty = !metricSeries || metricSeries.length === 0;
   const hasArtifacts = !!schema.artifactRegistry && !!onListArtifacts;
+  const hasKvBrowser =
+    !!schema.kvBrowser && !!onListKvKeys && !!onGetKvValue && !!onPutKvValue && !!onDeleteKvKey;
   const hasSecretVersions =
     !!schema.secretVersions &&
     !!onListSecretVersions &&
@@ -216,6 +233,7 @@ export function DetailView({
     hasLogs ||
     hasMetrics ||
     hasArtifacts ||
+    hasKvBrowser ||
     hasSecretVersions ||
     hasNoSqlBrowser ||
     hasChatPanel ||
@@ -244,6 +262,7 @@ export function DetailView({
   if (hasLogs) tabKeys.push("logs");
   if (hasMetrics) tabKeys.push("metrics");
   if (hasArtifacts) tabKeys.push("artifacts");
+  if (hasKvBrowser) tabKeys.push("kv-browser");
   if (hasSecretVersions) tabKeys.push("secret-versions");
   if (hasNoSqlBrowser) tabKeys.push("nosql-browser");
   if (hasChatPanel) tabKeys.push("chat");
@@ -397,6 +416,13 @@ export function DetailView({
                 return (
                   <TabButton key={key} {...tabProps} onClick={() => setActiveTab("artifacts")}>
                     Artifacts
+                  </TabButton>
+                );
+              }
+              if (key === "kv-browser") {
+                return (
+                  <TabButton key={key} {...tabProps} onClick={() => setActiveTab("kv-browser")}>
+                    Keys
                   </TabButton>
                 );
               }
@@ -741,6 +767,23 @@ export function DetailView({
           <ArtifactRegistryView
             capability={schema.artifactRegistry!}
             onListArtifacts={onListArtifacts!}
+          />
+        </div>
+      )}
+
+      {hasKvBrowser && activeTab === "kv-browser" && (
+        <div
+          role="tabpanel"
+          id={panelIdFor("kv-browser")}
+          aria-labelledby={tabIdFor("kv-browser")}
+          className="flex-1 overflow-hidden"
+        >
+          <KvBrowserView
+            capability={schema.kvBrowser!}
+            onListKeys={onListKvKeys!}
+            onGetValue={onGetKvValue!}
+            onPutValue={onPutKvValue!}
+            onDeleteKey={onDeleteKvKey!}
           />
         </div>
       )}

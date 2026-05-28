@@ -394,6 +394,7 @@ export function renderKVNamespaceDetail(resource: ResourceInstance): DetailViewS
       },
     ],
     headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+    kvBrowser: { defaultPageSize: 100 },
   };
 }
 

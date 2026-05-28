@@ -52,3 +52,44 @@ export async function cloudKvCommand(
 ): Promise<unknown> {
   return invoke("cloud_kv_command", { orgId, body });
 }
+
+export async function cloudKvBrowserList(
+  orgId: string,
+  body: {
+    accountId: string;
+    resourceTypeId: string;
+    resourceId: string;
+    prefix?: string;
+    cursor?: string;
+    limit?: number;
+  },
+): Promise<unknown> {
+  return invoke("cloud_kv_browser_list", { orgId, body });
+}
+
+export async function cloudKvBrowserGet(
+  orgId: string,
+  body: { accountId: string; resourceTypeId: string; resourceId: string; key: string },
+): Promise<unknown> {
+  return invoke("cloud_kv_browser_get", { orgId, body });
+}
+
+export async function cloudKvBrowserPut(
+  orgId: string,
+  body: {
+    accountId: string;
+    resourceTypeId: string;
+    resourceId: string;
+    key: string;
+    value: string;
+  },
+): Promise<unknown> {
+  return invoke("cloud_kv_browser_put", { orgId, body });
+}
+
+export async function cloudKvBrowserDelete(
+  orgId: string,
+  body: { accountId: string; resourceTypeId: string; resourceId: string; key: string },
+): Promise<unknown> {
+  return invoke("cloud_kv_browser_delete", { orgId, body });
+}

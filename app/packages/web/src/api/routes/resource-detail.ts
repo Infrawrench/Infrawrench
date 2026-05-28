@@ -395,6 +395,7 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
     !!client.executeQuery;
   const hasStorageBrowser = !!finalSchema.storageBrowser;
   const hasArtifactRegistry = !!finalSchema.artifactRegistry && !!client.listArtifacts;
+  const hasKvBrowser = !!finalSchema.kvBrowser && !!client.listKvKeys;
   const hasKvConsole = !!manifest.kvDriver;
   const kvDriverName = manifest.kvDriver?.driver;
   const isMongoDb = kvDriverName === "mongodb";
@@ -476,6 +477,7 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
     hasSqlEditor,
     hasStorageBrowser,
     hasArtifactRegistry,
+    hasKvBrowser,
     hasKvConsole,
     kvDriverName,
     isMongoDb,

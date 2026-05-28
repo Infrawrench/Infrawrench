@@ -73,6 +73,7 @@ interface ResourceDetailResponse {
   hasSqlEditor?: boolean;
   hasStorageBrowser?: boolean;
   hasArtifactRegistry?: boolean;
+  hasKvBrowser?: boolean;
   hasKvConsole?: boolean;
   kvDriverName?: string;
   isMongoDb?: boolean;
@@ -274,6 +275,7 @@ export function ResourcePanel({
         hasSqlEditor={data.hasSqlEditor}
         hasStorageBrowser={data.hasStorageBrowser}
         hasArtifactRegistry={data.hasArtifactRegistry}
+        hasKvBrowser={data.hasKvBrowser}
         hasKvConsole={data.hasKvConsole}
         kvDriverName={data.kvDriverName}
         isMongoDb={data.isMongoDb}

@@ -97,6 +97,8 @@ export type {
   ArtifactListParams,
   ArtifactListResult,
 } from "./components/detail/ArtifactRegistryView.js";
+export { KvBrowserView } from "./components/detail/KvBrowserView.js";
+export type { KvBrowserListParams } from "./components/detail/KvBrowserView.js";
 
 export { FieldRenderer } from "./components/create-resource/index.js";
 export type {

@@ -34,6 +34,34 @@ ipcMain.handle(
 );
 
 ipcMain.handle(
+  "cloud_kv_browser_list",
+  async (_e, { orgId, body }: { orgId: string; body: unknown }) => {
+    return cloudFetch(orgId, `/kv-browser/list`, { method: "POST", body: JSON.stringify(body) });
+  },
+);
+
+ipcMain.handle(
+  "cloud_kv_browser_get",
+  async (_e, { orgId, body }: { orgId: string; body: unknown }) => {
+    return cloudFetch(orgId, `/kv-browser/get`, { method: "POST", body: JSON.stringify(body) });
+  },
+);
+
+ipcMain.handle(
+  "cloud_kv_browser_put",
+  async (_e, { orgId, body }: { orgId: string; body: unknown }) => {
+    return cloudFetch(orgId, `/kv-browser/put`, { method: "POST", body: JSON.stringify(body) });
+  },
+);
+
+ipcMain.handle(
+  "cloud_kv_browser_delete",
+  async (_e, { orgId, body }: { orgId: string; body: unknown }) => {
+    return cloudFetch(orgId, `/kv-browser/delete`, { method: "POST", body: JSON.stringify(body) });
+  },
+);
+
+ipcMain.handle(
   "cloud_docker_command",
   async (_e, { orgId, body }: { orgId: string; body: unknown }) => {
     return cloudFetch(orgId, `/docker/command`, { method: "POST", body: JSON.stringify(body) });

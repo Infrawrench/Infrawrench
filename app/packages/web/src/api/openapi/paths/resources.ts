@@ -83,6 +83,7 @@ const ResourceDetailResponse = strict({
   hasSqlEditor: z.boolean(),
   hasStorageBrowser: z.boolean(),
   hasArtifactRegistry: z.boolean(),
+  hasKvBrowser: z.boolean(),
   hasKvConsole: z.boolean(),
   kvDriverName: z.string().optional(),
   isMongoDb: z.boolean(),

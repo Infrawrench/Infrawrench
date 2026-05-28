@@ -322,6 +322,43 @@ export interface StorageBrowserCapability {
   bucketName: string;
 }
 
+/** One key in a KV namespace — returned by listKvKeys(). */
+export interface KvKeyEntry {
+  /** Key name. */
+  name: string;
+  /** Unix-seconds expiration. Omitted for keys that never expire. */
+  expiration?: number;
+  /** Arbitrary JSON metadata associated with the key, if any. */
+  metadata?: unknown;
+}
+
+/** Cursor-paginated result returned by `PluginClient.listKvKeys`. */
+export interface KvListResult {
+  items: KvKeyEntry[];
+  /** Opaque cursor for the next page. Empty/undefined when the last page was returned. */
+  nextCursor?: string;
+}
+
+/**
+ * When present on a DetailViewSchema, the host renders a "Keys" tab that lists
+ * the contents of a key-value namespace, lets the user reveal a single value,
+ * and write or delete keys. Backed by PluginClient.listKvKeys / getKvValue /
+ * putKvValue / deleteKvKey.
+ *
+ * Aimed at provider KV stores with a REST surface (Cloudflare Workers KV,
+ * Vercel Edge Config, etc.). Values are treated as UTF-8 strings — binary
+ * payloads still come through, but the UI surfaces a "looks binary" warning
+ * instead of pretending to be a hex editor.
+ */
+export interface KvBrowserCapability {
+  /** Label shown in the panel header (e.g. namespace title). */
+  namespaceLabel?: string;
+  /** Default page size for listKvKeys. Plugins may clamp this server-side. */
+  defaultPageSize?: number;
+  /** Short note shown above the key list — vendor-specific caveats, etc. */
+  helpText?: string;
+}
+
 /** One entry in an artifact registry (image, package, or version). */
 export interface ArtifactEntry {
   /** Package/image name, e.g. "nginx" or "my-repo/my-image" */
@@ -530,6 +567,8 @@ export interface DetailViewSchema {
   metricsCapability?: { defaultTimeRangeMs?: number };
   /** If present, the host renders an inline NoSQL document browser. */
   noSqlBrowser?: NoSqlBrowserCapability;
+  /** If present, the host renders a "Keys" tab backed by KV listing/get/put/delete. */
+  kvBrowser?: KvBrowserCapability;
   /** Plugin-defined tabs rendered alongside Overview / SQL / Logs / etc. */
   customTabs?: DetailViewTab[];
   /** If present, the host renders a "Playground" tab with a chat interface. */

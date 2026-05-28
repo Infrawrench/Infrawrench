@@ -356,6 +356,43 @@ export interface PluginClient {
   deleteStorageObject?(bucket: string, key: string): Promise<void>;
   /** Return a short-lived bearer token the host can use for direct storage API calls (e.g. batch download via IPC). */
   getStorageAccessToken?(): Promise<string>;
+  /**
+   * List keys inside a provider KV namespace. Called by the host's "Keys" tab
+   * when the detail view declares a `kvBrowser` capability. Implementations
+   * should use cursor-based pagination — callers pass back the previous
+   * response's `nextCursor` to fetch subsequent pages.
+   *
+   * `resourceTypeId` and `resourceId` identify the namespace; the plugin can
+   * resolve the upstream id from the resource (e.g. via `externalId`).
+   */
+  listKvKeys?(
+    resourceTypeId: string,
+    resourceId: string,
+    accountId: string,
+    params?: { prefix?: string; cursor?: string; limit?: number },
+  ): Promise<KvListResult>;
+  /** Fetch the value stored under a single key as a UTF-8 string. */
+  getKvValue?(
+    resourceTypeId: string,
+    resourceId: string,
+    accountId: string,
+    key: string,
+  ): Promise<string>;
+  /** Create or overwrite the value stored under a single key. */
+  putKvValue?(
+    resourceTypeId: string,
+    resourceId: string,
+    accountId: string,
+    key: string,
+    value: string,
+  ): Promise<void>;
+  /** Delete a single key from the namespace. */
+  deleteKvKey?(
+    resourceTypeId: string,
+    resourceId: string,
+    accountId: string,
+    key: string,
+  ): Promise<void>;
   /** Return SSH connection details for terminal access — only when the resource type declares supportsTerminal */
   getSshConfig?(): { host: string; port: number; username: string; privateKey: string };
   /** Fetch a fully-populated create form config for a resource type (regions, sizes, etc. from live API).
@@ -725,6 +762,7 @@ import type {
   ChatStreamEvent,
   DashboardStat,
   DetailViewSchema,
+  KvListResult,
   MetricSeries,
   PeerPaneSchema,
   PublishMessagePayload,
