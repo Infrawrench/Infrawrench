@@ -26,6 +26,7 @@ export const QueueResourceType: ResourceTypeDefinition = {
   ],
   dashboardPinnable: true,
   supportsCreate: true,
+  supportsMetrics: true,
   iconKey: "queue",
   secretExportTemplates: [
     {

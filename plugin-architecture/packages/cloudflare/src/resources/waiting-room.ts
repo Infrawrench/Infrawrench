@@ -19,5 +19,6 @@ export const WaitingRoomResourceType: ResourceTypeDefinition = {
   parentTypeId: "zone",
   dashboardPinnable: false,
   supportsCreate: true,
+  supportsMetrics: true,
   iconKey: "waiting-room",
 };

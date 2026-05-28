@@ -15,6 +15,7 @@ export const D1DatabaseResourceType: ResourceTypeDefinition = {
   outputs: [{ key: "databaseId", label: "Database ID", sensitive: false }],
   dashboardPinnable: true,
   supportsCreate: true,
+  supportsMetrics: true,
   resourceSqlDriver: {
     driver: "d1",
     connectionStringOutputKey: "databaseId",

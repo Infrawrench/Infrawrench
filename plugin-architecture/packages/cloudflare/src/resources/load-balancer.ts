@@ -20,5 +20,6 @@ export const LoadBalancerResourceType: ResourceTypeDefinition = {
   parentTypeId: "zone",
   dashboardPinnable: false,
   supportsCreate: true,
+  supportsMetrics: true,
   iconKey: "load-balancer",
 };

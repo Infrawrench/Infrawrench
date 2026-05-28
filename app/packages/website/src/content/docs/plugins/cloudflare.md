@@ -33,7 +33,26 @@ If you'd rather scope a token by hand, go to the Cloudflare dashboard → **My P
 
 <insert [Cloudflare Workers AI model detail page with the Playground tab open, showing a streamed assistant reply] here>
 
+## Metrics
+
+The detail page surfaces a **Metrics** tab whenever Cloudflare's GraphQL Analytics API exposes useful time-series data for a resource. The plugin pulls from the relevant adaptive-groups datasets so you can see traffic and health without leaving Infrawrench:
+
+- **Zone** — requests, bandwidth, cached requests, threats, unique visitors (`httpRequests1mGroups` / `httpRequests1hGroups`).
+- **Worker** — invocations, errors, subrequests, CPU time p50/p99 (`workersInvocationsAdaptiveGroups`).
+- **R2 bucket** — Class A and Class B operations, object count, stored bytes (`r2OperationsAdaptiveGroups`, `r2StorageAdaptiveGroups`).
+- **Pages project** — function invocations, errors, CPU time p99 (`pagesFunctionInvocationsAdaptiveGroups`).
+- **Spectrum application** — events, ingress/egress bytes, connections (`spectrumNetworkAnalyticsAdaptiveGroups`).
+- **D1 database** — read/write queries, rows read/written, response bytes, query batch latency p90 (`d1AnalyticsAdaptiveGroups`, daily granularity).
+- **KV namespace** — reads, writes, deletes, lists, key count and stored bytes (`kvOperationsAdaptiveGroups`, `kvStorageAdaptiveGroups`, daily granularity).
+- **Queue** — messages produced, consumed, acknowledged, retried, bytes transferred, backlog (`queueMessageOperationsAdaptiveGroups`, `queuesBacklogAdaptiveGroups`).
+- **Hyperdrive** — total queries, cache hits/misses, errors, query and result bytes, query and connection latency (`hyperdriveQueriesAdaptiveGroups`).
+- **Load balancer** — total request count and per-pool breakdown (`loadBalancingRequestsAdaptiveGroups`).
+- **Waiting room** — active users, queued users, new users/minute, time-on-origin p50, time-waited p90 (`waitingRoomAnalyticsAdaptiveGroups`).
+
+The token needs the **Account Analytics:Read** permission for account-scoped datasets and **Zone Analytics:Read** for zone-scoped ones — the "Create a token with these scopes" link includes both. Resources with no traffic in the selected window show an empty Metrics tab, which is expected.
+
 ## Tips & limits
 
 - Cloudflare’s API returns paginated lists; very large zones (1000s of records) load in chunks.
 - Tokens can be scoped to specific zones. If you only see some zones, check the token scope.
+- GraphQL Analytics datasets retain the last 31 days of data; older ranges return no points.

@@ -12,6 +12,7 @@ export const KVNamespaceResourceType: ResourceTypeDefinition = {
   outputs: [{ key: "namespaceId", label: "Namespace ID", sensitive: false }],
   dashboardPinnable: true,
   supportsCreate: true,
+  supportsMetrics: true,
   iconKey: "kv",
   secretExportTemplates: [
     {

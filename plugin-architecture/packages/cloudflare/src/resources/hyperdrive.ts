@@ -25,6 +25,7 @@ export const HyperdriveResourceType: ResourceTypeDefinition = {
   ],
   dashboardPinnable: true,
   supportsCreate: true,
+  supportsMetrics: true,
   iconKey: "hyperdrive",
   peerIntegrations: [
     {
