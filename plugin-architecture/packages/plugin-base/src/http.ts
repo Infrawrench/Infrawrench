@@ -148,9 +148,10 @@ function bodyForHostHttp(body: BodyInit | null | undefined): string | Uint8Array
  * Format a byte count as a human-readable string using binary (1024-based) units.
  * Examples: `0` → "0 B", `1024` → "1.0 KB", `1572864` → "1.5 MB".
  *
- * Canonical shape shared by Azure, Cloudinary, and GCP plugins. Plugins with
- * different precision rules (e.g. AWS's PB handling, memcached's short form)
- * keep their own.
+ * Used by the Cloudinary plugin. Plugins with different unit or precision
+ * rules (e.g. GCP's `formatBackupSize` adds a PB unit and parses string
+ * inputs, memcached's short form, OpenSearch's dynamic precision) keep their
+ * own.
  */
 export function formatBytes(bytes: number): string {
   if (bytes === 0) return "0 B";
