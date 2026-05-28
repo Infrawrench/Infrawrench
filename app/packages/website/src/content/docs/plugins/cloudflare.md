@@ -32,6 +32,7 @@ If you'd rather scope a token by hand, go to the Cloudflare dashboard → **My P
 - **KV namespace browser** — open any Workers KV namespace and use the **Keys** tab to list keys (cursor-paginated, with optional prefix filter), view stored values, add or overwrite a key, and delete keys. Backed by Cloudflare's `/storage/kv/namespaces/{id}/keys` and `/values/{key}` REST endpoints. Values are treated as UTF-8 text.
 - **D1 SQL editor** — open any D1 database and use the **SQL Editor** tab to run queries. The default query lists tables via `sqlite_master`.
 - **Zone setting patches** — field-by-field, partial failures reported individually.
+- **SSH over a tunnel** — drag a Tunnel onto a server (any account/provider) to expose its SSH through Cloudflare's edge: infrawrench sets the tunnel ingress + DNS and installs `cloudflared` on the host. See [SSH over a Cloudflare Tunnel](../features/cloudflare-tunnel-ssh.md).
 
 <insert [Cloudflare KV namespace detail page with the Keys tab open, showing a list of keys with the value of a selected key displayed] here>
 
