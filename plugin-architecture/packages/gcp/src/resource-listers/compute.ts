@@ -288,8 +288,8 @@ export async function listBackendServices(
   );
   return items.map((bs) => {
     const name = String(bs["name"]);
-    const backends = bs["backends"] as unknown[] | undefined;
-    const healthChecks = bs["healthChecks"] as unknown[] | undefined;
+    const backends = bs["backends"];
+    const healthChecks = bs["healthChecks"];
     const draining = bs["connectionDraining"] as Record<string, unknown> | undefined;
     const selfLink = String(bs["selfLink"] ?? "");
     return {

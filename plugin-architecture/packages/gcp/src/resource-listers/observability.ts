@@ -46,8 +46,8 @@ export async function listAlertPolicies(
   return items.map((policy) => {
     const fullName = String(policy["name"]);
     const displayName = String(policy["displayName"] ?? "");
-    const conditions = policy["conditions"] as unknown[] | undefined;
-    const channels = policy["notificationChannels"] as unknown[] | undefined;
+    const conditions = policy["conditions"];
+    const channels = policy["notificationChannels"];
     return {
       id: ctx.id(accountId, "alert-policy", fullName),
       pluginId: "gcp",
