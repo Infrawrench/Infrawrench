@@ -4,6 +4,7 @@ import type {
   SectionNode,
   ResourceStatus,
   ResourceTypeDefinition,
+  SqlTableMeta,
 } from "@infrawrench/plugin-base";
 import { dnsZoneStatus, formatDnsTtl, labeledFieldItems } from "@infrawrench/plugin-base";
 
@@ -400,6 +401,15 @@ export function renderKVNamespaceDetail(resource: ResourceInstance): DetailViewS
 
 export function renderD1DatabaseDetail(resource: ResourceInstance): DetailViewSchema {
   const fields = resource.fields;
+  let tables: SqlTableMeta[] = [];
+  const tablesJson = resource.resolvedOutputs?.["__tables__"];
+  if (typeof tablesJson === "string" && tablesJson.length > 0) {
+    try {
+      tables = JSON.parse(tablesJson) as SqlTableMeta[];
+    } catch {
+      /* ignore malformed introspection payload */
+    }
+  }
   return {
     title: resource.displayName,
     subtitle: "D1 SQLite Database",
@@ -430,6 +440,11 @@ export function renderD1DatabaseDetail(resource: ResourceInstance): DetailViewSc
       },
     ],
     headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+    sqlEditor: {
+      connectionStringOutputKey: "databaseId",
+      defaultQuery: "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;",
+      tables,
+    },
   };
 }
 
