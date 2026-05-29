@@ -44,6 +44,7 @@ const CREATE_TOKEN_SCOPES = [
   { key: "workers_routes", type: "edit" },
   { key: "d1", type: "edit" },
   { key: "queues", type: "edit" },
+  { key: "hyperdrive", type: "edit" },
   { key: "pages", type: "edit" },
   { key: "argotunnel", type: "edit" },
   { key: "analytics", type: "read" },
