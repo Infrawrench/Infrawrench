@@ -244,6 +244,9 @@ export const detailViewSchema = z.object({
     )
     .optional(),
   childTables: z.array(childTableSchema).optional(),
+  settingsEditor: z
+    .object({ tabLabel: z.string().optional(), description: z.string().optional() })
+    .optional(),
   headerActions: z.array(actionNodeSchema).optional(),
   metricsCapability: z.object({ defaultTimeRangeMs: z.number().optional() }).optional(),
   noSqlBrowser: z

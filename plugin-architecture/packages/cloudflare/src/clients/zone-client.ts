@@ -1,6 +1,7 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
 import { withAuthErrorHint } from "./shared.js";
+import { buildZoneSettingDescriptors, coerceZoneSettingValue } from "./zone-settings-meta.js";
 import type { Zone } from "cloudflare/resources/zones/zones";
 
 function mapZone(api: CloudflareApi, z: Zone, accountId: string): ResourceInstance {
@@ -83,12 +84,25 @@ export async function getZoneManifest(api: CloudflareApi, externalId: string): P
   // collection in one call is much cheaper, so we use the generic raw helper.
   // Tokens scoped to DNS-only routinely lack Zone Settings:Read (Cloudflare
   // error 9109), so surface the friendly scope hint instead of a raw 403 body.
-  const settings = await withAuthErrorHint(
-    () => api.cf.get<unknown, Record<string, unknown>>(`/zones/${externalId}/settings`),
+  //
+  // The host renders a settings *form* (settingsEditor capability), so we return
+  // `{ settings: SettingDescriptor[] }` — labeled controls rather than raw JSON.
+  const raw = await withAuthErrorHint(
+    () => api.cf.get<unknown, unknown>(`/zones/${externalId}/settings`),
     "zone settings",
     "Zone · Zone Settings:Read",
   );
-  return JSON.stringify(settings, null, 2);
+  // The raw helper may hand back the full envelope ({ result: [...] }) or the
+  // unwrapped array depending on SDK version — accept both.
+  const list = Array.isArray(raw)
+    ? (raw as unknown[])
+    : Array.isArray((raw as { result?: unknown })?.result)
+      ? (raw as { result: unknown[] }).result
+      : [];
+  const settings = buildZoneSettingDescriptors(
+    list as Parameters<typeof buildZoneSettingDescriptors>[0],
+  );
+  return JSON.stringify({ settings });
 }
 
 export async function applyZoneManifest(
@@ -96,16 +110,18 @@ export async function applyZoneManifest(
   externalId: string,
   manifest: string,
 ): Promise<void> {
-  const settings = JSON.parse(manifest) as Array<{ id: string; value: unknown }>;
-  if (!Array.isArray(settings))
+  // The settings form sends back a JSON array of changed { id, value } pairs.
+  const changed = JSON.parse(manifest) as Array<{ id: string; value: string }>;
+  if (!Array.isArray(changed))
     throw new Error("Zone settings must be an array of {id, value} objects");
   await withAuthErrorHint(
     async () => {
-      for (const setting of settings) {
+      for (const setting of changed) {
         await api.cf.zones.settings.edit(setting.id, {
           zone_id: externalId,
-          // SDK exposes a discriminated union per setting; cast through unknown.
-          value: setting.value,
+          // Coerce the string value back to the type CF expects per setting,
+          // then cast through unknown (the SDK exposes a per-setting union).
+          value: coerceZoneSettingValue(setting.id, setting.value),
         } as Parameters<typeof api.cf.zones.settings.edit>[1]);
       }
     },

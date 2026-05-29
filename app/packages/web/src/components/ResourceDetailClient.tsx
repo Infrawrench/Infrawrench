@@ -989,7 +989,9 @@ export function ResourceDetailClient({
               renderChildResource={(child) => (
                 <DraggableChildPill child={child} onOpen={() => handleChildClick(child)} />
               )}
-              {...(hasManifestEditor || detailSchema.bucketPolicyEditor
+              {...(hasManifestEditor ||
+              detailSchema.bucketPolicyEditor ||
+              detailSchema.settingsEditor
                 ? { onGetManifest: handleGetManifest, onApplyManifest: handleApplyManifest }
                 : {})}
               {...(detailSchema.describe ? { onGetDescribe: handleGetDescribe } : {})}

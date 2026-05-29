@@ -13,7 +13,7 @@ The Cloudflare plugin is broad — 24 resource types across DNS, edge compute, s
 - **Workers AI** — the text-generation model catalog, each with a chat Playground.
 - **Storage** — R2 buckets (with the [file browser](../features/file-browsers.md)).
 - **Zero Trust** — Access applications, Tunnels.
-- **Zone settings** — cache, security, SSL, performance toggles, edited via the [manifest editor](../features/manifest-editor.md).
+- **Zone settings** — cache, security, SSL, and performance options edited via a settings form (toggles, dropdowns, numbers) on the zone's **Zone Settings** tab.
 
 ## Credentials
 
@@ -31,7 +31,7 @@ If you'd rather scope a token by hand, go to the Cloudflare dashboard → **My P
 - **R2 file browser** and **secret export to K8s** for bucket credentials.
 - **KV namespace browser** — open any Workers KV namespace and use the **Keys** tab to list keys (cursor-paginated, with optional prefix filter), view stored values, add or overwrite a key, and delete keys. Backed by Cloudflare's `/storage/kv/namespaces/{id}/keys` and `/values/{key}` REST endpoints. Values are treated as UTF-8 text.
 - **D1 SQL editor** — open any D1 database and use the **SQL Editor** tab to run queries. The default query lists tables via `sqlite_master`.
-- **Zone setting patches** — field-by-field, partial failures reported individually.
+- **Zone settings form** — each setting renders as a toggle / dropdown / number control on the **Zone Settings** tab; Apply patches only the changed settings.
 - **Expose a service over a tunnel** — drag a Tunnel onto a server (any account/provider) to expose HTTP, HTTPS, SSH, or TCP through Cloudflare's edge: infrawrench sets the tunnel ingress + DNS and installs `cloudflared` on the host. See [Expose a service over a Cloudflare Tunnel](../features/cloudflare-tunnel-ssh.md).
 
 <insert [Cloudflare KV namespace detail page with the Keys tab open, showing a list of keys with the value of a selected key displayed] here>

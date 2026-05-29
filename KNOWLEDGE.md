@@ -557,8 +557,9 @@ All reuse the DO SSE-parsing structure; the chat-capable resource sets `detail.c
 - Hyperdrive configs include origin connection details (host, port, scheme, database, user) and caching state
 - Email Routing Rules parse matchers and actions into human-readable strings
 - Workers declare `manifestEditor: { language: "json", resourceKind: "Worker Settings", readOnly: true }` — read-only JSON view of worker settings
-- Zones declare `manifestEditor: { language: "json", resourceKind: "Zone Settings" }` — editable JSON view of zone settings; `applyManifest` patches each setting individually
+- Zones declare `settingsEditor: { tabLabel: "Zone Settings" }` — a settings _form_ (the generic `SettingsEditorView`). `getManifest()` returns `{ settings: SettingDescriptor[] }` built by `buildZoneSettingDescriptors` (curated label/control/options map in `clients/zone-settings-meta.ts` + inference fallback); the form's Apply sends a JSON array of changed `{id,value}` to `applyManifest`, which coerces per setting via `coerceZoneSettingValue` and PATCHes each. (Workers still use the JSON `manifestEditor`.)
 - `getManifest()` fetches worker settings via `GET /accounts/{cfAccountId}/workers/scripts/{name}/settings` and zone settings via `GET /zones/{zoneId}/settings`
+- **Settings editor capability (generic):** `settingsEditor?: SettingsEditorCapability` on `DetailViewSchema` renders `SettingsEditorView` (toggles/selects/numbers/text + dirty tracking) backed by the existing `getManifest`/`applyManifest` transport — `getManifest` returns `{settings: SettingDescriptor[]}`, Apply posts changed `[{id,value}]`. Reuses the manifest host wiring (web + desktop, cloud + local); the manifest/settings tab gate now also checks `settingsEditor`.
 - R2 buckets declare `secretExportTemplates` with S3 endpoint + bucket name for K8s secret export
 - Tunnels declare `secretExportTemplates` with tunnel token + ID for K8s secret export
 - Spectrum Applications show protocol badges and origin connection details

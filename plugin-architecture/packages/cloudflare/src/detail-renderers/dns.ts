@@ -135,7 +135,10 @@ export function renderZoneDetail(resource: ResourceInstance): DetailViewSchema {
         childResourceTypeIds: ["email-routing-rule", "logpush-job"],
       },
     ],
-    manifestEditor: { language: "json", resourceKind: "Zone Settings" },
+    settingsEditor: {
+      tabLabel: "Zone Settings",
+      description: "Toggle and configure this zone's Cloudflare settings.",
+    },
     headerActions: [
       { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
       {

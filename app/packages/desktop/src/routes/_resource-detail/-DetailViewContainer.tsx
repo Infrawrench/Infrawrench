@@ -184,7 +184,7 @@ export function DetailViewContainer({
               onEstimateQueryCost,
             }
           : {})}
-        {...(schema.manifestEditor || schema.bucketPolicyEditor
+        {...(schema.manifestEditor || schema.bucketPolicyEditor || schema.settingsEditor
           ? { onGetManifest, onApplyManifest }
           : {})}
         {...(schema.storageBrowser && renderStorageBrowser ? { renderStorageBrowser } : {})}

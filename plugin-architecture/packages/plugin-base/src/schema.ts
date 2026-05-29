@@ -405,6 +405,50 @@ export interface ManifestEditorCapability {
 }
 
 /**
+ * One row in a {@link SettingsEditorCapability} form — a single named setting
+ * rendered as a labeled control instead of raw JSON. The plugin owns the
+ * control choice, label, and (for selects) the option list; the host renders
+ * it generically and tracks edits.
+ */
+export interface SettingDescriptor {
+  /** Provider setting id (sent back on apply). */
+  id: string;
+  /** Human label, e.g. "Always Use HTTPS". */
+  label: string;
+  /** Optional one-line explanation shown under the label. */
+  description?: string;
+  /**
+   * Control to render:
+   *   - "toggle"   — on/off switch; value is "on"/"off"
+   *   - "select"   — dropdown over `options`
+   *   - "number"   — numeric input
+   *   - "text"     — single-line text / JSON blob
+   *   - "readonly" — value shown but not editable (provider-managed)
+   */
+  control: "toggle" | "select" | "number" | "text" | "readonly";
+  /** `select` options. */
+  options?: { value: string; label: string }[];
+  /** Current value as a string ("on"/"off", a number, an enum, or JSON). */
+  value: string;
+  /** Optional grouping heading (e.g. "Security", "Performance"). */
+  group?: string;
+}
+
+/**
+ * When present, the host renders a human-friendly settings form (toggles,
+ * dropdowns, numbers) instead of a raw JSON editor. The plugin loads the rows
+ * via `getManifest()` returning `{"settings": SettingDescriptor[]}` and applies
+ * via `applyManifest()` receiving a JSON array of changed `{id, value}` pairs.
+ * Used by the Cloudflare zone-settings tab.
+ */
+export interface SettingsEditorCapability {
+  /** Tab label. Defaults to "Settings". */
+  tabLabel?: string;
+  /** Optional copy shown above the form. */
+  description?: string;
+}
+
+/**
  * When present on a DetailViewSchema, the host renders the interactive
  * "Bucket Policy" tab — statement builder + JSON toggle + templates + lint
  * banner + plain-English summary. The plugin still loads/stores the raw JSON
@@ -641,6 +685,11 @@ export interface DetailViewSchema {
   artifactRegistry?: ArtifactRegistryCapability;
   /** If present, the host renders a Monaco manifest editor tab */
   manifestEditor?: ManifestEditorCapability;
+  /**
+   * If present, the host renders a human-friendly settings form (backed by
+   * getManifest/applyManifest) instead of raw JSON. Used by Cloudflare zones.
+   */
+  settingsEditor?: SettingsEditorCapability;
   /** If present, the host renders the interactive bucket-policy editor tab */
   bucketPolicyEditor?: BucketPolicyEditorCapability;
   /** If present, the host renders a "Describe" tab with plain-text describe output. */

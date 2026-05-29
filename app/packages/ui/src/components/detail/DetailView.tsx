@@ -19,6 +19,7 @@ import { AssociationPicker } from "./AssociationPicker.js";
 import { ChildResourceTable } from "./ChildResourceTable.js";
 import { SqlEditorView, type QueryResult } from "./SqlEditorView.js";
 import { ManifestEditorView } from "./ManifestEditorView.js";
+import { SettingsEditorView } from "./SettingsEditorView.js";
 import { BucketPolicyEditor } from "./BucketPolicyEditor.js";
 import { DescribeView } from "./DescribeView.js";
 import { LogsView } from "./LogsView.js";
@@ -154,6 +155,7 @@ type Tab =
   | "files"
   | "sql"
   | "manifest"
+  | "settings"
   | "bucket-policy"
   | "describe"
   | "logs"
@@ -208,6 +210,7 @@ export function DetailView({
   const { rerollingField, closeReroll } = useUIStore();
   const hasSqlEditor = !!schema.sqlEditor && !!onRunQuery;
   const hasManifestEditor = !!schema.manifestEditor && !!onGetManifest;
+  const hasSettingsEditor = !!schema.settingsEditor && !!onGetManifest;
   const hasBucketPolicyEditor = !!schema.bucketPolicyEditor && !!onGetManifest;
   const hasStorageBrowser = !!schema.storageBrowser && !!renderStorageBrowser;
   const hasDescribe = !!schema.describe && !!onGetDescribe;
@@ -235,6 +238,7 @@ export function DetailView({
     hasStorageBrowser ||
     hasSqlEditor ||
     hasManifestEditor ||
+    hasSettingsEditor ||
     hasBucketPolicyEditor ||
     hasDescribe ||
     hasLogs ||
@@ -264,6 +268,7 @@ export function DetailView({
   if (hasStorageBrowser) tabKeys.push("files");
   if (hasSqlEditor) tabKeys.push("sql");
   if (hasManifestEditor) tabKeys.push("manifest");
+  if (hasSettingsEditor) tabKeys.push("settings");
   if (hasBucketPolicyEditor) tabKeys.push("bucket-policy");
   if (hasDescribe) tabKeys.push("describe");
   if (hasLogs) tabKeys.push("logs");
@@ -429,6 +434,13 @@ export function DetailView({
                 return (
                   <TabButton key={key} {...tabProps} onClick={() => setActiveTab("manifest")}>
                     {schema.manifestEditor?.resourceKind ?? "Manifest"}
+                  </TabButton>
+                );
+              }
+              if (key === "settings") {
+                return (
+                  <TabButton key={key} {...tabProps} onClick={() => setActiveTab("settings")}>
+                    {schema.settingsEditor?.tabLabel ?? "Settings"}
                   </TabButton>
                 );
               }
@@ -691,6 +703,21 @@ export function DetailView({
             capability={schema.manifestEditor!}
             onGetManifest={onGetManifest!}
             onApplyManifest={onApplyManifest}
+          />
+        </div>
+      )}
+
+      {hasSettingsEditor && activeTab === "settings" && (
+        <div
+          role="tabpanel"
+          id={panelIdFor("settings")}
+          aria-labelledby={tabIdFor("settings")}
+          className="flex-1 overflow-hidden"
+        >
+          <SettingsEditorView
+            capability={schema.settingsEditor!}
+            onGetManifest={onGetManifest!}
+            {...(onApplyManifest ? { onApplyManifest } : {})}
           />
         </div>
       )}

@@ -91,6 +91,8 @@ export type {
   ArtifactEntry,
   ArtifactRegistryCapability,
   ManifestEditorCapability,
+  SettingsEditorCapability,
+  SettingDescriptor,
   BucketPolicyEditorCapability,
   DescribeCapability,
   LogsCapability,
