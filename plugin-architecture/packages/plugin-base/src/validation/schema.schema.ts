@@ -217,11 +217,13 @@ const childTableSchema = z.object({
         .enum(["text", "mono", "type-badge", "proxy-status", "ttl", "boolean-yesno"])
         .optional(),
       stripSuffixFromFieldKey: z.string().optional(),
+      valueMap: z.record(z.string(), z.string()).optional(),
     }),
   ),
   emptyText: z.string().optional(),
   createLabel: z.string().optional(),
   onRowClick: z.enum(["navigate", "edit", "none"]).optional(),
+  readOnlyRowWhen: z.object({ fieldKey: z.string(), fieldValues: z.array(z.string()) }).optional(),
 });
 
 export const detailViewSchema = z.object({

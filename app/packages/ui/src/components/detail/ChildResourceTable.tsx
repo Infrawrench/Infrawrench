@@ -76,6 +76,18 @@ function ProxyIndicator({ proxied }: { proxied: boolean }) {
 
 function CellContent({ col, child }: { col: ChildTableColumn; child: ChildResource }) {
   const raw = rawCellValue(col, child);
+
+  // A value-map hit (e.g. Cloudflare's Worker placeholder 100::) renders as a
+  // muted label instead of the raw value, regardless of the column's format.
+  const mapped = col.valueMap?.[raw];
+  if (mapped !== undefined) {
+    return (
+      <span className="inline-block px-2 py-0.5 rounded text-[11px] bg-surface-overlay text-on-surface-tertiary border border-border-strong">
+        {mapped}
+      </span>
+    );
+  }
+
   const value = col.stripSuffixFromFieldKey
     ? applySuffixStrip(raw, String(child.fields?.[col.stripSuffixFromFieldKey] ?? ""))
     : raw;
@@ -153,11 +165,24 @@ export function ChildResourceTable({
   // Edit mode requires the plugin to opt in AND the host to provide both a
   // submit handler and the child type's field schema.
   const editMode = spec.onRowClick === "edit" && !!onEdit && !!group?.fields;
-  const clickable = spec.onRowClick !== "none";
+
+  // Provider-managed rows (e.g. a DNS record whose content is a Worker
+  // placeholder) are read-only — not editable.
+  const isReadOnly = (child: ChildResource): boolean => {
+    const rule = spec.readOnlyRowWhen;
+    if (!rule) return false;
+    return rule.fieldValues.includes(String(child.fields?.[rule.fieldKey] ?? ""));
+  };
+  const isRowClickable = (child: ChildResource): boolean => {
+    if (spec.onRowClick === "none") return false;
+    if (editMode) return !isReadOnly(child);
+    return true;
+  };
 
   const handleRowClick = (child: ChildResource) => {
+    if (!isRowClickable(child)) return;
     if (editMode) setEditing(child);
-    else if (spec.onRowClick !== "none") onRowClick?.(child);
+    else onRowClick?.(child);
   };
 
   const handleDelete = async (child: ChildResource) => {
@@ -217,42 +242,45 @@ export function ChildResourceTable({
               </tr>
             </thead>
             <tbody>
-              {rows.map((child) => (
-                <tr
-                  key={child.id}
-                  onClick={clickable ? () => handleRowClick(child) : undefined}
-                  className={`border-b border-border last:border-0 ${
-                    clickable ? "cursor-pointer hover:bg-surface-overlay/40" : ""
-                  }`}
-                >
-                  {spec.columns.map((col) => (
-                    <td
-                      key={col.key}
-                      className={`px-3 py-2 align-middle ${
-                        FIXED_FORMATS.has(col.format ?? "") ? "whitespace-nowrap" : ""
-                      }`}
-                    >
-                      <CellContent col={col} child={child} />
-                    </td>
-                  ))}
-                  {canDelete && (
-                    <td className="px-3 py-2 text-right align-middle">
-                      <button
-                        type="button"
-                        disabled={deleting === child.id}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          void handleDelete(child);
-                        }}
-                        className="text-xs text-on-surface-faint hover:text-red-400 transition-colors disabled:opacity-50"
-                        title="Delete"
+              {rows.map((child) => {
+                const rowClickable = isRowClickable(child);
+                return (
+                  <tr
+                    key={child.id}
+                    onClick={rowClickable ? () => handleRowClick(child) : undefined}
+                    className={`border-b border-border last:border-0 ${
+                      rowClickable ? "cursor-pointer hover:bg-surface-overlay/40" : ""
+                    }`}
+                  >
+                    {spec.columns.map((col) => (
+                      <td
+                        key={col.key}
+                        className={`px-3 py-2 align-middle ${
+                          FIXED_FORMATS.has(col.format ?? "") ? "whitespace-nowrap" : ""
+                        }`}
                       >
-                        {deleting === child.id ? "…" : "Delete"}
-                      </button>
-                    </td>
-                  )}
-                </tr>
-              ))}
+                        <CellContent col={col} child={child} />
+                      </td>
+                    ))}
+                    {canDelete && (
+                      <td className="px-3 py-2 text-right align-middle">
+                        <button
+                          type="button"
+                          disabled={deleting === child.id}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void handleDelete(child);
+                          }}
+                          className="text-xs text-on-surface-faint hover:text-red-400 transition-colors disabled:opacity-50"
+                          title="Delete"
+                        >
+                          {deleting === child.id ? "…" : "Delete"}
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

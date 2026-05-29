@@ -546,6 +546,13 @@ export interface ChildTableColumn {
    * renders as "@" (the zone apex).
    */
   stripSuffixFromFieldKey?: string;
+  /**
+   * Display-label overrides keyed by raw cell value. When the value matches a
+   * key, the mapped label is shown (as a muted, non-mono badge) instead of the
+   * raw value — e.g. mapping Cloudflare's Worker placeholders `100::` /
+   * `192.0.2.1` to "Worker".
+   */
+  valueMap?: Record<string, string>;
 }
 
 /**
@@ -574,6 +581,12 @@ export interface ChildTableSchema {
    *   - "none" — rows aren't clickable
    */
   onRowClick?: "navigate" | "edit" | "none";
+  /**
+   * Rows whose `fieldKey` value is in `fieldValues` are treated as read-only —
+   * not clickable for edit. Used for provider-managed records (e.g. a DNS
+   * record whose content is a Worker placeholder).
+   */
+  readOnlyRowWhen?: { fieldKey: string; fieldValues: string[] };
 }
 
 /**

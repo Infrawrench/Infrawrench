@@ -60,6 +60,9 @@ export function renderZoneDetail(resource: ResourceInstance): DetailViewSchema {
         typeId: "dns-record",
         emptyText: "No DNS records in this zone yet.",
         onRowClick: "edit",
+        // Worker-bound records use placeholder content Cloudflare manages —
+        // they're shown as "Worker" and aren't editable.
+        readOnlyRowWhen: { fieldKey: "content", fieldValues: ["100::", "192.0.2.1"] },
         columns: [
           {
             key: "type",
@@ -81,6 +84,8 @@ export function renderZoneDetail(resource: ResourceInstance): DetailViewSchema {
             width: "wide",
             source: { kind: "field", fieldKey: "content" },
             format: "mono",
+            // Cloudflare's reserved placeholders for records bound to a Worker.
+            valueMap: { "100::": "Worker", "192.0.2.1": "Worker" },
           },
           {
             key: "proxied",
