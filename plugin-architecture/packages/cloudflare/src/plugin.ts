@@ -33,6 +33,7 @@ import { WorkersAiModelResourceType } from "./resources/workers-ai-model.js";
 // analytics is read-only (zone/Workers metrics).
 const CREATE_TOKEN_SCOPES = [
   { key: "zone", type: "edit" },
+  { key: "zone_settings", type: "edit" },
   { key: "dns", type: "edit" },
   { key: "ssl_and_certificates", type: "edit" },
   { key: "page_rules", type: "edit" },
