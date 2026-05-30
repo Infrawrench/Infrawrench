@@ -702,13 +702,16 @@ export class CloudflareClient implements PluginClient {
           options: await this.api.getZoneOptions(),
         });
       }
+      const zoneSuffix = await this.resolveZoneSuffix(parentResourceId);
       fields.push(
         {
           key: "pattern",
           label: "Route Pattern",
-          kind: "text",
           required: true,
           description: "URL pattern (e.g. example.com/path/*)",
+          ...(zoneSuffix
+            ? { kind: "hostname" as const, hostnameSuffix: zoneSuffix, hostnamePath: true }
+            : { kind: "text" as const }),
         },
         {
           key: "scriptName",

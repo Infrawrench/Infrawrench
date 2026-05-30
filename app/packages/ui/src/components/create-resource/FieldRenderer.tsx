@@ -213,6 +213,7 @@ export function FieldRenderer({
           label={field.label}
           suffix={field.hostnameSuffix ?? ""}
           placeholder={field.placeholder}
+          withPath={field.hostnamePath ?? false}
           value={value}
           onChange={onChange}
         />
@@ -605,17 +606,23 @@ function ActionFormPanel({
  * hostname. The user types just the subdomain ("www"); an empty value means the
  * apex (submits the bare domain). When `suffix` is empty it degrades to a plain
  * text input.
+ *
+ * With `withPath`, a trailing path input is shown and the submitted value
+ * becomes `<hostname><path>` (e.g. a Worker route pattern
+ * `sub.example.com/api/*`), defaulting the path to `/*`.
  */
 function HostnameField({
   label,
   suffix,
   placeholder,
+  withPath,
   value,
   onChange,
 }: {
   label: string;
   suffix: string;
   placeholder?: string | undefined;
+  withPath: boolean;
   value: string;
   onChange: (v: string) => void;
 }) {
@@ -633,20 +640,27 @@ function HostnameField({
     );
   }
 
-  // Default to the apex (the bare domain) so an untouched field still submits a
-  // valid hostname.
+  // Seed an untouched field with a valid default: the apex, plus "/*" when a
+  // path is part of the value (route patterns require one).
   useEffect(() => {
-    if (value === "") onChange(suffix);
+    if (value === "") onChange(withPath ? `${suffix}/*` : suffix);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Split the full value into host + path (path = from the first "/").
+  const slash = value.indexOf("/");
+  const host = slash === -1 ? value : value.slice(0, slash);
+  const path = slash === -1 ? "" : value.slice(slash);
   const dotted = `.${suffix}`;
-  const sub =
-    value === suffix ? "" : value.endsWith(dotted) ? value.slice(0, -dotted.length) : value;
+  const sub = host === suffix ? "" : host.endsWith(dotted) ? host.slice(0, -dotted.length) : host;
 
-  const handle = (next: string) => {
-    const trimmed = next.trim().replace(/\.+$/, "");
-    onChange(trimmed ? `${trimmed}.${suffix}` : suffix);
+  const compose = (nextSub: string, nextPath: string) => {
+    const cleanSub = nextSub.trim().replace(/^\.+|\.+$/g, "");
+    const newHost = cleanSub ? `${cleanSub}.${suffix}` : suffix;
+    if (!withPath) return onChange(newHost);
+    let p = nextPath.trim();
+    if (p && !p.startsWith("/")) p = `/${p}`;
+    onChange(`${newHost}${p}`);
   };
 
   return (
@@ -655,13 +669,27 @@ function HostnameField({
         type="text"
         aria-label={label}
         value={sub}
-        onChange={(e) => handle(e.target.value)}
+        onChange={(e) => compose(e.target.value, path)}
         placeholder={placeholder ?? "subdomain (blank = root)"}
         className="flex-1 min-w-0 bg-surface-overlay border border-border-strong rounded-l-lg px-3 py-2 text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500"
       />
-      <span className="flex items-center px-3 rounded-r-lg border border-l-0 border-border-strong bg-surface-sunken text-sm text-on-surface-faint font-mono whitespace-nowrap">
+      <span
+        className={`flex items-center px-3 border border-l-0 border-border-strong bg-surface-sunken text-sm text-on-surface-faint font-mono whitespace-nowrap ${
+          withPath ? "" : "rounded-r-lg"
+        }`}
+      >
         .{suffix}
       </span>
+      {withPath && (
+        <input
+          type="text"
+          aria-label={`${label} path`}
+          value={path}
+          onChange={(e) => compose(sub, e.target.value)}
+          placeholder="/*"
+          className="w-32 flex-shrink-0 bg-surface-overlay border border-l-0 border-border-strong rounded-r-lg px-3 py-2 text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500 font-mono"
+        />
+      )}
     </div>
   );
 }

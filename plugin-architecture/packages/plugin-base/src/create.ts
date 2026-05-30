@@ -177,6 +177,12 @@ export interface CreateFieldConfig {
    * plugin from the parent zone/domain.
    */
   hostnameSuffix?: string;
+  /**
+   * `hostname` — when true, also show a trailing path input after the domain
+   * suffix and submit `<hostname><path>` (e.g. a Worker route pattern
+   * `sub.example.com/api/*`). Defaults the path to `/*`.
+   */
+  hostnamePath?: boolean;
   /** `select` options */
   options?: { id: string; label: string }[];
   /** `number` input bounds */
