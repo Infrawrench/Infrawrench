@@ -75,6 +75,7 @@ export interface PolicyOption {
 
 export type CreateFieldKind =
   | "text" // single-line text input
+  | "hostname" // subdomain input with a fixed ".<domain>" suffix; submits the full hostname
   | "password" // single-line input rendered with masking (type="password")
   | "number" // numeric input
   | "datetime" // date/time picker — emits a string per `datetimeMode`
@@ -169,6 +170,13 @@ export interface CreateFieldConfig {
   referenceMode?: boolean;
   /** `text` — render as a multi-line textarea instead of an input (e.g. JSON blobs). */
   multiline?: boolean;
+  /**
+   * `hostname` — the fixed domain suffix shown after the subdomain input (e.g.
+   * "example.com"). The user types the subdomain part; the submitted value is
+   * the full hostname (`sub.suffix`, or just `suffix` for the apex). Set by the
+   * plugin from the parent zone/domain.
+   */
+  hostnameSuffix?: string;
   /** `select` options */
   options?: { id: string; label: string }[];
   /** `number` input bounds */

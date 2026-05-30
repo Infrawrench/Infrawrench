@@ -208,6 +208,16 @@ export function FieldRenderer({
           />
         ))}
 
+      {field.kind === "hostname" && (
+        <HostnameField
+          label={field.label}
+          suffix={field.hostnameSuffix ?? ""}
+          placeholder={field.placeholder}
+          value={value}
+          onChange={onChange}
+        />
+      )}
+
       {field.kind === "password" && (
         <input
           type="password"
@@ -586,6 +596,72 @@ function ActionFormPanel({
           {running ? "Working…" : (action.submitLabel ?? "Create")}
         </button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Subdomain input that shows a fixed `.<domain>` suffix and submits the full
+ * hostname. The user types just the subdomain ("www"); an empty value means the
+ * apex (submits the bare domain). When `suffix` is empty it degrades to a plain
+ * text input.
+ */
+function HostnameField({
+  label,
+  suffix,
+  placeholder,
+  value,
+  onChange,
+}: {
+  label: string;
+  suffix: string;
+  placeholder?: string | undefined;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  // No domain to anchor to — behave as a normal text input.
+  if (!suffix) {
+    return (
+      <input
+        type="text"
+        aria-label={label}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder ?? label}
+        className="w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500"
+      />
+    );
+  }
+
+  // Default to the apex (the bare domain) so an untouched field still submits a
+  // valid hostname.
+  useEffect(() => {
+    if (value === "") onChange(suffix);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const dotted = `.${suffix}`;
+  const sub =
+    value === suffix ? "" : value.endsWith(dotted) ? value.slice(0, -dotted.length) : value;
+
+  const handle = (next: string) => {
+    const trimmed = next.trim().replace(/\.+$/, "");
+    onChange(trimmed ? `${trimmed}.${suffix}` : suffix);
+  };
+
+  return (
+    <div className="flex items-stretch">
+      <input
+        type="text"
+        aria-label={label}
+        value={sub}
+        onChange={(e) => handle(e.target.value)}
+        placeholder={placeholder ?? "subdomain (blank = root)"}
+        className="flex-1 min-w-0 bg-surface-overlay border border-border-strong rounded-l-lg px-3 py-2 text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500"
+      />
+      <span className="flex items-center px-3 rounded-r-lg border border-l-0 border-border-strong bg-surface-sunken text-sm text-on-surface-faint font-mono whitespace-nowrap">
+        .{suffix}
+      </span>
     </div>
   );
 }

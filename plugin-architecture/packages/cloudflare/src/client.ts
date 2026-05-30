@@ -454,6 +454,24 @@ export class CloudflareClient implements PluginClient {
     };
   }
 
+  /**
+   * Resolve the zone's domain name (e.g. "example.com") from a parent zone
+   * resource id, so hostname fields can show a `.<domain>` suffix. Returns
+   * undefined when there's no parent (top-level create with a zone picker) or
+   * the lookup fails.
+   */
+  private async resolveZoneSuffix(parentResourceId?: string): Promise<string | undefined> {
+    if (!parentResourceId) return undefined;
+    const zoneId = parentResourceId.split(":").slice(2).join(":");
+    if (!zoneId) return undefined;
+    try {
+      const zones = await this.api.getZoneOptions();
+      return zones.find((z) => z.id === zoneId)?.label;
+    } catch {
+      return undefined;
+    }
+  }
+
   async getCreateConfig(typeId: string, parentResourceId?: string): Promise<CreateResourceConfig> {
     if (typeId === "zone") {
       return {
@@ -470,6 +488,7 @@ export class CloudflareClient implements PluginClient {
     }
     if (typeId === "dns-record") {
       const fields: CreateResourceConfig["fields"] = [];
+      const zoneSuffix = await this.resolveZoneSuffix(parentResourceId);
       if (!parentResourceId) {
         fields.push({
           key: "zoneId",
@@ -499,9 +518,17 @@ export class CloudflareClient implements PluginClient {
         {
           key: "name",
           label: "Name",
-          kind: "text",
           required: true,
-          description: 'Record name (e.g. "@" for root, "www" for subdomain)',
+          ...(zoneSuffix
+            ? {
+                kind: "hostname" as const,
+                hostnameSuffix: zoneSuffix,
+                description: "Subdomain — leave blank for the root domain.",
+              }
+            : {
+                kind: "text" as const,
+                description: 'Record name (e.g. "@" for root, "www" for subdomain)',
+              }),
         },
         ...dnsContentField({
           key: "content",
@@ -869,6 +896,7 @@ export class CloudflareClient implements PluginClient {
     }
     if (typeId === "waiting-room") {
       const fields: CreateResourceConfig["fields"] = [];
+      const zoneSuffix = await this.resolveZoneSuffix(parentResourceId);
       if (!parentResourceId) {
         fields.push({
           key: "zoneId",
@@ -889,9 +917,11 @@ export class CloudflareClient implements PluginClient {
         {
           key: "host",
           label: "Host",
-          kind: "text",
           required: true,
           description: "Hostname to apply the waiting room to",
+          ...(zoneSuffix
+            ? { kind: "hostname" as const, hostnameSuffix: zoneSuffix }
+            : { kind: "text" as const }),
         },
         {
           key: "totalActiveUsers",
@@ -1062,6 +1092,7 @@ export class CloudflareClient implements PluginClient {
     }
     if (typeId === "load-balancer") {
       const fields: CreateResourceConfig["fields"] = [];
+      const zoneSuffix = await this.resolveZoneSuffix(parentResourceId);
       if (!parentResourceId) {
         fields.push({
           key: "zoneId",
@@ -1075,9 +1106,11 @@ export class CloudflareClient implements PluginClient {
         {
           key: "name",
           label: "Name",
-          kind: "text",
           required: true,
-          description: "DNS name for the load balancer (e.g. lb.example.com)",
+          description: "DNS name for the load balancer",
+          ...(zoneSuffix
+            ? { kind: "hostname" as const, hostnameSuffix: zoneSuffix }
+            : { kind: "text" as const }),
         },
         {
           key: "fallbackPool",
@@ -1098,6 +1131,7 @@ export class CloudflareClient implements PluginClient {
     }
     if (typeId === "spectrum-application") {
       const fields: CreateResourceConfig["fields"] = [];
+      const zoneSuffix = await this.resolveZoneSuffix(parentResourceId);
       if (!parentResourceId) {
         fields.push({
           key: "zoneId",
@@ -1125,9 +1159,11 @@ export class CloudflareClient implements PluginClient {
         {
           key: "dns",
           label: "DNS Name",
-          kind: "text",
           required: true,
-          description: "Subdomain for the Spectrum app (e.g. ssh.example.com)",
+          description: "Subdomain for the Spectrum app",
+          ...(zoneSuffix
+            ? { kind: "hostname" as const, hostnameSuffix: zoneSuffix }
+            : { kind: "text" as const }),
         },
         {
           key: "originDirect",

@@ -165,7 +165,9 @@ Important flags:
 
 **`src/create.ts`** — `CreateResourceConfig`, `CreateFieldConfig`
 
-Field kinds: `text`, `number`, `datetime`, `select`, `size-picker`, `region-picker`, `disk-slider`, `image-picker`, `disk-picker`, `ssh-key-picker`, `resource-picker`, `policy-picker`
+Field kinds: `text`, `hostname`, `number`, `datetime`, `select`, `size-picker`, `region-picker`, `disk-slider`, `image-picker`, `disk-picker`, `ssh-key-picker`, `resource-picker`, `policy-picker`
+
+- `hostname` — subdomain input that renders a fixed `.<domain>` suffix (`hostnameSuffix`) and submits the full hostname (`sub.suffix`, or just `suffix` for the apex; blank defaults to apex on mount). When `hostnameSuffix` is empty it degrades to a plain text input. The plugin sets the suffix from the parent zone/domain. Cloudflare uses it (when created under a zone) for the DNS record `name`, waiting-room `host`, load-balancer `name`, and Spectrum `dns` fields, resolved via `client.resolveZoneSuffix(parentResourceId)` against `getZoneOptions`. (CF accepts FQDN names; providers whose APIs want a _relative_ name should not adopt this without stripping the suffix.)
 
 `policy-picker` — multi-select IAM policies/roles. Value is a JSON array of `id`s (empty = empty string). Plugin supplies `policies: PolicyOption[]` fetched live from the provider API (e.g. AWS `iam:ListPolicies` for managed + customer-managed, GCP `iam.roles.list` for predefined + project custom roles). Options carry `category` for grouping and optional `description` / `badge` (e.g. `BETA`, `DEPRECATED`). UI: searchable input with chips for selected items and categorised list below.
 
