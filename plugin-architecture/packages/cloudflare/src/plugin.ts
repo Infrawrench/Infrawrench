@@ -48,6 +48,10 @@ const CREATE_TOKEN_SCOPES = [
   { key: "hyperdrive", type: "edit" },
   { key: "pages", type: "edit" },
   { key: "argotunnel", type: "edit" },
+  { key: "waiting_rooms", type: "edit" },
+  { key: "firewall_services", type: "edit" },
+  { key: "spectrum", type: "edit" },
+  { key: "logs", type: "edit" },
   { key: "analytics", type: "read" },
 ];
 
