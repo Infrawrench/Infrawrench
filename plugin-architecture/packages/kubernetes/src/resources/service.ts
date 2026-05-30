@@ -12,7 +12,15 @@ export const ServiceResourceType: ResourceTypeDefinition = {
     { key: "clusterIP", label: "Cluster IP", kind: "string", required: false },
     { key: "ports", label: "Ports", kind: "string", required: false },
   ],
-  outputs: [],
+  outputs: [
+    {
+      key: "serviceName",
+      label: "Service Name",
+      sensitive: false,
+      description:
+        "The Service's name — used by Ingresses and StatefulSets to reference this Service",
+    },
+  ],
   parentTypeId: "k8s-namespace",
   dashboardPinnable: false,
   supportsCreate: true,

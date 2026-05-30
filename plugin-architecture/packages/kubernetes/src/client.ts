@@ -75,7 +75,11 @@ export class KubernetesClient implements PluginClient {
     return { k8sFetch: this.k8sFetch };
   }
 
-  async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
+  async listResources(
+    typeId: string,
+    accountId: string,
+    opts?: { regionHint?: string },
+  ): Promise<ResourceInstance[]> {
     switch (typeId) {
       case "k8s-cluster":
         return listers.listClusters(this.listerCtx, accountId);
@@ -86,7 +90,9 @@ export class KubernetesClient implements PluginClient {
       case "k8s-deployment":
         return listers.listDeployments(this.listerCtx, accountId);
       case "k8s-service":
-        return listers.listServices(this.listerCtx, accountId);
+        // The host passes the create-form `namespace` field as a region hint;
+        // services are namespace-scoped, so use it to scope the picker.
+        return listers.listServices(this.listerCtx, accountId, opts?.regionHint);
       case "k8s-statefulset":
         return listers.listStatefulSets(this.listerCtx, accountId);
       case "k8s-daemonset":
@@ -119,7 +125,7 @@ export class KubernetesClient implements PluginClient {
 
   async resolveOutput(
     typeId: string,
-    _resourceId: string,
+    resourceId: string,
     outputKey: string,
     _accountId: string,
   ): Promise<string> {
@@ -130,6 +136,10 @@ export class KubernetesClient implements PluginClient {
       } catch {
         return "unknown";
       }
+    }
+    if (typeId === "k8s-service" && outputKey === "serviceName") {
+      // Resource id is `${accountId}:k8s-service:${namespace}:${name}`.
+      return resourceId.split(":").pop() ?? "";
     }
     throw new Error(`Kubernetes plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
   }

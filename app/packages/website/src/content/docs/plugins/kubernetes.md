@@ -38,6 +38,7 @@ Paste a kubeconfig YAML, or an output reference from an EKS / AKS / GKE / DOKS /
 - **Terminal** into any pod (`kubectl exec` equivalent). Pick a container if there is more than one.
 - **Log tail** on pods with follow and grep.
 - **Secret import** from other plugins (drag a cloud resource onto a cluster).
+- **Service picker on create** — when creating an Ingress (Backend Service) or a StatefulSet (Headless Service Name), pick an existing Service from a searchable dropdown instead of typing its name. The list is scoped to the namespace selected in the same form.
 
 ## Tips & limits
 

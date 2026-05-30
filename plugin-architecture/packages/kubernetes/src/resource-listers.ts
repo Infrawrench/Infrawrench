@@ -183,9 +183,15 @@ export async function listDeployments(
 export async function listServices(
   ctx: ListerContext,
   accountId: string,
+  namespaceHint?: string,
 ): Promise<ResourceInstance[]> {
   const now = new Date().toISOString();
-  const data = await ctx.k8sFetch<K8sList<K8sService>>("/api/v1/services");
+  // When the caller (e.g. a create-form picker) only cares about one
+  // namespace, scope the request to that namespace instead of fanning out.
+  const path = namespaceHint
+    ? `/api/v1/namespaces/${encodeURIComponent(namespaceHint)}/services`
+    : "/api/v1/services";
+  const data = await ctx.k8sFetch<K8sList<K8sService>>(path);
   return data.items
     .filter((s) => !SYSTEM_NAMESPACES.has(s.metadata.namespace ?? ""))
     .map((s) => {
@@ -205,7 +211,7 @@ export async function listServices(
           ports,
           hasSelector: hasSelector ? "true" : "false",
         },
-        resolvedOutputs: {},
+        resolvedOutputs: { serviceName: s.metadata.name },
         secretStates: [],
         parentResourceId: `${accountId}:k8s-namespace:${s.metadata.namespace ?? "default"}`,
         createdAt: s.metadata.creationTimestamp,

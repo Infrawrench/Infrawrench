@@ -252,9 +252,13 @@ export async function getCreateConfig(
       {
         key: "serviceName",
         label: "Backend Service",
-        kind: "text",
+        kind: "resource-picker",
         required: true,
         description: "Name of the Service to route to",
+        associationSources: [
+          { pluginId: "kubernetes", resourceTypeId: "k8s-service", outputKey: "serviceName" },
+        ],
+        scopeFromFieldKey: "namespace",
       },
       {
         key: "servicePort",
@@ -354,9 +358,13 @@ export async function getCreateConfig(
       {
         key: "serviceName",
         label: "Headless Service Name",
-        kind: "text",
+        kind: "resource-picker",
         required: true,
         description: "Name of the governing headless Service",
+        associationSources: [
+          { pluginId: "kubernetes", resourceTypeId: "k8s-service", outputKey: "serviceName" },
+        ],
+        scopeFromFieldKey: "namespace",
       },
       {
         key: "containerPort",
