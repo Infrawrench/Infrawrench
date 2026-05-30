@@ -52,7 +52,7 @@ import {
   renderLogpushJobDetail,
   renderWorkersAiModelDetail,
 } from "./detail-renderers.js";
-import { CloudflareApi } from "./clients/shared.js";
+import { CloudflareApi, withCloudflareErrors } from "./clients/shared.js";
 import * as zoneApi from "./clients/zone-client.js";
 import * as dnsRecordApi from "./clients/dns-record-client.js";
 import * as workerApi from "./clients/worker-client.js";
@@ -1225,6 +1225,17 @@ export class CloudflareClient implements PluginClient {
     fields: Record<string, string>,
     parentResourceId?: string,
   ): Promise<ResourceInstance> {
+    return withCloudflareErrors(() =>
+      this.createResourceImpl(typeId, accountId, fields, parentResourceId),
+    );
+  }
+
+  private async createResourceImpl(
+    typeId: string,
+    accountId: string,
+    fields: Record<string, string>,
+    parentResourceId?: string,
+  ): Promise<ResourceInstance> {
     const parentExternalId = parentResourceId ? parentResourceId.split(":").slice(2).join(":") : "";
     switch (typeId) {
       case "zone":
@@ -1292,6 +1303,17 @@ export class CloudflareClient implements PluginClient {
     accountId: string,
     fields: Record<string, string>,
   ): Promise<ResourceInstance> {
+    return withCloudflareErrors(() =>
+      this.updateResourceImpl(typeId, resourceId, accountId, fields),
+    );
+  }
+
+  private async updateResourceImpl(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
     const externalId = resourceId.split(":").slice(2).join(":");
     if (typeId === "dns-record") {
       return dnsRecordApi.updateDnsRecord(this.api, externalId, accountId, fields);
@@ -1321,12 +1343,20 @@ export class CloudflareClient implements PluginClient {
   ): Promise<PublishMessageResult> {
     const externalId = resourceId.split(":").slice(2).join(":");
     if (typeId === "queue") {
-      return queueApi.publishMessage(this.api, externalId, payload);
+      return withCloudflareErrors(() => queueApi.publishMessage(this.api, externalId, payload));
     }
     throw new Error(`Cloudflare plugin: publishMessage not supported for type "${typeId}"`);
   }
 
-  async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
+  async deleteResource(typeId: string, resourceId: string, accountId: string): Promise<void> {
+    return withCloudflareErrors(() => this.deleteResourceImpl(typeId, resourceId, accountId));
+  }
+
+  private async deleteResourceImpl(
+    typeId: string,
+    resourceId: string,
+    _accountId: string,
+  ): Promise<void> {
     const externalId = resourceId.split(":").slice(2).join(":");
 
     switch (typeId) {

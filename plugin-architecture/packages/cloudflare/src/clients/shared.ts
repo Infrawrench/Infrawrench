@@ -80,10 +80,73 @@ class CloudflareMissingPermissionError extends Error {
 }
 
 /**
+ * Join a Cloudflare `errors: [{ code, message }]` array into a readable string,
+ * e.g. "Zone not entitled to this functionality (code 1034)". Returns null when
+ * there's nothing usable to format.
+ */
+function formatErrorsArray(errors: unknown): string | null {
+  if (!Array.isArray(errors) || errors.length === 0) return null;
+  const parts = errors
+    .map((e) => {
+      if (!e || typeof e !== "object") return typeof e === "string" ? e : "";
+      const rec = e as { code?: unknown; message?: unknown };
+      const msg = typeof rec.message === "string" ? rec.message : "";
+      if (!msg) return "";
+      return rec.code != null ? `${msg} (code ${rec.code})` : msg;
+    })
+    .filter((p) => p.length > 0);
+  return parts.length > 0 ? parts.join("; ") : null;
+}
+
+/**
+ * Turn a raw Cloudflare error into a clean, human message by pulling out
+ * `errors[].message`. Handles both the SDK's structured error object and the
+ * raw-fetch path whose message embeds the JSON body (e.g.
+ * `403 {"success":false,"errors":[...]}`). Falls back to the original message.
+ */
+export function formatCloudflareError(err: unknown): string {
+  if (err instanceof CloudflareMissingPermissionError) return err.message;
+
+  // 1. Structured SDK error object (.errors), or a nested response body.
+  const obj = err as { errors?: unknown; error?: unknown };
+  const fromTop = formatErrorsArray(obj?.errors);
+  if (fromTop) return fromTop;
+
+  const raw = err instanceof Error ? err.message : typeof err === "string" ? err : "";
+
+  // 2. A JSON envelope embedded in the message string.
+  const brace = raw.indexOf("{");
+  if (brace !== -1) {
+    try {
+      const parsed = JSON.parse(raw.slice(brace)) as { errors?: unknown };
+      const fromBody = formatErrorsArray(parsed.errors);
+      if (fromBody) return fromBody;
+    } catch {
+      /* not JSON — fall through */
+    }
+  }
+  return raw || "Cloudflare request failed";
+}
+
+/**
+ * Wrap any Cloudflare call so failures surface a clean `errors[].message`
+ * instead of a raw JSON blob. Our friendly permission hint passes through
+ * unchanged.
+ */
+export async function withCloudflareErrors<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    return await fn();
+  } catch (err) {
+    if (err instanceof CloudflareMissingPermissionError) throw err;
+    throw new Error(formatCloudflareError(err), { cause: err });
+  }
+}
+
+/**
  * Run a lister; if it fails with a Cloudflare auth error, rethrow as a
  * {@link CloudflareMissingPermissionError} with provider-specific guidance.
- * Non-auth errors (500s, network errors, validation errors) are rethrown
- * unchanged — those are real bugs we want the user to see.
+ * Other failures are reformatted to a clean `errors[].message` (the original
+ * error is preserved as `cause`).
  *
  * Each lister calls this with the user-facing resource label and the
  * Cloudflare API-token scope label that grants read access. The labels are
@@ -101,7 +164,7 @@ export async function withAuthErrorHint<T>(
     if (isCloudflareAuthError(err)) {
       throw new CloudflareMissingPermissionError(resourceLabel, scope);
     }
-    throw err;
+    throw new Error(formatCloudflareError(err), { cause: err });
   }
 }
 
