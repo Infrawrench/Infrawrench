@@ -50,6 +50,12 @@ export const AppResourceType: ResourceTypeDefinition = {
       sensitive: false,
       description: "Public hostname (<app>.fly.dev)",
     },
+    {
+      key: "appName",
+      label: "App Name",
+      sensitive: false,
+      description: "The app's name — used by machines/volumes to reference their parent app",
+    },
   ],
   dashboardPinnable: true,
   iconKey: "app",

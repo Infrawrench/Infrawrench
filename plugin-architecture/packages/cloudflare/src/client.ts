@@ -198,6 +198,10 @@ export class CloudflareClient implements PluginClient {
       if (outputKey === "zoneId") return resource.externalId ?? "";
       if (outputKey === "nameservers") return String(resource.fields["nameservers"] ?? "");
     }
+    if (typeId === "worker") {
+      if (outputKey === "workerName")
+        return resource.externalId ?? String(resource.fields["name"] ?? "");
+    }
     if (typeId === "r2-bucket") {
       if (outputKey === "bucketName") return String(resource.fields["name"] ?? "");
       if (outputKey === "s3Endpoint") {
@@ -709,9 +713,12 @@ export class CloudflareClient implements PluginClient {
         {
           key: "scriptName",
           label: "Worker Script",
-          kind: "text",
+          kind: "resource-picker",
           required: true,
-          description: "Name of the Worker script to route to",
+          description: "Worker script to route to",
+          associationSources: [
+            { pluginId: "cloudflare", resourceTypeId: "worker", outputKey: "workerName" },
+          ],
         },
       );
       return { fields };

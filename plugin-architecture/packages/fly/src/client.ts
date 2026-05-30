@@ -156,6 +156,10 @@ export class FlyClient implements PluginClient {
       if (outputKey === "privateIp") return data.private_ip ?? "";
       throw new Error(`Fly plugin: unknown output "${outputKey}" for machine`);
     }
+    if (typeId === "app" && outputKey === "appName") {
+      // The app's name is its external id (resource id = account:app:<name>).
+      return resourceId.split(":").pop() ?? "";
+    }
     throw new Error(`Fly plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
   }
 
@@ -176,7 +180,14 @@ export class FlyClient implements PluginClient {
 
       const fields: CreateResourceConfig["fields"] = [];
       if (!parentResourceId) {
-        fields.push({ key: "appName", label: "App Name", kind: "text", required: true });
+        fields.push({
+          key: "appName",
+          label: "App",
+          kind: "resource-picker",
+          required: true,
+          description: "Fly app to create the machine in",
+          associationSources: [{ pluginId: "fly", resourceTypeId: "app", outputKey: "appName" }],
+        });
       }
       fields.push(
         { key: "name", label: "Machine Name", kind: "text", required: false },
@@ -739,7 +750,7 @@ export class FlyClient implements PluginClient {
         volumeCount: app.volume_count ?? 0,
         network: app.network ?? "",
       },
-      resolvedOutputs: {},
+      resolvedOutputs: { appName: app.name },
       secretStates: [],
       externalId: app.name,
       createdAt: app.created_at ?? new Date().toISOString(),
@@ -762,7 +773,7 @@ export class FlyClient implements PluginClient {
         volumeCount: app.volume_count ?? 0,
         network: app.network ?? "",
       },
-      resolvedOutputs: {},
+      resolvedOutputs: { appName: app.name },
       secretStates: [],
       externalId: app.name,
       createdAt: new Date().toISOString(),
