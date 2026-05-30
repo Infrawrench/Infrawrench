@@ -27,6 +27,7 @@ export function SettingsEditorView({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [query, setQuery] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -59,16 +60,27 @@ export function SettingsEditorView({
       .map((s) => ({ id: s.id, value: values[s.id] ?? "" }));
   }, [settings, values, initial]);
 
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return settings ?? [];
+    return (settings ?? []).filter(
+      (s) =>
+        s.label.toLowerCase().includes(q) ||
+        s.id.toLowerCase().includes(q) ||
+        (s.group ?? "").toLowerCase().includes(q),
+    );
+  }, [settings, query]);
+
   const grouped = useMemo(() => {
     const groups = new Map<string, SettingDescriptor[]>();
-    for (const s of settings ?? []) {
+    for (const s of filtered) {
       const g = s.group ?? "";
       const list = groups.get(g) ?? [];
       list.push(s);
       groups.set(g, list);
     }
     return [...groups.entries()];
-  }, [settings]);
+  }, [filtered]);
 
   const setValue = (id: string, v: string) => setValues((prev) => ({ ...prev, [id]: v }));
 
@@ -118,6 +130,18 @@ export function SettingsEditorView({
         {capability.description && (
           <p className="text-xs text-on-surface-muted mb-4">{capability.description}</p>
         )}
+        {!loading && settings && settings.length > 0 && (
+          <div className="mb-4">
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search settings…"
+              aria-label="Search settings"
+              className="w-full px-3 py-2 text-sm bg-surface-overlay border border-border rounded-lg text-on-surface placeholder:text-on-surface-faint focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500"
+            />
+          </div>
+        )}
         {error && (
           <ErrorNotice
             message={error}
@@ -128,28 +152,32 @@ export function SettingsEditorView({
         {loading ? (
           <p className="text-sm text-on-surface-muted animate-pulse">Loading settings…</p>
         ) : settings && settings.length > 0 ? (
-          <div className="space-y-6">
-            {grouped.map(([groupName, rows]) => (
-              <div key={groupName || "default"}>
-                {groupName && (
-                  <h4 className="text-[11px] font-semibold uppercase tracking-wide text-on-surface-faint mb-2">
-                    {groupName}
-                  </h4>
-                )}
-                <div className="border border-border rounded-lg divide-y divide-border overflow-hidden">
-                  {rows.map((s) => (
-                    <SettingRow
-                      key={s.id}
-                      descriptor={s}
-                      value={values[s.id] ?? s.value}
-                      dirty={s.control !== "readonly" && values[s.id] !== initial[s.id]}
-                      onChange={(v) => setValue(s.id, v)}
-                    />
-                  ))}
+          grouped.length === 0 ? (
+            <p className="text-sm text-on-surface-faint">No settings match “{query}”.</p>
+          ) : (
+            <div className="space-y-6">
+              {grouped.map(([groupName, rows]) => (
+                <div key={groupName || "default"}>
+                  {groupName && (
+                    <h4 className="text-[11px] font-semibold uppercase tracking-wide text-on-surface-faint mb-2">
+                      {groupName}
+                    </h4>
+                  )}
+                  <div className="border border-border rounded-lg divide-y divide-border overflow-hidden">
+                    {rows.map((s) => (
+                      <SettingRow
+                        key={s.id}
+                        descriptor={s}
+                        value={values[s.id] ?? s.value}
+                        dirty={s.control !== "readonly" && values[s.id] !== initial[s.id]}
+                        onChange={(v) => setValue(s.id, v)}
+                      />
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )
         ) : (
           !error && <p className="text-sm text-on-surface-faint">No settings.</p>
         )}
