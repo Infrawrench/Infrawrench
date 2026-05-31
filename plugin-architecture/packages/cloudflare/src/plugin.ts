@@ -24,6 +24,10 @@ import { WaitingRoomResourceType } from "./resources/waiting-room.js";
 import { SpectrumApplicationResourceType } from "./resources/spectrum-application.js";
 import { LogpushJobResourceType } from "./resources/logpush-job.js";
 import { WorkersAiModelResourceType } from "./resources/workers-ai-model.js";
+import { RateLimitRuleResourceType } from "./resources/rate-limit-rule.js";
+import { RedirectRuleResourceType } from "./resources/redirect-rule.js";
+import { CacheRuleResourceType } from "./resources/cache-rule.js";
+import { IpAccessRuleResourceType } from "./resources/ip-access-rule.js";
 
 // Deep link to Cloudflare's "Create Token" page (user/profile tokens) with the
 // scopes this plugin uses pre-selected. Format per Cloudflare's token-template
@@ -52,6 +56,9 @@ const CREATE_TOKEN_SCOPES = [
   { key: "firewall_services", type: "edit" },
   { key: "spectrum", type: "edit" },
   { key: "logs", type: "edit" },
+  { key: "cache_purge", type: "purge" },
+  { key: "cache_settings", type: "edit" },
+  { key: "transform_rules", type: "edit" },
   { key: "analytics", type: "read" },
 ];
 
@@ -116,6 +123,10 @@ const resourceTypes: ResourceTypeDefinition[] = [
   SpectrumApplicationResourceType,
   LogpushJobResourceType,
   WorkersAiModelResourceType,
+  RateLimitRuleResourceType,
+  RedirectRuleResourceType,
+  CacheRuleResourceType,
+  IpAccessRuleResourceType,
 ];
 
 export const plugin: Plugin = {

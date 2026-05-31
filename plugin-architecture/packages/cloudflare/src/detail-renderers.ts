@@ -32,4 +32,10 @@ export {
   renderSpectrumApplicationDetail,
   renderLogpushJobDetail,
 } from "./detail-renderers/security.js";
+export {
+  renderRateLimitRuleDetail,
+  renderRedirectRuleDetail,
+  renderCacheRuleDetail,
+  renderIpAccessRuleDetail,
+} from "./detail-renderers/rules.js";
 export { renderGenericDetail } from "./detail-renderers/generic.js";

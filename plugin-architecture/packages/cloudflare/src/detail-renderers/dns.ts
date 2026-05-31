@@ -122,7 +122,14 @@ export function renderZoneDetail(resource: ResourceInstance): DetailViewSchema {
       {
         id: "rules",
         label: "Rules & WAF",
-        childResourceTypeIds: ["page-rule", "firewall-rule"],
+        childResourceTypeIds: [
+          "firewall-rule",
+          "rate-limit-rule",
+          "redirect-rule",
+          "cache-rule",
+          "ip-access-rule",
+          "page-rule",
+        ],
       },
       {
         id: "ssl",
@@ -141,6 +148,39 @@ export function renderZoneDetail(resource: ResourceInstance): DetailViewSchema {
     },
     headerActions: [
       { kind: "action", label: "Refresh", action: { type: "refresh-resource" } },
+      {
+        kind: "action",
+        label: "Purge Everything",
+        variant: "danger",
+        action: {
+          type: "plugin-action",
+          actionId: "purge-cache-all",
+          confirmMessage:
+            "Purge all cached content for this zone? Visitors may briefly hit your origin while the cache refills.",
+          successMessage: "Cache purge started for this zone.",
+        },
+      },
+      {
+        kind: "action",
+        label: "Enable DNSSEC",
+        action: {
+          type: "plugin-action",
+          actionId: "dnssec-enable",
+          confirmMessage:
+            "Enable DNSSEC for this zone? You must then add the DS record at your domain registrar to complete activation.",
+          successMessage: "DNSSEC enabled — add the DS record at your registrar to finish.",
+        },
+      },
+      {
+        kind: "action",
+        label: "Disable DNSSEC",
+        action: {
+          type: "plugin-action",
+          actionId: "dnssec-disable",
+          confirmMessage: "Disable DNSSEC for this zone?",
+          successMessage: "DNSSEC disabled.",
+        },
+      },
       {
         kind: "action",
         label: "Open in Cloudflare",

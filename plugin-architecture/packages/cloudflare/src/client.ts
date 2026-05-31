@@ -51,6 +51,10 @@ import {
   renderSpectrumApplicationDetail,
   renderLogpushJobDetail,
   renderWorkersAiModelDetail,
+  renderRateLimitRuleDetail,
+  renderRedirectRuleDetail,
+  renderCacheRuleDetail,
+  renderIpAccessRuleDetail,
 } from "./detail-renderers.js";
 import { CloudflareApi, withCloudflareErrors } from "./clients/shared.js";
 import * as zoneApi from "./clients/zone-client.js";
@@ -76,6 +80,23 @@ import * as waitingRoomApi from "./clients/waiting-room-client.js";
 import * as spectrumApi from "./clients/spectrum-client.js";
 import * as logpushApi from "./clients/logpush-client.js";
 import * as workersAiApi from "./clients/workers-ai-client.js";
+import {
+  listAllPhaseRules,
+  createPhaseRule,
+  deletePhaseRule,
+  RATE_LIMIT_SPEC,
+  REDIRECT_SPEC,
+  CACHE_SPEC,
+  type RulePhaseSpec,
+} from "./clients/rules-engine-client.js";
+import * as ipAccessApi from "./clients/ip-access-rule-client.js";
+
+/** Map each rules-engine resource type id to its phase spec. */
+const RULE_SPECS: Record<string, RulePhaseSpec> = {
+  "rate-limit-rule": RATE_LIMIT_SPEC,
+  "redirect-rule": REDIRECT_SPEC,
+  "cache-rule": CACHE_SPEC,
+};
 
 export class CloudflareClient implements PluginClient {
   private readonly api: CloudflareApi;
@@ -138,6 +159,12 @@ export class CloudflareClient implements PluginClient {
         return logpushApi.listAllLogpushJobs(this.api, accountId);
       case "workers-ai-model":
         return workersAiApi.listWorkersAiModels(this.api, accountId);
+      case "rate-limit-rule":
+      case "redirect-rule":
+      case "cache-rule":
+        return listAllPhaseRules(this.api, accountId, RULE_SPECS[typeId]!);
+      case "ip-access-rule":
+        return ipAccessApi.listAllIpAccessRules(this.api, accountId);
       default:
         throw new Error(`Cloudflare plugin: unknown resource type "${typeId}"`);
     }
@@ -307,6 +334,14 @@ export class CloudflareClient implements PluginClient {
         return renderLogpushJobDetail(resource);
       case "workers-ai-model":
         return renderWorkersAiModelDetail(resource);
+      case "rate-limit-rule":
+        return renderRateLimitRuleDetail(resource);
+      case "redirect-rule":
+        return renderRedirectRuleDetail(resource);
+      case "cache-rule":
+        return renderCacheRuleDetail(resource);
+      case "ip-access-rule":
+        return renderIpAccessRuleDetail(resource);
       default:
         return renderGenericDetail(resource, this.resourceTypes);
     }
@@ -1196,6 +1231,197 @@ export class CloudflareClient implements PluginClient {
       );
       return { fields };
     }
+    if (typeId === "ip-access-rule") {
+      const fields: CreateResourceConfig["fields"] = [];
+      if (!parentResourceId) {
+        fields.push({
+          key: "zoneId",
+          label: "Zone",
+          kind: "select",
+          required: true,
+          options: await this.api.getZoneOptions(),
+        });
+      }
+      fields.push(
+        {
+          key: "mode",
+          label: "Action",
+          kind: "select",
+          required: true,
+          defaultValue: "block",
+          options: [
+            { id: "block", label: "Block" },
+            { id: "challenge", label: "Interactive Challenge" },
+            { id: "js_challenge", label: "JS Challenge" },
+            { id: "managed_challenge", label: "Managed Challenge" },
+            { id: "whitelist", label: "Allow (whitelist)" },
+          ],
+        },
+        {
+          key: "target",
+          label: "Match Type",
+          kind: "select",
+          required: true,
+          defaultValue: "ip",
+          options: [
+            { id: "ip", label: "IP address" },
+            { id: "ip_range", label: "IP range (CIDR)" },
+            { id: "asn", label: "ASN" },
+            { id: "country", label: "Country" },
+          ],
+        },
+        {
+          key: "value",
+          label: "Value",
+          kind: "text",
+          required: true,
+          description: "e.g. 203.0.113.1, 203.0.113.0/24, AS13335, or a 2-letter country code",
+        },
+        {
+          key: "notes",
+          label: "Notes",
+          kind: "text",
+          required: false,
+          description: "Optional description for this rule",
+        },
+      );
+      return { fields };
+    }
+    if (typeId === "rate-limit-rule" || typeId === "redirect-rule" || typeId === "cache-rule") {
+      const fields: CreateResourceConfig["fields"] = [];
+      if (!parentResourceId) {
+        fields.push({
+          key: "zoneId",
+          label: "Zone",
+          kind: "select",
+          required: true,
+          options: await this.api.getZoneOptions(),
+        });
+      }
+      fields.push({
+        key: "description",
+        label: "Description",
+        kind: "text",
+        required: false,
+        description: "A human-readable name for this rule",
+      });
+      fields.push({
+        key: "expression",
+        label: "Expression",
+        kind: "text",
+        required: true,
+        description: 'Rules-language match expression (e.g. http.request.uri.path eq "/old")',
+      });
+      if (typeId === "rate-limit-rule") {
+        fields.push(
+          {
+            key: "requestsPerPeriod",
+            label: "Requests",
+            kind: "number",
+            required: true,
+            defaultValue: "100",
+            minValue: 1,
+            description: "Max requests allowed per period before the action fires",
+          },
+          {
+            key: "period",
+            label: "Period",
+            kind: "select",
+            required: true,
+            defaultValue: "60",
+            options: [
+              { id: "10", label: "10 seconds" },
+              { id: "60", label: "1 minute" },
+              { id: "120", label: "2 minutes" },
+              { id: "300", label: "5 minutes" },
+              { id: "600", label: "10 minutes" },
+              { id: "3600", label: "1 hour" },
+            ],
+          },
+          {
+            key: "characteristics",
+            label: "Counting characteristics",
+            kind: "text",
+            required: false,
+            defaultValue: "ip.src",
+            description: "Comma-separated counting keys (e.g. ip.src, http.request.headers)",
+          },
+          {
+            key: "action",
+            label: "Action",
+            kind: "select",
+            required: true,
+            defaultValue: "block",
+            options: [
+              { id: "block", label: "Block" },
+              { id: "managed_challenge", label: "Managed Challenge" },
+              { id: "js_challenge", label: "JS Challenge" },
+              { id: "challenge", label: "Interactive Challenge" },
+              { id: "log", label: "Log" },
+            ],
+          },
+        );
+      } else if (typeId === "redirect-rule") {
+        fields.push(
+          {
+            key: "target",
+            label: "Target URL",
+            kind: "text",
+            required: true,
+            description: "Destination URL to redirect to (e.g. https://example.com/new)",
+          },
+          {
+            key: "statusCode",
+            label: "Status Code",
+            kind: "select",
+            required: true,
+            defaultValue: "301",
+            options: [
+              { id: "301", label: "301 Moved Permanently" },
+              { id: "302", label: "302 Found" },
+              { id: "307", label: "307 Temporary Redirect" },
+              { id: "308", label: "308 Permanent Redirect" },
+            ],
+          },
+          {
+            key: "preserveQuery",
+            label: "Preserve Query String",
+            kind: "select",
+            required: false,
+            defaultValue: "true",
+            options: [
+              { id: "true", label: "Yes" },
+              { id: "false", label: "No" },
+            ],
+          },
+        );
+      } else {
+        // cache-rule
+        fields.push(
+          {
+            key: "cache",
+            label: "Cache Eligibility",
+            kind: "select",
+            required: true,
+            defaultValue: "true",
+            options: [
+              { id: "true", label: "Eligible for cache" },
+              { id: "false", label: "Bypass cache" },
+            ],
+          },
+          {
+            key: "edgeTtl",
+            label: "Edge TTL (seconds)",
+            kind: "number",
+            required: false,
+            minValue: 0,
+            description: "Override edge cache TTL (leave blank to respect origin headers)",
+            showWhen: { fieldKey: "cache", fieldValue: "true" },
+          },
+        );
+      }
+      return { fields };
+    }
     if (typeId === "worker") {
       return {
         fields: [
@@ -1302,6 +1528,12 @@ export class CloudflareClient implements PluginClient {
         return spectrumApi.createSpectrumApplication(this.api, accountId, fields, parentExternalId);
       case "worker":
         return workerApi.createWorker(this.api, accountId, fields);
+      case "rate-limit-rule":
+      case "redirect-rule":
+      case "cache-rule":
+        return createPhaseRule(this.api, accountId, RULE_SPECS[typeId]!, fields, parentExternalId);
+      case "ip-access-rule":
+        return ipAccessApi.createIpAccessRule(this.api, accountId, fields, parentExternalId);
       default:
         throw new Error(`Cloudflare plugin: createResource not supported for type "${typeId}"`);
     }
@@ -1412,6 +1644,12 @@ export class CloudflareClient implements PluginClient {
         return spectrumApi.deleteSpectrumApplication(this.api, externalId);
       case "logpush-job":
         return logpushApi.deleteLogpushJob(this.api, externalId);
+      case "rate-limit-rule":
+      case "redirect-rule":
+      case "cache-rule":
+        return deletePhaseRule(this.api, externalId);
+      case "ip-access-rule":
+        return ipAccessApi.deleteIpAccessRule(this.api, externalId);
       default:
         throw new Error(`Cloudflare plugin: deleteResource not supported for type "${typeId}"`);
     }
@@ -1466,7 +1704,28 @@ export class CloudflareClient implements PluginClient {
     if (typeId === "zone") {
       return zoneApi.applyZoneManifest(this.api, externalId, manifest);
     }
+    if (typeId === "worker") {
+      return workerApi.applyWorkerManifest(this.api, externalId, manifest);
+    }
     throw new Error(`Cloudflare plugin: applyManifest not supported for type "${typeId}"`);
+  }
+
+  /**
+   * Invoke a plugin-defined action against a resource (host calls this for an
+   * `ActionNode` whose action is `{ type: "plugin-action" }`). Currently powers
+   * the zone "Purge Everything" cache action.
+   */
+  async invokeAction(
+    typeId: string,
+    resourceId: string,
+    actionId: string,
+    _accountId: string,
+  ): Promise<void> {
+    const externalId = resourceId.split(":").slice(2).join(":");
+    if (typeId === "zone" && actionId === "purge-cache-all") {
+      return withCloudflareErrors(() => zoneApi.purgeCacheEverything(this.api, externalId));
+    }
+    throw new Error(`Cloudflare plugin: unknown action "${actionId}" for type "${typeId}"`);
   }
 
   async listStorageObjects(bucket: string, prefix: string): Promise<StorageObject[]> {
