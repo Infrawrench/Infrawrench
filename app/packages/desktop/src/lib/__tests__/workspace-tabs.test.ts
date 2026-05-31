@@ -79,6 +79,21 @@ describe("getWorkspaceNavigateArgs", () => {
     expect(args.hash).toBe("sftp");
   });
 
+  it("includes plugin/type/parent in search and sets replace for resources", () => {
+    const target = {
+      kind: "resource" as const,
+      accountId: "acc-1",
+      resourceId: "res-1",
+      view: "details" as const,
+      pluginId: "pl",
+      resourceTypeId: "rt",
+      parentResourceId: "parent-1",
+    };
+    const args = getWorkspaceNavigateArgs(target, true);
+    expect(args.search).toEqual({ plugin: "pl", type: "rt", parent: "parent-1" });
+    expect(args.replace).toBe(true);
+  });
+
   it("sets replace when requested", () => {
     const args = getWorkspaceNavigateArgs(dashboardTabTarget("d"), true);
     expect(args.replace).toBe(true);
