@@ -4,17 +4,28 @@ description: Manage zones, DNS, Workers, R2, Pages, KV, D1, Tunnels, Access, and
 sidebar_order: 20
 ---
 
-The Cloudflare plugin is broad — 24 resource types across DNS, edge compute, storage, AI, and zero-trust.
+The Cloudflare plugin is broad — 31 resource types across DNS, edge compute, storage, AI, security, and zero-trust.
 
 ## What you can manage
 
-- **DNS & zones** — zones, DNS records (with proxy status toggle), email routing.
+- **DNS & zones** — zones, DNS records (with proxy status toggle), email routing, custom hostnames, health checks.
 - **Edge compute** — Workers (script editor **plus** an editable Settings tab), Pages, Workers KV, D1 (SQLite), Hyperdrive.
 - **Workers AI** — the text-generation model catalog, each with a chat Playground.
 - **Storage** — R2 buckets (with the [file browser](../features/file-browsers.md)).
-- **Zero Trust** — Access applications, Tunnels.
-- **Rules & WAF** — WAF custom rules, rate limiting rules, redirect rules, cache rules, and IP access rules, all on the zone's **Rules & WAF** tab.
+- **Zero Trust** — Access applications and policies, Tunnels.
+- **Security & traffic** — WAF custom rules, rate limiting rules, redirect rules, cache rules, IP access rules, load balancers, waiting rooms, Spectrum applications, and Turnstile widgets.
+- **Account** — notification (alerting) policies, Logpush jobs.
 - **Zone settings** — cache, security, SSL, and performance options edited via a settings form (toggles, dropdowns, numbers) on the zone's **Zone Settings** tab. DNSSEC can be enabled or disabled from the zone header.
+
+## Editing resources
+
+Most Cloudflare resources show an **Edit** button on their detail page that opens a settings form over the resource's own fields — no raw JSON. Infrawrench diffs your changes against the current values and sends only what changed, merging in the rest of the resource state so a partial edit never clobbers untouched settings. Identity and provider-managed fields (a rule's matched expression target, a custom hostname's name, a health check's protocol, etc.) are shown read-only. Editable resources include DNS records, all five rule types (WAF custom, rate limiting, redirect, cache, IP access), page rules, email routing rules, waiting rooms, load balancers, Hyperdrive configs, custom hostnames, Spectrum applications, Logpush jobs, Access applications and policies, Turnstile widgets, health checks, and notification policies. Editing uses the same token permission that grants write access to that resource.
+
+## Turnstile, Health Checks, and Notifications
+
+- **Turnstile widgets** — create, edit, and delete Cloudflare Turnstile (CAPTCHA alternative) widgets. Each widget exposes its public **Site Key** and a sensitive **Secret Key** as output references, plus a one-click credentials export (`TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY`) for your client embed and server-side `siteverify` call. The create form takes a name, allowed domains, and a widget mode (Managed / Non-interactive / Invisible). Needs the **Turnstile:Edit** permission.
+- **Health checks** — standalone active origin monitors (independent of load-balancer pools). Create an HTTP/HTTPS/TCP check against an address; the detail page shows status, consecutive fails/successes, and interval/timeout/retries (all editable). Needs the **Health Checks:Edit** permission.
+- **Notification policies** — account-level alerting policies. Pick an alert type (SSL events, health-check status, origin/edge error rates, DDoS, billing, expiring tokens, failing Logpush, …) and a comma-separated list of recipient emails; toggle enabled/disabled and edit recipients later. Needs the **Notifications:Edit** permission.
 
 ## Credentials
 
