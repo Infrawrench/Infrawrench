@@ -69,16 +69,27 @@ await infra.output({ updated: 3 }); // shown in the run result
 
 ## Metrics
 
-When you create a workflow you can declare **metrics** in the UI (a key, label, type, and optional unit). They appear in the generated typings and can be read and written from the workflow:
+When you create a workflow you can declare **metrics** in the UI (a key, label, type, and optional unit). Each metric you declare becomes a **typed property** on `infra.metrics`, named after its key — read it like a variable and assign to it to persist a new value:
 
 ```ts
-const runs = (await infra.metrics.get("runCount")) ?? 0;
-await infra.metrics.set("runCount", runs + 1);
+// `runCount` is a declared number metric → typed `number | null`
+infra.metrics.runCount = (infra.metrics.runCount ?? 0) + 1;
+
+// a string metric
+infra.metrics.lastRegion = "us-east";
 ```
 
-Metric values persist between runs — a nightly cron can increment a counter, and a manual run sees the latest value. Declared metrics are strongly typed in the editor (`infra.metrics.get("runCount")` returns `number | null`).
+Reads come from a snapshot taken when the run starts, so they're synchronous (no `await`). Assignments are saved automatically when the run finishes — even if it later errors, so partial progress is kept. Metric values persist between runs: a nightly cron can increment a counter, and a manual run sees the latest value. The editor autocompletes `infra.metrics.` with exactly the keys you declared, each typed to its declared type.
 
 <insert [Screenshot of the workflow create form showing the metrics section with a key, label, type and unit] here>
+
+## Pinning a workflow to a dashboard
+
+Drag a workflow from the list on the left of the **Workflows** tab onto any dashboard (or onto a dashboard in the sidebar) to pin it. Use the search box above the list to filter by name when you have a lot of workflows. The workflow shows up as a card listing its declared metrics with their current values, when it last ran, and a **Run** button that triggers it and refreshes the values in place — so a dashboard can double as a live readout of whatever your workflows track.
+
+On the **desktop app** workflows are stored locally, so workflow cards are available on local dashboards; switch to Local mode to pin them. On the **web app** workflow pins are scoped to your organization like the workflows themselves.
+
+<insert [Screenshot of a dashboard with a pinned workflow card showing metric values, a last-run line, and a Run button] here>
 
 ## Triggers
 
