@@ -79,6 +79,38 @@ export async function deleteZone(api: CloudflareApi, externalId: string): Promis
   await api.cf.zones.delete({ zone_id: externalId });
 }
 
+/**
+ * Enable or disable DNSSEC for a zone (`PATCH /zones/{id}/dns_dnssec` with
+ * `status: active | disabled`). After enabling, the user must add the returned
+ * DS record at their domain registrar to complete activation.
+ */
+export async function setDnssec(
+  api: CloudflareApi,
+  zoneId: string,
+  enabled: boolean,
+): Promise<void> {
+  await withAuthErrorHint(
+    () => api.cf.dns.dnssec.edit({ zone_id: zoneId, status: enabled ? "active" : "disabled" }),
+    "DNSSEC",
+    "Zone · DNS:Edit",
+  );
+}
+
+/**
+ * Purge the entire cache for a zone (`POST /zones/{id}/purge_cache` with
+ * `purge_everything`). Mirrors the dashboard's "Purge Everything" button.
+ */
+export async function purgeCacheEverything(api: CloudflareApi, zoneId: string): Promise<void> {
+  await withAuthErrorHint(
+    () =>
+      api.cf.cache.purge({ zone_id: zoneId, purge_everything: true } as Parameters<
+        typeof api.cf.cache.purge
+      >[0]),
+    "cache purge",
+    "Zone · Cache Purge:Purge",
+  );
+}
+
 export async function getZoneManifest(api: CloudflareApi, externalId: string): Promise<string> {
   // The SDK only exposes per-setting `get`/`edit`. Fetching the full settings
   // collection in one call is much cheaper, so we use the generic raw helper.
