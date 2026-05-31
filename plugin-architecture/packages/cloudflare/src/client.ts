@@ -55,6 +55,7 @@ import {
   renderRedirectRuleDetail,
   renderCacheRuleDetail,
   renderIpAccessRuleDetail,
+  renderDurableObjectNamespaceDetail,
 } from "./detail-renderers.js";
 import { CloudflareApi, withCloudflareErrors } from "./clients/shared.js";
 import * as zoneApi from "./clients/zone-client.js";
@@ -293,6 +294,37 @@ export class CloudflareClient implements PluginClient {
     throw new Error(`Cloudflare plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
   }
 
+  /**
+   * Detail-view enrichment. For Durable Object namespaces we page in the live
+   * instance list (the only public per-instance surface Cloudflare exposes) and
+   * stash it on resolvedOutputs for the renderer. Failures degrade gracefully —
+   * we return the un-enriched resource so the page still renders namespace
+   * details and metrics.
+   */
+  async enrichDetail(resource: ResourceInstance): Promise<ResourceInstance> {
+    if (resource.resourceTypeId === "durable-object-namespace") {
+      const namespaceId = resource.externalId ?? "";
+      if (!namespaceId) return resource;
+      try {
+        const { instances, truncated } = await durableObjectApi.listDurableObjectInstances(
+          this.api,
+          namespaceId,
+        );
+        return {
+          ...resource,
+          resolvedOutputs: {
+            ...resource.resolvedOutputs,
+            __instances__: JSON.stringify(instances),
+            __instancesTruncated__: truncated ? "true" : "false",
+          },
+        };
+      } catch {
+        return resource;
+      }
+    }
+    return resource;
+  }
+
   renderDetail(resource: ResourceInstance): DetailViewSchema {
     switch (resource.resourceTypeId) {
       case "zone":
@@ -370,6 +402,8 @@ export class CloudflareClient implements PluginClient {
         return renderCacheRuleDetail(resource);
       case "ip-access-rule":
         return renderIpAccessRuleDetail(resource);
+      case "durable-object-namespace":
+        return renderDurableObjectNamespaceDetail(resource);
       default:
         return renderGenericDetail(resource, this.resourceTypes);
     }
@@ -2691,6 +2725,12 @@ export class CloudflareClient implements PluginClient {
     const from = new Date(timeRange?.startMs ?? now - 24 * 3_600_000).toISOString();
     const to = new Date(timeRange?.endMs ?? now).toISOString();
 
+    // Pull from three DO datasets in one query: invocations (requests +
+    // response bytes), periodic (CPU time), and storage (stored bytes — the
+    // actual on-disk size, the headline number the dashboard shows). Field
+    // names below are the ones Cloudflare documents explicitly; other fields
+    // (errors, wallTime, websocket counts) exist but need schema introspection
+    // to confirm exact spelling, so they're left out to keep the query valid.
     const query = `query D($account: String!, $ns: String!, $from: Time!, $to: Time!) {
       viewer {
         accounts(filter: { accountTag: $account }) {
@@ -2702,21 +2742,53 @@ export class CloudflareClient implements PluginClient {
             dimensions { datetime }
             sum { requests responseBodySize }
           }
+          durableObjectsPeriodicGroups(
+            limit: 1000
+            filter: { namespaceId: $ns, datetime_geq: $from, datetime_lt: $to }
+            orderBy: [datetime_ASC]
+          ) {
+            dimensions { datetime }
+            sum { cpuTime }
+          }
+          durableObjectsStorageGroups(
+            limit: 1000
+            filter: { namespaceId: $ns, datetime_geq: $from, datetime_lt: $to }
+            orderBy: [datetime_ASC]
+          ) {
+            dimensions { datetime }
+            max { storedBytes }
+          }
         }
       }
     }`;
 
-    interface Group {
+    interface InvGroup {
       dimensions: { datetime: string };
       sum: { requests?: number; responseBodySize?: number };
     }
+    interface PeriodicGroup {
+      dimensions: { datetime: string };
+      sum: { cpuTime?: number };
+    }
+    interface StorageGroup {
+      dimensions: { datetime: string };
+      max: { storedBytes?: number };
+    }
     interface Resp {
       data?: {
-        viewer?: { accounts?: Array<{ durableObjectsInvocationsAdaptiveGroups?: Group[] }> };
+        viewer?: {
+          accounts?: Array<{
+            durableObjectsInvocationsAdaptiveGroups?: InvGroup[];
+            durableObjectsPeriodicGroups?: PeriodicGroup[];
+            durableObjectsStorageGroups?: StorageGroup[];
+          }>;
+        };
       };
     }
 
-    let groups: Group[] = [];
+    let inv: InvGroup[] = [];
+    let periodic: PeriodicGroup[] = [];
+    let storage: StorageGroup[] = [];
     try {
       const res = await fetch("https://api.cloudflare.com/client/v4/graphql", {
         method: "POST",
@@ -2731,26 +2803,39 @@ export class CloudflareClient implements PluginClient {
       });
       if (!res.ok) return [];
       const json = (await res.json()) as Resp;
-      groups = json.data?.viewer?.accounts?.[0]?.durableObjectsInvocationsAdaptiveGroups ?? [];
+      const acc = json.data?.viewer?.accounts?.[0];
+      inv = acc?.durableObjectsInvocationsAdaptiveGroups ?? [];
+      periodic = acc?.durableObjectsPeriodicGroups ?? [];
+      storage = acc?.durableObjectsStorageGroups ?? [];
     } catch {
       return [];
     }
-    if (groups.length === 0) return [];
 
-    const tsOf = (g: Group): number => new Date(g.dimensions.datetime).getTime();
+    const tsOf = (g: { dimensions: { datetime: string } }): number =>
+      new Date(g.dimensions.datetime).getTime();
     const series: MetricSeries[] = [
       {
         label: "Requests",
         unit: "requests",
-        points: groups.map((g) => ({ timestamp: tsOf(g), value: Number(g.sum.requests ?? 0) })),
+        points: inv.map((g) => ({ timestamp: tsOf(g), value: Number(g.sum.requests ?? 0) })),
       },
       {
         label: "Response Body Size",
         unit: "bytes",
-        points: groups.map((g) => ({
+        points: inv.map((g) => ({
           timestamp: tsOf(g),
           value: Number(g.sum.responseBodySize ?? 0),
         })),
+      },
+      {
+        label: "CPU Time",
+        unit: "μs",
+        points: periodic.map((g) => ({ timestamp: tsOf(g), value: Number(g.sum.cpuTime ?? 0) })),
+      },
+      {
+        label: "Stored Bytes",
+        unit: "bytes",
+        points: storage.map((g) => ({ timestamp: tsOf(g), value: Number(g.max.storedBytes ?? 0) })),
       },
     ];
     return series.filter((s) => s.points.some((p) => p.value > 0));

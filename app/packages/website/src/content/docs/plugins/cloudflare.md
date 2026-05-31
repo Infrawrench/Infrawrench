@@ -27,7 +27,9 @@ Most Cloudflare resources show an **Edit** button on their detail page that open
 - **Health checks** — standalone active origin monitors (independent of load-balancer pools). Create an HTTP/HTTPS/TCP check against an address; the detail page shows status, consecutive fails/successes, and interval/timeout/retries (all editable). Needs the **Health Checks:Edit** permission.
 - **Notification policies** — account-level alerting policies. Pick an alert type (SSL events, health-check status, origin/edge error rates, DDoS, billing, expiring tokens, failing Logpush, …) and a comma-separated list of recipient emails; toggle enabled/disabled and edit recipients later. Needs the **Notifications:Edit** permission.
 - **Vectorize indexes** — create and delete Cloudflare Vectorize vector-database indexes for Workers AI / RAG. The create form takes a name, vector dimensionality (must match your embedding model), and a distance metric (cosine / euclidean / dot product). The index name is exposed as an output reference and a Worker-binding credentials export. Needs the **Vectorize:Edit** permission.
-- **Durable Object namespaces** — a read-only listing of the Durable Object namespaces your deployed Workers declare (name, exported class, owning script, SQLite-storage flag). You create or remove them by redeploying the Worker, so there's no create/edit/delete here. Uses the **Workers Scripts:Read** permission.
+- **Durable Object namespaces** — a read-only listing of the Durable Object namespaces your deployed Workers declare (name, exported class, owning script, SQLite-storage flag). You create or remove them by redeploying the Worker, so there's no create/edit/delete here. The detail page also includes an **Instances** browser — the live objects in the namespace and whether each holds stored data — and a Metrics tab. Cloudflare exposes **no public API to read or edit a Durable Object's storage from outside a Worker**, so storage contents aren't editable here; use the Cloudflare dashboard's Data Studio (for SQLite-backed objects) to inspect them. Uses the **Workers Scripts:Read** permission.
+
+<insert Infrawrench Durable Object namespace detail page showing the Instances table (Object ID + Stored Data columns) and the read-only storage note here>
 
 ## Credentials
 
@@ -113,7 +115,7 @@ The detail page surfaces a **Metrics** tab whenever Cloudflare's GraphQL Analyti
 - **Load balancer** — total request count and per-pool breakdown (`loadBalancingRequestsAdaptiveGroups`).
 - **Waiting room** — active users, queued users, new users/minute, time-on-origin p50, time-waited p90 (`waitingRoomAnalyticsAdaptiveGroups`).
 - **Turnstile widget** — challenge volume in fifteen-minute buckets (`turnstileAdaptiveGroups`, filtered by site key).
-- **Durable Object namespace** — invocation requests and response body size (`durableObjectsInvocationsAdaptiveGroups`, filtered by namespace).
+- **Durable Object namespace** — invocation requests and response body size (`durableObjectsInvocationsAdaptiveGroups`), CPU time (`durableObjectsPeriodicGroups`), and stored bytes (`durableObjectsStorageGroups`) — all filtered by namespace.
 
 The token needs the **Account Analytics:Read** permission for account-scoped datasets and **Zone Analytics:Read** for zone-scoped ones — the "Create a token with these scopes" link includes both. Resources with no traffic in the selected window show an empty Metrics tab, which is expected.
 

@@ -1,4 +1,9 @@
-import type { ResourceInstance, DetailViewSchema, SectionNode } from "@infrawrench/plugin-base";
+import type {
+  ResourceInstance,
+  DetailViewSchema,
+  SectionNode,
+  TableRow,
+} from "@infrawrench/plugin-base";
 import { deploymentStatus } from "./status.js";
 
 export function renderWorkerDetail(resource: ResourceInstance): DetailViewSchema {
@@ -236,6 +241,104 @@ export function renderWorkerRouteDetail(resource: ResourceInstance): DetailViewS
         ],
       },
     ],
+    headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+  };
+}
+
+/**
+ * Durable Object namespace detail. Renders the namespace metadata, a browser of
+ * the live instances (paged in by `enrichDetail` and stashed in resolvedOutputs
+ * as `__instances__`), and the Metrics tab. Cloudflare exposes no public API to
+ * read or write an instance's storage from outside a Worker — only the instance
+ * list — so this is a read-only browser, not a storage editor.
+ */
+export function renderDurableObjectNamespaceDetail(resource: ResourceInstance): DetailViewSchema {
+  const fields = resource.fields;
+  const sqlite = Boolean(fields["useSqlite"]);
+
+  let instances: Array<{ id: string; hasStoredData: boolean }> = [];
+  const raw = resource.resolvedOutputs["__instances__"];
+  if (typeof raw === "string" && raw) {
+    try {
+      instances = JSON.parse(raw) as Array<{ id: string; hasStoredData: boolean }>;
+    } catch {
+      instances = [];
+    }
+  }
+  const truncated = resource.resolvedOutputs["__instancesTruncated__"] === "true";
+
+  const instanceRows: TableRow[] = instances.map((inst) => ({
+    cells: {
+      id: inst.id,
+      stored: inst.hasStoredData ? "Yes" : "No",
+    },
+  }));
+
+  const instanceSection: SectionNode = {
+    kind: "section",
+    title: `Instances${instances.length ? ` (${instances.length}${truncated ? "+" : ""})` : ""}`,
+    children:
+      instanceRows.length > 0
+        ? [
+            {
+              kind: "table",
+              columns: [
+                { key: "id", label: "Object ID", mono: true, width: "wide" },
+                { key: "stored", label: "Stored Data", width: "narrow" },
+              ],
+              rows: instanceRows,
+            },
+            ...(truncated
+              ? [
+                  {
+                    kind: "text" as const,
+                    content: `Showing the first ${instances.length} instances; this namespace has more.`,
+                    variant: "muted" as const,
+                  },
+                ]
+              : []),
+            {
+              kind: "text" as const,
+              content:
+                "Cloudflare exposes no public API to read or edit a Durable Object's storage from outside a Worker, so instances are read-only here. Use the dashboard's Data Studio (SQLite-backed objects) to inspect storage contents.",
+              variant: "muted" as const,
+            },
+          ]
+        : [
+            {
+              kind: "text" as const,
+              content: "No live instances found in this namespace.",
+              variant: "muted" as const,
+            },
+          ],
+  };
+
+  return {
+    title: resource.displayName,
+    subtitle: "Durable Object Namespace",
+    status: { kind: "status-dot", status: "healthy", label: "Deployed" },
+    sections: [
+      {
+        kind: "section",
+        title: "Namespace Details",
+        children: [
+          {
+            kind: "key-value-list",
+            items: [
+              { key: "Name", value: String(fields["name"] ?? ""), copyable: true },
+              { key: "Namespace ID", value: resource.externalId ?? "", copyable: true },
+              ...(fields["class"] ? [{ key: "Class", value: String(fields["class"]) }] : []),
+              ...(fields["script"]
+                ? [{ key: "Worker Script", value: String(fields["script"]) }]
+                : []),
+              { key: "Storage Backend", value: sqlite ? "SQLite" : "Key-value" },
+            ],
+          },
+        ],
+      },
+      instanceSection,
+    ],
+    metricsCapability: {},
     headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
   };
 }

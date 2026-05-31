@@ -14,6 +14,7 @@ export {
   renderPagesProjectDetail,
   renderPagesDeploymentDetail,
   renderWorkerRouteDetail,
+  renderDurableObjectNamespaceDetail,
 } from "./detail-renderers/compute.js";
 export {
   renderR2BucketDetail,
