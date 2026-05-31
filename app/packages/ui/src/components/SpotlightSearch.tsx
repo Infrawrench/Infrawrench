@@ -221,9 +221,11 @@ export function SpotlightSearch({
                     <span className="text-xs font-medium text-on-surface-muted">
                       {first.pluginDisplayName}
                     </span>
-                    <span className="text-xs text-on-surface-faint">
-                      &middot; {first.accountName}
-                    </span>
+                    {first.accountName && (
+                      <span className="text-xs text-on-surface-faint">
+                        &middot; {first.accountName}
+                      </span>
+                    )}
                   </div>
 
                   {items.map((result) => {

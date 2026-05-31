@@ -1,7 +1,10 @@
 import { Hono } from "hono";
 import { eq, and, isNull } from "drizzle-orm";
 import { db } from "../../db/client";
-import { accounts, resources } from "../../db/schema";
+import { accounts, resources, workflows } from "../../db/schema";
+
+// Inline workflow glyph for the spotlight group header (matches WorkflowIcon).
+const WORKFLOW_LOGO_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="8" height="8" x="3" y="3" rx="2"/><path d="M7 11v4a2 2 0 0 0 2 2h4"/><rect width="8" height="8" x="13" y="13" rx="2"/></svg>`;
 import { getPlugin } from "../../plugins/loader";
 import { requirePermission } from "../../auth/permissions";
 import type { AuthSession } from "../auth-middleware";
@@ -85,6 +88,28 @@ app.get("/", async (c) => {
     });
 
     if (results.length >= 50) break;
+  }
+
+  // Workflows are navigation targets too — index them by name.
+  const wfRows = await db
+    .select({ id: workflows.id, name: workflows.name, trigger: workflows.trigger })
+    .from(workflows)
+    .where(and(eq(workflows.organizationId, organizationId), isNull(workflows.deletedAt)));
+  for (const w of wfRows) {
+    if (q && !w.name.toLowerCase().includes(q)) continue;
+    const triggerKind = (w.trigger as { kind?: string } | null)?.kind ?? "manual";
+    results.push({
+      id: w.id,
+      pluginId: "__workflows__",
+      pluginDisplayName: "Workflows",
+      pluginLogoSvg: WORKFLOW_LOGO_SVG,
+      resourceTypeId: "__workflow__",
+      resourceTypeLabel: "Workflow",
+      accountId: "",
+      accountName: "",
+      displayName: w.name,
+      subtitle: `${triggerKind} trigger`,
+    });
   }
 
   return c.json(results);

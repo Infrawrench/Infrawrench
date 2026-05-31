@@ -31,6 +31,7 @@ import { GlobalTabBar } from "../components/GlobalTabBar";
 import { DesktopWorkspaceTabsViewport } from "../components/WorkspaceTabsViewport";
 import { SshHostKeyPromptHost } from "../components/SshHostKeyPromptHost";
 import { WorkflowPromptHost } from "../components/WorkflowPromptHost";
+import { SpotlightSearch } from "../components/SpotlightSearch";
 import { UpdatePromptHost } from "../components/UpdatePromptHost";
 import { SwipeIndicator } from "../components/SwipeIndicator";
 import { SidebarAccounts } from "../components/SidebarAccounts";
@@ -53,6 +54,8 @@ import {
 } from "../lib/cloud-api";
 import {
   dashboardTabTarget,
+  resourceTabTarget,
+  workflowsTabTarget,
   getWorkspaceNavigateArgs,
   navigateToWorkspaceTarget,
   syncWorkspaceRouteFromPath,
@@ -175,6 +178,7 @@ function RootLayout() {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const hash = useRouterState({ select: (state) => state.location.hash });
   const [showAddAccount, setShowAddAccount] = useState(false);
+  const [spotlightOpen, setSpotlightOpen] = useState(false);
   const [tabsValidated, setTabsValidated] = useState(false);
   const [tunnelAttach, setTunnelAttach] = useState<{
     tunnel: DraggableResource;
@@ -196,6 +200,19 @@ function RootLayout() {
 
   useEffect(() => {
     startMetricPinger();
+  }, []);
+
+  // Global Cmd/Ctrl+K opens the spotlight (navigate) from any tab — dashboards,
+  // the Workflows tab, resource detail, etc.
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        setSpotlightOpen(true);
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
   useEffect(() => {
@@ -591,6 +608,27 @@ function RootLayout() {
           )}
         </div>
       </div>
+
+      {spotlightOpen && (
+        <SpotlightSearch
+          mode="navigate"
+          onClose={() => setSpotlightOpen(false)}
+          onNavigate={(result) => {
+            setSpotlightOpen(false);
+            if (result.resourceTypeId === "__workflow__") {
+              void navigateToWorkspaceTarget(navigate, workflowsTabTarget(), {
+                label: "Workflows",
+              });
+            } else {
+              void navigateToWorkspaceTarget(
+                navigate,
+                resourceTabTarget(result.accountId, result.id),
+                { label: result.displayName },
+              );
+            }
+          }}
+        />
+      )}
 
       <SwipeIndicator gesture={swipeGesture} />
       <SshHostKeyPromptHost />

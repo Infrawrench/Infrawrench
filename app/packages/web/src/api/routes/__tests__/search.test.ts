@@ -21,6 +21,13 @@ vi.mock("@/db/schema", () => ({
     organizationId: "org",
     deletedAt: "del",
   },
+  workflows: {
+    id: "id",
+    name: "name",
+    trigger: "trigger",
+    organizationId: "org",
+    deletedAt: "del",
+  },
 }));
 
 const mockGetPlugin = vi.fn();
@@ -56,7 +63,8 @@ describe("Search routes", () => {
           },
         ]),
       )
-      .mockReturnValueOnce(selectResolving([{ id: "a1", displayName: "Prod", pluginId: "aws" }]));
+      .mockReturnValueOnce(selectResolving([{ id: "a1", displayName: "Prod", pluginId: "aws" }]))
+      .mockReturnValueOnce(selectResolving([]));
 
     mockGetPlugin.mockResolvedValue({
       plugin: {
@@ -87,7 +95,8 @@ describe("Search routes", () => {
           },
         ]),
       )
-      .mockReturnValueOnce(selectResolving([{ id: "a1", displayName: "Prod", pluginId: "aws" }]));
+      .mockReturnValueOnce(selectResolving([{ id: "a1", displayName: "Prod", pluginId: "aws" }]))
+      .mockReturnValueOnce(selectResolving([]));
     mockGetPlugin.mockResolvedValue({
       plugin: { manifest: { displayName: "AWS", logoSvg: "" }, resourceTypes: [] },
     });
@@ -111,6 +120,7 @@ describe("Search routes", () => {
           },
         ]),
       )
+      .mockReturnValueOnce(selectResolving([]))
       .mockReturnValueOnce(selectResolving([]));
     mockGetPlugin.mockResolvedValue(null);
 
@@ -119,5 +129,23 @@ describe("Search routes", () => {
     const body = await res.json();
     expect(body[0].pluginDisplayName).toBe("ghost");
     expect(body[0].resourceTypeLabel).toBe("x");
+  });
+
+  it("indexes workflows as navigation targets", async () => {
+    mockSelect
+      .mockReturnValueOnce(selectResolving([])) // resources
+      .mockReturnValueOnce(selectResolving([])) // accounts
+      .mockReturnValueOnce(
+        selectResolving([{ id: "wf1", name: "Nightly Sync", trigger: { kind: "cron" } }]),
+      );
+
+    const res = await buildApp().request("/?q=nightly");
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body).toHaveLength(1);
+    expect(body[0].resourceTypeId).toBe("__workflow__");
+    expect(body[0].pluginDisplayName).toBe("Workflows");
+    expect(body[0].displayName).toBe("Nightly Sync");
+    expect(body[0].subtitle).toBe("cron trigger");
   });
 });

@@ -264,16 +264,8 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
     void load();
   }, [load, dashboardPinsVersion]);
 
-  useEffect(() => {
-    function onKeyDown(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
-        e.preventDefault();
-        setSpotlightMode("navigate");
-      }
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  // Cmd/Ctrl+K (navigate) is handled globally in the root layout so it works in
+  // every tab; here the spotlight is only opened in "pin" mode via the + tiles.
 
   useEffect(() => {
     if (pinned.length === 0) return;

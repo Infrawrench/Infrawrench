@@ -11,6 +11,9 @@ type AccountRow = Pick<FullAccountRow, "id" | "plugin_id" | "display_name">;
 
 export type SearchResult = SpotlightResult;
 
+// Inline workflow glyph for the spotlight group header (matches WorkflowIcon).
+const WORKFLOW_LOGO_SVG = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="8" height="8" x="3" y="3" rx="2"/><path d="M7 11v4a2 2 0 0 0 2 2h4"/><rect width="8" height="8" x="13" y="13" rx="2"/></svg>`;
+
 interface SpotlightSearchProps {
   dashboardId?: string;
   mode: "pin" | "navigate" | "drop";
@@ -132,6 +135,39 @@ export function SpotlightSearch({
         console.error("[spotlight] Failed to query resources cache:", err);
       }
 
+      // Workflows are navigation targets only (you don't pin/connect them from
+      // here — that's drag-to-dashboard), so index them solely in navigate mode.
+      if (mode === "navigate") {
+        try {
+          const wfRows = await db.select<{ id: string; name: string; trigger: string }[]>(
+            "SELECT id, name, trigger FROM workflows WHERE deleted_at IS NULL ORDER BY name ASC",
+          );
+          for (const w of wfRows) {
+            let triggerKind = "manual";
+            try {
+              triggerKind = (JSON.parse(w.trigger) as { kind?: string }).kind ?? "manual";
+            } catch {
+              /* keep default */
+            }
+            liveResults.set(`workflow:${w.id}`, {
+              id: w.id,
+              pluginId: "__workflows__",
+              pluginDisplayName: "Workflows",
+              pluginLogoSvg: WORKFLOW_LOGO_SVG,
+              resourceTypeId: "__workflow__",
+              resourceTypeLabel: "Workflow",
+              accountId: "",
+              accountName: "",
+              displayName: w.name,
+              subtitle: `${triggerKind} trigger`,
+            });
+          }
+          flush();
+        } catch (err) {
+          console.error("[spotlight] Failed to query workflows:", err);
+        }
+      }
+
       if (!cancelled && liveResults.size > 0) {
         setLoading(false);
       }
@@ -206,7 +242,7 @@ export function SpotlightSearch({
     return () => {
       cancelled = true;
     };
-  }, [dashboardId]);
+  }, [dashboardId, mode]);
 
   const handleSelect = useCallback(
     async (result: SpotlightResult) => {

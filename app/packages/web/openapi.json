@@ -2983,14 +2983,15 @@
             "type": "string"
           },
           "accountId": {
-            "type": "string",
-            "format": "uuid",
-            "example": "00000000-0000-0000-0000-000000000000"
+            "type": "string"
           },
           "accountName": {
             "type": "string"
           },
           "displayName": {
+            "type": "string"
+          },
+          "subtitle": {
             "type": "string"
           }
         },
@@ -8886,7 +8887,7 @@
     "/api/org/{orgId}/search": {
       "get": {
         "tags": ["Search"],
-        "summary": "Search resources across all accounts (capped at 50 hits)",
+        "summary": "Search resources (capped at 50 hits) and workflows across the org",
         "parameters": [
           {
             "schema": {

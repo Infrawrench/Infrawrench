@@ -23,24 +23,33 @@ export function SpotlightSearch({
   const orgId = useOrgId();
 
   const loadResults = useCallback(
-    (query: string) =>
-      apiGet<SpotlightResult[]>(`/api/org/${orgId}/search?q=${encodeURIComponent(query)}`),
-    [orgId],
+    async (query: string) => {
+      const all = await apiGet<SpotlightResult[]>(
+        `/api/org/${orgId}/search?q=${encodeURIComponent(query)}`,
+      );
+      // Workflows are navigation targets only — keep them out of pin/drop.
+      return mode === "navigate" ? all : all.filter((r) => r.resourceTypeId !== "__workflow__");
+    },
+    [orgId, mode],
   );
 
   const handleSelect = useCallback(
     async (result: SpotlightResult) => {
       if (mode === "navigate") {
         onClose();
-        void navigate({
-          to: "/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId",
-          params: {
-            orgId,
-            pluginId: result.pluginId,
-            resourceTypeId: result.resourceTypeId,
-            resourceId: result.id,
-          },
-        });
+        if (result.resourceTypeId === "__workflow__") {
+          void navigate({ to: "/org/$orgId/workflows", params: { orgId } });
+        } else {
+          void navigate({
+            to: "/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId",
+            params: {
+              orgId,
+              pluginId: result.pluginId,
+              resourceTypeId: result.resourceTypeId,
+              resourceId: result.id,
+            },
+          });
+        }
         return;
       }
       if (mode === "drop") {
