@@ -89,9 +89,14 @@ function makeResource(id: string, displayName: string) {
 }
 
 function setupSync(pluginResources: ReturnType<typeof makeResource>[]) {
-  // db.select().from().where() → account lookup
+  // db.select().from().where() → account lookup, AND
+  // db.select().from().innerJoin().where() → reconcileAccountReferences output-ref
+  // lookup (resolves empty so the real reconcile path runs and returns early
+  // instead of throwing in the catch).
   const selectWhere = vi.fn().mockResolvedValue([ACCOUNT]);
-  const selectFrom = vi.fn().mockReturnValue({ where: selectWhere });
+  const reconcileWhere = vi.fn().mockResolvedValue([]);
+  const reconcileInnerJoin = vi.fn().mockReturnValue({ where: reconcileWhere });
+  const selectFrom = vi.fn().mockReturnValue({ where: selectWhere, innerJoin: reconcileInnerJoin });
   mockSelect.mockReturnValue({ from: selectFrom });
 
   // db.selectDistinct().from().innerJoin().where() → refreshPinnedStats pinned lookup (empty)
