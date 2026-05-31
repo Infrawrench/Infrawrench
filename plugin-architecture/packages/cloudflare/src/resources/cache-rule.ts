@@ -16,5 +16,6 @@ export const CacheRuleResourceType: ResourceTypeDefinition = {
   parentTypeId: "zone",
   dashboardPinnable: false,
   supportsCreate: true,
+  supportsUpdate: true,
   iconKey: "cache",
 };

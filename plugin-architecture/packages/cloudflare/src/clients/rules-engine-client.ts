@@ -148,6 +148,28 @@ export async function createPhaseRule(
   return mapRule(spec, result, accountId, zoneId, rulesetId);
 }
 
+export async function editPhaseRule(
+  api: CloudflareApi,
+  accountId: string,
+  spec: RulePhaseSpec,
+  externalId: string,
+  fields: Record<string, string>,
+): Promise<ResourceInstance> {
+  const [zoneId, rulesetId, ruleId] = externalId.split("/");
+  if (!zoneId || !rulesetId || !ruleId) throw new Error("Invalid rule ID");
+  // `buildBody` rebuilds the full rule body from the merged field set, so the
+  // PATCH preserves every parameter the caller didn't change.
+  const ruleBody = spec.buildBody(fields);
+  const ruleset = await api.cf.rulesets.rules.edit(rulesetId, ruleId, {
+    zone_id: zoneId,
+    ...ruleBody,
+  } as unknown as Parameters<typeof api.cf.rulesets.rules.edit>[2]);
+  const full = ruleset as unknown as Record<string, unknown>;
+  const rules = (full["rules"] as Array<Record<string, unknown>>) ?? [];
+  const updated = rules.find((r) => String(r["id"]) === ruleId) ?? { ...full, id: ruleId };
+  return mapRule(spec, updated, accountId, zoneId, rulesetId);
+}
+
 export async function deletePhaseRule(api: CloudflareApi, externalId: string): Promise<void> {
   const [zoneId, rulesetId, ruleId] = externalId.split("/");
   if (!zoneId || !rulesetId || !ruleId) throw new Error("Invalid rule ID");
@@ -160,6 +182,9 @@ const num = (v: string | undefined, fallback: number): number => {
   const n = Number(v);
   return Number.isFinite(n) ? n : fallback;
 };
+
+/** Rules default to enabled; an explicit `"false"` (from an edit) disables them. */
+const ruleEnabled = (fields: Record<string, string>): boolean => fields["enabled"] !== "false";
 
 /** Rate limiting rules — `http_ratelimit` phase. */
 export const RATE_LIMIT_SPEC: RulePhaseSpec = {
@@ -187,7 +212,7 @@ export const RATE_LIMIT_SPEC: RulePhaseSpec = {
     description: fields["description"] ?? "",
     expression: fields["expression"] ?? "",
     action: fields["action"] || "block",
-    enabled: true,
+    enabled: ruleEnabled(fields),
     ratelimit: {
       characteristics: (fields["characteristics"] || "ip.src")
         .split(",")
@@ -227,7 +252,7 @@ export const REDIRECT_SPEC: RulePhaseSpec = {
     description: fields["description"] ?? "",
     expression: fields["expression"] ?? "",
     action: "redirect",
-    enabled: true,
+    enabled: ruleEnabled(fields),
     action_parameters: {
       from_value: {
         target_url: { value: fields["target"] ?? "" },
@@ -269,7 +294,7 @@ export const CACHE_SPEC: RulePhaseSpec = {
       description: fields["description"] ?? "",
       expression: fields["expression"] ?? "",
       action: "set_cache_settings",
-      enabled: true,
+      enabled: ruleEnabled(fields),
       action_parameters: ap,
     };
   },

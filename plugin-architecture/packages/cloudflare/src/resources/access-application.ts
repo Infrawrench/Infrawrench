@@ -8,10 +8,10 @@ export const AccessApplicationResourceType: ResourceTypeDefinition = {
   fields: [
     { key: "name", label: "Name", kind: "string", required: true },
     { key: "domain", label: "Domain", kind: "string", required: true },
-    { key: "type", label: "Type", kind: "string", required: false },
+    { key: "type", label: "Type", kind: "string", required: false, editable: false },
     { key: "sessionDuration", label: "Session Duration", kind: "string", required: false },
-    { key: "createdAt", label: "Created", kind: "string", required: false },
-    { key: "updatedAt", label: "Updated", kind: "string", required: false },
+    { key: "createdAt", label: "Created", kind: "string", required: false, editable: false },
+    { key: "updatedAt", label: "Updated", kind: "string", required: false, editable: false },
   ],
   outputs: [
     {
@@ -23,5 +23,6 @@ export const AccessApplicationResourceType: ResourceTypeDefinition = {
   ],
   dashboardPinnable: true,
   supportsCreate: true,
+  supportsUpdate: true,
   iconKey: "access",
 };

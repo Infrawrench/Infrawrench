@@ -17,5 +17,6 @@ export const RedirectRuleResourceType: ResourceTypeDefinition = {
   parentTypeId: "zone",
   dashboardPinnable: false,
   supportsCreate: true,
+  supportsUpdate: true,
   iconKey: "dns",
 };

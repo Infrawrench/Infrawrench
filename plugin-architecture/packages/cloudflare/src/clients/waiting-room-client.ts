@@ -72,6 +72,31 @@ export async function createWaitingRoom(
   return mapWaitingRoom(room as unknown as Record<string, unknown>, accountId, zoneId);
 }
 
+export async function editWaitingRoom(
+  api: CloudflareApi,
+  accountId: string,
+  externalId: string,
+  fields: Record<string, string>,
+): Promise<ResourceInstance> {
+  const [zoneId, roomId] = externalId.split("/");
+  if (!zoneId || !roomId) throw new Error("Invalid waiting room ID");
+  // Cloudflare requires the core fields on every waiting-room write, so the
+  // dispatcher passes a merged (current + changed) field set.
+  const params = {
+    zone_id: zoneId,
+    name: fields["name"] ?? "",
+    host: fields["host"] ?? "",
+    total_active_users: Number(fields["totalActiveUsers"] ?? 200),
+    new_users_per_minute: Number(fields["newUsersPerMinute"] ?? 200),
+    ...(fields["path"] ? { path: fields["path"] } : {}),
+    ...(fields["queueingMethod"] ? { queueing_method: fields["queueingMethod"] } : {}),
+    ...(fields["sessionDuration"] ? { session_duration: Number(fields["sessionDuration"]) } : {}),
+    ...(fields["suspended"] !== undefined ? { suspended: fields["suspended"] === "true" } : {}),
+  } as unknown as Parameters<typeof api.cf.waitingRooms.edit>[1];
+  const room = await api.cf.waitingRooms.edit(roomId, params);
+  return mapWaitingRoom(room as unknown as Record<string, unknown>, accountId, zoneId);
+}
+
 export async function deleteWaitingRoom(api: CloudflareApi, externalId: string): Promise<void> {
   const [zoneId, roomId] = externalId.split("/");
   if (!zoneId || !roomId) throw new Error("Invalid waiting room ID");

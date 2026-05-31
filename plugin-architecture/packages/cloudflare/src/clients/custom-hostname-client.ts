@@ -72,6 +72,27 @@ export async function createCustomHostname(
   return mapCustomHostname(ch as unknown as Record<string, unknown>, accountId, zoneId);
 }
 
+export async function editCustomHostname(
+  api: CloudflareApi,
+  accountId: string,
+  externalId: string,
+  fields: Record<string, string>,
+): Promise<ResourceInstance> {
+  const [zoneId, hostnameId] = externalId.split("/");
+  if (!zoneId || !hostnameId) throw new Error("Invalid custom hostname ID");
+  // The hostname itself is immutable; the editable surface is the SSL
+  // validation method (and we always re-assert a DV certificate).
+  const body: Record<string, unknown> = {
+    zone_id: zoneId,
+    ssl: { method: fields["sslMethod"] || "http", type: "dv" },
+  };
+  const ch = await api.cf.customHostnames.edit(
+    hostnameId,
+    body as unknown as Parameters<typeof api.cf.customHostnames.edit>[1],
+  );
+  return mapCustomHostname(ch as unknown as Record<string, unknown>, accountId, zoneId);
+}
+
 export async function deleteCustomHostname(api: CloudflareApi, externalId: string): Promise<void> {
   const [zoneId, hostnameId] = externalId.split("/");
   if (!zoneId || !hostnameId) throw new Error("Invalid custom hostname ID");

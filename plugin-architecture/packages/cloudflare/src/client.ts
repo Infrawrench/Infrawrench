@@ -83,6 +83,7 @@ import * as workersAiApi from "./clients/workers-ai-client.js";
 import {
   listAllPhaseRules,
   createPhaseRule,
+  editPhaseRule,
   deletePhaseRule,
   RATE_LIMIT_SPEC,
   REDIRECT_SPEC,
@@ -90,6 +91,9 @@ import {
   type RulePhaseSpec,
 } from "./clients/rules-engine-client.js";
 import * as ipAccessApi from "./clients/ip-access-rule-client.js";
+import * as turnstileApi from "./clients/turnstile-client.js";
+import * as healthcheckApi from "./clients/healthcheck-client.js";
+import * as notificationApi from "./clients/notification-policy-client.js";
 
 /** Map each rules-engine resource type id to its phase spec. */
 const RULE_SPECS: Record<string, RulePhaseSpec> = {
@@ -165,6 +169,12 @@ export class CloudflareClient implements PluginClient {
         return listAllPhaseRules(this.api, accountId, RULE_SPECS[typeId]!);
       case "ip-access-rule":
         return ipAccessApi.listAllIpAccessRules(this.api, accountId);
+      case "turnstile-widget":
+        return turnstileApi.listTurnstileWidgets(this.api, accountId);
+      case "healthcheck":
+        return healthcheckApi.listAllHealthchecks(this.api, accountId);
+      case "notification-policy":
+        return notificationApi.listNotificationPolicies(this.api, accountId);
       default:
         throw new Error(`Cloudflare plugin: unknown resource type "${typeId}"`);
     }
@@ -261,6 +271,12 @@ export class CloudflareClient implements PluginClient {
     }
     if (typeId === "hyperdrive") {
       if (outputKey === "hyperdriveId") return resource.externalId ?? "";
+    }
+    if (typeId === "turnstile-widget") {
+      if (outputKey === "siteKey") return resource.externalId ?? "";
+      if (outputKey === "secretKey") {
+        return turnstileApi.getWidgetSecret(this.api, String(resource.externalId ?? ""));
+      }
     }
     throw new Error(`Cloudflare plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
   }
@@ -1452,6 +1468,142 @@ export class CloudflareClient implements PluginClient {
         ],
       };
     }
+    if (typeId === "turnstile-widget") {
+      return {
+        fields: [
+          {
+            key: "name",
+            label: "Name",
+            kind: "text",
+            required: true,
+            description: "A human-readable label for this widget",
+          },
+          {
+            key: "domains",
+            label: "Domains",
+            kind: "text",
+            required: false,
+            description: "Comma-separated hostnames allowed to use this widget (e.g. example.com)",
+          },
+          {
+            key: "mode",
+            label: "Widget Mode",
+            kind: "select",
+            required: false,
+            defaultValue: "managed",
+            options: [
+              { id: "managed", label: "Managed (recommended)" },
+              { id: "non-interactive", label: "Non-interactive" },
+              { id: "invisible", label: "Invisible" },
+            ],
+          },
+        ],
+      };
+    }
+    if (typeId === "healthcheck") {
+      const fields: CreateResourceConfig["fields"] = [];
+      if (!parentResourceId) {
+        fields.push({
+          key: "zoneId",
+          label: "Zone",
+          kind: "select",
+          required: true,
+          options: await this.api.getZoneOptions(),
+        });
+      }
+      fields.push(
+        {
+          key: "name",
+          label: "Name",
+          kind: "text",
+          required: true,
+          description: "A name for this health check",
+        },
+        {
+          key: "address",
+          label: "Address",
+          kind: "text",
+          required: true,
+          description: "Hostname or IP address to monitor (e.g. origin.example.com)",
+        },
+        {
+          key: "type",
+          label: "Protocol",
+          kind: "select",
+          required: false,
+          defaultValue: "HTTPS",
+          options: [
+            { id: "HTTPS", label: "HTTPS" },
+            { id: "HTTP", label: "HTTP" },
+            { id: "TCP", label: "TCP" },
+          ],
+        },
+        {
+          key: "path",
+          label: "Path",
+          kind: "text",
+          required: false,
+          defaultValue: "/",
+          description: "Request path (HTTP/HTTPS only)",
+          showWhen: { fieldKey: "type", fieldValue: "HTTPS" },
+        },
+        {
+          key: "description",
+          label: "Description",
+          kind: "text",
+          required: false,
+        },
+      );
+      return { fields };
+    }
+    if (typeId === "notification-policy") {
+      return {
+        fields: [
+          {
+            key: "name",
+            label: "Name",
+            kind: "text",
+            required: true,
+            description: "A name for this notification policy",
+          },
+          {
+            key: "alertType",
+            label: "Alert Type",
+            kind: "select",
+            required: true,
+            defaultValue: "universal_ssl_event_type",
+            options: [
+              { id: "universal_ssl_event_type", label: "Universal SSL event" },
+              { id: "dedicated_ssl_certificate_event_type", label: "Advanced certificate event" },
+              { id: "health_check_status_notification", label: "Health check status change" },
+              { id: "load_balancing_health_alert", label: "Load balancing health alert" },
+              { id: "http_alert_origin_error", label: "Origin error rate alert" },
+              { id: "http_alert_edge_error", label: "Edge error rate alert" },
+              { id: "dos_attack_l7", label: "HTTP DDoS attack" },
+              { id: "billing_usage_alert", label: "Billing usage alert" },
+              { id: "expiring_service_token_alert", label: "Expiring service token" },
+              {
+                id: "failing_logpush_job_disabled_alert",
+                label: "Failing Logpush job disabled",
+              },
+            ],
+          },
+          {
+            key: "email",
+            label: "Notify Emails",
+            kind: "text",
+            required: true,
+            description: "Comma-separated email addresses to notify",
+          },
+          {
+            key: "description",
+            label: "Description",
+            kind: "text",
+            required: false,
+          },
+        ],
+      };
+    }
     throw new Error(`Cloudflare plugin: getCreateConfig not supported for type "${typeId}"`);
   }
 
@@ -1534,6 +1686,12 @@ export class CloudflareClient implements PluginClient {
         return createPhaseRule(this.api, accountId, RULE_SPECS[typeId]!, fields, parentExternalId);
       case "ip-access-rule":
         return ipAccessApi.createIpAccessRule(this.api, accountId, fields, parentExternalId);
+      case "turnstile-widget":
+        return turnstileApi.createTurnstileWidget(this.api, accountId, fields);
+      case "healthcheck":
+        return healthcheckApi.createHealthcheck(this.api, accountId, fields, parentExternalId);
+      case "notification-policy":
+        return notificationApi.createNotificationPolicy(this.api, accountId, fields);
       default:
         throw new Error(`Cloudflare plugin: createResource not supported for type "${typeId}"`);
     }
@@ -1574,7 +1732,84 @@ export class CloudflareClient implements PluginClient {
       }
       return this.getResource(typeId, resourceId, accountId);
     }
+
+    // Most Cloudflare writes (PUT or required-field PATCH) need the full
+    // resource state, but the host only hands us the changed keys. Merge the
+    // current field values underneath so each builder sees a complete set.
+    const merged = await this.mergeCurrentFields(typeId, resourceId, accountId, fields);
+
+    if (typeId === "rate-limit-rule" || typeId === "redirect-rule" || typeId === "cache-rule") {
+      return editPhaseRule(this.api, accountId, RULE_SPECS[typeId]!, externalId, merged);
+    }
+    if (typeId === "firewall-rule") {
+      return firewallApi.editFirewallRule(this.api, accountId, externalId, merged);
+    }
+    if (typeId === "ip-access-rule") {
+      return ipAccessApi.editIpAccessRule(this.api, accountId, externalId, merged);
+    }
+    if (typeId === "waiting-room") {
+      return waitingRoomApi.editWaitingRoom(this.api, accountId, externalId, merged);
+    }
+    if (typeId === "load-balancer") {
+      return loadBalancerApi.editLoadBalancer(this.api, accountId, externalId, merged);
+    }
+    if (typeId === "hyperdrive") {
+      return hyperdriveApi.editHyperdrive(this.api, accountId, externalId, merged);
+    }
+    if (typeId === "custom-hostname") {
+      return customHostnameApi.editCustomHostname(this.api, accountId, externalId, merged);
+    }
+    if (typeId === "email-routing-rule") {
+      return emailRoutingApi.editEmailRoutingRule(this.api, accountId, externalId, merged);
+    }
+    if (typeId === "spectrum-application") {
+      return spectrumApi.editSpectrumApplication(this.api, accountId, externalId, merged);
+    }
+    if (typeId === "logpush-job") {
+      return logpushApi.editLogpushJob(this.api, accountId, externalId, merged);
+    }
+    if (typeId === "access-application") {
+      return accessAppApi.editAccessApplication(this.api, accountId, externalId, merged);
+    }
+    if (typeId === "access-policy") {
+      return accessPolicyApi.editAccessPolicy(this.api, accountId, externalId, merged);
+    }
+    if (typeId === "page-rule") {
+      return pageRuleApi.editPageRule(this.api, accountId, externalId, merged);
+    }
+    if (typeId === "turnstile-widget") {
+      return turnstileApi.editTurnstileWidget(this.api, accountId, externalId, merged);
+    }
+    if (typeId === "healthcheck") {
+      return healthcheckApi.editHealthcheck(this.api, accountId, externalId, merged);
+    }
+    if (typeId === "notification-policy") {
+      return notificationApi.editNotificationPolicy(this.api, accountId, externalId, merged);
+    }
     throw new Error(`Cloudflare plugin: updateResource not supported for type "${typeId}"`);
+  }
+
+  /**
+   * Fetch a resource's current fields and merge the changed keys on top,
+   * coercing every value to a string (the create/update builders all work in
+   * string space). Falls back to the changed keys alone if the fetch fails.
+   */
+  private async mergeCurrentFields(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+    changed: Record<string, string>,
+  ): Promise<Record<string, string>> {
+    let current: Record<string, string> = {};
+    try {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      for (const [k, v] of Object.entries(resource.fields)) {
+        if (v !== undefined && v !== null) current[k] = String(v);
+      }
+    } catch {
+      current = {};
+    }
+    return { ...current, ...changed };
   }
 
   async publishMessage(
@@ -1650,6 +1885,12 @@ export class CloudflareClient implements PluginClient {
         return deletePhaseRule(this.api, externalId);
       case "ip-access-rule":
         return ipAccessApi.deleteIpAccessRule(this.api, externalId);
+      case "turnstile-widget":
+        return turnstileApi.deleteTurnstileWidget(this.api, externalId);
+      case "healthcheck":
+        return healthcheckApi.deleteHealthcheck(this.api, externalId);
+      case "notification-policy":
+        return notificationApi.deleteNotificationPolicy(this.api, externalId);
       default:
         throw new Error(`Cloudflare plugin: deleteResource not supported for type "${typeId}"`);
     }

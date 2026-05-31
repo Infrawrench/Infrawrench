@@ -23,4 +23,7 @@ export { WaitingRoomResourceType } from "./resources/waiting-room.js";
 export { SpectrumApplicationResourceType } from "./resources/spectrum-application.js";
 export { LogpushJobResourceType } from "./resources/logpush-job.js";
 export { WorkersAiModelResourceType } from "./resources/workers-ai-model.js";
+export { TurnstileWidgetResourceType } from "./resources/turnstile-widget.js";
+export { HealthcheckResourceType } from "./resources/healthcheck.js";
+export { NotificationPolicyResourceType } from "./resources/notification-policy.js";
 export { CloudflareClient } from "./client.js";

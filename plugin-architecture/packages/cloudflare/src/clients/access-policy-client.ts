@@ -96,3 +96,37 @@ export async function createAccessPolicy(
   );
   return mapAccessPolicy(policy as unknown as Record<string, unknown>, accountId, appId);
 }
+
+export async function editAccessPolicy(
+  api: CloudflareApi,
+  accountId: string,
+  externalId: string,
+  fields: Record<string, string>,
+): Promise<ResourceInstance> {
+  const account_id = await api.getAccountId();
+  const [appId, policyId] = externalId.split("/");
+  if (!appId || !policyId) throw new Error("Invalid access policy ID");
+  // The include/exclude/require rule arrays are flattened to display strings on
+  // read, so preserve them from the live policy and only edit name/decision/
+  // precedence.
+  const current = (await api.cf.zeroTrust.access.applications.policies.get(appId, policyId, {
+    account_id,
+  })) as unknown as Record<string, unknown>;
+  const body: Record<string, unknown> = {
+    account_id,
+    name: fields["name"] ?? String(current["name"] ?? ""),
+    decision: fields["decision"] || String(current["decision"] ?? "allow"),
+    include: current["include"] ?? [],
+    ...(current["exclude"] ? { exclude: current["exclude"] } : {}),
+    ...(current["require"] ? { require: current["require"] } : {}),
+    ...(fields["precedence"] && Number.isFinite(Number(fields["precedence"]))
+      ? { precedence: Number(fields["precedence"]) }
+      : {}),
+  };
+  const policy = await api.cf.zeroTrust.access.applications.policies.update(
+    appId,
+    policyId,
+    body as unknown as Parameters<typeof api.cf.zeroTrust.access.applications.policies.update>[2],
+  );
+  return mapAccessPolicy(policy as unknown as Record<string, unknown>, accountId, appId);
+}

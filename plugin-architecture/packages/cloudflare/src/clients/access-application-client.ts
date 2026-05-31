@@ -62,6 +62,29 @@ export async function createAccessApplication(
   return mapAccessApplication(app as unknown as Record<string, unknown>, accountId);
 }
 
+export async function editAccessApplication(
+  api: CloudflareApi,
+  accountId: string,
+  externalId: string,
+  fields: Record<string, string>,
+): Promise<ResourceInstance> {
+  const account_id = await api.getAccountId();
+  // The Access app update is a full replace; the dispatcher hands us a merged
+  // field set so domain/type are preserved when only name/session change.
+  const body: Record<string, unknown> = {
+    account_id,
+    name: fields["name"] ?? "",
+    domain: fields["domain"] ?? "",
+    type: fields["type"] || "self_hosted",
+    ...(fields["sessionDuration"] ? { session_duration: fields["sessionDuration"] } : {}),
+  };
+  const app = await api.cf.zeroTrust.access.applications.update(
+    externalId,
+    body as unknown as Parameters<typeof api.cf.zeroTrust.access.applications.update>[1],
+  );
+  return mapAccessApplication(app as unknown as Record<string, unknown>, accountId);
+}
+
 export async function deleteAccessApplication(
   api: CloudflareApi,
   externalId: string,

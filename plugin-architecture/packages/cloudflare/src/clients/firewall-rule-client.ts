@@ -121,6 +121,30 @@ export async function createFirewallRule(
   return mapFirewallRule(result, accountId, zoneId, rulesetId);
 }
 
+export async function editFirewallRule(
+  api: CloudflareApi,
+  accountId: string,
+  externalId: string,
+  fields: Record<string, string>,
+): Promise<ResourceInstance> {
+  const [zoneId, rulesetId, ruleId] = externalId.split("/");
+  if (!zoneId || !rulesetId || !ruleId) throw new Error("Invalid firewall rule ID");
+  const ruleBody: Record<string, unknown> = {
+    description: fields["description"] ?? "",
+    expression: fields["expression"] ?? "",
+    action: fields["action"] ?? "block",
+    enabled: fields["enabled"] !== "false",
+  };
+  const ruleset = await api.cf.rulesets.rules.edit(rulesetId, ruleId, {
+    zone_id: zoneId,
+    ...ruleBody,
+  } as unknown as Parameters<typeof api.cf.rulesets.rules.edit>[2]);
+  const full = ruleset as unknown as Record<string, unknown>;
+  const rules = (full["rules"] as Array<Record<string, unknown>>) ?? [];
+  const updated = rules.find((r) => String(r["id"]) === ruleId) ?? { ...full, id: ruleId };
+  return mapFirewallRule(updated, accountId, zoneId, rulesetId);
+}
+
 export async function deleteFirewallRule(api: CloudflareApi, externalId: string): Promise<void> {
   const [zoneId, rulesetId, ruleId] = externalId.split("/");
   if (!zoneId || !rulesetId || !ruleId) throw new Error("Invalid firewall rule ID");

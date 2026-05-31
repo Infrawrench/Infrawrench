@@ -72,6 +72,28 @@ export async function createHyperdrive(
   return mapHyperdrive(hd as unknown as Record<string, unknown>, accountId);
 }
 
+export async function editHyperdrive(
+  api: CloudflareApi,
+  accountId: string,
+  externalId: string,
+  fields: Record<string, string>,
+): Promise<ResourceInstance> {
+  const account_id = await api.getAccountId();
+  // The origin password is never returned by the API, so origin edits would
+  // require re-entering it. We keep edits to the no-secret settings: the
+  // display name and the connection-pooling cache toggle.
+  const body: Record<string, unknown> = { account_id };
+  if (fields["name"] !== undefined) body["name"] = fields["name"];
+  if (fields["cachingDisabled"] !== undefined) {
+    body["caching"] = { disabled: fields["cachingDisabled"] === "true" };
+  }
+  const hd = await api.cf.hyperdrive.configs.edit(
+    externalId,
+    body as unknown as Parameters<typeof api.cf.hyperdrive.configs.edit>[1],
+  );
+  return mapHyperdrive(hd as unknown as Record<string, unknown>, accountId);
+}
+
 export async function deleteHyperdrive(api: CloudflareApi, externalId: string): Promise<void> {
   const account_id = await api.getAccountId();
   await api.cf.hyperdrive.configs.delete(externalId, { account_id });

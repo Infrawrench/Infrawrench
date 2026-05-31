@@ -79,6 +79,31 @@ export async function createIpAccessRule(
   return mapIpAccessRule(created as unknown as Record<string, unknown>, accountId, zoneId);
 }
 
+export async function editIpAccessRule(
+  api: CloudflareApi,
+  accountId: string,
+  externalId: string,
+  fields: Record<string, string>,
+): Promise<ResourceInstance> {
+  const [zoneId, ruleId] = externalId.split("/");
+  if (!zoneId || !ruleId) throw new Error("Invalid IP access rule ID");
+  const updated = await api.cf.firewall.accessRules.edit(ruleId, {
+    zone_id: zoneId,
+    ...(fields["mode"]
+      ? {
+          mode: fields["mode"] as
+            | "block"
+            | "challenge"
+            | "whitelist"
+            | "js_challenge"
+            | "managed_challenge",
+        }
+      : {}),
+    ...(fields["notes"] !== undefined ? { notes: fields["notes"] } : {}),
+  } as Parameters<typeof api.cf.firewall.accessRules.edit>[1]);
+  return mapIpAccessRule(updated as unknown as Record<string, unknown>, accountId, zoneId);
+}
+
 export async function deleteIpAccessRule(api: CloudflareApi, externalId: string): Promise<void> {
   const [zoneId, ruleId] = externalId.split("/");
   if (!zoneId || !ruleId) throw new Error("Invalid IP access rule ID");

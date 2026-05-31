@@ -79,6 +79,28 @@ export async function createLogpushJob(
   return mapLogpushJob(job as unknown as Record<string, unknown>, accountId, zoneId);
 }
 
+export async function editLogpushJob(
+  api: CloudflareApi,
+  accountId: string,
+  externalId: string,
+  fields: Record<string, string>,
+): Promise<ResourceInstance> {
+  const [zoneId, jobId] = externalId.split("/");
+  if (!zoneId || !jobId) throw new Error("Invalid logpush job ID");
+  // Logpush update is a PATCH — only send the editable settings.
+  const body: Record<string, unknown> = { zone_id: zoneId };
+  if (fields["enabled"] !== undefined) body["enabled"] = fields["enabled"] === "true";
+  if (fields["frequency"]) body["frequency"] = fields["frequency"];
+  if (fields["logpullOptions"] !== undefined) body["logpull_options"] = fields["logpullOptions"];
+  if (fields["destinationConf"]) body["destination_conf"] = fields["destinationConf"];
+  const job = await api.cf.logpush.jobs.update(
+    jobId as unknown as number,
+    body as unknown as Parameters<typeof api.cf.logpush.jobs.update>[1],
+  );
+  if (!job) throw new Error("Cloudflare plugin: failed to update logpush job (null response)");
+  return mapLogpushJob(job as unknown as Record<string, unknown>, accountId, zoneId);
+}
+
 export async function deleteLogpushJob(api: CloudflareApi, externalId: string): Promise<void> {
   const [zoneId, jobId] = externalId.split("/");
   if (!zoneId || !jobId) throw new Error("Invalid logpush job ID");

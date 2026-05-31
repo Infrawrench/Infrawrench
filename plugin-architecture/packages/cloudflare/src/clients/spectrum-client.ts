@@ -86,6 +86,36 @@ export async function createSpectrumApplication(
   return mapSpectrumApplication(app as unknown as Record<string, unknown>, accountId, zoneId);
 }
 
+export async function editSpectrumApplication(
+  api: CloudflareApi,
+  accountId: string,
+  externalId: string,
+  fields: Record<string, string>,
+): Promise<ResourceInstance> {
+  const [zoneId, appId] = externalId.split("/");
+  if (!zoneId || !appId) throw new Error("Invalid spectrum application ID");
+  // Spectrum's update is a full replace, so rebuild the body from the merged
+  // (current + changed) field set.
+  const originDirect = (fields["originDirect"] ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const body: Record<string, unknown> = {
+    zone_id: zoneId,
+    protocol: fields["protocol"] || "tcp/22",
+    dns: { type: "CNAME", name: fields["dns"] ?? "" },
+    origin_direct: originDirect,
+    ip_firewall: fields["ipFirewall"] === "true",
+    proxy_protocol: fields["proxyProtocol"] || "off",
+    ...(fields["tls"] ? { tls: fields["tls"] } : {}),
+  };
+  const app = await api.cf.spectrum.apps.update(
+    appId,
+    body as unknown as Parameters<typeof api.cf.spectrum.apps.update>[1],
+  );
+  return mapSpectrumApplication(app as unknown as Record<string, unknown>, accountId, zoneId);
+}
+
 export async function deleteSpectrumApplication(
   api: CloudflareApi,
   externalId: string,

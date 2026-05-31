@@ -92,6 +92,35 @@ export async function createPageRule(
   return mapPageRule(rule as unknown as Record<string, unknown>, accountId, zoneId);
 }
 
+export async function editPageRule(
+  api: CloudflareApi,
+  accountId: string,
+  externalId: string,
+  fields: Record<string, string>,
+): Promise<ResourceInstance> {
+  const [zoneId, ruleId] = externalId.split("/");
+  if (!zoneId || !ruleId) throw new Error("Invalid page rule ID");
+  // targets/actions are flattened to display strings on read, so preserve them
+  // from the live rule and only edit the toggleable status + priority.
+  const current = (await api.cf.pageRules.get(ruleId, {
+    zone_id: zoneId,
+  })) as unknown as Record<string, unknown>;
+  const body: Record<string, unknown> = {
+    zone_id: zoneId,
+    targets: current["targets"] ?? [],
+    actions: current["actions"] ?? [],
+    status: fields["status"] || String(current["status"] ?? "active"),
+    ...(fields["priority"] && Number.isFinite(Number(fields["priority"]))
+      ? { priority: Number(fields["priority"]) }
+      : {}),
+  };
+  const rule = await api.cf.pageRules.update(
+    ruleId,
+    body as unknown as Parameters<typeof api.cf.pageRules.update>[1],
+  );
+  return mapPageRule(rule as unknown as Record<string, unknown>, accountId, zoneId);
+}
+
 export async function deletePageRule(api: CloudflareApi, externalId: string): Promise<void> {
   const [zoneId, ruleId] = externalId.split("/");
   if (!zoneId || !ruleId) throw new Error("Invalid page rule ID");

@@ -18,5 +18,6 @@ export const RateLimitRuleResourceType: ResourceTypeDefinition = {
   parentTypeId: "zone",
   dashboardPinnable: false,
   supportsCreate: true,
+  supportsUpdate: true,
   iconKey: "firewall",
 };

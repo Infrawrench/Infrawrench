@@ -8,13 +8,14 @@ export const EmailRoutingRuleResourceType: ResourceTypeDefinition = {
   fields: [
     { key: "name", label: "Name", kind: "string", required: false },
     { key: "enabled", label: "Enabled", kind: "boolean", required: true },
-    { key: "matchers", label: "Matchers", kind: "string", required: false },
-    { key: "actions", label: "Actions", kind: "string", required: false },
-    { key: "priority", label: "Priority", kind: "number", required: false },
+    { key: "matchers", label: "Matchers", kind: "string", required: false, editable: false },
+    { key: "actions", label: "Actions", kind: "string", required: false, editable: false },
+    { key: "priority", label: "Priority", kind: "number", required: false, editable: false },
   ],
   outputs: [],
   parentTypeId: "zone",
   dashboardPinnable: false,
   supportsCreate: true,
+  supportsUpdate: true,
   iconKey: "email",
 };

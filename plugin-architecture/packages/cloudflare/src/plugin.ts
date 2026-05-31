@@ -28,6 +28,9 @@ import { RateLimitRuleResourceType } from "./resources/rate-limit-rule.js";
 import { RedirectRuleResourceType } from "./resources/redirect-rule.js";
 import { CacheRuleResourceType } from "./resources/cache-rule.js";
 import { IpAccessRuleResourceType } from "./resources/ip-access-rule.js";
+import { TurnstileWidgetResourceType } from "./resources/turnstile-widget.js";
+import { HealthcheckResourceType } from "./resources/healthcheck.js";
+import { NotificationPolicyResourceType } from "./resources/notification-policy.js";
 
 // Deep link to Cloudflare's "Create Token" page (user/profile tokens) with the
 // scopes this plugin uses pre-selected. Format per Cloudflare's token-template
@@ -59,6 +62,9 @@ const CREATE_TOKEN_SCOPES = [
   { key: "cache_purge", type: "purge" },
   { key: "cache_settings", type: "edit" },
   { key: "transform_rules", type: "edit" },
+  { key: "health_checks", type: "edit" },
+  { key: "turnstile", type: "edit" },
+  { key: "notifications", type: "edit" },
   { key: "analytics", type: "read" },
 ];
 
@@ -127,6 +133,9 @@ const resourceTypes: ResourceTypeDefinition[] = [
   RedirectRuleResourceType,
   CacheRuleResourceType,
   IpAccessRuleResourceType,
+  TurnstileWidgetResourceType,
+  HealthcheckResourceType,
+  NotificationPolicyResourceType,
 ];
 
 export const plugin: Plugin = {

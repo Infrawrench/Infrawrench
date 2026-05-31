@@ -79,6 +79,34 @@ export async function createLoadBalancer(
   return mapLoadBalancer(lb as unknown as Record<string, unknown>, accountId, zoneId);
 }
 
+export async function editLoadBalancer(
+  api: CloudflareApi,
+  accountId: string,
+  externalId: string,
+  fields: Record<string, string>,
+): Promise<ResourceInstance> {
+  const [zoneId, lbId] = externalId.split("/");
+  if (!zoneId || !lbId) throw new Error("Invalid load balancer ID");
+  const body: Record<string, unknown> = { zone_id: zoneId };
+  if (fields["name"] !== undefined) body["name"] = fields["name"];
+  if (fields["fallbackPool"] !== undefined) body["fallback_pool"] = fields["fallbackPool"];
+  if (fields["defaultPools"] !== undefined) {
+    body["default_pools"] = fields["defaultPools"]
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+  }
+  if (fields["enabled"] !== undefined) body["enabled"] = fields["enabled"] === "true";
+  if (fields["proxied"] !== undefined) body["proxied"] = fields["proxied"] === "true";
+  if (fields["ttl"] !== undefined && fields["ttl"] !== "") body["ttl"] = Number(fields["ttl"]);
+  if (fields["steeringPolicy"]) body["steering_policy"] = fields["steeringPolicy"];
+  const lb = await api.cf.loadBalancers.edit(
+    lbId,
+    body as unknown as Parameters<typeof api.cf.loadBalancers.edit>[1],
+  );
+  return mapLoadBalancer(lb as unknown as Record<string, unknown>, accountId, zoneId);
+}
+
 export async function deleteLoadBalancer(api: CloudflareApi, externalId: string): Promise<void> {
   const [zoneId, lbId] = externalId.split("/");
   if (!zoneId || !lbId) throw new Error("Invalid load balancer ID");

@@ -10,11 +10,12 @@ export const FirewallRuleResourceType: ResourceTypeDefinition = {
     { key: "expression", label: "Expression", kind: "string", required: true },
     { key: "action", label: "Action", kind: "string", required: true },
     { key: "enabled", label: "Enabled", kind: "boolean", required: true },
-    { key: "priority", label: "Priority", kind: "number", required: false },
+    { key: "priority", label: "Priority", kind: "number", required: false, editable: false },
   ],
   outputs: [],
   parentTypeId: "zone",
   dashboardPinnable: false,
   supportsCreate: true,
+  supportsUpdate: true,
   iconKey: "firewall",
 };

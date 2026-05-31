@@ -98,3 +98,31 @@ export async function createEmailRoutingRule(
   const rule = await api.cf.emailRouting.rules.create(body as unknown as RuleCreateParams);
   return mapEmailRoutingRule(rule as unknown as Record<string, unknown>, accountId, zoneId);
 }
+
+export async function editEmailRoutingRule(
+  api: CloudflareApi,
+  accountId: string,
+  externalId: string,
+  fields: Record<string, string>,
+): Promise<ResourceInstance> {
+  const [zoneId, tag] = externalId.split("/");
+  if (!zoneId || !tag) throw new Error("Invalid email routing rule ID");
+  // The update is a full replace, so preserve the current matchers/actions and
+  // only override the editable name + enabled flag.
+  const current = (await api.cf.emailRouting.rules.get(tag, {
+    zone_id: zoneId,
+  })) as unknown as Record<string, unknown>;
+  const body: Record<string, unknown> = {
+    zone_id: zoneId,
+    name: fields["name"] ?? String(current["name"] ?? ""),
+    enabled:
+      fields["enabled"] !== undefined ? fields["enabled"] === "true" : Boolean(current["enabled"]),
+    matchers: current["matchers"] ?? [],
+    actions: current["actions"] ?? [],
+  };
+  const rule = await api.cf.emailRouting.rules.update(
+    tag,
+    body as unknown as Parameters<typeof api.cf.emailRouting.rules.update>[1],
+  );
+  return mapEmailRoutingRule(rule as unknown as Record<string, unknown>, accountId, zoneId);
+}

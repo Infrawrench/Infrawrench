@@ -7,11 +7,11 @@ export const HyperdriveResourceType: ResourceTypeDefinition = {
   description: "A Cloudflare Hyperdrive connection cache configuration",
   fields: [
     { key: "name", label: "Name", kind: "string", required: true },
-    { key: "originHost", label: "Origin Host", kind: "string", required: false },
-    { key: "originPort", label: "Origin Port", kind: "number", required: false },
-    { key: "originScheme", label: "Scheme", kind: "string", required: false },
-    { key: "database", label: "Database", kind: "string", required: false },
-    { key: "user", label: "User", kind: "string", required: false },
+    { key: "originHost", label: "Origin Host", kind: "string", required: false, editable: false },
+    { key: "originPort", label: "Origin Port", kind: "number", required: false, editable: false },
+    { key: "originScheme", label: "Scheme", kind: "string", required: false, editable: false },
+    { key: "database", label: "Database", kind: "string", required: false, editable: false },
+    { key: "user", label: "User", kind: "string", required: false, editable: false },
     { key: "cachingDisabled", label: "Caching Disabled", kind: "boolean", required: false },
   ],
   outputs: [
@@ -25,6 +25,7 @@ export const HyperdriveResourceType: ResourceTypeDefinition = {
   ],
   dashboardPinnable: true,
   supportsCreate: true,
+  supportsUpdate: true,
   supportsMetrics: true,
   iconKey: "hyperdrive",
   peerIntegrations: [
