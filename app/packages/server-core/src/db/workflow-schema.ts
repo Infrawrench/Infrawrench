@@ -15,7 +15,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 
-import { organizations } from "./schema.js";
+import { organizations, dashboards } from "./schema.js";
 
 export const workflows = pgTable(
   "workflows",
@@ -103,5 +103,38 @@ export const workflowMetrics = pgTable(
   },
   (t) => ({
     workflowKeyIdx: uniqueIndex("workflow_metrics_workflow_key_idx").on(t.workflowId, t.key),
+  }),
+);
+
+/**
+ * Pins a workflow onto a dashboard so its metrics render as a card. Mirrors
+ * `dashboardPins` (resource pins) but points at a workflow.
+ */
+export const dashboardWorkflowPins = pgTable(
+  "dashboard_workflow_pins",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    dashboardId: text("dashboard_id")
+      .notNull()
+      .references(() => dashboards.id, { onDelete: "cascade" }),
+    workflowId: text("workflow_id")
+      .notNull()
+      .references(() => workflows.id, { onDelete: "cascade" }),
+    gridX: integer("grid_x").notNull().default(0),
+    syncVersion: integer("sync_version").notNull().default(0),
+    deletedAt: timestamp("deleted_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    dashboardWorkflowPinUnique: uniqueIndex("dashboard_workflow_pin_unique").on(
+      t.dashboardId,
+      t.workflowId,
+    ),
+    dashboardWorkflowPinDashboardIdx: index("dashboard_workflow_pin_dashboard_idx").on(
+      t.dashboardId,
+    ),
   }),
 );

@@ -3,7 +3,16 @@ import { eq, and, inArray, isNull, desc, max } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import type { ProbeStatus } from "@infrawrench/plugin-base";
 import { db } from "../../db/client";
-import { dashboards, dashboardPins, resources, accounts } from "../../db/schema";
+import {
+  dashboards,
+  dashboardPins,
+  dashboardWorkflowPins,
+  resources,
+  accounts,
+  workflows,
+  workflowMetrics,
+  workflowRuns,
+} from "../../db/schema";
 import {
   getLatestAccountCountsBatch,
   getLatestMetrics,
@@ -23,6 +32,95 @@ declare module "hono" {
 }
 
 const app = new Hono();
+
+interface MetricDef {
+  key: string;
+  label: string;
+  unit?: string | null;
+  type?: string;
+}
+
+export interface WorkflowPinDto {
+  pinId: string;
+  workflowId: string;
+  gridX: number;
+  name: string;
+  lastRunAt: string | null;
+  lastStatus: string | null;
+  metrics: Array<{ key: string; label: string; unit: string | null; value: unknown }>;
+}
+
+/**
+ * Load the workflow pins for a dashboard, enriched with each workflow's
+ * declared metrics (current values), last-run time, and last-run status. All
+ * data is DB-only (no plugin probing), so it's returned inline with the
+ * dashboard rather than via a separate enrich endpoint like resource pins.
+ */
+async function loadWorkflowPins(dashboardId: string): Promise<WorkflowPinDto[]> {
+  const pins = await db
+    .select({
+      pinId: dashboardWorkflowPins.id,
+      workflowId: dashboardWorkflowPins.workflowId,
+      gridX: dashboardWorkflowPins.gridX,
+      name: workflows.name,
+      lastRunAt: workflows.lastRunAt,
+      metricDefs: workflows.metricDefs,
+    })
+    .from(dashboardWorkflowPins)
+    .innerJoin(workflows, eq(dashboardWorkflowPins.workflowId, workflows.id))
+    .where(
+      and(
+        eq(dashboardWorkflowPins.dashboardId, dashboardId),
+        isNull(dashboardWorkflowPins.deletedAt),
+        isNull(workflows.deletedAt),
+      ),
+    )
+    .orderBy(dashboardWorkflowPins.gridX, dashboardWorkflowPins.createdAt);
+
+  if (pins.length === 0) return [];
+
+  const workflowIds = pins.map((p) => p.workflowId);
+
+  const metricRows = await db
+    .select({
+      workflowId: workflowMetrics.workflowId,
+      key: workflowMetrics.key,
+      value: workflowMetrics.value,
+    })
+    .from(workflowMetrics)
+    .where(
+      and(inArray(workflowMetrics.workflowId, workflowIds), isNull(workflowMetrics.deletedAt)),
+    );
+  const valueByKey = new Map<string, unknown>();
+  for (const m of metricRows) valueByKey.set(`${m.workflowId}:${m.key}`, m.value ?? null);
+
+  const runRows = await db
+    .select({ workflowId: workflowRuns.workflowId, status: workflowRuns.status })
+    .from(workflowRuns)
+    .where(inArray(workflowRuns.workflowId, workflowIds))
+    .orderBy(desc(workflowRuns.createdAt));
+  const latestStatus = new Map<string, string>();
+  for (const r of runRows)
+    if (!latestStatus.has(r.workflowId)) latestStatus.set(r.workflowId, r.status);
+
+  return pins.map((p) => {
+    const defs = (Array.isArray(p.metricDefs) ? p.metricDefs : []) as MetricDef[];
+    return {
+      pinId: p.pinId,
+      workflowId: p.workflowId,
+      gridX: p.gridX,
+      name: p.name,
+      lastRunAt: p.lastRunAt ? p.lastRunAt.toISOString() : null,
+      lastStatus: latestStatus.get(p.workflowId) ?? null,
+      metrics: defs.map((d) => ({
+        key: d.key,
+        label: d.label ?? d.key,
+        unit: d.unit ?? null,
+        value: valueByKey.get(`${p.workflowId}:${d.key}`) ?? null,
+      })),
+    };
+  });
+}
 
 /** GET /api/dashboards — list all dashboards */
 app.get("/", async (c) => {
@@ -88,7 +186,9 @@ app.get("/:id", async (c) => {
     )
     .orderBy(dashboardPins.gridX, dashboardPins.createdAt);
 
-  return c.json({ dashboard, pins });
+  const workflowPins = await loadWorkflowPins(dashboardId);
+
+  return c.json({ dashboard, pins, workflowPins });
 });
 
 /** GET /api/dashboards/default/full — get-or-create default dashboard with pins */
@@ -136,7 +236,9 @@ app.get("/default/full", async (c) => {
     )
     .orderBy(dashboardPins.gridX, dashboardPins.createdAt);
 
-  return c.json({ dashboard: defaultDashboard, pins });
+  const workflowPins = await loadWorkflowPins(defaultDashboard.id);
+
+  return c.json({ dashboard: defaultDashboard, pins, workflowPins });
 });
 
 /** POST /api/dashboards/:id/rename */
@@ -265,6 +367,74 @@ app.post("/unpin", async (c) => {
     .delete(dashboardPins)
     .where(
       and(eq(dashboardPins.dashboardId, dashboardId), eq(dashboardPins.resourceId, resourceId)),
+    );
+  return c.json({ ok: true });
+});
+
+/** POST /api/dashboards/workflow-pin — pin a workflow's metrics onto a dashboard */
+app.post("/workflow-pin", async (c) => {
+  requirePermission(c, "dashboards:write");
+  const organizationId = c.get("organizationId");
+  const { dashboardId, workflowId } = await c.req.json<{
+    dashboardId: string;
+    workflowId: string;
+  }>();
+
+  const [dashboard] = await db
+    .select({ id: dashboards.id })
+    .from(dashboards)
+    .where(and(eq(dashboards.id, dashboardId), eq(dashboards.organizationId, organizationId)))
+    .limit(1);
+  if (!dashboard) return c.json({ error: "Dashboard not found" }, 404);
+
+  const [workflow] = await db
+    .select({ id: workflows.id })
+    .from(workflows)
+    .where(and(eq(workflows.id, workflowId), eq(workflows.organizationId, organizationId)))
+    .limit(1);
+  if (!workflow) return c.json({ error: "Workflow not found" }, 404);
+
+  const [maxRow] = await db
+    .select({ maxX: max(dashboardWorkflowPins.gridX) })
+    .from(dashboardWorkflowPins)
+    .where(eq(dashboardWorkflowPins.dashboardId, dashboardId));
+
+  await db
+    .insert(dashboardWorkflowPins)
+    .values({
+      id: uuidv4(),
+      organizationId,
+      dashboardId,
+      workflowId,
+      gridX: (maxRow?.maxX ?? -1) + 1,
+    })
+    .onConflictDoNothing();
+  return c.json({ ok: true });
+});
+
+/** POST /api/dashboards/workflow-unpin — remove a pinned workflow */
+app.post("/workflow-unpin", async (c) => {
+  requirePermission(c, "dashboards:write");
+  const organizationId = c.get("organizationId");
+  const { dashboardId, workflowId } = await c.req.json<{
+    dashboardId: string;
+    workflowId: string;
+  }>();
+
+  const [dashboard] = await db
+    .select({ id: dashboards.id })
+    .from(dashboards)
+    .where(and(eq(dashboards.id, dashboardId), eq(dashboards.organizationId, organizationId)))
+    .limit(1);
+  if (!dashboard) return c.json({ error: "Dashboard not found" }, 404);
+
+  await db
+    .delete(dashboardWorkflowPins)
+    .where(
+      and(
+        eq(dashboardWorkflowPins.dashboardId, dashboardId),
+        eq(dashboardWorkflowPins.workflowId, workflowId),
+      ),
     );
   return c.json({ ok: true });
 });

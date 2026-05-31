@@ -59,3 +59,31 @@ export async function pinResource(
     [crypto.randomUUID(), dashId, resource.id, nextX],
   );
 }
+
+/** Pin a (local) workflow onto a dashboard so its metrics render as a card. */
+export async function pinWorkflow(
+  workflowId: string,
+  dashboardId: string,
+  db: DbClient,
+): Promise<void> {
+  const maxRows = await db.select<{ max_x: number | null }[]>(
+    "SELECT MAX(grid_x) as max_x FROM dashboard_workflow_pins WHERE dashboard_id = $1",
+    [dashboardId],
+  );
+  const nextX = (maxRows[0]?.max_x ?? -1) + 1;
+  await db.execute(
+    "INSERT OR IGNORE INTO dashboard_workflow_pins (id, dashboard_id, workflow_id, grid_x) VALUES ($1, $2, $3, $4)",
+    [crypto.randomUUID(), dashboardId, workflowId, nextX],
+  );
+}
+
+export async function unpinWorkflow(
+  workflowId: string,
+  dashboardId: string,
+  db: DbClient,
+): Promise<void> {
+  await db.execute(
+    "DELETE FROM dashboard_workflow_pins WHERE dashboard_id = $1 AND workflow_id = $2",
+    [dashboardId, workflowId],
+  );
+}

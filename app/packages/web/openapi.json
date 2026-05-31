@@ -748,6 +748,7 @@
           "bigquery-table",
           "bigtable-instance",
           "block-volume",
+          "cache-rule",
           "ch-database",
           "ch-service",
           "cloud-armor-policy",
@@ -790,6 +791,7 @@
           "doks-cluster",
           "domain",
           "droplet",
+          "durable-object-namespace",
           "dynamodb-table",
           "ebs-volume",
           "ec2-instance",
@@ -817,6 +819,7 @@
           "gke-cluster",
           "glue-database",
           "health-check",
+          "healthcheck",
           "hyperdrive",
           "iam-role",
           "iam-user",
@@ -826,6 +829,7 @@
           "instance-group",
           "instance-template",
           "internet-gateway",
+          "ip-access-rule",
           "k8s-cluster",
           "k8s-configmap",
           "k8s-cronjob",
@@ -879,6 +883,7 @@
           "netlify-form",
           "netlify-site",
           "nfs-share",
+          "notification-policy",
           "object-storage-bucket",
           "opensearch-cluster",
           "opensearch-domain",
@@ -894,9 +899,11 @@
           "pubsub-topic",
           "queue",
           "r2-bucket",
+          "rate-limit-rule",
           "rdb-instance",
           "rds-cluster",
           "rds-instance",
+          "redirect-rule",
           "redis-instance",
           "redshift-cluster",
           "route53-health-check",
@@ -925,9 +932,11 @@
           "target-group",
           "transformation",
           "tunnel",
+          "turnstile-widget",
           "turso-database",
           "turso-group",
           "upload-preset",
+          "vectorize-index",
           "vercel-deployment",
           "vercel-domain",
           "vercel-env-var",
@@ -1041,6 +1050,56 @@
         "required": ["pinId", "resourceId", "gridX", "gridY", "gridW", "gridH"],
         "additionalProperties": false
       },
+      "DashboardWorkflowPin": {
+        "type": "object",
+        "properties": {
+          "pinId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "workflowId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "gridX": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "lastRunAt": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          },
+          "lastStatus": {
+            "type": ["string", "null"]
+          },
+          "metrics": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "unit": {
+                  "type": ["string", "null"]
+                },
+                "value": {}
+              },
+              "required": ["key", "label", "unit"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["pinId", "workflowId", "gridX", "name", "lastRunAt", "lastStatus", "metrics"],
+        "additionalProperties": false
+      },
       "DashboardWithPins": {
         "type": "object",
         "properties": {
@@ -1052,9 +1111,15 @@
             "items": {
               "$ref": "#/components/schemas/DashboardPin"
             }
+          },
+          "workflowPins": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DashboardWorkflowPin"
+            }
           }
         },
-        "required": ["dashboard", "pins"],
+        "required": ["dashboard", "pins", "workflowPins"],
         "additionalProperties": false
       },
       "PinRequest": {
@@ -1104,6 +1169,23 @@
           }
         },
         "required": ["dashboardId", "resourceId"],
+        "additionalProperties": false
+      },
+      "WorkflowPinRequest": {
+        "type": "object",
+        "properties": {
+          "dashboardId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "workflowId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        "required": ["dashboardId", "workflowId"],
         "additionalProperties": false
       },
       "ValidateTabsResponse": {
@@ -5789,6 +5871,110 @@
         "operationId": "postOrgOrgIdDashboardsUnpin",
         "x-required-permission": "dashboards:write",
         "description": "_Requires permission: `dashboards:write`._"
+      }
+    },
+    "/api/org/{orgId}/dashboards/workflow-pin": {
+      "post": {
+        "tags": ["Dashboards"],
+        "summary": "Pin a workflow's metrics to a dashboard",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowPinRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Pinned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdDashboardsWorkflowPin"
+      }
+    },
+    "/api/org/{orgId}/dashboards/workflow-unpin": {
+      "post": {
+        "tags": ["Dashboards"],
+        "summary": "Unpin a workflow from a dashboard",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowPinRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Unpinned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdDashboardsWorkflowUnpin"
       }
     },
     "/api/org/{orgId}/dashboards/validate-tabs": {

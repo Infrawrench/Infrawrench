@@ -234,3 +234,23 @@ CREATE UNIQUE INDEX IF NOT EXISTS workflow_metrics_workflow_key_idx ON workflow_
 `;
 
 MIGRATIONS.push(WORKFLOWS_MIGRATION);
+
+// Pins a workflow onto a dashboard so its metrics show as a card. Mirrors the
+// resource `dashboard_pins` table (incl. cloud-sync columns) but references a
+// workflow instead of a resource.
+const DASHBOARD_WORKFLOW_PINS_MIGRATION = `
+CREATE TABLE IF NOT EXISTS dashboard_workflow_pins (
+  id TEXT PRIMARY KEY,
+  dashboard_id TEXT NOT NULL REFERENCES dashboards(id) ON DELETE CASCADE,
+  workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
+  grid_x INTEGER NOT NULL DEFAULT 0,
+  cloud_id TEXT,
+  sync_version INTEGER NOT NULL DEFAULT 0,
+  deleted_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(dashboard_id, workflow_id)
+);
+CREATE INDEX IF NOT EXISTS dashboard_workflow_pins_dashboard_idx ON dashboard_workflow_pins(dashboard_id);
+`;
+
+MIGRATIONS.push(DASHBOARD_WORKFLOW_PINS_MIGRATION);

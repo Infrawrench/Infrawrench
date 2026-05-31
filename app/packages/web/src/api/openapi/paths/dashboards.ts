@@ -37,10 +37,33 @@ const Pin = strict({
   gridH: z.number().int(),
 }).openapi("DashboardPin");
 
+const WorkflowPin = strict({
+  pinId: Uuid,
+  workflowId: Uuid,
+  gridX: z.number().int(),
+  name: z.string(),
+  lastRunAt: IsoDateTime.nullable(),
+  lastStatus: z.string().nullable(),
+  metrics: z.array(
+    strict({
+      key: z.string(),
+      label: z.string(),
+      unit: z.string().nullable(),
+      value: z.unknown(),
+    }),
+  ),
+}).openapi("DashboardWorkflowPin");
+
 const DashboardWithPins = strict({
   dashboard: DashboardFull,
   pins: z.array(Pin),
+  workflowPins: z.array(WorkflowPin),
 }).openapi("DashboardWithPins");
+
+const WorkflowPinRequest = strict({
+  dashboardId: Uuid,
+  workflowId: Uuid,
+}).openapi("WorkflowPinRequest");
 
 const ProbeStatus = strict({
   phase: z.enum(["ok", "loading", "error"]),
@@ -256,6 +279,36 @@ export function registerDashboardPaths(ctx: BuildContext) {
     request: {
       params: OrgIdParam,
       body: { content: { "application/json": { schema: UnpinRequest } }, required: true },
+    },
+    responses: {
+      200: { description: "Unpinned", content: { "application/json": { schema: Ok } } },
+      404: ErrorResponses[404],
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/dashboards/workflow-pin",
+    tags: ["Dashboards"],
+    summary: "Pin a workflow's metrics to a dashboard",
+    request: {
+      params: OrgIdParam,
+      body: { content: { "application/json": { schema: WorkflowPinRequest } }, required: true },
+    },
+    responses: {
+      200: { description: "Pinned", content: { "application/json": { schema: Ok } } },
+      404: ErrorResponses[404],
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/dashboards/workflow-unpin",
+    tags: ["Dashboards"],
+    summary: "Unpin a workflow from a dashboard",
+    request: {
+      params: OrgIdParam,
+      body: { content: { "application/json": { schema: WorkflowPinRequest } }, required: true },
     },
     responses: {
       200: { description: "Unpinned", content: { "application/json": { schema: Ok } } },

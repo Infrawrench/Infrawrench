@@ -9,12 +9,17 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import type { DraggableResource } from "./types.js";
+import type { DraggableResource, DraggableWorkflow } from "./types.js";
 
 export interface DndShellProps {
   children: React.ReactNode;
   /** Called when a resource is dropped onto a dashboard target */
   onPinToDashboard?: (resource: DraggableResource, dashboardId: string) => Promise<void> | void;
+  /** Called when a workflow is dropped onto a dashboard target */
+  onPinWorkflowToDashboard?: (
+    workflow: DraggableWorkflow,
+    dashboardId: string,
+  ) => Promise<void> | void;
   /** Called when a resource is dropped onto a sidebar account/resource (desktop: secret import) */
   onSecretDrop?: (
     source: DraggableResource,
@@ -32,6 +37,7 @@ export interface DndShellProps {
 export function DndShell({
   children,
   onPinToDashboard,
+  onPinWorkflowToDashboard,
   onSecretDrop,
   onResourceAttach,
   onTunnelSshAttach,
@@ -54,6 +60,7 @@ export function DndShell({
     const overId = String(over.id);
     const data = active.data.current;
     const resource = data?.resource as DraggableResource | undefined;
+    const workflow = data?.workflow as DraggableWorkflow | undefined;
 
     // Dashboard card reorder — both active and over are cards within the grid
     if (String(active.id).startsWith("dashboard-card:") && overId.startsWith("dashboard-card:")) {
@@ -110,16 +117,20 @@ export function DndShell({
       return;
     }
 
-    // Dashboard drops — pin resource
+    // Dashboard drops — pin a resource or a workflow
     let dashboardId: string | null = null;
     if (overId.startsWith("sidebar-dashboard:")) {
       dashboardId = overId.replace("sidebar-dashboard:", "");
     } else if (overId.startsWith("dashboard:")) {
       dashboardId = overId.replace("dashboard:", "");
     }
-    if (!dashboardId || !resource) return;
+    if (!dashboardId) return;
 
-    void onPinToDashboard?.(resource, dashboardId);
+    if (workflow) {
+      void onPinWorkflowToDashboard?.(workflow, dashboardId);
+      return;
+    }
+    if (resource) void onPinToDashboard?.(resource, dashboardId);
   }
 
   return (

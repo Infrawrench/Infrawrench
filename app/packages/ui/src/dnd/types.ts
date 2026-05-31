@@ -15,3 +15,9 @@ export interface DraggableResource {
   /** True when this resource can be dragged onto an SSH host to set up a tunnel (e.g. a Cloudflare Tunnel). */
   isTunnelSshSource?: boolean | undefined;
 }
+
+/** A workflow dragged from the sidebar (e.g. onto a dashboard to pin its metrics). */
+export interface DraggableWorkflow {
+  id: string;
+  name: string;
+}

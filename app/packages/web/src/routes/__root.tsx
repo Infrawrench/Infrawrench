@@ -10,6 +10,7 @@ import {
   workspaceTabTargetsEqual,
   dispatchResourcesChanged,
   type DraggableResource,
+  type DraggableWorkflow,
   type TunnelSshAttachResult,
   type TunnelSshAttachZone,
   type TunnelSshAttachKey,
@@ -224,6 +225,16 @@ function AuthenticatedShell() {
     dispatchResourcesChanged();
   }
 
+  async function handlePinWorkflowToDashboard(workflow: DraggableWorkflow, dashboardId: string) {
+    if (!orgId) return;
+    await apiPost(`/api/org/${orgId}/dashboards/workflow-pin`, {
+      dashboardId,
+      workflowId: workflow.id,
+    });
+    useUIStore.getState().bumpDashboardPins();
+    dispatchResourcesChanged();
+  }
+
   async function handleResourceAttach(source: DraggableResource, target: DraggableResource) {
     if (!orgId) return;
     try {
@@ -275,6 +286,7 @@ function AuthenticatedShell() {
   return (
     <DndShell
       onPinToDashboard={handlePinToDashboard}
+      onPinWorkflowToDashboard={handlePinWorkflowToDashboard}
       onResourceAttach={handleResourceAttach}
       onTunnelSshAttach={(t, h) => void handleTunnelSshAttach(t, h)}
     >

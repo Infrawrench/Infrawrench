@@ -27,7 +27,10 @@ import {
   accountTabTarget,
   navigateToWorkspaceTarget,
   resourceTabTarget,
+  workflowsTabTarget,
 } from "../lib/workspace-tabs";
+import { unpinWorkflow } from "../lib/pins";
+import { WorkflowPinCard } from "./DashboardView/WorkflowPinCard";
 import {
   getCloudDashboard,
   getCloudEnrichedPin,
@@ -50,6 +53,7 @@ interface DashboardViewProps {
 export function DashboardView({ dashboardId }: DashboardViewProps) {
   const navigate = useNavigate();
   const [pinned, setPinned] = useState<PinnedRow[]>([]);
+  const [workflowPins, setWorkflowPins] = useState<{ pinId: string; workflowId: string }[]>([]);
   const [pluginMeta, setPluginMeta] = useState<Record<string, PluginMeta>>({});
   const [loading, setLoading] = useState(true);
   const [dashboardName, setDashboardName] = useState("");
@@ -190,6 +194,8 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
           };
         }
         setCardStatus((prev) => ({ ...prev, ...initialStatus }));
+        // Workflow pins are local-only; cloud dashboards don't carry them.
+        setWorkflowPins([]);
       } else {
         const db = await getDb();
         const nameRows = await db.select<{ name: string; is_default: number }[]>(
@@ -215,6 +221,19 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
         `,
           [dashboardId],
         );
+
+        // Workflow pins are local-only (desktop workflows live in SQLite).
+        const wfRows = await db.select<{ pin_id: string; workflow_id: string }[]>(
+          `
+          SELECT dwp.id as pin_id, dwp.workflow_id
+          FROM dashboard_workflow_pins dwp
+          JOIN workflows w ON w.id = dwp.workflow_id
+          WHERE dwp.dashboard_id = $1 AND dwp.deleted_at IS NULL AND w.deleted_at IS NULL
+          ORDER BY dwp.grid_x ASC, dwp.created_at ASC
+        `,
+          [dashboardId],
+        );
+        setWorkflowPins(wfRows.map((r) => ({ pinId: r.pin_id, workflowId: r.workflow_id })));
       }
 
       setDashboardName(loadedName);
@@ -572,6 +591,12 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
     setPinned((prev) => prev.filter((r) => r.resource_id !== resourceId));
   }
 
+  async function unpinPinnedWorkflow(workflowId: string) {
+    const db = await getDb();
+    await unpinWorkflow(workflowId, dashboardId, db);
+    setWorkflowPins((prev) => prev.filter((w) => w.workflowId !== workflowId));
+  }
+
   async function saveName(name: string) {
     const trimmed = name.trim() || "Dashboard";
     setDashboardName(trimmed);
@@ -682,7 +707,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
       </div>
 
       <div className="flex-1 overflow-auto px-8 py-6">
-        {pinned.length === 0 ? (
+        {pinned.length === 0 && workflowPins.length === 0 ? (
           <button
             type="button"
             onClick={() => setSpotlightMode("pin")}
@@ -690,7 +715,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
           >
             <span className="text-3xl mb-3">⊞</span>
             <p className="text-sm">Click to add a resource</p>
-            <p className="text-xs mt-1 opacity-60">or drag one here</p>
+            <p className="text-xs mt-1 opacity-60">or drag a resource or workflow here</p>
           </button>
         ) : (
           <SortableContext
@@ -714,6 +739,19 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
                     }
                   />
                 </SortableDashboardCard>
+              ))}
+
+              {workflowPins.map((wf) => (
+                <WorkflowPinCard
+                  key={wf.pinId}
+                  workflowId={wf.workflowId}
+                  onOpen={() =>
+                    void navigateToWorkspaceTarget(navigate, workflowsTabTarget(), {
+                      label: "Workflows",
+                    })
+                  }
+                  onUnpin={() => void unpinPinnedWorkflow(wf.workflowId)}
+                />
               ))}
 
               <button

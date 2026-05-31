@@ -13,9 +13,20 @@ import {
   toast,
 } from "@infrawrench/ui";
 import type { ProbeStatus } from "@infrawrench/plugin-base";
+import { WorkflowDashboardCard, type WorkflowDashboardCardData } from "@infrawrench/ui/workflows";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import { useOrgId } from "@/lib/useOrgId";
 import { SpotlightSearch } from "./SpotlightSearch";
+
+export interface WorkflowPin {
+  pinId: string;
+  workflowId: string;
+  gridX: number;
+  name: string;
+  lastRunAt: string | null;
+  lastStatus: "success" | "failure" | "running" | "pending" | null;
+  metrics: Array<{ key: string; label: string; unit: string | null; value: unknown }>;
+}
 
 interface PinnedResource {
   pinId: string;
@@ -49,6 +60,7 @@ interface DashboardViewProps {
   dashboardName: string;
   isHome?: boolean | undefined;
   pins: PinnedResource[];
+  workflowPins?: WorkflowPin[] | undefined;
 }
 
 export function DashboardView({
@@ -56,10 +68,12 @@ export function DashboardView({
   dashboardName: initialName,
   isHome = false,
   pins: initialPins,
+  workflowPins: initialWorkflowPins,
 }: DashboardViewProps) {
   const navigate = useNavigate();
   const orgId = useOrgId();
   const [pins, setPins] = useState(initialPins);
+  const [workflowPins, setWorkflowPins] = useState<WorkflowPin[]>(initialWorkflowPins ?? []);
   const [spotlightMode, setSpotlightMode] = useState<"pin" | "navigate" | null>(null);
   const [dashboardName, setDashboardName] = useState(initialName);
   const [editingName, setEditingName] = useState(false);
@@ -69,6 +83,43 @@ export function DashboardView({
   useEffect(() => {
     setPins(initialPins);
   }, [initialPins]);
+
+  useEffect(() => {
+    setWorkflowPins(initialWorkflowPins ?? []);
+  }, [initialWorkflowPins]);
+
+  const refetchWorkflowPins = useCallback(async () => {
+    try {
+      const res = await apiGet<{ workflowPins?: WorkflowPin[] }>(
+        `/api/org/${orgId}/dashboards/${dashboardId}`,
+      );
+      setWorkflowPins(res.workflowPins ?? []);
+    } catch {
+      /* keep stale data on transient failure */
+    }
+  }, [orgId, dashboardId]);
+
+  async function handleUnpinWorkflow(workflowId: string) {
+    try {
+      await apiPost(`/api/org/${orgId}/dashboards/workflow-unpin`, { dashboardId, workflowId });
+      setWorkflowPins((prev) => prev.filter((p) => p.workflowId !== workflowId));
+    } catch (e) {
+      toast.error("Couldn't unpin workflow", {
+        description: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+
+  async function handleRunWorkflow(workflowId: string) {
+    try {
+      await apiPost(`/api/org/${orgId}/workflows/${workflowId}/run`, {});
+      await refetchWorkflowPins();
+    } catch (e) {
+      toast.error("Workflow run failed", {
+        description: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
 
   const handleReorder = useCallback(
     (e: Event) => {
@@ -198,7 +249,7 @@ export function DashboardView({
       {/* Content */}
       <div className="flex-1 overflow-auto px-8 py-6">
         <DroppableDashboardArea dashboardId={dashboardId}>
-          {pins.length === 0 ? (
+          {pins.length === 0 && workflowPins.length === 0 ? (
             <button
               type="button"
               onClick={() => setSpotlightMode("pin")}
@@ -206,7 +257,7 @@ export function DashboardView({
             >
               <span className="text-3xl mb-3">&#8862;</span>
               <p className="text-sm">Click to add a resource</p>
-              <p className="text-xs mt-1 opacity-60">or drag one here</p>
+              <p className="text-xs mt-1 opacity-60">or drag a resource or workflow here</p>
             </button>
           ) : (
             <SortableContext
@@ -238,6 +289,16 @@ export function DashboardView({
                   </SortableDashboardCard>
                 ))}
 
+                {workflowPins.map((wf) => (
+                  <WorkflowDashboardCard
+                    key={wf.pinId}
+                    data={toCardData(wf)}
+                    onOpen={() => void navigate({ to: "/org/$orgId/workflows", params: { orgId } })}
+                    onUnpin={() => void handleUnpinWorkflow(wf.workflowId)}
+                    onRun={() => handleRunWorkflow(wf.workflowId)}
+                  />
+                ))}
+
                 <button
                   type="button"
                   onClick={() => setSpotlightMode("pin")}
@@ -265,6 +326,21 @@ export function DashboardView({
       </div>
     </div>
   );
+}
+
+function toCardData(wf: WorkflowPin): WorkflowDashboardCardData {
+  return {
+    workflowId: wf.workflowId,
+    name: wf.name,
+    lastRunAt: wf.lastRunAt,
+    lastStatus: wf.lastStatus,
+    metrics: wf.metrics.map((m) => ({
+      key: m.key,
+      label: m.label,
+      unit: m.unit,
+      value: (m.value ?? null) as number | string | boolean | null,
+    })),
+  };
 }
 
 function PinCard({
