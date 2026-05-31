@@ -8,8 +8,6 @@ export interface PluginRegistryEntry {
   checksum: string;
   blessedAt: string;
   blessedBy: string;
-  deprecated?: boolean;
-  deprecationReason?: string;
 }
 
 /**
