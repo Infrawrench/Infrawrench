@@ -43,7 +43,8 @@ export function AddAccountModal({
         setAccounts(
           rows.map((r) => ({ id: r.id, pluginId: r.plugin_id, displayName: r.display_name })),
         );
-      } catch {
+      } catch (err) {
+        console.error("[add-account] Failed to load accounts:", err);
         if (!cancelled) setAccounts([]);
       }
     })();

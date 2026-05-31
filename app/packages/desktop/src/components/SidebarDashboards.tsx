@@ -37,7 +37,8 @@ export function SidebarDashboards() {
         );
         setDashboards(rows);
       }
-    } catch {
+    } catch (err) {
+      console.error("[sidebar-dashboards] Failed to load dashboards:", err);
       setDashboards([]);
     }
   }

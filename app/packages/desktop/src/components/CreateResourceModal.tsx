@@ -193,7 +193,8 @@ export function CreateResourceModal({
               list.push({ id: row.id, name: row.display_name });
               accountsByPlugin.set(row.plugin_id, list);
             }
-          } catch {
+          } catch (err) {
+            console.error("[create] Failed to load accounts for output-ref picker:", err);
             accountsByPlugin = null;
           }
         }
