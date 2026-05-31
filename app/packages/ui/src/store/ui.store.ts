@@ -4,6 +4,7 @@ import { createJSONStorage, persist } from "zustand/middleware";
 export type WorkspaceTabTarget =
   | { kind: "dashboard"; dashboardId: string }
   | { kind: "account"; accountId: string }
+  | { kind: "workflows"; workflowId?: string }
   | {
       kind: "resource";
       accountId: string;
@@ -36,6 +37,8 @@ export function getWorkspaceTabId(target: WorkspaceTabTarget): string {
       return `dashboard:${target.dashboardId}`;
     case "account":
       return `account:${target.accountId}`;
+    case "workflows":
+      return target.workflowId ? `workflows:${target.workflowId}` : "workflows";
     case "resource":
       if (target.view === "ssh")
         return `resource:${target.accountId}:${normalizeResourceId(target.resourceId)}:ssh`;
@@ -51,6 +54,8 @@ export function getWorkspaceTabFallbackTitle(target: WorkspaceTabTarget): string
       return "Dashboard";
     case "account":
       return "Account";
+    case "workflows":
+      return "Workflows";
     case "resource":
       if (target.view === "ssh") return "SSH";
       if (target.view === "sftp") return "SFTP";
@@ -65,6 +70,8 @@ export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabT
       return a.dashboardId === (b as { dashboardId: string }).dashboardId;
     case "account":
       return a.accountId === (b as { accountId: string }).accountId;
+    case "workflows":
+      return a.workflowId === (b as { workflowId?: string }).workflowId;
     case "resource":
       return (
         a.accountId === (b as { accountId: string }).accountId &&

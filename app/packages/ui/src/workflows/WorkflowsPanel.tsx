@@ -1,0 +1,455 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+
+import { WorkflowEditorView } from "./WorkflowEditorView.js";
+import type {
+  WorkflowClient,
+  WorkflowMetricDef,
+  WorkflowMetricRow,
+  WorkflowRunRow,
+  WorkflowSummary,
+  WorkflowTrigger,
+} from "./types.js";
+
+const STARTER_SOURCE = `// Workflow — runs in a sandboxed isolate with a typed \`infra\` object.
+// Example: read a JSON file from R2 and log a value.
+//
+// const cf = infra.accounts.cloudflare.getByName("production");
+// const file = await cf.storage.bucket("configs").get("app.json");
+// const cfg = file.json<{ replicas: number }>();
+// await infra.output({ replicas: cfg.replicas });
+
+infra.log("hello from your workflow");
+`;
+
+interface WorkflowsPanelProps {
+  client: WorkflowClient;
+}
+
+type TriggerKind = WorkflowTrigger["kind"];
+
+export function WorkflowsPanel({ client }: WorkflowsPanelProps) {
+  const [list, setList] = useState<WorkflowSummary[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [draft, setDraft] = useState<WorkflowSummary | null>(null);
+  const [dts, setDts] = useState<string>("declare const infra: any;");
+  const [runs, setRuns] = useState<WorkflowRunRow[]>([]);
+  const [metrics, setMetrics] = useState<WorkflowMetricRow[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [lastRun, setLastRun] = useState<WorkflowRunRow | null>(null);
+
+  const refreshList = useCallback(async () => {
+    try {
+      setList(await client.list());
+    } catch (e) {
+      setError(messageOf(e));
+    }
+  }, [client]);
+
+  useEffect(() => {
+    void refreshList();
+  }, [refreshList]);
+
+  const selectWorkflow = useCallback(
+    async (id: string) => {
+      setSelectedId(id);
+      setLastRun(null);
+      const wf = list.find((w) => w.id === id);
+      if (wf) setDraft(structuredCloneSafe(wf));
+      try {
+        const [typings, runRows, metricRows] = await Promise.all([
+          client.getTypings(id),
+          client.listRuns(id),
+          client.listMetrics(id),
+        ]);
+        setDts(typings);
+        setRuns(runRows);
+        setMetrics(metricRows);
+      } catch (e) {
+        setError(messageOf(e));
+      }
+    },
+    [client, list],
+  );
+
+  const createWorkflow = useCallback(async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const created = await client.create({
+        name: "Untitled workflow",
+        source: STARTER_SOURCE,
+        trigger: { kind: "manual" },
+        metrics: [],
+        enabled: true,
+      });
+      await refreshList();
+      await selectWorkflow(created.id);
+    } catch (e) {
+      setError(messageOf(e));
+    } finally {
+      setBusy(false);
+    }
+  }, [client, refreshList, selectWorkflow]);
+
+  const save = useCallback(async () => {
+    if (!draft) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await client.update(draft.id, {
+        name: draft.name,
+        description: draft.description ?? null,
+        source: draft.source,
+        trigger: draft.trigger,
+        metrics: draft.metricDefs,
+        enabled: draft.enabled,
+      });
+      await refreshList();
+      // Metrics may have changed → regenerate typings.
+      setDts(await client.getTypings(draft.id));
+    } catch (e) {
+      setError(messageOf(e));
+    } finally {
+      setBusy(false);
+    }
+  }, [client, draft, refreshList]);
+
+  const run = useCallback(async () => {
+    if (!draft) return;
+    setRunning(true);
+    setError(null);
+    try {
+      await client.update(draft.id, { source: draft.source });
+      const { result } = await client.run(draft.id);
+      setLastRun(result);
+      setRuns(await client.listRuns(draft.id));
+      setMetrics(await client.listMetrics(draft.id));
+    } catch (e) {
+      setError(messageOf(e));
+    } finally {
+      setRunning(false);
+    }
+  }, [client, draft]);
+
+  const remove = useCallback(async () => {
+    if (!draft) return;
+    setBusy(true);
+    try {
+      await client.remove(draft.id);
+      setSelectedId(null);
+      setDraft(null);
+      await refreshList();
+    } catch (e) {
+      setError(messageOf(e));
+    } finally {
+      setBusy(false);
+    }
+  }, [client, draft, refreshList]);
+
+  const patch = useCallback((p: Partial<WorkflowSummary>) => {
+    setDraft((d) => (d ? { ...d, ...p } : d));
+  }, []);
+
+  return (
+    <div className="flex flex-1 min-h-0">
+      {/* Workflow list */}
+      <div className="w-64 border-r border-white/10 flex flex-col min-h-0">
+        <div className="p-3 border-b border-white/10 flex items-center justify-between">
+          <span className="font-semibold text-sm">Workflows</span>
+          <button
+            type="button"
+            onClick={() => void createWorkflow()}
+            disabled={busy}
+            className="text-xs px-2 py-1 rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-50"
+          >
+            + New
+          </button>
+        </div>
+        <div className="flex-1 overflow-auto">
+          {list.length === 0 && (
+            <div className="p-4 text-xs opacity-60">
+              No workflows yet. Create one to get started.
+            </div>
+          )}
+          {list.map((wf) => (
+            <button
+              type="button"
+              key={wf.id}
+              onClick={() => void selectWorkflow(wf.id)}
+              className={`block w-full text-left px-3 py-2 text-sm border-b border-white/5 hover:bg-white/5 ${
+                wf.id === selectedId ? "bg-white/10" : ""
+              }`}
+            >
+              <div className="truncate">{wf.name}</div>
+              <div className="text-[10px] opacity-50">
+                {wf.trigger.kind}
+                {wf.enabled ? "" : " · disabled"}
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Editor + config */}
+      {draft ? (
+        <div className="flex-1 flex flex-col min-h-0">
+          <div className="p-3 border-b border-white/10 flex items-center gap-2 flex-wrap">
+            <input
+              value={draft.name}
+              onChange={(e) => patch({ name: e.target.value })}
+              className="bg-transparent border border-white/15 rounded px-2 py-1 text-sm flex-1 min-w-40"
+              placeholder="Workflow name"
+            />
+            <label className="text-xs flex items-center gap-1">
+              <input
+                type="checkbox"
+                checked={draft.enabled}
+                onChange={(e) => patch({ enabled: e.target.checked })}
+              />
+              Enabled
+            </label>
+            <button
+              type="button"
+              onClick={() => void save()}
+              disabled={busy}
+              className="text-xs px-3 py-1 rounded bg-white/10 hover:bg-white/20 disabled:opacity-50"
+            >
+              Save
+            </button>
+            <button
+              type="button"
+              onClick={() => void run()}
+              disabled={running}
+              className="text-xs px-3 py-1 rounded bg-green-600 hover:bg-green-500 disabled:opacity-50"
+            >
+              {running ? "Running…" : "Run"}
+            </button>
+            <button
+              type="button"
+              onClick={() => void remove()}
+              disabled={busy}
+              className="text-xs px-3 py-1 rounded bg-red-600/80 hover:bg-red-500 disabled:opacity-50"
+            >
+              Delete
+            </button>
+          </div>
+
+          <TriggerEditor
+            trigger={draft.trigger}
+            webhookToken={draft.webhookToken ?? null}
+            onChange={(t) => patch({ trigger: t })}
+          />
+
+          <MetricsEditor
+            defs={draft.metricDefs}
+            values={metrics}
+            onChange={(defs) => patch({ metricDefs: defs })}
+          />
+
+          {error && (
+            <div className="px-3 py-2 text-xs text-red-400 border-b border-white/10">{error}</div>
+          )}
+
+          <div className="flex-1 min-h-0">
+            <WorkflowEditorView
+              value={draft.source}
+              onChange={(v) => patch({ source: v })}
+              dts={dts}
+              onSave={() => void save()}
+            />
+          </div>
+
+          {lastRun && <RunResultPanel run={lastRun} />}
+        </div>
+      ) : (
+        <div className="flex-1 flex items-center justify-center text-sm opacity-50">
+          Select or create a workflow.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TriggerEditor({
+  trigger,
+  webhookToken,
+  onChange,
+}: {
+  trigger: WorkflowTrigger;
+  webhookToken?: string | null;
+  onChange: (t: WorkflowTrigger) => void;
+}) {
+  const kind = trigger.kind;
+  return (
+    <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2 flex-wrap text-xs">
+      <span className="opacity-60">Trigger</span>
+      <select
+        value={kind}
+        onChange={(e) => {
+          const k = e.target.value as TriggerKind;
+          if (k === "manual") onChange({ kind: "manual" });
+          else if (k === "cron") onChange({ kind: "cron", expression: "0 * * * *" });
+          else onChange({ kind: "git", events: ["push"] });
+        }}
+        className="bg-transparent border border-white/15 rounded px-2 py-1"
+      >
+        <option value="manual">Manual</option>
+        <option value="cron">Cron</option>
+        <option value="git">Git</option>
+      </select>
+      {trigger.kind === "cron" && (
+        <input
+          value={trigger.expression}
+          onChange={(e) => onChange({ ...trigger, expression: e.target.value })}
+          placeholder="* * * * *"
+          className="bg-transparent border border-white/15 rounded px-2 py-1 font-mono"
+        />
+      )}
+      {trigger.kind === "git" && (
+        <>
+          <input
+            value={trigger.repo ?? ""}
+            onChange={(e) => onChange({ ...trigger, repo: e.target.value })}
+            placeholder="owner/repo"
+            className="bg-transparent border border-white/15 rounded px-2 py-1"
+          />
+          <input
+            value={trigger.branch ?? ""}
+            onChange={(e) => onChange({ ...trigger, branch: e.target.value })}
+            placeholder="branch (optional)"
+            className="bg-transparent border border-white/15 rounded px-2 py-1"
+          />
+          {webhookToken && (
+            <span className="opacity-60">
+              Webhook: <code className="opacity-90">/api/workflows/git/{webhookToken}</code>
+            </span>
+          )}
+        </>
+      )}
+      {kind === "manual" && <span className="opacity-50">infra.prompt() available</span>}
+    </div>
+  );
+}
+
+function MetricsEditor({
+  defs,
+  values,
+  onChange,
+}: {
+  defs: WorkflowMetricDef[];
+  values: WorkflowMetricRow[];
+  onChange: (defs: WorkflowMetricDef[]) => void;
+}) {
+  const valueByKey = useMemo(() => {
+    const m = new Map<string, unknown>();
+    for (const v of values) m.set(v.key, v.value);
+    return m;
+  }, [values]);
+
+  const update = (i: number, p: Partial<WorkflowMetricDef>) => {
+    onChange(defs.map((d, idx) => (idx === i ? { ...d, ...p } : d)));
+  };
+
+  return (
+    <div className="px-3 py-2 border-b border-white/10 text-xs">
+      <div className="flex items-center justify-between mb-1">
+        <span className="opacity-60">Metrics</span>
+        <button
+          type="button"
+          onClick={() =>
+            onChange([
+              ...defs,
+              { key: `metric${defs.length + 1}`, label: "Metric", type: "number" },
+            ])
+          }
+          className="px-2 py-0.5 rounded bg-white/10 hover:bg-white/20"
+        >
+          + Add metric
+        </button>
+      </div>
+      {defs.length === 0 && (
+        <div className="opacity-50">No metrics. Add one to read/write it from the workflow.</div>
+      )}
+      {defs.map((d, i) => (
+        <div key={i} className="flex items-center gap-1 mb-1 flex-wrap">
+          <input
+            value={d.key}
+            onChange={(e) => update(i, { key: e.target.value })}
+            placeholder="key"
+            className="bg-transparent border border-white/15 rounded px-1 py-0.5 w-28 font-mono"
+          />
+          <input
+            value={d.label}
+            onChange={(e) => update(i, { label: e.target.value })}
+            placeholder="label"
+            className="bg-transparent border border-white/15 rounded px-1 py-0.5 w-32"
+          />
+          <select
+            value={d.type}
+            onChange={(e) => update(i, { type: e.target.value as WorkflowMetricDef["type"] })}
+            className="bg-transparent border border-white/15 rounded px-1 py-0.5"
+          >
+            <option value="number">number</option>
+            <option value="string">string</option>
+            <option value="boolean">boolean</option>
+          </select>
+          <input
+            value={d.unit ?? ""}
+            onChange={(e) => update(i, { unit: e.target.value })}
+            placeholder="unit"
+            className="bg-transparent border border-white/15 rounded px-1 py-0.5 w-16"
+          />
+          <span className="opacity-60">= {String(valueByKey.get(d.key) ?? "—")}</span>
+          <button
+            type="button"
+            onClick={() => onChange(defs.filter((_, idx) => idx !== i))}
+            className="px-1 opacity-60 hover:opacity-100"
+          >
+            ✕
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function RunResultPanel({ run }: { run: WorkflowRunRow }) {
+  return (
+    <div className="h-48 border-t border-white/10 flex flex-col min-h-0">
+      <div className="px-3 py-1 text-xs border-b border-white/10 flex items-center gap-2">
+        <span
+          className={`font-semibold ${run.status === "success" ? "text-green-400" : run.status === "failure" ? "text-red-400" : ""}`}
+        >
+          {run.status}
+        </span>
+        {run.durationMs != null && <span className="opacity-50">{run.durationMs}ms</span>}
+      </div>
+      <div className="flex-1 overflow-auto p-2 font-mono text-[11px] leading-relaxed">
+        {run.logs.map((l, i) => (
+          <div
+            key={i}
+            className={
+              l.level === "error" ? "text-red-400" : l.level === "warn" ? "text-yellow-400" : ""
+            }
+          >
+            {l.message}
+          </div>
+        ))}
+        {run.error && <div className="text-red-400">Error: {run.error.message}</div>}
+        {run.output !== undefined && run.output !== null && (
+          <pre className="mt-2 opacity-80">{JSON.stringify(run.output, null, 2)}</pre>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function messageOf(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
+function structuredCloneSafe<T>(v: T): T {
+  return JSON.parse(JSON.stringify(v)) as T;
+}
