@@ -29,7 +29,11 @@ describe("dnsContentField", () => {
     const fields = dnsContentField({ key: "content" });
     expect(fields).toHaveLength(5);
 
-    const [mode, aPicker, aaaaPicker, cnamePicker, text] = fields;
+    const mode = fields[0]!;
+    const aPicker = fields[1]!;
+    const aaaaPicker = fields[2]!;
+    const cnamePicker = fields[3]!;
+    const text = fields[4]!;
 
     expect(mode.key).toBe("content__mode");
     expect(mode.kind).toBe("select");
@@ -69,8 +73,8 @@ describe("dnsContentField", () => {
       required: false,
       recordTypeFieldKey: "recordType",
     });
-    const mode = fields[0];
-    const aPicker = fields[1];
+    const mode = fields[0]!;
+    const aPicker = fields[1]!;
     expect(mode.key).toBe("data__mode");
     expect(mode.showWhen).toEqual({
       fieldKey: "recordType",
@@ -88,7 +92,7 @@ describe("dnsContentField", () => {
 
   it("omits placeholder/description on text input when not given", () => {
     const fields = dnsContentField({ key: "value" });
-    const text = fields[4];
+    const text = fields[4]!;
     expect("placeholder" in text).toBe(false);
     expect("description" in text).toBe(false);
   });
@@ -99,7 +103,7 @@ describe("dnsContentField", () => {
       placeholder: "1.2.3.4",
       description: "An IP",
     });
-    const text = fields[4];
+    const text = fields[4]!;
     expect(text.placeholder).toBe("1.2.3.4");
     expect(text.description).toBe("An IP");
   });

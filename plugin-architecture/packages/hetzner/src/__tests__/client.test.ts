@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from "vitest";
 import { HetznerClient } from "../client.js";
 import { plugin } from "../plugin.js";
 
@@ -27,7 +27,8 @@ function notOk(status: number, text = "boom"): Response {
   } as unknown as Response;
 }
 
-let fetchMock: ReturnType<typeof vi.spyOn>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let fetchMock: MockInstance<any>;
 
 beforeEach(() => {
   fetchMock = vi.spyOn(globalThis, "fetch");
@@ -37,8 +38,13 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function lastCall() {
-  return fetchMock.mock.calls[fetchMock.mock.calls.length - 1];
+function lastCall(): [url: string | URL | Request, init: RequestInit] {
+  const call = fetchMock.mock.calls[fetchMock.mock.calls.length - 1] as unknown as [
+    string | URL | Request,
+    RequestInit,
+  ];
+  if (!call) throw new Error("no fetch calls recorded");
+  return call;
 }
 
 describe("constructor", () => {
@@ -73,7 +79,7 @@ describe("listResources", () => {
     );
     const res = await c.listResources("server", ACCOUNT);
     expect(res).toHaveLength(1);
-    const s = res[0];
+    const s = res[0]!;
     expect(s.id).toBe(`${ACCOUNT}:server:1`);
     expect(s.externalId).toBe("1");
     expect(s.displayName).toBe("web");
@@ -98,11 +104,11 @@ describe("listResources", () => {
     const c = makeClient();
     fetchMock.mockResolvedValueOnce(okJson({ servers: [{ id: 2, name: "bare", status: "off" }] }));
     const res = await c.listResources("server", ACCOUNT);
-    expect(res[0].fields["serverType"]).toBe("");
-    expect(res[0].fields["location"]).toBe("");
-    expect(res[0].fields["image"]).toBe("");
-    expect(res[0].resolvedOutputs["ipv4"]).toBe("");
-    expect(typeof res[0].createdAt).toBe("string");
+    expect(res[0]!.fields["serverType"]).toBe("");
+    expect(res[0]!.fields["location"]).toBe("");
+    expect(res[0]!.fields["image"]).toBe("");
+    expect(res[0]!.resolvedOutputs["ipv4"]).toBe("");
+    expect(typeof res[0]!.createdAt).toBe("string");
   });
 
   it("maps volumes including attached server", async () => {
@@ -125,10 +131,10 @@ describe("listResources", () => {
       }),
     );
     const res = await c.listResources("volume", ACCOUNT);
-    expect(res[0].fields["serverId"]).toBe("7");
-    expect(res[0].fields["linuxDevice"]).toBe("/dev/sdb");
-    expect(res[1].fields["serverId"]).toBe("");
-    expect(res[1].fields["format"]).toBe("");
+    expect(res[0]!.fields["serverId"]).toBe("7");
+    expect(res[0]!.fields["linuxDevice"]).toBe("/dev/sdb");
+    expect(res[1]!.fields["serverId"]).toBe("");
+    expect(res[1]!.fields["format"]).toBe("");
   });
 
   it("maps floating ips", async () => {
@@ -149,10 +155,10 @@ describe("listResources", () => {
       }),
     );
     const res = await c.listResources("floating-ip", ACCOUNT);
-    expect(res[0].displayName).toBe("5.5.5.5");
-    expect(res[0].fields["serverId"]).toBe("7");
-    expect(res[0].fields["blocked"]).toBe(true);
-    expect(res[0].resolvedOutputs["ip"]).toBe("5.5.5.5");
+    expect(res[0]!.displayName).toBe("5.5.5.5");
+    expect(res[0]!.fields["serverId"]).toBe("7");
+    expect(res[0]!.fields["blocked"]).toBe(true);
+    expect(res[0]!.resolvedOutputs["ip"]).toBe("5.5.5.5");
   });
 
   it("maps floating ips with no server and name fallback", async () => {
@@ -163,10 +169,10 @@ describe("listResources", () => {
       }),
     );
     const res = await c.listResources("floating-ip", ACCOUNT);
-    expect(res[0].displayName).toBe("myip");
-    expect(res[0].fields["serverId"]).toBe("");
-    expect(res[0].fields["blocked"]).toBe(false);
-    expect(res[0].fields["location"]).toBe("");
+    expect(res[0]!.displayName).toBe("myip");
+    expect(res[0]!.fields["serverId"]).toBe("");
+    expect(res[0]!.fields["blocked"]).toBe(false);
+    expect(res[0]!.fields["location"]).toBe("");
   });
 
   it("maps firewalls counting rules and applied_to", async () => {
@@ -180,10 +186,10 @@ describe("listResources", () => {
       }),
     );
     const res = await c.listResources("firewall", ACCOUNT);
-    expect(res[0].fields["rulesCount"]).toBe(2);
-    expect(res[0].fields["appliedToCount"]).toBe(1);
-    expect(res[1].fields["rulesCount"]).toBe(0);
-    expect(res[1].fields["appliedToCount"]).toBe(0);
+    expect(res[0]!.fields["rulesCount"]).toBe(2);
+    expect(res[0]!.fields["appliedToCount"]).toBe(1);
+    expect(res[1]!.fields["rulesCount"]).toBe(0);
+    expect(res[1]!.fields["appliedToCount"]).toBe(0);
   });
 
   it("throws on unknown type", async () => {
@@ -203,7 +209,7 @@ describe("fetchAll pagination", () => {
     const res = await c.listResources("server", ACCOUNT);
     expect(res).toHaveLength(51);
     expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(String(fetchMock.mock.calls[1][0])).toContain("page=2");
+    expect(String(fetchMock.mock.calls[1]![0])).toContain("page=2");
   });
 
   it("stops when meta total_entries reached", async () => {
@@ -344,7 +350,8 @@ describe("resolveOutput", () => {
 describe("getCreateConfig", () => {
   it("builds server config with regions, sizes, images", async () => {
     const c = makeClient();
-    fetchMock.mockImplementation(async (url: string | URL | Request) => {
+    fetchMock.mockImplementation(async (...args: unknown[]) => {
+      const url = args[0];
       const u = String(url);
       if (u.includes("/locations"))
         return okJson({ locations: [{ id: 1, name: "fsn1", city: "Falkenstein", country: "DE" }] });
@@ -481,10 +488,10 @@ describe("createResource", () => {
     });
     expect(r.externalId).toBe("6");
     expect(fetchMock).toHaveBeenCalledTimes(3);
-    const serverBody = JSON.parse(fetchMock.mock.calls[1][1].body as string);
+    const serverBody = JSON.parse((fetchMock.mock.calls[1]![1] as RequestInit).body as string);
     expect(serverBody.ssh_keys).toEqual([77]);
     expect(serverBody.firewalls).toEqual([{ firewall: 30 }]);
-    const volBody = JSON.parse(fetchMock.mock.calls[2][1].body as string);
+    const volBody = JSON.parse((fetchMock.mock.calls[2]![1] as RequestInit).body as string);
     expect(volBody).toMatchObject({ size: 80, server: 6, format: "xfs", automount: true });
   });
 
@@ -505,7 +512,7 @@ describe("createResource", () => {
     });
     expect(r.externalId).toBe("7");
     const serverBody = JSON.parse(
-      fetchMock.mock.calls[fetchMock.mock.calls.length - 1][1].body as string,
+      (fetchMock.mock.calls[fetchMock.mock.calls.length - 1]![1] as RequestInit).body as string,
     );
     expect(serverBody.ssh_keys).toEqual([88]);
   });
@@ -524,7 +531,7 @@ describe("createResource", () => {
     });
     expect(r.externalId).toBe("8");
     const serverBody = JSON.parse(
-      fetchMock.mock.calls[fetchMock.mock.calls.length - 1][1].body as string,
+      (fetchMock.mock.calls[fetchMock.mock.calls.length - 1]![1] as RequestInit).body as string,
     );
     expect(serverBody.ssh_keys).toBeUndefined();
   });
@@ -781,7 +788,7 @@ describe("fetchDashboardStats", () => {
     const c = makeClient();
     fetchMock.mockResolvedValueOnce(okJson({ server: { id: 1, name: "s", status: "off" } }));
     const stats = await c.fetchDashboardStats("server", `${ACCOUNT}:server:1`, ACCOUNT);
-    expect(stats[0].variant).toBe("status-error");
+    expect(stats[0]!.variant).toBe("status-error");
     expect(stats.find((s) => s.label === "IPv4")).toBeUndefined();
   });
 
@@ -789,7 +796,7 @@ describe("fetchDashboardStats", () => {
     const c = makeClient();
     fetchMock.mockResolvedValueOnce(okJson({ server: { id: 1, name: "s", status: "starting" } }));
     const stats = await c.fetchDashboardStats("server", `${ACCOUNT}:server:1`, ACCOUNT);
-    expect(stats[0].variant).toBe("status-degraded");
+    expect(stats[0]!.variant).toBe("status-degraded");
   });
 
   it("volume stats", async () => {
@@ -860,7 +867,7 @@ describe("fetchMetricSeries", () => {
     expect(cpu?.points[0]).toEqual({ timestamp: 1700000000000, value: 12.5 });
     expect(series.some((s) => s.label === "Disk IOPS (read)")).toBe(true);
     expect(series.some((s) => s.label === "Disk IOPS (write)")).toBe(false);
-    const url = String(fetchMock.mock.calls[0][0]);
+    const url = String(fetchMock.mock.calls[0]![0]);
     expect(url).toContain("/servers/1/metrics");
   });
 
@@ -920,7 +927,7 @@ describe("renderDetail / renderSidebarItem", () => {
     const d = c.renderDetail(server);
     expect(d.title).toBe("web");
     expect(d.status).toEqual({ kind: "status-dot", status: "healthy" });
-    expect(d.sections[0].kind).toBe("section");
+    expect(d.sections[0]!.kind).toBe("section");
   });
 
   it("renderDetail for non-server uses info", () => {
@@ -968,6 +975,6 @@ describe("caCert routing via host http service", () => {
     await c.listResources("server", ACCOUNT);
     expect(request).toHaveBeenCalled();
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(request.mock.calls[0][0]).toMatchObject({ caCert: "PEM" });
+    expect((request.mock.calls as unknown as [unknown[]])[0]![0]).toMatchObject({ caCert: "PEM" });
   });
 });

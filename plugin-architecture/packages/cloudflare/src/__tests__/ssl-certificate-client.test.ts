@@ -28,11 +28,11 @@ describe("ssl-certificate-client", () => {
   it("listAllSSLCertificates maps a cert with zone name", async () => {
     const api = sslApi();
     const out = await listAllSSLCertificates(api, "acct");
-    expect(out[0].id).toBe("acct:ssl-certificate:z1/c1");
-    expect(out[0].fields.hosts).toBe("a.com, www.a.com");
-    expect(out[0].fields.issuer).toBe("DigiCert Inc");
-    expect(out[0].fields.expiresOn).toBe("2025-01-01");
-    expect(out[0].fields.zoneName).toBe("a.com");
+    expect(out[0]!.id).toBe("acct:ssl-certificate:z1/c1");
+    expect(out[0]!.fields.hosts).toBe("a.com, www.a.com");
+    expect(out[0]!.fields.issuer).toBe("DigiCert Inc");
+    expect(out[0]!.fields.expiresOn).toBe("2025-01-01");
+    expect(out[0]!.fields.zoneName).toBe("a.com");
   });
 
   it("createSSLCertificate posts cert + key and resolves zone name", async () => {

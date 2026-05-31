@@ -24,7 +24,7 @@ function res(partial: Partial<ResourceInstance>): ResourceInstance {
   };
 }
 
-function httpCtx(overrides: Record<string, unknown> = {}) {
+function httpCtx(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     get: vi.fn(async () => ({})),
     post: vi.fn(async () => ({})),
@@ -127,14 +127,14 @@ describe("deleteAzureResource", () => {
       ),
       graphClient: {} as never,
     };
-    await deleteAzureResource(ctx, "azure-resource-group", "id", "acct");
+    await deleteAzureResource(ctx as never, "azure-resource-group", "id", "acct");
     expect(del).toHaveBeenCalledWith(
       "https://management.azure.com/subscriptions/sub1/resourcegroups/rg1?api-version=2022-09-01",
     );
   });
 
   it("deletes a SQL database using the three-part externalId", async () => {
-    const del = vi.fn(async () => undefined);
+    const del = vi.fn(async (_url: string) => undefined);
     const ctx = {
       ...httpCtx({ del }),
       getResource: vi.fn(async () =>
@@ -142,18 +142,18 @@ describe("deleteAzureResource", () => {
       ),
       graphClient: {} as never,
     };
-    await deleteAzureResource(ctx, "azure-sql-database", "id", "acct");
+    await deleteAzureResource(ctx as never, "azure-sql-database", "id", "acct");
     expect(del.mock.calls[0]![0]).toContain("/servers/srv1/databases/db1");
   });
 
   it("deletes a standard rg/name resource", async () => {
-    const del = vi.fn(async () => undefined);
+    const del = vi.fn(async (_url: string) => undefined);
     const ctx = {
       ...httpCtx({ del }),
       getResource: vi.fn(async () => res({ resourceTypeId: "azure-vm", externalId: "rg1/vm1" })),
       graphClient: {} as never,
     };
-    await deleteAzureResource(ctx, "azure-vm", "id", "acct");
+    await deleteAzureResource(ctx as never, "azure-vm", "id", "acct");
     expect(del.mock.calls[0]![0]).toContain(
       "/providers/Microsoft.Compute/virtualMachines/vm1?api-version=2024-03-01",
     );
@@ -169,7 +169,7 @@ describe("deleteAzureResource", () => {
       ),
       graphClient: { api } as never,
     };
-    await deleteAzureResource(ctx, "azure-app-registration", "id", "acct");
+    await deleteAzureResource(ctx as never, "azure-app-registration", "id", "acct");
     expect(api).toHaveBeenCalledWith("/applications/obj-1");
     expect(deleteApi).toHaveBeenCalled();
   });
@@ -182,9 +182,9 @@ describe("deleteAzureResource", () => {
       ),
       graphClient: { api: vi.fn() } as never,
     };
-    await expect(deleteAzureResource(ctx, "azure-app-registration", "id", "acct")).rejects.toThrow(
-      /object id/,
-    );
+    await expect(
+      deleteAzureResource(ctx as never, "azure-app-registration", "id", "acct"),
+    ).rejects.toThrow(/object id/);
   });
 
   it("throws on unsupported type", async () => {
@@ -193,7 +193,7 @@ describe("deleteAzureResource", () => {
       getResource: vi.fn(async () => res({ resourceTypeId: "azure-weird", externalId: "x" })),
       graphClient: {} as never,
     };
-    await expect(deleteAzureResource(ctx, "azure-weird", "id", "acct")).rejects.toThrow(
+    await expect(deleteAzureResource(ctx as never, "azure-weird", "id", "acct")).rejects.toThrow(
       /delete not supported/,
     );
   });
@@ -212,7 +212,7 @@ describe("attachAzureResource", () => {
   });
 
   it("attaches a disk to a VM at the next free LUN", async () => {
-    const patch = vi.fn(async () => ({}));
+    const patch = vi.fn(async (_url: string, _body: unknown) => ({}));
     const get = vi.fn(async () => ({
       properties: { storageProfile: { dataDisks: [{ lun: 0 }, { lun: 1 }] } },
     }));
@@ -220,7 +220,7 @@ describe("attachAzureResource", () => {
       ...httpCtx({ get, patch }),
       getResource: vi.fn(async (t: string) => (t === "azure-disk" ? disk : vm)),
     };
-    await attachAzureResource(ctx, "azure-disk", "ds", "azure-vm", "vms", "acct");
+    await attachAzureResource(ctx as never, "azure-disk", "ds", "azure-vm", "vms", "acct");
     const body = patch.mock.calls[0]![1] as {
       properties: { storageProfile: { dataDisks: Array<{ lun: number }> } };
     };
@@ -241,7 +241,7 @@ describe("attachAzureResource", () => {
       ),
     };
     await expect(
-      attachAzureResource(ctx, "azure-disk", "ds", "azure-vm", "vms", "acct"),
+      attachAzureResource(ctx as never, "azure-disk", "ds", "azure-vm", "vms", "acct"),
     ).rejects.toThrow(/does not match VM location/);
   });
 
@@ -250,7 +250,7 @@ describe("attachAzureResource", () => {
       resourceTypeId: "azure-nsg",
       fields: { name: "nsg1", resourceGroup: "rg1", location: "eastus" },
     });
-    const patch = vi.fn(async () => ({}));
+    const patch = vi.fn(async (_url: string, _body: unknown) => ({}));
     const get = vi.fn(async (url: string) => {
       if (url.includes("virtualMachines")) {
         return {
@@ -267,7 +267,7 @@ describe("attachAzureResource", () => {
       ...httpCtx({ get, patch }),
       getResource: vi.fn(async (t: string) => (t === "azure-nsg" ? nsg : vm)),
     };
-    await attachAzureResource(ctx, "azure-nsg", "ns", "azure-vm", "vms", "acct");
+    await attachAzureResource(ctx as never, "azure-nsg", "ns", "azure-vm", "vms", "acct");
     const body = patch.mock.calls[0]![1] as {
       properties: { networkSecurityGroup: { id: string } };
     };
@@ -284,14 +284,14 @@ describe("attachAzureResource", () => {
       getResource: vi.fn(async (t: string) => (t === "azure-nsg" ? nsg : vm)),
     };
     await expect(
-      attachAzureResource(ctx, "azure-nsg", "ns", "azure-vm", "vms", "acct"),
+      attachAzureResource(ctx as never, "azure-nsg", "ns", "azure-vm", "vms", "acct"),
     ).rejects.toThrow(/no network interfaces/);
   });
 
   it("throws for an unsupported attachment", async () => {
     const ctx = { ...httpCtx(), getResource: vi.fn(async () => res({})) };
     await expect(
-      attachAzureResource(ctx, "azure-disk", "ds", "azure-nsg", "ns", "acct"),
+      attachAzureResource(ctx as never, "azure-disk", "ds", "azure-nsg", "ns", "acct"),
     ).rejects.toThrow(/attachResource not supported/);
   });
 });
@@ -300,34 +300,38 @@ describe("attachAzureResource", () => {
 
 describe("manifest get/apply", () => {
   it("getAzureManifest fetches and pretty-prints the ARM json (rg)", async () => {
-    const get = vi.fn(async () => ({ id: "/rg", location: "eastus" }));
+    const get = vi.fn(async (_url: string) => ({ id: "/rg", location: "eastus" }));
     const ctx = httpCtx({ get });
-    const out = await getAzureManifest(ctx, "acct:azure-resource-group:rg1");
+    const out = await getAzureManifest(ctx as never, "acct:azure-resource-group:rg1");
     expect(get.mock.calls[0]![0]).toContain("/resourcegroups/rg1?api-version=2022-09-01");
     expect(JSON.parse(out)).toMatchObject({ location: "eastus" });
   });
 
   it("getAzureManifest builds the SQL database nested URL", async () => {
-    const get = vi.fn(async () => ({}));
-    await getAzureManifest(httpCtx({ get }), "acct:azure-sql-database:rg1/srv1/db1");
+    const get = vi.fn(async (_url: string) => ({}));
+    await getAzureManifest(httpCtx({ get }) as never, "acct:azure-sql-database:rg1/srv1/db1");
     expect(get.mock.calls[0]![0]).toContain("/servers/srv1/databases/db1");
   });
 
   it("getAzureManifest builds a standard provider URL", async () => {
-    const get = vi.fn(async () => ({}));
-    await getAzureManifest(httpCtx({ get }), "acct:azure-vm:rg1/vm1");
+    const get = vi.fn(async (_url: string) => ({}));
+    await getAzureManifest(httpCtx({ get }) as never, "acct:azure-vm:rg1/vm1");
     expect(get.mock.calls[0]![0]).toContain("/providers/Microsoft.Compute/virtualMachines/vm1");
   });
 
   it("getAzureManifest throws for an unsupported type", async () => {
-    await expect(getAzureManifest(httpCtx(), "acct:azure-weird:x")).rejects.toThrow(
+    await expect(getAzureManifest(httpCtx() as never, "acct:azure-weird:x")).rejects.toThrow(
       /manifest not supported/,
     );
   });
 
   it("applyAzureManifest PUTs the parsed body", async () => {
-    const put = vi.fn(async () => ({}));
-    await applyAzureManifest(httpCtx({ put }), "acct:azure-vm:rg1/vm1", '{"location":"eastus"}');
+    const put = vi.fn(async (_url: string, _body: unknown) => ({}));
+    await applyAzureManifest(
+      httpCtx({ put }) as never,
+      "acct:azure-vm:rg1/vm1",
+      '{"location":"eastus"}',
+    );
     expect(put.mock.calls[0]![1]).toEqual({ location: "eastus" });
   });
 });
@@ -351,7 +355,7 @@ describe("exportAzureCredential", () => {
   it("storage connection-string format", async () => {
     const ctx = saCtx(() => ({ keys: [{ keyName: "key1", value: "k1" }] }));
     const out = await exportAzureCredential(
-      ctx,
+      ctx as never,
       "azure-storage-account",
       "id",
       "acct",
@@ -359,7 +363,7 @@ describe("exportAzureCredential", () => {
     );
     expect(out.content).toContain("AccountName=s1");
     expect(out.filename).toBe("s1.connection-string");
-    expect(out.fields.some((f) => f.sensitive)).toBe(true);
+    expect(out.fields!.some((f) => f.sensitive)).toBe(true);
   });
 
   it("storage access-keys INI format with both keys", async () => {
@@ -370,7 +374,7 @@ describe("exportAzureCredential", () => {
       ],
     }));
     const out = await exportAzureCredential(
-      ctx,
+      ctx as never,
       "azure-storage-account",
       "id",
       "acct",
@@ -383,13 +387,13 @@ describe("exportAzureCredential", () => {
   it("storage throws when no keys returned", async () => {
     const ctx = saCtx(() => ({ keys: [] }));
     await expect(
-      exportAzureCredential(ctx, "azure-storage-account", "id", "acct", "access-keys"),
+      exportAzureCredential(ctx as never, "azure-storage-account", "id", "acct", "access-keys"),
     ).rejects.toThrow(/no storage account keys/);
   });
 
   it("app registration client-secret mints a Graph password", async () => {
     const post = vi.fn(async () => ({ secretText: "minted", keyId: "kid", endDateTime: "2027" }));
-    const api = vi.fn(() => ({ post }));
+    const api = vi.fn((_path: string) => ({ post }));
     const ctx = {
       ...httpCtx(),
       getResource: vi.fn(async () =>
@@ -404,7 +408,7 @@ describe("exportAzureCredential", () => {
       creds,
     };
     const out = await exportAzureCredential(
-      ctx,
+      ctx as never,
       "azure-app-registration",
       "id",
       "acct",
@@ -413,7 +417,7 @@ describe("exportAzureCredential", () => {
     expect(api.mock.calls[0]![0]).toBe("/applications/obj-1/addPassword");
     expect(out.content).toContain("AZURE_CLIENT_SECRET=minted");
     expect(out.content).toContain("AZURE_CLIENT_ID=app-1");
-    expect(out.fields.find((f) => f.label === "Key ID")?.value).toBe("kid");
+    expect(out.fields!.find((f) => f.label === "Key ID")?.value).toBe("kid");
   });
 
   it("app registration throws when Graph returns no secret", async () => {
@@ -431,15 +435,15 @@ describe("exportAzureCredential", () => {
       creds,
     };
     await expect(
-      exportAzureCredential(ctx, "azure-app-registration", "id", "acct", "client-secret"),
+      exportAzureCredential(ctx as never, "azure-app-registration", "id", "acct", "client-secret"),
     ).rejects.toThrow(/empty secretText/);
   });
 
   it("throws on unsupported type/format", async () => {
     const ctx = { ...httpCtx(), getResource: vi.fn(), graphClient: {} as never, creds };
-    await expect(exportAzureCredential(ctx, "azure-vm", "id", "acct", "x")).rejects.toThrow(
-      /not supported/,
-    );
+    await expect(
+      exportAzureCredential(ctx as never, "azure-vm", "id", "acct", "x"),
+    ).rejects.toThrow(/not supported/);
   });
 });
 

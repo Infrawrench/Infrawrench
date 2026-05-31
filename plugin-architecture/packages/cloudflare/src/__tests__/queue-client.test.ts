@@ -35,12 +35,12 @@ describe("queue-client", () => {
   it("listQueues maps a queue", async () => {
     const api = queueApi();
     const out = await listQueues(api, "acct");
-    expect(out[0].id).toBe("acct:queue:q1");
-    expect(out[0].externalId).toBe("q1");
-    expect(out[0].displayName).toBe("jobs");
-    expect(out[0].fields.producersTotal).toBe(2);
-    expect(out[0].fields.deliveryPaused).toBe(true);
-    expect(out[0].resolvedOutputs?.queueId).toBe("q1");
+    expect(out[0]!.id).toBe("acct:queue:q1");
+    expect(out[0]!.externalId).toBe("q1");
+    expect(out[0]!.displayName).toBe("jobs");
+    expect(out[0]!.fields.producersTotal).toBe(2);
+    expect(out[0]!.fields.deliveryPaused).toBe(true);
+    expect(out[0]!.resolvedOutputs?.queueId).toBe("q1");
   });
 
   it("getQueue fetches by id", async () => {

@@ -23,7 +23,7 @@ function httpCtx(get: (url: string) => unknown): AzureHttpContext {
     del: vi.fn(async () => undefined),
     subscriptionId: "sub1",
     tenantId: "t1",
-  };
+  } as unknown as AzureHttpContext;
 }
 
 afterEach(() => vi.restoreAllMocks());

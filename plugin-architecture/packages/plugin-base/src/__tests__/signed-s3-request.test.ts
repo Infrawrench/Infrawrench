@@ -19,7 +19,7 @@ describe("signedS3Fetch", () => {
     });
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchMock.mock.calls[0];
+    const [url, init] = fetchMock.mock.calls[0]!;
     expect(url).toBe("https://bucket.s3.amazonaws.com/?list-type=2&prefix=foo");
     expect(init.method).toBe("GET");
     const auth = init.headers["authorization"] ?? init.headers["Authorization"];
@@ -45,7 +45,7 @@ describe("signedS3Fetch", () => {
       body,
     });
 
-    const [, init] = fetchMock.mock.calls[0];
+    const [, init] = fetchMock.mock.calls[0]!;
     expect(init.method).toBe("PUT");
     expect(init.body).toBe(body);
   });
@@ -62,7 +62,7 @@ describe("signedS3Fetch", () => {
       method: "GET",
       url: "https://api.example.com/path",
     });
-    const [, init] = fetchMock.mock.calls[0];
+    const [, init] = fetchMock.mock.calls[0]!;
     const auth = init.headers["authorization"] ?? init.headers["Authorization"];
     expect(auth).toContain("/execute-api/aws4_request");
   });

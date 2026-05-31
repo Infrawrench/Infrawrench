@@ -122,8 +122,13 @@ describe("gcpRenderDetail", () => {
   });
 });
 
+type CreateCtxOver = Partial<Omit<GcpCreateContext, "get" | "paginate">> & {
+  get?: (url: string) => Promise<unknown>;
+  paginate?: (baseUrl: string, key: string, params?: Record<string, string>) => Promise<unknown[]>;
+};
+
 describe("create-handlers dispatch", () => {
-  function ctx(over: Partial<GcpCreateContext> = {}): GcpCreateContext {
+  function ctx(over: CreateCtxOver = {}): GcpCreateContext {
     return {
       get: vi.fn(async () => ({}) as never),
       paginate: vi.fn(async () => []),
@@ -132,7 +137,7 @@ describe("create-handlers dispatch", () => {
       id: (a, t, e) => `${a}:${t}:${e}`,
       now: () => "2026-01-01T00:00:00.000Z",
       machineTypeSpecCache: new Map(),
-      ...over,
+      ...(over as Partial<GcpCreateContext>),
     };
   }
 
@@ -221,7 +226,16 @@ describe("enrichDetail", () => {
   });
   afterEach(() => vi.restoreAllMocks());
 
-  function gcpCtx(over: Partial<GcpClientContext> = {}): GcpClientContext {
+  type GcpCtxOver = Partial<Omit<GcpClientContext, "get" | "paginate">> & {
+    get?: (url: string) => Promise<unknown>;
+    paginate?: (
+      baseUrl: string,
+      key: string,
+      params?: Record<string, string>,
+    ) => Promise<unknown[]>;
+  };
+
+  function gcpCtx(over: GcpCtxOver = {}): GcpClientContext {
     return {
       project: "proj",
       serviceAccountKey: {} as never,
@@ -232,7 +246,7 @@ describe("enrichDetail", () => {
       id: (a, t, e) => `${a}:${t}:${e}`,
       now: () => "t",
       getResource: vi.fn(),
-      ...over,
+      ...(over as Partial<GcpClientContext>),
     };
   }
 

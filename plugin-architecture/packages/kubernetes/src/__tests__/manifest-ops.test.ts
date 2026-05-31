@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import yaml from "js-yaml";
 import { getManifest, applyManifest, importYaml, describeResource } from "../manifest-ops.js";
+import type { K8sFetch } from "../shared.js";
 
 describe("getManifest", () => {
   it("fetches the object as YAML and strips managedFields", async () => {
@@ -9,7 +10,7 @@ describe("getManifest", () => {
       kind: "Pod",
       metadata: { name: "p", namespace: "ns", managedFields: [{ x: 1 }] },
       spec: { foo: "bar" },
-    }));
+    })) as unknown as K8sFetch;
     const out = await getManifest("a:k8s-pod:ns:p", fetch);
     expect(fetch).toHaveBeenCalledWith("/api/v1/namespaces/ns/pods/p");
     expect(out).not.toContain("managedFields");
@@ -18,7 +19,7 @@ describe("getManifest", () => {
   });
 
   it("tolerates objects without metadata", async () => {
-    const fetch = vi.fn(async () => ({ kind: "X" }));
+    const fetch = vi.fn(async () => ({ kind: "X" })) as unknown as K8sFetch;
     const out = await getManifest("a:k8s-pod:ns:p", fetch);
     expect(out).toContain("kind: X");
   });
@@ -26,7 +27,7 @@ describe("getManifest", () => {
 
 describe("applyManifest", () => {
   it("PUTs the parsed YAML body to the resource path", async () => {
-    const fetch = vi.fn(async () => ({}));
+    const fetch = vi.fn(async () => ({})) as unknown as K8sFetch;
     await applyManifest(
       "a:k8s-pod:ns:p",
       "apiVersion: v1\nkind: Pod\nmetadata:\n  name: p\n",
@@ -41,7 +42,7 @@ describe("applyManifest", () => {
 
 describe("importYaml", () => {
   it("applies each valid document via server-side apply PATCH", async () => {
-    const fetch = vi.fn(async () => ({}));
+    const fetch = vi.fn(async (_path: string, _opts?: RequestInit) => ({}));
     const docs = `apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -53,15 +54,15 @@ kind: Deployment
 metadata:
   name: dep1
 `;
-    const result = await importYaml(docs, fetch);
+    const result = await importYaml(docs, fetch as unknown as K8sFetch);
     expect(result).toEqual({ applied: 2 });
     expect(fetch).toHaveBeenCalledTimes(2);
     const [cmPath, cmOpts] = fetch.mock.calls[0]!;
     expect(cmPath).toBe(
       "/api/v1/namespaces/prod/configmaps/cm1?fieldManager=infrawrench&force=true",
     );
-    expect((cmOpts as RequestInit).method).toBe("PATCH");
-    expect((cmOpts as { headers: Record<string, string> }).headers["Content-Type"]).toBe(
+    expect((cmOpts as unknown as RequestInit).method).toBe("PATCH");
+    expect((cmOpts as unknown as { headers: Record<string, string> }).headers["Content-Type"]).toBe(
       "application/apply-patch+yaml",
     );
     // deployment defaults to the `default` namespace
@@ -71,24 +72,34 @@ metadata:
   });
 
   it("uses the non-namespaced path for cluster-scoped kinds", async () => {
-    const fetch = vi.fn(async () => ({}));
-    await importYaml("apiVersion: v1\nkind: Namespace\nmetadata:\n  name: prod\n", fetch);
+    const fetch = vi.fn(async (_path: string, _opts?: RequestInit) => ({}));
+    await importYaml(
+      "apiVersion: v1\nkind: Namespace\nmetadata:\n  name: prod\n",
+      fetch as unknown as K8sFetch,
+    );
     expect(fetch.mock.calls[0]![0]).toBe(
       "/api/v1/namespaces/prod?fieldManager=infrawrench&force=true",
     );
   });
 
   it("throws when no documents are found", async () => {
-    await expect(importYaml("\n# just a comment\n", vi.fn())).rejects.toThrow(/No YAML documents/);
+    await expect(
+      importYaml("\n# just a comment\n", vi.fn() as unknown as K8sFetch),
+    ).rejects.toThrow(/No YAML documents/);
   });
 
   it("throws on documents missing apiVersion/kind/name", async () => {
-    await expect(importYaml("kind: Pod\n", vi.fn())).rejects.toThrow(/missing apiVersion/);
+    await expect(importYaml("kind: Pod\n", vi.fn() as unknown as K8sFetch)).rejects.toThrow(
+      /missing apiVersion/,
+    );
   });
 
   it("throws on unsupported kinds", async () => {
     await expect(
-      importYaml("apiVersion: v1\nkind: Bogus\nmetadata:\n  name: x\n", vi.fn()),
+      importYaml(
+        "apiVersion: v1\nkind: Bogus\nmetadata:\n  name: x\n",
+        vi.fn() as unknown as K8sFetch,
+      ),
     ).rejects.toThrow(/unsupported kind/);
   });
 });
@@ -122,7 +133,7 @@ describe("describeResource", () => {
         spec: {},
       };
     });
-    const out = await describeResource("k8s-pod", "a:k8s-pod:ns:p", fetch);
+    const out = await describeResource("k8s-pod", "a:k8s-pod:ns:p", fetch as unknown as K8sFetch);
     expect(out).toContain("Name:         p");
     expect(out).toContain("Kind:         Pod");
     expect(out).toContain("Pulled");
@@ -137,13 +148,16 @@ describe("describeResource", () => {
       if (path.includes("/events")) throw new Error("rbac forbidden");
       return { kind: "Pod", metadata: { name: "p", namespace: "ns" } };
     });
-    const out = await describeResource("k8s-pod", "a:k8s-pod:ns:p", fetch);
+    const out = await describeResource("k8s-pod", "a:k8s-pod:ns:p", fetch as unknown as K8sFetch);
     expect(out).toContain("<none>");
     expect(warnSpy).toHaveBeenCalled();
   });
 
   it("skips event fetch for non-namespaced resources", async () => {
-    const fetch = vi.fn(async () => ({ kind: "Namespace", metadata: { name: "prod" } }));
+    const fetch = vi.fn(async () => ({
+      kind: "Namespace",
+      metadata: { name: "prod" },
+    })) as unknown as K8sFetch;
     const out = await describeResource("k8s-namespace", "a:k8s-namespace:prod", fetch);
     expect(out).toContain("Kind:         Namespace");
     expect(fetch).toHaveBeenCalledTimes(1);

@@ -88,7 +88,7 @@ describe("renderDnsRecordDetail", () => {
     expect(view.subtitle).toBe("A → 1.2.3.4");
     expect(view.status).toEqual({ kind: "status-dot", status: "info", label: "DNS Only" });
     // Record Details section exists with badges + key-value list
-    const section = view.sections[0];
+    const section = view.sections[0]!;
     expect(section.title).toBe("Record Details");
     // DNS Only badge for A type when not proxied
     const labels = section.children
@@ -105,9 +105,9 @@ describe("renderDnsRecordDetail", () => {
     );
     expect(view.status).toEqual({ kind: "status-dot", status: "healthy", label: "Proxied" });
     expect(view.sections.map((s) => s.title)).toContain("Cloudflare Proxy");
-    const badges = view.sections[0].children
-      .filter((c) => c.kind === "badge")
-      .map((c) => (c as { label: string }).label);
+    const badges = view.sections[0]!.children.filter((c) => c.kind === "badge").map(
+      (c) => (c as { label: string }).label,
+    );
     expect(badges).toContain("Proxied");
   });
 
@@ -131,7 +131,7 @@ describe("renderDnsRecordDetail", () => {
         zoneName: "example.com",
       }),
     );
-    const kv = view.sections[0].children.find((c) => c.kind === "key-value-list") as {
+    const kv = view.sections[0]!.children.find((c) => c.kind === "key-value-list") as {
       items: Array<{ key: string; value: string }>;
     };
     const keys = kv.items.map((i) => i.key);
@@ -142,7 +142,7 @@ describe("renderDnsRecordDetail", () => {
     const view = renderDnsRecordDetail(
       makeResource({ type: "A", name: "x", content: "1.2.3.4", ttl: 1, domainName: "z.com" }),
     );
-    const kv = view.sections[0].children.find((c) => c.kind === "key-value-list") as {
+    const kv = view.sections[0]!.children.find((c) => c.kind === "key-value-list") as {
       items: Array<{ key: string; value: string }>;
     };
     expect(kv.items.find((i) => i.key === "Zone")?.value).toBe("z.com");
@@ -156,7 +156,7 @@ describe("renderDnsRecordDetail", () => {
         extraSections: [{ kind: "section", title: "Extra", children: [] }],
       },
     );
-    const kv = view.sections[0].children.find((c) => c.kind === "key-value-list") as {
+    const kv = view.sections[0]!.children.find((c) => c.kind === "key-value-list") as {
       items: Array<{ key: string; value: string }>;
     };
     expect(kv.items.map((i) => i.key)).toContain("Custom");
@@ -167,9 +167,9 @@ describe("renderDnsRecordDetail", () => {
     const view = renderDnsRecordDetail(
       makeResource({ type: "TXT", name: "x", content: "v=spf1", ttl: 1 }),
     );
-    const badges = view.sections[0].children
-      .filter((c) => c.kind === "badge")
-      .map((c) => (c as { label: string }).label);
+    const badges = view.sections[0]!.children.filter((c) => c.kind === "badge").map(
+      (c) => (c as { label: string }).label,
+    );
     expect(badges).toEqual(["TXT"]);
   });
 });

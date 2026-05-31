@@ -48,8 +48,8 @@ describe("listClusters", () => {
       fields: { numWorkers: 4, driverNodeTypeId: "i3.xlarge", state: "RUNNING" },
       resolvedOutputs: { clusterId: "c1", sparkContextId: "ctx9" },
     });
-    expect(res[0].resolvedOutputs.jdbcUrl).toContain("dbc-test.cloud.databricks.com");
-    expect(res[0].createdAt).toBe(new Date(1700000000000).toISOString());
+    expect(res[0]!.resolvedOutputs.jdbcUrl).toContain("dbc-test.cloud.databricks.com");
+    expect(res[0]!.createdAt).toBe(new Date(1700000000000).toISOString());
   });
 
   it("maps autoscale cluster, uses display fallbacks and ctx.now", async () => {
@@ -57,9 +57,9 @@ describe("listClusters", () => {
       clusters: [{ cluster_id: "c2", autoscale: { max_workers: 8 } }],
     }));
     const res = await listClusters(ctx, ACCOUNT);
-    expect(res[0].displayName).toBe("c2");
-    expect(res[0].fields.numWorkers).toBe(8);
-    expect(res[0].createdAt).toBe("2024-01-01T00:00:00.000Z");
+    expect(res[0]!.displayName).toBe("c2");
+    expect(res[0]!.fields.numWorkers).toBe(8);
+    expect(res[0]!.createdAt).toBe("2024-01-01T00:00:00.000Z");
   });
 
   it("handles missing clusters array", async () => {
@@ -92,15 +92,15 @@ describe("listSqlWarehouses", () => {
       id: "acct1:databricks-sql-warehouse:w1",
       fields: { warehouseId: "w1", enablePhoton: true, numRunningQueries: 2 },
     });
-    expect(res[0].resolvedOutputs.jdbcUrl).toContain("httpPath=/sql/1.0/warehouses/w1");
-    expect(res[0].resolvedOutputs.odbcUrl).toContain("Simba Spark");
+    expect(res[0]!.resolvedOutputs.jdbcUrl).toContain("httpPath=/sql/1.0/warehouses/w1");
+    expect(res[0]!.resolvedOutputs.odbcUrl).toContain("Simba Spark");
   });
 
   it("uses fallbacks and empty array", async () => {
     const ctx = makeCtx(() => ({ warehouses: [{}] }));
     const res = await listSqlWarehouses(ctx, ACCOUNT);
-    expect(res[0].fields.state).toBe("STOPPED");
-    expect(res[0].fields.warehouseType).toBe("PRO");
+    expect(res[0]!.fields.state).toBe("STOPPED");
+    expect(res[0]!.fields.warehouseType).toBe("PRO");
     const ctx2 = makeCtx(() => ({}));
     expect(await listSqlWarehouses(ctx2, ACCOUNT)).toEqual([]);
   });
@@ -122,7 +122,7 @@ describe("listServingEndpoints", () => {
     }));
     const res = await listServingEndpoints(ctx, ACCOUNT);
     expect(res[0]).toMatchObject({ fields: { state: "READY", task: "chat" } });
-    expect(res[0].createdAt).toBe(new Date(1700000000000).toISOString());
+    expect(res[0]!.createdAt).toBe(new Date(1700000000000).toISOString());
   });
 
   it("maps NOT_READY and UNKNOWN states without timestamps", async () => {
@@ -133,9 +133,9 @@ describe("listServingEndpoints", () => {
       ],
     }));
     const res = await listServingEndpoints(ctx, ACCOUNT);
-    expect(res[0].fields.state).toBe("NOT_READY");
-    expect(res[1].fields.state).toBe("UNKNOWN");
-    expect(res[0].createdAt).toBe("2024-01-01T00:00:00.000Z");
+    expect(res[0]!.fields.state).toBe("NOT_READY");
+    expect(res[1]!.fields.state).toBe("UNKNOWN");
+    expect(res[0]!.createdAt).toBe("2024-01-01T00:00:00.000Z");
   });
 
   it("handles empty", async () => {
@@ -175,16 +175,16 @@ describe("listJobs", () => {
         lastRunResult: "SUCCESS",
       },
     });
-    expect(res[0].resolvedOutputs.jobUrl).toContain("/jobs/42");
+    expect(res[0]!.resolvedOutputs.jobUrl).toContain("/jobs/42");
   });
 
   it("uses fallbacks when settings/last_run absent", async () => {
     const ctx = makeCtx(() => ({ jobs: [{ job_id: 7 }] }));
     const res = await listJobs(ctx, ACCOUNT);
-    expect(res[0].displayName).toBe("Job 7");
-    expect(res[0].fields.lastRunState).toBe("");
-    expect(res[0].fields.taskCount).toBe(0);
-    expect(res[0].createdAt).toBe("2024-01-01T00:00:00.000Z");
+    expect(res[0]!.displayName).toBe("Job 7");
+    expect(res[0]!.fields.lastRunState).toBe("");
+    expect(res[0]!.fields.taskCount).toBe(0);
+    expect(res[0]!.createdAt).toBe("2024-01-01T00:00:00.000Z");
   });
 
   it("handles empty", async () => {
@@ -218,15 +218,15 @@ describe("listPipelines", () => {
       id: "acct1:databricks-pipeline:p1",
       fields: { target: "tgt", catalog: "cat", channel: "PREVIEW", continuous: true, photon: true },
     });
-    expect(res[0].fields.lastUpdateState).toBe("COMPLETED");
+    expect(res[0]!.fields.lastUpdateState).toBe("COMPLETED");
   });
 
   it("falls back when spec/updates missing", async () => {
     const ctx = makeCtx(() => ({ statuses: [{ pipeline_id: "p2" }] }));
     const res = await listPipelines(ctx, ACCOUNT);
-    expect(res[0].displayName).toBe("p2");
-    expect(res[0].fields.channel).toBe("CURRENT");
-    expect(res[0].fields.lastUpdateState).toBe("");
+    expect(res[0]!.displayName).toBe("p2");
+    expect(res[0]!.fields.channel).toBe("CURRENT");
+    expect(res[0]!.fields.lastUpdateState).toBe("");
   });
 
   it("handles empty", async () => {
@@ -255,14 +255,14 @@ describe("listCatalogs", () => {
       fields: { name: "main", owner: "me" },
       resolvedOutputs: { catalogName: "main", metastoreId: "ms1" },
     });
-    expect(res[0].createdAt).toBe(new Date(1700000000000).toISOString());
+    expect(res[0]!.createdAt).toBe(new Date(1700000000000).toISOString());
   });
 
   it("falls back and handles empty", async () => {
     const ctx = makeCtx(() => ({ catalogs: [{}] }));
     const res = await listCatalogs(ctx, ACCOUNT);
-    expect(res[0].fields.catalogType).toBe("MANAGED_CATALOG");
-    expect(res[0].createdAt).toBe("2024-01-01T00:00:00.000Z");
+    expect(res[0]!.fields.catalogType).toBe("MANAGED_CATALOG");
+    expect(res[0]!.createdAt).toBe("2024-01-01T00:00:00.000Z");
     const ctx2 = makeCtx(() => ({}));
     expect(await listCatalogs(ctx2, ACCOUNT)).toEqual([]);
   });
@@ -281,7 +281,7 @@ describe("listSchemas", () => {
     };
     const res = await listSchemas(ctx, ACCOUNT, "main");
     expect(apiSpy).toHaveBeenCalledWith("GET", "/api/2.1/unity-catalog/schemas?catalog_name=main");
-    expect(res[0]).toMatchObject({
+    expect(res[0]!).toMatchObject({
       id: "acct1:databricks-schema:main.sales",
       parentResourceId: "acct1:databricks-catalog:main",
       externalId: "main.sales",
@@ -321,7 +321,7 @@ describe("listTables", () => {
       "GET",
       "/api/2.1/unity-catalog/tables?catalog_name=main&schema_name=sales&max_results=1000",
     );
-    expect(res[0]).toMatchObject({
+    expect(res[0]!).toMatchObject({
       id: "acct1:databricks-table:main.sales.t",
       parentResourceId: "acct1:databricks-schema:main.sales",
       fields: { columnCount: 3, dataSourceFormat: "DELTA", storageLocation: "s3://x" },
@@ -331,7 +331,7 @@ describe("listTables", () => {
   it("falls back when columns absent and handles empty", async () => {
     const ctx = makeCtx(() => ({ tables: [{ name: "t" }] }));
     const res = await listTables(ctx, ACCOUNT, "main", "sales");
-    expect(res[0].fields.columnCount).toBe(0);
+    expect(res[0]!.fields.columnCount).toBe(0);
     const ctx2 = makeCtx(() => ({}));
     expect(await listTables(ctx2, ACCOUNT, "main", "sales")).toEqual([]);
   });

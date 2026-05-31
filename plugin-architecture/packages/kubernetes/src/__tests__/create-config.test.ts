@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { getCreateConfig } from "../create-config.js";
+import type { K8sFetch } from "../shared.js";
 
 const nsList = vi.fn(async () => ({
   items: [
@@ -7,7 +8,7 @@ const nsList = vi.fn(async () => ({
     { metadata: { name: "kube-system" } },
     { metadata: { name: "dev" } },
   ],
-}));
+})) as unknown as K8sFetch;
 
 function keys(fields: { key: string }[]): string[] {
   return fields.map((f) => f.key);
@@ -24,7 +25,7 @@ describe("getCreateConfig namespace field", () => {
   it("falls back to default namespace option when the API throws", async () => {
     const throwing = vi.fn(async () => {
       throw new Error("forbidden");
-    });
+    }) as unknown as K8sFetch;
     const cfg = await getCreateConfig("k8s-secret", undefined, throwing);
     const ns = cfg.fields.find((f) => f.key === "namespace")!;
     expect((ns as { options: { id: string }[] }).options).toEqual([

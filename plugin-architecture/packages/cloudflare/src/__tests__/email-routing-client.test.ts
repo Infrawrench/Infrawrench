@@ -29,10 +29,10 @@ describe("email-routing-client", () => {
   it("listAllEmailRoutingRules maps matchers/actions", async () => {
     const api = emailApi();
     const out = await listAllEmailRoutingRules(api, "acct");
-    expect(out[0].id).toBe("acct:email-routing-rule:z1/r1");
-    expect(out[0].parentResourceId).toBe("acct:zone:z1");
-    expect(out[0].fields.matchers).toBe("literal:to=support@a.com");
-    expect(out[0].fields.actions).toBe("forward: dest@b.com");
+    expect(out[0]!.id).toBe("acct:email-routing-rule:z1/r1");
+    expect(out[0]!.parentResourceId).toBe("acct:zone:z1");
+    expect(out[0]!.fields.matchers).toBe("literal:to=support@a.com");
+    expect(out[0]!.fields.actions).toBe("forward: dest@b.com");
   });
 
   it("createEmailRoutingRule builds a forward action", async () => {
@@ -55,7 +55,7 @@ describe("email-routing-client", () => {
   it("createEmailRoutingRule omits value for a drop action", async () => {
     const api = emailApi();
     await createEmailRoutingRule(api, "acct", { name: "D", actionType: "drop" }, "z1");
-    const call = (api.cf.emailRouting.rules.create as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    const call = (api.cf.emailRouting.rules.create as ReturnType<typeof vi.fn>).mock.calls[0]![0];
     expect(call.actions).toEqual([{ type: "drop" }]);
   });
 

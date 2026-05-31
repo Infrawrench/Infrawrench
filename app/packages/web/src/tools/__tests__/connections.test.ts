@@ -9,7 +9,7 @@ vi.mock("../../services/plugin-clients", () => ({
 
 const mockRewrite = vi.fn(async (_acct: string, cs: string) => cs);
 vi.mock("../../services/tunnel-resolver", () => ({
-  rewriteConnectionForTunnel: (...a: unknown[]) => mockRewrite(...a),
+  rewriteConnectionForTunnel: (a: unknown, b: unknown) => mockRewrite(a as string, b as string),
 }));
 
 const mockSqlQuery = vi.fn();

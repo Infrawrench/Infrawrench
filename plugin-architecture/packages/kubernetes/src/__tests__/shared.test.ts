@@ -182,7 +182,11 @@ describe("K8sFetcher via services.k8s driver", () => {
 
 describe("K8sFetcher via host http service (CA pinning)", () => {
   it("decodes the CA, calls http.request, parses the JSON body", async () => {
-    const request = vi.fn(async () => ({ status: 200, body: JSON.stringify({ ok: true }) }));
+    const request = vi.fn(async () => ({
+      status: 200,
+      headers: {} as Record<string, string>,
+      body: JSON.stringify({ ok: true }),
+    }));
     const parsed: ParsedKubeconfig = {
       server: "https://k8s.example",
       token: "tok",
@@ -202,7 +206,11 @@ describe("K8sFetcher via host http service (CA pinning)", () => {
   });
 
   it("passes through the body when present", async () => {
-    const request = vi.fn(async () => ({ status: 201, body: "{}" }));
+    const request = vi.fn(async () => ({
+      status: 201,
+      headers: {} as Record<string, string>,
+      body: "{}",
+    }));
     const parsed: ParsedKubeconfig = { server: "https://k8s.example", caCertData: btoa("C") };
     await new K8sFetcher(parsed, { http: { request } }).fetch("/x", {
       method: "POST",
@@ -224,7 +232,11 @@ describe("K8sFetcher via host http service (CA pinning)", () => {
   });
 
   it("throws on non-2xx http.request status", async () => {
-    const request = vi.fn(async () => ({ status: 403, body: "forbidden" }));
+    const request = vi.fn(async () => ({
+      status: 403,
+      headers: {} as Record<string, string>,
+      body: "forbidden",
+    }));
     const parsed: ParsedKubeconfig = { server: "https://k8s.example", caCertData: btoa("C") };
     await expect(new K8sFetcher(parsed, { http: { request } }).fetch("/x")).rejects.toThrow(
       /K8s API error 403.*forbidden/,
@@ -232,13 +244,21 @@ describe("K8sFetcher via host http service (CA pinning)", () => {
   });
 
   it("fetchText returns the raw body and surfaces http errors", async () => {
-    const ok = vi.fn(async () => ({ status: 200, body: "plain logs" }));
+    const ok = vi.fn(async () => ({
+      status: 200,
+      headers: {} as Record<string, string>,
+      body: "plain logs",
+    }));
     const parsed: ParsedKubeconfig = { server: "https://k8s.example", caCertData: btoa("C") };
     expect(await new K8sFetcher(parsed, { http: { request: ok } }).fetchText("/log")).toBe(
       "plain logs",
     );
 
-    const bad = vi.fn(async () => ({ status: 500, body: "oops" }));
+    const bad = vi.fn(async () => ({
+      status: 500,
+      headers: {} as Record<string, string>,
+      body: "oops",
+    }));
     await expect(
       new K8sFetcher(parsed, { http: { request: bad } }).fetchText("/log"),
     ).rejects.toThrow(/K8s API error 500/);

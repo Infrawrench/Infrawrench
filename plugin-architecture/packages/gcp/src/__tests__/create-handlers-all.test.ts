@@ -2,7 +2,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { gcpGetCreateConfig, gcpCreateResource } from "../create-handlers.js";
 import type { GcpCreateContext } from "../create-context.js";
 
-function ctx(over: Partial<GcpCreateContext> = {}): GcpCreateContext {
+type CtxOver = Partial<Omit<GcpCreateContext, "get" | "paginate">> & {
+  get?: (url: string) => Promise<unknown>;
+  paginate?: (baseUrl: string, key: string, params?: Record<string, string>) => Promise<unknown[]>;
+};
+
+function ctx(over: CtxOver = {}): GcpCreateContext {
   return {
     get: vi.fn(async () => ({}) as never),
     paginate: vi.fn(async () => []),
@@ -11,7 +16,7 @@ function ctx(over: Partial<GcpCreateContext> = {}): GcpCreateContext {
     id: (a, t, e) => `${a}:${t}:${e}`,
     now: () => "2026-01-01T00:00:00.000Z",
     machineTypeSpecCache: new Map(),
-    ...over,
+    ...(over as Partial<GcpCreateContext>),
   };
 }
 

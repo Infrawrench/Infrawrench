@@ -35,10 +35,10 @@ describe("firewall-rule-client", () => {
   it("listAllFirewallRules reads the custom ruleset rules", async () => {
     const api = fwApi();
     const out = await listAllFirewallRules(api, "acct");
-    expect(out[0].id).toBe("acct:firewall-rule:z1/rs1/rule1");
-    expect(out[0].parentResourceId).toBe("acct:zone:z1");
-    expect(out[0].fields.action).toBe("block");
-    expect(out[0].fields.expression).toBe("cf.client.bot");
+    expect(out[0]!.id).toBe("acct:firewall-rule:z1/rs1/rule1");
+    expect(out[0]!.parentResourceId).toBe("acct:zone:z1");
+    expect(out[0]!.fields.action).toBe("block");
+    expect(out[0]!.fields.expression).toBe("cf.client.bot");
   });
 
   it("listAllFirewallRules returns empty when no custom ruleset", async () => {

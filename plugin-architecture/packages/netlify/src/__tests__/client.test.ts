@@ -23,7 +23,7 @@ function installFetch(handler: (url: string, init?: RequestInit) => Response) {
     url: string,
     init?: RequestInit,
   ) => {
-    calls.push({ url: String(url), init });
+    calls.push({ url: String(url), ...(init !== undefined && { init }) });
     return handler(String(url), init);
   }) as typeof fetch);
 }
@@ -85,8 +85,8 @@ describe("constructor", () => {
   it("sends auth + accept headers and base url", async () => {
     router([[(u) => u.includes("/sites"), [SITE]]]);
     await client().listResources("netlify-site", ACCOUNT);
-    expect(calls[0].url).toContain("https://api.netlify.com/api/v1/sites");
-    const h = calls[0].init?.headers as Record<string, string>;
+    expect(calls[0]!.url).toContain("https://api.netlify.com/api/v1/sites");
+    const h = calls[0]!.init?.headers as Record<string, string>;
     expect(h["Authorization"]).toBe("Bearer tok");
     expect(h["Accept"]).toBe("application/json");
   });
@@ -99,7 +99,9 @@ describe("constructor", () => {
       ACCOUNT,
     );
     expect(request).toHaveBeenCalled();
-    expect((request.mock.calls[0][0] as { caCert?: string }).caCert).toBe("PEM");
+    expect(
+      ((request.mock.calls as unknown as [unknown[]])[0]![0] as { caCert?: string }).caCert,
+    ).toBe("PEM");
     expect(spy).not.toHaveBeenCalled();
   });
 });
@@ -114,7 +116,7 @@ describe("listResources sites + pagination", () => {
     });
     const res = await client().listResources("netlify-site", ACCOUNT);
     expect(res).toHaveLength(101);
-    const s = res[0];
+    const s = res[0]!;
     expect(s.id).toBe("acct-1:netlify-site:site1");
     expect(s.fields["framework"]).toBe("next");
     expect(s.fields["state"]).toBe("current");
@@ -131,9 +133,9 @@ describe("listResources sites + pagination", () => {
   it("maps site with minimal fields", async () => {
     installFetch(() => jsonResponse([{ id: "s2", name: "", created_at: "x", updated_at: "y" }]));
     const res = await client().listResources("netlify-site", ACCOUNT);
-    expect(res[0].displayName).toBe("s2");
-    expect(res[0].fields["framework"]).toBe("");
-    expect(res[0].fields["ssl"]).toBe(false);
+    expect(res[0]!.displayName).toBe("s2");
+    expect(res[0]!.fields["framework"]).toBe("");
+    expect(res[0]!.fields["ssl"]).toBe(false);
   });
 
   it("throws on unknown type", async () => {
@@ -173,10 +175,10 @@ describe("deploys / forms / build hooks / env vars (per-site fan-out)", () => {
     ]);
     const res = await client().listResources("netlify-deploy", ACCOUNT);
     expect(res).toHaveLength(1);
-    expect(res[0].id).toBe("acct-1:netlify-deploy:dep1");
-    expect(res[0].displayName).toBe("Deploy title");
-    expect(res[0].fields["url"]).toBe("https://dep.ssl");
-    expect(res[0].parentResourceId).toBe("acct-1:netlify-site:site1");
+    expect(res[0]!.id).toBe("acct-1:netlify-deploy:dep1");
+    expect(res[0]!.displayName).toBe("Deploy title");
+    expect(res[0]!.fields["url"]).toBe("https://dep.ssl");
+    expect(res[0]!.parentResourceId).toBe("acct-1:netlify-site:site1");
     // per_page=5 query passed
     const deployCall = calls.find((c) => c.url.includes("/deploys"));
     expect(deployCall?.url).toContain("per_page=5");
@@ -199,7 +201,7 @@ describe("deploys / forms / build hooks / env vars (per-site fan-out)", () => {
       ],
     ]);
     const res = await client().listResources("netlify-deploy", ACCOUNT);
-    expect(res[0].displayName).toBe("abcdef12");
+    expect(res[0]!.displayName).toBe("abcdef12");
   });
 
   it("deploy label falls back to id slice when no title/ref", async () => {
@@ -211,8 +213,8 @@ describe("deploys / forms / build hooks / env vars (per-site fan-out)", () => {
       ],
     ]);
     const res = await client().listResources("netlify-deploy", ACCOUNT);
-    expect(res[0].displayName).toBe("deployid");
-    expect(res[0].fields["url"]).toBe("");
+    expect(res[0]!.displayName).toBe("deployid");
+    expect(res[0]!.fields["url"]).toBe("");
   });
 
   it("lists forms", async () => {
@@ -232,9 +234,9 @@ describe("deploys / forms / build hooks / env vars (per-site fan-out)", () => {
       ],
     ]);
     const res = await client().listResources("netlify-form", ACCOUNT);
-    expect(res[0].id).toBe("acct-1:netlify-form:site1/form1");
-    expect(res[0].fields["paths"]).toBe("/a, /b");
-    expect(res[0].fields["submissionCount"]).toBe(5);
+    expect(res[0]!.id).toBe("acct-1:netlify-form:site1/form1");
+    expect(res[0]!.fields["paths"]).toBe("/a, /b");
+    expect(res[0]!.fields["submissionCount"]).toBe(5);
   });
 
   it("skips forms for sites that error", async () => {
@@ -255,8 +257,8 @@ describe("deploys / forms / build hooks / env vars (per-site fan-out)", () => {
       ],
     ]);
     const res = await client().listResources("netlify-build-hook", ACCOUNT);
-    expect(res[0].id).toBe("acct-1:netlify-build-hook:site1/hook1");
-    expect(res[0].resolvedOutputs["hookUrl"]).toBe("https://hook");
+    expect(res[0]!.id).toBe("acct-1:netlify-build-hook:site1/hook1");
+    expect(res[0]!.resolvedOutputs["hookUrl"]).toBe("https://hook");
   });
 
   it("build hook minimal fields fall back to id + iso timestamps", async () => {
@@ -265,8 +267,8 @@ describe("deploys / forms / build hooks / env vars (per-site fan-out)", () => {
       [(u) => u.includes("/build_hooks"), [{ id: "hook2" }]],
     ]);
     const res = await client().listResources("netlify-build-hook", ACCOUNT);
-    expect(res[0].displayName).toBe("hook2");
-    expect(res[0].createdAt).toMatch(/T/);
+    expect(res[0]!.displayName).toBe("hook2");
+    expect(res[0]!.createdAt).toMatch(/T/);
   });
 
   it("lists env vars with context dedupe", async () => {
@@ -286,9 +288,9 @@ describe("deploys / forms / build hooks / env vars (per-site fan-out)", () => {
       ],
     ]);
     const res = await client().listResources("netlify-env-var", ACCOUNT);
-    expect(res[0].id).toBe("acct-1:netlify-env-var:site1/API");
-    expect(res[0].fields["contexts"]).toBe("production, dev");
-    expect(res[0].fields["isSecret"]).toBe(true);
+    expect(res[0]!.id).toBe("acct-1:netlify-env-var:site1/API");
+    expect(res[0]!.fields["contexts"]).toBe("production, dev");
+    expect(res[0]!.fields["isSecret"]).toBe(true);
   });
 
   it("env var with no values yields empty contexts", async () => {
@@ -297,8 +299,8 @@ describe("deploys / forms / build hooks / env vars (per-site fan-out)", () => {
       [(u) => u.includes("/env"), [{ key: "K" }]],
     ]);
     const res = await client().listResources("netlify-env-var", ACCOUNT);
-    expect(res[0].fields["contexts"]).toBe("");
-    expect(res[0].fields["scopes"]).toBe("");
+    expect(res[0]!.fields["contexts"]).toBe("");
+    expect(res[0]!.fields["scopes"]).toBe("");
   });
 });
 
@@ -319,9 +321,9 @@ describe("DNS zones + records", () => {
   it("lists zones", async () => {
     router([[(u) => u.includes("/dns_zones") && !u.includes("/dns_records"), [ZONE]]]);
     const res = await client().listResources("netlify-dns-zone", ACCOUNT);
-    expect(res[0].id).toBe("acct-1:netlify-dns-zone:zone1");
-    expect(res[0].fields["dnsServers"]).toBe("ns1, ns2");
-    expect(res[0].fields["supportedRecordTypes"]).toBe("A, CNAME");
+    expect(res[0]!.id).toBe("acct-1:netlify-dns-zone:zone1");
+    expect(res[0]!.fields["dnsServers"]).toBe("ns1, ns2");
+    expect(res[0]!.fields["supportedRecordTypes"]).toBe("A, CNAME");
   });
 
   it("zone with missing arrays", async () => {
@@ -332,8 +334,8 @@ describe("DNS zones + records", () => {
       ],
     ]);
     const res = await client().listResources("netlify-dns-zone", ACCOUNT);
-    expect(res[0].fields["dnsServers"]).toBe("");
-    expect(res[0].resolvedOutputs["domain"]).toBe("z");
+    expect(res[0]!.fields["dnsServers"]).toBe("");
+    expect(res[0]!.resolvedOutputs["domain"]).toBe("z");
   });
 
   it("lists records across zones, skipping unreadable", async () => {
@@ -350,9 +352,9 @@ describe("DNS zones + records", () => {
     ]);
     const res = await client().listResources("netlify-dns-record", ACCOUNT);
     expect(res).toHaveLength(1);
-    expect(res[0].id).toBe("acct-1:netlify-dns-record:zone1/rec1");
-    expect(res[0].displayName).toBe("A www");
-    expect(res[0].fields["content"]).toBe("1.2.3.4");
+    expect(res[0]!.id).toBe("acct-1:netlify-dns-record:zone1/rec1");
+    expect(res[0]!.displayName).toBe("A www");
+    expect(res[0]!.fields["content"]).toBe("1.2.3.4");
   });
 
   it("record label falls back to id", async () => {
@@ -361,7 +363,7 @@ describe("DNS zones + records", () => {
       [(u) => u.includes("/dns_records"), [{ id: "recX" }]],
     ]);
     const res = await client().listResources("netlify-dns-record", ACCOUNT);
-    expect(res[0].displayName).toBe("recX");
+    expect(res[0]!.displayName).toBe("recX");
   });
 });
 
@@ -370,7 +372,7 @@ describe("getResource", () => {
     router([[(u) => u.includes("/sites/site1"), SITE]]);
     const r = await client().getResource("netlify-site", "acct-1:netlify-site:site1", ACCOUNT);
     expect(r.externalId).toBe("site1");
-    expect(calls[0].url).toContain("/sites/site1");
+    expect(calls[0]!.url).toContain("/sites/site1");
   });
 
   it("falls back to list for non-site types", async () => {
@@ -626,7 +628,7 @@ describe("fetchDashboardStats", () => {
       "acct-1:netlify-site:site1",
       ACCOUNT,
     );
-    expect(stats[0].variant).toBe("status-error");
+    expect(stats[0]!.variant).toBe("status-error");
     expect(stats).toHaveLength(1);
   });
 
@@ -642,7 +644,7 @@ describe("fetchDashboardStats", () => {
       "acct-1:netlify-site:site1",
       ACCOUNT,
     );
-    expect(stats[0].variant).toBe("default");
+    expect(stats[0]!.variant).toBe("default");
   });
 
   it("dns zone stats", async () => {
@@ -657,7 +659,7 @@ describe("fetchDashboardStats", () => {
       "acct-1:netlify-dns-zone:zone1",
       ACCOUNT,
     );
-    expect(stats[0].value).toBe("d.com");
+    expect(stats[0]!.value).toBe("d.com");
   });
 
   it("returns empty for form type", async () => {
@@ -870,12 +872,12 @@ describe("renderSidebarItem", () => {
 describe("getCreateConfig", () => {
   it("site config", async () => {
     const cfg = await client().getCreateConfig("netlify-site");
-    expect(cfg.fields[0].key).toBe("name");
+    expect(cfg.fields[0]!.key).toBe("name");
   });
 
   it("dns zone config", async () => {
     const cfg = await client().getCreateConfig("netlify-dns-zone");
-    expect(cfg.fields[0].key).toBe("name");
+    expect(cfg.fields[0]!.key).toBe("name");
   });
 
   it("dns record config without parent fetches zones", async () => {
@@ -897,7 +899,7 @@ describe("getCreateConfig", () => {
       "acct-1:netlify-dns-zone:zone1",
     );
     expect(cfg.fields.find((f) => f.key === "zoneId")).toBeUndefined();
-    expect(cfg.fields[0].key).toBe("type");
+    expect(cfg.fields[0]!.key).toBe("type");
   });
 
   it("dns record config handles null zones", async () => {
@@ -916,18 +918,18 @@ describe("getCreateConfig", () => {
 
   it("build hook config with parent omits site field", async () => {
     const cfg = await client().getCreateConfig("netlify-build-hook", "acct-1:netlify-site:site1");
-    expect(cfg.fields[0].key).toBe("title");
+    expect(cfg.fields[0]!.key).toBe("title");
   });
 
   it("env var config fetches sites", async () => {
     router([[(u) => u.includes("/sites"), [SITE]]]);
     const cfg = await client().getCreateConfig("netlify-env-var");
-    expect(cfg.fields.find((f) => f.key === "siteId")?.options?.[0].label).toBe("my-site");
+    expect(cfg.fields.find((f) => f.key === "siteId")?.options?.[0]?.label).toBe("my-site");
   });
 
   it("env var config with parent omits site field", async () => {
     const cfg = await client().getCreateConfig("netlify-env-var", "acct-1:netlify-site:site1");
-    expect(cfg.fields[0].key).toBe("key");
+    expect(cfg.fields[0]!.key).toBe("key");
   });
 
   it("throws for unknown type", async () => {
@@ -940,7 +942,7 @@ describe("createResource", () => {
     router([[(u, i) => method(i) === "POST" && u.endsWith("/sites"), SITE]]);
     const r = await client().createResource("netlify-site", ACCOUNT, { name: "my-site" });
     expect(r.externalId).toBe("site1");
-    const body = JSON.parse(calls[0].init?.body as string);
+    const body = JSON.parse(calls[0]!.init?.body as string);
     expect(body).toEqual({ name: "my-site" });
   });
 
@@ -970,7 +972,7 @@ describe("createResource", () => {
       ttl: "300",
     });
     expect(r.externalId).toBe("rec1");
-    const body = JSON.parse(calls[0].init?.body as string);
+    const body = JSON.parse(calls[0]!.init?.body as string);
     expect(body.ttl).toBe(300);
   });
 
@@ -987,8 +989,8 @@ describe("createResource", () => {
       { type: "TXT", hostname: "@", value: "v" },
       "acct-1:netlify-dns-zone:zone9",
     );
-    expect(calls[0].url).toContain("/dns_zones/zone9/dns_records");
-    expect(JSON.parse(calls[0].init?.body as string).ttl).toBeUndefined();
+    expect(calls[0]!.url).toContain("/dns_zones/zone9/dns_records");
+    expect(JSON.parse(calls[0]!.init?.body as string).ttl).toBeUndefined();
     expect(r.id).toContain("zone9");
   });
 
@@ -1015,7 +1017,7 @@ describe("createResource", () => {
       branch: "main",
     });
     expect(r.externalId).toBe("hook1");
-    expect(JSON.parse(calls[0].init?.body as string).branch).toBe("main");
+    expect(JSON.parse(calls[0]!.init?.body as string).branch).toBe("main");
   });
 
   it("creates a build hook without branch from parent", async () => {
@@ -1028,8 +1030,8 @@ describe("createResource", () => {
       { title: "CMS" },
       "acct-1:netlify-site:siteP",
     );
-    expect(calls[0].url).toContain("/sites/siteP/build_hooks");
-    expect(JSON.parse(calls[0].init?.body as string).branch).toBeUndefined();
+    expect(calls[0]!.url).toContain("/sites/siteP/build_hooks");
+    expect(JSON.parse(calls[0]!.init?.body as string).branch).toBeUndefined();
   });
 
   it("throws when build hook missing siteId", async () => {
@@ -1048,8 +1050,10 @@ describe("createResource", () => {
     });
     expect(r.id).toBe("acct-1:netlify-env-var:site1/K");
     expect(r.fields["contexts"]).toBe("production");
-    const body = JSON.parse(calls[0].init?.body as string);
-    expect(body[0].values[0]).toEqual({ context: "production", value: "V" });
+    const body = JSON.parse(calls[0]!.init?.body as string);
+    expect((body as unknown[])[0]).toEqual(
+      expect.objectContaining({ values: [{ context: "production", value: "V" }] }),
+    );
   });
 
   it("creates env var with default context from parent", async () => {
@@ -1083,20 +1087,20 @@ describe("deleteResource", () => {
   it("deletes site", async () => {
     ok();
     await client().deleteResource("netlify-site", "acct-1:netlify-site:site1", ACCOUNT);
-    expect(calls[0].url).toContain("/sites/site1");
-    expect(method(calls[0].init)).toBe("DELETE");
+    expect(calls[0]!.url).toContain("/sites/site1");
+    expect(method(calls[0]!.init)).toBe("DELETE");
   });
 
   it("deletes deploy", async () => {
     ok();
     await client().deleteResource("netlify-deploy", "acct-1:netlify-deploy:dep1", ACCOUNT);
-    expect(calls[0].url).toContain("/deploys/dep1");
+    expect(calls[0]!.url).toContain("/deploys/dep1");
   });
 
   it("deletes form", async () => {
     ok();
     await client().deleteResource("netlify-form", "acct-1:netlify-form:site1/form1", ACCOUNT);
-    expect(calls[0].url).toContain("/sites/site1/forms/form1");
+    expect(calls[0]!.url).toContain("/sites/site1/forms/form1");
   });
 
   it("throws on bad form id", async () => {
@@ -1108,7 +1112,7 @@ describe("deleteResource", () => {
   it("deletes dns zone", async () => {
     ok();
     await client().deleteResource("netlify-dns-zone", "acct-1:netlify-dns-zone:zone1", ACCOUNT);
-    expect(calls[0].url).toContain("/dns_zones/zone1");
+    expect(calls[0]!.url).toContain("/dns_zones/zone1");
   });
 
   it("deletes dns record", async () => {
@@ -1118,7 +1122,7 @@ describe("deleteResource", () => {
       "acct-1:netlify-dns-record:zone1/rec1",
       ACCOUNT,
     );
-    expect(calls[0].url).toContain("/dns_zones/zone1/dns_records/rec1");
+    expect(calls[0]!.url).toContain("/dns_zones/zone1/dns_records/rec1");
   });
 
   it("throws on bad dns record id", async () => {
@@ -1134,7 +1138,7 @@ describe("deleteResource", () => {
       "acct-1:netlify-build-hook:site1/hook1",
       ACCOUNT,
     );
-    expect(calls[0].url).toContain("/sites/site1/build_hooks/hook1");
+    expect(calls[0]!.url).toContain("/sites/site1/build_hooks/hook1");
   });
 
   it("throws on bad build hook id", async () => {
@@ -1150,7 +1154,7 @@ describe("deleteResource", () => {
       "acct-1:netlify-env-var:site1/MY KEY",
       ACCOUNT,
     );
-    expect(calls[0].url).toContain("/sites/site1/env/MY%20KEY");
+    expect(calls[0]!.url).toContain("/sites/site1/env/MY%20KEY");
   });
 
   it("throws on bad env var id", async () => {

@@ -432,7 +432,7 @@ describe("getCreateConfig / getCreateCostEstimate / exportCredential / manifests
     );
     expect(exp.filename).toContain("my-bucket");
     expect(exp.content).toContain("AK2");
-    expect(exp.fields.some((f) => f.sensitive)).toBe(true);
+    expect(exp.fields!.some((f) => f.sensitive)).toBe(true);
   });
 
   it("exportCredential rejects unknown formats", async () => {

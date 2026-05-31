@@ -32,7 +32,7 @@ describe("DashboardCard", () => {
     render(
       <DashboardCard
         card={makeCard({
-          badges: [{ label: "prod" }],
+          badges: [{ kind: "badge", label: "prod", color: "blue" }],
           status: { kind: "status-dot", status: "healthy", label: "Up" },
         })}
         pluginLogoSvg={LOGO}

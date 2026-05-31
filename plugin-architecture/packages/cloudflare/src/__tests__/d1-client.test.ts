@@ -30,9 +30,9 @@ describe("d1-client", () => {
   it("listD1Databases maps databases", async () => {
     const api = d1Api();
     const out = await listD1Databases(api, "acct");
-    expect(out[0].id).toBe("acct:d1-database:db1");
-    expect(out[0].fields.numTables).toBe(3);
-    expect(out[0].displayName).toBe("mydb");
+    expect(out[0]!.id).toBe("acct:d1-database:db1");
+    expect(out[0]!.fields.numTables).toBe(3);
+    expect(out[0]!.displayName).toBe("mydb");
   });
 
   it("getD1Database fetches via raw get path", async () => {
@@ -84,12 +84,12 @@ describe("d1-client", () => {
     const api = d1Api({ cf: { get: vi.fn(), d1: { database: { query } } } });
     const meta = await introspectD1Database(api, "acct:d1-database:db1");
     expect(meta).toHaveLength(1);
-    expect(meta[0].name).toBe("users");
-    expect(meta[0].columns).toEqual([
+    expect(meta[0]!.name).toBe("users");
+    expect(meta[0]!.columns).toEqual([
       { name: "id", type: "INTEGER" },
       { name: "email", type: "TEXT" },
     ]);
-    expect(meta[0].pkColumns).toEqual(["id"]);
+    expect(meta[0]!.pkColumns).toEqual(["id"]);
   });
 
   it("introspectD1Database skips unnamed tables", async () => {

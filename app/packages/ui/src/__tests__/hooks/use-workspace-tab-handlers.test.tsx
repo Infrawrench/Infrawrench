@@ -20,7 +20,7 @@ describe("useWorkspaceTabHandlers", () => {
     });
     const navigate = vi.fn();
     const { result } = renderHook(() => useWorkspaceTabHandlers(navigate, navArgs));
-    const firstTabId = useUIStore.getState().workspaceTabs[0].id;
+    const firstTabId = useUIStore.getState().workspaceTabs[0]!.id;
     act(() => result.current.handleActivateTab(firstTabId));
     expect(useUIStore.getState().activeWorkspaceTabId).toBe(firstTabId);
     expect(navigate).toHaveBeenCalledWith({ to: "/route/account" });
@@ -39,10 +39,10 @@ describe("useWorkspaceTabHandlers", () => {
       useUIStore.getState().pinWorkspaceTab({ kind: "account", accountId: "a2" }, "Acc 2");
     });
     const tabs = useUIStore.getState().workspaceTabs;
-    act(() => useUIStore.getState().activateWorkspaceTab(tabs[1].id));
+    act(() => useUIStore.getState().activateWorkspaceTab(tabs[1]!.id));
     const navigate = vi.fn();
     const { result } = renderHook(() => useWorkspaceTabHandlers(navigate, navArgs));
-    act(() => result.current.handleCloseTab(tabs[1].id));
+    act(() => result.current.handleCloseTab(tabs[1]!.id));
     expect(navigate).toHaveBeenCalled();
   });
 
@@ -50,7 +50,7 @@ describe("useWorkspaceTabHandlers", () => {
     act(() => {
       useUIStore.getState().pinWorkspaceTab({ kind: "account", accountId: "a1" }, "Acc 1");
     });
-    const onlyTab = useUIStore.getState().workspaceTabs[0];
+    const onlyTab = useUIStore.getState().workspaceTabs[0]!;
     act(() => useUIStore.getState().activateWorkspaceTab(onlyTab.id));
     const navigate = vi.fn();
     const { result } = renderHook(() => useWorkspaceTabHandlers(navigate, navArgs));
@@ -64,10 +64,10 @@ describe("useWorkspaceTabHandlers", () => {
       useUIStore.getState().pinWorkspaceTab({ kind: "account", accountId: "a2" }, "Acc 2");
     });
     const tabs = useUIStore.getState().workspaceTabs;
-    act(() => useUIStore.getState().activateWorkspaceTab(tabs[0].id));
+    act(() => useUIStore.getState().activateWorkspaceTab(tabs[0]!.id));
     const navigate = vi.fn();
     const { result } = renderHook(() => useWorkspaceTabHandlers(navigate, navArgs));
-    act(() => result.current.handleCloseTab(tabs[1].id));
+    act(() => result.current.handleCloseTab(tabs[1]!.id));
     expect(navigate).not.toHaveBeenCalled();
   });
 });

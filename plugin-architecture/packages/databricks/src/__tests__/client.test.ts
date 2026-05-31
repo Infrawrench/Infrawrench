@@ -32,7 +32,7 @@ function bodyText(r: FetchExpectation): string {
 function mockFetch(...responses: FetchExpectation[]) {
   let i = 0;
   fetchMock.mockImplementation(async () => {
-    const r = responses[Math.min(i, responses.length - 1)];
+    const r = responses[Math.min(i, responses.length - 1)]!;
     i++;
     if (r.reject) throw r.reject;
     const status = r.status ?? (r.ok === false ? 500 : 200);
@@ -63,7 +63,7 @@ describe("constructor", () => {
     mockFetch({ body: { clusters: [] } });
     const client = makeClient();
     await client.listResources("databricks-cluster", ACCOUNT);
-    expect(fetchMock.mock.calls[0][0]).toBe(
+    expect(fetchMock.mock.calls[0]![0]).toBe(
       "https://dbc-test.cloud.databricks.com/api/2.0/clusters/list",
     );
   });
@@ -71,7 +71,7 @@ describe("constructor", () => {
     mockFetch({ body: { clusters: [] } });
     const client = makeClient({ host: "http://local/" });
     await client.listResources("databricks-cluster", ACCOUNT);
-    expect(fetchMock.mock.calls[0][0]).toBe("http://local/api/2.0/clusters/list");
+    expect(fetchMock.mock.calls[0]![0]).toBe("http://local/api/2.0/clusters/list");
   });
 });
 
@@ -105,7 +105,7 @@ describe("listResources routing", () => {
     const client = makeClient();
     const res = await client.listResources("databricks-schema", ACCOUNT);
     expect(res).toHaveLength(1);
-    expect(res[0].fields.catalogName).toBe("cat1");
+    expect(res[0]!.fields.catalogName).toBe("cat1");
   });
 
   it("lists tables across catalogs/schemas with skips", async () => {
@@ -124,7 +124,7 @@ describe("listResources routing", () => {
     const client = makeClient();
     const res = await client.listResources("databricks-table", ACCOUNT);
     expect(res).toHaveLength(1);
-    expect(res[0].fields.name).toBe("t1");
+    expect(res[0]!.fields.name).toBe("t1");
   });
 
   it("throws unknown type", async () => {
@@ -199,14 +199,14 @@ describe("fetchDashboardStats", () => {
       "acct1:databricks-job:1",
       ACCOUNT,
     );
-    expect(jobStats[0].label).toBe("State");
+    expect(jobStats[0]!.label).toBe("State");
     mockFetch({ body: { statuses: [{ pipeline_id: "p1", state: "IDLE" }] } });
     const pipeStats = await client.fetchDashboardStats(
       "databricks-pipeline",
       "acct1:databricks-pipeline:p1",
       ACCOUNT,
     );
-    expect(pipeStats[0].value).toBe("IDLE");
+    expect(pipeStats[0]!.value).toBe("IDLE");
   });
 
   it("cluster stats variants", async () => {
@@ -222,7 +222,7 @@ describe("fetchDashboardStats", () => {
       ACCOUNT,
     );
     expect(stats[0]).toMatchObject({ value: "TERMINATED", variant: "status-error" });
-    expect(stats[2].value).toBe("2");
+    expect(stats[2]!.value).toBe("2");
   });
 
   it("catalog stats with type and schema count", async () => {
@@ -506,7 +506,7 @@ describe("streamChatMessage", () => {
     expect(done.message.content).toBe("Hello world");
     expect(done.usage).toEqual({ inputTokens: 5, outputTokens: 2, totalTokens: 7 });
     // verify request shape
-    const [url, init] = fetchMock.mock.calls[0];
+    const [url, init] = fetchMock.mock.calls[0]!;
     expect(url).toContain("/serving-endpoints/ep/invocations");
     expect(JSON.parse(init.body)).toMatchObject({ stream: true });
   });
@@ -773,7 +773,7 @@ describe("getCreateConfig", () => {
     mockFetch({ body: { catalogs: [{ name: "main" }] } });
     const client = makeClient();
     const cfg = await client.getCreateConfig("databricks-schema");
-    expect(cfg.fields[0].key).toBe("catalogName");
+    expect(cfg.fields[0]!.key).toBe("catalogName");
     expect(cfg.fields[0]).toMatchObject({ defaultValue: "main" });
   });
 
@@ -813,7 +813,7 @@ describe("createResource", () => {
     });
     expect(res.id).toBe("acct1:databricks-cluster:c1");
     expect(res.fields.state).toBe("PENDING");
-    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({
+    expect(JSON.parse(fetchMock.mock.calls[0]![1]!.body)).toMatchObject({
       cluster_name: "C",
       num_workers: 3,
     });
@@ -841,7 +841,7 @@ describe("createResource", () => {
       schedule: "0 0 12 * * ?",
     });
     expect(res.id).toBe("acct1:databricks-job:9");
-    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    const body = JSON.parse(fetchMock.mock.calls[0]![1]!.body);
     expect(body.tasks[0]).toMatchObject({ notebook_task: { notebook_path: "/nb" } });
     expect(body.schedule.quartz_cron_expression).toBe("0 0 12 * * ?");
   });
@@ -854,7 +854,7 @@ describe("createResource", () => {
       taskType: "python",
       taskPath: "main.py",
     });
-    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    const body = JSON.parse(fetchMock.mock.calls[0]![1]!.body);
     expect(body.tasks[0]).toMatchObject({ spark_python_task: { python_file: "main.py" } });
     expect(body.schedule).toBeUndefined();
   });
@@ -867,7 +867,7 @@ describe("createResource", () => {
       taskType: "spark_jar",
       taskPath: "com.x.Main",
     });
-    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    const body = JSON.parse(fetchMock.mock.calls[0]![1]!.body);
     expect(body.tasks[0]).toMatchObject({ spark_jar_task: { main_class_name: "com.x.Main" } });
   });
 
@@ -883,7 +883,7 @@ describe("createResource", () => {
     });
     expect(res.fields.continuous).toBe(true);
     expect(res.fields.photon).toBe(false);
-    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    const body = JSON.parse(fetchMock.mock.calls[0]![1]!.body);
     expect(body).toMatchObject({ target: "tgt", catalog: "cat" });
   });
 
@@ -946,7 +946,7 @@ describe("createResource", () => {
     );
     expect(res.id).toBe("acct1:databricks-table:main.s1.t1");
     expect(res.fields.columnCount).toBe(3);
-    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+    const body = JSON.parse(fetchMock.mock.calls[0]![1]!.body);
     expect(body).toMatchObject({ storage_location: "s3://x", comment: "c", catalog_name: "main" });
   });
 

@@ -36,9 +36,9 @@ describe("notification-policy-client", () => {
   it("listNotificationPolicies maps and summarizes mechanisms", async () => {
     const api = npApi();
     const out = await listNotificationPolicies(api, "acct");
-    expect(out[0].id).toBe("acct:notification-policy:np1");
-    expect(out[0].fields.alertType).toBe("universal_ssl_event_type");
-    expect(out[0].fields.mechanisms).toBe("ops@a.com; 1 webhook(s); 1 PagerDuty");
+    expect(out[0]!.id).toBe("acct:notification-policy:np1");
+    expect(out[0]!.fields.alertType).toBe("universal_ssl_event_type");
+    expect(out[0]!.fields.mechanisms).toBe("ops@a.com; 1 webhook(s); 1 PagerDuty");
   });
 
   it("listNotificationPolicies surfaces a permission hint on a 403", async () => {

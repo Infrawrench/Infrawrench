@@ -46,22 +46,28 @@ describe("resolveAmiId via SSM", () => {
     const json = vi.fn(async () => ({ Parameter: { Value: "ami-123" } }));
     const out = await resolveAmiId(ctx({ json: json as never }), "al2023", "x86_64");
     expect(out).toBe("ami-123");
-    expect((json.mock.calls[0]![2] as { Name: string }).Name).toContain(
+    expect(((json.mock.calls as unknown as unknown[][])[0]![2] as { Name: string }).Name).toContain(
       "al2023-ami-kernel-default-x86_64",
     );
   });
   it("resolves ubuntu-2404 arm64 (amd64/arm64 mapping)", async () => {
     const json = vi.fn(async () => ({ Parameter: { Value: "ami-arm" } }));
     await resolveAmiId(ctx({ json: json as never }), "ubuntu-2404", "arm64");
-    expect((json.mock.calls[0]![2] as { Name: string }).Name).toContain("/arm64/");
+    expect(((json.mock.calls as unknown as unknown[][])[0]![2] as { Name: string }).Name).toContain(
+      "/arm64/",
+    );
   });
   it("resolves debian families", async () => {
     const json = vi.fn(async () => ({ Parameter: { Value: "ami-d" } }));
     await resolveAmiId(ctx({ json: json as never }), "debian-12", "x86_64");
-    expect((json.mock.calls[0]![2] as { Name: string }).Name).toContain("bookworm");
+    expect(((json.mock.calls as unknown as unknown[][])[0]![2] as { Name: string }).Name).toContain(
+      "bookworm",
+    );
     const json2 = vi.fn(async () => ({ Parameter: { Value: "ami-d2" } }));
     await resolveAmiId(ctx({ json: json2 as never }), "debian-13", "arm64");
-    expect((json2.mock.calls[0]![2] as { Name: string }).Name).toContain("/release/13/");
+    expect(
+      ((json2.mock.calls as unknown as unknown[][])[0]![2] as { Name: string }).Name,
+    ).toContain("/release/13/");
   });
   it("throws when SSM returns no value", async () => {
     await expect(

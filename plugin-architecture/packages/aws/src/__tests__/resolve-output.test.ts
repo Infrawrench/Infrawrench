@@ -34,7 +34,11 @@ function makeCtx(resource: ResourceInstance, exportContent = "[default]") {
     creds,
     credsFor: (region: string) => ({ ...creds, region }),
     getResource: vi.fn(async () => resource),
-    exportCredential: vi.fn(async () => ({ content: exportContent }) as { content: string }),
+    exportCredential: vi.fn(async () => ({
+      content: exportContent,
+      filename: "credential",
+      mimeType: "text/plain",
+    })),
   };
 }
 

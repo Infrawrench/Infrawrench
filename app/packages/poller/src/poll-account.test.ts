@@ -3,11 +3,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 // --- Mocks for all @infrawrench/server-core subpath imports ---
 
 const updateWhere = vi.fn();
-const updateSet = vi.fn(() => ({ where: updateWhere }));
-const dbUpdate = vi.fn(() => ({ set: updateSet }));
+const updateSet = vi.fn((_opts?: unknown) => ({ where: updateWhere }));
+const dbUpdate = vi.fn((_opts?: unknown) => ({ set: updateSet }));
 
 vi.mock("@infrawrench/server-core/db/client", () => ({
-  db: { update: (...a: unknown[]) => dbUpdate(...a) },
+  db: { update: (a?: unknown) => dbUpdate(a) },
 }));
 
 vi.mock("@infrawrench/server-core/db/schema", () => ({

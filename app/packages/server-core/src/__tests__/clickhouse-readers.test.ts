@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const json = vi.fn();
-const query = vi.fn(async () => ({ json }));
+const query = vi.fn(async (_opts?: unknown) => ({ json }));
 const isConfigured = vi.fn(() => true);
 vi.mock("../clickhouse/client", () => ({
   isClickHouseConfigured: () => isConfigured(),

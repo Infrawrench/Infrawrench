@@ -23,9 +23,9 @@ describe("kv-client namespaces", () => {
   it("listKVNamespaces maps namespaces", async () => {
     const api = kvApi();
     const out = await listKVNamespaces(api, "acct");
-    expect(out[0].id).toBe("acct:kv-namespace:ns1");
-    expect(out[0].displayName).toBe("My NS");
-    expect(out[0].fields.supportsUrlEncoding).toBe(true);
+    expect(out[0]!.id).toBe("acct:kv-namespace:ns1");
+    expect(out[0]!.displayName).toBe("My NS");
+    expect(out[0]!.fields.supportsUrlEncoding).toBe(true);
   });
 
   it("createKVNamespace creates with title", async () => {
@@ -65,7 +65,7 @@ describe("kv-client key/value (raw fetch)", () => {
     expect(out.items[0]).toEqual({ name: "k1", expiration: 99, metadata: { a: 1 } });
     expect(out.items[1]).toEqual({ name: "k2" });
     expect(out.nextCursor).toBe("next");
-    const url = fetchMock.mock.calls[0][0] as string;
+    const url = fetchMock.mock.calls[0]![0] as string;
     expect(url).toContain("prefix=p");
     expect(url).toContain("cursor=c");
     expect(url).toContain("limit=10");
@@ -78,7 +78,7 @@ describe("kv-client key/value (raw fetch)", () => {
     });
     const out = await listKVKeys(makeApi(), "ns1", {});
     expect(out).toEqual({ items: [] });
-    expect((fetchMock.mock.calls[0][0] as string).endsWith("/keys")).toBe(true);
+    expect((fetchMock.mock.calls[0]![0] as string).endsWith("/keys")).toBe(true);
   });
 
   it("listKVKeys throws on http error", async () => {

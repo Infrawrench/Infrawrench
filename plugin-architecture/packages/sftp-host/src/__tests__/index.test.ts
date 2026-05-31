@@ -164,10 +164,10 @@ describe("sftpList", () => {
 
     const out = await sftpList(config, "/home/root");
     expect(out.map((e) => e.name)).toEqual(["subdir", "alpha.txt", "zeta.txt"]);
-    const subdir = out[0];
+    const subdir = out[0]!;
     expect(subdir.isDirectory).toBe(true);
     expect(subdir.key).toBe("/home/root/subdir");
-    const alpha = out[1];
+    const alpha = out[1]!;
     expect(alpha.isDirectory).toBe(false);
     expect(alpha.size).toBe(20);
     expect(alpha.lastModified).toBe(new Date(1700000001 * 1000).toISOString());
@@ -178,7 +178,7 @@ describe("sftpList", () => {
       readdir: vi.fn((_p, cb) => cb(undefined, [{ filename: "f", attrs: attrs(0o100644) }])),
     });
     const out = await sftpList(config, "/root/");
-    expect(out[0].key).toBe("/root/f");
+    expect(out[0]!.key).toBe("/root/f");
   });
 
   it("defaults missing attrs to zero", async () => {
@@ -186,9 +186,9 @@ describe("sftpList", () => {
       readdir: vi.fn((_p, cb) => cb(undefined, [{ filename: "f", attrs: {} }])),
     });
     const out = await sftpList(config, "/r");
-    expect(out[0].size).toBe(0);
-    expect(out[0].isDirectory).toBe(false);
-    expect(out[0].lastModified).toBe(new Date(0).toISOString());
+    expect(out[0]!.size).toBe(0);
+    expect(out[0]!.isDirectory).toBe(false);
+    expect(out[0]!.lastModified).toBe(new Date(0).toISOString());
   });
 
   it("rejects when readdir errors", async () => {

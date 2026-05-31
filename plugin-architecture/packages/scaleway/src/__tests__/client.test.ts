@@ -113,7 +113,8 @@ function s3Response(status: number, text: string): Response {
   } as unknown as Response;
 }
 
-let fetchMock: ReturnType<typeof vi.spyOn>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let fetchMock: any;
 
 beforeEach(() => {
   fetchMock = vi.spyOn(globalThis, "fetch");
@@ -171,11 +172,11 @@ describe("listResources instance", () => {
     });
     const res = await c.listResources("instance", ACCOUNT);
     expect(res).toHaveLength(1);
-    expect(res[0].id).toBe(`${ACCOUNT}:instance:fr-par-1/srv1`);
-    expect(res[0].externalId).toBe("fr-par-1/srv1");
-    expect(res[0].fields["commercialType"]).toBe("DEV1-S");
-    expect(res[0].resolvedOutputs).toEqual({ publicIp: "1.2.3.4", privateIp: "10.0.0.1" });
-    expect(res[0].updatedAt).toBe(new Date("2024-01-02T00:00:00Z").toISOString());
+    expect(res[0]!.id).toBe(`${ACCOUNT}:instance:fr-par-1/srv1`);
+    expect(res[0]!.externalId).toBe("fr-par-1/srv1");
+    expect(res[0]!.fields["commercialType"]).toBe("DEV1-S");
+    expect(res[0]!.resolvedOutputs).toEqual({ publicIp: "1.2.3.4", privateIp: "10.0.0.1" });
+    expect(res[0]!.updatedAt).toBe(new Date("2024-01-02T00:00:00Z").toISOString());
   });
 
   it("maps server with missing optional fields", async () => {
@@ -184,9 +185,9 @@ describe("listResources instance", () => {
       zone === "fr-par-1" ? { servers: [{ id: "s2", name: "bare" }] } : { servers: [] },
     );
     const res = await c.listResources("instance", ACCOUNT);
-    expect(res[0].fields["image"]).toBe("");
-    expect(res[0].resolvedOutputs["publicIp"]).toBe("");
-    expect(typeof res[0].createdAt).toBe("string");
+    expect(res[0]!.fields["image"]).toBe("");
+    expect(res[0]!.resolvedOutputs["publicIp"]).toBe("");
+    expect(typeof res[0]!.createdAt).toBe("string");
   });
 
   it("ignores zones that throw", async () => {
@@ -246,10 +247,10 @@ describe("listResources kapsule-cluster", () => {
       ],
     });
     const res = await c.listResources("kapsule-cluster", ACCOUNT);
-    expect(res[0].fields["nodeCount"]).toBe(5);
-    expect(res[0].fields["nodeType"]).toBe("DEV1-M");
-    expect(res[0].fields["diskSizeGb"]).toBe(50);
-    expect(res[0].resolvedOutputs["clusterUrl"]).toBe("https://k8s");
+    expect(res[0]!.fields["nodeCount"]).toBe(5);
+    expect(res[0]!.fields["nodeType"]).toBe("DEV1-M");
+    expect(res[0]!.fields["diskSizeGb"]).toBe(50);
+    expect(res[0]!.resolvedOutputs["clusterUrl"]).toBe("https://k8s");
   });
 
   it("tolerates pool listing failure", async () => {
@@ -259,8 +260,8 @@ describe("listResources kapsule-cluster", () => {
     );
     k8sMethods.listPools.mockRejectedValue(new Error("no perm"));
     const res = await c.listResources("kapsule-cluster", ACCOUNT);
-    expect(res[0].fields["nodeCount"]).toBe(0);
-    expect(res[0].fields["diskSizeGb"]).toBe(0);
+    expect(res[0]!.fields["nodeCount"]).toBe(0);
+    expect(res[0]!.fields["diskSizeGb"]).toBe(0);
   });
 
   it("ignores regions that throw", async () => {
@@ -292,9 +293,9 @@ describe("listResources rdb-instance", () => {
         : { instances: [] },
     );
     const res = await c.listResources("rdb-instance", ACCOUNT);
-    expect(res[0].fields["engine"]).toBe("PostgreSQL");
-    expect(res[0].fields["engineVersion"]).toBe("16");
-    expect(res[1].fields["engine"]).toBe("");
+    expect(res[0]!.fields["engine"]).toBe("PostgreSQL");
+    expect(res[0]!.fields["engineVersion"]).toBe("16");
+    expect(res[1]!.fields["engine"]).toBe("");
   });
 });
 
@@ -321,11 +322,11 @@ describe("listResources block-volume", () => {
         : { volumes: [] },
     );
     const res = await c.listResources("block-volume", ACCOUNT);
-    expect(res[0].fields["sizeGb"]).toBe(100);
-    expect(res[0].fields["perfIops"]).toBe("5000");
-    expect(res[0].fields["attachedInstanceId"]).toBe("srv9");
-    expect(res[1].displayName).toBe("v2");
-    expect(res[1].fields["attachedInstanceId"]).toBe("");
+    expect(res[0]!.fields["sizeGb"]).toBe(100);
+    expect(res[0]!.fields["perfIops"]).toBe("5000");
+    expect(res[0]!.fields["attachedInstanceId"]).toBe("srv9");
+    expect(res[1]!.displayName).toBe("v2");
+    expect(res[1]!.fields["attachedInstanceId"]).toBe("");
   });
 
   it("ignores zones that throw", async () => {
@@ -348,9 +349,9 @@ describe("listResources object-storage-bucket", () => {
     });
     const res = await c.listResources("object-storage-bucket", ACCOUNT);
     expect(res).toHaveLength(1);
-    expect(res[0].displayName).toBe("my-bucket");
-    expect(res[0].externalId).toBe("fr-par/my-bucket");
-    expect(res[0].resolvedOutputs["endpoint"]).toBe("https://s3.fr-par.scw.cloud");
+    expect(res[0]!.displayName).toBe("my-bucket");
+    expect(res[0]!.externalId).toBe("fr-par/my-bucket");
+    expect(res[0]!.resolvedOutputs["endpoint"]).toBe("https://s3.fr-par.scw.cloud");
   });
 
   it("skips region on S3 error", async () => {
@@ -629,7 +630,7 @@ describe("createResource", () => {
     });
     expect(r.externalId).toBe("fr-par/cl9");
     expect(r.fields["nodeCount"]).toBe(4);
-    const arg = k8sMethods.createCluster.mock.calls[0][0];
+    const arg = (k8sMethods.createCluster.mock.calls as unknown as [unknown[]])[0]![0] as any;
     expect(arg.pools[0].size).toBe(4);
     expect(arg.pools[0].zone).toBe("fr-par-1");
   });
@@ -665,7 +666,7 @@ describe("createResource", () => {
     expect(r.externalId).toBe("fr-par/db9");
     expect(r.fields["engine"]).toBe("PostgreSQL");
     expect(r.fields["engineVersion"]).toBe("16");
-    const arg = rdbMethods.createInstance.mock.calls[0][0];
+    const arg = (rdbMethods.createInstance.mock.calls as unknown as [unknown[]])[0]![0] as any;
     expect(arg.isHaCluster).toBe(true);
     expect(arg.disableBackup).toBe(true);
   });
@@ -686,7 +687,7 @@ describe("createResource", () => {
       region: "fr-par",
     });
     expect(r.externalId).toBe("fr-par/b");
-    const arg = s3Mocks.signedS3Fetch.mock.calls[0][0];
+    const arg = (s3Mocks.signedS3Fetch.mock.calls as unknown as [unknown[]])[0]![0] as any;
     expect(arg.method).toBe("PUT");
     expect(arg.url).toBe("https://b.s3.fr-par.scw.cloud/");
   });
@@ -709,7 +710,7 @@ describe("createResource", () => {
     expect(r.externalId).toBe("fr-par-1/v9");
     expect(r.fields["sizeGb"]).toBe(100);
     expect(r.fields["perfIops"]).toBe("15000");
-    const arg = blockMethods.createVolume.mock.calls[0][0];
+    const arg = (blockMethods.createVolume.mock.calls as unknown as [unknown[]])[0]![0] as any;
     expect(arg.fromEmpty.size).toBe(100 * 1_000_000_000);
     expect(arg.projectId).toBe("proj-uuid");
   });
@@ -769,7 +770,7 @@ describe("deleteResource", () => {
       `${ACCOUNT}:object-storage-bucket:fr-par/b`,
       ACCOUNT,
     );
-    const arg = s3Mocks.signedS3Fetch.mock.calls[0][0];
+    const arg = (s3Mocks.signedS3Fetch.mock.calls as unknown as [unknown[]])[0]![0] as any;
     expect(arg.method).toBe("DELETE");
     expect(arg.url).toBe("https://b.s3.fr-par.scw.cloud/");
   });
@@ -884,7 +885,7 @@ describe("fetchDashboardStats", () => {
       `${ACCOUNT}:instance:fr-par-1/srv1`,
       ACCOUNT,
     );
-    expect(stats[0].variant).toBe("status-error");
+    expect(stats[0]!.variant).toBe("status-error");
   });
 
   it("instance other state -> degraded", async () => {
@@ -899,7 +900,7 @@ describe("fetchDashboardStats", () => {
       `${ACCOUNT}:instance:fr-par-1/srv1`,
       ACCOUNT,
     );
-    expect(stats[0].variant).toBe("status-degraded");
+    expect(stats[0]!.variant).toBe("status-degraded");
   });
 
   it("kapsule stats", async () => {
@@ -914,7 +915,7 @@ describe("fetchDashboardStats", () => {
       `${ACCOUNT}:kapsule-cluster:fr-par/cl1`,
       ACCOUNT,
     );
-    expect(stats[0].variant).toBe("status-healthy");
+    expect(stats[0]!.variant).toBe("status-healthy");
   });
 
   it("rdb stats degraded", async () => {
@@ -939,7 +940,7 @@ describe("fetchDashboardStats", () => {
       `${ACCOUNT}:rdb-instance:fr-par/db1`,
       ACCOUNT,
     );
-    expect(stats[0].variant).toBe("status-degraded");
+    expect(stats[0]!.variant).toBe("status-degraded");
   });
 
   it("object-storage stats", async () => {
@@ -1009,29 +1010,31 @@ describe("fetchMetricSeries", () => {
 
   it("queries cockpit and maps series", async () => {
     const c = makeClient({ ...CREDS, cockpitQueryToken: "tok" });
-    fetchMock.mockImplementation(async (url: string | URL | Request, init?: RequestInit) => {
-      const u = String(url);
-      if (u.includes("/data-sources")) {
-        return {
-          ok: true,
-          status: 200,
-          json: async () => ({ data_sources: [{ url: "https://cockpit" }] }),
-          text: async () => "",
-        } as unknown as Response;
-      }
-      if (u.includes("/query_range")) {
-        return {
-          ok: true,
-          status: 200,
-          json: async () => ({
-            status: "success",
-            data: { result: [{ values: [[1700000000, "12.5"]] }] },
-          }),
-          text: async () => "",
-        } as unknown as Response;
-      }
-      return s3Response(404, "") as any;
-    });
+    (fetchMock as any).mockImplementation(
+      async (url: string | URL | Request, _init?: RequestInit) => {
+        const u = String(url);
+        if (u.includes("/data-sources")) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({ data_sources: [{ url: "https://cockpit" }] }),
+            text: async () => "",
+          } as unknown as Response;
+        }
+        if (u.includes("/query_range")) {
+          return {
+            ok: true,
+            status: 200,
+            json: async () => ({
+              status: "success",
+              data: { result: [{ values: [[1700000000, "12.5"]] }] },
+            }),
+            text: async () => "",
+          } as unknown as Response;
+        }
+        return s3Response(404, "") as any;
+      },
+    );
     const series = await c.fetchMetricSeries(
       "instance",
       `${ACCOUNT}:instance:fr-par-1/srv1`,
@@ -1039,13 +1042,13 @@ describe("fetchMetricSeries", () => {
       { startMs: 1000, endMs: 2000 },
     );
     expect(series.length).toBe(3);
-    expect(series[0].points[0]).toEqual({ timestamp: 1700000000000, value: 12.5 });
+    expect(series[0]!.points[0]).toEqual({ timestamp: 1700000000000, value: 12.5 });
   });
 
   it("data source cache + query failure returns []", async () => {
     const c = makeClient({ ...CREDS, cockpitQueryToken: "tok" });
     let dsCalls = 0;
-    fetchMock.mockImplementation(async (url: string | URL | Request) => {
+    (fetchMock as any).mockImplementation(async (url: string | URL | Request) => {
       const u = String(url);
       if (u.includes("/data-sources")) {
         dsCalls++;
@@ -1126,14 +1129,14 @@ describe("renderDetail / renderSidebarItem", () => {
 
   it("renderSidebarItem branches", () => {
     const c = makeClient();
-    expect(c.renderSidebarItem(res("instance", { state: "running" })).status.status).toBe(
+    expect(c.renderSidebarItem(res("instance", { state: "running" })).status!.status).toBe(
       "healthy",
     );
-    expect(c.renderSidebarItem(res("instance", { state: "starting" })).status.status).toBe(
+    expect(c.renderSidebarItem(res("instance", { state: "starting" })).status!.status).toBe(
       "provisioning",
     );
-    expect(c.renderSidebarItem(res("instance", { state: "error" })).status.status).toBe("error");
-    expect(c.renderSidebarItem(res("instance", { state: "?" })).status.status).toBe("info");
+    expect(c.renderSidebarItem(res("instance", { state: "error" })).status!.status).toBe("error");
+    expect(c.renderSidebarItem(res("instance", { state: "?" })).status!.status).toBe("info");
   });
 });
 
@@ -1146,7 +1149,9 @@ describe("storage browser verbs", () => {
     expect(out).toEqual([{ key: "a", size: 1 }]);
     expect(s3Mocks.listS3Objects).toHaveBeenCalled();
     // region probe used signedS3Fetch HEAD
-    expect(s3Mocks.signedS3Fetch.mock.calls[0][0].method).toBe("HEAD");
+    expect(
+      ((s3Mocks.signedS3Fetch.mock.calls as unknown as [unknown[]])[0]![0] as any).method,
+    ).toBe("HEAD");
   });
 
   it("region probe accepts 403 as a hit", async () => {
@@ -1233,7 +1238,8 @@ describe("getManifest / applyManifest", () => {
     s3Mocks.getS3BucketPolicy.mockResolvedValue("");
     await c.getManifest(`${ACCOUNT}:object-storage-bucket:bareBucket`, ACCOUNT);
     // getObjectStorageConfig probed for bucket "bareBucket"
-    expect(s3Mocks.signedS3Fetch.mock.calls[0][0].url).toContain("/bareBucket");
+    const call = (s3Mocks.signedS3Fetch.mock.calls as unknown as [unknown[]])[0]![0] as any;
+    expect(call.url).toContain("/bareBucket");
   });
 
   it("getManifest throws for non-bucket type", async () => {

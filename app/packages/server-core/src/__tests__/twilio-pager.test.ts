@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 
 /**
  * Twilio pager tests. The DB is mocked with a chainable fake; `db.select()`
@@ -117,7 +117,7 @@ const db = {
 vi.mock("../db/client", () => ({ db }));
 
 let pager: typeof import("../twilio-pager");
-let fetchSpy: ReturnType<typeof vi.spyOn>;
+let fetchSpy: MockInstance<typeof fetch>;
 
 function okResponse() {
   return { ok: true, status: 200, text: async () => "" } as unknown as Response;

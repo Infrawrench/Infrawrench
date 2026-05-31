@@ -28,9 +28,9 @@ describe("ip-access-rule-client", () => {
   it("listAllIpAccessRules maps rules", async () => {
     const api = ipApi();
     const out = await listAllIpAccessRules(api, "acct");
-    expect(out[0].id).toBe("acct:ip-access-rule:z1/ar1");
-    expect(out[0].displayName).toBe("bad actor");
-    expect(out[0].fields).toMatchObject({ mode: "block", target: "ip", value: "1.2.3.4" });
+    expect(out[0]!.id).toBe("acct:ip-access-rule:z1/ar1");
+    expect(out[0]!.displayName).toBe("bad actor");
+    expect(out[0]!.fields).toMatchObject({ mode: "block", target: "ip", value: "1.2.3.4" });
   });
 
   it("createIpAccessRule sends mode/target/value/notes", async () => {

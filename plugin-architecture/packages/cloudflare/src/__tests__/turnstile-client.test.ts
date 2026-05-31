@@ -34,10 +34,10 @@ describe("turnstile-client", () => {
   it("listTurnstileWidgets maps a widget keyed by sitekey", async () => {
     const api = tsApi();
     const out = await listTurnstileWidgets(api, "acct");
-    expect(out[0].id).toBe("acct:turnstile-widget:0xKEY");
-    expect(out[0].externalId).toBe("0xKEY");
-    expect(out[0].fields.domains).toBe("a.com, b.com");
-    expect(out[0].resolvedOutputs?.siteKey).toBe("0xKEY");
+    expect(out[0]!.id).toBe("acct:turnstile-widget:0xKEY");
+    expect(out[0]!.externalId).toBe("0xKEY");
+    expect(out[0]!.fields.domains).toBe("a.com, b.com");
+    expect(out[0]!.resolvedOutputs?.siteKey).toBe("0xKEY");
   });
 
   it("listTurnstileWidgets surfaces a permission hint on a 403", async () => {

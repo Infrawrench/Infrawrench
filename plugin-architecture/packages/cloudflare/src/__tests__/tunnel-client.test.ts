@@ -47,10 +47,10 @@ describe("tunnel-client", () => {
     });
     const out = await listTunnels(api, "acct");
     expect(out).toHaveLength(1);
-    expect(out[0].id).toBe("acct:tunnel:t1");
-    expect(out[0].fields.status).toBe("healthy");
-    expect(out[0].fields.connectionsCount).toBe(1);
-    expect(out[0].resolvedOutputs?.tunnelId).toBe("t1");
+    expect(out[0]!.id).toBe("acct:tunnel:t1");
+    expect(out[0]!.fields.status).toBe("healthy");
+    expect(out[0]!.fields.connectionsCount).toBe(1);
+    expect(out[0]!.resolvedOutputs?.tunnelId).toBe("t1");
   });
 
   it("listTunnels derives status from connections when absent", async () => {
@@ -66,14 +66,14 @@ describe("tunnel-client", () => {
       },
     });
     const out = await listTunnels(api, "acct");
-    expect(out[0].fields.status).toBe("inactive");
+    expect(out[0]!.fields.status).toBe("inactive");
   });
 
   it("createTunnel sends a name and generated secret", async () => {
     const api = tunnelApi();
     await createTunnel(api, "acct", { name: "ssh-tunnel" });
     const call = (api.cf.zeroTrust.tunnels.cloudflared.create as ReturnType<typeof vi.fn>).mock
-      .calls[0][0];
+      .calls[0]![0];
     expect(call.name).toBe("ssh-tunnel");
     expect(typeof call.tunnel_secret).toBe("string");
     expect(call.account_id).toBe("acct-cf");
@@ -121,6 +121,6 @@ describe("tunnel-client", () => {
     } as never);
     expect(out.content).toBe("run-token");
     expect(out.filename).toBe("ssh-tunnel.token");
-    expect(out.fields.find((f) => f.label === "Run Token")?.sensitive).toBe(true);
+    expect(out.fields!.find((f) => f.label === "Run Token")?.sensitive).toBe(true);
   });
 });

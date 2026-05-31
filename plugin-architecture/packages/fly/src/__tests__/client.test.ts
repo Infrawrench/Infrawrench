@@ -6,7 +6,7 @@ const ACCOUNT = "acct-1";
 
 interface FetchCall {
   url: string;
-  init?: RequestInit;
+  init: RequestInit | undefined;
 }
 let calls: FetchCall[] = [];
 
@@ -92,15 +92,15 @@ describe("constructor", () => {
   it("defaults orgSlug to personal and sends auth header", async () => {
     router([[(u) => u.includes("/v1/apps"), APP_LIST]]);
     await client().listResources("app", ACCOUNT);
-    expect(calls[0].url).toBe("https://api.machines.dev/v1/apps?org_slug=personal");
-    const h = calls[0].init?.headers as Record<string, string>;
+    expect(calls[0]!.url).toBe("https://api.machines.dev/v1/apps?org_slug=personal");
+    const h = calls[0]!.init?.headers as Record<string, string>;
     expect(h["Authorization"]).toBe("Bearer tok");
   });
 
   it("uses provided orgSlug", async () => {
     router([[(u) => u.includes("/v1/apps"), APP_LIST]]);
     await client({ apiToken: "tok", orgSlug: "my-org" }).listResources("app", ACCOUNT);
-    expect(calls[0].url).toContain("org_slug=my-org");
+    expect(calls[0]!.url).toContain("org_slug=my-org");
   });
 
   it("routes through host http when caCert + services.http", async () => {
@@ -110,7 +110,9 @@ describe("constructor", () => {
       "app",
       ACCOUNT,
     );
-    expect((request.mock.calls[0][0] as { caCert?: string }).caCert).toBe("PEM");
+    expect(
+      ((request.mock.calls as unknown as Array<[unknown]>)[0]![0] as { caCert?: string }).caCert,
+    ).toBe("PEM");
     expect(spy).not.toHaveBeenCalled();
   });
 });
@@ -120,10 +122,10 @@ describe("listResources", () => {
     router([[(u) => u.includes("/v1/apps?"), APP_LIST]]);
     const res = await client().listResources("app", ACCOUNT);
     expect(res).toHaveLength(2);
-    expect(res[0].id).toBe("acct-1:app:app-one");
-    expect(res[0].fields["status"]).toBe("deployed");
-    expect(res[0].fields["machineCount"]).toBe(2);
-    expect(res[0].resolvedOutputs["appName"]).toBe("app-one");
+    expect(res[0]!.id).toBe("acct-1:app:app-one");
+    expect(res[0]!.fields["status"]).toBe("deployed");
+    expect(res[0]!.fields["machineCount"]).toBe(2);
+    expect(res[0]!.resolvedOutputs["appName"]).toBe("app-one");
   });
 
   it("handles missing apps array", async () => {
@@ -140,9 +142,9 @@ describe("listResources", () => {
     ]);
     const res = await client().listResources("machine", ACCOUNT);
     expect(res).toHaveLength(1);
-    expect(res[0].id).toBe("acct-1:machine:app-one/m1");
-    expect(res[0].fields["image"]).toBe("nginx:latest");
-    expect(res[0].resolvedOutputs["privateIp"]).toBe("fdaa::1");
+    expect(res[0]!.id).toBe("acct-1:machine:app-one/m1");
+    expect(res[0]!.fields["image"]).toBe("nginx:latest");
+    expect(res[0]!.resolvedOutputs["privateIp"]).toBe("fdaa::1");
   });
 
   it("machine maps image from image_ref fallback and null machines", async () => {
@@ -162,8 +164,8 @@ describe("listResources", () => {
       ],
     ]);
     const res = await client().listResources("machine", ACCOUNT);
-    expect(res[0].displayName).toBe("m2");
-    expect(res[0].fields["image"]).toBe("repo/img");
+    expect(res[0]!.displayName).toBe("m2");
+    expect(res[0]!.fields["image"]).toBe("repo/img");
   });
 
   it("lists volumes across apps, skipping failures", async () => {
@@ -174,8 +176,8 @@ describe("listResources", () => {
     ]);
     const res = await client().listResources("volume", ACCOUNT);
     expect(res).toHaveLength(1);
-    expect(res[0].id).toBe("acct-1:volume:app-one/v1");
-    expect(res[0].fields["sizeGb"]).toBe(10);
+    expect(res[0]!.id).toBe("acct-1:volume:app-one/v1");
+    expect(res[0]!.fields["sizeGb"]).toBe(10);
   });
 
   it("throws on unknown type", async () => {
@@ -278,12 +280,12 @@ describe("resolveOutput", () => {
 describe("getCreateConfig", () => {
   it("app config", async () => {
     const cfg = await client().getCreateConfig("app");
-    expect(cfg.fields[0].key).toBe("name");
+    expect(cfg.fields[0]!.key).toBe("name");
   });
 
   it("machine config without parent has app picker + regions", async () => {
     const cfg = await client().getCreateConfig("machine");
-    expect(cfg.fields[0].key).toBe("appName");
+    expect(cfg.fields[0]!.key).toBe("appName");
     const region = cfg.fields.find((f) => f.key === "region");
     expect(region?.kind).toBe("region-picker");
     expect((region as { regions?: unknown[] }).regions?.length).toBeGreaterThan(10);
@@ -292,7 +294,7 @@ describe("getCreateConfig", () => {
   it("machine config with parent omits app picker", async () => {
     const cfg = await client().getCreateConfig("machine", "acct-1:app:app-one");
     expect(cfg.fields.find((f) => f.key === "appName")).toBeUndefined();
-    expect(cfg.fields[0].key).toBe("name");
+    expect(cfg.fields[0]!.key).toBe("name");
   });
 
   it("volume config without parent fetches apps for select", async () => {
@@ -319,7 +321,7 @@ describe("getCreateConfig", () => {
 
   it("volume config with parent omits app field", async () => {
     const cfg = await client().getCreateConfig("volume", "acct-1:app:app-one");
-    expect(cfg.fields[0].key).toBe("name");
+    expect(cfg.fields[0]!.key).toBe("name");
   });
 
   it("throws for unknown type", async () => {
@@ -335,7 +337,7 @@ describe("createResource", () => {
     ]);
     const r = await client().createResource("app", ACCOUNT, { name: "new-app" });
     expect(r.externalId).toBe("new-app");
-    const postBody = JSON.parse(calls[0].init?.body as string);
+    const postBody = JSON.parse(calls[0]!.init?.body as string);
     expect(postBody).toEqual({ app_name: "new-app", org_slug: "personal" });
   });
 
@@ -348,7 +350,7 @@ describe("createResource", () => {
       "acct-1:app:app-one",
     );
     expect(r.externalId).toBe("app-one/m1");
-    const body = JSON.parse(calls[0].init?.body as string);
+    const body = JSON.parse(calls[0]!.init?.body as string);
     expect(body.region).toBe("iad");
     expect(body.config.image).toBe("nginx");
     expect(body.name).toBe("mc");
@@ -361,7 +363,7 @@ describe("createResource", () => {
       region: "lhr",
       image: "img",
     });
-    expect(JSON.parse(calls[0].init?.body as string).name).toBeUndefined();
+    expect(JSON.parse(calls[0]!.init?.body as string).name).toBeUndefined();
   });
 
   it("throws when machine missing appName", async () => {
@@ -393,7 +395,7 @@ describe("createResource", () => {
     );
     expect(r.id).toBe("acct-1:volume:app-one/v9");
     expect(r.fields["sizeGb"]).toBe(5);
-    const body = JSON.parse(calls[0].init?.body as string);
+    const body = JSON.parse(calls[0]!.init?.body as string);
     expect(body.size_gb).toBe(5);
   });
 
@@ -406,7 +408,7 @@ describe("createResource", () => {
       "acct-1:app:app-one",
     );
     expect(r.fields["state"]).toBe("created");
-    expect(JSON.parse(calls[0].init?.body as string).size_gb).toBe(1);
+    expect(JSON.parse(calls[0]!.init?.body as string).size_gb).toBe(1);
   });
 
   it("throws when volume missing appName", async () => {
@@ -426,20 +428,20 @@ describe("deleteResource", () => {
   it("deletes app", async () => {
     ok();
     await client().deleteResource("app", "acct-1:app:app-one", ACCOUNT);
-    expect(calls[0].url).toContain("/v1/apps/app-one");
-    expect(method(calls[0].init)).toBe("DELETE");
+    expect(calls[0]!.url).toContain("/v1/apps/app-one");
+    expect(method(calls[0]!.init)).toBe("DELETE");
   });
 
   it("deletes machine", async () => {
     ok();
     await client().deleteResource("machine", "acct-1:machine:app-one/m1", ACCOUNT);
-    expect(calls[0].url).toContain("/v1/apps/app-one/machines/m1");
+    expect(calls[0]!.url).toContain("/v1/apps/app-one/machines/m1");
   });
 
   it("deletes volume", async () => {
     ok();
     await client().deleteResource("volume", "acct-1:volume:app-one/v1", ACCOUNT);
-    expect(calls[0].url).toContain("/v1/apps/app-one/volumes/v1");
+    expect(calls[0]!.url).toContain("/v1/apps/app-one/volumes/v1");
   });
 
   it("throws on unparseable app id", async () => {
@@ -551,7 +553,7 @@ describe("fetchDashboardStats", () => {
       ],
     ]);
     const stats = await client().fetchDashboardStats("app", "acct-1:app:app-one", ACCOUNT);
-    expect(stats[0]).toEqual({ label: "Status", value: "deployed", variant: "status-healthy" });
+    expect(stats[0]!).toEqual({ label: "Status", value: "deployed", variant: "status-healthy" });
     expect(stats.find((s) => s.label === "Machines")?.value).toBe("3");
   });
 
@@ -560,7 +562,7 @@ describe("fetchDashboardStats", () => {
       [(u) => u.includes("/v1/apps/app-one"), { id: "a", name: "app-one", status: "suspended" }],
     ]);
     const stats = await client().fetchDashboardStats("app", "acct-1:app:app-one", ACCOUNT);
-    expect(stats[0].variant).toBe("status-degraded");
+    expect(stats[0]!.variant).toBe("status-degraded");
   });
 
   it("machine stats with image", async () => {
@@ -570,7 +572,7 @@ describe("fetchDashboardStats", () => {
       "acct-1:machine:app-one/m1",
       ACCOUNT,
     );
-    expect(stats[0]).toEqual({ label: "State", value: "started", variant: "status-healthy" });
+    expect(stats[0]!).toEqual({ label: "State", value: "started", variant: "status-healthy" });
     expect(stats.find((s) => s.label === "Region")?.value).toContain("iad");
     expect(stats.find((s) => s.label === "Image")?.value).toBe("nginx:latest");
   });
@@ -584,7 +586,7 @@ describe("fetchDashboardStats", () => {
       "acct-1:machine:app-one/m1",
       ACCOUNT,
     );
-    expect(stats[0].variant).toBe("status-error");
+    expect(stats[0]!.variant).toBe("status-error");
     expect(stats.find((s) => s.label === "Region")?.value).toBe("zzz");
     expect(stats.find((s) => s.label === "Image")).toBeUndefined();
   });
@@ -592,7 +594,7 @@ describe("fetchDashboardStats", () => {
   it("volume stats", async () => {
     router([[(u) => u.includes("/volumes/v1"), VOLUME]]);
     const stats = await client().fetchDashboardStats("volume", "acct-1:volume:app-one/v1", ACCOUNT);
-    expect(stats[0]).toEqual({ label: "Size", value: "10 GB" });
+    expect(stats[0]!).toEqual({ label: "Size", value: "10 GB" });
   });
 });
 

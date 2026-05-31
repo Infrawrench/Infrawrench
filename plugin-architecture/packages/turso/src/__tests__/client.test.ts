@@ -17,7 +17,8 @@ const api = {
 const createClient = vi.fn(() => api);
 
 vi.mock("@tursodatabase/api", () => ({
-  createClient: (...args: unknown[]) => createClient(...args),
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  createClient: (...args: any[]) => createClient(...(args as [])),
 }));
 
 import { TursoClient } from "../client.js";
@@ -65,7 +66,7 @@ describe("listResources", () => {
     ]);
     const client = makeClient();
     const res = await client.listResources("turso-database", ACCOUNT);
-    expect(res[0]).toMatchObject({
+    expect(res[0]!).toMatchObject({
       id: "acct1:turso-database:mydb",
       pluginId: "turso",
       externalId: "mydb",
@@ -79,7 +80,7 @@ describe("listResources", () => {
     ]);
     const client = makeClient();
     const res = await client.listResources("turso-database", ACCOUNT);
-    expect(res[0].fields).toMatchObject({ group: "", primaryRegion: "", regions: "" });
+    expect(res[0]!.fields).toMatchObject({ group: "", primaryRegion: "", regions: "" });
   });
 
   it("maps groups", async () => {
@@ -176,7 +177,7 @@ describe("fetchDashboardStats", () => {
       ACCOUNT,
     );
     expect(stats[0]).toMatchObject({ label: "Group", value: "default" });
-    expect(stats[1].value).toContain("Ashburn");
+    expect(stats[1]!.value).toContain("Ashburn");
     expect(stats[stats.length - 1]).toMatchObject({
       value: "sleeping",
       variant: "status-degraded",
@@ -200,8 +201,8 @@ describe("fetchDashboardStats", () => {
     api.groups.list.mockResolvedValue([{ name: "g1", primary: "iad", locations: ["iad", "lhr"] }]);
     const client = makeClient();
     const stats = await client.fetchDashboardStats("turso-group", "acct1:turso-group:g1", ACCOUNT);
-    expect(stats[0].value).toContain("Ashburn");
-    expect(stats[1].label).toBe("Locations");
+    expect(stats[0]!.value).toContain("Ashburn");
+    expect(stats[1]!.label).toBe("Locations");
   });
 });
 

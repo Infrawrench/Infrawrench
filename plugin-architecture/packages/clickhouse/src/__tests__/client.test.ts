@@ -45,7 +45,7 @@ const ACCOUNT = "acct-1";
 
 interface FetchCall {
   url: string;
-  init?: RequestInit;
+  init: RequestInit | undefined;
 }
 let calls: FetchCall[] = [];
 
@@ -138,10 +138,10 @@ describe("cloudApi (via listResources ch-service)", () => {
   it("uses basic auth + correct url", async () => {
     router([[(u) => u.includes("/services"), { result: [RUNNING_SERVICE] }]]);
     const res = await client().listResources("ch-service", ACCOUNT);
-    expect(calls[0].url).toBe("https://api.clickhouse.cloud/v1/organizations/org-1/services");
-    const h = calls[0].init?.headers as Record<string, string>;
+    expect(calls[0]!.url).toBe("https://api.clickhouse.cloud/v1/organizations/org-1/services");
+    const h = calls[0]!.init?.headers as Record<string, string>;
     expect(h["Authorization"]).toBe(`Basic ${btoa("kid:secret")}`);
-    expect(res[0].id).toBe("acct-1:ch-service:svc1");
+    expect(res[0]!.id).toBe("acct-1:ch-service:svc1");
   });
 
   it("throws on non-ok cloud response", async () => {
@@ -251,18 +251,19 @@ describe("fetchDashboardStats", () => {
 
   it("idle → degraded; stopped/stopping → error; other → degraded", async () => {
     expect(
-      (await stats({ id: "a", name: "n", state: "idle", provider: "aws", region: "r" }))[0].variant,
+      (await stats({ id: "a", name: "n", state: "idle", provider: "aws", region: "r" }))[0]!
+        .variant,
     ).toBe("status-degraded");
     expect(
-      (await stats({ id: "b", name: "n", state: "stopped", provider: "aws", region: "r" }))[0]
+      (await stats({ id: "b", name: "n", state: "stopped", provider: "aws", region: "r" }))[0]!
         .variant,
     ).toBe("status-error");
     expect(
-      (await stats({ id: "c", name: "n", state: "stopping", provider: "aws", region: "r" }))[0]
+      (await stats({ id: "c", name: "n", state: "stopping", provider: "aws", region: "r" }))[0]!
         .variant,
     ).toBe("status-error");
     expect(
-      (await stats({ id: "d", name: "n", state: "weird", provider: "aws", region: "r" }))[0]
+      (await stats({ id: "d", name: "n", state: "weird", provider: "aws", region: "r" }))[0]!
         .variant,
     ).toBe("status-degraded");
   });
@@ -432,8 +433,8 @@ describe("executeQuery + introspectResource", () => {
     ];
     const meta = await client().introspectResource("rid", ACCOUNT);
     expect(meta).toHaveLength(2);
-    expect(meta[0].name).toBe("db.t1");
-    expect(meta[0].columns).toHaveLength(2);
+    expect(meta[0]!.name).toBe("db.t1");
+    expect(meta[0]!.columns).toHaveLength(2);
   });
 
   it("introspectResource returns [] on error", async () => {
@@ -470,7 +471,7 @@ describe("getCreateConfig", () => {
   it("database config with parent omits service field", async () => {
     const cfg = await client().getCreateConfig("ch-database", "acct-1:ch-service:svc1");
     expect(cfg.fields.find((f) => f.key === "serviceId")).toBeUndefined();
-    expect(cfg.fields[0].key).toBe("name");
+    expect(cfg.fields[0]!.key).toBe("name");
   });
 
   it("service config returns provider + region pickers", async () => {
@@ -599,7 +600,7 @@ describe("createResource ch-service", () => {
     expect(r.id).toBe("acct-1:ch-service:new-svc");
     expect(r.resolvedOutputs["host"]).toBe("new.host");
     expect(r.resolvedOutputs["httpUrl"]).toBe("https://new.host:8443");
-    const body = JSON.parse(calls[0].init?.body as string);
+    const body = JSON.parse(calls[0]!.init?.body as string);
     expect(body).toMatchObject({
       name: "My Service",
       provider: "aws",
@@ -631,7 +632,7 @@ describe("createResource ch-service", () => {
     expect(r.displayName).toBe("s2");
     expect(r.resolvedOutputs["host"]).toBe("");
     expect(r.resolvedOutputs["connectionString"]).toBe("");
-    const body = JSON.parse(calls[0].init?.body as string);
+    const body = JSON.parse(calls[0]!.init?.body as string);
     expect(body.idleScaling).toBe(false);
     expect(body.numReplicas).toBeUndefined();
   });

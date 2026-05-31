@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from "vitest";
 import { AzureClient } from "../client.js";
 import * as auth from "../auth.js";
 
@@ -32,8 +32,8 @@ describe("AzureClient construction", () => {
 });
 
 describe("AzureClient token + HTTP helpers", () => {
-  let fetchSpy: ReturnType<typeof vi.spyOn>;
-  let tokenSpy: ReturnType<typeof vi.spyOn>;
+  let fetchSpy: MockInstance<typeof fetch>;
+  let tokenSpy: MockInstance<typeof auth.fetchAccessToken>;
 
   beforeEach(() => {
     fetchSpy = vi.spyOn(globalThis, "fetch");
@@ -48,7 +48,9 @@ describe("AzureClient token + HTTP helpers", () => {
     await client.listResources("azure-resource-group", "acct");
     expect(tokenSpy).toHaveBeenCalledTimes(1);
     const [, init] = fetchSpy.mock.calls[0]!;
-    expect((init!.headers as Record<string, string>)["Authorization"]).toBe("Bearer arm-tok");
+    expect(((init as RequestInit).headers as Record<string, string>)["Authorization"]).toBe(
+      "Bearer arm-tok",
+    );
   });
 
   it("get() throws with status + body on a non-ok response", async () => {

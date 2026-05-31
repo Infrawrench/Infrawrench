@@ -124,7 +124,7 @@ describe("CloudflareClient.listResources dispatch", () => {
     const { client, fakeApi } = makeClient();
     (fakeApi.fetch as ReturnType<typeof vi.fn>).mockResolvedValue([{ name: "@cf/x" }]);
     const out = await client.listResources("workers-ai-model", "acct");
-    expect(out[0].externalId).toBe("@cf/x");
+    expect(out[0]!.externalId).toBe("@cf/x");
   });
 });
 
@@ -398,9 +398,12 @@ describe("CloudflareClient KV / R2 / SQL / manifest / action passthrough", () =>
 
   it("invokeAction(zone purge-cache-all) delegates", async () => {
     const { client, fakeApi } = makeClient();
-    fakeApi.cf.cache = { purge: ok({}) } as never;
+    const cfWithCache = fakeApi.cf as unknown as Record<string, unknown> & {
+      cache: { purge: ReturnType<typeof ok> };
+    };
+    cfWithCache.cache = { purge: ok({}) };
     await client.invokeAction("zone", "acct:zone:z1", "purge-cache-all", "acct");
-    expect(fakeApi.cf.cache.purge).toHaveBeenCalled();
+    expect(cfWithCache.cache.purge).toHaveBeenCalled();
   });
 
   it("invokeAction throws for an unknown action", async () => {
@@ -498,7 +501,7 @@ describe("CloudflareClient.fetchDashboardStats", () => {
       }),
     } as never;
     const stats = await client.fetchDashboardStats("zone", "acct:zone:z1", "acct");
-    expect(stats[0].label).toBe("Status");
+    expect(stats[0]!.label).toBe("Status");
   });
 
   it("r2-bucket sums object sizes", async () => {
@@ -962,6 +965,6 @@ describe("CloudflareClient.streamChatMessage", () => {
     const events = (await collect(
       client.streamChatMessage("workers-ai-model", "acct:workers-ai-model:@cf/x", "acct", []),
     )) as Array<{ kind: string }>;
-    expect(events[0].kind).toBe("error");
+    expect(events[0]!.kind).toBe("error");
   });
 });

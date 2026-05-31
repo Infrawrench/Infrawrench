@@ -83,7 +83,7 @@ vi.mock("../db/schema", () => ({
 }));
 
 // --- encryption ------------------------------------------------------------
-const decrypt = vi.fn(async () => JSON.stringify({ token: "secret" }));
+const decrypt = vi.fn(async (_ct: string) => JSON.stringify({ token: "secret" }));
 const encrypt = vi.fn(async () => ({ ciphertext: "CT", iv: "IV" }));
 vi.mock("../encryption", () => ({
   decrypt,
@@ -101,7 +101,7 @@ vi.mock("../tunnel-resolver", () => ({ rewriteCredentialsThroughTunnel }));
 
 // --- clickhouse writers ----------------------------------------------------
 const flattenMetricSeries = vi.fn(() => [{ metric: "cpu" }]);
-const insertAccountResourceCounts = vi.fn(async () => undefined);
+const insertAccountResourceCounts = vi.fn(async (_opts?: unknown) => undefined);
 const insertDashboardStats = vi.fn(async () => undefined);
 const insertMetricPoints = vi.fn(async () => undefined);
 const insertPollOutcome = vi.fn(async () => undefined);
@@ -399,8 +399,9 @@ describe("refreshPinnedStats", () => {
       getResource: vi.fn(async () => resourceInstance()),
       resolveOutput: vi.fn(async () => "peer-cred"),
     });
+    const fetchMetricSeriesMock = vi.fn(async () => [{ label: "lat", points: [] }]);
     const peerClient = makeClient({
-      fetchMetricSeries: vi.fn(async () => [{ label: "lat", points: [] }]),
+      fetchMetricSeries: fetchMetricSeriesMock,
     });
     const parentPlugin = fakePlugin({
       resourceTypes: [
@@ -426,7 +427,7 @@ describe("refreshPinnedStats", () => {
       return { plugin: parentPlugin };
     });
     await sync.syncAccountResources("acc-1", "org-1");
-    expect(peerClient.fetchMetricSeries).toHaveBeenCalled();
+    expect(fetchMetricSeriesMock).toHaveBeenCalled();
     expect(insertMetricPoints).toHaveBeenCalled();
   });
 

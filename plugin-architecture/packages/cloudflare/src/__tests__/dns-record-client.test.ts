@@ -50,20 +50,20 @@ describe("dns-record-client", () => {
     const api = makeApi();
     const out = await listAllDnsRecords(api, "acct");
     expect(out).toHaveLength(1);
-    expect(out[0].id).toBe("acct:dns-record:z1/rec1");
-    expect(out[0].parentResourceId).toBe("acct:zone:z1");
-    expect(out[0].accountId).toBe("acct");
-    expect(out[0].displayName).toBe("A www.a.com");
-    expect(out[0].fields.content).toBe("1.2.3.4");
-    expect(out[0].fields.proxied).toBe(true);
-    expect(out[0].fields.comment).toBe("primary");
+    expect(out[0]!.id).toBe("acct:dns-record:z1/rec1");
+    expect(out[0]!.parentResourceId).toBe("acct:zone:z1");
+    expect(out[0]!.accountId).toBe("acct");
+    expect(out[0]!.displayName).toBe("A www.a.com");
+    expect(out[0]!.fields.content).toBe("1.2.3.4");
+    expect(out[0]!.fields.proxied).toBe(true);
+    expect(out[0]!.fields.comment).toBe("primary");
   });
 
   it("listDnsRecordsForZone lists a single zone", async () => {
     const api = makeApi();
     const out = await listDnsRecordsForZone(api, "z9", "acct");
     expect(api.cf.dns.records.list).toHaveBeenCalledWith({ zone_id: "z9" });
-    expect(out[0].id).toBe("acct:dns-record:z9/rec1");
+    expect(out[0]!.id).toBe("acct:dns-record:z9/rec1");
   });
 
   it("getDnsRecord parses the composite external id", async () => {

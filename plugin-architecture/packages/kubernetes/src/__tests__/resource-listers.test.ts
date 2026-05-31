@@ -11,7 +11,7 @@ function ctxFor(map: Record<string, unknown>, onDelete?: (path: string) => void)
       }
       if (path in map) return map[path];
       throw new Error(`unexpected path ${path}`);
-    }),
+    }) as unknown as ListerContext["k8sFetch"],
   };
 }
 

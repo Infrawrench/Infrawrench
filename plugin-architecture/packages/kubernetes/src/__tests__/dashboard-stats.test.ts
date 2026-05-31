@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { fetchDashboardStats } from "../dashboard-stats.js";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
+import type { K8sFetch } from "../shared.js";
 
 function res(resourceTypeId: string, fields: Record<string, unknown>): ResourceInstance {
   return {
@@ -23,7 +24,7 @@ describe("fetchDashboardStats", () => {
   it("cluster: returns version on success", async () => {
     const stats = await fetchDashboardStats(
       res("k8s-cluster", {}),
-      vi.fn(async () => ({ gitVersion: "v1.30" })),
+      vi.fn(async () => ({ gitVersion: "v1.30" })) as unknown as K8sFetch,
     );
     expect(stats).toEqual([{ label: "Version", value: "v1.30" }]);
   });
@@ -33,7 +34,7 @@ describe("fetchDashboardStats", () => {
       res("k8s-cluster", {}),
       vi.fn(async () => {
         throw new Error("x");
-      }),
+      }) as unknown as K8sFetch,
     );
     expect(stats).toEqual([]);
   });

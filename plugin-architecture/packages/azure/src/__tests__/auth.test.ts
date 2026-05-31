@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from "vitest";
 import {
   fetchAccessToken,
   fetchStorageAccessToken,
@@ -25,7 +25,7 @@ function okToken(token = "tok-123") {
 }
 
 describe("auth token exchange", () => {
-  let fetchSpy: ReturnType<typeof vi.spyOn>;
+  let fetchSpy: MockInstance<typeof fetch>;
 
   beforeEach(() => {
     fetchSpy = vi.spyOn(globalThis, "fetch");
@@ -41,11 +41,11 @@ describe("auth token exchange", () => {
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     const [url, init] = fetchSpy.mock.calls[0]!;
     expect(url).toBe("https://login.microsoftonline.com/tenant-1/oauth2/v2.0/token");
-    expect(init!.method).toBe("POST");
-    expect((init!.headers as Record<string, string>)["Content-Type"]).toBe(
+    expect((init as RequestInit).method).toBe("POST");
+    expect(((init as RequestInit).headers as Record<string, string>)["Content-Type"]).toBe(
       "application/x-www-form-urlencoded",
     );
-    const body = String(init!.body);
+    const body = String((init as RequestInit).body);
     expect(body).toContain("grant_type=client_credentials");
     expect(body).toContain("client_id=client-1");
     expect(body).toContain("client_secret=secret-1");
@@ -63,7 +63,7 @@ describe("auth token exchange", () => {
       fetchSpy.mockResolvedValueOnce(okToken());
       await fn(creds);
       const lastCall = fetchSpy.mock.calls[fetchSpy.mock.calls.length - 1]!;
-      expect(String(lastCall[1]!.body)).toContain(encodeURIComponent(scope));
+      expect(String((lastCall[1] as RequestInit).body)).toContain(encodeURIComponent(scope));
     }
   });
 

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { MetricSeries } from "@infrawrench/plugin-base";
 
-const insert = vi.fn(async () => undefined);
+const insert = vi.fn(async (_opts?: unknown) => undefined);
 const isConfigured = vi.fn(() => true);
 vi.mock("../clickhouse/client", () => ({
   isClickHouseConfigured: () => isConfigured(),

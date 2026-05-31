@@ -48,16 +48,16 @@ function workerApi(over: Record<string, unknown> = {}) {
       edit: vi.fn(async () => undefined),
     },
   };
-  return makeApi({ cf: { workers: { scripts } } }, ...[over].filter(Boolean));
+  return makeApi({ cf: { workers: { scripts } }, ...over });
 }
 
 describe("worker-client", () => {
   it("listWorkers maps scripts", async () => {
     const api = workerApi();
     const out = await listWorkers(api, "acct");
-    expect(out[0].id).toBe("acct:worker:w1");
-    expect(out[0].fields.compatibilityDate).toBe("2024-01-01");
-    expect(out[0].resolvedOutputs.workerName).toBe("w1");
+    expect(out[0]!.id).toBe("acct:worker:w1");
+    expect(out[0]!.fields.compatibilityDate).toBe("2024-01-01");
+    expect(out[0]!.resolvedOutputs.workerName).toBe("w1");
   });
 
   it("createWorker uploads the script and returns the instance", async () => {

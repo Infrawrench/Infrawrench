@@ -37,7 +37,12 @@ function makeResource(over: Partial<ResourceInstance> = {}): ResourceInstance {
   } as ResourceInstance;
 }
 
-function makeCtx(over: Partial<GcpClientContext> = {}): GcpClientContext {
+type CtxOver = Partial<Omit<GcpClientContext, "get" | "paginate">> & {
+  get?: (url: string) => Promise<unknown>;
+  paginate?: (baseUrl: string, key: string, params?: Record<string, string>) => Promise<unknown[]>;
+};
+
+function makeCtx(over: CtxOver = {}): GcpClientContext {
   return {
     project: "proj",
     serviceAccountKey: { client_email: "sa@x", project_id: "proj" } as never,
@@ -48,7 +53,7 @@ function makeCtx(over: Partial<GcpClientContext> = {}): GcpClientContext {
     id: (a, t, e) => `${a}:${t}:${e}`,
     now: () => "2026-01-01T00:00:00.000Z",
     getResource: vi.fn(async () => makeResource()),
-    ...over,
+    ...(over as Partial<GcpClientContext>),
   };
 }
 

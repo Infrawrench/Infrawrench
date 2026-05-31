@@ -34,9 +34,9 @@ describe("load-balancer-client", () => {
   it("listAllLoadBalancers maps an LB", async () => {
     const api = lbApi();
     const out = await listAllLoadBalancers(api, "acct");
-    expect(out[0].id).toBe("acct:load-balancer:z1/lb1");
-    expect(out[0].fields.defaultPools).toBe("pool-a, pool-b");
-    expect(out[0].fields.steeringPolicy).toBe("dynamic_latency");
+    expect(out[0]!.id).toBe("acct:load-balancer:z1/lb1");
+    expect(out[0]!.fields.defaultPools).toBe("pool-a, pool-b");
+    expect(out[0]!.fields.steeringPolicy).toBe("dynamic_latency");
   });
 
   it("createLoadBalancer parses default pools CSV", async () => {

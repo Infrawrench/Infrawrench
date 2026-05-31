@@ -21,9 +21,9 @@ describe("worker-route-client", () => {
   it("listAllWorkerRoutes maps a route", async () => {
     const api = wrApi();
     const out = await listAllWorkerRoutes(api, "acct");
-    expect(out[0].id).toBe("acct:worker-route:z1/wr1");
-    expect(out[0].fields.pattern).toBe("a.com/api/*");
-    expect(out[0].fields.script).toBe("api-worker");
+    expect(out[0]!.id).toBe("acct:worker-route:z1/wr1");
+    expect(out[0]!.fields.pattern).toBe("a.com/api/*");
+    expect(out[0]!.fields.script).toBe("api-worker");
   });
 
   it("createWorkerRoute sends pattern + script", async () => {

@@ -67,7 +67,7 @@ function makeRes() {
     res.headers[k.toLowerCase()] = v;
   };
   res.end = (b) => {
-    res.body = b;
+    if (b !== undefined) res.body = b;
   };
   return res;
 }

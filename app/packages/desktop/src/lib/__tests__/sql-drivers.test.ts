@@ -216,7 +216,7 @@ describe("secretHostServices.getPlaintext", () => {
 describe("secretHostServices.setPlaintext / persistPlaintextSecret", () => {
   it("encrypts then upserts the secret_field_states row", async () => {
     invoke.mockResolvedValue({ ciphertext: "CT", iv: "IV" });
-    await secretHostServices.setPlaintext("res", "field", "plain");
+    await secretHostServices.setPlaintext!("res", "field", "plain");
     expect(invoke).toHaveBeenCalledWith("secret_field_encrypt", {
       resourceId: "res",
       fieldKey: "field",

@@ -1,8 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const rewriteCredentialsThroughTunnel = vi.fn(async () => undefined);
+const rewriteCredentialsThroughTunnel = vi.fn(
+  async (_acct: string, _creds: Record<string, string>) => undefined,
+);
 vi.mock("../tunnel-resolver", () => ({
-  rewriteCredentialsThroughTunnel: (...a: unknown[]) => rewriteCredentialsThroughTunnel(...a),
+  rewriteCredentialsThroughTunnel: (a: unknown, b: unknown) =>
+    rewriteCredentialsThroughTunnel(a as string, b as Record<string, string>),
 }));
 
 let mod: typeof import("../credential-rewriters/index");

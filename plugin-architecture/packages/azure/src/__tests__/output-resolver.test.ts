@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { resolveAzureOutput } from "../output-resolver.js";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
+import type { AzureHttpContext } from "../shared.js";
 
 function res(partial: Partial<ResourceInstance>): ResourceInstance {
   return {
@@ -33,7 +34,7 @@ function makeDeps(opts: {
       del: vi.fn(),
       subscriptionId: "sub1",
       tenantId: "t1",
-    },
+    } as unknown as AzureHttpContext,
     getResource: vi.fn(async () => opts.resource ?? res({})),
     exportAppRegistrationSecret: opts.exportSecret ?? vi.fn(async () => "secret!"),
   };

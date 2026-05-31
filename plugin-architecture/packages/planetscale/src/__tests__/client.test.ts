@@ -28,7 +28,7 @@ function okJson(json: unknown): FetchExpectation {
 function mockFetchSequence(...responses: FetchExpectation[]) {
   let i = 0;
   fetchMock.mockImplementation(async () => {
-    const r = responses[Math.min(i, responses.length - 1)];
+    const r = responses[Math.min(i, responses.length - 1)]!;
     i++;
     const status = r.status ?? (r.ok === false ? 500 : 200);
     return {
@@ -110,10 +110,14 @@ describe("listResources databases", () => {
       fields: { name: "mydb", region: "us-east", state: "ready" },
     });
 
-    const [url, init] = fetchMock.mock.calls[0];
+    const [url, init] = fetchMock.mock.calls[0]!;
     expect(url).toBe("https://api.planetscale.com/v1/organizations/myorg/databases");
-    expect(init.headers.Authorization).toBe("tid:tsecret");
-    expect(init.headers.Accept).toBe("application/json");
+    expect((init as { headers: Record<string, string> }).headers["Authorization"]).toBe(
+      "tid:tsecret",
+    );
+    expect((init as { headers: Record<string, string> }).headers["Accept"]).toBe(
+      "application/json",
+    );
   });
 
   it("handles missing data array", async () => {
@@ -126,7 +130,7 @@ describe("listResources databases", () => {
     mockFetchSequence(okJson({ data: [dbRecord({ region: undefined, html_url: undefined })] }));
     const client = makeClient();
     const res = await client.listResources("ps-database", ACCOUNT);
-    expect(res[0].fields.region).toBe("");
+    expect(res[0]!.fields.region).toBe("");
   });
 
   it("throws unknown type", async () => {
@@ -201,10 +205,10 @@ describe("resolveOutput", () => {
       ACCOUNT,
     );
     expect(cs).toBe("mysql://user%20name:p%40ss@host.psdb.cloud/mydb");
-    const [url, init] = fetchMock.mock.calls[0];
+    const [url, init] = fetchMock.mock.calls[0]!;
     expect(url).toContain("/databases/mydb/branches/main/passwords");
-    expect(init.method).toBe("POST");
-    expect(JSON.parse(init.body).name).toMatch(/^infrawrench-/);
+    expect((init as { method: string }).method).toBe("POST");
+    expect(JSON.parse((init as { body: string }).body).name).toMatch(/^infrawrench-/);
   });
 
   it("resolves database simple fields", async () => {
@@ -260,7 +264,7 @@ describe("fetchDashboardStats", () => {
       "acct1:ps-database:mydb",
       ACCOUNT,
     );
-    expect(stats[1].variant).toBe("status-degraded");
+    expect(stats[1]!.variant).toBe("status-degraded");
   });
 
   it("database stats error variant", async () => {
@@ -271,7 +275,7 @@ describe("fetchDashboardStats", () => {
       "acct1:ps-database:mydb",
       ACCOUNT,
     );
-    expect(stats[1].variant).toBe("status-error");
+    expect(stats[1]!.variant).toBe("status-error");
   });
 
   it("branch stats", async () => {
@@ -502,7 +506,7 @@ describe("getCreateConfig", () => {
     const cfg = await client.getCreateConfig("ps-branch", "acct1:ps-database:mydb");
     expect(cfg.fields.map((f) => f.key)).toEqual(["name", "parentBranch"]);
     // branchSourceDb should be the parent external id "mydb"
-    const branchCallUrl = fetchMock.mock.calls[1][0];
+    const branchCallUrl = fetchMock.mock.calls[1]![0];
     expect(branchCallUrl).toContain("/databases/mydb/branches");
   });
 
@@ -529,10 +533,13 @@ describe("createResource", () => {
       region: "us-east",
     });
     expect(res.id).toBe("acct1:ps-database:newdb");
-    const [url, init] = fetchMock.mock.calls[0];
+    const [url, init] = fetchMock.mock.calls[0]!;
     expect(url).toContain("/organizations/myorg/databases");
-    expect(init.method).toBe("POST");
-    expect(JSON.parse(init.body)).toEqual({ name: "newdb", region: "us-east" });
+    expect((init as { method: string }).method).toBe("POST");
+    expect(JSON.parse((init as { body: string }).body)).toEqual({
+      name: "newdb",
+      region: "us-east",
+    });
   });
 
   it("creates database with defaults when fields missing", async () => {
@@ -554,9 +561,12 @@ describe("createResource", () => {
       parentBranch: "main",
     });
     expect(res.id).toBe("acct1:ps-branch:mydb/feat");
-    const [url, init] = fetchMock.mock.calls[0];
+    const [url, init] = fetchMock.mock.calls[0]!;
     expect(url).toContain("/databases/mydb/branches");
-    expect(JSON.parse(init.body)).toEqual({ name: "feat", parent_branch: "main" });
+    expect(JSON.parse((init as { body: string }).body)).toEqual({
+      name: "feat",
+      parent_branch: "main",
+    });
   });
 
   it("creates branch using parent resource id", async () => {
@@ -582,16 +592,16 @@ describe("deleteResource", () => {
     mockFetchSequence({ ok: true, status: 204 });
     const client = makeClient();
     await client.deleteResource("ps-database", "acct1:ps-database:mydb", ACCOUNT);
-    const [url, init] = fetchMock.mock.calls[0];
+    const [url, init] = fetchMock.mock.calls[0]!;
     expect(url).toContain("/organizations/myorg/databases/mydb");
-    expect(init.method).toBe("DELETE");
+    expect((init as { method: string }).method).toBe("DELETE");
   });
 
   it("deletes branch", async () => {
     mockFetchSequence({ ok: true, status: 204 });
     const client = makeClient();
     await client.deleteResource("ps-branch", "acct1:ps-branch:mydb/main", ACCOUNT);
-    const [url] = fetchMock.mock.calls[0];
+    const [url] = fetchMock.mock.calls[0]!;
     expect(url).toContain("/databases/mydb/branches/main");
   });
 
@@ -618,7 +628,7 @@ describe("caCert + host http path", () => {
     expect(request).toHaveBeenCalledWith(
       expect.objectContaining({ caCert: "PEMCERT", method: "GET" }),
     );
-    expect(res[0].externalId).toBe("mydb");
+    expect(res[0]!.externalId).toBe("mydb");
     // direct-fetch client still works
     mockFetchSequence(okJson({ data: [] }));
     expect(await client.listResources("ps-database", ACCOUNT)).toEqual([]);

@@ -93,7 +93,7 @@ describe("listS3Objects", () => {
     expect(out.map((o) => o.key)).toEqual(["a", "b"]);
     expect(signedS3Fetch).toHaveBeenCalledTimes(2);
     // second call must carry continuation token
-    expect(signedS3Fetch.mock.calls[1][0].url).toContain("continuation-token=TOK");
+    expect(signedS3Fetch.mock.calls[1]![0]!.url).toContain("continuation-token=TOK");
   });
 
   it("throws a labeled error on non-ok list response", async () => {
@@ -112,7 +112,7 @@ describe("uploadS3Object", () => {
       arrayBuffer: async () => new Uint8Array([104, 105]).buffer,
     } as unknown as File;
     await uploadS3Object(cfg, "b", "k.txt", file);
-    const arg = signedS3Fetch.mock.calls[0][0];
+    const arg = signedS3Fetch.mock.calls[0]![0]!;
     expect(arg.method).toBe("PUT");
     expect(arg.headers["content-type"]).toBe("text/plain");
     expect(arg.headers["content-length"]).toBe("2");
@@ -123,7 +123,9 @@ describe("uploadS3Object", () => {
     signedS3Fetch.mockResolvedValueOnce(resp({ status: 200 }));
     const file = { type: "", arrayBuffer: async () => new Uint8Array(0).buffer } as unknown as File;
     await uploadS3Object(cfg, "b", "k", file);
-    expect(signedS3Fetch.mock.calls[0][0].headers["content-type"]).toBe("application/octet-stream");
+    expect(signedS3Fetch.mock.calls[0]![0]!.headers["content-type"]).toBe(
+      "application/octet-stream",
+    );
   });
 
   it("throws on non-ok upload", async () => {
@@ -140,7 +142,7 @@ describe("makeS3Folder", () => {
   it("appends a trailing slash and PUTs a zero-byte marker", async () => {
     signedS3Fetch.mockResolvedValueOnce(resp({ status: 200 }));
     await makeS3Folder(cfg, "b", "newdir");
-    const arg = signedS3Fetch.mock.calls[0][0];
+    const arg = signedS3Fetch.mock.calls[0]![0]!;
     expect(arg.url).toContain("newdir/");
     expect(arg.headers["content-type"]).toBe("application/x-directory");
   });
@@ -148,7 +150,7 @@ describe("makeS3Folder", () => {
   it("does not double up an existing trailing slash", async () => {
     signedS3Fetch.mockResolvedValueOnce(resp({ status: 200 }));
     await makeS3Folder(cfg, "b", "dir/");
-    expect(signedS3Fetch.mock.calls[0][0].url).toContain("dir/?");
+    expect(signedS3Fetch.mock.calls[0]![0]!.url).toContain("dir/?");
   });
 });
 
@@ -157,7 +159,7 @@ describe("deleteS3Object", () => {
     signedS3Fetch.mockResolvedValueOnce(resp({ status: 204 }));
     await deleteS3Object(cfg, "b", "k.txt");
     expect(signedS3Fetch).toHaveBeenCalledTimes(1);
-    expect(signedS3Fetch.mock.calls[0][0].method).toBe("DELETE");
+    expect(signedS3Fetch.mock.calls[0]![0]!.method).toBe("DELETE");
   });
 
   it("tolerates a 404 on single object delete", async () => {
@@ -223,7 +225,7 @@ describe("putS3BucketPolicy", () => {
   it("PUTs a non-empty policy", async () => {
     signedS3Fetch.mockResolvedValueOnce(resp({ status: 200 }));
     await putS3BucketPolicy(cfg, "b", '{"x":1}');
-    const arg = signedS3Fetch.mock.calls[0][0];
+    const arg = signedS3Fetch.mock.calls[0]![0]!;
     expect(arg.method).toBe("PUT");
     expect(arg.body).toBe('{"x":1}');
     expect(arg.headers["content-type"]).toBe("application/json");
@@ -232,7 +234,7 @@ describe("putS3BucketPolicy", () => {
   it("DELETEs the policy when given empty/whitespace", async () => {
     signedS3Fetch.mockResolvedValueOnce(resp({ status: 204 }));
     await putS3BucketPolicy(cfg, "b", "   ");
-    expect(signedS3Fetch.mock.calls[0][0].method).toBe("DELETE");
+    expect(signedS3Fetch.mock.calls[0]![0]!.method).toBe("DELETE");
   });
 
   it("tolerates 404 on delete", async () => {

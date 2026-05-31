@@ -22,7 +22,7 @@ import { createFunctionApp } from "../function-app-create-handlers.js";
 import { createAKSCluster } from "../aks-create-handlers.js";
 import { createAppRegistration } from "../app-registration-create-handlers.js";
 
-function makeCtx(overrides: Partial<AzureCreateContext> = {}): AzureCreateContext {
+function makeCtx(overrides: Record<string, unknown> = {}): AzureCreateContext {
   return {
     get: vi.fn(async () => ({})),
     post: vi.fn(async () => ({})),
@@ -32,14 +32,14 @@ function makeCtx(overrides: Partial<AzureCreateContext> = {}): AzureCreateContex
     })),
     patch: vi.fn(async () => ({})),
     del: vi.fn(async () => undefined),
-    makeId: (a, t, e) => `${a}:${t}:${e}`,
+    makeId: (a: string, t: string, e: string) => `${a}:${t}:${e}`,
     graphClient: {} as never,
     subscriptionId: "sub1",
     tenantId: "t1",
     clientId: "c1",
     clientSecret: "s1",
     ...overrides,
-  };
+  } as unknown as AzureCreateContext;
 }
 
 const ACCT = "acct";
@@ -64,7 +64,9 @@ describe("createResourceGroup", () => {
     }));
     const ctx = makeCtx({ put });
     const out = await createResourceGroup(ctx, ACCT, { name: "rg1", region: "eastus" });
-    expect(put.mock.calls[0]![0]).toContain("/resourcegroups/rg1?api-version=2022-09-01");
+    expect((put.mock.calls[0] as unknown as [string, unknown])[0]).toContain(
+      "/resourcegroups/rg1?api-version=2022-09-01",
+    );
     expect(out).toMatchObject({
       resourceTypeId: "azure-resource-group",
       externalId: "rg1",
@@ -86,7 +88,7 @@ describe("createSimpleResource", () => {
       "2023-09-01",
       { foo: "bar" },
     );
-    const [url, body] = put.mock.calls[0]!;
+    const [url, body] = put.mock.calls[0] as unknown as [string, unknown];
     expect(url).toContain("/providers/Microsoft.Network/networkSecurityGroups/nsg1");
     expect(body).toEqual({ location: "eastus", properties: { foo: "bar" } });
     expect(out.externalId).toBe("rg1/nsg1");
@@ -154,7 +156,7 @@ describe("single-PUT create handlers", () => {
       sku: "Premium_LRS",
       diskSizeGb: "256",
     });
-    expect(put.mock.calls[0]![0]).toContain("/disks/d1");
+    expect((put.mock.calls[0] as unknown as [string, unknown])[0]).toContain("/disks/d1");
     expect(out.fields["diskSizeGb"]).toBe(256);
   });
 
@@ -233,7 +235,9 @@ describe("single-PUT create handlers", () => {
       sku: "Premium",
       capacity: "1",
     });
-    const body = put.mock.calls[0]![1] as { properties: { sku: { family: string } } };
+    const body = (
+      put.mock.calls[0] as unknown as [string, { properties: { sku: { family: string } } }]
+    )[1];
     expect(body.properties.sku.family).toBe("P");
     expect(out.resolvedOutputs["hostName"]).toContain("r1.redis.cache.windows.net");
   });
@@ -310,9 +314,12 @@ describe("single-PUT create handlers", () => {
       nodeCount: "3",
       osDiskSizeGb: "128",
     });
-    const body = put.mock.calls[0]![1] as {
-      properties: { servicePrincipalProfile: { clientId: string } };
-    };
+    const body = (
+      put.mock.calls[0] as unknown as [
+        string,
+        { properties: { servicePrincipalProfile: { clientId: string } } },
+      ]
+    )[1];
     expect(body.properties.servicePrincipalProfile.clientId).toBe("c1");
     expect(out.fields["nodeCount"]).toBe(3);
   });
@@ -384,10 +391,15 @@ describe("createAppService / createFunctionApp", () => {
       region: "eastus",
       storageAccount: "rgS/saccount",
     });
-    expect(post.mock.calls[0]![0]).toContain("/storageAccounts/saccount/listKeys");
-    const siteBody = put.mock.calls[put.mock.calls.length - 1]![1] as {
-      properties: { siteConfig: { appSettings: Array<{ name: string; value: string }> } };
-    };
+    expect((post.mock.calls[0] as unknown as [string, unknown])[0]).toContain(
+      "/storageAccounts/saccount/listKeys",
+    );
+    const siteBody = (
+      put.mock.calls[put.mock.calls.length - 1] as unknown as [
+        string,
+        { properties: { siteConfig: { appSettings: Array<{ name: string; value: string }> } } },
+      ]
+    )[1];
     const storageSetting = siteBody.properties.siteConfig.appSettings.find(
       (s) => s.name === "AzureWebJobsStorage",
     );

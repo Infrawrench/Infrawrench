@@ -28,10 +28,10 @@ describe("hyperdrive-client", () => {
   it("listHyperdrives maps a config", async () => {
     const api = hdApi();
     const out = await listHyperdrives(api, "acct");
-    expect(out[0].id).toBe("acct:hyperdrive:hd1");
-    expect(out[0].fields.originHost).toBe("db.a.com");
-    expect(out[0].fields.originPort).toBe(5432);
-    expect(out[0].resolvedOutputs?.hyperdriveId).toBe("hd1");
+    expect(out[0]!.id).toBe("acct:hyperdrive:hd1");
+    expect(out[0]!.fields.originHost).toBe("db.a.com");
+    expect(out[0]!.fields.originPort).toBe(5432);
+    expect(out[0]!.resolvedOutputs?.hyperdriveId).toBe("hd1");
   });
 
   it("listHyperdrives surfaces a permission hint on a 403", async () => {
@@ -59,7 +59,7 @@ describe("hyperdrive-client", () => {
       user: "u",
       password: "secret",
     });
-    const call = (api.cf.hyperdrive.configs.create as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    const call = (api.cf.hyperdrive.configs.create as ReturnType<typeof vi.fn>).mock.calls[0]![0];
     expect(call.name).toBe("pg");
     expect(call.origin).toMatchObject({ host: "db.a.com", port: 5432, password: "secret" });
   });

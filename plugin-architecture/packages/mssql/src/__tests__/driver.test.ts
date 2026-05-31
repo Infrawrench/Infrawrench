@@ -62,7 +62,9 @@ describe("mssql driver", () => {
     it("encrypt=false disables encryption", async () => {
       mockQuery.mockResolvedValue({ recordset: [] });
       await driver.query("mssql://u:p@host/db?encrypt=false", "SELECT 1");
-      const cfg = ConnectionPool.mock.calls[0]![0] as { options: { encrypt: boolean } };
+      const cfg = (ConnectionPool.mock.calls as unknown as unknown[][])[0]![0] as {
+        options: { encrypt: boolean };
+      };
       expect(cfg.options.encrypt).toBe(false);
     });
   });

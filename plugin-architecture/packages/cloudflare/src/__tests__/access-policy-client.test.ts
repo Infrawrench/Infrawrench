@@ -32,11 +32,11 @@ describe("access-policy-client", () => {
   it("listAllAccessPolicies maps policies and formats rules", async () => {
     const api = policyApi();
     const out = await listAllAccessPolicies(api, "acct");
-    expect(out[0].id).toBe("acct:access-policy:app1/pol1");
-    expect(out[0].parentResourceId).toBe("acct:access-application:app1");
-    expect(out[0].fields.decision).toBe("allow");
-    expect(out[0].fields.includeRules).toBe("email_domain:a.com");
-    expect(out[0].fields.excludeRules).toBe("ip:1.2.3.4");
+    expect(out[0]!.id).toBe("acct:access-policy:app1/pol1");
+    expect(out[0]!.parentResourceId).toBe("acct:access-application:app1");
+    expect(out[0]!.fields.decision).toBe("allow");
+    expect(out[0]!.fields.includeRules).toBe("email_domain:a.com");
+    expect(out[0]!.fields.excludeRules).toBe("ip:1.2.3.4");
   });
 
   it("listAllAccessPolicies skips apps where policies throw", async () => {

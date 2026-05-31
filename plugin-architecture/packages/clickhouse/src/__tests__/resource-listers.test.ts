@@ -45,7 +45,7 @@ describe("listServices", () => {
     const res = await listServices(ctx, ACCOUNT);
     expect(cloudApi).toHaveBeenCalledWith("GET", "/v1/organizations/org-1/services");
     expect(res).toHaveLength(1);
-    const s = res[0];
+    const s = res[0]!;
     expect(s.id).toBe("acct-1:ch-service:svc1");
     expect(s.fields["clickhouseVersion"]).toBe("24.1");
     expect(s.resolvedOutputs["host"]).toBe("h.clickhouse.cloud");
@@ -65,7 +65,7 @@ describe("listServices", () => {
       })) as never,
     });
     const res = await listServices(ctx, ACCOUNT);
-    const s = res[0];
+    const s = res[0]!;
     expect(s.displayName).toBe("svc2");
     expect(s.resolvedOutputs["host"]).toBe("");
     expect(s.resolvedOutputs["port"]).toBe("8443");
@@ -92,7 +92,7 @@ describe("listServices", () => {
       })) as never,
     });
     const res = await listServices(ctx, ACCOUNT);
-    expect(res[0].resolvedOutputs["nativePort"]).toBe("9000");
+    expect(res[0]!.resolvedOutputs["nativePort"]).toBe("9000");
   });
 
   it("returns empty when result missing", async () => {
@@ -111,16 +111,16 @@ describe("listDatabases", () => {
     const res = await listDatabases(ctx, ACCOUNT, "svc1");
     expect(chQuery).toHaveBeenCalledWith(expect.stringContaining("system.databases"));
     expect(res).toHaveLength(2);
-    expect(res[0].id).toBe("acct-1:ch-database:svc1/default");
-    expect(res[0].parentResourceId).toBe("acct-1:ch-service:svc1");
-    expect(res[1].fields["comment"]).toBe("metrics");
+    expect(res[0]!.id).toBe("acct-1:ch-database:svc1/default");
+    expect(res[0]!.parentResourceId).toBe("acct-1:ch-service:svc1");
+    expect(res[1]!.fields["comment"]).toBe("metrics");
   });
 
   it("handles missing row fields", async () => {
     const ctx = makeCtx({ chQuery: vi.fn(async () => [{}]) as never });
     const res = await listDatabases(ctx, ACCOUNT, "svc1");
-    expect(res[0].fields["name"]).toBe("");
-    expect(res[0].fields["engine"]).toBe("");
+    expect(res[0]!.fields["name"]).toBe("");
+    expect(res[0]!.fields["engine"]).toBe("");
   });
 
   it("returns empty when chQuery throws", async () => {

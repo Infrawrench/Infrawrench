@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 
 // ---------------------------------------------------------------------------
 // Fakes for `ws` and `node:net`. The agent module runs main() on import, so we
@@ -135,9 +135,9 @@ async function loadAgent(env: Record<string, string | undefined> = {}): Promise<
   return ws;
 }
 
-let logSpy: ReturnType<typeof vi.spyOn>;
-let errSpy: ReturnType<typeof vi.spyOn>;
-let exitSpy: ReturnType<typeof vi.spyOn>;
+let logSpy: MockInstance;
+let errSpy: MockInstance;
+let exitSpy: MockInstance;
 
 beforeEach(() => {
   vi.useFakeTimers();

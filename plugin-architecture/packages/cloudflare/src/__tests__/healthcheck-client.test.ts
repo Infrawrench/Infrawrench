@@ -34,9 +34,9 @@ describe("healthcheck-client", () => {
   it("listAllHealthchecks maps across zones", async () => {
     const api = hcApi();
     const out = await listAllHealthchecks(api, "acct");
-    expect(out[0].id).toBe("acct:healthcheck:z1/hc1");
-    expect(out[0].fields.address).toBe("1.2.3.4");
-    expect(out[0].fields.interval).toBe(60);
+    expect(out[0]!.id).toBe("acct:healthcheck:z1/hc1");
+    expect(out[0]!.fields.address).toBe("1.2.3.4");
+    expect(out[0]!.fields.interval).toBe(60);
   });
 
   it("createHealthcheck builds http_config for HTTPS", async () => {
@@ -53,7 +53,7 @@ describe("healthcheck-client", () => {
       },
       "z1",
     );
-    const call = (api.cf.healthchecks.create as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    const call = (api.cf.healthchecks.create as ReturnType<typeof vi.fn>).mock.calls[0]![0];
     expect(call.type).toBe("HTTPS");
     expect(call.http_config).toEqual({
       method: "GET",

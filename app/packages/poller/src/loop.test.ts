@@ -5,10 +5,10 @@ const limit = vi.fn();
 const orderBy = vi.fn(() => ({ limit }));
 const where = vi.fn(() => ({ orderBy }));
 const from = vi.fn(() => ({ where }));
-const select = vi.fn(() => ({ from }));
+const select = vi.fn((_opts?: unknown) => ({ from }));
 
 vi.mock("@infrawrench/server-core/db/client", () => ({
-  db: { select: (...a: unknown[]) => select(...a) },
+  db: { select: (a?: unknown) => select(a) },
 }));
 
 vi.mock("@infrawrench/server-core/db/schema", () => ({

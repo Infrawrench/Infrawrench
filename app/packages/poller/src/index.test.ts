@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 
 const loadPlugins = vi.fn();
 vi.mock("@infrawrench/server-core/plugin-loader", () => ({
@@ -12,9 +12,9 @@ vi.mock("./loop", () => ({
 }));
 
 describe("poller index bootstrap", () => {
-  let exitSpy: ReturnType<typeof vi.spyOn>;
-  let logSpy: ReturnType<typeof vi.spyOn>;
-  let errSpy: ReturnType<typeof vi.spyOn>;
+  let exitSpy: MockInstance<typeof process.exit>;
+  let logSpy: MockInstance<typeof console.log>;
+  let errSpy: MockInstance<typeof console.error>;
 
   beforeEach(() => {
     vi.resetModules();

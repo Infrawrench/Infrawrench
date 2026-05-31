@@ -167,7 +167,9 @@ describe("driver.command — produce", () => {
 
   it("tolerates malformed headers JSON", async () => {
     await driver.command(CONN, "produce", ["events", "v", "", "{not json"]);
-    const sent = producerMethods.send.mock.calls.at(-1)![0] as { messages: unknown[] };
+    const sent = (producerMethods.send.mock.calls as unknown as unknown[][])[
+      producerMethods.send.mock.calls.length - 1
+    ]![0] as { messages: unknown[] };
     expect(sent.messages).toHaveLength(1);
   });
 

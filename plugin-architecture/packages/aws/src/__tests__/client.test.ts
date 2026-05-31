@@ -43,8 +43,10 @@ vi.mock("../resource-listers-extended.js", async (importOriginal) =>
 const awsGetCreateConfig = vi.fn(async () => ({ fields: [] }));
 const awsCreateResource = vi.fn(async () => ({ id: "created" }) as ResourceInstance);
 vi.mock("../create-handlers.js", () => ({
-  awsGetCreateConfig: (...a: unknown[]) => awsGetCreateConfig(...a),
-  awsCreateResource: (...a: unknown[]) => awsCreateResource(...a),
+  awsGetCreateConfig: (...a: unknown[]) =>
+    (awsGetCreateConfig as (...args: unknown[]) => unknown)(...a),
+  awsCreateResource: (...a: unknown[]) =>
+    (awsCreateResource as (...args: unknown[]) => unknown)(...a),
 }));
 
 vi.mock("../iam-policies.js", () => ({
@@ -59,10 +61,11 @@ const getBucketPolicy = vi.fn(async () => "");
 const putBucketPolicy = vi.fn(async () => undefined);
 vi.mock("../s3-storage.js", () => ({
   deleteStorageObject: vi.fn(async () => undefined),
-  getBucketPolicy: (...a: unknown[]) => getBucketPolicy(...a),
-  listStorageObjects: (...a: unknown[]) => listStorageObjects(...a),
+  getBucketPolicy: (...a: unknown[]) => (getBucketPolicy as (...args: unknown[]) => unknown)(...a),
+  listStorageObjects: (...a: unknown[]) =>
+    (listStorageObjects as (...args: unknown[]) => unknown)(...a),
   makeStorageFolder: vi.fn(async () => undefined),
-  putBucketPolicy: (...a: unknown[]) => putBucketPolicy(...a),
+  putBucketPolicy: (...a: unknown[]) => (putBucketPolicy as (...args: unknown[]) => unknown)(...a),
   uploadStorageObject: vi.fn(async () => undefined),
 }));
 
@@ -73,34 +76,38 @@ vi.mock("../render-resource.js", () => ({
 const fetchDashboardStats = vi.fn(() => [{ label: "L", value: "v" }]);
 const fetchMetricSeries = vi.fn(async () => [{ label: "m", unit: "", points: [] }]);
 vi.mock("../dashboard-metrics.js", () => ({
-  fetchDashboardStats: (...a: unknown[]) => fetchDashboardStats(...a),
-  fetchMetricSeries: (...a: unknown[]) => fetchMetricSeries(...a),
+  fetchDashboardStats: (...a: unknown[]) =>
+    (fetchDashboardStats as (...args: unknown[]) => unknown)(...a),
+  fetchMetricSeries: (...a: unknown[]) =>
+    (fetchMetricSeries as (...args: unknown[]) => unknown)(...a),
 }));
 vi.mock("../cost-estimate.js", () => ({ getCreateCostEstimate: vi.fn(async () => 12.5) }));
 
 const attachResource = vi.fn(async () => undefined);
 vi.mock("../attach-handlers.js", () => ({
-  attachResource: (...a: unknown[]) => attachResource(...a),
+  attachResource: (...a: unknown[]) => (attachResource as (...args: unknown[]) => unknown)(...a),
 }));
 const resolveOutput = vi.fn(async () => "resolved");
 vi.mock("../resolve-output.js", () => ({
-  resolveOutput: (...a: unknown[]) => resolveOutput(...a),
+  resolveOutput: (...a: unknown[]) => (resolveOutput as (...args: unknown[]) => unknown)(...a),
 }));
 const deleteResource = vi.fn(async () => undefined);
 vi.mock("../delete-handlers.js", () => ({
-  deleteResource: (...a: unknown[]) => deleteResource(...a),
+  deleteResource: (...a: unknown[]) => (deleteResource as (...args: unknown[]) => unknown)(...a),
 }));
 const executeFieldAction = vi.fn(async () => ({ value: "v" }));
 vi.mock("../field-actions.js", () => ({
-  executeFieldAction: (...a: unknown[]) => executeFieldAction(...a),
+  executeFieldAction: (...a: unknown[]) =>
+    (executeFieldAction as (...args: unknown[]) => unknown)(...a),
 }));
 const executeDynamoDbCommand = vi.fn(async () => ({ ok: true }));
 vi.mock("../dynamodb-handlers.js", () => ({
-  executeDynamoDbCommand: (...a: unknown[]) => executeDynamoDbCommand(...a),
+  executeDynamoDbCommand: (...a: unknown[]) =>
+    (executeDynamoDbCommand as (...args: unknown[]) => unknown)(...a),
 }));
 const publishSqs = vi.fn(async () => ({ summary: "Sent." }));
 vi.mock("../publish-handlers.js", () => ({
-  publishSqs: (...a: unknown[]) => publishSqs(...a),
+  publishSqs: (...a: unknown[]) => (publishSqs as (...args: unknown[]) => unknown)(...a),
   publishSns: vi.fn(async () => ({ summary: "p" })),
   publishKinesis: vi.fn(async () => ({ summary: "k" })),
   publishEventBridge: vi.fn(async () => ({ summary: "e" })),

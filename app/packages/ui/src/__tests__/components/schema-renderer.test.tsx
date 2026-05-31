@@ -174,7 +174,7 @@ describe("SchemaRenderer", () => {
 });
 
 describe("SchemaRenderer action dispatch", () => {
-  let openSpy: ReturnType<typeof vi.spyOn>;
+  let openSpy: { mockRestore: () => void };
 
   beforeEach(() => {
     openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
@@ -249,7 +249,7 @@ describe("SchemaRenderer action dispatch", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Run" }));
     expect(listener).toHaveBeenCalledOnce();
-    const detail = (listener.mock.calls[0][0] as CustomEvent).detail;
+    const detail = (listener.mock.calls[0]![0] as CustomEvent).detail;
     expect(detail).toMatchObject({ actionId: "do-it", resourceId: "res-1" });
     window.removeEventListener(INVOKE_PLUGIN_ACTION_EVENT, listener as EventListener);
   });

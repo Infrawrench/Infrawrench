@@ -18,13 +18,13 @@ function makeCtx(): AzureCreateContext {
     put: vi.fn(async () => ({})),
     patch: vi.fn(async () => ({})),
     del: vi.fn(async () => undefined),
-    makeId: (a, t, e) => `${a}:${t}:${e}`,
+    makeId: (a: string, t: string, e: string) => `${a}:${t}:${e}`,
     graphClient: {} as never,
     subscriptionId: "sub1",
     tenantId: "t1",
     clientId: "c1",
     clientSecret: "s1",
-  };
+  } as unknown as AzureCreateContext;
 }
 
 const TYPES = [

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const createClient = vi.fn(() => ({ id: "fake-ch-client" }));
-vi.mock("@clickhouse/client", () => ({ createClient: (...a: unknown[]) => createClient(...a) }));
+const createClient = vi.fn((_opts?: unknown) => ({ id: "fake-ch-client" }));
+vi.mock("@clickhouse/client", () => ({ createClient: (a: unknown) => createClient(a) }));
 
 const CH_ENV = [
   "CLICKHOUSE_METRICS_URL",

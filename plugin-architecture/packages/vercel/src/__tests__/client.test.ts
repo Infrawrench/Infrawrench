@@ -5,7 +5,7 @@ const ACCOUNT = "acct-1";
 
 interface FetchCall {
   url: string;
-  init?: RequestInit;
+  init: RequestInit | undefined;
 }
 
 let calls: FetchCall[] = [];
@@ -52,16 +52,16 @@ describe("constructor", () => {
   it("sends Authorization header and base url", async () => {
     installFetch(() => jsonResponse({ projects: [] }));
     await client().listResources("vercel-project", ACCOUNT);
-    expect(calls[0].url).toContain("https://api.vercel.com/v9/projects");
-    const headers = calls[0].init?.headers as Record<string, string>;
+    expect(calls[0]!.url).toContain("https://api.vercel.com/v9/projects");
+    const headers = calls[0]!.init?.headers as Record<string, string>;
     expect(headers["Authorization"]).toBe("Bearer tok");
   });
 
   it("appends teamId query param when configured", async () => {
     installFetch(() => jsonResponse({ projects: [] }));
     await client({ accessToken: "tok", teamId: "team_x" }).listResources("vercel-project", ACCOUNT);
-    expect(calls[0].url).toContain("teamId=team_x");
-    expect(calls[0].url).toContain("&"); // teamId appended after limit param uses & separator
+    expect(calls[0]!.url).toContain("teamId=team_x");
+    expect(calls[0]!.url).toContain("&"); // teamId appended after limit param uses & separator
   });
 });
 
@@ -74,7 +74,10 @@ describe("caCert + host http service path", () => {
       ACCOUNT,
     );
     expect(request).toHaveBeenCalled();
-    const arg = request.mock.calls[0][0] as { url: string; caCert?: string };
+    const arg = (request.mock.calls as unknown as [unknown[]])[0]![0] as {
+      url: string;
+      caCert?: string;
+    };
     expect(arg.url).toContain("/v9/projects");
     expect(arg.caCert).toBe("PEM");
     expect(spy).not.toHaveBeenCalled();
@@ -113,7 +116,7 @@ describe("listResources dispatch + mappers", () => {
     });
     const res = await client().listResources("vercel-project", ACCOUNT);
     expect(res).toHaveLength(1);
-    const p = res[0];
+    const p = res[0]!;
     expect(p.id).toBe("acct-1:vercel-project:p1");
     expect(p.resourceTypeId).toBe("vercel-project");
     expect(p.externalId).toBe("p1");
@@ -122,7 +125,7 @@ describe("listResources dispatch + mappers", () => {
     expect(p.fields["live"]).toBe(true);
     // second page fetched then stopped
     expect(calls.length).toBe(2);
-    expect(calls[1].url).toContain("until=1699999999999");
+    expect(calls[1]!.url).toContain("until=1699999999999");
   });
 
   it("falls back to latestDeployments url when no alias", async () => {
@@ -140,8 +143,8 @@ describe("listResources dispatch + mappers", () => {
       }),
     );
     const res = await client().listResources("vercel-project", ACCOUNT);
-    expect(res[0].fields["productionUrl"]).toBe("https://x.vercel.app");
-    expect(res[0].fields["gitRepo"]).toBeUndefined();
+    expect(res[0]!.fields["productionUrl"]).toBe("https://x.vercel.app");
+    expect(res[0]!.fields["gitRepo"]).toBeUndefined();
   });
 
   it("maps deployments", async () => {
@@ -172,11 +175,11 @@ describe("listResources dispatch + mappers", () => {
       }),
     );
     const res = await client().listResources("vercel-deployment", ACCOUNT);
-    expect(res[0].id).toBe("acct-1:vercel-deployment:d1");
-    expect(res[0].fields["url"]).toBe("https://dep.vercel.app");
-    expect(res[0].fields["state"]).toBe("READY");
-    expect(res[0].fields["gitBranch"]).toBe("main");
-    expect(res[0].fields["creatorEmail"]).toBe("a@b.com");
+    expect(res[0]!.id).toBe("acct-1:vercel-deployment:d1");
+    expect(res[0]!.fields["url"]).toBe("https://dep.vercel.app");
+    expect(res[0]!.fields["state"]).toBe("READY");
+    expect(res[0]!.fields["gitBranch"]).toBe("main");
+    expect(res[0]!.fields["creatorEmail"]).toBe("a@b.com");
   });
 
   it("maps deployment with minimal fields (username fallback, no url)", async () => {
@@ -189,10 +192,10 @@ describe("listResources dispatch + mappers", () => {
       }),
     );
     const res = await client().listResources("vercel-deployment", ACCOUNT);
-    expect(res[0].displayName).toBe("n");
-    expect(res[0].fields["creatorEmail"]).toBe("bob");
-    expect(res[0].fields["state"]).toBe("UNKNOWN");
-    expect(res[0].fields["url"]).toBeUndefined();
+    expect(res[0]!.displayName).toBe("n");
+    expect(res[0]!.fields["creatorEmail"]).toBe("bob");
+    expect(res[0]!.fields["state"]).toBe("UNKNOWN");
+    expect(res[0]!.fields["url"]).toBeUndefined();
   });
 
   it("maps domains", async () => {
@@ -216,9 +219,9 @@ describe("listResources dispatch + mappers", () => {
       }),
     );
     const res = await client().listResources("vercel-domain", ACCOUNT);
-    expect(res[0].fields["nameservers"]).toBe("ns1, ns2");
-    expect(res[0].fields["verified"]).toBe("true");
-    expect(res[0].fields["renew"]).toBe("true");
+    expect(res[0]!.fields["nameservers"]).toBe("ns1, ns2");
+    expect(res[0]!.fields["verified"]).toBe("true");
+    expect(res[0]!.fields["renew"]).toBe("true");
   });
 
   it("maps domain with null renew/expiry", async () => {
@@ -241,8 +244,8 @@ describe("listResources dispatch + mappers", () => {
       }),
     );
     const res = await client().listResources("vercel-domain", ACCOUNT);
-    expect(res[0].fields["renew"]).toBeUndefined();
-    expect(res[0].fields["expiresAt"]).toBe("—");
+    expect(res[0]!.fields["renew"]).toBeUndefined();
+    expect(res[0]!.fields["expiresAt"]).toBe("—");
   });
 
   it("lists env vars across projects, skips projects that error", async () => {
@@ -277,10 +280,10 @@ describe("listResources dispatch + mappers", () => {
     });
     const res = await client().listResources("vercel-env-var", ACCOUNT);
     expect(res).toHaveLength(1);
-    expect(res[0].id).toBe("acct-1:vercel-env-var:p1/e1");
-    expect(res[0].fields["target"]).toBe("production, preview");
-    expect(res[0].fields["projectName"]).toBe("one");
-    expect(res[0].parentResourceId).toBe("acct-1:vercel-project:p1");
+    expect(res[0]!.id).toBe("acct-1:vercel-env-var:p1/e1");
+    expect(res[0]!.fields["target"]).toBe("production, preview");
+    expect(res[0]!.fields["projectName"]).toBe("one");
+    expect(res[0]!.parentResourceId).toBe("acct-1:vercel-project:p1");
   });
 
   it("env var falls back to composite id and string target", async () => {
@@ -294,8 +297,8 @@ describe("listResources dispatch + mappers", () => {
       return jsonResponse({ envs: [{ key: "FOO", type: "plain", target: "production" }] });
     });
     const res = await client().listResources("vercel-env-var", ACCOUNT);
-    expect(res[0].externalId).toBe("p1/FOO");
-    expect(res[0].fields["target"]).toBe("production");
+    expect(res[0]!.externalId).toBe("p1/FOO");
+    expect(res[0]!.fields["target"]).toBe("production");
   });
 
   it("env var handles missing envs array and undefined target", async () => {
@@ -319,8 +322,8 @@ describe("listResources dispatch + mappers", () => {
       }),
     );
     const res = await client().listResources("vercel-team", ACCOUNT);
-    expect(res[0].id).toBe("acct-1:vercel-team:t1");
-    expect(res[0].fields["slug"]).toBe("team");
+    expect(res[0]!.id).toBe("acct-1:vercel-team:t1");
+    expect(res[0]!.fields["slug"]).toBe("team");
   });
 
   it("returns empty teams when request fails", async () => {
@@ -352,7 +355,7 @@ describe("getResource", () => {
     installFetch(() => jsonResponse({ id: "p1", name: "proj", createdAt: 1 }));
     const r = await client().getResource("vercel-project", "acct-1:vercel-project:p1", ACCOUNT);
     expect(r.externalId).toBe("p1");
-    expect(calls[0].url).toContain("/v9/projects/p1");
+    expect(calls[0]!.url).toContain("/v9/projects/p1");
   });
 
   it("falls back to listing for non-project types", async () => {
@@ -603,7 +606,7 @@ describe("fetchDashboardStats", () => {
       "acct-1:vercel-deployment:d1",
       ACCOUNT,
     );
-    expect(stats[0].variant).toBe("status-degraded");
+    expect(stats[0]!.variant).toBe("status-degraded");
     expect(stats.find((s) => s.label === "Target")?.value).toBe("preview");
   });
 
@@ -619,7 +622,7 @@ describe("fetchDashboardStats", () => {
       "acct-1:vercel-deployment:d1",
       ACCOUNT,
     );
-    expect(stats[0].variant).toBe("status-error");
+    expect(stats[0]!.variant).toBe("status-error");
 
     installFetch(() =>
       jsonResponse({
@@ -632,7 +635,7 @@ describe("fetchDashboardStats", () => {
       "acct-1:vercel-deployment:d1",
       ACCOUNT,
     );
-    expect(stats[0].variant).toBe("default");
+    expect(stats[0]!.variant).toBe("default");
   });
 
   it("domain stats", async () => {
@@ -659,8 +662,8 @@ describe("fetchDashboardStats", () => {
       "acct-1:vercel-domain:dom1",
       ACCOUNT,
     );
-    expect(stats[0].value).toBe("Yes");
-    expect(stats[0].variant).toBe("status-healthy");
+    expect(stats[0]!.value).toBe("Yes");
+    expect(stats[0]!.variant).toBe("status-healthy");
   });
 
   it("returns empty for env-var type", async () => {
@@ -853,12 +856,12 @@ describe("renderSidebarItem", () => {
 describe("getCreateConfig", () => {
   it("project config", async () => {
     const cfg = await client().getCreateConfig("vercel-project");
-    expect(cfg.fields[0].key).toBe("name");
+    expect(cfg.fields[0]!.key).toBe("name");
   });
 
   it("domain config", async () => {
     const cfg = await client().getCreateConfig("vercel-domain");
-    expect(cfg.fields[0].key).toBe("name");
+    expect(cfg.fields[0]!.key).toBe("name");
   });
 
   it("env-var config fetches projects for select", async () => {
@@ -894,9 +897,9 @@ describe("createResource", () => {
       rootDirectory: "root",
     });
     expect(r.externalId).toBe("p1");
-    expect(calls[0].url).toContain("/v10/projects");
-    expect(calls[0].init?.method).toBe("POST");
-    const body = JSON.parse(calls[0].init?.body as string);
+    expect(calls[0]!.url).toContain("/v10/projects");
+    expect(calls[0]!.init?.method).toBe("POST");
+    const body = JSON.parse(calls[0]!.init?.body as string);
     expect(body).toEqual({
       name: "proj",
       framework: "nextjs",
@@ -909,7 +912,7 @@ describe("createResource", () => {
   it("creates project with only required name", async () => {
     installFetch(() => jsonResponse({ id: "p1", name: "proj", createdAt: 1 }));
     await client().createResource("vercel-project", ACCOUNT, { name: "proj" });
-    expect(JSON.parse(calls[0].init?.body as string)).toEqual({ name: "proj" });
+    expect(JSON.parse(calls[0]!.init?.body as string)).toEqual({ name: "proj" });
   });
 
   it("creates a domain (envelope) ", async () => {
@@ -919,7 +922,7 @@ describe("createResource", () => {
     const r = await client().createResource("vercel-domain", ACCOUNT, { name: "ex.com" });
     expect(r.externalId).toBe("ex.com");
     expect(r.fields["verified"]).toBe("true");
-    expect(calls[0].url).toContain("/v5/domains");
+    expect(calls[0]!.url).toContain("/v5/domains");
   });
 
   it("creates a domain (no envelope, defaults)", async () => {
@@ -940,8 +943,8 @@ describe("createResource", () => {
     });
     expect(r.externalId).toBe("env_1");
     expect(r.parentResourceId).toBe("acct-1:vercel-project:p1");
-    expect(calls[0].url).toContain("/v10/projects/p1/env");
-    const body = JSON.parse(calls[0].init?.body as string);
+    expect(calls[0]!.url).toContain("/v10/projects/p1/env");
+    const body = JSON.parse(calls[0]!.init?.body as string);
     expect(body.target).toEqual(["preview"]);
   });
 
@@ -953,7 +956,7 @@ describe("createResource", () => {
       value: "V",
     });
     expect(r.externalId).toBe("p1/K");
-    const body = JSON.parse(calls[0].init?.body as string);
+    const body = JSON.parse(calls[0]!.init?.body as string);
     expect(body.type).toBe("encrypted");
     expect(body.target).toEqual(["production"]);
   });
@@ -963,7 +966,7 @@ describe("createResource", () => {
     const r = await client().createResource("vercel-team", ACCOUNT, { name: "T", slug: "ts" });
     expect(r.externalId).toBe("t1");
     expect(r.resolvedOutputs).toEqual({ teamId: "t1", teamSlug: "ts" });
-    expect(calls[0].url).toContain("/v1/teams");
+    expect(calls[0]!.url).toContain("/v1/teams");
   });
 
   it("creates a team falling back to provided slug", async () => {
@@ -983,26 +986,26 @@ describe("deleteResource", () => {
   it("deletes project", async () => {
     installFetch(() => jsonResponse(null, 204));
     await client().deleteResource("vercel-project", "acct-1:vercel-project:p1", ACCOUNT);
-    expect(calls[0].url).toContain("/v9/projects/p1");
-    expect(calls[0].init?.method).toBe("DELETE");
+    expect(calls[0]!.url).toContain("/v9/projects/p1");
+    expect(calls[0]!.init?.method).toBe("DELETE");
   });
 
   it("deletes deployment", async () => {
     installFetch(() => jsonResponse(null, 204));
     await client().deleteResource("vercel-deployment", "acct-1:vercel-deployment:d1", ACCOUNT);
-    expect(calls[0].url).toContain("/v13/deployments/d1");
+    expect(calls[0]!.url).toContain("/v13/deployments/d1");
   });
 
   it("deletes domain", async () => {
     installFetch(() => jsonResponse(null, 204));
     await client().deleteResource("vercel-domain", "acct-1:vercel-domain:dom1", ACCOUNT);
-    expect(calls[0].url).toContain("/v6/domains/dom1");
+    expect(calls[0]!.url).toContain("/v6/domains/dom1");
   });
 
   it("deletes env var", async () => {
     installFetch(() => jsonResponse(null, 204));
     await client().deleteResource("vercel-env-var", "acct-1:vercel-env-var:p1/e1", ACCOUNT);
-    expect(calls[0].url).toContain("/v9/projects/p1/env/e1");
+    expect(calls[0]!.url).toContain("/v9/projects/p1/env/e1");
   });
 
   it("throws on malformed env-var id (no slash)", async () => {

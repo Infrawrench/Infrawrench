@@ -42,10 +42,10 @@ describe("rules-engine-client generic", () => {
     };
     const api = rsApi(ruleset);
     const out = await listAllPhaseRules(api, "acct", RATE_LIMIT_SPEC);
-    expect(out[0].id).toBe("acct:rate-limit-rule:z1/rs1/r1");
-    expect(out[0].parentResourceId).toBe("acct:zone:z1");
-    expect(out[0].fields.requestsPerPeriod).toBe(100);
-    expect(out[0].fields.characteristics).toBe("ip.src");
+    expect(out[0]!.id).toBe("acct:rate-limit-rule:z1/rs1/r1");
+    expect(out[0]!.parentResourceId).toBe("acct:zone:z1");
+    expect(out[0]!.fields.requestsPerPeriod).toBe(100);
+    expect(out[0]!.fields.characteristics).toBe("ip.src");
   });
 
   it("listAllPhaseRules returns empty when phase ruleset absent", async () => {
@@ -154,7 +154,7 @@ describe("rules-engine specs", () => {
       preserveQuery: "true",
     });
     expect(
-      (body.action_parameters as Record<string, Record<string, unknown>>).from_value.status_code,
+      (body.action_parameters as Record<string, Record<string, unknown>>).from_value!.status_code,
     ).toBe(302);
     expect(REDIRECT_SPEC.displayName({}, { target: "/new" })).toBe("/new");
   });

@@ -46,19 +46,19 @@ describe("pages-client", () => {
   it("listPagesProjects maps a project", async () => {
     const api = pagesApi();
     const out = await listPagesProjects(api, "acct");
-    expect(out[0].id).toBe("acct:pages-project:my-app");
-    expect(out[0].externalId).toBe("my-app");
-    expect(out[0].fields.subdomain).toBe("my-app.pages.dev");
-    expect(out[0].fields.framework).toBe("astro");
-    expect(out[0].fields.domains).toBe("www.a.com, a.com");
-    expect(out[0].resolvedOutputs?.projectName).toBe("my-app");
+    expect(out[0]!.id).toBe("acct:pages-project:my-app");
+    expect(out[0]!.externalId).toBe("my-app");
+    expect(out[0]!.fields.subdomain).toBe("my-app.pages.dev");
+    expect(out[0]!.fields.framework).toBe("astro");
+    expect(out[0]!.fields.domains).toBe("www.a.com, a.com");
+    expect(out[0]!.resolvedOutputs?.projectName).toBe("my-app");
   });
 
   it("listPagesProjects falls back for missing fields", async () => {
     const api = pagesApi({ cf: { pages: { projects: { list: vi.fn(() => asyncIter([{}])) } } } });
     const out = await listPagesProjects(api, "acct");
-    expect(out[0].fields.subdomain).toBe(".pages.dev");
-    expect(out[0].fields.domains).toBe("");
+    expect(out[0]!.fields.subdomain).toBe(".pages.dev");
+    expect(out[0]!.fields.domains).toBe("");
   });
 
   it("createPagesProject sends name + production_branch", async () => {
@@ -86,11 +86,11 @@ describe("pages-client", () => {
   it("listAllPagesDeployments maps deployments with parent project", async () => {
     const api = pagesApi();
     const out = await listAllPagesDeployments(api, "acct");
-    expect(out[0].id).toBe("acct:pages-deployment:my-app/dep1");
-    expect(out[0].externalId).toBe("my-app/dep1");
-    expect(out[0].parentResourceId).toBe("acct:pages-project:my-app");
-    expect(out[0].fields.status).toBe("success");
-    expect(out[0].fields.commitHash).toBe("abc");
+    expect(out[0]!.id).toBe("acct:pages-deployment:my-app/dep1");
+    expect(out[0]!.externalId).toBe("my-app/dep1");
+    expect(out[0]!.parentResourceId).toBe("acct:pages-project:my-app");
+    expect(out[0]!.fields.status).toBe("success");
+    expect(out[0]!.fields.commitHash).toBe("abc");
   });
 
   it("listAllPagesDeployments caps at 5 deployments per project", async () => {

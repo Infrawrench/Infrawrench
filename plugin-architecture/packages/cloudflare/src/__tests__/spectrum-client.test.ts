@@ -32,10 +32,10 @@ describe("spectrum-client", () => {
   it("listAllSpectrumApplications maps an app", async () => {
     const api = spApi();
     const out = await listAllSpectrumApplications(api, "acct");
-    expect(out[0].id).toBe("acct:spectrum-application:z1/s1");
-    expect(out[0].fields.protocol).toBe("tcp/22");
-    expect(out[0].fields.dns).toBe("ssh.a.com");
-    expect(out[0].fields.originDirect).toBe("tcp://1.2.3.4:22");
+    expect(out[0]!.id).toBe("acct:spectrum-application:z1/s1");
+    expect(out[0]!.fields.protocol).toBe("tcp/22");
+    expect(out[0]!.fields.dns).toBe("ssh.a.com");
+    expect(out[0]!.fields.originDirect).toBe("tcp://1.2.3.4:22");
   });
 
   it("createSpectrumApplication builds a CNAME dns + origin", async () => {
@@ -76,7 +76,7 @@ describe("spectrum-client", () => {
       originDirect: "tcp://1.2.3.4:22, tcp://5.6.7.8:22",
       proxyProtocol: "v1",
     });
-    const call = (api.cf.spectrum.apps.update as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    const call = (api.cf.spectrum.apps.update as ReturnType<typeof vi.fn>).mock.calls[0]![1];
     expect(call.origin_direct).toEqual(["tcp://1.2.3.4:22", "tcp://5.6.7.8:22"]);
     expect(call.proxy_protocol).toBe("v1");
   });

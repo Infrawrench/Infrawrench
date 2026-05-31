@@ -82,7 +82,10 @@ describe("fetchSigned over the host http transport", () => {
       credentials: httpCreds(request) as never,
     });
     expect(await res.json()).toEqual({ ok: true });
-    const arg = request.mock.calls[0]![0] as { method: string; body: unknown };
+    const arg = (request.mock.calls as unknown as unknown[][])[0]![0] as {
+      method: string;
+      body: unknown;
+    };
     expect(arg.method).toBe("POST");
     expect(arg.body).toBe('{"x":1}');
   });
@@ -96,7 +99,9 @@ describe("fetchSigned over the host http transport", () => {
       service: "ec2",
       credentials: httpCreds(request) as never,
     });
-    expect((request.mock.calls[0]![0] as { body?: unknown }).body).toBeUndefined();
+    expect(
+      ((request.mock.calls as unknown as unknown[][])[0]![0] as { body?: unknown }).body,
+    ).toBeUndefined();
   });
 
   it("converts an ArrayBuffer body to Uint8Array for the http transport", async () => {
@@ -109,7 +114,9 @@ describe("fetchSigned over the host http transport", () => {
       service: "s3",
       credentials: httpCreds(request) as never,
     });
-    expect((request.mock.calls[0]![0] as { body: unknown }).body).toBeInstanceOf(Uint8Array);
+    expect(
+      ((request.mock.calls as unknown as unknown[][])[0]![0] as { body: unknown }).body,
+    ).toBeInstanceOf(Uint8Array);
   });
 
   it("throws on a non-2xx http transport response", async () => {

@@ -6,6 +6,7 @@ import type { ChildResource, ChildResourceGroup } from "../../components/detail/
 
 const spec: ChildTableSchema = {
   title: "DNS Records",
+  typeId: "dns-record",
   createLabel: "+ New record",
   emptyText: "No records",
   columns: [
@@ -24,8 +25,8 @@ const spec: ChildTableSchema = {
     },
     { key: "ttl", label: "TTL", source: { kind: "field", fieldKey: "ttl" }, format: "ttl" },
   ],
-  onRowClick: "open",
-} as ChildTableSchema;
+  onRowClick: "navigate",
+};
 
 function child(partial: Partial<ChildResource> & { id: string }): ChildResource {
   return {

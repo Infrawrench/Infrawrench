@@ -47,10 +47,10 @@ describe("zone-client", () => {
   it("listZones maps zones and joins nameservers", async () => {
     const api = zoneApi();
     const out = await listZones(api, "acct");
-    expect(out[0].id).toBe("acct:zone:z1");
-    expect(out[0].fields.nameservers).toBe("ns1.cf.com, ns2.cf.com");
-    expect(out[0].fields.plan).toBe("Pro");
-    expect(out[0].resolvedOutputs.zoneId).toBe("z1");
+    expect(out[0]!.id).toBe("acct:zone:z1");
+    expect(out[0]!.fields.nameservers).toBe("ns1.cf.com, ns2.cf.com");
+    expect(out[0]!.fields.plan).toBe("Pro");
+    expect(out[0]!.resolvedOutputs.zoneId).toBe("z1");
   });
 
   it("getZone fetches one zone", async () => {

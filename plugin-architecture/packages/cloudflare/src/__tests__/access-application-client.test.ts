@@ -32,10 +32,10 @@ describe("access-application-client", () => {
   it("listAccessApplications maps an app", async () => {
     const api = accessApi();
     const out = await listAccessApplications(api, "acct");
-    expect(out[0].id).toBe("acct:access-application:app1");
-    expect(out[0].displayName).toBe("Dashboard");
-    expect(out[0].fields.domain).toBe("dash.a.com");
-    expect(out[0].resolvedOutputs?.aud).toBe("aud-token");
+    expect(out[0]!.id).toBe("acct:access-application:app1");
+    expect(out[0]!.displayName).toBe("Dashboard");
+    expect(out[0]!.fields.domain).toBe("dash.a.com");
+    expect(out[0]!.resolvedOutputs?.aud).toBe("aud-token");
   });
 
   it("createAccessApplication builds a self_hosted default body", async () => {

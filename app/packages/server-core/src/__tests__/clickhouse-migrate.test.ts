@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const command = vi.fn(async () => undefined);
+const command = vi.fn(async (_opts?: unknown) => undefined);
 const isConfigured = vi.fn(() => true);
 vi.mock("../clickhouse/client", () => ({
   isClickHouseConfigured: () => isConfigured(),
@@ -27,7 +27,7 @@ describe("migrateMetrics", () => {
   it("issues all DDL statements when configured", async () => {
     await migrate.migrateMetrics();
     expect(command.mock.calls.length).toBeGreaterThanOrEqual(8);
-    const queries = command.mock.calls.map((c) => (c[0] as { query: string }).query);
+    const queries = command.mock.calls.map((c) => (c[0] as unknown as { query: string }).query);
     expect(queries.some((q) => q.includes("metric_points_raw"))).toBe(true);
     expect(queries.some((q) => q.includes("mv_metric_points_1m"))).toBe(true);
     expect(queries.some((q) => q.includes("poll_outcomes"))).toBe(true);

@@ -121,11 +121,9 @@ vi.mock("node:https", () => ({ request: httpsRequest }));
 vi.mock("node:http", () => ({ request: httpRequest }));
 
 // --- undici ----------------------------------------------------------------
-const undiciFetch = vi.fn(async () => ({
+const undiciFetch = vi.fn(async (_url?: unknown, _init?: unknown) => ({
   status: 201,
-  headers: new Map([["content-type", "application/json"]]).entries
-    ? { entries: () => [["x-via", "bastion"]][Symbol.iterator]() }
-    : ({} as never),
+  headers: { entries: () => [["x-via", "bastion"]][Symbol.iterator]() },
   text: async () => "via-bastion",
 }));
 vi.mock("undici", () => ({ fetch: undiciFetch }));
@@ -316,7 +314,7 @@ describe("secrets.getPlaintext", () => {
 describe("secrets.setPlaintext", () => {
   it("encrypts and upserts the literal", async () => {
     const out = await hs.buildPluginHostServices({} as never, {});
-    await out!.secrets!.setPlaintext("r1", "f1", "supersecret");
+    await out!.secrets!.setPlaintext!("r1", "f1", "supersecret");
     expect(encrypt).toHaveBeenCalledWith("supersecret", "secretField:r1:f1:value");
     expect(dbInsert).toHaveBeenCalled();
     expect(insertOnConflictDoUpdate).toHaveBeenCalled();
@@ -328,9 +326,9 @@ describe("http.request — bastion routing", () => {
   it("throws BastionDisconnectedError when bound but no dispatcher", async () => {
     getDispatcherFor.mockReturnValue(null);
     const out = await hs.buildPluginHostServices({} as never, {}, { bastionId: "bx" });
-    await expect(out!.http!.request({ url: "https://x", method: "GET" })).rejects.toThrow(
-      /disconnected bx/,
-    );
+    await expect(
+      out!.http!.request({ url: "https://x", method: "GET", headers: {} }),
+    ).rejects.toThrow(/disconnected bx/);
   });
 
   it("routes through undici when a dispatcher is connected", async () => {
@@ -359,7 +357,7 @@ describe("http.request — bastion routing", () => {
       text: async () => "",
     } as never);
     const out = await hs.buildPluginHostServices({} as never, {}, { bastionId: "bx" });
-    await out!.http!.request({ url: "https://api/x", method: "GET" });
+    await out!.http!.request({ url: "https://api/x", method: "GET", headers: {} });
     const init = undiciFetch.mock.calls[0]![1] as { body?: unknown };
     expect(init.body).toBeUndefined();
   });
@@ -373,7 +371,7 @@ describe("http.request — direct fetch", () => {
       text: async () => "ok",
     } as unknown as Response);
     const out = await hs.buildPluginHostServices({} as never, {});
-    const resp = await out!.http!.request({ url: "https://api/x", method: "GET" });
+    const resp = await out!.http!.request({ url: "https://api/x", method: "GET", headers: {} });
     expect(fetchSpy).toHaveBeenCalledWith(
       "https://api/x",
       expect.objectContaining({ method: "GET" }),
@@ -390,7 +388,7 @@ describe("http.request — direct fetch", () => {
       text: async () => "",
     } as unknown as Response);
     const out = await hs.buildPluginHostServices({} as never, {});
-    await out!.http!.request({ url: "https://api/x", method: "POST", body: "hi" });
+    await out!.http!.request({ url: "https://api/x", method: "POST", headers: {}, body: "hi" });
     const init = fetchSpy.mock.calls[0]![1] as { body?: unknown };
     expect(init.body).toBe("hi");
     fetchSpy.mockRestore();
@@ -437,7 +435,12 @@ describe("http.request — node https with caCert", () => {
 
   it("defaults to port 443 for https without an explicit port", async () => {
     const http = await unboundHttp();
-    await http.request({ url: "https://api.example.com/x", caCert: "CA" });
+    await http.request({
+      url: "https://api.example.com/x",
+      method: "GET",
+      headers: {},
+      caCert: "CA",
+    });
     const opts = httpsState.last as { port: number };
     expect(opts.port).toBe(443);
   });
@@ -445,15 +448,20 @@ describe("http.request — node https with caCert", () => {
   it("refuses http:// when a caCert is provided", async () => {
     const http = await unboundHttp();
     await expect(
-      http.request({ url: "http://insecure.example.com/x", caCert: "CA" }),
+      http.request({
+        url: "http://insecure.example.com/x",
+        method: "GET",
+        headers: {},
+        caCert: "CA",
+      }),
     ).rejects.toThrow(/Refusing http/);
   });
 
   it("rejects when the underlying request errors", async () => {
     httpsState.opts = { emitError: true };
     const http = await unboundHttp();
-    await expect(http.request({ url: "https://api.example.com/x", caCert: "CA" })).rejects.toThrow(
-      /socket error/,
-    );
+    await expect(
+      http.request({ url: "https://api.example.com/x", method: "GET", headers: {}, caCert: "CA" }),
+    ).rejects.toThrow(/socket error/);
   });
 });

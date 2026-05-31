@@ -227,7 +227,7 @@ describe("DatetimePicker", () => {
     render(<DatetimePicker value="" onChange={onChange} mode="epoch-ms" />);
     const input = screen.getByLabelText("Date and time") as HTMLInputElement;
     fireEvent.change(input, { target: { value: "2025-01-15T12:00" } });
-    const arg = onChange.mock.calls[0][0];
+    const arg = onChange.mock.calls[0]![0];
     expect(Number(arg)).toBe(Date.UTC(2025, 0, 15, 12, 0, 0));
   });
 
@@ -270,7 +270,7 @@ describe("KeyValueListPicker", () => {
     fireEvent.click(screen.getByRole("button", { name: "+ Add field" }));
     // Two rows now -> two remove buttons.
     expect(screen.getAllByRole("button", { name: "Remove row" })).toHaveLength(2);
-    fireEvent.click(screen.getAllByRole("button", { name: "Remove row" })[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: "Remove row" })[0]!);
     expect(screen.getAllByRole("button", { name: "Remove row" })).toHaveLength(1);
   });
 
@@ -311,8 +311,8 @@ describe("ResourcePicker", () => {
     const onChange = vi.fn();
     render(<ResourcePicker resources={resources} value="" onChange={onChange} referenceMode />);
     fireEvent.click(screen.getByRole("option", { name: /my-db/ }));
-    expect(typeof onChange.mock.calls[0][0]).toBe("string");
-    expect(onChange.mock.calls[0][0]).not.toBe("db.example.com");
+    expect(typeof onChange.mock.calls[0]![0]).toBe("string");
+    expect(onChange.mock.calls[0]![0]).not.toBe("db.example.com");
   });
 
   it("filters resources by search", () => {

@@ -35,9 +35,9 @@ describe("waiting-room-client", () => {
   it("listAllWaitingRooms maps a room", async () => {
     const api = wrApi();
     const out = await listAllWaitingRooms(api, "acct");
-    expect(out[0].id).toBe("acct:waiting-room:z1/wr1");
-    expect(out[0].fields.host).toBe("shop.a.com");
-    expect(out[0].fields.totalActiveUsers).toBe(200);
+    expect(out[0]!.id).toBe("acct:waiting-room:z1/wr1");
+    expect(out[0]!.fields.host).toBe("shop.a.com");
+    expect(out[0]!.fields.totalActiveUsers).toBe(200);
   });
 
   it("createWaitingRoom sends core fields", async () => {
@@ -72,7 +72,7 @@ describe("waiting-room-client", () => {
       path: "/sale",
       suspended: "true",
     });
-    const call = (api.cf.waitingRooms.edit as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    const call = (api.cf.waitingRooms.edit as ReturnType<typeof vi.fn>).mock.calls[0]![1];
     expect(call.total_active_users).toBe(500);
     expect(call.path).toBe("/sale");
     expect(call.suspended).toBe(true);

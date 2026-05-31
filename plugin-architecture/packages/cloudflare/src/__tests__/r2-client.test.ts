@@ -27,9 +27,9 @@ describe("r2-client buckets", () => {
   it("listR2Buckets maps buckets with s3 endpoint", async () => {
     const api = r2Api();
     const out = await listR2Buckets(api, "acct");
-    expect(out[0].id).toBe("acct:r2-bucket:b1");
-    expect(out[0].resolvedOutputs.s3Endpoint).toBe("https://acct-cf.r2.cloudflarestorage.com");
-    expect(out[0].fields.location).toBe("wnam");
+    expect(out[0]!.id).toBe("acct:r2-bucket:b1");
+    expect(out[0]!.resolvedOutputs.s3Endpoint).toBe("https://acct-cf.r2.cloudflarestorage.com");
+    expect(out[0]!.fields.location).toBe("wnam");
   });
 
   it("listR2Buckets handles missing buckets array", async () => {
@@ -55,7 +55,7 @@ describe("r2-client buckets", () => {
   it("createR2Bucket omits location hint when blank", async () => {
     const api = r2Api();
     await createR2Bucket(api, "acct", { name: "b2", locationHint: "" });
-    const arg = (api.cf.r2.buckets.create as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    const arg = (api.cf.r2.buckets.create as ReturnType<typeof vi.fn>).mock.calls[0]![0];
     expect(arg).not.toHaveProperty("locationHint");
   });
 

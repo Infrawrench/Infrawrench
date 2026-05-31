@@ -53,7 +53,7 @@ describe("jsonRestFetch via global fetch", () => {
       headers: { Authorization: "Bearer x" },
     });
     expect(result).toEqual({ hello: "world" });
-    const [, init] = fetchMock.mock.calls[0];
+    const [, init] = fetchMock.mock.calls[0]!;
     expect(init.headers["Content-Type"]).toBe("application/json");
     expect(init.headers["Authorization"]).toBe("Bearer x");
   });
@@ -105,7 +105,7 @@ describe("jsonRestFetch via global fetch", () => {
       headers: { A: "1" },
       init: { headers: new Headers({ B: "2" }) },
     });
-    const [, init] = fetchMock.mock.calls[0];
+    const [, init] = fetchMock.mock.calls[0]!;
     expect(init.headers["a"] ?? init.headers["A"]).toBe("1");
     expect(init.headers["b"] ?? init.headers["B"]).toBe("2");
   });
@@ -119,7 +119,7 @@ describe("jsonRestFetch via global fetch", () => {
       headers: {},
       init: { headers: [["X-Custom", "v"]] },
     });
-    const [, init] = fetchMock.mock.calls[0];
+    const [, init] = fetchMock.mock.calls[0]!;
     expect(init.headers["X-Custom"]).toBe("v");
   });
 
@@ -132,7 +132,7 @@ describe("jsonRestFetch via global fetch", () => {
       headers: {},
       init: { headers: { "X-Obj": "v" } },
     });
-    const [, init] = fetchMock.mock.calls[0];
+    const [, init] = fetchMock.mock.calls[0]!;
     expect(init.headers["X-Obj"]).toBe("v");
   });
 });
@@ -157,7 +157,7 @@ describe("jsonRestFetch via host http service", () => {
       caCert: "PEM",
     });
     expect(result).toEqual({ ok: true });
-    const arg = request.mock.calls[0][0];
+    const arg = request.mock.calls[0]![0];
     expect(arg.method).toBe("POST");
     expect(arg.body).toBe("payload");
     expect(arg.caCert).toBe("PEM");
@@ -167,7 +167,7 @@ describe("jsonRestFetch via host http service", () => {
   it("defaults method to GET and omits body when none given", async () => {
     const { http, request } = makeHttp(200, "{}");
     await jsonRestFetch({ vendor: "V", url: "https://x", headers: {}, http });
-    const arg = request.mock.calls[0][0];
+    const arg = request.mock.calls[0]![0];
     expect(arg.method).toBe("GET");
     expect("body" in arg).toBe(false);
     expect("caCert" in arg).toBe(false);
@@ -204,14 +204,14 @@ describe("jsonRestFetch via host http service", () => {
       http,
       init: { body: bytes },
     });
-    expect(request.mock.calls[0][0].body).toBe(bytes);
+    expect(request.mock.calls[0]![0]!.body).toBe(bytes);
   });
 
   it("coerces ArrayBuffer body to Uint8Array", async () => {
     const { http, request } = makeHttp(200, "{}");
     const buf = new ArrayBuffer(4);
     await jsonRestFetch({ vendor: "V", url: "https://x", headers: {}, http, init: { body: buf } });
-    expect(request.mock.calls[0][0].body).toBeInstanceOf(Uint8Array);
+    expect(request.mock.calls[0]![0]!.body).toBeInstanceOf(Uint8Array);
   });
 
   it("coerces a typed-array view body to Uint8Array", async () => {
@@ -224,7 +224,7 @@ describe("jsonRestFetch via host http service", () => {
       http,
       init: { body: view as unknown as BodyInit },
     });
-    expect(request.mock.calls[0][0].body).toBeInstanceOf(Uint8Array);
+    expect(request.mock.calls[0]![0]!.body).toBeInstanceOf(Uint8Array);
   });
 
   it("coerces URLSearchParams body to string", async () => {
@@ -236,6 +236,6 @@ describe("jsonRestFetch via host http service", () => {
       http,
       init: { body: new URLSearchParams({ a: "1" }) },
     });
-    expect(request.mock.calls[0][0].body).toBe("a=1");
+    expect(request.mock.calls[0]![0]!.body).toBe("a=1");
   });
 });

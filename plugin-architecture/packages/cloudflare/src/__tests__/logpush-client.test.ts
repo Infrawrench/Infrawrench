@@ -30,9 +30,9 @@ describe("logpush-client", () => {
   it("listAllLogpushJobs maps a job and derives destination type", async () => {
     const api = lpApi();
     const out = await listAllLogpushJobs(api, "acct");
-    expect(out[0].id).toBe("acct:logpush-job:z1/j1");
-    expect(out[0].fields.destinationType).toBe("s3");
-    expect(out[0].fields.dataset).toBe("http_requests");
+    expect(out[0]!.id).toBe("acct:logpush-job:z1/j1");
+    expect(out[0]!.fields.destinationType).toBe("s3");
+    expect(out[0]!.fields.dataset).toBe("http_requests");
   });
 
   it("listAllLogpushJobs skips null entries", async () => {

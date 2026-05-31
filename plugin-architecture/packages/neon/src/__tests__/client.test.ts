@@ -26,7 +26,8 @@ const api = {
 const createApiClient = vi.fn(() => api);
 
 vi.mock("@neondatabase/api-client", () => ({
-  createApiClient: (...args: unknown[]) => createApiClient(...args),
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  createApiClient: (...args: any[]) => createApiClient(...(args as [])),
   ConsumptionHistoryGranularity: { Hourly: "hourly" },
   EndpointType: { ReadWrite: "read_write", ReadOnly: "read_only" },
 }));
@@ -81,7 +82,7 @@ describe("listResources - projects", () => {
     const res = await client.listResources("neon-project", ACCOUNT);
 
     expect(res).toHaveLength(1);
-    expect(res[0]).toMatchObject({
+    expect(res[0]!).toMatchObject({
       id: "acct1:neon-project:p1",
       pluginId: "neon",
       resourceTypeId: "neon-project",
@@ -135,7 +136,7 @@ describe("listResources - branches/endpoints/databases/roles", () => {
     );
     const client = makeClient();
     const res = await client.listResources("neon-branch", ACCOUNT);
-    expect(res[0]).toMatchObject({
+    expect(res[0]!).toMatchObject({
       id: "acct1:neon-branch:p1/b1",
       resourceTypeId: "neon-branch",
       fields: { primary: true, currentState: "ready" },
@@ -172,7 +173,7 @@ describe("listResources - branches/endpoints/databases/roles", () => {
     );
     const client = makeClient();
     const res = await client.listResources("neon-endpoint", ACCOUNT);
-    expect(res[0]).toMatchObject({
+    expect(res[0]!).toMatchObject({
       id: "acct1:neon-endpoint:p1/ep1",
       displayName: "ep1.neon.tech",
       fields: { host: "ep1.neon.tech", autoscalingMinCu: "0.25", autoscalingMaxCu: "2" },
@@ -203,7 +204,7 @@ describe("listResources - branches/endpoints/databases/roles", () => {
     );
     const client = makeClient();
     const res = await client.listResources("neon-database", ACCOUNT);
-    expect(res[0]).toMatchObject({
+    expect(res[0]!).toMatchObject({
       id: "acct1:neon-database:p1/b1/neondb",
       externalId: "5",
       fields: { name: "neondb", ownerName: "neondb_owner" },
@@ -229,7 +230,7 @@ describe("listResources - branches/endpoints/databases/roles", () => {
     );
     const client = makeClient();
     const res = await client.listResources("neon-role", ACCOUNT);
-    expect(res[0]).toMatchObject({
+    expect(res[0]!).toMatchObject({
       id: "acct1:neon-role:p1/b1/alice",
       externalId: "alice",
       fields: { name: "alice", protected: true },
@@ -241,7 +242,7 @@ describe("listResources - branches/endpoints/databases/roles", () => {
     api.listProjectBranchRoles.mockResolvedValue(wrap({ roles: [{ name: "bob" }] }));
     const client = makeClient();
     const res = await client.listResources("neon-role", ACCOUNT);
-    expect(res[0].fields.protected).toBe(false);
+    expect(res[0]!.fields.protected).toBe(false);
 
     api.listProjectBranchRoles.mockRejectedValue(new Error("x"));
     expect(await client.listResources("neon-role", ACCOUNT)).toEqual([]);
@@ -440,7 +441,7 @@ describe("fetchDashboardStats", () => {
       "acct1:neon-project:p1",
       ACCOUNT,
     );
-    expect(stats[0].value).toContain("aws-us-east-2");
+    expect(stats[0]!.value).toContain("aws-us-east-2");
     expect(stats[1]).toMatchObject({ label: "PG Version", value: "17" });
   });
 
@@ -454,7 +455,7 @@ describe("fetchDashboardStats", () => {
       "acct1:neon-project:p1",
       ACCOUNT,
     );
-    expect(stats[0].value).toBe("mars-1");
+    expect(stats[0]!.value).toBe("mars-1");
   });
 
   it("returns endpoint stats with variants", async () => {
@@ -485,7 +486,7 @@ describe("fetchDashboardStats", () => {
       ACCOUNT,
     );
     expect(stats[0]).toMatchObject({ label: "State", value: "active", variant: "status-healthy" });
-    expect(stats[2].value).toBe("1–2 CU");
+    expect(stats[2]!.value).toBe("1–2 CU");
   });
 
   it("returns branch stats with primary entry", async () => {
@@ -556,7 +557,7 @@ describe("fetchMetricSeries", () => {
       { startMs: 0, endMs: 1000 },
     );
     expect(series.map((s) => s.label)).toEqual(["Active Time", "Storage", "Data Written"]);
-    expect(series[0].points[0].value).toBe(10);
+    expect(series[0]!.points[0]!.value).toBe(10);
   });
 
   it("returns empty when projectId missing", async () => {
@@ -634,7 +635,7 @@ describe("renderDetail", () => {
     } as never);
     expect(d.title).toBe("P");
     expect(d.subtitle).toContain("Ohio");
-    expect(d.headerActions?.[1].action).toMatchObject({ type: "open-url" });
+    expect(d.headerActions?.[1]!.action).toMatchObject({ type: "open-url" });
   });
 
   it("renders project detail with unknown region", () => {
@@ -693,10 +694,10 @@ describe("renderDetail", () => {
       externalId: "ep1",
       fields: { host: "h", currentState: "active" },
     } as never);
-    const autoscale = d.sections[1] as never as {
+    const autoscale = d.sections[1]! as never as {
       children: { items: { value: string }[] }[];
     };
-    expect(autoscale.children[0].items[2].value).toBe("—");
+    expect(autoscale.children[0]!.items[2]!.value).toBe("—");
   });
 
   it("renders database detail with secret placeholder", () => {
@@ -802,7 +803,7 @@ describe("getCreateConfig", () => {
     );
     const client = makeClient();
     const cfg = await client.getCreateConfig("neon-branch");
-    expect(cfg.fields[0].key).toBe("projectId");
+    expect(cfg.fields[0]!.key).toBe("projectId");
     expect(cfg.fields[0]).toMatchObject({ defaultValue: "p1" });
   });
 
@@ -845,8 +846,8 @@ describe("getCreateConfig", () => {
     api.listProjectBranches.mockResolvedValue(wrap({ branches: [{ id: "b1", name: "main" }] }));
     const client = makeClient();
     const cfg = await client.getCreateConfig("neon-role");
-    expect(cfg.fields[0].key).toBe("projectBranch");
-    expect((cfg.fields[0] as never as { options: unknown[] }).options).toHaveLength(1);
+    expect(cfg.fields[0]!.key).toBe("projectBranch");
+    expect((cfg.fields[0]! as never as { options: unknown[] }).options).toHaveLength(1);
   });
 
   it("role config skips projects whose branches throw", async () => {
@@ -854,7 +855,7 @@ describe("getCreateConfig", () => {
     api.listProjectBranches.mockRejectedValue(new Error("x"));
     const client = makeClient();
     const cfg = await client.getCreateConfig("neon-role");
-    expect((cfg.fields[0] as never as { options: unknown[] }).options).toHaveLength(0);
+    expect((cfg.fields[0]! as never as { options: unknown[] }).options).toHaveLength(0);
   });
 
   it("role config with parent only has name", async () => {

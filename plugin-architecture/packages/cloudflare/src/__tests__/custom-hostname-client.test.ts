@@ -29,9 +29,9 @@ describe("custom-hostname-client", () => {
   it("listAllCustomHostnames maps across zones", async () => {
     const api = chApi();
     const out = await listAllCustomHostnames(api, "acct");
-    expect(out[0].id).toBe("acct:custom-hostname:z1/h1");
-    expect(out[0].parentResourceId).toBe("acct:zone:z1");
-    expect(out[0].fields.sslStatus).toBe("active");
+    expect(out[0]!.id).toBe("acct:custom-hostname:z1/h1");
+    expect(out[0]!.parentResourceId).toBe("acct:zone:z1");
+    expect(out[0]!.fields.sslStatus).toBe("active");
     expect(api.cf.customHostnames.list).toHaveBeenCalledWith({ zone_id: "z1" });
   });
 

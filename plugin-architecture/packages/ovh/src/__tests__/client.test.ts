@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from "vitest";
 import { OvhClient } from "../client.js";
 import { plugin } from "../plugin.js";
 
@@ -34,7 +34,7 @@ function notOk(status: number, text = "boom"): Response {
   } as unknown as Response;
 }
 
-let fetchMock: ReturnType<typeof vi.spyOn>;
+let fetchMock: MockInstance<typeof fetch>;
 
 beforeEach(() => {
   fetchMock = vi.spyOn(globalThis, "fetch");
@@ -55,7 +55,7 @@ function apiCalls() {
 }
 function lastApiCall() {
   const calls = apiCalls();
-  return calls[calls.length - 1];
+  return calls[calls.length - 1]!;
 }
 
 describe("constructor", () => {
@@ -97,7 +97,7 @@ describe("auth signing / timestamp", () => {
       return okJson([]);
     });
     await c.listResources("instance", ACCOUNT);
-    const headers = lastApiCall()[1].headers as Record<string, string>;
+    const headers = lastApiCall()[1]!.headers as Record<string, string>;
     expect(headers["X-Ovh-Application"]).toBe("ak");
     expect(headers["X-Ovh-Consumer"]).toBe("ck");
     expect(headers["X-Ovh-Signature"]).toMatch(/^\$1\$[0-9a-f]{40}$/);
@@ -145,11 +145,11 @@ describe("listResources instance", () => {
       ]);
     });
     const res = await c.listResources("instance", ACCOUNT);
-    expect(res[0].id).toBe(`${ACCOUNT}:instance:i-1`);
-    expect(res[0].externalId).toBe("i-1");
-    expect(res[0].fields["flavorName"]).toBe("b3-8");
-    expect(res[0].fields["sshUsername"]).toBe("ubuntu");
-    expect(res[0].resolvedOutputs).toEqual({
+    expect(res[0]!.id).toBe(`${ACCOUNT}:instance:i-1`);
+    expect(res[0]!.externalId).toBe("i-1");
+    expect(res[0]!.fields["flavorName"]).toBe("b3-8");
+    expect(res[0]!.fields["sshUsername"]).toBe("ubuntu");
+    expect(res[0]!.resolvedOutputs).toEqual({
       ipv4: "1.2.3.4",
       ipv6: "::1",
       ipv4Private: "10.0.0.1",
@@ -166,9 +166,9 @@ describe("listResources instance", () => {
       return okJson([{ id: "i-2", name: "bare", region: "GRA11", status: "BUILD" }]);
     });
     const res = await c.listResources("instance", ACCOUNT);
-    expect(res[0].fields["flavorName"]).toBe("");
-    expect(res[0].fields["sshUsername"]).toBe("root");
-    expect(res[0].resolvedOutputs["ipv4"]).toBe("");
+    expect(res[0]!.fields["flavorName"]).toBe("");
+    expect(res[0]!.fields["sshUsername"]).toBe("root");
+    expect(res[0]!.resolvedOutputs["ipv4"]).toBe("");
   });
 
   it("throws on unknown type", async () => {
@@ -209,11 +209,11 @@ describe("listResources volume", () => {
       ]);
     });
     const res = await c.listResources("volume", ACCOUNT);
-    expect(res[0].fields["attachedTo"]).toBe("i-1,i-2");
-    expect(res[0].fields["bootable"]).toBe(true);
-    expect(res[1].displayName).toBe("v-2");
-    expect(res[1].fields["status"]).toBe("");
-    expect(res[1].fields["attachedTo"]).toBe("");
+    expect(res[0]!.fields["attachedTo"]).toBe("i-1,i-2");
+    expect(res[0]!.fields["bootable"]).toBe(true);
+    expect(res[1]!.displayName).toBe("v-2");
+    expect(res[1]!.fields["status"]).toBe("");
+    expect(res[1]!.fields["attachedTo"]).toBe("");
   });
 });
 
@@ -243,10 +243,10 @@ describe("listResources managed-kube", () => {
       return okJson([]);
     });
     const res = await c.listResources("managed-kube", ACCOUNT);
-    expect(res[0].fields["nodeCount"]).toBe(5);
-    expect(res[0].fields["nodePoolCount"]).toBe(2);
-    expect(res[0].fields["flavor"]).toBe("b3-8");
-    expect(res[0].resolvedOutputs["clusterUrl"]).toBe("https://k8s");
+    expect(res[0]!.fields["nodeCount"]).toBe(5);
+    expect(res[0]!.fields["nodePoolCount"]).toBe(2);
+    expect(res[0]!.fields["flavor"]).toBe("b3-8");
+    expect(res[0]!.resolvedOutputs["clusterUrl"]).toBe("https://k8s");
   });
 
   it("handles node pool listing failure gracefully", async () => {
@@ -260,9 +260,9 @@ describe("listResources managed-kube", () => {
       return okJson([]);
     });
     const res = await c.listResources("managed-kube", ACCOUNT);
-    expect(res[0].fields["nodeCount"]).toBe(0);
-    expect(res[0].fields["nodePoolCount"]).toBe(0);
-    expect(res[0].displayName).toBe("c-1");
+    expect(res[0]!.fields["nodeCount"]).toBe(0);
+    expect(res[0]!.fields["nodePoolCount"]).toBe(0);
+    expect(res[0]!.displayName).toBe("c-1");
   });
 });
 
@@ -287,11 +287,11 @@ describe("listResources managed-db", () => {
       ]);
     });
     const res = await c.listResources("managed-db", ACCOUNT);
-    expect(res[0].displayName).toBe("mydb");
-    expect(res[0].fields["nodeCount"]).toBe(2);
-    expect(res[0].fields["region"]).toBe("GRA");
-    expect(res[1].displayName).toBe("mysql (db-2222)");
-    expect(res[1].fields["nodeCount"]).toBe(1);
+    expect(res[0]!.displayName).toBe("mydb");
+    expect(res[0]!.fields["nodeCount"]).toBe(2);
+    expect(res[0]!.fields["region"]).toBe("GRA");
+    expect(res[1]!.displayName).toBe("mysql (db-2222)");
+    expect(res[1]!.fields["nodeCount"]).toBe(1);
   });
 });
 
@@ -334,7 +334,7 @@ describe("resolveOutput", () => {
       ACCOUNT,
     );
     expect(out).toBe("KUBECONFIG_YAML");
-    expect(lastApiCall()[1].method).toBe("POST");
+    expect(lastApiCall()[1]!.method).toBe("POST");
   });
 
   it("managed-kube kubeconfig throws on unparsable id", async () => {
@@ -593,7 +593,7 @@ describe("createResource", () => {
     });
     expect(r.externalId).toBe("i-9");
     expect(r.resolvedOutputs).toEqual({ ipv4: "1.1.1.1", ipv4Private: "10.0.0.9" });
-    const body = JSON.parse(lastApiCall()[1].body as string);
+    const body = JSON.parse(lastApiCall()[1]!.body as string);
     expect(body.sshKeyId).toBeUndefined();
   });
 
@@ -613,7 +613,7 @@ describe("createResource", () => {
       sshPublicKey: "ssh-rsa AAA me@host",
     });
     expect(r.externalId).toBe("i-10");
-    const body = JSON.parse(lastApiCall()[1].body as string);
+    const body = JSON.parse(lastApiCall()[1]!.body as string);
     expect(body.sshKeyId).toBe("key-1");
   });
 
@@ -638,7 +638,7 @@ describe("createResource", () => {
       sshPublicKey: "ssh-rsa AAA me@host",
     });
     expect(sshkeyPost).toBe(1);
-    const body = JSON.parse(lastApiCall()[1].body as string);
+    const body = JSON.parse(lastApiCall()[1]!.body as string);
     expect(body.sshKeyId).toBe("key-9");
     expect(r.externalId).toBe("i-11");
   });
@@ -726,7 +726,7 @@ describe("createResource", () => {
     });
     expect(r.externalId).toBe("db-9999aaaa");
     expect(r.fields["nodeCount"]).toBe(2);
-    const body = JSON.parse(lastApiCall()[1].body as string);
+    const body = JSON.parse(lastApiCall()[1]!.body as string);
     expect(body.nodeList).toHaveLength(2);
   });
 
@@ -770,7 +770,7 @@ describe("createResource", () => {
     });
     expect(r.externalId).toBe("v-9");
     expect(r.fields["sizeGb"]).toBe(200);
-    const body = JSON.parse(lastApiCall()[1].body as string);
+    const body = JSON.parse(lastApiCall()[1]!.body as string);
     expect(body).toMatchObject({ size: 200, type: "high-speed" });
   });
 
@@ -805,7 +805,7 @@ describe("deleteResource", () => {
     });
     await c.deleteResource(type, `${ACCOUNT}:${type}:x`, ACCOUNT);
     expect(String(lastApiCall()[0])).toContain(`/cloud/project/proj123${suffix}`);
-    expect(lastApiCall()[1].method).toBe("DELETE");
+    expect(lastApiCall()[1]!.method).toBe("DELETE");
   });
 
   it("throws when id unparsable", async () => {
@@ -843,7 +843,7 @@ describe("attachResource", () => {
       ACCOUNT,
     );
     expect(String(lastApiCall()[0])).toContain("/volume/v-1/attach");
-    expect(JSON.parse(lastApiCall()[1].body as string)).toEqual({ instanceId: "i-1" });
+    expect(JSON.parse(lastApiCall()[1]!.body as string)).toEqual({ instanceId: "i-1" });
   });
 
   it("rejects when regions differ", async () => {
@@ -897,7 +897,7 @@ describe("fetchDashboardStats", () => {
       listImpl([{ id: "i-1", name: "w", region: "GRA11", status: "ACTIVE" }]),
     );
     const stats = await c.fetchDashboardStats("instance", `${ACCOUNT}:instance:i-1`, ACCOUNT);
-    expect(stats[0]).toMatchObject({ label: "Status", variant: "status-healthy" });
+    expect(stats[0]!).toMatchObject({ label: "Status", variant: "status-healthy" });
   });
 
   it("instance stopped variant error", async () => {
@@ -906,7 +906,7 @@ describe("fetchDashboardStats", () => {
       listImpl([{ id: "i-1", name: "w", region: "GRA11", status: "STOPPED" }]),
     );
     const stats = await c.fetchDashboardStats("instance", `${ACCOUNT}:instance:i-1`, ACCOUNT);
-    expect(stats[0].variant).toBe("status-error");
+    expect(stats[0]!.variant).toBe("status-error");
   });
 
   it("instance unknown variant degraded", async () => {
@@ -915,7 +915,7 @@ describe("fetchDashboardStats", () => {
       listImpl([{ id: "i-1", name: "w", region: "GRA11", status: "MIGRATING" }]),
     );
     const stats = await c.fetchDashboardStats("instance", `${ACCOUNT}:instance:i-1`, ACCOUNT);
-    expect(stats[0].variant).toBe("status-degraded");
+    expect(stats[0]!.variant).toBe("status-degraded");
   });
 
   it("managed-kube stats", async () => {
@@ -934,7 +934,7 @@ describe("fetchDashboardStats", () => {
       `${ACCOUNT}:managed-kube:c-1`,
       ACCOUNT,
     );
-    expect(stats[0].variant).toBe("status-healthy");
+    expect(stats[0]!.variant).toBe("status-healthy");
     expect(stats.find((s) => s.label === "Nodes")?.value).toBe("2");
   });
 
@@ -944,7 +944,7 @@ describe("fetchDashboardStats", () => {
       listImpl([{ id: "db-1", engine: "mysql", plan: "essential", status: "CREATING" }]),
     );
     const stats = await c.fetchDashboardStats("managed-db", `${ACCOUNT}:managed-db:db-1`, ACCOUNT);
-    expect(stats[0].variant).toBe("status-degraded");
+    expect(stats[0]!.variant).toBe("status-degraded");
     expect(stats.find((s) => s.label === "Engine")?.value).toBe("mysql");
   });
 
@@ -998,7 +998,7 @@ describe("renderDetail / renderSidebarItem", () => {
     };
     for (const [status, dot] of Object.entries(map)) {
       const d = c.renderDetail(res({ fields: { status } }));
-      expect(d.status.status).toBe(dot);
+      expect(d.status!.status).toBe(dot);
     }
   });
 
@@ -1006,19 +1006,19 @@ describe("renderDetail / renderSidebarItem", () => {
     const c = makeClient();
     const d = c.renderDetail(res({ fields: { region: "GRA11" } }));
     expect((d.status as any).label).toBeUndefined();
-    expect(d.status.status).toBe("info");
+    expect(d.status!.status).toBe("info");
   });
 
   it("renderSidebarItem covers branches", () => {
     const c = makeClient();
-    expect(c.renderSidebarItem(res()).status.status).toBe("healthy");
-    expect(c.renderSidebarItem(res({ fields: { status: "BUILD" } })).status.status).toBe(
+    expect(c.renderSidebarItem(res()).status!.status).toBe("healthy");
+    expect(c.renderSidebarItem(res({ fields: { status: "BUILD" } })).status!.status).toBe(
       "provisioning",
     );
-    expect(c.renderSidebarItem(res({ fields: { status: "ERROR" } })).status.status).toBe("error");
-    expect(c.renderSidebarItem(res({ fields: { status: "STOPPED" } })).status.status).toBe(
+    expect(c.renderSidebarItem(res({ fields: { status: "ERROR" } })).status!.status).toBe("error");
+    expect(c.renderSidebarItem(res({ fields: { status: "STOPPED" } })).status!.status).toBe(
       "degraded",
     );
-    expect(c.renderSidebarItem(res({ fields: { status: "WHAT" } })).status.status).toBe("info");
+    expect(c.renderSidebarItem(res({ fields: { status: "WHAT" } })).status!.status).toBe("info");
   });
 });

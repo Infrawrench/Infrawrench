@@ -32,15 +32,15 @@ describe("page-rule-client", () => {
   it("listAllPageRules maps targets/actions", async () => {
     const api = prApi();
     const out = await listAllPageRules(api, "acct");
-    expect(out[0].id).toBe("acct:page-rule:z1/pr1");
-    expect(out[0].fields.targets).toBe("a.com/*");
-    expect(out[0].fields.actions).toBe("always_use_https");
+    expect(out[0]!.id).toBe("acct:page-rule:z1/pr1");
+    expect(out[0]!.fields.targets).toBe("a.com/*");
+    expect(out[0]!.fields.actions).toBe("always_use_https");
   });
 
   it("createPageRule builds a url-matches target", async () => {
     const api = prApi();
     await createPageRule(api, "acct", { urlPattern: "a.com/*", action: "always_use_https" }, "z1");
-    const call = (api.cf.pageRules.create as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    const call = (api.cf.pageRules.create as ReturnType<typeof vi.fn>).mock.calls[0]![0];
     expect(call.targets[0].constraint.value).toBe("a.com/*");
     expect(call.actions[0].id).toBe("always_use_https");
   });
