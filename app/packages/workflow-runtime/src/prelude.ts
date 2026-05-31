@@ -4,6 +4,7 @@
  *
  *   - `__host(method, argsJson)` — async RPC into the host (returns a JSON string)
  *   - `__accountsTree` — JSON string of WorkflowPluginInfo[] (accounts by plugin)
+ *   - `__metrics` — JSON string of the declared metrics' current values
  *
  * Keeping the ergonomic object graph in pure JS here (rather than marshalling a
  * deep object across the WASM boundary) makes the bridge robust and trivially
@@ -81,13 +82,33 @@ export const PRELUDE = String.raw`
   const log = (level) => (...parts) =>
     rpc("log", { level, message: parts.map((p) => (typeof p === "string" ? p : JSON.stringify(p))).join(" ") });
 
+  // Metrics are exposed as direct typed properties (infra.metrics.<key>): reads
+  // come from a snapshot taken at run start; writes update the snapshot and are
+  // buffered, then persisted once (final value per key) after the run via
+  // globalThis.__flushMetrics (see sandbox buildProgram). Property setters can't
+  // be async, hence the deferred flush.
+  const metricState = (() => { try { return JSON.parse(__metrics || "{}"); } catch (e) { return {}; } })();
+  const metricDirty = new Set();
+  const metrics = new Proxy(metricState, {
+    get: (t, k) => (typeof k === "string" && Object.prototype.hasOwnProperty.call(t, k) ? t[k] : (typeof k === "string" ? null : undefined)),
+    set: (t, k, v) => {
+      if (typeof k !== "string") return false;
+      t[k] = v;
+      metricDirty.add(k);
+      return true;
+    },
+  });
+  globalThis.__flushMetrics = async () => {
+    for (const k of metricDirty) {
+      await rpc("metric.set", { key: k, value: metricState[k] });
+    }
+    metricDirty.clear();
+  };
+
   globalThis.infra = {
     accounts,
     prompt: (spec) => rpc("prompt", { spec: typeof spec === "string" ? { message: spec } : spec }),
-    metrics: {
-      get: (key) => rpc("metric.get", { key }),
-      set: (key, value) => rpc("metric.set", { key, value }),
-    },
+    metrics,
     output: (value) => rpc("output", { value }),
     log: log("info"),
   };

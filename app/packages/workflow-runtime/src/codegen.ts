@@ -125,22 +125,17 @@ function renderGroupInterface(plugin: WorkflowPluginInfo): string {
 function renderMetrics(metrics: MetricDef[]): string {
   if (metrics.length === 0) {
     return `interface InfraMetrics {
-  get(key: string): Promise<number | string | boolean | null>;
-  set(key: string, value: number | string | boolean): Promise<void>;
+  [key: string]: number | string | boolean | null;
 }`;
   }
-  const getOverloads = metrics
-    .map(
-      (m) =>
-        `  /** ${m.label}${m.unit ? ` (${m.unit})` : ""} */\n  get(key: ${strLit(m.key)}): Promise<${metricTsType(m.type)} | null>;`,
-    )
-    .join("\n");
-  const setOverloads = metrics
-    .map((m) => `  set(key: ${strLit(m.key)}, value: ${metricTsType(m.type)}): Promise<void>;`)
+  const props = metrics
+    .map((m) => {
+      const prop = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(m.key) ? m.key : strLit(m.key);
+      return `  /** ${m.label}${m.unit ? ` (${m.unit})` : ""} — read/write; \`null\` until first set. */\n  ${prop}: ${metricTsType(m.type)} | null;`;
+    })
     .join("\n");
   return `interface InfraMetrics {
-${getOverloads}
-${setOverloads}
+${props}
 }`;
 }
 

@@ -23,6 +23,8 @@ export interface ClientHostDeps {
   readStorageObject(accountId: string, bucket: string, key: string): Promise<Uint8Array>;
   getMetric(key: string): Promise<MetricValue>;
   setMetric(key: string, value: MetricValue): Promise<void>;
+  /** Snapshot of all declared metrics' current values, keyed by metric key. */
+  listMetrics(): Promise<Record<string, MetricValue>>;
   /** Raise an interactive prompt (only reached for interactive runs). */
   prompt(spec: PromptSpec): Promise<MetricValue>;
 }
@@ -139,5 +141,6 @@ export function buildWorkflowHost(deps: ClientHostDeps): WorkflowHost {
     prompt: (spec) => deps.prompt(spec),
     getMetric: (key) => deps.getMetric(key),
     setMetric: (key, value) => deps.setMetric(key, value),
+    listMetrics: () => deps.listMetrics(),
   };
 }

@@ -97,6 +97,12 @@ export interface WorkflowHost {
 
   getMetric(key: string): Promise<MetricValue>;
   setMetric(key: string, value: MetricValue): Promise<void>;
+  /**
+   * Snapshot of every declared metric's current value, keyed by metric key.
+   * Read once at run start to seed `infra.metrics.<key>` for synchronous,
+   * typed property access inside the workflow.
+   */
+  listMetrics(): Promise<Record<string, MetricValue>>;
 }
 
 /** Error thrown when a workflow uses a capability unavailable in its context. */

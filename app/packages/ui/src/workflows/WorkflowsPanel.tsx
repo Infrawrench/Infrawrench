@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useDraggable } from "@dnd-kit/core";
 
 import { WorkflowEditorView } from "./WorkflowEditorView.js";
 import type {
@@ -9,6 +10,40 @@ import type {
   WorkflowSummary,
   WorkflowTrigger,
 } from "./types.js";
+
+function metricTsType(type: WorkflowMetricDef["type"]): string {
+  return type === "number" ? "number" : type === "boolean" ? "boolean" : "string";
+}
+
+/**
+ * Render the `InfraMetrics` interface for a set of declared metrics. Mirrors
+ * the server-side codegen (`generateInfraDts`) byte-for-byte so the live
+ * overlay below and the saved typings agree (no hover flicker after Save).
+ */
+function renderMetricsInterface(defs: WorkflowMetricDef[]): string {
+  if (defs.length === 0) {
+    return "interface InfraMetrics {\n  [key: string]: number | string | boolean | null;\n}";
+  }
+  const props = defs
+    .map((m) => {
+      const prop = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(m.key) ? m.key : JSON.stringify(m.key);
+      const unit = m.unit ? ` (${m.unit})` : "";
+      return `  /** ${m.label}${unit} — read/write; \`null\` until first set. */\n  ${prop}: ${metricTsType(m.type)} | null;`;
+    })
+    .join("\n");
+  return `interface InfraMetrics {\n${props}\n}`;
+}
+
+/**
+ * Swap the `InfraMetrics` block in the generated typings for one reflecting the
+ * metrics the user is *currently* editing, so `infra.metrics.<key>` is typed
+ * live — before the workflow is even saved.
+ */
+function overlayMetricTypings(dts: string, defs: WorkflowMetricDef[]): string {
+  const block = renderMetricsInterface(defs);
+  const re = /interface InfraMetrics \{[\s\S]*?\n\}/;
+  return re.test(dts) ? dts.replace(re, block) : `${dts}\n${block}\n`;
+}
 
 const STARTER_SOURCE = `// Workflow — runs in a sandboxed isolate with a typed \`infra\` object.
 // Example: read a JSON file from R2 and log a value.
@@ -29,6 +64,7 @@ type TriggerKind = WorkflowTrigger["kind"];
 
 export function WorkflowsPanel({ client }: WorkflowsPanelProps) {
   const [list, setList] = useState<WorkflowSummary[]>([]);
+  const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<WorkflowSummary | null>(null);
   const [dts, setDts] = useState<string>("declare const infra: any;");
@@ -152,6 +188,20 @@ export function WorkflowsPanel({ client }: WorkflowsPanelProps) {
     setDraft((d) => (d ? { ...d, ...p } : d));
   }, []);
 
+  // The accounts portion of the typings comes from the host (getTypings); the
+  // metrics portion is overlaid live from the draft so `infra.metrics.<key>`
+  // reflects edits in the metrics section immediately, before saving.
+  const liveDts = useMemo(
+    () => (draft ? overlayMetricTypings(dts, draft.metricDefs) : dts),
+    [dts, draft?.metricDefs],
+  );
+
+  const filteredList = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return list;
+    return list.filter((wf) => wf.name.toLowerCase().includes(q));
+  }, [list, search]);
+
   return (
     <div className="flex flex-1 min-h-0">
       {/* Workflow list */}
@@ -167,28 +217,33 @@ export function WorkflowsPanel({ client }: WorkflowsPanelProps) {
             + New
           </button>
         </div>
+        <div className="p-2 border-b border-white/10">
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search workflows…"
+            aria-label="Search workflows"
+            className="w-full bg-transparent border border-white/15 rounded px-2 py-1 text-xs focus:outline-none focus:border-blue-500"
+          />
+        </div>
         <div className="flex-1 overflow-auto">
-          {list.length === 0 && (
+          {list.length === 0 ? (
             <div className="p-4 text-xs opacity-60">
               No workflows yet. Create one to get started.
             </div>
+          ) : filteredList.length === 0 ? (
+            <div className="p-4 text-xs opacity-60">No workflows match your search.</div>
+          ) : (
+            filteredList.map((wf) => (
+              <WorkflowListRow
+                key={wf.id}
+                workflow={wf}
+                selected={wf.id === selectedId}
+                onClick={() => void selectWorkflow(wf.id)}
+              />
+            ))
           )}
-          {list.map((wf) => (
-            <button
-              type="button"
-              key={wf.id}
-              onClick={() => void selectWorkflow(wf.id)}
-              className={`block w-full text-left px-3 py-2 text-sm border-b border-white/5 hover:bg-white/5 ${
-                wf.id === selectedId ? "bg-white/10" : ""
-              }`}
-            >
-              <div className="truncate">{wf.name}</div>
-              <div className="text-[10px] opacity-50">
-                {wf.trigger.kind}
-                {wf.enabled ? "" : " · disabled"}
-              </div>
-            </button>
-          ))}
         </div>
       </div>
 
@@ -256,7 +311,7 @@ export function WorkflowsPanel({ client }: WorkflowsPanelProps) {
             <WorkflowEditorView
               value={draft.source}
               onChange={(v) => patch({ source: v })}
-              dts={dts}
+              dts={liveDts}
               onSave={() => void save()}
             />
           </div>
@@ -268,6 +323,46 @@ export function WorkflowsPanel({ client }: WorkflowsPanelProps) {
           Select or create a workflow.
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * A workflow row in the panel list. Draggable onto a dashboard (sidebar tab or
+ * the dashboard surface) to pin its metrics — see DndShell
+ * `onPinWorkflowToDashboard`. Clicking (no drag past the sensor threshold)
+ * selects it for editing.
+ */
+function WorkflowListRow({
+  workflow,
+  selected,
+  onClick,
+}: {
+  workflow: WorkflowSummary;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `sidebar-workflow:${workflow.id}`,
+    data: { workflow: { id: workflow.id, name: workflow.name }, dragLabel: workflow.name },
+  });
+
+  return (
+    <div ref={setNodeRef} className={isDragging ? "opacity-40" : ""} {...listeners} {...attributes}>
+      <button
+        type="button"
+        draggable={false}
+        onClick={onClick}
+        className={`block w-full text-left px-3 py-2 text-sm border-b border-white/5 hover:bg-white/5 cursor-grab active:cursor-grabbing ${
+          selected ? "bg-white/10" : ""
+        }`}
+      >
+        <div className="truncate">{workflow.name}</div>
+        <div className="text-[10px] opacity-50">
+          {workflow.trigger.kind}
+          {workflow.enabled ? "" : " · disabled"}
+        </div>
+      </button>
     </div>
   );
 }

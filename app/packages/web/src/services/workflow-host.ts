@@ -83,6 +83,18 @@ async function getMetric(workflowId: string, key: string): Promise<MetricValue> 
   return row.value as MetricValue;
 }
 
+async function listMetrics(workflowId: string): Promise<Record<string, MetricValue>> {
+  const rows = await db
+    .select()
+    .from(workflowMetrics)
+    .where(and(eq(workflowMetrics.workflowId, workflowId), isNull(workflowMetrics.deletedAt)));
+  const out: Record<string, MetricValue> = {};
+  for (const row of rows) {
+    out[row.key] = (row.value ?? null) as MetricValue;
+  }
+  return out;
+}
+
 async function setMetric(
   organizationId: string,
   workflowId: string,
@@ -125,6 +137,7 @@ export async function buildOrgWorkflowHost(opts: OrgWorkflowHostOptions): Promis
         );
       }),
     getMetric: (key: string) => getMetric(workflowId, key),
+    listMetrics: () => listMetrics(workflowId),
     setMetric: (key: string, value: MetricValue) =>
       setMetric(organizationId, workflowId, key, value),
     prompt:

@@ -81,6 +81,9 @@ const host: WorkflowHost = {
   async setMetric(key, value) {
     metrics[key] = value;
   },
+  async listMetrics() {
+    return { ...metrics };
+  },
 };
 
 const SOURCE = `
@@ -94,8 +97,8 @@ const body = await cf.storage.bucket("my-bucket").get("config.json");
 const cfg = body.json<{ hello: string; n: number }>();
 infra.log("config.hello:", cfg.hello);
 
-const prev = (await infra.metrics.get("runCount")) ?? 0;
-await infra.metrics.set("runCount", prev + 1);
+const prev = infra.metrics.runCount ?? 0;
+infra.metrics.runCount = prev + 1;
 
 await infra.output({ hello: cfg.hello, buckets: buckets.length, runCount: prev + 1 });
 `;
@@ -135,15 +138,14 @@ async function main() {
   });
   console.log("DTS has getByName(prod):", dts.includes('getByName(name: "prod")'));
   console.log("DTS has r2-bucket handle:", dts.includes('"r2-bucket": ResourceHandle'));
-  console.log(
-    "DTS has metric overload:",
-    dts.includes('get(key: "runCount"): Promise<number | null>'),
-  );
+  const dtsHasMetricProp = dts.includes("runCount: number | null;");
+  console.log("DTS has typed metric property:", dtsHasMetricProp);
 
   const ok =
     result.status === "success" &&
     (result.output as { runCount: number }).runCount === 1 &&
     metrics["runCount"] === 1 &&
+    dtsHasMetricProp &&
     promptResult.status === "failure";
   console.log(ok ? "\nSMOKE: PASS" : "\nSMOKE: FAIL");
   process.exit(ok ? 0 : 1);

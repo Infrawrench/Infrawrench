@@ -20,6 +20,7 @@ import { PRELUDE } from "./prelude.js";
 import { transpileWorkflow } from "./transpile.js";
 import {
   DEFAULT_RUN_LIMITS,
+  type MetricValue,
   type RunLimits,
   type RunLogEntry,
   type RunResult,
@@ -54,6 +55,7 @@ function buildProgram(userJs: string): string {
     `export {};`,
     `const __host = env.__host;`,
     `const __accountsTree = env.__accountsTree;`,
+    `const __metrics = env.__metrics;`,
     PRELUDE,
     `const __task = (async () => {`,
     `  try {`,
@@ -63,6 +65,14 @@ function buildProgram(userJs: string): string {
     `  }`,
     `})();`,
     `await __task;`,
+    // Metric assignments are buffered in the prelude (property writes can't be
+    // async); persist the final value of every touched metric once the body
+    // settles — even on failure, so partial progress is saved.
+    `try {`,
+    `  if (globalThis.__flushMetrics) await globalThis.__flushMetrics();`,
+    `} catch (e) {`,
+    `  await __host("__error", JSON.stringify({ message: (e && e.message) ? String(e.message) : String(e), stack: (e && e.stack) ? String(e.stack) : undefined }));`,
+    `}`,
   ].join("\n");
 }
 
@@ -106,6 +116,16 @@ export async function runWorkflow(opts: RunWorkflowOptions): Promise<RunResult> 
     return finish("failure", toError(err));
   }
 
+  // Snapshot declared metrics so the workflow can read them as typed,
+  // synchronous properties (`infra.metrics.<key>`). Writes are buffered and
+  // flushed after the run (see buildProgram).
+  let metricsSnapshot: Record<string, MetricValue> = {};
+  try {
+    metricsSnapshot = await opts.host.listMetrics();
+  } catch (err) {
+    return finish("failure", toError(err, "Failed to read workflow metrics"));
+  }
+
   let userJs: string;
   try {
     userJs = (await transpileWorkflow(opts.source)).code;
@@ -115,6 +135,7 @@ export async function runWorkflow(opts: RunWorkflowOptions): Promise<RunResult> 
 
   const env = {
     __accountsTree: JSON.stringify(tree),
+    __metrics: JSON.stringify(metricsSnapshot),
     __host: async (method: string, argsJson: string): Promise<string> => {
       const args = argsJson ? (JSON.parse(argsJson) as Record<string, unknown>) : {};
       // Completion sentinel emitted by the program wrapper for guest errors.
