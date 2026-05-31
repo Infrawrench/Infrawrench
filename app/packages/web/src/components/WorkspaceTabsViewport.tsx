@@ -10,6 +10,8 @@ import { DashboardPanel } from "@/routes/org.$orgId.dashboard.$dashboardId";
 import { AccountPanel } from "@/routes/org.$orgId.accounts.$accountId";
 import { ResourcePanel } from "@/routes/org.$orgId.resources.$pluginId.$resourceTypeId.$resourceId";
 import { syncWorkspaceRouteFromPath } from "@/lib/workspace-tabs";
+import { WorkflowsPanel, type WorkflowClient } from "@infrawrench/ui/workflows";
+import { createWebWorkflowClient } from "@/lib/workflow-client";
 
 interface WebWorkspaceTabsViewportProps {
   orgId: string;
@@ -46,6 +48,17 @@ export function WebWorkspaceTabsViewport({ orgId }: WebWorkspaceTabsViewportProp
   return <BaseViewport showActive={showActive} renderTabPanel={(tab) => renderPanel(tab, orgId)} />;
 }
 
+// Stable WorkflowClient per org so the panel's effects don't refire each render.
+const workflowClients = new Map<string, WorkflowClient>();
+function getWorkflowClient(orgId: string): WorkflowClient {
+  let client = workflowClients.get(orgId);
+  if (!client) {
+    client = createWebWorkflowClient(orgId);
+    workflowClients.set(orgId, client);
+  }
+  return client;
+}
+
 function renderPanel(tab: WorkspaceTab, orgId: string) {
   const t = tab.target;
   switch (t.kind) {
@@ -53,6 +66,8 @@ function renderPanel(tab: WorkspaceTab, orgId: string) {
       return <DashboardPanel orgId={orgId} dashboardId={t.dashboardId} />;
     case "account":
       return <AccountPanel orgId={orgId} accountId={t.accountId} />;
+    case "workflows":
+      return <WorkflowsPanel client={getWorkflowClient(orgId)} />;
     case "resource":
       if (!t.pluginId || !t.resourceTypeId) {
         // Without pluginId/resourceTypeId we can't construct the detail URL.

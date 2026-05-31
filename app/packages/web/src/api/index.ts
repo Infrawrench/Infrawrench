@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import workflowRoutes from "./routes/workflows.js";
 import { HTTPException } from "hono/http-exception";
 import { setCookie } from "hono/cookie";
 import { randomBytes, randomUUID } from "node:crypto";
@@ -10,6 +11,7 @@ import { OAUTH_STATE_COOKIE } from "./oauth-state";
 
 import { callbackRoutes } from "./routes/callback";
 import { stripeWebhookRoutes } from "./routes/stripe-webhook";
+import { workflowGitWebhook } from "./routes/workflows-git";
 
 import { authRoutes } from "./routes/auth";
 
@@ -58,6 +60,8 @@ api.onError((err, c) => {
 
 api.route("/callback", callbackRoutes);
 api.route("/api/v1/webhooks/stripe", stripeWebhookRoutes);
+// Public git webhook for workflows (no session; opaque token in path).
+api.route("/api", workflowGitWebhook);
 api.route("/.well-known", wellKnownRoutes);
 
 // Public — the spec describes the API surface, not private data.
@@ -113,6 +117,7 @@ orgScoped.use("*", orgMiddleware);
 orgScoped.use("*", permissionsMiddleware);
 
 orgScoped.route("/dashboards", dashboardRoutes);
+orgScoped.route("/workflows", workflowRoutes);
 orgScoped.route("/accounts", accountRoutes);
 orgScoped.route("/api-keys", apiKeyRoutes);
 orgScoped.route("/team", teamRoutes);

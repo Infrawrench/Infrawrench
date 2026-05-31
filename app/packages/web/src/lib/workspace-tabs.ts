@@ -49,6 +49,14 @@ export function getWorkspaceNavigateArgs(
         params: { orgId, accountId: target.accountId },
         ...(replace ? { replace: true } : {}),
       };
+    case "workflows":
+      // Workflows tabs aren't URL-routed; they're opened via the store. Keep
+      // the URL on the org root so navigation has a valid destination.
+      return {
+        to: "/org/$orgId",
+        params: { orgId },
+        ...(replace ? { replace: true } : {}),
+      };
     case "resource": {
       const rid = normalizeResourceId(target.resourceId);
       const hash = target.view === "ssh" ? "ssh" : target.view === "sftp" ? "sftp" : undefined;

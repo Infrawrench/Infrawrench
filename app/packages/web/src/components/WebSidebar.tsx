@@ -377,6 +377,16 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
         </div>
 
         <div className="flex-1 overflow-y-auto py-2">
+          {/* Workflows */}
+          <button
+            type="button"
+            onClick={() =>
+              useUIStore.getState().pinWorkspaceTab({ kind: "workflows" }, "Workflows")
+            }
+            className="w-full text-left px-3 py-1.5 mb-2 text-sm text-on-surface-secondary hover:bg-surface-overlay transition-colors"
+          >
+            Workflows
+          </button>
           {/* Dashboards section */}
           <div className="mb-2">
             <div className="flex items-center justify-between px-3 py-1">
