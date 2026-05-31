@@ -1147,3 +1147,34 @@ The `noSqlBrowser` capability on a `DetailViewSchema` lets a plugin host an inli
   - `countDocuments` returns `DescribeTable.ItemCount` (≈ 6h-stale) rather than a `Scan` with `Select=COUNT`, which would cost RCUs proportional to table size.
 
 When a driver renders a single fixed collection (DynamoDB), set `singleCollection: true` on the capability so the Firestore UI hides "+ add collection" / drop affordances.
+
+---
+
+## Workflows
+
+User-authored **TypeScript automations** run in a sandboxed **QuickJS/WASM isolate**, with a global `infra` object whose types are generated from the user's connected accounts. Manual runs everywhere (desktop, web, proxy); automated cron/git triggers run server-side (web/poller) — desktop has no automated triggers except via the proxy.
+
+**Shared runtime — `@infrawrench/workflow-runtime` (`app/packages/workflow-runtime`)**, platform-agnostic, depended on by server-core, web, and desktop main:
+
+- `sandbox.ts` — `runWorkflow({source, host, interactive, limits?, onLog?})`. Uses `loadAsyncQuickJs(@jitl/quickjs-ng-wasmfile-release-asyncify)` (the **async/asyncify** WASM build is required so guest code can `await __host(...)`). Pure WASM → identical in Electron + Node, no native rebuild; hard `memoryLimit` (bytes) + `executionTimeout` (ms) + `maxStackSize` (bytes). The guest program is assembled as: `import {__host,__accountsTree} from "env"` + the prelude + the user's transpiled code as a default-exported async IIFE. `runSandboxed(({evalCode})=>evalCode(program), {env, allowFetch:false, allowFs:false, ...limits})` returns `{ok:true,data}|{ok:false,error}`.
+- `host.ts` — `WorkflowHost` interface (platform implements: listPlugins, listResources/getResource/resolveOutput, create/update/deleteResource, listStorageObjects/readStorageObject, prompt, getMetric/setMetric) + `dispatch(host, ctx, method, args)` — the single RPC router. `prompt` throws when `ctx.interactive` is false.
+- `prelude.ts` — `PRELUDE`: JS injected into the isolate that builds `globalThis.infra` (`infra.accounts[plugin].getByName/getById/list()` → account handle with `.resources[typeId].list/get/create/update/delete`, `.resolveOutput`, `.storage.bucket().get().json()/.text()/.base64`, `.call()`; `infra.prompt`, `infra.metrics.get/set`, `infra.output`, `infra.log`) on top of the single async `__host(method, argsJson)` RPC + `__accountsTree`. Keeping the object graph in pure JS (not marshalled across the WASM boundary) is what makes it robust + trivially typeable.
+- `transpile.ts` — esbuild `transform({loader:"ts"})`, strip-only (no typecheck; editor handles diagnostics).
+- `codegen.ts` — `generateInfraDts({plugins, metrics, interactive})` emits the `infra.d.ts` whose shape **mirrors the prelude**, specialized with real account names (string-literal `getByName` union), per-plugin resource handles, and the workflow's declared metrics as typed `infra.metrics.get/set` overloads. `prompt` typed `never` for non-interactive.
+- `build-host.ts` — `buildWorkflowHost(deps)` maps plugin-base `PluginClient` methods to the host ops; platforms supply `{listPlugins, getClient, readStorageObject, getMetric, setMetric, prompt}`.
+
+**DB** — server-core `src/db/workflow-schema.ts` (re-exported from `db/schema.ts`): `workflows` (organizationId, source, `trigger` jsonb, `metricDefs` jsonb, enabled, `webhookToken`, `nextRunAt`, lastRunAt, syncVersion, deletedAt), `workflowRuns` (status/triggerSource/logs/output/error/timings), `workflowMetrics` (key/label/type/unit/value, unique on (workflowId,key)). Migration `web/src/db/migrations/0017_workflows.sql`. Desktop SQLite mirror appended to `desktop/src/db/schema.ts` `MIGRATIONS` (via `WORKFLOWS_MIGRATION` + a cast push, since MIGRATIONS is `as const`).
+
+**Web** — routes `web/src/api/routes/workflows.ts` (org-scoped CRUD + `GET /:id/typings` + `POST /:id/run` + runs/metrics; currently reuses `dashboards:read/write` perms — dedicated `workflows:*` is a TODO), public git webhook `routes/workflows-webhook.ts` (`POST /api/workflows/git/:token`, matched by `webhookToken`, branch-filtered on `ref`). `services/workflow-host.ts` (`buildOrgWorkflowHost`, `listOrgPlugins`) + `services/workflow-runner.ts` (delegates non-interactive runs to the shared server-core runner). Browser transport `web/src/lib/workflow-client.ts`.
+
+**Shared server-core runner** — `server-core/src/workflows/runner.ts` (`@infrawrench/server-core/workflows/runner`) `runOrgWorkflow({organizationId, workflowId, triggerSource})`: builds the host via its own account-client factory (decrypt → getPlugin → host services → createClient), runs non-interactive, persists the run. Used by both the web manual route and the poller.
+
+**Poller** — `poller/src/loop.ts` runs a cron pass each tick: due `workflows` (enabled, `nextRunAt <= now`) → `runOrgWorkflow(..., "cron")` → recompute `nextRunAt` via `cron-parser` from `trigger.expression`.
+
+**UI** — `@infrawrench/ui/workflows`: `WorkflowsPanel` (list + Monaco TS editor with the generated `infra.d.ts` injected via `monaco.languages.typescript.typescriptDefaults.addExtraLib`, trigger config, **metrics-definition section**, run + logs/output, runs history) and `WorkflowEditorView`. New workspace-tab kind `{kind:"workflows"}` in `ui.store.ts`; both web (`WebWorkspaceTabsViewport` + `WebSidebar`) and desktop (`WorkspaceTabsViewport` + `Sidebar` + `lib/workflow-client.ts` over `electronAPI`, with `infra.prompt` round-tripped via the `workflow-prompt` event / `workflow_prompt_response` channel) render it.
+
+**Desktop main** — `electron/workflows.ts` (IPC `workflow_list/create/update/delete/typings/run/runs/metrics` + `workflow_prompt_response`; node:sqlite via small `dbRun/dbAll/dbGet` cast helpers; manual/interactive only).
+
+Docs: `website/src/content/docs/features/workflows.md`.
+
+**Still TODO**: dedicated `workflows:*` permissions; desktop↔cloud sync of workflows + workflow_metrics (syncVersion/deletedAt columns already present); desktop storage-object reads inside workflows (currently throws); a nicer desktop prompt modal (currently `window.prompt`).
