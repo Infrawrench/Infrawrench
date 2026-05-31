@@ -1,0 +1,107 @@
+/**
+ * Workflows schema (TypeScript automations run in a V8/WASM isolate).
+ *
+ * Kept in its own module with self-contained imports; re-exported from schema.ts
+ * so Drizzle + `@infrawrench/server-core/db/schema` consumers pick it up.
+ */
+import {
+  boolean,
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+} from "drizzle-orm/pg-core";
+
+import { organizations } from "./schema.js";
+
+export const workflows = pgTable(
+  "workflows",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    description: text("description"),
+    /** The user-authored TypeScript source. */
+    source: text("source").notNull().default(""),
+    /** WorkflowTrigger JSON: { kind: "manual" | "cron" | "git", ... } */
+    trigger: jsonb("trigger").notNull().default({ kind: "manual" }),
+    /** MetricDef[] declared in the UI; surfaced in generated typings. */
+    metricDefs: jsonb("metric_defs").notNull().default([]),
+    enabled: boolean("enabled").notNull().default(true),
+    /** Shared secret used to match inbound git/webhook triggers (web only). */
+    webhookToken: text("webhook_token"),
+    /** Next scheduled run for cron triggers (poller picks these up). */
+    nextRunAt: timestamp("next_run_at"),
+    lastRunAt: timestamp("last_run_at"),
+    createdByUserId: text("created_by_user_id"),
+    syncVersion: integer("sync_version").notNull().default(0),
+    deletedAt: timestamp("deleted_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("workflows_org_idx").on(t.organizationId),
+    dueIdx: index("workflows_due_idx").on(t.nextRunAt),
+    webhookIdx: index("workflows_webhook_idx").on(t.webhookToken),
+  }),
+);
+
+export const workflowRuns = pgTable(
+  "workflow_runs",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    workflowId: text("workflow_id")
+      .notNull()
+      .references(() => workflows.id, { onDelete: "cascade" }),
+    /** "pending" | "running" | "success" | "failure" | "canceled" */
+    status: text("status").notNull().default("pending"),
+    /** "manual" | "cron" | "git" | "api" */
+    triggerSource: text("trigger_source").notNull().default("manual"),
+    logs: jsonb("logs").notNull().default([]),
+    output: jsonb("output"),
+    error: jsonb("error"),
+    startedAt: timestamp("started_at"),
+    finishedAt: timestamp("finished_at"),
+    durationMs: integer("duration_ms"),
+    syncVersion: integer("sync_version").notNull().default(0),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    workflowIdx: index("workflow_runs_workflow_idx").on(t.workflowId),
+    orgIdx: index("workflow_runs_org_idx").on(t.organizationId),
+  }),
+);
+
+export const workflowMetrics = pgTable(
+  "workflow_metrics",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    workflowId: text("workflow_id")
+      .notNull()
+      .references(() => workflows.id, { onDelete: "cascade" }),
+    key: text("key").notNull(),
+    label: text("label").notNull(),
+    /** "number" | "string" | "boolean" */
+    type: text("type").notNull().default("number"),
+    unit: text("unit"),
+    /** Current value as JSON (number | string | boolean | null). */
+    value: jsonb("value"),
+    syncVersion: integer("sync_version").notNull().default(0),
+    deletedAt: timestamp("deleted_at"),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    workflowKeyIdx: uniqueIndex("workflow_metrics_workflow_key_idx").on(t.workflowId, t.key),
+  }),
+);

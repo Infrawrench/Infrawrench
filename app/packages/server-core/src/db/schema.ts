@@ -749,3 +749,5 @@ export const chatUsage = pgTable(
     unreportedIdx: index("chat_usage_unreported_idx").on(t.stripeUsageRecordId),
   }),
 );
+
+export * from "./workflow-schema.js";
