@@ -77,6 +77,15 @@ export function SidebarDashboards() {
 
   return (
     <div className="mb-2">
+      {/* Workflows entry — opens the Workflows workspace tab. */}
+      <button
+        type="button"
+        onClick={() => useUIStore.getState().pinWorkspaceTab({ kind: "workflows" }, "Workflows")}
+        className="w-full flex items-center px-3 py-1.5 mb-1 rounded text-xs text-on-surface-secondary hover:text-on-surface hover:bg-surface-overlay transition-colors"
+      >
+        Workflows
+      </button>
+
       {/* Section header */}
       <div className="flex items-center justify-between px-3 py-1">
         <span className="text-xs font-medium text-on-surface-muted uppercase tracking-wide">

@@ -5,7 +5,7 @@
  * Migrations are run at startup in the Electron main process (electron/main.ts).
  */
 
-export const MIGRATIONS = [
+export const MIGRATIONS: string[] = [
   // v1 — initial schema
   `
   CREATE TABLE IF NOT EXISTS accounts (
@@ -181,4 +181,56 @@ export const MIGRATIONS = [
     UNIQUE(host, port)
   );
   `,
-] as const;
+];
+
+// Workflows: TypeScript automations run in a V8/WASM isolate.
+const WORKFLOWS_MIGRATION = `
+CREATE TABLE IF NOT EXISTS workflows (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT,
+  source TEXT NOT NULL DEFAULT '',
+  trigger TEXT NOT NULL DEFAULT '{"kind":"manual"}',
+  metric_defs TEXT NOT NULL DEFAULT '[]',
+  enabled INTEGER NOT NULL DEFAULT 1,
+  next_run_at TEXT,
+  last_run_at TEXT,
+  cloud_id TEXT,
+  sync_version INTEGER NOT NULL DEFAULT 0,
+  deleted_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS workflow_runs (
+  id TEXT PRIMARY KEY,
+  workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'pending',
+  trigger_source TEXT NOT NULL DEFAULT 'manual',
+  logs TEXT NOT NULL DEFAULT '[]',
+  output TEXT,
+  error TEXT,
+  started_at TEXT,
+  finished_at TEXT,
+  duration_ms INTEGER,
+  cloud_id TEXT,
+  sync_version INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS workflow_metrics (
+  id TEXT PRIMARY KEY,
+  workflow_id TEXT NOT NULL REFERENCES workflows(id) ON DELETE CASCADE,
+  key TEXT NOT NULL,
+  label TEXT NOT NULL,
+  type TEXT NOT NULL DEFAULT 'number',
+  unit TEXT,
+  value TEXT,
+  cloud_id TEXT,
+  sync_version INTEGER NOT NULL DEFAULT 0,
+  deleted_at TEXT,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS workflow_runs_workflow_idx ON workflow_runs(workflow_id);
+CREATE UNIQUE INDEX IF NOT EXISTS workflow_metrics_workflow_key_idx ON workflow_metrics(workflow_id, key);
+`;
+
+MIGRATIONS.push(WORKFLOWS_MIGRATION);

@@ -10,6 +10,18 @@ import { DashboardPanel } from "@/routes/dashboard.$dashboardId";
 import { AccountPanel } from "@/routes/accounts.$accountId";
 import { ResourcePanel } from "@/routes/resource.$accountId.$resourceId";
 import { syncWorkspaceRouteFromPath } from "@/lib/workspace-tabs";
+import { WorkflowsPanel, type WorkflowClient } from "@infrawrench/ui/workflows";
+import { createDesktopWorkflowClient } from "@/lib/workflow-client";
+
+// Stable singleton WorkflowClient so the panel's effects don't refire each
+// render. The desktop client runs workflows in-renderer (isolate + plugin
+// clients) and persists via db_select/db_execute; infra.prompt uses
+// window.prompt for now (a richer modal is a follow-up).
+let workflowClient: WorkflowClient | null = null;
+function getWorkflowClient(): WorkflowClient {
+  if (!workflowClient) workflowClient = createDesktopWorkflowClient();
+  return workflowClient;
+}
 
 // Desktop-side glue between WorkspaceTabsViewport (in @infrawrench/ui) and the
 // per-kind panel components. Each open tab is rendered once and kept mounted
@@ -45,6 +57,8 @@ function renderPanel(tab: WorkspaceTab) {
       return <DashboardPanel dashboardId={t.dashboardId} />;
     case "account":
       return <AccountPanel accountId={t.accountId} />;
+    case "workflows":
+      return <WorkflowsPanel client={getWorkflowClient()} />;
     case "resource":
       return (
         <ResourcePanel

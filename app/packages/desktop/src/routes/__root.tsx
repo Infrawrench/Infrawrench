@@ -81,6 +81,11 @@ async function validateWorkspaceTab(tab: WorkspaceTab): Promise<WorkspaceTab | n
     return rows[0] ? { ...tab, title: rows[0].display_name } : null;
   }
 
+  // Workflows tabs aren't backed by a DB row; keep them as-is.
+  if (target.kind === "workflows") {
+    return tab;
+  }
+
   const accountRows = await db.select<AccountRow[]>(
     "SELECT id, plugin_id, display_name, encrypted_credentials, credentials_iv FROM accounts WHERE id = $1 LIMIT 1",
     [target.accountId],

@@ -42,6 +42,10 @@ export function getWorkspaceNavigateArgs(
         params: { accountId: target.accountId },
         ...(replace ? { replace: true } : {}),
       };
+    case "workflows":
+      // Workflows tabs aren't URL-routed; they're opened via the store. Keep
+      // the URL on the desktop root so navigation has a valid destination.
+      return { to: "/", ...(replace ? { replace: true } : {}) };
     case "resource": {
       const search: Record<string, string> = {};
       if (target.pluginId) search["plugin"] = target.pluginId;
