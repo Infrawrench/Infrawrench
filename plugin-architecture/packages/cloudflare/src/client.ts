@@ -94,6 +94,8 @@ import * as ipAccessApi from "./clients/ip-access-rule-client.js";
 import * as turnstileApi from "./clients/turnstile-client.js";
 import * as healthcheckApi from "./clients/healthcheck-client.js";
 import * as notificationApi from "./clients/notification-policy-client.js";
+import * as vectorizeApi from "./clients/vectorize-client.js";
+import * as durableObjectApi from "./clients/durable-object-namespace-client.js";
 
 /** Map each rules-engine resource type id to its phase spec. */
 const RULE_SPECS: Record<string, RulePhaseSpec> = {
@@ -175,6 +177,10 @@ export class CloudflareClient implements PluginClient {
         return healthcheckApi.listAllHealthchecks(this.api, accountId);
       case "notification-policy":
         return notificationApi.listNotificationPolicies(this.api, accountId);
+      case "vectorize-index":
+        return vectorizeApi.listVectorizeIndexes(this.api, accountId);
+      case "durable-object-namespace":
+        return durableObjectApi.listDurableObjectNamespaces(this.api, accountId);
       default:
         throw new Error(`Cloudflare plugin: unknown resource type "${typeId}"`);
     }
@@ -277,6 +283,12 @@ export class CloudflareClient implements PluginClient {
       if (outputKey === "secretKey") {
         return turnstileApi.getWidgetSecret(this.api, String(resource.externalId ?? ""));
       }
+    }
+    if (typeId === "vectorize-index") {
+      if (outputKey === "indexName") return resource.externalId ?? "";
+    }
+    if (typeId === "durable-object-namespace") {
+      if (outputKey === "namespaceId") return resource.externalId ?? "";
     }
     throw new Error(`Cloudflare plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
   }
@@ -1604,6 +1616,47 @@ export class CloudflareClient implements PluginClient {
         ],
       };
     }
+    if (typeId === "vectorize-index") {
+      return {
+        fields: [
+          {
+            key: "name",
+            label: "Name",
+            kind: "text",
+            required: true,
+            description: "Index name (lowercase letters, numbers, hyphens)",
+          },
+          {
+            key: "dimensions",
+            label: "Dimensions",
+            kind: "number",
+            required: true,
+            defaultValue: "768",
+            description: "Vector dimensionality (must match your embedding model)",
+            minValue: 1,
+            maxValue: 1536,
+          },
+          {
+            key: "metric",
+            label: "Distance Metric",
+            kind: "select",
+            required: false,
+            defaultValue: "cosine",
+            options: [
+              { id: "cosine", label: "Cosine" },
+              { id: "euclidean", label: "Euclidean" },
+              { id: "dot-product", label: "Dot product" },
+            ],
+          },
+          {
+            key: "description",
+            label: "Description",
+            kind: "text",
+            required: false,
+          },
+        ],
+      };
+    }
     throw new Error(`Cloudflare plugin: getCreateConfig not supported for type "${typeId}"`);
   }
 
@@ -1692,6 +1745,8 @@ export class CloudflareClient implements PluginClient {
         return healthcheckApi.createHealthcheck(this.api, accountId, fields, parentExternalId);
       case "notification-policy":
         return notificationApi.createNotificationPolicy(this.api, accountId, fields);
+      case "vectorize-index":
+        return vectorizeApi.createVectorizeIndex(this.api, accountId, fields);
       default:
         throw new Error(`Cloudflare plugin: createResource not supported for type "${typeId}"`);
     }
@@ -1891,6 +1946,8 @@ export class CloudflareClient implements PluginClient {
         return healthcheckApi.deleteHealthcheck(this.api, externalId);
       case "notification-policy":
         return notificationApi.deleteNotificationPolicy(this.api, externalId);
+      case "vectorize-index":
+        return vectorizeApi.deleteVectorizeIndex(this.api, externalId);
       default:
         throw new Error(`Cloudflare plugin: deleteResource not supported for type "${typeId}"`);
     }

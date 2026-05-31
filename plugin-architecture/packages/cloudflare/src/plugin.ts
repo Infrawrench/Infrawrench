@@ -31,6 +31,8 @@ import { IpAccessRuleResourceType } from "./resources/ip-access-rule.js";
 import { TurnstileWidgetResourceType } from "./resources/turnstile-widget.js";
 import { HealthcheckResourceType } from "./resources/healthcheck.js";
 import { NotificationPolicyResourceType } from "./resources/notification-policy.js";
+import { VectorizeIndexResourceType } from "./resources/vectorize-index.js";
+import { DurableObjectNamespaceResourceType } from "./resources/durable-object-namespace.js";
 
 // Deep link to Cloudflare's "Create Token" page (user/profile tokens) with the
 // scopes this plugin uses pre-selected. Format per Cloudflare's token-template
@@ -65,6 +67,7 @@ const CREATE_TOKEN_SCOPES = [
   { key: "health_checks", type: "edit" },
   { key: "turnstile", type: "edit" },
   { key: "notifications", type: "edit" },
+  { key: "vectorize", type: "edit" },
   { key: "analytics", type: "read" },
 ];
 
@@ -136,6 +139,8 @@ const resourceTypes: ResourceTypeDefinition[] = [
   TurnstileWidgetResourceType,
   HealthcheckResourceType,
   NotificationPolicyResourceType,
+  VectorizeIndexResourceType,
+  DurableObjectNamespaceResourceType,
 ];
 
 export const plugin: Plugin = {

@@ -26,4 +26,6 @@ export { WorkersAiModelResourceType } from "./resources/workers-ai-model.js";
 export { TurnstileWidgetResourceType } from "./resources/turnstile-widget.js";
 export { HealthcheckResourceType } from "./resources/healthcheck.js";
 export { NotificationPolicyResourceType } from "./resources/notification-policy.js";
+export { VectorizeIndexResourceType } from "./resources/vectorize-index.js";
+export { DurableObjectNamespaceResourceType } from "./resources/durable-object-namespace.js";
 export { CloudflareClient } from "./client.js";

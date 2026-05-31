@@ -4,13 +4,13 @@ description: Manage zones, DNS, Workers, R2, Pages, KV, D1, Tunnels, Access, and
 sidebar_order: 20
 ---
 
-The Cloudflare plugin is broad — 31 resource types across DNS, edge compute, storage, AI, security, and zero-trust.
+The Cloudflare plugin is broad — 33 resource types across DNS, edge compute, storage, AI, security, and zero-trust.
 
 ## What you can manage
 
 - **DNS & zones** — zones, DNS records (with proxy status toggle), email routing, custom hostnames, health checks.
-- **Edge compute** — Workers (script editor **plus** an editable Settings tab), Pages, Workers KV, D1 (SQLite), Hyperdrive.
-- **Workers AI** — the text-generation model catalog, each with a chat Playground.
+- **Edge compute** — Workers (script editor **plus** an editable Settings tab), Pages, Workers KV, D1 (SQLite), Hyperdrive, Durable Object namespaces.
+- **Workers AI** — the text-generation model catalog (each with a chat Playground) and Vectorize vector-database indexes.
 - **Storage** — R2 buckets (with the [file browser](../features/file-browsers.md)).
 - **Zero Trust** — Access applications and policies, Tunnels.
 - **Security & traffic** — WAF custom rules, rate limiting rules, redirect rules, cache rules, IP access rules, load balancers, waiting rooms, Spectrum applications, and Turnstile widgets.
@@ -26,6 +26,8 @@ Most Cloudflare resources show an **Edit** button on their detail page that open
 - **Turnstile widgets** — create, edit, and delete Cloudflare Turnstile (CAPTCHA alternative) widgets. Each widget exposes its public **Site Key** and a sensitive **Secret Key** as output references, plus a one-click credentials export (`TURNSTILE_SITE_KEY` / `TURNSTILE_SECRET_KEY`) for your client embed and server-side `siteverify` call. The create form takes a name, allowed domains, and a widget mode (Managed / Non-interactive / Invisible). Needs the **Turnstile:Edit** permission.
 - **Health checks** — standalone active origin monitors (independent of load-balancer pools). Create an HTTP/HTTPS/TCP check against an address; the detail page shows status, consecutive fails/successes, and interval/timeout/retries (all editable). Needs the **Health Checks:Edit** permission.
 - **Notification policies** — account-level alerting policies. Pick an alert type (SSL events, health-check status, origin/edge error rates, DDoS, billing, expiring tokens, failing Logpush, …) and a comma-separated list of recipient emails; toggle enabled/disabled and edit recipients later. Needs the **Notifications:Edit** permission.
+- **Vectorize indexes** — create and delete Cloudflare Vectorize vector-database indexes for Workers AI / RAG. The create form takes a name, vector dimensionality (must match your embedding model), and a distance metric (cosine / euclidean / dot product). The index name is exposed as an output reference and a Worker-binding credentials export. Needs the **Vectorize:Edit** permission.
+- **Durable Object namespaces** — a read-only listing of the Durable Object namespaces your deployed Workers declare (name, exported class, owning script, SQLite-storage flag). You create or remove them by redeploying the Worker, so there's no create/edit/delete here. Uses the **Workers Scripts:Read** permission.
 
 ## Credentials
 
