@@ -47,7 +47,8 @@ function baseResource(over: Partial<ResourceInstance> = {}): ResourceInstance {
 function instancesSection(resource: ResourceInstance): SectionNode {
   const view = renderDurableObjectNamespaceDetail(resource);
   const section = view.sections.find(
-    (s): s is SectionNode => s.kind === "section" && s.title.startsWith("Instances"),
+    (s): s is SectionNode =>
+      s.kind === "section" && typeof s.title === "string" && s.title.startsWith("Instances"),
   );
   expect(section).toBeDefined();
   return section!;
