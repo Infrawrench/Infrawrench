@@ -7,7 +7,8 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "typecheck": "tsgo --noEmit"
+    "typecheck": "tsgo --noEmit",
+    "test": "vitest run"
   },
   "dependencies": {
     "hono": "^4.12.18",
@@ -16,7 +17,9 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260505.1",
     "@types/pg": "^8.11.0",
+    "@vitest/coverage-v8": "^3.2.4",
     "typescript": "^5.7.3",
+    "vitest": "^3.2.4",
     "wrangler": "^4.87.0"
   }
 }
