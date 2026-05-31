@@ -112,6 +112,8 @@ The detail page surfaces a **Metrics** tab whenever Cloudflare's GraphQL Analyti
 - **Hyperdrive** — total queries, cache hits/misses, errors, query and result bytes, query and connection latency (`hyperdriveQueriesAdaptiveGroups`).
 - **Load balancer** — total request count and per-pool breakdown (`loadBalancingRequestsAdaptiveGroups`).
 - **Waiting room** — active users, queued users, new users/minute, time-on-origin p50, time-waited p90 (`waitingRoomAnalyticsAdaptiveGroups`).
+- **Turnstile widget** — challenge volume in fifteen-minute buckets (`turnstileAdaptiveGroups`, filtered by site key).
+- **Durable Object namespace** — invocation requests and response body size (`durableObjectsInvocationsAdaptiveGroups`, filtered by namespace).
 
 The token needs the **Account Analytics:Read** permission for account-scoped datasets and **Zone Analytics:Read** for zone-scoped ones — the "Create a token with these scopes" link includes both. Resources with no traffic in the selected window show an empty Metrics tab, which is expected.
 

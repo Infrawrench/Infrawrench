@@ -37,6 +37,7 @@ export const TurnstileWidgetResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   supportsCreate: true,
   supportsUpdate: true,
+  supportsMetrics: true,
   iconKey: "firewall",
   secretExportTemplates: [
     {

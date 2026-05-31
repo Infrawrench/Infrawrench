@@ -12,6 +12,7 @@ export const DurableObjectNamespaceResourceType: ResourceTypeDefinition = {
     { key: "useSqlite", label: "SQLite Storage", kind: "boolean", required: false },
   ],
   outputs: [{ key: "namespaceId", label: "Namespace ID", sensitive: false }],
-  dashboardPinnable: false,
+  dashboardPinnable: true,
+  supportsMetrics: true,
   iconKey: "compute",
 };

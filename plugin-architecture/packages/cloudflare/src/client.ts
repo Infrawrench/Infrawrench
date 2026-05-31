@@ -2274,6 +2274,12 @@ export class CloudflareClient implements PluginClient {
     if (resourceTypeId === "waiting-room") {
       return this.fetchWaitingRoomMetricSeries(resourceId, timeRange);
     }
+    if (resourceTypeId === "durable-object-namespace") {
+      return this.fetchDurableObjectMetricSeries(resourceId, timeRange);
+    }
+    if (resourceTypeId === "turnstile-widget") {
+      return this.fetchTurnstileMetricSeries(resourceId, timeRange);
+    }
     if (resourceTypeId !== "zone") return [];
 
     const zoneId = resourceId.split(":").pop();
@@ -2658,6 +2664,176 @@ export class CloudflareClient implements PluginClient {
       });
     }
 
+    return series.filter((s) => s.points.some((p) => p.value > 0));
+  }
+
+  /**
+   * Durable Object namespace metrics via GraphQL
+   * `durableObjectsInvocationsAdaptiveGroups` (account-scoped, filter by
+   * `namespaceId`). Resource id:
+   * `${infrawrenchAccountId}:durable-object-namespace:${namespaceId}`.
+   */
+  private async fetchDurableObjectMetricSeries(
+    resourceId: string,
+    timeRange?: { startMs: number; endMs: number },
+  ): Promise<MetricSeries[]> {
+    const namespaceId = resourceId.split(":").pop();
+    if (!namespaceId) return [];
+
+    let cfAccountId: string;
+    try {
+      cfAccountId = await this.api.getAccountId();
+    } catch {
+      return [];
+    }
+
+    const now = Date.now();
+    const from = new Date(timeRange?.startMs ?? now - 24 * 3_600_000).toISOString();
+    const to = new Date(timeRange?.endMs ?? now).toISOString();
+
+    const query = `query D($account: String!, $ns: String!, $from: Time!, $to: Time!) {
+      viewer {
+        accounts(filter: { accountTag: $account }) {
+          durableObjectsInvocationsAdaptiveGroups(
+            limit: 1000
+            filter: { namespaceId: $ns, datetime_geq: $from, datetime_lt: $to }
+            orderBy: [datetime_ASC]
+          ) {
+            dimensions { datetime }
+            sum { requests responseBodySize }
+          }
+        }
+      }
+    }`;
+
+    interface Group {
+      dimensions: { datetime: string };
+      sum: { requests?: number; responseBodySize?: number };
+    }
+    interface Resp {
+      data?: {
+        viewer?: { accounts?: Array<{ durableObjectsInvocationsAdaptiveGroups?: Group[] }> };
+      };
+    }
+
+    let groups: Group[] = [];
+    try {
+      const res = await fetch("https://api.cloudflare.com/client/v4/graphql", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.api.apiToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          query,
+          variables: { account: cfAccountId, ns: namespaceId, from, to },
+        }),
+      });
+      if (!res.ok) return [];
+      const json = (await res.json()) as Resp;
+      groups = json.data?.viewer?.accounts?.[0]?.durableObjectsInvocationsAdaptiveGroups ?? [];
+    } catch {
+      return [];
+    }
+    if (groups.length === 0) return [];
+
+    const tsOf = (g: Group): number => new Date(g.dimensions.datetime).getTime();
+    const series: MetricSeries[] = [
+      {
+        label: "Requests",
+        unit: "requests",
+        points: groups.map((g) => ({ timestamp: tsOf(g), value: Number(g.sum.requests ?? 0) })),
+      },
+      {
+        label: "Response Body Size",
+        unit: "bytes",
+        points: groups.map((g) => ({
+          timestamp: tsOf(g),
+          value: Number(g.sum.responseBodySize ?? 0),
+        })),
+      },
+    ];
+    return series.filter((s) => s.points.some((p) => p.value > 0));
+  }
+
+  /**
+   * Turnstile widget metrics via GraphQL `turnstileAdaptiveGroups` (account-
+   * scoped, filter by `siteKey`). Returns the challenge volume in fifteen-minute
+   * buckets. Resource id:
+   * `${infrawrenchAccountId}:turnstile-widget:${siteKey}`.
+   */
+  private async fetchTurnstileMetricSeries(
+    resourceId: string,
+    timeRange?: { startMs: number; endMs: number },
+  ): Promise<MetricSeries[]> {
+    const siteKey = resourceId.split(":").pop();
+    if (!siteKey) return [];
+
+    let cfAccountId: string;
+    try {
+      cfAccountId = await this.api.getAccountId();
+    } catch {
+      return [];
+    }
+
+    const now = Date.now();
+    const from = new Date(timeRange?.startMs ?? now - 24 * 3_600_000).toISOString();
+    const to = new Date(timeRange?.endMs ?? now).toISOString();
+
+    const query = `query T($account: String!, $site: String!, $from: Time!, $to: Time!) {
+      viewer {
+        accounts(filter: { accountTag: $account }) {
+          turnstileAdaptiveGroups(
+            limit: 1000
+            filter: { siteKey: $site, datetimeFifteenMinutes_geq: $from, datetimeFifteenMinutes_lt: $to }
+            orderBy: [datetimeFifteenMinutes_ASC]
+          ) {
+            count
+            dimensions { datetimeFifteenMinutes }
+          }
+        }
+      }
+    }`;
+
+    interface Group {
+      count?: number;
+      dimensions: { datetimeFifteenMinutes: string };
+    }
+    interface Resp {
+      data?: { viewer?: { accounts?: Array<{ turnstileAdaptiveGroups?: Group[] }> } };
+    }
+
+    let groups: Group[] = [];
+    try {
+      const res = await fetch("https://api.cloudflare.com/client/v4/graphql", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.api.apiToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          query,
+          variables: { account: cfAccountId, site: siteKey, from, to },
+        }),
+      });
+      if (!res.ok) return [];
+      const json = (await res.json()) as Resp;
+      groups = json.data?.viewer?.accounts?.[0]?.turnstileAdaptiveGroups ?? [];
+    } catch {
+      return [];
+    }
+    if (groups.length === 0) return [];
+
+    const series: MetricSeries[] = [
+      {
+        label: "Challenges",
+        unit: "challenges",
+        points: groups.map((g) => ({
+          timestamp: new Date(g.dimensions.datetimeFifteenMinutes).getTime(),
+          value: Number(g.count ?? 0),
+        })),
+      },
+    ];
     return series.filter((s) => s.points.some((p) => p.value > 0));
   }
 
