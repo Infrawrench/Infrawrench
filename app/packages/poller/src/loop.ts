@@ -1,11 +1,46 @@
-import { and, asc, isNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, eq, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
+import { CronExpressionParser } from "cron-parser";
 import { db } from "@infrawrench/server-core/db/client";
-import { accounts } from "@infrawrench/server-core/db/schema";
+import { accounts, workflows } from "@infrawrench/server-core/db/schema";
+import { runOrgWorkflow } from "@infrawrench/server-core/workflows/runner";
 import { pollAccount, type PollAccountRow } from "./poll-account";
 import { TokenBucketRegistry } from "./token-bucket";
 
 const TICK_MS = 15_000;
 const CONCURRENCY = 8;
+const WORKFLOW_LIMIT = 8;
+
+/** A workflow's `trigger` jsonb, narrowed to the cron fields we read. */
+interface CronTrigger {
+  kind?: string;
+  expression?: string;
+  timezone?: string;
+}
+
+interface DueWorkflowRow {
+  id: string;
+  organizationId: string;
+  trigger: unknown;
+}
+
+/**
+ * Compute the next fire time from a cron trigger. Returns `null` when the
+ * trigger isn't cron or the expression can't be parsed, which de-schedules the
+ * workflow (it won't be picked up again until re-saved).
+ */
+function nextRunAtFromTrigger(trigger: unknown, from: Date): Date | null {
+  const t = trigger as CronTrigger | null;
+  if (!t || t.kind !== "cron" || !t.expression) return null;
+  try {
+    const interval = CronExpressionParser.parse(t.expression, {
+      currentDate: from,
+      ...(t.timezone ? { tz: t.timezone } : {}),
+    });
+    return interval.next().toDate();
+  } catch {
+    return null;
+  }
+}
 
 interface LoopOptions {
   tickMs?: number;
@@ -74,9 +109,13 @@ export class PollerLoop {
         .orderBy(sql`${accounts.lastPolledAt} asc nulls first`, asc(accounts.id))
         .limit(this.concurrency);
 
-      if (dueRows.length === 0) return;
+      if (dueRows.length > 0) {
+        await Promise.allSettled(dueRows.map((row) => this.runOne(row)));
+      }
 
-      await Promise.allSettled(dueRows.map((row) => this.runOne(row)));
+      // Second pass: due cron workflows. Kept separate and defensive so a bad
+      // workflow never affects account polling.
+      await this.tickWorkflows();
     } catch (e) {
       console.error("[poller] tick failed:", e);
     } finally {
@@ -89,6 +128,60 @@ export class PollerLoop {
       await pollAccount(row, this.buckets);
     } catch (e) {
       console.error(`[poller] account ${row.id} (${row.pluginId}) poll failed:`, e);
+    }
+  }
+
+  /** Run all cron workflows whose `nextRunAt` is due, then reschedule them. */
+  private async tickWorkflows(): Promise<void> {
+    try {
+      const now = new Date();
+      const dueWorkflows: DueWorkflowRow[] = await db
+        .select({
+          id: workflows.id,
+          organizationId: workflows.organizationId,
+          trigger: workflows.trigger,
+        })
+        .from(workflows)
+        .where(
+          and(
+            eq(workflows.enabled, true),
+            isNull(workflows.deletedAt),
+            isNotNull(workflows.nextRunAt),
+            lte(workflows.nextRunAt, now),
+          ),
+        )
+        .orderBy(asc(workflows.nextRunAt), asc(workflows.id))
+        .limit(WORKFLOW_LIMIT);
+
+      if (dueWorkflows.length === 0) return;
+
+      await Promise.allSettled(dueWorkflows.map((row) => this.runWorkflowOnce(row)));
+    } catch (e) {
+      console.error("[poller] workflow tick failed:", e);
+    }
+  }
+
+  private async runWorkflowOnce(row: DueWorkflowRow): Promise<void> {
+    // Reschedule from "now" up-front so a long-running or failing workflow can't
+    // be re-picked on the next tick before this run finishes.
+    const nextRunAt = nextRunAtFromTrigger(row.trigger, new Date());
+    try {
+      await db
+        .update(workflows)
+        .set({ nextRunAt, updatedAt: new Date() })
+        .where(eq(workflows.id, row.id));
+    } catch (e) {
+      console.error(`[poller] workflow ${row.id} reschedule failed:`, e);
+    }
+
+    try {
+      await runOrgWorkflow({
+        organizationId: row.organizationId,
+        workflowId: row.id,
+        triggerSource: "cron",
+      });
+    } catch (e) {
+      console.error(`[poller] workflow ${row.id} run failed:`, e);
     }
   }
 }
