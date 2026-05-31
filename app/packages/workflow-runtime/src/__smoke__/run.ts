@@ -136,7 +136,8 @@ async function main() {
     plugins: PLUGINS,
     metrics: [{ key: "runCount", label: "Run count", type: "number" }],
   });
-  console.log("DTS has getByName(prod):", dts.includes('getByName(name: "prod")'));
+  console.log("DTS has getByName(prod):", dts.includes('getByName(name: "prod" | (string & {}))'));
+  console.log("DTS has getById(acc_cf1):", dts.includes('getById(id: "acc_cf1" | (string & {}))'));
   console.log("DTS has r2-bucket handle:", dts.includes('"r2-bucket": ResourceHandle'));
   const dtsHasMetricProp = dts.includes("runCount: number | null;");
   console.log("DTS has typed metric property:", dtsHasMetricProp);

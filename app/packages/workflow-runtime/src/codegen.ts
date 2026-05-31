@@ -20,6 +20,18 @@ function strLit(raw: string): string {
   return JSON.stringify(raw);
 }
 
+/**
+ * A union of the given string literals plus an open `string` fallback, so the
+ * literals show up as autocomplete suggestions while any other string still
+ * type-checks. The fallback is `(string & {})` rather than a plain `string`
+ * because `"a" | "b" | string` collapses to just `string` in TypeScript and
+ * loses the literal suggestions, whereas `"a" | "b" | (string & {})` keeps them.
+ */
+function openStringUnion(values: string[]): string {
+  if (values.length === 0) return "string";
+  return [...values.map(strLit), "(string & {})"].join(" | ");
+}
+
 function metricTsType(type: MetricValueType): string {
   switch (type) {
     case "number":
@@ -110,13 +122,14 @@ ${resourceProps || "    [resourceTypeId: string]: ResourceHandle;"}
 }
 
 function renderGroupInterface(plugin: WorkflowPluginInfo): string {
-  const names = plugin.accounts.map((a) => strLit(a.displayName));
-  const nameUnion = names.length > 0 ? names.join(" | ") : "string";
+  const idUnion = openStringUnion(plugin.accounts.map((a) => a.id));
+  const nameUnion = openStringUnion(plugin.accounts.map((a) => a.displayName));
   const acct = accountInterfaceName(plugin.pluginId);
   return `interface ${groupInterfaceName(plugin.pluginId)} {
   /** All ${plugin.displayName} accounts. */
   list(): ${acct}[];
-  getById(id: string): ${acct};
+  /** Look an account up by its id. */
+  getById(id: ${idUnion}): ${acct};
   /** Look an account up by its display name. */
   getByName(name: ${nameUnion}): ${acct};
 }`;
