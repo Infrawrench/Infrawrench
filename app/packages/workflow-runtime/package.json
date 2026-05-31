@@ -1,0 +1,25 @@
+{
+  "name": "@infrawrench/workflow-runtime",
+  "private": true,
+  "type": "module",
+  "version": "0.0.0",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc --noEmit",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "dependencies": {
+    "@infrawrench/plugin-base": "workspace:*",
+    "@sebastianwessel/quickjs": "^3.0.1",
+    "@jitl/quickjs-ng-wasmfile-release-asyncify": "^0.31.0",
+    "typescript": "^5.7.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1"
+  }
+}
