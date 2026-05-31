@@ -35,7 +35,7 @@ jobs:
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
 
       - name: Run Claude Code with prompt file
-        uses: Infrawrench/claude-code-base-action@b4adb31287f5a441e4c7ae050dbcf170021318fe
+        uses: Infrawrench/claude-code-base-action@009df7aad2f606b10b982c52c87620623cf90d3c
         with:
           prompt_file: ".github/prompts/CLEANUP.md"
           dangerously_skip_permissions: "true"
