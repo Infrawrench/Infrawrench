@@ -20,6 +20,7 @@ import {
   OrgSwitcher,
   type OrgEntry,
   type DraggableResource,
+  type DraggableWorkflow,
   type TunnelSshAttachZone,
   type TunnelSshAttachKey,
   type WorkspaceTab,
@@ -29,13 +30,14 @@ import { AddAccountModal } from "../components/AddAccountModal";
 import { GlobalTabBar } from "../components/GlobalTabBar";
 import { DesktopWorkspaceTabsViewport } from "../components/WorkspaceTabsViewport";
 import { SshHostKeyPromptHost } from "../components/SshHostKeyPromptHost";
+import { WorkflowPromptHost } from "../components/WorkflowPromptHost";
 import { UpdatePromptHost } from "../components/UpdatePromptHost";
 import { SwipeIndicator } from "../components/SwipeIndicator";
 import { SidebarAccounts } from "../components/SidebarAccounts";
 import { SidebarDashboards } from "../components/SidebarDashboards";
 import { getDb } from "../db/client";
 import type { AccountRow } from "../db/rows";
-import { pinResource } from "../lib/pins";
+import { pinResource, pinWorkflow } from "../lib/pins";
 import { invoke } from "../lib/invoke";
 import { buildPluginHostServices } from "../lib/sql-drivers";
 import { getPlugin } from "../plugins/loader";
@@ -304,6 +306,19 @@ function RootLayout() {
     );
   }
 
+  async function handlePinWorkflowToDashboard(workflow: DraggableWorkflow, dashboardId: string) {
+    // Workflows live in the local DB; a cloud dashboard can't reference them.
+    if (useUIStore.getState().activeCloudOrgId) {
+      toast.error("Switch to Local to pin workflows", {
+        description: "Workflows are stored locally and can only be pinned to local dashboards.",
+      });
+      return;
+    }
+    const db = await getDb();
+    await pinWorkflow(workflow.id, dashboardId, db);
+    bumpDashboardPins();
+  }
+
   async function handleTunnelSshAttach(tunnel: DraggableResource, host: DraggableResource) {
     const orgId = useUIStore.getState().activeCloudOrgId;
     if (!orgId) {
@@ -405,6 +420,9 @@ function RootLayout() {
     <DndShell
       onPinToDashboard={(r, d) => {
         void handlePinToDashboard(r, d);
+      }}
+      onPinWorkflowToDashboard={(w, d) => {
+        void handlePinWorkflowToDashboard(w, d);
       }}
       onSecretDrop={handleSecretDrop}
       onResourceAttach={handleResourceAttach}
@@ -576,6 +594,7 @@ function RootLayout() {
 
       <SwipeIndicator gesture={swipeGesture} />
       <SshHostKeyPromptHost />
+      <WorkflowPromptHost />
       <UpdatePromptHost />
       {tunnelAttach && (
         <TunnelSshAttachModal
