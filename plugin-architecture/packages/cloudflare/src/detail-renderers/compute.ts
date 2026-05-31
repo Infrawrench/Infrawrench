@@ -31,7 +31,14 @@ export function renderWorkerDetail(resource: ResourceInstance): DetailViewSchema
         ],
       },
     ],
-    manifestEditor: { language: "json", resourceKind: "Worker Settings", readOnly: true },
+    // Surfaces a curated, labeled settings *form* (not a raw JSON editor) via the
+    // settingsEditor capability. The host calls getManifest → { settings:
+    // SettingDescriptor[] } to populate it and sends changed rows back through
+    // applyManifest (worker script settings, workers.dev subdomain, cron triggers).
+    settingsEditor: {
+      tabLabel: "Settings",
+      description: "Configure this Worker's runtime settings, subdomain, and triggers.",
+    },
     headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
   };
 }
