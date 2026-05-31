@@ -36,6 +36,7 @@ import "./cloud-auth";
 import "./cloud-data";
 import "./cloud-sync";
 import "./cloud-ssh-keys";
+import "./workflow-host";
 import { teardownAllPfCloudSessions } from "./k8s-pf-cloud";
 import { reportTelemetry } from "./telemetry";
 

@@ -25,6 +25,10 @@ const INVOKE_CHANNELS = [
   // sql.js local desktop DB (renderer-bundled SQL strings only)
   "db_select",
   "db_execute",
+  // workflows — the QuickJS sandbox runs in main; host capabilities are served
+  // back from the renderer (see electron/workflow-host.ts + lib/workflow-runner)
+  "workflow_run",
+  "workflow_host_reply",
   // plugin drivers
   "plugin_sql_query",
   "plugin_sql_execute",
@@ -154,6 +158,8 @@ const EVENT_LITERALS = new Set<string>([
   "storage_download_progress",
   "ssh_host_key_prompt",
   "update_available_prompt",
+  // main asks the renderer to serve a workflow host capability mid-run
+  "workflow_host_call",
 ]);
 
 const EVENT_PREFIXES: readonly string[] = [

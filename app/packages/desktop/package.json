@@ -43,6 +43,9 @@
       "!**/{.turbo,.cache}/**",
       "!**/node_modules/@infrawrench/**"
     ],
+    "asarUnpack": [
+      "**/node_modules/@jitl/quickjs-*/dist/*.wasm"
+    ],
     "publish": [
       {
         "provider": "generic",

@@ -1,22 +1,26 @@
 /**
  * Desktop renderer-side WorkflowClient.
  *
- * On desktop everything runs in the renderer: the local SQLite DB is reached via
- * the generic `db_select` / `db_execute` IPC (see ../db/client), plugin clients
- * are built here (see ./plugin-client), and the QuickJS/WASM isolate runs in the
- * renderer too. So CRUD, typings, runs, and metrics are all handled locally —
- * there's no workflow-specific main-process code. Automated cron/git triggers
- * are not supported on desktop (cloud/proxy only).
+ * On desktop the workflow's data lives in the renderer: the local SQLite DB is
+ * reached via the generic `db_select` / `db_execute` IPC (see ../db/client) and
+ * plugin clients are built here (see ./plugin-client). So CRUD, typings, runs,
+ * and metrics are all handled locally. The one exception is the QuickJS/WASM
+ * isolate itself: it needs Node's `Buffer` (Chromium doesn't have it), so it
+ * runs in the Electron main process and calls back into the host we build here
+ * (see ./workflow-runner and electron/workflow-host.ts). Automated cron/git
+ * triggers are not supported on desktop (cloud/proxy only).
  */
 import {
   buildWorkflowHost,
   generateInfraDts,
-  runWorkflow,
   type MetricDef,
   type MetricValue,
   type PromptSpec,
   type WorkflowPluginInfo,
-} from "@infrawrench/workflow-runtime";
+} from "@infrawrench/workflow-runtime/client";
+
+import { runWorkflowInMain } from "./workflow-runner";
+import { requestWorkflowPrompt } from "./workflow-prompt";
 import type {
   WorkflowClient,
   WorkflowMetricRow,
@@ -134,16 +138,9 @@ async function pluginIdForAccount(accountId: string): Promise<string> {
   return pluginId;
 }
 
-/** Simple renderer prompt; a richer modal is a follow-up. */
-async function askUser(spec: PromptSpec): Promise<MetricValue> {
-  const answer = window.prompt(spec.message, spec.defaultValue ?? "");
-  if (answer === null) return null;
-  if (spec.kind === "number") {
-    const n = Number(answer);
-    return Number.isNaN(n) ? null : n;
-  }
-  if (spec.kind === "boolean") return /^(y|yes|true|1)$/i.test(answer.trim());
-  return answer;
+/** Raise an interactive prompt via the renderer modal (window.prompt is a no-op in Electron). */
+function askUser(spec: PromptSpec): Promise<MetricValue> {
+  return requestWorkflowPrompt(spec);
 }
 
 export function createDesktopWorkflowClient(): WorkflowClient {
@@ -304,6 +301,17 @@ export function createDesktopWorkflowClient(): WorkflowClient {
           const value = rows[0]?.value;
           return value == null ? null : safeParse<MetricValue>(value, null);
         },
+        listMetrics: async () => {
+          const rows = await db.select<{ key: string; value: string | null }[]>(
+            "SELECT key, value FROM workflow_metrics WHERE workflow_id = $1 AND deleted_at IS NULL",
+            [id],
+          );
+          const out: Record<string, MetricValue> = {};
+          for (const r of rows) {
+            out[r.key] = r.value == null ? null : safeParse<MetricValue>(r.value, null);
+          }
+          return out;
+        },
         setMetric: async (key: string, value: MetricValue) => {
           const now = new Date().toISOString();
           await db.execute(
@@ -316,7 +324,7 @@ export function createDesktopWorkflowClient(): WorkflowClient {
         prompt: askUser,
       });
 
-      const result = await runWorkflow({ source: wf.source, host, interactive: true });
+      const result = await runWorkflowInMain(wf.source, true, host);
 
       const finishedAt = new Date(result.finishedAt).toISOString();
       await db.execute(

@@ -4,14 +4,42 @@ import tailwindcss from "@tailwindcss/vite";
 import { TanStackRouterVite } from "@tanstack/router-plugin/vite";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
+import { readFileSync } from "node:fs";
+import type { Plugin } from "vite";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
+
+/**
+ * The workflow sandbox bundles `@jitl/quickjs-ng-wasmfile-release-asyncify`
+ * (the "wasmfile" QuickJS variant) into the main process. Its emscripten
+ * loader reads `emscripten-module.wasm` from disk next to the emitted chunk
+ * (`__dirname + "/emscripten-module.wasm"`), but Rollup doesn't copy that
+ * binary asset. Emit it into the main build's `chunks/` dir so the loader
+ * finds it at runtime. Resolved from the workflow-runtime package, which
+ * declares the variant as a direct dependency.
+ */
+function copyQuickJsWasm(): Plugin {
+  return {
+    name: "copy-quickjs-wasm",
+    generateBundle() {
+      const require = createRequire(resolve(__dirname, "../workflow-runtime/package.json"));
+      const wasmPath = require.resolve("@jitl/quickjs-ng-wasmfile-release-asyncify/wasm");
+      this.emitFile({
+        type: "asset",
+        fileName: "chunks/emscripten-module.wasm",
+        source: readFileSync(wasmPath),
+      });
+    },
+  };
+}
 
 export default defineConfig({
   main: {
     plugins: [
       externalizeDepsPlugin({
         exclude: [
+          "@infrawrench/workflow-runtime",
           "@infrawrench/plugin-base",
           "@infrawrench/plugin-aws",
           "@infrawrench/plugin-azure",
@@ -44,6 +72,7 @@ export default defineConfig({
           "@infrawrench/ui",
         ],
       }),
+      copyQuickJsWasm(),
     ],
     build: {
       rollupOptions: {
