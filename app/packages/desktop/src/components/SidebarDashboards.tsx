@@ -3,7 +3,12 @@ import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { getDb } from "../db/client";
 import { createDashboard } from "../lib/pins";
 import { DroppableDashboardItem, useUIStore } from "@infrawrench/ui";
-import { dashboardTabTarget, navigateToWorkspaceTarget } from "../lib/workspace-tabs";
+import { WorkflowIcon } from "@infrawrench/ui/workflows";
+import {
+  dashboardTabTarget,
+  workflowsTabTarget,
+  navigateToWorkspaceTarget,
+} from "../lib/workspace-tabs";
 import { listCloudDashboards, createCloudDashboard, deleteCloudDashboard } from "../lib/cloud-api";
 
 interface DashboardRow {
@@ -78,13 +83,18 @@ export function SidebarDashboards() {
   return (
     <div className="mb-2">
       {/* Workflows entry — opens the Workflows workspace tab. */}
-      <button
-        type="button"
-        onClick={() => useUIStore.getState().pinWorkspaceTab({ kind: "workflows" }, "Workflows")}
-        className="w-full flex items-center px-3 py-1.5 mb-1 rounded text-xs text-on-surface-secondary hover:text-on-surface hover:bg-surface-overlay transition-colors"
-      >
-        Workflows
-      </button>
+      <div className="mx-2 mb-1">
+        <button
+          type="button"
+          onClick={() =>
+            void navigateToWorkspaceTarget(navigate, workflowsTabTarget(), { label: "Workflows" })
+          }
+          className="group w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-on-surface-tertiary hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
+        >
+          <WorkflowIcon className="opacity-50 flex-shrink-0" />
+          <span className="truncate">Workflows</span>
+        </button>
+      </div>
 
       {/* Section header */}
       <div className="flex items-center justify-between px-3 py-1">

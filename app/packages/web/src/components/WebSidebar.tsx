@@ -11,6 +11,7 @@ import {
   type Dashboard,
   type OrgEntry,
 } from "@infrawrench/ui";
+import { WorkflowIcon } from "@infrawrench/ui/workflows";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import { AddAccountModal } from "./AddAccountModal";
 
@@ -378,15 +379,20 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
 
         <div className="flex-1 overflow-y-auto py-2">
           {/* Workflows */}
-          <button
-            type="button"
-            onClick={() =>
-              useUIStore.getState().pinWorkspaceTab({ kind: "workflows" }, "Workflows")
-            }
-            className="w-full text-left px-3 py-1.5 mb-2 text-sm text-on-surface-secondary hover:bg-surface-overlay transition-colors"
-          >
-            Workflows
-          </button>
+          <div className="mb-2">
+            <div className="mx-2">
+              <button
+                type="button"
+                onClick={() =>
+                  void navigate({ to: "/org/$orgId/workflows", params: { orgId: orgId! } })
+                }
+                className="group w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-on-surface-tertiary hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
+              >
+                <WorkflowIcon className="opacity-50 flex-shrink-0" />
+                <span className="truncate">Workflows</span>
+              </button>
+            </div>
+          </div>
           {/* Dashboards section */}
           <div className="mb-2">
             <div className="flex items-center justify-between px-3 py-1">

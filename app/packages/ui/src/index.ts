@@ -142,11 +142,12 @@ export type { SortableDashboardCardProps } from "./dnd/SortableDashboardCard.js"
 export { SortableContext, rectSortingStrategy, arrayMove } from "@dnd-kit/sortable";
 export { DraggableSidebarResource } from "./dnd/DraggableSidebarResource.js";
 export type { DraggableSidebarResourceProps } from "./dnd/DraggableSidebarResource.js";
-export type { DraggableResource } from "./dnd/types.js";
+export type { DraggableResource, DraggableWorkflow } from "./dnd/types.js";
 
 export {
   dashboardTabTarget,
   accountTabTarget,
+  workflowsTabTarget,
   resourceTabTarget,
   resourceSshTabTarget,
   resourceSftpTabTarget,

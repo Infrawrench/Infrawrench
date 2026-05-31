@@ -25,6 +25,10 @@ export function accountTabTarget(accountId: string): WorkspaceTabTarget {
   return { kind: "account", accountId };
 }
 
+export function workflowsTabTarget(workflowId?: string): WorkspaceTabTarget {
+  return { kind: "workflows", ...(workflowId ? { workflowId } : {}) };
+}
+
 export function resourceTabTarget(
   accountId: string,
   resourceId: string,

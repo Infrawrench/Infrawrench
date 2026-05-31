@@ -75,6 +75,7 @@ function renderPanel(tab: WorkspaceTab) {
 
 function targetsMatch(a: WorkspaceTabTarget, b: WorkspaceTabTarget): boolean {
   if (a.kind !== b.kind) return false;
+  if (a.kind === "workflows" && b.kind === "workflows") return a.workflowId === b.workflowId;
   if (a.kind === "dashboard" && b.kind === "dashboard") return a.dashboardId === b.dashboardId;
   if (a.kind === "account" && b.kind === "account") return a.accountId === b.accountId;
   if (a.kind === "resource" && b.kind === "resource") {

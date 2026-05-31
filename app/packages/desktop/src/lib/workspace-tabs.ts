@@ -3,6 +3,7 @@ import {
   useUIStore,
   dashboardTabTarget,
   accountTabTarget,
+  workflowsTabTarget,
   resourceTabTarget,
   resourceSshTabTarget,
   resourceSftpTabTarget,
@@ -14,6 +15,7 @@ import {
 export {
   dashboardTabTarget,
   accountTabTarget,
+  workflowsTabTarget,
   resourceTabTarget,
   resourceSshTabTarget,
   resourceSftpTabTarget,
@@ -43,9 +45,7 @@ export function getWorkspaceNavigateArgs(
         ...(replace ? { replace: true } : {}),
       };
     case "workflows":
-      // Workflows tabs aren't URL-routed; they're opened via the store. Keep
-      // the URL on the desktop root so navigation has a valid destination.
-      return { to: "/", ...(replace ? { replace: true } : {}) };
+      return { to: "/workflows", ...(replace ? { replace: true } : {}) };
     case "resource": {
       const search: Record<string, string> = {};
       if (target.pluginId) search["plugin"] = target.pluginId;
@@ -95,6 +95,9 @@ export function syncWorkspaceRouteFromPath(
   if (pathname === "/") return null;
   const normalizedHash = hash?.replace(/^#/, "");
   const segments = pathname.split("/").filter(Boolean);
+  if (segments[0] === "workflows") {
+    return workflowsTabTarget();
+  }
   if (segments[0] === "dashboard" && segments[1]) {
     return dashboardTabTarget(segments[1]);
   }

@@ -9,11 +9,17 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as WorkflowsRouteImport } from './routes/workflows'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as DashboardDashboardIdRouteImport } from './routes/dashboard.$dashboardId'
 import { Route as AccountsAccountIdRouteImport } from './routes/accounts.$accountId'
 import { Route as ResourceAccountIdResourceIdRouteImport } from './routes/resource.$accountId.$resourceId'
 
+const WorkflowsRoute = WorkflowsRouteImport.update({
+  id: '/workflows',
+  path: '/workflows',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
@@ -38,12 +44,14 @@ const ResourceAccountIdResourceIdRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/workflows': typeof WorkflowsRoute
   '/accounts/$accountId': typeof AccountsAccountIdRoute
   '/dashboard/$dashboardId': typeof DashboardDashboardIdRoute
   '/resource/$accountId/$resourceId': typeof ResourceAccountIdResourceIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/workflows': typeof WorkflowsRoute
   '/accounts/$accountId': typeof AccountsAccountIdRoute
   '/dashboard/$dashboardId': typeof DashboardDashboardIdRoute
   '/resource/$accountId/$resourceId': typeof ResourceAccountIdResourceIdRoute
@@ -51,6 +59,7 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/workflows': typeof WorkflowsRoute
   '/accounts/$accountId': typeof AccountsAccountIdRoute
   '/dashboard/$dashboardId': typeof DashboardDashboardIdRoute
   '/resource/$accountId/$resourceId': typeof ResourceAccountIdResourceIdRoute
@@ -59,18 +68,21 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/workflows'
     | '/accounts/$accountId'
     | '/dashboard/$dashboardId'
     | '/resource/$accountId/$resourceId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/workflows'
     | '/accounts/$accountId'
     | '/dashboard/$dashboardId'
     | '/resource/$accountId/$resourceId'
   id:
     | '__root__'
     | '/'
+    | '/workflows'
     | '/accounts/$accountId'
     | '/dashboard/$dashboardId'
     | '/resource/$accountId/$resourceId'
@@ -78,6 +90,7 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  WorkflowsRoute: typeof WorkflowsRoute
   AccountsAccountIdRoute: typeof AccountsAccountIdRoute
   DashboardDashboardIdRoute: typeof DashboardDashboardIdRoute
   ResourceAccountIdResourceIdRoute: typeof ResourceAccountIdResourceIdRoute
@@ -85,6 +98,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/workflows': {
+      id: '/workflows'
+      path: '/workflows'
+      fullPath: '/workflows'
+      preLoaderRoute: typeof WorkflowsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -118,6 +138,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  WorkflowsRoute: WorkflowsRoute,
   AccountsAccountIdRoute: AccountsAccountIdRoute,
   DashboardDashboardIdRoute: DashboardDashboardIdRoute,
   ResourceAccountIdResourceIdRoute: ResourceAccountIdResourceIdRoute,

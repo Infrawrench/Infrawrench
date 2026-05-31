@@ -3,6 +3,7 @@ import {
   useUIStore,
   dashboardTabTarget,
   accountTabTarget,
+  workflowsTabTarget,
   resourceTabTarget,
   resourceSshTabTarget,
   resourceSftpTabTarget,
@@ -14,6 +15,7 @@ import {
 export {
   dashboardTabTarget,
   accountTabTarget,
+  workflowsTabTarget,
   resourceTabTarget,
   resourceSshTabTarget,
   resourceSftpTabTarget,
@@ -50,10 +52,8 @@ export function getWorkspaceNavigateArgs(
         ...(replace ? { replace: true } : {}),
       };
     case "workflows":
-      // Workflows tabs aren't URL-routed; they're opened via the store. Keep
-      // the URL on the org root so navigation has a valid destination.
       return {
-        to: "/org/$orgId",
+        to: "/org/$orgId/workflows",
         params: { orgId },
         ...(replace ? { replace: true } : {}),
       };
@@ -121,6 +121,9 @@ export function syncWorkspaceRouteFromPath(
 
   const s = segments.slice(offset);
 
+  if (s[0] === "workflows") {
+    return workflowsTabTarget();
+  }
   if (s[0] === "dashboard" && s[1]) {
     return dashboardTabTarget(s[1]);
   }
