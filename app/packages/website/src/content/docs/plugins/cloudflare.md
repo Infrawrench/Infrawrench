@@ -9,11 +9,12 @@ The Cloudflare plugin is broad — 24 resource types across DNS, edge compute, s
 ## What you can manage
 
 - **DNS & zones** — zones, DNS records (with proxy status toggle), email routing.
-- **Edge compute** — Workers (with script editor), Pages, Workers KV, D1 (SQLite), Hyperdrive.
+- **Edge compute** — Workers (script editor **plus** an editable Settings tab), Pages, Workers KV, D1 (SQLite), Hyperdrive.
 - **Workers AI** — the text-generation model catalog, each with a chat Playground.
 - **Storage** — R2 buckets (with the [file browser](../features/file-browsers.md)).
 - **Zero Trust** — Access applications, Tunnels.
-- **Zone settings** — cache, security, SSL, and performance options edited via a settings form (toggles, dropdowns, numbers) on the zone's **Zone Settings** tab.
+- **Rules & WAF** — WAF custom rules, rate limiting rules, redirect rules, cache rules, and IP access rules, all on the zone's **Rules & WAF** tab.
+- **Zone settings** — cache, security, SSL, and performance options edited via a settings form (toggles, dropdowns, numbers) on the zone's **Zone Settings** tab. DNSSEC can be enabled or disabled from the zone header.
 
 ## Credentials
 
@@ -27,11 +28,12 @@ If you'd rather scope a token by hand, go to the Cloudflare dashboard → **My P
 
 - **DNS records table** — a zone's records render as a Cloudflare-style table (type, name, content, proxy, TTL) with inline create and delete. See [DNS records](../features/dns-records.md).
 - **DNS record editor** with type-aware fields (A, AAAA, CNAME, MX, TXT, SRV, CAA). A/AAAA/CNAME values can be [pointed at another resource](../features/dns-records.md) (e.g. an AWS Elastic IP) and tracked live.
-- **Worker script editing** in Monaco with deploy.
+- **Worker script editing** in Monaco with deploy, plus an editable **Settings** tab — see [Worker settings](#worker-settings) below.
 - **R2 file browser** and **secret export to K8s** for bucket credentials.
 - **KV namespace browser** — open any Workers KV namespace and use the **Keys** tab to list keys (cursor-paginated, with optional prefix filter), view stored values, add or overwrite a key, and delete keys. Backed by Cloudflare's `/storage/kv/namespaces/{id}/keys` and `/values/{key}` REST endpoints. Values are treated as UTF-8 text.
 - **D1 SQL editor** — open any D1 database and use the **SQL Editor** tab to run queries. The default query lists tables via `sqlite_master`.
 - **Zone settings form** — each setting renders as a toggle / dropdown / number control on the **Zone Settings** tab; Apply patches only the changed settings.
+- **Purge cache** — a zone's detail header has a **Purge Everything** button that clears all of Cloudflare's cached content for the zone. See [Cache](#cache) below.
 - **Expose a service over a tunnel** — drag a Tunnel onto a server (any account/provider) to expose HTTP, HTTPS, SSH, or TCP through Cloudflare's edge: infrawrench sets the tunnel ingress + DNS and installs `cloudflared` on the host. See [Expose a service over a Cloudflare Tunnel](../features/cloudflare-tunnel-ssh.md).
 
 <insert [Cloudflare KV namespace detail page with the Keys tab open, showing a list of keys with the value of a selected key displayed] here>
@@ -43,6 +45,44 @@ If you'd rather scope a token by hand, go to the Cloudflare dashboard → **My P
 - **Queue detail page** — opens with the queue's settings (delivery delay, retention period, pause state) inline, a **Consumers** tab listing every bound Worker or pull consumer with its batch size, retry policy, and dead-letter queue, and a **Publish** tab for pushing a one-off test message into the queue. Backed by the Cloudflare Queues HTTP API (`GET /queues/{id}`, `GET /queues/{id}/consumers`, `POST /queues/{id}/messages`). The token needs the **Queues:Edit** permission to publish.
 
 <insert [Cloudflare Queue detail page with the Consumers tab open, showing a table of Worker consumers and their retry settings] here>
+
+## Worker settings
+
+Open a Worker and switch to the **Settings** tab for a labeled form — no raw JSON. Settings are grouped:
+
+- **General** — usage model (read-only), Logpush, the `workers.dev` subdomain toggle, and tags.
+- **Observability** — invocation logging on/off and the head sampling rate (0–1).
+- **Compatibility** — compatibility date and flags (read-only; change them by redeploying the Worker).
+- **Placement** — Smart Placement mode (read-only).
+- **Limits** — the per-invocation CPU limit (read-only).
+- **Triggers** — cron expressions, plus a read-only view of tail consumers.
+- **Bindings** — a read-only count of the Worker's bindings.
+
+Editable rows are saved per setting and routed to the right Cloudflare endpoint — the worker script settings (`logpush`, observability, tags), the `workers.dev` subdomain, or the cron-trigger schedule. The read-only rows surface deploy-time configuration that Cloudflare doesn't expose to a simple settings patch. Editing needs the **Workers Scripts:Edit** permission.
+
+<insert [Cloudflare Worker detail view with the Settings tab open, showing the General and Observability groups populated for a real Worker] here>
+
+## Cache
+
+Open a zone and use the **Purge Everything** button in the detail header to clear all of Cloudflare's cached content for that zone — the equivalent of the dashboard's _Caching → Configuration → Purge Everything_. Infrawrench asks for confirmation first, then issues a single `purge_everything` request. Visitors may briefly reach your origin while the cache refills. Purging needs the **Cache Purge** permission, which the "Create a token with these scopes" link now includes.
+
+## Rules engine
+
+A zone's **Rules & WAF** tab lists every rule type Cloudflare's modern rules engine exposes, each created from a form that starts with a **zone picker** (no zone IDs to copy):
+
+- **WAF custom rules** — match an expression and `block` / `challenge` / `js_challenge` / `managed_challenge` / `skip` / `log` the request (`http_request_firewall_custom` phase).
+- **Rate limiting rules** — match an expression, then limit to _N_ requests per period (with counting characteristics) before the action fires (`http_ratelimit` phase).
+- **Redirect rules** — single redirects: match an expression and send the visitor to a target URL with a 301/302/307/308 and optional query-string preservation (`http_request_dynamic_redirect` phase).
+- **Cache rules** — match an expression and mark matching requests cacheable (with an optional edge TTL override) or bypass the cache (`http_request_cache_settings` phase).
+- **IP access rules** — allow, block, or challenge by IP, CIDR range, ASN, or country (`/firewall/access_rules`).
+
+Each rule renders its expression, action, and status on its own detail page, and can be created and deleted in place. WAF and rate limiting rules need the **WAF** permission; cache rules need **Cache Settings**; redirect rules need **Transform Rules**; IP access rules use the existing **Firewall Services** permission. The "Create a token with these scopes" link now requests the WAF, Cache Settings, and Transform Rules permissions alongside the originals.
+
+<insert [Cloudflare zone Rules & WAF tab showing WAF custom, rate limiting, redirect, and cache rules] here>
+
+## DNSSEC
+
+Open a zone and use the **Enable DNSSEC** / **Disable DNSSEC** buttons in the detail header to turn DNSSEC on or off (`PATCH /zones/{id}/dns_dnssec`). After enabling, add the DS record Cloudflare generates at your domain registrar to complete activation. This uses the existing **DNS:Edit** permission.
 
 ## Metrics
 
