@@ -47,15 +47,32 @@ interface WebSidebarProps {
   orgId: string | null;
 }
 
+const EMPTY_EXPANDED: ReadonlySet<string> = new Set();
+const EMPTY_RESOURCES: Record<
+  string,
+  { loading: boolean; resources: ResourceSummary[]; error?: string | undefined }
+> = {};
+
 export function WebSidebar({ orgId }: WebSidebarProps) {
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const [groups, setGroups] = useState<PluginGroup[]>([]);
   const [loading, setLoading] = useState(true);
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [accountResources, setAccountResources] = useState<
-    Record<string, { loading: boolean; resources: ResourceSummary[]; error?: string | undefined }>
-  >({});
+  const [expandedStore, setExpandedStore] = useState<{ forOrg: string | null; set: Set<string> }>({
+    forOrg: orgId,
+    set: new Set(),
+  });
+  const [accountResourcesStore, setAccountResourcesStore] = useState<{
+    forOrg: string | null;
+    map: Record<
+      string,
+      { loading: boolean; resources: ResourceSummary[]; error?: string | undefined }
+    >;
+  }>({ forOrg: orgId, map: {} });
+
+  const expanded = expandedStore.forOrg === orgId ? expandedStore.set : EMPTY_EXPANDED;
+  const accountResources =
+    accountResourcesStore.forOrg === orgId ? accountResourcesStore.map : EMPTY_RESOURCES;
   const [accountTypeMeta, setAccountTypeMeta] = useState<
     Record<string, Record<string, ResourceTypeMeta>>
   >({});
@@ -144,11 +161,6 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
   }, [apiBase, accountsVersion]);
 
   useEffect(() => {
-    setExpanded(new Set());
-    setAccountResources({});
-  }, [orgId]);
-
-  useEffect(() => {
     if (addingDashboard) newDashboardRef.current?.focus();
   }, [addingDashboard]);
 
@@ -227,10 +239,16 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
   async function loadResources(accountId: string, background = false) {
     if (!apiBase) return;
     if (!background) {
-      setAccountResources((prev) => ({
-        ...prev,
-        [accountId]: { loading: true, resources: prev[accountId]?.resources ?? [] },
-      }));
+      setAccountResourcesStore((prev) => {
+        const base = prev.forOrg === orgId ? prev.map : {};
+        return {
+          forOrg: orgId,
+          map: {
+            ...base,
+            [accountId]: { loading: true, resources: base[accountId]?.resources ?? [] },
+          },
+        };
+      });
     }
 
     try {
@@ -247,41 +265,53 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
         const lookup = Object.fromEntries(detail.resourceTypes.map((t) => [t.id, t]));
         setAccountTypeMeta((prev) => ({ ...prev, [accountId]: lookup }));
       }
-      setAccountResources((prev) => ({
-        ...prev,
-        [accountId]: { loading: false, resources: existing },
-      }));
+      setAccountResourcesStore((prev) => {
+        const base = prev.forOrg === orgId ? prev.map : {};
+        return {
+          forOrg: orgId,
+          map: { ...base, [accountId]: { loading: false, resources: existing } },
+        };
+      });
       apiPost(`${apiBase}/accounts/${accountId}/sync`)
         .then(() =>
           apiGet<ResourceSummary[]>(`${apiBase}/accounts/${accountId}/resources?topLevelOnly=true`),
         )
         .then((fresh) => {
-          setAccountResources((prev) => ({
-            ...prev,
-            [accountId]: { loading: false, resources: fresh },
-          }));
+          setAccountResourcesStore((prev) => {
+            const base = prev.forOrg === orgId ? prev.map : {};
+            return {
+              forOrg: orgId,
+              map: { ...base, [accountId]: { loading: false, resources: fresh } },
+            };
+          });
         })
         .catch((e) => console.error("Background sync failed:", e));
     } catch (e) {
       if (background) return;
-      setAccountResources((prev) => ({
-        ...prev,
-        [accountId]: {
-          loading: false,
-          resources: [],
-          error: e instanceof Error ? e.message : "Failed to load resources",
-        },
-      }));
+      setAccountResourcesStore((prev) => {
+        const base = prev.forOrg === orgId ? prev.map : {};
+        return {
+          forOrg: orgId,
+          map: {
+            ...base,
+            [accountId]: {
+              loading: false,
+              resources: [],
+              error: e instanceof Error ? e.message : "Failed to load resources",
+            },
+          },
+        };
+      });
     }
   }
 
   async function toggleExpand(accountId: string) {
     const isNowExpanded = !expanded.has(accountId);
-    setExpanded((prev) => {
-      const next = new Set(prev);
+    setExpandedStore((prev) => {
+      const next = new Set(prev.forOrg === orgId ? prev.set : []);
       if (isNowExpanded) next.add(accountId);
       else next.delete(accountId);
-      return next;
+      return { forOrg: orgId, set: next };
     });
     if (!isNowExpanded) return;
     if (accountResources[accountId]) return;

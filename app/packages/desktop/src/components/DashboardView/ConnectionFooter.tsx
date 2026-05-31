@@ -61,8 +61,8 @@ export function ConnectionFooter({
           )}
         </div>
       )}
-      {status.resourceCounts?.map(({ typeLabel, count }, index) => (
-        <div key={`${typeLabel}:${index}`} className="flex justify-between text-xs">
+      {status.resourceCounts?.map(({ typeLabel, count }) => (
+        <div key={typeLabel} className="flex justify-between text-xs">
           <span className="text-on-surface-faint">{typeLabel}</span>
           <span className="text-on-surface-tertiary">{count}</span>
         </div>

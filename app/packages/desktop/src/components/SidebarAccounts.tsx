@@ -217,7 +217,9 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
 
         if (!cancelled)
           setGroups(
-            [...groupMap.values()].sort((a, b) => a.displayName.localeCompare(b.displayName)),
+            Array.from(groupMap.values()).sort((a, b) =>
+              a.displayName.localeCompare(b.displayName),
+            ),
           );
       } catch (e) {
         console.error("SidebarAccounts load error:", e);
@@ -348,15 +350,13 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
     const db = await getDb();
     // Cascades to resources, dashboard_pins, secret_field_states, ssh_tunnel_configs via FK.
     await db.execute("DELETE FROM accounts WHERE id = $1", [account.id]);
-    const tabsToRemove = workspaceTabs
-      .filter((tab) => {
-        const t = tab.target;
-        return (
-          (t.kind === "account" && t.accountId === account.id) ||
-          (t.kind === "resource" && t.accountId === account.id)
-        );
-      })
-      .map((tab) => tab.id);
+    const tabsToRemove = workspaceTabs.flatMap((tab) => {
+      const t = tab.target;
+      const matches =
+        (t.kind === "account" && t.accountId === account.id) ||
+        (t.kind === "resource" && t.accountId === account.id);
+      return matches ? [tab.id] : [];
+    });
     removeWorkspaceTabs(tabsToRemove);
     bumpAccounts();
     setDeleteTarget(null);
@@ -364,9 +364,11 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
 
   useEffect(() => {
     const id = setInterval(() => {
-      const allAccounts = groups.flatMap((g) => g.accounts);
+      const accountsById = new Map(
+        groups.flatMap((g) => g.accounts.map((a) => [a.id, a] as const)),
+      );
       for (const accountId of expanded) {
-        const account = allAccounts.find((a) => a.id === accountId);
+        const account = accountsById.get(accountId);
         if (account) void loadAccountResources(account, true);
       }
     }, 30_000);
@@ -379,8 +381,11 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
       const accountId = detail?.accountId;
       const resourceTypeId = detail?.resourceTypeId;
       if (!accountId) {
+        const accountsById = new Map(
+          groups.flatMap((g) => g.accounts.map((a) => [a.id, a] as const)),
+        );
         for (const id of expanded) {
-          const acc = groups.flatMap((g) => g.accounts).find((a) => a.id === id);
+          const acc = accountsById.get(id);
           if (acc) void loadAccountResources(acc, true);
         }
         return;
@@ -662,7 +667,7 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
       {contextMenu && (
         <div
           ref={contextMenuRef}
-          style={{ position: "fixed", left: contextMenu.x, top: contextMenu.y, zIndex: 9999 }}
+          style={{ position: "fixed", left: contextMenu.x, top: contextMenu.y, zIndex: 50 }}
           className="bg-surface-overlay border border-border-strong rounded-lg shadow-xl py-1 min-w-[200px]"
         >
           {contextMenu.sshHost && (

@@ -401,10 +401,10 @@ async function getSqlite(): Promise<SqlJsDb> {
   for (const migration of MIGRATIONS) {
     // Run each statement individually and ignore "duplicate column" errors so
     // re-running ALTER TABLE on an already-migrated DB is a no-op.
-    const statements = migration
-      .split(";")
-      .map((s) => s.trim())
-      .filter(Boolean);
+    const statements = migration.split(";").flatMap((s) => {
+      const trimmed = s.trim();
+      return trimmed ? [trimmed] : [];
+    });
     for (const stmt of statements) {
       try {
         _sqlite.run(stmt);

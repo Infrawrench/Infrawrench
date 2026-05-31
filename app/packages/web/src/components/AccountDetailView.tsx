@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import {
   ResourcePill,
@@ -72,6 +72,11 @@ export function AccountDetailView({
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(account.displayName);
   const [isSaving, setIsSaving] = useState(false);
+  const editInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (isEditing) editInputRef.current?.focus();
+  }, [isEditing]);
 
   async function handleDeleteAccount() {
     await apiDelete(`/api/org/${orgId}/accounts/${account.id}`);
@@ -136,6 +141,7 @@ export function AccountDetailView({
           {isEditing ? (
             <div className="flex items-center gap-2">
               <input
+                ref={editInputRef}
                 type="text"
                 value={editName}
                 onChange={(e) => setEditName(e.target.value)}
@@ -148,7 +154,6 @@ export function AccountDetailView({
                 }}
                 aria-label="Account name"
                 className="px-2 py-1 text-lg font-semibold bg-transparent border border-border rounded focus:outline-none focus:border-accent"
-                autoFocus
                 disabled={isSaving}
               />
               <button

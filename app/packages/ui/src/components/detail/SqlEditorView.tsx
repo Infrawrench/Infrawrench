@@ -469,7 +469,9 @@ export function SqlEditorView({
               <table className="w-full text-xs border-collapse">
                 <thead className="sticky top-0 bg-surface-raised z-10">
                   <tr>
-                    {canEdit && <th className="w-8 border-b border-border" />}
+                    {canEdit && (
+                      <th className="w-8 border-b border-border" aria-label="Row actions" />
+                    )}
                     {columns.map((col) => (
                       <th
                         key={col}

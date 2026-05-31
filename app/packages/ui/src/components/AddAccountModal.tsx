@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Modal } from "./Modal.js";
 import { RegionPicker } from "./create-resource/RegionPicker.js";
 import { formatErrorMessage } from "../utils.js";
@@ -105,10 +105,17 @@ export function AddAccountModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     loadPlugins().then(setPlugins).catch(console.error);
   }, [loadPlugins]);
+
+  // Move focus to the plugin search box when the picker step is shown
+  // (intentional focus management for the modal).
+  useEffect(() => {
+    if (step === "pick-plugin") searchInputRef.current?.focus();
+  }, [step]);
 
   // When a prefilled plugin is requested, auto-select it once the plugin list
   // is loaded so we land directly on the credentials step.
@@ -199,12 +206,12 @@ export function AddAccountModal({
           {step === "pick-plugin" && (
             <div>
               <input
+                ref={searchInputRef}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search plugins..."
                 aria-label="Search plugins"
                 className="w-full bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-border-strong mb-3"
-                autoFocus
               />
               {plugins.length === 0 ? (
                 <p className="text-xs text-on-surface-faint">Loading plugins…</p>

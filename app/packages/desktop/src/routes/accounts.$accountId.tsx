@@ -118,6 +118,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
     sshDefaultUsername?: string;
   } | null>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
+  const renameInputRef = useRef<HTMLInputElement>(null);
   const [secretExportDrop, setSecretExportDrop] = useState<{
     source: DraggableResource;
     targetPluginId: string;
@@ -304,6 +305,11 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
     }, 30_000);
     return () => clearInterval(id);
   }, []);
+
+  // Move focus to the rename input when entering edit mode (intentional focus management).
+  useEffect(() => {
+    if (isEditing) renameInputRef.current?.focus();
+  }, [isEditing]);
 
   useEffect(() => {
     let cancelled = false;
@@ -601,12 +607,12 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
     removeWorkspaceTabs(
       useUIStore
         .getState()
-        .workspaceTabs.filter(
-          (tab) =>
-            (tab.target.kind === "account" && tab.target.accountId === accountId) ||
-            (tab.target.kind === "resource" && tab.target.accountId === accountId),
-        )
-        .map((tab) => tab.id),
+        .workspaceTabs.flatMap((tab) =>
+          (tab.target.kind === "account" && tab.target.accountId === accountId) ||
+          (tab.target.kind === "resource" && tab.target.accountId === accountId)
+            ? [tab.id]
+            : [],
+        ),
     );
     bumpAccounts();
     navigate({ to: "/" });
@@ -719,6 +725,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
           {isEditing ? (
             <div className="flex items-center gap-2">
               <input
+                ref={renameInputRef}
                 type="text"
                 value={editName}
                 aria-label="Account name"
@@ -731,7 +738,6 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
                   }
                 }}
                 className="px-2 py-1 text-lg font-semibold bg-transparent border border-border rounded focus:outline-none focus:border-accent"
-                autoFocus
                 disabled={isSaving}
               />
               <button
@@ -896,7 +902,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
         <div
           ref={contextMenuRef}
           role="menu"
-          style={{ position: "fixed", left: contextMenu.x, top: contextMenu.y, zIndex: 9999 }}
+          style={{ position: "fixed", left: contextMenu.x, top: contextMenu.y, zIndex: 50 }}
           className="bg-surface-overlay border border-border-strong rounded-lg shadow-xl py-1 min-w-[200px]"
         >
           {contextMenu.sshHost && (

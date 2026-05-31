@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, type ReactNode } from "react";
 import { groupBy, formatErrorMessage } from "../utils.js";
-import { toast } from "./Toast/index.js";
+import { toast } from "./Toast/useToast.js";
 
 export interface SpotlightResult {
   id: string;

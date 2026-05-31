@@ -152,7 +152,7 @@ export function DashboardView({
         <div>
           {editingName ? (
             <input
-              autoFocus
+              ref={(el) => el?.focus()}
               aria-label="Dashboard name"
               defaultValue={dashboardName}
               onBlur={(e) => void saveName(e.target.value)}
@@ -278,25 +278,30 @@ function PinCard({
   onUnpin: () => void;
   onOpen: (detail: PinDetail) => void;
 }) {
-  const [detail, setDetail] = useState<PinDetail | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [store, setStore] = useState<{
+    forKey: string;
+    detail: PinDetail | null;
+    loadError: string | null;
+  }>({ forKey: "", detail: null, loadError: null });
   const [unpinning, setUnpinning] = useState(false);
+
+  const key = `${orgId}/${pinId}`;
+  const detail = store.forKey === key ? store.detail : null;
+  const loadError = store.forKey === key ? store.loadError : null;
 
   useEffect(() => {
     let cancelled = false;
-    setDetail(null);
-    setLoadError(null);
     apiGet<PinDetail>(`/api/org/${orgId}/dashboards/pin/${pinId}`)
       .then((d) => {
-        if (!cancelled) setDetail(d);
+        if (!cancelled) setStore({ forKey: key, detail: d, loadError: null });
       })
       .catch((e) => {
-        if (!cancelled) setLoadError(formatErrorMessage(e));
+        if (!cancelled) setStore({ forKey: key, detail: null, loadError: formatErrorMessage(e) });
       });
     return () => {
       cancelled = true;
     };
-  }, [pinId, orgId]);
+  }, [pinId, orgId, key]);
 
   if (loadError) {
     return (
@@ -386,11 +391,7 @@ function ConnectionFooter({ status }: { status: ProbeStatus }) {
         className="px-5 py-3 border-t border-border flex items-center gap-2"
         title={status.error}
       >
-        <span
-          className="size-1.5 rounded-full bg-red-500 flex-shrink-0"
-          role="img"
-          aria-label="Error"
-        />
+        <img className="size-1.5 rounded-full bg-red-500 flex-shrink-0" alt="Error" />
         <span className="text-xs text-red-500 truncate">{status.error ?? "Connection failed"}</span>
       </div>
     );
@@ -399,11 +400,7 @@ function ConnectionFooter({ status }: { status: ProbeStatus }) {
   return (
     <div className="px-5 py-3 border-t border-border space-y-1">
       <div className="flex items-center gap-1.5 mb-1">
-        <span
-          className="size-1.5 rounded-full bg-blue-400 flex-shrink-0"
-          role="img"
-          aria-label="Connected"
-        />
+        <img className="size-1.5 rounded-full bg-blue-400 flex-shrink-0" alt="Connected" />
         <span className="text-xs text-on-surface-faint">Connected</span>
       </div>
       {status.stats?.map((stat) => {

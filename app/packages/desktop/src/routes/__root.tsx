@@ -119,6 +119,26 @@ async function validateWorkspaceTab(tab: WorkspaceTab): Promise<WorkspaceTab | n
   }
 }
 
+function handleSecretDrop(
+  source: DraggableResource,
+  targetId: string,
+  kind: "account" | "resource",
+) {
+  window.dispatchEvent(
+    new CustomEvent("iw:sidebar-secret-drop", {
+      detail: { source, targetId, kind },
+    }),
+  );
+}
+
+function handleResourceAttach(source: DraggableResource, target: DraggableResource) {
+  window.dispatchEvent(
+    new CustomEvent("iw:resource-attach", {
+      detail: { source, target },
+    }),
+  );
+}
+
 function RootLayout() {
   const {
     sidebarCollapsed,
@@ -279,26 +299,6 @@ function RootLayout() {
     );
   }
 
-  function handleSecretDrop(
-    source: DraggableResource,
-    targetId: string,
-    kind: "account" | "resource",
-  ) {
-    window.dispatchEvent(
-      new CustomEvent("iw:sidebar-secret-drop", {
-        detail: { source, targetId, kind },
-      }),
-    );
-  }
-
-  function handleResourceAttach(source: DraggableResource, target: DraggableResource) {
-    window.dispatchEvent(
-      new CustomEvent("iw:resource-attach", {
-        detail: { source, target },
-      }),
-    );
-  }
-
   async function handleTunnelSshAttach(tunnel: DraggableResource, host: DraggableResource) {
     const orgId = useUIStore.getState().activeCloudOrgId;
     if (!orgId) {
@@ -443,9 +443,9 @@ function RootLayout() {
 
         {BANNERS.length > 0 && (
           <div className="flex-shrink-0 flex flex-col">
-            {BANNERS.map((banner, index) => (
+            {BANNERS.map((banner) => (
               <div
-                key={index}
+                key={banner.message}
                 className={`px-3 py-1.5 text-xs text-center border-b ${
                   banner.variant === "warning"
                     ? "bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30"

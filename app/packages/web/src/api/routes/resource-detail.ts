@@ -225,12 +225,14 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
             const tables = (tableRows as Array<{ table_name: string }>).map((t) => {
               const cols = (
                 columnRows as Array<{ table_name: string; column_name: string; data_type: string }>
-              )
-                .filter((col) => col.table_name === t.table_name)
-                .map((col) => ({ name: col.column_name, type: col.data_type }));
-              const pks = (pkRows as Array<{ table_name: string; column_name: string }>)
-                .filter((p) => p.table_name === t.table_name)
-                .map((p) => p.column_name);
+              ).flatMap((col) =>
+                col.table_name === t.table_name
+                  ? [{ name: col.column_name, type: col.data_type }]
+                  : [],
+              );
+              const pks = (pkRows as Array<{ table_name: string; column_name: string }>).flatMap(
+                (p) => (p.table_name === t.table_name ? [p.column_name] : []),
+              );
               return {
                 name: t.table_name,
                 columns: cols,
@@ -323,17 +325,21 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
     }
   }
 
-  const childTypes = plugin.resourceTypes
-    .filter((rt) => rt.parentTypeId === resourceTypeId)
-    .map((rt) => ({
-      id: rt.id,
-      displayName: rt.displayName,
-      pluralDisplayName: rt.pluralDisplayName,
-      supportsCreate: rt.supportsCreate ?? false,
-      // Ship the field schema for child types that support update, so the
-      // detail view can render an inline edit form for child-table rows.
-      ...(rt.supportsUpdate ? { fields: rt.fields } : {}),
-    }));
+  const childTypes = plugin.resourceTypes.flatMap((rt) =>
+    rt.parentTypeId === resourceTypeId
+      ? [
+          {
+            id: rt.id,
+            displayName: rt.displayName,
+            pluralDisplayName: rt.pluralDisplayName,
+            supportsCreate: rt.supportsCreate ?? false,
+            // Ship the field schema for child types that support update, so the
+            // detail view can render an inline edit form for child-table rows.
+            ...(rt.supportsUpdate ? { fields: rt.fields } : {}),
+          },
+        ]
+      : [],
+  );
 
   const childResults = await Promise.allSettled(
     childTypes.map((ct) => client.listResources(ct.id, account.id)),
@@ -372,16 +378,20 @@ app.get("/:pluginId/:typeId/detail", async (c) => {
   const canDelete = !!client.deleteResource && resourceTypeDef?.supportsDelete !== false;
   const canEdit = !!client.updateResource && !!resourceTypeDef?.supportsUpdate;
   const editableFields = canEdit
-    ? (resourceTypeDef?.fields ?? [])
-        .filter((f) => f.editable !== false && f.kind !== "secret" && f.kind !== "association")
-        .map((f) => ({
-          key: f.key,
-          label: f.label,
-          kind: f.kind,
-          required: f.required,
-          ...(f.description ? { description: f.description } : {}),
-          ...(f.enumValues ? { enumValues: f.enumValues } : {}),
-        }))
+    ? (resourceTypeDef?.fields ?? []).flatMap((f) =>
+        f.editable !== false && f.kind !== "secret" && f.kind !== "association"
+          ? [
+              {
+                key: f.key,
+                label: f.label,
+                kind: f.kind,
+                required: f.required,
+                ...(f.description ? { description: f.description } : {}),
+                ...(f.enumValues ? { enumValues: f.enumValues } : {}),
+              },
+            ]
+          : [],
+      )
     : [];
   const credentialFormats =
     client.exportCredential && resourceTypeDef?.credentialFormats

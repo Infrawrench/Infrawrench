@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Editor from "@monaco-editor/react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+const Editor = lazy(() => import("@monaco-editor/react"));
 import type { BucketPolicyEditorCapability } from "@infrawrench/plugin-base";
 import {
   type BucketPolicyDoc,
@@ -459,7 +460,15 @@ function StatementCard({
     <div className="border border-border rounded-lg overflow-hidden bg-surface">
       <div
         className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-surface-overlay/40"
+        role="button"
+        tabIndex={0}
         onClick={onToggle}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onToggle();
+          }
+        }}
       >
         <span className="text-on-surface-faint text-xs font-mono">#{index + 1}</span>
         <span
@@ -723,6 +732,8 @@ function ActionPicker({
             {suggestions.map((s) => (
               <li
                 key={s.id}
+                role="option"
+                aria-selected={false}
                 onMouseDown={(e) => {
                   e.preventDefault();
                   add(s.id);
@@ -865,10 +876,10 @@ function rebuildCondition(
   for (const r of rows) {
     if (!r.op || !r.key) continue;
     if (!out[r.op]) out[r.op] = {};
-    const vals = r.value
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
+    const vals = r.value.split(",").flatMap((s) => {
+      const trimmed = s.trim();
+      return trimmed ? [trimmed] : [];
+    });
     out[r.op]![r.key] = vals.length <= 1 ? (vals[0] ?? "") : vals;
   }
   return Object.keys(out).length > 0 ? out : undefined;
@@ -1006,6 +1017,8 @@ function TemplatePickerModal({
             {templates.map((t) => (
               <li
                 key={t.id}
+                role="button"
+                tabIndex={0}
                 className="px-4 py-3 hover:bg-surface-overlay/40 cursor-pointer"
                 onClick={() => {
                   if (t.inputs && t.inputs.length > 0) {
@@ -1015,6 +1028,19 @@ function TemplatePickerModal({
                     });
                   } else {
                     onApply(t, {});
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    if (t.inputs && t.inputs.length > 0) {
+                      onPendingChange({
+                        template: t,
+                        inputs: Object.fromEntries(t.inputs.map((i) => [i.key, ""])),
+                      });
+                    } else {
+                      onApply(t, {});
+                    }
                   }
                 }}
               >

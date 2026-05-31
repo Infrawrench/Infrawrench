@@ -94,9 +94,10 @@ async function tick() {
             const client = loaded.plugin.createClient(credentials, services);
             if (!client.fetchMetricSeries) return;
             const series = await client.fetchMetricSeries(typeId, resourceId, accountId);
+            const seriesByLabel = new Map(series.map((s) => [s.label, s]));
 
             for (const ping of resourcePings) {
-              const matched = series.find((s) => s.label === ping.metric_label);
+              const matched = seriesByLabel.get(ping.metric_label);
               const latest = matched?.points.at(-1);
               if (!latest) continue;
               const state = evaluate(latest.value, ping.min_value, ping.max_value);

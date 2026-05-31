@@ -135,9 +135,9 @@ export function DetailViewContainer({
         pluginLogoSvg={logoSvg}
         {...(onReroll ? { onReroll } : {})}
         peerPanes={peerPanes}
-        renderPeerPane={(pane, i) => (
+        renderPeerPane={(pane) => (
           <PeerPaneView
-            key={i}
+            key={pane.tabLabel}
             pane={pane}
             accountId={accountId}
             parentResourceId={decodedResourceId}

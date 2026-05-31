@@ -102,7 +102,15 @@ export function ResourcePill({
         ref={setDragRef}
         {...listeners}
         {...attributes}
+        role="button"
+        tabIndex={0}
         onClick={onOpen}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            onOpen();
+          }
+        }}
         onContextMenu={
           (sshHost || supportsMetrics) && onContextMenuOpen
             ? (e) => onContextMenuOpen(e, sshHost)

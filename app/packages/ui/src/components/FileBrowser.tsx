@@ -48,9 +48,17 @@ export function FileBrowser({
   const [prefix, setPrefix] = useState(defaultPrefix);
   const [pathInput, setPathInput] = useState(isAbsolute ? defaultPrefix : bucketName);
   const [pathEditing, setPathEditing] = useState(false);
-  const [objects, setObjects] = useState<StorageObject[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [listState, setListState] = useState<{
+    forKey: string;
+    objects: StorageObject[];
+    loading: boolean;
+    error: string | null;
+  }>({ forKey: defaultPrefix, objects: [], loading: true, error: null });
+  // Derived during render: when `prefix` changes, the view shows loading + empty
+  // + no-error with no synchronous setter (the stale state evicts itself).
+  const loading = listState.forKey !== prefix || listState.loading;
+  const error = listState.forKey === prefix ? listState.error : null;
+  const objects = listState.forKey === prefix ? listState.objects : [];
   const [search, setSearch] = useState("");
   const [transfers, setTransfers] = useState<TransferEntry[]>([]);
   const [newFolderActive, setNewFolderActive] = useState(false);
@@ -76,18 +84,17 @@ export function FileBrowser({
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setError(null);
-    setSelected(new Set());
+    // On a same-prefix refresh, surface the spinner while the refetch runs.
+    // (On a prefix change, `loading` already derives true, so this is a no-op.)
+    setListState((prev) => (prev.forKey === prefix ? { ...prev, loading: true } : prev));
     onList(prefix)
       .then((items) => {
-        if (!cancelled) setObjects(items);
+        if (!cancelled)
+          setListState({ forKey: prefix, objects: items, loading: false, error: null });
       })
       .catch((e) => {
-        if (!cancelled) setError(formatError(e));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled)
+          setListState({ forKey: prefix, objects: [], loading: false, error: formatError(e) });
       });
     return () => {
       cancelled = true;
@@ -250,7 +257,7 @@ export function FileBrowser({
       reload();
     } catch (e) {
       setConfirmDeleteKey(null);
-      setError(formatError(e));
+      setListState((prev) => (prev.forKey === prefix ? { ...prev, error: formatError(e) } : prev));
     } finally {
       setDeleting(false);
     }
@@ -279,8 +286,9 @@ export function FileBrowser({
     try {
       // Expand any selected folders to a flat list of file keys
       const flatKeys: string[] = [];
+      const byKey = new Map(objects.map((o) => [o.key, o]));
       for (const key of keys) {
-        const obj = objects.find((o) => o.key === key);
+        const obj = byKey.get(key);
         if (obj?.isDirectory) {
           const flat = await listAllFlat(obj.key);
           flatKeys.push(...flat.map((o) => o.key));
@@ -500,7 +508,7 @@ export function FileBrowser({
               {/* New folder row */}
               {newFolderActive && (
                 <tr className="border-b border-border/30">
-                  <td />
+                  <td aria-label="Select" />
                   <td className="px-2 py-1.5" colSpan={3}>
                     <div className="flex items-center gap-2">
                       <span className="text-yellow-600">▶</span>
@@ -577,7 +585,7 @@ export function FileBrowser({
                     }
                   }}
                 >
-                  <td />
+                  <td aria-label="Select" />
                   <td
                     className="px-2 py-1.5 text-on-surface-muted flex items-center gap-2"
                     colSpan={3}
@@ -648,7 +656,7 @@ export function FileBrowser({
                               onClick={() => setConfirmDeleteKey(null)}
                               className="text-xs text-on-surface-faint hover:text-on-surface-tertiary"
                             >
-                              No
+                              Cancel
                             </button>
                           </span>
                         ) : (

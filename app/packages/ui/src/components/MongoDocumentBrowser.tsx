@@ -40,6 +40,7 @@ export function MongoDocumentBrowser({
   const [insertError, setInsertError] = useState<string | null>(null);
   const [droppingCollection, setDroppingCollection] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const newCollectionInputRef = useRef<HTMLInputElement>(null);
 
   const refreshCollections = useCallback(async () => {
     setCollectionsLoading(true);
@@ -97,6 +98,10 @@ export function MongoDocumentBrowser({
   useEffect(() => {
     void fetchDocuments();
   }, [fetchDocuments]);
+
+  useEffect(() => {
+    if (showNewCollection) newCollectionInputRef.current?.focus();
+  }, [showNewCollection]);
 
   function handleApplyFilter() {
     const trimmed = filterText.trim() || "{}";
@@ -244,7 +249,7 @@ export function MongoDocumentBrowser({
               aria-label="Collection name"
               placeholder="collection name"
               className="flex-1 min-w-0 bg-surface-raised border border-border-strong rounded px-2 py-1 text-xs text-on-surface-secondary font-mono placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500"
-              autoFocus
+              ref={newCollectionInputRef}
             />
             <button
               type="button"

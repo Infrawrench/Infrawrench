@@ -33,9 +33,18 @@ export function FirestoreMongoPeerBrowser({
   const [linkedAccountId, setLinkedAccountId] = useState<string | null>(() =>
     localStorage.getItem(storageKey),
   );
-  const [connectionString, setConnectionString] = useState<string | null>(null);
+  const [connState, setConnState] = useState<{ forId: string | null; value: string | null }>({
+    forId: null,
+    value: null,
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Derive the connection string for the currently-linked account. When
+  // linkedAccountId changes, the cached value no longer matches and we fall
+  // back to null until the async loader refreshes it.
+  const connectionString =
+    linkedAccountId && connState.forId === linkedAccountId ? connState.value : null;
 
   useEffect(() => {
     let cancelled = false;
@@ -70,7 +79,6 @@ export function FirestoreMongoPeerBrowser({
 
   useEffect(() => {
     if (!linkedAccountId) {
-      setConnectionString(null);
       return;
     }
     let cancelled = false;
@@ -94,7 +102,7 @@ export function FirestoreMongoPeerBrowser({
           if (!cancelled) setError("MongoDB account has no connection string set");
           return;
         }
-        if (!cancelled) setConnectionString(cs);
+        if (!cancelled) setConnState({ forId: id, value: cs });
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : "Failed to load credentials");
       }
@@ -113,7 +121,6 @@ export function FirestoreMongoPeerBrowser({
 
   function unlink() {
     setLinkedAccountId(null);
-    setConnectionString(null);
     localStorage.removeItem(storageKey);
   }
 

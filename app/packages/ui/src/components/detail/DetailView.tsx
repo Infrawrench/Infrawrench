@@ -1,4 +1,4 @@
-import React, { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import React, { useId, useRef, useState, type KeyboardEvent } from "react";
 import type {
   ChatMessage,
   ChatStreamEvent,
@@ -169,12 +169,16 @@ type Tab =
   | `peer:${number}`
   | `custom:${string}`;
 
+const EMPTY_PROVIDER_RESOURCES: ProviderResource[] = [];
+const EMPTY_PEER_PANES: PeerPaneData[] = [];
+const EMPTY_CHILD_RESOURCE_GROUPS: ChildResourceGroup[] = [];
+
 export function DetailView({
   schema,
   resourceId,
   pluginLogoSvg,
   onReroll,
-  providerResources = [],
+  providerResources = EMPTY_PROVIDER_RESOURCES,
   onRunQuery,
   onExecute,
   onEstimateQueryCost,
@@ -192,10 +196,10 @@ export function DetailView({
   onAddSecretVersion,
   onModifySecretVersion,
   onOpenConsole,
-  peerPanes = [],
+  peerPanes = EMPTY_PEER_PANES,
   renderPeerPane,
   onPeerPaneOpen,
-  childResourceGroups = [],
+  childResourceGroups = EMPTY_CHILD_RESOURCE_GROUPS,
   onChildClick,
   onChildCreate,
   onChildDelete,
@@ -251,13 +255,7 @@ export function DetailView({
     hasPublishPanel ||
     customTabs.length > 0 ||
     peerPanes.length > 0;
-  const [activeTab, setActiveTab] = useState<Tab>("overview");
-
-  // Reset to Overview when navigating to a different resource — otherwise
-  // a stale tab (e.g. `peer:0` from a parent cluster) can leave the page blank.
-  useEffect(() => {
-    setActiveTab("overview");
-  }, [resourceId]);
+  const [activeTabState, setActiveTab] = useState<Tab>("overview");
 
   const baseTabId = useId();
   const tabIdFor = (key: Tab) => `${baseTabId}-tab-${key}`;
@@ -281,6 +279,10 @@ export function DetailView({
   if (hasPublishPanel) tabKeys.push("publish");
   for (const tab of customTabs) tabKeys.push(`custom:${tab.id}` as Tab);
   for (let i = 0; i < peerPanes.length; i++) tabKeys.push(`peer:${i}` as Tab);
+
+  // Derive the active tab: fall back to overview whenever the stored tab isn't
+  // available (e.g. a stale `peer:0` after navigating to a different resource).
+  const activeTab = tabKeys.includes(activeTabState) ? activeTabState : "overview";
 
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
 

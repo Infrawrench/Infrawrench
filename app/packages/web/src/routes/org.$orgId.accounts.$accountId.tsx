@@ -166,13 +166,15 @@ export function AccountPanel({
   // that type so slow-to-poll groups get priority loading. Each type only
   // gets one auto-resync per mount; explicit RESOURCES_CHANGED events still
   // re-trigger as before.
-  const prioritizedTypesRef = useRef<Set<string>>(new Set());
+  const prioritizedTypesRef = useRef<Set<string> | null>(null);
+  if (prioritizedTypesRef.current === null) prioritizedTypesRef.current = new Set();
+  const prioritizedTypes = prioritizedTypesRef.current;
   useEffect(() => {
     if (!activeType) return;
-    if (prioritizedTypesRef.current.has(activeType)) return;
-    prioritizedTypesRef.current.add(activeType);
+    if (prioritizedTypes.has(activeType)) return;
+    prioritizedTypes.add(activeType);
     void resyncType(activeType);
-  }, [activeType, resyncType]);
+  }, [activeType, resyncType, prioritizedTypes]);
 
   useEffect(() => {
     let cancelled = false;

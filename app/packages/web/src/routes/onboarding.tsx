@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { apiPost } from "@/lib/api";
 
 export const Route = createFileRoute("/onboarding")({
@@ -11,6 +11,11 @@ function OnboardingPage() {
   const [name, setName] = useState("");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    nameInputRef.current?.focus();
+  }, []);
 
   async function handleCreate() {
     const trimmed = name.trim();
@@ -44,6 +49,7 @@ function OnboardingPage() {
           Organization name
         </label>
         <input
+          ref={nameInputRef}
           id="onboarding-org-name"
           aria-labelledby="onboarding-org-name-label"
           type="text"
@@ -53,7 +59,6 @@ function OnboardingPage() {
             if (e.key === "Enter") void handleCreate();
           }}
           placeholder="My Company"
-          autoFocus
           className="w-full bg-surface-overlay border border-border-strong rounded-lg px-4 py-3 text-sm text-on-surface-secondary placeholder:text-on-surface-faint focus:outline-none focus:border-border-strong mb-4"
         />
 

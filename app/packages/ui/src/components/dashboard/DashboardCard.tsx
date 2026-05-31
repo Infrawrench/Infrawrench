@@ -29,7 +29,7 @@ export function DashboardCard({ card, pluginLogoSvg }: DashboardCardProps) {
         <div className="absolute top-2 right-2 flex gap-1">
           {card.badges.map((badge, i) => (
             <span
-              key={i}
+              key={`${badge.label}-${i}`}
               className="text-xs px-1.5 py-0.5 rounded bg-surface-overlay text-on-surface-tertiary border border-border-strong"
             >
               {badge.label}
@@ -41,6 +41,9 @@ export function DashboardCard({ card, pluginLogoSvg }: DashboardCardProps) {
       {/* Plugin logo */}
       <div
         className="size-10 flex-shrink-0"
+        // pluginLogoSvg is a static provider logo from the plugin's bundled
+        // manifest (plugin.manifest.logoSvg) — never user-controllable input.
+        // eslint-disable-next-line react/no-danger
         dangerouslySetInnerHTML={{ __html: pluginLogoSvg }}
         aria-hidden
       />

@@ -44,13 +44,35 @@ export function ConnectResourceModal({
 }: ConnectResourceModalProps) {
   const orgId = useOrgId();
 
-  // Template loading state
-  const [templates, setTemplates] = useState<SecretExportTemplate[]>([]);
-  const [effectiveTypeId, setEffectiveTypeId] = useState(source.resourceTypeId);
-  const [supportsSecretImport, setSupportsSecretImport] = useState(false);
-  const [namespaces, setNamespaces] = useState<string[]>([]);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [loadingTemplates, setLoadingTemplates] = useState(true);
+  const templatesKey = `${orgId}/${source.pluginId}/${source.resourceTypeId}/${targetAccountId}/${targetPluginId}`;
+
+  // Template loading state — folded into a keyed store so it derives during
+  // render instead of resetting synchronously when the request identity changes.
+  const [templateStore, setTemplateStore] = useState<{
+    forKey: string;
+    loading: boolean;
+    templates: SecretExportTemplate[];
+    effectiveTypeId: string;
+    supportsSecretImport: boolean;
+    namespaces: string[];
+    loadError: string | null;
+  }>({
+    forKey: "",
+    loading: true,
+    templates: [],
+    effectiveTypeId: source.resourceTypeId,
+    supportsSecretImport: false,
+    namespaces: [],
+    loadError: null,
+  });
+
+  const matchesKey = templateStore.forKey === templatesKey;
+  const loadingTemplates = !matchesKey || templateStore.loading;
+  const templates = matchesKey ? templateStore.templates : [];
+  const effectiveTypeId = matchesKey ? templateStore.effectiveTypeId : source.resourceTypeId;
+  const supportsSecretImport = matchesKey ? templateStore.supportsSecretImport : false;
+  const namespaces = matchesKey ? templateStore.namespaces : [];
+  const loadError = matchesKey ? templateStore.loadError : null;
 
   // Mode selection
   const [mode, setMode] = useState<Mode | null>(null);
@@ -74,7 +96,6 @@ export function ConnectResourceModal({
 
   useEffect(() => {
     let cancelled = false;
-    setLoadingTemplates(true);
 
     apiPost<TemplateResponse>(`/api/org/${orgId}/connect/templates`, {
       sourcePluginId: source.pluginId,
@@ -84,13 +105,21 @@ export function ConnectResourceModal({
     })
       .then((data) => {
         if (cancelled) return;
-        setTemplates(data.templates);
-        setEffectiveTypeId(data.effectiveResourceTypeId);
-        setSupportsSecretImport(data.supportsSecretImport);
-        setNamespaces(data.namespaces);
+
+        const base = {
+          forKey: templatesKey,
+          loading: false,
+          templates: data.templates,
+          effectiveTypeId: data.effectiveResourceTypeId,
+          supportsSecretImport: data.supportsSecretImport,
+          namespaces: data.namespaces,
+        };
 
         if (data.templates.length === 0) {
-          setLoadError("This resource type doesn't have any exportable credentials.");
+          setTemplateStore({
+            ...base,
+            loadError: "This resource type doesn't have any exportable credentials.",
+          });
           return;
         }
 
@@ -108,25 +137,34 @@ export function ConnectResourceModal({
 
         if (data.supportsSecretImport) {
           setMode("secret-export");
+          setTemplateStore({ ...base, loadError: null });
         } else if (sshHost) {
           setMode("env-deploy");
+          setTemplateStore({ ...base, loadError: null });
         } else {
-          setLoadError(
-            "The target resource doesn't support secret import or SSH — cannot connect.",
-          );
+          setTemplateStore({
+            ...base,
+            loadError: "The target resource doesn't support secret import or SSH — cannot connect.",
+          });
         }
       })
       .catch((e) => {
-        if (!cancelled) setLoadError(formatErrorMessage(e));
-      })
-      .finally(() => {
-        if (!cancelled) setLoadingTemplates(false);
+        if (cancelled) return;
+        setTemplateStore({
+          forKey: templatesKey,
+          loading: false,
+          templates: [],
+          effectiveTypeId: source.resourceTypeId,
+          supportsSecretImport: false,
+          namespaces: [],
+          loadError: formatErrorMessage(e),
+        });
       });
 
     return () => {
       cancelled = true;
     };
-  }, [orgId, source, targetAccountId, targetPluginId, sshHost]);
+  }, [orgId, source, targetAccountId, targetPluginId, sshHost, templatesKey]);
 
   useEffect(() => {
     if (mode !== "env-deploy") return;

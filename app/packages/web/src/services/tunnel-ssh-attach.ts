@@ -48,7 +48,7 @@ const DEFAULT_PORT: Record<TunnelServiceType, string> = {
  * or raw binary), then registers the systemd service from the remotely-managed
  * tunnel token. The token is interpolated server-side and never returned.
  */
-export function buildCloudflaredInstallScript(token: string): string {
+function buildCloudflaredInstallScript(token: string): string {
   return [
     "set -e",
     'ARCH=$(uname -m); case "$ARCH" in x86_64) P=amd64;; aarch64|arm64) P=arm64;; armv7l) P=arm;; *) P=amd64;; esac',
@@ -66,7 +66,7 @@ export function buildCloudflaredInstallScript(token: string): string {
 }
 
 /** How to reach the service once the tunnel is up — depends on the protocol. */
-export function tunnelConnectCommand(
+function tunnelConnectCommand(
   serviceType: TunnelServiceType,
   hostname: string,
   username: string,

@@ -79,8 +79,10 @@ export function useCreateResourceForm(
     Record<string, Record<string, number>>
   >({});
   const [costEstimateMonthly, setCostEstimateMonthly] = useState<number | null>(null);
-  const pricingAttemptedRef = useRef<Map<string, Set<string>>>(new Map());
-  const pricingInFlightRef = useRef<Set<string>>(new Set());
+  const pricingAttemptedRef = useRef<Map<string, Set<string>> | null>(null);
+  if (pricingAttemptedRef.current === null) pricingAttemptedRef.current = new Map();
+  const pricingInFlightRef = useRef<Set<string> | null>(null);
+  if (pricingInFlightRef.current === null) pricingInFlightRef.current = new Set();
   const callbacksRef = useRef(callbacks);
   callbacksRef.current = callbacks;
 
@@ -125,16 +127,16 @@ export function useCreateResourceForm(
     if (!requestedSizes.length) return;
 
     const regionKey = regionId ?? "__default__";
-    const attemptedForRegion = pricingAttemptedRef.current.get(regionKey) ?? new Set<string>();
+    const attemptedForRegion = pricingAttemptedRef.current!.get(regionKey) ?? new Set<string>();
     const pendingSizes = requestedSizes.filter((s) => !attemptedForRegion.has(s.id));
     if (!pendingSizes.length) return;
     const requestKey = `${regionKey}|${pendingSizes
       .map((s) => s.id)
       .sort()
       .join(",")}`;
-    if (pricingInFlightRef.current.has(requestKey)) return;
+    if (pricingInFlightRef.current!.has(requestKey)) return;
 
-    pricingInFlightRef.current.add(requestKey);
+    pricingInFlightRef.current!.add(requestKey);
     try {
       const pricing = await loadSizePricing({
         ...(regionId ? { regionId } : {}),
@@ -145,7 +147,7 @@ export function useCreateResourceForm(
         })),
       });
       for (const s of pendingSizes) attemptedForRegion.add(s.id);
-      pricingAttemptedRef.current.set(regionKey, attemptedForRegion);
+      pricingAttemptedRef.current!.set(regionKey, attemptedForRegion);
       if (!pricing || Object.keys(pricing).length === 0) return;
       setSizePricingByRegion((prev) => ({
         ...prev,
@@ -154,7 +156,7 @@ export function useCreateResourceForm(
     } catch {
       // Allow retries on failures
     } finally {
-      pricingInFlightRef.current.delete(requestKey);
+      pricingInFlightRef.current!.delete(requestKey);
     }
   }
 
@@ -166,8 +168,8 @@ export function useCreateResourceForm(
         setConfigError(null);
         setSizePricingByRegion({});
         setCostEstimateMonthly(null);
-        pricingAttemptedRef.current.clear();
-        pricingInFlightRef.current.clear();
+        pricingAttemptedRef.current!.clear();
+        pricingInFlightRef.current!.clear();
 
         const cfg = await callbacksRef.current.loadConfig();
         if (cancelled) return;
@@ -190,9 +192,9 @@ export function useCreateResourceForm(
           : undefined;
 
         if (cfgRegionField?.regions?.length) {
-          const remainingRegionIds = cfgRegionField.regions
-            .map((r) => r.id)
-            .filter((id) => id !== defaultRegionId);
+          const remainingRegionIds = cfgRegionField.regions.flatMap((r) =>
+            r.id !== defaultRegionId ? [r.id] : [],
+          );
           void (async () => {
             await loadPricingForRegion(
               defaultRegionId,

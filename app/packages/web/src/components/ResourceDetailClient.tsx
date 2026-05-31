@@ -649,20 +649,21 @@ export function ResourceDetailClient({
     [childResources, childTypes],
   );
 
-  const hydratedPeerPanes = useRef<PeerPaneServerData[] | null>(null);
+  const hydratedPeerPanes = useRef<{ forResource: string; panes: PeerPaneServerData[] } | null>(
+    null,
+  );
   const [hydratedVersion, setHydratedVersion] = useState(0);
   const peerPanesHydratingRef = useRef(false);
 
-  useEffect(() => {
-    hydratedPeerPanes.current = null;
-    peerPanesHydratingRef.current = false;
-    setHydratedVersion((v) => v + 1);
-  }, [resourceId]);
+  // Cache validity derives from resourceId: a cache hydrated for a different
+  // resource is treated as absent, so no synchronous prop-change reset is needed.
+  const hydratedForThisResource =
+    hydratedPeerPanes.current?.forResource === resourceId ? hydratedPeerPanes.current.panes : null;
 
   const peerPanes = useMemo((): PeerPaneData[] => {
     void hydratedVersion;
-    if (hydratedPeerPanes.current) {
-      return hydratedPeerPanes.current.map((p) => ({
+    if (hydratedForThisResource) {
+      return hydratedForThisResource.map((p) => ({
         tabLabel: p.tabLabel,
         pluginLogoSvg: p.pluginLogoSvg,
         credentials: {},
@@ -684,17 +685,17 @@ export function ResourceDetailClient({
       schema: { resourceGroups: [] },
       loading: true,
     }));
-  }, [serverPeerPanes, peerIntegrationStubs, hydratedVersion]);
+  }, [serverPeerPanes, peerIntegrationStubs, hydratedVersion, hydratedForThisResource]);
 
   const activePeerPluginIds = useMemo(() => {
-    if (hydratedPeerPanes.current) return hydratedPeerPanes.current.map((p) => p.peerPluginId);
+    if (hydratedForThisResource) return hydratedForThisResource.map((p) => p.peerPluginId);
     if (serverPeerPanes.length > 0) return serverPeerPanes.map((p) => p.peerPluginId);
     return (peerIntegrationStubs ?? []).map((s) => s.peerPluginId);
-  }, [serverPeerPanes, peerIntegrationStubs, hydratedVersion]);
+  }, [serverPeerPanes, peerIntegrationStubs, hydratedVersion, hydratedForThisResource]);
 
   const handlePeerPaneOpen = useCallback(() => {
     if (peerPanesHydratingRef.current) return;
-    if (hydratedPeerPanes.current) return;
+    if (hydratedPeerPanes.current?.forResource === resourceId) return;
     if ((peerIntegrationStubs ?? []).length === 0) return;
     peerPanesHydratingRef.current = true;
     void (async () => {
@@ -707,7 +708,8 @@ export function ResourceDetailClient({
             ...(parentResourceId ? { parentResourceId } : {}),
           },
         );
-        hydratedPeerPanes.current = result;
+        hydratedPeerPanes.current = { forResource: resourceId, panes: result };
+        peerPanesHydratingRef.current = false;
         setHydratedVersion((v) => v + 1);
       } catch {
         peerPanesHydratingRef.current = false;

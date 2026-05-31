@@ -157,8 +157,8 @@ export function TunnelSshAttachModal({
 
           {result ? (
             <div className="space-y-3">
-              {result.steps.map((s, i) => (
-                <div key={i} className="flex items-start gap-2 text-sm">
+              {result.steps.map((s) => (
+                <div key={s.label} className="flex items-start gap-2 text-sm">
                   <span className={s.ok ? "text-emerald-400" : "text-red-400"}>
                     {s.ok ? "✓" : "✗"}
                   </span>
@@ -184,10 +184,14 @@ export function TunnelSshAttachModal({
           ) : (
             <>
               <div>
-                <label className="block text-xs font-medium text-on-surface-secondary mb-1.5">
+                <label
+                  htmlFor="tunnel-ssh-hostname"
+                  className="block text-xs font-medium text-on-surface-secondary mb-1.5"
+                >
                   Public hostname<span className="text-red-500 ml-0.5">*</span>
                 </label>
                 <input
+                  id="tunnel-ssh-hostname"
                   type="text"
                   value={hostname}
                   onChange={(e) => setHostname(e.target.value)}
@@ -197,10 +201,14 @@ export function TunnelSshAttachModal({
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-on-surface-secondary mb-1.5">
+                <label
+                  htmlFor="tunnel-ssh-zone"
+                  className="block text-xs font-medium text-on-surface-secondary mb-1.5"
+                >
                   Zone<span className="text-red-500 ml-0.5">*</span>
                 </label>
                 <select
+                  id="tunnel-ssh-zone"
                   value={zoneId}
                   onChange={(e) => setZoneId(e.target.value)}
                   className={inputClass}
@@ -216,10 +224,14 @@ export function TunnelSshAttachModal({
               </div>
               <div className="flex gap-3">
                 <div className="flex-1">
-                  <label className="block text-xs font-medium text-on-surface-secondary mb-1.5">
+                  <label
+                    htmlFor="tunnel-ssh-service"
+                    className="block text-xs font-medium text-on-surface-secondary mb-1.5"
+                  >
                     Service<span className="text-red-500 ml-0.5">*</span>
                   </label>
                   <select
+                    id="tunnel-ssh-service"
                     value={serviceType}
                     onChange={(e) => onServiceChange(e.target.value as TunnelServiceType)}
                     className={inputClass}
@@ -233,10 +245,14 @@ export function TunnelSshAttachModal({
                   </select>
                 </div>
                 <div className="w-28">
-                  <label className="block text-xs font-medium text-on-surface-secondary mb-1.5">
+                  <label
+                    htmlFor="tunnel-ssh-port"
+                    className="block text-xs font-medium text-on-surface-secondary mb-1.5"
+                  >
                     Local port<span className="text-red-500 ml-0.5">*</span>
                   </label>
                   <input
+                    id="tunnel-ssh-port"
                     type="text"
                     value={port}
                     onChange={(e) => setPort(e.target.value)}
@@ -271,10 +287,14 @@ export function TunnelSshAttachModal({
               </div>
               {showSshKeyPicker && (
                 <div>
-                  <label className="block text-xs font-medium text-on-surface-secondary mb-1.5">
+                  <label
+                    htmlFor="tunnel-ssh-key"
+                    className="block text-xs font-medium text-on-surface-secondary mb-1.5"
+                  >
                     SSH key<span className="text-red-500 ml-0.5">*</span>
                   </label>
                   <select
+                    id="tunnel-ssh-key"
                     value={sshKeyId}
                     onChange={(e) => setSshKeyId(e.target.value)}
                     className={inputClass}

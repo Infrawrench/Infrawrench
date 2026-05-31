@@ -445,16 +445,17 @@ export function buildChildResourceGroups(
   resources: ChildResourceInput[];
   fields?: unknown[] | undefined;
 }> {
-  return childTypes
-    .map((ct) => ({
+  return childTypes.flatMap((ct) => {
+    const group = {
       typeId: ct.id,
       displayName: ct.displayName,
       pluralDisplayName: ct.pluralDisplayName,
       supportsCreate: !!ct.supportsCreate,
       resources: childResources.filter((r) => r.resourceTypeId === ct.id),
       ...(ct.fields ? { fields: ct.fields } : {}),
-    }))
-    .filter((g) => g.resources.length > 0 || g.supportsCreate);
+    };
+    return group.resources.length > 0 || group.supportsCreate ? [group] : [];
+  });
 }
 
 /** Returns a display title for a resource tab, prefixed with SSH/SFTP when applicable. */

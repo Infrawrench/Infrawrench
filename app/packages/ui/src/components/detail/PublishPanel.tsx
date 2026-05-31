@@ -345,6 +345,7 @@ function KeyValueListEditor({ value, onChange }: KeyValueListEditorProps) {
             value={k}
             onChange={(e) => setKey(k, e.target.value)}
             placeholder="name"
+            aria-label="Entry name"
             className="flex-1 bg-surface-overlay text-on-surface text-xs border border-border-strong rounded-md px-2 py-1 focus:outline-none focus:border-accent-blue"
           />
           <input
@@ -352,6 +353,7 @@ function KeyValueListEditor({ value, onChange }: KeyValueListEditorProps) {
             value={v}
             onChange={(e) => setValue(k, e.target.value)}
             placeholder="value"
+            aria-label="Entry value"
             className="flex-1 bg-surface-overlay text-on-surface text-xs border border-border-strong rounded-md px-2 py-1 focus:outline-none focus:border-accent-blue"
           />
           <button

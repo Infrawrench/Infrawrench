@@ -49,7 +49,7 @@ function PagingPage() {
     return <p className="text-sm text-red-400">{loadError}</p>;
   }
   if (loading || !settings) {
-    return <p className="text-sm text-on-surface-faint">Loading...</p>;
+    return <p className="text-sm text-on-surface-faint">Loading…</p>;
   }
 
   return (
@@ -130,6 +130,7 @@ function SettingsForm({
         <Field label="Account SID">
           <input
             type="text"
+            aria-label="Account SID"
             value={accountSid}
             onChange={(e) => setAccountSid(e.target.value)}
             placeholder={initial.credentialsConfigured ? "•••• (stored)" : "ACxxxxxxxx..."}
@@ -140,6 +141,7 @@ function SettingsForm({
         <Field label="Auth Token">
           <input
             type="password"
+            aria-label="Auth Token"
             value={authToken}
             onChange={(e) => setAuthToken(e.target.value)}
             placeholder={initial.credentialsConfigured ? "•••• (stored)" : "Token"}
@@ -152,6 +154,7 @@ function SettingsForm({
       <Field label="From number (E.164)" hint="The Twilio number SMS and calls originate from.">
         <input
           type="text"
+          aria-label="From number (E.164)"
           value={fromNumber}
           onChange={(e) => setFromNumber(e.target.value)}
           placeholder="+15551234567"
@@ -164,6 +167,7 @@ function SettingsForm({
           <input
             type="number"
             min={1}
+            aria-label="Failures"
             value={failureThreshold}
             onChange={(e) => setFailureThreshold(parsePositiveInt(e.target.value))}
             className={inputClass}
@@ -173,6 +177,7 @@ function SettingsForm({
           <input
             type="number"
             min={1}
+            aria-label="Window (min)"
             value={windowMinutes}
             onChange={(e) => setWindowMinutes(parsePositiveInt(e.target.value))}
             className={inputClass}
@@ -182,6 +187,7 @@ function SettingsForm({
           <input
             type="number"
             min={1}
+            aria-label="Re-page after (min)"
             value={cooldownMinutes}
             onChange={(e) => setCooldownMinutes(parsePositiveInt(e.target.value))}
             className={inputClass}
@@ -194,6 +200,7 @@ function SettingsForm({
 
       <div className="flex justify-end">
         <button
+          type="button"
           onClick={() => void handleSave()}
           disabled={saving}
           className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
@@ -266,6 +273,7 @@ function RecipientsSection({
                 <span>{r.sms ? "SMS" : ""}</span>
                 <span>{r.voice ? "Voice" : ""}</span>
                 <button
+                  type="button"
                   onClick={() => void handleDelete(r.id)}
                   className="text-red-400 hover:text-red-500 dark:text-red-300"
                 >
@@ -281,6 +289,7 @@ function RecipientsSection({
         <Field label="Name">
           <input
             type="text"
+            aria-label="Name"
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
             placeholder="On-call"
@@ -290,6 +299,7 @@ function RecipientsSection({
         <Field label="Phone (E.164)">
           <input
             type="text"
+            aria-label="Phone (E.164)"
             value={phoneNumber}
             onChange={(e) => setPhoneNumber(e.target.value)}
             placeholder="+15551234567"
@@ -312,6 +322,7 @@ function RecipientsSection({
 
       <div className="flex justify-end">
         <button
+          type="button"
           onClick={() => void handleAdd()}
           disabled={saving}
           className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
@@ -368,6 +379,7 @@ function TestSection({
       )}
       <div className="flex justify-end">
         <button
+          type="button"
           onClick={() => void handleTest()}
           disabled={busy || !ready}
           title={ready ? undefined : "Save Twilio creds and add a recipient first"}

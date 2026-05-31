@@ -123,11 +123,11 @@ export function SidebarDashboards() {
                       removeWorkspaceTabs(
                         useUIStore
                           .getState()
-                          .workspaceTabs.filter(
-                            (tab) =>
-                              tab.target.kind === "dashboard" && tab.target.dashboardId === dash.id,
-                          )
-                          .map((tab) => tab.id),
+                          .workspaceTabs.flatMap((tab) =>
+                            tab.target.kind === "dashboard" && tab.target.dashboardId === dash.id
+                              ? [tab.id]
+                              : [],
+                          ),
                       );
                       setDashboards((prev) => prev.filter((d) => d.id !== dash.id));
                       // Navigate home if we just deleted the active dashboard

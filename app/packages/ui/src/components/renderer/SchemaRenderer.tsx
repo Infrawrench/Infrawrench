@@ -130,17 +130,18 @@ function useActionDispatch() {
   };
 }
 
+const TEXT_VARIANT_CLASSES: Record<string, string> = {
+  heading: "text-lg font-semibold text-on-surface",
+  subheading: "text-sm font-medium text-on-surface-secondary",
+  body: "text-sm text-on-surface-secondary",
+  // Mono variants render as a block so multi-line content (rules, config
+  // snippets, etc.) preserves its own whitespace and line breaks.
+  mono: "text-xs font-mono text-on-surface-secondary whitespace-pre-wrap break-words block bg-surface-raised/50 rounded p-3 overflow-x-auto",
+  muted: "text-xs text-on-surface-muted",
+};
+
 function TextNodeRenderer({ node }: { node: TextNode }) {
-  const classes: Record<string, string> = {
-    heading: "text-lg font-semibold text-on-surface",
-    subheading: "text-sm font-medium text-on-surface-secondary",
-    body: "text-sm text-on-surface-secondary",
-    // Mono variants render as a block so multi-line content (rules, config
-    // snippets, etc.) preserves its own whitespace and line breaks.
-    mono: "text-xs font-mono text-on-surface-secondary whitespace-pre-wrap break-words block bg-surface-raised/50 rounded p-3 overflow-x-auto",
-    muted: "text-xs text-on-surface-muted",
-  };
-  const cls = classes[node.variant ?? "body"] ?? classes["body"];
+  const cls = TEXT_VARIANT_CLASSES[node.variant ?? "body"] ?? TEXT_VARIANT_CLASSES["body"];
   if (node.variant === "mono") {
     // When copyable, float a copy button in the top-right of the block.
     if (node.copyable) {
@@ -246,22 +247,24 @@ function KeyValueListNodeRenderer({
 }) {
   return (
     <div className="divide-y divide-border">
-      {node.items.map((item, i) => (
-        <KVItemRenderer key={i} item={item} resourceId={resourceId} />
+      {node.items.map((item) => (
+        <KVItemRenderer key={item.key} item={item} resourceId={resourceId} />
       ))}
     </div>
   );
 }
 
+const ACTION_VARIANT_CLASSES: Record<string, string> = {
+  default: "bg-surface-overlay hover:bg-surface-sunken text-on-surface-secondary",
+  danger:
+    "bg-red-100 hover:bg-red-200 text-red-800 dark:bg-red-900 dark:hover:bg-red-800 dark:text-red-200",
+  ghost: "bg-transparent hover:bg-surface-overlay text-on-surface-tertiary",
+};
+
 function ActionNodeRenderer({ node, resourceId }: { node: ActionNode; resourceId?: string }) {
   const dispatch = useActionDispatch();
-  const variantClasses: Record<string, string> = {
-    default: "bg-surface-overlay hover:bg-surface-sunken text-on-surface-secondary",
-    danger:
-      "bg-red-100 hover:bg-red-200 text-red-800 dark:bg-red-900 dark:hover:bg-red-800 dark:text-red-200",
-    ghost: "bg-transparent hover:bg-surface-overlay text-on-surface-tertiary",
-  };
-  const cls = variantClasses[node.variant ?? "default"] ?? variantClasses["default"];
+  const cls =
+    ACTION_VARIANT_CLASSES[node.variant ?? "default"] ?? ACTION_VARIANT_CLASSES["default"];
   return (
     <button
       type="button"
@@ -273,14 +276,15 @@ function ActionNodeRenderer({ node, resourceId }: { node: ActionNode; resourceId
   );
 }
 
+const GRID_COL_CLASSES: Record<number, string> = {
+  1: "grid-cols-1",
+  2: "grid-cols-2",
+  3: "grid-cols-3",
+  4: "grid-cols-4",
+};
+
 function GridNodeRenderer({ node, resourceId }: { node: GridNode; resourceId?: string }) {
-  const colClasses: Record<number, string> = {
-    1: "grid-cols-1",
-    2: "grid-cols-2",
-    3: "grid-cols-3",
-    4: "grid-cols-4",
-  };
-  const cls = colClasses[node.columns] ?? "grid-cols-2";
+  const cls = GRID_COL_CLASSES[node.columns] ?? "grid-cols-2";
   return (
     <div className={`grid ${cls} gap-4`}>
       {node.items.map((item, i) => (

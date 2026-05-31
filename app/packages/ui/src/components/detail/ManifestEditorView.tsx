@@ -1,6 +1,10 @@
-import { useState, useCallback, useRef, useEffect } from "react";
-import Editor, { type OnMount } from "@monaco-editor/react";
+import { useState, useCallback, useRef, useEffect, lazy, Suspense } from "react";
+import type { OnMount } from "@monaco-editor/react";
 import type { ManifestEditorCapability } from "@infrawrench/plugin-base";
+
+// Monaco is heavy and browser-only; load it lazily so it splits out of the
+// main bundle.
+const Editor = lazy(() => import("@monaco-editor/react"));
 
 interface Props {
   capability: ManifestEditorCapability;
@@ -155,30 +159,32 @@ export function ManifestEditorView({ capability, onGetManifest, onApplyManifest 
 
       {/* Monaco Editor */}
       <div className="flex-1 min-h-0">
-        <Editor
-          defaultLanguage={capability.language}
-          defaultValue={manifest ?? ""}
-          theme="vs-dark"
-          onChange={(value) => {
-            editorValueRef.current = value ?? "";
-            setDirty(value !== originalRef.current);
-            setApplyError(null);
-          }}
-          onMount={handleEditorMount}
-          options={{
-            readOnly,
-            minimap: { enabled: false },
-            fontSize: 13,
-            lineNumbers: "on",
-            scrollBeyondLastLine: false,
-            wordWrap: "on",
-            automaticLayout: true,
-            tabSize: 2,
-            renderWhitespace: "boundary",
-            bracketPairColorization: { enabled: true },
-            padding: { top: 8 },
-          }}
-        />
+        <Suspense fallback={<p className="text-xs text-on-surface-faint p-3">Loading editor…</p>}>
+          <Editor
+            defaultLanguage={capability.language}
+            defaultValue={manifest ?? ""}
+            theme="vs-dark"
+            onChange={(value) => {
+              editorValueRef.current = value ?? "";
+              setDirty(value !== originalRef.current);
+              setApplyError(null);
+            }}
+            onMount={handleEditorMount}
+            options={{
+              readOnly,
+              minimap: { enabled: false },
+              fontSize: 13,
+              lineNumbers: "on",
+              scrollBeyondLastLine: false,
+              wordWrap: "on",
+              automaticLayout: true,
+              tabSize: 2,
+              renderWhitespace: "boundary",
+              bracketPairColorization: { enabled: true },
+              padding: { top: 8 },
+            }}
+          />
+        </Suspense>
       </div>
     </div>
   );

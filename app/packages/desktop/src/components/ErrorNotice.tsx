@@ -7,15 +7,15 @@ interface ErrorNoticeProps {
   textClassName?: string;
 }
 
-export function ErrorNotice({ message, className, textClassName }: ErrorNoticeProps) {
-  async function handleOpenLink(url: string) {
-    try {
-      await invoke("open_external_url", { url });
-    } catch {
-      window.open(url, "_blank", "noopener,noreferrer");
-    }
+async function handleOpenLink(url: string) {
+  try {
+    await invoke("open_external_url", { url });
+  } catch {
+    window.open(url, "_blank", "noopener,noreferrer");
   }
+}
 
+export function ErrorNotice({ message, className, textClassName }: ErrorNoticeProps) {
   return (
     <SharedErrorNotice
       message={message}

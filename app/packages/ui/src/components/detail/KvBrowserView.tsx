@@ -261,11 +261,11 @@ export function KvBrowserView({
                 <p className="text-xs">Use "+ Add key" to create one.</p>
               </div>
             ) : (
-              <ul role="listbox" aria-label="KV keys" className="py-1">
+              <div role="listbox" aria-label="KV keys" className="py-1">
                 {items.map((item) => {
                   const isActive = selectedKey === item.name;
                   return (
-                    <li key={item.name}>
+                    <div key={item.name}>
                       <button
                         type="button"
                         role="option"
@@ -285,10 +285,10 @@ export function KvBrowserView({
                           </span>
                         ) : null}
                       </button>
-                    </li>
+                    </div>
                   );
                 })}
-              </ul>
+              </div>
             )}
           </div>
           {cursor && (
@@ -350,7 +350,7 @@ export function KvBrowserView({
 
               {binary && !valueLoading && (
                 <div className="shrink-0 px-4 py-2 border-b border-border bg-yellow-500/10 text-yellow-400 text-xs">
-                  This value looks binary — editing has been disabled to avoid corrupting it. Delete
+                  This value looks binary, editing has been disabled to avoid corrupting it. Delete
                   the key if you need to replace it.
                 </div>
               )}

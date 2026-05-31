@@ -22,28 +22,31 @@ export function LogsView({ capability, onGetLogs }: Props) {
   const scrollRef = useRef<HTMLPreElement | null>(null);
   const latestRequestRef = useRef(0);
 
-  const fetchLogs = useCallback(async () => {
-    const requestId = ++latestRequestRef.current;
-    setError(null);
-    try {
-      const params: LogsFetchParams = { tailLines, previous };
-      if (container) params.container = container;
-      const result = await onGetLogs(params);
-      if (requestId !== latestRequestRef.current) return;
-      setText(result.text);
-      setContainers(result.containers);
-      if (!container) setContainer(result.activeContainer);
-    } catch (e) {
-      if (requestId !== latestRequestRef.current) return;
-      setError(String(e));
-    } finally {
-      if (requestId === latestRequestRef.current) setLoading(false);
-    }
-  }, [onGetLogs, tailLines, previous, container]);
+  const fetchLogs = useCallback(
+    async (opts?: { spinner?: boolean }) => {
+      if (opts?.spinner) setLoading(true);
+      const requestId = ++latestRequestRef.current;
+      setError(null);
+      try {
+        const params: LogsFetchParams = { tailLines, previous };
+        if (container) params.container = container;
+        const result = await onGetLogs(params);
+        if (requestId !== latestRequestRef.current) return;
+        setText(result.text);
+        setContainers(result.containers);
+        if (!container) setContainer(result.activeContainer);
+      } catch (e) {
+        if (requestId !== latestRequestRef.current) return;
+        setError(String(e));
+      } finally {
+        if (requestId === latestRequestRef.current) setLoading(false);
+      }
+    },
+    [onGetLogs, tailLines, previous, container],
+  );
 
   useEffect(() => {
-    setLoading(true);
-    void fetchLogs();
+    void fetchLogs({ spinner: true });
   }, [fetchLogs]);
 
   useEffect(() => {
@@ -131,8 +134,7 @@ export function LogsView({ capability, onGetLogs }: Props) {
           <button
             type="button"
             onClick={() => {
-              setLoading(true);
-              void fetchLogs();
+              void fetchLogs({ spinner: true });
             }}
             className="px-3 py-1 text-xs text-on-surface-tertiary hover:text-white border border-border-strong hover:border-border-strong rounded-md transition-colors"
           >

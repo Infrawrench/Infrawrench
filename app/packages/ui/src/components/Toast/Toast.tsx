@@ -37,14 +37,13 @@ export function ToastRow({ toast }: ToastRowProps) {
   const dismiss = useToastStore((s) => s.dismiss);
   const [paused, setPaused] = useState(false);
   const remainingRef = useRef(toast.duration);
-  const startedAtRef = useRef(Date.now());
 
   useEffect(() => {
     if (paused || !Number.isFinite(toast.duration)) return;
-    startedAtRef.current = Date.now();
+    const startedAt = Date.now();
     const timer = setTimeout(() => dismiss(toast.id), remainingRef.current);
     return () => {
-      const elapsed = Date.now() - startedAtRef.current;
+      const elapsed = Date.now() - startedAt;
       remainingRef.current = Math.max(0, remainingRef.current - elapsed);
       clearTimeout(timer);
     };
@@ -53,8 +52,7 @@ export function ToastRow({ toast }: ToastRowProps) {
   const style = variantStyles[toast.variant];
 
   return (
-    <div
-      role="status"
+    <output
       aria-live={toast.variant === "error" ? "assertive" : "polite"}
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
@@ -94,6 +92,6 @@ export function ToastRow({ toast }: ToastRowProps) {
       >
         ✕
       </button>
-    </div>
+    </output>
   );
 }

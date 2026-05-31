@@ -7,7 +7,7 @@ import {
   useCreateResourceForm,
 } from "@infrawrench/ui";
 import { ErrorNotice } from "./ErrorNotice";
-import { FieldRenderer } from "./create-resource";
+import { FieldRenderer } from "./create-resource/FieldRenderer";
 import { useUIStore } from "@infrawrench/ui";
 import {
   getCloudCreateConfig,

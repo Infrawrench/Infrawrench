@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { formatErrorMessage } from "../../utils.js";
 
 export interface SshKeyEntry {
@@ -61,18 +61,23 @@ export function SshKeyPicker({
   onCloudSignIn,
 }: SshKeyPickerProps) {
   const [cloudKeys, setCloudKeys] = useState<SshKeyEntry[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [cloudLoading, setCloudLoading] = useState(true);
+  const loading = cloudEnabled ? cloudLoading : false;
   const [showGenerate, setShowGenerate] = useState(false);
+  const newNameRef = useRef<HTMLInputElement>(null);
   const [newName, setNewName] = useState("");
+
+  // Move focus to the name field when the generate-key form opens (user
+  // action), rather than autoFocus which would steal focus on initial render.
+  useEffect(() => {
+    if (showGenerate) newNameRef.current?.focus();
+  }, [showGenerate]);
   const [generating, setGenerating] = useState(false);
   const [generatedPrivateKey, setGeneratedPrivateKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!cloudEnabled) {
-      setLoading(false);
-      return;
-    }
+    if (!cloudEnabled) return;
     let cancelled = false;
     loadKeys()
       .then((keys) => {
@@ -80,7 +85,7 @@ export function SshKeyPicker({
       })
       .catch(console.error)
       .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!cancelled) setCloudLoading(false);
       });
     return () => {
       cancelled = true;
@@ -329,7 +334,7 @@ export function SshKeyPicker({
               onClick={handleDismissPrivateKey}
               className="px-3 py-1 rounded bg-surface-sunken hover:bg-surface-sunken text-xs text-on-surface-secondary transition-colors"
             >
-              Done
+              I've saved it
             </button>
           </div>
         </div>
@@ -342,13 +347,13 @@ export function SshKeyPicker({
         (showGenerate ? (
           <div className="border-t border-border-strong/40 p-3 space-y-2 bg-surface-raised/50">
             <input
+              ref={newNameRef}
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               className="w-full bg-surface-overlay border border-border-strong rounded px-2 py-1.5 text-xs text-on-surface-secondary font-mono focus:outline-none focus:border-border-strong"
               placeholder="Key name (e.g. deploy-key)"
               aria-label="Key name"
               spellCheck={false}
-              autoFocus
             />
             {error && <p className="text-xs text-red-400">{error}</p>}
             <div className="flex gap-2 justify-end">

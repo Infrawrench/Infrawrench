@@ -55,9 +55,11 @@ export function SettingsEditorView({
 
   const changed = useMemo(() => {
     if (!settings) return [];
-    return settings
-      .filter((s) => s.control !== "readonly" && values[s.id] !== initial[s.id])
-      .map((s) => ({ id: s.id, value: values[s.id] ?? "" }));
+    return settings.flatMap((s) =>
+      s.control !== "readonly" && values[s.id] !== initial[s.id]
+        ? [{ id: s.id, value: values[s.id] ?? "" }]
+        : [],
+    );
   }, [settings, values, initial]);
 
   const filtered = useMemo(() => {

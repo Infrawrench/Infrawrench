@@ -16,15 +16,12 @@ export function getVisibleAccountCategories<T extends SectionTypeDef, R extends 
   normalizedQuery: string,
 ): SectionCategoryState<T, R>[] {
   return categories
-    .filter((cat) => {
+    .map((cat) => {
       // When not searching, hide child resource types — they appear under their parent detail page.
       // Exception: types that opted in via `showInSidebar` stay visible as their own section.
       if (normalizedQuery.length === 0 && cat.typeDef.parentTypeId && !cat.typeDef.showInSidebar)
-        return false;
-      if (!cat.loading && cat.resources.length === 0 && !cat.typeDef.supportsCreate) return false;
-      return true;
-    })
-    .map((cat) => {
+        return null;
+      if (!cat.loading && cat.resources.length === 0 && !cat.typeDef.supportsCreate) return null;
       const filteredResources =
         normalizedQuery.length === 0
           ? cat.resources

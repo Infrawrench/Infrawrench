@@ -17,6 +17,8 @@ const PROPERTY_TYPES = ["string", "integer", "number", "boolean", "array", "obje
 type PropertyType = (typeof PROPERTY_TYPES)[number];
 
 interface PropertyRow {
+  /** Stable per-row id for React keys — rows are editable and removable. */
+  id: string;
   name: string;
   type: PropertyType;
   required: boolean;
@@ -71,7 +73,7 @@ export function JsonSchemaEditor({ value, onChange }: JsonSchemaEditorProps) {
         </div>
       )}
       {rows.map((row, i) => (
-        <div key={i} className="space-y-1.5">
+        <div key={row.id} className="space-y-1.5">
           <div className="flex items-center gap-2">
             <input
               type="text"
@@ -135,7 +137,7 @@ export function JsonSchemaEditor({ value, onChange }: JsonSchemaEditorProps) {
 }
 
 function blankRow(): PropertyRow {
-  return { name: "", type: "string", required: false, description: "" };
+  return { id: crypto.randomUUID(), name: "", type: "string", required: false, description: "" };
 }
 
 /** Serialize property rows to a JSON-Schema object string; "" when empty. */
@@ -175,6 +177,7 @@ function parseSchema(json: string): PropertyRow[] {
         ? (t as PropertyType)
         : "string";
       return {
+        id: crypto.randomUUID(),
         name,
         type,
         required: required.has(name),

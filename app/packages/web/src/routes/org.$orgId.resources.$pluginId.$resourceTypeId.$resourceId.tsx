@@ -122,8 +122,11 @@ export function ResourcePanel({
   view: currentView,
 }: ResourcePanelProps) {
   const tabId = useTabId();
-  const [data, setData] = useState<ResourceDetailResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [store, setStore] = useState<{
+    forKey: string;
+    data: ResourceDetailResponse | null;
+    error: string | null;
+  }>({ forKey: "", data: null, error: null });
   const [promptModal, setPromptModal] = useState<PromptNoSqlCommandDetail | null>(null);
 
   const loadPromptResources = useCallback(
@@ -137,9 +140,12 @@ export function ResourcePanel({
 
   const detailUrl = `/api/org/${orgId}/resources/${pluginId}/${resourceTypeId}/detail?resourceId=${encodeURIComponent(resourceId)}${accountId ? `&accountId=${encodeURIComponent(accountId)}` : ""}${parent ? `&parentResourceId=${encodeURIComponent(parent)}` : ""}&includePeerPanes=false`;
 
+  // Derive from a keyed store so changing detailUrl shows loading immediately
+  // without a synchronous reset effect.
+  const data = store.forKey === detailUrl ? store.data : null;
+  const error = store.forKey === detailUrl ? store.error : null;
+
   useEffect(() => {
-    setData(null);
-    setError(null);
     let retries = 0;
     let cancelled = false;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -147,7 +153,7 @@ export function ResourcePanel({
     function load() {
       apiGet<ResourceDetailResponse>(detailUrl)
         .then((d) => {
-          if (!cancelled) setData(d);
+          if (!cancelled) setStore({ forKey: detailUrl, data: d, error: null });
         })
         .catch((e) => {
           if (cancelled) return;
@@ -156,7 +162,7 @@ export function ResourcePanel({
             retries++;
             retryTimer = setTimeout(load, 1000 * retries);
           } else {
-            setError(e.message);
+            setStore({ forKey: detailUrl, data: null, error: e.message });
           }
         });
     }
@@ -179,7 +185,7 @@ export function ResourcePanel({
     function refreshFromDb() {
       apiGet<ResourceDetailResponse>(detailUrl)
         .then((d) => {
-          if (!cancelled) setData(d);
+          if (!cancelled) setStore({ forKey: detailUrl, data: d, error: null });
         })
         .catch(() => {});
     }

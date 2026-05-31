@@ -46,9 +46,9 @@ export function AddAccountModal({
     apiGet<BastionListItem[]>(`/api/org/${orgId}/bastions`)
       .then((rows) =>
         setBastions(
-          rows
-            .filter((r) => r.status !== "revoked")
-            .map((r) => ({ id: r.id, name: r.name, connected: r.connected })),
+          rows.flatMap((r) =>
+            r.status !== "revoked" ? [{ id: r.id, name: r.name, connected: r.connected }] : [],
+          ),
         ),
       )
       .catch(() => setBastions([]));

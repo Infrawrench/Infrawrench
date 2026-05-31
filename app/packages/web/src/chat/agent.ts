@@ -451,18 +451,17 @@ export async function* runAgentTurn(input: RunAgentInput): AsyncGenerator<AgentE
       // continue this turn until the human approves the pending ones — store
       // auto-results as resolved pending entries so they're included when the
       // turn resumes.
+      const toolUsesById = new Map(toolUses.map((tu) => [tu.id, tu]));
       for (const block of autoBlocks) {
         if (block.type !== "tool_result") continue;
+        const blockToolUse = toolUsesById.get(block.tool_use_id);
         await db.insert(chatPendingActions).values({
           id: uuidv4(),
           conversationId,
           messageId: assistantMessageId,
           toolUseId: block.tool_use_id,
-          toolName: toolUses.find((tu) => tu.id === block.tool_use_id)?.name ?? "(auto)",
-          toolInput:
-            (toolUses.find((tu) => tu.id === block.tool_use_id)?.input as
-              | Record<string, unknown>
-              | undefined) ?? {},
+          toolName: blockToolUse?.name ?? "(auto)",
+          toolInput: (blockToolUse?.input as Record<string, unknown> | undefined) ?? {},
           status: "executed",
           result: Array.isArray(block.content)
             ? block.content.map((c) => c.text).join("\n")

@@ -28,7 +28,7 @@ interface K9sTerminalProps {
 
 export function K9sTerminal({ kubeconfig, cloudContext, namespace }: K9sTerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [k9sInstalled, setK9sInstalled] = useState<boolean | null>(null);
+  const [nativeK9sInstalled, setNativeK9sInstalled] = useState<boolean | null>(null);
 
   const cloudOrgId = cloudContext?.orgId;
   const cloudAccountId = cloudContext?.accountId;
@@ -36,20 +36,23 @@ export function K9sTerminal({ kubeconfig, cloudContext, namespace }: K9sTerminal
   const cloudPeerPluginId = cloudContext?.peerPluginId;
   const isCloud = cloudContext != null;
 
+  // In cloud mode the server owns the k9s binary; availability is surfaced via
+  // the WS error channel if missing, not via a pre-flight check.
+  const k9sInstalled = isCloud ? true : nativeK9sInstalled;
+
   useEffect(() => {
     if (isCloud) {
       // The cloud server owns the k9s binary; availability is surfaced via the
       // WS error channel if missing, not via a pre-flight check.
-      setK9sInstalled(true);
       return;
     }
     let cancelled = false;
     invoke<boolean>("k9s_check")
       .then((installed) => {
-        if (!cancelled) setK9sInstalled(installed);
+        if (!cancelled) setNativeK9sInstalled(installed);
       })
       .catch(() => {
-        if (!cancelled) setK9sInstalled(false);
+        if (!cancelled) setNativeK9sInstalled(false);
       });
     return () => {
       cancelled = true;

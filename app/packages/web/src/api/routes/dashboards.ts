@@ -494,11 +494,11 @@ app.post("/probe", async (c) => {
 
   const byId = new Map(rows.map((r) => [r.resourceId, r]));
 
-  const resourceIdsForMetrics = rows
-    .filter((r) => r.resourceTypeId !== "__account__")
-    .map((r) => r.resourceId);
+  const resourceIdsForMetrics = rows.flatMap((r) =>
+    r.resourceTypeId !== "__account__" ? [r.resourceId] : [],
+  );
   const accountIdsForCounts = [
-    ...new Set(rows.filter((r) => r.resourceTypeId === "__account__").map((r) => r.accountId)),
+    ...new Set(rows.flatMap((r) => (r.resourceTypeId === "__account__" ? [r.accountId] : []))),
   ];
 
   const [statsByResource, metricsByResource, countsByAccount] = await Promise.all([

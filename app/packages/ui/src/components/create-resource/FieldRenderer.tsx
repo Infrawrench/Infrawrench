@@ -1,6 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, lazy, Suspense } from "react";
 import type { CreateFieldConfig, AssociationSource } from "@infrawrench/plugin-base";
-import Editor from "@monaco-editor/react";
 import { DatetimePicker } from "./DatetimePicker.js";
 import { SelectPicker } from "./SelectPicker.js";
 import { RegionPicker } from "./RegionPicker.js";
@@ -18,6 +17,10 @@ import { ResourcePicker, type ResourcePickerOption } from "./ResourcePicker.js";
 import { PolicyPicker } from "./PolicyPicker.js";
 import { KeyValueListPicker } from "./KeyValueListPicker.js";
 import { JsonSchemaEditor } from "./JsonSchemaEditor.js";
+
+// Monaco is heavy and browser-only; load it lazily so it splits out of the
+// main bundle and only ships when a "code" field is actually rendered.
+const Editor = lazy(() => import("@monaco-editor/react"));
 
 export interface SshKeyPickerCallbacks {
   loadKeys: () => Promise<SshKeyEntry[]>;
@@ -125,17 +128,19 @@ export function FieldRenderer({
             </span>
           )}
         </div>
-        {actions
-          .filter((a) => a.formFields && a.formFields.length > 0)
-          .map((a) => (
-            <ActionFormPanel
-              key={a.id}
-              action={a}
-              fieldKey={field.key}
-              runAction={fieldActionProps.runAction}
-              running={actionRunning}
-            />
-          ))}
+        {actions.flatMap((a) =>
+          a.formFields && a.formFields.length > 0
+            ? [
+                <ActionFormPanel
+                  key={a.id}
+                  action={a}
+                  fieldKey={field.key}
+                  runAction={fieldActionProps.runAction}
+                  running={actionRunning}
+                />,
+              ]
+            : [],
+        )}
       </div>
     ) : null;
   // The "code" kind takes over the side pane in split-pane mode and renders
@@ -153,24 +158,26 @@ export function FieldRenderer({
           )}
         </div>
         <div className="flex-1 min-h-0">
-          <Editor
-            language={field.codeLanguage ?? "plaintext"}
-            value={value}
-            theme="vs-dark"
-            onChange={(v) => onChange(v ?? "")}
-            options={{
-              minimap: { enabled: false },
-              fontSize: 13,
-              lineNumbers: "on",
-              scrollBeyondLastLine: false,
-              wordWrap: "on",
-              automaticLayout: true,
-              tabSize: 2,
-              renderWhitespace: "boundary",
-              bracketPairColorization: { enabled: true },
-              padding: { top: 8 },
-            }}
-          />
+          <Suspense fallback={<p className="text-xs text-on-surface-faint p-3">Loading editor…</p>}>
+            <Editor
+              language={field.codeLanguage ?? "plaintext"}
+              value={value}
+              theme="vs-dark"
+              onChange={(v) => onChange(v ?? "")}
+              options={{
+                minimap: { enabled: false },
+                fontSize: 13,
+                lineNumbers: "on",
+                scrollBeyondLastLine: false,
+                wordWrap: "on",
+                automaticLayout: true,
+                tabSize: 2,
+                renderWhitespace: "boundary",
+                bracketPairColorization: { enabled: true },
+                padding: { top: 8 },
+              }}
+            />
+          </Suspense>
         </div>
       </div>
     );
@@ -426,33 +433,44 @@ function ResourcePickerResolver({
    */
   referenceMode: boolean;
 }) {
-  const [resources, setResources] = useState<ResourcePickerOption[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
   // Re-run only when the *content* of `sources` changes — the array literal
   // is recreated every render in some callers, which would otherwise cause
   // an infinite reload loop.
   const sourcesKey = JSON.stringify(sources);
+  // Identity of the current fetch: when any input changes, the stored result
+  // no longer matches and the view derives loading/empty/no-error with no
+  // synchronous setter in the effect.
+  const fetchKey = JSON.stringify({ sourcesKey, accountId, regionHint, referenceMode, refreshKey });
+
+  const [fetchState, setFetchState] = useState<{
+    forKey: string;
+    resources: ResourcePickerOption[];
+    loading: boolean;
+    error: string | null;
+  }>({ forKey: fetchKey, resources: [], loading: true, error: null });
+
+  const loading = fetchState.forKey !== fetchKey || fetchState.loading;
+  const error = fetchState.forKey === fetchKey ? fetchState.error : null;
+  const resources = fetchState.forKey === fetchKey ? fetchState.resources : [];
 
   useEffect(() => {
     let mounted = true;
-    setLoading(true);
-    setError(null);
     loadResources(sources, accountId, {
       ...(regionHint ? { regionHint } : {}),
       ...(referenceMode ? { crossAccount: true } : {}),
     })
       .then((opts) => {
         if (!mounted) return;
-        setResources(opts);
-        setLoading(false);
+        setFetchState({ forKey: fetchKey, resources: opts, loading: false, error: null });
       })
       .catch((e: unknown) => {
         if (!mounted) return;
-        setError(e instanceof Error ? e.message : String(e));
-        setResources([]);
-        setLoading(false);
+        setFetchState({
+          forKey: fetchKey,
+          resources: [],
+          loading: false,
+          error: e instanceof Error ? e.message : String(e),
+        });
       });
     return () => {
       mounted = false;
@@ -462,7 +480,7 @@ function ResourcePickerResolver({
     // the new-array-each-render → infinite-load loop. regionHint and refreshKey
     // are primitives, so direct dep entries are fine.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sourcesKey, accountId, loadResources, regionHint, refreshKey]);
+  }, [sourcesKey, accountId, loadResources, regionHint, refreshKey, referenceMode]);
 
   if (loading) {
     return <p className="text-xs text-on-surface-faint py-1">Loading resources…</p>;
@@ -626,6 +644,15 @@ function HostnameField({
   value: string;
   onChange: (v: string) => void;
 }) {
+  // Seed an untouched field with a valid default: the apex, plus "/*" when a
+  // path is part of the value (route patterns require one). Runs unconditionally
+  // (before any early return) so hook order stays stable; only seeds when a
+  // suffix is present (the suffix branch below).
+  useEffect(() => {
+    if (suffix && value === "") onChange(withPath ? `${suffix}/*` : suffix);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // No domain to anchor to — behave as a normal text input.
   if (!suffix) {
     return (
@@ -639,13 +666,6 @@ function HostnameField({
       />
     );
   }
-
-  // Seed an untouched field with a valid default: the apex, plus "/*" when a
-  // path is part of the value (route patterns require one).
-  useEffect(() => {
-    if (value === "") onChange(withPath ? `${suffix}/*` : suffix);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // Split the full value into host + path (path = from the first "/").
   const slash = value.indexOf("/");

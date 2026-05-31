@@ -55,6 +55,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
   const [dashboardName, setDashboardName] = useState("");
   const [isHome, setIsHome] = useState(false);
   const [editingName, setEditingName] = useState(false);
+  const nameInputRef = useRef<HTMLInputElement>(null);
   const [notFound, setNotFound] = useState(false);
   const [cardStatus, setCardStatus] = useState<Record<string, CardStatus>>({});
 
@@ -62,6 +63,10 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
   const dashboardPinsVersion = useUIStore((s) => s.dashboardPinsVersion);
   const bumpDashboardPins = useUIStore((s) => s.bumpDashboardPins);
   const tabId = useTabId();
+
+  useEffect(() => {
+    if (editingName) nameInputRef.current?.focus();
+  }, [editingName]);
   const setAccountConnected = useUIStore((s) => s.setAccountConnected);
   const removeWorkspaceTabs = useUIStore((s) => s.removeWorkspaceTabs);
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
@@ -120,9 +125,9 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
         meta[m.id] = {
           logoSvg: m.logoSvg,
           displayName: m.displayName,
-          terminalResourceTypeIds: p.plugin.resourceTypes
-            .filter((t) => t.supportsTerminal)
-            .map((t) => t.id),
+          terminalResourceTypeIds: p.plugin.resourceTypes.flatMap((t) =>
+            t.supportsTerminal ? [t.id] : [],
+          ),
         };
       }
       setPluginMeta(meta);
@@ -339,9 +344,9 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
         }),
       );
 
-      const connectableIds = pinned
-        .filter((r) => credsByAccount.has(r.account_id))
-        .map((r) => r.resource_id);
+      const connectableIds = pinned.flatMap((r) =>
+        credsByAccount.has(r.account_id) ? [r.resource_id] : [],
+      );
 
       if (connectableIds.length === 0) return;
 
@@ -382,11 +387,11 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
                   count: (await client.listResources(t.id, row.account_id)).length,
                 })),
               );
-              const resourceCounts = results
-                .filter((r) => r.status === "fulfilled" && r.value.count > 0)
-                .map(
-                  (r) => (r as PromiseFulfilledResult<{ typeLabel: string; count: number }>).value,
-                );
+              const resourceCounts = results.flatMap((r) =>
+                r.status === "fulfilled" && r.value.count > 0
+                  ? [(r as PromiseFulfilledResult<{ typeLabel: string; count: number }>).value]
+                  : [],
+              );
 
               if (!cancelled) {
                 setAccountConnected(row.account_id, true);
@@ -579,10 +584,9 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
     }
     const tabsToRename = useUIStore
       .getState()
-      .workspaceTabs.filter(
-        (tab) => tab.target.kind === "dashboard" && tab.target.dashboardId === dashboardId,
-      )
-      .map((tab) => tab.id);
+      .workspaceTabs.flatMap((tab) =>
+        tab.target.kind === "dashboard" && tab.target.dashboardId === dashboardId ? [tab.id] : [],
+      );
     for (const tabId of tabsToRename) {
       useUIStore.getState().setWorkspaceTabTitle(tabId, trimmed);
     }
@@ -600,10 +604,9 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
     removeWorkspaceTabs(
       useUIStore
         .getState()
-        .workspaceTabs.filter(
-          (tab) => tab.target.kind === "dashboard" && tab.target.dashboardId === dashboardId,
-        )
-        .map((tab) => tab.id),
+        .workspaceTabs.flatMap((tab) =>
+          tab.target.kind === "dashboard" && tab.target.dashboardId === dashboardId ? [tab.id] : [],
+        ),
     );
     navigate({ to: "/" });
   }
@@ -645,7 +648,7 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
         <div>
           {editingName ? (
             <input
-              autoFocus
+              ref={nameInputRef}
               aria-label="Dashboard name"
               defaultValue={dashboardName}
               onBlur={(e) => void saveName(e.target.value)}

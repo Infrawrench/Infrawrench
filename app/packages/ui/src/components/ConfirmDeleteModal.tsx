@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Modal } from "./Modal.js";
 import { formatErrorMessage } from "../utils.js";
 
@@ -17,7 +17,13 @@ export function ConfirmDeleteModal({ kind, name, onConfirm, onClose }: ConfirmDe
   const [typed, setTyped] = useState("");
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const matches = typed === name;
+
+  // Move focus to the confirmation input when the modal opens (intentional focus management).
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
 
   async function handleConfirm() {
     if (!matches) return;
@@ -45,8 +51,8 @@ export function ConfirmDeleteModal({ kind, name, onConfirm, onClose }: ConfirmDe
         </label>
         <input
           id="confirm-delete-input"
+          ref={inputRef}
           aria-label={`Type ${name} to confirm`}
-          autoFocus
           type="text"
           value={typed}
           onChange={(e) => setTyped(e.target.value)}

@@ -323,12 +323,12 @@ export async function loadLocalResource(params: LoaderParams): Promise<void> {
                 column_name: string;
                 data_type: string;
               }>
-            )
-              .filter((c) => c.table_name === t.table_name)
-              .map((c) => ({ name: c.column_name, type: c.data_type }));
-            const pks = (pkRows as Array<{ table_name: string; column_name: string }>)
-              .filter((p) => p.table_name === t.table_name)
-              .map((p) => p.column_name);
+            ).flatMap((c) =>
+              c.table_name === t.table_name ? [{ name: c.column_name, type: c.data_type }] : [],
+            );
+            const pks = (pkRows as Array<{ table_name: string; column_name: string }>).flatMap(
+              (p) => (p.table_name === t.table_name ? [p.column_name] : []),
+            );
             return {
               name: t.table_name,
               columns: cols,

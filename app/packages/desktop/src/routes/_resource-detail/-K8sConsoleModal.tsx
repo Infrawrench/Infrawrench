@@ -18,9 +18,18 @@ export function K8sConsoleModal({
 }: K8sConsoleModalProps) {
   return (
     <div
+      role="button"
+      tabIndex={0}
+      aria-label="Close console"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
       onClick={(event) => {
         if (event.target === event.currentTarget) onClose();
+      }}
+      onKeyDown={(event) => {
+        if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) {
+          event.preventDefault();
+          onClose();
+        }
       }}
     >
       <div className="w-[min(1100px,92vw)] h-[min(720px,82vh)] overflow-hidden rounded-2xl border border-border-strong bg-surface shadow-2xl flex flex-col">

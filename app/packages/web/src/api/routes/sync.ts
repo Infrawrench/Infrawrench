@@ -136,7 +136,9 @@ app.post("/push", async (c) => {
   if (payload.resources && payload.resources.length > 0) {
     const pushedAccountIds = new Set((payload.accounts ?? []).map((a) => a.id));
     const referencedAccountIds = Array.from(
-      new Set(payload.resources.map((r) => r.accountId).filter((id) => !pushedAccountIds.has(id))),
+      new Set(
+        payload.resources.flatMap((r) => (!pushedAccountIds.has(r.accountId) ? [r.accountId] : [])),
+      ),
     );
     if (referencedAccountIds.length > 0) {
       const existing = await db

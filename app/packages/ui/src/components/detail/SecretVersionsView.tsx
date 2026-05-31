@@ -306,7 +306,7 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
                 onClick={() => setReveal(null)}
                 className="px-3 py-1.5 text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-md transition-colors"
               >
-                Done
+                Close
               </button>
             </div>
           </div>
@@ -324,7 +324,7 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
                 onClick={() => setRevealError(null)}
                 className="px-3 py-1.5 text-xs font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-md transition-colors"
               >
-                OK
+                Close
               </button>
             </div>
           </div>

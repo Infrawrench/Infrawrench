@@ -80,10 +80,11 @@ export async function loadPlugins(): Promise<LoadedPlugin[]> {
     }
 
     const allowlist = ENABLED_RESOURCE_TYPES[entry.id];
-    const filteredPlugin: Plugin = allowlist
+    const allowedTypeIds = allowlist ? new Set(allowlist) : null;
+    const filteredPlugin: Plugin = allowedTypeIds
       ? {
           ...mod.plugin,
-          resourceTypes: mod.plugin.resourceTypes.filter((rt) => allowlist.includes(rt.id)),
+          resourceTypes: mod.plugin.resourceTypes.filter((rt) => allowedTypeIds.has(rt.id)),
         }
       : mod.plugin;
 

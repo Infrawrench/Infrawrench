@@ -28,22 +28,28 @@ export function Modal({ onClose, children, className }: ModalProps) {
       onClick={(e) => {
         if (e.target === ref.current) onClose();
       }}
-      className={className ?? ""}
-      style={{
-        position: "fixed",
-        inset: 0,
-        margin: "auto",
-        border: "none",
-        background: "transparent",
-        padding: 0,
-        maxWidth: "fit-content",
-        maxHeight: "fit-content",
-        outline: "none",
+      onKeyDown={(e) => {
+        if (e.key === "Escape") onClose();
       }}
+      className={`infrawrench-modal ${className ?? ""}`}
     >
       {children}
       <style>{`
-        dialog::backdrop {
+        .infrawrench-modal {
+          position: fixed;
+          inset: 0;
+          margin: auto;
+          border: none;
+          background: transparent;
+          padding: 0;
+          max-width: fit-content;
+          max-height: fit-content;
+        }
+        .infrawrench-modal:focus-visible {
+          outline: 2px solid var(--color-muted);
+          outline-offset: 2px;
+        }
+        .infrawrench-modal::backdrop {
           background: rgba(0, 0, 0, 0.6);
           backdrop-filter: blur(4px);
         }

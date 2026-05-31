@@ -28,6 +28,9 @@ import { buildPluginHostServices } from "../lib/sql-drivers";
 import { startPortForward, type PortForwardHandle } from "../lib/k8s-dispatch";
 import { deleteCloudResource, importCloudYaml } from "../lib/cloud-api";
 
+/** Shared empty override map; identity-stable so the derived fallback is cheap. */
+const EMPTY_MAP: ReadonlyMap<string, PeerPaneResourceGroup> = new Map();
+
 interface PeerPaneViewProps {
   pane: PeerPaneData;
   accountId: string;
@@ -50,19 +53,28 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
   const [portForwards, setPortForwards] = useState<PeerPanePortForwardEntry[]>([]);
   const [pfStarting, setPfStarting] = useState<string | null>(null);
   const [pfError, setPfError] = useState<string | null>(null);
-  const [extraGroupState, setExtraGroupState] = useState<Map<string, PeerPaneResourceGroup>>(
-    () => new Map(),
-  );
+  const [extraGroupStateRef, setExtraGroupState] = useState<{
+    forPane: PeerPaneData;
+    map: ReadonlyMap<string, PeerPaneResourceGroup>;
+  }>(() => ({ forPane: pane, map: EMPTY_MAP }));
+
+  // Local overrides only apply to the pane they were captured against. When the
+  // incoming pane changes identity (e.g. background refresh) the derived map
+  // falls back to empty, which auto-resets the overrides without an effect.
+  const activeExtraGroupState =
+    extraGroupStateRef.forPane === pane ? extraGroupStateRef.map : EMPTY_MAP;
 
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
   const navigate = useNavigate();
 
-  const pfHandles = useRef<Map<string, PortForwardHandle>>(new Map());
+  const pfHandlesRef = useRef<Map<string, PortForwardHandle> | null>(null);
+  pfHandlesRef.current ??= new Map();
+  const pfHandles = pfHandlesRef.current;
 
   useEffect(() => {
     return () => {
-      for (const handle of pfHandles.current.values()) handle.stop();
-      pfHandles.current.clear();
+      for (const handle of pfHandles.values()) handle.stop();
+      pfHandles.clear();
     };
   }, []);
 
@@ -115,23 +127,18 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
   // When items are added/removed (create/ephemeral delete) we override the pane's
   // resourceGroups with the local mutated copy in extraGroupState for that group key.
   const effectivePane = useMemo<PeerPaneData>(() => {
-    if (extraGroupState.size === 0) return pane;
+    if (activeExtraGroupState.size === 0) return pane;
     return {
       ...pane,
       schema: {
         ...pane.schema,
         resourceGroups: pane.schema.resourceGroups.map((group) => {
           const key = `${group.pluginId}:${group.resourceTypeId}`;
-          return extraGroupState.get(key) ?? group;
+          return activeExtraGroupState.get(key) ?? group;
         }),
       },
     };
-  }, [pane, extraGroupState]);
-
-  // Reset local overrides whenever the incoming pane changes (e.g. background refresh).
-  useEffect(() => {
-    setExtraGroupState(new Map());
-  }, [pane]);
+  }, [pane, activeExtraGroupState]);
 
   const peerPluginId = pane.schema.resourceGroups[0]?.pluginId ?? "kubernetes";
   const kubeconfig = pane.credentials["kubeconfig"];
@@ -208,7 +215,7 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
             });
           })();
 
-      pfHandles.current.set(handle.sessionId, handle);
+      pfHandles.set(handle.sessionId, handle);
       setPortForwards((prev) => [
         ...prev,
         {
@@ -221,7 +228,7 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
       ]);
       handle.onExit(() => {
         setPortForwards((prev) => prev.filter((pf) => pf.sessionId !== handle.sessionId));
-        pfHandles.current.delete(handle.sessionId);
+        pfHandles.delete(handle.sessionId);
       });
     } catch (err) {
       setPfError(formatErrorMessage(err));
@@ -231,8 +238,8 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
   }
 
   function handleStopPortForward(sessionId: string) {
-    pfHandles.current.get(sessionId)?.stop();
-    pfHandles.current.delete(sessionId);
+    pfHandles.get(sessionId)?.stop();
+    pfHandles.delete(sessionId);
     setPortForwards((prev) => prev.filter((pf) => pf.sessionId !== sessionId));
   }
 
@@ -353,7 +360,7 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
                 })();
               }
               setExtraGroupState((prev) => {
-                const next = new Map(prev);
+                const next = new Map(prev.forPane === pane ? prev.map : EMPTY_MAP);
                 const key = `${groupPluginId}:${groupTypeId}`;
                 const base =
                   next.get(key) ??
@@ -370,7 +377,7 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
                     items: base.items.filter((item) => item.id !== resourceId),
                   });
                 }
-                return next;
+                return { forPane: pane, map: next };
               });
             }
             setExecTarget(null);
@@ -421,7 +428,7 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
             const key = `${createTarget.pluginId}:${createTarget.resourceTypeId}`;
 
             setExtraGroupState((prev) => {
-              const next = new Map(prev);
+              const next = new Map(prev.forPane === pane ? prev.map : EMPTY_MAP);
               const base =
                 next.get(key) ??
                 pane.schema.resourceGroups.find(
@@ -436,7 +443,7 @@ export function PeerPaneView({ pane, accountId, parentResourceId }: PeerPaneView
                   items: [peerResource, ...base.items],
                 });
               }
-              return next;
+              return { forPane: pane, map: next };
             });
 
             if (isEphemeralPod) {
@@ -476,9 +483,17 @@ function TerminalOverlay({
 }) {
   return (
     <div
+      role="button"
+      tabIndex={0}
+      aria-label="Close terminal"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
       onClick={(event) => {
         if (event.target === event.currentTarget) onClose();
+      }}
+      onKeyDown={(event) => {
+        if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) {
+          onClose();
+        }
       }}
     >
       <div className="w-[min(1100px,92vw)] h-[min(720px,82vh)] overflow-hidden rounded-2xl border border-border-strong bg-surface shadow-2xl flex flex-col">

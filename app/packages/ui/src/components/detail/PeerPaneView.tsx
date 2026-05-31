@@ -206,7 +206,7 @@ export function PeerPaneView({
 
   if (isProvisioning) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 px-6 text-center space-y-4">
+      <div className="flex flex-col items-center justify-center py-16 px-6 text-center gap-y-4">
         <div className="size-10 rounded-full border-2 border-blue-400/30 border-t-blue-400 animate-spin" />
         <div className="space-y-1.5">
           <p className="text-sm font-medium text-on-surface-secondary">Cluster is provisioning</p>

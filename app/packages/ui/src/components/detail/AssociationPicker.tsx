@@ -3,6 +3,8 @@ import type { ProviderResource, RerollSelection } from "./detail-types.js";
 import { Modal } from "../Modal.js";
 import { camelToTitle } from "@infrawrench/plugin-base";
 
+const tabOrder: Array<"provider" | "literal"> = ["provider", "literal"];
+
 interface AssociationPickerProps {
   fieldKey: string;
   providerResources: ProviderResource[];
@@ -29,7 +31,6 @@ export function AssociationPicker({
 
   const baseId = useId();
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  const tabOrder: Array<"provider" | "literal"> = ["provider", "literal"];
   const tabId = (m: "provider" | "literal") => `${baseId}-tab-${m}`;
   const panelId = (m: "provider" | "literal") => `${baseId}-panel-${m}`;
 

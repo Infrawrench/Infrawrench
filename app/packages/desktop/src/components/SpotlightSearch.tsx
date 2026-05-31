@@ -20,6 +20,18 @@ interface SpotlightSearchProps {
   onDrop?: (resource: DraggableResource) => void;
 }
 
+function resultToResource(result: SpotlightResult): DraggableResource {
+  return {
+    id: result.id,
+    pluginId: result.pluginId,
+    resourceTypeId: result.resourceTypeId,
+    accountId: result.accountId,
+    displayName: result.displayName,
+    fields: result.fields ?? {},
+    externalId: result.externalId,
+  };
+}
+
 export function SpotlightSearch({
   dashboardId,
   mode,
@@ -38,7 +50,7 @@ export function SpotlightSearch({
 
     function flush() {
       if (cancelled) return;
-      const sorted = [...liveResults.values()].sort((a, b) =>
+      const sorted = Array.from(liveResults.values()).sort((a, b) =>
         a.displayName.localeCompare(b.displayName),
       );
       setAllResults(sorted);
@@ -195,18 +207,6 @@ export function SpotlightSearch({
       cancelled = true;
     };
   }, [dashboardId]);
-
-  function resultToResource(result: SpotlightResult): DraggableResource {
-    return {
-      id: result.id,
-      pluginId: result.pluginId,
-      resourceTypeId: result.resourceTypeId,
-      accountId: result.accountId,
-      displayName: result.displayName,
-      fields: result.fields ?? {},
-      externalId: result.externalId,
-    };
-  }
 
   const handleSelect = useCallback(
     async (result: SpotlightResult) => {

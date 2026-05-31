@@ -640,10 +640,10 @@ export function editableToPrincipal(
   values: string,
 ): PolicyPrincipal {
   if (mode === "everyone") return "*";
-  const list = values
-    .split(/\r?\n/)
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const list = values.split(/\r?\n/).flatMap((s) => {
+    const trimmed = s.trim();
+    return trimmed ? [trimmed] : [];
+  });
   if (list.length === 0) return "*";
   const value: string | string[] = list.length === 1 ? list[0]! : list;
   switch (mode) {

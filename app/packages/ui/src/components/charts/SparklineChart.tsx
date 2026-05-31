@@ -22,7 +22,7 @@ export function SparklineChart({
     .map((p) => ({ t: p.timestamp, v: p.value }));
 
   return (
-    <div style={{ width, height, outline: "none" }} tabIndex={-1}>
+    <div style={{ width, height }} tabIndex={-1}>
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={data} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
           <Area

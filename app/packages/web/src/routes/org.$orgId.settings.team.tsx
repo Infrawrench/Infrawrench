@@ -252,9 +252,10 @@ function TeamPage() {
                 </tr>
               </thead>
               <tbody>
-                {invites
-                  .filter((i) => !i.acceptedAt)
-                  .map((invite) => (
+                {invites.flatMap((invite) =>
+                  invite.acceptedAt ? (
+                    []
+                  ) : (
                     <tr
                       key={invite.id}
                       className="border-b border-border/50 hover:bg-surface-raised/50"
@@ -280,7 +281,8 @@ function TeamPage() {
                         )}
                       </td>
                     </tr>
-                  ))}
+                  ),
+                )}
               </tbody>
             </table>
           </div>

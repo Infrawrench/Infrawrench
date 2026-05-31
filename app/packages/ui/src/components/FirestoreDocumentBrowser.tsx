@@ -44,6 +44,11 @@ export function FirestoreDocumentBrowser({
   const [newCollectionName, setNewCollectionName] = useState("");
   const [droppingCollection, setDroppingCollection] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const newCollectionInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (showNewCollection) newCollectionInputRef.current?.focus();
+  }, [showNewCollection]);
 
   const refreshCollections = useCallback(async () => {
     setCollectionsLoading(true);
@@ -222,6 +227,7 @@ export function FirestoreDocumentBrowser({
           {showNewCollection && (
             <div className="p-2 border-b border-border/60 flex gap-1">
               <input
+                ref={newCollectionInputRef}
                 aria-label="New collection name"
                 value={newCollectionName}
                 onChange={(e) => setNewCollectionName(e.target.value)}
@@ -231,7 +237,6 @@ export function FirestoreDocumentBrowser({
                 }}
                 placeholder="collection name"
                 className="flex-1 min-w-0 bg-surface-raised border border-border-strong rounded px-2 py-1 text-xs text-on-surface-secondary font-mono placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500"
-                autoFocus
               />
               <button
                 type="button"

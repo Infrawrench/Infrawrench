@@ -15,11 +15,7 @@ export function SshConnectionBar({
 }: SshConnectionBarProps) {
   return (
     <div className="shrink-0 flex items-center gap-3 px-4 py-2 border-t border-border bg-surface">
-      <span
-        role="status"
-        aria-label="SSH connected"
-        className="size-1.5 rounded-full bg-green-500 shrink-0"
-      />
+      <output aria-label="SSH connected" className="size-1.5 rounded-full bg-green-500 shrink-0" />
       <span className="text-xs font-mono text-on-surface-tertiary">
         {sshConfig
           ? `${sshConfig.username}@${sshConfig.host}:${sshConfig.port}`

@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 
 interface KeyValueEntry {
+  /** Stable per-row id for React keys — rows are editable and removable. */
+  id: string;
   key: string;
   value: string;
 }
@@ -53,7 +55,7 @@ export function KeyValueListPicker({
     const init: KeyValueEntry[] = [];
     const defaultVal = valueDefault ?? options[0]?.id ?? "";
     for (let i = 0; i < Math.max(minEntries, 1); i++) {
-      init.push({ key: "", value: defaultVal });
+      init.push({ id: crypto.randomUUID(), key: "", value: defaultVal });
     }
     return init;
   });
@@ -68,14 +70,20 @@ export function KeyValueListPicker({
   function update(i: number, patch: Partial<KeyValueEntry>) {
     setEntries((prev) => {
       const next = [...prev];
-      next[i] = { ...(next[i] ?? { key: "", value: valueDefault ?? "" }), ...patch };
+      next[i] = {
+        ...(next[i] ?? { id: crypto.randomUUID(), key: "", value: valueDefault ?? "" }),
+        ...patch,
+      };
       return next;
     });
   }
 
   function addRow() {
     if (maxEntries !== undefined && entries.length >= maxEntries) return;
-    setEntries((prev) => [...prev, { key: "", value: valueDefault ?? options[0]?.id ?? "" }]);
+    setEntries((prev) => [
+      ...prev,
+      { id: crypto.randomUUID(), key: "", value: valueDefault ?? options[0]?.id ?? "" },
+    ]);
   }
 
   function removeRow(i: number) {
@@ -85,7 +93,7 @@ export function KeyValueListPicker({
   return (
     <div className="space-y-2">
       {entries.map((entry, i) => (
-        <div key={i} className="flex items-start gap-2">
+        <div key={entry.id} className="flex items-start gap-2">
           <div className="flex-1 min-w-0">
             {keyLabel && i === 0 && (
               <div className="text-[10px] uppercase tracking-wide text-on-surface-faint mb-1">
@@ -156,6 +164,7 @@ function parseEntries(json: string, keyName: string, valueName: string): KeyValu
     const arr = JSON.parse(json) as Array<Record<string, unknown>>;
     if (!Array.isArray(arr)) return [];
     return arr.map((o) => ({
+      id: crypto.randomUUID(),
       key: String(o?.[keyName] ?? ""),
       value: String(o?.[valueName] ?? ""),
     }));
