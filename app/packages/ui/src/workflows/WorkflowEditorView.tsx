@@ -34,7 +34,7 @@ export function WorkflowEditorView({
   const applyTypings = useCallback((monaco: Parameters<OnMount>[1], dtsValue: string) => {
     const ts = monaco.languages.typescript;
     ts.typescriptDefaults.setCompilerOptions({
-      target: ts.ScriptTarget.ES2020,
+      target: ts.ScriptTarget.ESNext,
       allowNonTsExtensions: true,
       moduleResolution: ts.ModuleResolutionKind.NodeJs,
       module: ts.ModuleKind.ESNext,
@@ -42,6 +42,11 @@ export function WorkflowEditorView({
       strict: false,
       noEmit: true,
     });
+    // The workflow body runs wrapped in a module + async IIFE (see the sandbox),
+    // so top-level `await` is valid. The editor sees the raw source as a script
+    // (no import/export), so silence the "not a module" / "needs esnext module"
+    // top-level-await diagnostics (TS 1375 / 1378).
+    ts.typescriptDefaults.setDiagnosticsOptions({ diagnosticCodesToIgnore: [1375, 1378] });
     ts.typescriptDefaults.setEagerModelSync(true);
     ts.typescriptDefaults.addExtraLib(dtsValue, INFRA_DTS_PATH);
   }, []);
