@@ -34,6 +34,13 @@ import { getDb } from "../db/client";
 import { getPlugin } from "../plugins/loader";
 import { createPluginClient } from "./plugin-client";
 
+/** Fired after a local workflow is created/updated/deleted, so the cron runner re-syncs. */
+export const WORKFLOWS_CHANGED_EVENT = "iw:workflows-changed";
+
+function notifyWorkflowsChanged(): void {
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(WORKFLOWS_CHANGED_EVENT));
+}
+
 interface WorkflowRow {
   id: string;
   name: string;
@@ -172,6 +179,7 @@ export function createDesktopWorkflowClient(): WorkflowClient {
           now,
         ],
       );
+      notifyWorkflowsChanged();
       return rowToSummary((await loadRow(id))!);
     },
 
@@ -194,6 +202,11 @@ export function createDesktopWorkflowClient(): WorkflowClient {
           id,
         ],
       );
+      // Trigger changes invalidate the schedule — let the cron runner recompute it.
+      if (body.trigger !== undefined) {
+        await db.execute("UPDATE workflows SET next_run_at = NULL WHERE id = $1", [id]);
+      }
+      notifyWorkflowsChanged();
       return rowToSummary((await loadRow(id))!);
     },
 
@@ -205,6 +218,7 @@ export function createDesktopWorkflowClient(): WorkflowClient {
         now,
         id,
       ]);
+      notifyWorkflowsChanged();
     },
 
     async getTypings(id: string) {
@@ -262,91 +276,107 @@ export function createDesktopWorkflowClient(): WorkflowClient {
     },
 
     async run(id: string) {
-      const wf = await loadRow(id);
-      if (!wf) throw new Error("Workflow not found");
-      const db = await getDb();
-      const metricDefs = safeParse<MetricDef[]>(wf.metric_defs, []);
-
-      // Seed declared metric rows (without clobbering existing values).
-      for (const def of metricDefs) {
-        const now = new Date().toISOString();
-        await db.execute(
-          `INSERT INTO workflow_metrics (id, workflow_id, key, label, type, unit, updated_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)
-           ON CONFLICT(workflow_id, key) DO UPDATE SET label = excluded.label, type = excluded.type, unit = excluded.unit, updated_at = excluded.updated_at`,
-          [crypto.randomUUID(), id, def.key, def.label, def.type, def.unit ?? null, now],
-        );
-      }
-
-      const runId = crypto.randomUUID();
-      const startedAt = new Date().toISOString();
-      await db.execute(
-        `INSERT INTO workflow_runs (id, workflow_id, status, trigger_source, logs, started_at, created_at)
-         VALUES ($1, $2, 'running', 'manual', '[]', $3, $4)`,
-        [runId, id, startedAt, startedAt],
-      );
-
-      const host = buildWorkflowHost({
-        listPlugins: listLocalPlugins,
-        getClient: async (accountId: string) =>
-          createPluginClient(accountId, await pluginIdForAccount(accountId)),
-        readStorageObject: async () => {
-          throw new Error("Storage object reads from desktop workflows are not yet supported.");
-        },
-        getMetric: async (key: string) => {
-          const rows = await db.select<{ value: string | null }[]>(
-            "SELECT value FROM workflow_metrics WHERE workflow_id = $1 AND key = $2",
-            [id, key],
-          );
-          const value = rows[0]?.value;
-          return value == null ? null : safeParse<MetricValue>(value, null);
-        },
-        listMetrics: async () => {
-          const rows = await db.select<{ key: string; value: string | null }[]>(
-            "SELECT key, value FROM workflow_metrics WHERE workflow_id = $1 AND deleted_at IS NULL",
-            [id],
-          );
-          const out: Record<string, MetricValue> = {};
-          for (const r of rows) {
-            out[r.key] = r.value == null ? null : safeParse<MetricValue>(r.value, null);
-          }
-          return out;
-        },
-        setMetric: async (key: string, value: MetricValue) => {
-          const now = new Date().toISOString();
-          await db.execute(
-            `INSERT INTO workflow_metrics (id, workflow_id, key, label, type, value, updated_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)
-             ON CONFLICT(workflow_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
-            [crypto.randomUUID(), id, key, key, metricTypeOf(value), JSON.stringify(value), now],
-          );
-        },
-        prompt: askUser,
-      });
-
-      const result = await runWorkflowInMain(wf.source, true, host);
-
-      const finishedAt = new Date(result.finishedAt).toISOString();
-      await db.execute(
-        `UPDATE workflow_runs SET status = $1, logs = $2, output = $3, error = $4, finished_at = $5, duration_ms = $6
-         WHERE id = $7`,
-        [
-          result.status,
-          JSON.stringify(result.logs),
-          result.output === undefined ? null : JSON.stringify(result.output),
-          result.error ? JSON.stringify(result.error) : null,
-          finishedAt,
-          result.durationMs,
-          runId,
-        ],
-      );
-      await db.execute("UPDATE workflows SET last_run_at = $1, updated_at = $2 WHERE id = $3", [
-        finishedAt,
-        new Date().toISOString(),
-        id,
-      ]);
-
-      return { runId, result: result as unknown as WorkflowRunRow };
+      return runWorkflowById(id, { interactive: true, triggerSource: "manual" });
     },
   };
+}
+
+/**
+ * Execute a local workflow by id: seed its metrics, record a run, run the
+ * source in the main-process sandbox, and persist the outcome. Shared by the
+ * panel's manual Run (interactive) and the local cron runner (non-interactive,
+ * trigger_source "cron"). Returns the run id + result.
+ */
+export async function runWorkflowById(
+  id: string,
+  opts: { interactive: boolean; triggerSource: string } = {
+    interactive: true,
+    triggerSource: "manual",
+  },
+): Promise<{ runId: string; result: WorkflowRunRow }> {
+  const wf = await loadRow(id);
+  if (!wf) throw new Error("Workflow not found");
+  const db = await getDb();
+  const metricDefs = safeParse<MetricDef[]>(wf.metric_defs, []);
+
+  // Seed declared metric rows (without clobbering existing values).
+  for (const def of metricDefs) {
+    const now = new Date().toISOString();
+    await db.execute(
+      `INSERT INTO workflow_metrics (id, workflow_id, key, label, type, unit, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       ON CONFLICT(workflow_id, key) DO UPDATE SET label = excluded.label, type = excluded.type, unit = excluded.unit, updated_at = excluded.updated_at`,
+      [crypto.randomUUID(), id, def.key, def.label, def.type, def.unit ?? null, now],
+    );
+  }
+
+  const runId = crypto.randomUUID();
+  const startedAt = new Date().toISOString();
+  await db.execute(
+    `INSERT INTO workflow_runs (id, workflow_id, status, trigger_source, logs, started_at, created_at)
+     VALUES ($1, $2, 'running', $3, '[]', $4, $5)`,
+    [runId, id, opts.triggerSource, startedAt, startedAt],
+  );
+
+  const host = buildWorkflowHost({
+    listPlugins: listLocalPlugins,
+    getClient: async (accountId: string) =>
+      createPluginClient(accountId, await pluginIdForAccount(accountId)),
+    readStorageObject: async () => {
+      throw new Error("Storage object reads from desktop workflows are not yet supported.");
+    },
+    getMetric: async (key: string) => {
+      const rows = await db.select<{ value: string | null }[]>(
+        "SELECT value FROM workflow_metrics WHERE workflow_id = $1 AND key = $2",
+        [id, key],
+      );
+      const value = rows[0]?.value;
+      return value == null ? null : safeParse<MetricValue>(value, null);
+    },
+    listMetrics: async () => {
+      const rows = await db.select<{ key: string; value: string | null }[]>(
+        "SELECT key, value FROM workflow_metrics WHERE workflow_id = $1 AND deleted_at IS NULL",
+        [id],
+      );
+      const out: Record<string, MetricValue> = {};
+      for (const r of rows) {
+        out[r.key] = r.value == null ? null : safeParse<MetricValue>(r.value, null);
+      }
+      return out;
+    },
+    setMetric: async (key: string, value: MetricValue) => {
+      const now = new Date().toISOString();
+      await db.execute(
+        `INSERT INTO workflow_metrics (id, workflow_id, key, label, type, value, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         ON CONFLICT(workflow_id, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+        [crypto.randomUUID(), id, key, key, metricTypeOf(value), JSON.stringify(value), now],
+      );
+    },
+    prompt: askUser,
+  });
+
+  const result = await runWorkflowInMain(wf.source, opts.interactive, host);
+
+  const finishedAt = new Date(result.finishedAt).toISOString();
+  await db.execute(
+    `UPDATE workflow_runs SET status = $1, logs = $2, output = $3, error = $4, finished_at = $5, duration_ms = $6
+     WHERE id = $7`,
+    [
+      result.status,
+      JSON.stringify(result.logs),
+      result.output === undefined ? null : JSON.stringify(result.output),
+      result.error ? JSON.stringify(result.error) : null,
+      finishedAt,
+      result.durationMs,
+      runId,
+    ],
+  );
+  await db.execute("UPDATE workflows SET last_run_at = $1, updated_at = $2 WHERE id = $3", [
+    finishedAt,
+    new Date().toISOString(),
+    id,
+  ]);
+
+  return { runId, result: result as unknown as WorkflowRunRow };
 }

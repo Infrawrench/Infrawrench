@@ -47,7 +47,13 @@ app.commandLine.appendSwitch("overscroll-history-navigation", "0");
 // While > 0, closing the last window hides it instead of quitting so the
 // renderer's polling loop keeps firing notifications in the background.
 let activePingCount = 0;
+let activeCronCount = 0;
 let quitting = false;
+
+/** Whether background work (metric pings or enabled crons) should keep the app alive. */
+function hasBackgroundWork(): boolean {
+  return activePingCount > 0 || activeCronCount > 0;
+}
 // Set once electron-updater has staged a downloaded update; `before-quit`
 // then calls `quitAndInstall` so the update actually applies on exit.
 // MacUpdater (unlike BaseUpdater on win/linux) does not register a quit hook
@@ -103,7 +109,7 @@ function createWindow() {
 
   win.on("close", (event) => {
     if (quitting) return;
-    if (activePingCount > 0) {
+    if (hasBackgroundWork()) {
       event.preventDefault();
       win.hide();
     }
@@ -175,8 +181,9 @@ app.whenReady().then(() => {
 });
 
 app.on("window-all-closed", () => {
-  // Stay alive while pings are active so notifications keep firing in the background.
-  if (activePingCount > 0) return;
+  // Stay alive while there's background work (active pings or enabled crons) so
+  // notifications + scheduled workflows keep firing with the window closed.
+  if (hasBackgroundWork()) return;
   app.quit();
 });
 
@@ -201,6 +208,10 @@ app.on("before-quit", (event) => {
 
 ipcMain.handle("set_pings_active", (_e, { count }: { count: number }) => {
   activePingCount = Math.max(0, Math.floor(count));
+});
+
+ipcMain.handle("set_crons_active", (_e, { count }: { count: number }) => {
+  activeCronCount = Math.max(0, Math.floor(count));
 });
 
 ipcMain.handle("update_install_now", () => {

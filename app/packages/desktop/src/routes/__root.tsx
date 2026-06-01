@@ -44,6 +44,7 @@ import { buildPluginHostServices } from "../lib/sql-drivers";
 import { getPlugin } from "../plugins/loader";
 import { useSwipeNavigation } from "../lib/useSwipeNavigation";
 import { startMetricPinger } from "../lib/metric-pinger";
+import { startCronRunner } from "../lib/cron-runner";
 import {
   getCloudOrgs,
   getCloudAuthStatus,
@@ -200,6 +201,7 @@ function RootLayout() {
 
   useEffect(() => {
     startMetricPinger();
+    startCronRunner();
   }, []);
 
   // Global Cmd/Ctrl+K opens the spotlight (navigate) from any tab — dashboards,

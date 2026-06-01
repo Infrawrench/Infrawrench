@@ -49,7 +49,7 @@ const STARTER_SOURCE = `// Workflow — runs in a sandboxed isolate with a typed
 // Example: read a JSON file from R2 and log a value.
 //
 // const cf = infra.accounts.cloudflare.getByName("production");
-// const bucket = await cf.getR2Bucket("configs");
+// const bucket = await cf.r2Buckets.get("configs");
 // const cfg = (await bucket.get("app.json")).json<{ replicas: number }>();
 // await infra.output({ replicas: cfg.replicas });
 
@@ -367,6 +367,46 @@ function WorkflowListRow({
   );
 }
 
+const CRON_PRESETS: { label: string; value: string }[] = [
+  { label: "Every minute", value: "* * * * *" },
+  { label: "Every 5 minutes", value: "*/5 * * * *" },
+  { label: "Every 15 minutes", value: "*/15 * * * *" },
+  { label: "Every 30 minutes", value: "*/30 * * * *" },
+  { label: "Hourly", value: "0 * * * *" },
+  { label: "Every 6 hours", value: "0 */6 * * *" },
+  { label: "Daily at midnight", value: "0 0 * * *" },
+  { label: "Daily at 9am", value: "0 9 * * *" },
+  { label: "Weekly (Mon 9am)", value: "0 9 * * 1" },
+  { label: "Monthly (1st)", value: "0 0 1 * *" },
+];
+
+const CRON_DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const pad2 = (n: number) => String(n).padStart(2, "0");
+
+/** A best-effort plain-English summary of a 5-field cron expression. */
+function describeCron(expr: string): string {
+  const t = expr.trim();
+  const preset = CRON_PRESETS.find((p) => p.value === t);
+  if (preset) return `Runs ${preset.label.toLowerCase()}.`;
+  const parts = t.split(/\s+/);
+  if (parts.length !== 5) return "Enter 5 fields: minute hour day month weekday.";
+  const [min, hour, dom, mon, dow] = parts as [string, string, string, string, string];
+  const isNum = (s: string) => /^\d+$/.test(s);
+  const everyMin = /^\*\/(\d+)$/.exec(min);
+  const everyHour = /^\*\/(\d+)$/.exec(hour);
+  const allDate = dom === "*" && mon === "*";
+  if (everyMin && hour === "*" && allDate && dow === "*")
+    return `Runs every ${everyMin[1]} minutes.`;
+  if (min === "0" && everyHour && allDate && dow === "*")
+    return `Runs every ${everyHour[1]} hours.`;
+  if (isNum(min) && isNum(hour) && allDate && dow === "*")
+    return `Runs daily at ${pad2(+hour)}:${pad2(+min)}.`;
+  if (isNum(min) && isNum(hour) && allDate && isNum(dow))
+    return `Runs weekly on ${CRON_DAYS[+dow % 7]} at ${pad2(+hour)}:${pad2(+min)}.`;
+  if (isNum(min) && hour === "*" && allDate && dow === "*") return `Runs hourly at :${pad2(+min)}.`;
+  return "Runs on a custom schedule.";
+}
+
 function TriggerEditor({
   trigger,
   webhookToken,
@@ -395,12 +435,43 @@ function TriggerEditor({
         <option value="git">Git</option>
       </select>
       {trigger.kind === "cron" && (
-        <input
-          value={trigger.expression}
-          onChange={(e) => onChange({ ...trigger, expression: e.target.value })}
-          placeholder="* * * * *"
-          className="bg-transparent border border-white/15 rounded px-2 py-1 font-mono"
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={
+              CRON_PRESETS.some((p) => p.value === trigger.expression.trim())
+                ? trigger.expression.trim()
+                : "custom"
+            }
+            onChange={(e) => {
+              if (e.target.value !== "custom") onChange({ ...trigger, expression: e.target.value });
+            }}
+            className="bg-transparent border border-white/15 rounded px-2 py-1"
+            aria-label="Schedule preset"
+          >
+            {CRON_PRESETS.map((p) => (
+              <option key={p.value} value={p.value}>
+                {p.label}
+              </option>
+            ))}
+            <option value="custom">Custom…</option>
+          </select>
+          <div className="flex flex-col items-center leading-none">
+            <input
+              value={trigger.expression}
+              onChange={(e) => onChange({ ...trigger, expression: e.target.value })}
+              placeholder="* * * * *"
+              spellCheck={false}
+              aria-label="Cron expression"
+              className="bg-surface-overlay border border-white/15 rounded px-2 py-1 font-mono w-36 text-center tracking-[0.3em]"
+            />
+            <span className="mt-0.5 text-[9px] text-on-surface-faint tracking-tight">
+              min&nbsp;&nbsp;hour&nbsp;&nbsp;day&nbsp;&nbsp;mon&nbsp;&nbsp;wkday
+            </span>
+          </div>
+          <span className="text-[11px] text-blue-300/80" title={trigger.expression}>
+            {describeCron(trigger.expression)}
+          </span>
+        </div>
       )}
       {trigger.kind === "git" && (
         <>

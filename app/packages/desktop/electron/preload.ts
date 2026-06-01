@@ -7,6 +7,7 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
 const INVOKE_CHANNELS = [
   // app shell
   "set_pings_active",
+  "set_crons_active",
   "show_notification",
   "show_open_dialog",
   "show_save_dialog",
