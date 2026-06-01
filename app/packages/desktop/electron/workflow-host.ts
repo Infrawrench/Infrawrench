@@ -104,20 +104,46 @@ function createBridgedHost(sender: WebContents, runToken: string): WorkflowHost 
     sshStreamRead: (streamId: string) => call<SshStreamChunkLite>("sshStreamRead", [streamId]),
     sshStreamClose: (streamId: string) => call<void>("sshStreamClose", [streamId]),
     sshProbe: (params: SshProbeParamsLite) => call<boolean>("sshProbe", [params]),
+    line: (lineNumber: number) => call<void>("line", [lineNumber]),
   };
 }
+
+// Per-run abort controllers so the renderer's Stop button can end a run that
+// isn't currently paused at a breakpoint (the interrupt handler reads the signal).
+const runAborts = new Map<string, AbortController>();
 
 ipcMain.handle(
   "workflow_run",
   async (
     event,
-    { source, interactive, runToken }: { source: string; interactive: boolean; runToken: string },
+    {
+      source,
+      interactive,
+      runToken,
+      debug,
+    }: { source: string; interactive: boolean; runToken: string; debug?: boolean },
   ) => {
     const host = createBridgedHost(event.sender, runToken);
+    const controller = new AbortController();
+    runAborts.set(runToken, controller);
     const { runWorkflow } = await import("@infrawrench/workflow-runtime");
-    return runWorkflow({ source, host, interactive });
+    try {
+      return await runWorkflow({
+        source,
+        host,
+        interactive,
+        ...(debug ? { debug: true } : {}),
+        signal: controller.signal,
+      });
+    } finally {
+      runAborts.delete(runToken);
+    }
   },
 );
+
+ipcMain.handle("workflow_stop", (_event, { runToken }: { runToken: string }) => {
+  runAborts.get(runToken)?.abort();
+});
 
 ipcMain.handle(
   "workflow_host_reply",

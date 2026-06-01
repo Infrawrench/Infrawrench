@@ -63,17 +63,30 @@ async function handleHostCall({ runToken, callId, method, args }: HostCall): Pro
 /**
  * Run a workflow in the main-process sandbox, serving its host calls from this
  * renderer for the duration of the run.
+ *
+ * `opts.debug` instruments the run (per-line `host.line` calls for the editor's
+ * highlight + breakpoints). `opts.onStart` receives a `stop()` that aborts the
+ * run in the main process (for the Stop button when not paused at a breakpoint).
  */
 export async function runWorkflowInMain(
   source: string,
   interactive: boolean,
   host: WorkflowHost,
+  opts: { debug?: boolean; onStart?: (stop: () => void) => void } = {},
 ): Promise<RunResult> {
   ensureListening();
   const runToken = crypto.randomUUID();
   activeHosts.set(runToken, host);
+  opts.onStart?.(() => {
+    void invoke("workflow_stop", { runToken });
+  });
   try {
-    return await invoke<RunResult>("workflow_run", { source, interactive, runToken });
+    return await invoke<RunResult>("workflow_run", {
+      source,
+      interactive,
+      runToken,
+      ...(opts.debug ? { debug: true } : {}),
+    });
   } finally {
     activeHosts.delete(runToken);
   }

@@ -25,6 +25,7 @@ import {
 import { runWorkflowInMain } from "./workflow-runner";
 import { requestWorkflowPrompt } from "./workflow-prompt";
 import type {
+  DebugSession,
   WorkflowClient,
   WorkflowMetricRow,
   WorkflowRunRow,
@@ -591,8 +592,12 @@ export function createDesktopWorkflowClient(): WorkflowClient {
       }));
     },
 
-    async run(id: string) {
-      return runWorkflowById(id, { interactive: true, triggerSource: "manual" });
+    async run(id: string, debug?: DebugSession) {
+      return runWorkflowById(id, {
+        interactive: true,
+        triggerSource: "manual",
+        ...(debug ? { debug } : {}),
+      });
     },
   };
 }
@@ -605,7 +610,7 @@ export function createDesktopWorkflowClient(): WorkflowClient {
  */
 export async function runWorkflowById(
   id: string,
-  opts: { interactive: boolean; triggerSource: string } = {
+  opts: { interactive: boolean; triggerSource: string; debug?: DebugSession } = {
     interactive: true,
     triggerSource: "manual",
   },
@@ -613,6 +618,41 @@ export async function runWorkflowById(
   const wf = await loadRow(id);
   if (!wf) throw new Error("Workflow not found");
   const db = await getDb();
+
+  // Debugger pause loop (renderer-side): host.line(n) highlights the line and
+  // blocks at a breakpoint / while stepping until the user resumes/steps/stops.
+  const debug = opts.debug;
+  let stepping = false;
+  let stopMain: (() => void) | null = null;
+  let pendingResume: (() => void) | null = null;
+  let pendingReject: ((e: Error) => void) | null = null;
+  const debugLine = debug
+    ? async (n: number): Promise<void> => {
+        debug.onLine?.(n);
+        if (debug.breakpoints.has(n) || stepping) {
+          stepping = false;
+          debug.onPaused?.(n);
+          await new Promise<void>((resolve, reject) => {
+            pendingResume = resolve;
+            pendingReject = reject;
+          });
+          debug.onResumed?.();
+          pendingResume = null;
+          pendingReject = null;
+        }
+      }
+    : undefined;
+  if (debug) {
+    debug.resume = () => pendingResume?.();
+    debug.step = () => {
+      stepping = true;
+      pendingResume?.();
+    };
+    debug.stop = () => {
+      stopMain?.();
+      pendingReject?.(new Error("Workflow stopped"));
+    };
+  }
   const metricDefs = safeParse<MetricDef[]>(wf.metric_defs, []);
 
   // Seed declared metric rows (without clobbering existing values).
@@ -671,6 +711,9 @@ export async function runWorkflowById(
     },
     prompt: askUser,
 
+    // Debugger: highlight the current line + pause at breakpoints (debug runs).
+    ...(debugLine ? { line: debugLine } : {}),
+
     // Resolve ssh-key-picker create fields given by name → the key's public key.
     transformCreateFields: resolveLocalCreateSshKeyFields,
 
@@ -719,7 +762,12 @@ export async function runWorkflowById(
     },
   });
 
-  const result = await runWorkflowInMain(wf.source, opts.interactive, host);
+  const result = await runWorkflowInMain(wf.source, opts.interactive, host, {
+    debug: Boolean(debug),
+    onStart: (stop) => {
+      stopMain = stop;
+    },
+  });
 
   const finishedAt = new Date(result.finishedAt).toISOString();
   await db.execute(
