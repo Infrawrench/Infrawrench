@@ -7,7 +7,7 @@
  * clients, the local SQLite DB, and the prompt UI live, and answers the
  * host-capability calls that main makes back during a run.
  */
-import type { RunResult, WorkflowHost } from "@infrawrench/workflow-runtime/client";
+import type { RunLogEntry, RunResult, WorkflowHost } from "@infrawrench/workflow-runtime/client";
 import { invoke } from "./invoke";
 
 interface HostCall {
@@ -20,6 +20,8 @@ interface HostCall {
 // runToken -> the host serving a currently-running workflow. Multiple manual
 // runs can be in flight at once, so calls are routed by token.
 const activeHosts = new Map<string, WorkflowHost>();
+// runToken -> live log sink (for streaming logs to the editor during a run).
+const logSinks = new Map<string, (entry: RunLogEntry) => void>();
 let listening = false;
 
 function toError(err: unknown): { message: string; stack?: string } {
@@ -35,6 +37,10 @@ function ensureListening(): void {
   listening = true;
   window.electronAPI.on("workflow_host_call", (payload) => {
     void handleHostCall(payload as HostCall);
+  });
+  window.electronAPI.on("workflow_log", (payload) => {
+    const { runToken, entry } = payload as { runToken: string; entry: RunLogEntry };
+    logSinks.get(runToken)?.(entry);
   });
 }
 
@@ -72,11 +78,16 @@ export async function runWorkflowInMain(
   source: string,
   interactive: boolean,
   host: WorkflowHost,
-  opts: { debug?: boolean; onStart?: (stop: () => void) => void } = {},
+  opts: {
+    debug?: boolean;
+    onStart?: (stop: () => void) => void;
+    onLog?: (entry: RunLogEntry) => void;
+  } = {},
 ): Promise<RunResult> {
   ensureListening();
   const runToken = crypto.randomUUID();
   activeHosts.set(runToken, host);
+  if (opts.onLog) logSinks.set(runToken, opts.onLog);
   opts.onStart?.(() => {
     void invoke("workflow_stop", { runToken });
   });
@@ -89,5 +100,6 @@ export async function runWorkflowInMain(
     });
   } finally {
     activeHosts.delete(runToken);
+    logSinks.delete(runToken);
   }
 }

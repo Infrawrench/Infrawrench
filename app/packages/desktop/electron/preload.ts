@@ -169,6 +169,8 @@ const EVENT_LITERALS = new Set<string>([
   "update_available_prompt",
   // main asks the renderer to serve a workflow host capability mid-run
   "workflow_host_call",
+  // main streams a workflow's log entries to the renderer during a run
+  "workflow_log",
 ]);
 
 const EVENT_PREFIXES: readonly string[] = [

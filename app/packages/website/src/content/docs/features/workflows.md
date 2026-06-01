@@ -111,13 +111,24 @@ The implicit key only applies to resources returned from `create()` (where you a
   const bytes = await droplet.ssh("cat /tmp/blob", { sshKey: "deploy-key", encoding: "binary" });
   ```
 
-- **Stream output** — pass `{ stream: true }` to get an async-iterable of `Uint8Array` chunks (or strings with `encoding: "utf8"`):
+- **Stream output** — pass `{ stream: true }` to get a `{ stdout, stderr }` object. Each is a byte stream (async-iterable, with a `getReader()`); the object itself iterates `stdout` for convenience:
 
   ```ts
-  for await (const chunk of droplet.ssh("journalctl -f", { sshKey: "deploy-key", stream: true })) {
-    infra.log(new TextDecoder().decode(chunk));
+  const streams = droplet.ssh("journalctl -f", { sshKey: "deploy-key", stream: true });
+
+  // Iterate stdout / stderr separately…
+  for await (const chunk of streams.stderr) {
+    infra.log("err:", new TextDecoder().decode(chunk));
   }
   ```
+
+  **Tail straight to the run log** — pass the whole streams object to `infra.log(...)` and it streams both channels to the log as they arrive, line by line, with **stdout in the normal colour and stderr in red**:
+
+  ```ts
+  await infra.log(droplet.ssh("apt-get update", { sshKey: "deploy-key", stream: true }));
+  ```
+
+(`encoding` applies to the awaited result, not to streams — stream chunks are always raw bytes.)
 
 Options: `sshKey` (an Infrawrench SSH key by name or id — autocompleted from your keys; its private half authenticates; not needed for providers with native SSH like Fly/Hetzner), `username` (defaults to the resource type's SSH user, e.g. `root`), `encoding`, `stream`, `timeoutMs`, and `skipHostKeyCheck` (accept whatever host key is presented without verifying or pinning it — handy for ephemeral hosts that get recreated with the same address, but it turns off MITM protection, so only use it on a trusted path).
 

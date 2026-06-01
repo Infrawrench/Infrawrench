@@ -773,6 +773,7 @@ export async function runWorkflowById(
     onStart: (stop) => {
       stopMain = stop;
     },
+    ...(debug?.onLog ? { onLog: debug.onLog } : {}),
   });
 
   const finishedAt = new Date(result.finishedAt).toISOString();

@@ -134,6 +134,11 @@ ipcMain.handle(
         interactive,
         ...(debug ? { debug: true } : {}),
         signal: controller.signal,
+        // Stream log entries to the renderer live (logs are handled by the run
+        // context in main, not via the bridged host).
+        onLog: (entry) => {
+          if (!event.sender.isDestroyed()) event.sender.send("workflow_log", { runToken, entry });
+        },
       });
     } finally {
       runAborts.delete(runToken);

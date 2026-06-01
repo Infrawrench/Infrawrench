@@ -8,6 +8,7 @@ import type {
   WorkflowClient,
   WorkflowMetricDef,
   WorkflowMetricRow,
+  WorkflowRunLog,
   WorkflowRunRow,
   WorkflowSummary,
   WorkflowTrigger,
@@ -88,6 +89,8 @@ export function WorkflowsPanel({
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastRun, setLastRun] = useState<WorkflowRunRow | null>(null);
+  // Logs streamed live during a run (e.g. infra.log(ssh streams)).
+  const [liveLogs, setLiveLogs] = useState<WorkflowRunLog[]>([]);
   // Debugger state. `breakpointsRef` is the live set the running client reads
   // (so toggles mid-run are seen); `breakpoints` mirrors it for the editor.
   const breakpointsRef = useRef<Set<number>>(new Set());
@@ -187,9 +190,11 @@ export function WorkflowsPanel({
     setError(null);
     setCurrentLine(null);
     setPausedLine(null);
+    setLiveLogs([]);
     const session: DebugSession = {
       breakpoints: breakpointsRef.current,
       onLine: (n) => setCurrentLine(n),
+      onLog: (entry) => setLiveLogs((prev) => [...prev, entry]),
       onPaused: (n) => setPausedLine(n),
       onResumed: () => setPausedLine(null),
     };
@@ -396,7 +401,7 @@ export function WorkflowsPanel({
             />
           </div>
 
-          {lastRun && <RunResultPanel run={lastRun} />}
+          {running ? <LiveLogPanel logs={liveLogs} /> : lastRun && <RunResultPanel run={lastRun} />}
         </div>
       ) : (
         <div className="flex-1 flex items-center justify-center text-sm opacity-50">
@@ -735,6 +740,29 @@ function RunResultPanel({ run }: { run: WorkflowRunRow }) {
         {run.output !== undefined && run.output !== null && (
           <pre className="mt-2 opacity-80">{JSON.stringify(run.output, null, 2)}</pre>
         )}
+      </div>
+    </div>
+  );
+}
+
+/** Logs streamed live while a run is in progress (same colour-by-level styling). */
+function LiveLogPanel({ logs }: { logs: WorkflowRunLog[] }) {
+  return (
+    <div className="h-48 border-t border-white/10 flex flex-col min-h-0">
+      <div className="px-3 py-1 text-xs border-b border-white/10 flex items-center gap-2">
+        <span className="font-semibold text-amber-400">running…</span>
+      </div>
+      <div className="flex-1 overflow-auto p-2 font-mono text-[11px] leading-relaxed">
+        {logs.map((l, i) => (
+          <div
+            key={i}
+            className={
+              l.level === "error" ? "text-red-400" : l.level === "warn" ? "text-yellow-400" : ""
+            }
+          >
+            {l.message}
+          </div>
+        ))}
       </div>
     </div>
   );
