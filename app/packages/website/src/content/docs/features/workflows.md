@@ -33,6 +33,21 @@ const ip = await infra.accounts.hetzner
 
 `infra.accounts.<plugin>` exposes `list()`, `getById(id)`, and `getByName(name)`. Each account handle is built from the provider's resource types: every type is a group named after its (plural) name — `account.<type>.list()` and `account.<type>.get(id)`, plus `.create/.update/.delete(...)` for the operations that provider actually supports (read-only types get just `list`/`get`). Account-level `resolveOutput(...)` is also available.
 
+**`create()` is typed from the real form.** Rather than a generic `Record<string, string>`, the fields argument is generated from the provider's actual create form — so the editor autocompletes the real field keys, and where a field has a closed set of choices (regions, sizes, images, plain selects) you get those values as literal suggestions. Creating a DigitalOcean droplet, for example, autocompletes `region`, `size`, `image`, and `sshKeys`, with the live region/size/image ids as options:
+
+```ts
+const droplets = infra.accounts.digitalocean.getByName("prod").droplets;
+const droplet = await droplets.create({
+  name: "web-1",
+  region: "nyc3", // ← suggested from your account's live region list
+  size: "s-1vcpu-1gb",
+  image: "ubuntu-24-04-x64",
+  sshKeys: "deploy-key", // an org SSH key, so the box boots with your key
+});
+```
+
+Options come from the provider's live catalog, so any other string still type-checks (the union is open) — you just lose the autocomplete hint.
+
 ### Reading storage objects
 
 Storage-capable resources (e.g. buckets) come back with object read methods on them — fetch the bucket, then read its objects:
@@ -49,6 +64,51 @@ const logs = await bucket.list("logs/");
 ```
 
 The object from `bucket.get(key)` exposes `.text()`, `.json<T>()`, and the raw `.base64`; `bucket.list(prefix?)` enumerates objects.
+
+### SSH into a resource
+
+Any resource that exposes an SSH endpoint (a DigitalOcean droplet, a Hetzner/EC2 server, …) can be connected to right from a workflow. The common pattern is **create with a key → wait for it to come up → connect**:
+
+```ts
+const droplets = infra.accounts.digitalocean.getByName("prod").droplets;
+
+// 1. Create the box with an org SSH key attached (it boots with your key)
+const droplet = await droplets.create({
+  name: "build-runner",
+  region: "nyc3",
+  size: "s-2vcpu-4gb",
+  image: "ubuntu-24-04-x64",
+  sshKeys: "deploy-key",
+});
+
+// 2. Wait until it accepts SSH (polls until reachable, or times out)
+await droplet.waitUntilReachable();
+
+// 3. Connect and run a command — resolves the full stdout as a string
+const uname = await droplet.ssh("uname -a", { sshKey: "deploy-key" });
+infra.log(uname.trim());
+```
+
+`resource.ssh(command, opts)` is a single combined call:
+
+- **Await the full result** — resolves a `string` (or a `Uint8Array` with `{ encoding: "binary" }`):
+
+  ```ts
+  const text = await droplet.ssh("cat /etc/os-release", { sshKey: "deploy-key" });
+  const bytes = await droplet.ssh("cat /tmp/blob", { sshKey: "deploy-key", encoding: "binary" });
+  ```
+
+- **Stream output** — pass `{ stream: true }` to get an async-iterable of `Uint8Array` chunks (or strings with `encoding: "utf8"`):
+
+  ```ts
+  for await (const chunk of droplet.ssh("journalctl -f", { sshKey: "deploy-key", stream: true })) {
+    infra.log(new TextDecoder().decode(chunk));
+  }
+  ```
+
+Options: `sshKey` (an org SSH key by name or id — its private half authenticates; not needed for providers with native SSH like Fly/Hetzner), `username` (defaults to the resource type's SSH user, e.g. `root`), `encoding`, `stream`, and `timeoutMs`. `waitUntilReachable({ timeoutMs?, port? })` resolves once the host accepts TCP on the SSH port.
+
+Host keys are trusted on first use for workflow connections and pinned; if a previously-seen host's key later changes, the connection is refused until you re-pin it from SSH settings. SSH is available for manual and automated runs alike.
 
 ### Prompting the user
 

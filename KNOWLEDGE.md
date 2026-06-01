@@ -238,6 +238,15 @@ Handles `plugin_*` IPC calls by looking up the right driver from `drivers.ts`.
 
 ---
 
+## Workflows runtime (`@infrawrench/workflow-runtime`)
+
+Sandboxed TypeScript automations over `infra.accounts.*`. User source runs in a QuickJS/WASM isolate; the only powers crossing the boundary are a single async RPC `__host(method, argsJson)` and a read-only accounts tree. The ergonomic `infra` object is built in pure JS by `prelude.ts`, and `codegen.ts` generates an `infra.d.ts` whose shape mirrors the prelude exactly (Monaco autocomplete). Each platform supplies a `WorkflowHost` via `buildWorkflowHost` (`ClientHostDeps`): web `services/workflow-host.ts`, poller/cloud `server-core/workflows/runner.ts` (shared `runOrgWorkflow`), desktop builds the host in the **renderer** and runs the isolate in **electron main** (`electron/workflow-host.ts` bridges every host method back over IPC).
+
+- **Typed `create()` fields** — `listOrgPlugins`/`listLocalPlugins` take `{ enrichCreateFields }` (typings path only, NOT every run — it hits provider APIs). When set, they call `client.getCreateConfig(typeId)` and distill it via `createFieldsFromConfig` (`workflow-runtime/create-fields.ts`) into `WorkflowResourceTypeInfo.createFields`, cached per `pluginId:typeId` (10-min TTL; server-core `create-fields-cache.ts`, desktop inline). Codegen then emits a typed object literal (`region?: "nyc3" | … | (string & {})`) instead of `Record<string, string>`. Option lists come from `select`/`region`/`size`/`image`/`disk`/`policy` kinds.
+- **`resource.ssh(cmd, opts)`** — one combined call on every resource: resolves a `Promise<string>` (or `Uint8Array` with `encoding:"binary"`), or an `AsyncIterable` of chunks with `{ stream: true }`. `waitUntilReachable()` does a host-side TCP probe. Host deps: `sshExec` / `sshStream{Start,Read,Close}` / `sshProbe` (streaming is host-buffered + polled across the RPC bridge; prelude has tiny base64/utf8 decoders since QuickJS lacks `atob`/`TextDecoder`). Config resolution mirrors interactive SSH: native `getSshConfig()` first, else `sshEndpoint.hostOutputKey` + an org SSH key's private half. Web/poller: `server-core/workflows/ssh-host.ts` (ssh2, TOFU host-key pinning). Desktop: renderer resolves config (app/system key via `ssh_key_get_private_key`/`ssh_read_system_key`), electron main runs ssh2 (`workflow_ssh_*` IPC in `electron/ssh-tunnel.ts`).
+
+---
+
 ## SQLite schema (desktop)
 
 Two migrations. Tables:
