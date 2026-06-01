@@ -20,6 +20,8 @@ export type WorkflowTrigger =
       branch?: string;
       /** Which webhook events trigger a run. Defaults to ["push"]. */
       events?: string[];
+      /** GitHub App installation that authorizes watching `repo` (github-watcher). */
+      installationId?: number;
     };
 
 export type WorkflowTriggerKind = WorkflowTrigger["kind"];

@@ -20,6 +20,7 @@
     "./twilio-pager": "./src/twilio-pager.ts",
     "./plugin-loader": "./src/plugin-loader.ts",
     "./workflows/runner": "./src/workflows/runner.ts",
+    "./github/app": "./src/github/app.ts",
     "./permissions": "./src/permissions/index.ts",
     "./permissions/catalog": "./src/permissions/catalog.ts",
     "./clickhouse/client": "./src/clickhouse/client.ts",

@@ -35,6 +35,8 @@ export const workflows = pgTable(
     enabled: boolean("enabled").notNull().default(true),
     /** Shared secret used to match inbound git/webhook triggers (web only). */
     webhookToken: text("webhook_token"),
+    /** Last commit SHA the github-watcher saw for a git trigger's repo/branch. */
+    gitLastSha: text("git_last_sha"),
     /** Next scheduled run for cron triggers (poller picks these up). */
     nextRunAt: timestamp("next_run_at"),
     lastRunAt: timestamp("last_run_at"),
@@ -103,6 +105,35 @@ export const workflowMetrics = pgTable(
   },
   (t) => ({
     workflowKeyIdx: uniqueIndex("workflow_metrics_workflow_key_idx").on(t.workflowId, t.key),
+  }),
+);
+
+/**
+ * A GitHub App installation connected to an org. The github-watcher uses the
+ * installation id to mint short-lived installation tokens (acting as the app /
+ * bot) to list repos and read branch heads. Repos a workflow watches are stored
+ * on the workflow's git trigger (jsonb); this row authorizes access to them.
+ */
+export const githubInstallations = pgTable(
+  "github_installations",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /** GitHub's numeric installation id. */
+    installationId: integer("installation_id").notNull(),
+    /** The account the app is installed on (org or user login). */
+    accountLogin: text("account_login"),
+    accountType: text("account_type"),
+    createdByUserId: text("created_by_user_id"),
+    deletedAt: timestamp("deleted_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("github_installations_org_idx").on(t.organizationId),
+    installationIdx: uniqueIndex("github_installations_installation_idx").on(t.installationId),
   }),
 );
 
