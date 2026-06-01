@@ -43,6 +43,44 @@ export interface StorageObjectBody {
   text: string;
 }
 
+/** Identifies the resource to SSH into, plus the command and auth hints. */
+export interface SshExecParamsLite {
+  accountId: string;
+  typeId: string;
+  /** Provider/external id of the resource (e.g. a droplet id). */
+  resourceId: string;
+  command: string;
+  /** Org SSH key (id or name) whose private half authenticates. */
+  sshKeyId?: string;
+  username?: string;
+  timeoutMs?: number;
+}
+
+/** Full result of a non-streaming SSH command. Output is base64 (binary-safe). */
+export interface SshExecResultLite {
+  stdoutBase64: string;
+  stderrBase64: string;
+  code: number;
+}
+
+/** One poll of a streaming SSH command. */
+export interface SshStreamChunkLite {
+  /** Base64 chunk of stdout; absent on the terminal (done) read. */
+  dataBase64?: string;
+  done: boolean;
+  /** Exit code, present on the terminal read. */
+  code?: number;
+}
+
+/** Probe whether a resource is SSH-reachable yet (for waitUntilReachable). */
+export interface SshProbeParamsLite {
+  accountId: string;
+  typeId: string;
+  resourceId: string;
+  port?: number;
+  timeoutMs?: number;
+}
+
 /** Per-run context the host threads through dispatch. */
 export interface WorkflowRunContext {
   /** Whether `infra.prompt` is allowed (manual/interactive runs only). */
@@ -103,6 +141,21 @@ export interface WorkflowHost {
    * typed property access inside the workflow.
    */
   listMetrics(): Promise<Record<string, MetricValue>>;
+
+  /**
+   * SSH into a resource and run a command to completion (powers
+   * `resource.ssh(cmd)`). Optional — hosts without SSH support omit it and the
+   * call surfaces a {@link WorkflowCapabilityError}.
+   */
+  sshExec?(params: SshExecParamsLite): Promise<SshExecResultLite>;
+  /** Begin a streaming SSH command; returns a token for {@link sshStreamRead}. */
+  sshStreamStart?(params: SshExecParamsLite): Promise<{ streamId: string }>;
+  /** Read the next stdout chunk of a streaming command (resolves when ready or done). */
+  sshStreamRead?(streamId: string): Promise<SshStreamChunkLite>;
+  /** Tear down a streaming command early (on iterator break/return). */
+  sshStreamClose?(streamId: string): Promise<void>;
+  /** Poll until the resource accepts TCP on the SSH port, or time out. */
+  sshProbe?(params: SshProbeParamsLite): Promise<boolean>;
 }
 
 /** Error thrown when a workflow uses a capability unavailable in its context. */
@@ -118,6 +171,19 @@ function requireMethod<T>(fn: T | undefined, name: string): T {
     throw new WorkflowCapabilityError(`This workflow host does not support "${name}".`);
   }
   return fn;
+}
+
+/** Marshal the common SSH RPC args into {@link SshExecParamsLite}. */
+function sshParams(args: Record<string, unknown>): SshExecParamsLite {
+  return {
+    accountId: String(args["accountId"]),
+    typeId: String(args["typeId"]),
+    resourceId: String(args["resourceId"]),
+    command: String(args["command"] ?? ""),
+    ...(args["sshKeyId"] ? { sshKeyId: String(args["sshKeyId"]) } : {}),
+    ...(args["username"] ? { username: String(args["username"]) } : {}),
+    ...(args["timeoutMs"] !== undefined ? { timeoutMs: Number(args["timeoutMs"]) } : {}),
+  };
 }
 
 /**
@@ -202,6 +268,34 @@ export async function dispatch(
       }
       return host.prompt(args["spec"] as PromptSpec);
     }
+
+    case "ssh.exec":
+      return requireMethod(host.sshExec, "sshExec").call(host, sshParams(args));
+
+    case "ssh.streamStart":
+      return requireMethod(host.sshStreamStart, "sshStreamStart").call(host, sshParams(args));
+
+    case "ssh.streamRead":
+      return requireMethod(host.sshStreamRead, "sshStreamRead").call(
+        host,
+        String(args["streamId"]),
+      );
+
+    case "ssh.streamClose":
+      await requireMethod(host.sshStreamClose, "sshStreamClose").call(
+        host,
+        String(args["streamId"]),
+      );
+      return null;
+
+    case "ssh.probe":
+      return requireMethod(host.sshProbe, "sshProbe").call(host, {
+        accountId: String(args["accountId"]),
+        typeId: String(args["typeId"]),
+        resourceId: String(args["resourceId"]),
+        ...(args["port"] !== undefined ? { port: Number(args["port"]) } : {}),
+        ...(args["timeoutMs"] !== undefined ? { timeoutMs: Number(args["timeoutMs"]) } : {}),
+      });
 
     case "metric.get":
       return host.getMetric(String(args["key"]));

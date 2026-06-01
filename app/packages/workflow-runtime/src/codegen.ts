@@ -7,7 +7,12 @@
  * declared metrics so authors get autocomplete on `getByName(...)`, resource
  * type ids, and `infra.metrics`.
  */
-import type { MetricDef, MetricValueType, WorkflowPluginInfo } from "./types.js";
+import type {
+  MetricDef,
+  MetricValueType,
+  WorkflowCreateFieldInfo,
+  WorkflowPluginInfo,
+} from "./types.js";
 
 /** A valid TS identifier fragment derived from an arbitrary id. */
 function ident(raw: string): string {
@@ -50,6 +55,24 @@ function openStringUnion(values: string[]): string {
   return [...values.map(strLit), "(string & {})"].join(" | ");
 }
 
+/**
+ * The TS type for a `create(fields)` / `update(fields)` argument. When the host
+ * supplied distilled create fields, emit a typed object literal — required
+ * fields un-suffixed, optional fields `?`, and fields with a known option list
+ * as an open string union (literal suggestions + open `string`). Falls back to
+ * the generic `Record<string, string>` when no field schema is available.
+ */
+function renderCreateFieldsType(fields: WorkflowCreateFieldInfo[] | undefined): string {
+  if (!fields || fields.length === 0) return "Record<string, string>";
+  const props = fields.map((f) => {
+    const key = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(f.key) ? f.key : strLit(f.key);
+    const valueType = f.options && f.options.length > 0 ? openStringUnion(f.options) : "string";
+    const doc = f.description ? `/** ${f.description.replace(/\*\//g, "*\\/")} */ ` : "";
+    return `${doc}${key}${f.required ? "" : "?"}: ${valueType}`;
+  });
+  return `{ ${props.join("; ")} }`;
+}
+
 function metricTsType(type: MetricValueType): string {
   switch (type) {
     case "number":
@@ -79,6 +102,17 @@ interface PromptSpec {
   defaultValue?: string;
 }
 
+interface SshExecOptions {
+  /** Org SSH key (id or name) whose private half authenticates the connection. */
+  sshKey?: string;
+  /** Login user (defaults to the resource type's SSH endpoint default, e.g. "root"). */
+  username?: string;
+  /** "utf8" (default) decodes output to a string; "binary" returns raw bytes. */
+  encoding?: "utf8" | "binary";
+  /** Connection/command timeout in milliseconds. */
+  timeoutMs?: number;
+}
+
 interface WorkflowResource {
   id: string;
   pluginId: string;
@@ -88,6 +122,19 @@ interface WorkflowResource {
   externalId?: string;
   fields: Record<string, string | number | boolean>;
   resolvedOutputs: Record<string, string>;
+  /** Run a command over SSH and resolve its full stdout as a string. */
+  ssh(command: string, opts?: SshExecOptions): Promise<string>;
+  /** Run a command over SSH and resolve its full stdout as raw bytes. */
+  ssh(command: string, opts: SshExecOptions & { encoding: "binary" }): Promise<Uint8Array>;
+  /** Stream a command's stdout as it arrives (each chunk is raw bytes). */
+  ssh(command: string, opts: SshExecOptions & { stream: true }): AsyncIterable<Uint8Array>;
+  /** Stream a command's stdout as it arrives, decoded to UTF-8 strings. */
+  ssh(
+    command: string,
+    opts: SshExecOptions & { stream: true; encoding: "utf8" },
+  ): AsyncIterable<string>;
+  /** Resolve once the resource accepts SSH connections (or reject on timeout). */
+  waitUntilReachable(opts?: { timeoutMs?: number; port?: number }): Promise<void>;
 }
 
 interface StorageObject {
@@ -142,10 +189,12 @@ function renderResourceGroups(plugin: WorkflowPluginInfo): string {
     ops.push(
       `    /** Fetch a ${rt.displayName} by its provider id. */\n    get(externalId: string): Promise<${ret}>;`,
     );
-    if (rt.supportsCreate)
+    if (rt.supportsCreate) {
+      const createFieldsType = renderCreateFieldsType(rt.createFields);
       ops.push(
-        `    /** Create a ${rt.displayName}. */\n    create(fields: Record<string, string>, parentResourceId?: string): Promise<${ret}>;`,
+        `    /** Create a ${rt.displayName}. */\n    create(fields: ${createFieldsType}, parentResourceId?: string): Promise<${ret}>;`,
       );
+    }
     if (rt.supportsUpdate)
       ops.push(
         `    /** Update a ${rt.displayName}. */\n    update(resourceId: string, fields: Record<string, string>): Promise<${ret}>;`,

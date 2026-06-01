@@ -113,6 +113,22 @@ export interface WorkflowAccountInfo {
   displayName: string;
 }
 
+/**
+ * One field of a resource type's create form, distilled from the plugin's
+ * `getCreateConfig`. Drives typed `create({...})` autocomplete in codegen so the
+ * author sees real field keys (and, where enumerable, real option values)
+ * instead of a generic `Record<string, string>`.
+ */
+export interface WorkflowCreateFieldInfo {
+  key: string;
+  /** The plugin-base `CreateFieldKind` (kept as string to avoid a plugin dep here). */
+  kind: string;
+  required: boolean;
+  /** Enumerable option ids (select/region/size/image/disk/policy), when known. */
+  options?: string[];
+  description?: string;
+}
+
 /** A resource type descriptor (subset of plugin-base ResourceTypeDefinition). */
 export interface WorkflowResourceTypeInfo {
   id: string;
@@ -124,6 +140,11 @@ export interface WorkflowResourceTypeInfo {
   supportsDelete: boolean;
   /** True when the owning plugin implements storage object listing. */
   storage?: boolean;
+  /**
+   * Distilled create-form fields (best-effort; populated by the host via
+   * `getCreateConfig`). Absent → codegen falls back to `Record<string, string>`.
+   */
+  createFields?: WorkflowCreateFieldInfo[];
 }
 
 /** Everything codegen needs about one plugin that has at least one account. */

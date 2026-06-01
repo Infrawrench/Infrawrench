@@ -17,3 +17,4 @@ export * from "./types.js";
 export * from "./host.js";
 export { generateInfraDts, type GenerateInfraDtsInput } from "./codegen.js";
 export { buildWorkflowHost, type ClientHostDeps } from "./build-host.js";
+export { createFieldsFromConfig } from "./create-fields.js";

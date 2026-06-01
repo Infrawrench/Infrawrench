@@ -11,7 +11,15 @@
  */
 import type { PluginClient, ResourceInstance } from "@infrawrench/plugin-base";
 
-import type { ResourceInstanceLite, StorageObjectBody, WorkflowHost } from "./host.js";
+import type {
+  ResourceInstanceLite,
+  SshExecParamsLite,
+  SshExecResultLite,
+  SshProbeParamsLite,
+  SshStreamChunkLite,
+  StorageObjectBody,
+  WorkflowHost,
+} from "./host.js";
 import type { MetricValue, PromptSpec, WorkflowPluginInfo } from "./types.js";
 
 export interface ClientHostDeps {
@@ -27,6 +35,17 @@ export interface ClientHostDeps {
   listMetrics(): Promise<Record<string, MetricValue>>;
   /** Raise an interactive prompt (only reached for interactive runs). */
   prompt(spec: PromptSpec): Promise<MetricValue>;
+
+  /** Run an SSH command on a resource to completion (powers `resource.ssh`). */
+  sshExec?(params: SshExecParamsLite): Promise<SshExecResultLite>;
+  /** Begin a streaming SSH command; returns a read token. */
+  sshStreamStart?(params: SshExecParamsLite): Promise<{ streamId: string }>;
+  /** Read the next stdout chunk of a streaming command (or signal done). */
+  sshStreamRead?(streamId: string): Promise<SshStreamChunkLite>;
+  /** Tear down a streaming command early. */
+  sshStreamClose?(streamId: string): Promise<void>;
+  /** Poll until the resource accepts SSH connections, or time out. */
+  sshProbe?(params: SshProbeParamsLite): Promise<boolean>;
 }
 
 /** Compose the canonical resource id used by plugin clients. */
@@ -142,5 +161,13 @@ export function buildWorkflowHost(deps: ClientHostDeps): WorkflowHost {
     getMetric: (key) => deps.getMetric(key),
     setMetric: (key, value) => deps.setMetric(key, value),
     listMetrics: () => deps.listMetrics(),
+
+    // SSH capabilities are forwarded only when the platform supplies them; when
+    // absent, dispatch surfaces a WorkflowCapabilityError to the workflow.
+    ...(deps.sshExec ? { sshExec: deps.sshExec } : {}),
+    ...(deps.sshStreamStart ? { sshStreamStart: deps.sshStreamStart } : {}),
+    ...(deps.sshStreamRead ? { sshStreamRead: deps.sshStreamRead } : {}),
+    ...(deps.sshStreamClose ? { sshStreamClose: deps.sshStreamClose } : {}),
+    ...(deps.sshProbe ? { sshProbe: deps.sshProbe } : {}),
   };
 }

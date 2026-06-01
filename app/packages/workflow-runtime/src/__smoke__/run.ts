@@ -24,6 +24,21 @@ const PLUGINS: WorkflowPluginInfo[] = [
         supportsDelete: true,
         storage: true,
       },
+      {
+        // A non-storage createable type WITH a distilled create-field schema, so
+        // codegen should type create({...}) instead of Record<string, string>.
+        id: "worker",
+        displayName: "Worker",
+        pluralDisplayName: "Workers",
+        outputs: [{ key: "url", label: "URL" }],
+        supportsCreate: true,
+        supportsUpdate: false,
+        supportsDelete: true,
+        createFields: [
+          { key: "name", kind: "text", required: true },
+          { key: "region", kind: "region-picker", required: false, options: ["wnam", "enam"] },
+        ],
+      },
     ],
   },
 ];
@@ -84,7 +99,33 @@ const host: WorkflowHost = {
   async listMetrics() {
     return { ...metrics };
   },
+  async sshExec() {
+    return {
+      stdoutBase64: Buffer.from("hello world\n").toString("base64"),
+      stderrBase64: "",
+      code: 0,
+    };
+  },
+  async sshStreamStart() {
+    sshStreamReads = 0;
+    return { streamId: "stream-1" };
+  },
+  async sshStreamRead() {
+    // Emit two chunks ("foo", "bar") then signal done.
+    sshStreamReads += 1;
+    if (sshStreamReads === 1)
+      return { dataBase64: Buffer.from("foo").toString("base64"), done: false };
+    if (sshStreamReads === 2)
+      return { dataBase64: Buffer.from("bar").toString("base64"), done: false };
+    return { done: true, code: 0 };
+  },
+  async sshStreamClose() {},
+  async sshProbe() {
+    return true;
+  },
 };
+
+let sshStreamReads = 0;
 
 const SOURCE = `
 const cf = infra.accounts.cloudflare.getByName("prod");
@@ -100,10 +141,20 @@ const body = await bucket.get("config.json");
 const cfg = body.json<{ hello: string; n: number }>();
 infra.log("config.hello:", cfg.hello);
 
+// SSH: single combined call — full string result, streamed chunks, and probe.
+await bucket.waitUntilReachable();
+const sshOut = await bucket.ssh("echo hi", { sshKey: "k" });
+infra.log("ssh out:", sshOut.trim());
+let streamed = "";
+for await (const chunk of bucket.ssh("tail -f log", { sshKey: "k", stream: true, encoding: "utf8" })) {
+  streamed += chunk;
+}
+infra.log("ssh streamed:", streamed);
+
 const prev = infra.metrics.runCount ?? 0;
 infra.metrics.runCount = prev + 1;
 
-await infra.output({ hello: cfg.hello, buckets: buckets.length, runCount: prev + 1 });
+await infra.output({ hello: cfg.hello, buckets: buckets.length, runCount: prev + 1, sshOut: sshOut.trim(), streamed });
 `;
 
 async function main() {
@@ -149,6 +200,15 @@ async function main() {
   const dtsHasGetStorage = dts.includes("get(externalId: string): Promise<StorageResource>");
   const dtsHasCreateMethod = dts.includes("create(fields: Record<string, string>");
   const dtsOmitsUpdate = !dts.includes("update(resourceId"); // r2-bucket has supportsUpdate=false
+  // worker has createFields → create() is typed with real keys + a region union.
+  const dtsHasTypedCreate =
+    dts.includes('region?: "wnam" | "enam" | (string & {})') && dts.includes("name: string");
+  // ssh API is on every resource (declared on WorkflowResource).
+  const dtsHasSsh =
+    dts.includes("ssh(command: string, opts?: SshExecOptions): Promise<string>") &&
+    dts.includes("waitUntilReachable(opts?: {");
+  console.log("DTS types create() from create fields:", dtsHasTypedCreate);
+  console.log("DTS exposes resource.ssh + waitUntilReachable:", dtsHasSsh);
   const dtsHasNoFlat = !dts.includes("getR2Bucket") && !dts.includes("listR2Buckets");
   const dtsHasNoCall = !dts.includes("call<T = unknown>");
   const dtsHasNoResources = !dts.includes("readonly resources:");
@@ -164,15 +224,23 @@ async function main() {
     dtsHasNoCall && dtsHasNoResources && dtsHasNoStorageNs,
   );
 
+  const sshResult = result.output as { sshOut: string; streamed: string };
+  console.log("SSH exec output:", JSON.stringify(sshResult.sshOut));
+  console.log("SSH streamed output:", JSON.stringify(sshResult.streamed));
+
   const ok =
     result.status === "success" &&
     (result.output as { runCount: number }).runCount === 1 &&
     metrics["runCount"] === 1 &&
+    sshResult.sshOut === "hello world" &&
+    sshResult.streamed === "foobar" &&
     dtsHasMetricProp &&
     dtsHasGroup &&
     dtsHasListMethod &&
     dtsHasGetStorage &&
     dtsHasCreateMethod &&
+    dtsHasTypedCreate &&
+    dtsHasSsh &&
     dtsOmitsUpdate &&
     dtsHasNoFlat &&
     dtsHasNoCall &&

@@ -17,6 +17,99 @@ export const PRELUDE = String.raw`
     return raw === undefined || raw === null || raw === "" ? undefined : JSON.parse(raw);
   };
 
+  // Minimal base64 → Uint8Array decode (QuickJS has no guaranteed atob).
+  const B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  const b64 = (s) => {
+    if (!s) return new Uint8Array(0);
+    const lookup = b64.lookup || (b64.lookup = (() => {
+      const t = new Uint8Array(256);
+      for (let i = 0; i < B64.length; i++) t[B64.charCodeAt(i)] = i;
+      return t;
+    })());
+    let len = s.length;
+    while (len > 0 && s[len - 1] === "=") len--;
+    const out = new Uint8Array((len * 3) >> 2);
+    let bits = 0, acc = 0, p = 0;
+    for (let i = 0; i < len; i++) {
+      acc = (acc << 6) | lookup[s.charCodeAt(i)];
+      bits += 6;
+      if (bits >= 8) { bits -= 8; out[p++] = (acc >> bits) & 0xff; }
+    }
+    return out;
+  };
+  // Minimal UTF-8 decode (avoid assuming TextDecoder).
+  const utf8 = (bytes) => {
+    if (typeof TextDecoder !== "undefined") return new TextDecoder().decode(bytes);
+    let out = "";
+    for (let i = 0; i < bytes.length;) {
+      const c = bytes[i++];
+      if (c < 0x80) out += String.fromCharCode(c);
+      else if (c < 0xe0) out += String.fromCharCode(((c & 0x1f) << 6) | (bytes[i++] & 0x3f));
+      else if (c < 0xf0)
+        out += String.fromCharCode(((c & 0x0f) << 12) | ((bytes[i++] & 0x3f) << 6) | (bytes[i++] & 0x3f));
+      else {
+        const cp = ((c & 0x07) << 18) | ((bytes[i++] & 0x3f) << 12) | ((bytes[i++] & 0x3f) << 6) | (bytes[i++] & 0x3f);
+        const u = cp - 0x10000;
+        out += String.fromCharCode(0xd800 + (u >> 10), 0xdc00 + (u & 0x3ff));
+      }
+    }
+    return out;
+  };
+
+  // SSH ops mixed onto every resource: a single combined ssh(command, opts)
+  // that resolves the full output (string, or Uint8Array when encoding:"binary")
+  // or — when opts.stream is set — returns an async-iterable of stdout chunks.
+  const makeSshOps = (accountId, typeId, resourceId) => {
+    const baseFor = (command, opts) => ({
+      accountId, typeId, resourceId, command,
+      sshKeyId: opts.sshKey, username: opts.username, timeoutMs: opts.timeoutMs,
+    });
+    const ssh = (command, opts) => {
+      opts = opts || {};
+      if (opts.stream) {
+        return {
+          [Symbol.asyncIterator]() {
+            let streamId = null;
+            let started = null;
+            const ensure = async () => {
+              if (!started) started = rpc("ssh.streamStart", baseFor(command, opts)).then((r) => { streamId = r.streamId; });
+              await started;
+            };
+            return {
+              async next() {
+                await ensure();
+                const chunk = await rpc("ssh.streamRead", { streamId });
+                if (chunk && chunk.done) {
+                  if (typeof chunk.code === "number" && chunk.code !== 0)
+                    throw new Error("ssh stream exited with code " + chunk.code);
+                  return { value: undefined, done: true };
+                }
+                const bytes = b64(chunk && chunk.dataBase64);
+                return { value: opts.encoding === "utf8" ? utf8(bytes) : bytes, done: false };
+              },
+              async return(value) {
+                if (streamId) { try { await rpc("ssh.streamClose", { streamId }); } catch (e) {} }
+                return { value, done: true };
+              },
+            };
+          },
+        };
+      }
+      return rpc("ssh.exec", baseFor(command, opts)).then((r) => {
+        if (r.code !== 0) throw new Error("ssh command exited with code " + r.code + ": " + utf8(b64(r.stderrBase64)));
+        const bytes = b64(r.stdoutBase64);
+        return opts.encoding === "binary" ? bytes : utf8(bytes);
+      });
+    };
+    const waitUntilReachable = (opts) => {
+      opts = opts || {};
+      return rpc("ssh.probe", { accountId, typeId, resourceId, port: opts.port, timeoutMs: opts.timeoutMs }).then((ok) => {
+        if (!ok) throw new Error("Resource did not become SSH-reachable in time");
+      });
+    };
+    return { ssh, waitUntilReachable };
+  };
+
   // Object-read ops bound to one bucket, mixed onto a storage-capable
   // resource so e.g. (await cf.getR2Bucket("configs")).get("app.json") works.
   const bucketOf = (r) =>
@@ -68,10 +161,15 @@ export const PRELUDE = String.raw`
       const group = camel(rt.pluralDisplayName);
       if (!group || group in handle) continue;
       const h = makeResourceHandle(acc.id, rt.id);
-      // Storage-capable types return resources augmented with bucket-read ops.
-      const wrap = rt.storage
-        ? (r) => (r ? Object.assign({}, r, makeStorageOps(acc.id, bucketOf(r))) : r)
-        : (r) => r;
+      // Every resource gets ssh()/waitUntilReachable(); storage-capable types
+      // additionally get bucket-read ops. The resource's canonical id (r.id) is
+      // what the host resolves outputs (e.g. the SSH host) against.
+      const wrap = (r) => {
+        if (!r) return r;
+        const augmented = Object.assign({}, r, makeSshOps(acc.id, rt.id, r.id));
+        if (rt.storage) Object.assign(augmented, makeStorageOps(acc.id, bucketOf(r)));
+        return augmented;
+      };
       const g = {
         list: async () => (await h.list()).map(wrap),
         get: async (externalId) => wrap(await h.get(externalId)),
