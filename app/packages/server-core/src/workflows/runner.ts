@@ -31,11 +31,14 @@ import { buildPluginHostServices } from "../host-services";
 import { applyCredentialRewriters } from "../credential-rewriters";
 import { buildWorkflowSshDeps } from "./ssh-host";
 import { enrichCreateFields } from "./create-fields-cache";
+import { buildSshKeyFieldResolver } from "./ssh-key-fields";
 
 // Re-exported so the cloud web host (which builds its own interactive host) can
-// reuse the same SSH deps and create-field enrichment as the poller.
+// reuse the same SSH deps, create-field enrichment, and SSH-key resolution as
+// the poller.
 export { buildWorkflowSshDeps } from "./ssh-host";
 export { enrichCreateFields } from "./create-fields-cache";
+export { buildSshKeyFieldResolver, listOrgSshKeyNames } from "./ssh-key-fields";
 
 export interface RunOrgWorkflowOptions {
   organizationId: string;
@@ -217,6 +220,10 @@ export function buildOrgWorkflowHost(organizationId: string, workflowId: string)
     prompt: async () => {
       throw new Error("This run is not interactive; infra.prompt() is unavailable.");
     },
+    transformCreateFields: buildSshKeyFieldResolver(organizationId, async (accountId) => {
+      const ctx = await getOrgAccountClient(accountId, organizationId);
+      return ctx ? { client: ctx.client, pluginId: ctx.account.pluginId } : null;
+    }),
     ...buildWorkflowSshDeps(organizationId),
   });
 }

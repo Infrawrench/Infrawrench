@@ -67,6 +67,25 @@ async function loadPrivateKey(organizationId: string, sshKeyId: string): Promise
 }
 
 /**
+ * Read a resource's SSH host from its live instance. The address lives in the
+ * resource's `resolvedOutputs` (e.g. a droplet's `ipv4`), populated by
+ * `getResource` — NOT via `resolveOutput` (which most plugins don't implement
+ * for these output keys). Falls back to a same-named `fields` value. Mirrors the
+ * interactive SSH/tunnel path (see web `tunnel-ssh-attach.ts`).
+ */
+async function resolveHostFromResource(
+  client: PluginClient,
+  hostOutputKey: string,
+  params: { accountId: string; typeId: string; resourceId: string },
+): Promise<string | null> {
+  const instance = await client.getResource(params.typeId, params.resourceId, params.accountId);
+  const value =
+    instance.resolvedOutputs?.[hostOutputKey] ??
+    (instance.fields?.[hostOutputKey] as string | undefined);
+  return value ? String(value) : null;
+}
+
+/**
  * Resolve a usable {@link SshConfig} for a workflow resource. Uses the plugin's
  * native SSH config when available; otherwise resolves the host from the
  * resource type's `sshEndpoint` output and authenticates with an org SSH key.
@@ -102,12 +121,7 @@ async function resolveResourceSshConfig(
     );
   }
 
-  const host = await client.resolveOutput(
-    params.typeId,
-    params.resourceId,
-    sshEndpoint.hostOutputKey,
-    params.accountId,
-  );
+  const host = await resolveHostFromResource(client, sshEndpoint.hostOutputKey, params);
   if (!host) {
     throw new Error(
       `Could not resolve the SSH host (output "${sshEndpoint.hostOutputKey}") for this resource — is it running yet?`,
@@ -138,6 +152,29 @@ async function resourceConnection(
   if (!ctx) throw new Error(`Account ${params.accountId} not found in this organization.`);
   const rt = ctx.plugin.resourceTypes.find((r) => r.id === params.typeId);
   return resolveResourceSshConfig(organizationId, ctx.client, rt?.sshEndpoint, params);
+}
+
+/**
+ * Resolve just the host/port to probe — no SSH key required (unlike
+ * {@link resourceConnection}). Returns null when the host isn't available yet
+ * (e.g. a freshly-created VM that has no IP assigned), so the caller can retry.
+ */
+async function resolveResourceHost(
+  organizationId: string,
+  params: { accountId: string; typeId: string; resourceId: string },
+): Promise<{ host: string; port: number } | null> {
+  const ctx = await getOrgAccountClient(params.accountId, organizationId).catch(() => null);
+  if (!ctx) return null;
+  const native = ctx.client.getSshConfig?.();
+  if (native?.host) return { host: native.host, port: native.port };
+  const sshEndpoint = ctx.plugin.resourceTypes.find((r) => r.id === params.typeId)?.sshEndpoint;
+  if (!sshEndpoint) return null;
+  try {
+    const host = await resolveHostFromResource(ctx.client, sshEndpoint.hostOutputKey, params);
+    return host ? { host, port: 22 } : null;
+  } catch {
+    return null;
+  }
 }
 
 function fingerprint(hostKey: Buffer): string {
@@ -210,6 +247,7 @@ function connect(
   config: SshConfig,
   onReady: (client: SshClient) => void,
   onError: (err: Error) => void,
+  skipHostKeyCheck = false,
 ): SshClient {
   const client = new SshClient();
   const errorRef = { value: null as Error | null };
@@ -223,7 +261,10 @@ function connect(
     username: config.username,
     privateKey: config.privateKey,
     readyTimeout: DEFAULT_EXEC_TIMEOUT_MS,
-    hostVerifier: makeTofuVerifier(organizationId, config.host, config.port, errorRef),
+    // skipHostKeyCheck → accept any key without verifying/pinning it.
+    hostVerifier: skipHostKeyCheck
+      ? (_key: Buffer, verify: (ok: boolean) => void) => verify(true)
+      : makeTofuVerifier(organizationId, config.host, config.port, errorRef),
   });
   return client;
 }
@@ -284,6 +325,7 @@ export function buildWorkflowSshDeps(organizationId: string) {
               });
             },
             reject,
+            params.skipHostKeyCheck,
           );
           if (params.timeoutMs) {
             setTimeout(() => {
@@ -331,6 +373,7 @@ export function buildWorkflowSshDeps(organizationId: string) {
           });
         },
         reject,
+        params.skipHostKeyCheck,
       );
     });
     return { streamId };
@@ -388,33 +431,31 @@ export function buildWorkflowSshDeps(organizationId: string) {
     }
   };
 
+  const tcpAttempt = (host: string, port: number): Promise<boolean> =>
+    new Promise<boolean>((resolve) => {
+      const socket = net.connect({ host, port });
+      const done = (ok: boolean) => {
+        socket.removeAllListeners();
+        socket.destroy();
+        resolve(ok);
+      };
+      socket.setTimeout(PROBE_INTERVAL_MS);
+      socket.once("connect", () => done(true));
+      socket.once("error", () => done(false));
+      socket.once("timeout", () => done(false));
+    });
+
   const sshProbe = async (params: SshProbeParamsLite): Promise<boolean> => {
-    const config = await resourceConnection(organizationId, {
-      accountId: params.accountId,
-      typeId: params.typeId,
-      resourceId: params.resourceId,
-    }).catch(() => null);
-    const host = config?.host;
-    const port = params.port ?? config?.port ?? 22;
-    if (!host) return false;
     const deadline = Date.now() + (params.timeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS);
-
-    const attempt = (): Promise<boolean> =>
-      new Promise<boolean>((resolve) => {
-        const socket = net.connect({ host, port });
-        const done = (ok: boolean) => {
-          socket.removeAllListeners();
-          socket.destroy();
-          resolve(ok);
-        };
-        socket.setTimeout(PROBE_INTERVAL_MS);
-        socket.once("connect", () => done(true));
-        socket.once("error", () => done(false));
-        socket.once("timeout", () => done(false));
-      });
-
+    // Resolve the host *inside* the loop: a just-created VM may not have an IP
+    // yet, so keep re-resolving (and re-probing) until it's reachable or we time
+    // out — rather than failing the instant the address isn't available.
     while (Date.now() < deadline) {
-      if (await attempt()) return true;
+      const target = await resolveResourceHost(organizationId, params);
+      if (target) {
+        const port = params.port ?? target.port ?? 22;
+        if (await tcpAttempt(target.host, port)) return true;
+      }
       if (Date.now() + PROBE_INTERVAL_MS >= deadline) break;
       await new Promise((r) => setTimeout(r, PROBE_INTERVAL_MS));
     }

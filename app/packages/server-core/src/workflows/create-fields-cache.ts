@@ -19,6 +19,8 @@ import {
 import type { PluginClient } from "@infrawrench/plugin-base";
 
 const TTL_MS = 10 * 60 * 1000;
+/** Cap a single `getCreateConfig` so one slow provider can't stall the editor's typings. */
+const CONFIG_TIMEOUT_MS = 8_000;
 
 interface CacheEntry {
   at: number;
@@ -28,10 +30,58 @@ interface CacheEntry {
 
 const cache = new Map<string, CacheEntry>();
 
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("getCreateConfig timed out")), ms);
+    p.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(timer);
+        reject(e);
+      },
+    );
+  });
+}
+
 /**
- * Fill `createFields` on every createable resource type, in place. `getClient`
- * lazily opens one plugin client for the account group (only called if at least
- * one createable type needs a fresh fetch).
+ * Distilled create fields for a single resource type, from cache or a fresh
+ * `getCreateConfig`. Returns null when the plugin can't produce a config (e.g.
+ * child types needing a parentResourceId, or a slow/erroring provider). Never
+ * throws — failures resolve to null so callers (codegen) fall back to generic.
+ */
+export async function getCreateFieldsForType(
+  pluginId: string,
+  typeId: string,
+  getClient: () => Promise<PluginClient>,
+): Promise<WorkflowCreateFieldInfo[] | null> {
+  const key = `${pluginId}:${typeId}`;
+  const now = Date.now();
+  const hit = cache.get(key);
+  if (hit && now - hit.at <= TTL_MS) return hit.value;
+
+  let value: WorkflowCreateFieldInfo[] | null = null;
+  try {
+    const client = await getClient();
+    if (client.getCreateConfig) {
+      value = createFieldsFromConfig(
+        await withTimeout(client.getCreateConfig(typeId), CONFIG_TIMEOUT_MS),
+      );
+    }
+  } catch {
+    value = null;
+  }
+  cache.set(key, { at: now, value });
+  return value;
+}
+
+/**
+ * Fill `createFields` on every createable resource type, in place. One plugin
+ * client is opened (memoized) and the per-type configs are fetched concurrently
+ * so a provider with many createable types doesn't serialize a dozen live API
+ * calls on every typings load. Never throws.
  */
 export async function enrichCreateFields(
   pluginId: string,
@@ -41,38 +91,13 @@ export async function enrichCreateFields(
   const createable = resourceTypes.filter((rt) => rt.supportsCreate);
   if (createable.length === 0) return;
 
-  const now = Date.now();
-  const stale = createable.filter((rt) => {
-    const hit = cache.get(`${pluginId}:${rt.id}`);
-    return !hit || now - hit.at > TTL_MS;
-  });
+  let clientPromise: Promise<PluginClient> | null = null;
+  const getClientOnce = () => (clientPromise ??= getClient());
 
-  let client: PluginClient | null = null;
-  if (stale.length > 0) {
-    try {
-      client = await getClient();
-    } catch {
-      client = null;
-    }
-  }
-
-  for (const rt of createable) {
-    const key = `${pluginId}:${rt.id}`;
-    let entry = cache.get(key);
-    if (!entry || now - entry.at > TTL_MS) {
-      let value: WorkflowCreateFieldInfo[] | null = null;
-      if (client?.getCreateConfig) {
-        try {
-          const config = await client.getCreateConfig(rt.id);
-          value = createFieldsFromConfig(config);
-        } catch {
-          // Child types needing a parentResourceId, slow/erroring APIs, etc.
-          value = null;
-        }
-      }
-      entry = { at: now, value };
-      cache.set(key, entry);
-    }
-    if (entry.value && entry.value.length > 0) rt.createFields = entry.value;
-  }
+  await Promise.all(
+    createable.map(async (rt) => {
+      const value = await getCreateFieldsForType(pluginId, rt.id, getClientOnce);
+      if (value && value.length > 0) rt.createFields = value;
+    }),
+  );
 }

@@ -20,6 +20,7 @@ import { db } from "@infrawrench/server-core/db/client";
 import { workflowMetrics, workflowRuns, workflows } from "@infrawrench/server-core/db/schema";
 
 import { requirePermission } from "../../auth/permissions";
+import { listOrgSshKeyNames } from "@infrawrench/server-core/workflows/runner";
 import { listOrgPlugins } from "../../services/workflow-host";
 import { runWorkflowById } from "../../services/workflow-runner";
 
@@ -163,12 +164,18 @@ app.get("/:id/typings", async (c) => {
   requirePermission(c, "dashboards:read");
   const wf = await loadWorkflow(c, c.req.param("id"));
   if (!wf) return c.json({ error: "Not found" }, 404);
-  const plugins = await listOrgPlugins(orgId(c), { enrichCreateFields: true });
+  // Enrichment + key listing are best-effort niceties — never let them fail the
+  // whole typings response (which would drop the editor back to `infra: any`).
+  const [plugins, sshKeyNames] = await Promise.all([
+    listOrgPlugins(orgId(c), { enrichCreateFields: true }).catch(() => listOrgPlugins(orgId(c))),
+    listOrgSshKeyNames(orgId(c)).catch(() => [] as string[]),
+  ]);
   const trigger = wf.trigger as WorkflowTrigger;
   const dts = generateInfraDts({
     plugins,
     metrics: (wf.metricDefs ?? []) as MetricDef[],
     interactive: trigger.kind === "manual",
+    sshKeyNames,
   });
   return c.json({ dts });
 });

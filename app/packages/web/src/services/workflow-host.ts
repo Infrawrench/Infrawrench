@@ -16,6 +16,7 @@ import {
 } from "@infrawrench/workflow-runtime";
 import { loadPlugins } from "@infrawrench/server-core/plugin-loader";
 import {
+  buildSshKeyFieldResolver,
   buildWorkflowSshDeps,
   enrichCreateFields,
 } from "@infrawrench/server-core/workflows/runner";
@@ -175,6 +176,10 @@ export async function buildOrgWorkflowHost(opts: OrgWorkflowHostOptions): Promis
       (async () => {
         throw new Error("This run is not interactive; infra.prompt() is unavailable.");
       }),
+    transformCreateFields: buildSshKeyFieldResolver(organizationId, async (accountId) => {
+      const ctx = await getClientForAccount(accountId, organizationId);
+      return ctx ? { client: ctx.client, pluginId: ctx.account.pluginId } : null;
+    }),
     ...buildWorkflowSshDeps(organizationId),
   });
 }
