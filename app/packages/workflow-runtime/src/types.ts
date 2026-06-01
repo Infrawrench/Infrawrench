@@ -97,8 +97,8 @@ export const DEFAULT_RUN_LIMITS: RunLimits = {
 /** A prompt request raised by `infra.prompt(...)` inside a workflow. */
 export interface PromptSpec {
   message: string;
-  /** Input shape the UI should render. Defaults to "text". */
-  kind?: "text" | "password" | "number" | "boolean" | "select";
+  /** Input shape the UI should render. Defaults to "text". `code` is a multiline code editor. */
+  kind?: "text" | "password" | "number" | "boolean" | "select" | "code";
   /** Options for `kind: "select"`. */
   options?: { label: string; value: string }[];
   defaultValue?: string;

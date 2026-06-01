@@ -16,7 +16,7 @@ import {
 export function WorkflowPromptHost() {
   const [queue, setQueue] = useState<WorkflowPromptRequest[]>([]);
   const [text, setText] = useState("");
-  const inputRef = useRef<HTMLInputElement | HTMLSelectElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
     function onPrompt(e: Event) {
@@ -64,7 +64,11 @@ export function WorkflowPromptHost() {
 
   return (
     <Modal onClose={() => answer(null)}>
-      <div className="bg-surface-raised border border-border-strong rounded-xl shadow-2xl w-[440px] p-6">
+      <div
+        className={`bg-surface-raised border border-border-strong rounded-xl shadow-2xl p-6 ${
+          kind === "code" ? "w-[640px] max-w-[90vw]" : "w-[440px]"
+        }`}
+      >
         <h2 className="text-sm font-semibold text-on-surface mb-1">Workflow input</h2>
         <p className="text-sm text-on-surface-secondary whitespace-pre-wrap mb-4">{spec.message}</p>
 
@@ -94,7 +98,36 @@ export function WorkflowPromptHost() {
           </div>
         ) : (
           <>
-            {kind === "select" ? (
+            {kind === "code" ? (
+              <textarea
+                ref={(el) => {
+                  inputRef.current = el;
+                }}
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                spellCheck={false}
+                onKeyDown={(e) => {
+                  // ⌘/Ctrl+Enter submits; plain Enter inserts a newline.
+                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                    e.preventDefault();
+                    submitText();
+                    return;
+                  }
+                  // Tab inserts two spaces instead of moving focus.
+                  if (e.key === "Tab") {
+                    e.preventDefault();
+                    const el = e.currentTarget;
+                    const { selectionStart: s, selectionEnd: en } = el;
+                    const next = text.slice(0, s) + "  " + text.slice(en);
+                    setText(next);
+                    requestAnimationFrame(() => {
+                      el.selectionStart = el.selectionEnd = s + 2;
+                    });
+                  }
+                }}
+                className="w-full h-64 bg-surface-overlay border border-border-strong rounded px-2 py-1.5 text-xs font-mono text-on-surface placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500 mb-2 resize-y"
+              />
+            ) : kind === "select" ? (
               <select
                 ref={(el) => {
                   inputRef.current = el;
@@ -126,7 +159,12 @@ export function WorkflowPromptHost() {
                 className="w-full bg-surface-overlay border border-border-strong rounded px-2 py-1.5 text-sm text-on-surface placeholder:text-on-surface-faint focus:outline-none focus:border-blue-500 mb-4"
               />
             )}
-            <div className="flex justify-end gap-2">
+            <div className="flex items-center justify-end gap-2">
+              {kind === "code" && (
+                <span className="mr-auto text-[11px] text-on-surface-faint">
+                  <kbd>⌘</kbd>/<kbd>Ctrl</kbd>+<kbd>↵</kbd> to submit
+                </span>
+              )}
               <button
                 type="button"
                 onClick={() => answer(null)}

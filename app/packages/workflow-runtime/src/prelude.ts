@@ -43,14 +43,18 @@ export const PRELUDE = String.raw`
     delete: (resourceId) => rpc("resource.delete", { accountId, typeId, resourceId }),
   });
 
-  // PascalCase, preserving internal casing — MUST match codegen's pascalCase so
-  // the per-type method names built here line up with the generated typings.
-  const pascal = (s) =>
-    s
-      .split(/[^A-Za-z0-9]+/)
-      .filter(Boolean)
+  // camelCase: first word fully lowercased (leading acronyms read naturally:
+  // "DNS Records" → "dnsRecords"), following words capitalized. MUST match
+  // codegen's camelCase so group names line up with the generated typings.
+  const camel = (s) => {
+    const words = s.split(/[^A-Za-z0-9]+/).filter(Boolean);
+    if (words.length === 0) return "";
+    const tail = words
+      .slice(1)
       .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
       .join("");
+    return words[0].toLowerCase() + tail;
+  };
 
   const makeAccountHandle = (acc, resourceTypes) => {
     const handle = {
@@ -61,23 +65,23 @@ export const PRELUDE = String.raw`
         rpc("resource.resolveOutput", { accountId: acc.id, typeId, resourceId, outputKey }),
     };
     for (const rt of resourceTypes) {
+      const group = camel(rt.pluralDisplayName);
+      if (!group || group in handle) continue;
       const h = makeResourceHandle(acc.id, rt.id);
-      const s = pascal(rt.displayName);
-      const p = pascal(rt.pluralDisplayName);
       // Storage-capable types return resources augmented with bucket-read ops.
       const wrap = rt.storage
         ? (r) => (r ? Object.assign({}, r, makeStorageOps(acc.id, bucketOf(r))) : r)
         : (r) => r;
-      if (!("list" + p in handle))
-        handle["list" + p] = async () => (await h.list()).map(wrap);
-      if (!("get" + s in handle)) handle["get" + s] = async (externalId) => wrap(await h.get(externalId));
-      if (rt.supportsCreate && !("create" + s in handle))
-        handle["create" + s] = async (fields, parentResourceId) =>
-          wrap(await h.create(fields, parentResourceId));
-      if (rt.supportsUpdate && !("update" + s in handle))
-        handle["update" + s] = async (resourceId, fields) => wrap(await h.update(resourceId, fields));
-      if (rt.supportsDelete && !("delete" + s in handle))
-        handle["delete" + s] = (resourceId) => h.delete(resourceId);
+      const g = {
+        list: async () => (await h.list()).map(wrap),
+        get: async (externalId) => wrap(await h.get(externalId)),
+      };
+      if (rt.supportsCreate)
+        g.create = async (fields, parentResourceId) => wrap(await h.create(fields, parentResourceId));
+      if (rt.supportsUpdate)
+        g.update = async (resourceId, fields) => wrap(await h.update(resourceId, fields));
+      if (rt.supportsDelete) g.delete = (resourceId) => h.delete(resourceId);
+      handle[group] = g;
     }
     return handle;
   };

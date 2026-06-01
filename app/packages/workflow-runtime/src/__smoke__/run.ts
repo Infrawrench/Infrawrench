@@ -90,12 +90,12 @@ const SOURCE = `
 const cf = infra.accounts.cloudflare.getByName("prod");
 infra.log("account id:", cf.id);
 
-// Per-resource-type camelCase method (replaces the old generic .call).
-const buckets = await cf.listR2Buckets();
+// Grouped per-resource-type accessor (replaces the old generic .call).
+const buckets = await cf.r2Buckets.list();
 infra.log("bucket count:", buckets.length);
 
 // Storage reads now hang off the bucket resource itself (no .storage namespace).
-const bucket = await cf.getR2Bucket("my-bucket");
+const bucket = await cf.r2Buckets.get("my-bucket");
 const body = await bucket.get("config.json");
 const cfg = body.json<{ hello: string; n: number }>();
 infra.log("config.hello:", cfg.hello);
@@ -143,20 +143,22 @@ async function main() {
   console.log("DTS has getById(acc_cf1):", dts.includes('getById(id: "acc_cf1" | (string & {}))'));
   const dtsHasMetricProp = dts.includes("runCount: number | null;");
   console.log("DTS has typed metric property:", dtsHasMetricProp);
-  // r2-bucket is storage-capable → its methods return StorageResource.
-  const dtsHasListMethod = dts.includes("listR2Buckets(): Promise<StorageResource[]>");
-  const dtsHasGetStorage = dts.includes(
-    "getR2Bucket(externalId: string): Promise<StorageResource>",
-  );
-  const dtsHasCreateMethod = dts.includes("createR2Bucket(");
-  const dtsOmitsUpdate = !dts.includes("updateR2Bucket("); // r2-bucket has supportsUpdate=false
+  // r2-bucket is storage-capable → the group's methods return StorageResource.
+  const dtsHasGroup = dts.includes("readonly r2Buckets: {");
+  const dtsHasListMethod = dts.includes("list(): Promise<StorageResource[]>");
+  const dtsHasGetStorage = dts.includes("get(externalId: string): Promise<StorageResource>");
+  const dtsHasCreateMethod = dts.includes("create(fields: Record<string, string>");
+  const dtsOmitsUpdate = !dts.includes("update(resourceId"); // r2-bucket has supportsUpdate=false
+  const dtsHasNoFlat = !dts.includes("getR2Bucket") && !dts.includes("listR2Buckets");
   const dtsHasNoCall = !dts.includes("call<T = unknown>");
   const dtsHasNoResources = !dts.includes("readonly resources:");
   const dtsHasNoStorageNs = !dts.includes("readonly storage:");
-  console.log("DTS has listR2Buckets:StorageResource[]:", dtsHasListMethod);
-  console.log("DTS get returns StorageResource:", dtsHasGetStorage);
-  console.log("DTS has createR2Bucket:", dtsHasCreateMethod);
-  console.log("DTS omits updateR2Bucket (read-only op):", dtsOmitsUpdate);
+  console.log("DTS has r2Buckets group:", dtsHasGroup);
+  console.log("DTS group.list returns StorageResource[]:", dtsHasListMethod);
+  console.log("DTS group.get returns StorageResource:", dtsHasGetStorage);
+  console.log("DTS group has create:", dtsHasCreateMethod);
+  console.log("DTS group omits update (read-only op):", dtsOmitsUpdate);
+  console.log("DTS has no flat get/listR2Bucket:", dtsHasNoFlat);
   console.log(
     "DTS dropped .call/.resources/.storage:",
     dtsHasNoCall && dtsHasNoResources && dtsHasNoStorageNs,
@@ -167,10 +169,12 @@ async function main() {
     (result.output as { runCount: number }).runCount === 1 &&
     metrics["runCount"] === 1 &&
     dtsHasMetricProp &&
+    dtsHasGroup &&
     dtsHasListMethod &&
     dtsHasGetStorage &&
     dtsHasCreateMethod &&
     dtsOmitsUpdate &&
+    dtsHasNoFlat &&
     dtsHasNoCall &&
     dtsHasNoResources &&
     dtsHasNoStorageNs &&

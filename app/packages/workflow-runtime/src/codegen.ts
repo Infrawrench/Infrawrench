@@ -21,16 +21,21 @@ function strLit(raw: string): string {
 }
 
 /**
- * PascalCase a human label, preserving existing internal casing (so "R2 Bucket"
- * → "R2Bucket", "DNS Record" → "DNSRecord"). MUST stay byte-identical to the
- * prelude's `pascal` so the generated method names match what the sandbox builds.
+ * camelCase a human label: the first word is fully lowercased (so leading
+ * acronyms read naturally — "DNS Records" → "dnsRecords", "IP Addresses" →
+ * "ipAddresses", "R2 Buckets" → "r2Buckets"), and each following word is
+ * capitalized with its internal casing kept. MUST stay byte-identical to the
+ * prelude's `camel` so generated group names match what the sandbox builds.
  */
-function pascalCase(raw: string): string {
-  return raw
-    .split(/[^A-Za-z0-9]+/)
-    .filter(Boolean)
+function camelCase(raw: string): string {
+  const words = raw.split(/[^A-Za-z0-9]+/).filter(Boolean);
+  const head = words[0];
+  if (!head) return "";
+  const tail = words
+    .slice(1)
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join("");
+  return head.toLowerCase() + tail;
 }
 
 /**
@@ -61,7 +66,7 @@ const STATIC_PREAMBLE = `// AUTO-GENERATED — do not edit. Reflects your connec
 
 interface PromptSpec {
   message: string;
-  kind?: "text" | "password" | "number" | "boolean" | "select";
+  kind?: "text" | "password" | "number" | "boolean" | "select" | "code";
   options?: { label: string; value: string }[];
   defaultValue?: string;
 }
@@ -108,56 +113,51 @@ function groupInterfaceName(pluginId: string): string {
 }
 
 /**
- * Per-resource-type camelCase methods on the account, named after each type's
- * (plural) display name: `list<Plural>()`, `get<Singular>(externalId)`, and —
- * only when the plugin supports the op — `create/update/delete<Singular>(...)`.
- * Read-only types still get list + get. Names are de-duped so a display-name
- * collision can't produce a duplicate identifier in the interface.
+ * One grouped accessor per resource type, named after the type's (camelCased,
+ * plural) display name — `account.<group>.list()/get(id)`, plus
+ * `create/update/delete(...)` only for the ops that provider supports
+ * (read-only types get just list + get). Groups are de-duped so a display-name
+ * collision can't produce a duplicate property.
  */
-function renderResourceMethods(plugin: WorkflowPluginInfo): string {
-  const lines: string[] = [];
+function renderResourceGroups(plugin: WorkflowPluginInfo): string {
+  const blocks: string[] = [];
   const used = new Set<string>();
-  const add = (name: string, decl: string) => {
-    if (used.has(name)) return;
-    used.add(name);
-    lines.push(decl);
-  };
   for (const rt of plugin.resourceTypes) {
-    const s = pascalCase(rt.displayName);
-    const p = pascalCase(rt.pluralDisplayName);
+    const group = camelCase(rt.pluralDisplayName);
+    if (!group || used.has(group)) continue;
+    used.add(group);
+    const prop = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(group) ? group : strLit(group);
     // Storage-capable types return resources you can read objects from.
     const ret = rt.storage ? "StorageResource" : "WorkflowResource";
-    add(`list${p}`, `  /** List all ${rt.pluralDisplayName}. */\n  list${p}(): Promise<${ret}[]>;`);
-    add(
-      `get${s}`,
-      `  /** Fetch a ${rt.displayName} by its provider id. */\n  get${s}(externalId: string): Promise<${ret}>;`,
+    const ops: string[] = [];
+    ops.push(`    /** List all ${rt.pluralDisplayName}. */\n    list(): Promise<${ret}[]>;`);
+    ops.push(
+      `    /** Fetch a ${rt.displayName} by its provider id. */\n    get(externalId: string): Promise<${ret}>;`,
     );
     if (rt.supportsCreate)
-      add(
-        `create${s}`,
-        `  /** Create a ${rt.displayName}. */\n  create${s}(fields: Record<string, string>, parentResourceId?: string): Promise<${ret}>;`,
+      ops.push(
+        `    /** Create a ${rt.displayName}. */\n    create(fields: Record<string, string>, parentResourceId?: string): Promise<${ret}>;`,
       );
     if (rt.supportsUpdate)
-      add(
-        `update${s}`,
-        `  /** Update a ${rt.displayName}. */\n  update${s}(resourceId: string, fields: Record<string, string>): Promise<${ret}>;`,
+      ops.push(
+        `    /** Update a ${rt.displayName}. */\n    update(resourceId: string, fields: Record<string, string>): Promise<${ret}>;`,
       );
     if (rt.supportsDelete)
-      add(
-        `delete${s}`,
-        `  /** Delete a ${rt.displayName}. */\n  delete${s}(resourceId: string): Promise<void>;`,
+      ops.push(
+        `    /** Delete a ${rt.displayName}. */\n    delete(resourceId: string): Promise<void>;`,
       );
+    blocks.push(`  /** ${rt.pluralDisplayName} */\n  readonly ${prop}: {\n${ops.join("\n")}\n  };`);
   }
-  return lines.join("\n");
+  return blocks.join("\n");
 }
 
 function renderAccountInterface(plugin: WorkflowPluginInfo): string {
-  const resourceMethods = renderResourceMethods(plugin);
+  const resourceGroups = renderResourceGroups(plugin);
   return `interface ${accountInterfaceName(plugin.pluginId)} {
   readonly id: string;
   readonly pluginId: ${strLit(plugin.pluginId)};
   readonly displayName: string;
-${resourceMethods ? `${resourceMethods}\n` : ""}  resolveOutput(typeId: string, resourceId: string, outputKey: string): Promise<string>;
+${resourceGroups ? `${resourceGroups}\n` : ""}  resolveOutput(typeId: string, resourceId: string, outputKey: string): Promise<string>;
 }`;
 }
 
