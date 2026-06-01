@@ -10,7 +10,14 @@ export interface WorkflowMetricDef {
 export type WorkflowTrigger =
   | { kind: "manual" }
   | { kind: "cron"; expression: string; timezone?: string }
-  | { kind: "git"; provider?: string; repo?: string; branch?: string; events?: string[] };
+  | {
+      kind: "git";
+      provider?: string;
+      repo?: string;
+      branch?: string;
+      events?: string[];
+      installationId?: number;
+    };
 
 export interface WorkflowSummary {
   id: string;
@@ -43,6 +50,24 @@ export interface WorkflowRunRow {
   finishedAt?: string | null;
   durationMs?: number | null;
   createdAt?: string;
+}
+
+/** A repo a connected GitHub App installation can access (for the git-trigger picker). */
+export interface GitRepoOption {
+  installationId: number;
+  fullName: string;
+  defaultBranch: string;
+}
+
+/** GitHub integration surface passed into the panel (web only). */
+export interface GitIntegration {
+  /** Whether the server has a GitHub App configured at all. */
+  configured: boolean;
+  /** Repos available across the org's connected installations. */
+  repos: GitRepoOption[];
+  /** Open the GitHub install/configure flow (and refresh on return). */
+  onConnect: () => void;
+  loading?: boolean;
 }
 
 export interface WorkflowMetricRow {

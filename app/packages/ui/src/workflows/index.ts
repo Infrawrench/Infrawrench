@@ -8,6 +8,8 @@ export type {
   WorkflowCardMetric,
 } from "./WorkflowDashboardCard.js";
 export type {
+  GitRepoOption,
+  GitIntegration,
   WorkflowClient,
   WorkflowSummary,
   WorkflowSaveBody,

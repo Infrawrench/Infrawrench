@@ -10,8 +10,9 @@ import { DashboardPanel } from "@/routes/org.$orgId.dashboard.$dashboardId";
 import { AccountPanel } from "@/routes/org.$orgId.accounts.$accountId";
 import { ResourcePanel } from "@/routes/org.$orgId.resources.$pluginId.$resourceTypeId.$resourceId";
 import { syncWorkspaceRouteFromPath } from "@/lib/workspace-tabs";
-import { WorkflowsPanel, type WorkflowClient } from "@infrawrench/ui/workflows";
+import { type WorkflowClient } from "@infrawrench/ui/workflows";
 import { createWebWorkflowClient } from "@/lib/workflow-client";
+import { WebWorkflowsPanel } from "./WebWorkflowsPanel";
 
 interface WebWorkspaceTabsViewportProps {
   orgId: string;
@@ -67,7 +68,7 @@ function renderPanel(tab: WorkspaceTab, orgId: string) {
     case "account":
       return <AccountPanel orgId={orgId} accountId={t.accountId} />;
     case "workflows":
-      return <WorkflowsPanel client={getWorkflowClient(orgId)} />;
+      return <WebWorkflowsPanel client={getWorkflowClient(orgId)} orgId={orgId} />;
     case "resource":
       if (!t.pluginId || !t.resourceTypeId) {
         // Without pluginId/resourceTypeId we can't construct the detail URL.

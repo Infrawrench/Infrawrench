@@ -3,6 +3,7 @@ import { useDraggable } from "@dnd-kit/core";
 
 import { WorkflowEditorView } from "./WorkflowEditorView.js";
 import type {
+  GitIntegration,
   WorkflowClient,
   WorkflowMetricDef,
   WorkflowMetricRow,
@@ -58,11 +59,23 @@ infra.log("hello from your workflow");
 
 interface WorkflowsPanelProps {
   client: WorkflowClient;
+  /**
+   * Whether git triggers are available. Off for the desktop/local client
+   * (workflows live locally with no always-on host to watch a repo); on for
+   * the web/proxy client, which connects GitHub and watches repos server-side.
+   */
+  gitTriggers?: boolean;
+  /** GitHub connection + repos for the git-trigger picker (web only). */
+  gitIntegration?: GitIntegration;
 }
 
 type TriggerKind = WorkflowTrigger["kind"];
 
-export function WorkflowsPanel({ client }: WorkflowsPanelProps) {
+export function WorkflowsPanel({
+  client,
+  gitTriggers = false,
+  gitIntegration,
+}: WorkflowsPanelProps) {
   const [list, setList] = useState<WorkflowSummary[]>([]);
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -293,7 +306,8 @@ export function WorkflowsPanel({ client }: WorkflowsPanelProps) {
 
           <TriggerEditor
             trigger={draft.trigger}
-            webhookToken={draft.webhookToken ?? null}
+            gitTriggers={gitTriggers}
+            gitIntegration={gitIntegration}
             onChange={(t) => patch({ trigger: t })}
           />
 
@@ -409,11 +423,13 @@ function describeCron(expr: string): string {
 
 function TriggerEditor({
   trigger,
-  webhookToken,
+  gitTriggers = false,
+  gitIntegration,
   onChange,
 }: {
   trigger: WorkflowTrigger;
-  webhookToken?: string | null;
+  gitTriggers?: boolean;
+  gitIntegration?: GitIntegration | undefined;
   onChange: (t: WorkflowTrigger) => void;
 }) {
   const kind = trigger.kind;
@@ -432,7 +448,8 @@ function TriggerEditor({
       >
         <option value="manual">Manual</option>
         <option value="cron">Cron</option>
-        <option value="git">Git</option>
+        {/* Git triggers need an always-on host to watch the repo — web/proxy only. */}
+        {(gitTriggers || kind === "git") && <option value="git">Git</option>}
       </select>
       {trigger.kind === "cron" && (
         <div className="flex flex-wrap items-center gap-2">
@@ -474,25 +491,70 @@ function TriggerEditor({
         </div>
       )}
       {trigger.kind === "git" && (
-        <>
-          <input
-            value={trigger.repo ?? ""}
-            onChange={(e) => onChange({ ...trigger, repo: e.target.value })}
-            placeholder="owner/repo"
-            className="bg-transparent border border-white/15 rounded px-2 py-1"
-          />
-          <input
-            value={trigger.branch ?? ""}
-            onChange={(e) => onChange({ ...trigger, branch: e.target.value })}
-            placeholder="branch (optional)"
-            className="bg-transparent border border-white/15 rounded px-2 py-1"
-          />
-          {webhookToken && (
-            <span className="opacity-60">
-              Webhook: <code className="opacity-90">/api/workflows/git/{webhookToken}</code>
-            </span>
+        <div className="flex flex-wrap items-center gap-2">
+          {!gitIntegration?.configured ? (
+            <span className="opacity-60">GitHub isn’t configured on this server.</span>
+          ) : gitIntegration.repos.length === 0 ? (
+            <>
+              <button
+                type="button"
+                onClick={gitIntegration.onConnect}
+                className="px-2 py-1 rounded bg-white/10 hover:bg-white/20"
+              >
+                Connect GitHub
+              </button>
+              <span className="opacity-50">
+                {gitIntegration.loading ? "Loading…" : "Install the app and pick repos to watch."}
+              </span>
+            </>
+          ) : (
+            <>
+              <select
+                value={trigger.repo ?? ""}
+                onChange={(e) => {
+                  const repo = gitIntegration.repos.find((r) => r.fullName === e.target.value);
+                  onChange(
+                    repo
+                      ? {
+                          kind: "git",
+                          provider: "github",
+                          repo: repo.fullName,
+                          installationId: repo.installationId,
+                          branch: trigger.branch || repo.defaultBranch,
+                          events: trigger.events ?? ["push"],
+                        }
+                      : { kind: "git", events: trigger.events ?? ["push"] },
+                  );
+                }}
+                className="bg-transparent border border-white/15 rounded px-2 py-1 max-w-56"
+                aria-label="Repository"
+              >
+                <option value="">Select a repo…</option>
+                {gitIntegration.repos.map((r) => (
+                  <option key={`${r.installationId}:${r.fullName}`} value={r.fullName}>
+                    {r.fullName}
+                  </option>
+                ))}
+              </select>
+              <input
+                value={trigger.branch ?? ""}
+                onChange={(e) => onChange({ ...trigger, branch: e.target.value })}
+                placeholder="branch"
+                className="bg-transparent border border-white/15 rounded px-2 py-1 w-28 font-mono"
+                aria-label="Branch"
+              />
+              <button
+                type="button"
+                onClick={gitIntegration.onConnect}
+                title="Add or remove repositories on GitHub"
+                className="opacity-60 hover:opacity-100 px-1.5 py-1 rounded hover:bg-white/10"
+              >
+                + repos
+              </button>
+              <span className="opacity-50">Runs on each new commit to the branch.</span>
+            </>
           )}
-        </>
+        </div>
       )}
       {kind === "manual" && <span className="opacity-50">infra.prompt() available</span>}
     </div>
