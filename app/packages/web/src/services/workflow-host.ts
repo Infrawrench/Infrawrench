@@ -36,6 +36,8 @@ export interface OrgWorkflowHostOptions {
   readStorageObject?: (accountId: string, bucket: string, key: string) => Promise<Uint8Array>;
   /** Debugger line hook (instrumented runs); blocks per line until continued. */
   line?: (line: number) => Promise<void>;
+  /** Abort the run (Stop) — lets in-flight SSH probes bail out. */
+  signal?: AbortSignal;
 }
 
 /**
@@ -183,6 +185,6 @@ export async function buildOrgWorkflowHost(opts: OrgWorkflowHostOptions): Promis
       return ctx ? { client: ctx.client, pluginId: ctx.account.pluginId } : null;
     }),
     ...(opts.line ? { line: opts.line } : {}),
-    ...buildWorkflowSshDeps(organizationId),
+    ...buildWorkflowSshDeps(organizationId, opts.signal ? { signal: opts.signal } : {}),
   });
 }

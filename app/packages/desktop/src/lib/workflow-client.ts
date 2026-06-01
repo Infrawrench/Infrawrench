@@ -623,11 +623,15 @@ export async function runWorkflowById(
   // blocks at a breakpoint / while stepping until the user resumes/steps/stops.
   const debug = opts.debug;
   let stepping = false;
+  let stopRequested = false;
   let stopMain: (() => void) | null = null;
   let pendingResume: (() => void) | null = null;
   let pendingReject: ((e: Error) => void) | null = null;
   const debugLine = debug
     ? async (n: number): Promise<void> => {
+        // Unwind at the next line after Stop (the guest is mostly suspended in
+        // host calls, so the abort signal alone can't end it promptly).
+        if (stopRequested) throw new Error("Workflow stopped");
         debug.onLine?.(n);
         if (debug.breakpoints.has(n) || stepping) {
           stepping = false;
@@ -649,8 +653,9 @@ export async function runWorkflowById(
       pendingResume?.();
     };
     debug.stop = () => {
-      stopMain?.();
-      pendingReject?.(new Error("Workflow stopped"));
+      stopRequested = true;
+      stopMain?.(); // abort signal (backstop for long sync loops)
+      pendingReject?.(new Error("Workflow stopped")); // unblock a breakpoint pause
     };
   }
   const metricDefs = safeParse<MetricDef[]>(wf.metric_defs, []);
@@ -746,6 +751,7 @@ export async function runWorkflowById(
       const interval = 4_000;
       const deadline = Date.now() + (params.timeoutMs ?? 180_000);
       while (Date.now() < deadline) {
+        if (stopRequested) return false; // bail out of waitUntilReachable on Stop
         const target = await resolveSshTarget(params).catch(() => null);
         if (target?.host) {
           const ok = await invoke<boolean>("workflow_ssh_probe", {

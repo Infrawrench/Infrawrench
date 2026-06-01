@@ -32,6 +32,7 @@ export function handleWorkflowSession(
   workflowId: string,
 ): void {
   const abort = new AbortController();
+  let stopRequested = false;
   // Exactly one of these is pending at a time (lines/prompts are sequential).
   let resumeLine: (() => void) | null = null;
   let rejectLine: ((e: Error) => void) | null = null;
@@ -52,6 +53,7 @@ export function handleWorkflowSession(
         break;
       }
       case "workflow:stop": {
+        stopRequested = true;
         abort.abort();
         const j = rejectLine;
         rejectLine = null;
@@ -83,6 +85,11 @@ export function handleWorkflowSession(
       }),
     line: (line: number) =>
       new Promise<void>((resolve, reject) => {
+        // Unwind at the next line after Stop.
+        if (stopRequested) {
+          reject(new Error("Workflow stopped"));
+          return;
+        }
         resumeLine = resolve;
         rejectLine = reject;
         send(ws, { type: "workflow:line", line });

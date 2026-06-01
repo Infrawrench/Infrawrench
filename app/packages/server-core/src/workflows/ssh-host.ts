@@ -295,7 +295,7 @@ function wake(state: StreamState): void {
  * Build the five SSH host-dep functions for an org's workflow run. They are
  * passed into `buildWorkflowHost` and surfaced to the sandbox as `resource.ssh`.
  */
-export function buildWorkflowSshDeps(organizationId: string) {
+export function buildWorkflowSshDeps(organizationId: string, opts: { signal?: AbortSignal } = {}) {
   const sshExec = (params: SshExecParamsLite): Promise<SshExecResultLite> =>
     resourceConnection(organizationId, params).then(
       (config) =>
@@ -451,6 +451,7 @@ export function buildWorkflowSshDeps(organizationId: string) {
     // yet, so keep re-resolving (and re-probing) until it's reachable or we time
     // out — rather than failing the instant the address isn't available.
     while (Date.now() < deadline) {
+      if (opts.signal?.aborted) return false; // bail out of waitUntilReachable on Stop
       const target = await resolveResourceHost(organizationId, params);
       if (target) {
         const port = params.port ?? target.port ?? 22;

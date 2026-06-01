@@ -119,6 +119,7 @@ export async function runWorkflowById(
     ...(opts.prompt ? { prompt: opts.prompt } : {}),
     ...(opts.readStorageObject ? { readStorageObject: opts.readStorageObject } : {}),
     ...(opts.line ? { line: opts.line } : {}),
+    ...(opts.signal ? { signal: opts.signal } : {}),
   });
 
   const result = await runWorkflow({
