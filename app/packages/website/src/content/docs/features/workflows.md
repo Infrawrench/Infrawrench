@@ -210,6 +210,22 @@ Git triggers use a **GitHub App** (a bot identity) rather than per-repo webhooks
 
 Workflow code never runs in the host process. It executes in a **QuickJS WebAssembly isolate** with a hard memory limit and a wall-clock timeout, and with no ambient access to the network or filesystem — the only capabilities a workflow has are the ones `infra` grants it (which themselves run with your account credentials on the host side, never exposed to the script). The same isolate runs identically on desktop and on the server, so a workflow behaves the same wherever it runs.
 
+## Debugging
+
+A **manual run from the editor is a debug run**: as it executes, the editor **highlights the line currently running**, so you can watch a workflow step through `create → waitUntilReachable → ssh → delete` in real time.
+
+**Breakpoints.** Click the gutter (left margin) next to a line to set a breakpoint (a red dot). When the run reaches that line it **pauses** before executing it, and the toolbar shows:
+
+- **Resume** — continue until the next breakpoint.
+- **Step** — run the current line, then pause on the next one.
+- **Stop** — abort the run.
+
+You can add or remove breakpoints while a run is paused. Time spent paused at a breakpoint (and `infra.prompt`, SSH, and `waitUntilReachable` waits) doesn't count against the run's execution budget.
+
+<insert [Screenshot of the Workflows editor mid-run: a line highlighted as the current line, a red breakpoint dot in the gutter, and Resume/Step/Stop buttons in the toolbar] here>
+
+Debugging works on both the desktop app and the web app (the web run streams over a websocket). Highlighting reports each line as it runs, so very tight loops execute a bit slower while the editor is driving them; automated cron/git runs are never instrumented. Breakpoints only stop on top-level statements — lines inside a function/callback aren't paused individually.
+
 ## Runs
 
 Each execution records a run with its status, streamed logs, declared output, timings, and any error. The run history is on the workflow's page so you can see what a cron has been doing.
