@@ -30,6 +30,7 @@ const INVOKE_CHANNELS = [
   // workflows — the QuickJS sandbox runs in main; host capabilities are served
   // back from the renderer (see electron/workflow-host.ts + lib/workflow-runner)
   "workflow_run",
+  "workflow_stop",
   "workflow_host_reply",
   // plugin drivers
   "plugin_sql_query",
