@@ -64,6 +64,14 @@ function metricTsType(type: MetricValueType): string {
 
 const STATIC_PREAMBLE = `// AUTO-GENERATED — do not edit. Reflects your connected accounts + metrics.
 
+type JsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | JsonValue[]
+  | { [key: string]: JsonValue };
+
 interface PromptSpec {
   message: string;
   kind?: "text" | "password" | "number" | "boolean" | "select" | "code";
@@ -237,7 +245,7 @@ ${promptDecl}
   /** Read and write this workflow's declared metrics. */
   readonly metrics: InfraMetrics;
   /** Record a JSON-serializable result for this run. */
-  output(value: unknown): Promise<void>;
+  output(value: JsonValue): Promise<void>;
   /** Append a line to the run log. */
   log(...parts: unknown[]): Promise<void>;
 }
