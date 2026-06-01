@@ -245,8 +245,16 @@ export async function workflowSshExec(
   });
 }
 
+type WorkflowStreamChunk = {
+  stdoutBase64?: string;
+  stderrBase64?: string;
+  done: boolean;
+  code?: number;
+};
+
 interface WorkflowStreamState {
-  chunks: Buffer[];
+  stdout: Buffer[];
+  stderr: Buffer[];
   done: boolean;
   code: number | null;
   error: Error | null;
@@ -283,7 +291,8 @@ export async function workflowSshStreamStart(
             return;
           }
           const state: WorkflowStreamState = {
-            chunks: [],
+            stdout: [],
+            stderr: [],
             done: false,
             code: null,
             error: null,
@@ -292,7 +301,11 @@ export async function workflowSshStreamStart(
           };
           workflowStreams.set(streamId, state);
           channel.on("data", (d: Buffer) => {
-            state.chunks.push(d);
+            state.stdout.push(d);
+            wakeStream(state);
+          });
+          channel.stderr.on("data", (d: Buffer) => {
+            state.stderr.push(d);
             wakeStream(state);
           });
           channel.on("close", (code: number) => {
@@ -311,20 +324,22 @@ export async function workflowSshStreamStart(
   return { streamId };
 }
 
-/** Read the next stdout chunk of a streaming command (resolves when ready or done). */
-export function workflowSshStreamRead(
-  streamId: string,
-): Promise<{ dataBase64?: string; done: boolean; code?: number }> {
+/** Read the next stdout/stderr chunks of a streaming command (resolves when ready or done). */
+export function workflowSshStreamRead(streamId: string): Promise<WorkflowStreamChunk> {
   const state = workflowStreams.get(streamId);
   if (!state) return Promise.resolve({ done: true });
-  const take = (): { dataBase64?: string; done: boolean; code?: number } | null => {
+  const take = (): WorkflowStreamChunk | null => {
     if (state.error) {
       workflowStreams.delete(streamId);
       throw state.error;
     }
-    if (state.chunks.length > 0) {
-      const chunk = Buffer.concat(state.chunks.splice(0));
-      return { dataBase64: chunk.toString("base64"), done: false };
+    if (state.stdout.length > 0 || state.stderr.length > 0) {
+      const out: WorkflowStreamChunk = { done: false };
+      if (state.stdout.length > 0)
+        out.stdoutBase64 = Buffer.concat(state.stdout.splice(0)).toString("base64");
+      if (state.stderr.length > 0)
+        out.stderrBase64 = Buffer.concat(state.stderr.splice(0)).toString("base64");
+      return out;
     }
     if (state.done) {
       workflowStreams.delete(streamId);
@@ -332,7 +347,7 @@ export function workflowSshStreamRead(
     }
     return null;
   };
-  let ready: { dataBase64?: string; done: boolean; code?: number } | null;
+  let ready: WorkflowStreamChunk | null;
   try {
     ready = take();
   } catch (e) {

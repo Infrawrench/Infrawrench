@@ -272,7 +272,8 @@ function connect(
 // --- streaming registry --------------------------------------------------
 
 interface StreamState {
-  chunks: Buffer[];
+  stdout: Buffer[];
+  stderr: Buffer[];
   done: boolean;
   code: number | null;
   error: Error | null;
@@ -351,7 +352,8 @@ export function buildWorkflowSshDeps(organizationId: string, opts: { signal?: Ab
               return;
             }
             const state: StreamState = {
-              chunks: [],
+              stdout: [],
+              stderr: [],
               done: false,
               code: null,
               error: null,
@@ -360,7 +362,11 @@ export function buildWorkflowSshDeps(organizationId: string, opts: { signal?: Ab
             };
             streams.set(streamId, state);
             stream.on("data", (d: Buffer) => {
-              state.chunks.push(d);
+              state.stdout.push(d);
+              wake(state);
+            });
+            stream.stderr.on("data", (d: Buffer) => {
+              state.stderr.push(d);
               wake(state);
             });
             stream.on("close", (code: number) => {
@@ -387,9 +393,13 @@ export function buildWorkflowSshDeps(organizationId: string, opts: { signal?: Ab
         streams.delete(streamId);
         throw state.error;
       }
-      if (state.chunks.length > 0) {
-        const chunk = Buffer.concat(state.chunks.splice(0));
-        return { dataBase64: chunk.toString("base64"), done: false };
+      if (state.stdout.length > 0 || state.stderr.length > 0) {
+        const out: SshStreamChunkLite = { done: false };
+        if (state.stdout.length > 0)
+          out.stdoutBase64 = Buffer.concat(state.stdout.splice(0)).toString("base64");
+        if (state.stderr.length > 0)
+          out.stderrBase64 = Buffer.concat(state.stderr.splice(0)).toString("base64");
+        return out;
       }
       if (state.done) {
         streams.delete(streamId);

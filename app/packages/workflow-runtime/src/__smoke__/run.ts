@@ -132,12 +132,12 @@ const host: WorkflowHost = {
     return { streamId: "stream-1" };
   },
   async sshStreamRead() {
-    // Emit two chunks ("foo", "bar") then signal done.
+    // Emit stdout ("foo\nbar\n"), then stderr ("oops\n"), then done.
     sshStreamReads += 1;
     if (sshStreamReads === 1)
-      return { dataBase64: Buffer.from("foo").toString("base64"), done: false };
+      return { stdoutBase64: Buffer.from("foo\nbar\n").toString("base64"), done: false };
     if (sshStreamReads === 2)
-      return { dataBase64: Buffer.from("bar").toString("base64"), done: false };
+      return { stderrBase64: Buffer.from("oops\n").toString("base64"), done: false };
     return { done: true, code: 0 };
   },
   async sshStreamClose() {},
@@ -168,11 +168,9 @@ infra.log("config.hello:", cfg.hello);
 await bucket.waitUntilReachable();
 const sshOut = await bucket.ssh("echo hi", { sshKey: "k" });
 infra.log("ssh out:", sshOut.trim());
-let streamed = "";
-for await (const chunk of bucket.ssh("tail -f log", { sshKey: "k", stream: true, encoding: "utf8" })) {
-  streamed += chunk;
-}
-infra.log("ssh streamed:", streamed);
+// Streaming ssh: split stdout/stderr; pass the object to infra.log to stream it.
+const streams = bucket.ssh("run", { sshKey: "k", stream: true });
+await infra.log(streams);
 
 // Delete the resource by calling .delete() on its own handle.
 await bucket.delete();
@@ -184,7 +182,7 @@ await created.ssh("echo hi");
 const prev = infra.metrics.runCount ?? 0;
 infra.metrics.runCount = prev + 1;
 
-await infra.output({ hello: cfg.hello, buckets: buckets.length, runCount: prev + 1, sshOut: sshOut.trim(), streamed });
+await infra.output({ hello: cfg.hello, buckets: buckets.length, runCount: prev + 1, sshOut: sshOut.trim() });
 `;
 
 async function main() {
@@ -270,9 +268,13 @@ async function main() {
     dtsHasNoCall && dtsHasNoResources && dtsHasNoStorageNs,
   );
 
-  const sshResult = result.output as { sshOut: string; streamed: string };
+  const sshResult = result.output as { sshOut: string };
   console.log("SSH exec output:", JSON.stringify(sshResult.sshOut));
-  console.log("SSH streamed output:", JSON.stringify(sshResult.streamed));
+  // infra.log(streams) should have emitted stdout lines at "info" and stderr at "error".
+  const logHas = (level: string, message: string) =>
+    result.logs.some((l) => l.level === level && l.message === message);
+  const streamLoggedOk = logHas("info", "foo") && logHas("info", "bar") && logHas("error", "oops");
+  console.log("infra.log(streams) split stdout(info)/stderr(error):", streamLoggedOk);
 
   // --- debugger: line instrumentation + pause-at-breakpoint -----------------
   // Top-level statements are at lines 2, 3 (function decl), 6, 7; line 4 is
@@ -319,7 +321,7 @@ async function main() {
     (result.output as { runCount: number }).runCount === 1 &&
     metrics["runCount"] === 1 &&
     sshResult.sshOut === "hello world" &&
-    sshResult.streamed === "foobar" &&
+    streamLoggedOk &&
     deleteCalls === 1 &&
     createdSshUsedAttachedKey &&
     dtsHasInstanceDelete &&

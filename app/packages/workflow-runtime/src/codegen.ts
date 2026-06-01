@@ -137,6 +137,26 @@ interface PromptSpec {
   defaultValue?: string;
 }
 
+/** A readable byte stream — async-iterable, with a WHATWG-style reader. */
+interface SshReadable extends AsyncIterable<Uint8Array> {
+  getReader(): {
+    read(): Promise<{ value?: Uint8Array; done: boolean }>;
+    releaseLock(): void;
+    cancel(): Promise<void>;
+  };
+}
+
+/**
+ * The result of a streaming \`ssh(cmd, { stream: true })\`: separate \`stdout\`
+ * and \`stderr\` byte streams. The object is itself async-iterable over stdout
+ * (so \`for await (const chunk of streams)\` still works). Pass the whole object
+ * to \`infra.log(...)\` to stream both to the run log live — stderr in red.
+ */
+interface SshStreams extends AsyncIterable<Uint8Array> {
+  stdout: SshReadable;
+  stderr: SshReadable;
+}
+
 interface WorkflowResource {
   id: string;
   pluginId: string;
@@ -150,13 +170,11 @@ interface WorkflowResource {
   ssh(command: string, opts?: SshExecOptions): Promise<string>;
   /** Run a command over SSH and resolve its full stdout as raw bytes. */
   ssh(command: string, opts: SshExecOptions & { encoding: "binary" }): Promise<Uint8Array>;
-  /** Stream a command's stdout as it arrives (each chunk is raw bytes). */
-  ssh(command: string, opts: SshExecOptions & { stream: true }): AsyncIterable<Uint8Array>;
-  /** Stream a command's stdout as it arrives, decoded to UTF-8 strings. */
-  ssh(
-    command: string,
-    opts: SshExecOptions & { stream: true; encoding: "utf8" },
-  ): AsyncIterable<string>;
+  /**
+   * Stream the command's output: \`{ stdout, stderr }\` byte streams (the object
+   * also iterates stdout). Pass it to \`infra.log(...)\` to tail both live.
+   */
+  ssh(command: string, opts: SshExecOptions & { stream: true }): SshStreams;
   /** Resolve once the resource accepts SSH connections (or reject on timeout). */
   waitUntilReachable(opts?: { timeoutMs?: number; port?: number }): Promise<void>;
   /** Delete this resource. Rejects if the owning provider doesn't support deletion. */
@@ -330,6 +348,8 @@ ${promptDecl}
   readonly metrics: InfraMetrics;
   /** Record a JSON-serializable result for this run. */
   output(value: JsonValue): Promise<void>;
+  /** Stream an SSH \`{ stdout, stderr }\` object to the run log live (stderr in red). */
+  log(streams: SshStreams): Promise<void>;
   /** Append a line to the run log. */
   log(...parts: unknown[]): Promise<void>;
 }

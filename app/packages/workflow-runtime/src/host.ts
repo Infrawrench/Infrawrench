@@ -71,10 +71,12 @@ export interface SshExecResultLite {
   code: number;
 }
 
-/** One poll of a streaming SSH command. */
+/** One poll of a streaming SSH command — separate stdout/stderr chunks. */
 export interface SshStreamChunkLite {
-  /** Base64 chunk of stdout; absent on the terminal (done) read. */
-  dataBase64?: string;
+  /** Base64 chunk of stdout accumulated since the last read (if any). */
+  stdoutBase64?: string;
+  /** Base64 chunk of stderr accumulated since the last read (if any). */
+  stderrBase64?: string;
   done: boolean;
   /** Exit code, present on the terminal read. */
   code?: number;

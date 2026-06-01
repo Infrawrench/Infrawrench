@@ -56,9 +56,60 @@ export const PRELUDE = String.raw`
     return out;
   };
 
+  // A streaming SSH command, demuxed into separate stdout/stderr readables.
+  // The returned object: { stdout, stderr } each async-iterable (+ getReader()),
+  // and is itself async-iterable over stdout (back-compat). A single host poll
+  // returns whatever stdout/stderr accumulated; a shared pump distributes it.
+  const makeSshStreams = (base) => {
+    let streamId = null;
+    let started = null;
+    let done = false;
+    let pumping = null;
+    const outQ = [];
+    const errQ = [];
+    const ensure = async () => {
+      if (!started) started = rpc("ssh.streamStart", base).then((r) => { streamId = r.streamId; });
+      await started;
+    };
+    const pump = async () => {
+      await ensure();
+      const chunk = await rpc("ssh.streamRead", { streamId });
+      if (!chunk) { done = true; return; }
+      if (chunk.stdoutBase64) outQ.push(b64(chunk.stdoutBase64));
+      if (chunk.stderrBase64) errQ.push(b64(chunk.stderrBase64));
+      if (chunk.done) done = true;
+    };
+    const pumpOnce = () => {
+      if (!pumping) pumping = pump().then(() => { pumping = null; }, (e) => { pumping = null; done = true; throw e; });
+      return pumping;
+    };
+    const close = async () => { if (streamId) { try { await rpc("ssh.streamClose", { streamId }); } catch (e) {} } };
+    const reader = (queue) => ({
+      async next() {
+        while (queue.length === 0 && !done) await pumpOnce();
+        if (queue.length > 0) return { value: queue.shift(), done: false };
+        return { value: undefined, done: true };
+      },
+      async return(value) { await close(); return { value, done: true }; },
+    });
+    const channel = (queue) => ({
+      [Symbol.asyncIterator]: () => reader(queue),
+      getReader() {
+        const it = reader(queue);
+        return { read: () => it.next(), releaseLock() {}, cancel: () => close() };
+      },
+    });
+    return {
+      __sshStream: true,
+      stdout: channel(outQ),
+      stderr: channel(errQ),
+      [Symbol.asyncIterator]: () => reader(outQ),
+    };
+  };
+
   // SSH ops mixed onto every resource: a single combined ssh(command, opts)
   // that resolves the full output (string, or Uint8Array when encoding:"binary")
-  // or — when opts.stream is set — returns an async-iterable of stdout chunks.
+  // or — when opts.stream is set — returns an { stdout, stderr } streams object.
   const makeSshOps = (accountId, typeId, resourceId, defaultSshKey) => {
     const baseFor = (command, opts) => ({
       accountId, typeId, resourceId, command,
@@ -70,35 +121,7 @@ export const PRELUDE = String.raw`
     });
     const ssh = (command, opts) => {
       opts = opts || {};
-      if (opts.stream) {
-        return {
-          [Symbol.asyncIterator]() {
-            let streamId = null;
-            let started = null;
-            const ensure = async () => {
-              if (!started) started = rpc("ssh.streamStart", baseFor(command, opts)).then((r) => { streamId = r.streamId; });
-              await started;
-            };
-            return {
-              async next() {
-                await ensure();
-                const chunk = await rpc("ssh.streamRead", { streamId });
-                if (chunk && chunk.done) {
-                  if (typeof chunk.code === "number" && chunk.code !== 0)
-                    throw new Error("ssh stream exited with code " + chunk.code);
-                  return { value: undefined, done: true };
-                }
-                const bytes = b64(chunk && chunk.dataBase64);
-                return { value: opts.encoding === "utf8" ? utf8(bytes) : bytes, done: false };
-              },
-              async return(value) {
-                if (streamId) { try { await rpc("ssh.streamClose", { streamId }); } catch (e) {} }
-                return { value, done: true };
-              },
-            };
-          },
-        };
-      }
+      if (opts.stream) return makeSshStreams(baseFor(command, opts));
       return rpc("ssh.exec", baseFor(command, opts)).then((r) => {
         if (r.code !== 0) throw new Error("ssh command exited with code " + r.code + ": " + utf8(b64(r.stderrBase64)));
         const bytes = b64(r.stdoutBase64);
@@ -216,6 +239,33 @@ export const PRELUDE = String.raw`
   const log = (level) => (...parts) =>
     rpc("log", { level, message: parts.map((p) => (typeof p === "string" ? p : JSON.stringify(p))).join(" ") });
 
+  // Stream an SSH streams object to the run log line-by-line: stdout at "info"
+  // and stderr at "error" (rendered red), as output arrives.
+  const streamToLog = async (streams) => {
+    const drain = async (readable, level) => {
+      let buf = "";
+      for await (const chunk of readable) {
+        buf += typeof chunk === "string" ? chunk : utf8(chunk);
+        let nl;
+        while ((nl = buf.indexOf("\n")) >= 0) {
+          await rpc("log", { level, message: buf.slice(0, nl) });
+          buf = buf.slice(nl + 1);
+        }
+      }
+      if (buf.length) await rpc("log", { level, message: buf });
+    };
+    await Promise.all([drain(streams.stdout, "info"), drain(streams.stderr, "error")]);
+  };
+
+  // infra.log: if handed an SSH streams object, stream it; otherwise log a line.
+  const infraLog = (...parts) => {
+    if (parts.length === 1 && parts[0] && parts[0].__sshStream) return streamToLog(parts[0]);
+    return rpc("log", {
+      level: "info",
+      message: parts.map((p) => (typeof p === "string" ? p : JSON.stringify(p))).join(" "),
+    });
+  };
+
   // Metrics are exposed as direct typed properties (infra.metrics.<key>): reads
   // come from a snapshot taken at run start; writes update the snapshot and are
   // buffered, then persisted once (final value per key) after the run via
@@ -244,7 +294,7 @@ export const PRELUDE = String.raw`
     prompt: (spec) => rpc("prompt", { spec: typeof spec === "string" ? { message: spec } : spec }),
     metrics,
     output: (value) => rpc("output", { value }),
-    log: log("info"),
+    log: infraLog,
   };
 
   // Route console.* to the run log as well.
