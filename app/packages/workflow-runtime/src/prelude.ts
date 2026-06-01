@@ -59,10 +59,14 @@ export const PRELUDE = String.raw`
   // SSH ops mixed onto every resource: a single combined ssh(command, opts)
   // that resolves the full output (string, or Uint8Array when encoding:"binary")
   // or — when opts.stream is set — returns an async-iterable of stdout chunks.
-  const makeSshOps = (accountId, typeId, resourceId) => {
+  const makeSshOps = (accountId, typeId, resourceId, defaultSshKey) => {
     const baseFor = (command, opts) => ({
       accountId, typeId, resourceId, command,
-      sshKeyId: opts.sshKey, username: opts.username, timeoutMs: opts.timeoutMs,
+      // Fall back to the key attached at create time (if any) so a freshly
+      // created resource can ssh() without re-specifying the key.
+      sshKeyId: opts.sshKey || defaultSshKey,
+      username: opts.username, timeoutMs: opts.timeoutMs,
+      skipHostKeyCheck: opts.skipHostKeyCheck,
     });
     const ssh = (command, opts) => {
       opts = opts || {};
@@ -166,7 +170,11 @@ export const PRELUDE = String.raw`
       // what the host resolves outputs (e.g. the SSH host) against.
       const wrap = (r) => {
         if (!r) return r;
-        const augmented = Object.assign({}, r, makeSshOps(acc.id, rt.id, r.id));
+        const augmented = Object.assign({}, r, makeSshOps(acc.id, rt.id, r.id, r.sshKeyRef), {
+          // Delete this very resource (by its own id). The host rejects if the
+          // owning plugin doesn't support deletion.
+          delete: () => h.delete(r.id),
+        });
         if (rt.storage) Object.assign(augmented, makeStorageOps(acc.id, bucketOf(r)));
         return augmented;
       };

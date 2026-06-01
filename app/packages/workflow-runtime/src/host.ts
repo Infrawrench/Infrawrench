@@ -26,6 +26,12 @@ export interface ResourceInstanceLite {
   externalId?: string;
   fields: Record<string, string | number | boolean>;
   resolvedOutputs: Record<string, string>;
+  /**
+   * The Infrawrench SSH key (name/id) attached at create time, if any — so
+   * `resource.ssh(...)` on a just-created resource can authenticate without the
+   * author re-specifying the key. Set only by `createResource`.
+   */
+  sshKeyRef?: string;
 }
 
 export interface StorageObjectLite {
@@ -54,6 +60,8 @@ export interface SshExecParamsLite {
   sshKeyId?: string;
   username?: string;
   timeoutMs?: number;
+  /** Accept any host key without verifying/pinning it (MITM protection off). */
+  skipHostKeyCheck?: boolean;
 }
 
 /** Full result of a non-streaming SSH command. Output is base64 (binary-safe). */
@@ -183,6 +191,7 @@ function sshParams(args: Record<string, unknown>): SshExecParamsLite {
     ...(args["sshKeyId"] ? { sshKeyId: String(args["sshKeyId"]) } : {}),
     ...(args["username"] ? { username: String(args["username"]) } : {}),
     ...(args["timeoutMs"] !== undefined ? { timeoutMs: Number(args["timeoutMs"]) } : {}),
+    ...(args["skipHostKeyCheck"] ? { skipHostKeyCheck: true } : {}),
   };
 }
 

@@ -27,6 +27,20 @@ import {
   type WorkflowPluginInfo,
 } from "./types.js";
 
+/**
+ * Host RPCs whose wall-clock duration is excluded from the run's execution
+ * budget: interactive prompts and SSH calls — the latter may pop a host-key
+ * confirmation dialog or wait minutes for a VM to boot. A runaway pure-JS loop
+ * stays bounded (its CPU time still counts); only genuine waits are paused.
+ */
+const PAUSED_METHODS = new Set([
+  "prompt",
+  "ssh.exec",
+  "ssh.streamStart",
+  "ssh.streamRead",
+  "ssh.probe",
+]);
+
 export interface RunWorkflowOptions {
   source: string;
   host: WorkflowHost;
@@ -133,6 +147,23 @@ export async function runWorkflow(opts: RunWorkflowOptions): Promise<RunResult> 
     return finish("failure", toError(err, "Failed to compile workflow"));
   }
 
+  // Pause-aware execution budget: the interrupt deadline (set below) is frozen
+  // while the guest is suspended in a {@link PAUSED_METHODS} host call, so an
+  // SSH host-key prompt or a waitUntilReachable() poll doesn't consume the run's
+  // time. State is per-run (closed over here).
+  let execStart = 0;
+  let pausedMs = 0;
+  let pauseStart: number | null = null;
+  const pauseTimeout = (): void => {
+    if (pauseStart === null) pauseStart = Date.now();
+  };
+  const resumeTimeout = (): void => {
+    if (pauseStart !== null) {
+      pausedMs += Date.now() - pauseStart;
+      pauseStart = null;
+    }
+  };
+
   const env = {
     __accountsTree: JSON.stringify(tree),
     __metrics: JSON.stringify(metricsSnapshot),
@@ -143,8 +174,14 @@ export async function runWorkflow(opts: RunWorkflowOptions): Promise<RunResult> 
         guestError = toError(args);
         return "";
       }
-      const result = await dispatch(opts.host, ctx, method, args);
-      return result === undefined ? "" : JSON.stringify(result);
+      const pause = PAUSED_METHODS.has(method);
+      if (pause) pauseTimeout();
+      try {
+        const result = await dispatch(opts.host, ctx, method, args);
+        return result === undefined ? "" : JSON.stringify(result);
+      } finally {
+        if (pause) resumeTimeout();
+      }
     },
   };
 
@@ -158,12 +195,23 @@ export async function runWorkflow(opts: RunWorkflowOptions): Promise<RunResult> 
       env,
       allowFetch: false,
       allowFs: false,
-      executionTimeout: limits.timeoutMs,
+      // `executionTimeout` is intentionally omitted: the library would install a
+      // fixed wall-clock deadline that counts time the guest spends suspended in
+      // host calls. We install a *pause-aware* interrupt handler below instead.
       memoryLimit: limits.memoryBytes,
       maxStackSize: limits.maxStackBytes,
     };
 
-    const result = await runSandboxed(({ evalCode }) => evalCode(program), sandboxOptions);
+    const result = await runSandboxed(({ ctx, evalCode }) => {
+      execStart = Date.now();
+      if (limits.timeoutMs > 0) {
+        ctx.runtime.setInterruptHandler(() => {
+          const livePause = pauseStart !== null ? Date.now() - pauseStart : 0;
+          return Date.now() - execStart - pausedMs - livePause > limits.timeoutMs;
+        });
+      }
+      return evalCode(program);
+    }, sandboxOptions);
 
     const envelope = result as { ok: boolean; data?: unknown; error?: unknown };
     if (envelope && envelope.ok === false) {

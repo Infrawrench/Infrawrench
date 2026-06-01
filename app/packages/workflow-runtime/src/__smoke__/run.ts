@@ -37,6 +37,8 @@ const PLUGINS: WorkflowPluginInfo[] = [
         createFields: [
           { key: "name", kind: "text", required: true },
           { key: "region", kind: "region-picker", required: false, options: ["wnam", "enam"] },
+          // ssh-key-picker → typed from the caller's Infrawrench key names.
+          { key: "sshPublicKey", kind: "ssh-key-picker", required: false },
         ],
       },
     ],
@@ -78,6 +80,23 @@ const host: WorkflowHost = {
   async resolveOutput() {
     return "resolved-value";
   },
+  async deleteResource() {
+    deleteCalls += 1;
+  },
+  async createResource(accountId, typeId) {
+    // A created resource carries the SSH key attached at create time.
+    return {
+      id: `${accountId}:${typeId}:new-1`,
+      pluginId: "cloudflare",
+      resourceTypeId: typeId,
+      accountId,
+      displayName: "new",
+      externalId: "new-1",
+      fields: {},
+      resolvedOutputs: {},
+      sshKeyRef: "deploy-key",
+    };
+  },
   async listStorageObjects() {
     return [
       { key: "config.json", name: "config.json", size: 12, lastModified: "", isDirectory: false },
@@ -99,7 +118,8 @@ const host: WorkflowHost = {
   async listMetrics() {
     return { ...metrics };
   },
-  async sshExec() {
+  async sshExec(params) {
+    lastSshKeyId = params.sshKeyId ?? null;
     return {
       stdoutBase64: Buffer.from("hello world\n").toString("base64"),
       stderrBase64: "",
@@ -126,6 +146,8 @@ const host: WorkflowHost = {
 };
 
 let sshStreamReads = 0;
+let deleteCalls = 0;
+let lastSshKeyId: string | null = null;
 
 const SOURCE = `
 const cf = infra.accounts.cloudflare.getByName("prod");
@@ -150,6 +172,13 @@ for await (const chunk of bucket.ssh("tail -f log", { sshKey: "k", stream: true,
   streamed += chunk;
 }
 infra.log("ssh streamed:", streamed);
+
+// Delete the resource by calling .delete() on its own handle.
+await bucket.delete();
+
+// A created resource remembers its attached SSH key — ssh() needs no sshKey.
+const created = await cf.workers.create({ name: "w", region: "wnam", sshPublicKey: "deploy-key" });
+await created.ssh("echo hi");
 
 const prev = infra.metrics.runCount ?? 0;
 infra.metrics.runCount = prev + 1;
@@ -189,6 +218,7 @@ async function main() {
   const dts = generateInfraDts({
     plugins: PLUGINS,
     metrics: [{ key: "runCount", label: "Run count", type: "number" }],
+    sshKeyNames: ["deploy-key", "ci-key"],
   });
   console.log("DTS has getByName(prod):", dts.includes('getByName(name: "prod" | (string & {}))'));
   console.log("DTS has getById(acc_cf1):", dts.includes('getById(id: "acc_cf1" | (string & {}))'));
@@ -207,8 +237,23 @@ async function main() {
   const dtsHasSsh =
     dts.includes("ssh(command: string, opts?: SshExecOptions): Promise<string>") &&
     dts.includes("waitUntilReachable(opts?: {");
+  // ssh-key-picker create field + ssh() auth key both suggest Infrawrench key names.
+  const dtsSshKeyCreateOptions = dts.includes(
+    'sshPublicKey?: "deploy-key" | "ci-key" | (string & {})',
+  );
+  const dtsSshKeyAuthOptions = dts.includes('sshKey?: "deploy-key" | "ci-key" | (string & {})');
+  // .delete() is exposed on every resource handle.
+  const dtsHasInstanceDelete = dts.includes("delete(): Promise<void>;");
+  console.log("DTS exposes resource.delete():", dtsHasInstanceDelete);
+  console.log("resource.delete() called host deleteResource:", deleteCalls === 1);
+  // The last ssh() call was created.ssh("echo hi") with NO sshKey → it should
+  // have used the key attached at create time (sshKeyRef "deploy-key").
+  const createdSshUsedAttachedKey = lastSshKeyId === "deploy-key";
+  console.log("created resource ssh() defaulted to attached key:", createdSshUsedAttachedKey);
   console.log("DTS types create() from create fields:", dtsHasTypedCreate);
   console.log("DTS exposes resource.ssh + waitUntilReachable:", dtsHasSsh);
+  console.log("DTS ssh-key create field suggests key names:", dtsSshKeyCreateOptions);
+  console.log("DTS ssh() sshKey suggests key names:", dtsSshKeyAuthOptions);
   const dtsHasNoFlat = !dts.includes("getR2Bucket") && !dts.includes("listR2Buckets");
   const dtsHasNoCall = !dts.includes("call<T = unknown>");
   const dtsHasNoResources = !dts.includes("readonly resources:");
@@ -234,6 +279,9 @@ async function main() {
     metrics["runCount"] === 1 &&
     sshResult.sshOut === "hello world" &&
     sshResult.streamed === "foobar" &&
+    deleteCalls === 1 &&
+    createdSshUsedAttachedKey &&
+    dtsHasInstanceDelete &&
     dtsHasMetricProp &&
     dtsHasGroup &&
     dtsHasListMethod &&
@@ -241,6 +289,8 @@ async function main() {
     dtsHasCreateMethod &&
     dtsHasTypedCreate &&
     dtsHasSsh &&
+    dtsSshKeyCreateOptions &&
+    dtsSshKeyAuthOptions &&
     dtsOmitsUpdate &&
     dtsHasNoFlat &&
     dtsHasNoCall &&

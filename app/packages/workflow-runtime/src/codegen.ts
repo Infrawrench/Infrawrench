@@ -59,18 +59,53 @@ function openStringUnion(values: string[]): string {
  * The TS type for a `create(fields)` / `update(fields)` argument. When the host
  * supplied distilled create fields, emit a typed object literal — required
  * fields un-suffixed, optional fields `?`, and fields with a known option list
- * as an open string union (literal suggestions + open `string`). Falls back to
- * the generic `Record<string, string>` when no field schema is available.
+ * as an open string union (literal suggestions + open `string`). `ssh-key-picker`
+ * fields suggest the caller's Infrawrench SSH key names (a name is resolved to
+ * its public key at create time; a raw public key is also accepted). Falls back
+ * to the generic `Record<string, string>` when no field schema is available.
  */
-function renderCreateFieldsType(fields: WorkflowCreateFieldInfo[] | undefined): string {
+function renderCreateFieldsType(
+  fields: WorkflowCreateFieldInfo[] | undefined,
+  sshKeyNames: string[],
+): string {
   if (!fields || fields.length === 0) return "Record<string, string>";
   const props = fields.map((f) => {
     const key = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(f.key) ? f.key : strLit(f.key);
-    const valueType = f.options && f.options.length > 0 ? openStringUnion(f.options) : "string";
+    let valueType: string;
+    if (f.kind === "ssh-key-picker") {
+      valueType = openStringUnion(sshKeyNames);
+    } else if (f.options && f.options.length > 0) {
+      valueType = openStringUnion(f.options);
+    } else {
+      valueType = "string";
+    }
     const doc = f.description ? `/** ${f.description.replace(/\*\//g, "*\\/")} */ ` : "";
     return `${doc}${key}${f.required ? "" : "?"}: ${valueType}`;
   });
   return `{ ${props.join("; ")} }`;
+}
+
+/**
+ * The `SshExecOptions` interface, generated so `sshKey` suggests the caller's
+ * Infrawrench SSH key names while still accepting any string (id or name).
+ */
+function renderSshExecOptions(sshKeyNames: string[]): string {
+  return `interface SshExecOptions {
+  /** Infrawrench SSH key (by name or id) whose private half authenticates the connection. */
+  sshKey?: ${openStringUnion(sshKeyNames)};
+  /** Login user (defaults to the resource type's SSH endpoint default, e.g. "root"). */
+  username?: string;
+  /** "utf8" (default) decodes output to a string; "binary" returns raw bytes. */
+  encoding?: "utf8" | "binary";
+  /** Connection/command timeout in milliseconds. */
+  timeoutMs?: number;
+  /**
+   * Skip SSH host-key verification (accept whatever key the host presents and
+   * don't pin it). Use for ephemeral/recreated hosts whose key changes; it
+   * disables MITM protection, so only set it when you trust the network path.
+   */
+  skipHostKeyCheck?: boolean;
+}`;
 }
 
 function metricTsType(type: MetricValueType): string {
@@ -102,17 +137,6 @@ interface PromptSpec {
   defaultValue?: string;
 }
 
-interface SshExecOptions {
-  /** Org SSH key (id or name) whose private half authenticates the connection. */
-  sshKey?: string;
-  /** Login user (defaults to the resource type's SSH endpoint default, e.g. "root"). */
-  username?: string;
-  /** "utf8" (default) decodes output to a string; "binary" returns raw bytes. */
-  encoding?: "utf8" | "binary";
-  /** Connection/command timeout in milliseconds. */
-  timeoutMs?: number;
-}
-
 interface WorkflowResource {
   id: string;
   pluginId: string;
@@ -135,6 +159,8 @@ interface WorkflowResource {
   ): AsyncIterable<string>;
   /** Resolve once the resource accepts SSH connections (or reject on timeout). */
   waitUntilReachable(opts?: { timeoutMs?: number; port?: number }): Promise<void>;
+  /** Delete this resource. Rejects if the owning provider doesn't support deletion. */
+  delete(): Promise<void>;
 }
 
 interface StorageObject {
@@ -174,7 +200,7 @@ function groupInterfaceName(pluginId: string): string {
  * (read-only types get just list + get). Groups are de-duped so a display-name
  * collision can't produce a duplicate property.
  */
-function renderResourceGroups(plugin: WorkflowPluginInfo): string {
+function renderResourceGroups(plugin: WorkflowPluginInfo, sshKeyNames: string[]): string {
   const blocks: string[] = [];
   const used = new Set<string>();
   for (const rt of plugin.resourceTypes) {
@@ -190,7 +216,7 @@ function renderResourceGroups(plugin: WorkflowPluginInfo): string {
       `    /** Fetch a ${rt.displayName} by its provider id. */\n    get(externalId: string): Promise<${ret}>;`,
     );
     if (rt.supportsCreate) {
-      const createFieldsType = renderCreateFieldsType(rt.createFields);
+      const createFieldsType = renderCreateFieldsType(rt.createFields, sshKeyNames);
       ops.push(
         `    /** Create a ${rt.displayName}. */\n    create(fields: ${createFieldsType}, parentResourceId?: string): Promise<${ret}>;`,
       );
@@ -208,8 +234,8 @@ function renderResourceGroups(plugin: WorkflowPluginInfo): string {
   return blocks.join("\n");
 }
 
-function renderAccountInterface(plugin: WorkflowPluginInfo): string {
-  const resourceGroups = renderResourceGroups(plugin);
+function renderAccountInterface(plugin: WorkflowPluginInfo, sshKeyNames: string[]): string {
+  const resourceGroups = renderResourceGroups(plugin, sshKeyNames);
   return `interface ${accountInterfaceName(plugin.pluginId)} {
   readonly id: string;
   readonly pluginId: ${strLit(plugin.pluginId)};
@@ -254,14 +280,21 @@ export interface GenerateInfraDtsInput {
   metrics: MetricDef[];
   /** When false, prompt() is typed as unavailable (automated triggers). */
   interactive?: boolean;
+  /**
+   * Names of the caller's Infrawrench-managed SSH keys. Surfaced as autocomplete
+   * for `ssh-key-picker` create fields and `resource.ssh`'s `sshKey` option.
+   * Fetched fresh per typings request so newly-added keys appear immediately.
+   */
+  sshKeyNames?: string[];
 }
 
 /** Build the full `infra.d.ts` source string. */
 export function generateInfraDts(input: GenerateInfraDtsInput): string {
   const plugins = input.plugins;
   const interactive = input.interactive ?? true;
+  const sshKeyNames = input.sshKeyNames ?? [];
 
-  const accountInterfaces = plugins.map(renderAccountInterface).join("\n\n");
+  const accountInterfaces = plugins.map((p) => renderAccountInterface(p, sshKeyNames)).join("\n\n");
   const groupInterfaces = plugins.map(renderGroupInterface).join("\n\n");
 
   const accountsProps = plugins
@@ -276,6 +309,8 @@ export function generateInfraDts(input: GenerateInfraDtsInput): string {
     : `  /** Unavailable for automated triggers. */\n  prompt: never;`;
 
   return `${STATIC_PREAMBLE}
+
+${renderSshExecOptions(sshKeyNames)}
 
 ${accountInterfaces || "// (no accounts connected yet)"}
 

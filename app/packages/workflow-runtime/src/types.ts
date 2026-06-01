@@ -82,7 +82,12 @@ export interface RunResult {
 
 /** Resource limits applied to a single execution. */
 export interface RunLimits {
-  /** Wall-clock execution timeout in milliseconds. Default 30_000. */
+  /**
+   * Wall-clock execution timeout in milliseconds. Default 300_000 (5 min).
+   * This is a wall-clock deadline (it includes time spent awaiting host calls
+   * like `resource.ssh()` / `waitUntilReachable()`), so it's generous enough to
+   * let a workflow create a VM, wait for it to boot, and connect.
+   */
   timeoutMs: number;
   /** Hard heap limit for the isolate in bytes. Default 128 MiB. */
   memoryBytes: number;
@@ -91,7 +96,7 @@ export interface RunLimits {
 }
 
 export const DEFAULT_RUN_LIMITS: RunLimits = {
-  timeoutMs: 30_000,
+  timeoutMs: 300_000,
   memoryBytes: 128 * 1024 * 1024,
   maxStackBytes: 1024 * 1024,
 };

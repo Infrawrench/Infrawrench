@@ -36,6 +36,20 @@ export interface ClientHostDeps {
   /** Raise an interactive prompt (only reached for interactive runs). */
   prompt(spec: PromptSpec): Promise<MetricValue>;
 
+  /**
+   * Optional pre-create/update transform of the raw `fields`. Used to resolve
+   * field values that reference Infrawrench-managed resources (e.g. an
+   * `ssh-key-picker` field given a key NAME → the key's public key) before the
+   * plugin client sees them. Returns the rewritten fields and, when an SSH key
+   * was attached by name, that key reference (`sshKeyRef`) so the created
+   * resource can SSH with it implicitly.
+   */
+  transformCreateFields?(
+    accountId: string,
+    typeId: string,
+    fields: Record<string, string>,
+  ): Promise<{ fields: Record<string, string>; sshKeyRef?: string }>;
+
   /** Run an SSH command on a resource to completion (powers `resource.ssh`). */
   sshExec?(params: SshExecParamsLite): Promise<SshExecResultLite>;
   /** Begin a streaming SSH command; returns a read token. */
@@ -112,12 +126,24 @@ export function buildWorkflowHost(deps: ClientHostDeps): WorkflowHost {
       if (!client.createResource) {
         throw new Error(`Plugin for account ${accountId} cannot create ${typeId}.`);
       }
-      const result = await client.createResource(typeId, accountId, fields, parentResourceId);
+      const transformed = deps.transformCreateFields
+        ? await deps.transformCreateFields(accountId, typeId, fields)
+        : { fields };
+      const result = await client.createResource(
+        typeId,
+        accountId,
+        transformed.fields,
+        parentResourceId,
+      );
       const instance =
         result && typeof result === "object" && "resource" in result
           ? (result as { resource: ResourceInstance }).resource
           : (result as unknown as ResourceInstance);
-      return toLite(instance);
+      const lite = toLite(instance);
+      // Remember the SSH key attached at create time so resource.ssh() can use
+      // it without the author repeating it.
+      if (transformed.sshKeyRef) lite.sshKeyRef = transformed.sshKeyRef;
+      return lite;
     },
 
     async updateResource(accountId, typeId, rid, fields) {
@@ -125,7 +151,10 @@ export function buildWorkflowHost(deps: ClientHostDeps): WorkflowHost {
       if (!client.updateResource) {
         throw new Error(`Plugin for account ${accountId} cannot update ${typeId}.`);
       }
-      const instance = await client.updateResource(typeId, rid, accountId, fields);
+      const transformed = deps.transformCreateFields
+        ? await deps.transformCreateFields(accountId, typeId, fields)
+        : { fields };
+      const instance = await client.updateResource(typeId, rid, accountId, transformed.fields);
       return toLite(instance);
     },
 
