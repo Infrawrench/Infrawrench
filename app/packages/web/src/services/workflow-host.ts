@@ -15,6 +15,10 @@ import {
   type WorkflowPluginInfo,
 } from "@infrawrench/workflow-runtime";
 import { loadPlugins } from "@infrawrench/server-core/plugin-loader";
+import {
+  buildWorkflowSshDeps,
+  enrichCreateFields,
+} from "@infrawrench/server-core/workflows/runner";
 import { and, eq, isNull } from "drizzle-orm";
 
 import { db } from "@infrawrench/server-core/db/client";
@@ -31,8 +35,17 @@ export interface OrgWorkflowHostOptions {
   readStorageObject?: (accountId: string, bucket: string, key: string) => Promise<Uint8Array>;
 }
 
-/** Enumerate the org's accounts grouped by plugin, with resource-type metadata. */
-export async function listOrgPlugins(organizationId: string): Promise<WorkflowPluginInfo[]> {
+/**
+ * Enumerate the org's accounts grouped by plugin, with resource-type metadata.
+ *
+ * `enrichCreateFields` (typings path only) additionally fetches each createable
+ * type's live create config so `create({...})` is typed — it hits provider APIs,
+ * so the runtime path (every run) leaves it off and uses the generic signature.
+ */
+export async function listOrgPlugins(
+  organizationId: string,
+  opts: { enrichCreateFields?: boolean } = {},
+): Promise<WorkflowPluginInfo[]> {
   const rows = await db
     .select()
     .from(accounts)
@@ -64,6 +77,23 @@ export async function listOrgPlugins(organizationId: string): Promise<WorkflowPl
     }
     entry.accounts.push({ id: row.id, pluginId: row.pluginId, displayName: row.displayName });
   }
+
+  // Best-effort: type each createable resource's fields from the live create
+  // config (cached) so `create({...})` autocompletes real keys/options.
+  if (opts.enrichCreateFields) {
+    await Promise.all(
+      Array.from(byPlugin.values()).map((entry) => {
+        const first = entry.accounts[0];
+        if (!first) return Promise.resolve();
+        return enrichCreateFields(entry.pluginId, entry.resourceTypes, async () => {
+          const ctx = await getClientForAccount(first.id, organizationId);
+          if (!ctx) throw new Error(`Account ${first.id} not found.`);
+          return ctx.client;
+        });
+      }),
+    );
+  }
+
   return Array.from(byPlugin.values());
 }
 
@@ -145,5 +175,6 @@ export async function buildOrgWorkflowHost(opts: OrgWorkflowHostOptions): Promis
       (async () => {
         throw new Error("This run is not interactive; infra.prompt() is unavailable.");
       }),
+    ...buildWorkflowSshDeps(organizationId),
   });
 }

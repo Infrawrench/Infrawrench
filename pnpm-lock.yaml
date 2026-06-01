@@ -462,6 +462,9 @@ importers:
       postgres:
         specifier: ^3.4.5
         version: 3.4.8
+      ssh2:
+        specifier: ^1.16.0
+        version: 1.17.0
       undici:
         specifier: ^7.0.0
         version: 7.24.8
@@ -472,6 +475,9 @@ importers:
       '@types/node':
         specifier: ^22.0.0
         version: 22.19.17
+      '@types/ssh2':
+        specifier: ^1.15.4
+        version: 1.15.5
       '@types/ws':
         specifier: ^8.5.13
         version: 8.18.1

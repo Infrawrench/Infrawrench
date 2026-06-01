@@ -29,6 +29,13 @@ import { decrypt, buildAad } from "../encryption";
 import { getPlugin, loadPlugins } from "../plugin-loader";
 import { buildPluginHostServices } from "../host-services";
 import { applyCredentialRewriters } from "../credential-rewriters";
+import { buildWorkflowSshDeps } from "./ssh-host";
+import { enrichCreateFields } from "./create-fields-cache";
+
+// Re-exported so the cloud web host (which builds its own interactive host) can
+// reuse the same SSH deps and create-field enrichment as the poller.
+export { buildWorkflowSshDeps } from "./ssh-host";
+export { enrichCreateFields } from "./create-fields-cache";
 
 export interface RunOrgWorkflowOptions {
   organizationId: string;
@@ -41,8 +48,17 @@ export interface RunOrgWorkflowResult {
   result: RunResult;
 }
 
-/** Enumerate the org's accounts grouped by plugin, with resource-type metadata. */
-export async function listOrgPlugins(organizationId: string): Promise<WorkflowPluginInfo[]> {
+/**
+ * Enumerate the org's accounts grouped by plugin, with resource-type metadata.
+ *
+ * `enrichCreateFields` (typings path only) additionally fetches each createable
+ * type's live create config so `create({...})` is typed — it hits provider APIs,
+ * so the runtime path (every run) leaves it off and uses the generic signature.
+ */
+export async function listOrgPlugins(
+  organizationId: string,
+  opts: { enrichCreateFields?: boolean } = {},
+): Promise<WorkflowPluginInfo[]> {
   const rows = await db
     .select()
     .from(accounts)
@@ -74,11 +90,28 @@ export async function listOrgPlugins(organizationId: string): Promise<WorkflowPl
     }
     entry.accounts.push({ id: row.id, pluginId: row.pluginId, displayName: row.displayName });
   }
+
+  // Best-effort: type each createable resource's fields from the live create
+  // config (cached) so `create({...})` autocompletes real keys/options.
+  if (opts.enrichCreateFields) {
+    await Promise.all(
+      Array.from(byPlugin.values()).map((entry) => {
+        const first = entry.accounts[0];
+        if (!first) return Promise.resolve();
+        return enrichCreateFields(entry.pluginId, entry.resourceTypes, async () => {
+          const ctx = await getOrgAccountClient(first.id, organizationId);
+          if (!ctx) throw new Error(`Account ${first.id} not found.`);
+          return ctx.client;
+        });
+      }),
+    );
+  }
+
   return Array.from(byPlugin.values());
 }
 
 /** Decrypt an account's credentials and instantiate its plugin client. */
-async function getOrgAccountClient(accountId: string, organizationId: string) {
+export async function getOrgAccountClient(accountId: string, organizationId: string) {
   const [account] = await db
     .select({
       id: accounts.id,
@@ -184,6 +217,7 @@ export function buildOrgWorkflowHost(organizationId: string, workflowId: string)
     prompt: async () => {
       throw new Error("This run is not interactive; infra.prompt() is unavailable.");
     },
+    ...buildWorkflowSshDeps(organizationId),
   });
 }
 

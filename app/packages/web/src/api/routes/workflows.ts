@@ -163,7 +163,7 @@ app.get("/:id/typings", async (c) => {
   requirePermission(c, "dashboards:read");
   const wf = await loadWorkflow(c, c.req.param("id"));
   if (!wf) return c.json({ error: "Not found" }, 404);
-  const plugins = await listOrgPlugins(orgId(c));
+  const plugins = await listOrgPlugins(orgId(c), { enrichCreateFields: true });
   const trigger = wf.trigger as WorkflowTrigger;
   const dts = generateInfraDts({
     plugins,
