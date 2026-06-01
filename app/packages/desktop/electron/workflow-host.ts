@@ -28,6 +28,10 @@ import type {
   MetricValue,
   PromptSpec,
   ResourceInstanceLite,
+  SshExecParamsLite,
+  SshExecResultLite,
+  SshProbeParamsLite,
+  SshStreamChunkLite,
   StorageObjectBody,
   StorageObjectLite,
   WorkflowHost,
@@ -94,6 +98,12 @@ function createBridgedHost(sender: WebContents, runToken: string): WorkflowHost 
     getMetric: (key) => call<MetricValue>("getMetric", [key]),
     setMetric: (key, value) => call<void>("setMetric", [key, value]),
     listMetrics: () => call<Record<string, MetricValue>>("listMetrics", []),
+    sshExec: (params: SshExecParamsLite) => call<SshExecResultLite>("sshExec", [params]),
+    sshStreamStart: (params: SshExecParamsLite) =>
+      call<{ streamId: string }>("sshStreamStart", [params]),
+    sshStreamRead: (streamId: string) => call<SshStreamChunkLite>("sshStreamRead", [streamId]),
+    sshStreamClose: (streamId: string) => call<void>("sshStreamClose", [streamId]),
+    sshProbe: (params: SshProbeParamsLite) => call<boolean>("sshProbe", [params]),
   };
 }
 

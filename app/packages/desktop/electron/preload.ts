@@ -52,6 +52,12 @@ const INVOKE_CHANNELS = [
   "ssh_check_1password",
   "ssh_list_1password_keys",
   "ssh_host_key_decide",
+  // workflow ssh
+  "workflow_ssh_exec",
+  "workflow_ssh_stream_start",
+  "workflow_ssh_stream_read",
+  "workflow_ssh_stream_close",
+  "workflow_ssh_probe",
   // sftp
   "sftp_list",
   "sftp_mkdir",

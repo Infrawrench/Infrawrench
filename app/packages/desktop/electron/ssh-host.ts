@@ -2,7 +2,17 @@ import { dialog, ipcMain } from "electron";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { openTunnel, closeTunnel, getActiveTunnels, sshExecCommand } from "./ssh-tunnel";
+import {
+  openTunnel,
+  closeTunnel,
+  getActiveTunnels,
+  sshExecCommand,
+  workflowSshExec,
+  workflowSshStreamStart,
+  workflowSshStreamRead,
+  workflowSshStreamClose,
+  workflowSshProbe,
+} from "./ssh-tunnel";
 import {
   spawnSshShell,
   writeSshShell,
@@ -44,6 +54,43 @@ ipcMain.handle(
       command: string;
     },
   ) => sshExecCommand(config, command),
+);
+
+// Workflow SSH: binary-safe exec + streaming + reachability probe. The renderer
+// resolves the connect config (host + key) and passes it through; main runs the
+// ssh2 connection and returns base64 output.
+type WorkflowSshConfig = {
+  sshHost: string;
+  sshPort: number;
+  sshUser: string;
+  privateKey: string;
+};
+
+ipcMain.handle(
+  "workflow_ssh_exec",
+  (_e, { config, command }: { config: WorkflowSshConfig; command: string }) =>
+    workflowSshExec(config, command),
+);
+
+ipcMain.handle(
+  "workflow_ssh_stream_start",
+  (_e, { config, command }: { config: WorkflowSshConfig; command: string }) =>
+    workflowSshStreamStart(config, command),
+);
+
+ipcMain.handle("workflow_ssh_stream_read", (_e, { streamId }: { streamId: string }) =>
+  workflowSshStreamRead(streamId),
+);
+
+ipcMain.handle("workflow_ssh_stream_close", (_e, { streamId }: { streamId: string }) => {
+  workflowSshStreamClose(streamId);
+  return { ok: true };
+});
+
+ipcMain.handle(
+  "workflow_ssh_probe",
+  (_e, { host, port, timeoutMs }: { host: string; port: number; timeoutMs: number }) =>
+    workflowSshProbe(host, port, timeoutMs),
 );
 
 ipcMain.handle("ssh_shell_spawn", (event, config: SshShellConfig) =>

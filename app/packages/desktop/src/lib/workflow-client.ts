@@ -12,11 +12,14 @@
  */
 import {
   buildWorkflowHost,
+  createFieldsFromConfig,
   generateInfraDts,
   type MetricDef,
   type MetricValue,
   type PromptSpec,
+  type WorkflowCreateFieldInfo,
   type WorkflowPluginInfo,
+  type WorkflowResourceTypeInfo,
 } from "@infrawrench/workflow-runtime/client";
 
 import { runWorkflowInMain } from "./workflow-runner";
@@ -33,6 +36,7 @@ import type {
 import { getDb } from "../db/client";
 import { getPlugin } from "../plugins/loader";
 import { createPluginClient } from "./plugin-client";
+import { invoke } from "./invoke";
 
 /** Fired after a local workflow is created/updated/deleted, so the cron runner re-syncs. */
 export const WORKFLOWS_CHANGED_EVENT = "iw:workflows-changed";
@@ -93,8 +97,69 @@ async function loadRow(id: string): Promise<WorkflowRow | undefined> {
   return rows[0];
 }
 
-/** Build the account-tree the isolate's `infra.accounts` is generated from. */
-async function listLocalPlugins(): Promise<WorkflowPluginInfo[]> {
+// Cache of distilled create-field schemas (per pluginId:typeId) so re-opening
+// the editor doesn't re-hit the provider API on every typings request. Mirrors
+// server-core's create-fields-cache for the local desktop host.
+const createFieldsCache = new Map<
+  string,
+  { at: number; value: WorkflowCreateFieldInfo[] | null }
+>();
+const CREATE_FIELDS_TTL_MS = 10 * 60 * 1000;
+
+/**
+ * Best-effort: type each createable resource's fields from the plugin's live
+ * create config so `create({...})` autocompletes real keys/options instead of
+ * `Record<string, string>`. Mutates `resourceTypes` in place.
+ */
+async function enrichLocalCreateFields(
+  pluginId: string,
+  resourceTypes: WorkflowResourceTypeInfo[],
+  firstAccountId: string,
+): Promise<void> {
+  const createable = resourceTypes.filter((rt) => rt.supportsCreate);
+  if (createable.length === 0) return;
+  const now = Date.now();
+  const needsFetch = createable.some((rt) => {
+    const hit = createFieldsCache.get(`${pluginId}:${rt.id}`);
+    return !hit || now - hit.at > CREATE_FIELDS_TTL_MS;
+  });
+  let client: Awaited<ReturnType<typeof createPluginClient>> | null = null;
+  if (needsFetch) {
+    try {
+      client = await createPluginClient(firstAccountId, pluginId);
+    } catch {
+      client = null;
+    }
+  }
+  for (const rt of createable) {
+    const key = `${pluginId}:${rt.id}`;
+    let entry = createFieldsCache.get(key);
+    if (!entry || now - entry.at > CREATE_FIELDS_TTL_MS) {
+      let value: WorkflowCreateFieldInfo[] | null = null;
+      if (client?.getCreateConfig) {
+        try {
+          value = createFieldsFromConfig(await client.getCreateConfig(rt.id));
+        } catch {
+          value = null;
+        }
+      }
+      entry = { at: now, value };
+      createFieldsCache.set(key, entry);
+    }
+    if (entry.value && entry.value.length > 0) rt.createFields = entry.value;
+  }
+}
+
+/**
+ * Build the account-tree the isolate's `infra.accounts` is generated from.
+ *
+ * `enrichCreateFields` (typings path only) fetches each createable type's live
+ * create config so `create({...})` is typed; the runtime path (every run) leaves
+ * it off to avoid provider API calls on run startup.
+ */
+async function listLocalPlugins(
+  opts: { enrichCreateFields?: boolean } = {},
+): Promise<WorkflowPluginInfo[]> {
   const db = await getDb();
   const accounts = await db.select<AccountRow[]>(
     "SELECT id, plugin_id, display_name FROM accounts WHERE deleted_at IS NULL",
@@ -124,6 +189,18 @@ async function listLocalPlugins(): Promise<WorkflowPluginInfo[]> {
     }
     entry.accounts.push({ id: acc.id, pluginId: acc.plugin_id, displayName: acc.display_name });
   }
+
+  if (opts.enrichCreateFields) {
+    await Promise.all(
+      Array.from(byPlugin.values()).map((entry) => {
+        const first = entry.accounts[0];
+        return first
+          ? enrichLocalCreateFields(entry.pluginId, entry.resourceTypes, first.id)
+          : Promise.resolve();
+      }),
+    );
+  }
+
   return Array.from(byPlugin.values());
 }
 
@@ -148,6 +225,93 @@ async function pluginIdForAccount(accountId: string): Promise<string> {
 /** Raise an interactive prompt via the renderer modal (window.prompt is a no-op in Electron). */
 function askUser(spec: PromptSpec): Promise<MetricValue> {
   return requestWorkflowPrompt(spec);
+}
+
+type DesktopSshConfig = {
+  sshHost: string;
+  sshPort: number;
+  sshUser: string;
+  privateKey: string;
+};
+
+/** Resolve where a resource lives for SSH (host/port/user) — no private key needed. */
+async function resolveSshTarget(params: {
+  accountId: string;
+  typeId: string;
+  resourceId: string;
+  username?: string;
+}): Promise<{ host: string; port: number; username: string; native?: DesktopSshConfig }> {
+  const pluginId = await pluginIdForAccount(params.accountId);
+  const client = await createPluginClient(params.accountId, pluginId);
+  const native = client.getSshConfig?.();
+  if (native) {
+    return {
+      host: native.host,
+      port: native.port,
+      username: params.username ?? native.username,
+      native: {
+        sshHost: native.host,
+        sshPort: native.port,
+        sshUser: params.username ?? native.username,
+        privateKey: native.privateKey,
+      },
+    };
+  }
+  const lp = await getPlugin(pluginId);
+  const sshEndpoint = lp?.plugin.resourceTypes.find((r) => r.id === params.typeId)?.sshEndpoint;
+  if (!sshEndpoint) {
+    throw new Error(
+      `Resource type "${params.typeId}" does not expose an SSH endpoint, and its plugin has no native SSH support.`,
+    );
+  }
+  const host = await client.resolveOutput(
+    params.typeId,
+    params.resourceId,
+    sshEndpoint.hostOutputKey,
+    params.accountId,
+  );
+  if (!host) {
+    throw new Error(
+      `Could not resolve the SSH host (output "${sshEndpoint.hostOutputKey}") for this resource — is it running yet?`,
+    );
+  }
+  return { host, port: 22, username: params.username ?? sshEndpoint.defaultUsername ?? "root" };
+}
+
+/** Resolve a private-key PEM from a local app key (by id or name) or a ~/.ssh file. */
+async function resolveSshPrivateKey(sshKey: string): Promise<string> {
+  const db = await getDb();
+  const rows = await db.select<{ id: string; name: string }[]>(
+    "SELECT id, name FROM ssh_keys WHERE id = $1 OR name = $1 LIMIT 1",
+    [sshKey],
+  );
+  if (rows[0]) return invoke<string>("ssh_key_get_private_key", { keyId: rows[0].id });
+  // Fall back to a system key file name in ~/.ssh (may prompt for consent).
+  return invoke<string>("ssh_read_system_key", { name: sshKey });
+}
+
+/** Build a full connect config (host + key) for a workflow `resource.ssh(...)` call. */
+async function resolveDesktopSshConfig(params: {
+  accountId: string;
+  typeId: string;
+  resourceId: string;
+  sshKeyId?: string;
+  username?: string;
+}): Promise<DesktopSshConfig> {
+  const target = await resolveSshTarget(params);
+  if (target.native) return target.native;
+  if (!params.sshKeyId) {
+    throw new Error(
+      'ssh() needs an SSH key to authenticate — pass { sshKey: "<key name or ~/.ssh file>" }.',
+    );
+  }
+  const privateKey = await resolveSshPrivateKey(params.sshKeyId);
+  return {
+    sshHost: target.host,
+    sshPort: target.port,
+    sshUser: target.username,
+    privateKey,
+  };
 }
 
 export function createDesktopWorkflowClient(): WorkflowClient {
@@ -223,7 +387,7 @@ export function createDesktopWorkflowClient(): WorkflowClient {
 
     async getTypings(id: string) {
       const wf = await loadRow(id);
-      const plugins = await listLocalPlugins();
+      const plugins = await listLocalPlugins({ enrichCreateFields: true });
       const trigger = wf
         ? safeParse<WorkflowTrigger>(wf.trigger, { kind: "manual" })
         : { kind: "manual" as const };
@@ -354,6 +518,30 @@ export async function runWorkflowById(
       );
     },
     prompt: askUser,
+
+    // SSH runs in Electron main (Node ssh2); the renderer resolves the connect
+    // config (host + key) and bridges the exec/stream/probe to main via IPC.
+    sshExec: async (params) => {
+      const config = await resolveDesktopSshConfig(params);
+      return invoke("workflow_ssh_exec", { config, command: params.command });
+    },
+    sshStreamStart: async (params) => {
+      const config = await resolveDesktopSshConfig(params);
+      return invoke("workflow_ssh_stream_start", { config, command: params.command });
+    },
+    sshStreamRead: (streamId) => invoke("workflow_ssh_stream_read", { streamId }),
+    sshStreamClose: async (streamId) => {
+      await invoke("workflow_ssh_stream_close", { streamId });
+    },
+    sshProbe: async (params) => {
+      const target = await resolveSshTarget(params).catch(() => null);
+      if (!target) return false;
+      return invoke<boolean>("workflow_ssh_probe", {
+        host: target.host,
+        port: params.port ?? target.port ?? 22,
+        timeoutMs: params.timeoutMs ?? 180_000,
+      });
+    },
   });
 
   const result = await runWorkflowInMain(wf.source, opts.interactive, host);
