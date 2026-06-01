@@ -185,6 +185,7 @@ function connectWorkflowSsh(
   config: WorkflowSshConfig,
   onReady: (client: SshClient) => void,
   onError: (err: Error) => void,
+  skipHostKeyCheck = false,
 ): SshClient {
   const client = new SshClient();
   const hostKeyErrorRef = { value: null as HostKeyMismatchError | null };
@@ -192,13 +193,18 @@ function connectWorkflowSsh(
   client.once("error", (err) => {
     onError(hostKeyErrorRef.value ?? new Error(`SSH connection failed: ${err.message}`));
   });
-  const baseOpts: ConnectConfig = {
+  const baseOpts: ConnectConfig = withAgentOverride({
     host: config.sshHost,
     port: config.sshPort,
     username: config.sshUser,
     privateKey: config.privateKey,
-  };
-  client.connect(withHostKeyVerifier(withAgentOverride(baseOpts), hostKeyErrorRef));
+  });
+  // skipHostKeyCheck → accept any key without the interactive pin prompt.
+  client.connect(
+    skipHostKeyCheck
+      ? { ...baseOpts, hostVerifier: (_key: Buffer, verify: (ok: boolean) => void) => verify(true) }
+      : withHostKeyVerifier(baseOpts, hostKeyErrorRef),
+  );
   return client;
 }
 
@@ -206,6 +212,7 @@ function connectWorkflowSsh(
 export async function workflowSshExec(
   config: WorkflowSshConfig,
   command: string,
+  skipHostKeyCheck = false,
 ): Promise<{ stdoutBase64: string; stderrBase64: string; code: number }> {
   await ensureHostKeyCacheLoaded();
   return new Promise((resolve, reject) => {
@@ -233,6 +240,7 @@ export async function workflowSshExec(
         });
       },
       reject,
+      skipHostKeyCheck,
     );
   });
 }
@@ -260,6 +268,7 @@ function wakeStream(state: WorkflowStreamState): void {
 export async function workflowSshStreamStart(
   config: WorkflowSshConfig,
   command: string,
+  skipHostKeyCheck = false,
 ): Promise<{ streamId: string }> {
   await ensureHostKeyCacheLoaded();
   const streamId = randomUUID();
@@ -296,6 +305,7 @@ export async function workflowSshStreamStart(
         });
       },
       reject,
+      skipHostKeyCheck,
     );
   });
   return { streamId };

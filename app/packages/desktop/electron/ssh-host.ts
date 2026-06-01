@@ -68,14 +68,26 @@ type WorkflowSshConfig = {
 
 ipcMain.handle(
   "workflow_ssh_exec",
-  (_e, { config, command }: { config: WorkflowSshConfig; command: string }) =>
-    workflowSshExec(config, command),
+  (
+    _e,
+    {
+      config,
+      command,
+      skipHostKeyCheck,
+    }: { config: WorkflowSshConfig; command: string; skipHostKeyCheck?: boolean },
+  ) => workflowSshExec(config, command, skipHostKeyCheck),
 );
 
 ipcMain.handle(
   "workflow_ssh_stream_start",
-  (_e, { config, command }: { config: WorkflowSshConfig; command: string }) =>
-    workflowSshStreamStart(config, command),
+  (
+    _e,
+    {
+      config,
+      command,
+      skipHostKeyCheck,
+    }: { config: WorkflowSshConfig; command: string; skipHostKeyCheck?: boolean },
+  ) => workflowSshStreamStart(config, command, skipHostKeyCheck),
 );
 
 ipcMain.handle("workflow_ssh_stream_read", (_e, { streamId }: { streamId: string }) =>

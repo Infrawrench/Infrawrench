@@ -348,6 +348,31 @@ ipcMain.handle("ssh_key_get_private_key", async (_e, raw: unknown) => {
   return decryptValue(ciphertext, iv, getEncryptionKey(), aad);
 });
 
+ipcMain.handle("ssh_key_get_public_key", async (_e, raw: unknown) => {
+  const { keyId } = SshKeyIdArgs.parse(raw);
+  const db = await getSqlite();
+  const stmt = db.prepare("SELECT encrypted_key, key_iv FROM ssh_keys WHERE id = ? LIMIT 1");
+  stmt.bind([keyId]);
+  const row = stmt.step() ? (stmt.getAsObject() as Record<string, unknown>) : null;
+  stmt.free();
+  if (!row) throw new Error("SSH key not found");
+  const privateKey = decryptValue(
+    String(row["encrypted_key"] ?? ""),
+    String(row["key_iv"] ?? ""),
+    getEncryptionKey(),
+    buildAad("sshKey", keyId, "privateKey"),
+  );
+  // Desktop app keys persist only the private half — derive the OpenSSH public
+  // key from it on demand.
+  const { utils } = await import("ssh2");
+  const parsed = utils.parseKey(privateKey);
+  if (parsed instanceof Error) {
+    throw new Error(`Could not derive public key for SSH key: ${parsed.message}`);
+  }
+  const key = Array.isArray(parsed) ? parsed[0] : parsed;
+  return `${key.type} ${key.getPublicSSH().toString("base64")}`;
+});
+
 ipcMain.handle("ssh_key_save_private_key", async (_e, raw: unknown) => {
   const { keyId, name, privateKey } = SshKeyCreateArgs.parse(raw);
   const aad = buildAad("sshKey", keyId, "privateKey");

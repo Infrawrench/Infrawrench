@@ -18,6 +18,7 @@ const INVOKE_CHANNELS = [
   "account_save_credentials",
   "account_create",
   "ssh_key_get_private_key",
+  "ssh_key_get_public_key",
   "ssh_key_save_private_key",
   "ssh_tunnel_config_get_private_key",
   "ssh_tunnel_config_encrypt_private_key",

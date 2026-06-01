@@ -33,6 +33,8 @@ import type {
   WorkflowTrigger,
 } from "@infrawrench/ui/workflows";
 
+import { useUIStore } from "@infrawrench/ui";
+
 import { getDb } from "../db/client";
 import { getPlugin } from "../plugins/loader";
 import { createPluginClient } from "./plugin-client";
@@ -105,6 +107,51 @@ const createFieldsCache = new Map<
   { at: number; value: WorkflowCreateFieldInfo[] | null }
 >();
 const CREATE_FIELDS_TTL_MS = 10 * 60 * 1000;
+const CREATE_CONFIG_TIMEOUT_MS = 8_000;
+
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("getCreateConfig timed out")), ms);
+    p.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(timer);
+        reject(e);
+      },
+    );
+  });
+}
+
+/**
+ * Distilled create fields for a single resource type (cached). Returns null when
+ * the plugin can't produce a config (child types, slow/erroring providers).
+ */
+async function getLocalCreateFields(
+  pluginId: string,
+  typeId: string,
+  getClient: () => Promise<Awaited<ReturnType<typeof createPluginClient>>>,
+): Promise<WorkflowCreateFieldInfo[] | null> {
+  const key = `${pluginId}:${typeId}`;
+  const now = Date.now();
+  const hit = createFieldsCache.get(key);
+  if (hit && now - hit.at <= CREATE_FIELDS_TTL_MS) return hit.value;
+  let value: WorkflowCreateFieldInfo[] | null = null;
+  try {
+    const client = await getClient();
+    if (client.getCreateConfig) {
+      value = createFieldsFromConfig(
+        await withTimeout(client.getCreateConfig(typeId), CREATE_CONFIG_TIMEOUT_MS),
+      );
+    }
+  } catch {
+    value = null;
+  }
+  createFieldsCache.set(key, { at: now, value });
+  return value;
+}
 
 /**
  * Best-effort: type each createable resource's fields from the plugin's live
@@ -118,36 +165,130 @@ async function enrichLocalCreateFields(
 ): Promise<void> {
   const createable = resourceTypes.filter((rt) => rt.supportsCreate);
   if (createable.length === 0) return;
-  const now = Date.now();
-  const needsFetch = createable.some((rt) => {
-    const hit = createFieldsCache.get(`${pluginId}:${rt.id}`);
-    return !hit || now - hit.at > CREATE_FIELDS_TTL_MS;
-  });
-  let client: Awaited<ReturnType<typeof createPluginClient>> | null = null;
-  if (needsFetch) {
+  let clientPromise: Promise<Awaited<ReturnType<typeof createPluginClient>>> | null = null;
+  const getClient = () => (clientPromise ??= createPluginClient(firstAccountId, pluginId));
+  await Promise.all(
+    createable.map(async (rt) => {
+      const value = await getLocalCreateFields(pluginId, rt.id, getClient);
+      if (value && value.length > 0) rt.createFields = value;
+    }),
+  );
+}
+
+/** A value that already looks like an OpenSSH public key — leave it alone. */
+const PUBLIC_KEY_RE = /^(ssh-|ecdsa-|sk-ssh-|sk-ecdsa-)/;
+
+/**
+ * Names of every SSH key the create-form SSH-key picker would offer, for dts
+ * autocomplete: saved app keys + system `~/.ssh` keys + 1Password agent keys,
+ * plus cloud keys when signed into Infrawrench Cloud. Each source is best-effort.
+ */
+async function listLocalSshKeyNames(): Promise<string[]> {
+  const names = new Set<string>();
+  const add = (rows: { name: string }[] | undefined) => {
+    for (const r of rows ?? []) if (r.name) names.add(r.name);
+  };
+
+  const orgId = useUIStore.getState().activeCloudOrgId;
+  const [appRows, system, onepassword, cloud] = await Promise.all([
+    getDb()
+      .then((db) => db.select<{ name: string }[]>("SELECT name FROM ssh_keys ORDER BY name ASC"))
+      .catch(() => [] as { name: string }[]),
+    invoke<{ name: string }[]>("ssh_list_system_keys").catch(() => [] as { name: string }[]),
+    invoke<{ name: string }[]>("ssh_list_1password_keys").catch(() => [] as { name: string }[]),
+    orgId
+      ? invoke<{ name: string }[]>("cloud_ssh_keys_list", { orgId }).catch(
+          () => [] as { name: string }[],
+        )
+      : Promise.resolve([] as { name: string }[]),
+  ]);
+  add(appRows);
+  add(system);
+  add(onepassword);
+  add(cloud);
+  return Array.from(names);
+}
+
+/**
+ * Resolve a key NAME (or id) the workflow author passed to its OpenSSH public
+ * key, searching the same sources the picker offers. Returns null if not found.
+ */
+async function resolveLocalSshPublicKey(nameOrId: string): Promise<string | null> {
+  // Saved app key (by id or name) — derive the public key from the stored private.
+  try {
+    const db = await getDb();
+    const rows = await db.select<{ id: string }[]>(
+      "SELECT id FROM ssh_keys WHERE id = $1 OR name = $1 LIMIT 1",
+      [nameOrId],
+    );
+    if (rows[0]) return await invoke<string>("ssh_key_get_public_key", { keyId: rows[0].id });
+  } catch {
+    /* fall through */
+  }
+  // 1Password agent — public key is returned directly.
+  try {
+    const onepw = await invoke<{ name: string; publicKey: string }[]>("ssh_list_1password_keys");
+    const match = onepw.find((k) => k.name === nameOrId);
+    if (match?.publicKey) return match.publicKey;
+  } catch {
+    /* fall through */
+  }
+  // Cloud key (by name or id) — public key lives server-side.
+  const orgId = useUIStore.getState().activeCloudOrgId;
+  if (orgId) {
     try {
-      client = await createPluginClient(firstAccountId, pluginId);
+      const cloud = await invoke<{ id: string; name: string; publicKey: string }[]>(
+        "cloud_ssh_keys_list",
+        { orgId },
+      );
+      const match = cloud.find((k) => k.name === nameOrId || k.id === nameOrId);
+      if (match?.publicKey) return match.publicKey;
     } catch {
-      client = null;
+      /* fall through */
     }
   }
-  for (const rt of createable) {
-    const key = `${pluginId}:${rt.id}`;
-    let entry = createFieldsCache.get(key);
-    if (!entry || now - entry.at > CREATE_FIELDS_TTL_MS) {
-      let value: WorkflowCreateFieldInfo[] | null = null;
-      if (client?.getCreateConfig) {
-        try {
-          value = createFieldsFromConfig(await client.getCreateConfig(rt.id));
-        } catch {
-          value = null;
-        }
-      }
-      entry = { at: now, value };
-      createFieldsCache.set(key, entry);
-    }
-    if (entry.value && entry.value.length > 0) rt.createFields = entry.value;
+  // System ~/.ssh key — read the matching .pub file.
+  try {
+    const pub = await invoke<string>("ssh_read_system_key", { name: `${nameOrId}.pub` });
+    if (pub?.trim()) return pub.trim();
+  } catch {
+    /* fall through */
   }
+  return null;
+}
+
+/**
+ * Workflow host `transformCreateFields`: rewrite `ssh-key-picker` field values
+ * that name a local Infrawrench key into that key's public key (providers want
+ * the raw public key). A value that is already a public key is left untouched.
+ */
+async function resolveLocalCreateSshKeyFields(
+  accountId: string,
+  typeId: string,
+  fields: Record<string, string>,
+): Promise<{ fields: Record<string, string>; sshKeyRef?: string }> {
+  const pluginId = await pluginIdForAccount(accountId).catch(() => null);
+  if (!pluginId) return { fields };
+  const createFields = await getLocalCreateFields(pluginId, typeId, () =>
+    createPluginClient(accountId, pluginId),
+  );
+  const sshFieldKeys = (createFields ?? [])
+    .filter((f) => f.kind === "ssh-key-picker")
+    .map((f) => f.key);
+  if (sshFieldKeys.length === 0) return { fields };
+  const out = { ...fields };
+  let sshKeyRef: string | undefined;
+  for (const key of sshFieldKeys) {
+    const value = out[key]?.trim();
+    if (!value || PUBLIC_KEY_RE.test(value)) continue;
+    const pub = await resolveLocalSshPublicKey(value);
+    if (pub) {
+      out[key] = pub.trim();
+      // Remember the key name so the created resource can ssh() with it.
+      if (!sshKeyRef) sshKeyRef = value;
+    }
+  }
+  return { fields: out, ...(sshKeyRef ? { sshKeyRef } : {}) };
 }
 
 /**
@@ -264,18 +405,23 @@ async function resolveSshTarget(params: {
       `Resource type "${params.typeId}" does not expose an SSH endpoint, and its plugin has no native SSH support.`,
     );
   }
-  const host = await client.resolveOutput(
-    params.typeId,
-    params.resourceId,
-    sshEndpoint.hostOutputKey,
-    params.accountId,
-  );
+  // The host lives in the resource's resolvedOutputs (e.g. a droplet's ipv4),
+  // read live via getResource — NOT resolveOutput, which most plugins don't
+  // implement for these keys (DO throws). Falls back to a same-named field.
+  const instance = await client.getResource(params.typeId, params.resourceId, params.accountId);
+  const host =
+    instance.resolvedOutputs?.[sshEndpoint.hostOutputKey] ??
+    (instance.fields?.[sshEndpoint.hostOutputKey] as string | undefined);
   if (!host) {
     throw new Error(
       `Could not resolve the SSH host (output "${sshEndpoint.hostOutputKey}") for this resource — is it running yet?`,
     );
   }
-  return { host, port: 22, username: params.username ?? sshEndpoint.defaultUsername ?? "root" };
+  return {
+    host: String(host),
+    port: 22,
+    username: params.username ?? sshEndpoint.defaultUsername ?? "root",
+  };
 }
 
 /** Resolve a private-key PEM from a local app key (by id or name) or a ~/.ssh file. */
@@ -387,7 +533,12 @@ export function createDesktopWorkflowClient(): WorkflowClient {
 
     async getTypings(id: string) {
       const wf = await loadRow(id);
-      const plugins = await listLocalPlugins({ enrichCreateFields: true });
+      // Enrichment + key listing are best-effort — never let them fail the whole
+      // typings response (which would drop the editor back to `infra: any`).
+      const [plugins, sshKeyNames] = await Promise.all([
+        listLocalPlugins({ enrichCreateFields: true }).catch(() => listLocalPlugins()),
+        listLocalSshKeyNames().catch(() => [] as string[]),
+      ]);
       const trigger = wf
         ? safeParse<WorkflowTrigger>(wf.trigger, { kind: "manual" })
         : { kind: "manual" as const };
@@ -395,6 +546,7 @@ export function createDesktopWorkflowClient(): WorkflowClient {
         plugins,
         metrics: wf ? safeParse<MetricDef[]>(wf.metric_defs, []) : [],
         interactive: trigger.kind === "manual",
+        sshKeyNames,
       });
     },
 
@@ -519,28 +671,51 @@ export async function runWorkflowById(
     },
     prompt: askUser,
 
+    // Resolve ssh-key-picker create fields given by name → the key's public key.
+    transformCreateFields: resolveLocalCreateSshKeyFields,
+
     // SSH runs in Electron main (Node ssh2); the renderer resolves the connect
     // config (host + key) and bridges the exec/stream/probe to main via IPC.
     sshExec: async (params) => {
       const config = await resolveDesktopSshConfig(params);
-      return invoke("workflow_ssh_exec", { config, command: params.command });
+      return invoke("workflow_ssh_exec", {
+        config,
+        command: params.command,
+        skipHostKeyCheck: params.skipHostKeyCheck,
+      });
     },
     sshStreamStart: async (params) => {
       const config = await resolveDesktopSshConfig(params);
-      return invoke("workflow_ssh_stream_start", { config, command: params.command });
+      return invoke("workflow_ssh_stream_start", {
+        config,
+        command: params.command,
+        skipHostKeyCheck: params.skipHostKeyCheck,
+      });
     },
     sshStreamRead: (streamId) => invoke("workflow_ssh_stream_read", { streamId }),
     sshStreamClose: async (streamId) => {
       await invoke("workflow_ssh_stream_close", { streamId });
     },
     sshProbe: async (params) => {
-      const target = await resolveSshTarget(params).catch(() => null);
-      if (!target) return false;
-      return invoke<boolean>("workflow_ssh_probe", {
-        host: target.host,
-        port: params.port ?? target.port ?? 22,
-        timeoutMs: params.timeoutMs ?? 180_000,
-      });
+      // Resolve the host inside the loop: a just-created VM may not have an IP
+      // yet, so keep re-resolving until it's available, then hand the TCP probe
+      // (with the remaining time) to electron main — rather than failing once.
+      const interval = 4_000;
+      const deadline = Date.now() + (params.timeoutMs ?? 180_000);
+      while (Date.now() < deadline) {
+        const target = await resolveSshTarget(params).catch(() => null);
+        if (target?.host) {
+          const ok = await invoke<boolean>("workflow_ssh_probe", {
+            host: target.host,
+            port: params.port ?? target.port ?? 22,
+            timeoutMs: Math.max(interval, deadline - Date.now()),
+          });
+          return ok;
+        }
+        if (Date.now() + interval >= deadline) break;
+        await new Promise((r) => setTimeout(r, interval));
+      }
+      return false;
     },
   });
 
