@@ -12,6 +12,7 @@ import { handleSqlSession } from "./src/services/sql-proxy";
 import { handleK8sExecSession } from "./src/services/k8s-exec-proxy";
 import { handleK9sSession } from "./src/services/k9s-proxy";
 import { handleK8sPfSession } from "./src/services/k8s-pf-proxy";
+import { handleWorkflowSession } from "./src/services/workflow-ws";
 import { resolveKubeconfig } from "./src/services/k8s-kubeconfig-resolver";
 import { authenticateApiRequest } from "./src/auth/api-auth";
 import { validateWsToken } from "./src/services/ws-tokens";
@@ -171,6 +172,7 @@ async function start() {
             resourceType?: string;
             resourceName?: string;
             remotePort?: number;
+            workflowId?: string;
           };
 
           switch (msg.type) {
@@ -332,6 +334,18 @@ async function start() {
               break;
             case "k8s:pf:data":
             case "k8s:pf:close":
+              break;
+            case "workflow:run":
+              if (msg.workflowId) {
+                handleWorkflowSession(ws, auth.organizationId, msg.workflowId);
+              }
+              break;
+            // Subsequent debugger messages are handled by the session's own
+            // listener registered in handleWorkflowSession.
+            case "workflow:continue":
+            case "workflow:step":
+            case "workflow:stop":
+            case "workflow:prompt:response":
               break;
           }
         } catch (e) {

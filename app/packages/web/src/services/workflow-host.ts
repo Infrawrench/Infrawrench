@@ -34,6 +34,8 @@ export interface OrgWorkflowHostOptions {
   prompt?: (spec: PromptSpec) => Promise<MetricValue>;
   /** Provided when storage object reads should be supported for this run. */
   readStorageObject?: (accountId: string, bucket: string, key: string) => Promise<Uint8Array>;
+  /** Debugger line hook (instrumented runs); blocks per line until continued. */
+  line?: (line: number) => Promise<void>;
 }
 
 /**
@@ -180,6 +182,7 @@ export async function buildOrgWorkflowHost(opts: OrgWorkflowHostOptions): Promis
       const ctx = await getClientForAccount(accountId, organizationId);
       return ctx ? { client: ctx.client, pluginId: ctx.account.pluginId } : null;
     }),
+    ...(opts.line ? { line: opts.line } : {}),
     ...buildWorkflowSshDeps(organizationId),
   });
 }

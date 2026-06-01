@@ -33,6 +33,12 @@ export interface RunWorkflowByIdOptions {
   prompt?: (spec: PromptSpec) => Promise<MetricValue>;
   readStorageObject?: (accountId: string, bucket: string, key: string) => Promise<Uint8Array>;
   onLog?: (entry: RunLogEntry) => void;
+  /** Instrument the run so `line` is called before each statement (debugger). */
+  debug?: boolean;
+  /** Debugger line hook (blocks per line; the client decides when to continue). */
+  line?: (line: number) => Promise<void>;
+  /** Abort the run (Stop button). */
+  signal?: AbortSignal;
 }
 
 export interface RunWorkflowByIdResult {
@@ -71,9 +77,9 @@ export async function runWorkflowById(
   opts: RunWorkflowByIdOptions,
 ): Promise<RunWorkflowByIdResult> {
   // Non-interactive runs (automated triggers and the plain HTTP manual run) have
-  // no prompt/storage/log callbacks; route them through the shared runner so the
-  // web server and the poller execute workflows identically.
-  if (!opts.interactive && !opts.prompt && !opts.readStorageObject && !opts.onLog) {
+  // no prompt/storage/log/debug callbacks; route them through the shared runner
+  // so the web server and the poller execute workflows identically.
+  if (!opts.interactive && !opts.prompt && !opts.readStorageObject && !opts.onLog && !opts.debug) {
     return runOrgWorkflow({
       organizationId: opts.organizationId,
       workflowId: opts.workflowId,
@@ -112,6 +118,7 @@ export async function runWorkflowById(
     workflowId: wf.id,
     ...(opts.prompt ? { prompt: opts.prompt } : {}),
     ...(opts.readStorageObject ? { readStorageObject: opts.readStorageObject } : {}),
+    ...(opts.line ? { line: opts.line } : {}),
   });
 
   const result = await runWorkflow({
@@ -119,6 +126,8 @@ export async function runWorkflowById(
     host,
     interactive: Boolean(opts.interactive),
     ...(opts.onLog ? { onLog: opts.onLog } : {}),
+    ...(opts.debug ? { debug: true } : {}),
+    ...(opts.signal ? { signal: opts.signal } : {}),
   });
 
   const finishedAt = new Date(result.finishedAt);
