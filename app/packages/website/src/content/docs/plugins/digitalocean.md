@@ -201,7 +201,7 @@ The connection string and CA certificate outputs flow the same way as the other 
 ## Notable flows
 
 - **SSH terminal** on Droplets.
-- **Droplets in [Workflows](../features/workflows.md)** — `droplets.create({...})` autocompletes the real `region` / `size` / `image` / `sshKeys` fields with live option values, and a created Droplet can be reached with `droplet.waitUntilReachable()` then `droplet.ssh("…", { sshKey: "<org key>" })` (full result or streamed). Attach an org SSH key via the `sshKeys` create field so the box boots with a key you can connect with.
+- **Droplets in [Workflows](../features/workflows.md)** — `droplets.create({...})` autocompletes the real `region` / `size` / `image` fields with live option values, and the `sshPublicKey` field autocompletes your Infrawrench SSH keys by name (resolved to the public key on create). A created Droplet can be reached with `droplet.waitUntilReachable()` then `droplet.ssh("…", { sshKey: "<key name>" })` (full result or streamed).
 - **SQL editor** on managed Postgres and MySQL (via output reference to the [Postgres](./postgres.md) / [MySQL](./mysql.md) plugins).
 - **OpenSearch tab** on managed OpenSearch clusters — indices, search, snapshots via the [OpenSearch plugin](./opensearch.md). Endpoint and CA cert flow through automatically.
 - **File browser** on Spaces.

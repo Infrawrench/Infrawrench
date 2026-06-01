@@ -33,7 +33,14 @@ const ip = await infra.accounts.hetzner
 
 `infra.accounts.<plugin>` exposes `list()`, `getById(id)`, and `getByName(name)`. Each account handle is built from the provider's resource types: every type is a group named after its (plural) name — `account.<type>.list()` and `account.<type>.get(id)`, plus `.create/.update/.delete(...)` for the operations that provider actually supports (read-only types get just `list`/`get`). Account-level `resolveOutput(...)` is also available.
 
-**`create()` is typed from the real form.** Rather than a generic `Record<string, string>`, the fields argument is generated from the provider's actual create form — so the editor autocompletes the real field keys, and where a field has a closed set of choices (regions, sizes, images, plain selects) you get those values as literal suggestions. Creating a DigitalOcean droplet, for example, autocompletes `region`, `size`, `image`, and `sshKeys`, with the live region/size/image ids as options:
+Every resource you get back also carries `delete()` (delete this resource), plus the SSH helpers below — so you can act on a resource directly:
+
+```ts
+const droplet = await infra.accounts.digitalocean.getByName("prod").droplets.get(id);
+await droplet.delete(); // same as droplets.delete(droplet.id)
+```
+
+**`create()` is typed from the real form.** Rather than a generic `Record<string, string>`, the fields argument is generated from the provider's actual create form — so the editor autocompletes the real field keys, and where a field has a closed set of choices (regions, sizes, images, plain selects) you get those values as literal suggestions. Creating a DigitalOcean droplet, for example, autocompletes `name`, `region`, `size`, `image`, and the SSH-key field, with the live region/size/image ids as options:
 
 ```ts
 const droplets = infra.accounts.digitalocean.getByName("prod").droplets;
@@ -42,11 +49,13 @@ const droplet = await droplets.create({
   region: "nyc3", // ← suggested from your account's live region list
   size: "s-1vcpu-1gb",
   image: "ubuntu-24-04-x64",
-  sshKeys: "deploy-key", // an org SSH key, so the box boots with your key
+  sshPublicKey: "deploy-key", // ← suggested from your Infrawrench SSH keys (by name)
 });
 ```
 
 Options come from the provider's live catalog, so any other string still type-checks (the union is open) — you just lose the autocomplete hint.
+
+**SSH-key fields reference your Infrawrench keys.** A provider's SSH-key field (and the `sshKey` option on `resource.ssh(...)`, below) autocompletes the **names of the SSH keys you manage in Infrawrench** — the same list shown by the SSH-key picker, refreshed each time the editor loads types, so a key you just added appears immediately. You can give it a key **name** (Infrawrench resolves it to that key's public key before the provider sees it) or paste a raw public key directly — both work.
 
 ### Reading storage objects
 
@@ -72,22 +81,26 @@ Any resource that exposes an SSH endpoint (a DigitalOcean droplet, a Hetzner/EC2
 ```ts
 const droplets = infra.accounts.digitalocean.getByName("prod").droplets;
 
-// 1. Create the box with an org SSH key attached (it boots with your key)
+// 1. Create the box with an Infrawrench SSH key attached (it boots with your key)
 const droplet = await droplets.create({
   name: "build-runner",
   region: "nyc3",
   size: "s-2vcpu-4gb",
   image: "ubuntu-24-04-x64",
-  sshKeys: "deploy-key",
+  sshPublicKey: "deploy-key", // a key name from your Infrawrench SSH keys
 });
 
 // 2. Wait until it accepts SSH (polls until reachable, or times out)
 await droplet.waitUntilReachable();
 
-// 3. Connect and run a command — resolves the full stdout as a string
-const uname = await droplet.ssh("uname -a", { sshKey: "deploy-key" });
+// 3. Connect and run a command — resolves the full stdout as a string.
+//    No sshKey needed: a resource you just created remembers the key you
+//    attached, so ssh() uses it automatically.
+const uname = await droplet.ssh("uname -a");
 infra.log(uname.trim());
 ```
+
+The implicit key only applies to resources returned from `create()` (where you attached the key). For a resource you fetched with `get()`/`list()`, pass `{ sshKey: "<name>" }` explicitly — Infrawrench has no way to know which key you intend.
 
 `resource.ssh(command, opts)` is a single combined call:
 
@@ -106,9 +119,11 @@ infra.log(uname.trim());
   }
   ```
 
-Options: `sshKey` (an org SSH key by name or id — its private half authenticates; not needed for providers with native SSH like Fly/Hetzner), `username` (defaults to the resource type's SSH user, e.g. `root`), `encoding`, `stream`, and `timeoutMs`. `waitUntilReachable({ timeoutMs?, port? })` resolves once the host accepts TCP on the SSH port.
+Options: `sshKey` (an Infrawrench SSH key by name or id — autocompleted from your keys; its private half authenticates; not needed for providers with native SSH like Fly/Hetzner), `username` (defaults to the resource type's SSH user, e.g. `root`), `encoding`, `stream`, `timeoutMs`, and `skipHostKeyCheck` (accept whatever host key is presented without verifying or pinning it — handy for ephemeral hosts that get recreated with the same address, but it turns off MITM protection, so only use it on a trusted path).
 
-Host keys are trusted on first use for workflow connections and pinned; if a previously-seen host's key later changes, the connection is refused until you re-pin it from SSH settings. SSH is available for manual and automated runs alike.
+`waitUntilReachable({ timeoutMs?, port? })` **polls** until the host accepts TCP on the SSH port — it keeps re-resolving the address too, so it works on a freshly-created VM that doesn't have an IP yet (it doesn't fail the instant the address is missing). It defaults to a few minutes before giving up. A workflow run has a generous wall-clock budget (5 minutes by default, which counts time spent waiting), enough to create a VM, wait for boot, connect, and clean up.
+
+Host keys are trusted on first use for workflow connections and pinned; if a previously-seen host's key later changes, the connection is refused until you re-pin it (or pass `{ skipHostKeyCheck: true }`). On the desktop app an unknown host key shows a confirmation dialog — while it's open, **the run's time budget is paused**, so taking a moment to confirm doesn't eat into the execution timeout (SSH and `waitUntilReachable()` waits are excluded from the budget for the same reason). SSH is available for manual and automated runs alike.
 
 ### Prompting the user
 
