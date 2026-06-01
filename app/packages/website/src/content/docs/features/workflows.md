@@ -20,11 +20,10 @@ Every workflow runs with a global `infra` object. Its types are **generated from
 // Look an account up by the display name you gave it
 const cf = infra.accounts.cloudflare.getByName("production");
 
-// Typed, per-resource-type methods are generated for this account from the
-// provider's resource types — named after each type:
-const buckets = await cf.listR2Buckets();
-const zone = await cf.getZone("example.com");
-await cf.createDnsRecord({ type: "A", name: "api", content: "1.2.3.4" });
+// Each resource type is a typed group on the account, named after the type:
+const buckets = await cf.r2Buckets.list();
+const zone = await cf.zones.get("example.com");
+await cf.dnsRecords.create({ type: "A", name: "api", content: "1.2.3.4" });
 
 // Resolve an output (e.g. a server's IP) for use elsewhere
 const ip = await infra.accounts.hetzner
@@ -32,7 +31,7 @@ const ip = await infra.accounts.hetzner
   .resolveOutput("server", serverId, "ipv4");
 ```
 
-`infra.accounts.<plugin>` exposes `list()`, `getById(id)`, and `getByName(name)`. Each account handle is built from the provider's resource types: for every type you get `list<Type>s()` and `get<Type>(id)`, plus `create/update/delete<Type>(...)` for the operations that provider actually supports (read-only types get just `list`/`get`). Account-level `resolveOutput(...)` is also available.
+`infra.accounts.<plugin>` exposes `list()`, `getById(id)`, and `getByName(name)`. Each account handle is built from the provider's resource types: every type is a group named after its (plural) name — `account.<type>.list()` and `account.<type>.get(id)`, plus `.create/.update/.delete(...)` for the operations that provider actually supports (read-only types get just `list`/`get`). Account-level `resolveOutput(...)` is also available.
 
 ### Reading storage objects
 
@@ -40,7 +39,7 @@ Storage-capable resources (e.g. buckets) come back with object read methods on t
 
 ```ts
 const cf = infra.accounts.cloudflare.getByName("production");
-const bucket = await cf.getR2Bucket("configs");
+const bucket = await cf.r2Buckets.get("configs");
 const file = await bucket.get("app.json");
 const config = file.json<{ replicas: number }>();
 infra.log("replicas:", config.replicas);
@@ -63,6 +62,15 @@ const env = await infra.prompt({
     { label: "Staging", value: "staging" },
     { label: "Production", value: "production" },
   ],
+});
+```
+
+`kind` can be `text` (default), `password`, `number`, `boolean`, `select` (with `options`), or `code` — a multiline code editor for pasting in a snippet, JSON, a manifest, etc. (Tab indents; ⌘/Ctrl+Enter submits):
+
+```ts
+const manifest = await infra.prompt({
+  message: "Paste the deployment manifest",
+  kind: "code",
 });
 ```
 
@@ -104,7 +112,7 @@ On the **desktop app** workflows are stored locally, so workflow cards are avail
 Open the trigger settings to choose how a workflow runs:
 
 - **Manual** — run on demand from the UI. The only mode that allows `infra.prompt`. Available everywhere (desktop, web, proxy).
-- **Cron** — run on a schedule (a cron expression). Handled by the cloud background runner.
+- **Cron** — run on a schedule. Pick a preset (every 15 minutes, daily at 9am, weekly…) or type a raw 5-field cron expression; the editor shows a plain-English summary of what you entered.
 - **Git** — run when a connected git repository receives an event (e.g. a push). The web app gives you a webhook URL with a secret token to add to your repo.
 
 **Platform support for automated triggers:**
@@ -112,10 +120,10 @@ Open the trigger settings to choose how a workflow runs:
 | Trigger | Desktop            | Web | Web proxy |
 | ------- | ------------------ | --- | --------- |
 | Manual  | ✅                 | ✅  | ✅        |
-| Cron    | only via the proxy | ✅  | ✅        |
+| Cron    | ✅ (while open\*)  | ✅  | ✅        |
 | Git     | only via the proxy | ✅  | ✅        |
 
-The desktop app runs manual workflows entirely locally. It does **not** run automated (cron/git) triggers on its own — those need a host that's always on, so they run in the cloud, or against your desktop accounts through the [web proxy](../core-concepts/desktop-vs-web.md).
+The web app runs cron and git triggers on an always-on cloud host. The **desktop app** runs your local cron workflows itself: while at least one cron workflow is enabled, Infrawrench keeps running in the background after you close the window (just like active metric-ping alerts) so the schedule keeps firing. \*It can't fire while the app is fully quit — quit it and the local schedule pauses until you reopen. For schedules that must run 24/7 regardless, use the cloud or the [web proxy](../core-concepts/desktop-vs-web.md).
 
 <insert [Screenshot of the trigger configuration showing Manual / Cron / Git options with the git webhook URL] here>
 
