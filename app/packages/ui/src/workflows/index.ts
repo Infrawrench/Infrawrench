@@ -11,6 +11,7 @@ export type {
   GitRepoOption,
   GitIntegration,
   WorkflowClient,
+  DebugSession,
   WorkflowSummary,
   WorkflowSaveBody,
   WorkflowMetricDef,

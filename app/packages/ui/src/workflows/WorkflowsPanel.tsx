@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDraggable } from "@dnd-kit/core";
 
 import { WorkflowEditorView } from "./WorkflowEditorView.js";
 import type {
+  DebugSession,
   GitIntegration,
   WorkflowClient,
   WorkflowMetricDef,
@@ -87,6 +88,21 @@ export function WorkflowsPanel({
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastRun, setLastRun] = useState<WorkflowRunRow | null>(null);
+  // Debugger state. `breakpointsRef` is the live set the running client reads
+  // (so toggles mid-run are seen); `breakpoints` mirrors it for the editor.
+  const breakpointsRef = useRef<Set<number>>(new Set());
+  const [breakpoints, setBreakpoints] = useState<Set<number>>(() => new Set());
+  const [currentLine, setCurrentLine] = useState<number | null>(null);
+  const [pausedLine, setPausedLine] = useState<number | null>(null);
+  // The active debug session (the client fills in resume/step/stop per pause).
+  const debugSessionRef = useRef<DebugSession | null>(null);
+
+  const toggleBreakpoint = useCallback((line: number) => {
+    const set = breakpointsRef.current;
+    if (set.has(line)) set.delete(line);
+    else set.add(line);
+    setBreakpoints(new Set(set));
+  }, []);
 
   const refreshList = useCallback(async () => {
     try {
@@ -169,9 +185,18 @@ export function WorkflowsPanel({
     if (!draft) return;
     setRunning(true);
     setError(null);
+    setCurrentLine(null);
+    setPausedLine(null);
+    const session: DebugSession = {
+      breakpoints: breakpointsRef.current,
+      onLine: (n) => setCurrentLine(n),
+      onPaused: (n) => setPausedLine(n),
+      onResumed: () => setPausedLine(null),
+    };
+    debugSessionRef.current = session;
     try {
       await client.update(draft.id, { source: draft.source });
-      const { result } = await client.run(draft.id);
+      const { result } = await client.run(draft.id, session);
       setLastRun(result);
       setRuns(await client.listRuns(draft.id));
       setMetrics(await client.listMetrics(draft.id));
@@ -179,8 +204,15 @@ export function WorkflowsPanel({
       setError(messageOf(e));
     } finally {
       setRunning(false);
+      setCurrentLine(null);
+      setPausedLine(null);
+      debugSessionRef.current = null;
     }
   }, [client, draft]);
+
+  const resumeRun = useCallback(() => debugSessionRef.current?.resume?.(), []);
+  const stepRun = useCallback(() => debugSessionRef.current?.step?.(), []);
+  const stopRun = useCallback(() => debugSessionRef.current?.stop?.(), []);
 
   const remove = useCallback(async () => {
     if (!draft) return;
@@ -292,8 +324,38 @@ export function WorkflowsPanel({
               disabled={running}
               className="text-xs px-3 py-1 rounded bg-green-600 hover:bg-green-500 disabled:opacity-50"
             >
-              {running ? "Running…" : "Run"}
+              {running ? (pausedLine != null ? `Paused : ${pausedLine}` : "Running…") : "Run"}
             </button>
+            {running && pausedLine != null && (
+              <>
+                <button
+                  type="button"
+                  onClick={resumeRun}
+                  className="text-xs px-3 py-1 rounded bg-amber-600 hover:bg-amber-500"
+                  title="Continue to the next breakpoint"
+                >
+                  Resume
+                </button>
+                <button
+                  type="button"
+                  onClick={stepRun}
+                  className="text-xs px-3 py-1 rounded bg-white/10 hover:bg-white/20"
+                  title="Run the next line, then pause"
+                >
+                  Step
+                </button>
+              </>
+            )}
+            {running && (
+              <button
+                type="button"
+                onClick={stopRun}
+                className="text-xs px-3 py-1 rounded bg-red-600/80 hover:bg-red-500"
+                title="Abort the run"
+              >
+                Stop
+              </button>
+            )}
             <button
               type="button"
               onClick={() => void remove()}
@@ -327,6 +389,10 @@ export function WorkflowsPanel({
               onChange={(v) => patch({ source: v })}
               dts={liveDts}
               onSave={() => void save()}
+              breakpoints={breakpoints}
+              onToggleBreakpoint={toggleBreakpoint}
+              currentLine={currentLine}
+              pausedLine={pausedLine}
             />
           </div>
 

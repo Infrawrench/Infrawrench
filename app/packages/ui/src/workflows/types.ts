@@ -89,6 +89,31 @@ export interface WorkflowSaveBody {
 }
 
 /**
+ * Live step-debugger session passed to `run()`. The UI owns `breakpoints` (and
+ * mutates the set as the user toggles them); the client invokes the callbacks as
+ * the run executes and fills in `resume`/`step`/`stop` so the toolbar can drive
+ * a paused run. All fields are optional so non-debug runs ignore it.
+ */
+export interface DebugSession {
+  /** 1-based source lines with breakpoints. Mutated live by the editor. */
+  breakpoints: Set<number>;
+  /** The line about to execute (live highlight). */
+  onLine?: (line: number) => void;
+  /** Streamed log line during the run. */
+  onLog?: (entry: WorkflowRunLog) => void;
+  /** Execution paused at a breakpoint on this line. */
+  onPaused?: (line: number) => void;
+  /** Execution resumed (left the paused state). */
+  onResumed?: () => void;
+  /** Filled in by the client so the UI can continue a paused run. */
+  resume?: () => void;
+  /** Filled in by the client: advance one line then pause again. */
+  step?: () => void;
+  /** Filled in by the client: abort the run. */
+  stop?: () => void;
+}
+
+/**
  * Platform-provided transport. The web app implements this with `fetch` against
  * `/api/org/:org/workflows`; the desktop app implements it over IPC.
  */
@@ -98,7 +123,8 @@ export interface WorkflowClient {
   update(id: string, body: WorkflowSaveBody): Promise<WorkflowSummary>;
   remove(id: string): Promise<void>;
   getTypings(id: string): Promise<string>;
-  run(id: string): Promise<{ runId: string; result: WorkflowRunRow }>;
+  /** Run a workflow. Pass `debug` for a live-debug (manual) run. */
+  run(id: string, debug?: DebugSession): Promise<{ runId: string; result: WorkflowRunRow }>;
   listRuns(id: string): Promise<WorkflowRunRow[]>;
   listMetrics(id: string): Promise<WorkflowMetricRow[]>;
 }
