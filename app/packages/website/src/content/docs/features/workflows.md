@@ -20,9 +20,11 @@ Every workflow runs with a global `infra` object. Its types are **generated from
 // Look an account up by the display name you gave it
 const cf = infra.accounts.cloudflare.getByName("production");
 
-// List resources of a type, or fetch one by its provider id
-const buckets = await cf.resources["r2-bucket"].list();
-const zone = await cf.resources["zone"].get("example.com");
+// Typed, per-resource-type methods are generated for this account from the
+// provider's resource types — named after each type:
+const buckets = await cf.listR2Buckets();
+const zone = await cf.getZone("example.com");
+await cf.createDnsRecord({ type: "A", name: "api", content: "1.2.3.4" });
 
 // Resolve an output (e.g. a server's IP) for use elsewhere
 const ip = await infra.accounts.hetzner
@@ -30,18 +32,24 @@ const ip = await infra.accounts.hetzner
   .resolveOutput("server", serverId, "ipv4");
 ```
 
-`infra.accounts.<plugin>` exposes `list()`, `getById(id)`, and `getByName(name)`. Each account handle gives you `resources[typeId]` (`list`, `get`, and — where the provider supports it — `create`, `update`, `delete`), `resolveOutput(...)`, and `storage`.
+`infra.accounts.<plugin>` exposes `list()`, `getById(id)`, and `getByName(name)`. Each account handle is built from the provider's resource types: for every type you get `list<Type>s()` and `get<Type>(id)`, plus `create/update/delete<Type>(...)` for the operations that provider actually supports (read-only types get just `list`/`get`). Account-level `resolveOutput(...)` is also available.
 
 ### Reading storage objects
 
+Storage-capable resources (e.g. buckets) come back with object read methods on them — fetch the bucket, then read its objects:
+
 ```ts
 const cf = infra.accounts.cloudflare.getByName("production");
-const file = await cf.storage.bucket("configs").get("app.json");
+const bucket = await cf.getR2Bucket("configs");
+const file = await bucket.get("app.json");
 const config = file.json<{ replicas: number }>();
 infra.log("replicas:", config.replicas);
+
+// list objects under a prefix
+const logs = await bucket.list("logs/");
 ```
 
-`storage.bucket(name).get(key)` returns the object with `.text()`, `.json<T>()`, and the raw `.base64`. `list(prefix?)` enumerates objects.
+The object from `bucket.get(key)` exposes `.text()`, `.json<T>()`, and the raw `.base64`; `bucket.list(prefix?)` enumerates objects.
 
 ### Prompting the user
 

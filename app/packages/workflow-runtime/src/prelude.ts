@@ -17,18 +17,20 @@ export const PRELUDE = String.raw`
     return raw === undefined || raw === null || raw === "" ? undefined : JSON.parse(raw);
   };
 
-  const makeStorage = (accountId) => ({
-    bucket: (bucket) => ({
-      list: (prefix) => rpc("storage.list", { accountId, bucket, prefix: prefix || "" }),
-      get: async (key) => {
-        const body = await rpc("storage.get", { accountId, bucket, key });
-        return {
-          base64: body.base64,
-          text: () => body.text,
-          json: () => JSON.parse(body.text),
-        };
-      },
-    }),
+  // Object-read ops bound to one bucket, mixed onto a storage-capable
+  // resource so e.g. (await cf.getR2Bucket("configs")).get("app.json") works.
+  const bucketOf = (r) =>
+    (r && (r.externalId || (r.id ? String(r.id).split(":").pop() : ""))) || "";
+  const makeStorageOps = (accountId, bucket) => ({
+    list: (prefix) => rpc("storage.list", { accountId, bucket, prefix: prefix || "" }),
+    get: async (key) => {
+      const body = await rpc("storage.get", { accountId, bucket, key });
+      return {
+        base64: body.base64,
+        text: () => body.text,
+        json: () => JSON.parse(body.text),
+      };
+    },
   });
 
   const makeResourceHandle = (accountId, typeId) => ({
@@ -41,21 +43,43 @@ export const PRELUDE = String.raw`
     delete: (resourceId) => rpc("resource.delete", { accountId, typeId, resourceId }),
   });
 
+  // PascalCase, preserving internal casing — MUST match codegen's pascalCase so
+  // the per-type method names built here line up with the generated typings.
+  const pascal = (s) =>
+    s
+      .split(/[^A-Za-z0-9]+/)
+      .filter(Boolean)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join("");
+
   const makeAccountHandle = (acc, resourceTypes) => {
-    const resources = {};
-    for (const rt of resourceTypes) {
-      resources[rt.id] = makeResourceHandle(acc.id, rt.id);
-    }
-    return {
+    const handle = {
       id: acc.id,
       pluginId: acc.pluginId,
       displayName: acc.displayName,
-      resources,
       resolveOutput: (typeId, resourceId, outputKey) =>
         rpc("resource.resolveOutput", { accountId: acc.id, typeId, resourceId, outputKey }),
-      storage: makeStorage(acc.id),
-      call: (method, args) => rpc(method, Object.assign({ accountId: acc.id }, args || {})),
     };
+    for (const rt of resourceTypes) {
+      const h = makeResourceHandle(acc.id, rt.id);
+      const s = pascal(rt.displayName);
+      const p = pascal(rt.pluralDisplayName);
+      // Storage-capable types return resources augmented with bucket-read ops.
+      const wrap = rt.storage
+        ? (r) => (r ? Object.assign({}, r, makeStorageOps(acc.id, bucketOf(r))) : r)
+        : (r) => r;
+      if (!("list" + p in handle))
+        handle["list" + p] = async () => (await h.list()).map(wrap);
+      if (!("get" + s in handle)) handle["get" + s] = async (externalId) => wrap(await h.get(externalId));
+      if (rt.supportsCreate && !("create" + s in handle))
+        handle["create" + s] = async (fields, parentResourceId) =>
+          wrap(await h.create(fields, parentResourceId));
+      if (rt.supportsUpdate && !("update" + s in handle))
+        handle["update" + s] = async (resourceId, fields) => wrap(await h.update(resourceId, fields));
+      if (rt.supportsDelete && !("delete" + s in handle))
+        handle["delete" + s] = (resourceId) => h.delete(resourceId);
+    }
+    return handle;
   };
 
   const tree = JSON.parse(__accountsTree);

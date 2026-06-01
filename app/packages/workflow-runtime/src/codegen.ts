@@ -21,6 +21,19 @@ function strLit(raw: string): string {
 }
 
 /**
+ * PascalCase a human label, preserving existing internal casing (so "R2 Bucket"
+ * → "R2Bucket", "DNS Record" → "DNSRecord"). MUST stay byte-identical to the
+ * prelude's `pascal` so the generated method names match what the sandbox builds.
+ */
+function pascalCase(raw: string): string {
+  return raw
+    .split(/[^A-Za-z0-9]+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join("");
+}
+
+/**
  * A union of the given string literals plus an open `string` fallback, so the
  * literals show up as autocomplete suggestions while any other string still
  * type-checks. The fallback is `(string & {})` rather than a plain `string`
@@ -78,22 +91,12 @@ interface StorageBody {
   json<T = unknown>(): T;
 }
 
-interface StorageBucket {
+/** A storage-capable resource (e.g. a bucket): its data plus object read ops. */
+interface StorageResource extends WorkflowResource {
+  /** List objects in this bucket at a prefix (delimiter "/"). */
   list(prefix?: string): Promise<StorageObject[]>;
+  /** Fetch an object's body by key. */
   get(key: string): Promise<StorageBody>;
-}
-
-interface ResourceHandle {
-  /** List all instances of this resource type for the account. */
-  list(): Promise<WorkflowResource[]>;
-  /** Fetch a single instance by its provider (external) id. */
-  get(externalId: string): Promise<WorkflowResource>;
-  /** Create an instance (if the plugin supports it). */
-  create(fields: Record<string, string>, parentResourceId?: string): Promise<WorkflowResource>;
-  /** Update an instance (if the plugin supports it). */
-  update(resourceId: string, fields: Record<string, string>): Promise<WorkflowResource>;
-  /** Delete an instance (if the plugin supports it). */
-  delete(resourceId: string): Promise<void>;
 }`;
 
 function accountInterfaceName(pluginId: string): string {
@@ -104,20 +107,57 @@ function groupInterfaceName(pluginId: string): string {
   return `AccountGroup_${ident(pluginId)}`;
 }
 
+/**
+ * Per-resource-type camelCase methods on the account, named after each type's
+ * (plural) display name: `list<Plural>()`, `get<Singular>(externalId)`, and —
+ * only when the plugin supports the op — `create/update/delete<Singular>(...)`.
+ * Read-only types still get list + get. Names are de-duped so a display-name
+ * collision can't produce a duplicate identifier in the interface.
+ */
+function renderResourceMethods(plugin: WorkflowPluginInfo): string {
+  const lines: string[] = [];
+  const used = new Set<string>();
+  const add = (name: string, decl: string) => {
+    if (used.has(name)) return;
+    used.add(name);
+    lines.push(decl);
+  };
+  for (const rt of plugin.resourceTypes) {
+    const s = pascalCase(rt.displayName);
+    const p = pascalCase(rt.pluralDisplayName);
+    // Storage-capable types return resources you can read objects from.
+    const ret = rt.storage ? "StorageResource" : "WorkflowResource";
+    add(`list${p}`, `  /** List all ${rt.pluralDisplayName}. */\n  list${p}(): Promise<${ret}[]>;`);
+    add(
+      `get${s}`,
+      `  /** Fetch a ${rt.displayName} by its provider id. */\n  get${s}(externalId: string): Promise<${ret}>;`,
+    );
+    if (rt.supportsCreate)
+      add(
+        `create${s}`,
+        `  /** Create a ${rt.displayName}. */\n  create${s}(fields: Record<string, string>, parentResourceId?: string): Promise<${ret}>;`,
+      );
+    if (rt.supportsUpdate)
+      add(
+        `update${s}`,
+        `  /** Update a ${rt.displayName}. */\n  update${s}(resourceId: string, fields: Record<string, string>): Promise<${ret}>;`,
+      );
+    if (rt.supportsDelete)
+      add(
+        `delete${s}`,
+        `  /** Delete a ${rt.displayName}. */\n  delete${s}(resourceId: string): Promise<void>;`,
+      );
+  }
+  return lines.join("\n");
+}
+
 function renderAccountInterface(plugin: WorkflowPluginInfo): string {
-  const resourceProps = plugin.resourceTypes
-    .map((rt) => `    /** ${rt.pluralDisplayName} */\n    ${strLit(rt.id)}: ResourceHandle;`)
-    .join("\n");
+  const resourceMethods = renderResourceMethods(plugin);
   return `interface ${accountInterfaceName(plugin.pluginId)} {
   readonly id: string;
   readonly pluginId: ${strLit(plugin.pluginId)};
   readonly displayName: string;
-  readonly resources: {
-${resourceProps || "    [resourceTypeId: string]: ResourceHandle;"}
-  };
-  resolveOutput(typeId: string, resourceId: string, outputKey: string): Promise<string>;
-  readonly storage: { bucket(name: string): StorageBucket };
-  call<T = unknown>(method: string, args?: Record<string, unknown>): Promise<T>;
+${resourceMethods ? `${resourceMethods}\n` : ""}  resolveOutput(typeId: string, resourceId: string, outputKey: string): Promise<string>;
 }`;
 }
 

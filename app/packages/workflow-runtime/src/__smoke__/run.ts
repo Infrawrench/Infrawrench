@@ -90,10 +90,13 @@ const SOURCE = `
 const cf = infra.accounts.cloudflare.getByName("prod");
 infra.log("account id:", cf.id);
 
-const buckets = await cf.resources["r2-bucket"].list();
+// Per-resource-type camelCase method (replaces the old generic .call).
+const buckets = await cf.listR2Buckets();
 infra.log("bucket count:", buckets.length);
 
-const body = await cf.storage.bucket("my-bucket").get("config.json");
+// Storage reads now hang off the bucket resource itself (no .storage namespace).
+const bucket = await cf.getR2Bucket("my-bucket");
+const body = await bucket.get("config.json");
 const cfg = body.json<{ hello: string; n: number }>();
 infra.log("config.hello:", cfg.hello);
 
@@ -138,15 +141,39 @@ async function main() {
   });
   console.log("DTS has getByName(prod):", dts.includes('getByName(name: "prod" | (string & {}))'));
   console.log("DTS has getById(acc_cf1):", dts.includes('getById(id: "acc_cf1" | (string & {}))'));
-  console.log("DTS has r2-bucket handle:", dts.includes('"r2-bucket": ResourceHandle'));
   const dtsHasMetricProp = dts.includes("runCount: number | null;");
   console.log("DTS has typed metric property:", dtsHasMetricProp);
+  // r2-bucket is storage-capable → its methods return StorageResource.
+  const dtsHasListMethod = dts.includes("listR2Buckets(): Promise<StorageResource[]>");
+  const dtsHasGetStorage = dts.includes(
+    "getR2Bucket(externalId: string): Promise<StorageResource>",
+  );
+  const dtsHasCreateMethod = dts.includes("createR2Bucket(");
+  const dtsOmitsUpdate = !dts.includes("updateR2Bucket("); // r2-bucket has supportsUpdate=false
+  const dtsHasNoCall = !dts.includes("call<T = unknown>");
+  const dtsHasNoResources = !dts.includes("readonly resources:");
+  const dtsHasNoStorageNs = !dts.includes("readonly storage:");
+  console.log("DTS has listR2Buckets:StorageResource[]:", dtsHasListMethod);
+  console.log("DTS get returns StorageResource:", dtsHasGetStorage);
+  console.log("DTS has createR2Bucket:", dtsHasCreateMethod);
+  console.log("DTS omits updateR2Bucket (read-only op):", dtsOmitsUpdate);
+  console.log(
+    "DTS dropped .call/.resources/.storage:",
+    dtsHasNoCall && dtsHasNoResources && dtsHasNoStorageNs,
+  );
 
   const ok =
     result.status === "success" &&
     (result.output as { runCount: number }).runCount === 1 &&
     metrics["runCount"] === 1 &&
     dtsHasMetricProp &&
+    dtsHasListMethod &&
+    dtsHasGetStorage &&
+    dtsHasCreateMethod &&
+    dtsOmitsUpdate &&
+    dtsHasNoCall &&
+    dtsHasNoResources &&
+    dtsHasNoStorageNs &&
     promptResult.status === "failure";
   console.log(ok ? "\nSMOKE: PASS" : "\nSMOKE: FAIL");
   process.exit(ok ? 0 : 1);

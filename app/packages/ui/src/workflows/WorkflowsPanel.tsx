@@ -49,8 +49,8 @@ const STARTER_SOURCE = `// Workflow — runs in a sandboxed isolate with a typed
 // Example: read a JSON file from R2 and log a value.
 //
 // const cf = infra.accounts.cloudflare.getByName("production");
-// const file = await cf.storage.bucket("configs").get("app.json");
-// const cfg = file.json<{ replicas: number }>();
+// const bucket = await cf.getR2Bucket("configs");
+// const cfg = (await bucket.get("app.json")).json<{ replicas: number }>();
 // await infra.output({ replicas: cfg.replicas });
 
 infra.log("hello from your workflow");
