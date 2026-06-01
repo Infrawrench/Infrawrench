@@ -35,6 +35,7 @@ import {
  */
 const PAUSED_METHODS = new Set([
   "prompt",
+  "line",
   "ssh.exec",
   "ssh.streamStart",
   "ssh.streamRead",
@@ -49,6 +50,14 @@ export interface RunWorkflowOptions {
   limits?: Partial<RunLimits>;
   /** Live log sink (also accumulated into the returned RunResult). */
   onLog?: (entry: RunLogEntry) => void;
+  /**
+   * Instrument the source with per-line markers (`await __line(n)`) and route
+   * them to `host.line` — powers the editor's live highlight + breakpoints.
+   * Enable only for editor-driven manual runs, never automated triggers.
+   */
+  debug?: boolean;
+  /** Abort the run (Stop): the interrupt handler ends execution when aborted. */
+  signal?: AbortSignal;
 }
 
 /**
@@ -64,12 +73,15 @@ export interface RunWorkflowOptions {
  * The leading `export {}` selects module semantics so top-level await is
  * available (a bare script disallows it); `env` remains a global regardless.
  */
-function buildProgram(userJs: string): string {
+function buildProgram(userJs: string, debug: boolean): string {
   return [
     `export {};`,
     `const __host = env.__host;`,
     `const __accountsTree = env.__accountsTree;`,
     `const __metrics = env.__metrics;`,
+    // Debug runs inject `await __line(n)` before each statement (see transpile);
+    // route it to the host so the editor can highlight + pause at breakpoints.
+    debug ? `const __line = (n) => __host("line", JSON.stringify({ line: n }));` : ``,
     PRELUDE,
     `const __task = (async () => {`,
     `  try {`,
@@ -140,9 +152,10 @@ export async function runWorkflow(opts: RunWorkflowOptions): Promise<RunResult> 
     return finish("failure", toError(err, "Failed to read workflow metrics"));
   }
 
+  const debug = Boolean(opts.debug);
   let userJs: string;
   try {
-    userJs = (await transpileWorkflow(opts.source)).code;
+    userJs = (await transpileWorkflow(opts.source, { instrumentLines: debug })).code;
   } catch (err) {
     return finish("failure", toError(err, "Failed to compile workflow"));
   }
@@ -189,7 +202,7 @@ export async function runWorkflow(opts: RunWorkflowOptions): Promise<RunResult> 
     const { runSandboxed } = await loadAsyncQuickJs(
       releaseAsyncVariant as unknown as Parameters<typeof loadAsyncQuickJs>[0],
     );
-    const program = buildProgram(userJs);
+    const program = buildProgram(userJs, debug);
 
     const sandboxOptions = {
       env,
@@ -204,12 +217,13 @@ export async function runWorkflow(opts: RunWorkflowOptions): Promise<RunResult> 
 
     const result = await runSandboxed(({ ctx, evalCode }) => {
       execStart = Date.now();
-      if (limits.timeoutMs > 0) {
-        ctx.runtime.setInterruptHandler(() => {
-          const livePause = pauseStart !== null ? Date.now() - pauseStart : 0;
-          return Date.now() - execStart - pausedMs - livePause > limits.timeoutMs;
-        });
-      }
+      ctx.runtime.setInterruptHandler(() => {
+        // Stop: abort as soon as the guest is executing again.
+        if (opts.signal?.aborted) return true;
+        if (limits.timeoutMs <= 0) return false;
+        const livePause = pauseStart !== null ? Date.now() - pauseStart : 0;
+        return Date.now() - execStart - pausedMs - livePause > limits.timeoutMs;
+      });
       return evalCode(program);
     }, sandboxOptions);
 

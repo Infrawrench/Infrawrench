@@ -6,6 +6,7 @@
 import { generateInfraDts } from "../codegen.js";
 import type { WorkflowHost } from "../host.js";
 import { runWorkflow } from "../sandbox.js";
+import { transpileWorkflow } from "../transpile.js";
 import type { MetricValue, WorkflowPluginInfo } from "../types.js";
 
 const PLUGINS: WorkflowPluginInfo[] = [
@@ -273,6 +274,46 @@ async function main() {
   console.log("SSH exec output:", JSON.stringify(sshResult.sshOut));
   console.log("SSH streamed output:", JSON.stringify(sshResult.streamed));
 
+  // --- debugger: line instrumentation + pause-at-breakpoint -----------------
+  // Top-level statements are at lines 2, 3 (function decl), 6, 7; line 4 is
+  // inside helper() and MUST NOT be instrumented.
+  const DEBUG_SOURCE = [
+    ``,
+    `infra.log("a");`,
+    `function helper() {`,
+    `  infra.log("inside");`,
+    `}`,
+    `helper();`,
+    `infra.log("b");`,
+  ].join("\n");
+
+  const transpiled = (await transpileWorkflow(DEBUG_SOURCE, { instrumentLines: true })).code;
+  const transpileMarksTopLevel =
+    transpiled.includes("__line(2)") && transpiled.includes("__line(7)");
+  const transpileSkipsFnBody = !transpiled.includes("__line(4)");
+  console.log("transpile instruments top-level lines:", transpileMarksTopLevel);
+  console.log("transpile skips function body:", transpileSkipsFnBody);
+
+  const seenLines: number[] = [];
+  const debugHost: WorkflowHost = {
+    ...host,
+    async line(n) {
+      seenLines.push(n);
+      // Treat line 6 as a breakpoint: block briefly, then "resume".
+      if (n === 6) await new Promise((r) => setTimeout(r, 5));
+    },
+  };
+  const debugResult = await runWorkflow({
+    source: DEBUG_SOURCE,
+    host: debugHost,
+    interactive: true,
+    debug: true,
+  });
+  console.log("DEBUG run status:", debugResult.status, "lines:", JSON.stringify(seenLines));
+  const debugLinesOk =
+    debugResult.status === "success" && JSON.stringify(seenLines) === JSON.stringify([2, 3, 6, 7]);
+  console.log("DEBUG line sequence + breakpoint pause:", debugLinesOk);
+
   const ok =
     result.status === "success" &&
     (result.output as { runCount: number }).runCount === 1 &&
@@ -296,6 +337,9 @@ async function main() {
     dtsHasNoCall &&
     dtsHasNoResources &&
     dtsHasNoStorageNs &&
+    transpileMarksTopLevel &&
+    transpileSkipsFnBody &&
+    debugLinesOk &&
     promptResult.status === "failure";
   console.log(ok ? "\nSMOKE: PASS" : "\nSMOKE: FAIL");
   process.exit(ok ? 0 : 1);

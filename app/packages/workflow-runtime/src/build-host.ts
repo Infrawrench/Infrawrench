@@ -60,6 +60,9 @@ export interface ClientHostDeps {
   sshStreamClose?(streamId: string): Promise<void>;
   /** Poll until the resource accepts SSH connections, or time out. */
   sshProbe?(params: SshProbeParamsLite): Promise<boolean>;
+
+  /** Debugger line hook (instrumented runs); may block to pause at a breakpoint. */
+  line?(line: number): Promise<void>;
 }
 
 /** Compose the canonical resource id used by plugin clients. */
@@ -198,5 +201,6 @@ export function buildWorkflowHost(deps: ClientHostDeps): WorkflowHost {
     ...(deps.sshStreamRead ? { sshStreamRead: deps.sshStreamRead } : {}),
     ...(deps.sshStreamClose ? { sshStreamClose: deps.sshStreamClose } : {}),
     ...(deps.sshProbe ? { sshProbe: deps.sshProbe } : {}),
+    ...(deps.line ? { line: deps.line } : {}),
   };
 }

@@ -164,6 +164,13 @@ export interface WorkflowHost {
   sshStreamClose?(streamId: string): Promise<void>;
   /** Poll until the resource accepts TCP on the SSH port, or time out. */
   sshProbe?(params: SshProbeParamsLite): Promise<boolean>;
+
+  /**
+   * Debugger hook: reports the 1-based source line about to execute (instrumented
+   * runs only). Implementations highlight the line and may block to pause at a
+   * breakpoint. Resolving continues the run; rejecting aborts it (Stop).
+   */
+  line?(line: number): Promise<void>;
 }
 
 /** Error thrown when a workflow uses a capability unavailable in its context. */
@@ -305,6 +312,10 @@ export async function dispatch(
         ...(args["port"] !== undefined ? { port: Number(args["port"]) } : {}),
         ...(args["timeoutMs"] !== undefined ? { timeoutMs: Number(args["timeoutMs"]) } : {}),
       });
+
+    case "line":
+      await host.line?.(Number(args["line"]));
+      return null;
 
     case "metric.get":
       return host.getMetric(String(args["key"]));
