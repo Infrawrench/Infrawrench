@@ -113,19 +113,23 @@ Open the trigger settings to choose how a workflow runs:
 
 - **Manual** — run on demand from the UI. The only mode that allows `infra.prompt`. Available everywhere (desktop, web, proxy).
 - **Cron** — run on a schedule. Pick a preset (every 15 minutes, daily at 9am, weekly…) or type a raw 5-field cron expression; the editor shows a plain-English summary of what you entered.
-- **Git** — run when a connected git repository receives an event (e.g. a push). The web app gives you a webhook URL with a secret token to add to your repo.
+- **Git** — run on each new commit to a branch. **Connect GitHub**, choose a repository from the picker, and set the branch — the Infrawrench GitHub App watches that repo as a bot and runs the workflow when the branch head changes. Web/proxy only; the desktop app doesn't offer git triggers (its workflows are local with no always-on host to watch a repo).
 
 **Platform support for automated triggers:**
 
-| Trigger | Desktop            | Web | Web proxy |
-| ------- | ------------------ | --- | --------- |
-| Manual  | ✅                 | ✅  | ✅        |
-| Cron    | ✅ (while open\*)  | ✅  | ✅        |
-| Git     | only via the proxy | ✅  | ✅        |
+| Trigger | Desktop           | Web | Web proxy |
+| ------- | ----------------- | --- | --------- |
+| Manual  | ✅                | ✅  | ✅        |
+| Cron    | ✅ (while open\*) | ✅  | ✅        |
+| Git     | —                 | ✅  | ✅        |
 
 The web app runs cron and git triggers on an always-on cloud host. The **desktop app** runs your local cron workflows itself: while at least one cron workflow is enabled, Infrawrench keeps running in the background after you close the window (just like active metric-ping alerts) so the schedule keeps firing. \*It can't fire while the app is fully quit — quit it and the local schedule pauses until you reopen. For schedules that must run 24/7 regardless, use the cloud or the [web proxy](../core-concepts/desktop-vs-web.md).
 
-<insert [Screenshot of the trigger configuration showing Manual / Cron / Git options with the git webhook URL] here>
+### Connecting GitHub
+
+Git triggers use a **GitHub App** (a bot identity) rather than per-repo webhooks. In the git trigger settings, click **Connect GitHub** — you'll install the app on the repositories you want to watch, then they appear in the repo picker. A separate **github-watcher** service polls each watched repo's branch head and runs the workflow on a new commit. Self-hosters configure the app with `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY` (PEM), and `GITHUB_APP_SLUG`, and point the app's setup URL at `/api/github/setup`.
+
+<insert [Screenshot of the git trigger settings showing Connect GitHub, the repository picker, and the branch field] here>
 
 ## The isolate sandbox
 
