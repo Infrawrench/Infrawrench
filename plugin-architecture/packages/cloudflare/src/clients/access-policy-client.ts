@@ -71,6 +71,24 @@ export async function listAllAccessPolicies(
   return results;
 }
 
+/**
+ * Turn a comma-separated list of emails/domains into Access include rules —
+ * one rule per entry. A `@example.com` entry becomes an `email_domain` rule
+ * (everyone at that domain); a bare `user@example.com` becomes an exact
+ * `email` rule. Blank entries are dropped so trailing commas are harmless.
+ */
+function buildEmailRules(value: string): Array<Record<string, unknown>> {
+  return value
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0)
+    .map((entry) =>
+      entry.startsWith("@")
+        ? { email_domain: { domain: entry.slice(1) } }
+        : { email: { email: entry } },
+    );
+}
+
 export async function createAccessPolicy(
   api: CloudflareApi,
   accountId: string,
@@ -80,15 +98,15 @@ export async function createAccessPolicy(
   const account_id = await api.getAccountId();
   const appId = fields["appId"] || parentExternalId;
   if (!appId) throw new Error("Cloudflare plugin: appId is required to create an access policy");
-  const includeEmail = fields["includeEmail"] ?? "";
-  const includeRule: Record<string, unknown> = includeEmail.startsWith("@")
-    ? { email_domain: { domain: includeEmail.slice(1) } }
-    : { email: { email: includeEmail } };
+  const includeRules = buildEmailRules(fields["includeEmail"] ?? "");
+  if (includeRules.length === 0) {
+    throw new Error("Cloudflare plugin: at least one include email or domain is required");
+  }
   const body: Record<string, unknown> = {
     account_id,
     name: fields["name"] ?? "",
     decision: fields["decision"] ?? "allow",
-    include: [includeRule],
+    include: includeRules,
   };
   const policy = await api.cf.zeroTrust.access.applications.policies.create(
     appId,

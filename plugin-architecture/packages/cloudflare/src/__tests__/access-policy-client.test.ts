@@ -81,6 +81,32 @@ describe("access-policy-client", () => {
     );
   });
 
+  it("createAccessPolicy splits a comma-separated list into one rule per entry", async () => {
+    const api = policyApi();
+    await createAccessPolicy(
+      api,
+      "acct",
+      { name: "P", includeEmail: "me@a.com, @a.com , you@b.com," },
+      "app1",
+    );
+    expect(api.cf.zeroTrust.access.applications.policies.create).toHaveBeenCalledWith(
+      "app1",
+      expect.objectContaining({
+        include: [
+          { email: { email: "me@a.com" } },
+          { email_domain: { domain: "a.com" } },
+          { email: { email: "you@b.com" } },
+        ],
+      }),
+    );
+  });
+
+  it("createAccessPolicy throws when no include email is given", async () => {
+    await expect(
+      createAccessPolicy(policyApi(), "acct", { name: "P", includeEmail: " , " }, "app1"),
+    ).rejects.toThrow(/at least one include email/);
+  });
+
   it("createAccessPolicy throws without an app id", async () => {
     await expect(createAccessPolicy(policyApi(), "acct", {}, "")).rejects.toThrow(
       /appId is required/,

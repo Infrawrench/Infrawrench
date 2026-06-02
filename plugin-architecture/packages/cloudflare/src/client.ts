@@ -1228,10 +1228,12 @@ export class CloudflareClient implements PluginClient {
         },
         {
           key: "includeEmail",
-          label: "Include Email",
+          label: "Include Emails",
           kind: "text",
           required: true,
-          description: "Email address or domain to include (e.g. user@example.com or @example.com)",
+          placeholder: "user@example.com, @example.com",
+          description:
+            "Email addresses or domains to include, comma-separated. A bare address (user@example.com) matches that user; a leading @ (@example.com) matches everyone at that domain.",
         },
       );
       return { fields };
