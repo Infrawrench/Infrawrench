@@ -20,7 +20,14 @@ import {
   killSshShell,
   type SshShellConfig,
 } from "./ssh-shell";
-import { sftpList, sftpMkdir, sftpDelete, sftpUpload, sftpDownload } from "./sftp";
+import {
+  sftpList,
+  sftpMkdir,
+  sftpDelete,
+  sftpUpload,
+  sftpDownload,
+  sftpDownloadToBuffer,
+} from "./sftp";
 import type { SftpConfig, SshTunnelConfig } from "@infrawrench/plugin-base" with {
   "resolution-mode": "import",
 };
@@ -103,6 +110,31 @@ ipcMain.handle(
   "workflow_ssh_probe",
   (_e, { host, port, timeoutMs }: { host: string; port: number; timeoutMs: number }) =>
     workflowSshProbe(host, port, timeoutMs),
+);
+
+// Workflow SFTP: list/get/put/mkdir/delete over a renderer-resolved SftpConfig.
+type SftpCfg = { host: string; port: number; username: string; privateKey: string };
+ipcMain.handle("workflow_sftp_list", (_e, { config, path }: { config: SftpCfg; path: string }) =>
+  sftpList(config, path),
+);
+ipcMain.handle(
+  "workflow_sftp_get",
+  async (_e, { config, path }: { config: SftpCfg; path: string }) => ({
+    base64: (await sftpDownloadToBuffer(config, path)).toString("base64"),
+  }),
+);
+ipcMain.handle(
+  "workflow_sftp_put",
+  (_e, { config, path, base64 }: { config: SftpCfg; path: string; base64: string }) =>
+    sftpUpload(config, path, Buffer.from(base64, "base64")),
+);
+ipcMain.handle("workflow_sftp_mkdir", (_e, { config, path }: { config: SftpCfg; path: string }) =>
+  sftpMkdir(config, path),
+);
+ipcMain.handle(
+  "workflow_sftp_delete",
+  (_e, { config, path, isDir }: { config: SftpCfg; path: string; isDir: boolean }) =>
+    sftpDelete(config, path, Boolean(isDir)),
 );
 
 ipcMain.handle("ssh_shell_spawn", (event, config: SshShellConfig) =>

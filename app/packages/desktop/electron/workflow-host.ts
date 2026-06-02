@@ -28,6 +28,8 @@ import type {
   MetricValue,
   PromptSpec,
   ResourceInstanceLite,
+  SftpEntryLite,
+  SftpParamsLite,
   SshExecParamsLite,
   SshExecResultLite,
   SshProbeParamsLite,
@@ -105,6 +107,58 @@ function createBridgedHost(sender: WebContents, runToken: string): WorkflowHost 
     sshStreamClose: (streamId: string) => call<void>("sshStreamClose", [streamId]),
     sshProbe: (params: SshProbeParamsLite) => call<boolean>("sshProbe", [params]),
     line: (lineNumber: number) => call<void>("line", [lineNumber]),
+    // SFTP (over the resource's SSH endpoint).
+    sftpList: (params: SftpParamsLite, path: string) =>
+      call<SftpEntryLite[]>("sftpList", [params, path]),
+    sftpGet: (params: SftpParamsLite, path: string) =>
+      call<{ base64: string }>("sftpGet", [params, path]),
+    sftpPut: (params: SftpParamsLite, path: string, base64: string) =>
+      call<void>("sftpPut", [params, path, base64]),
+    sftpMkdir: (params: SftpParamsLite, path: string) => call<void>("sftpMkdir", [params, path]),
+    sftpDelete: (params: SftpParamsLite, path: string, isDir: boolean) =>
+      call<void>("sftpDelete", [params, path, isDir]),
+    // Extended resource capabilities (plugin-client passthroughs).
+    query: (accountId, resourceId, sql) =>
+      call<{ rows: Record<string, unknown>[]; durationMs?: number }>("query", [
+        accountId,
+        resourceId,
+        sql,
+      ]),
+    kvList: (accountId, typeId, resourceId, params) =>
+      call<{ items: { key: string }[]; nextCursor?: string }>("kvList", [
+        accountId,
+        typeId,
+        resourceId,
+        params,
+      ]),
+    kvGet: (accountId, typeId, resourceId, key) =>
+      call<string>("kvGet", [accountId, typeId, resourceId, key]),
+    kvPut: (accountId, typeId, resourceId, key, value) =>
+      call<void>("kvPut", [accountId, typeId, resourceId, key, value]),
+    kvDelete: (accountId, typeId, resourceId, key) =>
+      call<void>("kvDelete", [accountId, typeId, resourceId, key]),
+    nosql: (accountId, typeId, resourceId, command, args) =>
+      call<unknown>("nosql", [accountId, typeId, resourceId, command, args]),
+    getLogs: (accountId, typeId, resourceId, params) =>
+      call<{ text: string; containers: string[]; activeContainer: string }>("getLogs", [
+        accountId,
+        typeId,
+        resourceId,
+        params,
+      ]),
+    describe: (accountId, typeId, resourceId) =>
+      call<string>("describe", [accountId, typeId, resourceId]),
+    getManifest: (accountId, resourceId) => call<string>("getManifest", [accountId, resourceId]),
+    applyManifest: (accountId, resourceId, manifest) =>
+      call<void>("applyManifest", [accountId, resourceId, manifest]),
+    importYaml: (accountId, yaml) => call<{ applied: number }>("importYaml", [accountId, yaml]),
+    publish: (accountId, typeId, resourceId, payload) =>
+      call<{ id?: string; summary?: string }>("publish", [accountId, typeId, resourceId, payload]),
+    metricSeries: (accountId, typeId, resourceId, timeRange) =>
+      call<{ label: string; unit?: string; points: { timestamp: number; value: number }[] }[]>(
+        "metricSeries",
+        [accountId, typeId, resourceId, timeRange],
+      ),
   };
 }
 

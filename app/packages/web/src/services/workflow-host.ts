@@ -18,8 +18,9 @@ import { loadPlugins } from "@infrawrench/server-core/plugin-loader";
 import {
   buildSshKeyFieldResolver,
   buildWorkflowSshDeps,
-  enrichCreateFields,
+  enrichPlugin,
 } from "@infrawrench/server-core/workflows/runner";
+import { staticResourceCapabilities } from "@infrawrench/workflow-runtime";
 import { and, eq, isNull } from "drizzle-orm";
 
 import { db } from "@infrawrench/server-core/db/client";
@@ -74,8 +75,10 @@ export async function listOrgPlugins(
           outputs: (rt.outputs ?? []).map((o) => ({ key: o.key, label: o.label })),
           supportsCreate: Boolean(rt.supportsCreate),
           supportsUpdate: Boolean(rt.supportsUpdate),
-          supportsDelete: Boolean(rt.supportsDelete),
+          // supportsDelete defaults to true (only `false` disables deletion).
+          supportsDelete: rt.supportsDelete !== false,
           storage: Boolean(rt.supportsStorageBrowser),
+          capabilities: staticResourceCapabilities(rt),
         })),
       };
       byPlugin.set(row.pluginId, entry);
@@ -83,14 +86,14 @@ export async function listOrgPlugins(
     entry.accounts.push({ id: row.id, pluginId: row.pluginId, displayName: row.displayName });
   }
 
-  // Best-effort: type each createable resource's fields from the live create
-  // config (cached) so `create({...})` autocompletes real keys/options.
+  // Best-effort (typings path): merge per-resource-type capability flags and
+  // type each createable resource's fields from the live create config.
   if (opts.enrichCreateFields) {
     await Promise.all(
       Array.from(byPlugin.values()).map((entry) => {
         const first = entry.accounts[0];
         if (!first) return Promise.resolve();
-        return enrichCreateFields(entry.pluginId, entry.resourceTypes, async () => {
+        return enrichPlugin(entry, first.id, async () => {
           const ctx = await getClientForAccount(first.id, organizationId);
           if (!ctx) throw new Error(`Account ${first.id} not found.`);
           return ctx.client;

@@ -18,12 +18,21 @@ import * as crypto from "node:crypto";
 import * as net from "node:net";
 
 import type {
+  SftpParamsLite,
   SshExecParamsLite,
   SshExecResultLite,
   SshProbeParamsLite,
   SshStreamChunkLite,
 } from "@infrawrench/workflow-runtime";
+import type { ConnectConfig } from "ssh2";
 import type { PluginClient, SshConfig } from "@infrawrench/plugin-base";
+import {
+  sftpList as sftpHostList,
+  sftpMkdir as sftpHostMkdir,
+  sftpDelete as sftpHostDelete,
+  sftpUpload as sftpHostUpload,
+  sftpDownloadToBuffer as sftpHostDownload,
+} from "@infrawrench/sftp-host";
 import { and, eq } from "drizzle-orm";
 import { Client as SshClient } from "ssh2";
 
@@ -473,5 +482,49 @@ export function buildWorkflowSshDeps(organizationId: string, opts: { signal?: Ab
     return false;
   };
 
-  return { sshExec, sshStreamStart, sshStreamRead, sshStreamClose, sshProbe };
+  // SFTP over the resolved SSH config; TOFU host-key verification (same as exec).
+  const sftpOptions = (config: SshConfig) => ({
+    configureConnect: (opts: ConnectConfig): ConnectConfig => ({
+      ...opts,
+      hostVerifier: makeTofuVerifier(organizationId, config.host, config.port, {
+        value: null as Error | null,
+      }),
+    }),
+  });
+  const sftpConfig = (params: SftpParamsLite) => resourceConnection(organizationId, params);
+
+  const sftpList = async (params: SftpParamsLite, path: string) => {
+    const config = await sftpConfig(params);
+    return sftpHostList(config, path, sftpOptions(config));
+  };
+  const sftpGet = async (params: SftpParamsLite, path: string) => {
+    const config = await sftpConfig(params);
+    const buf = await sftpHostDownload(config, path, sftpOptions(config));
+    return { base64: buf.toString("base64") };
+  };
+  const sftpPut = async (params: SftpParamsLite, path: string, base64: string) => {
+    const config = await sftpConfig(params);
+    await sftpHostUpload(config, path, Buffer.from(base64, "base64"), sftpOptions(config));
+  };
+  const sftpMkdir = async (params: SftpParamsLite, path: string) => {
+    const config = await sftpConfig(params);
+    await sftpHostMkdir(config, path, sftpOptions(config));
+  };
+  const sftpDelete = async (params: SftpParamsLite, path: string, isDir: boolean) => {
+    const config = await sftpConfig(params);
+    await sftpHostDelete(config, path, isDir, sftpOptions(config));
+  };
+
+  return {
+    sshExec,
+    sshStreamStart,
+    sshStreamRead,
+    sshStreamClose,
+    sshProbe,
+    sftpList,
+    sftpGet,
+    sftpPut,
+    sftpMkdir,
+    sftpDelete,
+  };
 }

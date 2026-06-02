@@ -62,6 +62,7 @@
     "@infrawrench/plugin-ssh": "workspace:*",
     "@infrawrench/plugin-turso": "workspace:*",
     "@infrawrench/plugin-vercel": "workspace:*",
+    "@infrawrench/sftp-host": "workspace:*",
     "@infrawrench/ssh-tunnel-core": "workspace:*",
     "@infrawrench/workflow-runtime": "workspace:*",
     "@clickhouse/client": "^1.13.0",

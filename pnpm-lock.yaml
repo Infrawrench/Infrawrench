@@ -450,6 +450,9 @@ importers:
       '@infrawrench/plugin-vercel':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/vercel
+      '@infrawrench/sftp-host':
+        specifier: workspace:*
+        version: link:../../../plugin-architecture/packages/sftp-host
       '@infrawrench/ssh-tunnel-core':
         specifier: workspace:*
         version: link:../../../plugin-architecture/packages/ssh-tunnel-core

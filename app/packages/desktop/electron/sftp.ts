@@ -10,6 +10,7 @@ import {
   sftpDelete as sftpDeleteImpl,
   sftpUpload as sftpUploadImpl,
   sftpDownload as sftpDownloadImpl,
+  sftpDownloadToBuffer as sftpDownloadToBufferImpl,
   type SftpEntry,
   type WithSftpOptions,
 } from "@infrawrench/sftp-host";
@@ -119,6 +120,17 @@ export async function sftpDownload(
   const { options, hostKeyErrorRef } = await buildOptions();
   return withMismatchRethrow(
     () => sftpDownloadImpl(config, remotePath, localPath, options),
+    hostKeyErrorRef,
+  );
+}
+
+export async function sftpDownloadToBuffer(
+  config: SftpConfig,
+  remotePath: string,
+): Promise<Buffer> {
+  const { options, hostKeyErrorRef } = await buildOptions();
+  return withMismatchRethrow(
+    () => sftpDownloadToBufferImpl(config, remotePath, options),
     hostKeyErrorRef,
   );
 }

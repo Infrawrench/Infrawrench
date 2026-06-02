@@ -60,6 +60,12 @@ const INVOKE_CHANNELS = [
   "workflow_ssh_stream_read",
   "workflow_ssh_stream_close",
   "workflow_ssh_probe",
+  // workflow sftp
+  "workflow_sftp_list",
+  "workflow_sftp_get",
+  "workflow_sftp_put",
+  "workflow_sftp_mkdir",
+  "workflow_sftp_delete",
   // sftp
   "sftp_list",
   "sftp_mkdir",

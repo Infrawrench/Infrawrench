@@ -30,14 +30,15 @@ import { getPlugin, loadPlugins } from "../plugin-loader";
 import { buildPluginHostServices } from "../host-services";
 import { applyCredentialRewriters } from "../credential-rewriters";
 import { buildWorkflowSshDeps } from "./ssh-host";
-import { enrichCreateFields } from "./create-fields-cache";
+import { enrichPlugin } from "./create-fields-cache";
 import { buildSshKeyFieldResolver } from "./ssh-key-fields";
+import { staticResourceCapabilities } from "@infrawrench/workflow-runtime";
 
 // Re-exported so the cloud web host (which builds its own interactive host) can
-// reuse the same SSH deps, create-field enrichment, and SSH-key resolution as
-// the poller.
+// reuse the same SSH deps, plugin enrichment, and SSH-key resolution as the
+// poller.
 export { buildWorkflowSshDeps } from "./ssh-host";
-export { enrichCreateFields } from "./create-fields-cache";
+export { enrichPlugin } from "./create-fields-cache";
 export { buildSshKeyFieldResolver, listOrgSshKeyNames } from "./ssh-key-fields";
 
 export interface RunOrgWorkflowOptions {
@@ -85,8 +86,10 @@ export async function listOrgPlugins(
           outputs: (rt.outputs ?? []).map((o) => ({ key: o.key, label: o.label })),
           supportsCreate: Boolean(rt.supportsCreate),
           supportsUpdate: Boolean(rt.supportsUpdate),
-          supportsDelete: Boolean(rt.supportsDelete),
+          // supportsDelete defaults to true (only `false` disables deletion).
+          supportsDelete: rt.supportsDelete !== false,
           storage: Boolean(rt.supportsStorageBrowser),
+          capabilities: staticResourceCapabilities(rt),
         })),
       };
       byPlugin.set(row.pluginId, entry);
@@ -94,14 +97,14 @@ export async function listOrgPlugins(
     entry.accounts.push({ id: row.id, pluginId: row.pluginId, displayName: row.displayName });
   }
 
-  // Best-effort: type each createable resource's fields from the live create
-  // config (cached) so `create({...})` autocompletes real keys/options.
+  // Best-effort (typings path): merge per-resource-type capability flags and
+  // type each createable resource's fields from the live create config.
   if (opts.enrichCreateFields) {
     await Promise.all(
       Array.from(byPlugin.values()).map((entry) => {
         const first = entry.accounts[0];
         if (!first) return Promise.resolve();
-        return enrichCreateFields(entry.pluginId, entry.resourceTypes, async () => {
+        return enrichPlugin(entry, first.id, async () => {
           const ctx = await getOrgAccountClient(first.id, organizationId);
           if (!ctx) throw new Error(`Account ${first.id} not found.`);
           return ctx.client;

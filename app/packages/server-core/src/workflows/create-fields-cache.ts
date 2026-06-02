@@ -13,8 +13,11 @@
  */
 import {
   createFieldsFromConfig,
+  detailResourceCapabilities,
+  clientSupportsImportYaml,
+  mergeCapabilities,
   type WorkflowCreateFieldInfo,
-  type WorkflowResourceTypeInfo,
+  type WorkflowPluginInfo,
 } from "@infrawrench/workflow-runtime";
 import type { PluginClient } from "@infrawrench/plugin-base";
 
@@ -78,26 +81,38 @@ export async function getCreateFieldsForType(
 }
 
 /**
- * Fill `createFields` on every createable resource type, in place. One plugin
- * client is opened (memoized) and the per-type configs are fetched concurrently
- * so a provider with many createable types doesn't serialize a dozen live API
- * calls on every typings load. Never throws.
+ * Enrich a plugin entry in place for typings: merge the plugin client's
+ * capability flags onto every resource type (so the dts only types supported
+ * methods), record `supportsImportYaml`, and fill `createFields` on createable
+ * types. One client is opened (memoized). Never throws.
  */
-export async function enrichCreateFields(
-  pluginId: string,
-  resourceTypes: WorkflowResourceTypeInfo[],
+export async function enrichPlugin(
+  entry: WorkflowPluginInfo,
+  accountId: string,
   getClient: () => Promise<PluginClient>,
 ): Promise<void> {
-  const createable = resourceTypes.filter((rt) => rt.supportsCreate);
-  if (createable.length === 0) return;
-
   let clientPromise: Promise<PluginClient> | null = null;
   const getClientOnce = () => (clientPromise ??= getClient());
 
+  // Per-type capability flags, read from each type's DetailViewSchema (one
+  // client, renderDetail is synchronous and needs no API call).
+  try {
+    const client = await getClientOnce();
+    for (const rt of entry.resourceTypes) {
+      const caps = detailResourceCapabilities(client, entry.pluginId, rt.id, accountId);
+      rt.capabilities = mergeCapabilities(rt.capabilities, caps);
+    }
+    entry.supportsImportYaml = clientSupportsImportYaml(client);
+  } catch {
+    // Best-effort: leave the static capabilities computed in the base mapping.
+  }
+
   await Promise.all(
-    createable.map(async (rt) => {
-      const value = await getCreateFieldsForType(pluginId, rt.id, getClientOnce);
-      if (value && value.length > 0) rt.createFields = value;
-    }),
+    entry.resourceTypes
+      .filter((rt) => rt.supportsCreate)
+      .map(async (rt) => {
+        const value = await getCreateFieldsForType(entry.pluginId, rt.id, getClientOnce);
+        if (value && value.length > 0) rt.createFields = value;
+      }),
   );
 }

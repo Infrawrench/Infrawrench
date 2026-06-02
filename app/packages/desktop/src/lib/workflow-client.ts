@@ -12,14 +12,17 @@
  */
 import {
   buildWorkflowHost,
+  detailResourceCapabilities,
+  clientSupportsImportYaml,
   createFieldsFromConfig,
   generateInfraDts,
+  mergeCapabilities,
+  staticResourceCapabilities,
   type MetricDef,
   type MetricValue,
   type PromptSpec,
   type WorkflowCreateFieldInfo,
   type WorkflowPluginInfo,
-  type WorkflowResourceTypeInfo,
 } from "@infrawrench/workflow-runtime/client";
 
 import { runWorkflowInMain } from "./workflow-runner";
@@ -155,24 +158,32 @@ async function getLocalCreateFields(
 }
 
 /**
- * Best-effort: type each createable resource's fields from the plugin's live
- * create config so `create({...})` autocompletes real keys/options instead of
- * `Record<string, string>`. Mutates `resourceTypes` in place.
+ * Best-effort (typings path): merge per-resource-type capability flags onto the
+ * plugin entry, record `supportsImportYaml`, and type each createable resource's
+ * fields from the plugin's live create config. Mutates `entry` in place.
  */
-async function enrichLocalCreateFields(
-  pluginId: string,
-  resourceTypes: WorkflowResourceTypeInfo[],
-  firstAccountId: string,
-): Promise<void> {
-  const createable = resourceTypes.filter((rt) => rt.supportsCreate);
-  if (createable.length === 0) return;
+async function enrichLocalPlugin(entry: WorkflowPluginInfo, firstAccountId: string): Promise<void> {
   let clientPromise: Promise<Awaited<ReturnType<typeof createPluginClient>>> | null = null;
-  const getClient = () => (clientPromise ??= createPluginClient(firstAccountId, pluginId));
+  const getClient = () => (clientPromise ??= createPluginClient(firstAccountId, entry.pluginId));
+
+  try {
+    const client = await getClient();
+    for (const rt of entry.resourceTypes) {
+      const caps = detailResourceCapabilities(client, entry.pluginId, rt.id, firstAccountId);
+      rt.capabilities = mergeCapabilities(rt.capabilities, caps);
+    }
+    entry.supportsImportYaml = clientSupportsImportYaml(client);
+  } catch {
+    // Leave the static capabilities from the base mapping.
+  }
+
   await Promise.all(
-    createable.map(async (rt) => {
-      const value = await getLocalCreateFields(pluginId, rt.id, getClient);
-      if (value && value.length > 0) rt.createFields = value;
-    }),
+    entry.resourceTypes
+      .filter((rt) => rt.supportsCreate)
+      .map(async (rt) => {
+        const value = await getLocalCreateFields(entry.pluginId, rt.id, getClient);
+        if (value && value.length > 0) rt.createFields = value;
+      }),
   );
 }
 
@@ -323,8 +334,10 @@ async function listLocalPlugins(
           outputs: (rt.outputs ?? []).map((o) => ({ key: o.key, label: o.label })),
           supportsCreate: Boolean(rt.supportsCreate),
           supportsUpdate: Boolean(rt.supportsUpdate),
-          supportsDelete: Boolean(rt.supportsDelete),
+          // supportsDelete defaults to true (only `false` disables deletion).
+          supportsDelete: rt.supportsDelete !== false,
           storage: Boolean(rt.supportsStorageBrowser),
+          capabilities: staticResourceCapabilities(rt),
         })),
       };
       byPlugin.set(acc.plugin_id, entry);
@@ -336,9 +349,7 @@ async function listLocalPlugins(
     await Promise.all(
       Array.from(byPlugin.values()).map((entry) => {
         const first = entry.accounts[0];
-        return first
-          ? enrichLocalCreateFields(entry.pluginId, entry.resourceTypes, first.id)
-          : Promise.resolve();
+        return first ? enrichLocalPlugin(entry, first.id) : Promise.resolve();
       }),
     );
   }
@@ -459,6 +470,18 @@ async function resolveDesktopSshConfig(params: {
     sshUser: target.username,
     privateKey,
   };
+}
+
+/** SftpConfig-shaped (host/port/username/privateKey) connect config for SFTP. */
+async function resolveDesktopSftpConfig(params: {
+  accountId: string;
+  typeId: string;
+  resourceId: string;
+  sshKeyId?: string;
+  username?: string;
+}): Promise<{ host: string; port: number; username: string; privateKey: string }> {
+  const c = await resolveDesktopSshConfig(params);
+  return { host: c.sshHost, port: c.sshPort, username: c.sshUser, privateKey: c.privateKey };
 }
 
 export function createDesktopWorkflowClient(): WorkflowClient {
@@ -743,6 +766,29 @@ export async function runWorkflowById(
     sshStreamRead: (streamId) => invoke("workflow_ssh_stream_read", { streamId }),
     sshStreamClose: async (streamId) => {
       await invoke("workflow_ssh_stream_close", { streamId });
+    },
+
+    // SFTP runs in electron main; the renderer resolves the connect config.
+    sftpList: async (params, path) =>
+      invoke("workflow_sftp_list", { config: await resolveDesktopSftpConfig(params), path }),
+    sftpGet: async (params, path) =>
+      invoke("workflow_sftp_get", { config: await resolveDesktopSftpConfig(params), path }),
+    sftpPut: async (params, path, base64) => {
+      await invoke("workflow_sftp_put", {
+        config: await resolveDesktopSftpConfig(params),
+        path,
+        base64,
+      });
+    },
+    sftpMkdir: async (params, path) => {
+      await invoke("workflow_sftp_mkdir", { config: await resolveDesktopSftpConfig(params), path });
+    },
+    sftpDelete: async (params, path, isDir) => {
+      await invoke("workflow_sftp_delete", {
+        config: await resolveDesktopSftpConfig(params),
+        path,
+        isDir,
+      });
     },
     sshProbe: async (params) => {
       // Resolve the host inside the loop: a just-created VM may not have an IP
