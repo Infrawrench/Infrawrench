@@ -4,8 +4,6 @@ import { ZoneResourceType } from "./resources/zone.js";
 import { DnsRecordResourceType } from "./resources/dns-record.js";
 import { WorkerResourceType } from "./resources/worker.js";
 import { R2BucketResourceType } from "./resources/r2-bucket.js";
-import { PagesProjectResourceType } from "./resources/pages-project.js";
-import { PagesDeploymentResourceType } from "./resources/pages-deployment.js";
 import { KVNamespaceResourceType } from "./resources/kv-namespace.js";
 import { D1DatabaseResourceType } from "./resources/d1-database.js";
 import { QueueResourceType } from "./resources/queue.js";
@@ -116,8 +114,6 @@ const resourceTypes: ResourceTypeDefinition[] = [
   DnsRecordResourceType,
   WorkerResourceType,
   R2BucketResourceType,
-  PagesProjectResourceType,
-  PagesDeploymentResourceType,
   KVNamespaceResourceType,
   D1DatabaseResourceType,
   QueueResourceType,

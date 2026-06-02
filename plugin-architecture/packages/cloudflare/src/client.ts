@@ -25,13 +25,10 @@ import {
 } from "@infrawrench/plugin-base";
 import {
   tunnelStatus,
-  deploymentStatus,
   sslStatus,
   renderZoneDetail,
   renderWorkerDetail,
   renderR2BucketDetail,
-  renderPagesProjectDetail,
-  renderPagesDeploymentDetail,
   renderKVNamespaceDetail,
   renderD1DatabaseDetail,
   renderQueueDetail,
@@ -64,7 +61,6 @@ import * as zoneApi from "./clients/zone-client.js";
 import * as dnsRecordApi from "./clients/dns-record-client.js";
 import * as workerApi from "./clients/worker-client.js";
 import * as r2Api from "./clients/r2-client.js";
-import * as pagesApi from "./clients/pages-client.js";
 import * as kvApi from "./clients/kv-client.js";
 import * as d1Api from "./clients/d1-client.js";
 import * as queueApi from "./clients/queue-client.js";
@@ -134,10 +130,6 @@ export class CloudflareClient implements PluginClient {
         return workerApi.listWorkers(this.api, accountId);
       case "r2-bucket":
         return r2Api.listR2Buckets(this.api, accountId);
-      case "pages-project":
-        return pagesApi.listPagesProjects(this.api, accountId);
-      case "pages-deployment":
-        return pagesApi.listAllPagesDeployments(this.api, accountId);
       case "kv-namespace":
         return kvApi.listKVNamespaces(this.api, accountId);
       case "d1-database":
@@ -285,10 +277,6 @@ export class CloudflareClient implements PluginClient {
         return await tunnelApi.getTunnelToken(this.api, String(resource.externalId ?? ""));
       }
     }
-    if (typeId === "pages-project") {
-      if (outputKey === "subdomain") return String(resource.fields["subdomain"] ?? "");
-      if (outputKey === "projectName") return String(resource.fields["name"] ?? "");
-    }
     if (typeId === "access-application") {
       if (outputKey === "aud") return String(resource.resolvedOutputs["aud"] ?? "");
     }
@@ -395,10 +383,6 @@ export class CloudflareClient implements PluginClient {
         return renderWorkerDetail(resource);
       case "r2-bucket":
         return renderR2BucketDetail(resource);
-      case "pages-project":
-        return renderPagesProjectDetail(resource);
-      case "pages-deployment":
-        return renderPagesDeploymentDetail(resource);
       case "kv-namespace":
         return renderKVNamespaceDetail(resource);
       case "d1-database":
@@ -474,39 +458,12 @@ export class CloudflareClient implements PluginClient {
         status: { kind: "status-dot", status: tunnelStatus(status), label: status },
       };
     }
-    if (resource.resourceTypeId === "pages-deployment") {
-      const status = String(resource.fields["status"] ?? "");
-      const env = String(resource.fields["environment"] ?? "");
-      return {
-        id: resource.id,
-        label: `${env} · ${String(resource.fields["branch"] ?? "").slice(0, 20)}`,
-        status: { kind: "status-dot", status: deploymentStatus(status), label: status },
-      };
-    }
     if (resource.resourceTypeId === "ssl-certificate") {
       const status = String(resource.fields["status"] ?? "");
       return {
         id: resource.id,
         label: resource.displayName,
         status: { kind: "status-dot", status: sslStatus(status), label: status },
-      };
-    }
-    if (resource.resourceTypeId === "pages-project") {
-      const latestStatus = String(resource.fields["latestDeploymentStatus"] ?? "");
-      if (latestStatus) {
-        return {
-          id: resource.id,
-          label: resource.displayName,
-          status: {
-            kind: "status-dot",
-            status: deploymentStatus(latestStatus),
-            label: latestStatus,
-          },
-        };
-      }
-      return {
-        id: resource.id,
-        label: resource.displayName,
       };
     }
     if (resource.resourceTypeId === "load-balancer") {
@@ -796,27 +753,6 @@ export class CloudflareClient implements PluginClient {
           { key: "database", label: "Database Name", kind: "text", required: true },
           { key: "user", label: "Username", kind: "text", required: true },
           { key: "password", label: "Password", kind: "password", required: true },
-        ],
-      };
-    }
-    if (typeId === "pages-project") {
-      return {
-        fields: [
-          {
-            key: "name",
-            label: "Project Name",
-            kind: "text",
-            required: true,
-            description: "Name for the Pages project",
-          },
-          {
-            key: "productionBranch",
-            label: "Production Branch",
-            kind: "text",
-            required: true,
-            defaultValue: "main",
-            description: "Git branch to use for production deployments",
-          },
         ],
       };
     }
@@ -1881,8 +1817,6 @@ export class CloudflareClient implements PluginClient {
         return queueApi.createQueue(this.api, accountId, fields);
       case "hyperdrive":
         return hyperdriveApi.createHyperdrive(this.api, accountId, fields);
-      case "pages-project":
-        return pagesApi.createPagesProject(this.api, accountId, fields);
       case "tunnel":
         return tunnelApi.createTunnel(this.api, accountId, fields);
       case "worker-route":
@@ -2109,10 +2043,6 @@ export class CloudflareClient implements PluginClient {
         return hyperdriveApi.deleteHyperdrive(this.api, externalId);
       case "worker":
         return workerApi.deleteWorker(this.api, externalId);
-      case "pages-project":
-        return pagesApi.deletePagesProject(this.api, externalId);
-      case "pages-deployment":
-        return pagesApi.deletePagesDeployment(this.api, externalId);
       case "tunnel":
         return tunnelApi.deleteTunnel(this.api, externalId);
       case "ssl-certificate":
@@ -2335,15 +2265,6 @@ export class CloudflareClient implements PluginClient {
       ];
     }
 
-    if (resourceTypeId === "pages-project") {
-      const resource = await this.getResource(resourceTypeId, resourceId, accountId);
-      const subdomain = String(resource.fields["subdomain"] ?? "");
-      if (subdomain) {
-        return [{ label: "URL", value: subdomain }];
-      }
-      return [];
-    }
-
     if (resourceTypeId === "worker") {
       const resource = await this.getResource(resourceTypeId, resourceId, accountId);
       const f = resource.fields;
@@ -2454,9 +2375,6 @@ export class CloudflareClient implements PluginClient {
     }
     if (resourceTypeId === "r2-bucket") {
       return this.fetchR2MetricSeries(resourceId, timeRange);
-    }
-    if (resourceTypeId === "pages-project") {
-      return this.fetchPagesMetricSeries(resourceId, timeRange);
     }
     if (resourceTypeId === "spectrum-application") {
       return this.fetchSpectrumMetricSeries(resourceId, timeRange);
@@ -3090,101 +3008,6 @@ export class CloudflareClient implements PluginClient {
         points: groups.map((g) => ({
           timestamp: new Date(g.dimensions.datetimeFifteenMinutes).getTime(),
           value: Number(g.count ?? 0),
-        })),
-      },
-    ];
-    return series.filter((s) => s.points.some((p) => p.value > 0));
-  }
-
-  /**
-   * Pages project metrics via GraphQL `pagesFunctionInvocationsAdaptiveGroups`
-   * (account-scoped, filter by `scriptName` which equals the project name).
-   * Resource id: `${infrawrenchAccountId}:pages-project:${projectName}`.
-   */
-  private async fetchPagesMetricSeries(
-    resourceId: string,
-    timeRange?: { startMs: number; endMs: number },
-  ): Promise<MetricSeries[]> {
-    const projectName = resourceId.split(":").pop();
-    if (!projectName) return [];
-
-    let cfAccountId: string;
-    try {
-      cfAccountId = await this.api.getAccountId();
-    } catch {
-      return [];
-    }
-
-    const now = Date.now();
-    const from = new Date(timeRange?.startMs ?? now - 24 * 3_600_000).toISOString();
-    const to = new Date(timeRange?.endMs ?? now).toISOString();
-
-    const query = `query P($account: String!, $script: String!, $from: Time!, $to: Time!) {
-      viewer {
-        accounts(filter: { accountTag: $account }) {
-          pagesFunctionInvocationsAdaptiveGroups(
-            limit: 1000
-            filter: { scriptName: $script, datetime_geq: $from, datetime_lt: $to }
-            orderBy: [datetime_ASC]
-          ) {
-            dimensions { datetime }
-            sum { requests errors }
-            quantiles { cpuTimeP99 }
-          }
-        }
-      }
-    }`;
-
-    interface Group {
-      dimensions: { datetime: string };
-      sum: { requests?: number; errors?: number };
-      quantiles: { cpuTimeP99?: number };
-    }
-    interface Resp {
-      data?: {
-        viewer?: { accounts?: Array<{ pagesFunctionInvocationsAdaptiveGroups?: Group[] }> };
-      };
-    }
-
-    let groups: Group[] = [];
-    try {
-      const res = await fetch("https://api.cloudflare.com/client/v4/graphql", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${this.api.apiToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          query,
-          variables: { account: cfAccountId, script: projectName, from, to },
-        }),
-      });
-      if (!res.ok) return [];
-      const json = (await res.json()) as Resp;
-      groups = json.data?.viewer?.accounts?.[0]?.pagesFunctionInvocationsAdaptiveGroups ?? [];
-    } catch {
-      return [];
-    }
-    if (groups.length === 0) return [];
-
-    const tsOf = (g: Group): number => new Date(g.dimensions.datetime).getTime();
-    const series: MetricSeries[] = [
-      {
-        label: "Requests",
-        unit: "requests",
-        points: groups.map((g) => ({ timestamp: tsOf(g), value: Number(g.sum.requests ?? 0) })),
-      },
-      {
-        label: "Errors",
-        unit: "errors",
-        points: groups.map((g) => ({ timestamp: tsOf(g), value: Number(g.sum.errors ?? 0) })),
-      },
-      {
-        label: "CPU Time p99",
-        unit: "μs",
-        points: groups.map((g) => ({
-          timestamp: tsOf(g),
-          value: Number(g.quantiles.cpuTimeP99 ?? 0),
         })),
       },
     ];

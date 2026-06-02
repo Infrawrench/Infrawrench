@@ -1,15 +1,15 @@
 ---
 title: Cloudflare
-description: Manage zones, DNS, Workers, R2, Pages, KV, D1, Tunnels, Access, and more.
+description: Manage zones, DNS, Workers, R2, KV, D1, Tunnels, Access, and more.
 sidebar_order: 20
 ---
 
-The Cloudflare plugin is broad — 33 resource types across DNS, edge compute, storage, AI, security, and zero-trust.
+The Cloudflare plugin is broad — 31 resource types across DNS, edge compute, storage, AI, security, and zero-trust.
 
 ## What you can manage
 
 - **DNS & zones** — zones, DNS records (with proxy status toggle), email routing, custom hostnames, health checks.
-- **Edge compute** — Workers (script editor **plus** an editable Settings tab), Pages, Workers KV, D1 (SQLite), Hyperdrive, Durable Object namespaces.
+- **Edge compute** — Workers (script editor **plus** an editable Settings tab), Workers KV, D1 (SQLite), Hyperdrive, Durable Object namespaces.
 - **AI** — the Workers AI text-generation model catalog (each with a chat Playground), Vectorize vector-database indexes, AI Gateway gateways, and AI Search (AutoRAG) instances.
 - **Storage** — R2 buckets (with the [file browser](../features/file-browsers.md)).
 - **Zero Trust** — Access applications and policies, Tunnels.
@@ -115,7 +115,6 @@ The detail page surfaces a **Metrics** tab whenever Cloudflare's GraphQL Analyti
 - **Zone** — requests, bandwidth, cached requests, threats, unique visitors (`httpRequests1mGroups` / `httpRequests1hGroups`).
 - **Worker** — invocations, errors, subrequests, CPU time p50/p99 (`workersInvocationsAdaptiveGroups`).
 - **R2 bucket** — Class A and Class B operations, object count, stored bytes (`r2OperationsAdaptiveGroups`, `r2StorageAdaptiveGroups`).
-- **Pages project** — function invocations, errors, CPU time p99 (`pagesFunctionInvocationsAdaptiveGroups`).
 - **Spectrum application** — events, ingress/egress bytes, connections (`spectrumNetworkAnalyticsAdaptiveGroups`).
 - **D1 database** — read/write queries, rows read/written, response bytes, query batch latency p90 (`d1AnalyticsAdaptiveGroups`, daily granularity).
 - **KV namespace** — reads, writes, deletes, lists, key count and stored bytes (`kvOperationsAdaptiveGroups`, `kvStorageAdaptiveGroups`, daily granularity).

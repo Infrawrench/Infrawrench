@@ -79,8 +79,6 @@ describe("CloudflareClient.listResources dispatch", () => {
     "dns-record",
     "worker",
     "r2-bucket",
-    "pages-project",
-    "pages-deployment",
     "kv-namespace",
     "d1-database",
     "queue",
@@ -222,8 +220,6 @@ describe("CloudflareClient.renderDetail / renderSidebarItem", () => {
       "dns-record",
       "worker",
       "r2-bucket",
-      "pages-project",
-      "pages-deployment",
       "kv-namespace",
       "d1-database",
       "queue",
@@ -259,10 +255,7 @@ describe("CloudflareClient.renderDetail / renderSidebarItem", () => {
       ["dns-record", { type: "A", name: "x", proxied: true }],
       ["zone", { status: "active" }],
       ["tunnel", { status: "healthy" }],
-      ["pages-deployment", { status: "success", environment: "production", branch: "main" }],
       ["ssl-certificate", { status: "active" }],
-      ["pages-project", { latestDeploymentStatus: "success" }],
-      ["pages-project", {}],
       ["load-balancer", { enabled: true }],
       ["firewall-rule", { enabled: false, description: "d" }],
       ["custom-hostname", { status: "active", hostname: "h" }],
@@ -307,7 +300,7 @@ describe("CloudflareClient.createResource / updateResource / deleteResource", ()
 
   it("createResource throws for an unsupported type", async () => {
     const { client } = makeClient();
-    await expect(client.createResource("pages-deployment", "acct", {})).rejects.toThrow(
+    await expect(client.createResource("durable-object-namespace", "acct", {})).rejects.toThrow(
       /not supported/,
     );
   });
@@ -456,7 +449,6 @@ describe("CloudflareClient.getCreateConfig", () => {
       "d1-database",
       "queue",
       "hyperdrive",
-      "pages-project",
       "tunnel",
       "worker-route",
       "page-rule",
@@ -542,7 +534,6 @@ describe("CloudflareClient.fetchMetricSeries", () => {
     for (const t of [
       "worker",
       "r2-bucket",
-      "pages-project",
       "spectrum-application",
       "d1-database",
       "kv-namespace",
@@ -627,34 +618,6 @@ describe("CloudflareClient.fetchMetricSeries", () => {
     });
     const out = await client.fetchMetricSeries("worker", "acct:worker:w1", "acct", range);
     expect(out.find((s) => s.label === "Requests")).toBeTruthy();
-  });
-
-  it("pages metrics parse function-invocation groups", async () => {
-    const { client } = makeClient();
-    graph({
-      data: {
-        viewer: {
-          accounts: [
-            {
-              pagesFunctionInvocationsAdaptiveGroups: [
-                {
-                  dimensions: { datetime: dt },
-                  sum: { requests: 5, errors: 0 },
-                  quantiles: { cpuTimeP99: 3 },
-                },
-              ],
-            },
-          ],
-        },
-      },
-    });
-    const out = await client.fetchMetricSeries(
-      "pages-project",
-      "acct:pages-project:p1",
-      "acct",
-      range,
-    );
-    expect(out.length).toBeGreaterThan(0);
   });
 
   it("r2 metrics parse ops + storage groups", async () => {

@@ -3,8 +3,6 @@ export { ZoneResourceType } from "./resources/zone.js";
 export { DnsRecordResourceType } from "./resources/dns-record.js";
 export { WorkerResourceType } from "./resources/worker.js";
 export { R2BucketResourceType } from "./resources/r2-bucket.js";
-export { PagesProjectResourceType } from "./resources/pages-project.js";
-export { PagesDeploymentResourceType } from "./resources/pages-deployment.js";
 export { KVNamespaceResourceType } from "./resources/kv-namespace.js";
 export { D1DatabaseResourceType } from "./resources/d1-database.js";
 export { QueueResourceType } from "./resources/queue.js";

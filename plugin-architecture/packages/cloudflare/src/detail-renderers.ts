@@ -11,8 +11,6 @@ export {
 export {
   renderWorkerDetail,
   renderWorkersAiModelDetail,
-  renderPagesProjectDetail,
-  renderPagesDeploymentDetail,
   renderWorkerRouteDetail,
   renderDurableObjectNamespaceDetail,
   renderAiGatewayDetail,
