@@ -16,7 +16,6 @@ export const DISABLED_PLUGINS: string[] = [
   "azure",
   "hetzner",
   "scaleway",
-  "cloudflare",
   "ovh",
   "databricks",
   "turso",
