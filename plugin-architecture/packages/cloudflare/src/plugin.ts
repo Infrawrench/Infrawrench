@@ -49,6 +49,7 @@ const CREATE_TOKEN_SCOPES = [
   { key: "load_balancers", type: "edit" },
   { key: "access", type: "edit" },
   { key: "workers_scripts", type: "edit" },
+  { key: "workers_ai", type: "read" },
   { key: "workers_kv_storage", type: "edit" },
   { key: "workers_r2", type: "edit" },
   { key: "workers_routes", type: "edit" },
