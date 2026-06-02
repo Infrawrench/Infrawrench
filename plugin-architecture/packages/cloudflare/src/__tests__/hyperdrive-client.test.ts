@@ -66,11 +66,56 @@ describe("hyperdrive-client", () => {
 
   it("editHyperdrive toggles caching only when supplied", async () => {
     const api = hdApi();
-    await editHyperdrive(api, "acct", "hd1", { cachingDisabled: "true" });
+    await editHyperdrive(api, "acct", "hd1", { cachingDisabled: "true" }, ["cachingDisabled"]);
     expect(api.cf.hyperdrive.configs.edit).toHaveBeenCalledWith(
       "hd1",
       expect.objectContaining({ caching: { disabled: true } }),
     );
+  });
+
+  // The dispatcher hands editHyperdrive the merged (current + changed) fields,
+  // plus the changed-only keys so it can decide whether to touch `origin`.
+  const MERGED = {
+    name: "pg",
+    originHost: "db.a.com",
+    originPort: "5432",
+    originScheme: "postgres",
+    database: "app",
+    user: "u",
+    cachingDisabled: "false",
+  };
+
+  it("editHyperdrive sends a full origin when a connection field changes", async () => {
+    const api = hdApi();
+    await editHyperdrive(api, "acct", "hd1", { ...MERGED, originHost: "new.db.com" }, [
+      "originHost",
+    ]);
+    const call = (api.cf.hyperdrive.configs.edit as ReturnType<typeof vi.fn>).mock.calls[0]!;
+    expect(call[0]).toBe("hd1");
+    expect(call[1].origin).toEqual({
+      scheme: "postgres",
+      host: "new.db.com",
+      port: 5432,
+      database: "app",
+      user: "u",
+    });
+    // No new password typed → omitted so Cloudflare keeps the existing secret.
+    expect(call[1].origin).not.toHaveProperty("password");
+  });
+
+  it("editHyperdrive includes the password only when a new one is entered", async () => {
+    const api = hdApi();
+    await editHyperdrive(api, "acct", "hd1", { ...MERGED, password: "rotated" }, ["password"]);
+    const call = (api.cf.hyperdrive.configs.edit as ReturnType<typeof vi.fn>).mock.calls[0]!;
+    expect(call[1].origin).toMatchObject({ host: "db.a.com", password: "rotated" });
+  });
+
+  it("editHyperdrive leaves origin untouched on a name-only edit", async () => {
+    const api = hdApi();
+    await editHyperdrive(api, "acct", "hd1", { ...MERGED, name: "renamed" }, ["name"]);
+    const call = (api.cf.hyperdrive.configs.edit as ReturnType<typeof vi.fn>).mock.calls[0]!;
+    expect(call[1].name).toBe("renamed");
+    expect(call[1]).not.toHaveProperty("origin");
   });
 
   it("deleteHyperdrive calls delete", async () => {

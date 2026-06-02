@@ -114,6 +114,10 @@ export function createMockResource(
       case "association":
         fields[field.key] = `mock-${field.key}`;
         break;
+      case "password":
+        // Write-only: never populated from stored values, so leave it unset to
+        // mirror what providers actually return.
+        break;
     }
   }
 

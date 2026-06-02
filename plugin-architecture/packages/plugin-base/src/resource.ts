@@ -3,7 +3,20 @@ import type { AssociationSource } from "./create.js";
 
 export type { AssociationSource };
 
-export type FieldKind = "string" | "number" | "boolean" | "enum" | "secret" | "association";
+/**
+ * `"password"` is a write-only string: it is rendered masked in the Edit form,
+ * is never populated from a resource's stored field values (providers must not
+ * return secrets), and is only submitted when the user actually types a new
+ * value. Leaving it blank means "keep the current secret".
+ */
+export type FieldKind =
+  | "string"
+  | "number"
+  | "boolean"
+  | "enum"
+  | "secret"
+  | "association"
+  | "password";
 
 export interface FieldDefinition {
   key: string;

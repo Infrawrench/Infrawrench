@@ -56,6 +56,8 @@ import {
   renderCacheRuleDetail,
   renderIpAccessRuleDetail,
   renderDurableObjectNamespaceDetail,
+  renderTurnstileWidgetDetail,
+  renderAiGatewayDetail,
 } from "./detail-renderers.js";
 import { CloudflareApi, withCloudflareErrors } from "./clients/shared.js";
 import * as zoneApi from "./clients/zone-client.js";
@@ -443,6 +445,10 @@ export class CloudflareClient implements PluginClient {
         return renderIpAccessRuleDetail(resource);
       case "durable-object-namespace":
         return renderDurableObjectNamespaceDetail(resource);
+      case "turnstile-widget":
+        return renderTurnstileWidgetDetail(resource, this.resourceTypes);
+      case "ai-gateway":
+        return renderAiGatewayDetail(resource, this.resourceTypes);
       default:
         return renderGenericDetail(resource, this.resourceTypes);
     }
@@ -789,7 +795,7 @@ export class CloudflareClient implements PluginClient {
           },
           { key: "database", label: "Database Name", kind: "text", required: true },
           { key: "user", label: "Username", kind: "text", required: true },
-          { key: "password", label: "Password", kind: "text", required: true },
+          { key: "password", label: "Password", kind: "password", required: true },
         ],
       };
     }
@@ -1993,7 +1999,15 @@ export class CloudflareClient implements PluginClient {
       return loadBalancerApi.editLoadBalancer(this.api, accountId, externalId, merged);
     }
     if (typeId === "hyperdrive") {
-      return hyperdriveApi.editHyperdrive(this.api, accountId, externalId, merged);
+      // `fields` is the changed-only set; `merged` carries the full current
+      // origin so editHyperdrive can build a complete patch.
+      return hyperdriveApi.editHyperdrive(
+        this.api,
+        accountId,
+        externalId,
+        merged,
+        Object.keys(fields),
+      );
     }
     if (typeId === "custom-hostname") {
       return customHostnameApi.editCustomHostname(this.api, accountId, externalId, merged);
@@ -2470,6 +2484,9 @@ export class CloudflareClient implements PluginClient {
     }
     if (resourceTypeId === "turnstile-widget") {
       return this.fetchTurnstileMetricSeries(resourceId, timeRange);
+    }
+    if (resourceTypeId === "ai-gateway") {
+      return this.fetchAiGatewayMetricSeries(resourceId, timeRange);
     }
     if (resourceTypeId !== "zone") return [];
 
@@ -3878,6 +3895,140 @@ export class CloudflareClient implements PluginClient {
   }
 
   /**
+   * AI Gateway metrics via GraphQL `aiGatewayRequestsAdaptiveGroups`. Account
+   * scoped, filtered by the `gateway` id. Surfaces the same four headline
+   * numbers as the Cloudflare dashboard (requests, tokens, cost, errors) plus a
+   * cache-hit series. Resource id: `${accountId}:ai-gateway:${gatewayId}`.
+   */
+  private async fetchAiGatewayMetricSeries(
+    resourceId: string,
+    timeRange?: { startMs: number; endMs: number },
+  ): Promise<MetricSeries[]> {
+    const gatewayId = resourceId.split(":").slice(2).join(":");
+    if (!gatewayId) return [];
+
+    let cfAccountId: string;
+    try {
+      cfAccountId = await this.api.getAccountId();
+    } catch {
+      return [];
+    }
+
+    const now = Date.now();
+    const from = new Date(timeRange?.startMs ?? now - 24 * 3_600_000).toISOString();
+    const to = new Date(timeRange?.endMs ?? now).toISOString();
+
+    // The dataset's only documented time dimension is `datetimeHour`.
+    const query = `query AIG($account: String!, $gateway: string, $from: Time!, $to: Time!) {
+      viewer {
+        accounts(filter: { accountTag: $account }) {
+          aiGatewayRequestsAdaptiveGroups(
+            limit: 10000
+            filter: { gateway: $gateway, datetimeHour_geq: $from, datetimeHour_leq: $to }
+            orderBy: [datetimeHour_ASC]
+          ) {
+            count
+            sum {
+              cost
+              cachedRequests
+              erroredRequests
+              uncachedTokensIn
+              uncachedTokensOut
+              cachedTokensIn
+              cachedTokensOut
+            }
+            dimensions { datetimeHour }
+          }
+        }
+      }
+    }`;
+
+    interface Group {
+      count?: number;
+      sum: {
+        cost?: number;
+        cachedRequests?: number;
+        erroredRequests?: number;
+        uncachedTokensIn?: number;
+        uncachedTokensOut?: number;
+        cachedTokensIn?: number;
+        cachedTokensOut?: number;
+      };
+      dimensions: { datetimeHour?: string };
+    }
+    interface Resp {
+      data?: { viewer?: { accounts?: Array<{ aiGatewayRequestsAdaptiveGroups?: Group[] }> } };
+    }
+
+    let groups: Group[] = [];
+    try {
+      const res = await fetch("https://api.cloudflare.com/client/v4/graphql", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.api.apiToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          query,
+          variables: { account: cfAccountId, gateway: gatewayId, from, to },
+        }),
+      });
+      if (!res.ok) return [];
+      const json = (await res.json()) as Resp;
+      groups = json.data?.viewer?.accounts?.[0]?.aiGatewayRequestsAdaptiveGroups ?? [];
+    } catch {
+      return [];
+    }
+    if (groups.length === 0) return [];
+
+    const requests = new Map<number, number>();
+    const tokensIn = new Map<number, number>();
+    const tokensOut = new Map<number, number>();
+    const cost = new Map<number, number>();
+    const errors = new Map<number, number>();
+    const cacheHits = new Map<number, number>();
+
+    for (const g of groups) {
+      const t = new Date(g.dimensions.datetimeHour ?? "").getTime();
+      if (Number.isNaN(t)) continue;
+      requests.set(t, (requests.get(t) ?? 0) + Number(g.count ?? 0));
+      tokensIn.set(
+        t,
+        (tokensIn.get(t) ?? 0) +
+          Number(g.sum.uncachedTokensIn ?? 0) +
+          Number(g.sum.cachedTokensIn ?? 0),
+      );
+      tokensOut.set(
+        t,
+        (tokensOut.get(t) ?? 0) +
+          Number(g.sum.uncachedTokensOut ?? 0) +
+          Number(g.sum.cachedTokensOut ?? 0),
+      );
+      cost.set(t, (cost.get(t) ?? 0) + Number(g.sum.cost ?? 0));
+      errors.set(t, (errors.get(t) ?? 0) + Number(g.sum.erroredRequests ?? 0));
+      cacheHits.set(t, (cacheHits.get(t) ?? 0) + Number(g.sum.cachedRequests ?? 0));
+    }
+
+    const toSeries = (m: Map<number, number>, label: string, unit: string): MetricSeries => ({
+      label,
+      unit,
+      points: [...m.entries()]
+        .sort(([a], [b]) => a - b)
+        .map(([timestamp, value]) => ({ timestamp, value })),
+    });
+
+    const series: MetricSeries[] = [
+      toSeries(requests, "Requests", "requests"),
+      toSeries(tokensIn, "Tokens In", "tokens"),
+      toSeries(tokensOut, "Tokens Out", "tokens"),
+      toSeries(cost, "Cost", "USD"),
+      toSeries(errors, "Errors", "requests"),
+      toSeries(cacheHits, "Cache Hits", "requests"),
+    ];
+    return series.filter((s) => s.points.some((p) => p.value > 0));
+  }
+
+  /**
    * Load balancer metrics via GraphQL `loadBalancingRequestsAdaptiveGroups`.
    * Zone-scoped, filtered by `lbName`. The resource id encodes
    * `${zoneId}/${lbUuid}` — but the analytics dataset filters by name, not
@@ -4139,21 +4290,13 @@ export class CloudflareClient implements PluginClient {
     resourceId: string,
     _accountId: string,
     messages: ChatMessage[],
+    options?: { model?: string },
   ): AsyncGenerator<ChatStreamEvent, void, unknown> {
-    if (typeId !== "workers-ai-model") {
+    if (typeId !== "workers-ai-model" && typeId !== "ai-gateway") {
       yield {
         kind: "error",
         message: `Cloudflare plugin: streamChatMessage not supported for type "${typeId}".`,
       };
-      return;
-    }
-
-    // Resource id: `${infrawrenchAccountId}:workers-ai-model:${@cf/...}`. The
-    // model name itself contains slashes but no colons, so everything after
-    // the second colon is the model name.
-    const model = resourceId.split(":").slice(2).join(":");
-    if (!model) {
-      yield { kind: "error", message: "Couldn't determine the Workers AI model name." };
       return;
     }
 
@@ -4165,7 +4308,38 @@ export class CloudflareClient implements PluginClient {
       return;
     }
 
-    const endpoint = `https://api.cloudflare.com/client/v4/accounts/${cfAccountId}/ai/v1/chat/completions`;
+    // Pick the model + OpenAI-compatible endpoint per resource type:
+    //  - workers-ai-model: model is fixed by the resource (the id tail), called
+    //    directly against the account's Workers AI endpoint.
+    //  - ai-gateway: model comes from the playground's picker, routed through
+    //    the gateway's `workers-ai` provider so the call lands in the gateway's
+    //    logs/analytics. Auth is the same Cloudflare token (no provider key).
+    let model: string;
+    let endpoint: string;
+    if (typeId === "workers-ai-model") {
+      // Resource id: `${infrawrenchAccountId}:workers-ai-model:${@cf/...}`. The
+      // model name contains slashes but no colons, so everything after the
+      // second colon is the model name.
+      model = resourceId.split(":").slice(2).join(":");
+      if (!model) {
+        yield { kind: "error", message: "Couldn't determine the Workers AI model name." };
+        return;
+      }
+      endpoint = `https://api.cloudflare.com/client/v4/accounts/${cfAccountId}/ai/v1/chat/completions`;
+    } else {
+      const gatewayId = resourceId.split(":").slice(2).join(":");
+      model = options?.model ?? "";
+      if (!gatewayId) {
+        yield { kind: "error", message: "Couldn't determine the AI Gateway id." };
+        return;
+      }
+      if (!model) {
+        yield { kind: "error", message: "Pick a Workers AI model to chat through this gateway." };
+        return;
+      }
+      endpoint = `https://gateway.ai.cloudflare.com/v1/${cfAccountId}/${gatewayId}/workers-ai/v1/chat/completions`;
+    }
+
     const body = JSON.stringify({
       model,
       messages: messages.map((m) => ({ role: m.role, content: m.content })),
@@ -4192,7 +4366,7 @@ export class CloudflareClient implements PluginClient {
       const errText = await res.text().catch(() => "");
       yield {
         kind: "error",
-        message: `Workers AI endpoint returned ${res.status}: ${errText || res.statusText}`,
+        message: `Chat endpoint returned ${res.status}: ${errText || res.statusText}`,
       };
       return;
     }

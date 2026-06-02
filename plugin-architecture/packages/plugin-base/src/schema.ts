@@ -734,6 +734,18 @@ export interface ChatPanelCapability {
   inputPlaceholder?: string;
   /** Disable the input and render this message instead. Used when the resource isn't ready (still provisioning, no endpoint key available, etc.). */
   disabledReason?: string;
+  /**
+   * When set, the chat panel renders a model picker seeded with these options
+   * and passes the selected one to `streamChatMessage` via `options.model`.
+   * Use for resources where the model isn't fixed by the resource itself (e.g.
+   * an AI Gateway, which proxies many models). Omit when the model is implied
+   * by the resource (e.g. a single Workers AI model).
+   */
+  models?: string[];
+  /** Initial model selection; defaults to the first entry of `models`. */
+  defaultModel?: string;
+  /** Label for the model picker. Defaults to "Model". */
+  modelLabel?: string;
 }
 
 /**

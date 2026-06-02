@@ -213,6 +213,24 @@ function EditField({ field, value, onChange }: EditFieldProps) {
     );
   }
 
+  if (field.kind === "password") {
+    return (
+      <div>
+        {labelEl}
+        <input
+          type="password"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className={inputClass}
+          aria-label={field.label}
+          autoComplete="new-password"
+          placeholder="Leave blank to keep current"
+        />
+        {descriptionEl}
+      </div>
+    );
+  }
+
   // string (and any future fall-through kinds the modal can handle as text)
   return (
     <div>

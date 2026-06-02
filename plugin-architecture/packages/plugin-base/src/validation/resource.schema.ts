@@ -9,7 +9,7 @@ const associationSourceSchema = z.object({
 export const fieldDefinitionSchema = z.object({
   key: z.string().min(1),
   label: z.string().min(1),
-  kind: z.enum(["string", "number", "boolean", "enum", "secret", "association"]),
+  kind: z.enum(["string", "number", "boolean", "enum", "secret", "association", "password"]),
   required: z.boolean(),
   description: z.string().optional(),
   enumValues: z.array(z.string()).optional(),

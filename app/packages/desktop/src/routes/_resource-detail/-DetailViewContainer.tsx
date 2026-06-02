@@ -67,7 +67,11 @@ interface DetailViewContainerProps {
   ) => Promise<SecretVersion>;
   onOpenConsole: () => void;
   onNoSqlCommand: (command: string, args: (string | number)[]) => Promise<unknown>;
-  onChatStream: (messages: ChatMessage[], signal: AbortSignal) => AsyncIterable<ChatStreamEvent>;
+  onChatStream: (
+    messages: ChatMessage[],
+    signal: AbortSignal,
+    options?: { model?: string },
+  ) => AsyncIterable<ChatStreamEvent>;
   onPublishMessage: (payload: PublishMessagePayload) => Promise<PublishMessageResult>;
   onListKvKeys?: (params: KvBrowserListParams) => Promise<KvListResult>;
   onGetKvValue?: (key: string) => Promise<string>;

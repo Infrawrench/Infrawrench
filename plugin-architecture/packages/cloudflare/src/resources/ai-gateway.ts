@@ -36,6 +36,7 @@ export const AiGatewayResourceType: ResourceTypeDefinition = {
   dashboardPinnable: false,
   supportsCreate: true,
   supportsUpdate: true,
+  supportsMetrics: true,
   iconKey: "function",
   secretExportTemplates: [
     {

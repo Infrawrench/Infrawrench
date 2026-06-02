@@ -509,6 +509,12 @@ export interface PluginClient {
     resourceId: string,
     accountId: string,
     messages: ChatMessage[],
+    /**
+     * Optional per-turn context. `model` is set when the resource's chat panel
+     * declares a model picker (see {@link ChatPanelCapability.models}); plugins
+     * whose model is fixed by the resource can ignore it.
+     */
+    options?: { model?: string },
   ): AsyncIterable<ChatStreamEvent>;
   /**
    * Publish one message to a pub/sub resource — Cloudflare Queue, AWS SQS/SNS/

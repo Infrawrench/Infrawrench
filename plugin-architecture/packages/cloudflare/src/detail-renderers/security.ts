@@ -1,4 +1,10 @@
-import type { ResourceInstance, DetailViewSchema, SectionNode } from "@infrawrench/plugin-base";
+import type {
+  ResourceInstance,
+  DetailViewSchema,
+  SectionNode,
+  ResourceTypeDefinition,
+} from "@infrawrench/plugin-base";
+import { labeledFieldItems } from "@infrawrench/plugin-base";
 import { tunnelStatus } from "./status.js";
 
 export function renderTunnelDetail(resource: ResourceInstance): DetailViewSchema {
@@ -355,6 +361,97 @@ export function renderLogpushJobDetail(resource: ResourceInstance): DetailViewSc
       label: !enabled ? "Disabled" : lastError ? "Error" : "Active",
     },
     sections,
+    headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+  };
+}
+
+export function renderTurnstileWidgetDetail(
+  resource: ResourceInstance,
+  resourceTypes: ResourceTypeDefinition[],
+): DetailViewSchema {
+  const fields = resource.fields;
+  // The sitekey is public (it ships in the page markup) and is also the
+  // resource's external id — see turnstile-client.ts.
+  const siteKey = resource.externalId ?? "";
+
+  // Implicit-rendering embed: drop the script in <head> (or before </body>) and
+  // place the widget div inside the <form> you want to protect. On success
+  // Turnstile injects a hidden `cf-turnstile-response` input into that form.
+  const embedSnippet = [
+    `<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>`,
+    ``,
+    `<form method="POST" action="/submit">`,
+    `  <div class="cf-turnstile" data-sitekey="${siteKey}"></div>`,
+    `  <button type="submit">Submit</button>`,
+    `</form>`,
+  ].join("\n");
+
+  // Server-side validation. The secret is never shown here — read it from the
+  // widget's Secret Key output / the TURNSTILE_SECRET_KEY credentials export.
+  const verifySnippet = [
+    `// Verify the token from the form's "cf-turnstile-response" field.`,
+    `const token = formData.get("cf-turnstile-response");`,
+    `const res = await fetch(`,
+    `  "https://challenges.cloudflare.com/turnstile/v0/siteverify",`,
+    `  {`,
+    `    method: "POST",`,
+    `    headers: { "Content-Type": "application/x-www-form-urlencoded" },`,
+    `    body: new URLSearchParams({`,
+    `      secret: process.env.TURNSTILE_SECRET_KEY,`,
+    `      response: token,`,
+    `      // remoteip: clientIp, // optional`,
+    `    }),`,
+    `  },`,
+    `);`,
+    `const data = await res.json();`,
+    `if (!data.success) throw new Error("Turnstile verification failed");`,
+  ].join("\n");
+
+  return {
+    title: resource.displayName,
+    subtitle: "Turnstile Widget",
+    status: { kind: "status-dot", status: "info" },
+    sections: [
+      {
+        kind: "section",
+        title: "Details",
+        children: [
+          {
+            kind: "key-value-list",
+            items: [
+              { key: "Site Key", value: siteKey, copyable: true },
+              ...labeledFieldItems(fields, resourceTypes, resource.resourceTypeId),
+            ],
+          },
+        ],
+      },
+      {
+        kind: "section",
+        title: "Add the widget to your site",
+        children: [
+          {
+            kind: "text",
+            content:
+              "Paste this into the page with the form you want to protect. The widget adds a `cf-turnstile-response` token to the form on success.",
+            variant: "muted",
+          },
+          { kind: "text", content: embedSnippet, variant: "mono", copyable: true },
+        ],
+      },
+      {
+        kind: "section",
+        title: "Verify tokens on your server",
+        children: [
+          {
+            kind: "text",
+            content:
+              "Validate the token server-side before trusting the submission. Use this widget's Secret Key (exported as `TURNSTILE_SECRET_KEY`) — never put the secret in client-side code.",
+            variant: "muted",
+          },
+          { kind: "text", content: verifySnippet, variant: "mono", copyable: true },
+        ],
+      },
+    ],
     headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
   };
 }

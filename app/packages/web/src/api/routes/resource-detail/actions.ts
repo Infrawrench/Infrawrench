@@ -111,6 +111,7 @@ export function registerActionRoutes(app: Hono): void {
       resourceId: string;
       messages: Array<{ role: "system" | "user" | "assistant"; content: string }>;
       parentResourceId?: string;
+      model?: string;
     }>();
     const ctx = await getClientForResource(
       input.pluginId,
@@ -142,6 +143,7 @@ export function registerActionRoutes(app: Hono): void {
             input.resourceId,
             input.accountId,
             input.messages,
+            input.model ? { model: input.model } : undefined,
           );
           for await (const event of iter) {
             writeEvent(event);

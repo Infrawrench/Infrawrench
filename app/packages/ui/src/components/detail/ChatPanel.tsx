@@ -8,9 +8,14 @@ interface Props {
    * events. The host wraps the plugin's `streamChatMessage` (Electron IPC
    * for desktop, NDJSON over fetch for web). On the host side this should
    * propagate cancellation via AbortSignal so background streams stop when
-   * the user navigates away.
+   * the user navigates away. `options.model` carries the picker selection when
+   * the capability declares `models`.
    */
-  onStream: (messages: ChatMessage[], signal: AbortSignal) => AsyncIterable<ChatStreamEvent>;
+  onStream: (
+    messages: ChatMessage[],
+    signal: AbortSignal,
+    options?: { model?: string },
+  ) => AsyncIterable<ChatStreamEvent>;
 }
 
 interface Turn {
@@ -28,6 +33,9 @@ export function ChatPanel({ capability, onStream }: Props) {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
+  const [model, setModel] = useState<string>(
+    () => capability.defaultModel ?? capability.models?.[0] ?? "",
+  );
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -75,7 +83,11 @@ export function ChatPanel({ capability, onStream }: Props) {
     let usage: Turn["usage"] | undefined;
 
     try {
-      for await (const event of onStream(messages, controller.signal)) {
+      for await (const event of onStream(
+        messages,
+        controller.signal,
+        model ? { model } : undefined,
+      )) {
         if (controller.signal.aborted) break;
         if (event.kind === "delta") {
           assembled += event.text;
@@ -118,7 +130,7 @@ export function ChatPanel({ capability, onStream }: Props) {
         return next;
       });
     }
-  }, [input, streaming, turns, onStream]);
+  }, [input, streaming, turns, onStream, model]);
 
   const stop = useCallback(() => {
     abortRef.current?.abort();
@@ -160,6 +172,24 @@ export function ChatPanel({ capability, onStream }: Props) {
         </span>
         {capability.subtitle && (
           <span className="text-xs text-on-surface-tertiary truncate">{capability.subtitle}</span>
+        )}
+        {capability.models && capability.models.length > 0 && (
+          <label className="flex items-center gap-1.5 text-xs text-on-surface-tertiary">
+            <span className="sr-only">{capability.modelLabel ?? "Model"}</span>
+            <select
+              value={model}
+              onChange={(e) => setModel(e.target.value)}
+              disabled={streaming}
+              aria-label={capability.modelLabel ?? "Model"}
+              className="max-w-[18rem] bg-surface-overlay text-on-surface text-xs border border-border-strong rounded-md px-2 py-1 focus:outline-none focus:border-accent-blue disabled:opacity-60"
+            >
+              {capability.models.map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+          </label>
         )}
         <div className="ml-auto flex items-center gap-2">
           {streaming && (

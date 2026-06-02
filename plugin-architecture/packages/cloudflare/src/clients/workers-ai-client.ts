@@ -17,15 +17,29 @@ interface WorkersAiModel {
  * `{ result: [{ name, task: { name }, description }], result_info }`. One page
  * of 100 is plenty for the text-generation catalog.
  */
+async function fetchTextGenerationModels(api: CloudflareApi): Promise<WorkersAiModel[]> {
+  const cfAccountId = await api.getAccountId();
+  const query = "?per_page=100&task=Text%20Generation";
+  return (
+    (await api.fetch<WorkersAiModel[]>(`/accounts/${cfAccountId}/ai/models/search${query}`)) ?? []
+  );
+}
+
+/**
+ * Just the `@cf/...` model names of the text-generation catalog. Used to seed
+ * the AI Gateway playground's model picker (the gateway proxies Workers AI, so
+ * any text-gen model is a valid target).
+ */
+export async function listTextGenerationModelNames(api: CloudflareApi): Promise<string[]> {
+  const models = await fetchTextGenerationModels(api);
+  return models.map((m) => String(m.name ?? m.id ?? "")).filter((n) => n.length > 0);
+}
+
 export async function listWorkersAiModels(
   api: CloudflareApi,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const cfAccountId = await api.getAccountId();
-  const query = "?per_page=100&task=Text%20Generation";
-  const models = await api.fetch<WorkersAiModel[]>(
-    `/accounts/${cfAccountId}/ai/models/search${query}`,
-  );
+  const models = await fetchTextGenerationModels(api);
   const now = new Date().toISOString();
   return (models ?? []).map((m) => {
     const name = String(m.name ?? m.id ?? "");

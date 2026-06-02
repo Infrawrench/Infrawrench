@@ -778,7 +778,11 @@ export function ResourcePanel({
   // we just forward the iterable. Cloud-routed accounts route through the
   // Infrawrench server's NDJSON chat stream endpoint.
   const handleChatStream = useCallback(
-    (messages: ChatMessage[], signal: AbortSignal): AsyncIterable<ChatStreamEvent> => {
+    (
+      messages: ChatMessage[],
+      signal: AbortSignal,
+      options?: { model?: string },
+    ): AsyncIterable<ChatStreamEvent> => {
       const cloud = cloudCtxRef.current;
       const res = resource;
       if (!res) {
@@ -796,7 +800,13 @@ export function ResourcePanel({
         return errorChatIterable("Plugin does not support chat.");
       }
       void signal; // local plugin clients ignore aborts for now
-      return client.streamChatMessage(res.resourceTypeId, decodedResourceId, accountId, messages);
+      return client.streamChatMessage(
+        res.resourceTypeId,
+        decodedResourceId,
+        accountId,
+        messages,
+        options,
+      );
     },
     [accountId, decodedResourceId, resource],
   );

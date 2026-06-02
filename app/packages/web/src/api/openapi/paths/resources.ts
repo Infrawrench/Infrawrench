@@ -52,7 +52,7 @@ const CredentialFormat = strict({
 const EditableField = strict({
   key: z.string(),
   label: z.string(),
-  kind: z.enum(["string", "number", "boolean", "enum", "secret", "association"]),
+  kind: z.enum(["string", "number", "boolean", "enum", "secret", "association", "password"]),
   required: z.boolean(),
   description: z.string().optional(),
   enumValues: z.array(z.string()).optional(),

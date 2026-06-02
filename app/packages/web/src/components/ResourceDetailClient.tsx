@@ -451,7 +451,11 @@ export function ResourceDetailClient({
   // line; we read with `ReadableStream.getReader()` and yield each event as
   // it arrives so the ChatPanel can append tokens live.
   const handleChatStream = useCallback(
-    (messages: ChatMessage[], signal: AbortSignal): AsyncIterable<ChatStreamEvent> => {
+    (
+      messages: ChatMessage[],
+      signal: AbortSignal,
+      options?: { model?: string },
+    ): AsyncIterable<ChatStreamEvent> => {
       const url = `/api/org/${orgId}/resources/chat-stream`;
       const body = JSON.stringify({
         pluginId,
@@ -460,6 +464,7 @@ export function ResourceDetailClient({
         resourceId,
         messages,
         ...(parentResourceId ? { parentResourceId } : {}),
+        ...(options?.model ? { model: options.model } : {}),
       });
       return {
         async *[Symbol.asyncIterator]() {

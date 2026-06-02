@@ -1562,7 +1562,7 @@
           },
           "kind": {
             "type": "string",
-            "enum": ["string", "number", "boolean", "enum", "secret", "association"]
+            "enum": ["string", "number", "boolean", "enum", "secret", "association", "password"]
           },
           "required": {
             "type": "boolean"
