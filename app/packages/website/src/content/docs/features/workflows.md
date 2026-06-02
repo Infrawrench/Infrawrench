@@ -33,12 +33,43 @@ const ip = await infra.accounts.hetzner
 
 `infra.accounts.<plugin>` exposes `list()`, `getById(id)`, and `getByName(name)`. Each account handle is built from the provider's resource types: every type is a group named after its (plural) name — `account.<type>.list()` and `account.<type>.get(id)`, plus `.create/.update/.delete(...)` for the operations that provider actually supports (read-only types get just `list`/`get`). Account-level `resolveOutput(...)` is also available.
 
-Every resource you get back also carries `delete()` (delete this resource), plus the SSH helpers below — so you can act on a resource directly:
+Every resource you get back also carries `delete()` (delete this resource), the SSH helpers below, and the **extended capabilities** a resource supports in the detail page — each throws a clear error if that provider/resource doesn't support it:
 
 ```ts
 const droplet = await infra.accounts.digitalocean.getByName("prod").droplets.get(id);
 await droplet.delete(); // same as droplets.delete(droplet.id)
+
+// SQL query (REST query engines, e.g. BigQuery)
+const { rows } = await dataset.query("SELECT count(*) FROM events");
+
+// Key-value / Redis namespaces
+await kvNamespace.kv.set("flag", "on");
+const flag = await kvNamespace.kv.get("flag");
+const { items } = await kvNamespace.kv.list({ prefix: "user:" });
+
+// Document stores (Firestore / MongoDB / DynamoDB)
+await collection.nosql("deleteDocument", ["users", "123"]);
+
+// Kubernetes-style logs + describe + manifests
+const { text } = await pod.logs({ tailLines: 200 });
+const summary = await pod.describe();
+await deployment.applyManifest(updatedYaml);
+await infra.accounts.digitalocean.getByName("prod").importYaml(manifest); // kubectl apply -f
+
+// Pub/sub publish + provider metrics
+await queue.publish("hello"); // or { body, extras }
+const series = await droplet.metrics({ startMs, endMs });
+
+// SFTP (over the resource's SSH endpoint — same key handling as ssh())
+const entries = await droplet.sftp.list("/var/log");
+await droplet.sftp.put("/tmp/app.env", "KEY=value\n");
+const bytes = await droplet.sftp.get("/etc/os-release"); // Uint8Array
+const text = await droplet.sftp.get("/etc/os-release", { encoding: "utf8" }); // string
+await droplet.sftp.mkdir("/tmp/data");
+await droplet.sftp.delete("/tmp/old", { recursive: true });
 ```
+
+These mirror the detail page's SQL editor, Keys/KV tab, document browser, Logs/Describe tabs, manifest editor, Publish tab, and Metrics — exposed as plain methods on the resource handle. **Each method only appears on the resource types that actually support it** (autocomplete won't offer `.ssh()` on a DNS record or `.kv` on a droplet), so the editor shows you exactly what a given resource can do.
 
 **`create()` is typed from the real form.** Rather than a generic `Record<string, string>`, the fields argument is generated from the provider's actual create form — so the editor autocompletes the real field keys, and where a field has a closed set of choices (regions, sizes, images, plain selects) you get those values as literal suggestions. Creating a DigitalOcean droplet, for example, autocompletes `name`, `region`, `size`, `image`, and the SSH-key field, with the live region/size/image ids as options:
 
@@ -129,6 +160,12 @@ The implicit key only applies to resources returned from `create()` (where you a
   ```
 
 (`encoding` applies to the awaited result, not to streams — stream chunks are always raw bytes.)
+
+`infra.log(...)` also accepts a `Uint8Array` (or `ArrayBuffer`) directly and decodes it as UTF-8 text — so logging raw bytes from `sftp.get` or a binary `ssh()` result prints the content, not a `{"0":104,…}` dump. It also **awaits any promise you pass it**, so you can hand it an unawaited `ssh()` / `sftp.get()` call directly:
+
+```ts
+await infra.log(droplet.sftp.get("/etc/os-release")); // awaits the read, then prints the file's text
+```
 
 Options: `sshKey` (an Infrawrench SSH key by name or id — autocompleted from your keys; its private half authenticates; not needed for providers with native SSH like Fly/Hetzner), `username` (defaults to the resource type's SSH user, e.g. `root`), `encoding`, `stream`, `timeoutMs`, and `skipHostKeyCheck` (accept whatever host key is presented without verifying or pinning it — handy for ephemeral hosts that get recreated with the same address, but it turns off MITM protection, so only use it on a trusted path).
 
