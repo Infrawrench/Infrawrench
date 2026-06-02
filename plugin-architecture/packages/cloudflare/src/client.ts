@@ -97,6 +97,8 @@ import * as healthcheckApi from "./clients/healthcheck-client.js";
 import * as notificationApi from "./clients/notification-policy-client.js";
 import * as vectorizeApi from "./clients/vectorize-client.js";
 import * as durableObjectApi from "./clients/durable-object-namespace-client.js";
+import * as aiGatewayApi from "./clients/ai-gateway-client.js";
+import * as aiSearchApi from "./clients/ai-search-client.js";
 
 /** Map each rules-engine resource type id to its phase spec. */
 const RULE_SPECS: Record<string, RulePhaseSpec> = {
@@ -117,6 +119,10 @@ export class CloudflareClient implements PluginClient {
   }
 
   async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
+    return withCloudflareErrors(() => this.listResourcesImpl(typeId, accountId));
+  }
+
+  private async listResourcesImpl(typeId: string, accountId: string): Promise<ResourceInstance[]> {
     switch (typeId) {
       case "zone":
         return zoneApi.listZones(this.api, accountId);
@@ -180,6 +186,10 @@ export class CloudflareClient implements PluginClient {
         return notificationApi.listNotificationPolicies(this.api, accountId);
       case "vectorize-index":
         return vectorizeApi.listVectorizeIndexes(this.api, accountId);
+      case "ai-gateway":
+        return aiGatewayApi.listAiGateways(this.api, accountId);
+      case "ai-search":
+        return aiSearchApi.listAiSearchInstances(this.api, accountId);
       case "durable-object-namespace":
         return durableObjectApi.listDurableObjectNamespaces(this.api, accountId);
       default:
@@ -222,6 +232,10 @@ export class CloudflareClient implements PluginClient {
         __consumers__: JSON.stringify(consumers),
       };
       return queue;
+    }
+
+    if (typeId === "ai-gateway") {
+      return aiGatewayApi.getAiGateway(this.api, externalId, accountId);
     }
 
     // Fallback: list all and find
@@ -288,6 +302,12 @@ export class CloudflareClient implements PluginClient {
     if (typeId === "vectorize-index") {
       if (outputKey === "indexName") return resource.externalId ?? "";
     }
+    if (typeId === "ai-gateway") {
+      if (outputKey === "gatewayId") return resource.externalId ?? "";
+    }
+    if (typeId === "ai-search") {
+      if (outputKey === "instanceId") return resource.externalId ?? "";
+    }
     if (typeId === "durable-object-namespace") {
       if (outputKey === "namespaceId") return resource.externalId ?? "";
     }
@@ -302,6 +322,25 @@ export class CloudflareClient implements PluginClient {
    * details and metrics.
    */
   async enrichDetail(resource: ResourceInstance): Promise<ResourceInstance> {
+    if (resource.resourceTypeId === "ai-gateway") {
+      // The gateway endpoint URL and the Workers AI playground both need data
+      // that isn't on the listed resource: the Cloudflare account id (for the
+      // gateway URL) and the text-generation model catalog (for the model
+      // picker). Fetch both for the synchronous renderer; degrade gracefully.
+      const enriched: Record<string, string> = { ...resource.resolvedOutputs };
+      try {
+        enriched["__cfAccountId__"] = await this.api.getAccountId();
+      } catch {
+        /* no account id — renderer omits the endpoint URL */
+      }
+      try {
+        const models = await workersAiApi.listTextGenerationModelNames(this.api);
+        if (models.length > 0) enriched["__models__"] = JSON.stringify(models);
+      } catch {
+        /* no catalog — renderer falls back to a default model */
+      }
+      return { ...resource, resolvedOutputs: enriched };
+    }
     if (resource.resourceTypeId === "durable-object-namespace") {
       const namespaceId = resource.externalId ?? "";
       if (!namespaceId) return resource;
@@ -1691,6 +1730,102 @@ export class CloudflareClient implements PluginClient {
         ],
       };
     }
+    if (typeId === "ai-gateway") {
+      return {
+        fields: [
+          {
+            key: "id",
+            label: "Gateway ID",
+            kind: "text",
+            required: true,
+            description:
+              "Gateway slug (lowercase letters, numbers, hyphens) — used in the gateway URL",
+          },
+          {
+            key: "collectLogs",
+            label: "Collect Logs",
+            kind: "select",
+            required: false,
+            defaultValue: "true",
+            description: "Store request/response logs for analytics and debugging",
+            options: [
+              { id: "true", label: "Enabled" },
+              { id: "false", label: "Disabled" },
+            ],
+          },
+          {
+            key: "cacheTtl",
+            label: "Cache TTL (seconds)",
+            kind: "number",
+            required: false,
+            description: "How long to cache identical requests. Leave blank to disable caching.",
+            minValue: 0,
+          },
+          {
+            key: "cacheInvalidateOnUpdate",
+            label: "Invalidate Cache on Update",
+            kind: "select",
+            required: false,
+            defaultValue: "false",
+            options: [
+              { id: "true", label: "Enabled" },
+              { id: "false", label: "Disabled" },
+            ],
+          },
+          {
+            key: "rateLimitingLimit",
+            label: "Rate Limit (requests)",
+            kind: "number",
+            required: false,
+            description: "Max requests per window. Leave blank for no rate limit.",
+            minValue: 0,
+          },
+          {
+            key: "rateLimitingInterval",
+            label: "Rate Limit Window (seconds)",
+            kind: "number",
+            required: false,
+            minValue: 0,
+          },
+          {
+            key: "rateLimitingTechnique",
+            label: "Rate Limit Technique",
+            kind: "select",
+            required: false,
+            defaultValue: "fixed",
+            showWhen: { fieldKey: "rateLimitingLimit", fieldValuesNot: [""] },
+            options: [
+              { id: "fixed", label: "Fixed window" },
+              { id: "sliding", label: "Sliding window" },
+            ],
+          },
+          {
+            key: "authentication",
+            label: "Authenticated Gateway",
+            kind: "select",
+            required: false,
+            defaultValue: "false",
+            description: "Require a Cloudflare token on every request to the gateway",
+            options: [
+              { id: "true", label: "Enabled" },
+              { id: "false", label: "Disabled" },
+            ],
+          },
+          {
+            key: "logpush",
+            label: "Logpush",
+            kind: "select",
+            required: false,
+            defaultValue: "false",
+            description: "Forward gateway logs to a Logpush destination",
+            options: [
+              { id: "true", label: "Enabled" },
+              { id: "false", label: "Disabled" },
+            ],
+          },
+        ],
+      };
+    }
     throw new Error(`Cloudflare plugin: getCreateConfig not supported for type "${typeId}"`);
   }
 
@@ -1781,6 +1916,8 @@ export class CloudflareClient implements PluginClient {
         return notificationApi.createNotificationPolicy(this.api, accountId, fields);
       case "vectorize-index":
         return vectorizeApi.createVectorizeIndex(this.api, accountId, fields);
+      case "ai-gateway":
+        return aiGatewayApi.createAiGateway(this.api, accountId, fields);
       default:
         throw new Error(`Cloudflare plugin: createResource not supported for type "${typeId}"`);
     }
@@ -1874,6 +2011,9 @@ export class CloudflareClient implements PluginClient {
     }
     if (typeId === "notification-policy") {
       return notificationApi.editNotificationPolicy(this.api, accountId, externalId, merged);
+    }
+    if (typeId === "ai-gateway") {
+      return aiGatewayApi.editAiGateway(this.api, accountId, externalId, merged);
     }
     throw new Error(`Cloudflare plugin: updateResource not supported for type "${typeId}"`);
   }
@@ -1982,6 +2122,10 @@ export class CloudflareClient implements PluginClient {
         return notificationApi.deleteNotificationPolicy(this.api, externalId);
       case "vectorize-index":
         return vectorizeApi.deleteVectorizeIndex(this.api, externalId);
+      case "ai-gateway":
+        return aiGatewayApi.deleteAiGateway(this.api, externalId);
+      case "ai-search":
+        return aiSearchApi.deleteAiSearchInstance(this.api, externalId);
       default:
         throw new Error(`Cloudflare plugin: deleteResource not supported for type "${typeId}"`);
     }

@@ -32,6 +32,8 @@ import { TurnstileWidgetResourceType } from "./resources/turnstile-widget.js";
 import { HealthcheckResourceType } from "./resources/healthcheck.js";
 import { NotificationPolicyResourceType } from "./resources/notification-policy.js";
 import { VectorizeIndexResourceType } from "./resources/vectorize-index.js";
+import { AiGatewayResourceType } from "./resources/ai-gateway.js";
+import { AiSearchResourceType } from "./resources/ai-search.js";
 import { DurableObjectNamespaceResourceType } from "./resources/durable-object-namespace.js";
 
 // Deep link to Cloudflare's "Create Token" page (user/profile tokens) with the
@@ -68,6 +70,8 @@ const CREATE_TOKEN_SCOPES = [
   { key: "turnstile", type: "edit" },
   { key: "notifications", type: "edit" },
   { key: "vectorize", type: "edit" },
+  { key: "ai_gateway", type: "edit" },
+  { key: "autorag", type: "edit" },
   { key: "analytics", type: "read" },
 ];
 
@@ -140,6 +144,8 @@ const resourceTypes: ResourceTypeDefinition[] = [
   HealthcheckResourceType,
   NotificationPolicyResourceType,
   VectorizeIndexResourceType,
+  AiGatewayResourceType,
+  AiSearchResourceType,
   DurableObjectNamespaceResourceType,
 ];
 

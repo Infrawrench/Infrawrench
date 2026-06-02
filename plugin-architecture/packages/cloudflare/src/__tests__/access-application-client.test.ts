@@ -38,6 +38,53 @@ describe("access-application-client", () => {
     expect(out[0]!.resolvedOutputs?.aud).toBe("aud-token");
   });
 
+  it("listAccessApplications surfaces a clean message when Access isn't enabled", async () => {
+    const api = accessApi({
+      cf: {
+        zeroTrust: {
+          access: {
+            applications: {
+              list: vi.fn(() => {
+                throw {
+                  status: 403,
+                  errors: [
+                    {
+                      code: 9999,
+                      message:
+                        "access.api.error.not_enabled: Access is not enabled. Visit the Access dashboard at https://dash.cloudflare.com/ and click the 'Enable Access' button.",
+                    },
+                  ],
+                };
+              }),
+            },
+          },
+        },
+      },
+    });
+    await expect(listAccessApplications(api, "acct")).rejects.toThrow(
+      "Access is not enabled. Visit the Access dashboard at https://dash.cloudflare.com/ and click the 'Enable Access' button. (code 9999)",
+    );
+  });
+
+  it("listAccessApplications surfaces a permission hint on an auth 403", async () => {
+    const api = accessApi({
+      cf: {
+        zeroTrust: {
+          access: {
+            applications: {
+              list: vi.fn(() => {
+                throw { status: 403, errors: [{ code: 9109, message: "Unauthorized" }] };
+              }),
+            },
+          },
+        },
+      },
+    });
+    await expect(listAccessApplications(api, "acct")).rejects.toThrow(
+      /Access: Apps and Policies:Read permission/,
+    );
+  });
+
   it("createAccessApplication builds a self_hosted default body", async () => {
     const api = accessApi();
     await createAccessApplication(api, "acct", { name: "Dashboard", domain: "dash.a.com" });

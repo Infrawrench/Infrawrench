@@ -1,5 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
+import { withAuthErrorHint } from "./shared.js";
 import type { ApplicationCreateParams } from "cloudflare/resources/zero-trust/access/applications/applications";
 
 function mapAccessApplication(app: Record<string, unknown>, accountId: string): ResourceInstance {
@@ -34,12 +35,18 @@ export async function listAccessApplications(
   api: CloudflareApi,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  const account_id = await api.getAccountId();
-  const results: ResourceInstance[] = [];
-  for await (const app of api.cf.zeroTrust.access.applications.list({ account_id })) {
-    results.push(mapAccessApplication(app as unknown as Record<string, unknown>, accountId));
-  }
-  return results;
+  return withAuthErrorHint(
+    async () => {
+      const account_id = await api.getAccountId();
+      const results: ResourceInstance[] = [];
+      for await (const app of api.cf.zeroTrust.access.applications.list({ account_id })) {
+        results.push(mapAccessApplication(app as unknown as Record<string, unknown>, accountId));
+      }
+      return results;
+    },
+    "Access applications",
+    "Account · Access: Apps and Policies:Read",
+  );
 }
 
 export async function createAccessApplication(

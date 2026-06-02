@@ -27,5 +27,7 @@ export { TurnstileWidgetResourceType } from "./resources/turnstile-widget.js";
 export { HealthcheckResourceType } from "./resources/healthcheck.js";
 export { NotificationPolicyResourceType } from "./resources/notification-policy.js";
 export { VectorizeIndexResourceType } from "./resources/vectorize-index.js";
+export { AiGatewayResourceType } from "./resources/ai-gateway.js";
+export { AiSearchResourceType } from "./resources/ai-search.js";
 export { DurableObjectNamespaceResourceType } from "./resources/durable-object-namespace.js";
 export { CloudflareClient } from "./client.js";

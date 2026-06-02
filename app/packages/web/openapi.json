@@ -703,6 +703,8 @@
           "access-policy",
           "acm-certificate",
           "agent-api-key",
+          "ai-gateway",
+          "ai-search",
           "alb",
           "alert-policy",
           "alloydb-cluster",

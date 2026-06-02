@@ -33,25 +33,52 @@ function isCloudflareAuthError(err: unknown): boolean {
     errors?: Array<{ code?: unknown }>;
     message?: unknown;
   };
-  if (e.status === 401 || e.status === 403) return true;
-  if (Array.isArray(e.errors)) {
-    for (const item of e.errors) {
-      // 10000 — generic "Authentication error"; 9109 — "Unauthorized to access
-      // requested resource" (returned when the token lacks a per-resource scope).
-      if (item && typeof item === "object" && (item.code === 10000 || item.code === 9109))
-        return true;
-    }
-  }
-  // The raw-fetch path (see `CloudflareApi.fetch`) wraps the body into a plain
-  // Error whose message contains the joined Cloudflare error messages. Detect
-  // its 401/403 prefix and the "Authentication error" string as a final
-  // fallback so resource types still on raw fetch (e.g. workers-ai) also
+
+  // Collect every numeric Cloudflare error code we can find — from the
+  // structured `.errors` array and from any JSON body embedded in the message
+  // string (the raw-fetch / SDK-stringified path).
+  const codes = collectCloudflareErrorCodes(e);
+  // 10000 — generic "Authentication error"; 9109 — "Unauthorized to access
+  // requested resource" (returned when the token lacks a per-resource scope).
+  if (codes.some((c) => c === 10000 || c === 9109)) return true;
+  // A specific non-auth code (e.g. 9999 "Access is not enabled") means the
+  // token is fine — the failure is something else. Don't claim a missing
+  // permission, even on a 403.
+  if (codes.length > 0) return false;
+
+  // No machine code to go on: fall back to the HTTP status and the raw-fetch
+  // message shape so resource types still on raw fetch (e.g. workers-ai) also
   // benefit from the friendly hint.
+  if (e.status === 401 || e.status === 403) return true;
   if (typeof e.message === "string") {
     if (/error\s+40[13]/i.test(e.message)) return true;
     if (e.message.includes("Authentication error")) return true;
   }
   return false;
+}
+
+/** Gather numeric Cloudflare error codes from a structured error or its message body. */
+function collectCloudflareErrorCodes(e: { errors?: unknown; message?: unknown }): number[] {
+  const codes: number[] = [];
+  const pushFrom = (errors: unknown) => {
+    if (!Array.isArray(errors)) return;
+    for (const item of errors) {
+      if (item && typeof item === "object" && typeof (item as { code?: unknown }).code === "number")
+        codes.push((item as { code: number }).code);
+    }
+  };
+  pushFrom(e.errors);
+  if (typeof e.message === "string") {
+    const brace = e.message.indexOf("{");
+    if (brace !== -1) {
+      try {
+        pushFrom((JSON.parse(e.message.slice(brace)) as { errors?: unknown }).errors);
+      } catch {
+        /* not JSON — ignore */
+      }
+    }
+  }
+  return codes;
 }
 
 /**
@@ -90,12 +117,22 @@ function formatErrorsArray(errors: unknown): string | null {
     .map((e) => {
       if (!e || typeof e !== "object") return typeof e === "string" ? e : "";
       const rec = e as { code?: unknown; message?: unknown };
-      const msg = typeof rec.message === "string" ? rec.message : "";
+      const msg = typeof rec.message === "string" ? stripErrorCodePrefix(rec.message) : "";
       if (!msg) return "";
       return rec.code != null ? `${msg} (code ${rec.code})` : msg;
     })
     .filter((p) => p.length > 0);
   return parts.length > 0 ? parts.join("; ") : null;
+}
+
+/**
+ * Strip Cloudflare's machine-readable message prefix — a dotted lowercase token
+ * ending in a colon, e.g. `access.api.error.not_enabled: Access is not enabled.`
+ * → `Access is not enabled.`. Requires at least three dotted segments so we
+ * don't clip ordinary sentences or URLs that happen to contain a colon.
+ */
+function stripErrorCodePrefix(message: string): string {
+  return message.replace(/^[a-z][a-z0-9_]*(?:\.[a-z0-9_]+){2,}:\s+/, "");
 }
 
 /**

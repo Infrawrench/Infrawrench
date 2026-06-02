@@ -35,6 +35,20 @@ describe("formatCloudflareError", () => {
     const err = new Error("failed at line {oops");
     expect(formatCloudflareError(err)).toBe("failed at line {oops");
   });
+
+  it("strips Cloudflare's machine-code prefix from the message", () => {
+    const err = new Error(
+      '403 {"result":null,"success":false,"errors":[{"code":9999,"message":"access.api.error.not_enabled: Access is not enabled. Visit the Access dashboard at https://dash.cloudflare.com/ and click the \'Enable Access\' button."}],"messages":[]}',
+    );
+    expect(formatCloudflareError(err)).toBe(
+      "Access is not enabled. Visit the Access dashboard at https://dash.cloudflare.com/ and click the 'Enable Access' button. (code 9999)",
+    );
+  });
+
+  it("leaves a message without a dotted machine prefix untouched", () => {
+    const err = { errors: [{ message: "Zone not found: try again" }] };
+    expect(formatCloudflareError(err)).toBe("Zone not found: try again");
+  });
 });
 
 describe("withCloudflareErrors", () => {
