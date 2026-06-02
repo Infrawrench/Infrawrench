@@ -13,6 +13,8 @@ import type { PluginClient, ResourceInstance } from "@infrawrench/plugin-base";
 
 import type {
   ResourceInstanceLite,
+  SftpEntryLite,
+  SftpParamsLite,
   SshExecParamsLite,
   SshExecResultLite,
   SshProbeParamsLite,
@@ -60,6 +62,13 @@ export interface ClientHostDeps {
   sshStreamClose?(streamId: string): Promise<void>;
   /** Poll until the resource accepts SSH connections, or time out. */
   sshProbe?(params: SshProbeParamsLite): Promise<boolean>;
+
+  /** SFTP operations (resolve the SSH config + run via a Node SFTP lib). */
+  sftpList?(params: SftpParamsLite, path: string): Promise<SftpEntryLite[]>;
+  sftpGet?(params: SftpParamsLite, path: string): Promise<{ base64: string }>;
+  sftpPut?(params: SftpParamsLite, path: string, base64: string): Promise<void>;
+  sftpMkdir?(params: SftpParamsLite, path: string): Promise<void>;
+  sftpDelete?(params: SftpParamsLite, path: string, isDir: boolean): Promise<void>;
 
   /** Debugger line hook (instrumented runs); may block to pause at a breakpoint. */
   line?(line: number): Promise<void>;
@@ -194,6 +203,85 @@ export function buildWorkflowHost(deps: ClientHostDeps): WorkflowHost {
     setMetric: (key, value) => deps.setMetric(key, value),
     listMetrics: () => deps.listMetrics(),
 
+    // --- extended capabilities (plugin-client passthroughs) ----------------
+    async query(accountId, resourceId, sql) {
+      const client = await deps.getClient(accountId);
+      if (!client.executeQuery) {
+        throw new Error(`This resource does not support query() (no REST query engine).`);
+      }
+      return client.executeQuery(resourceId, accountId, sql);
+    },
+    async kvList(accountId, typeId, resourceId, params) {
+      const client = await deps.getClient(accountId);
+      if (!client.listKvKeys)
+        throw new Error(`This resource does not support a key-value browser.`);
+      const r = await client.listKvKeys(typeId, resourceId, accountId, params);
+      return {
+        items: r.items.map((k) => ({ key: k.name })),
+        ...(r.nextCursor ? { nextCursor: r.nextCursor } : {}),
+      };
+    },
+    async kvGet(accountId, typeId, resourceId, key) {
+      const client = await deps.getClient(accountId);
+      if (!client.getKvValue)
+        throw new Error(`This resource does not support a key-value browser.`);
+      return client.getKvValue(typeId, resourceId, accountId, key);
+    },
+    async kvPut(accountId, typeId, resourceId, key, value) {
+      const client = await deps.getClient(accountId);
+      if (!client.putKvValue) throw new Error(`This resource does not support key-value writes.`);
+      await client.putKvValue(typeId, resourceId, accountId, key, value);
+    },
+    async kvDelete(accountId, typeId, resourceId, key) {
+      const client = await deps.getClient(accountId);
+      if (!client.deleteKvKey) throw new Error(`This resource does not support key-value deletes.`);
+      await client.deleteKvKey(typeId, resourceId, accountId, key);
+    },
+    async nosql(accountId, typeId, resourceId, command, args) {
+      const client = await deps.getClient(accountId);
+      if (!client.executeNoSqlCommand)
+        throw new Error(`This resource does not support NoSQL commands.`);
+      return client.executeNoSqlCommand(typeId, resourceId, accountId, command, args);
+    },
+    async getLogs(accountId, typeId, resourceId, params) {
+      const client = await deps.getClient(accountId);
+      if (!client.getLogs) throw new Error(`This resource does not expose logs.`);
+      return client.getLogs(typeId, resourceId, accountId, params);
+    },
+    async describe(accountId, typeId, resourceId) {
+      const client = await deps.getClient(accountId);
+      if (!client.describeResource) throw new Error(`This resource does not support describe().`);
+      return client.describeResource(typeId, resourceId, accountId);
+    },
+    async getManifest(accountId, resourceId) {
+      const client = await deps.getClient(accountId);
+      if (!client.getManifest) throw new Error(`This resource does not expose a manifest.`);
+      return client.getManifest(resourceId, accountId);
+    },
+    async applyManifest(accountId, resourceId, manifest) {
+      const client = await deps.getClient(accountId);
+      if (!client.applyManifest) throw new Error(`This resource does not support applyManifest().`);
+      await client.applyManifest(resourceId, accountId, manifest);
+    },
+    async importYaml(accountId, yaml) {
+      const client = await deps.getClient(accountId);
+      if (!client.importYaml) throw new Error(`This account does not support importYaml().`);
+      return client.importYaml(accountId, yaml);
+    },
+    async publish(accountId, typeId, resourceId, payload) {
+      const client = await deps.getClient(accountId);
+      if (!client.publishMessage) throw new Error(`This resource is not a pub/sub target.`);
+      return client.publishMessage(typeId, resourceId, accountId, {
+        body: payload.body,
+        extras: payload.extras ?? {},
+      });
+    },
+    async metricSeries(accountId, typeId, resourceId, timeRange) {
+      const client = await deps.getClient(accountId);
+      if (!client.fetchMetricSeries) throw new Error(`This resource does not expose metrics.`);
+      return client.fetchMetricSeries(typeId, resourceId, accountId, timeRange);
+    },
+
     // SSH capabilities are forwarded only when the platform supplies them; when
     // absent, dispatch surfaces a WorkflowCapabilityError to the workflow.
     ...(deps.sshExec ? { sshExec: deps.sshExec } : {}),
@@ -201,6 +289,11 @@ export function buildWorkflowHost(deps: ClientHostDeps): WorkflowHost {
     ...(deps.sshStreamRead ? { sshStreamRead: deps.sshStreamRead } : {}),
     ...(deps.sshStreamClose ? { sshStreamClose: deps.sshStreamClose } : {}),
     ...(deps.sshProbe ? { sshProbe: deps.sshProbe } : {}),
+    ...(deps.sftpList ? { sftpList: deps.sftpList } : {}),
+    ...(deps.sftpGet ? { sftpGet: deps.sftpGet } : {}),
+    ...(deps.sftpPut ? { sftpPut: deps.sftpPut } : {}),
+    ...(deps.sftpMkdir ? { sftpMkdir: deps.sftpMkdir } : {}),
+    ...(deps.sftpDelete ? { sftpDelete: deps.sftpDelete } : {}),
     ...(deps.line ? { line: deps.line } : {}),
   };
 }

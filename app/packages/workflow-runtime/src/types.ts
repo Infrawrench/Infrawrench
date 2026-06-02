@@ -150,6 +150,27 @@ export interface WorkflowResourceTypeInfo {
    * `getCreateConfig`). Absent → codegen falls back to `Record<string, string>`.
    */
   createFields?: WorkflowCreateFieldInfo[];
+  /**
+   * Which extended capabilities this resource type supports, so codegen only
+   * types the applicable methods (ssh/query/kv/…) per type. Static flags
+   * (ssh/sql/metrics/sftp) come from the type definition; the rest are
+   * populated from the plugin's client method presence on the typings path.
+   */
+  capabilities?: WorkflowResourceCapabilities;
+}
+
+/** Per-resource-type capability flags that gate the generated `infra.d.ts`. */
+export interface WorkflowResourceCapabilities {
+  ssh?: boolean;
+  sftp?: boolean;
+  sql?: boolean;
+  kv?: boolean;
+  nosql?: boolean;
+  logs?: boolean;
+  describe?: boolean;
+  manifest?: boolean;
+  publish?: boolean;
+  metrics?: boolean;
 }
 
 /** Everything codegen needs about one plugin that has at least one account. */
@@ -158,4 +179,6 @@ export interface WorkflowPluginInfo {
   displayName: string;
   accounts: WorkflowAccountInfo[];
   resourceTypes: WorkflowResourceTypeInfo[];
+  /** Plugin implements `importYaml` → `account.importYaml(...)` is typed. */
+  supportsImportYaml?: boolean;
 }

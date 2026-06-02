@@ -91,6 +91,24 @@ export interface SshProbeParamsLite {
   timeoutMs?: number;
 }
 
+/** Identifies the resource + SSH auth for an SFTP operation. */
+export interface SftpParamsLite {
+  accountId: string;
+  typeId: string;
+  resourceId: string;
+  sshKeyId?: string;
+  username?: string;
+}
+
+/** A directory entry returned by `sftp.list`. */
+export interface SftpEntryLite {
+  key: string;
+  name: string;
+  size: number;
+  lastModified: string;
+  isDirectory: boolean;
+}
+
 /** Per-run context the host threads through dispatch. */
 export interface WorkflowRunContext {
   /** Whether `infra.prompt` is allowed (manual/interactive runs only). */
@@ -167,12 +185,87 @@ export interface WorkflowHost {
   /** Poll until the resource accepts TCP on the SSH port, or time out. */
   sshProbe?(params: SshProbeParamsLite): Promise<boolean>;
 
+  /** List a directory over SFTP (powers `resource.sftp.list`). */
+  sftpList?(params: SftpParamsLite, path: string): Promise<SftpEntryLite[]>;
+  /** Download a file over SFTP, returned as base64. */
+  sftpGet?(params: SftpParamsLite, path: string): Promise<{ base64: string }>;
+  /** Upload base64 bytes to a path over SFTP. */
+  sftpPut?(params: SftpParamsLite, path: string, base64: string): Promise<void>;
+  /** Create a directory over SFTP. */
+  sftpMkdir?(params: SftpParamsLite, path: string): Promise<void>;
+  /** Delete a file or directory over SFTP. */
+  sftpDelete?(params: SftpParamsLite, path: string, isDir: boolean): Promise<void>;
+
   /**
    * Debugger hook: reports the 1-based source line about to execute (instrumented
    * runs only). Implementations highlight the line and may block to pause at a
    * breakpoint. Resolving continues the run; rejecting aborts it (Stop).
    */
   line?(line: number): Promise<void>;
+
+  // --- extended resource capabilities (plugin-client passthroughs) ---------
+  /** Run a SQL query against a resource (REST query engines, e.g. BigQuery). */
+  query?(
+    accountId: string,
+    resourceId: string,
+    sql: string,
+  ): Promise<{ rows: Record<string, unknown>[]; durationMs?: number }>;
+  /** List keys in a KV/Redis namespace resource. */
+  kvList?(
+    accountId: string,
+    typeId: string,
+    resourceId: string,
+    params: { prefix?: string; cursor?: string; limit?: number },
+  ): Promise<{ items: { key: string }[]; nextCursor?: string }>;
+  /** Read a single KV value. */
+  kvGet?(accountId: string, typeId: string, resourceId: string, key: string): Promise<string>;
+  /** Write a single KV value. */
+  kvPut?(
+    accountId: string,
+    typeId: string,
+    resourceId: string,
+    key: string,
+    value: string,
+  ): Promise<void>;
+  /** Delete a single KV key. */
+  kvDelete?(accountId: string, typeId: string, resourceId: string, key: string): Promise<void>;
+  /** Run a document-store command (Firestore/Mongo/DynamoDB). */
+  nosql?(
+    accountId: string,
+    typeId: string,
+    resourceId: string,
+    command: string,
+    args: (string | number)[],
+  ): Promise<unknown>;
+  /** Fetch a resource's recent logs (k8s-style). */
+  getLogs?(
+    accountId: string,
+    typeId: string,
+    resourceId: string,
+    params: { tailLines?: number; container?: string; previous?: boolean },
+  ): Promise<{ text: string; containers: string[]; activeContainer: string }>;
+  /** Plain-text "describe" of a resource (k8s-style). */
+  describe?(accountId: string, typeId: string, resourceId: string): Promise<string>;
+  /** Fetch a resource's full manifest (JSON/YAML text). */
+  getManifest?(accountId: string, resourceId: string): Promise<string>;
+  /** Apply an updated manifest to a resource. */
+  applyManifest?(accountId: string, resourceId: string, manifest: string): Promise<void>;
+  /** Apply arbitrary (multi-doc) YAML to an account (kubectl apply -f). */
+  importYaml?(accountId: string, yaml: string): Promise<{ applied: number }>;
+  /** Publish a message to a pub/sub resource. */
+  publish?(
+    accountId: string,
+    typeId: string,
+    resourceId: string,
+    payload: { body: string; extras?: Record<string, string | Record<string, string>> },
+  ): Promise<{ id?: string; summary?: string }>;
+  /** Fetch a resource's provider metric series. */
+  metricSeries?(
+    accountId: string,
+    typeId: string,
+    resourceId: string,
+    timeRange?: { startMs: number; endMs: number },
+  ): Promise<{ label: string; unit?: string; points: { timestamp: number; value: number }[] }[]>;
 }
 
 /** Error thrown when a workflow uses a capability unavailable in its context. */
@@ -188,6 +281,17 @@ function requireMethod<T>(fn: T | undefined, name: string): T {
     throw new WorkflowCapabilityError(`This workflow host does not support "${name}".`);
   }
   return fn;
+}
+
+/** Marshal the common SFTP RPC args into {@link SftpParamsLite}. */
+function sftpParams(args: Record<string, unknown>): SftpParamsLite {
+  return {
+    accountId: String(args["accountId"]),
+    typeId: String(args["typeId"]),
+    resourceId: String(args["resourceId"]),
+    ...(args["sshKeyId"] ? { sshKeyId: String(args["sshKeyId"]) } : {}),
+    ...(args["username"] ? { username: String(args["username"]) } : {}),
+  };
 }
 
 /** Marshal the common SSH RPC args into {@link SshExecParamsLite}. */
@@ -306,6 +410,46 @@ export async function dispatch(
       );
       return null;
 
+    case "sftp.list":
+      return requireMethod(host.sftpList, "sftpList").call(
+        host,
+        sftpParams(args),
+        String(args["path"] ?? "."),
+      );
+
+    case "sftp.get":
+      return requireMethod(host.sftpGet, "sftpGet").call(
+        host,
+        sftpParams(args),
+        String(args["path"]),
+      );
+
+    case "sftp.put":
+      await requireMethod(host.sftpPut, "sftpPut").call(
+        host,
+        sftpParams(args),
+        String(args["path"]),
+        String(args["base64"] ?? ""),
+      );
+      return null;
+
+    case "sftp.mkdir":
+      await requireMethod(host.sftpMkdir, "sftpMkdir").call(
+        host,
+        sftpParams(args),
+        String(args["path"]),
+      );
+      return null;
+
+    case "sftp.delete":
+      await requireMethod(host.sftpDelete, "sftpDelete").call(
+        host,
+        sftpParams(args),
+        String(args["path"]),
+        Boolean(args["isDir"]),
+      );
+      return null;
+
     case "ssh.probe":
       return requireMethod(host.sshProbe, "sshProbe").call(host, {
         accountId: String(args["accountId"]),
@@ -318,6 +462,124 @@ export async function dispatch(
     case "line":
       await host.line?.(Number(args["line"]));
       return null;
+
+    case "resource.query":
+      return requireMethod(host.query, "query").call(
+        host,
+        String(args["accountId"]),
+        String(args["resourceId"]),
+        String(args["sql"]),
+      );
+
+    case "kv.list":
+      return requireMethod(host.kvList, "kvList").call(
+        host,
+        String(args["accountId"]),
+        String(args["typeId"]),
+        String(args["resourceId"]),
+        (args["params"] as { prefix?: string; cursor?: string; limit?: number }) ?? {},
+      );
+
+    case "kv.get":
+      return requireMethod(host.kvGet, "kvGet").call(
+        host,
+        String(args["accountId"]),
+        String(args["typeId"]),
+        String(args["resourceId"]),
+        String(args["key"]),
+      );
+
+    case "kv.put":
+      await requireMethod(host.kvPut, "kvPut").call(
+        host,
+        String(args["accountId"]),
+        String(args["typeId"]),
+        String(args["resourceId"]),
+        String(args["key"]),
+        String(args["value"]),
+      );
+      return null;
+
+    case "kv.delete":
+      await requireMethod(host.kvDelete, "kvDelete").call(
+        host,
+        String(args["accountId"]),
+        String(args["typeId"]),
+        String(args["resourceId"]),
+        String(args["key"]),
+      );
+      return null;
+
+    case "resource.nosql":
+      return requireMethod(host.nosql, "nosql").call(
+        host,
+        String(args["accountId"]),
+        String(args["typeId"]),
+        String(args["resourceId"]),
+        String(args["command"]),
+        (args["args"] as (string | number)[]) ?? [],
+      );
+
+    case "resource.logs":
+      return requireMethod(host.getLogs, "getLogs").call(
+        host,
+        String(args["accountId"]),
+        String(args["typeId"]),
+        String(args["resourceId"]),
+        (args["params"] as { tailLines?: number; container?: string; previous?: boolean }) ?? {},
+      );
+
+    case "resource.describe":
+      return requireMethod(host.describe, "describe").call(
+        host,
+        String(args["accountId"]),
+        String(args["typeId"]),
+        String(args["resourceId"]),
+      );
+
+    case "resource.getManifest":
+      return requireMethod(host.getManifest, "getManifest").call(
+        host,
+        String(args["accountId"]),
+        String(args["resourceId"]),
+      );
+
+    case "resource.applyManifest":
+      await requireMethod(host.applyManifest, "applyManifest").call(
+        host,
+        String(args["accountId"]),
+        String(args["resourceId"]),
+        String(args["manifest"]),
+      );
+      return null;
+
+    case "account.importYaml":
+      return requireMethod(host.importYaml, "importYaml").call(
+        host,
+        String(args["accountId"]),
+        String(args["yaml"]),
+      );
+
+    case "resource.publish":
+      return requireMethod(host.publish, "publish").call(
+        host,
+        String(args["accountId"]),
+        String(args["typeId"]),
+        String(args["resourceId"]),
+        args["payload"] as {
+          body: string;
+          extras?: Record<string, string | Record<string, string>>;
+        },
+      );
+
+    case "resource.metrics":
+      return requireMethod(host.metricSeries, "metricSeries").call(
+        host,
+        String(args["accountId"]),
+        String(args["typeId"]),
+        String(args["resourceId"]),
+        args["timeRange"] as { startMs: number; endMs: number } | undefined,
+      );
 
     case "metric.get":
       return host.getMetric(String(args["key"]));

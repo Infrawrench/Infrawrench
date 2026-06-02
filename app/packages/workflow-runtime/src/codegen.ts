@@ -12,6 +12,7 @@ import type {
   MetricValueType,
   WorkflowCreateFieldInfo,
   WorkflowPluginInfo,
+  WorkflowResourceTypeInfo,
 } from "./types.js";
 
 /** A valid TS identifier fragment derived from an arbitrary id. */
@@ -157,7 +158,9 @@ interface SshStreams extends AsyncIterable<Uint8Array> {
   stderr: SshReadable;
 }
 
-interface WorkflowResource {
+/** Common data carried by every resource. Per-type interfaces add the
+ * capability methods (ssh/query/kv/…) that resource type actually supports. */
+interface WorkflowResourceBase {
   id: string;
   pluginId: string;
   resourceTypeId: string;
@@ -166,19 +169,6 @@ interface WorkflowResource {
   externalId?: string;
   fields: Record<string, string | number | boolean>;
   resolvedOutputs: Record<string, string>;
-  /** Run a command over SSH and resolve its full stdout as a string. */
-  ssh(command: string, opts?: SshExecOptions): Promise<string>;
-  /** Run a command over SSH and resolve its full stdout as raw bytes. */
-  ssh(command: string, opts: SshExecOptions & { encoding: "binary" }): Promise<Uint8Array>;
-  /**
-   * Stream the command's output: \`{ stdout, stderr }\` byte streams (the object
-   * also iterates stdout). Pass it to \`infra.log(...)\` to tail both live.
-   */
-  ssh(command: string, opts: SshExecOptions & { stream: true }): SshStreams;
-  /** Resolve once the resource accepts SSH connections (or reject on timeout). */
-  waitUntilReachable(opts?: { timeoutMs?: number; port?: number }): Promise<void>;
-  /** Delete this resource. Rejects if the owning provider doesn't support deletion. */
-  delete(): Promise<void>;
 }
 
 interface StorageObject {
@@ -195,13 +185,73 @@ interface StorageBody {
   json<T = unknown>(): T;
 }
 
-/** A storage-capable resource (e.g. a bucket): its data plus object read ops. */
-interface StorageResource extends WorkflowResource {
-  /** List objects in this bucket at a prefix (delimiter "/"). */
+/** A directory entry returned by \`resource.sftp.list(...)\`. */
+interface SftpEntry {
+  key: string;
+  name: string;
+  size: number;
+  lastModified: string;
+  isDirectory: boolean;
+}`;
+
+/**
+ * Capability method snippets, emitted into a resource type's interface only when
+ * that type supports the capability (see WorkflowResourceTypeInfo.capabilities).
+ */
+const CAP_MEMBERS = {
+  ssh: `  /** Stream the command's output as { stdout, stderr } byte streams (pass to infra.log to tail). */
+  ssh(command: string, opts: SshExecOptions & { stream: true }): SshStreams;
+  /** Run a command over SSH and resolve its full stdout as raw bytes. */
+  ssh(command: string, opts: SshExecOptions & { encoding: "binary" }): Promise<Uint8Array>;
+  /** Run a command over SSH and resolve its full stdout as a string. */
+  ssh(command: string, opts?: SshExecOptions): Promise<string>;
+  /** Resolve once the resource accepts SSH connections (or reject on timeout). */
+  waitUntilReachable(opts?: { timeoutMs?: number; port?: number }): Promise<void>;`,
+  delete: `  /** Delete this resource. */
+  delete(): Promise<void>;`,
+  sftp: `  /** SFTP file operations over this resource's SSH endpoint. */
+  readonly sftp: {
+    /** List a remote directory. */
+    list(path: string, opts?: SshExecOptions): Promise<SftpEntry[]>;
+    /** Download a remote file decoded to a UTF-8 string. */
+    get(path: string, opts: SshExecOptions & { encoding: "utf8" }): Promise<string>;
+    /** Download a remote file's bytes. */
+    get(path: string, opts?: SshExecOptions): Promise<Uint8Array>;
+    /** Upload bytes (or a string) to a remote path. */
+    put(path: string, data: Uint8Array | string, opts?: SshExecOptions): Promise<void>;
+    /** Create a remote directory. */
+    mkdir(path: string, opts?: SshExecOptions): Promise<void>;
+    /** Delete a remote file (or directory with { recursive: true }). */
+    delete(path: string, opts?: SshExecOptions & { recursive?: boolean }): Promise<void>;
+  };`,
+  storage: `  /** List objects in this bucket at a prefix (delimiter "/"). */
   list(prefix?: string): Promise<StorageObject[]>;
   /** Fetch an object's body by key. */
-  get(key: string): Promise<StorageBody>;
-}`;
+  get(key: string): Promise<StorageBody>;`,
+  sql: `  /** Run a SQL query against this resource. */
+  query(sql: string): Promise<{ rows: Record<string, unknown>[]; durationMs?: number }>;`,
+  kv: `  /** Key-value operations on this namespace. */
+  readonly kv: {
+    list(opts?: { prefix?: string; cursor?: string; limit?: number }): Promise<{ items: { key: string }[]; nextCursor?: string }>;
+    get(key: string): Promise<string>;
+    set(key: string, value: string): Promise<void>;
+    delete(key: string): Promise<void>;
+  };`,
+  nosql: `  /** Run a document-store command (Firestore/MongoDB/DynamoDB). */
+  nosql(command: string, args?: (string | number)[]): Promise<unknown>;`,
+  logs: `  /** Fetch recent logs; returns text + available containers. */
+  logs(opts?: { tailLines?: number; container?: string; previous?: boolean }): Promise<{ text: string; containers: string[]; activeContainer: string }>;`,
+  describe: `  /** Plain-text "describe" of this resource. */
+  describe(): Promise<string>;`,
+  manifest: `  /** Fetch this resource's full manifest as JSON/YAML text. */
+  getManifest(): Promise<string>;
+  /** Apply an updated manifest to this resource. */
+  applyManifest(manifest: string): Promise<void>;`,
+  publish: `  /** Publish a message to this pub/sub resource. */
+  publish(message: string | { body: string; extras?: Record<string, string | Record<string, string>> }): Promise<{ id?: string; summary?: string }>;`,
+  metrics: `  /** Fetch this resource's provider metric series. */
+  metrics(timeRange?: { startMs: number; endMs: number }): Promise<{ label: string; unit?: string; points: { timestamp: number; value: number }[] }[]>;`,
+};
 
 function accountInterfaceName(pluginId: string): string {
   return `Account_${ident(pluginId)}`;
@@ -218,16 +268,64 @@ function groupInterfaceName(pluginId: string): string {
  * (read-only types get just list + get). Groups are de-duped so a display-name
  * collision can't produce a duplicate property.
  */
-function renderResourceGroups(plugin: WorkflowPluginInfo, sshKeyNames: string[]): string {
-  const blocks: string[] = [];
+function resourceTypeInterfaceName(pluginId: string, typeId: string): string {
+  return `Resource_${ident(pluginId)}_${ident(typeId)}`;
+}
+
+/** The resource types that get a group (de-duped by camelCased plural name). */
+function dedupedResourceTypes(plugin: WorkflowPluginInfo): WorkflowResourceTypeInfo[] {
   const used = new Set<string>();
+  const out: WorkflowResourceTypeInfo[] = [];
   for (const rt of plugin.resourceTypes) {
     const group = camelCase(rt.pluralDisplayName);
     if (!group || used.has(group)) continue;
     used.add(group);
+    out.push(rt);
+  }
+  return out;
+}
+
+/**
+ * Per-type resource interface: the common data (WorkflowResourceBase) plus ONLY
+ * the capability methods this resource type actually supports, so a Cloudflare
+ * DNS record doesn't advertise `.ssh()` or `.kv`.
+ */
+function renderResourceTypeInterface(
+  plugin: WorkflowPluginInfo,
+  rt: WorkflowResourceTypeInfo,
+): string {
+  const caps = rt.capabilities ?? {};
+  const members: string[] = [];
+  if (caps.ssh) members.push(CAP_MEMBERS.ssh);
+  if (caps.sftp) members.push(CAP_MEMBERS.sftp);
+  if (rt.storage) members.push(CAP_MEMBERS.storage);
+  if (caps.sql) members.push(CAP_MEMBERS.sql);
+  if (caps.kv) members.push(CAP_MEMBERS.kv);
+  if (caps.nosql) members.push(CAP_MEMBERS.nosql);
+  if (caps.logs) members.push(CAP_MEMBERS.logs);
+  if (caps.describe) members.push(CAP_MEMBERS.describe);
+  if (caps.manifest) members.push(CAP_MEMBERS.manifest);
+  if (caps.publish) members.push(CAP_MEMBERS.publish);
+  if (caps.metrics) members.push(CAP_MEMBERS.metrics);
+  if (rt.supportsDelete) members.push(CAP_MEMBERS.delete);
+  const name = resourceTypeInterfaceName(plugin.pluginId, rt.id);
+  return `interface ${name} extends WorkflowResourceBase {${members.length ? `\n${members.join("\n")}\n` : ""}}`;
+}
+
+/** All per-type resource interfaces for a plugin (one per deduped group). */
+function renderResourceTypeInterfaces(plugin: WorkflowPluginInfo): string {
+  return dedupedResourceTypes(plugin)
+    .map((rt) => renderResourceTypeInterface(plugin, rt))
+    .join("\n\n");
+}
+
+function renderResourceGroups(plugin: WorkflowPluginInfo, sshKeyNames: string[]): string {
+  const blocks: string[] = [];
+  for (const rt of dedupedResourceTypes(plugin)) {
+    const group = camelCase(rt.pluralDisplayName);
     const prop = /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(group) ? group : strLit(group);
-    // Storage-capable types return resources you can read objects from.
-    const ret = rt.storage ? "StorageResource" : "WorkflowResource";
+    // Each type's accessors return its own per-type interface.
+    const ret = resourceTypeInterfaceName(plugin.pluginId, rt.id);
     const ops: string[] = [];
     ops.push(`    /** List all ${rt.pluralDisplayName}. */\n    list(): Promise<${ret}[]>;`);
     ops.push(
@@ -254,11 +352,14 @@ function renderResourceGroups(plugin: WorkflowPluginInfo, sshKeyNames: string[])
 
 function renderAccountInterface(plugin: WorkflowPluginInfo, sshKeyNames: string[]): string {
   const resourceGroups = renderResourceGroups(plugin, sshKeyNames);
+  const importYaml = plugin.supportsImportYaml
+    ? `\n  /** Apply arbitrary (multi-document) YAML to this account (kubectl apply -f). */\n  importYaml(yaml: string): Promise<{ applied: number }>;`
+    : "";
   return `interface ${accountInterfaceName(plugin.pluginId)} {
   readonly id: string;
   readonly pluginId: ${strLit(plugin.pluginId)};
   readonly displayName: string;
-${resourceGroups ? `${resourceGroups}\n` : ""}  resolveOutput(typeId: string, resourceId: string, outputKey: string): Promise<string>;
+${resourceGroups ? `${resourceGroups}\n` : ""}  resolveOutput(typeId: string, resourceId: string, outputKey: string): Promise<string>;${importYaml}
 }`;
 }
 
@@ -312,6 +413,7 @@ export function generateInfraDts(input: GenerateInfraDtsInput): string {
   const interactive = input.interactive ?? true;
   const sshKeyNames = input.sshKeyNames ?? [];
 
+  const resourceInterfaces = plugins.map(renderResourceTypeInterfaces).filter(Boolean).join("\n\n");
   const accountInterfaces = plugins.map((p) => renderAccountInterface(p, sshKeyNames)).join("\n\n");
   const groupInterfaces = plugins.map(renderGroupInterface).join("\n\n");
 
@@ -329,6 +431,8 @@ export function generateInfraDts(input: GenerateInfraDtsInput): string {
   return `${STATIC_PREAMBLE}
 
 ${renderSshExecOptions(sshKeyNames)}
+
+${resourceInterfaces}
 
 ${accountInterfaces || "// (no accounts connected yet)"}
 
@@ -350,7 +454,7 @@ ${promptDecl}
   output(value: JsonValue): Promise<void>;
   /** Stream an SSH \`{ stdout, stderr }\` object to the run log live (stderr in red). */
   log(streams: SshStreams): Promise<void>;
-  /** Append a line to the run log. */
+  /** Append a line to the run log. Byte buffers (Uint8Array/ArrayBuffer) are decoded as UTF-8 text. */
   log(...parts: unknown[]): Promise<void>;
 }
 

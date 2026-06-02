@@ -24,6 +24,18 @@ const PLUGINS: WorkflowPluginInfo[] = [
         supportsUpdate: false,
         supportsDelete: true,
         storage: true,
+        capabilities: {
+          ssh: true,
+          sftp: true,
+          sql: true,
+          kv: true,
+          nosql: true,
+          logs: true,
+          describe: true,
+          manifest: true,
+          publish: true,
+          metrics: true,
+        },
       },
       {
         // A non-storage createable type WITH a distilled create-field schema, so
@@ -144,6 +156,33 @@ const host: WorkflowHost = {
   async sshProbe() {
     return true;
   },
+  async query(_accountId, _resourceId, sql) {
+    return { rows: [{ q: sql }], durationMs: 3 };
+  },
+  async kvGet(_accountId, _typeId, _resourceId, key) {
+    return "kv:" + key;
+  },
+  async getLogs() {
+    return { text: "log-line\n", containers: ["main"], activeContainer: "main" };
+  },
+  async describe() {
+    return "described";
+  },
+  async importYaml() {
+    return { applied: 2 };
+  },
+  async sftpList() {
+    return [
+      { key: "a.txt", name: "a.txt", size: 3, lastModified: "", isDirectory: false },
+      { key: "sub", name: "sub", size: 0, lastModified: "", isDirectory: true },
+    ];
+  },
+  async sftpGet(_params, path) {
+    return { base64: Buffer.from("body:" + path).toString("base64") };
+  },
+  async sftpPut() {},
+  async sftpMkdir() {},
+  async sftpDelete() {},
 };
 
 let sshStreamReads = 0;
@@ -168,9 +207,29 @@ infra.log("config.hello:", cfg.hello);
 await bucket.waitUntilReachable();
 const sshOut = await bucket.ssh("echo hi", { sshKey: "k" });
 infra.log("ssh out:", sshOut.trim());
+// infra.log decodes a Uint8Array (e.g. raw bytes from sftp.get) as UTF-8 text.
+await infra.log(new TextEncoder().encode("bytes-as-text"));
+// infra.log awaits a promise argument first (pass an unawaited sftp.get straight in).
+await infra.log(Promise.resolve("promised-line"));
+await infra.log(bucket.sftp.get("/x.txt", { encoding: "utf8" }));
 // Streaming ssh: split stdout/stderr; pass the object to infra.log to stream it.
 const streams = bucket.ssh("run", { sshKey: "k", stream: true });
 await infra.log(streams);
+
+// Extended capabilities (plugin-client passthroughs).
+const q = await bucket.query("select 1");
+const kvv = await bucket.kv.get("foo");
+const lg = await bucket.logs();
+const desc = await bucket.describe();
+const yaml = await cf.importYaml("kind: X");
+// SFTP: list, write, read back.
+const entries = await bucket.sftp.list("/");
+await bucket.sftp.put("/x.txt", "hello");
+const got = new TextDecoder().decode(await bucket.sftp.get("/x.txt"));
+// { encoding: "utf8" } should resolve to a string directly (no decode needed).
+const gotStr = await bucket.sftp.get("/x.txt", { encoding: "utf8" });
+const gotStrIsString = typeof gotStr === "string" && gotStr === got;
+const caps = { q: q.rows.length, kv: kvv, log: lg.text.trim(), desc, applied: yaml.applied, sftp: entries.length, got, gotStrIsString };
 
 // Delete the resource by calling .delete() on its own handle.
 await bucket.delete();
@@ -182,7 +241,7 @@ await created.ssh("echo hi");
 const prev = infra.metrics.runCount ?? 0;
 infra.metrics.runCount = prev + 1;
 
-await infra.output({ hello: cfg.hello, buckets: buckets.length, runCount: prev + 1, sshOut: sshOut.trim() });
+await infra.output({ hello: cfg.hello, buckets: buckets.length, runCount: prev + 1, sshOut: sshOut.trim(), caps });
 `;
 
 async function main() {
@@ -223,10 +282,28 @@ async function main() {
   console.log("DTS has getById(acc_cf1):", dts.includes('getById(id: "acc_cf1" | (string & {}))'));
   const dtsHasMetricProp = dts.includes("runCount: number | null;");
   console.log("DTS has typed metric property:", dtsHasMetricProp);
-  // r2-bucket is storage-capable → the group's methods return StorageResource.
+  // The group's methods return the per-type resource interface.
   const dtsHasGroup = dts.includes("readonly r2Buckets: {");
-  const dtsHasListMethod = dts.includes("list(): Promise<StorageResource[]>");
-  const dtsHasGetStorage = dts.includes("get(externalId: string): Promise<StorageResource>");
+  const dtsHasListMethod = dts.includes("list(): Promise<Resource_cloudflare_r2_bucket[]>");
+  const dtsHasGetStorage = dts.includes(
+    "get(externalId: string): Promise<Resource_cloudflare_r2_bucket>",
+  );
+  // Per-type gating: the worker type (no caps) must NOT advertise ssh/kv/etc.
+  const workerIface = dts.slice(
+    dts.indexOf("interface Resource_cloudflare_worker"),
+    dts.indexOf("interface Resource_cloudflare_worker") + 400,
+  );
+  const gatingOk =
+    !workerIface.includes("ssh(") &&
+    !workerIface.includes("readonly kv:") &&
+    !workerIface.includes("readonly sftp:");
+  const dtsHasSftp = dts.includes("readonly sftp: {");
+  const dtsSftpGetStrOverload = dts.includes(
+    'get(path: string, opts: SshExecOptions & { encoding: "utf8" }): Promise<string>;',
+  );
+  console.log("per-type gating (worker lacks ssh/kv/sftp):", gatingOk);
+  console.log("DTS exposes resource.sftp on capable type:", dtsHasSftp);
+  console.log("DTS sftp.get has utf8 string overload:", dtsSftpGetStrOverload);
   const dtsHasCreateMethod = dts.includes("create(fields: Record<string, string>");
   const dtsOmitsUpdate = !dts.includes("update(resourceId"); // r2-bucket has supportsUpdate=false
   // worker has createFields → create() is typed with real keys + a region union.
@@ -268,13 +345,39 @@ async function main() {
     dtsHasNoCall && dtsHasNoResources && dtsHasNoStorageNs,
   );
 
-  const sshResult = result.output as { sshOut: string };
+  const sshResult = result.output as {
+    sshOut: string;
+    caps: {
+      q: number;
+      kv: string;
+      log: string;
+      desc: string;
+      applied: number;
+      sftp: number;
+      got: string;
+      gotStrIsString: boolean;
+    };
+  };
   console.log("SSH exec output:", JSON.stringify(sshResult.sshOut));
+  const caps = sshResult.caps;
+  const capsOk =
+    caps.q === 1 &&
+    caps.kv === "kv:foo" &&
+    caps.log === "log-line" &&
+    caps.desc === "described" &&
+    caps.applied === 2 &&
+    caps.sftp === 2 &&
+    caps.got === "body:/x.txt" &&
+    caps.gotStrIsString === true;
+  console.log("extended caps (query/kv/logs/describe/importYaml/sftp):", capsOk);
+  console.log("sftp.get({ encoding: 'utf8' }) returns a string:", caps.gotStrIsString);
   // infra.log(streams) should have emitted stdout lines at "info" and stderr at "error".
   const logHas = (level: string, message: string) =>
     result.logs.some((l) => l.level === level && l.message === message);
   const streamLoggedOk = logHas("info", "foo") && logHas("info", "bar") && logHas("error", "oops");
   console.log("infra.log(streams) split stdout(info)/stderr(error):", streamLoggedOk);
+  console.log("infra.log(Uint8Array) decodes as UTF-8 text:", logHas("info", "bytes-as-text"));
+  console.log("infra.log(Promise) awaits then logs:", logHas("info", "promised-line"));
 
   // --- debugger: line instrumentation + pause-at-breakpoint -----------------
   // Top-level statements are at lines 2, 3 (function decl), 6, 7; line 4 is
@@ -322,6 +425,7 @@ async function main() {
     metrics["runCount"] === 1 &&
     sshResult.sshOut === "hello world" &&
     streamLoggedOk &&
+    capsOk &&
     deleteCalls === 1 &&
     createdSshUsedAttachedKey &&
     dtsHasInstanceDelete &&
@@ -332,6 +436,8 @@ async function main() {
     dtsHasCreateMethod &&
     dtsHasTypedCreate &&
     dtsHasSsh &&
+    gatingOk &&
+    dtsHasSftp &&
     dtsSshKeyCreateOptions &&
     dtsSshKeyAuthOptions &&
     dtsOmitsUpdate &&
