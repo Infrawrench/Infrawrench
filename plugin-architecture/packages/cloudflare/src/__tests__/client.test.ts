@@ -974,27 +974,29 @@ describe("CloudflareClient.streamChatMessage", () => {
 
   it("ai-gateway routes through the gateway workers-ai endpoint with the picked model", async () => {
     const { client } = makeClient();
-    const fetchMock = vi.fn(async (_url: string, _init: { body: string }) => ({
-      ok: true,
-      body: {
-        getReader() {
-          let sent = false;
-          const encoder = new TextEncoder();
-          return {
-            async read() {
-              if (sent) return { value: undefined, done: true };
-              sent = true;
-              return {
-                value: encoder.encode(
-                  'data: {"choices":[{"delta":{"content":"yo"}}]}\n\ndata: [DONE]\n\n',
-                ),
-                done: false,
-              };
-            },
-          };
+    const fetchMock = vi.fn(
+      async (_url: string, _init: { body: string; headers: Record<string, string> }) => ({
+        ok: true,
+        body: {
+          getReader() {
+            let sent = false;
+            const encoder = new TextEncoder();
+            return {
+              async read() {
+                if (sent) return { value: undefined, done: true };
+                sent = true;
+                return {
+                  value: encoder.encode(
+                    'data: {"choices":[{"delta":{"content":"yo"}}]}\n\ndata: [DONE]\n\n',
+                  ),
+                  done: false,
+                };
+              },
+            };
+          },
         },
-      },
-    }));
+      }),
+    );
     globalThis.fetch = fetchMock as never;
     const events = (await collect(
       client.streamChatMessage(
@@ -1007,9 +1009,15 @@ describe("CloudflareClient.streamChatMessage", () => {
     )) as Array<{ kind: string; message?: { content: string } }>;
     const url = fetchMock.mock.calls[0]![0];
     expect(url).toBe(
-      "https://gateway.ai.cloudflare.com/v1/acct-cf/my-gw/workers-ai/v1/chat/completions",
+      "https://api.cloudflare.com/client/v4/accounts/acct-cf/ai/v1/chat/completions",
     );
-    const body = JSON.parse(fetchMock.mock.calls[0]![1].body);
+    const init = fetchMock.mock.calls[0]![1] as {
+      body: string;
+      headers: Record<string, string>;
+    };
+    // Routed through the gateway via the cf-aig-gateway-id header.
+    expect(init.headers["cf-aig-gateway-id"]).toBe("my-gw");
+    const body = JSON.parse(init.body);
     expect(body.model).toBe("@cf/meta/llama-3.1-8b-instruct");
     expect(events.find((e) => e.kind === "done")?.message?.content).toBe("yo");
   });
@@ -1021,5 +1029,24 @@ describe("CloudflareClient.streamChatMessage", () => {
     )) as Array<{ kind: string; message?: string }>;
     expect(events[0]!.kind).toBe("error");
     expect(events[0]!.message).toMatch(/model/i);
+  });
+
+  it("surfaces a Workers AI permission hint on an auth error (code 10000)", async () => {
+    const { client } = makeClient();
+    globalThis.fetch = vi.fn(async () => ({
+      ok: false,
+      status: 401,
+      statusText: "Unauthorized",
+      body: null,
+      text: async () =>
+        '{"success":false,"errors":[{"code":10000,"message":"Authentication error"}]}',
+    })) as never;
+    const events = (await collect(
+      client.streamChatMessage("workers-ai-model", "acct:workers-ai-model:@cf/x", "acct", [
+        { role: "user", content: "hi" },
+      ]),
+    )) as Array<{ kind: string; message?: string }>;
+    expect(events[0]!.kind).toBe("error");
+    expect(events[0]!.message).toMatch(/Workers AI:Read/);
   });
 });

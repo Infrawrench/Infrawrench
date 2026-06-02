@@ -4131,14 +4131,22 @@ export class CloudflareClient implements PluginClient {
       return;
     }
 
-    // Pick the model + OpenAI-compatible endpoint per resource type:
-    //  - workers-ai-model: model is fixed by the resource (the id tail), called
-    //    directly against the account's Workers AI endpoint.
-    //  - ai-gateway: model comes from the playground's picker, routed through
-    //    the gateway's `workers-ai` provider so the call lands in the gateway's
-    //    logs/analytics. Auth is the same Cloudflare token (no provider key).
+    // Both resource types call the account's OpenAI-compatible Workers AI
+    // endpoint with the Cloudflare API token. They differ in where the model
+    // comes from and whether the request is routed through a gateway:
+    //  - workers-ai-model: model is fixed by the resource (the id tail).
+    //  - ai-gateway: model comes from the playground's picker, and we add the
+    //    `cf-aig-gateway-id` header so Cloudflare routes the call through this
+    //    gateway (filling its logs/analytics). This is Cloudflare's documented
+    //    way to send Workers AI through a gateway — NOT a gateway.ai.cloudflare
+    //    .com URL, which needs separate per-gateway auth.
+    const endpoint = `https://api.cloudflare.com/client/v4/accounts/${cfAccountId}/ai/v1/chat/completions`;
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${this.api.apiToken}`,
+      "Content-Type": "application/json",
+      Accept: "text/event-stream",
+    };
     let model: string;
-    let endpoint: string;
     if (typeId === "workers-ai-model") {
       // Resource id: `${infrawrenchAccountId}:workers-ai-model:${@cf/...}`. The
       // model name contains slashes but no colons, so everything after the
@@ -4148,7 +4156,6 @@ export class CloudflareClient implements PluginClient {
         yield { kind: "error", message: "Couldn't determine the Workers AI model name." };
         return;
       }
-      endpoint = `https://api.cloudflare.com/client/v4/accounts/${cfAccountId}/ai/v1/chat/completions`;
     } else {
       const gatewayId = resourceId.split(":").slice(2).join(":");
       model = options?.model ?? "";
@@ -4160,7 +4167,7 @@ export class CloudflareClient implements PluginClient {
         yield { kind: "error", message: "Pick a Workers AI model to chat through this gateway." };
         return;
       }
-      endpoint = `https://gateway.ai.cloudflare.com/v1/${cfAccountId}/${gatewayId}/workers-ai/v1/chat/completions`;
+      headers["cf-aig-gateway-id"] = gatewayId;
     }
 
     const body = JSON.stringify({
@@ -4173,11 +4180,7 @@ export class CloudflareClient implements PluginClient {
     try {
       res = await fetch(endpoint, {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${this.api.apiToken}`,
-          "Content-Type": "application/json",
-          Accept: "text/event-stream",
-        },
+        headers,
         body,
       });
     } catch (err) {
@@ -4187,9 +4190,18 @@ export class CloudflareClient implements PluginClient {
 
     if (!res.ok || !res.body) {
       const errText = await res.text().catch(() => "");
+      // A 401/403 (or Cloudflare's catch-all auth code 10000 / per-resource
+      // 9109) on the Workers AI endpoint means the token can't run models —
+      // almost always a missing Workers AI scope rather than a bad request.
+      const isAuth =
+        res.status === 401 ||
+        res.status === 403 ||
+        /"code":\s*(10000|9109)|Authentication error/i.test(errText);
       yield {
         kind: "error",
-        message: `Chat endpoint returned ${res.status}: ${errText || res.statusText}`,
+        message: isAuth
+          ? "Workers AI rejected this request (Authentication error). This account's Cloudflare API token needs the Account · Workers AI:Read permission to run models. Add it in Cloudflare → My Profile → API Tokens (edit the token, add Account · Workers AI:Read, save) and try again."
+          : `Chat endpoint returned ${res.status}: ${errText || res.statusText}`,
       };
       return;
     }
