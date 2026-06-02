@@ -11,7 +11,9 @@ class FakeSshClient extends EventEmitter {
 }
 
 vi.mock("ssh2", () => ({
-  Client: vi.fn(() => new FakeSshClient()),
+  Client: vi.fn(function () {
+    return new FakeSshClient();
+  }),
   // The shared `in-process-agent.ts` (re-exported from index) imports
   // `BaseAgent` and `utils.parseKey`. They're not exercised by this suite,
   // but the module's top-level `import { utils }` evaluates eagerly.
@@ -70,7 +72,7 @@ describe("openTunnel host-key verifier", () => {
   it("rejects when the SSH client errors (e.g. host-key verification failure)", async () => {
     const { Client } = await import("ssh2");
     let createdClient: FakeSshClient | undefined;
-    vi.mocked(Client).mockImplementationOnce(() => {
+    vi.mocked(Client).mockImplementationOnce(function () {
       const c = new FakeSshClient();
       createdClient = c;
       return c as unknown as InstanceType<typeof Client>;

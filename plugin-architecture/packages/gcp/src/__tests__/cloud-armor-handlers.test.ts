@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudArmorContext } from "../cloud-armor-handlers.js";
 import {
@@ -26,7 +26,7 @@ function res(over: Partial<ResourceInstance> = {}): ResourceInstance {
   } as ResourceInstance;
 }
 
-let fetchSpy: ReturnType<typeof vi.fn>;
+let fetchSpy: Mock;
 beforeEach(() => {
   fetchSpy = vi.fn();
   vi.spyOn(globalThis, "fetch").mockImplementation(fetchSpy as never);

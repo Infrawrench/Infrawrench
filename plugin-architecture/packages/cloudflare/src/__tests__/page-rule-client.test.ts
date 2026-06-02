@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, type Mock } from "vitest";
 import {
   listAllPageRules,
   createPageRule,
@@ -40,7 +40,7 @@ describe("page-rule-client", () => {
   it("createPageRule builds a url-matches target", async () => {
     const api = prApi();
     await createPageRule(api, "acct", { urlPattern: "a.com/*", action: "always_use_https" }, "z1");
-    const call = (api.cf.pageRules.create as ReturnType<typeof vi.fn>).mock.calls[0]![0];
+    const call = (api.cf.pageRules.create as Mock).mock.calls[0]![0];
     expect(call.targets[0].constraint.value).toBe("a.com/*");
     expect(call.actions[0].id).toBe("always_use_https");
   });

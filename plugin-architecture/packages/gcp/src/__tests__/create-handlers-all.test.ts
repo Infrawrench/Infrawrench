@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
 import { gcpGetCreateConfig, gcpCreateResource } from "../create-handlers.js";
 import type { GcpCreateContext } from "../create-context.js";
 
@@ -20,7 +20,7 @@ function ctx(over: CtxOver = {}): GcpCreateContext {
   };
 }
 
-let fetchSpy: ReturnType<typeof vi.fn>;
+let fetchSpy: Mock;
 beforeEach(() => {
   fetchSpy = vi.fn();
   vi.spyOn(globalThis, "fetch").mockImplementation(fetchSpy as never);

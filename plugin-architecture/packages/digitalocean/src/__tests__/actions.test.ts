@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import {
   type ActionContext,
@@ -22,8 +22,8 @@ function makeResource(fields: Record<string, string>): ResourceInstance {
 }
 
 interface FakeCtx extends ActionContext {
-  fetch: ReturnType<typeof vi.fn>;
-  getResource: ReturnType<typeof vi.fn>;
+  fetch: Mock;
+  getResource: Mock;
 }
 
 function makeCtx(overrides: Partial<FakeCtx> = {}): FakeCtx {

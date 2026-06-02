@@ -16,12 +16,14 @@ const mockGetContainer = vi.fn(() => ({
 }));
 
 vi.mock("dockerode", () => ({
-  default: vi.fn(() => ({
-    version: mockVersion,
-    listContainers: mockListContainers,
-    listImages: mockListImages,
-    getContainer: mockGetContainer,
-  })),
+  default: vi.fn(function () {
+    return {
+      version: mockVersion,
+      listContainers: mockListContainers,
+      listImages: mockListImages,
+      getContainer: mockGetContainer,
+    };
+  }),
 }));
 
 import { driver } from "../driver.js";

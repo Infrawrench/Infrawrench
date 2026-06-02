@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { gcpRenderDetail } from "../detail-renderers.js";
 import type { GcpDetailContext } from "../detail-context.js";
@@ -219,7 +219,7 @@ describe("create-handlers dispatch", () => {
 });
 
 describe("enrichDetail", () => {
-  let fetchSpy: ReturnType<typeof vi.fn>;
+  let fetchSpy: Mock;
   beforeEach(() => {
     fetchSpy = vi.fn();
     vi.spyOn(globalThis, "fetch").mockImplementation(fetchSpy as never);

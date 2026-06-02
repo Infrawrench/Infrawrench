@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, type Mock } from "vitest";
 import {
   listAllHealthchecks,
   createHealthcheck,
@@ -53,7 +53,7 @@ describe("healthcheck-client", () => {
       },
       "z1",
     );
-    const call = (api.cf.healthchecks.create as ReturnType<typeof vi.fn>).mock.calls[0]![0];
+    const call = (api.cf.healthchecks.create as Mock).mock.calls[0]![0];
     expect(call.type).toBe("HTTPS");
     expect(call.http_config).toEqual({
       method: "GET",

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
 import { DatabricksClient } from "../client.js";
 import { plugin } from "../plugin.js";
 
@@ -21,7 +21,7 @@ interface FetchExpectation {
   reject?: Error;
 }
 
-let fetchMock: ReturnType<typeof vi.fn>;
+let fetchMock: Mock;
 
 function bodyText(r: FetchExpectation): string {
   if (r.text !== undefined) return r.text;

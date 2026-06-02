@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, type Mock } from "vitest";
 import {
   listTunnels,
   createTunnel,
@@ -72,8 +72,7 @@ describe("tunnel-client", () => {
   it("createTunnel sends a name and generated secret", async () => {
     const api = tunnelApi();
     await createTunnel(api, "acct", { name: "ssh-tunnel" });
-    const call = (api.cf.zeroTrust.tunnels.cloudflared.create as ReturnType<typeof vi.fn>).mock
-      .calls[0]![0];
+    const call = (api.cf.zeroTrust.tunnels.cloudflared.create as Mock).mock.calls[0]![0];
     expect(call.name).toBe("ssh-tunnel");
     expect(typeof call.tunnel_secret).toBe("string");
     expect(call.account_id).toBe("acct-cf");

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeEach, type Mock } from "vitest";
 import { jsonRestFetch, formatBytes, caCertCredentialField } from "../http.js";
 import type { HttpHostServices } from "../manifest.js";
 
@@ -138,10 +138,7 @@ describe("jsonRestFetch via global fetch", () => {
 });
 
 describe("jsonRestFetch via host http service", () => {
-  function makeHttp(
-    status: number,
-    body: string,
-  ): { http: HttpHostServices; request: ReturnType<typeof vi.fn> } {
+  function makeHttp(status: number, body: string): { http: HttpHostServices; request: Mock } {
     const request = vi.fn().mockResolvedValue({ status, body, headers: {} });
     return { http: { request } as unknown as HttpHostServices, request };
   }

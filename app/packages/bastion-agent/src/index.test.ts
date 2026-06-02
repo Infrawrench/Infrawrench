@@ -104,7 +104,7 @@ class FakeSocket {
 }
 
 vi.mock("ws", () => ({
-  WebSocket: vi.fn((url: string, protocols?: unknown, options?: unknown) => {
+  WebSocket: vi.fn(function (url: string, protocols?: unknown, options?: unknown) {
     return new FakeWebSocket(url, protocols, options);
   }),
 }));

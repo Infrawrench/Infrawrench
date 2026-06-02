@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
 import { gcpGetCreateConfig, gcpCreateResource } from "../create-handlers.js";
 import type { GcpCreateContext } from "../create-context.js";
 
@@ -20,7 +20,7 @@ function ctx(over: CtxOver = {}): GcpCreateContext {
   };
 }
 
-let fetchSpy: ReturnType<typeof vi.fn>;
+let fetchSpy: Mock;
 beforeEach(() => {
   fetchSpy = vi.fn();
   vi.spyOn(globalThis, "fetch").mockImplementation(fetchSpy as never);
@@ -477,9 +477,7 @@ describe("networking create", () => {
     expect(out.fields.region).toBe("us-west1");
     expect(out.fields.router).toBe("r1");
     expect((lastBody().nats as unknown[]).length).toBe(1);
-    expect((c.get as ReturnType<typeof vi.fn>).mock.calls[0]![0]).toContain(
-      "/regions/us-west1/routers/r1",
-    );
+    expect((c.get as Mock).mock.calls[0]![0]).toContain("/regions/us-west1/routers/r1");
     const c2 = ctx({ get: vi.fn(async () => ({})) });
     fetchSpy.mockResolvedValue(err());
     await expect(

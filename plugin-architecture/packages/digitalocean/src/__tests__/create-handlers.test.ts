@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
 import {
   type DoCreateContext,
   estimateDoDatabaseMonthlyPrice,
@@ -104,14 +104,14 @@ function routeFetch(path: string): unknown {
 }
 
 function makeCtx(overrides?: Partial<DoCreateContext>): DoCreateContext & {
-  fetch: ReturnType<typeof vi.fn>;
+  fetch: Mock;
 } {
-  const fetch = vi.fn(async (path: string) => routeFetch(path)) as ReturnType<typeof vi.fn>;
+  const fetch = vi.fn(async (path: string) => routeFetch(path)) as Mock;
   return {
     fetch,
     credentials: { apiToken: "tok" },
     ...overrides,
-  } as DoCreateContext & { fetch: ReturnType<typeof vi.fn> };
+  } as DoCreateContext & { fetch: Mock };
 }
 
 describe("estimateDoDatabaseMonthlyPrice", () => {
@@ -178,7 +178,7 @@ describe("doGetCreateConfig — every type produces fields", () => {
       fetch: vi.fn(async (path: string) => {
         if (path === "/databases/clu-1") return { database: { engine: "kafka" } };
         return routeFetch(path);
-      }) as ReturnType<typeof vi.fn>,
+      }) as Mock,
     });
     const config = await doGetCreateConfig(ctx, "db-user", "acc:managed-database:clu-1");
     const keys = config.fields.map((f) => f.key);
@@ -191,7 +191,7 @@ describe("doGetCreateConfig — every type produces fields", () => {
       fetch: vi.fn(async (path: string) => {
         if (path === "/databases/clu-1") return { database: { engine: "pg" } };
         return routeFetch(path);
-      }) as ReturnType<typeof vi.fn>,
+      }) as Mock,
     });
     const config = await doGetCreateConfig(ctx, "db-user", "acc:managed-database:clu-1");
     expect(config.fields.map((f) => f.key)).toEqual(["name"]);
@@ -235,7 +235,7 @@ describe("doGetCreateConfig — every type produces fields", () => {
       fetch: vi.fn(async (path: string) => {
         if (path === "/projects") throw new Error("403");
         return routeFetch(path);
-      }) as ReturnType<typeof vi.fn>,
+      }) as Mock,
     });
     const config = await doGetCreateConfig(ctx, "volume");
     expect(config.fields.find((f) => f.key === "projectId")).toBeUndefined();
@@ -264,7 +264,7 @@ describe("doCreateResource — REST create branches", () => {
           },
         };
       return {};
-    }) as ReturnType<typeof vi.fn>;
+    }) as Mock;
     const ctx = { fetch, credentials: {} } as DoCreateContext;
     const result = await doCreateResource(
       ctx,
@@ -292,7 +292,7 @@ describe("doCreateResource — REST create branches", () => {
       calls.push(path);
       if (path === "/droplets") return { droplet: { id: 7, name: "w", networks: { v4: [] } } };
       return {};
-    }) as ReturnType<typeof vi.fn>;
+    }) as Mock;
     const ctx = { fetch, credentials: {} } as DoCreateContext;
     await doCreateResource(ctx, "droplet", "acc", {
       name: "w",
@@ -310,7 +310,7 @@ describe("doCreateResource — REST create branches", () => {
       if (path === "/droplets") return { droplet: { id: 9, name: "w", networks: { v4: [] } } };
       if (path.endsWith("/resources")) throw new Error("nope");
       return {};
-    }) as ReturnType<typeof vi.fn>;
+    }) as Mock;
     const ctx = { fetch, credentials: {} } as DoCreateContext;
     const result = await doCreateResource(
       ctx,
@@ -336,7 +336,7 @@ describe("doCreateResource — REST create branches", () => {
           },
         };
       return {};
-    }) as ReturnType<typeof vi.fn>;
+    }) as Mock;
     const ctx = { fetch, credentials: {} } as DoCreateContext;
     const result = await doCreateResource(ctx, "doks-cluster", "acc", {
       name: "kube",
@@ -364,7 +364,7 @@ describe("doCreateResource — REST create branches", () => {
           },
         };
       return {};
-    }) as ReturnType<typeof vi.fn>;
+    }) as Mock;
     const ctx = { fetch, credentials: {} } as DoCreateContext;
     const result = await doCreateResource(ctx, "managed-database", "acc", {
       name: "pgcluster",
@@ -382,7 +382,7 @@ describe("doCreateResource — REST create branches", () => {
       if (path === "/databases/db-1/users")
         return { user: { name: "infrawrench-x", role: "normal", password: "s3cret" } };
       return {};
-    }) as ReturnType<typeof vi.fn>;
+    }) as Mock;
     const ctx = { fetch, credentials: {} } as DoCreateContext;
     const result = await doCreateResource(
       ctx,
@@ -407,7 +407,7 @@ describe("doCreateResource — REST create branches", () => {
         return { user: { name: "kuser", password: "pw" } };
       }
       return {};
-    }) as ReturnType<typeof vi.fn>;
+    }) as Mock;
     const ctx = { fetch, credentials: {} } as DoCreateContext;
     await doCreateResource(
       ctx,
@@ -434,7 +434,7 @@ describe("doCreateResource — REST create branches", () => {
       if (path === "/databases/db-1") return { database: { engine: "pg" } };
       if (path === "/databases/db-1/users") return { user: { name: "u" } };
       return {};
-    }) as ReturnType<typeof vi.fn>;
+    }) as Mock;
     const ctx = { fetch, credentials: {} } as DoCreateContext;
     await expect(
       doCreateResource(ctx, "db-user", "acc", { name: "u" }, "acc:managed-database:db-1"),
@@ -444,7 +444,7 @@ describe("doCreateResource — REST create branches", () => {
   it("creates a domain", async () => {
     const fetch = vi.fn(async () => ({
       domain: { name: "example.com", ttl: 1800, zone_file: "; zone" },
-    })) as ReturnType<typeof vi.fn>;
+    })) as Mock;
     const ctx = { fetch, credentials: {} } as DoCreateContext;
     const result = await doCreateResource(ctx, "domain", "acc", { name: "example.com" });
     expect(result.resource.id).toBe("acc:domain:example.com");
@@ -453,7 +453,7 @@ describe("doCreateResource — REST create branches", () => {
   it("creates a dns-record under a domain", async () => {
     const fetch = vi.fn(async () => ({
       domain_record: { id: 33, type: "A", name: "www", data: "1.2.3.4", ttl: 1800 },
-    })) as ReturnType<typeof vi.fn>;
+    })) as Mock;
     const ctx = { fetch, credentials: {} } as DoCreateContext;
     const result = await doCreateResource(
       ctx,
@@ -476,7 +476,7 @@ describe("doCreateResource — REST create branches", () => {
   it("creates a project", async () => {
     const fetch = vi.fn(async () => ({
       project: { id: "p-9", name: "Proj", purpose: "API", environment: "Production" },
-    })) as ReturnType<typeof vi.fn>;
+    })) as Mock;
     const ctx = { fetch, credentials: {} } as DoCreateContext;
     const result = await doCreateResource(ctx, "project", "acc", {
       name: "Proj",
@@ -493,7 +493,7 @@ describe("doCreateResource — REST create branches", () => {
           volume: { id: "vol-1", name: "data", region: { slug: "nyc3" }, size_gigabytes: 50 },
         };
       return {};
-    }) as ReturnType<typeof vi.fn>;
+    }) as Mock;
     const ctx = { fetch, credentials: {} } as DoCreateContext;
     const result = await doCreateResource(ctx, "volume", "acc", {
       name: "data",
@@ -512,7 +512,7 @@ describe("doCreateResource — REST create branches", () => {
           nfs: { id: "nfs-1", name: "share", size_gib: 50, status: "creating", vpc_ids: ["vpc-1"] },
         };
       return {};
-    }) as ReturnType<typeof vi.fn>;
+    }) as Mock;
     const ctx = { fetch, credentials: {} } as DoCreateContext;
     const result = await doCreateResource(ctx, "nfs-share", "acc", {
       name: "share",
@@ -539,7 +539,7 @@ describe("doCreateResource — REST create branches", () => {
           },
         };
       return {};
-    }) as ReturnType<typeof vi.fn>;
+    }) as Mock;
     const ctx = { fetch, credentials: {} } as DoCreateContext;
     const result = await doCreateResource(ctx, "gen-ai-agent", "acc", {
       name: "A1",
@@ -567,7 +567,7 @@ describe("doCreateResource — REST create branches", () => {
       if (path === "/gen-ai/knowledge_bases")
         return { knowledge_base: { uuid: "kb-1", name: "KB", region: "tor1" } };
       return {};
-    }) as ReturnType<typeof vi.fn>;
+    }) as Mock;
     const ctx = { fetch, credentials: {} } as DoCreateContext;
     const result = await doCreateResource(ctx, "gen-ai-knowledge-base", "acc", {
       name: "KB",
@@ -594,7 +594,7 @@ describe("doCreateResource — REST create branches", () => {
           },
         };
       return {};
-    }) as ReturnType<typeof vi.fn>;
+    }) as Mock;
     const ctx = { fetch, credentials: {} } as DoCreateContext;
     const result = await doCreateResource(ctx, "gen-ai-model-router", "acc", {
       name: "R",
@@ -609,7 +609,7 @@ describe("doCreateResource — REST create branches", () => {
       if (path === "/dedicated-inferences")
         return { dedicated_inference: { id: "di-1", region: "nyc3", status: "provisioning" } };
       return {};
-    }) as ReturnType<typeof vi.fn>;
+    }) as Mock;
     const ctx = { fetch, credentials: {} } as DoCreateContext;
     const result = await doCreateResource(ctx, "dedicated-inference", "acc", {
       name: "infer",
@@ -626,7 +626,7 @@ describe("doCreateResource — REST create branches", () => {
       if (path === "/gen-ai/agents/agent-1/api_keys")
         return { api_key_info: { uuid: "key-1", name: "k", secret_key: "sk-shh" } };
       return {};
-    }) as ReturnType<typeof vi.fn>;
+    }) as Mock;
     const ctx = { fetch, credentials: {} } as DoCreateContext;
     const result = await doCreateResource(
       ctx,

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, type Mock } from "vitest";
 import {
   listAllEmailRoutingRules,
   createEmailRoutingRule,
@@ -55,7 +55,7 @@ describe("email-routing-client", () => {
   it("createEmailRoutingRule omits value for a drop action", async () => {
     const api = emailApi();
     await createEmailRoutingRule(api, "acct", { name: "D", actionType: "drop" }, "z1");
-    const call = (api.cf.emailRouting.rules.create as ReturnType<typeof vi.fn>).mock.calls[0]![0];
+    const call = (api.cf.emailRouting.rules.create as Mock).mock.calls[0]![0];
     expect(call.actions).toEqual([{ type: "drop" }]);
   });
 

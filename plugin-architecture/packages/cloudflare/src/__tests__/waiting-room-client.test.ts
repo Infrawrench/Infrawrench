@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, type Mock } from "vitest";
 import {
   listAllWaitingRooms,
   createWaitingRoom,
@@ -72,7 +72,7 @@ describe("waiting-room-client", () => {
       path: "/sale",
       suspended: "true",
     });
-    const call = (api.cf.waitingRooms.edit as ReturnType<typeof vi.fn>).mock.calls[0]![1];
+    const call = (api.cf.waitingRooms.edit as Mock).mock.calls[0]![1];
     expect(call.total_active_users).toBe(500);
     expect(call.path).toBe("/sale");
     expect(call.suspended).toBe(true);

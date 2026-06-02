@@ -8,14 +8,16 @@ const mockDel = vi.fn();
 const mockOn = vi.fn();
 
 vi.mock("ioredis", () => ({
-  default: vi.fn(() => ({
-    connect: mockConnect,
-    disconnect: mockDisconnect,
-    get: mockGet,
-    set: mockSet,
-    del: mockDel,
-    on: mockOn,
-  })),
+  default: vi.fn(function () {
+    return {
+      connect: mockConnect,
+      disconnect: mockDisconnect,
+      get: mockGet,
+      set: mockSet,
+      del: mockDel,
+      on: mockOn,
+    };
+  }),
 }));
 
 import { driver } from "../driver.js";

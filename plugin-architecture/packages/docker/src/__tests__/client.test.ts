@@ -1,9 +1,9 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, type Mock } from "vitest";
 import { DockerClient } from "../client.js";
 import type { HostServices, ResourceInstance } from "@infrawrench/plugin-base";
 
 interface DockerStub {
-  command: ReturnType<typeof vi.fn>;
+  command: Mock;
 }
 
 function makeServices(handler: (op: string, params?: Record<string, unknown>) => unknown): {

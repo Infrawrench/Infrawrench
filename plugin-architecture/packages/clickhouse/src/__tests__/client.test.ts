@@ -1,11 +1,11 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
 // --- Mock the @clickhouse/client-web SDK -----------------------------------
 const sdkState: {
   createArgs: unknown[];
-  query: ReturnType<typeof vi.fn>;
-  command: ReturnType<typeof vi.fn>;
-  close: ReturnType<typeof vi.fn>;
+  query: Mock;
+  command: Mock;
+  close: Mock;
   jsonResult: Record<string, unknown>[];
   queryThrows: Error | null;
   commandThrows: Error | null;

@@ -17,7 +17,7 @@ class FakeSshClient extends EventEmitter {
 let lastClient: FakeSshClient | undefined;
 
 vi.mock("ssh2", () => ({
-  Client: vi.fn(() => {
+  Client: vi.fn(function () {
     lastClient = new FakeSshClient();
     return lastClient;
   }),

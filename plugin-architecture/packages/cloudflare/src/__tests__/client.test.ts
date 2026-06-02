@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach, type Mock } from "vitest";
 import { CloudflareClient } from "../client.js";
 import { asyncIter } from "./_helpers.js";
 
@@ -120,7 +120,7 @@ describe("CloudflareClient.listResources dispatch", () => {
 
   it("workers-ai-model lists via raw fetch", async () => {
     const { client, fakeApi } = makeClient();
-    (fakeApi.fetch as ReturnType<typeof vi.fn>).mockResolvedValue([{ name: "@cf/x" }]);
+    (fakeApi.fetch as Mock).mockResolvedValue([{ name: "@cf/x" }]);
     const out = await client.listResources("workers-ai-model", "acct");
     expect(out[0]!.externalId).toBe("@cf/x");
   });

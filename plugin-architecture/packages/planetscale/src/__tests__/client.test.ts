@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
 import { PlanetScaleClient } from "../client.js";
 
 const ACCOUNT = "acct1";
@@ -19,7 +19,7 @@ interface FetchExpectation {
   text?: string;
 }
 
-let fetchMock: ReturnType<typeof vi.fn>;
+let fetchMock: Mock;
 
 function okJson(json: unknown): FetchExpectation {
   return { ok: true, status: 200, json };

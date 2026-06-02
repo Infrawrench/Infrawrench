@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import type { ConnectConfig } from "ssh2";
@@ -8,13 +8,13 @@ import type { ConnectConfig } from "ssh2";
 // before invoking the helper under test.
 
 interface FakeSftp {
-  readdir: ReturnType<typeof vi.fn>;
-  mkdir: ReturnType<typeof vi.fn>;
-  rmdir: ReturnType<typeof vi.fn>;
-  unlink: ReturnType<typeof vi.fn>;
-  createWriteStream: ReturnType<typeof vi.fn>;
-  createReadStream: ReturnType<typeof vi.fn>;
-  fastGet: ReturnType<typeof vi.fn>;
+  readdir: Mock;
+  mkdir: Mock;
+  rmdir: Mock;
+  unlink: Mock;
+  createWriteStream: Mock;
+  createReadStream: Mock;
+  fastGet: Mock;
 }
 
 class FakeClient extends EventEmitter {

@@ -1,12 +1,12 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 import type { HostServices, ResourceInstance, SqlHostServices } from "@infrawrench/plugin-base";
 import { PostgresClient } from "../client.js";
 
 const CS = "postgresql://user:pass@db.example.com:5432/appdb";
 
 function makeSql(): SqlHostServices & {
-  query: ReturnType<typeof vi.fn>;
-  execute: ReturnType<typeof vi.fn>;
+  query: Mock;
+  execute: Mock;
 } {
   return {
     query: vi.fn(),

@@ -43,7 +43,7 @@ vi.mock("mongodb", () => {
     }
   }
   return {
-    MongoClient: vi.fn((cs: string) => {
+    MongoClient: vi.fn(function (cs: string) {
       MongoClientCtor(cs);
       return { db: mockDb, close: mockClose };
     }),

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, type Mock } from "vitest";
 import { EventEmitter, Readable } from "node:stream";
 
 /** Minimal response shape used by the callback in `https.get(url, opts, cb)`. */
@@ -32,8 +32,8 @@ function createMockResponse(statusCode: number): Readable & { statusCode: number
   return res;
 }
 
-function createMockWriteStream(): EventEmitter & { close: ReturnType<typeof vi.fn> } {
-  const ws = new EventEmitter() as EventEmitter & { close: ReturnType<typeof vi.fn> };
+function createMockWriteStream(): EventEmitter & { close: Mock } {
+  const ws = new EventEmitter() as EventEmitter & { close: Mock };
   ws.close = vi.fn();
   return ws;
 }

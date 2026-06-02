@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
 import {
   listKVNamespaces,
   createKVNamespace,
@@ -45,7 +45,7 @@ describe("kv-client namespaces", () => {
 });
 
 describe("kv-client key/value (raw fetch)", () => {
-  let fetchMock: ReturnType<typeof vi.fn>;
+  let fetchMock: Mock;
   beforeEach(() => {
     fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);

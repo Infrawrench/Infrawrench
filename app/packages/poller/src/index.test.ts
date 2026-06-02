@@ -8,7 +8,9 @@ vi.mock("@infrawrench/server-core/plugin-loader", () => ({
 const start = vi.fn();
 const stop = vi.fn();
 vi.mock("./loop", () => ({
-  PollerLoop: vi.fn().mockImplementation(() => ({ start, stop })),
+  PollerLoop: vi.fn().mockImplementation(function () {
+    return { start, stop };
+  }),
 }));
 
 describe("poller index bootstrap", () => {

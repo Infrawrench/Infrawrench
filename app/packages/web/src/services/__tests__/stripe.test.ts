@@ -21,7 +21,9 @@ describe("stripe service", () => {
 
   it("getStripe constructs and memoizes the client", async () => {
     process.env["STRIPE_SECRET_KEY"] = "sk_test_123";
-    StripeCtor.mockImplementation(() => ({ id: "stripe" }));
+    StripeCtor.mockImplementation(function () {
+      return { id: "stripe" };
+    });
     const { getStripe } = await import("../stripe");
     const a = getStripe();
     const b = getStripe();

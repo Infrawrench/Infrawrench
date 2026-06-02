@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { GcpClientContext } from "../shared.js";
 import { deleteResource } from "../delete-client.js";
@@ -40,7 +40,7 @@ function makeCtx(resource: Partial<ResourceInstance>, over: CtxOver = {}): GcpCl
   };
 }
 
-let fetchSpy: ReturnType<typeof vi.fn>;
+let fetchSpy: Mock;
 beforeEach(() => {
   fetchSpy = vi.fn(async () => new Response("{}", { status: 200 }));
   vi.spyOn(globalThis, "fetch").mockImplementation(fetchSpy as never);

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 
 /**
  * BastionAgentConnection wraps an undici Agent whose `connect` opens a Duplex
@@ -26,7 +26,7 @@ interface FakeWs {
   readyState: number;
   OPEN: number;
   bufferedAmount: number;
-  send: ReturnType<typeof vi.fn>;
+  send: Mock;
   sent: () => unknown[];
 }
 

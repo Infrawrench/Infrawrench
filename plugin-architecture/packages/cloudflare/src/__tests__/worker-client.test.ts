@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, type Mock } from "vitest";
 import {
   listWorkers,
   createWorker,
@@ -95,12 +95,8 @@ describe("worker-client", () => {
 
   it("getWorkerManifest tolerates subdomain/cron lookup failures", async () => {
     const api = workerApi();
-    (api.cf.workers.scripts.subdomain.get as ReturnType<typeof vi.fn>).mockRejectedValue(
-      new Error("no scope"),
-    );
-    (api.cf.workers.scripts.schedules.get as ReturnType<typeof vi.fn>).mockRejectedValue(
-      new Error("no scope"),
-    );
+    (api.cf.workers.scripts.subdomain.get as Mock).mockRejectedValue(new Error("no scope"));
+    (api.cf.workers.scripts.schedules.get as Mock).mockRejectedValue(new Error("no scope"));
     const json = JSON.parse(await getWorkerManifest(api, "w1")) as {
       settings: Array<{ id: string; value: string }>;
     };

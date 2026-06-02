@@ -44,10 +44,12 @@ const mockDb = vi.fn(() => ({
 const mockClose = vi.fn();
 
 vi.mock("mongodb", () => ({
-  MongoClient: vi.fn(() => ({
-    db: mockDb,
-    close: mockClose,
-  })),
+  MongoClient: vi.fn(function () {
+    return {
+      db: mockDb,
+      close: mockClose,
+    };
+  }),
   ObjectId: class MockObjectId {
     private hex: string;
     constructor(hex?: string) {

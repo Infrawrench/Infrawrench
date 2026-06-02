@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
 import {
   listR2Buckets,
   getR2Bucket,
@@ -55,7 +55,7 @@ describe("r2-client buckets", () => {
   it("createR2Bucket omits location hint when blank", async () => {
     const api = r2Api();
     await createR2Bucket(api, "acct", { name: "b2", locationHint: "" });
-    const arg = (api.cf.r2.buckets.create as ReturnType<typeof vi.fn>).mock.calls[0]![0];
+    const arg = (api.cf.r2.buckets.create as Mock).mock.calls[0]![0];
     expect(arg).not.toHaveProperty("locationHint");
   });
 
@@ -67,7 +67,7 @@ describe("r2-client buckets", () => {
 });
 
 describe("r2-client object plane", () => {
-  let fetchMock: ReturnType<typeof vi.fn>;
+  let fetchMock: Mock;
   beforeEach(() => {
     fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
@@ -129,7 +129,7 @@ describe("r2-client object plane", () => {
     const api = makeApi();
     await deleteR2StorageObject(api, "bucket", "p/");
     // one for the listed child object plus the prefix delete itself
-    expect((api.fetch as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect((api.fetch as Mock).mock.calls.length).toBeGreaterThanOrEqual(2);
   });
 
   it("uploadR2StorageObject PUTs the file body", async () => {

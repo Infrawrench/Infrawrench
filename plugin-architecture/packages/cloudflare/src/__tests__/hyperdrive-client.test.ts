@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, type Mock } from "vitest";
 import {
   listHyperdrives,
   createHyperdrive,
@@ -59,7 +59,7 @@ describe("hyperdrive-client", () => {
       user: "u",
       password: "secret",
     });
-    const call = (api.cf.hyperdrive.configs.create as ReturnType<typeof vi.fn>).mock.calls[0]![0];
+    const call = (api.cf.hyperdrive.configs.create as Mock).mock.calls[0]![0];
     expect(call.name).toBe("pg");
     expect(call.origin).toMatchObject({ host: "db.a.com", port: 5432, password: "secret" });
   });
@@ -90,7 +90,7 @@ describe("hyperdrive-client", () => {
     await editHyperdrive(api, "acct", "hd1", { ...MERGED, originHost: "new.db.com" }, [
       "originHost",
     ]);
-    const call = (api.cf.hyperdrive.configs.edit as ReturnType<typeof vi.fn>).mock.calls[0]!;
+    const call = (api.cf.hyperdrive.configs.edit as Mock).mock.calls[0]!;
     expect(call[0]).toBe("hd1");
     expect(call[1].origin).toEqual({
       scheme: "postgres",
@@ -106,14 +106,14 @@ describe("hyperdrive-client", () => {
   it("editHyperdrive includes the password only when a new one is entered", async () => {
     const api = hdApi();
     await editHyperdrive(api, "acct", "hd1", { ...MERGED, password: "rotated" }, ["password"]);
-    const call = (api.cf.hyperdrive.configs.edit as ReturnType<typeof vi.fn>).mock.calls[0]!;
+    const call = (api.cf.hyperdrive.configs.edit as Mock).mock.calls[0]!;
     expect(call[1].origin).toMatchObject({ host: "db.a.com", password: "rotated" });
   });
 
   it("editHyperdrive leaves origin untouched on a name-only edit", async () => {
     const api = hdApi();
     await editHyperdrive(api, "acct", "hd1", { ...MERGED, name: "renamed" }, ["name"]);
-    const call = (api.cf.hyperdrive.configs.edit as ReturnType<typeof vi.fn>).mock.calls[0]!;
+    const call = (api.cf.hyperdrive.configs.edit as Mock).mock.calls[0]!;
     expect(call[1].name).toBe("renamed");
     expect(call[1]).not.toHaveProperty("origin");
   });

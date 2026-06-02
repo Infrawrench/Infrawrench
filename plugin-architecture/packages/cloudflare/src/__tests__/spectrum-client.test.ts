@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, type Mock } from "vitest";
 import {
   listAllSpectrumApplications,
   createSpectrumApplication,
@@ -76,7 +76,7 @@ describe("spectrum-client", () => {
       originDirect: "tcp://1.2.3.4:22, tcp://5.6.7.8:22",
       proxyProtocol: "v1",
     });
-    const call = (api.cf.spectrum.apps.update as ReturnType<typeof vi.fn>).mock.calls[0]![1];
+    const call = (api.cf.spectrum.apps.update as Mock).mock.calls[0]![1];
     expect(call.origin_direct).toEqual(["tcp://1.2.3.4:22", "tcp://5.6.7.8:22"]);
     expect(call.proxy_protocol).toBe("v1");
   });

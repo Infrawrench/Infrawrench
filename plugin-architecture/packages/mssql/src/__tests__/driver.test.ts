@@ -6,11 +6,13 @@ const { mockQuery, mockInput, mockConnect, mockClose, ConnectionPool } = vi.hois
   const mockConnect = vi.fn();
   const mockClose = vi.fn();
   const mockRequest = vi.fn(() => ({ query: mockQuery, input: mockInput }));
-  const ConnectionPool = vi.fn(() => ({
-    connect: mockConnect,
-    close: mockClose,
-    request: mockRequest,
-  }));
+  const ConnectionPool = vi.fn(function () {
+    return {
+      connect: mockConnect,
+      close: mockClose,
+      request: mockRequest,
+    };
+  });
   return { mockQuery, mockInput, mockConnect, mockClose, ConnectionPool };
 });
 

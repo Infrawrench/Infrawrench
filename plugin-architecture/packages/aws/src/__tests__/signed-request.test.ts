@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
 import { fetchSigned } from "../signed-request.js";
 
 const baseCreds = { accessKeyId: "AKIAEXAMPLE", secretAccessKey: "secret", region: "us-east-1" };
@@ -63,7 +63,7 @@ describe("fetchSigned over global fetch", () => {
 });
 
 describe("fetchSigned over the host http transport", () => {
-  function httpCreds(request: ReturnType<typeof vi.fn>) {
+  function httpCreds(request: Mock) {
     return { ...baseCreds, http: { request } };
   }
 

@@ -1,10 +1,10 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, type Mock } from "vitest";
 import { getLogs } from "../logs.js";
 import type { K8sFetcher } from "../shared.js";
 
 interface FakeFetcher {
-  fetch: ReturnType<typeof vi.fn>;
-  fetchText: ReturnType<typeof vi.fn>;
+  fetch: Mock;
+  fetchText: Mock;
 }
 
 function fakeFetcher(
