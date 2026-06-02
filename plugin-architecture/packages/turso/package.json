@@ -39,6 +39,6 @@
     "@libsql/client": "^0.14.0",
     "tsup": "^8.3.5",
     "typescript": "^5.7.3",
-    "vitest": "^3.0.5"
+    "vitest": "^4.1.8"
   }
 }

@@ -15,7 +15,7 @@
   },
   "devDependencies": {
     "@typescript/native-preview": "7.0.0-dev.20260411.1",
-    "@vitest/coverage-v8": "^3.2.4",
+    "@vitest/coverage-v8": "^4.1.8",
     "knip": "^6.4.1",
     "prettier": "^3.4.2",
     "react-doctor": "^0.2.9",
