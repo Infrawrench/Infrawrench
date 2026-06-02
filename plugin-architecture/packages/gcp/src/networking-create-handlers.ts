@@ -110,16 +110,20 @@ export const networkingCreateConfigHandlers: Record<
         {
           key: "ports",
           label: "Ports",
-          kind: "text",
+          kind: "string-list",
           required: false,
-          description: "Comma-separated ports or ranges (e.g. 80,443,8000-9000)",
+          placeholder: "80 or 8000-9000",
+          addLabel: "+ Add port",
+          description: "Ports or ranges (e.g. 80, 443, 8000-9000)",
         },
         {
           key: "sourceRanges",
           label: "Source Ranges",
-          kind: "text",
+          kind: "string-list",
           required: false,
-          description: "Comma-separated CIDRs (e.g. 0.0.0.0/0)",
+          placeholder: "0.0.0.0/0",
+          addLabel: "+ Add range",
+          description: "CIDRs (e.g. 0.0.0.0/0)",
         },
       ],
     };
@@ -204,9 +208,11 @@ export const networkingCreateConfigHandlers: Record<
         {
           key: "domains",
           label: "Domains",
-          kind: "text",
+          kind: "string-list",
           required: true,
-          description: "Comma-separated list of domains (Google-managed certificate)",
+          placeholder: "example.com",
+          addLabel: "+ Add domain",
+          description: "Domains for the Google-managed certificate",
         },
       ],
     };

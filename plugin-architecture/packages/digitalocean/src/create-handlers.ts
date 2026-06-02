@@ -1137,9 +1137,11 @@ export async function doGetCreateConfig(
         {
           key: "tags",
           label: "Tags",
-          kind: "text",
+          kind: "string-list",
           required: false,
-          description: "Comma-separated tags for organisation.",
+          placeholder: "tag",
+          addLabel: "+ Add tag",
+          description: "Tags for organisation.",
         },
       ],
     };

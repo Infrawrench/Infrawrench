@@ -16,6 +16,7 @@ import {
 import { ResourcePicker, type ResourcePickerOption } from "./ResourcePicker.js";
 import { PolicyPicker } from "./PolicyPicker.js";
 import { KeyValueListPicker } from "./KeyValueListPicker.js";
+import { StringListPicker } from "./StringListPicker.js";
 import { JsonSchemaEditor } from "./JsonSchemaEditor.js";
 
 // Monaco is heavy and browser-only; load it lazily so it splits out of the
@@ -394,6 +395,15 @@ export function FieldRenderer({
           {...(field.addLabel ? { addLabel: field.addLabel } : {})}
           {...(field.minEntries !== undefined ? { minEntries: field.minEntries } : {})}
           {...(field.maxEntries !== undefined ? { maxEntries: field.maxEntries } : {})}
+        />
+      )}
+
+      {field.kind === "string-list" && (
+        <StringListPicker
+          value={value}
+          onChange={onChange}
+          {...(field.placeholder ? { placeholder: field.placeholder } : {})}
+          {...(field.addLabel ? { addLabel: field.addLabel } : {})}
         />
       )}
 

@@ -1229,11 +1229,12 @@ export class CloudflareClient implements PluginClient {
         {
           key: "includeEmail",
           label: "Include Emails",
-          kind: "text",
+          kind: "string-list",
           required: true,
-          placeholder: "user@example.com, @example.com",
+          placeholder: "user@example.com or @example.com",
+          addLabel: "+ Add email or domain",
           description:
-            "Email addresses or domains to include, comma-separated. A bare address (user@example.com) matches that user; a leading @ (@example.com) matches everyone at that domain.",
+            "A bare address (user@example.com) matches that user; a leading @ (@example.com) matches everyone at that domain.",
         },
       );
       return { fields };
@@ -1270,9 +1271,11 @@ export class CloudflareClient implements PluginClient {
         {
           key: "defaultPools",
           label: "Default Pool IDs",
-          kind: "text",
+          kind: "string-list",
           required: true,
-          description: "Comma-separated list of pool IDs for default traffic",
+          placeholder: "pool ID",
+          addLabel: "+ Add pool",
+          description: "Pool IDs to use for default traffic",
         },
       );
       return { fields };
@@ -1316,9 +1319,11 @@ export class CloudflareClient implements PluginClient {
         {
           key: "originDirect",
           label: "Origin Direct",
-          kind: "text",
+          kind: "string-list",
           required: true,
-          description: "Origin address in IP:port format (e.g. 203.0.113.1:22)",
+          placeholder: "203.0.113.1:22",
+          addLabel: "+ Add origin",
+          description: "Origin addresses in IP:port format (e.g. 203.0.113.1:22)",
         },
         {
           key: "ipFirewall",
@@ -1444,10 +1449,12 @@ export class CloudflareClient implements PluginClient {
           {
             key: "characteristics",
             label: "Counting characteristics",
-            kind: "text",
+            kind: "string-list",
             required: false,
             defaultValue: "ip.src",
-            description: "Comma-separated counting keys (e.g. ip.src, http.request.headers)",
+            placeholder: "ip.src",
+            addLabel: "+ Add characteristic",
+            description: "Counting keys (e.g. ip.src, http.request.headers)",
           },
           {
             key: "action",
@@ -1568,9 +1575,11 @@ export class CloudflareClient implements PluginClient {
           {
             key: "domains",
             label: "Domains",
-            kind: "text",
+            kind: "string-list",
             required: false,
-            description: "Comma-separated hostnames allowed to use this widget (e.g. example.com)",
+            placeholder: "example.com",
+            addLabel: "+ Add domain",
+            description: "Hostnames allowed to use this widget",
           },
           {
             key: "mode",
@@ -1678,9 +1687,11 @@ export class CloudflareClient implements PluginClient {
           {
             key: "email",
             label: "Notify Emails",
-            kind: "text",
+            kind: "string-list",
             required: true,
-            description: "Comma-separated email addresses to notify",
+            placeholder: "ops@example.com",
+            addLabel: "+ Add email",
+            description: "Email addresses to notify",
           },
           {
             key: "description",

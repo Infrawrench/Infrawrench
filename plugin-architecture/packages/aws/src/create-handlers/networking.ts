@@ -195,9 +195,11 @@ export async function networkingGetCreateConfig(
         {
           key: "subnets",
           label: "Subnet IDs",
-          kind: "text",
+          kind: "string-list",
           required: true,
-          description: "Comma-separated subnet IDs (at least 2)",
+          placeholder: "subnet-0abc123",
+          addLabel: "+ Add subnet",
+          description: "Subnet IDs (at least 2)",
         },
         {
           key: "scheme",

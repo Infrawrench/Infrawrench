@@ -194,7 +194,14 @@ export class CloudinaryClient implements PluginClient {
             defaultValue: "signed",
           },
           { key: "folder", label: "Target Folder", kind: "text", required: false },
-          { key: "tags", label: "Tags (comma-separated)", kind: "text", required: false },
+          {
+            key: "tags",
+            label: "Tags",
+            kind: "string-list",
+            required: false,
+            placeholder: "tag",
+            addLabel: "+ Add tag",
+          },
         ],
       };
     }

@@ -169,9 +169,11 @@ export const cloudBuildCreateConfigHandlers: Record<
         {
           key: "tags",
           label: "Tags",
-          kind: "text",
+          kind: "string-list",
           required: false,
-          description: "Comma-separated tags.",
+          placeholder: "tag",
+          addLabel: "+ Add tag",
+          description: "Tags.",
         },
         {
           key: "eventType",

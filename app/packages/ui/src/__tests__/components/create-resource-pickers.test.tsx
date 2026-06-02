@@ -10,6 +10,7 @@ import { ImageRow } from "../../components/create-resource/ImageRow.js";
 import { ImagePicker } from "../../components/create-resource/ImagePicker.js";
 import { DatetimePicker } from "../../components/create-resource/DatetimePicker.js";
 import { KeyValueListPicker } from "../../components/create-resource/KeyValueListPicker.js";
+import { StringListPicker } from "../../components/create-resource/StringListPicker.js";
 import { ResourcePicker } from "../../components/create-resource/ResourcePicker.js";
 import type { SizeOption, ImageOption, DiskOption } from "@infrawrench/plugin-base";
 import type { ResourcePickerOption } from "../../components/create-resource/ResourcePicker.js";
@@ -279,6 +280,43 @@ describe("KeyValueListPicker", () => {
     render(<KeyValueListPicker value={value} onChange={vi.fn()} options={options} />);
     const input = screen.getByDisplayValue("a");
     expect(input).toBeInTheDocument();
+  });
+});
+
+describe("StringListPicker", () => {
+  it("emits a comma-joined value when a row is typed", () => {
+    const onChange = vi.fn();
+    render(<StringListPicker value="" onChange={onChange} placeholder="email" />);
+    fireEvent.change(screen.getByLabelText("email"), { target: { value: "me@a.com" } });
+    expect(onChange.mock.calls.at(-1)![0]).toBe("me@a.com");
+  });
+
+  it("renders one row per entry from an existing comma-separated value", () => {
+    render(<StringListPicker value="me@a.com, @b.com" onChange={vi.fn()} placeholder="email" />);
+    expect(screen.getByDisplayValue("me@a.com")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("@b.com")).toBeInTheDocument();
+  });
+
+  it("adds and removes rows, joining non-empty entries", () => {
+    const onChange = vi.fn();
+    render(<StringListPicker value="a@x.com" onChange={onChange} addLabel="+ Add email" />);
+    fireEvent.click(screen.getByRole("button", { name: "+ Add email" }));
+    const inputs = screen.getAllByRole("textbox");
+    expect(inputs).toHaveLength(2);
+    fireEvent.change(inputs[1]!, { target: { value: "b@x.com" } });
+    expect(onChange.mock.calls.at(-1)![0]).toBe("a@x.com, b@x.com");
+    fireEvent.click(screen.getAllByRole("button", { name: "Remove" })[0]!);
+    expect(onChange.mock.calls.at(-1)![0]).toBe("b@x.com");
+  });
+
+  it("expands a pasted comma-separated blob into multiple rows", () => {
+    const onChange = vi.fn();
+    render(<StringListPicker value="" onChange={onChange} placeholder="tag" />);
+    fireEvent.paste(screen.getByLabelText("tag"), {
+      clipboardData: { getData: () => "one, two, three" },
+    });
+    expect(screen.getAllByRole("textbox")).toHaveLength(3);
+    expect(onChange.mock.calls.at(-1)![0]).toBe("one, two, three");
   });
 });
 

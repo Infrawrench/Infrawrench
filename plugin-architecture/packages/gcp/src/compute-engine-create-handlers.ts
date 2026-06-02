@@ -260,9 +260,11 @@ export const computeEngineCreateConfigHandlers: Record<
         {
           key: "tags",
           label: "Network Tags",
-          kind: "text",
+          kind: "string-list",
           required: false,
-          description: "Comma-separated firewall tags (e.g. http-server,allow-ssh)",
+          placeholder: "http-server",
+          addLabel: "+ Add tag",
+          description: "Firewall tags (e.g. http-server, allow-ssh)",
         },
       ],
     };
@@ -461,9 +463,11 @@ export const computeEngineCreateConfigHandlers: Record<
         {
           key: "tags",
           label: "Network Tags",
-          kind: "text",
+          kind: "string-list",
           required: false,
-          description: "Comma-separated firewall tags (e.g. http-server,allow-ssh)",
+          placeholder: "http-server",
+          addLabel: "+ Add tag",
+          description: "Firewall tags (e.g. http-server, allow-ssh)",
         },
       ],
     };

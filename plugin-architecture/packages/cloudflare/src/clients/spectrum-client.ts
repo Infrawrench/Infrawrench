@@ -74,12 +74,15 @@ export async function createSpectrumApplication(
     throw new Error("Cloudflare plugin: zoneId is required to create a spectrum application");
   const protocol = fields["protocol"] ?? "tcp/22";
   const dns = fields["dns"] ?? "";
-  const originDirect = fields["originDirect"] ?? "";
+  const originDirect = (fields["originDirect"] ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
   const body: Record<string, unknown> = {
     zone_id: zoneId,
     protocol,
     dns: { type: "CNAME", name: dns },
-    origin_direct: [originDirect],
+    origin_direct: originDirect,
     ip_firewall: fields["ipFirewall"] === "true",
   };
   const app = await api.cf.spectrum.apps.create(body as unknown as AppCreateParams);
