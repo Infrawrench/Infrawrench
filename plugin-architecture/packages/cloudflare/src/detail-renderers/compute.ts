@@ -217,11 +217,24 @@ export function renderDurableObjectNamespaceDetail(resource: ResourceInstance): 
   };
 }
 
+/**
+ * Curated text-generation models for the gateway playground when the live
+ * catalog can't be fetched (e.g. the token lacks Workers AI:Read, which 403s
+ * the models endpoint). Kept short and to widely-available `@cf/...` models so
+ * the dropdown still offers a real choice. The first entry is the default.
+ */
+const FALLBACK_MODELS = [
+  "@cf/meta/llama-3.1-8b-instruct",
+  "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+  "@cf/mistralai/mistral-small-3.1-24b-instruct",
+  "@cf/google/gemma-3-12b-it",
+  "@cf/qwen/qwen2.5-coder-32b-instruct",
+];
+
 /** Sensible default model for the gateway playground — a small, fast, always-on
  * Workers AI instruct model when present, otherwise the first catalog entry. */
 function pickDefaultModel(models: string[]): string {
-  const FALLBACK = "@cf/meta/llama-3.1-8b-instruct";
-  if (models.length === 0) return FALLBACK;
+  if (models.length === 0) return FALLBACK_MODELS[0]!;
   return (
     models.find((m) => m.includes("llama-3.1-8b-instruct")) ??
     models.find((m) => m.toLowerCase().includes("llama")) ??
@@ -315,6 +328,12 @@ export function renderAiGatewayDetail(
     },
   ];
 
+  // An authenticated gateway rejects requests that don't carry a
+  // `cf-aig-authorization` gateway token — which we don't hold — so the
+  // playground can't reach it. Disable the input with a clear reason rather
+  // than surfacing a raw 401.
+  const authenticated = fields["authentication"] === true;
+
   return {
     title: resource.displayName,
     subtitle: "AI Gateway",
@@ -327,9 +346,15 @@ export function renderAiGatewayDetail(
       greeting:
         "Chat with a Workers AI model through this gateway. Requests authenticate with your Cloudflare token (no provider keys needed) and show up in the gateway's logs and analytics. Pick a model above.",
       inputPlaceholder: "Send a message…",
-      models: models.length > 0 ? models : [defaultModel],
+      models: models.length > 0 ? models : FALLBACK_MODELS,
       defaultModel,
       modelLabel: "Workers AI model",
+      ...(authenticated
+        ? {
+            disabledReason:
+              "This gateway has Authenticated Gateway enabled, which requires a gateway token the playground doesn't hold. Turn off authentication (Edit AI Gateway) to chat here, or call it from your own code with a cf-aig-authorization header.",
+          }
+        : {}),
     },
     headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
   };
