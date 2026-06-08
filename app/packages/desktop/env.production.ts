@@ -6,7 +6,7 @@ export const WORKOS_API_URL = "https://api.workos.com";
 export const SHOW_SIGN_IN_BUTTON = false;
 export const BANNERS: { message: string; variant?: "info" | "warning" }[] = [
   {
-    message: "Infrawrench is in alpha. Bundled cloud providers are available for testing.",
+    message: "Infrawrench is in alpha. Expect some errors and missing functionality.",
     variant: "warning",
   },
 ];
