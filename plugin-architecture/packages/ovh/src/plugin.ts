@@ -5,6 +5,11 @@ import { InstanceResourceType } from "./resources/instance.js";
 import { ManagedKubeResourceType } from "./resources/managed-kube.js";
 import { ManagedDbResourceType } from "./resources/managed-db.js";
 import { VolumeResourceType } from "./resources/volume.js";
+import { ObjectStorageResourceType } from "./resources/object-storage.js";
+import { LoadBalancerResourceType } from "./resources/load-balancer.js";
+import { PrivateNetworkResourceType } from "./resources/private-network.js";
+import { FloatingIpResourceType } from "./resources/floating-ip.js";
+import { GatewayResourceType } from "./resources/gateway.js";
 
 const manifest: PluginManifest = {
   id: "ovh",
@@ -67,6 +72,11 @@ const resourceTypes: ResourceTypeDefinition[] = [
   ManagedKubeResourceType,
   ManagedDbResourceType,
   VolumeResourceType,
+  ObjectStorageResourceType,
+  LoadBalancerResourceType,
+  PrivateNetworkResourceType,
+  FloatingIpResourceType,
+  GatewayResourceType,
 ];
 
 export const plugin: Plugin = {

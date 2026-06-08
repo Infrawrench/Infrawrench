@@ -1,15 +1,16 @@
 ---
 title: Scaleway
-description: Manage Scaleway Compute instances, Kapsule, managed RDB, and Object Storage.
+description: Manage Scaleway Compute instances, Kapsule, managed RDB, Object Storage, and Block Storage.
 sidebar_order: 6
 ---
 
 ## What you can manage
 
-- Compute instances (Instances and Elastic Metal)
+- Compute instances
 - Kapsule clusters (managed Kubernetes)
 - Managed RDB (Postgres / MySQL)
 - Object Storage (S3-compatible)
+- Block Storage volumes
 
 ## Credentials
 
@@ -25,6 +26,7 @@ Scaleway Console → **Identity and Access Management → API keys → Generate 
 - **SSH terminal** on Compute instances.
 - **SQL editor** on RDB (via output reference).
 - **File browser** on Object Storage.
+- **Block volume attachment** to instances in the same zone.
 - Zone / region picker on resource creation.
 
 ## Tips & limits

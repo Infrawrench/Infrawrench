@@ -6,12 +6,11 @@ export const WORKOS_API_URL = "https://api.workos.com";
 export const SHOW_SIGN_IN_BUTTON = false;
 export const BANNERS: { message: string; variant?: "info" | "warning" }[] = [
   {
-    message:
-      "Infrawrench is in alpha. Scaleway and OVH remain hidden while broader API coverage is finished; other bundled providers are available.",
+    message: "Infrawrench is in alpha. Bundled cloud providers are available for testing.",
     variant: "warning",
   },
 ];
 
-export const DISABLED_PLUGINS: string[] = ["scaleway", "ovh"];
+export const DISABLED_PLUGINS: string[] = [];
 
 export const ENABLED_RESOURCE_TYPES: Record<string, string[]> = {};

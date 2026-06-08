@@ -53,6 +53,24 @@ function headersFromInit(headers: HeadersInit | undefined): Record<string, strin
   return headers;
 }
 
+function enc(value: string): string {
+  return encodeURIComponent(value);
+}
+
+function stringifyAddress(address: unknown): string {
+  if (!address || typeof address !== "object") return "";
+  const value = address as Record<string, unknown>;
+  return String(value["ip"] ?? value["address"] ?? value["ipv4"] ?? value["value"] ?? "");
+}
+
+function stringifyAssociatedEntity(entity: unknown): string {
+  if (!entity || typeof entity !== "object") return "";
+  const value = entity as Record<string, unknown>;
+  return [value["type"], value["id"], value["name"]]
+    .filter((part) => part != null && part !== "")
+    .join(":");
+}
+
 /**
  * OVHcloud plugin client.
  * Created per account (per credential set) by the host.
@@ -243,6 +261,16 @@ export class OvhClient implements PluginClient {
         return this.listManagedDatabases(accountId);
       case "volume":
         return this.listVolumes(accountId);
+      case "object-storage-bucket":
+        return this.listObjectStorageBuckets(accountId);
+      case "load-balancer":
+        return this.listLoadBalancers(accountId);
+      case "private-network":
+        return this.listPrivateNetworks(accountId);
+      case "floating-ip":
+        return this.listFloatingIps(accountId);
+      case "gateway":
+        return this.listGateways(accountId);
       default:
         throw new Error(`OVH plugin: unknown resource type "${typeId}"`);
     }
@@ -310,6 +338,22 @@ export class OvhClient implements PluginClient {
 
     // For instance outputs, re-fetch the resource to get IPs
     if (typeId === "instance") {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      return resource.resolvedOutputs[outputKey] ?? "";
+    }
+
+    if (typeId === "object-storage-bucket" && outputKey === "endpoint") {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      const region = String(resource.fields["region"] ?? "");
+      return region ? `https://s3.${region.toLowerCase()}.io.cloud.ovh.net` : "";
+    }
+
+    if (typeId === "load-balancer" && outputKey === "address") {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      return resource.resolvedOutputs[outputKey] ?? "";
+    }
+
+    if (typeId === "floating-ip" && outputKey === "ip") {
       const resource = await this.getResource(typeId, resourceId, accountId);
       return resource.resolvedOutputs[outputKey] ?? "";
     }
@@ -617,6 +661,114 @@ export class OvhClient implements PluginClient {
       };
     }
 
+    if (typeId === "object-storage-bucket") {
+      const regionsData = await this.ovhFetch<OvhRegion[]>(this.cloudPath("/region"));
+      const regions = regionsData
+        .filter((r) => r.status === "UP")
+        .map((r) => {
+          const info = OvhClient.REGION_INFO[r.name];
+          return {
+            id: r.name,
+            label: r.name,
+            ...(info ? { location: info.location, flag: info.flag } : {}),
+          };
+        });
+      const defaultRegion = regions[0]?.id;
+      return {
+        fields: [
+          { key: "name", label: "Bucket Name", kind: "text", required: true },
+          {
+            key: "region",
+            label: "Region",
+            kind: "region-picker",
+            required: true,
+            regions,
+            ...(defaultRegion ? { defaultValue: defaultRegion } : {}),
+          },
+        ],
+      };
+    }
+
+    if (typeId === "load-balancer") {
+      const regions = await this.ovhFetch<string[]>(
+        this.cloudPath("/capabilities/loadbalancer/region"),
+      ).catch(async () => {
+        const regionsData = await this.ovhFetch<OvhRegion[]>(this.cloudPath("/region"));
+        return regionsData.filter((r) => r.status === "UP").map((r) => r.name);
+      });
+      const regionOptions = regions.map((id) => {
+        const info = OvhClient.REGION_INFO[id];
+        return {
+          id,
+          label: id,
+          ...(info ? { location: info.location, flag: info.flag } : {}),
+        };
+      });
+      const defaultRegion = regionOptions[0]?.id;
+      return {
+        fields: [
+          { key: "name", label: "Name", kind: "text", required: true },
+          {
+            key: "region",
+            label: "Region",
+            kind: "region-picker",
+            required: true,
+            regions: regionOptions,
+            ...(defaultRegion ? { defaultValue: defaultRegion } : {}),
+          },
+          {
+            key: "size",
+            label: "Size",
+            kind: "select",
+            required: true,
+            defaultValue: "SMALL",
+            options: [
+              { id: "SMALL", label: "Small" },
+              { id: "MEDIUM", label: "Medium" },
+              { id: "LARGE", label: "Large" },
+            ],
+          },
+          { key: "description", label: "Description", kind: "text", required: false },
+        ],
+      };
+    }
+
+    if (typeId === "private-network") {
+      const regionsData = await this.ovhFetch<OvhRegion[]>(this.cloudPath("/region"));
+      const regions = regionsData
+        .filter((r) => r.status === "UP")
+        .map((r) => {
+          const info = OvhClient.REGION_INFO[r.name];
+          return {
+            id: r.name,
+            label: r.name,
+            ...(info ? { location: info.location, flag: info.flag } : {}),
+          };
+        });
+      return {
+        fields: [
+          { key: "name", label: "Name", kind: "text", required: true },
+          {
+            key: "region",
+            label: "Region",
+            kind: "region-picker",
+            required: false,
+            regions,
+            description: "Optional. Leave empty to let OVH activate the network in all regions.",
+          },
+          {
+            key: "vlanId",
+            label: "VLAN ID",
+            kind: "number",
+            required: false,
+            minValue: 0,
+            maxValue: 4095,
+            description: "Optional VLAN ID. 0 means no VLAN.",
+          },
+        ],
+      };
+    }
+
     throw new Error(`No create config for type "${typeId}"`);
   }
 
@@ -851,6 +1003,45 @@ export class OvhClient implements PluginClient {
       };
     }
 
+    if (typeId === "object-storage-bucket") {
+      const region = fields["region"] ?? "";
+      const data = await this.ovhFetch<OvhStorageContainer>(
+        this.cloudPath(`/region/${enc(region)}/storage`),
+        {
+          method: "POST",
+          body: JSON.stringify({ name: fields["name"] ?? "" }),
+        },
+      );
+      return this.mapObjectStorageBucket(data, region, accountId);
+    }
+
+    if (typeId === "load-balancer") {
+      const data = await this.ovhFetch<OvhLoadBalancer>(this.cloudPath("/loadbalancer"), {
+        method: "POST",
+        body: JSON.stringify({
+          name: fields["name"] ?? "",
+          region: fields["region"] ?? "",
+          size: fields["size"] ?? "SMALL",
+          ...(fields["description"] ? { description: fields["description"] } : {}),
+        }),
+      });
+      return this.mapLoadBalancer(data, accountId);
+    }
+
+    if (typeId === "private-network") {
+      const region = fields["region"] ?? "";
+      const vlanId = fields["vlanId"];
+      const data = await this.ovhFetch<OvhPrivateNetwork>(this.cloudPath("/network/private"), {
+        method: "POST",
+        body: JSON.stringify({
+          name: fields["name"] ?? "",
+          ...(region ? { regions: [region] } : {}),
+          ...(vlanId ? { vlanId: Number(vlanId) } : {}),
+        }),
+      });
+      return this.mapPrivateNetwork(data, accountId);
+    }
+
     throw new Error(`OVH plugin: createResource not supported for type "${typeId}"`);
   }
 
@@ -880,6 +1071,46 @@ export class OvhClient implements PluginClient {
       case "volume":
         await this.ovhFetch<unknown>(this.cloudPath(`/volume/${externalId}`), { method: "DELETE" });
         break;
+      case "object-storage-bucket": {
+        const [region, ...nameParts] = externalId.split("/");
+        const name = nameParts.join("/");
+        if (!region || !name) throw new Error("Cannot parse object storage bucket ID");
+        await this.ovhFetch<unknown>(
+          this.cloudPath(`/region/${enc(region)}/storage/${enc(name)}`),
+          {
+            method: "DELETE",
+          },
+        );
+        break;
+      }
+      case "load-balancer":
+        await this.ovhFetch<unknown>(this.cloudPath(`/loadbalancer/${enc(externalId)}`), {
+          method: "DELETE",
+        });
+        break;
+      case "private-network":
+        await this.ovhFetch<unknown>(this.cloudPath(`/network/private/${enc(externalId)}`), {
+          method: "DELETE",
+        });
+        break;
+      case "floating-ip": {
+        const [region, floatingIpId] = externalId.split("/");
+        if (!region || !floatingIpId) throw new Error("Cannot parse floating IP ID");
+        await this.ovhFetch<unknown>(
+          this.cloudPath(`/region/${enc(region)}/floatingip/${enc(floatingIpId)}`),
+          { method: "DELETE" },
+        );
+        break;
+      }
+      case "gateway": {
+        const [region, gatewayId] = externalId.split("/");
+        if (!region || !gatewayId) throw new Error("Cannot parse gateway ID");
+        await this.ovhFetch<unknown>(
+          this.cloudPath(`/region/${enc(region)}/gateway/${enc(gatewayId)}`),
+          { method: "DELETE" },
+        );
+        break;
+      }
       default:
         throw new Error(`OVH plugin: deleteResource not supported for type "${typeId}"`);
     }
@@ -991,6 +1222,57 @@ export class OvhClient implements PluginClient {
           { label: "Region", value: String(f.region ?? "") },
         ];
       }
+      case "volume": {
+        return [
+          { label: "Status", value: String(f.status ?? "") },
+          { label: "Type", value: String(f.type ?? "") },
+          { label: "Region", value: String(f.region ?? "") },
+          { label: "Size", value: `${String(f.sizeGb ?? "")} GB` },
+        ];
+      }
+      case "object-storage-bucket": {
+        return [
+          { label: "Region", value: String(f.region ?? "") },
+          { label: "Objects", value: String(f.objectsCount ?? 0) },
+          { label: "Size", value: `${String(f.objectsSizeBytes ?? 0)} bytes` },
+        ];
+      }
+      case "load-balancer": {
+        const status = String(f.status ?? "unknown");
+        return [
+          {
+            label: "Status",
+            value: status,
+            variant: status === "ACTIVE" || status === "OK" ? "status-healthy" : "status-degraded",
+          },
+          { label: "Size", value: String(f.size ?? "") },
+          { label: "Region", value: String(f.region ?? "") },
+          { label: "Address", value: String(f.address ?? "") },
+        ];
+      }
+      case "private-network": {
+        return [
+          { label: "Status", value: String(f.status ?? "") },
+          { label: "VLAN", value: String(f.vlanId ?? "") },
+          { label: "Regions", value: String(f.regions ?? "") },
+        ];
+      }
+      case "floating-ip": {
+        return [
+          { label: "Status", value: String(f.status ?? "") },
+          { label: "IP", value: String(f.ip ?? "") },
+          { label: "Region", value: String(f.region ?? "") },
+          { label: "Associated", value: String(f.associatedEntity ?? "") },
+        ];
+      }
+      case "gateway": {
+        return [
+          { label: "Status", value: String(f.status ?? "") },
+          { label: "Model", value: String(f.model ?? "") },
+          { label: "Region", value: String(f.region ?? "") },
+          { label: "Interfaces", value: String(f.interfaces ?? 0) },
+        ];
+      }
       default:
         return [];
     }
@@ -1055,6 +1337,204 @@ export class OvhClient implements PluginClient {
       id: resource.id,
       label: resource.displayName,
       status: { kind: "status-dot", status },
+    };
+  }
+
+  private async listUpRegions(): Promise<string[]> {
+    const regions = await this.ovhFetch<OvhRegion[]>(this.cloudPath("/region"));
+    return regions.filter((r) => r.status === "UP").map((r) => r.name);
+  }
+
+  private async listObjectStorageBuckets(accountId: string): Promise<ResourceInstance[]> {
+    const regions = await this.listUpRegions();
+    const perRegion = await Promise.all(
+      regions.map(async (region) => {
+        try {
+          const buckets = await this.ovhFetch<OvhStorageContainer[]>(
+            this.cloudPath(`/region/${enc(region)}/storage`),
+          );
+          return buckets.map((bucket) => this.mapObjectStorageBucket(bucket, region, accountId));
+        } catch {
+          return [];
+        }
+      }),
+    );
+    return perRegion.flat();
+  }
+
+  private mapObjectStorageBucket(
+    bucket: OvhStorageContainer,
+    region: string,
+    accountId: string,
+  ): ResourceInstance {
+    const bucketRegion = bucket.region ?? region;
+    const createdAt = bucket.createdAt ?? new Date().toISOString();
+    return {
+      id: `${accountId}:object-storage-bucket:${bucketRegion}/${bucket.name}`,
+      pluginId: "ovh",
+      resourceTypeId: "object-storage-bucket",
+      accountId,
+      displayName: bucket.name,
+      fields: {
+        name: bucket.name,
+        region: bucketRegion,
+        objectsCount: bucket.objectsCount ?? 0,
+        objectsSizeBytes: bucket.objectsSize ?? 0,
+        virtualHost: bucket.virtualHost ?? "",
+      },
+      resolvedOutputs: {
+        endpoint: `https://s3.${bucketRegion.toLowerCase()}.io.cloud.ovh.net`,
+      },
+      secretStates: [],
+      externalId: `${bucketRegion}/${bucket.name}`,
+      createdAt,
+      updatedAt: createdAt,
+    };
+  }
+
+  private async listLoadBalancers(accountId: string): Promise<ResourceInstance[]> {
+    const ids = await this.ovhFetch<string[]>(this.cloudPath("/loadbalancer"));
+    const loadBalancers = await Promise.all(
+      ids.map((id) => this.ovhFetch<OvhLoadBalancer>(this.cloudPath(`/loadbalancer/${enc(id)}`))),
+    );
+    return loadBalancers.map((lb) => this.mapLoadBalancer(lb, accountId));
+  }
+
+  private mapLoadBalancer(lb: OvhLoadBalancer, accountId: string): ResourceInstance {
+    const createdAt = lb.createdAt ?? new Date().toISOString();
+    const address = stringifyAddress(lb.address);
+    return {
+      id: `${accountId}:load-balancer:${lb.id}`,
+      pluginId: "ovh",
+      resourceTypeId: "load-balancer",
+      accountId,
+      displayName: lb.name || lb.id,
+      fields: {
+        name: lb.name ?? "",
+        region: lb.region ?? lb.openstackRegion ?? "",
+        size: lb.size ?? "",
+        status: lb.status ?? "",
+        address,
+        description: lb.description ?? "",
+      },
+      resolvedOutputs: { address },
+      secretStates: [],
+      externalId: lb.id,
+      createdAt,
+      updatedAt: lb.updatedAt ?? createdAt,
+    };
+  }
+
+  private async listPrivateNetworks(accountId: string): Promise<ResourceInstance[]> {
+    const networks = await this.ovhFetch<OvhPrivateNetwork[]>(this.cloudPath("/network/private"));
+    return networks.map((network) => this.mapPrivateNetwork(network, accountId));
+  }
+
+  private mapPrivateNetwork(network: OvhPrivateNetwork, accountId: string): ResourceInstance {
+    const regions = (network.regions ?? []).map((region) => region.name ?? "").filter(Boolean);
+    const now = new Date().toISOString();
+    return {
+      id: `${accountId}:private-network:${network.id}`,
+      pluginId: "ovh",
+      resourceTypeId: "private-network",
+      accountId,
+      displayName: network.name || network.id,
+      fields: {
+        name: network.name ?? "",
+        regions: regions.join(","),
+        vlanId: network.vlanId ?? 0,
+        status: network.status ?? "",
+        type: network.type ?? "",
+      },
+      resolvedOutputs: {},
+      secretStates: [],
+      externalId: network.id,
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
+
+  private async listFloatingIps(accountId: string): Promise<ResourceInstance[]> {
+    const regions = await this.listUpRegions();
+    const perRegion = await Promise.all(
+      regions.map(async (region) => {
+        try {
+          const ips = await this.ovhFetch<OvhFloatingIp[]>(
+            this.cloudPath(`/region/${enc(region)}/floatingip`),
+          );
+          return ips.map((ip) => this.mapFloatingIp(ip, region, accountId));
+        } catch {
+          return [];
+        }
+      }),
+    );
+    return perRegion.flat();
+  }
+
+  private mapFloatingIp(ip: OvhFloatingIp, region: string, accountId: string): ResourceInstance {
+    const ipRegion = ip.region ?? region;
+    const now = new Date().toISOString();
+    const associatedEntity = stringifyAssociatedEntity(ip.associatedEntity);
+    return {
+      id: `${accountId}:floating-ip:${ipRegion}/${ip.id}`,
+      pluginId: "ovh",
+      resourceTypeId: "floating-ip",
+      accountId,
+      displayName: ip.ip,
+      fields: {
+        ip: ip.ip,
+        region: ipRegion,
+        status: ip.status ?? "",
+        networkId: ip.networkId ?? "",
+        associatedEntity,
+      },
+      resolvedOutputs: { ip: ip.ip },
+      secretStates: [],
+      externalId: `${ipRegion}/${ip.id}`,
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
+
+  private async listGateways(accountId: string): Promise<ResourceInstance[]> {
+    const regions = await this.listUpRegions();
+    const perRegion = await Promise.all(
+      regions.map(async (region) => {
+        try {
+          const gateways = await this.ovhFetch<OvhGateway[]>(
+            this.cloudPath(`/region/${enc(region)}/gateway?withSubnets=true`),
+          );
+          return gateways.map((gateway) => this.mapGateway(gateway, region, accountId));
+        } catch {
+          return [];
+        }
+      }),
+    );
+    return perRegion.flat();
+  }
+
+  private mapGateway(gateway: OvhGateway, region: string, accountId: string): ResourceInstance {
+    const gatewayRegion = gateway.region ?? region;
+    const now = new Date().toISOString();
+    return {
+      id: `${accountId}:gateway:${gatewayRegion}/${gateway.id}`,
+      pluginId: "ovh",
+      resourceTypeId: "gateway",
+      accountId,
+      displayName: gateway.name || gateway.id,
+      fields: {
+        name: gateway.name ?? "",
+        region: gatewayRegion,
+        model: gateway.model ?? "",
+        status: gateway.status ?? "",
+        type: gateway.type ?? "",
+        interfaces: gateway.interfaces?.length ?? 0,
+      },
+      resolvedOutputs: {},
+      secretStates: [],
+      externalId: `${gatewayRegion}/${gateway.id}`,
+      createdAt: now,
+      updatedAt: now,
     };
   }
 
@@ -1235,6 +1715,56 @@ interface OvhKubeCluster {
   nodesUrl?: string;
   createdAt?: string;
   updatedAt?: string;
+}
+
+interface OvhStorageContainer {
+  name: string;
+  region?: string;
+  createdAt?: string;
+  objectsCount?: number;
+  objectsSize?: number;
+  virtualHost?: string;
+}
+
+interface OvhLoadBalancer {
+  id: string;
+  name?: string | null;
+  region?: string;
+  openstackRegion?: string;
+  size?: string;
+  status?: string;
+  description?: string | null;
+  address?: unknown;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+interface OvhPrivateNetwork {
+  id: string;
+  name?: string;
+  regions?: Array<{ name?: string }>;
+  vlanId?: number;
+  status?: string;
+  type?: string;
+}
+
+interface OvhFloatingIp {
+  id: string;
+  ip: string;
+  region?: string;
+  status?: string;
+  networkId?: string;
+  associatedEntity?: unknown;
+}
+
+interface OvhGateway {
+  id: string;
+  name?: string;
+  region?: string;
+  model?: string;
+  status?: string;
+  type?: string;
+  interfaces?: unknown[];
 }
 
 interface OvhKubeNodePool {

@@ -247,6 +247,105 @@ describe("listResources volume", () => {
   });
 });
 
+describe("listResources OVH extended resources", () => {
+  it("maps S3-compatible object storage buckets across regions", async () => {
+    const c = makeClient();
+    fetchMock.mockImplementation(async (url: string | URL | Request) => {
+      const u = String(url);
+      if (u.includes("/auth/time")) return okJson(1700000000);
+      if (u.endsWith("/region"))
+        return okJson([
+          { name: "GRA11", status: "UP" },
+          { name: "SBG5", status: "DOWN" },
+        ]);
+      if (u.endsWith("/region/GRA11/storage"))
+        return okJson([
+          {
+            name: "bucket-a",
+            region: "GRA11",
+            objectsCount: 3,
+            objectsSize: 42,
+            virtualHost: "bucket-a.s3.gra.io.cloud.ovh.net",
+            createdAt: "2024-01-01T00:00:00Z",
+          },
+        ]);
+      return okJson([]);
+    });
+
+    const res = await c.listResources("object-storage-bucket", ACCOUNT);
+
+    expect(res[0]!.id).toBe(`${ACCOUNT}:object-storage-bucket:GRA11/bucket-a`);
+    expect(res[0]!.fields["objectsCount"]).toBe(3);
+    expect(res[0]!.resolvedOutputs["endpoint"]).toBe("https://s3.gra11.io.cloud.ovh.net");
+  });
+
+  it("maps load balancers by fetching ids then details", async () => {
+    const c = makeClient();
+    fetchMock.mockImplementation(async (url: string | URL | Request) => {
+      const u = String(url);
+      if (u.includes("/auth/time")) return okJson(1700000000);
+      if (u.endsWith("/loadbalancer")) return okJson(["lb-1"]);
+      if (u.endsWith("/loadbalancer/lb-1"))
+        return okJson({
+          id: "lb-1",
+          name: "edge",
+          region: "GRA11",
+          size: "SMALL",
+          status: "ACTIVE",
+          address: { ip: "203.0.113.9" },
+          createdAt: "2024-01-01T00:00:00Z",
+        });
+      return okJson({});
+    });
+
+    const res = await c.listResources("load-balancer", ACCOUNT);
+
+    expect(res[0]!.fields["address"]).toBe("203.0.113.9");
+    expect(res[0]!.resolvedOutputs["address"]).toBe("203.0.113.9");
+  });
+
+  it("maps private networks, floating IPs, and gateways", async () => {
+    const c = makeClient();
+    fetchMock.mockImplementation(async (url: string | URL | Request) => {
+      const u = String(url);
+      if (u.includes("/auth/time")) return okJson(1700000000);
+      if (u.endsWith("/network/private"))
+        return okJson([
+          { id: "net-1", name: "priv", regions: [{ name: "GRA11" }], vlanId: 42, status: "ACTIVE" },
+        ]);
+      if (u.endsWith("/region")) return okJson([{ name: "GRA11", status: "UP" }]);
+      if (u.endsWith("/region/GRA11/floatingip"))
+        return okJson([
+          {
+            id: "fip-1",
+            ip: "203.0.113.10",
+            region: "GRA11",
+            status: "ACTIVE",
+            associatedEntity: { type: "instance", id: "i-1" },
+          },
+        ]);
+      if (u.includes("/region/GRA11/gateway"))
+        return okJson([
+          {
+            id: "gw-1",
+            name: "gw",
+            region: "GRA11",
+            model: "s",
+            status: "ACTIVE",
+            interfaces: [{ id: "if-1" }],
+          },
+        ]);
+      return okJson([]);
+    });
+
+    expect((await c.listResources("private-network", ACCOUNT))[0]!.fields["vlanId"]).toBe(42);
+    expect((await c.listResources("floating-ip", ACCOUNT))[0]!.resolvedOutputs["ip"]).toBe(
+      "203.0.113.10",
+    );
+    expect((await c.listResources("gateway", ACCOUNT))[0]!.fields["interfaces"]).toBe(1);
+  });
+});
+
 describe("listResources managed-kube", () => {
   it("maps clusters fetching each + node pools", async () => {
     const c = makeClient();
@@ -826,6 +925,42 @@ describe("createResource", () => {
     expect(r.fields["status"]).toBe("creating");
   });
 
+  it("creates object storage bucket, load balancer, and private network", async () => {
+    const c = makeClient();
+    fetchMock.mockImplementation(async (url: string | URL | Request) => {
+      const u = String(url);
+      if (u.includes("/auth/time")) return okJson(1700000000);
+      if (u.endsWith("/region/GRA11/storage"))
+        return okJson({ name: "bucket-a", region: "GRA11", objectsCount: 0, objectsSize: 0 });
+      if (u.endsWith("/loadbalancer"))
+        return okJson({ id: "lb-1", name: "edge", region: "GRA11", status: "CREATING" });
+      if (u.endsWith("/network/private"))
+        return okJson({ id: "net-1", name: "priv", regions: [{ name: "GRA11" }], vlanId: 7 });
+      return okJson({});
+    });
+
+    const bucket = await c.createResource("object-storage-bucket", ACCOUNT, {
+      name: "bucket-a",
+      region: "GRA11",
+    });
+    expect(bucket.externalId).toBe("GRA11/bucket-a");
+    expect(JSON.parse(lastApiCall()[1]!.body as string)).toEqual({ name: "bucket-a" });
+
+    const lb = await c.createResource("load-balancer", ACCOUNT, {
+      name: "edge",
+      region: "GRA11",
+      size: "SMALL",
+    });
+    expect(lb.externalId).toBe("lb-1");
+
+    const network = await c.createResource("private-network", ACCOUNT, {
+      name: "priv",
+      region: "GRA11",
+      vlanId: "7",
+    });
+    expect(network.externalId).toBe("net-1");
+  });
+
   it("throws for unsupported create type", async () => {
     const c = makeClient();
     await expect(c.createResource("nope", ACCOUNT, {})).rejects.toThrow(/not supported/);
@@ -873,6 +1008,27 @@ describe("deleteResource", () => {
     await expect(c.deleteResource("nope", `${ACCOUNT}:nope:1`, ACCOUNT)).rejects.toThrow(
       /not supported/,
     );
+  });
+
+  it.each([
+    [
+      "object-storage-bucket",
+      `${ACCOUNT}:object-storage-bucket:GRA11/bucket-a`,
+      "/region/GRA11/storage/bucket-a",
+    ],
+    ["load-balancer", `${ACCOUNT}:load-balancer:lb-1`, "/loadbalancer/lb-1"],
+    ["private-network", `${ACCOUNT}:private-network:net-1`, "/network/private/net-1"],
+    ["floating-ip", `${ACCOUNT}:floating-ip:GRA11/fip-1`, "/region/GRA11/floatingip/fip-1"],
+    ["gateway", `${ACCOUNT}:gateway:GRA11/gw-1`, "/region/GRA11/gateway/gw-1"],
+  ])("deletes extended resource %s", async (type, id, suffix) => {
+    const c = makeClient();
+    fetchMock.mockImplementation(async (url: string | URL | Request) => {
+      if (String(url).includes("/auth/time")) return okJson(1700000000);
+      return okJson({}, 204);
+    });
+    await c.deleteResource(type, id, ACCOUNT);
+    expect(String(lastApiCall()[0])).toContain(`/cloud/project/proj123${suffix}`);
+    expect(lastApiCall()[1]!.method).toBe("DELETE");
   });
 });
 
@@ -1004,12 +1160,14 @@ describe("fetchDashboardStats", () => {
     expect(stats.find((s) => s.label === "Engine")?.value).toBe("mysql");
   });
 
-  it("returns [] for unhandled type (volume)", async () => {
+  it("volume stats", async () => {
     const c = makeClient();
     fetchMock.mockImplementation(
       listImpl([{ id: "v-1", region: "GRA11", size: 1, type: "classic" }]),
     );
-    expect(await c.fetchDashboardStats("volume", `${ACCOUNT}:volume:v-1`, ACCOUNT)).toEqual([]);
+    const stats = await c.fetchDashboardStats("volume", `${ACCOUNT}:volume:v-1`, ACCOUNT);
+    expect(stats.find((s) => s.label === "Type")?.value).toBe("classic");
+    expect(stats.find((s) => s.label === "Size")?.value).toBe("1 GB");
   });
 });
 
