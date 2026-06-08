@@ -1,20 +1,16 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const SQLDatabaseResourceType: ResourceTypeDefinition = {
+export const SQLDatabaseResourceType = rt({
+  name: "SQL Database",
   id: "azure-sql-database",
-  displayName: "SQL Database",
-  pluralDisplayName: "SQL Databases",
   description: "An Azure SQL Database",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "serverName", label: "Server", kind: "string", required: true },
-    { key: "resourceGroup", label: "Resource Group", kind: "string", required: true },
-    { key: "location", label: "Location", kind: "string", required: true },
-    {
-      key: "status",
-      label: "Status",
+    f("name", "Name"),
+    f("serverName", "Server"),
+    f("resourceGroup", "Resource Group"),
+    f("location", "Location"),
+    f("status", "Status", {
       kind: "enum",
-      required: true,
       enumValues: [
         "Online",
         "Creating",
@@ -28,18 +24,17 @@ export const SQLDatabaseResourceType: ResourceTypeDefinition = {
         "Suspect",
         "Inaccessible",
       ],
-    },
-    { key: "edition", label: "Edition", kind: "string", required: false },
-    { key: "serviceLevelObjective", label: "Service Level", kind: "string", required: false },
-    { key: "maxSizeBytes", label: "Max Size (Bytes)", kind: "number", required: false },
-    { key: "collation", label: "Collation", kind: "string", required: false },
-    { key: "zoneRedundant", label: "Zone Redundant", kind: "boolean", required: false },
+    }),
+    f("edition", "Edition", { required: false }),
+    f("serviceLevelObjective", "Service Level", { required: false }),
+    f("maxSizeBytes", "Max Size (Bytes)", { kind: "number", required: false }),
+    f("collation", "Collation", { required: false }),
+    f("zoneRedundant", "Zone Redundant", { kind: "boolean", required: false }),
   ],
   outputs: [
-    { key: "connectionString", label: "Connection String", sensitive: true },
-    { key: "serverFqdn", label: "Server FQDN", sensitive: false },
+    o("connectionString", "Connection String", { sensitive: true }),
+    o("serverFqdn", "Server FQDN"),
   ],
-  dashboardPinnable: true,
   iconKey: "database",
   supportsCreate: true,
   supportsMetrics: true,
@@ -70,4 +65,4 @@ export const SQLDatabaseResourceType: ResourceTypeDefinition = {
       ],
     },
   ],
-};
+});

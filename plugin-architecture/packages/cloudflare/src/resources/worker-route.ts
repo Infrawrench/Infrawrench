@@ -1,17 +1,13 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const WorkerRouteResourceType: ResourceTypeDefinition = {
+export const WorkerRouteResourceType = rt({
+  name: "Worker Route",
+  pinnable: false,
   id: "worker-route",
-  displayName: "Worker Route",
-  pluralDisplayName: "Worker Routes",
   description: "A route mapping a URL pattern to a Cloudflare Worker",
-  fields: [
-    { key: "pattern", label: "Pattern", kind: "string", required: true },
-    { key: "script", label: "Worker Script", kind: "string", required: false },
-  ],
+  fields: [f("pattern", "Pattern"), f("script", "Worker Script", { required: false })],
   outputs: [],
   parentTypeId: "zone",
-  dashboardPinnable: false,
   supportsCreate: true,
   iconKey: "route",
-};
+});

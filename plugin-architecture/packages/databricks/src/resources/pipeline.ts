@@ -1,32 +1,25 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const PipelineResourceType: ResourceTypeDefinition = {
+export const PipelineResourceType = rt({
+  name: "Pipeline",
   id: "databricks-pipeline",
-  displayName: "Pipeline",
-  pluralDisplayName: "Pipelines",
   description: "A Databricks Delta Live Tables pipeline",
   fields: [
-    { key: "pipelineId", label: "Pipeline ID", kind: "string", required: true },
-    { key: "name", label: "Name", kind: "string", required: true },
-    {
-      key: "state",
-      label: "State",
+    f("pipelineId", "Pipeline ID"),
+    f("name", "Name"),
+    f("state", "State", {
       kind: "enum",
-      required: true,
       enumValues: ["IDLE", "RUNNING", "STOPPING", "FAILED", "DELETED", "RESETTING"],
-    },
-    { key: "creatorUserName", label: "Creator", kind: "string", required: false },
-    { key: "target", label: "Target Schema", kind: "string", required: false },
-    { key: "catalog", label: "Catalog", kind: "string", required: false },
-    { key: "channel", label: "Channel", kind: "string", required: false },
-    { key: "continuous", label: "Continuous", kind: "boolean", required: false },
-    { key: "photon", label: "Photon", kind: "boolean", required: false },
-    { key: "lastUpdateState", label: "Last Update", kind: "string", required: false },
+    }),
+    f("creatorUserName", "Creator", { required: false }),
+    f("target", "Target Schema", { required: false }),
+    f("catalog", "Catalog", { required: false }),
+    f("channel", "Channel", { required: false }),
+    f("continuous", "Continuous", { kind: "boolean", required: false }),
+    f("photon", "Photon", { kind: "boolean", required: false }),
+    f("lastUpdateState", "Last Update", { required: false }),
   ],
-  outputs: [
-    { key: "pipelineId", label: "Pipeline ID", sensitive: false },
-    { key: "pipelineUrl", label: "Pipeline URL", sensitive: false },
-  ],
+  outputs: [o("pipelineId", "Pipeline ID"), o("pipelineUrl", "Pipeline URL")],
   attachTargets: [
     {
       pluginId: "databricks",
@@ -39,7 +32,6 @@ export const PipelineResourceType: ResourceTypeDefinition = {
       verb: "Publish to schema",
     },
   ],
-  dashboardPinnable: true,
   supportsCreate: true,
   iconKey: "pipeline",
-};
+});

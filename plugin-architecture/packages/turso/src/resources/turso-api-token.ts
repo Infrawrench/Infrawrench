@@ -1,15 +1,11 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const TursoApiTokenResourceType: ResourceTypeDefinition = {
+export const TursoApiTokenResourceType = rt({
+  name: "API Token",
+  pinnable: false,
   id: "turso-api-token",
-  displayName: "API Token",
-  pluralDisplayName: "API Tokens",
   description: "A Turso platform API token entry. Token secret values are not returned by the API.",
-  fields: [
-    { key: "id", label: "ID", kind: "string", required: false },
-    { key: "name", label: "Name", kind: "string", required: true },
-  ],
-  outputs: [{ key: "tokenName", label: "Token Name", sensitive: false }],
-  dashboardPinnable: false,
+  fields: [f("id", "ID", { required: false }), f("name", "Name")],
+  outputs: [o("tokenName", "Token Name")],
   iconKey: "turso",
-};
+});

@@ -1,27 +1,22 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const MSSQLDatabaseResourceType: ResourceTypeDefinition = {
+export const MSSQLDatabaseResourceType = rt({
+  name: "SQL Server Database",
   id: "mssql-database",
-  displayName: "SQL Server Database",
-  pluralDisplayName: "SQL Server Databases",
   description: "A Microsoft SQL Server database — connects via connection string.",
   fields: [
-    { key: "name", label: "Display Name", kind: "string", required: true },
-    {
-      key: "connectionString",
-      label: "Connection String",
+    f("name", "Display Name"),
+    f("connectionString", "Connection String", {
       kind: "secret",
-      required: true,
       allowLiteral: true,
       description: "Connection URI (mssql://user:pass@host:1433/dbname).",
       resolvableOutputKeys: ["connectionString"],
       resolvableFrom: [],
-    },
+    }),
   ],
   outputs: [
-    { key: "connectionString", label: "Connection String", sensitive: true },
-    { key: "serverVersion", label: "Server Version", sensitive: false },
+    o("connectionString", "Connection String", { sensitive: true }),
+    o("serverVersion", "Server Version"),
   ],
-  dashboardPinnable: true,
   iconKey: "mssql",
-};
+});

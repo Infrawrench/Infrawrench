@@ -1,26 +1,25 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const LoadBalancerResourceType: ResourceTypeDefinition = {
+export const LoadBalancerResourceType = rt({
+  name: "Load Balancer",
+  pinnable: false,
   id: "load-balancer",
-  displayName: "Load Balancer",
-  pluralDisplayName: "Load Balancers",
   description: "A Cloudflare Load Balancer",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "fallbackPool", label: "Fallback Pool", kind: "string", required: false },
-    { key: "defaultPools", label: "Default Pools", kind: "string", required: false },
-    { key: "enabled", label: "Enabled", kind: "boolean", required: true },
-    { key: "proxied", label: "Proxied", kind: "boolean", required: false },
-    { key: "ttl", label: "TTL", kind: "number", required: false },
-    { key: "steeringPolicy", label: "Steering Policy", kind: "string", required: false },
-    { key: "createdOn", label: "Created", kind: "string", required: false, editable: false },
-    { key: "modifiedOn", label: "Modified", kind: "string", required: false, editable: false },
+    f("name", "Name"),
+    f("fallbackPool", "Fallback Pool", { required: false }),
+    f("defaultPools", "Default Pools", { required: false }),
+    f("enabled", "Enabled", { kind: "boolean" }),
+    f("proxied", "Proxied", { kind: "boolean", required: false }),
+    f("ttl", "TTL", { kind: "number", required: false }),
+    f("steeringPolicy", "Steering Policy", { required: false }),
+    f("createdOn", "Created", { required: false, editable: false }),
+    f("modifiedOn", "Modified", { required: false, editable: false }),
   ],
   outputs: [],
   parentTypeId: "zone",
-  dashboardPinnable: false,
   supportsCreate: true,
   supportsUpdate: true,
   supportsMetrics: true,
   iconKey: "load-balancer",
-};
+});

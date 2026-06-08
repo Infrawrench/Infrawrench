@@ -1,21 +1,17 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const TursoGroupResourceType: ResourceTypeDefinition = {
+export const TursoGroupResourceType = rt({
+  name: "Group",
+  pinnable: false,
   id: "turso-group",
-  displayName: "Group",
-  pluralDisplayName: "Groups",
   description: "A Turso placement group — defines where database replicas are located",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "primaryLocation", label: "Primary Location", kind: "string", required: false },
-    { key: "locations", label: "Locations", kind: "string", required: false },
-    { key: "version", label: "Version", kind: "string", required: false },
+    f("name", "Name"),
+    f("primaryLocation", "Primary Location", { required: false }),
+    f("locations", "Locations", { required: false }),
+    f("version", "Version", { required: false }),
   ],
-  outputs: [
-    { key: "groupName", label: "Group Name", sensitive: false },
-    { key: "primaryLocation", label: "Primary Location", sensitive: false },
-  ],
-  dashboardPinnable: false,
+  outputs: [o("groupName", "Group Name"), o("primaryLocation", "Primary Location")],
   supportsCreate: true,
   iconKey: "turso",
-};
+});

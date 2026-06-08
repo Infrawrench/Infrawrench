@@ -1,32 +1,29 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const AlloyDbInstanceResourceType: ResourceTypeDefinition = {
+export const AlloyDbInstanceResourceType = rt({
+  name: "AlloyDB Instance",
+  pinnable: false,
   id: "alloydb-instance",
-  displayName: "AlloyDB Instance",
-  pluralDisplayName: "AlloyDB Instances",
   description: "An instance within a Google Cloud AlloyDB cluster",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "instanceType", label: "Instance Type", kind: "string", required: false },
-    { key: "state", label: "State", kind: "string", required: false },
-    { key: "cpuCount", label: "CPU Count", kind: "number", required: false },
-    { key: "ipAddress", label: "IP Address", kind: "string", required: false },
-    { key: "availabilityType", label: "Availability Type", kind: "string", required: false },
+    f("name", "Name"),
+    f("instanceType", "Instance Type", { required: false }),
+    f("state", "State", { required: false }),
+    f("cpuCount", "CPU Count", { kind: "number", required: false }),
+    f("ipAddress", "IP Address", { required: false }),
+    f("availabilityType", "Availability Type", { required: false }),
   ],
   outputs: [
-    { key: "ipAddress", label: "IP Address", sensitive: false },
-    { key: "port", label: "Port", sensitive: false },
-    { key: "username", label: "Username", sensitive: false },
-    { key: "password", label: "Password", sensitive: true },
-    {
-      key: "connectionUrl",
-      label: "Connection URL",
+    o("ipAddress", "IP Address"),
+    o("port", "Port"),
+    o("username", "Username"),
+    o("password", "Password", { sensitive: true }),
+    o("connectionUrl", "Connection URL", {
       sensitive: true,
       description: "Full PostgreSQL connection URL with embedded credentials",
-    },
+    }),
   ],
   parentTypeId: "alloydb-cluster",
-  dashboardPinnable: false,
   supportsCreate: true,
   supportsMetrics: true,
   peerIntegrations: [
@@ -64,4 +61,4 @@ export const AlloyDbInstanceResourceType: ResourceTypeDefinition = {
       ],
     },
   ],
-};
+});

@@ -1,17 +1,15 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const ResourceGroupResourceType: ResourceTypeDefinition = {
+export const ResourceGroupResourceType = rt({
+  name: "Resource Group",
   id: "azure-resource-group",
-  displayName: "Resource Group",
-  pluralDisplayName: "Resource Groups",
   description: "An Azure Resource Group",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "location", label: "Location", kind: "string", required: true },
-    { key: "provisioningState", label: "Provisioning State", kind: "string", required: true },
+    f("name", "Name"),
+    f("location", "Location"),
+    f("provisioningState", "Provisioning State"),
   ],
-  outputs: [{ key: "resourceId", label: "Resource ID", sensitive: false }],
-  dashboardPinnable: true,
+  outputs: [o("resourceId", "Resource ID")],
   iconKey: "project",
   supportsCreate: true,
-};
+});

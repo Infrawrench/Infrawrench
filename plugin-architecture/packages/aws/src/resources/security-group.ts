@@ -1,21 +1,20 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const SecurityGroupResourceType: ResourceTypeDefinition = {
+export const SecurityGroupResourceType = rt({
+  name: "Security Group",
+  pinnable: false,
   id: "security-group",
-  displayName: "Security Group",
-  pluralDisplayName: "Security Groups",
   description: "An AWS EC2 security group (virtual firewall)",
   fields: [
-    { key: "groupId", label: "Group ID", kind: "string", required: true },
-    { key: "groupName", label: "Group Name", kind: "string", required: true },
-    { key: "description", label: "Description", kind: "string", required: false },
-    { key: "vpcId", label: "VPC ID", kind: "string", required: true },
-    { key: "inboundRuleCount", label: "Inbound Rules", kind: "number", required: false },
-    { key: "outboundRuleCount", label: "Outbound Rules", kind: "number", required: false },
+    f("groupId", "Group ID"),
+    f("groupName", "Group Name"),
+    f("description", "Description", { required: false }),
+    f("vpcId", "VPC ID"),
+    f("inboundRuleCount", "Inbound Rules", { kind: "number", required: false }),
+    f("outboundRuleCount", "Outbound Rules", { kind: "number", required: false }),
   ],
-  outputs: [{ key: "groupId", label: "Security Group ID", sensitive: false }],
-  dashboardPinnable: false,
+  outputs: [o("groupId", "Security Group ID")],
   iconKey: "firewall",
   supportsCreate: true,
   attachTargets: [{ pluginId: "aws", resourceTypeId: "ec2-instance", verb: "Apply firewall" }],
-};
+});

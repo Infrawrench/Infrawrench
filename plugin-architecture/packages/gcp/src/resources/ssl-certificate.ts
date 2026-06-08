@@ -1,21 +1,17 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const SslCertificateResourceType: ResourceTypeDefinition = {
+export const SslCertificateResourceType = rt({
+  name: "SSL Certificate",
+  pinnable: false,
   id: "ssl-certificate",
-  displayName: "SSL Certificate",
-  pluralDisplayName: "SSL Certificates",
   description: "A Google Cloud managed or self-managed SSL certificate",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "type", label: "Type", kind: "string", required: false },
-    { key: "status", label: "Status", kind: "string", required: false },
-    { key: "domains", label: "Domains", kind: "string", required: false },
-    { key: "expireTime", label: "Expires", kind: "string", required: false },
+    f("name", "Name"),
+    f("type", "Type", { required: false }),
+    f("status", "Status", { required: false }),
+    f("domains", "Domains", { required: false }),
+    f("expireTime", "Expires", { required: false }),
   ],
-  outputs: [
-    { key: "dnsRecords", label: "DNS Records", sensitive: false },
-    { key: "domains", label: "Domains", sensitive: false },
-  ],
-  dashboardPinnable: false,
+  outputs: [o("dnsRecords", "DNS Records"), o("domains", "Domains")],
   supportsCreate: true,
-};
+});

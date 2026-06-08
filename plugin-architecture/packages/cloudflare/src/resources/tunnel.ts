@@ -1,25 +1,19 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const TunnelResourceType: ResourceTypeDefinition = {
+export const TunnelResourceType = rt({
+  name: "Tunnel",
   id: "tunnel",
-  displayName: "Tunnel",
-  pluralDisplayName: "Tunnels",
   description: "A Cloudflare Tunnel for secure origin connections",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "status", label: "Status", kind: "string", required: true },
-    { key: "tunnelType", label: "Tunnel Type", kind: "string", required: false },
-    { key: "remoteConfig", label: "Remote Config", kind: "boolean", required: false },
-    { key: "connectionsCount", label: "Active Connections", kind: "number", required: false },
-    { key: "createdAt", label: "Created", kind: "string", required: false },
+    f("name", "Name"),
+    f("status", "Status"),
+    f("tunnelType", "Tunnel Type", { required: false }),
+    f("remoteConfig", "Remote Config", { kind: "boolean", required: false }),
+    f("connectionsCount", "Active Connections", { kind: "number", required: false }),
+    f("createdAt", "Created", { required: false }),
   ],
-  outputs: [
-    { key: "tunnelId", label: "Tunnel ID", sensitive: false },
-    { key: "tunnelToken", label: "Tunnel Token", sensitive: true },
-  ],
-  dashboardPinnable: true,
+  outputs: [o("tunnelId", "Tunnel ID"), o("tunnelToken", "Tunnel Token", { sensitive: true })],
   supportsCreate: true,
-  // Drag a tunnel onto any SSH host (EC2, droplet, …) to wire up SSH-over-tunnel.
   sshTunnelAttachSource: true,
   credentialFormats: [
     {
@@ -47,4 +41,4 @@ export const TunnelResourceType: ResourceTypeDefinition = {
     },
   ],
   iconKey: "tunnel",
-};
+});

@@ -1,48 +1,35 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const SqlWarehouseResourceType: ResourceTypeDefinition = {
+export const SqlWarehouseResourceType = rt({
+  name: "SQL Warehouse",
   id: "databricks-sql-warehouse",
-  displayName: "SQL Warehouse",
-  pluralDisplayName: "SQL Warehouses",
   description: "A Databricks SQL compute endpoint for running SQL queries",
   fields: [
-    { key: "warehouseId", label: "Warehouse ID", kind: "string", required: true },
-    { key: "name", label: "Name", kind: "string", required: true },
-    {
-      key: "state",
-      label: "State",
+    f("warehouseId", "Warehouse ID"),
+    f("name", "Name"),
+    f("state", "State", {
       kind: "enum",
-      required: true,
       enumValues: ["STARTING", "RUNNING", "STOPPING", "STOPPED", "DELETING", "DELETED"],
-    },
-    { key: "clusterSize", label: "Cluster Size", kind: "string", required: false },
-    { key: "minNumClusters", label: "Min Clusters", kind: "number", required: false },
-    { key: "maxNumClusters", label: "Max Clusters", kind: "number", required: false },
-    { key: "autoStopMinutes", label: "Auto-stop (min)", kind: "number", required: false },
-    { key: "warehouseType", label: "Type", kind: "string", required: false },
-    { key: "enablePhoton", label: "Photon Enabled", kind: "boolean", required: false },
-    { key: "numActiveSessions", label: "Active Sessions", kind: "number", required: false },
-    { key: "numRunningQueries", label: "Running Queries", kind: "number", required: false },
-    { key: "creatorName", label: "Creator", kind: "string", required: false },
+    }),
+    f("clusterSize", "Cluster Size", { required: false }),
+    f("minNumClusters", "Min Clusters", { kind: "number", required: false }),
+    f("maxNumClusters", "Max Clusters", { kind: "number", required: false }),
+    f("autoStopMinutes", "Auto-stop (min)", { kind: "number", required: false }),
+    f("warehouseType", "Type", { required: false }),
+    f("enablePhoton", "Photon Enabled", { kind: "boolean", required: false }),
+    f("numActiveSessions", "Active Sessions", { kind: "number", required: false }),
+    f("numRunningQueries", "Running Queries", { kind: "number", required: false }),
+    f("creatorName", "Creator", { required: false }),
   ],
   outputs: [
-    { key: "warehouseId", label: "Warehouse ID", sensitive: false },
-    { key: "jdbcUrl", label: "JDBC URL", sensitive: false },
-    { key: "odbcUrl", label: "ODBC URL", sensitive: false },
-    {
-      key: "httpPath",
-      label: "HTTP Path",
-      sensitive: false,
-      description: "HTTP path for the SQL Connector / JDBC driver",
-    },
-    {
-      key: "serverHostname",
-      label: "Server Hostname",
-      sensitive: false,
+    o("warehouseId", "Warehouse ID"),
+    o("jdbcUrl", "JDBC URL"),
+    o("odbcUrl", "ODBC URL"),
+    o("httpPath", "HTTP Path", { description: "HTTP path for the SQL Connector / JDBC driver" }),
+    o("serverHostname", "Server Hostname", {
       description: "Workspace hostname for the SQL Connector",
-    },
+    }),
   ],
-  dashboardPinnable: true,
   supportsCreate: true,
   iconKey: "database",
   resourceSqlDriver: {
@@ -62,4 +49,4 @@ export const SqlWarehouseResourceType: ResourceTypeDefinition = {
       ],
     },
   ],
-};
+});

@@ -1,19 +1,16 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const CloudRunServiceResourceType: ResourceTypeDefinition = {
+export const CloudRunServiceResourceType = rt({
+  name: "Cloud Run Service",
   id: "cloud-run-service",
-  displayName: "Cloud Run Service",
-  pluralDisplayName: "Cloud Run Services",
   description: "A Google Cloud Run managed service",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "region", label: "Region", kind: "string", required: true },
-    { key: "latestRevision", label: "Latest Revision", kind: "string", required: false },
-    { key: "state", label: "State", kind: "string", required: false },
-    { key: "ingress", label: "Ingress", kind: "string", required: false },
-    {
-      key: "network",
-      label: "VPC Network",
+    f("name", "Name"),
+    f("region", "Region"),
+    f("latestRevision", "Latest Revision", { required: false }),
+    f("state", "State", { required: false }),
+    f("ingress", "Ingress", { required: false }),
+    f("network", "VPC Network", {
       kind: "association",
       required: false,
       description: "VPC network for private service access",
@@ -26,10 +23,9 @@ export const CloudRunServiceResourceType: ResourceTypeDefinition = {
           outputKey: "selfLink",
         },
       ],
-    },
+    }),
   ],
-  outputs: [{ key: "url", label: "Service URL", sensitive: false }],
-  dashboardPinnable: true,
+  outputs: [o("url", "Service URL")],
   supportsCreate: true,
   supportsMetrics: true,
-};
+});

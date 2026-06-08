@@ -1,25 +1,19 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const PubSubSubscriptionResourceType: ResourceTypeDefinition = {
+export const PubSubSubscriptionResourceType = rt({
+  name: "Pub/Sub Subscription",
+  pinnable: false,
   id: "pubsub-subscription",
-  displayName: "Pub/Sub Subscription",
-  pluralDisplayName: "Pub/Sub Subscriptions",
   description: "A Google Cloud Pub/Sub subscription",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "topic", label: "Topic", kind: "string", required: false },
-    { key: "ackDeadlineSeconds", label: "Ack Deadline (s)", kind: "number", required: false },
-    {
-      key: "messageRetentionDuration",
-      label: "Message Retention",
-      kind: "string",
-      required: false,
-    },
-    { key: "filter", label: "Filter", kind: "string", required: false },
+    f("name", "Name"),
+    f("topic", "Topic", { required: false }),
+    f("ackDeadlineSeconds", "Ack Deadline (s)", { kind: "number", required: false }),
+    f("messageRetentionDuration", "Message Retention", { required: false }),
+    f("filter", "Filter", { required: false }),
   ],
   outputs: [],
   parentTypeId: "pubsub-topic",
-  dashboardPinnable: false,
   supportsCreate: true,
   supportsMetrics: true,
-};
+});

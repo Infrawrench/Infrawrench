@@ -1,20 +1,20 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const NotificationPolicyResourceType: ResourceTypeDefinition = {
+export const NotificationPolicyResourceType = rt({
+  name: "Notification Policy",
+  plural: "Notification Policies",
+  pinnable: false,
   id: "notification-policy",
-  displayName: "Notification Policy",
-  pluralDisplayName: "Notification Policies",
   description: "A Cloudflare account notification (alerting) policy",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "alertType", label: "Alert Type", kind: "string", required: true, editable: false },
-    { key: "enabled", label: "Enabled", kind: "boolean", required: true },
-    { key: "description", label: "Description", kind: "string", required: false },
-    { key: "mechanisms", label: "Delivers To", kind: "string", required: false, editable: false },
+    f("name", "Name"),
+    f("alertType", "Alert Type", { editable: false }),
+    f("enabled", "Enabled", { kind: "boolean" }),
+    f("description", "Description", { required: false }),
+    f("mechanisms", "Delivers To", { required: false, editable: false }),
   ],
   outputs: [],
-  dashboardPinnable: false,
   supportsCreate: true,
   supportsUpdate: true,
   iconKey: "logs",
-};
+});

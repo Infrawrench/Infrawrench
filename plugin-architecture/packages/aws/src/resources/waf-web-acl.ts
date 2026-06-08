@@ -1,36 +1,23 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const WAFWebACLResourceType: ResourceTypeDefinition = {
+export const WAFWebACLResourceType = rt({
+  name: "WAF Web ACL",
   id: "waf-web-acl",
-  displayName: "WAF Web ACL",
-  pluralDisplayName: "WAF Web ACLs",
   description: "An AWS WAFv2 web access control list",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    {
-      key: "scope",
-      label: "Scope",
-      kind: "enum",
-      required: true,
-      enumValues: ["REGIONAL", "CLOUDFRONT"],
-    },
-    { key: "description", label: "Description", kind: "string", required: false },
-    { key: "ruleCount", label: "Rules", kind: "number", required: false },
-    {
-      key: "defaultAction",
-      label: "Default Action",
+    f("name", "Name"),
+    f("scope", "Scope", { kind: "enum", enumValues: ["REGIONAL", "CLOUDFRONT"] }),
+    f("description", "Description", { required: false }),
+    f("ruleCount", "Rules", { kind: "number", required: false }),
+    f("defaultAction", "Default Action", {
       kind: "enum",
       required: false,
       enumValues: ["ALLOW", "BLOCK"],
-    },
-    { key: "capacity", label: "Capacity (WCU)", kind: "number", required: false },
+    }),
+    f("capacity", "Capacity (WCU)", { kind: "number", required: false }),
   ],
-  outputs: [
-    { key: "webAclArn", label: "Web ACL ARN", sensitive: false },
-    { key: "webAclId", label: "Web ACL ID", sensitive: false },
-  ],
-  dashboardPinnable: true,
+  outputs: [o("webAclArn", "Web ACL ARN"), o("webAclId", "Web ACL ID")],
   iconKey: "firewall",
   supportsCreate: true,
   supportsMetrics: true,
-};
+});

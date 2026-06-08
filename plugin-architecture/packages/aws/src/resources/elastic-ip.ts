@@ -1,20 +1,19 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const ElasticIPResourceType: ResourceTypeDefinition = {
+export const ElasticIPResourceType = rt({
+  name: "Elastic IP",
+  pinnable: false,
   id: "elastic-ip",
-  displayName: "Elastic IP",
-  pluralDisplayName: "Elastic IPs",
   description: "An AWS Elastic IP address",
   fields: [
-    { key: "allocationId", label: "Allocation ID", kind: "string", required: true },
-    { key: "publicIp", label: "Public IP", kind: "string", required: true },
-    { key: "associationId", label: "Association ID", kind: "string", required: false },
-    { key: "instanceId", label: "Instance ID", kind: "string", required: false },
-    { key: "networkInterfaceId", label: "Network Interface", kind: "string", required: false },
-    { key: "domain", label: "Domain", kind: "string", required: false },
+    f("allocationId", "Allocation ID"),
+    f("publicIp", "Public IP"),
+    f("associationId", "Association ID", { required: false }),
+    f("instanceId", "Instance ID", { required: false }),
+    f("networkInterfaceId", "Network Interface", { required: false }),
+    f("domain", "Domain", { required: false }),
   ],
-  outputs: [{ key: "publicIp", label: "Public IP", sensitive: false }],
-  dashboardPinnable: false,
+  outputs: [o("publicIp", "Public IP")],
   supportsCreate: true,
   attachTargets: [
     {
@@ -29,4 +28,4 @@ export const ElasticIPResourceType: ResourceTypeDefinition = {
     },
   ],
   iconKey: "network",
-};
+});

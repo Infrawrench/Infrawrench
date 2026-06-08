@@ -1,26 +1,22 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const NetlifyDnsRecordResourceType: ResourceTypeDefinition = {
+export const NetlifyDnsRecordResourceType = rt({
+  name: "DNS Record",
+  pinnable: false,
   id: "netlify-dns-record",
-  displayName: "DNS Record",
-  pluralDisplayName: "DNS Records",
   description: "A DNS record in a Netlify Managed DNS zone",
   fields: [
-    { key: "name", label: "Hostname", kind: "string", required: true },
-    { key: "type", label: "Type", kind: "string", required: true },
-    { key: "content", label: "Value", kind: "string", required: true },
-    { key: "ttl", label: "TTL", kind: "number", required: false },
-    { key: "priority", label: "Priority", kind: "number", required: false },
-    { key: "managed", label: "Managed", kind: "boolean", required: false },
-    { key: "tag", label: "Tag", kind: "string", required: false },
-    { key: "flag", label: "Flag", kind: "number", required: false },
+    f("name", "Hostname"),
+    f("type", "Type"),
+    f("content", "Value"),
+    f("ttl", "TTL", { kind: "number", required: false }),
+    f("priority", "Priority", { kind: "number", required: false }),
+    f("managed", "Managed", { kind: "boolean", required: false }),
+    f("tag", "Tag", { required: false }),
+    f("flag", "Flag", { kind: "number", required: false }),
   ],
-  outputs: [
-    { key: "recordId", label: "Record ID", sensitive: false },
-    { key: "hostname", label: "Hostname", sensitive: false },
-  ],
+  outputs: [o("recordId", "Record ID"), o("hostname", "Hostname")],
   parentTypeId: "netlify-dns-zone",
-  dashboardPinnable: false,
   supportsCreate: true,
   iconKey: "dns-record",
-};
+});

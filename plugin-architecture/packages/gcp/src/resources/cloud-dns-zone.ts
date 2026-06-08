@@ -1,28 +1,21 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const CloudDnsZoneResourceType: ResourceTypeDefinition = {
+export const CloudDnsZoneResourceType = rt({
+  name: "Cloud DNS Zone",
   id: "cloud-dns-zone",
-  displayName: "Cloud DNS Zone",
-  pluralDisplayName: "Cloud DNS Zones",
   description: "A Google Cloud DNS managed zone",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "dnsName", label: "DNS Name", kind: "string", required: true },
-    { key: "description", label: "Description", kind: "string", required: false },
-    { key: "visibility", label: "Visibility", kind: "string", required: false },
-    { key: "nameservers", label: "Nameservers", kind: "string", required: false },
-    { key: "dnssecState", label: "DNSSEC", kind: "string", required: false },
-    { key: "recordCount", label: "Record Count", kind: "number", required: false },
+    f("name", "Name"),
+    f("dnsName", "DNS Name"),
+    f("description", "Description", { required: false }),
+    f("visibility", "Visibility", { required: false }),
+    f("nameservers", "Nameservers", { required: false }),
+    f("dnssecState", "DNSSEC", { required: false }),
+    f("recordCount", "Record Count", { kind: "number", required: false }),
   ],
   outputs: [
-    {
-      key: "nameservers",
-      label: "Nameservers",
-      sensitive: false,
-      description: "Google Cloud DNS nameservers for this zone",
-    },
+    o("nameservers", "Nameservers", { description: "Google Cloud DNS nameservers for this zone" }),
   ],
-  dashboardPinnable: true,
   supportsCreate: true,
   iconKey: "dns",
-};
+});

@@ -1,20 +1,18 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const DNSZoneResourceType: ResourceTypeDefinition = {
+export const DNSZoneResourceType = rt({
+  name: "DNS Zone",
   id: "azure-dns-zone",
-  displayName: "DNS Zone",
-  pluralDisplayName: "DNS Zones",
   description: "An Azure DNS Zone",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "resourceGroup", label: "Resource Group", kind: "string", required: true },
-    { key: "zoneType", label: "Zone Type", kind: "string", required: true },
-    { key: "numberOfRecordSets", label: "Record Sets", kind: "number", required: false },
-    { key: "maxNumberOfRecordSets", label: "Max Record Sets", kind: "number", required: false },
+    f("name", "Name"),
+    f("resourceGroup", "Resource Group"),
+    f("zoneType", "Zone Type"),
+    f("numberOfRecordSets", "Record Sets", { kind: "number", required: false }),
+    f("maxNumberOfRecordSets", "Max Record Sets", { kind: "number", required: false }),
   ],
-  outputs: [{ key: "nameServers", label: "Name Servers", sensitive: false }],
-  dashboardPinnable: true,
+  outputs: [o("nameServers", "Name Servers")],
   supportsMetrics: true,
   iconKey: "dns",
   supportsCreate: true,
-};
+});

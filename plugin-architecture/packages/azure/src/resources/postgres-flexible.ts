@@ -1,29 +1,21 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const PostgresFlexibleServerResourceType: ResourceTypeDefinition = {
+export const PostgresFlexibleServerResourceType = rt({
+  name: "PostgreSQL Flexible Server",
   id: "azure-postgres-flexible",
-  displayName: "PostgreSQL Flexible Server",
-  pluralDisplayName: "PostgreSQL Flexible Servers",
   description: "An Azure Database for PostgreSQL Flexible Server",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "resourceGroup", label: "Resource Group", kind: "string", required: true },
-    { key: "location", label: "Location", kind: "string", required: true },
-    { key: "state", label: "State", kind: "string", required: true },
-    { key: "version", label: "PostgreSQL Version", kind: "string", required: false },
-    { key: "sku", label: "SKU", kind: "string", required: false },
-    { key: "tier", label: "Tier", kind: "string", required: false },
-    { key: "storageSizeGb", label: "Storage (GB)", kind: "number", required: false },
-    { key: "haEnabled", label: "HA Enabled", kind: "boolean", required: false },
-    {
-      key: "backupRetentionDays",
-      label: "Backup Retention (Days)",
-      kind: "number",
-      required: false,
-    },
-    {
-      key: "network",
-      label: "Virtual Network",
+    f("name", "Name"),
+    f("resourceGroup", "Resource Group"),
+    f("location", "Location"),
+    f("state", "State"),
+    f("version", "PostgreSQL Version", { required: false }),
+    f("sku", "SKU", { required: false }),
+    f("tier", "Tier", { required: false }),
+    f("storageSizeGb", "Storage (GB)", { kind: "number", required: false }),
+    f("haEnabled", "HA Enabled", { kind: "boolean", required: false }),
+    f("backupRetentionDays", "Backup Retention (Days)", { kind: "number", required: false }),
+    f("network", "Virtual Network", {
       kind: "association",
       required: false,
       description: "Virtual network for private access",
@@ -36,14 +28,13 @@ export const PostgresFlexibleServerResourceType: ResourceTypeDefinition = {
           outputKey: "resourceId",
         },
       ],
-    },
+    }),
   ],
   outputs: [
-    { key: "fqdn", label: "FQDN", sensitive: false },
-    { key: "connectionString", label: "Connection String", sensitive: true },
-    { key: "administratorLogin", label: "Admin Username", sensitive: false },
+    o("fqdn", "FQDN"),
+    o("connectionString", "Connection String", { sensitive: true }),
+    o("administratorLogin", "Admin Username"),
   ],
-  dashboardPinnable: true,
   iconKey: "database",
   supportsCreate: true,
   supportsMetrics: true,
@@ -75,4 +66,4 @@ export const PostgresFlexibleServerResourceType: ResourceTypeDefinition = {
       ],
     },
   ],
-};
+});

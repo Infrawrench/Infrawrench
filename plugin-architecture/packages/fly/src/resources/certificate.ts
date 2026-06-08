@@ -1,23 +1,21 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const CertificateResourceType: ResourceTypeDefinition = {
+export const CertificateResourceType = rt({
+  name: "Certificate",
   id: "certificate",
-  displayName: "Certificate",
-  pluralDisplayName: "Certificates",
   description: "A Fly.io TLS certificate for a custom app hostname",
   parentTypeId: "app",
   fields: [
-    { key: "hostname", label: "Hostname", kind: "string", required: true },
-    { key: "appName", label: "App", kind: "string", required: true },
-    { key: "configured", label: "Configured", kind: "boolean", required: false },
-    { key: "acmeDnsConfigured", label: "ACME DNS", kind: "boolean", required: false },
-    { key: "certificateAuthority", label: "Authority", kind: "string", required: false },
-    { key: "issued", label: "Issued", kind: "string", required: false },
-    { key: "expires", label: "Expires", kind: "string", required: false },
-    { key: "dnsProvider", label: "DNS Provider", kind: "string", required: false },
+    f("hostname", "Hostname"),
+    f("appName", "App"),
+    f("configured", "Configured", { kind: "boolean", required: false }),
+    f("acmeDnsConfigured", "ACME DNS", { kind: "boolean", required: false }),
+    f("certificateAuthority", "Authority", { required: false }),
+    f("issued", "Issued", { required: false }),
+    f("expires", "Expires", { required: false }),
+    f("dnsProvider", "DNS Provider", { required: false }),
   ],
-  outputs: [{ key: "hostname", label: "Hostname", sensitive: false }],
-  dashboardPinnable: true,
+  outputs: [o("hostname", "Hostname")],
   iconKey: "certificate",
   supportsCreate: true,
-};
+});

@@ -1,31 +1,25 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const ProjectResourceType: ResourceTypeDefinition = {
+export const ProjectResourceType = rt({
+  name: "Project",
   id: "project",
-  displayName: "Project",
-  pluralDisplayName: "Projects",
   description: "A DigitalOcean Project — groups related resources",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    {
-      key: "purpose",
-      label: "Purpose",
+    f("name", "Name"),
+    f("purpose", "Purpose", {
       kind: "enum",
       required: false,
       enumValues: ["Web Application", "API", "Mobile Application", "Website", "CI/CD", "Other"],
-    },
-    { key: "description", label: "Description", kind: "string", required: false },
-    {
-      key: "environment",
-      label: "Environment",
+    }),
+    f("description", "Description", { required: false }),
+    f("environment", "Environment", {
       kind: "enum",
       required: false,
       enumValues: ["Development", "Staging", "Production"],
-    },
+    }),
   ],
   outputs: [],
-  dashboardPinnable: true,
   supportsCreate: true,
   supportsUpdate: true,
   iconKey: "project",
-};
+});

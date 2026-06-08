@@ -1,39 +1,34 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const HealthcheckResourceType: ResourceTypeDefinition = {
+export const HealthcheckResourceType = rt({
+  name: "Health Check",
+  pinnable: false,
   id: "healthcheck",
-  displayName: "Health Check",
-  pluralDisplayName: "Health Checks",
   description: "A Cloudflare standalone health check (active origin monitor)",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "address", label: "Address", kind: "string", required: true },
-    { key: "type", label: "Type", kind: "string", required: false, editable: false },
-    { key: "status", label: "Status", kind: "string", required: false, editable: false },
-    { key: "description", label: "Description", kind: "string", required: false },
-    { key: "suspended", label: "Suspended", kind: "boolean", required: false },
-    { key: "interval", label: "Interval (s)", kind: "number", required: false },
-    { key: "timeout", label: "Timeout (s)", kind: "number", required: false },
-    { key: "retries", label: "Retries", kind: "number", required: false },
-    {
-      key: "consecutiveFails",
-      label: "Consecutive Fails",
+    f("name", "Name"),
+    f("address", "Address"),
+    f("type", "Type", { required: false, editable: false }),
+    f("status", "Status", { required: false, editable: false }),
+    f("description", "Description", { required: false }),
+    f("suspended", "Suspended", { kind: "boolean", required: false }),
+    f("interval", "Interval (s)", { kind: "number", required: false }),
+    f("timeout", "Timeout (s)", { kind: "number", required: false }),
+    f("retries", "Retries", { kind: "number", required: false }),
+    f("consecutiveFails", "Consecutive Fails", {
       kind: "number",
       required: false,
       editable: false,
-    },
-    {
-      key: "consecutiveSuccesses",
-      label: "Consecutive Successes",
+    }),
+    f("consecutiveSuccesses", "Consecutive Successes", {
       kind: "number",
       required: false,
       editable: false,
-    },
+    }),
   ],
   outputs: [],
   parentTypeId: "zone",
-  dashboardPinnable: false,
   supportsCreate: true,
   supportsUpdate: true,
   iconKey: "load-balancer",
-};
+});

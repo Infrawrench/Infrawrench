@@ -1,27 +1,22 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const MySQLDatabaseResourceType: ResourceTypeDefinition = {
+export const MySQLDatabaseResourceType = rt({
+  name: "MySQL Database",
   id: "mysql-database",
-  displayName: "MySQL Database",
-  pluralDisplayName: "MySQL Databases",
   description: "A MySQL database — connects via connection string.",
   fields: [
-    { key: "name", label: "Display Name", kind: "string", required: true },
-    {
-      key: "connectionString",
-      label: "Connection String",
+    f("name", "Display Name"),
+    f("connectionString", "Connection String", {
       kind: "secret",
-      required: true,
       allowLiteral: true,
       description: "Connection URI (mysql://user:pass@host:3306/dbname).",
       resolvableOutputKeys: ["connectionString"],
       resolvableFrom: [],
-    },
+    }),
   ],
   outputs: [
-    { key: "connectionString", label: "Connection String", sensitive: true },
-    { key: "serverVersion", label: "Server Version", sensitive: false },
+    o("connectionString", "Connection String", { sensitive: true }),
+    o("serverVersion", "Server Version"),
   ],
-  dashboardPinnable: true,
   iconKey: "mysql",
-};
+});

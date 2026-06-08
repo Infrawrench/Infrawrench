@@ -1,37 +1,24 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const CognitoUserPoolResourceType: ResourceTypeDefinition = {
+export const CognitoUserPoolResourceType = rt({
+  name: "Cognito User Pool",
   id: "cognito-user-pool",
-  displayName: "Cognito User Pool",
-  pluralDisplayName: "Cognito User Pools",
   description: "An Amazon Cognito user pool for application user authentication",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "userPoolId", label: "User Pool ID", kind: "string", required: true },
-    {
-      key: "status",
-      label: "Status",
-      kind: "enum",
-      required: false,
-      enumValues: ["Enabled", "Disabled"],
-    },
-    {
-      key: "mfaConfiguration",
-      label: "MFA",
+    f("name", "Name"),
+    f("userPoolId", "User Pool ID"),
+    f("status", "Status", { kind: "enum", required: false, enumValues: ["Enabled", "Disabled"] }),
+    f("mfaConfiguration", "MFA", {
       kind: "enum",
       required: false,
       enumValues: ["OFF", "ON", "OPTIONAL"],
-    },
-    { key: "estimatedNumberOfUsers", label: "Users", kind: "number", required: false },
-    { key: "creationDate", label: "Created", kind: "string", required: false },
-    { key: "lastModifiedDate", label: "Last Modified", kind: "string", required: false },
-    { key: "domain", label: "Domain", kind: "string", required: false },
+    }),
+    f("estimatedNumberOfUsers", "Users", { kind: "number", required: false }),
+    f("creationDate", "Created", { required: false }),
+    f("lastModifiedDate", "Last Modified", { required: false }),
+    f("domain", "Domain", { required: false }),
   ],
-  outputs: [
-    { key: "userPoolId", label: "User Pool ID", sensitive: false },
-    { key: "userPoolArn", label: "User Pool ARN", sensitive: false },
-  ],
-  dashboardPinnable: true,
+  outputs: [o("userPoolId", "User Pool ID"), o("userPoolArn", "User Pool ARN")],
   iconKey: "users",
   secretExportTemplates: [
     {
@@ -44,4 +31,4 @@ export const CognitoUserPoolResourceType: ResourceTypeDefinition = {
       ],
     },
   ],
-};
+});

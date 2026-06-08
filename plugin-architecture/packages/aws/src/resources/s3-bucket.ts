@@ -1,20 +1,15 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const S3BucketResourceType: ResourceTypeDefinition = {
+export const S3BucketResourceType = rt({
+  name: "S3 Bucket",
   id: "s3-bucket",
-  displayName: "S3 Bucket",
-  pluralDisplayName: "S3 Buckets",
   description: "An Amazon S3 object storage bucket",
   fields: [
-    { key: "name", label: "Bucket Name", kind: "string", required: true },
-    { key: "region", label: "Region", kind: "string", required: false },
-    { key: "creationDate", label: "Created", kind: "string", required: false },
+    f("name", "Bucket Name"),
+    f("region", "Region", { required: false }),
+    f("creationDate", "Created", { required: false }),
   ],
-  outputs: [
-    { key: "bucketArn", label: "Bucket ARN", sensitive: false },
-    { key: "endpoint", label: "Endpoint URL", sensitive: false },
-  ],
-  dashboardPinnable: true,
+  outputs: [o("bucketArn", "Bucket ARN"), o("endpoint", "Endpoint URL")],
   iconKey: "storage",
   supportsStorageBrowser: true,
   supportsCreate: true,
@@ -30,4 +25,4 @@ export const S3BucketResourceType: ResourceTypeDefinition = {
       ],
     },
   ],
-};
+});

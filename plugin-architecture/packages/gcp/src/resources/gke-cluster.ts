@@ -1,21 +1,18 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const GkeClusterResourceType: ResourceTypeDefinition = {
+export const GkeClusterResourceType = rt({
+  name: "GKE Cluster",
   id: "gke-cluster",
-  displayName: "GKE Cluster",
-  pluralDisplayName: "GKE Clusters",
   description: "A Google Kubernetes Engine cluster",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "location", label: "Location", kind: "string", required: true },
-    { key: "version", label: "Kubernetes Version", kind: "string", required: false },
-    { key: "machineType", label: "Machine Type", kind: "string", required: false },
-    { key: "diskSizeGb", label: "Disk Size (GB)", kind: "number", required: false },
-    { key: "nodeCount", label: "Node Count", kind: "number", required: false },
-    { key: "status", label: "Status", kind: "string", required: false },
-    {
-      key: "network",
-      label: "VPC Network",
+    f("name", "Name"),
+    f("location", "Location"),
+    f("version", "Kubernetes Version", { required: false }),
+    f("machineType", "Machine Type", { required: false }),
+    f("diskSizeGb", "Disk Size (GB)", { kind: "number", required: false }),
+    f("nodeCount", "Node Count", { kind: "number", required: false }),
+    f("status", "Status", { required: false }),
+    f("network", "VPC Network", {
       kind: "association",
       required: false,
       description: "VPC network to deploy the cluster in",
@@ -28,19 +25,16 @@ export const GkeClusterResourceType: ResourceTypeDefinition = {
           outputKey: "selfLink",
         },
       ],
-    },
+    }),
   ],
   outputs: [
-    { key: "clusterEndpoint", label: "Cluster Endpoint", sensitive: false, hidden: true },
-    {
-      key: "kubeconfig",
-      label: "Kubeconfig",
+    o("clusterEndpoint", "Cluster Endpoint", { hidden: true }),
+    o("kubeconfig", "Kubeconfig", {
       sensitive: true,
       hidden: true,
       description: "Full kubeconfig YAML for kubectl access",
-    },
+    }),
   ],
-  dashboardPinnable: true,
   supportsCreate: true,
   supportsMetrics: true,
   peerIntegrations: [
@@ -50,4 +44,4 @@ export const GkeClusterResourceType: ResourceTypeDefinition = {
       tabLabel: "Kubernetes",
     },
   ],
-};
+});

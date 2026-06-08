@@ -1,26 +1,24 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const TursoDatabaseResourceType: ResourceTypeDefinition = {
+export const TursoDatabaseResourceType = rt({
+  name: "Database",
   id: "turso-database",
-  displayName: "Database",
-  pluralDisplayName: "Databases",
   description: "A Turso SQLite database — edge-replicated via libsql",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "group", label: "Group", kind: "string", required: false },
-    { key: "primaryRegion", label: "Primary Region", kind: "string", required: false },
-    { key: "regions", label: "Regions", kind: "string", required: false },
-    { key: "version", label: "Version", kind: "string", required: false },
-    { key: "isSchema", label: "Schema Database", kind: "boolean", required: false },
-    { key: "schema", label: "Parent Schema", kind: "string", required: false },
-    { key: "sleeping", label: "Sleeping", kind: "boolean", required: false },
+    f("name", "Name"),
+    f("group", "Group", { required: false }),
+    f("primaryRegion", "Primary Region", { required: false }),
+    f("regions", "Regions", { required: false }),
+    f("version", "Version", { required: false }),
+    f("isSchema", "Schema Database", { kind: "boolean", required: false }),
+    f("schema", "Parent Schema", { required: false }),
+    f("sleeping", "Sleeping", { kind: "boolean", required: false }),
   ],
   outputs: [
-    { key: "hostname", label: "Hostname", sensitive: false },
-    { key: "connectionString", label: "Connection String (libsql)", sensitive: true },
-    { key: "dbName", label: "Database Name", sensitive: false },
+    o("hostname", "Hostname"),
+    o("connectionString", "Connection String (libsql)", { sensitive: true }),
+    o("dbName", "Database Name"),
   ],
-  dashboardPinnable: true,
   supportsCreate: true,
   iconKey: "turso",
   secretExportTemplates: [
@@ -38,4 +36,4 @@ export const TursoDatabaseResourceType: ResourceTypeDefinition = {
     driver: "libsql",
     connectionStringOutputKey: "connectionString",
   },
-};
+});

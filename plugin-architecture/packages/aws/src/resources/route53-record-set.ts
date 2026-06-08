@@ -1,26 +1,22 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const Route53RecordSetResourceType: ResourceTypeDefinition = {
+export const Route53RecordSetResourceType = rt({
+  name: "Route 53 Record",
+  pinnable: false,
   id: "route53-record-set",
-  displayName: "Route 53 Record",
-  pluralDisplayName: "Route 53 Records",
   description: "A DNS record in an Amazon Route 53 hosted zone",
   parentTypeId: "route53-hosted-zone",
   fields: [
-    { key: "name", label: "Record Name", kind: "string", required: true },
-    {
-      key: "type",
-      label: "Record Type",
+    f("name", "Record Name"),
+    f("type", "Record Type", {
       kind: "enum",
-      required: true,
       enumValues: ["A", "AAAA", "CNAME", "MX", "NS", "TXT", "SRV", "SOA", "PTR", "CAA", "ALIAS"],
-    },
-    { key: "ttl", label: "TTL", kind: "number", required: false },
-    { key: "values", label: "Values", kind: "string", required: false },
-    { key: "hostedZoneId", label: "Hosted Zone ID", kind: "string", required: true },
+    }),
+    f("ttl", "TTL", { kind: "number", required: false }),
+    f("values", "Values", { required: false }),
+    f("hostedZoneId", "Hosted Zone ID"),
   ],
   outputs: [],
-  dashboardPinnable: false,
   iconKey: "dns",
   supportsCreate: true,
   supportsUpdate: true,
@@ -28,4 +24,4 @@ export const Route53RecordSetResourceType: ResourceTypeDefinition = {
     { pluginId: "aws", resourceTypeId: "alb", verb: "Point alias" },
     { pluginId: "aws", resourceTypeId: "cloudfront-distribution", verb: "Point alias" },
   ],
-};
+});

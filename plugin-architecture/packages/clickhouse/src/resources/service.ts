@@ -1,51 +1,36 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const ServiceResourceType: ResourceTypeDefinition = {
+export const ServiceResourceType = rt({
+  name: "Service",
   id: "ch-service",
-  displayName: "Service",
-  pluralDisplayName: "Services",
   description: "A ClickHouse Cloud service — a managed ClickHouse database instance",
   fields: [
-    { key: "serviceId", label: "Service ID", kind: "string", required: true },
-    { key: "name", label: "Name", kind: "string", required: true },
-    {
-      key: "state",
-      label: "State",
+    f("serviceId", "Service ID"),
+    f("name", "Name"),
+    f("state", "State", {
       kind: "enum",
-      required: true,
       enumValues: ["running", "idle", "stopped", "starting", "stopping", "provisioning"],
-    },
-    { key: "provider", label: "Cloud Provider", kind: "string", required: false },
-    { key: "region", label: "Region", kind: "string", required: false },
-    { key: "clickhouseVersion", label: "ClickHouse Version", kind: "string", required: false },
-    { key: "tier", label: "Tier", kind: "string", required: false },
-    {
-      key: "minReplicaMemoryGb",
-      label: "Min Replica Memory (GB)",
-      kind: "number",
-      required: false,
-    },
-    {
-      key: "maxReplicaMemoryGb",
-      label: "Max Replica Memory (GB)",
-      kind: "number",
-      required: false,
-    },
-    { key: "numReplicas", label: "Replicas", kind: "number", required: false },
-    { key: "idleScaling", label: "Idle Scaling", kind: "boolean", required: false },
-    { key: "idleTimeoutMinutes", label: "Idle Timeout (min)", kind: "number", required: false },
-    { key: "isPrimary", label: "Primary", kind: "boolean", required: false },
-    { key: "isReadonly", label: "Read-only", kind: "boolean", required: false },
+    }),
+    f("provider", "Cloud Provider", { required: false }),
+    f("region", "Region", { required: false }),
+    f("clickhouseVersion", "ClickHouse Version", { required: false }),
+    f("tier", "Tier", { required: false }),
+    f("minReplicaMemoryGb", "Min Replica Memory (GB)", { kind: "number", required: false }),
+    f("maxReplicaMemoryGb", "Max Replica Memory (GB)", { kind: "number", required: false }),
+    f("numReplicas", "Replicas", { kind: "number", required: false }),
+    f("idleScaling", "Idle Scaling", { kind: "boolean", required: false }),
+    f("idleTimeoutMinutes", "Idle Timeout (min)", { kind: "number", required: false }),
+    f("isPrimary", "Primary", { kind: "boolean", required: false }),
+    f("isReadonly", "Read-only", { kind: "boolean", required: false }),
   ],
   outputs: [
-    { key: "serviceId", label: "Service ID", sensitive: false },
-    { key: "host", label: "Host", sensitive: false },
-    { key: "port", label: "Port", sensitive: false },
-    { key: "nativePort", label: "Native Port", sensitive: false },
-    { key: "connectionString", label: "Connection String", sensitive: true },
-    { key: "httpUrl", label: "HTTP URL", sensitive: false },
+    o("serviceId", "Service ID"),
+    o("host", "Host"),
+    o("port", "Port"),
+    o("nativePort", "Native Port"),
+    o("connectionString", "Connection String", { sensitive: true }),
+    o("httpUrl", "HTTP URL"),
   ],
-  dashboardPinnable: true,
   iconKey: "database",
   supportsCreate: true,
   resourceSqlDriver: {
@@ -69,4 +54,4 @@ export const ServiceResourceType: ResourceTypeDefinition = {
       ],
     },
   ],
-};
+});

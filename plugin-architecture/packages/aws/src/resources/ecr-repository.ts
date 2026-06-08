@@ -1,22 +1,18 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const ECRRepositoryResourceType: ResourceTypeDefinition = {
+export const ECRRepositoryResourceType = rt({
+  name: "ECR Repository",
+  plural: "ECR Repositories",
   id: "ecr-repository",
-  displayName: "ECR Repository",
-  pluralDisplayName: "ECR Repositories",
   description: "An Amazon Elastic Container Registry repository",
   fields: [
-    { key: "repositoryName", label: "Repository Name", kind: "string", required: true },
-    { key: "registryId", label: "Registry ID", kind: "string", required: false },
-    { key: "imageCount", label: "Image Count", kind: "number", required: false },
-    { key: "imageScanOnPush", label: "Scan on Push", kind: "boolean", required: false },
-    { key: "encryptionType", label: "Encryption", kind: "string", required: false },
+    f("repositoryName", "Repository Name"),
+    f("registryId", "Registry ID", { required: false }),
+    f("imageCount", "Image Count", { kind: "number", required: false }),
+    f("imageScanOnPush", "Scan on Push", { kind: "boolean", required: false }),
+    f("encryptionType", "Encryption", { required: false }),
   ],
-  outputs: [
-    { key: "repositoryUri", label: "Repository URI", sensitive: false },
-    { key: "repositoryArn", label: "Repository ARN", sensitive: false },
-  ],
-  dashboardPinnable: true,
+  outputs: [o("repositoryUri", "Repository URI"), o("repositoryArn", "Repository ARN")],
   supportsCreate: true,
   iconKey: "container-registry",
   secretExportTemplates: [
@@ -30,4 +26,4 @@ export const ECRRepositoryResourceType: ResourceTypeDefinition = {
       ],
     },
   ],
-};
+});

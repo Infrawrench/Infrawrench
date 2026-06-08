@@ -1,67 +1,32 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const DedicatedInferenceResourceType: ResourceTypeDefinition = {
+export const DedicatedInferenceResourceType = rt({
+  name: "Dedicated Inference",
   id: "dedicated-inference",
-  displayName: "Dedicated Inference",
-  pluralDisplayName: "Dedicated Inferences",
   description:
     "A DigitalOcean Dedicated Inference deployment — GPU-backed always-on model serving for steady request volume, strict latency SLOs, or bring-your-own-model. Per-GPU billing.",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "region", label: "Region", kind: "string", required: true },
-    { key: "vpcUuid", label: "VPC", kind: "string", required: false, editable: false },
-    {
-      key: "enablePublicEndpoint",
-      label: "Public Endpoint",
-      kind: "string",
+    f("name", "Name"),
+    f("region", "Region"),
+    f("vpcUuid", "VPC", { required: false, editable: false }),
+    f("enablePublicEndpoint", "Public Endpoint", {
       required: false,
       description: "Whether the deployment exposes a public inference endpoint",
-    },
-    {
-      key: "modelCount",
-      label: "Models",
-      kind: "number",
-      required: false,
-      editable: false,
-    },
-    {
-      key: "modelSummary",
-      label: "Deployed Models",
-      kind: "string",
-      required: false,
-      editable: false,
-    },
-    {
-      key: "publicEndpoint",
-      label: "Public FQDN",
-      kind: "string",
-      required: false,
-      editable: false,
-    },
-    {
-      key: "privateEndpoint",
-      label: "Private FQDN",
-      kind: "string",
-      required: false,
-      editable: false,
-    },
-    { key: "status", label: "Status", kind: "string", required: false, editable: false },
+    }),
+    f("modelCount", "Models", { kind: "number", required: false, editable: false }),
+    f("modelSummary", "Deployed Models", { required: false, editable: false }),
+    f("publicEndpoint", "Public FQDN", { required: false, editable: false }),
+    f("privateEndpoint", "Private FQDN", { required: false, editable: false }),
+    f("status", "Status", { required: false, editable: false }),
   ],
   outputs: [
-    {
-      key: "publicEndpointUrl",
-      label: "Public Endpoint URL",
-      sensitive: false,
+    o("publicEndpointUrl", "Public Endpoint URL", {
       description: "Public HTTPS endpoint for inference requests",
-    },
-    {
-      key: "privateEndpointUrl",
-      label: "Private Endpoint URL",
-      sensitive: false,
+    }),
+    o("privateEndpointUrl", "Private Endpoint URL", {
       description: "Private VPC HTTPS endpoint for inference requests",
-    },
+    }),
   ],
-  dashboardPinnable: true,
   supportsCreate: true,
   iconKey: "gpu",
-};
+});

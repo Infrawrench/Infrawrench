@@ -1,28 +1,25 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const IAMUserResourceType: ResourceTypeDefinition = {
+export const IAMUserResourceType = rt({
+  name: "IAM User",
+  pinnable: false,
   id: "iam-user",
-  displayName: "IAM User",
-  pluralDisplayName: "IAM Users",
   description: "An AWS Identity and Access Management user",
   fields: [
-    { key: "userName", label: "User Name", kind: "string", required: true },
-    { key: "userId", label: "User ID", kind: "string", required: true },
-    { key: "path", label: "Path", kind: "string", required: false },
-    { key: "createDate", label: "Created", kind: "string", required: false },
-    { key: "passwordLastUsed", label: "Password Last Used", kind: "string", required: false },
+    f("userName", "User Name"),
+    f("userId", "User ID"),
+    f("path", "Path", { required: false }),
+    f("createDate", "Created", { required: false }),
+    f("passwordLastUsed", "Password Last Used", { required: false }),
   ],
   outputs: [
-    { key: "userArn", label: "User ARN", sensitive: false },
-    {
-      key: "accessKey",
-      label: "Access Key (credentials file)",
+    o("userArn", "User ARN"),
+    o("accessKey", "Access Key (credentials file)", {
       sensitive: true,
       description:
         "Creates a new programmatic access key on resolve. Emitted in ini format (`[default]\\naws_access_key_id=…\\naws_secret_access_key=…`). Each resolve creates one key; AWS caps at 2 per user.",
-    },
+    }),
   ],
-  dashboardPinnable: false,
   iconKey: "user",
   supportsCreate: true,
   credentialFormats: [
@@ -34,4 +31,4 @@ export const IAMUserResourceType: ResourceTypeDefinition = {
       filenameTemplate: "{resource}.credentials",
     },
   ],
-};
+});

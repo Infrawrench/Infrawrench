@@ -1,19 +1,18 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const SchemaResourceType: ResourceTypeDefinition = {
+export const SchemaResourceType = rt({
+  name: "Schema",
+  pinnable: false,
   id: "databricks-schema",
-  displayName: "Schema",
-  pluralDisplayName: "Schemas",
   description: "A Unity Catalog schema (namespace for tables within a catalog)",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "catalogName", label: "Catalog", kind: "string", required: true },
-    { key: "owner", label: "Owner", kind: "string", required: false },
-    { key: "comment", label: "Comment", kind: "string", required: false },
-    { key: "tableCount", label: "Tables", kind: "number", required: false },
+    f("name", "Name"),
+    f("catalogName", "Catalog"),
+    f("owner", "Owner", { required: false }),
+    f("comment", "Comment", { required: false }),
+    f("tableCount", "Tables", { kind: "number", required: false }),
   ],
-  outputs: [{ key: "fullName", label: "Full Name", sensitive: false }],
+  outputs: [o("fullName", "Full Name")],
   parentTypeId: "databricks-catalog",
-  dashboardPinnable: false,
   supportsCreate: true,
-};
+});

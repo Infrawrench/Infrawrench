@@ -1,20 +1,16 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const DiskResourceType: ResourceTypeDefinition = {
+export const DiskResourceType = rt({
+  name: "Managed Disk",
   id: "azure-disk",
-  displayName: "Managed Disk",
-  pluralDisplayName: "Managed Disks",
   description: "An Azure Managed Disk",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "resourceGroup", label: "Resource Group", kind: "string", required: true },
-    { key: "location", label: "Location", kind: "string", required: true },
-    { key: "diskSizeGb", label: "Size (GB)", kind: "number", required: true },
-    {
-      key: "diskState",
-      label: "Disk State",
+    f("name", "Name"),
+    f("resourceGroup", "Resource Group"),
+    f("location", "Location"),
+    f("diskSizeGb", "Size (GB)", { kind: "number" }),
+    f("diskState", "Disk State", {
       kind: "enum",
-      required: true,
       enumValues: [
         "Unattached",
         "Attached",
@@ -24,14 +20,13 @@ export const DiskResourceType: ResourceTypeDefinition = {
         "ActiveUpload",
         "ActiveSASFrozen",
       ],
-    },
-    { key: "sku", label: "SKU", kind: "string", required: false },
-    { key: "osType", label: "OS Type", kind: "string", required: false },
-    { key: "managedBy", label: "Managed By", kind: "string", required: false },
-    { key: "encryption", label: "Encryption", kind: "string", required: false },
+    }),
+    f("sku", "SKU", { required: false }),
+    f("osType", "OS Type", { required: false }),
+    f("managedBy", "Managed By", { required: false }),
+    f("encryption", "Encryption", { required: false }),
   ],
   outputs: [],
-  dashboardPinnable: true,
   iconKey: "volume",
   supportsCreate: true,
   supportsMetrics: true,
@@ -43,4 +38,4 @@ export const DiskResourceType: ResourceTypeDefinition = {
       verb: "Attach",
     },
   ],
-};
+});

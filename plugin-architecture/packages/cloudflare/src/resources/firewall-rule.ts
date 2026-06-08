@@ -1,21 +1,20 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const FirewallRuleResourceType: ResourceTypeDefinition = {
+export const FirewallRuleResourceType = rt({
+  name: "WAF Custom Rule",
+  pinnable: false,
   id: "firewall-rule",
-  displayName: "WAF Custom Rule",
-  pluralDisplayName: "WAF Custom Rules",
   description: "A Cloudflare WAF custom rule (firewall rule)",
   fields: [
-    { key: "description", label: "Description", kind: "string", required: false },
-    { key: "expression", label: "Expression", kind: "string", required: true },
-    { key: "action", label: "Action", kind: "string", required: true },
-    { key: "enabled", label: "Enabled", kind: "boolean", required: true },
-    { key: "priority", label: "Priority", kind: "number", required: false, editable: false },
+    f("description", "Description", { required: false }),
+    f("expression", "Expression"),
+    f("action", "Action"),
+    f("enabled", "Enabled", { kind: "boolean" }),
+    f("priority", "Priority", { kind: "number", required: false, editable: false }),
   ],
   outputs: [],
   parentTypeId: "zone",
-  dashboardPinnable: false,
   supportsCreate: true,
   supportsUpdate: true,
   iconKey: "firewall",
-};
+});

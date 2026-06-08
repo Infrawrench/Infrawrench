@@ -1,30 +1,23 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const EventHubNamespaceResourceType: ResourceTypeDefinition = {
+export const EventHubNamespaceResourceType = rt({
+  name: "Event Hub Namespace",
   id: "azure-event-hub",
-  displayName: "Event Hub Namespace",
-  pluralDisplayName: "Event Hub Namespaces",
   description: "An Azure Event Hubs namespace for event streaming",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "resourceGroup", label: "Resource Group", kind: "string", required: true },
-    { key: "location", label: "Location", kind: "string", required: true },
-    { key: "sku", label: "SKU", kind: "string", required: true },
-    { key: "provisioningState", label: "Provisioning State", kind: "string", required: true },
-    { key: "status", label: "Status", kind: "string", required: false },
-    { key: "isAutoInflateEnabled", label: "Auto-Inflate", kind: "boolean", required: false },
-    {
-      key: "maximumThroughputUnits",
-      label: "Max Throughput Units",
-      kind: "number",
-      required: false,
-    },
+    f("name", "Name"),
+    f("resourceGroup", "Resource Group"),
+    f("location", "Location"),
+    f("sku", "SKU"),
+    f("provisioningState", "Provisioning State"),
+    f("status", "Status", { required: false }),
+    f("isAutoInflateEnabled", "Auto-Inflate", { kind: "boolean", required: false }),
+    f("maximumThroughputUnits", "Max Throughput Units", { kind: "number", required: false }),
   ],
   outputs: [
-    { key: "serviceBusEndpoint", label: "Endpoint", sensitive: false },
-    { key: "primaryConnectionString", label: "Connection String", sensitive: true },
+    o("serviceBusEndpoint", "Endpoint"),
+    o("primaryConnectionString", "Connection String", { sensitive: true }),
   ],
-  dashboardPinnable: true,
   iconKey: "topic",
   supportsCreate: true,
   supportsMetrics: true,
@@ -39,4 +32,4 @@ export const EventHubNamespaceResourceType: ResourceTypeDefinition = {
       ],
     },
   ],
-};
+});

@@ -1,20 +1,19 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const HealthCheckResourceType: ResourceTypeDefinition = {
+export const HealthCheckResourceType = rt({
+  name: "Health Check",
+  pinnable: false,
   id: "health-check",
-  displayName: "Health Check",
-  pluralDisplayName: "Health Checks",
   description: "A Google Cloud health check for load balancing",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "type", label: "Type", kind: "string", required: false },
-    { key: "port", label: "Port", kind: "number", required: false },
-    { key: "checkIntervalSec", label: "Check Interval (s)", kind: "number", required: false },
-    { key: "timeoutSec", label: "Timeout (s)", kind: "number", required: false },
-    { key: "healthyThreshold", label: "Healthy Threshold", kind: "number", required: false },
-    { key: "unhealthyThreshold", label: "Unhealthy Threshold", kind: "number", required: false },
+    f("name", "Name"),
+    f("type", "Type", { required: false }),
+    f("port", "Port", { kind: "number", required: false }),
+    f("checkIntervalSec", "Check Interval (s)", { kind: "number", required: false }),
+    f("timeoutSec", "Timeout (s)", { kind: "number", required: false }),
+    f("healthyThreshold", "Healthy Threshold", { kind: "number", required: false }),
+    f("unhealthyThreshold", "Unhealthy Threshold", { kind: "number", required: false }),
   ],
-  outputs: [{ key: "selfLink", label: "Self Link", sensitive: false }],
-  dashboardPinnable: false,
+  outputs: [o("selfLink", "Self Link")],
   supportsCreate: true,
-};
+});

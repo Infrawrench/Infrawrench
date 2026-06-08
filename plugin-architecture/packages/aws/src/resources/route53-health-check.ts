@@ -1,17 +1,13 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const Route53HealthCheckResourceType: ResourceTypeDefinition = {
+export const Route53HealthCheckResourceType = rt({
+  name: "Route 53 Health Check",
   id: "route53-health-check",
-  displayName: "Route 53 Health Check",
-  pluralDisplayName: "Route 53 Health Checks",
   description: "An Amazon Route 53 health check that monitors an endpoint or other health checks",
   fields: [
-    { key: "healthCheckId", label: "Health Check ID", kind: "string", required: true },
-    {
-      key: "type",
-      label: "Type",
+    f("healthCheckId", "Health Check ID"),
+    f("type", "Type", {
       kind: "enum",
-      required: true,
       enumValues: [
         "HTTP",
         "HTTPS",
@@ -22,17 +18,16 @@ export const Route53HealthCheckResourceType: ResourceTypeDefinition = {
         "CLOUDWATCH_METRIC",
         "RECOVERY_CONTROL",
       ],
-    },
-    { key: "ipAddress", label: "IP Address", kind: "string", required: false },
-    { key: "port", label: "Port", kind: "number", required: false },
-    { key: "resourcePath", label: "Resource Path", kind: "string", required: false },
-    { key: "fqdn", label: "FQDN", kind: "string", required: false },
-    { key: "requestInterval", label: "Request Interval (s)", kind: "number", required: false },
-    { key: "failureThreshold", label: "Failure Threshold", kind: "number", required: false },
-    { key: "disabled", label: "Disabled", kind: "boolean", required: false },
+    }),
+    f("ipAddress", "IP Address", { required: false }),
+    f("port", "Port", { kind: "number", required: false }),
+    f("resourcePath", "Resource Path", { required: false }),
+    f("fqdn", "FQDN", { required: false }),
+    f("requestInterval", "Request Interval (s)", { kind: "number", required: false }),
+    f("failureThreshold", "Failure Threshold", { kind: "number", required: false }),
+    f("disabled", "Disabled", { kind: "boolean", required: false }),
   ],
-  outputs: [{ key: "healthCheckId", label: "Health Check ID", sensitive: false }],
-  dashboardPinnable: true,
+  outputs: [o("healthCheckId", "Health Check ID")],
   iconKey: "dns",
   supportsMetrics: true,
-};
+});

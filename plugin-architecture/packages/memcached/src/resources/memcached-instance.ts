@@ -1,23 +1,18 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const MemcachedInstanceResourceType: ResourceTypeDefinition = {
+export const MemcachedInstanceResourceType = rt({
+  name: "Memcached Instance",
   id: "memcached-instance",
-  displayName: "Memcached Instance",
-  pluralDisplayName: "Memcached Instances",
   description: "A Memcached server",
   fields: [
-    { key: "name", label: "Display Name", kind: "string", required: true },
-    {
-      key: "connectionString",
-      label: "Server(s)",
+    f("name", "Display Name"),
+    f("connectionString", "Server(s)", {
       kind: "secret",
-      required: true,
       allowLiteral: true,
       description: "Host:port, or comma-separated for multiple servers (e.g. localhost:11211).",
       resolvableOutputKeys: ["connectionString"],
-    },
+    }),
   ],
-  outputs: [{ key: "connectionString", label: "Connection String", sensitive: true }],
-  dashboardPinnable: true,
+  outputs: [o("connectionString", "Connection String", { sensitive: true })],
   iconKey: "memcached",
-};
+});

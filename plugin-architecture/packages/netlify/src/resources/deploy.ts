@@ -1,33 +1,29 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const NetlifyDeployResourceType: ResourceTypeDefinition = {
+export const NetlifyDeployResourceType = rt({
+  name: "Deploy",
+  pinnable: false,
   id: "netlify-deploy",
-  displayName: "Deploy",
-  pluralDisplayName: "Deploys",
   description: "A deployment of a Netlify site",
   fields: [
-    { key: "state", label: "State", kind: "string", required: true },
-    { key: "context", label: "Context", kind: "string", required: false },
-    { key: "branch", label: "Branch", kind: "string", required: false },
-    { key: "commitRef", label: "Commit", kind: "string", required: false },
-    { key: "commitUrl", label: "Commit URL", kind: "string", required: false },
-    { key: "title", label: "Title", kind: "string", required: false },
-    { key: "url", label: "Deploy URL", kind: "string", required: false },
-    { key: "sslUrl", label: "SSL Deploy URL", kind: "string", required: false },
-    { key: "errorMessage", label: "Error", kind: "string", required: false },
-    { key: "framework", label: "Framework", kind: "string", required: false },
-    { key: "draft", label: "Draft", kind: "boolean", required: false },
-    { key: "locked", label: "Locked", kind: "boolean", required: false },
-    { key: "skipped", label: "Skipped", kind: "boolean", required: false },
-    { key: "createdAt", label: "Created At", kind: "string", required: false },
-    { key: "publishedAt", label: "Published At", kind: "string", required: false },
+    f("state", "State"),
+    f("context", "Context", { required: false }),
+    f("branch", "Branch", { required: false }),
+    f("commitRef", "Commit", { required: false }),
+    f("commitUrl", "Commit URL", { required: false }),
+    f("title", "Title", { required: false }),
+    f("url", "Deploy URL", { required: false }),
+    f("sslUrl", "SSL Deploy URL", { required: false }),
+    f("errorMessage", "Error", { required: false }),
+    f("framework", "Framework", { required: false }),
+    f("draft", "Draft", { kind: "boolean", required: false }),
+    f("locked", "Locked", { kind: "boolean", required: false }),
+    f("skipped", "Skipped", { kind: "boolean", required: false }),
+    f("createdAt", "Created At", { required: false }),
+    f("publishedAt", "Published At", { required: false }),
   ],
-  outputs: [
-    { key: "deployId", label: "Deploy ID", sensitive: false },
-    { key: "deployUrl", label: "Deploy URL", sensitive: false },
-  ],
+  outputs: [o("deployId", "Deploy ID"), o("deployUrl", "Deploy URL")],
   parentTypeId: "netlify-site",
-  dashboardPinnable: false,
   iconKey: "deployment",
   attachTargets: [
     {
@@ -36,4 +32,4 @@ export const NetlifyDeployResourceType: ResourceTypeDefinition = {
       verb: "Publish deploy",
     },
   ],
-};
+});

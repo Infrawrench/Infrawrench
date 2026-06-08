@@ -1,26 +1,22 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const NeonEndpointResourceType: ResourceTypeDefinition = {
+export const NeonEndpointResourceType = rt({
+  name: "Endpoint",
+  pinnable: false,
   id: "neon-endpoint",
-  displayName: "Endpoint",
-  pluralDisplayName: "Endpoints",
   description: "A Neon compute endpoint — the serverless Postgres connection point",
   fields: [
-    { key: "host", label: "Host", kind: "string", required: true },
-    { key: "projectId", label: "Project ID", kind: "string", required: true },
-    { key: "branchId", label: "Branch ID", kind: "string", required: true },
-    { key: "currentState", label: "State", kind: "string", required: false },
-    { key: "type", label: "Type", kind: "string", required: false },
-    { key: "autoscalingMinCu", label: "Min Compute (CU)", kind: "string", required: false },
-    { key: "autoscalingMaxCu", label: "Max Compute (CU)", kind: "string", required: false },
-    { key: "suspendTimeout", label: "Suspend Timeout (s)", kind: "string", required: false },
+    f("host", "Host"),
+    f("projectId", "Project ID"),
+    f("branchId", "Branch ID"),
+    f("currentState", "State", { required: false }),
+    f("type", "Type", { required: false }),
+    f("autoscalingMinCu", "Min Compute (CU)", { required: false }),
+    f("autoscalingMaxCu", "Max Compute (CU)", { required: false }),
+    f("suspendTimeout", "Suspend Timeout (s)", { required: false }),
   ],
-  outputs: [
-    { key: "host", label: "Host", sensitive: false },
-    { key: "endpointId", label: "Endpoint ID", sensitive: false },
-  ],
+  outputs: [o("host", "Host"), o("endpointId", "Endpoint ID")],
   parentTypeId: "neon-branch",
-  dashboardPinnable: false,
   supportsCreate: true,
   iconKey: "neon",
-};
+});

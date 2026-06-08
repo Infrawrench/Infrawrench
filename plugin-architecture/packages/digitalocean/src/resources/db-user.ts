@@ -1,4 +1,4 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
 /**
  * A database user on a DigitalOcean managed-database cluster. Lives under the
@@ -11,40 +11,31 @@ import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
  * substitute it in when DO refuses to hand back `doadmin`'s password (the
  * common case for tokens minted without `database:view_credentials`).
  */
-export const DatabaseUserResourceType: ResourceTypeDefinition = {
+export const DatabaseUserResourceType = rt({
+  name: "Database user",
+  plural: "DB Users",
+  pinnable: false,
   id: "db-user",
-  displayName: "Database user",
-  pluralDisplayName: "DB Users",
   description: "A managed-database user — created server-side, password kept locally.",
   fields: [
-    {
-      key: "name",
-      label: "Username",
-      kind: "string",
-      required: true,
+    f("name", "Username", {
       description: "Letters, digits, and `_-` only. Must be unique within the cluster.",
-    },
-    {
-      key: "role",
-      label: "Role",
-      kind: "string",
+    }),
+    f("role", "Role", {
       required: false,
       description: "DO-assigned role — `primary` for the bootstrap user, `normal` for the rest.",
-    },
+    }),
   ],
   outputs: [
-    {
-      key: "password",
-      label: "Password",
+    o("password", "Password", {
       sensitive: true,
       description:
         "The plaintext password DO returned at create time. Only available for users " +
         "Infrawrench minted itself — pre-existing users (including `doadmin`) have no " +
         "stored password because DO doesn't expose them post-create.",
-    },
+    }),
   ],
   parentTypeId: "managed-database",
   supportsCreate: true,
-  dashboardPinnable: false,
   iconKey: "user",
-};
+});

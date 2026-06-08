@@ -1,19 +1,18 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const DaemonSetResourceType: ResourceTypeDefinition = {
+export const DaemonSetResourceType = rt({
+  name: "DaemonSet",
+  pinnable: false,
   id: "k8s-daemonset",
-  displayName: "DaemonSet",
-  pluralDisplayName: "DaemonSets",
   description: "A Kubernetes DaemonSet — runs a pod on every (or selected) node(s)",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "namespace", label: "Namespace", kind: "string", required: true },
-    { key: "desiredNumberScheduled", label: "Desired", kind: "number", required: false },
-    { key: "numberReady", label: "Ready", kind: "number", required: false },
-    { key: "image", label: "Image", kind: "string", required: false },
+    f("name", "Name"),
+    f("namespace", "Namespace"),
+    f("desiredNumberScheduled", "Desired", { kind: "number", required: false }),
+    f("numberReady", "Ready", { kind: "number", required: false }),
+    f("image", "Image", { required: false }),
   ],
   outputs: [],
   parentTypeId: "k8s-namespace",
-  dashboardPinnable: false,
   supportsCreate: true,
-};
+});

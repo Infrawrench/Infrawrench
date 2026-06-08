@@ -1,24 +1,23 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const SpannerDatabaseResourceType: ResourceTypeDefinition = {
+export const SpannerDatabaseResourceType = rt({
+  name: "Spanner Database",
+  plural: "Databases",
   id: "spanner-database",
-  displayName: "Spanner Database",
-  pluralDisplayName: "Databases",
   description: "A database inside a Google Cloud Spanner instance",
   fields: [
-    { key: "name", label: "Database ID", kind: "string", required: true },
-    { key: "instance", label: "Instance", kind: "string", required: false },
-    { key: "state", label: "State", kind: "string", required: false },
-    { key: "dialect", label: "Dialect", kind: "string", required: false },
-    { key: "versionRetentionPeriod", label: "Version retention", kind: "string", required: false },
-    { key: "earliestVersionTime", label: "Earliest version time", kind: "string", required: false },
-    { key: "createTime", label: "Created", kind: "string", required: false },
-    { key: "enableDropProtection", label: "Drop protection", kind: "boolean", required: false },
-    { key: "encryptionConfig", label: "Encryption", kind: "string", required: false },
-    { key: "defaultLeader", label: "Default leader", kind: "string", required: false },
+    f("name", "Database ID"),
+    f("instance", "Instance", { required: false }),
+    f("state", "State", { required: false }),
+    f("dialect", "Dialect", { required: false }),
+    f("versionRetentionPeriod", "Version retention", { required: false }),
+    f("earliestVersionTime", "Earliest version time", { required: false }),
+    f("createTime", "Created", { required: false }),
+    f("enableDropProtection", "Drop protection", { kind: "boolean", required: false }),
+    f("encryptionConfig", "Encryption", { required: false }),
+    f("defaultLeader", "Default leader", { required: false }),
   ],
   outputs: [],
   parentTypeId: "spanner-instance",
-  dashboardPinnable: true,
   supportsCreate: true,
-};
+});

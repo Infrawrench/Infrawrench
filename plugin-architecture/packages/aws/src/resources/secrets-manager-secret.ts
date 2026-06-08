@@ -1,27 +1,20 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const SecretsManagerSecretResourceType: ResourceTypeDefinition = {
+export const SecretsManagerSecretResourceType = rt({
+  name: "Secret",
   id: "secrets-manager-secret",
-  displayName: "Secret",
-  pluralDisplayName: "Secrets",
   description: "An AWS Secrets Manager secret",
   fields: [
-    { key: "name", label: "Secret Name", kind: "string", required: true },
-    { key: "description", label: "Description", kind: "string", required: false },
-    { key: "lastAccessedDate", label: "Last Accessed", kind: "string", required: false },
-    { key: "lastChangedDate", label: "Last Changed", kind: "string", required: false },
-    { key: "rotationEnabled", label: "Rotation Enabled", kind: "boolean", required: false },
+    f("name", "Secret Name"),
+    f("description", "Description", { required: false }),
+    f("lastAccessedDate", "Last Accessed", { required: false }),
+    f("lastChangedDate", "Last Changed", { required: false }),
+    f("rotationEnabled", "Rotation Enabled", { kind: "boolean", required: false }),
   ],
   outputs: [
-    {
-      key: "secretValue",
-      label: "Secret Value",
-      sensitive: true,
-      description: "Current secret value",
-    },
-    { key: "secretArn", label: "Secret ARN", sensitive: false },
+    o("secretValue", "Secret Value", { sensitive: true, description: "Current secret value" }),
+    o("secretArn", "Secret ARN"),
   ],
-  dashboardPinnable: true,
   supportsCreate: true,
   iconKey: "secret",
   secretExportTemplates: [
@@ -32,4 +25,4 @@ export const SecretsManagerSecretResourceType: ResourceTypeDefinition = {
       entries: [{ envKey: "SECRET_VALUE", outputKey: "secretValue" }],
     },
   ],
-};
+});

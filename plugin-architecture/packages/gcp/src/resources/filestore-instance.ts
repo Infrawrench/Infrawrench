@@ -1,21 +1,19 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const FilestoreInstanceResourceType: ResourceTypeDefinition = {
+export const FilestoreInstanceResourceType = rt({
+  name: "Filestore Instance",
   id: "filestore-instance",
-  displayName: "Filestore Instance",
-  pluralDisplayName: "Filestore Instances",
   description: "A Google Cloud Filestore managed NFS file server",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "location", label: "Location", kind: "string", required: true },
-    { key: "tier", label: "Tier", kind: "string", required: false },
-    { key: "state", label: "State", kind: "string", required: false },
-    { key: "capacityGb", label: "Capacity (GB)", kind: "number", required: false },
-    { key: "network", label: "Network", kind: "string", required: false },
-    { key: "fileShareName", label: "File Share Name", kind: "string", required: false },
-    { key: "ipAddress", label: "IP Address", kind: "string", required: false },
+    f("name", "Name"),
+    f("location", "Location"),
+    f("tier", "Tier", { required: false }),
+    f("state", "State", { required: false }),
+    f("capacityGb", "Capacity (GB)", { kind: "number", required: false }),
+    f("network", "Network", { required: false }),
+    f("fileShareName", "File Share Name", { required: false }),
+    f("ipAddress", "IP Address", { required: false }),
   ],
-  outputs: [{ key: "ipAddress", label: "IP Address", sensitive: false }],
-  dashboardPinnable: true,
+  outputs: [o("ipAddress", "IP Address")],
   supportsCreate: true,
-};
+});

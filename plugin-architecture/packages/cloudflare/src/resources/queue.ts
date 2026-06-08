@@ -1,30 +1,20 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const QueueResourceType: ResourceTypeDefinition = {
+export const QueueResourceType = rt({
+  name: "Queue",
   id: "queue",
-  displayName: "Queue",
-  pluralDisplayName: "Queues",
   description: "A Cloudflare Queue for message passing between Workers",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "producersTotal", label: "Producers", kind: "number", required: false },
-    { key: "consumersTotal", label: "Consumers", kind: "number", required: false },
-    { key: "deliveryDelay", label: "Delivery Delay (s)", kind: "number", required: false },
-    { key: "deliveryPaused", label: "Delivery Paused", kind: "boolean", required: false },
-    {
-      key: "messageRetentionPeriod",
-      label: "Retention (s)",
-      kind: "number",
-      required: false,
-    },
-    { key: "createdOn", label: "Created", kind: "string", required: false },
-    { key: "modifiedOn", label: "Modified", kind: "string", required: false },
+    f("name", "Name"),
+    f("producersTotal", "Producers", { kind: "number", required: false }),
+    f("consumersTotal", "Consumers", { kind: "number", required: false }),
+    f("deliveryDelay", "Delivery Delay (s)", { kind: "number", required: false }),
+    f("deliveryPaused", "Delivery Paused", { kind: "boolean", required: false }),
+    f("messageRetentionPeriod", "Retention (s)", { kind: "number", required: false }),
+    f("createdOn", "Created", { required: false }),
+    f("modifiedOn", "Modified", { required: false }),
   ],
-  outputs: [
-    { key: "queueId", label: "Queue ID", sensitive: false },
-    { key: "queueName", label: "Queue Name", sensitive: false },
-  ],
-  dashboardPinnable: true,
+  outputs: [o("queueId", "Queue ID"), o("queueName", "Queue Name")],
   supportsCreate: true,
   supportsMetrics: true,
   iconKey: "queue",
@@ -39,4 +29,4 @@ export const QueueResourceType: ResourceTypeDefinition = {
       ],
     },
   ],
-};
+});

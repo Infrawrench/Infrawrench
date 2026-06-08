@@ -1,27 +1,22 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const ContainerInstanceResourceType: ResourceTypeDefinition = {
+export const ContainerInstanceResourceType = rt({
+  name: "Container Instance",
   id: "azure-container-instance",
-  displayName: "Container Instance",
-  pluralDisplayName: "Container Instances",
   description: "An Azure Container Instances group",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "resourceGroup", label: "Resource Group", kind: "string", required: true },
-    { key: "location", label: "Location", kind: "string", required: true },
-    { key: "provisioningState", label: "Provisioning State", kind: "string", required: true },
-    { key: "osType", label: "OS Type", kind: "string", required: true },
-    { key: "restartPolicy", label: "Restart Policy", kind: "string", required: false },
-    { key: "containers", label: "Containers", kind: "number", required: false },
-    { key: "ipAddress", label: "IP Address", kind: "string", required: false },
-    { key: "fqdn", label: "FQDN", kind: "string", required: false },
+    f("name", "Name"),
+    f("resourceGroup", "Resource Group"),
+    f("location", "Location"),
+    f("provisioningState", "Provisioning State"),
+    f("osType", "OS Type"),
+    f("restartPolicy", "Restart Policy", { required: false }),
+    f("containers", "Containers", { kind: "number", required: false }),
+    f("ipAddress", "IP Address", { required: false }),
+    f("fqdn", "FQDN", { required: false }),
   ],
-  outputs: [
-    { key: "ipAddress", label: "IP Address", sensitive: false },
-    { key: "fqdn", label: "FQDN", sensitive: false },
-  ],
-  dashboardPinnable: true,
+  outputs: [o("ipAddress", "IP Address"), o("fqdn", "FQDN")],
   iconKey: "container",
   supportsCreate: true,
   supportsMetrics: true,
-};
+});

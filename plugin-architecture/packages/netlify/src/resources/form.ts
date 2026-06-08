@@ -1,21 +1,17 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const NetlifyFormResourceType: ResourceTypeDefinition = {
+export const NetlifyFormResourceType = rt({
+  name: "Form",
+  pinnable: false,
   id: "netlify-form",
-  displayName: "Form",
-  pluralDisplayName: "Forms",
   description: "A Netlify form — collects submissions from static HTML forms",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "submissionCount", label: "Submissions", kind: "number", required: false },
-    { key: "paths", label: "Paths", kind: "string", required: false },
-    { key: "createdAt", label: "Created At", kind: "string", required: false },
+    f("name", "Name"),
+    f("submissionCount", "Submissions", { kind: "number", required: false }),
+    f("paths", "Paths", { required: false }),
+    f("createdAt", "Created At", { required: false }),
   ],
-  outputs: [
-    { key: "formId", label: "Form ID", sensitive: false },
-    { key: "formName", label: "Form Name", sensitive: false },
-  ],
+  outputs: [o("formId", "Form ID"), o("formName", "Form Name")],
   parentTypeId: "netlify-site",
-  dashboardPinnable: false,
   iconKey: "form",
-};
+});

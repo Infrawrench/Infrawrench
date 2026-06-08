@@ -1,36 +1,26 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const ElastiCacheClusterResourceType: ResourceTypeDefinition = {
+export const ElastiCacheClusterResourceType = rt({
+  name: "ElastiCache Cluster",
   id: "elasticache-cluster",
-  displayName: "ElastiCache Cluster",
-  pluralDisplayName: "ElastiCache Clusters",
   description: "An Amazon ElastiCache Redis or Memcached cluster",
   fields: [
-    { key: "clusterId", label: "Cluster ID", kind: "string", required: true },
-    {
-      key: "engine",
-      label: "Engine",
-      kind: "enum",
-      required: true,
-      enumValues: ["redis", "memcached"],
-    },
-    { key: "engineVersion", label: "Engine Version", kind: "string", required: true },
-    { key: "nodeType", label: "Node Type", kind: "string", required: true },
-    { key: "numNodes", label: "Number of Nodes", kind: "number", required: true },
-    { key: "status", label: "Status", kind: "string", required: true },
-    { key: "availabilityZone", label: "Availability Zone", kind: "string", required: false },
+    f("clusterId", "Cluster ID"),
+    f("engine", "Engine", { kind: "enum", enumValues: ["redis", "memcached"] }),
+    f("engineVersion", "Engine Version"),
+    f("nodeType", "Node Type"),
+    f("numNodes", "Number of Nodes", { kind: "number" }),
+    f("status", "Status"),
+    f("availabilityZone", "Availability Zone", { required: false }),
   ],
   outputs: [
-    { key: "endpoint", label: "Endpoint", sensitive: false },
-    { key: "port", label: "Port", sensitive: false },
-    {
-      key: "connectionString",
-      label: "Connection String",
+    o("endpoint", "Endpoint"),
+    o("port", "Port"),
+    o("connectionString", "Connection String", {
       sensitive: true,
       description: "Redis/Memcached connection URI (constructed from endpoint + port)",
-    },
+    }),
   ],
-  dashboardPinnable: true,
   iconKey: "cache",
   supportsCreate: true,
   supportsMetrics: true,
@@ -87,4 +77,4 @@ export const ElastiCacheClusterResourceType: ResourceTypeDefinition = {
       ],
     },
   ],
-};
+});

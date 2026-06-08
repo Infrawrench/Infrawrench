@@ -1,24 +1,17 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const PrivateDNSZoneResourceType: ResourceTypeDefinition = {
+export const PrivateDNSZoneResourceType = rt({
+  name: "Private DNS Zone",
   id: "azure-private-dns-zone",
-  displayName: "Private DNS Zone",
-  pluralDisplayName: "Private DNS Zones",
   description: "An Azure Private DNS Zone",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "resourceGroup", label: "Resource Group", kind: "string", required: true },
-    { key: "numberOfRecordSets", label: "Record Sets", kind: "number", required: false },
-    { key: "maxNumberOfRecordSets", label: "Max Record Sets", kind: "number", required: false },
-    {
-      key: "virtualNetworkLinkCount",
-      label: "Virtual Network Links",
-      kind: "number",
-      required: false,
-    },
+    f("name", "Name"),
+    f("resourceGroup", "Resource Group"),
+    f("numberOfRecordSets", "Record Sets", { kind: "number", required: false }),
+    f("maxNumberOfRecordSets", "Max Record Sets", { kind: "number", required: false }),
+    f("virtualNetworkLinkCount", "Virtual Network Links", { kind: "number", required: false }),
   ],
-  outputs: [{ key: "resourceId", label: "Resource ID", sensitive: false }],
-  dashboardPinnable: true,
+  outputs: [o("resourceId", "Resource ID")],
   iconKey: "dns",
   attachTargets: [
     {
@@ -27,4 +20,4 @@ export const PrivateDNSZoneResourceType: ResourceTypeDefinition = {
       verb: "Link VNet",
     },
   ],
-};
+});

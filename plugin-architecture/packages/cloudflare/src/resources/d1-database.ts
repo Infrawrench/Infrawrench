@@ -1,19 +1,17 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const D1DatabaseResourceType: ResourceTypeDefinition = {
+export const D1DatabaseResourceType = rt({
+  name: "D1 Database",
   id: "d1-database",
-  displayName: "D1 Database",
-  pluralDisplayName: "D1 Databases",
   description: "A Cloudflare D1 SQLite database at the edge",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "version", label: "Version", kind: "string", required: false },
-    { key: "numTables", label: "Tables", kind: "number", required: false },
-    { key: "fileSize", label: "File Size", kind: "string", required: false },
-    { key: "createdAt", label: "Created", kind: "string", required: false },
+    f("name", "Name"),
+    f("version", "Version", { required: false }),
+    f("numTables", "Tables", { kind: "number", required: false }),
+    f("fileSize", "File Size", { required: false }),
+    f("createdAt", "Created", { required: false }),
   ],
-  outputs: [{ key: "databaseId", label: "Database ID", sensitive: false }],
-  dashboardPinnable: true,
+  outputs: [o("databaseId", "Database ID")],
   supportsCreate: true,
   supportsMetrics: true,
   resourceSqlDriver: {
@@ -29,4 +27,4 @@ export const D1DatabaseResourceType: ResourceTypeDefinition = {
       entries: [{ envKey: "D1_DATABASE_ID", outputKey: "databaseId" }],
     },
   ],
-};
+});

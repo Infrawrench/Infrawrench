@@ -1,17 +1,13 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const DropletResourceType: ResourceTypeDefinition = {
+export const DropletResourceType = rt({
+  name: "Droplet",
   id: "droplet",
-  displayName: "Droplet",
-  pluralDisplayName: "Droplets",
   description: "A DigitalOcean virtual machine",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    {
-      key: "region",
-      label: "Region",
+    f("name", "Name"),
+    f("region", "Region", {
       kind: "enum",
-      required: true,
       enumValues: [
         "nyc1",
         "nyc3",
@@ -25,30 +21,13 @@ export const DropletResourceType: ResourceTypeDefinition = {
         "blr1",
         "syd1",
       ],
-    },
-    {
-      key: "size",
-      label: "Size",
-      kind: "string",
-      required: true,
-      description: "Droplet size slug, e.g. s-1vcpu-1gb",
-    },
-    {
-      key: "image",
-      label: "Image",
-      kind: "string",
-      required: true,
-      description: "Image slug or ID, e.g. ubuntu-24-04-x64",
-    },
+    }),
+    f("size", "Size", { description: "Droplet size slug, e.g. s-1vcpu-1gb" }),
+    f("image", "Image", { description: "Image slug or ID, e.g. ubuntu-24-04-x64" }),
   ],
-  outputs: [
-    { key: "ipv4", label: "Public IPv4", sensitive: false },
-    { key: "ipv4Private", label: "Private IPv4", sensitive: false },
-    { key: "ipv6", label: "Public IPv6", sensitive: false },
-  ],
+  outputs: [o("ipv4", "Public IPv4"), o("ipv4Private", "Private IPv4"), o("ipv6", "Public IPv6")],
   parentTypeId: "project",
   showInSidebar: true,
-  dashboardPinnable: true,
   supportsMetrics: true,
   iconKey: "droplet",
   sshEndpoint: {
@@ -58,4 +37,4 @@ export const DropletResourceType: ResourceTypeDefinition = {
     runningWhen: { fieldKey: "status", value: "active" },
   },
   supportsCreate: true,
-};
+});

@@ -1,24 +1,18 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const OpenSearchClusterResourceType: ResourceTypeDefinition = {
+export const OpenSearchClusterResourceType = rt({
+  name: "OpenSearch Cluster",
   id: "opensearch-cluster",
-  displayName: "OpenSearch Cluster",
-  pluralDisplayName: "OpenSearch Clusters",
   description:
     "An OpenSearch (or Elasticsearch-compatible) cluster — browse indices, run searches, manage snapshots",
   fields: [
-    { key: "endpoint", label: "Endpoint", kind: "string", required: true },
-    { key: "version", label: "Version", kind: "string", required: false },
-    { key: "clusterName", label: "Cluster Name", kind: "string", required: false },
-    { key: "distribution", label: "Distribution", kind: "string", required: false },
-    { key: "status", label: "Health", kind: "string", required: false },
+    f("endpoint", "Endpoint"),
+    f("version", "Version", { required: false }),
+    f("clusterName", "Cluster Name", { required: false }),
+    f("distribution", "Distribution", { required: false }),
+    f("status", "Health", { required: false }),
   ],
-  outputs: [
-    { key: "endpoint", label: "Endpoint", sensitive: false },
-    { key: "clusterName", label: "Cluster Name", sensitive: false },
-    { key: "version", label: "Version", sensitive: false },
-  ],
-  dashboardPinnable: true,
+  outputs: [o("endpoint", "Endpoint"), o("clusterName", "Cluster Name"), o("version", "Version")],
   supportsMetrics: true,
   iconKey: "search",
   secretExportTemplates: [
@@ -30,4 +24,4 @@ export const OpenSearchClusterResourceType: ResourceTypeDefinition = {
       entries: [{ envKey: "OPENSEARCH_URL", outputKey: "endpoint" }],
     },
   ],
-};
+});

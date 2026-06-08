@@ -1,8 +1,5 @@
-import type {
-  CreateFieldConfig,
-  PeerGuidanceAction,
-  ResourceTypeDefinition,
-} from "@infrawrench/plugin-base";
+import type { CreateFieldConfig, PeerGuidanceAction } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
 // Kafka's `/users` endpoint requires a `settings.acl` block or DO 422s with
 // "settings is required". These editable fields default to full access on
@@ -65,32 +62,19 @@ const makeKafkaConnectionUserAction: PeerGuidanceAction = {
   fields: [...makeConnectionUserAction.fields, ...kafkaAclFields()],
 };
 
-export const ManagedDatabaseResourceType: ResourceTypeDefinition = {
+export const ManagedDatabaseResourceType = rt({
+  name: "Managed Database",
   id: "managed-database",
-  displayName: "Managed Database",
-  pluralDisplayName: "Managed Databases",
   description: "A DigitalOcean Managed Database cluster",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    {
-      key: "engine",
-      label: "Engine",
+    f("name", "Name"),
+    f("engine", "Engine", {
       kind: "enum",
-      required: true,
       enumValues: ["pg", "mysql", "redis", "valkey", "mongodb", "kafka", "opensearch", "weaviate"],
-    },
-    {
-      key: "version",
-      label: "Version",
-      kind: "string",
-      required: true,
-      description: "Engine version, e.g. 16 for PostgreSQL 16",
-    },
-    {
-      key: "region",
-      label: "Region",
+    }),
+    f("version", "Version", { description: "Engine version, e.g. 16 for PostgreSQL 16" }),
+    f("region", "Region", {
       kind: "enum",
-      required: true,
       enumValues: [
         "nyc1",
         "nyc3",
@@ -104,43 +88,26 @@ export const ManagedDatabaseResourceType: ResourceTypeDefinition = {
         "blr1",
         "syd1",
       ],
-    },
-    {
-      key: "size",
-      label: "Node Size",
-      kind: "string",
-      required: true,
-      description: "Node size slug, e.g. db-s-1vcpu-1gb",
-    },
-    {
-      key: "nodeCount",
-      label: "Node Count",
-      kind: "number",
-      required: true,
-    },
+    }),
+    f("size", "Node Size", { description: "Node size slug, e.g. db-s-1vcpu-1gb" }),
+    f("nodeCount", "Node Count", { kind: "number" }),
   ],
   outputs: [
-    {
-      key: "connectionString",
-      label: "Connection String",
+    o("connectionString", "Connection String", {
       sensitive: true,
       description: "Full connection URI",
-    },
-    { key: "host", label: "Host", sensitive: false },
-    { key: "port", label: "Port", sensitive: false },
-    { key: "username", label: "Username", sensitive: false },
-    { key: "password", label: "Password", sensitive: true },
-    { key: "database", label: "Database Name", sensitive: false },
-    {
-      key: "caCertificate",
-      label: "CA Certificate",
-      sensitive: false,
+    }),
+    o("host", "Host"),
+    o("port", "Port"),
+    o("username", "Username"),
+    o("password", "Password", { sensitive: true }),
+    o("database", "Database Name"),
+    o("caCertificate", "CA Certificate", {
       description: "TLS CA certificate for verifying the server",
-    },
+    }),
   ],
   parentTypeId: "project",
   showInSidebar: true,
-  dashboardPinnable: true,
   supportsCreate: true,
   supportsMetrics: true,
   iconKey: "database",
@@ -258,4 +225,4 @@ export const ManagedDatabaseResourceType: ResourceTypeDefinition = {
       ],
     },
   ],
-};
+});

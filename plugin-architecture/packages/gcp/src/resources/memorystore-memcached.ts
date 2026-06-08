@@ -1,21 +1,20 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const MemorystoreMemcachedResourceType: ResourceTypeDefinition = {
+export const MemorystoreMemcachedResourceType = rt({
+  name: "Memorystore Memcached",
+  plural: "Memorystore Memcached",
   id: "memorystore-memcached",
-  displayName: "Memorystore Memcached",
-  pluralDisplayName: "Memorystore Memcached",
   description: "A Google Cloud Memorystore for Memcached instance",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "location", label: "Location", kind: "string", required: true },
-    { key: "state", label: "State", kind: "string", required: false },
-    { key: "nodeCount", label: "Node Count", kind: "number", required: false },
-    { key: "cpuCount", label: "vCPUs Per Node", kind: "number", required: false },
-    { key: "memorySizeMb", label: "Memory Per Node (MB)", kind: "number", required: false },
-    { key: "memcacheVersion", label: "Memcached Version", kind: "string", required: false },
-    { key: "discoveryEndpoint", label: "Discovery Endpoint", kind: "string", required: false },
+    f("name", "Name"),
+    f("location", "Location"),
+    f("state", "State", { required: false }),
+    f("nodeCount", "Node Count", { kind: "number", required: false }),
+    f("cpuCount", "vCPUs Per Node", { kind: "number", required: false }),
+    f("memorySizeMb", "Memory Per Node (MB)", { kind: "number", required: false }),
+    f("memcacheVersion", "Memcached Version", { required: false }),
+    f("discoveryEndpoint", "Discovery Endpoint", { required: false }),
   ],
-  outputs: [{ key: "discoveryEndpoint", label: "Discovery Endpoint", sensitive: false }],
-  dashboardPinnable: true,
+  outputs: [o("discoveryEndpoint", "Discovery Endpoint")],
   supportsCreate: true,
-};
+});

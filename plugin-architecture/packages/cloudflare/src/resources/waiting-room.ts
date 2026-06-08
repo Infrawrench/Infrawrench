@@ -1,25 +1,24 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const WaitingRoomResourceType: ResourceTypeDefinition = {
+export const WaitingRoomResourceType = rt({
+  name: "Waiting Room",
+  pinnable: false,
   id: "waiting-room",
-  displayName: "Waiting Room",
-  pluralDisplayName: "Waiting Rooms",
   description: "A Cloudflare Waiting Room for managing traffic surges",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "host", label: "Host", kind: "string", required: true },
-    { key: "path", label: "Path", kind: "string", required: false },
-    { key: "totalActiveUsers", label: "Total Active Users", kind: "number", required: false },
-    { key: "newUsersPerMinute", label: "New Users/Minute", kind: "number", required: false },
-    { key: "queueingMethod", label: "Queueing Method", kind: "string", required: false },
-    { key: "sessionDuration", label: "Session Duration", kind: "number", required: false },
-    { key: "suspended", label: "Suspended", kind: "boolean", required: false },
+    f("name", "Name"),
+    f("host", "Host"),
+    f("path", "Path", { required: false }),
+    f("totalActiveUsers", "Total Active Users", { kind: "number", required: false }),
+    f("newUsersPerMinute", "New Users/Minute", { kind: "number", required: false }),
+    f("queueingMethod", "Queueing Method", { required: false }),
+    f("sessionDuration", "Session Duration", { kind: "number", required: false }),
+    f("suspended", "Suspended", { kind: "boolean", required: false }),
   ],
   outputs: [],
   parentTypeId: "zone",
-  dashboardPinnable: false,
   supportsCreate: true,
   supportsUpdate: true,
   supportsMetrics: true,
   iconKey: "waiting-room",
-};
+});

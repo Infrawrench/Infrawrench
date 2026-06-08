@@ -1,31 +1,25 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const FirestoreDatabaseResourceType: ResourceTypeDefinition = {
+export const FirestoreDatabaseResourceType = rt({
+  name: "Firestore Database",
   id: "firestore-database",
-  displayName: "Firestore Database",
-  pluralDisplayName: "Firestore Databases",
   description: "A Google Cloud Firestore database",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "locationId", label: "Location", kind: "string", required: false },
-    {
-      key: "type",
-      label: "Type",
+    f("name", "Name"),
+    f("locationId", "Location", { required: false }),
+    f("type", "Type", {
       kind: "enum",
       required: false,
       enumValues: ["FIRESTORE_NATIVE", "DATASTORE_MODE"],
-    },
-    {
-      key: "databaseEdition",
-      label: "Edition",
+    }),
+    f("databaseEdition", "Edition", {
       kind: "enum",
       required: false,
       enumValues: ["STANDARD", "ENTERPRISE"],
-    },
-    { key: "concurrencyMode", label: "Concurrency Mode", kind: "string", required: false },
-    { key: "state", label: "State", kind: "string", required: false },
+    }),
+    f("concurrencyMode", "Concurrency Mode", { required: false }),
+    f("state", "State", { required: false }),
   ],
   outputs: [],
-  dashboardPinnable: true,
   supportsCreate: true,
-};
+});

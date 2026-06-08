@@ -1,43 +1,31 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const EC2InstanceResourceType: ResourceTypeDefinition = {
+export const EC2InstanceResourceType = rt({
+  name: "EC2 Instance",
   id: "ec2-instance",
-  displayName: "EC2 Instance",
-  pluralDisplayName: "EC2 Instances",
   description: "An Amazon EC2 virtual machine instance",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: false },
-    { key: "instanceId", label: "Instance ID", kind: "string", required: true },
-    { key: "instanceType", label: "Instance Type", kind: "string", required: true },
-    { key: "availabilityZone", label: "Availability Zone", kind: "string", required: true },
-    {
-      key: "state",
-      label: "State",
+    f("name", "Name", { required: false }),
+    f("instanceId", "Instance ID"),
+    f("instanceType", "Instance Type"),
+    f("availabilityZone", "Availability Zone"),
+    f("state", "State", {
       kind: "enum",
-      required: true,
       enumValues: ["pending", "running", "shutting-down", "terminated", "stopping", "stopped"],
-    },
-    { key: "imageId", label: "AMI ID", kind: "string", required: false },
-    { key: "vpcId", label: "VPC ID", kind: "string", required: false },
-    { key: "subnetId", label: "Subnet ID", kind: "string", required: false },
-    {
-      key: "securityGroupIds",
-      label: "Security Groups",
-      kind: "string",
+    }),
+    f("imageId", "AMI ID", { required: false }),
+    f("vpcId", "VPC ID", { required: false }),
+    f("subnetId", "Subnet ID", { required: false }),
+    f("securityGroupIds", "Security Groups", {
       required: false,
       description: "Comma-separated list of security group IDs attached to the instance",
-    },
-    {
-      key: "sshAccess",
-      label: "SSH Access",
-      kind: "string",
+    }),
+    f("sshAccess", "SSH Access", {
       required: false,
       description:
         "Whether TCP/22 is reachable per the attached security groups. If this says SSH will time out, open port 22 in one of the security groups (commonly from your office/VPN CIDR or 0.0.0.0/0 for dev).",
-    },
-    {
-      key: "network",
-      label: "VPC Network",
+    }),
+    f("network", "VPC Network", {
       kind: "association",
       required: false,
       description: "VPC network to attach the instance to",
@@ -50,14 +38,9 @@ export const EC2InstanceResourceType: ResourceTypeDefinition = {
           outputKey: "vpcId",
         },
       ],
-    },
+    }),
   ],
-  outputs: [
-    { key: "publicIp", label: "Public IP", sensitive: false },
-    { key: "privateIp", label: "Private IP", sensitive: false },
-    { key: "publicDns", label: "Public DNS", sensitive: false },
-  ],
-  dashboardPinnable: true,
+  outputs: [o("publicIp", "Public IP"), o("privateIp", "Private IP"), o("publicDns", "Public DNS")],
   supportsMetrics: true,
   sshEndpoint: {
     hostOutputKey: "publicIp",
@@ -66,4 +49,4 @@ export const EC2InstanceResourceType: ResourceTypeDefinition = {
     usernameFieldKey: "sshUsername",
   },
   supportsCreate: true,
-};
+});

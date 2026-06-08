@@ -1,22 +1,18 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const NetlifyBuildHookResourceType: ResourceTypeDefinition = {
+export const NetlifyBuildHookResourceType = rt({
+  name: "Build Hook",
+  pinnable: false,
   id: "netlify-build-hook",
-  displayName: "Build Hook",
-  pluralDisplayName: "Build Hooks",
   description: "A build hook that triggers deploys via a unique URL",
   fields: [
-    { key: "title", label: "Title", kind: "string", required: true },
-    { key: "branch", label: "Branch", kind: "string", required: false },
-    { key: "url", label: "Hook URL", kind: "string", required: false },
-    { key: "createdAt", label: "Created At", kind: "string", required: false },
+    f("title", "Title"),
+    f("branch", "Branch", { required: false }),
+    f("url", "Hook URL", { required: false }),
+    f("createdAt", "Created At", { required: false }),
   ],
-  outputs: [
-    { key: "hookId", label: "Hook ID", sensitive: false },
-    { key: "hookUrl", label: "Hook URL", sensitive: true },
-  ],
+  outputs: [o("hookId", "Hook ID"), o("hookUrl", "Hook URL", { sensitive: true })],
   parentTypeId: "netlify-site",
-  dashboardPinnable: false,
   supportsCreate: true,
   iconKey: "hook",
   attachTargets: [
@@ -34,4 +30,4 @@ export const NetlifyBuildHookResourceType: ResourceTypeDefinition = {
       entries: [{ envKey: "NETLIFY_BUILD_HOOK_URL", outputKey: "hookUrl" }],
     },
   ],
-};
+});

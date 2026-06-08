@@ -1,22 +1,20 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const LoadBalancerResourceType: ResourceTypeDefinition = {
+export const LoadBalancerResourceType = rt({
+  name: "Load Balancer",
   id: "azure-load-balancer",
-  displayName: "Load Balancer",
-  pluralDisplayName: "Load Balancers",
   description: "An Azure Load Balancer",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "resourceGroup", label: "Resource Group", kind: "string", required: true },
-    { key: "location", label: "Location", kind: "string", required: true },
-    { key: "sku", label: "SKU", kind: "string", required: true },
-    { key: "provisioningState", label: "Provisioning State", kind: "string", required: true },
-    { key: "frontendIpCount", label: "Frontend IPs", kind: "number", required: false },
-    { key: "backendPoolCount", label: "Backend Pools", kind: "number", required: false },
-    { key: "ruleCount", label: "Rules", kind: "number", required: false },
+    f("name", "Name"),
+    f("resourceGroup", "Resource Group"),
+    f("location", "Location"),
+    f("sku", "SKU"),
+    f("provisioningState", "Provisioning State"),
+    f("frontendIpCount", "Frontend IPs", { kind: "number", required: false }),
+    f("backendPoolCount", "Backend Pools", { kind: "number", required: false }),
+    f("ruleCount", "Rules", { kind: "number", required: false }),
   ],
-  outputs: [{ key: "frontendIp", label: "Frontend IP", sensitive: false }],
-  dashboardPinnable: true,
+  outputs: [o("frontendIp", "Frontend IP")],
   supportsCreate: true,
   supportsMetrics: true,
   iconKey: "network",
@@ -28,4 +26,4 @@ export const LoadBalancerResourceType: ResourceTypeDefinition = {
       verb: "Add backend",
     },
   ],
-};
+});

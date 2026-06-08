@@ -1,27 +1,22 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const SshTargetResourceType: ResourceTypeDefinition = {
+export const SshTargetResourceType = rt({
+  name: "SSH Server",
   id: "ssh-target",
-  displayName: "SSH Server",
-  pluralDisplayName: "SSH Servers",
   description: "A remote server accessible via SSH.",
   fields: [
-    { key: "host", label: "Host", kind: "string", required: true },
-    { key: "port", label: "Port", kind: "string", required: false },
-    { key: "username", label: "Username", kind: "string", required: false },
+    f("host", "Host"),
+    f("port", "Port", { required: false }),
+    f("username", "Username", { required: false }),
   ],
   outputs: [
-    { key: "host", label: "Host", sensitive: false },
-    { key: "port", label: "Port", sensitive: false },
-    { key: "username", label: "Username", sensitive: false },
-    {
-      key: "sshCommand",
-      label: "SSH Command",
-      sensitive: false,
+    o("host", "Host"),
+    o("port", "Port"),
+    o("username", "Username"),
+    o("sshCommand", "SSH Command", {
       description: "OpenSSH command for connecting to this target.",
-    },
+    }),
   ],
-  dashboardPinnable: true,
   supportsTerminal: true,
   supportsSftpBrowser: true,
-};
+});

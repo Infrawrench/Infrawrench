@@ -1,29 +1,25 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const ImageResourceType: ResourceTypeDefinition = {
+export const ImageResourceType = rt({
+  name: "Image",
   id: "image",
-  displayName: "Image",
-  pluralDisplayName: "Images",
   description: "A custom Droplet image (uploaded image, backup, or snapshot promoted to an image)",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    {
-      key: "type",
-      label: "Type",
+    f("name", "Name"),
+    f("type", "Type", {
       kind: "enum",
       required: false,
       enumValues: ["snapshot", "backup", "custom", "distribution", "application"],
-    },
-    { key: "distribution", label: "Distribution", kind: "string", required: false },
-    { key: "slug", label: "Slug", kind: "string", required: false },
-    { key: "regions", label: "Regions", kind: "string", required: false },
-    { key: "sizeGb", label: "Size (GB)", kind: "number", required: false },
-    { key: "minDiskSize", label: "Min Disk (GB)", kind: "number", required: false },
-    { key: "status", label: "Status", kind: "string", required: false },
+    }),
+    f("distribution", "Distribution", { required: false }),
+    f("slug", "Slug", { required: false }),
+    f("regions", "Regions", { required: false }),
+    f("sizeGb", "Size (GB)", { kind: "number", required: false }),
+    f("minDiskSize", "Min Disk (GB)", { kind: "number", required: false }),
+    f("status", "Status", { required: false }),
   ],
   outputs: [],
   parentTypeId: "project",
   showInSidebar: true,
-  dashboardPinnable: true,
   iconKey: "image",
-};
+});

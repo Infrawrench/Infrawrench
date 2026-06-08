@@ -1,26 +1,20 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const AgentApiKeyResourceType: ResourceTypeDefinition = {
+export const AgentApiKeyResourceType = rt({
+  name: "Endpoint Access Key",
+  pinnable: false,
   id: "agent-api-key",
-  displayName: "Endpoint Access Key",
-  pluralDisplayName: "Endpoint Access Keys",
   description:
     "A bearer token scoped to a single Gradient AI agent's deployment endpoint. Used by client SDKs (OpenAI-compatible) and apps that call the agent directly. The secret is shown once at creation.",
-  fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "createdBy", label: "Created By", kind: "string", required: false, editable: false },
-  ],
+  fields: [f("name", "Name"), f("createdBy", "Created By", { required: false, editable: false })],
   outputs: [
-    {
-      key: "secretKey",
-      label: "Secret Key",
+    o("secretKey", "Secret Key", {
       sensitive: true,
       description: "Bearer token for the agent's deployment endpoint. Shown once at creation.",
-    },
+    }),
   ],
   parentTypeId: "gen-ai-agent",
   showInSidebar: false,
-  dashboardPinnable: false,
   supportsCreate: true,
   iconKey: "key",
-};
+});

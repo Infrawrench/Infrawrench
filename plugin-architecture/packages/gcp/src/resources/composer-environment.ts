@@ -1,18 +1,16 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const ComposerEnvironmentResourceType: ResourceTypeDefinition = {
+export const ComposerEnvironmentResourceType = rt({
+  name: "Composer Environment",
   id: "composer-environment",
-  displayName: "Composer Environment",
-  pluralDisplayName: "Composer Environments",
   description: "A Google Cloud Composer managed Apache Airflow environment",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "location", label: "Location", kind: "string", required: true },
-    { key: "state", label: "State", kind: "string", required: false },
-    { key: "imageVersion", label: "Image Version", kind: "string", required: false },
-    { key: "airflowUri", label: "Airflow URI", kind: "string", required: false },
-    { key: "dagGcsPrefix", label: "DAG GCS Prefix", kind: "string", required: false },
+    f("name", "Name"),
+    f("location", "Location"),
+    f("state", "State", { required: false }),
+    f("imageVersion", "Image Version", { required: false }),
+    f("airflowUri", "Airflow URI", { required: false }),
+    f("dagGcsPrefix", "DAG GCS Prefix", { required: false }),
   ],
-  outputs: [{ key: "airflowUri", label: "Airflow Web UI", sensitive: false }],
-  dashboardPinnable: true,
-};
+  outputs: [o("airflowUri", "Airflow Web UI")],
+});

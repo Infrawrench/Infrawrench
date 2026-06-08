@@ -1,26 +1,21 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const RedisInstanceResourceType: ResourceTypeDefinition = {
+export const RedisInstanceResourceType = rt({
+  name: "Redis Instance",
   id: "redis-instance",
-  displayName: "Redis Instance",
-  pluralDisplayName: "Redis Instances",
   description: "A Redis server — connects via connection string",
   fields: [
-    { key: "name", label: "Display Name", kind: "string", required: true },
-    {
-      key: "connectionString",
-      label: "Connection String",
+    f("name", "Display Name"),
+    f("connectionString", "Connection String", {
       kind: "secret",
-      required: true,
       allowLiteral: true,
       description: "Redis connection URI (redis:// or rediss://).",
       resolvableOutputKeys: ["connectionString"],
-    },
+    }),
   ],
   outputs: [
-    { key: "connectionString", label: "Connection String", sensitive: true },
-    { key: "redisVersion", label: "Redis Version", sensitive: false },
+    o("connectionString", "Connection String", { sensitive: true }),
+    o("redisVersion", "Redis Version"),
   ],
-  dashboardPinnable: true,
   iconKey: "redis",
-};
+});

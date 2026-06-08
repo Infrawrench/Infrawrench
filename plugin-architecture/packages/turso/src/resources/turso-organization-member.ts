@@ -1,26 +1,16 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const TursoOrganizationMemberResourceType: ResourceTypeDefinition = {
+export const TursoOrganizationMemberResourceType = rt({
+  name: "Organization Member",
+  pinnable: false,
   id: "turso-organization-member",
-  displayName: "Organization Member",
-  pluralDisplayName: "Organization Members",
   description: "A member of the configured Turso organization",
   fields: [
-    { key: "username", label: "Username", kind: "string", required: true },
-    { key: "email", label: "Email", kind: "string", required: false },
-    {
-      key: "role",
-      label: "Role",
-      kind: "enum",
-      required: false,
-      enumValues: ["admin", "member", "viewer"],
-    },
+    f("username", "Username"),
+    f("email", "Email", { required: false }),
+    f("role", "Role", { kind: "enum", required: false, enumValues: ["admin", "member", "viewer"] }),
   ],
-  outputs: [
-    { key: "username", label: "Username", sensitive: false },
-    { key: "email", label: "Email", sensitive: false },
-  ],
-  dashboardPinnable: false,
+  outputs: [o("username", "Username"), o("email", "Email")],
   supportsUpdate: true,
   iconKey: "turso",
-};
+});

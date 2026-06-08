@@ -1,33 +1,26 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const VolumeResourceType: ResourceTypeDefinition = {
+export const VolumeResourceType = rt({
+  name: "Volume",
   id: "volume",
-  displayName: "Volume",
-  pluralDisplayName: "Volumes",
   description: "A DigitalOcean Block Storage volume",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "region", label: "Region", kind: "string", required: true },
-    { key: "sizeGb", label: "Size (GB)", kind: "number", required: true },
-    {
-      key: "filesystemType",
-      label: "Filesystem",
+    f("name", "Name"),
+    f("region", "Region"),
+    f("sizeGb", "Size (GB)", { kind: "number" }),
+    f("filesystemType", "Filesystem", {
       kind: "enum",
       required: false,
       enumValues: ["ext4", "xfs", ""],
-    },
-    {
-      key: "dropletIds",
-      label: "Attached Droplet IDs",
-      kind: "string",
+    }),
+    f("dropletIds", "Attached Droplet IDs", {
       required: false,
       description: "Comma-separated droplet IDs this volume is attached to",
-    },
+    }),
   ],
   outputs: [],
   parentTypeId: "project",
   showInSidebar: true,
-  dashboardPinnable: true,
   supportsCreate: true,
   iconKey: "volume",
   attachTargets: [
@@ -38,4 +31,4 @@ export const VolumeResourceType: ResourceTypeDefinition = {
       verb: "Attach",
     },
   ],
-};
+});

@@ -1,24 +1,22 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const AppGatewayResourceType: ResourceTypeDefinition = {
+export const AppGatewayResourceType = rt({
+  name: "Application Gateway",
   id: "azure-app-gateway",
-  displayName: "Application Gateway",
-  pluralDisplayName: "Application Gateways",
   description: "An Azure Application Gateway (Layer 7 load balancer)",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "resourceGroup", label: "Resource Group", kind: "string", required: true },
-    { key: "location", label: "Location", kind: "string", required: true },
-    { key: "sku", label: "SKU", kind: "string", required: true },
-    { key: "tier", label: "Tier", kind: "string", required: true },
-    { key: "capacity", label: "Capacity", kind: "number", required: false },
-    { key: "provisioningState", label: "Provisioning State", kind: "string", required: true },
-    { key: "operationalState", label: "Operational State", kind: "string", required: false },
-    { key: "backendPoolCount", label: "Backend Pools", kind: "number", required: false },
-    { key: "httpListenerCount", label: "HTTP Listeners", kind: "number", required: false },
+    f("name", "Name"),
+    f("resourceGroup", "Resource Group"),
+    f("location", "Location"),
+    f("sku", "SKU"),
+    f("tier", "Tier"),
+    f("capacity", "Capacity", { kind: "number", required: false }),
+    f("provisioningState", "Provisioning State"),
+    f("operationalState", "Operational State", { required: false }),
+    f("backendPoolCount", "Backend Pools", { kind: "number", required: false }),
+    f("httpListenerCount", "HTTP Listeners", { kind: "number", required: false }),
   ],
-  outputs: [{ key: "frontendIp", label: "Frontend IP", sensitive: false }],
-  dashboardPinnable: true,
+  outputs: [o("frontendIp", "Frontend IP")],
   supportsMetrics: true,
   iconKey: "network",
   attachTargets: [
@@ -29,4 +27,4 @@ export const AppGatewayResourceType: ResourceTypeDefinition = {
       verb: "Add backend",
     },
   ],
-};
+});

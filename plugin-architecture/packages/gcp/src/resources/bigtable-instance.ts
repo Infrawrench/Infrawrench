@@ -1,23 +1,19 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const BigtableInstanceResourceType: ResourceTypeDefinition = {
+export const BigtableInstanceResourceType = rt({
+  name: "Bigtable Instance",
   id: "bigtable-instance",
-  displayName: "Bigtable Instance",
-  pluralDisplayName: "Bigtable Instances",
   description: "A Google Cloud Bigtable instance",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "displayName", label: "Display Name", kind: "string", required: false },
-    {
-      key: "type",
-      label: "Type",
+    f("name", "Name"),
+    f("displayName", "Display Name", { required: false }),
+    f("type", "Type", {
       kind: "enum",
       required: false,
       enumValues: ["PRODUCTION", "DEVELOPMENT", "TYPE_UNSPECIFIED"],
-    },
-    { key: "state", label: "State", kind: "string", required: false },
+    }),
+    f("state", "State", { required: false }),
   ],
   outputs: [],
-  dashboardPinnable: true,
   supportsCreate: true,
-};
+});

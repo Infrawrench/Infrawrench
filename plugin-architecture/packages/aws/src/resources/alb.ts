@@ -1,44 +1,31 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const ALBResourceType: ResourceTypeDefinition = {
+export const ALBResourceType = rt({
+  name: "Load Balancer",
   id: "alb",
-  displayName: "Load Balancer",
-  pluralDisplayName: "Load Balancers",
   description: "An AWS Elastic Load Balancer (ALB/NLB/GLB)",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    {
-      key: "type",
-      label: "Type",
+    f("name", "Name"),
+    f("type", "Type", { kind: "enum", enumValues: ["application", "network", "gateway"] }),
+    f("state", "State", {
       kind: "enum",
-      required: true,
-      enumValues: ["application", "network", "gateway"],
-    },
-    {
-      key: "state",
-      label: "State",
-      kind: "enum",
-      required: true,
       enumValues: ["active", "provisioning", "active_impaired", "failed"],
-    },
-    {
-      key: "scheme",
-      label: "Scheme",
+    }),
+    f("scheme", "Scheme", {
       kind: "enum",
       required: false,
       enumValues: ["internet-facing", "internal"],
-    },
-    { key: "vpcId", label: "VPC ID", kind: "string", required: false },
-    { key: "availabilityZones", label: "Availability Zones", kind: "string", required: false },
-    { key: "ipAddressType", label: "IP Address Type", kind: "string", required: false },
+    }),
+    f("vpcId", "VPC ID", { required: false }),
+    f("availabilityZones", "Availability Zones", { required: false }),
+    f("ipAddressType", "IP Address Type", { required: false }),
   ],
   outputs: [
-    { key: "dnsName", label: "DNS Name", sensitive: false },
-    { key: "loadBalancerArn", label: "Load Balancer ARN", sensitive: false },
-    { key: "canonicalHostedZoneId", label: "Hosted Zone ID", sensitive: false },
+    o("dnsName", "DNS Name"),
+    o("loadBalancerArn", "Load Balancer ARN"),
+    o("canonicalHostedZoneId", "Hosted Zone ID"),
   ],
-  dashboardPinnable: true,
   iconKey: "load-balancer",
   supportsCreate: true,
   supportsMetrics: true,
-};
+});

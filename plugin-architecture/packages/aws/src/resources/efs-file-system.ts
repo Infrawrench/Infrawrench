@@ -1,43 +1,31 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const EFSFileSystemResourceType: ResourceTypeDefinition = {
+export const EFSFileSystemResourceType = rt({
+  name: "EFS File System",
   id: "efs-file-system",
-  displayName: "EFS File System",
-  pluralDisplayName: "EFS File Systems",
   description: "An Amazon Elastic File System",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: false },
-    { key: "fileSystemId", label: "File System ID", kind: "string", required: true },
-    {
-      key: "lifeCycleState",
-      label: "State",
+    f("name", "Name", { required: false }),
+    f("fileSystemId", "File System ID"),
+    f("lifeCycleState", "State", {
       kind: "enum",
-      required: true,
       enumValues: ["creating", "available", "updating", "deleting", "deleted", "error"],
-    },
-    {
-      key: "performanceMode",
-      label: "Performance Mode",
+    }),
+    f("performanceMode", "Performance Mode", {
       kind: "enum",
       required: false,
       enumValues: ["generalPurpose", "maxIO"],
-    },
-    {
-      key: "throughputMode",
-      label: "Throughput Mode",
+    }),
+    f("throughputMode", "Throughput Mode", {
       kind: "enum",
       required: false,
       enumValues: ["bursting", "provisioned", "elastic"],
-    },
-    { key: "sizeInBytes", label: "Size", kind: "number", required: false },
-    { key: "encrypted", label: "Encrypted", kind: "boolean", required: false },
-    { key: "numberOfMountTargets", label: "Mount Targets", kind: "number", required: false },
+    }),
+    f("sizeInBytes", "Size", { kind: "number", required: false }),
+    f("encrypted", "Encrypted", { kind: "boolean", required: false }),
+    f("numberOfMountTargets", "Mount Targets", { kind: "number", required: false }),
   ],
-  outputs: [
-    { key: "fileSystemArn", label: "File System ARN", sensitive: false },
-    { key: "fileSystemId", label: "File System ID", sensitive: false },
-  ],
-  dashboardPinnable: true,
+  outputs: [o("fileSystemArn", "File System ARN"), o("fileSystemId", "File System ID")],
   supportsCreate: true,
   supportsMetrics: true,
   iconKey: "storage",
@@ -52,4 +40,4 @@ export const EFSFileSystemResourceType: ResourceTypeDefinition = {
       ],
     },
   ],
-};
+});

@@ -1,36 +1,28 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const AppRegistrationResourceType: ResourceTypeDefinition = {
+export const AppRegistrationResourceType = rt({
+  name: "App Registration",
+  pinnable: false,
   id: "azure-app-registration",
-  displayName: "App Registration",
-  pluralDisplayName: "App Registrations",
   description:
     "An Entra ID (Azure AD) application with a service principal — the Azure equivalent of an AWS IAM user or GCP service account. Use it for service-to-service auth via client credentials.",
   fields: [
-    { key: "displayName", label: "Display Name", kind: "string", required: true },
-    { key: "appId", label: "Application (Client) ID", kind: "string", required: true },
-    { key: "objectId", label: "Object ID", kind: "string", required: true },
-    {
-      key: "servicePrincipalId",
-      label: "Service Principal ID",
-      kind: "string",
-      required: false,
-    },
-    { key: "signInAudience", label: "Sign-in Audience", kind: "string", required: false },
-    { key: "createdDateTime", label: "Created", kind: "string", required: false },
+    f("displayName", "Display Name"),
+    f("appId", "Application (Client) ID"),
+    f("objectId", "Object ID"),
+    f("servicePrincipalId", "Service Principal ID", { required: false }),
+    f("signInAudience", "Sign-in Audience", { required: false }),
+    f("createdDateTime", "Created", { required: false }),
   ],
   outputs: [
-    { key: "appId", label: "Client ID", sensitive: false },
-    { key: "tenantId", label: "Tenant ID", sensitive: false },
-    {
-      key: "clientSecret",
-      label: "Client Secret (credentials file)",
+    o("appId", "Client ID"),
+    o("tenantId", "Tenant ID"),
+    o("clientSecret", "Client Secret (credentials file)", {
       sensitive: true,
       description:
         "Creates a new client secret via Graph addPassword and emits a ready-to-use env-file with AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_CLIENT_SECRET. Each resolve creates one secret.",
-    },
+    }),
   ],
-  dashboardPinnable: false,
   iconKey: "user",
   supportsCreate: true,
   credentialFormats: [
@@ -55,4 +47,4 @@ export const AppRegistrationResourceType: ResourceTypeDefinition = {
       ],
     },
   ],
-};
+});

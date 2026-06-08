@@ -1,18 +1,14 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const VertexGeminiModelResourceType: ResourceTypeDefinition = {
+export const VertexGeminiModelResourceType = rt({
+  name: "Gemini Model",
+  pinnable: false,
   id: "vertex-gemini-model",
-  displayName: "Gemini Model",
-  pluralDisplayName: "Gemini Models",
   description:
     "A Vertex AI Gemini chat model. Open one to chat with it in the Playground tab via Vertex AI's OpenAI-compatible streaming endpoint.",
-  fields: [
-    { key: "modelId", label: "Model ID", kind: "string", required: true },
-    { key: "description", label: "Description", kind: "string", required: false },
-  ],
+  fields: [f("modelId", "Model ID"), f("description", "Description", { required: false })],
   outputs: [],
-  dashboardPinnable: false,
-};
+});
 
 /**
  * Curated list of current Vertex AI Gemini chat models. Vertex's

@@ -1,18 +1,16 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const BackupVaultResourceType: ResourceTypeDefinition = {
+export const BackupVaultResourceType = rt({
+  name: "Backup Vault",
   id: "backup-vault",
-  displayName: "Backup Vault",
-  pluralDisplayName: "Backup Vaults",
   description: "An AWS Backup vault that stores backup recovery points",
   fields: [
-    { key: "backupVaultName", label: "Vault Name", kind: "string", required: true },
-    { key: "numberOfRecoveryPoints", label: "Recovery Points", kind: "number", required: false },
-    { key: "encryptionKeyArn", label: "KMS Key ARN", kind: "string", required: false },
-    { key: "creationDate", label: "Created", kind: "string", required: false },
+    f("backupVaultName", "Vault Name"),
+    f("numberOfRecoveryPoints", "Recovery Points", { kind: "number", required: false }),
+    f("encryptionKeyArn", "KMS Key ARN", { required: false }),
+    f("creationDate", "Created", { required: false }),
   ],
-  outputs: [{ key: "backupVaultArn", label: "Backup Vault ARN", sensitive: false }],
-  dashboardPinnable: true,
+  outputs: [o("backupVaultArn", "Backup Vault ARN")],
   iconKey: "storage",
   supportsMetrics: true,
-};
+});

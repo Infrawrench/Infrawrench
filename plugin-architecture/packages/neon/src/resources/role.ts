@@ -1,19 +1,18 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const NeonRoleResourceType: ResourceTypeDefinition = {
+export const NeonRoleResourceType = rt({
+  name: "Role",
+  pinnable: false,
   id: "neon-role",
-  displayName: "Role",
-  pluralDisplayName: "Roles",
   description: "A PostgreSQL role within a Neon branch",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "projectId", label: "Project ID", kind: "string", required: true },
-    { key: "branchId", label: "Branch ID", kind: "string", required: true },
-    { key: "protected", label: "Protected", kind: "boolean", required: false },
+    f("name", "Name"),
+    f("projectId", "Project ID"),
+    f("branchId", "Branch ID"),
+    f("protected", "Protected", { kind: "boolean", required: false }),
   ],
-  outputs: [{ key: "password", label: "Password", sensitive: true }],
+  outputs: [o("password", "Password", { sensitive: true })],
   parentTypeId: "neon-branch",
-  dashboardPinnable: false,
   supportsCreate: true,
   iconKey: "neon",
-};
+});

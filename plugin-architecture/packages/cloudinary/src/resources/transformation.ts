@@ -1,18 +1,16 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const TransformationResourceType: ResourceTypeDefinition = {
+export const TransformationResourceType = rt({
+  name: "Transformation",
   id: "transformation",
-  displayName: "Transformation",
-  pluralDisplayName: "Transformations",
   description: "A named image/video transformation in Cloudinary",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "named", label: "Named", kind: "boolean", required: false },
-    { key: "used", label: "Used", kind: "boolean", required: false },
-    { key: "usageCount", label: "Usage Count", kind: "number", required: false },
+    f("name", "Name"),
+    f("named", "Named", { kind: "boolean", required: false }),
+    f("used", "Used", { kind: "boolean", required: false }),
+    f("usageCount", "Usage Count", { kind: "number", required: false }),
   ],
-  outputs: [{ key: "transformationName", label: "Transformation Name", sensitive: false }],
-  dashboardPinnable: true,
+  outputs: [o("transformationName", "Transformation Name")],
   supportsCreate: true,
   iconKey: "transformation",
   attachTargets: [
@@ -22,4 +20,4 @@ export const TransformationResourceType: ResourceTypeDefinition = {
       verb: "Apply to preset",
     },
   ],
-};
+});

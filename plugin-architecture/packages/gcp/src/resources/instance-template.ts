@@ -1,18 +1,16 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const InstanceTemplateResourceType: ResourceTypeDefinition = {
+export const InstanceTemplateResourceType = rt({
+  name: "Instance Template",
   id: "instance-template",
-  displayName: "Instance Template",
-  pluralDisplayName: "Instance Templates",
   description: "A Google Compute Engine instance template used by managed instance groups",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "machineType", label: "Machine Type", kind: "string", required: false },
-    { key: "sourceImage", label: "Source Image", kind: "string", required: false },
-    { key: "diskSizeGb", label: "Disk Size (GB)", kind: "number", required: false },
-    { key: "description", label: "Description", kind: "string", required: false },
+    f("name", "Name"),
+    f("machineType", "Machine Type", { required: false }),
+    f("sourceImage", "Source Image", { required: false }),
+    f("diskSizeGb", "Disk Size (GB)", { kind: "number", required: false }),
+    f("description", "Description", { required: false }),
   ],
-  outputs: [{ key: "selfLink", label: "Self Link", sensitive: false }],
-  dashboardPinnable: true,
+  outputs: [o("selfLink", "Self Link")],
   supportsCreate: true,
-};
+});

@@ -1,18 +1,14 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const MachineResourceType: ResourceTypeDefinition = {
+export const MachineResourceType = rt({
+  name: "Machine",
   id: "machine",
-  displayName: "Machine",
-  pluralDisplayName: "Machines",
   description: "A Fly Machine — a fast-launching microVM",
   parentTypeId: "app",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: false },
-    {
-      key: "state",
-      label: "State",
+    f("name", "Name", { required: false }),
+    f("state", "State", {
       kind: "enum",
-      required: true,
       enumValues: [
         "created",
         "started",
@@ -23,39 +19,17 @@ export const MachineResourceType: ResourceTypeDefinition = {
         "stopping",
         "replacing",
       ],
-    },
-    {
-      key: "region",
-      label: "Region",
-      kind: "string",
-      required: true,
-      description: "Fly.io region code (e.g. iad, cdg, nrt)",
-    },
-    {
-      key: "image",
-      label: "Image",
-      kind: "string",
-      required: false,
-      description: "Container image used by this machine",
-    },
-    {
-      key: "appName",
-      label: "App",
-      kind: "string",
-      required: true,
-      description: "Name of the parent app",
-    },
-    {
-      key: "instanceId",
-      label: "Instance ID",
-      kind: "string",
+    }),
+    f("region", "Region", { description: "Fly.io region code (e.g. iad, cdg, nrt)" }),
+    f("image", "Image", { required: false, description: "Container image used by this machine" }),
+    f("appName", "App", { description: "Name of the parent app" }),
+    f("instanceId", "Instance ID", {
       required: false,
       description: "Current instance version identifier",
-    },
+    }),
   ],
-  outputs: [{ key: "privateIp", label: "Private IPv6 (6PN)", sensitive: false }],
-  dashboardPinnable: true,
+  outputs: [o("privateIp", "Private IPv6 (6PN)")],
   iconKey: "server",
   supportsCreate: true,
   supportsMetrics: true,
-};
+});

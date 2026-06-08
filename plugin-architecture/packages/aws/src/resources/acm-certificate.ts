@@ -1,17 +1,13 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const ACMCertificateResourceType: ResourceTypeDefinition = {
+export const ACMCertificateResourceType = rt({
+  name: "ACM Certificate",
   id: "acm-certificate",
-  displayName: "ACM Certificate",
-  pluralDisplayName: "ACM Certificates",
   description: "An AWS Certificate Manager SSL/TLS certificate",
   fields: [
-    { key: "domainName", label: "Domain Name", kind: "string", required: true },
-    {
-      key: "status",
-      label: "Status",
+    f("domainName", "Domain Name"),
+    f("status", "Status", {
       kind: "enum",
-      required: true,
       enumValues: [
         "PENDING_VALIDATION",
         "ISSUED",
@@ -21,27 +17,24 @@ export const ACMCertificateResourceType: ResourceTypeDefinition = {
         "VALIDATION_TIMED_OUT",
         "FAILED",
       ],
-    },
-    {
-      key: "type",
-      label: "Type",
+    }),
+    f("type", "Type", {
       kind: "enum",
       required: false,
       enumValues: ["IMPORTED", "AMAZON_ISSUED", "PRIVATE"],
-    },
-    { key: "issuer", label: "Issuer", kind: "string", required: false },
-    { key: "notBefore", label: "Valid From", kind: "string", required: false },
-    { key: "notAfter", label: "Valid Until", kind: "string", required: false },
-    { key: "keyAlgorithm", label: "Key Algorithm", kind: "string", required: false },
-    { key: "subjectAlternativeNames", label: "SANs", kind: "string", required: false },
-    { key: "inUseBy", label: "In Use By", kind: "number", required: false },
+    }),
+    f("issuer", "Issuer", { required: false }),
+    f("notBefore", "Valid From", { required: false }),
+    f("notAfter", "Valid Until", { required: false }),
+    f("keyAlgorithm", "Key Algorithm", { required: false }),
+    f("subjectAlternativeNames", "SANs", { required: false }),
+    f("inUseBy", "In Use By", { kind: "number", required: false }),
   ],
   outputs: [
-    { key: "certificateArn", label: "Certificate ARN", sensitive: false },
-    { key: "dnsRecords", label: "DNS Validation Records", sensitive: false },
-    { key: "domainValidationStatus", label: "Domain Validation Status", sensitive: false },
+    o("certificateArn", "Certificate ARN"),
+    o("dnsRecords", "DNS Validation Records"),
+    o("domainValidationStatus", "Domain Validation Status"),
   ],
-  dashboardPinnable: true,
   iconKey: "certificate",
   supportsCreate: true,
-};
+});

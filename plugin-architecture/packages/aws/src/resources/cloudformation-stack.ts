@@ -1,18 +1,14 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const CloudFormationStackResourceType: ResourceTypeDefinition = {
+export const CloudFormationStackResourceType = rt({
+  name: "CloudFormation Stack",
   id: "cloudformation-stack",
-  displayName: "CloudFormation Stack",
-  pluralDisplayName: "CloudFormation Stacks",
   description: "An AWS CloudFormation stack",
   fields: [
-    { key: "stackName", label: "Stack Name", kind: "string", required: true },
-    { key: "stackId", label: "Stack ID", kind: "string", required: true },
-    {
-      key: "status",
-      label: "Status",
+    f("stackName", "Stack Name"),
+    f("stackId", "Stack ID"),
+    f("status", "Status", {
       kind: "enum",
-      required: true,
       enumValues: [
         "CREATE_IN_PROGRESS",
         "CREATE_FAILED",
@@ -38,18 +34,15 @@ export const CloudFormationStackResourceType: ResourceTypeDefinition = {
         "IMPORT_ROLLBACK_FAILED",
         "IMPORT_ROLLBACK_COMPLETE",
       ],
-    },
-    { key: "description", label: "Description", kind: "string", required: false },
-    { key: "driftStatus", label: "Drift Status", kind: "string", required: false },
-    {
-      key: "enableTerminationProtection",
-      label: "Termination Protection",
+    }),
+    f("description", "Description", { required: false }),
+    f("driftStatus", "Drift Status", { required: false }),
+    f("enableTerminationProtection", "Termination Protection", {
       kind: "boolean",
       required: false,
-    },
+    }),
   ],
-  outputs: [{ key: "stackArn", label: "Stack ARN", sensitive: false }],
-  dashboardPinnable: true,
+  outputs: [o("stackArn", "Stack ARN")],
   iconKey: "stack",
   supportsCreate: true,
-};
+});

@@ -1,21 +1,20 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const ContainerRegistryResourceType: ResourceTypeDefinition = {
+export const ContainerRegistryResourceType = rt({
+  name: "Container Registry",
+  plural: "Container Registries",
   id: "azure-container-registry",
-  displayName: "Container Registry",
-  pluralDisplayName: "Container Registries",
   description: "An Azure Container Registry (ACR)",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "resourceGroup", label: "Resource Group", kind: "string", required: true },
-    { key: "location", label: "Location", kind: "string", required: true },
-    { key: "sku", label: "SKU", kind: "string", required: true },
-    { key: "provisioningState", label: "Provisioning State", kind: "string", required: true },
-    { key: "adminEnabled", label: "Admin Enabled", kind: "boolean", required: false },
-    { key: "publicNetworkAccess", label: "Public Access", kind: "string", required: false },
+    f("name", "Name"),
+    f("resourceGroup", "Resource Group"),
+    f("location", "Location"),
+    f("sku", "SKU"),
+    f("provisioningState", "Provisioning State"),
+    f("adminEnabled", "Admin Enabled", { kind: "boolean", required: false }),
+    f("publicNetworkAccess", "Public Access", { required: false }),
   ],
-  outputs: [{ key: "loginServer", label: "Login Server", sensitive: false }],
-  dashboardPinnable: true,
+  outputs: [o("loginServer", "Login Server")],
   iconKey: "container-registry",
   supportsCreate: true,
   supportsMetrics: true,
@@ -27,4 +26,4 @@ export const ContainerRegistryResourceType: ResourceTypeDefinition = {
       entries: [{ envKey: "ACR_LOGIN_SERVER", outputKey: "loginServer" }],
     },
   ],
-};
+});

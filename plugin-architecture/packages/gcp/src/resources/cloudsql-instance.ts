@@ -1,20 +1,17 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const CloudSqlInstanceResourceType: ResourceTypeDefinition = {
+export const CloudSqlInstanceResourceType = rt({
+  name: "Cloud SQL Instance",
   id: "cloudsql-instance",
-  displayName: "Cloud SQL Instance",
-  pluralDisplayName: "Cloud SQL Instances",
   description: "A Google Cloud SQL managed database instance",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "databaseVersion", label: "Database Version", kind: "string", required: false },
-    { key: "region", label: "Region", kind: "string", required: true },
-    { key: "tier", label: "Machine Tier", kind: "string", required: false },
-    { key: "state", label: "State", kind: "string", required: false },
-    { key: "availabilityType", label: "Availability Type", kind: "string", required: false },
-    {
-      key: "network",
-      label: "VPC Network",
+    f("name", "Name"),
+    f("databaseVersion", "Database Version", { required: false }),
+    f("region", "Region"),
+    f("tier", "Machine Tier", { required: false }),
+    f("state", "State", { required: false }),
+    f("availabilityType", "Availability Type", { required: false }),
+    f("network", "VPC Network", {
       kind: "association",
       required: false,
       description: "VPC network for private IP access",
@@ -27,27 +24,19 @@ export const CloudSqlInstanceResourceType: ResourceTypeDefinition = {
           outputKey: "selfLink",
         },
       ],
-    },
+    }),
   ],
   outputs: [
-    {
-      key: "connectionName",
-      label: "Connection Name",
-      sensitive: false,
-      description: "project:region:instance",
-    },
-    { key: "ipAddress", label: "IP Address", sensitive: false },
-    {
-      key: "connectionUrl",
-      label: "Connection URL",
+    o("connectionName", "Connection Name", { description: "project:region:instance" }),
+    o("ipAddress", "IP Address"),
+    o("connectionUrl", "Connection URL", {
       sensitive: true,
       description: "Full database connection URL with embedded credentials",
-    },
-    { key: "username", label: "Username", sensitive: false },
-    { key: "password", label: "Password", sensitive: true },
-    { key: "port", label: "Port", sensitive: false },
+    }),
+    o("username", "Username"),
+    o("password", "Password", { sensitive: true }),
+    o("port", "Port"),
   ],
-  dashboardPinnable: true,
   supportsCreate: true,
   supportsMetrics: true,
   peerIntegrations: (() => {
@@ -123,4 +112,4 @@ export const CloudSqlInstanceResourceType: ResourceTypeDefinition = {
       ],
     },
   ],
-};
+});

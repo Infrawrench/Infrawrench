@@ -1,26 +1,24 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const OpenSearchDomainResourceType: ResourceTypeDefinition = {
+export const OpenSearchDomainResourceType = rt({
+  name: "OpenSearch Domain",
   id: "opensearch-domain",
-  displayName: "OpenSearch Domain",
-  pluralDisplayName: "OpenSearch Domains",
   description: "An Amazon OpenSearch Service domain",
   fields: [
-    { key: "domainName", label: "Domain Name", kind: "string", required: true },
-    { key: "engineVersion", label: "Engine Version", kind: "string", required: true },
-    { key: "instanceType", label: "Instance Type", kind: "string", required: false },
-    { key: "instanceCount", label: "Instance Count", kind: "number", required: false },
-    { key: "status", label: "Processing", kind: "boolean", required: false },
-    { key: "volumeType", label: "Volume Type", kind: "string", required: false },
-    { key: "volumeSize", label: "Volume Size (GB)", kind: "number", required: false },
-    { key: "encryptionEnabled", label: "Encryption", kind: "boolean", required: false },
+    f("domainName", "Domain Name"),
+    f("engineVersion", "Engine Version"),
+    f("instanceType", "Instance Type", { required: false }),
+    f("instanceCount", "Instance Count", { kind: "number", required: false }),
+    f("status", "Processing", { kind: "boolean", required: false }),
+    f("volumeType", "Volume Type", { required: false }),
+    f("volumeSize", "Volume Size (GB)", { kind: "number", required: false }),
+    f("encryptionEnabled", "Encryption", { kind: "boolean", required: false }),
   ],
   outputs: [
-    { key: "endpoint", label: "Endpoint", sensitive: false },
-    { key: "dashboardEndpoint", label: "Dashboard Endpoint", sensitive: false },
-    { key: "domainArn", label: "Domain ARN", sensitive: false },
+    o("endpoint", "Endpoint"),
+    o("dashboardEndpoint", "Dashboard Endpoint"),
+    o("domainArn", "Domain ARN"),
   ],
-  dashboardPinnable: true,
   iconKey: "search",
   supportsCreate: true,
   supportsMetrics: true,
@@ -48,4 +46,4 @@ export const OpenSearchDomainResourceType: ResourceTypeDefinition = {
       ],
     },
   ],
-};
+});

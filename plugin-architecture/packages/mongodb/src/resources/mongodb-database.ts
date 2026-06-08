@@ -1,21 +1,19 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const MongoDBDatabaseResourceType: ResourceTypeDefinition = {
+export const MongoDBDatabaseResourceType = rt({
+  name: "MongoDB Database",
   id: "mongodb-database",
-  displayName: "MongoDB Database",
-  pluralDisplayName: "MongoDB Databases",
   description: "A MongoDB database — browse collections and documents",
   fields: [
-    { key: "host", label: "Host", kind: "string", required: false },
-    { key: "database", label: "Database", kind: "string", required: true },
-    { key: "connectionString", label: "Connection String", kind: "secret", required: true },
+    f("host", "Host", { required: false }),
+    f("database", "Database"),
+    f("connectionString", "Connection String", { kind: "secret" }),
   ],
   outputs: [
-    { key: "connectionString", label: "Connection String", sensitive: true },
-    { key: "serverVersion", label: "Server Version", sensitive: false },
+    o("connectionString", "Connection String", { sensitive: true }),
+    o("serverVersion", "Server Version"),
   ],
-  dashboardPinnable: true,
   supportsCreate: true,
   supportsMetrics: true,
   iconKey: "mongodb",
-};
+});

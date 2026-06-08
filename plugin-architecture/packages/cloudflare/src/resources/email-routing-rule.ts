@@ -1,21 +1,20 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const EmailRoutingRuleResourceType: ResourceTypeDefinition = {
+export const EmailRoutingRuleResourceType = rt({
+  name: "Email Routing Rule",
+  pinnable: false,
   id: "email-routing-rule",
-  displayName: "Email Routing Rule",
-  pluralDisplayName: "Email Routing Rules",
   description: "A Cloudflare Email Routing rule",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: false },
-    { key: "enabled", label: "Enabled", kind: "boolean", required: true },
-    { key: "matchers", label: "Matchers", kind: "string", required: false, editable: false },
-    { key: "actions", label: "Actions", kind: "string", required: false, editable: false },
-    { key: "priority", label: "Priority", kind: "number", required: false, editable: false },
+    f("name", "Name", { required: false }),
+    f("enabled", "Enabled", { kind: "boolean" }),
+    f("matchers", "Matchers", { required: false, editable: false }),
+    f("actions", "Actions", { required: false, editable: false }),
+    f("priority", "Priority", { kind: "number", required: false, editable: false }),
   ],
   outputs: [],
   parentTypeId: "zone",
-  dashboardPinnable: false,
   supportsCreate: true,
   supportsUpdate: true,
   iconKey: "email",
-};
+});

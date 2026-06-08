@@ -1,19 +1,16 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const GceInstanceResourceType: ResourceTypeDefinition = {
+export const GceInstanceResourceType = rt({
+  name: "VM Instance",
   id: "gce-instance",
-  displayName: "VM Instance",
-  pluralDisplayName: "VM Instances",
   description: "A Google Compute Engine virtual machine instance",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "zone", label: "Zone", kind: "string", required: true },
-    { key: "machineType", label: "Machine Type", kind: "string", required: true },
-    { key: "status", label: "Status", kind: "string", required: false },
-    { key: "networkTier", label: "Network Tier", kind: "string", required: false },
-    {
-      key: "network",
-      label: "VPC Network",
+    f("name", "Name"),
+    f("zone", "Zone"),
+    f("machineType", "Machine Type"),
+    f("status", "Status", { required: false }),
+    f("networkTier", "Network Tier", { required: false }),
+    f("network", "VPC Network", {
       kind: "association",
       required: false,
       description: "VPC network to attach the instance to",
@@ -26,13 +23,9 @@ export const GceInstanceResourceType: ResourceTypeDefinition = {
           outputKey: "selfLink",
         },
       ],
-    },
+    }),
   ],
-  outputs: [
-    { key: "externalIp", label: "External IP", sensitive: false },
-    { key: "internalIp", label: "Internal IP", sensitive: false },
-  ],
-  dashboardPinnable: true,
+  outputs: [o("externalIp", "External IP"), o("internalIp", "Internal IP")],
   supportsMetrics: true,
   sshEndpoint: {
     hostOutputKey: "externalIp",
@@ -41,4 +34,4 @@ export const GceInstanceResourceType: ResourceTypeDefinition = {
     usernameFieldKey: "sshUsername",
   },
   supportsCreate: true,
-};
+});

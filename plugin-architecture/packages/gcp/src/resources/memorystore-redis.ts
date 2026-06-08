@@ -1,31 +1,24 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const MemorystoreRedisResourceType: ResourceTypeDefinition = {
+export const MemorystoreRedisResourceType = rt({
+  name: "Memorystore Redis",
+  plural: "Memorystore Redis Instances",
   id: "memorystore-redis",
-  displayName: "Memorystore Redis",
-  pluralDisplayName: "Memorystore Redis Instances",
   description: "A Google Cloud Memorystore for Redis instance",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "region", label: "Region", kind: "string", required: true },
-    {
-      key: "tier",
-      label: "Tier",
-      kind: "enum",
-      required: false,
-      enumValues: ["BASIC", "STANDARD_HA"],
-    },
-    { key: "memorySizeGb", label: "Memory (GB)", kind: "number", required: false },
-    { key: "redisVersion", label: "Redis Version", kind: "string", required: false },
-    { key: "state", label: "State", kind: "string", required: false },
+    f("name", "Name"),
+    f("region", "Region"),
+    f("tier", "Tier", { kind: "enum", required: false, enumValues: ["BASIC", "STANDARD_HA"] }),
+    f("memorySizeGb", "Memory (GB)", { kind: "number", required: false }),
+    f("redisVersion", "Redis Version", { required: false }),
+    f("state", "State", { required: false }),
   ],
   outputs: [
-    { key: "host", label: "Host", sensitive: false },
-    { key: "port", label: "Port", sensitive: false },
-    { key: "authString", label: "Auth String", sensitive: true },
-    { key: "redisUrl", label: "Redis URL", sensitive: true },
+    o("host", "Host"),
+    o("port", "Port"),
+    o("authString", "Auth String", { sensitive: true }),
+    o("redisUrl", "Redis URL", { sensitive: true }),
   ],
-  dashboardPinnable: true,
   supportsCreate: true,
   supportsMetrics: true,
   secretExportTemplates: [
@@ -50,4 +43,4 @@ export const MemorystoreRedisResourceType: ResourceTypeDefinition = {
       entries: [{ envKey: "REDIS_URL", outputKey: "redisUrl" }],
     },
   ],
-};
+});

@@ -1,39 +1,26 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const AiGatewayResourceType: ResourceTypeDefinition = {
+export const AiGatewayResourceType = rt({
+  name: "AI Gateway",
+  pinnable: false,
   id: "ai-gateway",
-  displayName: "AI Gateway",
-  pluralDisplayName: "AI Gateways",
   description:
     "A Cloudflare AI Gateway — caching, rate limiting, logging and analytics in front of your model providers",
   fields: [
-    { key: "id", label: "Gateway ID", kind: "string", required: true, editable: false },
-    { key: "cacheTtl", label: "Cache TTL (seconds)", kind: "number", required: false },
-    {
-      key: "cacheInvalidateOnUpdate",
-      label: "Invalidate Cache on Update",
+    f("id", "Gateway ID", { editable: false }),
+    f("cacheTtl", "Cache TTL (seconds)", { kind: "number", required: false }),
+    f("cacheInvalidateOnUpdate", "Invalidate Cache on Update", {
       kind: "boolean",
       required: false,
-    },
-    { key: "collectLogs", label: "Collect Logs", kind: "boolean", required: false },
-    { key: "rateLimitingLimit", label: "Rate Limit (requests)", kind: "number", required: false },
-    {
-      key: "rateLimitingInterval",
-      label: "Rate Limit Window (seconds)",
-      kind: "number",
-      required: false,
-    },
-    {
-      key: "rateLimitingTechnique",
-      label: "Rate Limit Technique",
-      kind: "string",
-      required: false,
-    },
-    { key: "authentication", label: "Authenticated Gateway", kind: "boolean", required: false },
-    { key: "logpush", label: "Logpush", kind: "boolean", required: false },
+    }),
+    f("collectLogs", "Collect Logs", { kind: "boolean", required: false }),
+    f("rateLimitingLimit", "Rate Limit (requests)", { kind: "number", required: false }),
+    f("rateLimitingInterval", "Rate Limit Window (seconds)", { kind: "number", required: false }),
+    f("rateLimitingTechnique", "Rate Limit Technique", { required: false }),
+    f("authentication", "Authenticated Gateway", { kind: "boolean", required: false }),
+    f("logpush", "Logpush", { kind: "boolean", required: false }),
   ],
-  outputs: [{ key: "gatewayId", label: "Gateway ID", sensitive: false }],
-  dashboardPinnable: false,
+  outputs: [o("gatewayId", "Gateway ID")],
   supportsCreate: true,
   supportsUpdate: true,
   supportsMetrics: true,
@@ -46,4 +33,4 @@ export const AiGatewayResourceType: ResourceTypeDefinition = {
       entries: [{ envKey: "AI_GATEWAY_ID", outputKey: "gatewayId" }],
     },
   ],
-};
+});

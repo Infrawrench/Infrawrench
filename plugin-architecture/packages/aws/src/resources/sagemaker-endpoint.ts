@@ -1,17 +1,13 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const SageMakerEndpointResourceType: ResourceTypeDefinition = {
+export const SageMakerEndpointResourceType = rt({
+  name: "SageMaker Endpoint",
   id: "sagemaker-endpoint",
-  displayName: "SageMaker Endpoint",
-  pluralDisplayName: "SageMaker Endpoints",
   description: "An Amazon SageMaker ML inference endpoint",
   fields: [
-    { key: "endpointName", label: "Endpoint Name", kind: "string", required: true },
-    {
-      key: "status",
-      label: "Status",
+    f("endpointName", "Endpoint Name"),
+    f("status", "Status", {
       kind: "enum",
-      required: true,
       enumValues: [
         "OutOfService",
         "Creating",
@@ -23,13 +19,12 @@ export const SageMakerEndpointResourceType: ResourceTypeDefinition = {
         "Failed",
         "UpdateRollbackFailed",
       ],
-    },
-    { key: "endpointConfigName", label: "Config Name", kind: "string", required: false },
-    { key: "creationTime", label: "Created", kind: "string", required: false },
-    { key: "lastModifiedTime", label: "Last Modified", kind: "string", required: false },
+    }),
+    f("endpointConfigName", "Config Name", { required: false }),
+    f("creationTime", "Created", { required: false }),
+    f("lastModifiedTime", "Last Modified", { required: false }),
   ],
-  outputs: [{ key: "endpointArn", label: "Endpoint ARN", sensitive: false }],
-  dashboardPinnable: true,
+  outputs: [o("endpointArn", "Endpoint ARN")],
   iconKey: "function",
   supportsMetrics: true,
-};
+});

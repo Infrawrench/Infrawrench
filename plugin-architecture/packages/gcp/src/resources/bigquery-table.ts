@@ -1,81 +1,37 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const BigQueryTableResourceType: ResourceTypeDefinition = {
+export const BigQueryTableResourceType = rt({
+  name: "BigQuery Table",
+  plural: "Tables",
   id: "bigquery-table",
-  displayName: "BigQuery Table",
-  pluralDisplayName: "Tables",
   description: "A table, view, or materialized view inside a BigQuery dataset",
   fields: [
-    { key: "name", label: "Table ID", kind: "string", required: true },
-    { key: "friendlyName", label: "Friendly Name", kind: "string", required: false },
-    { key: "type", label: "Type", kind: "string", required: false },
-    { key: "location", label: "Data location", kind: "string", required: false },
-    { key: "description", label: "Description", kind: "string", required: false },
-    { key: "labels", label: "Labels", kind: "string", required: false },
-
-    // Timestamps (rendered as formatted strings)
-    { key: "creationTime", label: "Created", kind: "string", required: false },
-    { key: "lastModifiedTime", label: "Last modified", kind: "string", required: false },
-    { key: "expirationTime", label: "Table expiration", kind: "string", required: false },
-
-    // Schema / partitioning / clustering
-    { key: "primaryKeys", label: "Primary key(s)", kind: "string", required: false },
-    { key: "partitioning", label: "Partitioning", kind: "string", required: false },
-    { key: "clusteringFields", label: "Clustering", kind: "string", required: false },
-
-    // Dataset-inherited config
-    { key: "defaultCollation", label: "Default collation", kind: "string", required: false },
-    { key: "defaultRoundingMode", label: "Default rounding mode", kind: "string", required: false },
-    { key: "caseInsensitive", label: "Case insensitive", kind: "boolean", required: false },
-
-    // Storage info (populated from `GET table`)
-    { key: "numRows", label: "Number of rows", kind: "string", required: false },
-    { key: "numBytes", label: "Total logical bytes", kind: "string", required: false },
-    {
-      key: "numActiveLogicalBytes",
-      label: "Active logical bytes",
-      kind: "string",
-      required: false,
-    },
-    {
-      key: "numLongTermLogicalBytes",
-      label: "Long term logical bytes",
-      kind: "string",
-      required: false,
-    },
-    {
-      key: "numCurrentPhysicalBytes",
-      label: "Current physical bytes",
-      kind: "string",
-      required: false,
-    },
-    {
-      key: "numTotalPhysicalBytes",
-      label: "Total physical bytes",
-      kind: "string",
-      required: false,
-    },
-    {
-      key: "numActivePhysicalBytes",
-      label: "Active physical bytes",
-      kind: "string",
-      required: false,
-    },
-    {
-      key: "numLongTermPhysicalBytes",
-      label: "Long term physical bytes",
-      kind: "string",
-      required: false,
-    },
-    {
-      key: "numTimeTravelPhysicalBytes",
-      label: "Time travel physical bytes",
-      kind: "string",
-      required: false,
-    },
+    f("name", "Table ID"),
+    f("friendlyName", "Friendly Name", { required: false }),
+    f("type", "Type", { required: false }),
+    f("location", "Data location", { required: false }),
+    f("description", "Description", { required: false }),
+    f("labels", "Labels", { required: false }),
+    f("creationTime", "Created", { required: false }),
+    f("lastModifiedTime", "Last modified", { required: false }),
+    f("expirationTime", "Table expiration", { required: false }),
+    f("primaryKeys", "Primary key(s)", { required: false }),
+    f("partitioning", "Partitioning", { required: false }),
+    f("clusteringFields", "Clustering", { required: false }),
+    f("defaultCollation", "Default collation", { required: false }),
+    f("defaultRoundingMode", "Default rounding mode", { required: false }),
+    f("caseInsensitive", "Case insensitive", { kind: "boolean", required: false }),
+    f("numRows", "Number of rows", { required: false }),
+    f("numBytes", "Total logical bytes", { required: false }),
+    f("numActiveLogicalBytes", "Active logical bytes", { required: false }),
+    f("numLongTermLogicalBytes", "Long term logical bytes", { required: false }),
+    f("numCurrentPhysicalBytes", "Current physical bytes", { required: false }),
+    f("numTotalPhysicalBytes", "Total physical bytes", { required: false }),
+    f("numActivePhysicalBytes", "Active physical bytes", { required: false }),
+    f("numLongTermPhysicalBytes", "Long term physical bytes", { required: false }),
+    f("numTimeTravelPhysicalBytes", "Time travel physical bytes", { required: false }),
   ],
   outputs: [],
   parentTypeId: "bigquery-dataset",
-  dashboardPinnable: true,
   supportsCreate: true,
-};
+});

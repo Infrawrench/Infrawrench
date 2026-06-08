@@ -1,20 +1,15 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const R2BucketResourceType: ResourceTypeDefinition = {
+export const R2BucketResourceType = rt({
+  name: "R2 Bucket",
   id: "r2-bucket",
-  displayName: "R2 Bucket",
-  pluralDisplayName: "R2 Buckets",
   description: "A Cloudflare R2 object storage bucket",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "location", label: "Location Hint", kind: "string", required: false },
-    { key: "createdOn", label: "Created", kind: "string", required: false },
+    f("name", "Name"),
+    f("location", "Location Hint", { required: false }),
+    f("createdOn", "Created", { required: false }),
   ],
-  outputs: [
-    { key: "bucketName", label: "Bucket Name", sensitive: false },
-    { key: "s3Endpoint", label: "S3-compatible Endpoint", sensitive: false },
-  ],
-  dashboardPinnable: true,
+  outputs: [o("bucketName", "Bucket Name"), o("s3Endpoint", "S3-compatible Endpoint")],
   supportsCreate: true,
   supportsStorageBrowser: true,
   supportsMetrics: true,
@@ -34,4 +29,4 @@ export const R2BucketResourceType: ResourceTypeDefinition = {
     },
   ],
   iconKey: "storage",
-};
+});

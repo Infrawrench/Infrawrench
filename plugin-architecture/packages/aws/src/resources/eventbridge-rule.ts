@@ -1,25 +1,17 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const EventBridgeRuleResourceType: ResourceTypeDefinition = {
+export const EventBridgeRuleResourceType = rt({
+  name: "EventBridge Rule",
   id: "eventbridge-rule",
-  displayName: "EventBridge Rule",
-  pluralDisplayName: "EventBridge Rules",
   description: "An Amazon EventBridge event rule",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    {
-      key: "state",
-      label: "State",
-      kind: "enum",
-      required: true,
-      enumValues: ["ENABLED", "DISABLED"],
-    },
-    { key: "eventBusName", label: "Event Bus", kind: "string", required: false },
-    { key: "scheduleExpression", label: "Schedule", kind: "string", required: false },
-    { key: "description", label: "Description", kind: "string", required: false },
+    f("name", "Name"),
+    f("state", "State", { kind: "enum", enumValues: ["ENABLED", "DISABLED"] }),
+    f("eventBusName", "Event Bus", { required: false }),
+    f("scheduleExpression", "Schedule", { required: false }),
+    f("description", "Description", { required: false }),
   ],
-  outputs: [{ key: "ruleArn", label: "Rule ARN", sensitive: false }],
-  dashboardPinnable: true,
+  outputs: [o("ruleArn", "Rule ARN")],
   iconKey: "event",
   supportsCreate: true,
-};
+});

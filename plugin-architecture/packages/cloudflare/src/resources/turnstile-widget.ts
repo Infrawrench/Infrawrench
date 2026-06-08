@@ -1,40 +1,25 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const TurnstileWidgetResourceType: ResourceTypeDefinition = {
+export const TurnstileWidgetResourceType = rt({
+  name: "Turnstile Widget",
   id: "turnstile-widget",
-  displayName: "Turnstile Widget",
-  pluralDisplayName: "Turnstile Widgets",
   description: "A Cloudflare Turnstile widget (CAPTCHA alternative) sitekey/secret pair",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "mode", label: "Mode", kind: "string", required: false },
-    { key: "domains", label: "Domains", kind: "string", required: false },
-    { key: "region", label: "Region", kind: "string", required: false, editable: false },
-    { key: "botFightMode", label: "Bot Fight Mode", kind: "boolean", required: false },
-    {
-      key: "clearanceLevel",
-      label: "Clearance Level",
-      kind: "string",
-      required: false,
-      editable: false,
-    },
-    { key: "offlabel", label: "Hide Cloudflare Branding", kind: "boolean", required: false },
+    f("name", "Name"),
+    f("mode", "Mode", { required: false }),
+    f("domains", "Domains", { required: false }),
+    f("region", "Region", { required: false, editable: false }),
+    f("botFightMode", "Bot Fight Mode", { kind: "boolean", required: false }),
+    f("clearanceLevel", "Clearance Level", { required: false, editable: false }),
+    f("offlabel", "Hide Cloudflare Branding", { kind: "boolean", required: false }),
   ],
   outputs: [
-    {
-      key: "siteKey",
-      label: "Site Key",
-      sensitive: false,
-      description: "Public Turnstile sitekey",
-    },
-    {
-      key: "secretKey",
-      label: "Secret Key",
+    o("siteKey", "Site Key", { description: "Public Turnstile sitekey" }),
+    o("secretKey", "Secret Key", {
       sensitive: true,
       description: "Turnstile secret used by the siteverify endpoint",
-    },
+    }),
   ],
-  dashboardPinnable: true,
   supportsCreate: true,
   supportsUpdate: true,
   supportsMetrics: true,
@@ -50,4 +35,4 @@ export const TurnstileWidgetResourceType: ResourceTypeDefinition = {
       ],
     },
   ],
-};
+});

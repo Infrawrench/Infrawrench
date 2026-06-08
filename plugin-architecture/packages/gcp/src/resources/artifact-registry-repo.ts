@@ -1,24 +1,22 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const ArtifactRegistryRepoResourceType: ResourceTypeDefinition = {
+export const ArtifactRegistryRepoResourceType = rt({
+  name: "Artifact Registry Repository",
+  plural: "Artifact Registry Repositories",
+  pinnable: false,
   id: "artifact-registry-repo",
-  displayName: "Artifact Registry Repository",
-  pluralDisplayName: "Artifact Registry Repositories",
   description: "A Google Artifact Registry repository",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "location", label: "Location", kind: "string", required: true },
-    {
-      key: "format",
-      label: "Format",
+    f("name", "Name"),
+    f("location", "Location"),
+    f("format", "Format", {
       kind: "enum",
       required: false,
       enumValues: ["DOCKER", "MAVEN", "NPM", "APT", "YUM", "PYTHON", "GO", "HELM"],
-    },
-    { key: "description", label: "Description", kind: "string", required: false },
-    { key: "sizeBytes", label: "Size", kind: "string", required: false },
+    }),
+    f("description", "Description", { required: false }),
+    f("sizeBytes", "Size", { required: false }),
   ],
   outputs: [],
-  dashboardPinnable: false,
   supportsCreate: true,
-};
+});

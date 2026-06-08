@@ -1,28 +1,26 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const StorageAccountResourceType: ResourceTypeDefinition = {
+export const StorageAccountResourceType = rt({
+  name: "Storage Account",
   id: "azure-storage-account",
-  displayName: "Storage Account",
-  pluralDisplayName: "Storage Accounts",
   description: "An Azure Storage Account",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "resourceGroup", label: "Resource Group", kind: "string", required: true },
-    { key: "location", label: "Location", kind: "string", required: true },
-    { key: "kind", label: "Kind", kind: "string", required: true },
-    { key: "sku", label: "SKU", kind: "string", required: true },
-    { key: "provisioningState", label: "Provisioning State", kind: "string", required: true },
-    { key: "accessTier", label: "Access Tier", kind: "string", required: false },
-    { key: "httpsOnly", label: "HTTPS Only", kind: "boolean", required: false },
-    { key: "primaryLocation", label: "Primary Location", kind: "string", required: false },
-    { key: "statusOfPrimary", label: "Primary Status", kind: "string", required: false },
+    f("name", "Name"),
+    f("resourceGroup", "Resource Group"),
+    f("location", "Location"),
+    f("kind", "Kind"),
+    f("sku", "SKU"),
+    f("provisioningState", "Provisioning State"),
+    f("accessTier", "Access Tier", { required: false }),
+    f("httpsOnly", "HTTPS Only", { kind: "boolean", required: false }),
+    f("primaryLocation", "Primary Location", { required: false }),
+    f("statusOfPrimary", "Primary Status", { required: false }),
   ],
   outputs: [
-    { key: "primaryBlobEndpoint", label: "Blob Endpoint", sensitive: false },
-    { key: "primaryKey", label: "Primary Key", sensitive: true },
-    { key: "connectionString", label: "Connection String", sensitive: true },
+    o("primaryBlobEndpoint", "Blob Endpoint"),
+    o("primaryKey", "Primary Key", { sensitive: true }),
+    o("connectionString", "Connection String", { sensitive: true }),
   ],
-  dashboardPinnable: true,
   iconKey: "storage",
   supportsStorageBrowser: true,
   supportsCreate: true,
@@ -57,4 +55,4 @@ export const StorageAccountResourceType: ResourceTypeDefinition = {
       ],
     },
   ],
-};
+});

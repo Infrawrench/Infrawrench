@@ -1,16 +1,14 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const KVNamespaceResourceType: ResourceTypeDefinition = {
+export const KVNamespaceResourceType = rt({
+  name: "KV Namespace",
   id: "kv-namespace",
-  displayName: "KV Namespace",
-  pluralDisplayName: "KV Namespaces",
   description: "A Cloudflare Workers KV namespace",
   fields: [
-    { key: "title", label: "Title", kind: "string", required: true },
-    { key: "supportsUrlEncoding", label: "URL Encoding", kind: "boolean", required: false },
+    f("title", "Title"),
+    f("supportsUrlEncoding", "URL Encoding", { kind: "boolean", required: false }),
   ],
-  outputs: [{ key: "namespaceId", label: "Namespace ID", sensitive: false }],
-  dashboardPinnable: true,
+  outputs: [o("namespaceId", "Namespace ID")],
   supportsCreate: true,
   supportsMetrics: true,
   iconKey: "kv",
@@ -22,4 +20,4 @@ export const KVNamespaceResourceType: ResourceTypeDefinition = {
       entries: [{ envKey: "KV_NAMESPACE_ID", outputKey: "namespaceId" }],
     },
   ],
-};
+});

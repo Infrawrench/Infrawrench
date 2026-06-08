@@ -1,21 +1,19 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const VNetResourceType: ResourceTypeDefinition = {
+export const VNetResourceType = rt({
+  name: "Virtual Network",
   id: "azure-vnet",
-  displayName: "Virtual Network",
-  pluralDisplayName: "Virtual Networks",
   description: "An Azure Virtual Network",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "resourceGroup", label: "Resource Group", kind: "string", required: true },
-    { key: "location", label: "Location", kind: "string", required: true },
-    { key: "addressPrefixes", label: "Address Prefixes", kind: "string", required: true },
-    { key: "provisioningState", label: "Provisioning State", kind: "string", required: true },
-    { key: "subnetCount", label: "Subnets", kind: "number", required: false },
-    { key: "enableDdosProtection", label: "DDoS Protection", kind: "boolean", required: false },
+    f("name", "Name"),
+    f("resourceGroup", "Resource Group"),
+    f("location", "Location"),
+    f("addressPrefixes", "Address Prefixes"),
+    f("provisioningState", "Provisioning State"),
+    f("subnetCount", "Subnets", { kind: "number", required: false }),
+    f("enableDdosProtection", "DDoS Protection", { kind: "boolean", required: false }),
   ],
-  outputs: [{ key: "resourceId", label: "Resource ID", sensitive: false }],
-  dashboardPinnable: true,
+  outputs: [o("resourceId", "Resource ID")],
   iconKey: "network",
   supportsCreate: true,
-};
+});

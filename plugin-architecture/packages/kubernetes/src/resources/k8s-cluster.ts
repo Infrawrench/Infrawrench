@@ -1,17 +1,13 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const KubernetesClusterResourceType: ResourceTypeDefinition = {
+export const KubernetesClusterResourceType = rt({
+  name: "Kubernetes Cluster",
   id: "k8s-cluster",
-  displayName: "Kubernetes Cluster",
-  pluralDisplayName: "Kubernetes Clusters",
   description: "A Kubernetes cluster — connects via kubeconfig (literal or from a DOKS cluster)",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    {
-      key: "kubeconfig",
-      label: "Kubeconfig",
+    f("name", "Name"),
+    f("kubeconfig", "Kubeconfig", {
       kind: "association",
-      required: true,
       description:
         "Where to get the kubeconfig from. Choose a DOKS cluster or paste a literal kubeconfig.",
       allowLiteral: true,
@@ -23,12 +19,8 @@ export const KubernetesClusterResourceType: ResourceTypeDefinition = {
           outputKey: "kubeconfig",
         },
       ],
-    },
+    }),
   ],
-  outputs: [
-    { key: "serverVersion", label: "Server Version", sensitive: false },
-    { key: "namespaces", label: "Namespaces (JSON array)", sensitive: false },
-  ],
-  dashboardPinnable: true,
+  outputs: [o("serverVersion", "Server Version"), o("namespaces", "Namespaces (JSON array)")],
   iconKey: "kubernetes",
-};
+});

@@ -1,20 +1,19 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const IAMRoleResourceType: ResourceTypeDefinition = {
+export const IAMRoleResourceType = rt({
+  name: "IAM Role",
+  pinnable: false,
   id: "iam-role",
-  displayName: "IAM Role",
-  pluralDisplayName: "IAM Roles",
   description: "An AWS Identity and Access Management role",
   fields: [
-    { key: "roleName", label: "Role Name", kind: "string", required: true },
-    { key: "roleId", label: "Role ID", kind: "string", required: true },
-    { key: "path", label: "Path", kind: "string", required: false },
-    { key: "createDate", label: "Created", kind: "string", required: false },
-    { key: "description", label: "Description", kind: "string", required: false },
-    { key: "maxSessionDuration", label: "Max Session (s)", kind: "number", required: false },
+    f("roleName", "Role Name"),
+    f("roleId", "Role ID"),
+    f("path", "Path", { required: false }),
+    f("createDate", "Created", { required: false }),
+    f("description", "Description", { required: false }),
+    f("maxSessionDuration", "Max Session (s)", { kind: "number", required: false }),
   ],
-  outputs: [{ key: "roleArn", label: "Role ARN", sensitive: false }],
-  dashboardPinnable: false,
+  outputs: [o("roleArn", "Role ARN")],
   iconKey: "role",
   supportsCreate: true,
-};
+});

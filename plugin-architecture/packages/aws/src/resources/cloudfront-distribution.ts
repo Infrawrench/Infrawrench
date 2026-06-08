@@ -1,21 +1,19 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const CloudFrontDistributionResourceType: ResourceTypeDefinition = {
+export const CloudFrontDistributionResourceType = rt({
+  name: "CloudFront Distribution",
   id: "cloudfront-distribution",
-  displayName: "CloudFront Distribution",
-  pluralDisplayName: "CloudFront Distributions",
   description: "An Amazon CloudFront CDN distribution",
   fields: [
-    { key: "distributionId", label: "Distribution ID", kind: "string", required: true },
-    { key: "domainName", label: "Domain Name", kind: "string", required: true },
-    { key: "status", label: "Status", kind: "string", required: true },
-    { key: "enabled", label: "Enabled", kind: "boolean", required: true },
-    { key: "comment", label: "Comment", kind: "string", required: false },
-    { key: "priceClass", label: "Price Class", kind: "string", required: false },
-    { key: "httpVersion", label: "HTTP Version", kind: "string", required: false },
+    f("distributionId", "Distribution ID"),
+    f("domainName", "Domain Name"),
+    f("status", "Status"),
+    f("enabled", "Enabled", { kind: "boolean" }),
+    f("comment", "Comment", { required: false }),
+    f("priceClass", "Price Class", { required: false }),
+    f("httpVersion", "HTTP Version", { required: false }),
   ],
-  outputs: [{ key: "distributionArn", label: "Distribution ARN", sensitive: false }],
-  dashboardPinnable: true,
+  outputs: [o("distributionArn", "Distribution ARN")],
   iconKey: "cdn",
   supportsMetrics: true,
-};
+});

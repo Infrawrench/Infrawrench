@@ -1,18 +1,15 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const CloudRouterResourceType: ResourceTypeDefinition = {
+export const CloudRouterResourceType = rt({
+  name: "Cloud Router",
+  pinnable: false,
   id: "cloud-router",
-  displayName: "Cloud Router",
-  pluralDisplayName: "Cloud Routers",
   description: "A Google Cloud Router for dynamic routing and Cloud NAT",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "region", label: "Region", kind: "string", required: true },
-    {
-      key: "network",
-      label: "VPC Network",
+    f("name", "Name"),
+    f("region", "Region"),
+    f("network", "VPC Network", {
       kind: "association",
-      required: true,
       description: "VPC network the router attaches to",
       allowLiteral: true,
       resolvableOutputKeys: ["selfLink"],
@@ -23,11 +20,10 @@ export const CloudRouterResourceType: ResourceTypeDefinition = {
           outputKey: "selfLink",
         },
       ],
-    },
-    { key: "bgpAsn", label: "BGP ASN", kind: "number", required: false },
-    { key: "natCount", label: "NAT Configs", kind: "number", required: false },
+    }),
+    f("bgpAsn", "BGP ASN", { kind: "number", required: false }),
+    f("natCount", "NAT Configs", { kind: "number", required: false }),
   ],
-  outputs: [{ key: "selfLink", label: "Self Link", sensitive: false }],
-  dashboardPinnable: false,
+  outputs: [o("selfLink", "Self Link")],
   supportsCreate: true,
-};
+});

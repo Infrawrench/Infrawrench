@@ -1,32 +1,31 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const VercelDeploymentResourceType: ResourceTypeDefinition = {
+export const VercelDeploymentResourceType = rt({
+  name: "Deployment",
+  pinnable: false,
   id: "vercel-deployment",
-  displayName: "Deployment",
-  pluralDisplayName: "Deployments",
   description: "A Vercel deployment — a specific build of a project",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "url", label: "URL", kind: "string", required: false },
-    { key: "state", label: "State", kind: "string", required: false },
-    { key: "target", label: "Target", kind: "string", required: false },
-    { key: "source", label: "Source", kind: "string", required: false },
-    { key: "projectId", label: "Project ID", kind: "string", required: false },
-    { key: "creatorEmail", label: "Creator", kind: "string", required: false },
-    { key: "gitBranch", label: "Git Branch", kind: "string", required: false },
-    { key: "gitCommitSha", label: "Commit SHA", kind: "string", required: false },
-    { key: "gitCommitMessage", label: "Commit Message", kind: "string", required: false },
-    { key: "inspectorUrl", label: "Inspector URL", kind: "string", required: false },
-    { key: "createdAt", label: "Created At", kind: "string", required: false },
-    { key: "readyAt", label: "Ready At", kind: "string", required: false },
-    { key: "framework", label: "Framework", kind: "string", required: false },
+    f("name", "Name"),
+    f("url", "URL", { required: false }),
+    f("state", "State", { required: false }),
+    f("target", "Target", { required: false }),
+    f("source", "Source", { required: false }),
+    f("projectId", "Project ID", { required: false }),
+    f("creatorEmail", "Creator", { required: false }),
+    f("gitBranch", "Git Branch", { required: false }),
+    f("gitCommitSha", "Commit SHA", { required: false }),
+    f("gitCommitMessage", "Commit Message", { required: false }),
+    f("inspectorUrl", "Inspector URL", { required: false }),
+    f("createdAt", "Created At", { required: false }),
+    f("readyAt", "Ready At", { required: false }),
+    f("framework", "Framework", { required: false }),
   ],
   outputs: [
-    { key: "deploymentId", label: "Deployment ID", sensitive: false },
-    { key: "url", label: "Deployment URL", sensitive: false },
-    { key: "inspectorUrl", label: "Inspector URL", sensitive: false },
+    o("deploymentId", "Deployment ID"),
+    o("url", "Deployment URL"),
+    o("inspectorUrl", "Inspector URL"),
   ],
-  dashboardPinnable: false,
   iconKey: "deployment",
   attachTargets: [
     {
@@ -35,4 +34,4 @@ export const VercelDeploymentResourceType: ResourceTypeDefinition = {
       verb: "Import URL env var",
     },
   ],
-};
+});

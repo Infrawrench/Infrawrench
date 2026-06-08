@@ -1,22 +1,20 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const KeyVaultResourceType: ResourceTypeDefinition = {
+export const KeyVaultResourceType = rt({
+  name: "Key Vault",
   id: "azure-key-vault",
-  displayName: "Key Vault",
-  pluralDisplayName: "Key Vaults",
   description: "An Azure Key Vault for managing secrets, keys, and certificates",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "resourceGroup", label: "Resource Group", kind: "string", required: true },
-    { key: "location", label: "Location", kind: "string", required: true },
-    { key: "sku", label: "SKU", kind: "string", required: true },
-    { key: "provisioningState", label: "Provisioning State", kind: "string", required: false },
-    { key: "enableSoftDelete", label: "Soft Delete", kind: "boolean", required: false },
-    { key: "enablePurgeProtection", label: "Purge Protection", kind: "boolean", required: false },
-    { key: "enableRbacAuthorization", label: "RBAC Auth", kind: "boolean", required: false },
+    f("name", "Name"),
+    f("resourceGroup", "Resource Group"),
+    f("location", "Location"),
+    f("sku", "SKU"),
+    f("provisioningState", "Provisioning State", { required: false }),
+    f("enableSoftDelete", "Soft Delete", { kind: "boolean", required: false }),
+    f("enablePurgeProtection", "Purge Protection", { kind: "boolean", required: false }),
+    f("enableRbacAuthorization", "RBAC Auth", { kind: "boolean", required: false }),
   ],
-  outputs: [{ key: "vaultUri", label: "Vault URI", sensitive: false }],
-  dashboardPinnable: true,
+  outputs: [o("vaultUri", "Vault URI")],
   iconKey: "secret",
   supportsCreate: true,
   supportsMetrics: true,
@@ -28,4 +26,4 @@ export const KeyVaultResourceType: ResourceTypeDefinition = {
       entries: [{ envKey: "AZURE_KEY_VAULT_URI", outputKey: "vaultUri" }],
     },
   ],
-};
+});

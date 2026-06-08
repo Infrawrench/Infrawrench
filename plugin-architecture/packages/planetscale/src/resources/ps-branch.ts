@@ -1,27 +1,26 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const PsBranchResourceType: ResourceTypeDefinition = {
+export const PsBranchResourceType = rt({
+  name: "Branch",
+  plural: "Branches",
   id: "ps-branch",
-  displayName: "Branch",
-  pluralDisplayName: "Branches",
   description:
     "A PlanetScale database branch — isolated schema environment with its own connection endpoint",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "databaseName", label: "Database", kind: "string", required: true },
-    { key: "parentBranch", label: "Parent Branch", kind: "string", required: false },
-    { key: "production", label: "Production", kind: "boolean", required: false },
-    { key: "ready", label: "Ready", kind: "boolean", required: false },
-    { key: "safeMigrations", label: "Safe Migrations", kind: "boolean", required: false },
-    { key: "createdAt", label: "Created At", kind: "string", required: false },
+    f("name", "Name"),
+    f("databaseName", "Database"),
+    f("parentBranch", "Parent Branch", { required: false }),
+    f("production", "Production", { kind: "boolean", required: false }),
+    f("ready", "Ready", { kind: "boolean", required: false }),
+    f("safeMigrations", "Safe Migrations", { kind: "boolean", required: false }),
+    f("createdAt", "Created At", { required: false }),
   ],
   outputs: [
-    { key: "branchName", label: "Branch Name", sensitive: false },
-    { key: "databaseName", label: "Database Name", sensitive: false },
-    { key: "connectionString", label: "Connection String (MySQL)", sensitive: true },
+    o("branchName", "Branch Name"),
+    o("databaseName", "Database Name"),
+    o("connectionString", "Connection String (MySQL)", { sensitive: true }),
   ],
   parentTypeId: "ps-database",
-  dashboardPinnable: true,
   supportsCreate: true,
   iconKey: "planetscale",
   attachTargets: [
@@ -47,4 +46,4 @@ export const PsBranchResourceType: ResourceTypeDefinition = {
       entries: [{ envKey: "DATABASE_URL", outputKey: "connectionString" }],
     },
   ],
-};
+});

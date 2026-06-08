@@ -1,24 +1,22 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const ServiceBusNamespaceResourceType: ResourceTypeDefinition = {
+export const ServiceBusNamespaceResourceType = rt({
+  name: "Service Bus Namespace",
   id: "azure-service-bus",
-  displayName: "Service Bus Namespace",
-  pluralDisplayName: "Service Bus Namespaces",
   description: "An Azure Service Bus messaging namespace",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "resourceGroup", label: "Resource Group", kind: "string", required: true },
-    { key: "location", label: "Location", kind: "string", required: true },
-    { key: "sku", label: "SKU", kind: "string", required: true },
-    { key: "provisioningState", label: "Provisioning State", kind: "string", required: true },
-    { key: "status", label: "Status", kind: "string", required: false },
-    { key: "createdAt", label: "Created", kind: "string", required: false },
+    f("name", "Name"),
+    f("resourceGroup", "Resource Group"),
+    f("location", "Location"),
+    f("sku", "SKU"),
+    f("provisioningState", "Provisioning State"),
+    f("status", "Status", { required: false }),
+    f("createdAt", "Created", { required: false }),
   ],
   outputs: [
-    { key: "serviceBusEndpoint", label: "Endpoint", sensitive: false },
-    { key: "primaryConnectionString", label: "Connection String", sensitive: true },
+    o("serviceBusEndpoint", "Endpoint"),
+    o("primaryConnectionString", "Connection String", { sensitive: true }),
   ],
-  dashboardPinnable: true,
   iconKey: "queue",
   supportsCreate: true,
   supportsMetrics: true,
@@ -33,4 +31,4 @@ export const ServiceBusNamespaceResourceType: ResourceTypeDefinition = {
       ],
     },
   ],
-};
+});

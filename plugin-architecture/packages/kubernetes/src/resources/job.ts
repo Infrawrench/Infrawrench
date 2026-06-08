@@ -1,19 +1,18 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const JobResourceType: ResourceTypeDefinition = {
+export const JobResourceType = rt({
+  name: "Job",
+  pinnable: false,
   id: "k8s-job",
-  displayName: "Job",
-  pluralDisplayName: "Jobs",
   description: "A Kubernetes Job — runs a pod to completion",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "namespace", label: "Namespace", kind: "string", required: true },
-    { key: "completions", label: "Completions", kind: "string", required: false },
-    { key: "status", label: "Status", kind: "string", required: false },
-    { key: "image", label: "Image", kind: "string", required: false },
+    f("name", "Name"),
+    f("namespace", "Namespace"),
+    f("completions", "Completions", { required: false }),
+    f("status", "Status", { required: false }),
+    f("image", "Image", { required: false }),
   ],
   outputs: [],
   parentTypeId: "k8s-namespace",
-  dashboardPinnable: false,
   supportsCreate: true,
-};
+});

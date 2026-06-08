@@ -1,27 +1,26 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const SpectrumApplicationResourceType: ResourceTypeDefinition = {
+export const SpectrumApplicationResourceType = rt({
+  name: "Spectrum Application",
+  pinnable: false,
   id: "spectrum-application",
-  displayName: "Spectrum Application",
-  pluralDisplayName: "Spectrum Applications",
   description: "A Cloudflare Spectrum application for TCP/UDP proxy",
   fields: [
-    { key: "protocol", label: "Protocol", kind: "string", required: true, editable: false },
-    { key: "dns", label: "DNS Name", kind: "string", required: false, editable: false },
-    { key: "originDirect", label: "Origin Direct", kind: "string", required: false },
-    { key: "originDns", label: "Origin DNS", kind: "string", required: false, editable: false },
-    { key: "originPort", label: "Origin Port", kind: "string", required: false, editable: false },
-    { key: "ipFirewall", label: "IP Firewall", kind: "boolean", required: false },
-    { key: "proxyProtocol", label: "Proxy Protocol", kind: "string", required: false },
-    { key: "tls", label: "TLS", kind: "string", required: false },
-    { key: "createdOn", label: "Created", kind: "string", required: false, editable: false },
-    { key: "modifiedOn", label: "Modified", kind: "string", required: false, editable: false },
+    f("protocol", "Protocol", { editable: false }),
+    f("dns", "DNS Name", { required: false, editable: false }),
+    f("originDirect", "Origin Direct", { required: false }),
+    f("originDns", "Origin DNS", { required: false, editable: false }),
+    f("originPort", "Origin Port", { required: false, editable: false }),
+    f("ipFirewall", "IP Firewall", { kind: "boolean", required: false }),
+    f("proxyProtocol", "Proxy Protocol", { required: false }),
+    f("tls", "TLS", { required: false }),
+    f("createdOn", "Created", { required: false, editable: false }),
+    f("modifiedOn", "Modified", { required: false, editable: false }),
   ],
   outputs: [],
   parentTypeId: "zone",
-  dashboardPinnable: false,
   supportsCreate: true,
   supportsUpdate: true,
   supportsMetrics: true,
   iconKey: "spectrum",
-};
+});

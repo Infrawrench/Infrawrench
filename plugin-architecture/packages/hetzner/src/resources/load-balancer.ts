@@ -1,35 +1,23 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const LoadBalancerResourceType: ResourceTypeDefinition = {
+export const LoadBalancerResourceType = rt({
+  name: "Load Balancer",
   id: "load-balancer",
-  displayName: "Load Balancer",
-  pluralDisplayName: "Load Balancers",
   description: "A Hetzner Cloud Load Balancer with services, targets, and public IPs",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    {
-      key: "status",
-      label: "Status",
-      kind: "enum",
-      required: true,
-      enumValues: ["running", "initializing", "unknown"],
-    },
-    { key: "type", label: "Type", kind: "string", required: false },
-    { key: "location", label: "Location", kind: "string", required: false },
-    { key: "ipv4", label: "IPv4", kind: "string", required: false },
-    { key: "ipv6", label: "IPv6", kind: "string", required: false },
-    { key: "targetCount", label: "Targets", kind: "number", required: false },
-    { key: "serviceCount", label: "Services", kind: "number", required: false },
+    f("name", "Name"),
+    f("status", "Status", { kind: "enum", enumValues: ["running", "initializing", "unknown"] }),
+    f("type", "Type", { required: false }),
+    f("location", "Location", { required: false }),
+    f("ipv4", "IPv4", { required: false }),
+    f("ipv6", "IPv6", { required: false }),
+    f("targetCount", "Targets", { kind: "number", required: false }),
+    f("serviceCount", "Services", { kind: "number", required: false }),
   ],
-  outputs: [
-    { key: "ipv4", label: "IPv4", sensitive: false },
-    { key: "ipv6", label: "IPv6", sensitive: false },
-    { key: "loadBalancerId", label: "Load Balancer ID", sensitive: false },
-  ],
-  dashboardPinnable: true,
+  outputs: [o("ipv4", "IPv4"), o("ipv6", "IPv6"), o("loadBalancerId", "Load Balancer ID")],
   iconKey: "load-balancer",
   supportsMetrics: true,
   attachTargets: [
     { pluginId: "hetzner", resourceTypeId: "server", matchField: "location", verb: "Add target" },
   ],
-};
+});

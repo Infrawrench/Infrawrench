@@ -1,18 +1,18 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const VectorizeIndexResourceType: ResourceTypeDefinition = {
+export const VectorizeIndexResourceType = rt({
+  name: "Vectorize Index",
+  plural: "Vectorize Indexes",
+  pinnable: false,
   id: "vectorize-index",
-  displayName: "Vectorize Index",
-  pluralDisplayName: "Vectorize Indexes",
   description: "A Cloudflare Vectorize vector database index",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true, editable: false },
-    { key: "dimensions", label: "Dimensions", kind: "number", required: false, editable: false },
-    { key: "metric", label: "Distance Metric", kind: "string", required: false, editable: false },
-    { key: "description", label: "Description", kind: "string", required: false, editable: false },
+    f("name", "Name", { editable: false }),
+    f("dimensions", "Dimensions", { kind: "number", required: false, editable: false }),
+    f("metric", "Distance Metric", { required: false, editable: false }),
+    f("description", "Description", { required: false, editable: false }),
   ],
-  outputs: [{ key: "indexName", label: "Index Name", sensitive: false }],
-  dashboardPinnable: false,
+  outputs: [o("indexName", "Index Name")],
   supportsCreate: true,
   iconKey: "database",
   secretExportTemplates: [
@@ -23,4 +23,4 @@ export const VectorizeIndexResourceType: ResourceTypeDefinition = {
       entries: [{ envKey: "VECTORIZE_INDEX", outputKey: "indexName" }],
     },
   ],
-};
+});

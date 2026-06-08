@@ -1,18 +1,17 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const LogSinkResourceType: ResourceTypeDefinition = {
+export const LogSinkResourceType = rt({
+  name: "Log Sink",
+  pinnable: false,
   id: "log-sink",
-  displayName: "Log Sink",
-  pluralDisplayName: "Log Sinks",
   description: "A Google Cloud Logging sink (log router)",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "destination", label: "Destination", kind: "string", required: false },
-    { key: "filter", label: "Filter", kind: "string", required: false },
-    { key: "disabled", label: "Disabled", kind: "boolean", required: false },
-    { key: "writerIdentity", label: "Writer Identity", kind: "string", required: false },
+    f("name", "Name"),
+    f("destination", "Destination", { required: false }),
+    f("filter", "Filter", { required: false }),
+    f("disabled", "Disabled", { kind: "boolean", required: false }),
+    f("writerIdentity", "Writer Identity", { required: false }),
   ],
   outputs: [],
-  dashboardPinnable: false,
   supportsCreate: true,
-};
+});

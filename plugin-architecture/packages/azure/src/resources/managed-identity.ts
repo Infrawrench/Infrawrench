@@ -1,21 +1,16 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const ManagedIdentityResourceType: ResourceTypeDefinition = {
+export const ManagedIdentityResourceType = rt({
+  name: "Managed Identity",
+  plural: "Managed Identities",
   id: "azure-managed-identity",
-  displayName: "Managed Identity",
-  pluralDisplayName: "Managed Identities",
   description: "An Azure user-assigned managed identity for secure, passwordless authentication",
-  fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "resourceGroup", label: "Resource Group", kind: "string", required: true },
-    { key: "location", label: "Location", kind: "string", required: true },
-  ],
+  fields: [f("name", "Name"), f("resourceGroup", "Resource Group"), f("location", "Location")],
   outputs: [
-    { key: "clientId", label: "Client ID", sensitive: false },
-    { key: "principalId", label: "Principal ID", sensitive: false },
-    { key: "tenantId", label: "Tenant ID", sensitive: false },
+    o("clientId", "Client ID"),
+    o("principalId", "Principal ID"),
+    o("tenantId", "Tenant ID"),
   ],
-  dashboardPinnable: true,
   iconKey: "user",
   supportsCreate: true,
   attachTargets: [
@@ -25,4 +20,4 @@ export const ManagedIdentityResourceType: ResourceTypeDefinition = {
       verb: "Assign to VM",
     },
   ],
-};
+});

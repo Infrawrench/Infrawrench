@@ -1,26 +1,25 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const DnsRecordResourceType: ResourceTypeDefinition = {
+export const DnsRecordResourceType = rt({
+  name: "DNS Record",
+  pinnable: false,
   id: "dns-record",
-  displayName: "DNS Record",
-  pluralDisplayName: "DNS Records",
   description: "A DNS record within a DigitalOcean domain",
   fields: [
-    { key: "type", label: "Type", kind: "string", required: true },
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "data", label: "Data", kind: "string", required: true },
-    { key: "ttl", label: "TTL", kind: "number", required: false },
-    { key: "priority", label: "Priority", kind: "number", required: false },
-    { key: "port", label: "Port", kind: "number", required: false },
-    { key: "weight", label: "Weight", kind: "number", required: false },
-    { key: "flags", label: "Flags", kind: "number", required: false },
-    { key: "tag", label: "Tag", kind: "string", required: false },
-    { key: "domainName", label: "Domain", kind: "string", required: false },
+    f("type", "Type"),
+    f("name", "Name"),
+    f("data", "Data"),
+    f("ttl", "TTL", { kind: "number", required: false }),
+    f("priority", "Priority", { kind: "number", required: false }),
+    f("port", "Port", { kind: "number", required: false }),
+    f("weight", "Weight", { kind: "number", required: false }),
+    f("flags", "Flags", { kind: "number", required: false }),
+    f("tag", "Tag", { required: false }),
+    f("domainName", "Domain", { required: false }),
   ],
   outputs: [],
   parentTypeId: "domain",
-  dashboardPinnable: false,
   supportsCreate: true,
   supportsUpdate: true,
   iconKey: "dns-record",
-};
+});

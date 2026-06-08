@@ -1,17 +1,13 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const RDSInstanceResourceType: ResourceTypeDefinition = {
+export const RDSInstanceResourceType = rt({
+  name: "RDS Instance",
   id: "rds-instance",
-  displayName: "RDS Instance",
-  pluralDisplayName: "RDS Instances",
   description: "An Amazon RDS database instance",
   fields: [
-    { key: "dbInstanceId", label: "DB Instance ID", kind: "string", required: true },
-    {
-      key: "engine",
-      label: "Engine",
+    f("dbInstanceId", "DB Instance ID"),
+    f("engine", "Engine", {
       kind: "enum",
-      required: true,
       enumValues: [
         "mysql",
         "postgres",
@@ -23,16 +19,14 @@ export const RDSInstanceResourceType: ResourceTypeDefinition = {
         "aurora-mysql",
         "aurora-postgresql",
       ],
-    },
-    { key: "engineVersion", label: "Engine Version", kind: "string", required: true },
-    { key: "instanceClass", label: "Instance Class", kind: "string", required: true },
-    { key: "status", label: "Status", kind: "string", required: true },
-    { key: "allocatedStorage", label: "Storage (GB)", kind: "number", required: false },
-    { key: "availabilityZone", label: "Availability Zone", kind: "string", required: false },
-    { key: "multiAZ", label: "Multi-AZ", kind: "boolean", required: false },
-    {
-      key: "network",
-      label: "VPC Network",
+    }),
+    f("engineVersion", "Engine Version"),
+    f("instanceClass", "Instance Class"),
+    f("status", "Status"),
+    f("allocatedStorage", "Storage (GB)", { kind: "number", required: false }),
+    f("availabilityZone", "Availability Zone", { required: false }),
+    f("multiAZ", "Multi-AZ", { kind: "boolean", required: false }),
+    f("network", "VPC Network", {
       kind: "association",
       required: false,
       description: "VPC network for the RDS instance",
@@ -45,20 +39,17 @@ export const RDSInstanceResourceType: ResourceTypeDefinition = {
           outputKey: "vpcId",
         },
       ],
-    },
+    }),
   ],
   outputs: [
-    { key: "endpoint", label: "Endpoint", sensitive: false },
-    { key: "port", label: "Port", sensitive: false },
-    { key: "masterUsername", label: "Master Username", sensitive: false },
-    {
-      key: "connectionString",
-      label: "Connection String",
+    o("endpoint", "Endpoint"),
+    o("port", "Port"),
+    o("masterUsername", "Master Username"),
+    o("connectionString", "Connection String", {
       sensitive: true,
       description: "Database connection URI (constructed from engine + endpoint + port)",
-    },
+    }),
   ],
-  dashboardPinnable: true,
   supportsMetrics: true,
   supportsCreate: true,
   iconKey: "database",
@@ -137,4 +128,4 @@ export const RDSInstanceResourceType: ResourceTypeDefinition = {
       ],
     },
   ],
-};
+});

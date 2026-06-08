@@ -1,22 +1,21 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const CustomHostnameResourceType: ResourceTypeDefinition = {
+export const CustomHostnameResourceType = rt({
+  name: "Custom Hostname",
+  pinnable: false,
   id: "custom-hostname",
-  displayName: "Custom Hostname",
-  pluralDisplayName: "Custom Hostnames",
   description: "A custom hostname (SSL for SaaS) on a Cloudflare zone",
   fields: [
-    { key: "hostname", label: "Hostname", kind: "string", required: true, editable: false },
-    { key: "status", label: "Status", kind: "string", required: true, editable: false },
-    { key: "sslStatus", label: "SSL Status", kind: "string", required: false, editable: false },
-    { key: "sslMethod", label: "SSL Method", kind: "string", required: false },
-    { key: "sslType", label: "SSL Type", kind: "string", required: false, editable: false },
-    { key: "createdAt", label: "Created", kind: "string", required: false, editable: false },
+    f("hostname", "Hostname", { editable: false }),
+    f("status", "Status", { editable: false }),
+    f("sslStatus", "SSL Status", { required: false, editable: false }),
+    f("sslMethod", "SSL Method", { required: false }),
+    f("sslType", "SSL Type", { required: false, editable: false }),
+    f("createdAt", "Created", { required: false, editable: false }),
   ],
   outputs: [],
   parentTypeId: "zone",
-  dashboardPinnable: false,
   supportsCreate: true,
   supportsUpdate: true,
   iconKey: "hostname",
-};
+});

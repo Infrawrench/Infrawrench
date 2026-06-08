@@ -1,31 +1,27 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const AutoScalingGroupResourceType: ResourceTypeDefinition = {
+export const AutoScalingGroupResourceType = rt({
+  name: "Auto Scaling Group",
   id: "auto-scaling-group",
-  displayName: "Auto Scaling Group",
-  pluralDisplayName: "Auto Scaling Groups",
   description: "An AWS EC2 Auto Scaling group",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "minSize", label: "Min Size", kind: "number", required: true },
-    { key: "maxSize", label: "Max Size", kind: "number", required: true },
-    { key: "desiredCapacity", label: "Desired Capacity", kind: "number", required: true },
-    { key: "status", label: "Status", kind: "string", required: false },
-    {
-      key: "healthCheckType",
-      label: "Health Check Type",
+    f("name", "Name"),
+    f("minSize", "Min Size", { kind: "number" }),
+    f("maxSize", "Max Size", { kind: "number" }),
+    f("desiredCapacity", "Desired Capacity", { kind: "number" }),
+    f("status", "Status", { required: false }),
+    f("healthCheckType", "Health Check Type", {
       kind: "enum",
       required: false,
       enumValues: ["EC2", "ELB"],
-    },
-    { key: "availabilityZones", label: "Availability Zones", kind: "string", required: false },
-    { key: "launchTemplate", label: "Launch Template", kind: "string", required: false },
-    { key: "instanceCount", label: "Instance Count", kind: "number", required: false },
+    }),
+    f("availabilityZones", "Availability Zones", { required: false }),
+    f("launchTemplate", "Launch Template", { required: false }),
+    f("instanceCount", "Instance Count", { kind: "number", required: false }),
   ],
-  outputs: [{ key: "autoScalingGroupArn", label: "ASG ARN", sensitive: false }],
-  dashboardPinnable: true,
+  outputs: [o("autoScalingGroupArn", "ASG ARN")],
   supportsCreate: true,
   supportsMetrics: true,
   iconKey: "scaling",
   attachTargets: [{ pluginId: "aws", resourceTypeId: "target-group", verb: "Attach target group" }],
-};
+});

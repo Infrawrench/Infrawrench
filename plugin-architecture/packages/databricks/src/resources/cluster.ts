@@ -1,18 +1,14 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const ClusterResourceType: ResourceTypeDefinition = {
+export const ClusterResourceType = rt({
+  name: "Cluster",
   id: "databricks-cluster",
-  displayName: "Cluster",
-  pluralDisplayName: "Clusters",
   description: "A Databricks all-purpose or job compute cluster",
   fields: [
-    { key: "clusterId", label: "Cluster ID", kind: "string", required: true },
-    { key: "clusterName", label: "Cluster Name", kind: "string", required: true },
-    {
-      key: "state",
-      label: "State",
+    f("clusterId", "Cluster ID"),
+    f("clusterName", "Cluster Name"),
+    f("state", "State", {
       kind: "enum",
-      required: true,
       enumValues: [
         "PENDING",
         "RUNNING",
@@ -23,26 +19,20 @@ export const ClusterResourceType: ResourceTypeDefinition = {
         "ERROR",
         "UNKNOWN",
       ],
-    },
-    { key: "sparkVersion", label: "Spark Version", kind: "string", required: false },
-    { key: "nodeTypeId", label: "Node Type", kind: "string", required: false },
-    { key: "driverNodeTypeId", label: "Driver Node Type", kind: "string", required: false },
-    { key: "numWorkers", label: "Workers", kind: "number", required: false },
-    {
-      key: "autoterminationMinutes",
-      label: "Auto-termination (min)",
-      kind: "number",
-      required: false,
-    },
-    { key: "clusterSource", label: "Source", kind: "string", required: false },
-    { key: "creatorUserName", label: "Creator", kind: "string", required: false },
+    }),
+    f("sparkVersion", "Spark Version", { required: false }),
+    f("nodeTypeId", "Node Type", { required: false }),
+    f("driverNodeTypeId", "Driver Node Type", { required: false }),
+    f("numWorkers", "Workers", { kind: "number", required: false }),
+    f("autoterminationMinutes", "Auto-termination (min)", { kind: "number", required: false }),
+    f("clusterSource", "Source", { required: false }),
+    f("creatorUserName", "Creator", { required: false }),
   ],
   outputs: [
-    { key: "clusterId", label: "Cluster ID", sensitive: false },
-    { key: "sparkContextId", label: "Spark Context ID", sensitive: false },
-    { key: "jdbcUrl", label: "JDBC URL", sensitive: false },
+    o("clusterId", "Cluster ID"),
+    o("sparkContextId", "Spark Context ID"),
+    o("jdbcUrl", "JDBC URL"),
   ],
-  dashboardPinnable: true,
   supportsCreate: true,
   iconKey: "compute",
-};
+});

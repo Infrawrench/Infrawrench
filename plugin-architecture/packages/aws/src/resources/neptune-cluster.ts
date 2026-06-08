@@ -1,26 +1,24 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const NeptuneClusterResourceType: ResourceTypeDefinition = {
+export const NeptuneClusterResourceType = rt({
+  name: "Neptune Cluster",
   id: "neptune-cluster",
-  displayName: "Neptune Cluster",
-  pluralDisplayName: "Neptune Clusters",
   description: "An Amazon Neptune graph database cluster",
   fields: [
-    { key: "clusterIdentifier", label: "Cluster ID", kind: "string", required: true },
-    { key: "engine", label: "Engine", kind: "string", required: true },
-    { key: "engineVersion", label: "Engine Version", kind: "string", required: false },
-    { key: "status", label: "Status", kind: "string", required: true },
-    { key: "storageEncrypted", label: "Encrypted", kind: "boolean", required: false },
-    { key: "multiAZ", label: "Multi-AZ", kind: "boolean", required: false },
-    { key: "dbClusterMembers", label: "Members", kind: "number", required: false },
+    f("clusterIdentifier", "Cluster ID"),
+    f("engine", "Engine"),
+    f("engineVersion", "Engine Version", { required: false }),
+    f("status", "Status"),
+    f("storageEncrypted", "Encrypted", { kind: "boolean", required: false }),
+    f("multiAZ", "Multi-AZ", { kind: "boolean", required: false }),
+    f("dbClusterMembers", "Members", { kind: "number", required: false }),
   ],
   outputs: [
-    { key: "endpoint", label: "Writer Endpoint", sensitive: false },
-    { key: "readerEndpoint", label: "Reader Endpoint", sensitive: false },
-    { key: "port", label: "Port", sensitive: false },
-    { key: "clusterArn", label: "Cluster ARN", sensitive: false },
+    o("endpoint", "Writer Endpoint"),
+    o("readerEndpoint", "Reader Endpoint"),
+    o("port", "Port"),
+    o("clusterArn", "Cluster ARN"),
   ],
-  dashboardPinnable: true,
   iconKey: "database",
   supportsCreate: true,
   supportsMetrics: true,
@@ -36,4 +34,4 @@ export const NeptuneClusterResourceType: ResourceTypeDefinition = {
       ],
     },
   ],
-};
+});

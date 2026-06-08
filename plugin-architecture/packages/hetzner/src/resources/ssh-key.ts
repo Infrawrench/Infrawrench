@@ -1,19 +1,15 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const SshKeyResourceType: ResourceTypeDefinition = {
+export const SshKeyResourceType = rt({
+  name: "SSH Key",
+  pinnable: false,
   id: "ssh-key",
-  displayName: "SSH Key",
-  pluralDisplayName: "SSH Keys",
   description: "A public SSH key available for new Hetzner Cloud servers",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "fingerprint", label: "Fingerprint", kind: "string", required: false },
-    { key: "publicKey", label: "Public Key", kind: "string", required: false },
+    f("name", "Name"),
+    f("fingerprint", "Fingerprint", { required: false }),
+    f("publicKey", "Public Key", { required: false }),
   ],
-  outputs: [
-    { key: "sshKeyId", label: "SSH Key ID", sensitive: false },
-    { key: "publicKey", label: "Public Key", sensitive: false },
-  ],
-  dashboardPinnable: false,
+  outputs: [o("sshKeyId", "SSH Key ID"), o("publicKey", "Public Key")],
   iconKey: "key",
-};
+});

@@ -1,23 +1,21 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const NeonDatabaseResourceType: ResourceTypeDefinition = {
+export const NeonDatabaseResourceType = rt({
+  name: "Database",
   id: "neon-database",
-  displayName: "Database",
-  pluralDisplayName: "Databases",
   description: "A PostgreSQL database within a Neon branch",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "projectId", label: "Project ID", kind: "string", required: true },
-    { key: "branchId", label: "Branch ID", kind: "string", required: true },
-    { key: "ownerName", label: "Owner", kind: "string", required: false },
+    f("name", "Name"),
+    f("projectId", "Project ID"),
+    f("branchId", "Branch ID"),
+    f("ownerName", "Owner", { required: false }),
   ],
   outputs: [
-    { key: "connectionString", label: "Connection String", sensitive: true },
-    { key: "host", label: "Host", sensitive: false },
-    { key: "database", label: "Database Name", sensitive: false },
+    o("connectionString", "Connection String", { sensitive: true }),
+    o("host", "Host"),
+    o("database", "Database Name"),
   ],
   parentTypeId: "neon-branch",
-  dashboardPinnable: true,
   supportsCreate: true,
   iconKey: "neon",
   peerIntegrations: [
@@ -35,4 +33,4 @@ export const NeonDatabaseResourceType: ResourceTypeDefinition = {
       entries: [{ envKey: "DATABASE_URL", outputKey: "connectionString" }],
     },
   ],
-};
+});

@@ -1,18 +1,14 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const PostgresDatabaseResourceType: ResourceTypeDefinition = {
+export const PostgresDatabaseResourceType = rt({
+  name: "PostgreSQL Database",
   id: "pg-database",
-  displayName: "PostgreSQL Database",
-  pluralDisplayName: "PostgreSQL Databases",
   description:
     "A PostgreSQL database — connects via connection string (literal or from a DO Managed Database)",
   fields: [
-    { key: "name", label: "Display Name", kind: "string", required: true },
-    {
-      key: "connectionString",
-      label: "Connection String",
+    f("name", "Display Name"),
+    f("connectionString", "Connection String", {
       kind: "secret",
-      required: true,
       allowLiteral: true,
       description:
         "Connection URI (postgres://...). Can be linked to a DigitalOcean Managed Database.",
@@ -29,21 +25,18 @@ export const PostgresDatabaseResourceType: ResourceTypeDefinition = {
           outputKey: "connectionString",
         },
       ],
-    },
-    {
-      key: "sslMode",
-      label: "SSL Mode",
+    }),
+    f("sslMode", "SSL Mode", {
       kind: "enum",
       required: false,
       enumValues: ["disable", "allow", "prefer", "require", "verify-ca", "verify-full"],
-    },
+    }),
   ],
   outputs: [
-    { key: "connectionString", label: "Connection String", sensitive: true },
-    { key: "serverVersion", label: "Server Version", sensitive: false },
-    { key: "schemaNames", label: "Schema Names (JSON array)", sensitive: false },
+    o("connectionString", "Connection String", { sensitive: true }),
+    o("serverVersion", "Server Version"),
+    o("schemaNames", "Schema Names (JSON array)"),
   ],
-  dashboardPinnable: true,
   iconKey: "postgres",
   secretExportTemplates: [
     {
@@ -53,4 +46,4 @@ export const PostgresDatabaseResourceType: ResourceTypeDefinition = {
       entries: [{ envKey: "DATABASE_URL", outputKey: "connectionString" }],
     },
   ],
-};
+});

@@ -1,35 +1,27 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const KafkaTopicResourceType: ResourceTypeDefinition = {
+export const KafkaTopicResourceType = rt({
+  name: "Topic",
+  pinnable: false,
   id: "kafka-topic",
-  displayName: "Topic",
-  pluralDisplayName: "Topics",
   description: "A Kafka topic",
   parentTypeId: "kafka-cluster",
   showInSidebar: true,
   fields: [
-    { key: "name", label: "Topic Name", kind: "string", required: true },
-    {
-      key: "partitions",
-      label: "Partitions",
+    f("name", "Topic Name"),
+    f("partitions", "Partitions", {
       kind: "number",
       required: false,
       description: "Number of partitions for the topic.",
-    },
-    {
-      key: "replicationFactor",
-      label: "Replication Factor",
+    }),
+    f("replicationFactor", "Replication Factor", {
       kind: "number",
       required: false,
       description: "Replication factor — must be ≤ number of brokers in the cluster.",
-    },
+    }),
   ],
-  outputs: [
-    { key: "name", label: "Topic Name", sensitive: false },
-    { key: "partitionCount", label: "Partition Count", sensitive: false },
-  ],
-  dashboardPinnable: false,
+  outputs: [o("name", "Topic Name"), o("partitionCount", "Partition Count")],
   supportsCreate: true,
   supportsDelete: true,
   iconKey: "kafka",
-};
+});

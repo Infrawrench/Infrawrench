@@ -1,20 +1,19 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const NetlifyEnvVarResourceType: ResourceTypeDefinition = {
+export const NetlifyEnvVarResourceType = rt({
+  name: "Environment Variable",
+  pinnable: false,
   id: "netlify-env-var",
-  displayName: "Environment Variable",
-  pluralDisplayName: "Environment Variables",
   description: "An environment variable set on a Netlify site, scoped to deployment contexts",
   fields: [
-    { key: "key", label: "Key", kind: "string", required: true },
-    { key: "scopes", label: "Scopes", kind: "string", required: false },
-    { key: "contexts", label: "Contexts", kind: "string", required: false },
-    { key: "isSecret", label: "Secret", kind: "boolean", required: false },
-    { key: "updatedAt", label: "Updated At", kind: "string", required: false },
+    f("key", "Key"),
+    f("scopes", "Scopes", { required: false }),
+    f("contexts", "Contexts", { required: false }),
+    f("isSecret", "Secret", { kind: "boolean", required: false }),
+    f("updatedAt", "Updated At", { required: false }),
   ],
-  outputs: [{ key: "envKey", label: "Variable Key", sensitive: false }],
+  outputs: [o("envKey", "Variable Key")],
   parentTypeId: "netlify-site",
-  dashboardPinnable: false,
   supportsCreate: true,
   iconKey: "env",
-};
+});

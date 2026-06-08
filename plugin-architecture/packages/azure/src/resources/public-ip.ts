@@ -1,24 +1,20 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const PublicIPResourceType: ResourceTypeDefinition = {
+export const PublicIPResourceType = rt({
+  name: "Public IP Address",
+  plural: "Public IP Addresses",
   id: "azure-public-ip",
-  displayName: "Public IP Address",
-  pluralDisplayName: "Public IP Addresses",
   description: "An Azure Public IP Address",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "resourceGroup", label: "Resource Group", kind: "string", required: true },
-    { key: "location", label: "Location", kind: "string", required: true },
-    { key: "sku", label: "SKU", kind: "string", required: true },
-    { key: "allocationMethod", label: "Allocation Method", kind: "string", required: true },
-    { key: "provisioningState", label: "Provisioning State", kind: "string", required: true },
-    { key: "ipVersion", label: "IP Version", kind: "string", required: false },
+    f("name", "Name"),
+    f("resourceGroup", "Resource Group"),
+    f("location", "Location"),
+    f("sku", "SKU"),
+    f("allocationMethod", "Allocation Method"),
+    f("provisioningState", "Provisioning State"),
+    f("ipVersion", "IP Version", { required: false }),
   ],
-  outputs: [
-    { key: "ipAddress", label: "IP Address", sensitive: false },
-    { key: "fqdn", label: "FQDN", sensitive: false },
-  ],
-  dashboardPinnable: true,
+  outputs: [o("ipAddress", "IP Address"), o("fqdn", "FQDN")],
   iconKey: "network",
   supportsCreate: true,
   supportsMetrics: true,
@@ -36,4 +32,4 @@ export const PublicIPResourceType: ResourceTypeDefinition = {
       verb: "Use for NAT",
     },
   ],
-};
+});

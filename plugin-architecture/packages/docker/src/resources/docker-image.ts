@@ -1,16 +1,14 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const DockerImageResourceType: ResourceTypeDefinition = {
+export const DockerImageResourceType = rt({
+  name: "Image",
   id: "docker-image",
-  displayName: "Image",
-  pluralDisplayName: "Images",
   description: "A Docker image available to the local or remote Docker daemon.",
   fields: [
-    { key: "tags", label: "Tags", kind: "string", required: false },
-    { key: "size", label: "Size", kind: "string", required: false },
-    { key: "containers", label: "Containers", kind: "number", required: false },
+    f("tags", "Tags", { required: false }),
+    f("size", "Size", { required: false }),
+    f("containers", "Containers", { kind: "number", required: false }),
   ],
-  outputs: [{ key: "imageId", label: "Image ID", sensitive: false }],
-  dashboardPinnable: true,
+  outputs: [o("imageId", "Image ID")],
   iconKey: "container",
-};
+});

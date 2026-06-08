@@ -1,29 +1,23 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const VMResourceType: ResourceTypeDefinition = {
+export const VMResourceType = rt({
+  name: "Virtual Machine",
   id: "azure-vm",
-  displayName: "Virtual Machine",
-  pluralDisplayName: "Virtual Machines",
   description: "An Azure Virtual Machine",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "resourceGroup", label: "Resource Group", kind: "string", required: true },
-    { key: "location", label: "Location", kind: "string", required: true },
-    { key: "vmSize", label: "VM Size", kind: "string", required: true },
-    {
-      key: "provisioningState",
-      label: "Provisioning State",
+    f("name", "Name"),
+    f("resourceGroup", "Resource Group"),
+    f("location", "Location"),
+    f("vmSize", "VM Size"),
+    f("provisioningState", "Provisioning State", {
       kind: "enum",
-      required: true,
       enumValues: ["Succeeded", "Creating", "Updating", "Deleting", "Failed"],
-    },
-    { key: "powerState", label: "Power State", kind: "string", required: false },
-    { key: "osType", label: "OS Type", kind: "string", required: false },
-    { key: "imageReference", label: "Image", kind: "string", required: false },
-    { key: "osDiskSizeGb", label: "OS Disk Size (GB)", kind: "number", required: false },
-    {
-      key: "network",
-      label: "Virtual Network",
+    }),
+    f("powerState", "Power State", { required: false }),
+    f("osType", "OS Type", { required: false }),
+    f("imageReference", "Image", { required: false }),
+    f("osDiskSizeGb", "OS Disk Size (GB)", { kind: "number", required: false }),
+    f("network", "Virtual Network", {
       kind: "association",
       required: false,
       description: "Virtual network to attach the VM to",
@@ -36,14 +30,9 @@ export const VMResourceType: ResourceTypeDefinition = {
           outputKey: "resourceId",
         },
       ],
-    },
+    }),
   ],
-  outputs: [
-    { key: "publicIp", label: "Public IP", sensitive: false },
-    { key: "privateIp", label: "Private IP", sensitive: false },
-    { key: "fqdn", label: "FQDN", sensitive: false },
-  ],
-  dashboardPinnable: true,
+  outputs: [o("publicIp", "Public IP"), o("privateIp", "Private IP"), o("fqdn", "FQDN")],
   iconKey: "instance",
   sshEndpoint: {
     hostOutputKey: "publicIp",
@@ -53,4 +42,4 @@ export const VMResourceType: ResourceTypeDefinition = {
   },
   supportsCreate: true,
   supportsMetrics: true,
-};
+});

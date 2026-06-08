@@ -1,23 +1,18 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const PsDatabaseResourceType: ResourceTypeDefinition = {
+export const PsDatabaseResourceType = rt({
+  name: "Database",
   id: "ps-database",
-  displayName: "Database",
-  pluralDisplayName: "Databases",
   description: "A PlanetScale MySQL-compatible serverless database",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "region", label: "Region", kind: "string", required: false },
-    { key: "state", label: "State", kind: "string", required: false },
-    { key: "htmlUrl", label: "Dashboard URL", kind: "string", required: false },
-    { key: "createdAt", label: "Created At", kind: "string", required: false },
-    { key: "updatedAt", label: "Updated At", kind: "string", required: false },
+    f("name", "Name"),
+    f("region", "Region", { required: false }),
+    f("state", "State", { required: false }),
+    f("htmlUrl", "Dashboard URL", { required: false }),
+    f("createdAt", "Created At", { required: false }),
+    f("updatedAt", "Updated At", { required: false }),
   ],
-  outputs: [
-    { key: "databaseName", label: "Database Name", sensitive: false },
-    { key: "region", label: "Region", sensitive: false },
-  ],
-  dashboardPinnable: true,
+  outputs: [o("databaseName", "Database Name"), o("region", "Region")],
   supportsCreate: true,
   iconKey: "planetscale",
-};
+});

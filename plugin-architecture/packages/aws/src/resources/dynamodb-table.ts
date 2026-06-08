@@ -1,21 +1,19 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const DynamoDBTableResourceType: ResourceTypeDefinition = {
+export const DynamoDBTableResourceType = rt({
+  name: "DynamoDB Table",
   id: "dynamodb-table",
-  displayName: "DynamoDB Table",
-  pluralDisplayName: "DynamoDB Tables",
   description: "An Amazon DynamoDB NoSQL table",
   fields: [
-    { key: "tableName", label: "Table Name", kind: "string", required: true },
-    { key: "status", label: "Status", kind: "string", required: true },
-    { key: "itemCount", label: "Item Count", kind: "number", required: false },
-    { key: "sizeBytes", label: "Size (Bytes)", kind: "number", required: false },
-    { key: "billingMode", label: "Billing Mode", kind: "string", required: false },
-    { key: "partitionKey", label: "Partition Key", kind: "string", required: false },
-    { key: "sortKey", label: "Sort Key", kind: "string", required: false },
+    f("tableName", "Table Name"),
+    f("status", "Status"),
+    f("itemCount", "Item Count", { kind: "number", required: false }),
+    f("sizeBytes", "Size (Bytes)", { kind: "number", required: false }),
+    f("billingMode", "Billing Mode", { required: false }),
+    f("partitionKey", "Partition Key", { required: false }),
+    f("sortKey", "Sort Key", { required: false }),
   ],
-  outputs: [{ key: "tableArn", label: "Table ARN", sensitive: false }],
-  dashboardPinnable: true,
+  outputs: [o("tableArn", "Table ARN")],
   iconKey: "database",
   supportsCreate: true,
   supportsMetrics: true,
@@ -27,4 +25,4 @@ export const DynamoDBTableResourceType: ResourceTypeDefinition = {
       entries: [{ envKey: "DYNAMODB_TABLE_ARN", outputKey: "tableArn", description: "Table ARN" }],
     },
   ],
-};
+});

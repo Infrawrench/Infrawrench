@@ -1,13 +1,12 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const NamespaceResourceType: ResourceTypeDefinition = {
+export const NamespaceResourceType = rt({
+  name: "Namespace",
+  pinnable: false,
   id: "k8s-namespace",
-  displayName: "Namespace",
-  pluralDisplayName: "Namespaces",
   description: "A Kubernetes namespace",
-  fields: [{ key: "name", label: "Name", kind: "string", required: true }],
+  fields: [f("name", "Name")],
   outputs: [],
   parentTypeId: "k8s-cluster",
-  dashboardPinnable: false,
   supportsCreate: true,
-};
+});

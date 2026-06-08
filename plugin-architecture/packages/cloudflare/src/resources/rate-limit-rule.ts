@@ -1,23 +1,22 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const RateLimitRuleResourceType: ResourceTypeDefinition = {
+export const RateLimitRuleResourceType = rt({
+  name: "Rate Limiting Rule",
+  pinnable: false,
   id: "rate-limit-rule",
-  displayName: "Rate Limiting Rule",
-  pluralDisplayName: "Rate Limiting Rules",
   description: "A Cloudflare rate limiting rule (rulesets http_ratelimit phase)",
   fields: [
-    { key: "description", label: "Description", kind: "string", required: false },
-    { key: "expression", label: "Expression", kind: "string", required: true },
-    { key: "requestsPerPeriod", label: "Requests", kind: "number", required: true },
-    { key: "period", label: "Period (s)", kind: "number", required: true },
-    { key: "characteristics", label: "Characteristics", kind: "string", required: false },
-    { key: "action", label: "Action", kind: "string", required: true },
-    { key: "enabled", label: "Enabled", kind: "boolean", required: true },
+    f("description", "Description", { required: false }),
+    f("expression", "Expression"),
+    f("requestsPerPeriod", "Requests", { kind: "number" }),
+    f("period", "Period (s)", { kind: "number" }),
+    f("characteristics", "Characteristics", { required: false }),
+    f("action", "Action"),
+    f("enabled", "Enabled", { kind: "boolean" }),
   ],
   outputs: [],
   parentTypeId: "zone",
-  dashboardPinnable: false,
   supportsCreate: true,
   supportsUpdate: true,
   iconKey: "firewall",
-};
+});

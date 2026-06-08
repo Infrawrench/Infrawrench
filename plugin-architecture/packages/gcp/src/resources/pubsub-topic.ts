@@ -1,22 +1,16 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const PubSubTopicResourceType: ResourceTypeDefinition = {
+export const PubSubTopicResourceType = rt({
+  name: "Pub/Sub Topic",
+  pinnable: false,
   id: "pubsub-topic",
-  displayName: "Pub/Sub Topic",
-  pluralDisplayName: "Pub/Sub Topics",
   description: "A Google Cloud Pub/Sub topic",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "kmsKeyName", label: "KMS Key", kind: "string", required: false },
-    {
-      key: "messageRetentionDuration",
-      label: "Message Retention",
-      kind: "string",
-      required: false,
-    },
+    f("name", "Name"),
+    f("kmsKeyName", "KMS Key", { required: false }),
+    f("messageRetentionDuration", "Message Retention", { required: false }),
   ],
   outputs: [],
-  dashboardPinnable: false,
   supportsCreate: true,
   supportsMetrics: true,
-};
+});

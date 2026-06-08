@@ -1,25 +1,21 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const JobResourceType: ResourceTypeDefinition = {
+export const JobResourceType = rt({
+  name: "Job",
   id: "databricks-job",
-  displayName: "Job",
-  pluralDisplayName: "Jobs",
   description: "A Databricks workflow/job definition",
   fields: [
-    { key: "jobId", label: "Job ID", kind: "number", required: true },
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "creatorUserName", label: "Creator", kind: "string", required: false },
-    { key: "format", label: "Format", kind: "string", required: false },
-    { key: "lastRunState", label: "Last Run State", kind: "string", required: false },
-    { key: "lastRunResult", label: "Last Run Result", kind: "string", required: false },
-    { key: "schedule", label: "Schedule", kind: "string", required: false },
-    { key: "taskCount", label: "Tasks", kind: "number", required: false },
-    { key: "maxConcurrentRuns", label: "Max Concurrent Runs", kind: "number", required: false },
+    f("jobId", "Job ID", { kind: "number" }),
+    f("name", "Name"),
+    f("creatorUserName", "Creator", { required: false }),
+    f("format", "Format", { required: false }),
+    f("lastRunState", "Last Run State", { required: false }),
+    f("lastRunResult", "Last Run Result", { required: false }),
+    f("schedule", "Schedule", { required: false }),
+    f("taskCount", "Tasks", { kind: "number", required: false }),
+    f("maxConcurrentRuns", "Max Concurrent Runs", { kind: "number", required: false }),
   ],
-  outputs: [
-    { key: "jobId", label: "Job ID", sensitive: false },
-    { key: "jobUrl", label: "Job URL", sensitive: false },
-  ],
+  outputs: [o("jobId", "Job ID"), o("jobUrl", "Job URL")],
   attachTargets: [
     {
       pluginId: "databricks",
@@ -32,7 +28,6 @@ export const JobResourceType: ResourceTypeDefinition = {
       verb: "Use warehouse",
     },
   ],
-  dashboardPinnable: true,
   supportsCreate: true,
   iconKey: "workflow",
-};
+});

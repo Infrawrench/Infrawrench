@@ -1,33 +1,22 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const MediaAssetResourceType: ResourceTypeDefinition = {
+export const MediaAssetResourceType = rt({
+  name: "Media Asset",
+  pinnable: false,
   id: "media-asset",
-  displayName: "Media Asset",
-  pluralDisplayName: "Media Assets",
   description: "An image, video, or raw file stored in Cloudinary",
   fields: [
-    { key: "publicId", label: "Public ID", kind: "string", required: true },
-    { key: "displayName", label: "Display Name", kind: "string", required: false },
-    {
-      key: "resourceType",
-      label: "Resource Type",
-      kind: "enum",
-      required: true,
-      enumValues: ["image", "video", "raw"],
-    },
-    { key: "format", label: "Format", kind: "string", required: false },
-    { key: "bytes", label: "Size (bytes)", kind: "number", required: false },
-    { key: "width", label: "Width", kind: "number", required: false },
-    { key: "height", label: "Height", kind: "number", required: false },
-    { key: "folder", label: "Folder", kind: "string", required: false },
-    { key: "createdAt", label: "Created At", kind: "string", required: false },
+    f("publicId", "Public ID"),
+    f("displayName", "Display Name", { required: false }),
+    f("resourceType", "Resource Type", { kind: "enum", enumValues: ["image", "video", "raw"] }),
+    f("format", "Format", { required: false }),
+    f("bytes", "Size (bytes)", { kind: "number", required: false }),
+    f("width", "Width", { kind: "number", required: false }),
+    f("height", "Height", { kind: "number", required: false }),
+    f("folder", "Folder", { required: false }),
+    f("createdAt", "Created At", { required: false }),
   ],
-  outputs: [
-    { key: "secureUrl", label: "Secure URL", sensitive: false },
-    { key: "url", label: "URL", sensitive: false },
-    { key: "publicId", label: "Public ID", sensitive: false },
-  ],
+  outputs: [o("secureUrl", "Secure URL"), o("url", "URL"), o("publicId", "Public ID")],
   parentTypeId: "folder",
-  dashboardPinnable: false,
   iconKey: "media",
-};
+});

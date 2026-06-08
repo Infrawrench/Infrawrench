@@ -1,34 +1,27 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const CosmosDBAccountResourceType: ResourceTypeDefinition = {
+export const CosmosDBAccountResourceType = rt({
+  name: "Cosmos DB Account",
   id: "azure-cosmos-db",
-  displayName: "Cosmos DB Account",
-  pluralDisplayName: "Cosmos DB Accounts",
   description: "An Azure Cosmos DB account",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "resourceGroup", label: "Resource Group", kind: "string", required: true },
-    { key: "location", label: "Location", kind: "string", required: true },
-    { key: "kind", label: "Kind", kind: "string", required: true },
-    { key: "databaseAccountOfferType", label: "Offer Type", kind: "string", required: true },
-    { key: "provisioningState", label: "Provisioning State", kind: "string", required: true },
-    { key: "consistencyLevel", label: "Consistency Level", kind: "string", required: false },
-    { key: "enableAutomaticFailover", label: "Auto Failover", kind: "boolean", required: false },
-    {
-      key: "enableMultipleWriteLocations",
-      label: "Multi-Region Writes",
-      kind: "boolean",
-      required: false,
-    },
-    { key: "readLocations", label: "Read Locations", kind: "string", required: false },
-    { key: "writeLocations", label: "Write Locations", kind: "string", required: false },
+    f("name", "Name"),
+    f("resourceGroup", "Resource Group"),
+    f("location", "Location"),
+    f("kind", "Kind"),
+    f("databaseAccountOfferType", "Offer Type"),
+    f("provisioningState", "Provisioning State"),
+    f("consistencyLevel", "Consistency Level", { required: false }),
+    f("enableAutomaticFailover", "Auto Failover", { kind: "boolean", required: false }),
+    f("enableMultipleWriteLocations", "Multi-Region Writes", { kind: "boolean", required: false }),
+    f("readLocations", "Read Locations", { required: false }),
+    f("writeLocations", "Write Locations", { required: false }),
   ],
   outputs: [
-    { key: "documentEndpoint", label: "Document Endpoint", sensitive: false },
-    { key: "primaryKey", label: "Primary Key", sensitive: true },
-    { key: "connectionString", label: "Connection String", sensitive: true },
+    o("documentEndpoint", "Document Endpoint"),
+    o("primaryKey", "Primary Key", { sensitive: true }),
+    o("connectionString", "Connection String", { sensitive: true }),
   ],
-  dashboardPinnable: true,
   iconKey: "database",
   supportsCreate: true,
   supportsMetrics: true,
@@ -52,4 +45,4 @@ export const CosmosDBAccountResourceType: ResourceTypeDefinition = {
       ],
     },
   ],
-};
+});

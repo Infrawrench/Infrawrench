@@ -1,19 +1,19 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const IngressResourceType: ResourceTypeDefinition = {
+export const IngressResourceType = rt({
+  name: "Ingress",
+  plural: "Ingresses",
+  pinnable: false,
   id: "k8s-ingress",
-  displayName: "Ingress",
-  pluralDisplayName: "Ingresses",
   description: "A Kubernetes Ingress — HTTP/HTTPS routing to services",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "namespace", label: "Namespace", kind: "string", required: true },
-    { key: "ingressClassName", label: "Ingress Class", kind: "string", required: false },
-    { key: "hosts", label: "Hosts", kind: "string", required: false },
-    { key: "address", label: "Address", kind: "string", required: false },
+    f("name", "Name"),
+    f("namespace", "Namespace"),
+    f("ingressClassName", "Ingress Class", { required: false }),
+    f("hosts", "Hosts", { required: false }),
+    f("address", "Address", { required: false }),
   ],
   outputs: [],
   parentTypeId: "k8s-namespace",
-  dashboardPinnable: false,
   supportsCreate: true,
-};
+});

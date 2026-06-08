@@ -1,33 +1,26 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const NATGatewayResourceType: ResourceTypeDefinition = {
+export const NATGatewayResourceType = rt({
+  name: "NAT Gateway",
   id: "nat-gateway",
-  displayName: "NAT Gateway",
-  pluralDisplayName: "NAT Gateways",
   description: "An AWS VPC NAT gateway",
   fields: [
-    { key: "natGatewayId", label: "NAT Gateway ID", kind: "string", required: true },
-    {
-      key: "state",
-      label: "State",
+    f("natGatewayId", "NAT Gateway ID"),
+    f("state", "State", {
       kind: "enum",
-      required: true,
       enumValues: ["pending", "failed", "available", "deleting", "deleted"],
-    },
-    { key: "subnetId", label: "Subnet ID", kind: "string", required: false },
-    { key: "vpcId", label: "VPC ID", kind: "string", required: false },
-    {
-      key: "connectivityType",
-      label: "Connectivity",
+    }),
+    f("subnetId", "Subnet ID", { required: false }),
+    f("vpcId", "VPC ID", { required: false }),
+    f("connectivityType", "Connectivity", {
       kind: "enum",
       required: false,
       enumValues: ["public", "private"],
-    },
-    { key: "publicIp", label: "Public IP", kind: "string", required: false },
-    { key: "privateIp", label: "Private IP", kind: "string", required: false },
+    }),
+    f("publicIp", "Public IP", { required: false }),
+    f("privateIp", "Private IP", { required: false }),
   ],
-  outputs: [{ key: "natGatewayId", label: "NAT Gateway ID", sensitive: false }],
-  dashboardPinnable: true,
+  outputs: [o("natGatewayId", "NAT Gateway ID")],
   iconKey: "network",
   supportsCreate: true,
   supportsMetrics: true,
@@ -39,4 +32,4 @@ export const NATGatewayResourceType: ResourceTypeDefinition = {
       verb: "Add default route",
     },
   ],
-};
+});

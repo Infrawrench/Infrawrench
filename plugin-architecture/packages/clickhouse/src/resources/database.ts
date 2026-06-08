@@ -1,18 +1,17 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const DatabaseResourceType: ResourceTypeDefinition = {
+export const DatabaseResourceType = rt({
+  name: "Database",
+  pinnable: false,
   id: "ch-database",
-  displayName: "Database",
-  pluralDisplayName: "Databases",
   description: "A database within a ClickHouse Cloud service",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "engine", label: "Engine", kind: "string", required: false },
-    { key: "comment", label: "Comment", kind: "string", required: false },
+    f("name", "Name"),
+    f("engine", "Engine", { required: false }),
+    f("comment", "Comment", { required: false }),
   ],
-  outputs: [{ key: "databaseName", label: "Database Name", sensitive: false }],
-  dashboardPinnable: false,
+  outputs: [o("databaseName", "Database Name")],
   supportsCreate: true,
   iconKey: "database",
   parentTypeId: "ch-service",
-};
+});

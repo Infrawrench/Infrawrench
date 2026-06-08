@@ -1,22 +1,22 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const AiSearchResourceType: ResourceTypeDefinition = {
+export const AiSearchResourceType = rt({
+  name: "AI Search",
+  plural: "AI Search",
+  pinnable: false,
   id: "ai-search",
-  displayName: "AI Search",
-  pluralDisplayName: "AI Search",
   description:
     "A Cloudflare AI Search (AutoRAG) instance — a managed retrieval-augmented generation pipeline over your data source",
   fields: [
-    { key: "id", label: "Name", kind: "string", required: true, editable: false },
-    { key: "source", label: "Source", kind: "string", required: false },
-    { key: "aiSearchModel", label: "Generation Model", kind: "string", required: false },
-    { key: "embeddingModel", label: "Embedding Model", kind: "string", required: false },
-    { key: "vectorizeName", label: "Vectorize Index", kind: "string", required: false },
-    { key: "status", label: "Status", kind: "string", required: false },
-    { key: "paused", label: "Paused", kind: "boolean", required: false },
-    { key: "lastActivity", label: "Last Activity", kind: "string", required: false },
+    f("id", "Name", { editable: false }),
+    f("source", "Source", { required: false }),
+    f("aiSearchModel", "Generation Model", { required: false }),
+    f("embeddingModel", "Embedding Model", { required: false }),
+    f("vectorizeName", "Vectorize Index", { required: false }),
+    f("status", "Status", { required: false }),
+    f("paused", "Paused", { kind: "boolean", required: false }),
+    f("lastActivity", "Last Activity", { required: false }),
   ],
-  outputs: [{ key: "instanceId", label: "Instance Name", sensitive: false }],
-  dashboardPinnable: false,
+  outputs: [o("instanceId", "Instance Name")],
   iconKey: "function",
-};
+});

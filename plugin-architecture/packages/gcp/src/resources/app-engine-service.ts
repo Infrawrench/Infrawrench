@@ -1,16 +1,14 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const AppEngineServiceResourceType: ResourceTypeDefinition = {
+export const AppEngineServiceResourceType = rt({
+  name: "App Engine Service",
   id: "app-engine-service",
-  displayName: "App Engine Service",
-  pluralDisplayName: "App Engine Services",
   description: "A Google App Engine service",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "servingStatus", label: "Serving Status", kind: "string", required: false },
-    { key: "latestVersion", label: "Latest Version", kind: "string", required: false },
-    { key: "trafficSplit", label: "Traffic Split", kind: "string", required: false },
+    f("name", "Name"),
+    f("servingStatus", "Serving Status", { required: false }),
+    f("latestVersion", "Latest Version", { required: false }),
+    f("trafficSplit", "Traffic Split", { required: false }),
   ],
-  outputs: [{ key: "url", label: "Service URL", sensitive: false }],
-  dashboardPinnable: true,
-};
+  outputs: [o("url", "Service URL")],
+});

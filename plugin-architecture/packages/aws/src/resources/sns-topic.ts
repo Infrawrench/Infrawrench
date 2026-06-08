@@ -1,18 +1,16 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const SNSTopicResourceType: ResourceTypeDefinition = {
+export const SNSTopicResourceType = rt({
+  name: "SNS Topic",
   id: "sns-topic",
-  displayName: "SNS Topic",
-  pluralDisplayName: "SNS Topics",
   description: "An Amazon Simple Notification Service topic",
   fields: [
-    { key: "topicName", label: "Topic Name", kind: "string", required: true },
-    { key: "topicArn", label: "ARN", kind: "string", required: true },
-    { key: "subscriptionCount", label: "Subscriptions", kind: "number", required: false },
-    { key: "isFifo", label: "FIFO", kind: "boolean", required: false },
+    f("topicName", "Topic Name"),
+    f("topicArn", "ARN"),
+    f("subscriptionCount", "Subscriptions", { kind: "number", required: false }),
+    f("isFifo", "FIFO", { kind: "boolean", required: false }),
   ],
-  outputs: [{ key: "topicArn", label: "Topic ARN", sensitive: false }],
-  dashboardPinnable: true,
+  outputs: [o("topicArn", "Topic ARN")],
   iconKey: "topic",
   supportsCreate: true,
   supportsMetrics: true,
@@ -24,4 +22,4 @@ export const SNSTopicResourceType: ResourceTypeDefinition = {
       entries: [{ envKey: "SNS_TOPIC_ARN", outputKey: "topicArn", description: "Topic ARN" }],
     },
   ],
-};
+});

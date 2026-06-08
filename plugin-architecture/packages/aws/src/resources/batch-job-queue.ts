@@ -1,31 +1,21 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const BatchJobQueueResourceType: ResourceTypeDefinition = {
+export const BatchJobQueueResourceType = rt({
+  name: "Batch Job Queue",
   id: "batch-job-queue",
-  displayName: "Batch Job Queue",
-  pluralDisplayName: "Batch Job Queues",
   description: "An AWS Batch job queue",
   fields: [
-    { key: "jobQueueName", label: "Queue Name", kind: "string", required: true },
-    {
-      key: "state",
-      label: "State",
-      kind: "enum",
-      required: true,
-      enumValues: ["ENABLED", "DISABLED"],
-    },
-    {
-      key: "status",
-      label: "Status",
+    f("jobQueueName", "Queue Name"),
+    f("state", "State", { kind: "enum", enumValues: ["ENABLED", "DISABLED"] }),
+    f("status", "Status", {
       kind: "enum",
       required: false,
       enumValues: ["CREATING", "UPDATING", "DELETING", "DELETED", "VALID", "INVALID"],
-    },
-    { key: "priority", label: "Priority", kind: "number", required: false },
-    { key: "schedulingPolicyArn", label: "Scheduling Policy", kind: "string", required: false },
+    }),
+    f("priority", "Priority", { kind: "number", required: false }),
+    f("schedulingPolicyArn", "Scheduling Policy", { required: false }),
   ],
-  outputs: [{ key: "jobQueueArn", label: "Job Queue ARN", sensitive: false }],
-  dashboardPinnable: true,
+  outputs: [o("jobQueueArn", "Job Queue ARN")],
   supportsCreate: true,
   iconKey: "queue",
-};
+});

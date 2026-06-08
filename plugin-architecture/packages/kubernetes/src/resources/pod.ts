@@ -1,18 +1,17 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const PodResourceType: ResourceTypeDefinition = {
+export const PodResourceType = rt({
+  name: "Pod",
+  pinnable: false,
   id: "k8s-pod",
-  displayName: "Pod",
-  pluralDisplayName: "Pods",
   description: "A Kubernetes pod",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "namespace", label: "Namespace", kind: "string", required: true },
-    { key: "image", label: "Image", kind: "string", required: true },
-    { key: "status", label: "Status", kind: "string", required: false },
+    f("name", "Name"),
+    f("namespace", "Namespace"),
+    f("image", "Image"),
+    f("status", "Status", { required: false }),
   ],
   outputs: [],
   parentTypeId: "k8s-namespace",
-  dashboardPinnable: false,
   supportsCreate: true,
-};
+});

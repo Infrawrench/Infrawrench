@@ -1,22 +1,20 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const LambdaFunctionResourceType: ResourceTypeDefinition = {
+export const LambdaFunctionResourceType = rt({
+  name: "Lambda Function",
   id: "lambda-function",
-  displayName: "Lambda Function",
-  pluralDisplayName: "Lambda Functions",
   description: "An AWS Lambda serverless function",
   fields: [
-    { key: "name", label: "Function Name", kind: "string", required: true },
-    { key: "runtime", label: "Runtime", kind: "string", required: false },
-    { key: "handler", label: "Handler", kind: "string", required: false },
-    { key: "codeSize", label: "Code Size", kind: "number", required: false },
-    { key: "memorySize", label: "Memory (MB)", kind: "number", required: false },
-    { key: "timeout", label: "Timeout (s)", kind: "number", required: false },
-    { key: "state", label: "State", kind: "string", required: false },
-    { key: "lastModified", label: "Last Modified", kind: "string", required: false },
+    f("name", "Function Name"),
+    f("runtime", "Runtime", { required: false }),
+    f("handler", "Handler", { required: false }),
+    f("codeSize", "Code Size", { kind: "number", required: false }),
+    f("memorySize", "Memory (MB)", { kind: "number", required: false }),
+    f("timeout", "Timeout (s)", { kind: "number", required: false }),
+    f("state", "State", { required: false }),
+    f("lastModified", "Last Modified", { required: false }),
   ],
-  outputs: [{ key: "functionArn", label: "Function ARN", sensitive: false }],
-  dashboardPinnable: true,
+  outputs: [o("functionArn", "Function ARN")],
   supportsCreate: true,
   supportsMetrics: true,
   iconKey: "function",
@@ -30,4 +28,4 @@ export const LambdaFunctionResourceType: ResourceTypeDefinition = {
       ],
     },
   ],
-};
+});

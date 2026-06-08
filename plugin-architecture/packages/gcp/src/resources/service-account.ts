@@ -1,27 +1,24 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const ServiceAccountResourceType: ResourceTypeDefinition = {
+export const ServiceAccountResourceType = rt({
+  name: "Service Account",
+  pinnable: false,
   id: "gcp-service-account",
-  displayName: "Service Account",
-  pluralDisplayName: "Service Accounts",
   description: "A Google Cloud IAM service account",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "email", label: "Email", kind: "string", required: false },
-    { key: "displayName", label: "Display Name", kind: "string", required: false },
-    { key: "disabled", label: "Disabled", kind: "boolean", required: false },
-    { key: "description", label: "Description", kind: "string", required: false },
+    f("name", "Name"),
+    f("email", "Email", { required: false }),
+    f("displayName", "Display Name", { required: false }),
+    f("disabled", "Disabled", { kind: "boolean", required: false }),
+    f("description", "Description", { required: false }),
   ],
   outputs: [
-    {
-      key: "key",
-      label: "JSON Key File",
+    o("key", "JSON Key File", {
       sensitive: true,
       description:
         "Creates a new JSON credentials file on resolve. Contents match the standard Google application credentials format (gcloud, ADC, client libraries). Each resolve creates a fresh key — old keys keep working until rotated.",
-    },
+    }),
   ],
-  dashboardPinnable: false,
   supportsCreate: true,
   credentialFormats: [
     {
@@ -41,4 +38,4 @@ export const ServiceAccountResourceType: ResourceTypeDefinition = {
       filenameTemplate: "{resource}.p12",
     },
   ],
-};
+});

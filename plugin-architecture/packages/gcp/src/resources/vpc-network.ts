@@ -1,18 +1,17 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const VpcNetworkResourceType: ResourceTypeDefinition = {
+export const VpcNetworkResourceType = rt({
+  name: "VPC Network",
+  pinnable: false,
   id: "vpc-network",
-  displayName: "VPC Network",
-  pluralDisplayName: "VPC Networks",
   description: "A Google Cloud VPC network",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "description", label: "Description", kind: "string", required: false },
-    { key: "autoCreateSubnetworks", label: "Auto Subnets", kind: "boolean", required: false },
-    { key: "mtu", label: "MTU", kind: "number", required: false },
-    { key: "subnetCount", label: "Subnet Count", kind: "number", required: false },
+    f("name", "Name"),
+    f("description", "Description", { required: false }),
+    f("autoCreateSubnetworks", "Auto Subnets", { kind: "boolean", required: false }),
+    f("mtu", "MTU", { kind: "number", required: false }),
+    f("subnetCount", "Subnet Count", { kind: "number", required: false }),
   ],
-  outputs: [{ key: "selfLink", label: "Self Link", sensitive: false }],
-  dashboardPinnable: false,
+  outputs: [o("selfLink", "Self Link")],
   supportsCreate: true,
-};
+});
