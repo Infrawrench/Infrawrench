@@ -19,6 +19,7 @@ Resource associations are the drag-and-drop or picker-driven relationships betwe
 - **Vercel** — domain to project.
 - **Netlify** — DNS zone domain to site custom domain or domain alias.
 - **Cloudinary** — named transformation to upload preset.
+- **Databricks** — single-task job to all-purpose cluster, single SQL-task job to SQL warehouse.
 
 ## Planned
 
@@ -30,7 +31,7 @@ These need a richer association form because the provider requires more than a s
 - **Fly.io** — certificate hostname creation, shared/dedicated IPv4 allocation, app secrets to machines, service/port exposure from machine config.
 - **Vercel and Netlify** — DNS record to deployment target, environment variable import from another resource output.
 - **Cloudinary** — folder/tag bulk operations.
-- **Databricks** — job to cluster/SQL warehouse, permissions to users/groups/service principals, pipeline to catalog/schema, serving endpoint to model/version.
+- **Databricks** — multi-task job task selection, permissions to users/groups/service principals, pipeline to catalog/schema, serving endpoint to model/version.
 - **Turso and PlanetScale** — member/invite role changes, token/password lifecycle actions, database/branch promotion and deploy-request state transitions.
 
 Infrawrench should only expose one-click attachment when the provider API has an unambiguous operation. If the API needs a backend pool, port, IP configuration, route destination, health check, role, or environment target, the UI should collect those fields before calling the provider.

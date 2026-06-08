@@ -20,6 +20,18 @@ export const JobResourceType: ResourceTypeDefinition = {
     { key: "jobId", label: "Job ID", sensitive: false },
     { key: "jobUrl", label: "Job URL", sensitive: false },
   ],
+  attachTargets: [
+    {
+      pluginId: "databricks",
+      resourceTypeId: "databricks-cluster",
+      verb: "Use cluster",
+    },
+    {
+      pluginId: "databricks",
+      resourceTypeId: "databricks-sql-warehouse",
+      verb: "Use warehouse",
+    },
+  ],
   dashboardPinnable: true,
   supportsCreate: true,
   iconKey: "workflow",

@@ -969,6 +969,168 @@ describe("createResource", () => {
   });
 });
 
+describe("attachResource", () => {
+  it("attaches a single non-SQL job task to an all-purpose cluster", async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes("/jobs/list")) {
+        return jsonResp({ jobs: [{ job_id: 9, settings: { name: "J", tasks: [{}] } }] });
+      }
+      if (url.includes("/clusters/list")) {
+        return jsonResp({ clusters: [{ cluster_id: "c1", cluster_name: "C" }] });
+      }
+      if (url.includes("/jobs/get")) {
+        return jsonResp({
+          settings: {
+            name: "J",
+            tasks: [
+              {
+                task_key: "main",
+                notebook_task: { notebook_path: "/nb" },
+                new_cluster: { spark_version: "15.4.x-scala2.12" },
+              },
+            ],
+          },
+        });
+      }
+      return jsonResp({});
+    });
+
+    const client = makeClient();
+    await client.attachResource(
+      "databricks-job",
+      "acct1:databricks-job:9",
+      "databricks-cluster",
+      "acct1:databricks-cluster:c1",
+      ACCOUNT,
+    );
+
+    const updateCall = fetchMock.mock.calls.find((call) => call[0].includes("/jobs/update"));
+    expect(updateCall).toBeTruthy();
+    const body = JSON.parse(updateCall![1]!.body);
+    expect(body).toMatchObject({
+      job_id: 9,
+      new_settings: {
+        tasks: [
+          {
+            task_key: "main",
+            existing_cluster_id: "c1",
+            notebook_task: { notebook_path: "/nb" },
+          },
+        ],
+      },
+    });
+    expect(body.new_settings.tasks[0].new_cluster).toBeUndefined();
+  });
+
+  it("attaches a single SQL job task to a SQL warehouse", async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes("/jobs/list")) {
+        return jsonResp({ jobs: [{ job_id: 9, settings: { name: "J", tasks: [{}] } }] });
+      }
+      if (url.includes("/sql/warehouses")) {
+        return jsonResp({ warehouses: [{ id: "w1", name: "WH", state: "RUNNING" }] });
+      }
+      if (url.includes("/jobs/get")) {
+        return jsonResp({
+          settings: {
+            name: "J",
+            tasks: [
+              {
+                task_key: "query",
+                existing_cluster_id: "old-cluster",
+                sql_task: { query: { query_id: "q1" }, warehouse_id: "old-wh" },
+              },
+            ],
+          },
+        });
+      }
+      return jsonResp({});
+    });
+
+    const client = makeClient();
+    await client.attachResource(
+      "databricks-job",
+      "acct1:databricks-job:9",
+      "databricks-sql-warehouse",
+      "acct1:databricks-sql-warehouse:w1",
+      ACCOUNT,
+    );
+
+    const updateCall = fetchMock.mock.calls.find((call) => call[0].includes("/jobs/update"));
+    const body = JSON.parse(updateCall![1]!.body);
+    expect(body.new_settings.tasks[0]).toMatchObject({
+      task_key: "query",
+      sql_task: { query: { query_id: "q1" }, warehouse_id: "w1" },
+    });
+    expect(body.new_settings.tasks[0].existing_cluster_id).toBeUndefined();
+  });
+
+  it("rejects attaching a SQL task to a cluster", async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes("/jobs/list")) {
+        return jsonResp({ jobs: [{ job_id: 9, settings: { name: "J", tasks: [{}] } }] });
+      }
+      if (url.includes("/clusters/list")) {
+        return jsonResp({ clusters: [{ cluster_id: "c1", cluster_name: "C" }] });
+      }
+      if (url.includes("/jobs/get")) {
+        return jsonResp({ settings: { tasks: [{ task_key: "query", sql_task: {} }] } });
+      }
+      return jsonResp({});
+    });
+
+    const client = makeClient();
+    await expect(
+      client.attachResource(
+        "databricks-job",
+        "acct1:databricks-job:9",
+        "databricks-cluster",
+        "acct1:databricks-cluster:c1",
+        ACCOUNT,
+      ),
+    ).rejects.toThrow(/SQL tasks use SQL warehouses/);
+  });
+
+  it("rejects ambiguous multi-task jobs", async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes("/jobs/list")) {
+        return jsonResp({ jobs: [{ job_id: 9, settings: { name: "J", tasks: [{}, {}] } }] });
+      }
+      if (url.includes("/clusters/list")) {
+        return jsonResp({ clusters: [{ cluster_id: "c1", cluster_name: "C" }] });
+      }
+      if (url.includes("/jobs/get")) {
+        return jsonResp({ settings: { tasks: [{ task_key: "one" }, { task_key: "two" }] } });
+      }
+      return jsonResp({});
+    });
+
+    const client = makeClient();
+    await expect(
+      client.attachResource(
+        "databricks-job",
+        "acct1:databricks-job:9",
+        "databricks-cluster",
+        "acct1:databricks-cluster:c1",
+        ACCOUNT,
+      ),
+    ).rejects.toThrow(/multiple tasks/);
+  });
+
+  it("rejects unsupported associations", async () => {
+    const client = makeClient();
+    await expect(
+      client.attachResource(
+        "databricks-cluster",
+        "acct1:databricks-cluster:c1",
+        "databricks-job",
+        "acct1:databricks-job:9",
+        ACCOUNT,
+      ),
+    ).rejects.toThrow(/attachResource not supported/);
+  });
+});
+
 describe("caCert host http routing", () => {
   it("routes api through services.http when caCert set", async () => {
     const request = vi.fn(async () => ({ status: 200, body: JSON.stringify({ clusters: [] }) }));

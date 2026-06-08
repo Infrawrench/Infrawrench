@@ -149,6 +149,29 @@ export class DatabricksClient implements PluginClient {
     "databricks-secret-scope": listSecretScopes,
   };
 
+  private static resourceField(resource: ResourceInstance, fieldKey: string): string {
+    return String(resource.fields[fieldKey] ?? resource.externalId ?? "").trim();
+  }
+
+  private async getSingleTaskJobSettings(jobId: number): Promise<Record<string, unknown>> {
+    const job = await this.api<{ settings?: Record<string, unknown> }>(
+      "GET",
+      `/api/2.2/jobs/get?job_id=${encodeURIComponent(String(jobId))}`,
+    );
+    const settings = { ...(job.settings ?? {}) };
+    const tasks = settings["tasks"];
+    if (!Array.isArray(tasks) || tasks.length === 0) {
+      throw new Error("Databricks plugin: job has no task to update.");
+    }
+    if (tasks.length > 1) {
+      throw new Error(
+        "Databricks plugin: job has multiple tasks; select a task before attaching compute.",
+      );
+    }
+    settings["tasks"] = tasks.map((task) => ({ ...(task as Record<string, unknown>) }));
+    return settings;
+  }
+
   async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
     // Child resource types need parent context
     if (typeId === "databricks-schema") {
@@ -753,6 +776,74 @@ export class DatabricksClient implements PluginClient {
       // If INFORMATION_SCHEMA query fails, return empty
       return [];
     }
+  }
+
+  async attachResource(
+    sourceTypeId: string,
+    sourceResourceId: string,
+    targetTypeId: string,
+    targetResourceId: string,
+    accountId: string,
+  ): Promise<void> {
+    if (sourceTypeId === "databricks-job" && targetTypeId === "databricks-cluster") {
+      const [job, cluster] = await Promise.all([
+        this.getResource(sourceTypeId, sourceResourceId, accountId),
+        this.getResource(targetTypeId, targetResourceId, accountId),
+      ]);
+      const jobId = Number(DatabricksClient.resourceField(job, "jobId"));
+      const clusterId = DatabricksClient.resourceField(cluster, "clusterId");
+      if (!Number.isFinite(jobId) || !clusterId) {
+        throw new Error("Databricks plugin: missing job ID or cluster ID.");
+      }
+
+      const settings = await this.getSingleTaskJobSettings(jobId);
+      const task = (settings["tasks"] as Array<Record<string, unknown>>)[0]!;
+      if (task["sql_task"] && typeof task["sql_task"] === "object") {
+        throw new Error("Databricks plugin: SQL tasks use SQL warehouses, not clusters.");
+      }
+      delete task["new_cluster"];
+      task["existing_cluster_id"] = clusterId;
+
+      await this.api("POST", "/api/2.2/jobs/update", {
+        job_id: jobId,
+        new_settings: settings,
+      });
+      return;
+    }
+
+    if (sourceTypeId === "databricks-job" && targetTypeId === "databricks-sql-warehouse") {
+      const [job, warehouse] = await Promise.all([
+        this.getResource(sourceTypeId, sourceResourceId, accountId),
+        this.getResource(targetTypeId, targetResourceId, accountId),
+      ]);
+      const jobId = Number(DatabricksClient.resourceField(job, "jobId"));
+      const warehouseId = DatabricksClient.resourceField(warehouse, "warehouseId");
+      if (!Number.isFinite(jobId) || !warehouseId) {
+        throw new Error("Databricks plugin: missing job ID or SQL warehouse ID.");
+      }
+
+      const settings = await this.getSingleTaskJobSettings(jobId);
+      const task = (settings["tasks"] as Array<Record<string, unknown>>)[0]!;
+      const sqlTask = task["sql_task"];
+      if (!sqlTask || typeof sqlTask !== "object" || Array.isArray(sqlTask)) {
+        throw new Error(
+          "Databricks plugin: only SQL job tasks can use a Databricks SQL warehouse.",
+        );
+      }
+      delete task["new_cluster"];
+      delete task["existing_cluster_id"];
+      task["sql_task"] = { ...(sqlTask as Record<string, unknown>), warehouse_id: warehouseId };
+
+      await this.api("POST", "/api/2.2/jobs/update", {
+        job_id: jobId,
+        new_settings: settings,
+      });
+      return;
+    }
+
+    throw new Error(
+      `Databricks plugin: attachResource not supported for ${sourceTypeId} \u2192 ${targetTypeId}`,
+    );
   }
 
   async deleteResource(typeId: string, resourceId: string, accountId: string): Promise<void> {
