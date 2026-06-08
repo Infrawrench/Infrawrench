@@ -10,8 +10,12 @@ Resource associations are the drag-and-drop or picker-driven relationships betwe
 
 - **AWS** — Elastic IP to EC2 instance, EBS volume to EC2 instance, security group to EC2 instance, target group to EC2 instance, Auto Scaling group to target group, internet gateway to VPC, route table to subnet, internet gateway or NAT gateway default route to route table, Route 53 alias record to load balancer.
 - **Azure** — managed disk to VM, network security group to VM primary NIC, public IP to VM primary NIC IP configuration, load balancer backend pool to VM primary NIC IP configuration, application gateway backend pool to VM primary NIC IP configuration, route table to subnet, NAT gateway to subnet, private DNS zone link to virtual network.
+- **Google Cloud** — persistent disk to VM instance, static external IP to VM instance, firewall rule to VM instance tags, Cloud NAT to subnet.
+- **DigitalOcean** — block storage volume to Droplet, NFS share to Droplet VPC, Gradient knowledge base to AI agent.
 - **Fly.io** — volume to machine, with region validation.
 - **Hetzner Cloud** — volume to server, firewall to server, load balancer to server target, network to server, network to load balancer, primary IP to server.
+- **Scaleway** — block volume to instance, with zone validation.
+- **OVHcloud** — block storage volume to Public Cloud instance, with region validation.
 
 ## Planned
 
