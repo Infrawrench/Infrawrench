@@ -64,14 +64,14 @@ describe("constructor", () => {
     const client = makeClient();
     await client.listResources("databricks-cluster", ACCOUNT);
     expect(fetchMock.mock.calls[0]![0]).toBe(
-      "https://dbc-test.cloud.databricks.com/api/2.0/clusters/list",
+      "https://dbc-test.cloud.databricks.com/api/2.1/clusters/list?page_size=100",
     );
   });
   it("keeps explicit http:// host", async () => {
     mockFetch({ body: { clusters: [] } });
     const client = makeClient({ host: "http://local/" });
     await client.listResources("databricks-cluster", ACCOUNT);
-    expect(fetchMock.mock.calls[0]![0]).toBe("http://local/api/2.0/clusters/list");
+    expect(fetchMock.mock.calls[0]![0]).toBe("http://local/api/2.1/clusters/list?page_size=100");
   });
 });
 

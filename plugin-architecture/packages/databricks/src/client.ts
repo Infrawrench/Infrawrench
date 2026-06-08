@@ -23,6 +23,19 @@ import {
   listCatalogs,
   listSchemas,
   listTables,
+  listApps,
+  listClusterPolicies,
+  listDashboards,
+  listFunctions,
+  listNodeTypes,
+  listRegisteredModels,
+  listRepos,
+  listSecretScopes,
+  listSqlQueries,
+  listVectorSearchEndpoints,
+  listVectorSearchIndexes,
+  listVolumes,
+  listWorkspaceObjects,
 } from "./resource-listers.js";
 
 export class DatabricksClient implements PluginClient {
@@ -123,7 +136,17 @@ export class DatabricksClient implements PluginClient {
     "databricks-serving-endpoint": listServingEndpoints,
     "databricks-job": listJobs,
     "databricks-pipeline": listPipelines,
+    "databricks-cluster-policy": listClusterPolicies,
+    "databricks-node-type": listNodeTypes,
+    "databricks-workspace-object": listWorkspaceObjects,
+    "databricks-repo": listRepos,
+    "databricks-dashboard": listDashboards,
+    "databricks-sql-query": listSqlQueries,
     "databricks-catalog": listCatalogs,
+    "databricks-registered-model": listRegisteredModels,
+    "databricks-vector-search-endpoint": listVectorSearchEndpoints,
+    "databricks-app": listApps,
+    "databricks-secret-scope": listSecretScopes,
   };
 
   async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
@@ -165,6 +188,51 @@ export class DatabricksClient implements PluginClient {
           }
         } catch {
           // Skip catalogs we can't access
+        }
+      }
+      return results;
+    }
+
+    if (typeId === "databricks-volume" || typeId === "databricks-function") {
+      const catalogs = await listCatalogs(this.ctx, accountId);
+      const results: ResourceInstance[] = [];
+      for (const cat of catalogs) {
+        try {
+          const schemas = await listSchemas(this.ctx, accountId, String(cat.fields["name"]));
+          for (const schema of schemas) {
+            try {
+              const catalogName = String(schema.fields["catalogName"]);
+              const schemaName = String(schema.fields["name"]);
+              const resources =
+                typeId === "databricks-volume"
+                  ? await listVolumes(this.ctx, accountId, catalogName, schemaName)
+                  : await listFunctions(this.ctx, accountId, catalogName, schemaName);
+              results.push(...resources);
+            } catch {
+              // Skip schemas where this principal cannot browse the child object type.
+            }
+          }
+        } catch {
+          // Skip catalogs we can't access.
+        }
+      }
+      return results;
+    }
+
+    if (typeId === "databricks-vector-search-index") {
+      const endpoints = await listVectorSearchEndpoints(this.ctx, accountId);
+      const results: ResourceInstance[] = [];
+      for (const endpoint of endpoints) {
+        try {
+          results.push(
+            ...(await listVectorSearchIndexes(
+              this.ctx,
+              accountId,
+              String(endpoint.fields["name"]),
+            )),
+          );
+        } catch {
+          // Skip endpoints where index listing is not allowed.
         }
       }
       return results;
@@ -271,6 +339,82 @@ export class DatabricksClient implements PluginClient {
           ...(f.columnCount != null ? [{ label: "Columns", value: String(f.columnCount) }] : []),
         ];
       }
+      case "databricks-cluster-policy": {
+        return [
+          { label: "Creator", value: String(f.creatorUserName ?? "") },
+          { label: "Default", value: f.isDefault ? "Yes" : "No" },
+          ...(f.maxClustersPerUser
+            ? [{ label: "Max/User", value: String(f.maxClustersPerUser) }]
+            : []),
+        ];
+      }
+      case "databricks-node-type": {
+        return [
+          { label: "Category", value: String(f.category ?? "") },
+          { label: "Cores", value: String(f.numCores ?? 0) },
+          { label: "Memory", value: `${String(f.memoryMb ?? 0)} MB` },
+        ];
+      }
+      case "databricks-dashboard": {
+        return [
+          { label: "State", value: String(f.lifecycleState ?? "") },
+          ...(f.warehouseId ? [{ label: "Warehouse", value: String(f.warehouseId) }] : []),
+        ];
+      }
+      case "databricks-sql-query": {
+        return [
+          ...(f.catalog ? [{ label: "Catalog", value: String(f.catalog) }] : []),
+          ...(f.schema ? [{ label: "Schema", value: String(f.schema) }] : []),
+          ...(f.owner ? [{ label: "Owner", value: String(f.owner) }] : []),
+        ];
+      }
+      case "databricks-volume": {
+        return [
+          { label: "Type", value: String(f.volumeType ?? "") },
+          { label: "Schema", value: String(f.schemaName ?? "") },
+          ...(f.storageLocation ? [{ label: "Storage", value: String(f.storageLocation) }] : []),
+        ];
+      }
+      case "databricks-function": {
+        return [
+          { label: "Return", value: String(f.dataType ?? "") },
+          { label: "Body", value: String(f.routineBody ?? "") },
+          ...(f.owner ? [{ label: "Owner", value: String(f.owner) }] : []),
+        ];
+      }
+      case "databricks-registered-model": {
+        return [
+          { label: "Schema", value: String(f.schemaName ?? "") },
+          ...(f.owner ? [{ label: "Owner", value: String(f.owner) }] : []),
+          ...(f.aliasCount != null ? [{ label: "Aliases", value: String(f.aliasCount) }] : []),
+        ];
+      }
+      case "databricks-vector-search-endpoint": {
+        return [
+          { label: "State", value: String(f.state ?? "") },
+          ...(f.endpointType ? [{ label: "Type", value: String(f.endpointType) }] : []),
+        ];
+      }
+      case "databricks-vector-search-index": {
+        return [
+          { label: "Endpoint", value: String(f.endpointName ?? "") },
+          { label: "Type", value: String(f.indexType ?? "") },
+          ...(f.indexSubtype ? [{ label: "Subtype", value: String(f.indexSubtype) }] : []),
+        ];
+      }
+      case "databricks-app": {
+        return [
+          { label: "App", value: String(f.appStatus ?? "") },
+          ...(f.computeStatus ? [{ label: "Compute", value: String(f.computeStatus) }] : []),
+          ...(f.computeSize ? [{ label: "Size", value: String(f.computeSize) }] : []),
+        ];
+      }
+      case "databricks-secret-scope": {
+        return [
+          { label: "Backend", value: String(f.backendType ?? "") },
+          ...(f.keyVaultDnsName ? [{ label: "Key Vault", value: String(f.keyVaultDnsName) }] : []),
+        ];
+      }
       default:
         return [];
     }
@@ -307,9 +451,22 @@ export class DatabricksClient implements PluginClient {
       "databricks-serving-endpoint": "Model Serving Endpoint",
       "databricks-job": "Job",
       "databricks-pipeline": "Pipeline",
+      "databricks-cluster-policy": "Cluster Policy",
+      "databricks-node-type": "Node Type",
+      "databricks-workspace-object": "Workspace Object",
+      "databricks-repo": "Git Folder",
+      "databricks-dashboard": "AI/BI Dashboard",
+      "databricks-sql-query": "SQL Query",
       "databricks-catalog": "Catalog",
       "databricks-schema": "Schema",
       "databricks-table": "Table",
+      "databricks-volume": "Volume",
+      "databricks-function": "Function",
+      "databricks-registered-model": "Registered Model",
+      "databricks-vector-search-endpoint": "Vector Search Endpoint",
+      "databricks-vector-search-index": "Vector Search Index",
+      "databricks-app": "App",
+      "databricks-secret-scope": "Secret Scope",
     };
     const typeLabel = typeLabels[resource.resourceTypeId] ?? resource.resourceTypeId;
 
@@ -604,7 +761,7 @@ export class DatabricksClient implements PluginClient {
     switch (typeId) {
       case "databricks-cluster": {
         const clusterId = String(resource.fields["clusterId"]);
-        await this.api("POST", "/api/2.0/clusters/permanent-delete", {
+        await this.api("POST", "/api/2.1/clusters/permanent-delete", {
           cluster_id: clusterId,
         });
         break;
@@ -616,7 +773,7 @@ export class DatabricksClient implements PluginClient {
       }
       case "databricks-job": {
         const jobId = Number(resource.fields["jobId"]);
-        await this.api("POST", "/api/2.1/jobs/delete", { job_id: jobId });
+        await this.api("POST", "/api/2.2/jobs/delete", { job_id: jobId });
         break;
       }
       case "databricks-pipeline": {
@@ -652,24 +809,62 @@ export class DatabricksClient implements PluginClient {
 
   async getCreateConfig(typeId: string, parentResourceId?: string): Promise<CreateResourceConfig> {
     if (typeId === "databricks-cluster") {
+      const sparkVersionOptions = await this.api<{
+        versions?: Array<{ key?: string; name?: string }>;
+      }>("GET", "/api/2.1/clusters/spark-versions")
+        .then((data) =>
+          (data.versions ?? []).map((v) => ({
+            id: String(v.key ?? ""),
+            label: String(v.name ?? v.key ?? ""),
+          })),
+        )
+        .catch(() => []);
+      const nodeTypeOptions = await listNodeTypes(this.ctx, "")
+        .then((nodes) =>
+          nodes
+            .filter((n) => !n.fields["isDeprecated"] && !n.fields["isHidden"])
+            .map((n) => ({
+              id: String(n.fields["nodeTypeId"]),
+              label: `${String(n.fields["nodeTypeId"])}${n.fields["description"] ? ` - ${String(n.fields["description"])}` : ""}`,
+            })),
+        )
+        .catch(() => []);
       return {
         fields: [
           { key: "clusterName", label: "Cluster Name", kind: "text", required: true },
-          {
-            key: "sparkVersion",
-            label: "Spark Version",
-            kind: "text",
-            required: true,
-            defaultValue: "15.4.x-scala2.12",
-            description: "e.g. 15.4.x-scala2.12",
-          },
-          {
-            key: "nodeTypeId",
-            label: "Node Type",
-            kind: "text",
-            required: true,
-            defaultValue: "i3.xlarge",
-          },
+          sparkVersionOptions.length > 0
+            ? {
+                key: "sparkVersion",
+                label: "Spark Version",
+                kind: "select",
+                required: true,
+                options: sparkVersionOptions,
+                defaultValue: sparkVersionOptions[0]!.id,
+              }
+            : {
+                key: "sparkVersion",
+                label: "Spark Version",
+                kind: "text",
+                required: true,
+                defaultValue: "15.4.x-scala2.12",
+                description: "e.g. 15.4.x-scala2.12",
+              },
+          nodeTypeOptions.length > 0
+            ? {
+                key: "nodeTypeId",
+                label: "Node Type",
+                kind: "select",
+                required: true,
+                options: nodeTypeOptions,
+                defaultValue: nodeTypeOptions[0]!.id,
+              }
+            : {
+                key: "nodeTypeId",
+                label: "Node Type",
+                kind: "text",
+                required: true,
+                defaultValue: "i3.xlarge",
+              },
           {
             key: "numWorkers",
             label: "Workers",
@@ -926,7 +1121,7 @@ export class DatabricksClient implements PluginClient {
     const host = this.host.replace(/^https?:\/\//, "");
 
     if (typeId === "databricks-cluster") {
-      const data = await this.api<{ cluster_id: string }>("POST", "/api/2.0/clusters/create", {
+      const data = await this.api<{ cluster_id: string }>("POST", "/api/2.1/clusters/create", {
         cluster_name: fields["clusterName"] ?? "",
         spark_version: fields["sparkVersion"] ?? "15.4.x-scala2.12",
         node_type_id: fields["nodeTypeId"] ?? "i3.xlarge",
@@ -1027,7 +1222,7 @@ export class DatabricksClient implements PluginClient {
           timezone_id: "UTC",
         };
       }
-      const data = await this.api<{ job_id: number }>("POST", "/api/2.1/jobs/create", body);
+      const data = await this.api<{ job_id: number }>("POST", "/api/2.2/jobs/create", body);
       const jobId = data.job_id;
       return {
         id: `${accountId}:databricks-job:${jobId}`,

@@ -8,13 +8,28 @@ import { CatalogResourceType } from "./resources/catalog.js";
 import { SchemaResourceType } from "./resources/schema.js";
 import { TableResourceType } from "./resources/table.js";
 import { ServingEndpointResourceType } from "./resources/serving-endpoint.js";
+import {
+  AppResourceType,
+  ClusterPolicyResourceType,
+  DashboardResourceType,
+  FunctionResourceType,
+  NodeTypeResourceType,
+  RegisteredModelResourceType,
+  RepoResourceType,
+  SecretScopeResourceType,
+  SqlQueryResourceType,
+  VectorSearchEndpointResourceType,
+  VectorSearchIndexResourceType,
+  VolumeResourceType,
+  WorkspaceObjectResourceType,
+} from "./resources/platform.js";
 
 const manifest: PluginManifest = {
   id: "databricks",
   version: "0.1.0",
   displayName: "Databricks",
   description:
-    "Manage Databricks workspaces — clusters, SQL warehouses, jobs, pipelines, and Unity Catalog.",
+    "Manage Databricks workspaces — compute, workflows, SQL, AI/BI, apps, workspace assets, model serving, vector search, and Unity Catalog.",
   logoSvg: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
     <rect width="100" height="100" rx="12" fill="#FF3621"/>
     <g transform="translate(14,10) scale(3)" fill="#fff">
@@ -47,10 +62,23 @@ const resourceTypes: ResourceTypeDefinition[] = [
   SqlWarehouseResourceType,
   JobResourceType,
   PipelineResourceType,
+  ClusterPolicyResourceType,
+  NodeTypeResourceType,
+  WorkspaceObjectResourceType,
+  RepoResourceType,
+  DashboardResourceType,
+  SqlQueryResourceType,
   CatalogResourceType,
   SchemaResourceType,
   TableResourceType,
+  VolumeResourceType,
+  FunctionResourceType,
+  RegisteredModelResourceType,
   ServingEndpointResourceType,
+  VectorSearchEndpointResourceType,
+  VectorSearchIndexResourceType,
+  AppResourceType,
+  SecretScopeResourceType,
 ];
 
 export const plugin: Plugin = {

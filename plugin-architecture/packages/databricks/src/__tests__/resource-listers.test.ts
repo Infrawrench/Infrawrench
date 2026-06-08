@@ -280,7 +280,10 @@ describe("listSchemas", () => {
       host: "https://h",
     };
     const res = await listSchemas(ctx, ACCOUNT, "main");
-    expect(apiSpy).toHaveBeenCalledWith("GET", "/api/2.1/unity-catalog/schemas?catalog_name=main");
+    expect(apiSpy).toHaveBeenCalledWith(
+      "GET",
+      "/api/2.1/unity-catalog/schemas?catalog_name=main&max_results=0",
+    );
     expect(res[0]!).toMatchObject({
       id: "acct1:databricks-schema:main.sales",
       parentResourceId: "acct1:databricks-catalog:main",
@@ -319,7 +322,7 @@ describe("listTables", () => {
     const res = await listTables(ctx, ACCOUNT, "main", "sales");
     expect(apiSpy).toHaveBeenCalledWith(
       "GET",
-      "/api/2.1/unity-catalog/tables?catalog_name=main&schema_name=sales&max_results=1000",
+      "/api/2.1/unity-catalog/tables?catalog_name=main&schema_name=sales&max_results=0",
     );
     expect(res[0]!).toMatchObject({
       id: "acct1:databricks-table:main.sales.t",

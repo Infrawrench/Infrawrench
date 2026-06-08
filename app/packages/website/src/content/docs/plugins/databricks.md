@@ -1,16 +1,20 @@
 ---
 title: Databricks
-description: Manage Databricks clusters, SQL warehouses, jobs, and catalogs.
+description: Manage Databricks compute, workflows, SQL, AI/BI, apps, model serving, vector search, and Unity Catalog.
 sidebar_order: 18
 ---
 
 ## What you can manage
 
-- Clusters
-- SQL warehouses (with in-app SQL editor)
+- Compute: clusters, node types, and cluster policies
+- SQL warehouses (with in-app SQL editor), saved SQL queries, and AI/BI dashboards
+- Workspace assets: notebooks, files, directories, dashboards, and Git folders
 - Model Serving endpoints (with a streaming chat **Playground**)
-- Jobs
-- Unity Catalog: catalogs, schemas, tables
+- Workflows: jobs and Delta Live Tables pipelines
+- Unity Catalog: catalogs, schemas, tables, volumes, functions, and registered models
+- Vector Search endpoints and indexes
+- Databricks Apps
+- Secret scopes (metadata only; secret values are never exposed by the API)
 
 ## Credentials
 
@@ -21,8 +25,11 @@ Databricks workspace → **User Settings → Developer → Access tokens → Gen
 ## Notable flows
 
 - **SQL editor** against a running SQL warehouse — results fetched via REST, not a persistent connection.
-- **Cluster start / stop** for interactive clusters.
+- **Cluster inventory** uses the current Clusters API, including paginated cluster listings, node types, and Spark-version-backed create pickers where the workspace grants access.
 - **Job runs** list with status and links out to the Databricks UI for detailed logs.
+- **Catalog Explorer coverage** includes the Unity Catalog three-level namespace plus volumes, functions, and MLflow registered models.
+- **AI/BI dashboards** use the current Lakeview dashboard API. Legacy SQL dashboards are deprecated by Databricks and are not treated as the primary dashboard surface.
+- **Secret scopes** list scope names and backends, including Azure Key Vault metadata when Databricks returns it. Secret keys and values are not displayed.
 
 ## Model Serving
 
@@ -39,5 +46,6 @@ The Playground is disabled until the endpoint is `READY` — wait for it to come
 ## Tips & limits
 
 - SQL warehouse must be running before queries work; starting one can take a minute.
-- Catalog browsing requires Unity Catalog; legacy hive_metastore workspaces show only the default catalog.
+- Catalog, volume, function, and registered-model browsing requires Unity Catalog permissions. The plugin skips catalogs or schemas the token cannot browse.
 - The Playground only works with chat-completion-style serving endpoints; classic ML model endpoints that expect a different request shape won't respond.
+- Workspace object inventory is intentionally shallow across the main workspace roots so large workspaces do not trigger a full recursive crawl.
