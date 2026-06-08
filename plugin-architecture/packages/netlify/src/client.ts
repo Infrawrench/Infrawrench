@@ -209,6 +209,12 @@ class NetlifyAPI {
   createSite(p: { body: { name: string } }): Promise<NetlifySite> {
     return this.call("POST", `/sites`, p.body);
   }
+  updateSite(p: {
+    siteId: string;
+    body: { custom_domain?: string; domain_aliases?: string[] };
+  }): Promise<NetlifySite> {
+    return this.call("PATCH", `/sites/${encodeURIComponent(p.siteId)}`, p.body);
+  }
   deleteSite(p: { siteId: string }): Promise<void> {
     return this.call("DELETE", `/sites/${encodeURIComponent(p.siteId)}`);
   }
@@ -902,6 +908,46 @@ export class NetlifyClient implements PluginClient {
     throw new Error(`Netlify plugin: deleteResource not supported for type "${typeId}"`);
   }
 
+  async attachResource(
+    sourceTypeId: string,
+    sourceResourceId: string,
+    targetTypeId: string,
+    targetResourceId: string,
+    accountId: string,
+  ): Promise<void> {
+    if (sourceTypeId === "netlify-dns-zone" && targetTypeId === "netlify-site") {
+      const [zone, site] = await Promise.all([
+        this.getResource(sourceTypeId, sourceResourceId, accountId),
+        this.getResource(targetTypeId, targetResourceId, accountId),
+      ]);
+      const domain = String(zone.fields["domain"] ?? zone.fields["name"] ?? "");
+      const siteId = String(site.externalId ?? targetResourceId.split(":").pop() ?? "");
+      if (!domain || !siteId) {
+        throw new Error("Cannot determine Netlify DNS zone or site identity for attachment");
+      }
+
+      const currentSite = await this.api.getSite({ siteId });
+      const customDomain = currentSite.custom_domain ?? "";
+      const domainAliases = currentSite.domain_aliases ?? [];
+      if (customDomain === domain || domainAliases.includes(domain)) return;
+
+      if (!customDomain) {
+        await this.api.updateSite({ siteId, body: { custom_domain: domain } });
+        return;
+      }
+
+      await this.api.updateSite({
+        siteId,
+        body: { domain_aliases: [...domainAliases, domain] },
+      });
+      return;
+    }
+
+    throw new Error(
+      `Netlify plugin: attachResource not supported for ${sourceTypeId} → ${targetTypeId}`,
+    );
+  }
+
   /**
    * Direct REST call to api.netlify.com for endpoints not exposed by the
    * @netlify/api SDK (currently the legacy site-level env-var POST/DELETE).
@@ -944,6 +990,7 @@ export class NetlifyClient implements PluginClient {
         url: s.url ?? "",
         sslUrl: s.ssl_url ?? "",
         customDomain: s.custom_domain ?? "",
+        domainAliases: (s.domain_aliases ?? []).join(", "),
         state: pubDeploy?.state ?? s.state ?? "",
         plan: s.plan ?? "",
         repoUrl: s.build_settings?.repo_url ?? "",

@@ -61,6 +61,7 @@ const SITE = {
   url: "http://s.netlify.app",
   ssl_url: "https://s.netlify.app",
   custom_domain: "example.com",
+  domain_aliases: ["www.example.com"],
   functions_region: "us-east-1",
   ssl: true,
   force_ssl: true,
@@ -120,6 +121,7 @@ describe("listResources sites + pagination", () => {
     expect(s.id).toBe("acct-1:netlify-site:site1");
     expect(s.fields["framework"]).toBe("next");
     expect(s.fields["state"]).toBe("current");
+    expect(s.fields["domainAliases"]).toBe("www.example.com");
     expect(s.fields["repoUrl"]).toBe("https://github.com/a/b");
     expect(s.resolvedOutputs["siteId"]).toBe("site1");
   });
@@ -673,6 +675,115 @@ describe("fetchDashboardStats", () => {
       ACCOUNT,
     );
     expect(stats).toEqual([]);
+  });
+});
+
+describe("attachResource", () => {
+  it("attaches a DNS zone domain as the site's primary custom domain", async () => {
+    router([
+      [
+        (u) => u.includes("/dns_zones"),
+        [
+          {
+            id: "zone1",
+            name: "example.com",
+            domain: "example.com",
+            created_at: "x",
+            updated_at: "y",
+          },
+        ],
+      ],
+      [
+        (u, init) => u.includes("/sites/site1") && method(init) === "GET",
+        { ...SITE, custom_domain: "", domain_aliases: [] },
+      ],
+      [(u, init) => u.includes("/sites/site1") && method(init) === "PATCH", SITE],
+    ]);
+    await client().attachResource(
+      "netlify-dns-zone",
+      "acct-1:netlify-dns-zone:zone1",
+      "netlify-site",
+      "acct-1:netlify-site:site1",
+      ACCOUNT,
+    );
+    const patch = calls.find((c) => c.url.includes("/sites/site1") && method(c.init) === "PATCH");
+    expect(patch).toBeTruthy();
+    expect(JSON.parse(patch!.init!.body as string)).toEqual({ custom_domain: "example.com" });
+  });
+
+  it("adds a DNS zone domain as an alias when the site has a custom domain", async () => {
+    router([
+      [
+        (u) => u.includes("/dns_zones"),
+        [
+          {
+            id: "zone1",
+            name: "alias.com",
+            domain: "alias.com",
+            created_at: "x",
+            updated_at: "y",
+          },
+        ],
+      ],
+      [
+        (u, init) => u.includes("/sites/site1") && method(init) === "GET",
+        { ...SITE, custom_domain: "example.com", domain_aliases: ["www.example.com"] },
+      ],
+      [(u, init) => u.includes("/sites/site1") && method(init) === "PATCH", SITE],
+    ]);
+    await client().attachResource(
+      "netlify-dns-zone",
+      "acct-1:netlify-dns-zone:zone1",
+      "netlify-site",
+      "acct-1:netlify-site:site1",
+      ACCOUNT,
+    );
+    const patch = calls.find((c) => c.url.includes("/sites/site1") && method(c.init) === "PATCH");
+    expect(patch).toBeTruthy();
+    expect(JSON.parse(patch!.init!.body as string)).toEqual({
+      domain_aliases: ["www.example.com", "alias.com"],
+    });
+  });
+
+  it("does not patch when the domain is already attached", async () => {
+    router([
+      [
+        (u) => u.includes("/dns_zones"),
+        [
+          {
+            id: "zone1",
+            name: "www.example.com",
+            domain: "www.example.com",
+            created_at: "x",
+            updated_at: "y",
+          },
+        ],
+      ],
+      [
+        (u, init) => u.includes("/sites/site1") && method(init) === "GET",
+        { ...SITE, custom_domain: "example.com", domain_aliases: ["www.example.com"] },
+      ],
+    ]);
+    await client().attachResource(
+      "netlify-dns-zone",
+      "acct-1:netlify-dns-zone:zone1",
+      "netlify-site",
+      "acct-1:netlify-site:site1",
+      ACCOUNT,
+    );
+    expect(calls.some((c) => method(c.init) === "PATCH")).toBe(false);
+  });
+
+  it("throws for an unsupported attach pair", async () => {
+    await expect(
+      client().attachResource(
+        "netlify-dns-record",
+        "acct-1:netlify-dns-record:zone1/rec1",
+        "netlify-site",
+        "acct-1:netlify-site:site1",
+        ACCOUNT,
+      ),
+    ).rejects.toThrow(/attachResource not supported/);
   });
 });
 

@@ -10,6 +10,7 @@ export const NetlifySiteResourceType: ResourceTypeDefinition = {
     { key: "url", label: "URL", kind: "string", required: false },
     { key: "sslUrl", label: "SSL URL", kind: "string", required: false },
     { key: "customDomain", label: "Custom Domain", kind: "string", required: false },
+    { key: "domainAliases", label: "Domain Aliases", kind: "string", required: false },
     { key: "state", label: "State", kind: "string", required: false },
     { key: "plan", label: "Plan", kind: "string", required: false },
     { key: "repoUrl", label: "Repository", kind: "string", required: false },

@@ -28,4 +28,11 @@ export const NetlifyDnsZoneResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   supportsCreate: true,
   iconKey: "dns",
+  attachTargets: [
+    {
+      pluginId: "netlify",
+      resourceTypeId: "netlify-site",
+      verb: "Attach domain",
+    },
+  ],
 };
