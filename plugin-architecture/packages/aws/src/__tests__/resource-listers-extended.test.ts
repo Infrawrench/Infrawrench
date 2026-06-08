@@ -12,6 +12,7 @@ import {
   listTargetGroups,
   listSecurityGroups,
   listSubnets,
+  listRouteTables,
   listNATGateways,
   listElasticIPs,
   listInternetGateways,
@@ -177,6 +178,26 @@ describe("networking listers", () => {
     const out = await listSubnets(ctx, "acct");
     expect(out[0]!.displayName).toBe("web");
     expect(out[0]!.fields.mapPublicIp).toBe(true);
+  });
+  it("listRouteTables reads Name tag and main association", async () => {
+    const ctx = makeCtx({
+      ec2: () => ({
+        routeTableSet: {
+          item: {
+            routeTableId: "rtb-1",
+            vpcId: "vpc-1",
+            tagSet: { item: { key: "Name", value: "main-rt" } },
+            routeSet: { item: [{}, {}] },
+            associationSet: { item: { main: "true" } },
+          },
+        },
+      }),
+    });
+    const out = await listRouteTables(ctx, "acct");
+    expect(out[0]!.displayName).toBe("main-rt");
+    expect(out[0]!.fields.main).toBe(true);
+    expect(out[0]!.fields.routeCount).toBe(2);
+    expect(out[0]!.resolvedOutputs.routeTableId).toBe("rtb-1");
   });
   it("listNATGateways", async () => {
     const ctx = makeCtx({

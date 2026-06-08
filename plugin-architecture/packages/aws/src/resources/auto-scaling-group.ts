@@ -27,4 +27,5 @@ export const AutoScalingGroupResourceType: ResourceTypeDefinition = {
   supportsCreate: true,
   supportsMetrics: true,
   iconKey: "scaling",
+  attachTargets: [{ pluginId: "aws", resourceTypeId: "target-group", verb: "Attach target group" }],
 };

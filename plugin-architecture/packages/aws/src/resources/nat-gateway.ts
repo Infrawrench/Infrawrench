@@ -31,4 +31,12 @@ export const NATGatewayResourceType: ResourceTypeDefinition = {
   iconKey: "network",
   supportsCreate: true,
   supportsMetrics: true,
+  attachTargets: [
+    {
+      pluginId: "aws",
+      resourceTypeId: "route-table",
+      matchField: "vpcId",
+      verb: "Add default route",
+    },
+  ],
 };

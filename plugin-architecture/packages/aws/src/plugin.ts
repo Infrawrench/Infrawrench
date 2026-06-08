@@ -25,6 +25,7 @@ import { AutoScalingGroupResourceType } from "./resources/auto-scaling-group.js"
 import { IAMRoleResourceType } from "./resources/iam-role.js";
 import { SecurityGroupResourceType } from "./resources/security-group.js";
 import { SubnetResourceType } from "./resources/subnet.js";
+import { RouteTableResourceType } from "./resources/route-table.js";
 import { NATGatewayResourceType } from "./resources/nat-gateway.js";
 import { ElasticIPResourceType } from "./resources/elastic-ip.js";
 import { StepFunctionResourceType } from "./resources/step-function.js";
@@ -123,6 +124,7 @@ const resourceTypes: ResourceTypeDefinition[] = [
   // Networking
   VPCResourceType,
   SubnetResourceType,
+  RouteTableResourceType,
   SecurityGroupResourceType,
   ALBResourceType,
   TargetGroupResourceType,

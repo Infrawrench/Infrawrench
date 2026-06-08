@@ -10,6 +10,7 @@ export {
   listTargetGroups,
   listSecurityGroups,
   listSubnets,
+  listRouteTables,
   listNATGateways,
   listElasticIPs,
   listInternetGateways,

@@ -178,6 +178,53 @@ export async function listSubnets(
   });
 }
 
+export async function listRouteTables(
+  ctx: ListerContext,
+  accountId: string,
+): Promise<ResourceInstance[]> {
+  const data = await ctx.ec2<Record<string, unknown>>("DescribeRouteTables");
+  const routeTables = ensureArray(
+    (data["routeTableSet"] as Record<string, unknown> | undefined)?.["item"],
+  ) as Record<string, unknown>[];
+
+  return routeTables.map((rt) => {
+    const routeTableId = String(rt["routeTableId"] ?? "");
+    const tagSet = rt["tagSet"] as Record<string, unknown> | undefined;
+    const tags = ensureArray(tagSet?.["item"]) as Record<string, unknown>[];
+    const nameTag = tags.find((t) => t["key"] === "Name");
+    const name = nameTag ? String(nameTag["value"] ?? "") : "";
+    const routes = ensureArray(
+      (rt["routeSet"] as Record<string, unknown> | undefined)?.["item"],
+    ) as Record<string, unknown>[];
+    const associations = ensureArray(
+      (rt["associationSet"] as Record<string, unknown> | undefined)?.["item"],
+    ) as Record<string, unknown>[];
+    const main = associations.some((assoc) => String(assoc["main"] ?? "") === "true");
+
+    return {
+      id: ctx.id(accountId, "route-table", routeTableId),
+      pluginId: "aws",
+      resourceTypeId: "route-table",
+      accountId,
+      displayName: name || routeTableId,
+      fields: {
+        routeTableId,
+        name,
+        region: ctx.region,
+        vpcId: String(rt["vpcId"] ?? ""),
+        main,
+        routeCount: routes.length,
+        associationCount: associations.length,
+      },
+      resolvedOutputs: { routeTableId },
+      secretStates: [],
+      externalId: routeTableId,
+      createdAt: ctx.now(),
+      updatedAt: ctx.now(),
+    };
+  });
+}
+
 export async function listNATGateways(
   ctx: ListerContext,
   accountId: string,

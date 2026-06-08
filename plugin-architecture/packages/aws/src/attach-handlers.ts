@@ -1,7 +1,8 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { AwsCredentials } from "./auth.js";
 import { ensureArray } from "./auth.js";
-import { ec2Call, ec2QueryCall } from "./client-transport.js";
+import { ec2Call, ec2QueryCall, hostForService } from "./client-transport.js";
+import { fetchSigned } from "./signed-request.js";
 
 interface AttachContext {
   /** Home/default creds — used only for global services. */
@@ -160,5 +161,175 @@ export async function attachResource(
     });
     return;
   }
+  if (sourceTypeId === "route-table" && targetTypeId === "subnet") {
+    const [routeTable, subnet] = await Promise.all([
+      ctx.getResource(sourceTypeId, sourceResourceId, accountId),
+      ctx.getResource(targetTypeId, targetResourceId, accountId),
+    ]);
+    const routeTableId = String(routeTable.fields["routeTableId"] ?? routeTable.externalId ?? "");
+    const subnetId = String(subnet.fields["subnetId"] ?? subnet.externalId ?? "");
+    if (!routeTableId || !subnetId) {
+      throw new Error("Cannot determine RouteTableId or SubnetId for association");
+    }
+    assertVpcMatch(routeTable, subnet, "Route table", "subnet");
+    const region = String(
+      subnet.fields["region"] ?? routeTable.fields["region"] ?? ctx.creds.region,
+    );
+    const creds = ctx.credsFor(region);
+    await ec2Call(creds, "AssociateRouteTable", {
+      RouteTableId: routeTableId,
+      SubnetId: subnetId,
+    });
+    return;
+  }
+  if (sourceTypeId === "internet-gateway" && targetTypeId === "route-table") {
+    const [gateway, routeTable] = await Promise.all([
+      ctx.getResource(sourceTypeId, sourceResourceId, accountId),
+      ctx.getResource(targetTypeId, targetResourceId, accountId),
+    ]);
+    const gatewayId = String(gateway.fields["internetGatewayId"] ?? gateway.externalId ?? "");
+    const routeTableId = String(routeTable.fields["routeTableId"] ?? routeTable.externalId ?? "");
+    if (!gatewayId || !routeTableId) {
+      throw new Error("Cannot determine InternetGatewayId or RouteTableId for route creation");
+    }
+    assertVpcMatch(gateway, routeTable, "Internet gateway", "route table");
+    const region = String(
+      routeTable.fields["region"] ?? gateway.fields["region"] ?? ctx.creds.region,
+    );
+    const creds = ctx.credsFor(region);
+    await upsertDefaultRoute(creds, routeTableId, { GatewayId: gatewayId });
+    return;
+  }
+  if (sourceTypeId === "nat-gateway" && targetTypeId === "route-table") {
+    const [gateway, routeTable] = await Promise.all([
+      ctx.getResource(sourceTypeId, sourceResourceId, accountId),
+      ctx.getResource(targetTypeId, targetResourceId, accountId),
+    ]);
+    const gatewayId = String(gateway.fields["natGatewayId"] ?? gateway.externalId ?? "");
+    const routeTableId = String(routeTable.fields["routeTableId"] ?? routeTable.externalId ?? "");
+    if (!gatewayId || !routeTableId) {
+      throw new Error("Cannot determine NatGatewayId or RouteTableId for route creation");
+    }
+    assertVpcMatch(gateway, routeTable, "NAT gateway", "route table");
+    const region = String(
+      routeTable.fields["region"] ?? gateway.fields["region"] ?? ctx.creds.region,
+    );
+    const creds = ctx.credsFor(region);
+    await upsertDefaultRoute(creds, routeTableId, { NatGatewayId: gatewayId });
+    return;
+  }
+  if (sourceTypeId === "auto-scaling-group" && targetTypeId === "target-group") {
+    const [asg, targetGroup] = await Promise.all([
+      ctx.getResource(sourceTypeId, sourceResourceId, accountId),
+      ctx.getResource(targetTypeId, targetResourceId, accountId),
+    ]);
+    const asgName = String(asg.fields["name"] ?? asg.externalId ?? "");
+    const targetGroupArn = String(
+      targetGroup.resolvedOutputs["targetGroupArn"] ??
+        targetGroup.fields["targetGroupArn"] ??
+        targetGroup.externalId ??
+        "",
+    );
+    if (!asgName || !targetGroupArn) {
+      throw new Error("Cannot determine AutoScalingGroupName or TargetGroupARN for attachment");
+    }
+    const region = String(asg.fields["region"] ?? targetGroup.fields["region"] ?? ctx.creds.region);
+    const creds = ctx.credsFor(region);
+    await ec2QueryCall(creds, "autoscaling", "AttachLoadBalancerTargetGroups", "2011-01-01", {
+      AutoScalingGroupName: asgName,
+      "TargetGroupARNs.member.1": targetGroupArn,
+    });
+    return;
+  }
+  if (sourceTypeId === "route53-record-set" && targetTypeId === "alb") {
+    const [record, loadBalancer] = await Promise.all([
+      ctx.getResource(sourceTypeId, sourceResourceId, accountId),
+      ctx.getResource(targetTypeId, targetResourceId, accountId),
+    ]);
+    const hostedZoneId = String(record.fields["hostedZoneId"] ?? "");
+    const recordName = String(record.fields["name"] ?? "");
+    const recordType = String(record.fields["type"] ?? "A");
+    const lbDnsName = String(loadBalancer.resolvedOutputs["dnsName"] ?? "");
+    const lbZoneId = String(loadBalancer.resolvedOutputs["canonicalHostedZoneId"] ?? "");
+    if (!hostedZoneId || !recordName || !lbDnsName || !lbZoneId) {
+      throw new Error("Cannot determine Route53 record or load balancer alias target");
+    }
+    if (recordType !== "A" && recordType !== "AAAA") {
+      throw new Error(
+        `Route53 alias records to load balancers must be A or AAAA, got ${recordType}`,
+      );
+    }
+    const host = hostForService(ctx.creds, "route53");
+    const url = `https://${host}/2013-04-01/hostedzone/${hostedZoneId}/rrset`;
+    const bodyXml = [
+      `<?xml version="1.0" encoding="UTF-8"?>`,
+      `<ChangeResourceRecordSetsRequest xmlns="https://route53.amazonaws.com/doc/2013-04-01/">`,
+      `<ChangeBatch><Changes><Change>`,
+      `<Action>UPSERT</Action>`,
+      `<ResourceRecordSet>`,
+      `<Name>${xmlEscape(recordName)}</Name>`,
+      `<Type>${xmlEscape(recordType)}</Type>`,
+      `<AliasTarget>`,
+      `<HostedZoneId>${xmlEscape(lbZoneId)}</HostedZoneId>`,
+      `<DNSName>${xmlEscape(lbDnsName)}</DNSName>`,
+      `<EvaluateTargetHealth>false</EvaluateTargetHealth>`,
+      `</AliasTarget>`,
+      `</ResourceRecordSet>`,
+      `</Change></Changes></ChangeBatch>`,
+      `</ChangeResourceRecordSetsRequest>`,
+    ].join("");
+    await fetchSigned({
+      method: "POST",
+      url,
+      headers: { Host: host, "Content-Type": "application/xml" },
+      body: bodyXml,
+      service: "route53",
+      credentials: ctx.creds,
+    });
+    return;
+  }
   throw new Error(`AWS plugin: attachResource not supported for ${sourceTypeId} → ${targetTypeId}`);
+}
+
+function assertVpcMatch(
+  source: ResourceInstance,
+  target: ResourceInstance,
+  sourceLabel: string,
+  targetLabel: string,
+): void {
+  const sourceVpcId = String(source.fields["vpcId"] ?? "");
+  const targetVpcId = String(target.fields["vpcId"] ?? "");
+  if (sourceVpcId && targetVpcId && sourceVpcId !== targetVpcId) {
+    throw new Error(
+      `${sourceLabel} VPC ${sourceVpcId} does not match ${targetLabel} VPC ${targetVpcId}.`,
+    );
+  }
+}
+
+async function upsertDefaultRoute(
+  creds: AwsCredentials,
+  routeTableId: string,
+  target: { GatewayId: string } | { NatGatewayId: string },
+): Promise<void> {
+  const params = {
+    RouteTableId: routeTableId,
+    DestinationCidrBlock: "0.0.0.0/0",
+    ...target,
+  };
+  try {
+    await ec2Call(creds, "CreateRoute", params);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!/RouteAlreadyExists|InvalidRoute\.Duplicate/i.test(message)) throw error;
+    await ec2Call(creds, "ReplaceRoute", params);
+  }
+}
+
+function xmlEscape(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
 }

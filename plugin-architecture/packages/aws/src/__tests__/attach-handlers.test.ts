@@ -3,10 +3,13 @@ import type { ResourceInstance } from "@infrawrench/plugin-base";
 
 const ec2Call = vi.fn();
 const ec2QueryCall = vi.fn();
+const fetchSigned = vi.fn();
 vi.mock("../client-transport.js", () => ({
   ec2Call: (...a: unknown[]) => ec2Call(...a),
   ec2QueryCall: (...a: unknown[]) => ec2QueryCall(...a),
+  hostForService: () => "route53.amazonaws.com",
 }));
+vi.mock("../signed-request.js", () => ({ fetchSigned: (...a: unknown[]) => fetchSigned(...a) }));
 
 import { attachResource } from "../attach-handlers.js";
 
@@ -43,6 +46,7 @@ function ctx(map: Record<string, ResourceInstance>) {
 beforeEach(() => {
   ec2Call.mockReset();
   ec2QueryCall.mockReset();
+  fetchSigned.mockReset();
 });
 
 describe("attachResource elastic-ip → ec2", () => {
@@ -209,6 +213,150 @@ describe("attachResource internet-gateway → vpc", () => {
     const c = ctx({ "internet-gateway": res({}, {}, ""), vpc: res({}, {}, "") });
     await expect(attachResource(c, "internet-gateway", "s", "vpc", "t", "acct")).rejects.toThrow(
       /InternetGatewayId/,
+    );
+  });
+});
+
+describe("attachResource route-table → subnet", () => {
+  it("associates the route table to the subnet", async () => {
+    ec2Call.mockResolvedValue({});
+    const c = ctx({
+      "route-table": res({ routeTableId: "rtb-1", vpcId: "vpc-1", region: "us-east-1" }),
+      subnet: res({ subnetId: "subnet-1", vpcId: "vpc-1", region: "us-east-1" }),
+    });
+    await attachResource(c, "route-table", "s", "subnet", "t", "acct");
+    expect(ec2Call.mock.calls[0]![1]).toBe("AssociateRouteTable");
+    expect(ec2Call.mock.calls[0]![2]).toEqual({
+      RouteTableId: "rtb-1",
+      SubnetId: "subnet-1",
+    });
+  });
+
+  it("rejects VPC mismatch", async () => {
+    const c = ctx({
+      "route-table": res({ routeTableId: "rtb-1", vpcId: "vpc-a" }),
+      subnet: res({ subnetId: "subnet-1", vpcId: "vpc-b" }),
+    });
+    await expect(attachResource(c, "route-table", "s", "subnet", "t", "acct")).rejects.toThrow(
+      /does not match subnet VPC/,
+    );
+  });
+});
+
+describe("attachResource internet-gateway → route-table", () => {
+  it("creates a default route to the internet gateway", async () => {
+    ec2Call.mockResolvedValue({});
+    const c = ctx({
+      "internet-gateway": res({ internetGatewayId: "igw-1", vpcId: "vpc-1" }),
+      "route-table": res({ routeTableId: "rtb-1", vpcId: "vpc-1" }),
+    });
+    await attachResource(c, "internet-gateway", "s", "route-table", "t", "acct");
+    expect(ec2Call.mock.calls[0]![1]).toBe("CreateRoute");
+    expect(ec2Call.mock.calls[0]![2]).toEqual({
+      RouteTableId: "rtb-1",
+      DestinationCidrBlock: "0.0.0.0/0",
+      GatewayId: "igw-1",
+    });
+  });
+
+  it("replaces the default route when it already exists", async () => {
+    ec2Call
+      .mockRejectedValueOnce(new Error("InvalidRoute.Duplicate: RouteAlreadyExists"))
+      .mockResolvedValueOnce({});
+    const c = ctx({
+      "internet-gateway": res({ internetGatewayId: "igw-1", vpcId: "vpc-1" }),
+      "route-table": res({ routeTableId: "rtb-1", vpcId: "vpc-1" }),
+    });
+    await attachResource(c, "internet-gateway", "s", "route-table", "t", "acct");
+    expect(ec2Call.mock.calls[1]![1]).toBe("ReplaceRoute");
+  });
+});
+
+describe("attachResource nat-gateway → route-table", () => {
+  it("creates a default route to the NAT gateway", async () => {
+    ec2Call.mockResolvedValue({});
+    const c = ctx({
+      "nat-gateway": res({ natGatewayId: "nat-1", vpcId: "vpc-1" }),
+      "route-table": res({ routeTableId: "rtb-1", vpcId: "vpc-1" }),
+    });
+    await attachResource(c, "nat-gateway", "s", "route-table", "t", "acct");
+    expect(ec2Call.mock.calls[0]![1]).toBe("CreateRoute");
+    expect(ec2Call.mock.calls[0]![2]).toEqual({
+      RouteTableId: "rtb-1",
+      DestinationCidrBlock: "0.0.0.0/0",
+      NatGatewayId: "nat-1",
+    });
+  });
+});
+
+describe("attachResource auto-scaling-group → target-group", () => {
+  it("attaches the target group to the Auto Scaling group", async () => {
+    ec2QueryCall.mockResolvedValue({});
+    const c = ctx({
+      "auto-scaling-group": res({ name: "asg-1", region: "us-east-2" }, {}, "asg-1"),
+      "target-group": res(
+        { region: "us-east-2" },
+        { targetGroupArn: "arn:aws:elasticloadbalancing:us-east-2:1:targetgroup/tg/abc" },
+      ),
+    });
+    await attachResource(c, "auto-scaling-group", "s", "target-group", "t", "acct");
+    expect(ec2QueryCall.mock.calls[0]![1]).toBe("autoscaling");
+    expect(ec2QueryCall.mock.calls[0]![2]).toBe("AttachLoadBalancerTargetGroups");
+    expect(ec2QueryCall.mock.calls[0]![4]).toEqual({
+      AutoScalingGroupName: "asg-1",
+      "TargetGroupARNs.member.1": "arn:aws:elasticloadbalancing:us-east-2:1:targetgroup/tg/abc",
+    });
+  });
+
+  it("throws when ids are missing", async () => {
+    const c = ctx({
+      "auto-scaling-group": res({}, {}, ""),
+      "target-group": res({}, {}, ""),
+    });
+    await expect(
+      attachResource(c, "auto-scaling-group", "s", "target-group", "t", "acct"),
+    ).rejects.toThrow(/AutoScalingGroupName/);
+  });
+});
+
+describe("attachResource route53-record-set → alb", () => {
+  it("upserts an alias record to the load balancer", async () => {
+    fetchSigned.mockResolvedValue({});
+    const c = ctx({
+      "route53-record-set": res({
+        hostedZoneId: "ZROOT",
+        name: "app.example.com.",
+        type: "A",
+      }),
+      alb: res(
+        {},
+        {
+          dnsName: "lb-123.us-east-1.elb.amazonaws.com",
+          canonicalHostedZoneId: "ZLB",
+        },
+      ),
+    });
+    await attachResource(c, "route53-record-set", "s", "alb", "t", "acct");
+    const arg = fetchSigned.mock.calls[0]![0] as {
+      method: string;
+      url: string;
+      body: string;
+    };
+    expect(arg.method).toBe("POST");
+    expect(arg.url).toContain("/2013-04-01/hostedzone/ZROOT/rrset");
+    expect(arg.body).toContain("<Action>UPSERT</Action>");
+    expect(arg.body).toContain("<AliasTarget>");
+    expect(arg.body).toContain("<HostedZoneId>ZLB</HostedZoneId>");
+    expect(arg.body).toContain("<DNSName>lb-123.us-east-1.elb.amazonaws.com</DNSName>");
+  });
+
+  it("rejects non-A/AAAA record types", async () => {
+    const c = ctx({
+      "route53-record-set": res({ hostedZoneId: "ZROOT", name: "app.example.com.", type: "CNAME" }),
+      alb: res({}, { dnsName: "lb.example.com", canonicalHostedZoneId: "ZLB" }),
+    });
+    await expect(attachResource(c, "route53-record-set", "s", "alb", "t", "acct")).rejects.toThrow(
+      /must be A or AAAA/,
     );
   });
 });
