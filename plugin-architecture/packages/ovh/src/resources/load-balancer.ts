@@ -1,26 +1,18 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const LoadBalancerResourceType: ResourceTypeDefinition = {
+export const LoadBalancerResourceType = rt({
   id: "load-balancer",
-  displayName: "Load Balancer",
-  pluralDisplayName: "Load Balancers",
+  name: "Load Balancer",
   description: "An OVHcloud Public Cloud load balancer",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "region", label: "Region", kind: "string", required: true },
-    {
-      key: "size",
-      label: "Size",
-      kind: "enum",
-      required: false,
-      enumValues: ["SMALL", "MEDIUM", "LARGE"],
-    },
-    { key: "status", label: "Status", kind: "string", required: false },
-    { key: "address", label: "Address", kind: "string", required: false },
-    { key: "description", label: "Description", kind: "string", required: false },
+    f("name", "Name"),
+    f("region", "Region"),
+    f("size", "Size", { kind: "enum", required: false, enumValues: ["SMALL", "MEDIUM", "LARGE"] }),
+    f("status", "Status", { required: false }),
+    f("address", "Address", { required: false }),
+    f("description", "Description", { required: false }),
   ],
-  outputs: [{ key: "address", label: "Address", sensitive: false }],
-  dashboardPinnable: true,
+  outputs: [o("address", "Address")],
   supportsCreate: true,
   iconKey: "load-balancer",
-};
+});

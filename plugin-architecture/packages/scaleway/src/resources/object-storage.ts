@@ -1,26 +1,18 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const ObjectStorageResourceType: ResourceTypeDefinition = {
+const REGIONS = ["fr-par", "nl-ams", "pl-waw"];
+
+export const ObjectStorageResourceType = rt({
   id: "object-storage-bucket",
-  displayName: "Object Storage Bucket",
-  pluralDisplayName: "Object Storage Buckets",
+  name: "Object Storage Bucket",
+  plural: "Object Storage Buckets",
   description: "A Scaleway Object Storage bucket (S3-compatible)",
-  fields: [
-    { key: "name", label: "Bucket Name", kind: "string", required: true },
-    {
-      key: "region",
-      label: "Region",
-      kind: "enum",
-      required: true,
-      enumValues: ["fr-par", "nl-ams", "pl-waw"],
-    },
-  ],
+  fields: [f("name", "Bucket Name"), f("region", "Region", { kind: "enum", enumValues: REGIONS })],
   outputs: [
-    { key: "endpoint", label: "Endpoint URL", sensitive: false },
-    { key: "accessKeyId", label: "Access Key ID", sensitive: true },
-    { key: "secretAccessKey", label: "Secret Access Key", sensitive: true },
+    o("endpoint", "Endpoint URL"),
+    o("accessKeyId", "Access Key ID", { sensitive: true }),
+    o("secretAccessKey", "Secret Access Key", { sensitive: true }),
   ],
-  dashboardPinnable: true,
   supportsCreate: true,
   supportsStorageBrowser: true,
   iconKey: "storage",
@@ -40,4 +32,4 @@ export const ObjectStorageResourceType: ResourceTypeDefinition = {
       ],
     },
   ],
-};
+});

@@ -1,19 +1,16 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, rt } from "@infrawrench/plugin-base";
 
-export const GatewayResourceType: ResourceTypeDefinition = {
+export const GatewayResourceType = rt({
   id: "gateway",
-  displayName: "Gateway",
-  pluralDisplayName: "Gateways",
+  name: "Gateway",
   description: "An OVHcloud Public Cloud network gateway",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "region", label: "Region", kind: "string", required: true },
-    { key: "model", label: "Model", kind: "string", required: true },
-    { key: "status", label: "Status", kind: "string", required: false },
-    { key: "type", label: "Type", kind: "string", required: false },
-    { key: "interfaces", label: "Interfaces", kind: "number", required: false },
+    f("name", "Name"),
+    f("region", "Region"),
+    f("model", "Model"),
+    f("status", "Status", { required: false }),
+    f("type", "Type", { required: false }),
+    f("interfaces", "Interfaces", { kind: "number", required: false }),
   ],
-  outputs: [],
-  dashboardPinnable: true,
   iconKey: "gateway",
-};
+});

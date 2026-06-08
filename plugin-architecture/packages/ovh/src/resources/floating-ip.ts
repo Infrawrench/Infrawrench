@@ -1,18 +1,17 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const FloatingIpResourceType: ResourceTypeDefinition = {
+export const FloatingIpResourceType = rt({
   id: "floating-ip",
-  displayName: "Floating IP",
-  pluralDisplayName: "Floating IPs",
+  name: "Floating IP",
+  plural: "Floating IPs",
   description: "An OVHcloud Public Cloud floating IP",
   fields: [
-    { key: "ip", label: "IP", kind: "string", required: true },
-    { key: "region", label: "Region", kind: "string", required: true },
-    { key: "status", label: "Status", kind: "string", required: false },
-    { key: "networkId", label: "Network ID", kind: "string", required: false },
-    { key: "associatedEntity", label: "Associated Entity", kind: "string", required: false },
+    f("ip", "IP"),
+    f("region", "Region"),
+    f("status", "Status", { required: false }),
+    f("networkId", "Network ID", { required: false }),
+    f("associatedEntity", "Associated Entity", { required: false }),
   ],
-  outputs: [{ key: "ip", label: "IP", sensitive: false }],
-  dashboardPinnable: true,
+  outputs: [o("ip", "IP")],
   iconKey: "ip",
-};
+});

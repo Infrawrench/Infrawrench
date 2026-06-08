@@ -1,87 +1,48 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const ManagedKubeResourceType: ResourceTypeDefinition = {
+const REGIONS = [
+  "GRA5",
+  "GRA7",
+  "GRA9",
+  "GRA11",
+  "SBG5",
+  "BHS5",
+  "WAW1",
+  "DE1",
+  "UK1",
+  "SGP1",
+  "SYD1",
+];
+
+export const ManagedKubeResourceType = rt({
   id: "managed-kube",
-  displayName: "Managed Kubernetes",
-  pluralDisplayName: "Managed Kubernetes",
+  name: "Managed Kubernetes",
+  plural: "Managed Kubernetes",
   description: "An OVHcloud Managed Kubernetes Service cluster",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    {
-      key: "region",
-      label: "Region",
-      kind: "enum",
-      required: true,
-      enumValues: [
-        "GRA5",
-        "GRA7",
-        "GRA9",
-        "GRA11",
-        "SBG5",
-        "BHS5",
-        "WAW1",
-        "DE1",
-        "UK1",
-        "SGP1",
-        "SYD1",
-      ],
-    },
-    {
-      key: "version",
-      label: "Kubernetes Version",
-      kind: "string",
-      required: true,
-      description: "e.g. 1.30",
-    },
-    {
-      key: "status",
-      label: "Status",
-      kind: "string",
-      required: false,
-    },
-    {
-      key: "flavor",
-      label: "Flavor",
-      kind: "string",
+    f("name", "Name"),
+    f("region", "Region", { kind: "enum", enumValues: REGIONS }),
+    f("version", "Kubernetes Version", { description: "e.g. 1.30" }),
+    f("status", "Status", { required: false }),
+    f("flavor", "Flavor", {
       required: false,
       description: "Flavor of the first node pool, e.g. b3-8",
-    },
-    {
-      key: "nodeCount",
-      label: "Node Count",
-      kind: "number",
-      required: false,
-    },
-    {
-      key: "nodePoolCount",
-      label: "Node Pools",
-      kind: "number",
-      required: false,
-    },
-    {
-      key: "nodesUrl",
-      label: "Nodes URL",
-      kind: "string",
-      required: false,
-    },
+    }),
+    f("nodeCount", "Node Count", { kind: "number", required: false }),
+    f("nodePoolCount", "Node Pools", { kind: "number", required: false }),
+    f("nodesUrl", "Nodes URL", { required: false }),
   ],
   outputs: [
-    {
-      key: "kubeconfig",
-      label: "Kubeconfig",
+    o("kubeconfig", "Kubeconfig", {
       sensitive: true,
       hidden: true,
       description: "Full kubeconfig YAML for connecting to this cluster",
-    },
-    {
-      key: "clusterUrl",
-      label: "Cluster URL",
-      sensitive: false,
+    }),
+    o("clusterUrl", "Cluster URL", {
       hidden: true,
       description: "HTTPS endpoint for the Kubernetes API server",
-    },
+    }),
   ],
-  dashboardPinnable: true,
   iconKey: "kubernetes",
   supportsCreate: true,
   peerIntegrations: [
@@ -102,4 +63,4 @@ export const ManagedKubeResourceType: ResourceTypeDefinition = {
       ],
     },
   ],
-};
+});

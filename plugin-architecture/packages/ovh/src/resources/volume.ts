@@ -1,49 +1,35 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, rt } from "@infrawrench/plugin-base";
 
-export const VolumeResourceType: ResourceTypeDefinition = {
+const TYPES = [
+  "classic",
+  "high-speed",
+  "high-speed-gen2",
+  "classic-luks",
+  "high-speed-luks",
+  "high-speed-gen2-luks",
+  "classic-multiattach",
+];
+
+export const VolumeResourceType = rt({
   id: "volume",
-  displayName: "Volume",
-  pluralDisplayName: "Volumes",
+  name: "Volume",
+  plural: "Volumes",
   description: "An OVHcloud Public Cloud block storage volume",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    { key: "region", label: "Region", kind: "string", required: true },
-    { key: "sizeGb", label: "Size (GB)", kind: "number", required: true },
-    {
-      key: "type",
-      label: "Type",
-      kind: "enum",
-      required: true,
-      enumValues: [
-        "classic",
-        "high-speed",
-        "high-speed-gen2",
-        "classic-luks",
-        "high-speed-luks",
-        "high-speed-gen2-luks",
-        "classic-multiattach",
-      ],
-    },
-    { key: "status", label: "Status", kind: "string", required: false },
-    { key: "bootable", label: "Bootable", kind: "boolean", required: false },
-    {
-      key: "attachedTo",
-      label: "Attached Instance IDs",
-      kind: "string",
+    f("name", "Name"),
+    f("region", "Region"),
+    f("sizeGb", "Size (GB)", { kind: "number" }),
+    f("type", "Type", { kind: "enum", enumValues: TYPES }),
+    f("status", "Status", { required: false }),
+    f("bootable", "Bootable", { kind: "boolean", required: false }),
+    f("attachedTo", "Attached Instance IDs", {
       required: false,
       description: "Comma-separated instance IDs this volume is attached to",
-    },
+    }),
   ],
-  outputs: [],
-  dashboardPinnable: true,
   supportsCreate: true,
   iconKey: "volume",
   attachTargets: [
-    {
-      pluginId: "ovh",
-      resourceTypeId: "instance",
-      matchField: "region",
-      verb: "Attach",
-    },
+    { pluginId: "ovh", resourceTypeId: "instance", matchField: "region", verb: "Attach" },
   ],
-};
+});

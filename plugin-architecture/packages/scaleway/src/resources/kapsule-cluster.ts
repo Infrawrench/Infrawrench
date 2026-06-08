@@ -1,70 +1,35 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const KapsuleClusterResourceType: ResourceTypeDefinition = {
+const REGIONS = ["fr-par", "nl-ams", "pl-waw"];
+
+export const KapsuleClusterResourceType = rt({
   id: "kapsule-cluster",
-  displayName: "Kapsule Cluster",
-  pluralDisplayName: "Kapsule Clusters",
+  name: "Kapsule Cluster",
   description: "A managed Kubernetes cluster on Scaleway",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    {
-      key: "region",
-      label: "Region",
-      kind: "enum",
-      required: true,
-      enumValues: ["fr-par", "nl-ams", "pl-waw"],
-    },
-    {
-      key: "version",
-      label: "Kubernetes Version",
-      kind: "string",
-      required: true,
-      description: "e.g. 1.30.2",
-    },
-    {
-      key: "nodeType",
-      label: "Node Type",
-      kind: "string",
-      required: true,
-      description: "Node commercial type, e.g. DEV1-M, GP1-S",
-    },
-    {
-      key: "nodeCount",
-      label: "Node Count",
-      kind: "number",
-      required: true,
-    },
-    {
-      key: "diskSizeGb",
-      label: "Disk Size (GB)",
+    f("name", "Name"),
+    f("region", "Region", { kind: "enum", enumValues: REGIONS }),
+    f("version", "Kubernetes Version", { description: "e.g. 1.30.2" }),
+    f("nodeType", "Node Type", { description: "Node commercial type, e.g. DEV1-M, GP1-S" }),
+    f("nodeCount", "Node Count", { kind: "number" }),
+    f("diskSizeGb", "Disk Size (GB)", {
       kind: "number",
       required: false,
       description: "Root volume size of the first node pool",
-    },
-    {
-      key: "status",
-      label: "Status",
-      kind: "string",
-      required: false,
-    },
+    }),
+    f("status", "Status", { required: false }),
   ],
   outputs: [
-    {
-      key: "kubeconfig",
-      label: "Kubeconfig",
+    o("kubeconfig", "Kubeconfig", {
       sensitive: true,
       hidden: true,
       description: "Full kubeconfig YAML for connecting to this cluster",
-    },
-    {
-      key: "clusterUrl",
-      label: "Cluster URL",
-      sensitive: false,
+    }),
+    o("clusterUrl", "Cluster URL", {
       hidden: true,
       description: "HTTPS endpoint for the Kubernetes API server",
-    },
+    }),
   ],
-  dashboardPinnable: true,
   iconKey: "kubernetes",
   supportsCreate: true,
   supportsMetrics: true,
@@ -86,4 +51,4 @@ export const KapsuleClusterResourceType: ResourceTypeDefinition = {
       ],
     },
   ],
-};
+});

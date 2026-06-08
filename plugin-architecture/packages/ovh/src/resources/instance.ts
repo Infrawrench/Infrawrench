@@ -1,60 +1,34 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const InstanceResourceType: ResourceTypeDefinition = {
+const REGIONS = [
+  "GRA1",
+  "GRA3",
+  "GRA5",
+  "GRA7",
+  "GRA9",
+  "GRA11",
+  "SBG5",
+  "BHS5",
+  "WAW1",
+  "DE1",
+  "UK1",
+  "SGP1",
+  "SYD1",
+];
+
+export const InstanceResourceType = rt({
   id: "instance",
-  displayName: "Instance",
-  pluralDisplayName: "Instances",
+  name: "Instance",
+  plural: "Instances",
   description: "An OVHcloud Public Cloud virtual machine",
   fields: [
-    { key: "name", label: "Name", kind: "string", required: true },
-    {
-      key: "region",
-      label: "Region",
-      kind: "enum",
-      required: true,
-      enumValues: [
-        "GRA1",
-        "GRA3",
-        "GRA5",
-        "GRA7",
-        "GRA9",
-        "GRA11",
-        "SBG5",
-        "BHS5",
-        "WAW1",
-        "DE1",
-        "UK1",
-        "SGP1",
-        "SYD1",
-      ],
-    },
-    {
-      key: "flavorName",
-      label: "Flavor",
-      kind: "string",
-      required: true,
-      description: "Instance flavor name, e.g. b2-7",
-    },
-    {
-      key: "imageName",
-      label: "Image",
-      kind: "string",
-      required: true,
-      description: "OS image name, e.g. Ubuntu 24.04",
-    },
-    {
-      key: "status",
-      label: "Status",
-      kind: "string",
-      required: false,
-    },
+    f("name", "Name"),
+    f("region", "Region", { kind: "enum", enumValues: REGIONS }),
+    f("flavorName", "Flavor", { description: "Instance flavor name, e.g. b2-7" }),
+    f("imageName", "Image", { description: "OS image name, e.g. Ubuntu 24.04" }),
+    f("status", "Status", { required: false }),
   ],
-  outputs: [
-    { key: "ipv4", label: "Public IPv4", sensitive: false },
-    { key: "ipv6", label: "Public IPv6", sensitive: false },
-    { key: "ipv4Private", label: "Private IPv4", sensitive: false },
-  ],
-  dashboardPinnable: true,
+  outputs: [o("ipv4", "Public IPv4"), o("ipv6", "Public IPv6"), o("ipv4Private", "Private IPv4")],
   iconKey: "instance",
   sshEndpoint: {
     hostOutputKey: "ipv4",
@@ -64,4 +38,4 @@ export const InstanceResourceType: ResourceTypeDefinition = {
     usernameFieldKey: "sshUsername",
   },
   supportsCreate: true,
-};
+});

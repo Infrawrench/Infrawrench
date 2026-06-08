@@ -43,6 +43,8 @@ export type {
 } from "./instance.js";
 export { normalizeResourceCreateResult } from "./instance.js";
 export { evaluatePeerIntegrationUnreachable } from "./resource.js";
+export { field, output, resourceType, f, o, rt } from "./resource-builders.js";
+export type { CompactField, CompactOutput, CompactResourceType } from "./resource-builders.js";
 
 export type {
   SecretResolution,

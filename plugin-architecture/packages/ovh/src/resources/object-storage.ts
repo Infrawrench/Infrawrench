@@ -1,19 +1,18 @@
-import type { ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { f, o, rt } from "@infrawrench/plugin-base";
 
-export const ObjectStorageResourceType: ResourceTypeDefinition = {
+export const ObjectStorageResourceType = rt({
   id: "object-storage-bucket",
-  displayName: "Object Storage Bucket",
-  pluralDisplayName: "Object Storage Buckets",
+  name: "Object Storage Bucket",
+  plural: "Object Storage Buckets",
   description: "An OVHcloud Public Cloud S3-compatible storage container",
   fields: [
-    { key: "name", label: "Bucket Name", kind: "string", required: true },
-    { key: "region", label: "Region", kind: "string", required: true },
-    { key: "objectsCount", label: "Objects", kind: "number", required: false },
-    { key: "objectsSizeBytes", label: "Size (bytes)", kind: "number", required: false },
-    { key: "virtualHost", label: "Virtual Host", kind: "string", required: false },
+    f("name", "Bucket Name"),
+    f("region", "Region"),
+    f("objectsCount", "Objects", { kind: "number", required: false }),
+    f("objectsSizeBytes", "Size (bytes)", { kind: "number", required: false }),
+    f("virtualHost", "Virtual Host", { required: false }),
   ],
-  outputs: [{ key: "endpoint", label: "Endpoint URL", sensitive: false }],
-  dashboardPinnable: true,
+  outputs: [o("endpoint", "Endpoint URL")],
   supportsCreate: true,
   iconKey: "storage",
-};
+});
