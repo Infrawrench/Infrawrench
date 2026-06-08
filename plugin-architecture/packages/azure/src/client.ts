@@ -34,6 +34,7 @@ import type {
   CreateSizePricingRequest,
   DashboardStat,
   CredentialExport,
+  MetricSeries,
   PublishMessagePayload,
   PublishMessageResult,
 } from "@infrawrench/plugin-base";
@@ -65,6 +66,7 @@ import { listAppRegistrations } from "./app-registration.js";
 import { makeGraphClient } from "./graph-client.js";
 import { resolveAzureOutput } from "./output-resolver.js";
 import { buildAzureDashboardStats } from "./dashboard-stats.js";
+import { fetchAzureMetricSeries } from "./metrics.js";
 import { renderAzureDetail, renderAzureSidebarItem } from "./renderers.js";
 import { deleteAzureResource } from "./delete-handlers.js";
 import { attachAzureResource } from "./attach-handlers.js";
@@ -386,6 +388,16 @@ export class AzureClient implements PluginClient {
   ): Promise<DashboardStat[]> {
     const resource = await this.getResource(resourceTypeId, resourceId, accountId);
     return buildAzureDashboardStats(resource);
+  }
+
+  async fetchMetricSeries(
+    resourceTypeId: string,
+    resourceId: string,
+    accountId: string,
+    timeRange?: { startMs: number; endMs: number },
+  ): Promise<MetricSeries[]> {
+    const resource = await this.getResource(resourceTypeId, resourceId, accountId);
+    return fetchAzureMetricSeries(this.httpCtx, resourceTypeId, resource, timeRange);
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {

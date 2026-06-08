@@ -141,6 +141,79 @@ describe("AzureClient token + HTTP helpers", () => {
     expect(Array.isArray(stats)).toBe(true);
   });
 
+  it("fetchMetricSeries queries Azure Monitor for supported resource metrics", async () => {
+    const client = new AzureClient(creds);
+    fetchSpy.mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes("/virtualMachines?")) {
+        return jsonResponse({
+          value: [
+            {
+              id: "/subscriptions/sub1/resourceGroups/rg-a/providers/Microsoft.Compute/virtualMachines/vm1",
+              name: "vm1",
+              location: "eastus",
+              properties: { hardwareProfile: { vmSize: "Standard_B1s" } },
+            },
+          ],
+        });
+      }
+      if (url.includes("/networkInterfaces/") || url.includes("/publicIPAddresses/")) {
+        return jsonResponse({});
+      }
+      if (url.includes("metricnames=Percentage%20CPU")) {
+        return jsonResponse({
+          value: [
+            {
+              name: { localizedValue: "Percentage CPU" },
+              unit: "Percent",
+              timeseries: [
+                {
+                  data: [
+                    { timeStamp: "2026-06-08T12:00:00Z", average: 42 },
+                    { timeStamp: "2026-06-08T12:05:00Z", average: 45 },
+                  ],
+                },
+              ],
+            },
+          ],
+        });
+      }
+      return jsonResponse({}, { ok: false, status: 400 } as Partial<Response>);
+    });
+
+    const series = await client.fetchMetricSeries("azure-vm", "acct:azure-vm:rg-a/vm1", "acct", {
+      startMs: Date.parse("2026-06-08T12:00:00Z"),
+      endMs: Date.parse("2026-06-08T13:00:00Z"),
+    });
+
+    expect(series).toEqual([
+      {
+        label: "Percentage CPU",
+        unit: "Percent",
+        points: [
+          { timestamp: Date.parse("2026-06-08T12:00:00Z"), value: 42 },
+          { timestamp: Date.parse("2026-06-08T12:05:00Z"), value: 45 },
+        ],
+      },
+    ]);
+    const monitorCall = fetchSpy.mock.calls.find(([url]) =>
+      String(url).includes("/providers/Microsoft.Insights/metrics"),
+    );
+    expect(String(monitorCall?.[0])).toContain(
+      "/resourceGroups/rg-a/providers/Microsoft.Compute/virtualMachines/vm1/providers/Microsoft.Insights/metrics",
+    );
+  });
+
+  it("fetchMetricSeries returns [] for resource types without metric mappings", async () => {
+    const client = new AzureClient(creds);
+    fetchSpy.mockResolvedValue(
+      jsonResponse({ value: [{ name: "rg-a", location: "eastus", properties: {} }] }),
+    );
+    await expect(
+      client.fetchMetricSeries("azure-resource-group", "acct:azure-resource-group:rg-a", "acct"),
+    ).resolves.toEqual([]);
+  });
+
   it("publishMessage throws for unsupported types", async () => {
     const client = new AzureClient(creds);
     // publishMessage resolves the resource first, then rejects unsupported types;
