@@ -354,6 +354,42 @@ export class CloudinaryClient implements PluginClient {
     throw new Error(`Cloudinary plugin: deleteResource not supported for type "${typeId}"`);
   }
 
+  async attachResource(
+    sourceTypeId: string,
+    sourceResourceId: string,
+    targetTypeId: string,
+    targetResourceId: string,
+    accountId: string,
+  ): Promise<void> {
+    if (sourceTypeId === "transformation" && targetTypeId === "upload-preset") {
+      const [transformation, preset] = await Promise.all([
+        this.getResource(sourceTypeId, sourceResourceId, accountId),
+        this.getResource(targetTypeId, targetResourceId, accountId),
+      ]);
+      const transformationName = String(
+        transformation.fields["name"] ?? transformation.externalId ?? "",
+      );
+      const presetName = String(preset.fields["name"] ?? preset.externalId ?? "");
+      if (!transformationName || !presetName) {
+        throw new Error("Cannot determine Cloudinary transformation or upload preset identity");
+      }
+      const namedReference = `t_${transformationName}`;
+      if (String(preset.fields["transformation"] ?? "") === namedReference) return;
+      await this.fetch<Record<string, unknown>>(
+        `/upload_presets/${encodeURIComponent(presetName)}`,
+        {
+          method: "PUT",
+          body: JSON.stringify({ transformation: namedReference }),
+        },
+      );
+      return;
+    }
+
+    throw new Error(
+      `Cloudinary plugin: attachResource not supported for ${sourceTypeId} → ${targetTypeId}`,
+    );
+  }
+
   async fetchDashboardStats(
     resourceTypeId: string,
     resourceId: string,

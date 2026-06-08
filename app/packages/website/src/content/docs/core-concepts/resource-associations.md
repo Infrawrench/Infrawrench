@@ -18,6 +18,7 @@ Resource associations are the drag-and-drop or picker-driven relationships betwe
 - **OVHcloud** — block storage volume to Public Cloud instance, with region validation.
 - **Vercel** — domain to project.
 - **Netlify** — DNS zone domain to site custom domain or domain alias.
+- **Cloudinary** — named transformation to upload preset.
 
 ## Planned
 
@@ -28,7 +29,7 @@ These need a richer association form because the provider requires more than a s
 - **Hetzner Cloud** — load balancer service creation and health-check tuning, load balancer label-selector targets, firewall label-selector application, subnet and route management inside networks.
 - **Fly.io** — certificate hostname creation, shared/dedicated IPv4 allocation, app secrets to machines, service/port exposure from machine config.
 - **Vercel and Netlify** — DNS record to deployment target, environment variable import from another resource output.
-- **Cloudinary** — transformation to upload preset, folder/tag bulk operations.
+- **Cloudinary** — folder/tag bulk operations.
 - **Databricks** — job to cluster/SQL warehouse, permissions to users/groups/service principals, pipeline to catalog/schema, serving endpoint to model/version.
 - **Turso and PlanetScale** — member/invite role changes, token/password lifecycle actions, database/branch promotion and deploy-request state transitions.
 

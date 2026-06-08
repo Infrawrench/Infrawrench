@@ -15,4 +15,11 @@ export const TransformationResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   supportsCreate: true,
   iconKey: "transformation",
+  attachTargets: [
+    {
+      pluginId: "cloudinary",
+      resourceTypeId: "upload-preset",
+      verb: "Apply to preset",
+    },
+  ],
 };
