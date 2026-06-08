@@ -1,6 +1,6 @@
 ---
 title: Vercel
-description: Browse Vercel projects and deployments.
+description: Manage Vercel projects, deployments, domains, environment variables, and teams.
 sidebar_order: 22
 ---
 
@@ -8,6 +8,9 @@ sidebar_order: 22
 
 - Projects
 - Deployments (view status, access URL, inspect build)
+- Domains
+- Environment variables
+- Teams
 
 ## Credentials
 
@@ -20,8 +23,9 @@ If you belong to a Team, provide the team ID so infrawrench lists team-owned pro
 ## Notable flows
 
 - **Deploy list** with status badges and links to the Vercel inspector.
+- **Domain management** for project and account domains.
+- **Environment variable editing** with target scoping.
 
 ## Tips & limits
 
-- Environment variable editing and domain management are not yet exposed — planned.
-- For most deploy actions (rollback, alias), jump to the Vercel UI via the link.
+- Some destructive or workflow-heavy deployment actions, such as rollback and alias promotion, are still left to Vercel until the plugin has a safer confirmation flow for them.

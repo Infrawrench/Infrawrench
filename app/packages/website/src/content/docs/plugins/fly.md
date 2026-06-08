@@ -1,6 +1,6 @@
 ---
 title: Fly.io
-description: Manage Fly apps, machines, and volumes across 36 regions.
+description: Manage Fly apps, machines, volumes, certificates, and IP allocations across 36 regions.
 sidebar_order: 8
 ---
 
@@ -9,6 +9,8 @@ sidebar_order: 8
 - Apps (list, view config)
 - Machines (start / stop / restart, state tracking)
 - Volumes
+- Certificates
+- IP allocations
 
 ## Credentials
 
@@ -26,6 +28,7 @@ Infrawrench uses the token for both the Machines API and the GraphQL API.
 - **SSH terminal** on machines that have `fly ssh` enabled.
 - Region picker across all 36 Fly regions when creating machines.
 - Machine state (started, stopped, destroyed) tracked in the list view.
+- **Certificate and IP inventory** across every app in the configured organization.
 
 ## Tips & limits
 

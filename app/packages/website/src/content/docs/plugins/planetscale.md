@@ -1,6 +1,6 @@
 ---
 title: PlanetScale
-description: Manage PlanetScale databases and branches with connection strings exposed as outputs.
+description: Manage PlanetScale databases, branches, deploy requests, backups, and passwords.
 sidebar_order: 13
 ---
 
@@ -8,6 +8,9 @@ sidebar_order: 13
 
 - Databases
 - Branches
+- Branch passwords
+- Deploy requests
+- Branch backups
 - Connection strings (generated per-branch via password creation)
 
 ## Credentials
@@ -23,6 +26,8 @@ PlanetScale dashboard → **Settings → Service tokens → New service token**.
 ## Notable flows
 
 - **Branch creation** — from `main` or any branch, pick a name and click.
+- **Deploy request tracking** — list schema deploy requests with source and target branches, approval state, and deployment status.
+- **Backup inventory** — inspect branch backups and lifecycle state.
 - **Connection string generation** — infrawrench creates a named password for a branch and returns the resulting connection string as an output. Reference it from the [MySQL plugin](./mysql.md) for SQL editor access.
 - **Secret export to K8s** — branches export credentials as secrets.
 - **SQL editor** (via the MySQL plugin’s output reference).
@@ -30,4 +35,4 @@ PlanetScale dashboard → **Settings → Service tokens → New service token**.
 ## Tips & limits
 
 - PlanetScale uses Vitess. Cross-shard joins and some DDL shapes are restricted. Raw errors are passed through.
-- Branch passwords are created on demand. If you have many secrets for one branch, there will be many passwords — delete stale ones in the PlanetScale UI to avoid clutter.
+- Branch passwords are listed without exposing plaintext. A new plaintext password is only returned by PlanetScale at creation time, so connection-string generation still creates a dedicated password on demand.

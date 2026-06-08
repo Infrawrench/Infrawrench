@@ -1,6 +1,6 @@
 ---
 title: Turso
-description: Manage Turso groups, databases, and auth tokens across edge locations.
+description: Manage Turso groups, databases, instances, API tokens, members, and edge locations.
 sidebar_order: 14
 ---
 
@@ -8,8 +8,11 @@ sidebar_order: 14
 
 - Groups
 - Databases within a group
-- Auth tokens (per-database)
+- Database instances
+- Platform API tokens
+- Organization members
 - 30+ edge locations for replica placement
+- Auth tokens generated per database when exporting a connection string
 
 ## Credentials
 
@@ -24,6 +27,8 @@ Turso dashboard → **Settings → API Tokens → Create Token**. You also need 
 
 - **Database creation** with group and location pickers.
 - **Auth token generation** — per-database; expose as an output for downstream plugins.
+- **Instance and location inventory** for placement and replica inspection.
+- **API token and organization member inventory** for account hygiene.
 - **SQL editor** (libsql protocol) per database.
 
 ## Tips & limits

@@ -1,12 +1,15 @@
 ---
 title: Cloudinary
-description: Browse image assets in your Cloudinary account.
+description: Manage Cloudinary folders, media assets, upload presets, and transformations.
 sidebar_order: 25
 ---
 
 ## What you can manage
 
-- Image assets (browse, search by tag, copy delivery URL)
+- Media assets (browse, search by tag, copy delivery URL)
+- Folders
+- Upload presets
+- Transformations
 
 ## Credentials
 
@@ -20,9 +23,10 @@ Cloudinary console → **Settings → Access Keys**. Paste:
 
 ## Notable flows
 
-- **Asset browser** with thumbnails and metadata.
+- **Asset browser** with thumbnails, delivery URLs, and metadata.
+- **Folder management** for organizing media.
+- **Upload preset and transformation management** for the common Admin API-backed settings.
 
 ## Tips & limits
 
-- Upload and transformation management are not yet in the UI — use the Cloudinary dashboard for those.
 - Large libraries paginate; search is server-side.

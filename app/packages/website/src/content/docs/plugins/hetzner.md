@@ -1,6 +1,6 @@
 ---
 title: Hetzner Cloud
-description: Manage Hetzner servers, volumes, firewalls, and floating IPs.
+description: Manage Hetzner servers, volumes, networks, load balancers, images, and IP resources.
 sidebar_order: 5
 ---
 
@@ -11,6 +11,11 @@ sidebar_order: 5
 - Floating IPs
 - Firewalls
 - Networks
+- Load balancers
+- Primary IPs
+- SSH keys
+- Images, including snapshots and backups returned by the Hetzner API
+- Placement groups
 
 ## Credentials
 
@@ -24,9 +29,9 @@ Each API token is project-scoped. Add one infrawrench account per Hetzner projec
 
 - **SSH terminal** on servers.
 - Idempotent SSH key upload: when you pick a key from infrawrench during server creation, it is uploaded to Hetzner if not already present.
+- **Load balancer and network inventory** so service topology is visible without leaving the app.
 - **Secret export to K8s** is not supported for Hetzner resources directly (they do not hold secrets).
 
 ## Tips & limits
 
 - Hetzner is cheap and fast, but its API has global rate limits. A single large account refresh may briefly throttle.
-- Snapshots and backups are not yet exposed in the UI — coming.
