@@ -4,6 +4,10 @@
  * - `azure-disk` → `azure-vm`: appends the managed disk to the VM's
  *   `storageProfile.dataDisks` with the next available LUN.
  * - `azure-nsg`  → `azure-vm`: sets the NSG on the VM's primary NIC.
+ * - `azure-public-ip` → `azure-vm`: sets the public IP on the primary NIC IP
+ *   configuration.
+ * - `azure-load-balancer` / `azure-app-gateway` → `azure-vm`: appends the
+ *   VM's primary NIC IP configuration to the first backend pool.
  *
  * Both paths read the live ARM representation first, then PATCH a delta — Azure
  * doesn't have a separate "attach" verb for these.
@@ -109,7 +113,150 @@ export async function attachAzureResource(
     });
     return;
   }
+  if (sourceTypeId === "azure-public-ip" && targetTypeId === "azure-vm") {
+    const [publicIp, vm] = await Promise.all([
+      ctx.getResource(sourceTypeId, sourceResourceId, accountId),
+      ctx.getResource(targetTypeId, targetResourceId, accountId),
+    ]);
+    assertSameLocation(publicIp, vm, "Public IP", "VM");
+    const pipRg = String(publicIp.fields["resourceGroup"] ?? "");
+    const pipName = String(publicIp.fields["name"] ?? "");
+    if (!pipRg || !pipName) throw new Error("Cannot determine public IP identity for attachment");
+    const pipId = `/subscriptions/${ctx.subscriptionId}/resourceGroups/${pipRg}/providers/Microsoft.Network/publicIPAddresses/${pipName}`;
+    await patchPrimaryNicIpConfig(ctx, vm, (ipConfigProps) => ({
+      ...ipConfigProps,
+      publicIPAddress: { id: pipId },
+    }));
+    return;
+  }
+  if (sourceTypeId === "azure-load-balancer" && targetTypeId === "azure-vm") {
+    const [loadBalancer, vm] = await Promise.all([
+      ctx.getResource(sourceTypeId, sourceResourceId, accountId),
+      ctx.getResource(targetTypeId, targetResourceId, accountId),
+    ]);
+    assertSameLocation(loadBalancer, vm, "Load balancer", "VM");
+    const poolId = await firstBackendPoolId(ctx, loadBalancer, "Microsoft.Network/loadBalancers");
+    await patchPrimaryNicIpConfig(ctx, vm, (ipConfigProps) => ({
+      ...ipConfigProps,
+      loadBalancerBackendAddressPools: appendIdRef(
+        ipConfigProps["loadBalancerBackendAddressPools"],
+        poolId,
+      ),
+    }));
+    return;
+  }
+  if (sourceTypeId === "azure-app-gateway" && targetTypeId === "azure-vm") {
+    const [gateway, vm] = await Promise.all([
+      ctx.getResource(sourceTypeId, sourceResourceId, accountId),
+      ctx.getResource(targetTypeId, targetResourceId, accountId),
+    ]);
+    assertSameLocation(gateway, vm, "Application gateway", "VM");
+    const poolId = await firstBackendPoolId(ctx, gateway, "Microsoft.Network/applicationGateways");
+    await patchPrimaryNicIpConfig(ctx, vm, (ipConfigProps) => ({
+      ...ipConfigProps,
+      applicationGatewayBackendAddressPools: appendIdRef(
+        ipConfigProps["applicationGatewayBackendAddressPools"],
+        poolId,
+      ),
+    }));
+    return;
+  }
   throw new Error(
     `Azure plugin: attachResource not supported for ${sourceTypeId} → ${targetTypeId}`,
   );
+}
+
+function assertSameLocation(
+  source: ResourceInstance,
+  target: ResourceInstance,
+  sourceLabel: string,
+  targetLabel: string,
+): void {
+  const sourceLocation = String(source.fields["location"] ?? "");
+  const targetLocation = String(target.fields["location"] ?? "");
+  if (sourceLocation && targetLocation && sourceLocation !== targetLocation) {
+    throw new Error(
+      `${sourceLabel} location ${sourceLocation} does not match ${targetLabel} location ${targetLocation}.`,
+    );
+  }
+}
+
+async function primaryNicUrl(ctx: AttachContext, vm: ResourceInstance): Promise<string> {
+  const vmRg = String(vm.fields["resourceGroup"] ?? "");
+  const vmName = String(vm.fields["name"] ?? "");
+  if (!vmRg || !vmName) throw new Error("Cannot determine VM identity for attachment");
+
+  const vmUrl = `${ARM}/subscriptions/${ctx.subscriptionId}/resourceGroups/${vmRg}/providers/Microsoft.Compute/virtualMachines/${vmName}?api-version=2024-03-01`;
+  const vmData = await ctx.get<Record<string, unknown>>(vmUrl);
+  const props = (vmData["properties"] ?? {}) as Record<string, unknown>;
+  const netProfile = (props["networkProfile"] ?? {}) as Record<string, unknown>;
+  const nics = Array.isArray(netProfile["networkInterfaces"])
+    ? (netProfile["networkInterfaces"] as Array<Record<string, unknown>>)
+    : [];
+  if (nics.length === 0) throw new Error("VM has no network interfaces");
+  const primaryNic =
+    nics.find((n) => (n["properties"] as Record<string, unknown> | undefined)?.["primary"]) ??
+    nics[0];
+  const nicArmId = String(primaryNic?.["id"] ?? "");
+  if (!nicArmId) throw new Error("Cannot determine primary NIC of VM");
+  return `${ARM}${nicArmId}?api-version=2023-09-01`;
+}
+
+async function patchPrimaryNicIpConfig(
+  ctx: AttachContext,
+  vm: ResourceInstance,
+  update: (ipConfigProps: Record<string, unknown>) => Record<string, unknown>,
+): Promise<void> {
+  const nicUrl = await primaryNicUrl(ctx, vm);
+  const nicData = await ctx.get<Record<string, unknown>>(nicUrl);
+  const nicProps = (nicData["properties"] ?? {}) as Record<string, unknown>;
+  const ipConfigs = Array.isArray(nicProps["ipConfigurations"])
+    ? ([...(nicProps["ipConfigurations"] as Array<Record<string, unknown>>)] as Array<
+        Record<string, unknown>
+      >)
+    : [];
+  if (ipConfigs.length === 0) throw new Error("Primary NIC has no IP configurations");
+  const primaryIndex = Math.max(
+    0,
+    ipConfigs.findIndex((ipConfig) => {
+      const props = ipConfig["properties"] as Record<string, unknown> | undefined;
+      return props?.["primary"] === true;
+    }),
+  );
+  const ipConfig = { ...ipConfigs[primaryIndex]! };
+  const ipConfigProps = (ipConfig["properties"] ?? {}) as Record<string, unknown>;
+  ipConfig["properties"] = update(ipConfigProps);
+  ipConfigs[primaryIndex] = ipConfig;
+  await ctx.patch(nicUrl, {
+    properties: { ...nicProps, ipConfigurations: ipConfigs },
+  });
+}
+
+async function firstBackendPoolId(
+  ctx: AttachContext,
+  resource: ResourceInstance,
+  provider: string,
+): Promise<string> {
+  const rg = String(resource.fields["resourceGroup"] ?? "");
+  const name = String(resource.fields["name"] ?? "");
+  if (!rg || !name) throw new Error("Cannot determine backend resource identity for attachment");
+  const url = `${ARM}/subscriptions/${ctx.subscriptionId}/resourceGroups/${rg}/providers/${provider}/${name}?api-version=2023-09-01`;
+  const data = await ctx.get<Record<string, unknown>>(url);
+  const props = (data["properties"] ?? {}) as Record<string, unknown>;
+  const pools = Array.isArray(props["backendAddressPools"])
+    ? (props["backendAddressPools"] as Array<Record<string, unknown>>)
+    : [];
+  const poolId = String(pools[0]?.["id"] ?? "");
+  if (!poolId) throw new Error(`${resource.displayName} has no backend address pools`);
+  return poolId;
+}
+
+function appendIdRef(value: unknown, id: string): Array<{ id: string }> {
+  const refs = Array.isArray(value)
+    ? (value as Array<Record<string, unknown>>)
+        .map((ref) => String(ref["id"] ?? ""))
+        .filter(Boolean)
+        .map((refId) => ({ id: refId }))
+    : [];
+  return refs.some((ref) => ref.id === id) ? refs : [...refs, { id }];
 }

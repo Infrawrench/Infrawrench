@@ -20,4 +20,12 @@ export const LoadBalancerResourceType: ResourceTypeDefinition = {
   supportsCreate: true,
   supportsMetrics: true,
   iconKey: "network",
+  attachTargets: [
+    {
+      pluginId: "azure",
+      resourceTypeId: "azure-vm",
+      matchField: "location",
+      verb: "Add backend",
+    },
+  ],
 };

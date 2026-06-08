@@ -25,8 +25,9 @@ export const PublicIPResourceType: ResourceTypeDefinition = {
   attachTargets: [
     {
       pluginId: "azure",
-      resourceTypeId: "azure-vm", // VM resource type id for Azure plugin (if available in this repo)
-      verb: "attach",
+      resourceTypeId: "azure-vm",
+      matchField: "location",
+      verb: "Attach public IP",
     },
   ],
 };

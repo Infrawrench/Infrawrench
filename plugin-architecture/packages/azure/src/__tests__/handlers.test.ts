@@ -274,6 +274,210 @@ describe("attachAzureResource", () => {
     expect(body.properties.networkSecurityGroup.id).toContain("/networkSecurityGroups/nsg1");
   });
 
+  it("attaches a public IP to the primary NIC IP configuration", async () => {
+    const pip = res({
+      resourceTypeId: "azure-public-ip",
+      fields: { name: "pip1", resourceGroup: "rg1", location: "eastus" },
+    });
+    const patch = vi.fn(async (_url: string, _body: unknown) => ({}));
+    const get = vi.fn(async (url: string) => {
+      if (url.includes("virtualMachines")) {
+        return {
+          properties: {
+            networkProfile: {
+              networkInterfaces: [{ id: "/nic1", properties: { primary: true } }],
+            },
+          },
+        };
+      }
+      return {
+        properties: {
+          ipConfigurations: [{ name: "ipconfig1", properties: { primary: true } }],
+        },
+      };
+    });
+    const ctx = {
+      ...httpCtx({ get, patch }),
+      getResource: vi.fn(async (t: string) => (t === "azure-public-ip" ? pip : vm)),
+    };
+    await attachAzureResource(ctx as never, "azure-public-ip", "pip", "azure-vm", "vms", "acct");
+    const body = patch.mock.calls[0]![1] as {
+      properties: {
+        ipConfigurations: Array<{ properties: { publicIPAddress: { id: string } } }>;
+      };
+    };
+    expect(body.properties.ipConfigurations[0]!.properties.publicIPAddress.id).toContain(
+      "/publicIPAddresses/pip1",
+    );
+  });
+
+  it("adds a VM NIC IP configuration to a load balancer backend pool", async () => {
+    const lb = res({
+      resourceTypeId: "azure-load-balancer",
+      displayName: "lb1",
+      fields: { name: "lb1", resourceGroup: "rg1", location: "eastus" },
+    });
+    const patch = vi.fn(async (_url: string, _body: unknown) => ({}));
+    const get = vi.fn(async (url: string) => {
+      if (url.includes("loadBalancers")) {
+        return {
+          properties: {
+            backendAddressPools: [{ id: "/lb/backendAddressPools/pool1" }],
+          },
+        };
+      }
+      if (url.includes("virtualMachines")) {
+        return {
+          properties: {
+            networkProfile: {
+              networkInterfaces: [{ id: "/nic1", properties: { primary: true } }],
+            },
+          },
+        };
+      }
+      return {
+        properties: {
+          ipConfigurations: [
+            {
+              name: "ipconfig1",
+              properties: {
+                primary: true,
+                loadBalancerBackendAddressPools: [{ id: "/lb/backendAddressPools/existing" }],
+              },
+            },
+          ],
+        },
+      };
+    });
+    const ctx = {
+      ...httpCtx({ get, patch }),
+      getResource: vi.fn(async (t: string) => (t === "azure-load-balancer" ? lb : vm)),
+    };
+    await attachAzureResource(ctx as never, "azure-load-balancer", "lb", "azure-vm", "vms", "acct");
+    const body = patch.mock.calls[0]![1] as {
+      properties: {
+        ipConfigurations: Array<{
+          properties: { loadBalancerBackendAddressPools: Array<{ id: string }> };
+        }>;
+      };
+    };
+    expect(
+      body.properties.ipConfigurations[0]!.properties.loadBalancerBackendAddressPools.map(
+        (ref) => ref.id,
+      ),
+    ).toEqual(["/lb/backendAddressPools/existing", "/lb/backendAddressPools/pool1"]);
+  });
+
+  it("adds a VM NIC IP configuration to an application gateway backend pool", async () => {
+    const gw = res({
+      resourceTypeId: "azure-app-gateway",
+      displayName: "gw1",
+      fields: { name: "gw1", resourceGroup: "rg1", location: "eastus" },
+    });
+    const patch = vi.fn(async (_url: string, _body: unknown) => ({}));
+    const get = vi.fn(async (url: string) => {
+      if (url.includes("applicationGateways")) {
+        return {
+          properties: {
+            backendAddressPools: [{ id: "/gw/backendAddressPools/pool1" }],
+          },
+        };
+      }
+      if (url.includes("virtualMachines")) {
+        return {
+          properties: {
+            networkProfile: {
+              networkInterfaces: [{ id: "/nic1", properties: { primary: true } }],
+            },
+          },
+        };
+      }
+      return {
+        properties: {
+          ipConfigurations: [{ name: "ipconfig1", properties: { primary: true } }],
+        },
+      };
+    });
+    const ctx = {
+      ...httpCtx({ get, patch }),
+      getResource: vi.fn(async (t: string) => (t === "azure-app-gateway" ? gw : vm)),
+    };
+    await attachAzureResource(ctx as never, "azure-app-gateway", "gw", "azure-vm", "vms", "acct");
+    const body = patch.mock.calls[0]![1] as {
+      properties: {
+        ipConfigurations: Array<{
+          properties: { applicationGatewayBackendAddressPools: Array<{ id: string }> };
+        }>;
+      };
+    };
+    expect(
+      body.properties.ipConfigurations[0]!.properties.applicationGatewayBackendAddressPools,
+    ).toEqual([{ id: "/gw/backendAddressPools/pool1" }]);
+  });
+
+  it("does not duplicate an existing load balancer backend pool reference", async () => {
+    const lb = res({
+      resourceTypeId: "azure-load-balancer",
+      displayName: "lb1",
+      fields: { name: "lb1", resourceGroup: "rg1", location: "eastus" },
+    });
+    const patch = vi.fn(async (_url: string, _body: unknown) => ({}));
+    const get = vi.fn(async (url: string) => {
+      if (url.includes("loadBalancers")) {
+        return { properties: { backendAddressPools: [{ id: "/lb/backendAddressPools/pool1" }] } };
+      }
+      if (url.includes("virtualMachines")) {
+        return {
+          properties: {
+            networkProfile: { networkInterfaces: [{ id: "/nic1", properties: { primary: true } }] },
+          },
+        };
+      }
+      return {
+        properties: {
+          ipConfigurations: [
+            {
+              properties: {
+                primary: true,
+                loadBalancerBackendAddressPools: [{ id: "/lb/backendAddressPools/pool1" }],
+              },
+            },
+          ],
+        },
+      };
+    });
+    const ctx = {
+      ...httpCtx({ get, patch }),
+      getResource: vi.fn(async (t: string) => (t === "azure-load-balancer" ? lb : vm)),
+    };
+    await attachAzureResource(ctx as never, "azure-load-balancer", "lb", "azure-vm", "vms", "acct");
+    const body = patch.mock.calls[0]![1] as {
+      properties: {
+        ipConfigurations: Array<{
+          properties: { loadBalancerBackendAddressPools: Array<{ id: string }> };
+        }>;
+      };
+    };
+    expect(body.properties.ipConfigurations[0]!.properties.loadBalancerBackendAddressPools).toEqual(
+      [{ id: "/lb/backendAddressPools/pool1" }],
+    );
+  });
+
+  it("throws when the load balancer has no backend pools", async () => {
+    const lb = res({
+      resourceTypeId: "azure-load-balancer",
+      displayName: "lb1",
+      fields: { name: "lb1", resourceGroup: "rg1", location: "eastus" },
+    });
+    const ctx = {
+      ...httpCtx({ get: vi.fn(async () => ({ properties: { backendAddressPools: [] } })) }),
+      getResource: vi.fn(async (t: string) => (t === "azure-load-balancer" ? lb : vm)),
+    };
+    await expect(
+      attachAzureResource(ctx as never, "azure-load-balancer", "lb", "azure-vm", "vms", "acct"),
+    ).rejects.toThrow(/no backend address pools/);
+  });
+
   it("throws when VM has no NICs", async () => {
     const nsg = res({
       resourceTypeId: "azure-nsg",
