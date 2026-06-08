@@ -351,23 +351,46 @@ export class KafkaClient implements PluginClient {
     const now = new Date().toISOString();
     const names = (await kv.command("listTopics")) as string[];
     const parent = clusterId(accountId);
-    return names
-      .filter((name) => !name.startsWith("__"))
-      .sort()
-      .map((name) => ({
+    const topicNames = names.filter((name) => !name.startsWith("__")).sort();
+    const metadata = await Promise.all(
+      topicNames.map(async (name) => {
+        try {
+          return [name, await kv.command("describeTopic", name)] as const;
+        } catch {
+          return [name, null] as const;
+        }
+      }),
+    );
+    const byName = new Map(metadata);
+    return topicNames.map((name) => {
+      const meta = byName.get(name) as
+        | { partitions?: Array<{ replicas?: unknown[] }> }
+        | null
+        | undefined;
+      const partitions = Array.isArray(meta?.partitions) ? meta.partitions : [];
+      const replicationFactor =
+        partitions.length > 0 && Array.isArray(partitions[0]?.replicas)
+          ? partitions[0]!.replicas!.length
+          : undefined;
+      return {
         id: topicId(accountId, name),
         pluginId: "kafka",
         resourceTypeId: "kafka-topic",
         accountId,
         displayName: name,
-        fields: { name },
+        fields: {
+          name,
+          ...(partitions.length > 0 ? { partitions: partitions.length } : {}),
+          ...(replicationFactor !== undefined ? { replicationFactor } : {}),
+        },
         resolvedOutputs: {},
         secretStates: [],
         externalId: name,
         parentResourceId: parent,
         createdAt: now,
         updatedAt: now,
-      }));
+      };
+    });
   }
 
   private async listConsumerGroups(accountId: string): Promise<ResourceInstance[]> {
@@ -487,6 +510,13 @@ export class KafkaClient implements PluginClient {
             kind: "key-value-list",
             helpText: "Sent as Kafka record headers.",
           },
+          {
+            key: "partition",
+            label: "Partition",
+            kind: "number",
+            optional: true,
+            helpText: "Optional zero-based partition number.",
+          },
         ],
       },
       headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
@@ -506,6 +536,10 @@ export class KafkaClient implements PluginClient {
     if (!kv) throw new Error("Kafka plugin: KV host services unavailable.");
     const topic = topicNameFromId(resourceId);
     const key = typeof payload.extras["key"] === "string" ? (payload.extras["key"] as string) : "";
+    const partition =
+      typeof payload.extras["partition"] === "string"
+        ? (payload.extras["partition"] as string).trim()
+        : "";
     const headersObj =
       payload.extras["headers"] && typeof payload.extras["headers"] === "object"
         ? (payload.extras["headers"] as Record<string, string>)
@@ -516,7 +550,14 @@ export class KafkaClient implements PluginClient {
       if (k.trim()) cleanHeaders[k] = v;
     }
     const headersJson = Object.keys(cleanHeaders).length > 0 ? JSON.stringify(cleanHeaders) : "";
-    const result = (await kv.command("produce", topic, payload.body, key, headersJson)) as {
+    const result = (await kv.command(
+      "produce",
+      topic,
+      payload.body,
+      key,
+      headersJson,
+      partition,
+    )) as {
       partition?: number;
       offset?: string;
     };

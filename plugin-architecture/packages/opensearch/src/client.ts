@@ -625,6 +625,16 @@ export class OpenSearchClient implements PluginClient {
           method: "POST",
         });
         return;
+      case "open-index":
+        await osRequest(this.config, this.services?.http, `/${encodeURIComponent(arg)}/_open`, {
+          method: "POST",
+        });
+        return;
+      case "close-index":
+        await osRequest(this.config, this.services?.http, `/${encodeURIComponent(arg)}/_close`, {
+          method: "POST",
+        });
+        return;
       case "force-merge":
         await osRequest(
           this.config,
@@ -864,6 +874,28 @@ function buildIndicesTable(indices: CatIndex[]): TableNode {
         successMessage: `Started force-merge on "${idx.index}".`,
       },
     };
+    const openClose: ActionNode =
+      idx.status === "close"
+        ? {
+            kind: "action",
+            label: "Open",
+            action: {
+              type: "plugin-action",
+              actionId: `open-index:${idx.index}`,
+              confirmMessage: `Open index "${idx.index}"? Shards will be allocated before it becomes searchable.`,
+              successMessage: `Started opening index "${idx.index}".`,
+            },
+          }
+        : {
+            kind: "action",
+            label: "Close",
+            action: {
+              type: "plugin-action",
+              actionId: `close-index:${idx.index}`,
+              confirmMessage: `Close index "${idx.index}"? Closed indices cannot be searched or written until reopened.`,
+              successMessage: `Started closing index "${idx.index}".`,
+            },
+          };
     return {
       cells: {
         index: idx.index,
@@ -872,6 +904,7 @@ function buildIndicesTable(indices: CatIndex[]): TableNode {
         size: formatBytes(sizeBytes),
         shards: `${idx.pri}p / ${idx.rep}r`,
         refresh,
+        openClose,
         merge: forceMerge,
         delete: rowActions,
       },
@@ -886,6 +919,7 @@ function buildIndicesTable(indices: CatIndex[]): TableNode {
       { key: "size", label: "Size" },
       { key: "shards", label: "Shards" },
       { key: "refresh", label: "", width: "narrow" },
+      { key: "openClose", label: "", width: "narrow" },
       { key: "merge", label: "", width: "narrow" },
       { key: "delete", label: "", width: "narrow" },
     ],

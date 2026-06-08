@@ -59,11 +59,19 @@ async function runOnce(
   client.on("error", () => {});
   try {
     await client.connect();
-    const fn = (client as unknown as Record<string, (...a: unknown[]) => Promise<unknown>>)[
-      cmd.toLowerCase()
-    ];
-    if (typeof fn !== "function") throw new Error(`Unknown Redis command: ${cmd}`);
-    return await fn.call(client, ...args);
+    const rawParts = cmd.trim().split(/\s+/).filter(Boolean);
+    const commandName = rawParts[0] ?? "";
+    const commandArgs = [...rawParts.slice(1), ...args];
+    if (!commandName) throw new Error("Redis command is required");
+
+    const methods = client as unknown as Record<string, (...a: unknown[]) => Promise<unknown>>;
+    const fn = methods[commandName.toLowerCase()];
+    if (typeof fn !== "function") {
+      const call = methods["call"];
+      if (typeof call !== "function") throw new Error(`Unknown Redis command: ${cmd}`);
+      return await call.call(client, commandName, ...commandArgs);
+    }
+    return await fn.call(client, ...commandArgs);
   } finally {
     client.disconnect();
   }

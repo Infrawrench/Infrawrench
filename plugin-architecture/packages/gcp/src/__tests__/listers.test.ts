@@ -158,6 +158,8 @@ describe("compute listers", () => {
             {
               name: "ig1",
               zone: "https://x/zones/z1",
+              instanceGroup:
+                "https://www.googleapis.com/compute/v1/projects/proj1/zones/z1/instanceGroups/ig1",
               instanceTemplate: "https://x/tpl1",
               targetSize: 2,
               status: { isStable: false },
@@ -168,6 +170,7 @@ describe("compute listers", () => {
     const [r] = await listers.listInstanceGroups(ctx, ACCT, PROJ);
     expect(r!.fields.status).toBe("UPDATING");
     expect(r!.fields.instanceTemplate).toBe("tpl1");
+    expect(r!.resolvedOutputs.selfLink).toContain("/instanceGroups/ig1");
   });
 
   it("listHealthChecks classifies http/https/tcp", async () => {
@@ -191,6 +194,9 @@ describe("compute listers", () => {
           backendServices: [
             {
               name: "bs1",
+              region: "https://x/regions/us-central1",
+              selfLink:
+                "https://www.googleapis.com/compute/v1/projects/proj1/regions/us-central1/backendServices/bs1",
               protocol: "HTTP",
               backends: [{}, {}],
               healthChecks: ["x"],
@@ -201,6 +207,9 @@ describe("compute listers", () => {
     });
     const [bs] = await listers.listBackendServices(bsCtx, ACCT, PROJ);
     expect(bs!.fields.backendCount).toBe(2);
+    expect(bs!.fields.region).toBe("us-central1");
+    expect(bs!.externalId).toBe("us-central1/bs1");
+    expect(bs!.resolvedOutputs.selfLink).toContain("/regions/us-central1/backendServices/bs1");
     expect(bs!.fields.healthCheckCount).toBe(1);
     expect(bs!.fields.enableCDN).toBe(true);
 

@@ -24,5 +24,8 @@ export const Route53RecordSetResourceType: ResourceTypeDefinition = {
   iconKey: "dns",
   supportsCreate: true,
   supportsUpdate: true,
-  attachTargets: [{ pluginId: "aws", resourceTypeId: "alb", verb: "Point alias" }],
+  attachTargets: [
+    { pluginId: "aws", resourceTypeId: "alb", verb: "Point alias" },
+    { pluginId: "aws", resourceTypeId: "cloudfront-distribution", verb: "Point alias" },
+  ],
 };

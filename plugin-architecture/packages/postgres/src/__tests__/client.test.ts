@@ -107,9 +107,34 @@ describe("PostgresClient", () => {
       expect(res[0]!.fields["host"]).toBe("unknown");
     });
 
-    it("listSchemas returns empty", async () => {
+    it("queries schemas when sql service present", async () => {
+      sql.query.mockResolvedValue([{ schema_name: "billing" }, { schema_name: "public" }]);
       const c = new PostgresClient({ connectionString: CS }, services(sql));
-      expect(await c.listResources("pg-schema", "acct")).toEqual([]);
+      const res = await c.listResources("pg-schema", "acct");
+      expect(res.map((schema) => schema.displayName)).toEqual(["billing", "public"]);
+      expect(res[0]!.id).toBe("acct:pg-schema:billing");
+      expect(res[0]!.fields).toMatchObject({
+        name: "billing",
+        database: "appdb",
+        host: "db.example.com",
+      });
+      expect(sql.query).toHaveBeenCalledWith(
+        expect.stringContaining("information_schema.schemata"),
+      );
+    });
+
+    it("falls back to public schema when schema query throws", async () => {
+      sql.query.mockRejectedValue(new Error("boom"));
+      const c = new PostgresClient({ connectionString: CS }, services(sql));
+      const res = await c.listResources("pg-schema", "acct");
+      expect(res.map((schema) => schema.displayName)).toEqual(["public"]);
+      expect(res[0]!.fields).toMatchObject({ name: "public", database: "appdb" });
+    });
+
+    it("falls back to public schema when no sql service", async () => {
+      const c = new PostgresClient({ connectionString: CS });
+      const res = await c.listResources("pg-schema", "acct");
+      expect(res[0]!.id).toBe("acct:pg-schema:public");
     });
 
     it("throws on unknown type", async () => {
@@ -141,12 +166,32 @@ describe("PostgresClient", () => {
       expect(await c.resolveOutput("pg-database", "x", "connectionString", "acct")).toBe(CS);
     });
     it("returns serverVersion", async () => {
-      const c = new PostgresClient({ connectionString: CS });
-      expect(await c.resolveOutput("pg-database", "x", "serverVersion", "acct")).toMatch(/Postgre/);
+      sql.query.mockResolvedValue([{ version: "PostgreSQL 16.2 on x86_64" }]);
+      const c = new PostgresClient({ connectionString: CS }, services(sql));
+      expect(await c.resolveOutput("pg-database", "x", "serverVersion", "acct")).toBe(
+        "PostgreSQL 16.2",
+      );
     });
     it("returns schemaNames json", async () => {
-      const c = new PostgresClient({ connectionString: CS });
-      expect(await c.resolveOutput("pg-database", "x", "schemaNames", "acct")).toBe('["public"]');
+      sql.query.mockResolvedValue([{ schema_name: "billing" }, { schema_name: "public" }]);
+      const c = new PostgresClient({ connectionString: CS }, services(sql));
+      expect(await c.resolveOutput("pg-database", "x", "schemaNames", "acct")).toBe(
+        '["billing","public"]',
+      );
+    });
+    it("returns schema tableCount", async () => {
+      sql.query.mockResolvedValue([{ n: "3" }]);
+      const c = new PostgresClient({ connectionString: CS }, services(sql));
+      expect(
+        await c.resolveOutput("pg-schema", "acct:pg-schema:billing", "tableCount", "acct"),
+      ).toBe("3");
+      expect(sql.query).toHaveBeenCalledWith(expect.stringContaining("table_schema = 'billing'"));
+    });
+    it("escapes schema names in tableCount output query", async () => {
+      sql.query.mockResolvedValue([{ n: "1" }]);
+      const c = new PostgresClient({ connectionString: CS }, services(sql));
+      await c.resolveOutput("pg-schema", "acct:pg-schema:client's", "tableCount", "acct");
+      expect(sql.query).toHaveBeenCalledWith(expect.stringContaining("table_schema = 'client''s'"));
     });
     it("throws for unknown output", async () => {
       const c = new PostgresClient({ connectionString: CS });
@@ -329,16 +374,42 @@ describe("PostgresClient", () => {
 
     it("maps tables, columns, and primary keys", async () => {
       sql.query
-        .mockResolvedValueOnce([{ table_name: "users" }, { table_name: "orders" }])
         .mockResolvedValueOnce([
-          { table_name: "users", column_name: "id", data_type: "integer" },
-          { table_name: "users", column_name: "name", data_type: "text" },
-          { table_name: "orders", column_name: "id", data_type: "integer" },
+          { table_schema: "billing", table_name: "invoices" },
+          { table_schema: "public", table_name: "users" },
         ])
-        .mockResolvedValueOnce([{ table_name: "users", column_name: "id" }]);
+        .mockResolvedValueOnce([
+          {
+            table_schema: "billing",
+            table_name: "invoices",
+            column_name: "id",
+            data_type: "integer",
+          },
+          {
+            table_schema: "public",
+            table_name: "users",
+            column_name: "id",
+            data_type: "integer",
+          },
+          {
+            table_schema: "public",
+            table_name: "users",
+            column_name: "name",
+            data_type: "text",
+          },
+        ])
+        .mockResolvedValueOnce([
+          { table_schema: "billing", table_name: "invoices", column_name: "id" },
+          { table_schema: "public", table_name: "users", column_name: "id" },
+        ]);
       const c = new PostgresClient({ connectionString: CS }, services(sql));
       const meta = await c.introspect();
       expect(meta).toEqual([
+        {
+          name: "billing.invoices",
+          columns: [{ name: "id", type: "integer" }],
+          pkColumns: ["id"],
+        },
         {
           name: "users",
           columns: [
@@ -347,12 +418,8 @@ describe("PostgresClient", () => {
           ],
           pkColumns: ["id"],
         },
-        {
-          name: "orders",
-          columns: [{ name: "id", type: "integer" }],
-          pkColumns: [],
-        },
       ]);
+      expect(sql.query).toHaveBeenCalledWith(expect.stringContaining("table_type = 'BASE TABLE'"));
     });
   });
 
@@ -379,6 +446,7 @@ describe("PostgresClient", () => {
         { label: "Size", value: "42 MB" },
         { label: "Tables", value: "7" },
       ]);
+      expect(sql.query).toHaveBeenCalledWith(expect.stringContaining("table_type = 'BASE TABLE'"));
     });
 
     it("handles empty result rows", async () => {

@@ -56,6 +56,7 @@ import { driver } from "../driver.js";
 describe("mongodb driver extra branches", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockDbCommand.mockReset();
   });
 
   it("replaceOne returns modified/matched counts", async () => {
@@ -132,6 +133,7 @@ describe("mongodb driver extra branches", () => {
   });
 
   it("collectionStats falls back to countDocuments when estimated fails", async () => {
+    mockDbCommand.mockRejectedValue(new Error("collStats denied"));
     mockEstimatedDocumentCount.mockRejectedValue(new Error("no estimate"));
     mockCountDocuments.mockResolvedValue(7);
     mockIndexes.mockRejectedValue(new Error("no indexes"));

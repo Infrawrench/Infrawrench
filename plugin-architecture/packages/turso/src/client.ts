@@ -22,9 +22,17 @@ import type {
 type TursoApiClient = ReturnType<typeof createTursoApiClient>;
 
 interface TursoInvite {
+  ID?: number;
+  Email?: string;
+  Username?: string;
+  Role?: string;
+  Token?: string;
+  Accepted?: boolean;
   email?: string;
   username?: string;
   role?: string;
+  token?: string;
+  accepted?: boolean;
 }
 
 const TURSO_LOCATIONS: Record<string, { location: string; flag: string }> = {
@@ -411,7 +419,7 @@ export class TursoClient implements PluginClient {
     }
     if (typeId === "turso-organization-invite") {
       await this.fetch(
-        `/v2/organizations/${encodeURIComponent(this.orgName)}/invites/${encodeURIComponent(externalId)}`,
+        `/v1/organizations/${encodeURIComponent(this.orgName)}/invites/${encodeURIComponent(externalId)}`,
         { method: "DELETE" },
       );
       return;
@@ -653,7 +661,7 @@ export class TursoClient implements PluginClient {
 
   private async listOrganizationInvites(accountId: string): Promise<ResourceInstance[]> {
     const data = await this.fetch<{ invites?: TursoInvite[] }>(
-      `/v2/organizations/${encodeURIComponent(this.orgName)}/invites`,
+      `/v1/organizations/${encodeURIComponent(this.orgName)}/invites`,
     );
     const now = new Date().toISOString();
     return (data.invites ?? []).map((invite) => this.mapOrganizationInvite(accountId, invite, now));
@@ -724,7 +732,7 @@ export class TursoClient implements PluginClient {
     if (!email) throw new Error("Turso plugin: missing invite email");
 
     const data = await this.fetch<{ invited: TursoInvite }>(
-      `/v2/organizations/${encodeURIComponent(this.orgName)}/invites`,
+      `/v1/organizations/${encodeURIComponent(this.orgName)}/invites`,
       {
         method: "POST",
         body: JSON.stringify({ email, role }),
@@ -739,8 +747,8 @@ export class TursoClient implements PluginClient {
     invite: TursoInvite,
     now: string,
   ): ResourceInstance {
-    const email = invite.email ?? "";
-    const username = invite.username ?? "";
+    const email = invite.email ?? invite.Email ?? "";
+    const username = invite.username ?? invite.Username ?? "";
     const externalId = email || username;
     return {
       id: `${accountId}:turso-organization-invite:${externalId}`,
@@ -752,7 +760,7 @@ export class TursoClient implements PluginClient {
       fields: {
         email,
         username,
-        role: invite.role ?? "",
+        role: invite.role ?? invite.Role ?? "",
       },
       resolvedOutputs: {},
       secretStates: [],

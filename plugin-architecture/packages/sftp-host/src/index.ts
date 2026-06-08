@@ -130,6 +130,50 @@ export function sftpMkdir(
   );
 }
 
+export function sftpRename(
+  config: SftpConfig,
+  fromPath: string,
+  toPath: string,
+  options?: WithSftpOptions,
+): Promise<void> {
+  return withSftp(
+    config,
+    (sftp) =>
+      new Promise((resolve, reject) => {
+        sftp.rename(fromPath, toPath, (err) => {
+          if (err) {
+            reject(err);
+            return;
+          }
+          resolve();
+        });
+      }),
+    options,
+  );
+}
+
+export function sftpChmod(
+  config: SftpConfig,
+  remotePath: string,
+  mode: number,
+  options?: WithSftpOptions,
+): Promise<void> {
+  return withSftp(
+    config,
+    (sftp) =>
+      new Promise((resolve, reject) => {
+        sftp.chmod(remotePath, mode, (err) => {
+          if (err) {
+            reject(err);
+            return;
+          }
+          resolve();
+        });
+      }),
+    options,
+  );
+}
+
 function joinPath(dir: string, name: string): string {
   return dir.endsWith("/") ? `${dir}${name}` : `${dir}/${name}`;
 }

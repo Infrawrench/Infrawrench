@@ -7,6 +7,7 @@ export const BackendServiceResourceType: ResourceTypeDefinition = {
   description: "A Google Cloud Load Balancing backend service",
   fields: [
     { key: "name", label: "Name", kind: "string", required: true },
+    { key: "region", label: "Region", kind: "string", required: false },
     { key: "description", label: "Description", kind: "string", required: false },
     { key: "protocol", label: "Protocol", kind: "string", required: false },
     { key: "port", label: "Port", kind: "number", required: false },

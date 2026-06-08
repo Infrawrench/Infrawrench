@@ -27,6 +27,34 @@ interface VersionInfo {
   Arch: string;
 }
 
+interface ImageInfo {
+  Id: string;
+  RepoTags?: string[];
+  Created: number;
+  Size: number;
+  Containers?: number;
+}
+
+interface VolumeInfo {
+  Name: string;
+  Driver: string;
+  Mountpoint: string;
+  CreatedAt?: string;
+  Labels?: Record<string, string>;
+  Scope?: string;
+}
+
+interface NetworkInfo {
+  Id: string;
+  Name: string;
+  Driver: string;
+  Scope: string;
+  Created?: string;
+  Internal?: boolean;
+  Attachable?: boolean;
+  IPAM?: { Config?: Array<{ Subnet?: string; Gateway?: string }> };
+}
+
 function formatPorts(ports: ContainerInfo["Ports"]): string {
   if (!ports || ports.length === 0) return "";
   return ports
@@ -50,6 +78,35 @@ function containerStatus(state: string): ResourceStatus {
   }
 }
 
+function resourceId(accountId: string, typeId: string, externalId: string): string {
+  return `${accountId}:${typeId}:${encodeURIComponent(externalId)}`;
+}
+
+function parseExternalId(resourceIdValue: string): string {
+  const raw = resourceIdValue.split(":").pop();
+  if (!raw) throw new Error("Cannot parse Docker resource ID");
+  return decodeURIComponent(raw);
+}
+
+function formatBytes(bytes: number | undefined): string {
+  if (!bytes || bytes < 0) return "";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  return `${value.toFixed(value >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+}
+
+const resourceTypeIds = new Set([
+  "docker-container",
+  "docker-image",
+  "docker-volume",
+  "docker-network",
+]);
+
 export class DockerClient implements PluginClient {
   private readonly dockerHost: string;
   private readonly services: HostServices | undefined;
@@ -60,40 +117,117 @@ export class DockerClient implements PluginClient {
   }
 
   async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
-    if (typeId !== "docker-container") {
+    if (!resourceTypeIds.has(typeId)) {
       throw new Error(`Docker plugin: unknown resource type "${typeId}"`);
     }
     const docker = this.services?.docker;
     if (!docker) return [];
 
-    const containers = (await docker.command("listContainers")) as ContainerInfo[];
     const now = new Date().toISOString();
+    if (typeId === "docker-container") {
+      const containers = (await docker.command("listContainers")) as ContainerInfo[];
 
-    return containers.map((c) => {
-      const name = (c.Names[0] ?? "").replace(/^\//, "");
-      const ports = formatPorts(c.Ports);
-      return {
-        id: `${accountId}:docker-container:${c.Id.slice(0, 12)}`,
+      return containers.map((c) => {
+        const name = (c.Names[0] ?? "").replace(/^\//, "");
+        const ports = formatPorts(c.Ports);
+        return {
+          id: `${accountId}:docker-container:${c.Id.slice(0, 12)}`,
+          pluginId: "docker",
+          resourceTypeId: "docker-container",
+          accountId,
+          displayName: name || c.Id.slice(0, 12),
+          fields: {
+            name,
+            image: c.Image,
+            status: c.Status,
+            ports,
+          },
+          resolvedOutputs: {
+            containerId: c.Id,
+            status: c.State,
+          },
+          secretStates: [],
+          externalId: c.Id,
+          createdAt: new Date(c.Created * 1000).toISOString(),
+          updatedAt: now,
+        };
+      });
+    }
+
+    if (typeId === "docker-image") {
+      const images = (await docker.command("listImages")) as ImageInfo[];
+      return images.map((image) => {
+        const tags = (image.RepoTags ?? []).filter((tag) => tag && tag !== "<none>:<none>");
+        const displayName = tags[0] ?? image.Id.replace(/^sha256:/, "").slice(0, 12);
+        return {
+          id: resourceId(accountId, "docker-image", image.Id),
+          pluginId: "docker",
+          resourceTypeId: "docker-image",
+          accountId,
+          displayName,
+          fields: {
+            tags: tags.join(", "),
+            size: formatBytes(image.Size),
+            containers: image.Containers ?? 0,
+          },
+          resolvedOutputs: { imageId: image.Id },
+          secretStates: [],
+          externalId: image.Id,
+          createdAt: new Date(image.Created * 1000).toISOString(),
+          updatedAt: now,
+        };
+      });
+    }
+
+    if (typeId === "docker-volume") {
+      const volumes = (await docker.command("listVolumes")) as VolumeInfo[];
+      return volumes.map((volume) => ({
+        id: resourceId(accountId, "docker-volume", volume.Name),
         pluginId: "docker",
-        resourceTypeId: "docker-container",
+        resourceTypeId: "docker-volume",
         accountId,
-        displayName: name || c.Id.slice(0, 12),
+        displayName: volume.Name,
         fields: {
-          name,
-          image: c.Image,
-          status: c.Status,
-          ports,
+          name: volume.Name,
+          driver: volume.Driver,
+          mountpoint: volume.Mountpoint,
+          scope: volume.Scope ?? "",
         },
-        resolvedOutputs: {
-          containerId: c.Id,
-          status: c.State,
-        },
+        resolvedOutputs: { volumeName: volume.Name },
         secretStates: [],
-        externalId: c.Id,
-        createdAt: new Date(c.Created * 1000).toISOString(),
+        externalId: volume.Name,
+        createdAt: volume.CreatedAt ?? now,
         updatedAt: now,
-      };
-    });
+      }));
+    }
+
+    if (typeId === "docker-network") {
+      const networks = (await docker.command("listNetworks")) as NetworkInfo[];
+      return networks.map((network) => {
+        const subnet = network.IPAM?.Config?.find((config) => config.Subnet)?.Subnet ?? "";
+        return {
+          id: resourceId(accountId, "docker-network", network.Id),
+          pluginId: "docker",
+          resourceTypeId: "docker-network",
+          accountId,
+          displayName: network.Name,
+          fields: {
+            name: network.Name,
+            driver: network.Driver,
+            scope: network.Scope,
+            subnet,
+            internal: network.Internal ?? false,
+          },
+          resolvedOutputs: { networkId: network.Id },
+          secretStates: [],
+          externalId: network.Id,
+          createdAt: network.Created ?? now,
+          updatedAt: now,
+        };
+      });
+    }
+
+    throw new Error(`Docker plugin: unknown resource type "${typeId}"`);
   }
 
   async getResource(
@@ -112,6 +246,85 @@ export class DockerClient implements PluginClient {
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {
+    if (resource.resourceTypeId === "docker-image") {
+      return {
+        title: resource.displayName,
+        subtitle: String(resource.fields["tags"] ?? ""),
+        sections: [
+          {
+            kind: "section",
+            title: "Image",
+            children: [
+              {
+                kind: "key-value-list",
+                items: [
+                  { key: "ID", value: String(resource.externalId ?? "").slice(0, 19) },
+                  { key: "Tags", value: String(resource.fields["tags"] ?? "—") || "—" },
+                  { key: "Size", value: String(resource.fields["size"] ?? "—") || "—" },
+                  { key: "Containers", value: String(resource.fields["containers"] ?? "—") },
+                ],
+              },
+            ],
+          },
+        ],
+        headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+      };
+    }
+
+    if (resource.resourceTypeId === "docker-volume") {
+      return {
+        title: resource.displayName,
+        subtitle: String(resource.fields["driver"] ?? ""),
+        sections: [
+          {
+            kind: "section",
+            title: "Volume",
+            children: [
+              {
+                kind: "key-value-list",
+                items: [
+                  { key: "Name", value: String(resource.fields["name"] ?? "—") || "—" },
+                  { key: "Driver", value: String(resource.fields["driver"] ?? "—") || "—" },
+                  {
+                    key: "Mountpoint",
+                    value: String(resource.fields["mountpoint"] ?? "—") || "—",
+                  },
+                  { key: "Scope", value: String(resource.fields["scope"] ?? "—") || "—" },
+                ],
+              },
+            ],
+          },
+        ],
+        headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+      };
+    }
+
+    if (resource.resourceTypeId === "docker-network") {
+      return {
+        title: resource.displayName,
+        subtitle: String(resource.fields["driver"] ?? ""),
+        sections: [
+          {
+            kind: "section",
+            title: "Network",
+            children: [
+              {
+                kind: "key-value-list",
+                items: [
+                  { key: "ID", value: String(resource.externalId ?? "").slice(0, 12) },
+                  { key: "Driver", value: String(resource.fields["driver"] ?? "—") || "—" },
+                  { key: "Scope", value: String(resource.fields["scope"] ?? "—") || "—" },
+                  { key: "Subnet", value: String(resource.fields["subnet"] ?? "—") || "—" },
+                  { key: "Internal", value: String(resource.fields["internal"] ?? false) },
+                ],
+              },
+            ],
+          },
+        ],
+        headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+      };
+    }
+
     const name = String(resource.fields["name"] ?? resource.displayName);
     const image = String(resource.fields["image"] ?? "");
     const status = String(resource.fields["status"] ?? "");
@@ -147,6 +360,10 @@ export class DockerClient implements PluginClient {
   }
 
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema {
+    if (resource.resourceTypeId !== "docker-container") {
+      return { id: resource.id, label: resource.displayName };
+    }
+
     const state = String(resource.resolvedOutputs["status"] ?? "unknown");
     return {
       id: resource.id,
@@ -196,6 +413,45 @@ export class DockerClient implements PluginClient {
               { id: "false", label: "No" },
             ],
             defaultValue: "true",
+          },
+        ],
+      };
+    }
+    if (typeId === "docker-volume") {
+      return {
+        fields: [
+          { key: "name", label: "Volume Name", kind: "text", required: true },
+          {
+            key: "driver",
+            label: "Driver",
+            kind: "text",
+            required: false,
+            defaultValue: "local",
+          },
+        ],
+      };
+    }
+    if (typeId === "docker-network") {
+      return {
+        fields: [
+          { key: "name", label: "Network Name", kind: "text", required: true },
+          {
+            key: "driver",
+            label: "Driver",
+            kind: "text",
+            required: false,
+            defaultValue: "bridge",
+          },
+          {
+            key: "internal",
+            label: "Internal",
+            kind: "select",
+            required: false,
+            options: [
+              { id: "false", label: "No" },
+              { id: "true", label: "Yes" },
+            ],
+            defaultValue: "false",
           },
         ],
       };
@@ -263,18 +519,84 @@ export class DockerClient implements PluginClient {
         updatedAt: now,
       };
     }
+    if (typeId === "docker-volume") {
+      const docker = this.services?.docker;
+      if (!docker) throw new Error("Docker service not available");
+      const name = fields["name"] ?? "";
+      const driver = fields["driver"] || "local";
+      const result = (await docker.command("createVolume", { name, driver })) as VolumeInfo;
+      const now = new Date().toISOString();
+      return {
+        id: resourceId(accountId, "docker-volume", result.Name),
+        pluginId: "docker",
+        resourceTypeId: "docker-volume",
+        accountId,
+        displayName: result.Name,
+        fields: {
+          name: result.Name,
+          driver: result.Driver,
+          mountpoint: result.Mountpoint,
+          scope: result.Scope ?? "",
+        },
+        resolvedOutputs: { volumeName: result.Name },
+        secretStates: [],
+        externalId: result.Name,
+        createdAt: result.CreatedAt ?? now,
+        updatedAt: now,
+      };
+    }
+    if (typeId === "docker-network") {
+      const docker = this.services?.docker;
+      if (!docker) throw new Error("Docker service not available");
+      const name = fields["name"] ?? "";
+      const driver = fields["driver"] || "bridge";
+      const internal = fields["internal"] === "true";
+      const result = (await docker.command("createNetwork", { name, driver, internal })) as {
+        Id: string;
+        Warning?: string;
+      };
+      const now = new Date().toISOString();
+      return {
+        id: resourceId(accountId, "docker-network", result.Id),
+        pluginId: "docker",
+        resourceTypeId: "docker-network",
+        accountId,
+        displayName: name || result.Id.slice(0, 12),
+        fields: { name, driver, scope: "", subnet: "", internal },
+        resolvedOutputs: { networkId: result.Id },
+        secretStates: [],
+        externalId: result.Id,
+        createdAt: now,
+        updatedAt: now,
+      };
+    }
     throw new Error(`Docker plugin: createResource not supported for type "${typeId}"`);
   }
 
   async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
-    if (typeId !== "docker-container") {
+    if (!resourceTypeIds.has(typeId)) {
       throw new Error(`Docker plugin: deleteResource not supported for type "${typeId}"`);
     }
     const docker = this.services?.docker;
     if (!docker) throw new Error("Docker service not available");
-    const containerId = resourceId.split(":").pop();
-    if (!containerId) throw new Error("Cannot parse container ID");
-    await docker.command("removeContainer", { id: containerId });
+    const id = parseExternalId(resourceId);
+    if (typeId === "docker-container") {
+      await docker.command("removeContainer", { id });
+      return;
+    }
+    if (typeId === "docker-image") {
+      await docker.command("removeImage", { id });
+      return;
+    }
+    if (typeId === "docker-volume") {
+      await docker.command("removeVolume", { name: id });
+      return;
+    }
+    if (typeId === "docker-network") {
+      await docker.command("removeNetwork", { id });
+      return;
+    }
+    throw new Error(`Docker plugin: deleteResource not supported for type "${typeId}"`);
   }
 
   async fetchDashboardStats(

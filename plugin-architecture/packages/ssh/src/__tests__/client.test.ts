@@ -59,8 +59,26 @@ describe("SshClient.getResource", () => {
 });
 
 describe("SshClient.resolveOutput", () => {
-  it("returns an empty string", async () => {
-    expect(await makeClient().resolveOutput()).toBe("");
+  it("resolves connection outputs", async () => {
+    const client = makeClient({ port: "2222", username: "deploy" });
+    expect(await client.resolveOutput("ssh-target", "id", "host")).toBe("example.com");
+    expect(await client.resolveOutput("ssh-target", "id", "port")).toBe("2222");
+    expect(await client.resolveOutput("ssh-target", "id", "username")).toBe("deploy");
+    expect(await client.resolveOutput("ssh-target", "id", "sshCommand")).toBe(
+      "ssh -p 2222 deploy@example.com",
+    );
+  });
+
+  it("quotes generated SSH commands when needed", async () => {
+    const client = makeClient({ host: "edge host.example.com", username: "deploy user" });
+    expect(await client.resolveOutput("ssh-target", "id", "sshCommand")).toBe(
+      "ssh -p 22 'deploy user@edge host.example.com'",
+    );
+  });
+
+  it("returns an empty string for unknown outputs", async () => {
+    expect(await makeClient().resolveOutput("ssh-target", "id", "unknown")).toBe("");
+    expect(await makeClient().resolveOutput("other", "id", "host")).toBe("");
   });
 });
 

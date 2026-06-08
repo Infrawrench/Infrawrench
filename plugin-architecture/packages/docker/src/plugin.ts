@@ -1,6 +1,9 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
 import { DockerClient } from "./client.js";
 import { DockerContainerResourceType } from "./resources/docker-container.js";
+import { DockerImageResourceType } from "./resources/docker-image.js";
+import { DockerNetworkResourceType } from "./resources/docker-network.js";
+import { DockerVolumeResourceType } from "./resources/docker-volume.js";
 
 const manifest: PluginManifest = {
   id: "docker",
@@ -30,7 +33,12 @@ const manifest: PluginManifest = {
   },
 };
 
-const resourceTypes: ResourceTypeDefinition[] = [DockerContainerResourceType];
+const resourceTypes: ResourceTypeDefinition[] = [
+  DockerContainerResourceType,
+  DockerImageResourceType,
+  DockerVolumeResourceType,
+  DockerNetworkResourceType,
+];
 
 export const plugin: Plugin = {
   manifest,

@@ -9,7 +9,10 @@ import type {
   PeerPaneContext,
   PeerPaneSchema,
   PeerPaneResource,
+  CreateResourceConfig,
 } from "@infrawrench/plugin-base";
+
+const SYSTEM_DATABASES = new Set(["information_schema", "performance_schema", "mysql", "sys"]);
 
 export class MySQLClient implements PluginClient {
   private readonly connectionString: string;
@@ -42,8 +45,89 @@ export class MySQLClient implements PluginClient {
     return found;
   }
 
-  async resolveOutput(typeId: string, _resourceId: string, outputKey: string): Promise<string> {
+  async resolveOutput(typeId: string, resourceId: string, outputKey: string): Promise<string> {
+    if (typeId === "mysql-database") {
+      if (outputKey === "connectionString") {
+        return this.connectionStringForDatabase(this.databaseNameFromResourceId(resourceId));
+      }
+      if (outputKey === "serverVersion") {
+        const sql = this.services?.sql;
+        if (!sql) return "";
+        const rows = (await sql.query("SELECT VERSION() AS version")) as Array<{
+          version?: unknown;
+        }>;
+        return String(rows[0]?.version ?? "");
+      }
+    }
     throw new Error(`MySQL plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+  }
+
+  async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
+    if (typeId !== "mysql-database") {
+      throw new Error(`MySQL plugin: no create config for type "${typeId}"`);
+    }
+    return {
+      fields: [
+        {
+          key: "name",
+          label: "Database name",
+          kind: "text",
+          required: true,
+          placeholder: "appdb",
+        },
+        {
+          key: "characterSet",
+          label: "Character set",
+          kind: "text",
+          required: false,
+          defaultValue: "utf8mb4",
+          placeholder: "utf8mb4",
+        },
+        {
+          key: "collation",
+          label: "Collation",
+          kind: "text",
+          required: false,
+          placeholder: "utf8mb4_0900_ai_ci",
+        },
+      ],
+    };
+  }
+
+  async createResource(
+    typeId: string,
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
+    if (typeId !== "mysql-database") {
+      throw new Error(`MySQL plugin: createResource not supported for type "${typeId}"`);
+    }
+    const sql = this.services?.sql;
+    if (!sql) throw new Error("MySQL SQL service not available");
+
+    const dbName = this.validateDatabaseName(fields["name"] ?? "");
+    const characterSet = this.optionalIdentifier(fields["characterSet"] ?? "");
+    const collation = this.optionalIdentifier(fields["collation"] ?? "");
+
+    let statement = `CREATE DATABASE \`${dbName}\``;
+    if (characterSet) statement += ` CHARACTER SET ${characterSet}`;
+    if (collation) statement += ` COLLATE ${collation}`;
+    await sql.execute(statement, []);
+
+    const now = new Date().toISOString();
+    return {
+      id: `${accountId}:mysql-database:${dbName}`,
+      pluginId: "mysql",
+      resourceTypeId: "mysql-database",
+      accountId,
+      displayName: dbName,
+      externalId: dbName,
+      fields: { host: this.hostFromConnectionString(), database: dbName },
+      resolvedOutputs: {},
+      secretStates: [],
+      createdAt: now,
+      updatedAt: now,
+    };
   }
 
   async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
@@ -52,15 +136,11 @@ export class MySQLClient implements PluginClient {
     }
     const sql = this.services?.sql;
     if (!sql) throw new Error("MySQL SQL service not available");
-    const dbName = resourceId.split(":").pop();
-    if (!dbName) throw new Error("Cannot parse database name");
-    const systemDbs = ["information_schema", "performance_schema", "mysql", "sys"];
-    if (systemDbs.includes(dbName)) {
+    const dbName = this.databaseNameFromResourceId(resourceId);
+    if (SYSTEM_DATABASES.has(dbName)) {
       throw new Error(`Cannot delete system database "${dbName}"`);
     }
-    if (dbName.includes("`")) {
-      throw new Error("Invalid database name");
-    }
+    this.validateDatabaseName(dbName);
     await sql.execute(`DROP DATABASE \`${dbName}\``, []);
   }
 
@@ -231,23 +311,16 @@ export class MySQLClient implements PluginClient {
     if (this.services?.sql) {
       try {
         const rows = await this.services.sql.query("SHOW DATABASES");
-        let host = "unknown";
-        try {
-          host = new URL(this.connectionString).hostname;
-        } catch {
-          /* ignore */
-        }
+        const host = this.hostFromConnectionString();
         return (rows as { Database: string }[])
-          .filter(
-            (r) =>
-              !["information_schema", "performance_schema", "mysql", "sys"].includes(r.Database),
-          )
+          .filter((r) => !SYSTEM_DATABASES.has(r.Database))
           .map((row) => ({
             id: `${accountId}:mysql-database:${row.Database}`,
             pluginId: "mysql",
             resourceTypeId: "mysql-database",
             accountId,
             displayName: row.Database,
+            externalId: row.Database,
             fields: { host, database: row.Database },
             resolvedOutputs: {},
             secretStates: [],
@@ -277,6 +350,7 @@ export class MySQLClient implements PluginClient {
         resourceTypeId: "mysql-database",
         accountId,
         displayName: dbName,
+        externalId: dbName,
         fields: { host, database: dbName },
         resolvedOutputs: {},
         secretStates: [],
@@ -284,5 +358,50 @@ export class MySQLClient implements PluginClient {
         updatedAt: now,
       },
     ];
+  }
+
+  private databaseNameFromResourceId(resourceId: string): string {
+    const dbName = resourceId.split(":").pop();
+    if (!dbName) throw new Error("Cannot parse database name");
+    return dbName;
+  }
+
+  private validateDatabaseName(value: string): string {
+    const dbName = value.trim();
+    if (!dbName) throw new Error("Database name is required");
+    if (dbName.length > 64 || dbName.includes("`") || dbName.includes("\0")) {
+      throw new Error("Invalid database name");
+    }
+    if (SYSTEM_DATABASES.has(dbName)) {
+      throw new Error(`Cannot create system database "${dbName}"`);
+    }
+    return dbName;
+  }
+
+  private optionalIdentifier(value: string): string {
+    const identifier = value.trim();
+    if (!identifier) return "";
+    if (!/^[A-Za-z0-9_$]+$/.test(identifier)) {
+      throw new Error("Invalid MySQL identifier");
+    }
+    return identifier;
+  }
+
+  private hostFromConnectionString(): string {
+    try {
+      return new URL(this.connectionString).hostname;
+    } catch {
+      return "unknown";
+    }
+  }
+
+  private connectionStringForDatabase(dbName: string): string {
+    try {
+      const url = new URL(this.connectionString);
+      url.pathname = `/${dbName}`;
+      return url.toString();
+    } catch {
+      return this.connectionString;
+    }
   }
 }

@@ -14,6 +14,11 @@ export interface SshCredentials {
   password?: string;
 }
 
+function shellQuote(value: string): string {
+  if (/^[A-Za-z0-9._~@%+=:,/-]+$/.test(value)) return value;
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
 export class SshClient implements PluginClient {
   constructor(private readonly creds: SshCredentials) {}
 
@@ -48,8 +53,21 @@ export class SshClient implements PluginClient {
     return found;
   }
 
-  async resolveOutput(): Promise<string> {
-    return "";
+  async resolveOutput(typeId: string, _resourceId: string, outputKey: string): Promise<string> {
+    if (typeId !== "ssh-target") return "";
+    const { host, port = "22", username = "root" } = this.creds;
+    switch (outputKey) {
+      case "host":
+        return host;
+      case "port":
+        return String(port);
+      case "username":
+        return username;
+      case "sshCommand":
+        return `ssh -p ${shellQuote(String(port))} ${shellQuote(`${username}@${host}`)}`;
+      default:
+        return "";
+    }
   }
 
   async fetchDashboardStats(): Promise<DashboardStat[]> {

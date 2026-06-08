@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach, type Mock } from "vitest";
 import { PlanetScaleClient } from "../client.js";
+import { PsPasswordResourceType } from "../resources/ps-password.js";
 
 const ACCOUNT = "acct1";
 const creds = {
@@ -629,6 +630,25 @@ describe("getCreateConfig", () => {
     expect(parent).not.toHaveProperty("defaultValue");
   });
 
+  it("password config supports explicit and parent branch creation", async () => {
+    const client = makeClient();
+    const explicit = await client.getCreateConfig("ps-password");
+    expect(explicit.fields.map((f) => f.key)).toEqual([
+      "databaseName",
+      "branchName",
+      "name",
+      "role",
+      "ttl",
+      "cidrs",
+    ]);
+    expect(explicit.fields.find((f) => f.key === "role")).toMatchObject({
+      defaultValue: "reader",
+    });
+
+    const inherited = await client.getCreateConfig("ps-password", "acct1:ps-branch:mydb/main");
+    expect(inherited.fields.map((f) => f.key)).toEqual(["name", "role", "ttl", "cidrs"]);
+  });
+
   it("throws unknown type", async () => {
     const client = makeClient();
     await expect(client.getCreateConfig("nope")).rejects.toThrow(/no create config/);
@@ -692,6 +712,76 @@ describe("createResource", () => {
     expect(res.fields.databaseName).toBe("mydb");
   });
 
+  it("creates a branch password under a parent branch", async () => {
+    mockFetchSequence(
+      okJson({
+        data: passwordRecord({
+          id: "pw2",
+          name: "app",
+          role: "readwriter",
+          username: "user",
+          cidrs: ["203.0.113.10/32", "198.51.100.0/24"],
+          expires_at: "2026-06-09T00:00:00Z",
+        }),
+      }),
+    );
+    const client = makeClient();
+    const res = await client.createResource(
+      "ps-password",
+      ACCOUNT,
+      {
+        name: "app",
+        role: "readwriter",
+        ttl: "3600",
+        cidrs: "203.0.113.10/32, 198.51.100.0/24",
+      },
+      "acct1:ps-branch:mydb/main",
+    );
+
+    expect(res).toMatchObject({
+      id: "acct1:ps-password:mydb/main/pw2",
+      parentResourceId: "acct1:ps-branch:mydb/main",
+      fields: {
+        name: "app",
+        databaseName: "mydb",
+        branchName: "main",
+        role: "readwriter",
+        cidrs: "203.0.113.10/32, 198.51.100.0/24",
+      },
+    });
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe(
+      "https://api.planetscale.com/v1/organizations/myorg/databases/mydb/branches/main/passwords",
+    );
+    expect((init as RequestInit).method).toBe("POST");
+    expect(JSON.parse(String((init as RequestInit).body))).toEqual({
+      name: "app",
+      role: "readwriter",
+      ttl: 3600,
+      cidrs: ["203.0.113.10/32", "198.51.100.0/24"],
+    });
+  });
+
+  it("creates a branch password with explicit database and branch fields", async () => {
+    mockFetchSequence(okJson({ data: passwordRecord({ id: "pw3", name: "worker" }) }));
+    const client = makeClient();
+    await client.createResource("ps-password", ACCOUNT, {
+      databaseName: "mydb",
+      branchName: "dev",
+      name: "worker",
+      role: "reader",
+    });
+
+    expect(String(fetchMock.mock.calls[0]![0])).toContain("/databases/mydb/branches/dev/passwords");
+  });
+
+  it("throws when password creation has no branch identity", async () => {
+    const client = makeClient();
+    await expect(
+      client.createResource("ps-password", ACCOUNT, { name: "missing" }),
+    ).rejects.toThrow(/requires a database and branch/);
+  });
+
   it("throws unknown create type", async () => {
     const client = makeClient();
     await expect(client.createResource("nope", ACCOUNT, {})).rejects.toThrow(/cannot create type/);
@@ -743,5 +833,11 @@ describe("caCert + host http path", () => {
     // direct-fetch client still works
     mockFetchSequence(okJson({ data: [] }));
     expect(await client.listResources("ps-database", ACCOUNT)).toEqual([]);
+  });
+});
+
+describe("resource metadata", () => {
+  it("marks branch passwords create-capable", () => {
+    expect(PsPasswordResourceType.supportsCreate).toBe(true);
   });
 });

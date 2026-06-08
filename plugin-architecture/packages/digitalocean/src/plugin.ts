@@ -40,6 +40,24 @@ const manifest: PluginManifest = {
       sensitive: true,
       placeholder: "dop_v1_...",
     },
+    {
+      key: "spacesAccessKeyId",
+      label: "Spaces Access Key ID",
+      description:
+        "Optional S3-compatible Spaces access key. Required to list and manage existing Spaces buckets; bucket creation can auto-mint one when the API token has spaces_key:create_credentials.",
+      sensitive: true,
+      optional: true,
+      placeholder: "DO00...",
+    },
+    {
+      key: "spacesSecretAccessKey",
+      label: "Spaces Secret Access Key",
+      description:
+        "Optional S3-compatible Spaces secret key. Stored encrypted and used only for Spaces bucket/object operations.",
+      sensitive: true,
+      optional: true,
+      placeholder: "secret shown once by DigitalOcean",
+    },
   ],
   rateLimit: { capacity: 60, refillPerSecond: 4 },
 };

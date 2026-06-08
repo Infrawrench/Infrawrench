@@ -116,10 +116,111 @@ describe("MySQLClient", () => {
   });
 
   describe("resolveOutput", () => {
-    it("throws (unsupported)", async () => {
+    it("resolves a database-specific connection string", async () => {
       const c = new MySQLClient({ connectionString: CS });
-      await expect(c.resolveOutput("mysql-database", "x", "connectionString")).rejects.toThrow(
+      await expect(
+        c.resolveOutput("mysql-database", "acct:mysql-database:shop", "connectionString"),
+      ).resolves.toBe("mysql://user:pass@db.example.com:3306/shop");
+    });
+
+    it("falls back to raw connection string when URI cannot be parsed", async () => {
+      const c = new MySQLClient({ connectionString: "garbage" });
+      await expect(
+        c.resolveOutput("mysql-database", "acct:mysql-database:shop", "connectionString"),
+      ).resolves.toBe("garbage");
+    });
+
+    it("resolves server version through SQL service", async () => {
+      sql.query.mockResolvedValue([{ version: "8.4.0" }]);
+      const c = new MySQLClient({ connectionString: CS }, services(sql));
+      await expect(
+        c.resolveOutput("mysql-database", "acct:mysql-database:shop", "serverVersion"),
+      ).resolves.toBe("8.4.0");
+      expect(sql.query).toHaveBeenCalledWith("SELECT VERSION() AS version");
+    });
+
+    it("returns empty server version without SQL service", async () => {
+      const c = new MySQLClient({ connectionString: CS });
+      await expect(
+        c.resolveOutput("mysql-database", "acct:mysql-database:shop", "serverVersion"),
+      ).resolves.toBe("");
+    });
+
+    it("throws on unknown output", async () => {
+      const c = new MySQLClient({ connectionString: CS });
+      await expect(c.resolveOutput("mysql-database", "x", "x")).rejects.toThrow(
         /cannot resolve output/,
+      );
+    });
+  });
+
+  describe("getCreateConfig", () => {
+    it("returns database create fields", async () => {
+      const c = new MySQLClient({ connectionString: CS });
+      const cfg = await c.getCreateConfig("mysql-database");
+      expect(cfg.fields.map((f) => f.key)).toEqual(["name", "characterSet", "collation"]);
+      expect(cfg.fields[1]!.defaultValue).toBe("utf8mb4");
+    });
+
+    it("throws for unsupported type", async () => {
+      const c = new MySQLClient({ connectionString: CS });
+      await expect(c.getCreateConfig("x")).rejects.toThrow(/no create config/);
+    });
+  });
+
+  describe("createResource", () => {
+    it("creates a database with charset and collation", async () => {
+      const c = new MySQLClient({ connectionString: CS }, services(sql));
+      const res = await c.createResource("mysql-database", "acct", {
+        name: "shop",
+        characterSet: "utf8mb4",
+        collation: "utf8mb4_0900_ai_ci",
+      });
+      expect(sql.execute).toHaveBeenCalledWith(
+        "CREATE DATABASE `shop` CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci",
+        [],
+      );
+      expect(res).toMatchObject({
+        id: "acct:mysql-database:shop",
+        displayName: "shop",
+        externalId: "shop",
+        fields: { host: "db.example.com", database: "shop" },
+      });
+    });
+
+    it("creates a database with server defaults when charset omitted", async () => {
+      const c = new MySQLClient({ connectionString: CS }, services(sql));
+      await c.createResource("mysql-database", "acct", { name: "shop" });
+      expect(sql.execute).toHaveBeenCalledWith("CREATE DATABASE `shop`", []);
+    });
+
+    it("throws when SQL service missing", async () => {
+      const c = new MySQLClient({ connectionString: CS });
+      await expect(c.createResource("mysql-database", "acct", { name: "shop" })).rejects.toThrow(
+        /SQL service not available/,
+      );
+    });
+
+    it("rejects invalid database and option names", async () => {
+      const c = new MySQLClient({ connectionString: CS }, services(sql));
+      await expect(
+        c.createResource("mysql-database", "acct", { name: "bad`name" }),
+      ).rejects.toThrow(/Invalid database name/);
+      await expect(
+        c.createResource("mysql-database", "acct", {
+          name: "shop",
+          characterSet: "utf8mb4;DROP",
+        }),
+      ).rejects.toThrow(/Invalid MySQL identifier/);
+    });
+
+    it("rejects system database names and unsupported types", async () => {
+      const c = new MySQLClient({ connectionString: CS }, services(sql));
+      await expect(c.createResource("mysql-database", "acct", { name: "mysql" })).rejects.toThrow(
+        /system database/,
+      );
+      await expect(c.createResource("x", "acct", { name: "shop" })).rejects.toThrow(
+        /not supported/,
       );
     });
   });

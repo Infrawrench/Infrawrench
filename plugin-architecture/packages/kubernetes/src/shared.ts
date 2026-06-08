@@ -286,8 +286,8 @@ export class K8sFetcher {
     };
     if (token) headers["Authorization"] = `Bearer ${token}`;
 
-    if (caCertData && this.services?.http) {
-      const caPem = atob(caCertData);
+    if (this.services?.http) {
+      const caPem = caCertData ? atob(caCertData) : undefined;
       let result;
       try {
         result = await this.services.http.request({
@@ -295,7 +295,7 @@ export class K8sFetcher {
           method: options?.method ?? "GET",
           headers,
           ...(options?.body ? { body: String(options.body) } : {}),
-          caCert: caPem,
+          ...(caPem ? { caCert: caPem } : {}),
         });
       } catch (err) {
         throw new Error(
@@ -347,15 +347,15 @@ export class K8sFetcher {
     const headers: Record<string, string> = {};
     if (token) headers["Authorization"] = `Bearer ${token}`;
 
-    if (caCertData && this.services?.http) {
-      const caPem = atob(caCertData);
+    if (this.services?.http) {
+      const caPem = caCertData ? atob(caCertData) : undefined;
       let result;
       try {
         result = await this.services.http.request({
           url: `${server}${path}`,
           method: "GET",
           headers,
-          caCert: caPem,
+          ...(caPem ? { caCert: caPem } : {}),
         });
       } catch (err) {
         throw new Error(

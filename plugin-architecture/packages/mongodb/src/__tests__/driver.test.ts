@@ -66,6 +66,7 @@ import { driver } from "../driver.js";
 describe("mongodb driver", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockDbCommand.mockReset();
   });
 
   it("has id 'mongodb'", () => {
@@ -211,6 +212,7 @@ describe("mongodb driver", () => {
     });
 
     it("collectionStats returns stats object", async () => {
+      mockDbCommand.mockRejectedValue(new Error("collStats denied"));
       mockEstimatedDocumentCount.mockResolvedValue(100);
       mockIndexes.mockResolvedValue([{ name: "_id_" }, { name: "name_1" }]);
 
@@ -220,6 +222,33 @@ describe("mongodb driver", () => {
       ]);
 
       expect(result).toEqual(expect.objectContaining({ count: 100, nindexes: 2 }));
+    });
+
+    it("collectionStats returns collStats fields when available", async () => {
+      mockDbCommand.mockResolvedValue({
+        count: 12,
+        size: 4096,
+        avgObjSize: 341,
+        storageSize: 8192,
+        nindexes: 3,
+        totalIndexSize: 1024,
+      });
+
+      const result = await driver.command("mongodb://localhost/test", "collectionStats", [
+        "test",
+        "users",
+      ]);
+
+      expect(mockDbCommand).toHaveBeenCalledWith({ collStats: "users" });
+      expect(result).toEqual({
+        count: 12,
+        size: 4096,
+        avgObjSize: 341,
+        storageSize: 8192,
+        nindexes: 3,
+        totalIndexSize: 1024,
+      });
+      expect(mockEstimatedDocumentCount).not.toHaveBeenCalled();
     });
 
     it("collectionStats throws when no collection name given", async () => {

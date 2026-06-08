@@ -10,6 +10,8 @@ import type { ConnectConfig } from "ssh2";
 interface FakeSftp {
   readdir: Mock;
   mkdir: Mock;
+  rename: Mock;
+  chmod: Mock;
   rmdir: Mock;
   unlink: Mock;
   createWriteStream: Mock;
@@ -58,6 +60,8 @@ import {
   withSftp,
   sftpList,
   sftpMkdir,
+  sftpRename,
+  sftpChmod,
   sftpDelete,
   sftpUpload,
   sftpDownload,
@@ -75,6 +79,8 @@ function makeSftp(overrides: Partial<FakeSftp> = {}): FakeSftp {
   return {
     readdir: vi.fn(),
     mkdir: vi.fn(),
+    rename: vi.fn(),
+    chmod: vi.fn(),
     rmdir: vi.fn(),
     unlink: vi.fn(),
     createWriteStream: vi.fn(),
@@ -211,6 +217,40 @@ describe("sftpMkdir", () => {
   it("rejects on error", async () => {
     fakeSftp = makeSftp({ mkdir: vi.fn((_p, cb) => cb(new Error("EEXIST"))) });
     await expect(sftpMkdir(config, "/new")).rejects.toThrow("EEXIST");
+  });
+});
+
+// ---- sftpRename ------------------------------------------------------------
+
+describe("sftpRename", () => {
+  it("renames or moves a remote path", async () => {
+    fakeSftp = makeSftp({ rename: vi.fn((_from, _to, cb) => cb(undefined)) });
+    await expect(sftpRename(config, "/old.txt", "/archive/new.txt")).resolves.toBeUndefined();
+    expect(fakeSftp.rename).toHaveBeenCalledWith(
+      "/old.txt",
+      "/archive/new.txt",
+      expect.any(Function),
+    );
+  });
+
+  it("rejects when rename errors", async () => {
+    fakeSftp = makeSftp({ rename: vi.fn((_from, _to, cb) => cb(new Error("rename fail"))) });
+    await expect(sftpRename(config, "/old.txt", "/new.txt")).rejects.toThrow("rename fail");
+  });
+});
+
+// ---- sftpChmod -------------------------------------------------------------
+
+describe("sftpChmod", () => {
+  it("updates remote file mode", async () => {
+    fakeSftp = makeSftp({ chmod: vi.fn((_path, _mode, cb) => cb(undefined)) });
+    await expect(sftpChmod(config, "/script.sh", 0o755)).resolves.toBeUndefined();
+    expect(fakeSftp.chmod).toHaveBeenCalledWith("/script.sh", 0o755, expect.any(Function));
+  });
+
+  it("rejects when chmod errors", async () => {
+    fakeSftp = makeSftp({ chmod: vi.fn((_path, _mode, cb) => cb(new Error("chmod fail"))) });
+    await expect(sftpChmod(config, "/script.sh", 0o755)).rejects.toThrow("chmod fail");
   });
 });
 

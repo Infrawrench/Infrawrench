@@ -1,4 +1,5 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { DatabricksClient } from "./client.js";
 import { ClusterResourceType } from "./resources/cluster.js";
 import { SqlWarehouseResourceType } from "./resources/sql-warehouse.js";
@@ -55,6 +56,7 @@ const manifest: PluginManifest = {
       sensitive: true,
       placeholder: "dapi...",
     },
+    caCertCredentialField,
   ],
 };
 
@@ -86,5 +88,6 @@ const resourceTypes: ResourceTypeDefinition[] = [
 export const plugin: Plugin = {
   manifest,
   resourceTypes,
-  createClient: (credentials) => new DatabricksClient(credentials, resourceTypes),
+  createClient: (credentials, services) =>
+    new DatabricksClient(credentials, resourceTypes, services),
 };

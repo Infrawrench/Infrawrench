@@ -21,6 +21,9 @@ const api = {
   deleteProjectEndpoint: vi.fn(),
   deleteProjectBranchRole: vi.fn(),
   resetProjectBranchRolePassword: vi.fn(),
+  getProjectBranchDataApi: vi.fn(),
+  createProjectBranchDataApi: vi.fn(),
+  deleteProjectBranchDataApi: vi.fn(),
 };
 
 const createApiClient = vi.fn(() => api);
@@ -247,6 +250,48 @@ describe("listResources - branches/endpoints/databases/roles", () => {
     api.listProjectBranchRoles.mockRejectedValue(new Error("x"));
     expect(await client.listResources("neon-role", ACCOUNT)).toEqual([]);
   });
+
+  it("maps enabled Data APIs and skips disabled databases", async () => {
+    api.listProjectBranches.mockResolvedValue(wrap({ branches: [{ id: "b1", name: "main" }] }));
+    api.listProjectBranchDatabases.mockResolvedValue(
+      wrap({
+        databases: [
+          { id: 1, name: "neondb", branch_id: "b1", owner_name: "owner" },
+          { id: 2, name: "disabled", branch_id: "b1", owner_name: "owner" },
+        ],
+      }),
+    );
+    api.getProjectBranchDataApi
+      .mockResolvedValueOnce(
+        wrap({
+          url: "https://api.neon.tech/rest/v1",
+          status: "enabled",
+          settings: { db_anon_role: "anonymous", db_schemas: ["public"] },
+          available_schemas: ["public", "auth"],
+        }),
+      )
+      .mockRejectedValueOnce(new Error("not enabled"));
+
+    const client = makeClient();
+    const res = await client.listResources("neon-data-api", ACCOUNT);
+
+    expect(res).toHaveLength(1);
+    expect(res[0]!).toMatchObject({
+      id: "acct1:neon-data-api:p1/b1/neondb",
+      resourceTypeId: "neon-data-api",
+      displayName: "neondb",
+      fields: {
+        url: "https://api.neon.tech/rest/v1",
+        status: "enabled",
+        database: "neondb",
+        schemas: "public, auth",
+        anonymousRole: "anonymous",
+      },
+      parentResourceId: "acct1:neon-database:p1/b1/neondb",
+    });
+    expect(api.getProjectBranchDataApi).toHaveBeenNthCalledWith(1, "p1", "b1", "neondb");
+    expect(api.getProjectBranchDataApi).toHaveBeenNthCalledWith(2, "p1", "b1", "disabled");
+  });
 });
 
 describe("getResource", () => {
@@ -420,6 +465,27 @@ describe("resolveOutput", () => {
     );
     expect(pw).toBe("secret");
     expect(api.getProjectBranchRolePassword).toHaveBeenCalledWith("p1", "b1", "alice");
+  });
+
+  it("resolves Data API URL", async () => {
+    projectListed();
+    api.listProjectBranches.mockResolvedValue(wrap({ branches: [{ id: "b1", name: "main" }] }));
+    api.listProjectBranchDatabases.mockResolvedValue(
+      wrap({ databases: [{ id: 1, name: "neondb", branch_id: "b1", owner_name: "owner" }] }),
+    );
+    api.getProjectBranchDataApi.mockResolvedValue(
+      wrap({ url: "https://api.neon.tech/rest/v1", status: "enabled" }),
+    );
+
+    const client = makeClient();
+    const url = await client.resolveOutput(
+      "neon-data-api",
+      "acct1:neon-data-api:p1/b1/neondb",
+      "url",
+      ACCOUNT,
+    );
+
+    expect(url).toBe("https://api.neon.tech/rest/v1");
   });
 
   it("throws for unresolvable output", async () => {
@@ -750,6 +816,27 @@ describe("renderDetail", () => {
     expect(d.subtitle).toContain("protected");
   });
 
+  it("renders Data API detail", () => {
+    const client = makeClient();
+    const d = client.renderDetail({
+      ...base,
+      id: "x",
+      resourceTypeId: "neon-data-api",
+      displayName: "neondb",
+      fields: {
+        url: "https://api.neon.tech/rest/v1",
+        status: "enabled",
+        database: "neondb",
+        projectId: "p1",
+        branchId: "b1",
+        schemas: "public",
+        anonymousRole: "anonymous",
+      },
+    } as never);
+    expect(d.subtitle).toContain("enabled");
+    expect(d.sections).toHaveLength(1);
+  });
+
   it("renders generic detail for unknown type", () => {
     const client = makeClient();
     const d = client.renderDetail({
@@ -884,6 +971,35 @@ describe("getCreateConfig", () => {
     const client = makeClient();
     const cfg = await client.getCreateConfig("neon-endpoint", "acct1:neon-branch:p1/b1");
     expect(cfg.fields.map((f) => f.key)).toEqual(["type"]);
+  });
+
+  it("Data API config with parent exposes API settings", async () => {
+    const client = makeClient();
+    const cfg = await client.getCreateConfig("neon-data-api", "acct1:neon-database:p1/b1/neondb");
+    expect(cfg.fields.map((f) => f.key)).toEqual([
+      "authProvider",
+      "providerName",
+      "jwksUrl",
+      "jwtAudience",
+      "anonymousRole",
+      "schemas",
+      "corsAllowedOrigins",
+    ]);
+  });
+
+  it("Data API config without parent lists databases", async () => {
+    api.listProjects.mockResolvedValue(wrap({ projects: [{ id: "p1", name: "P" }] }));
+    api.listProjectBranches.mockResolvedValue(wrap({ branches: [{ id: "b1", name: "main" }] }));
+    api.listProjectBranchDatabases.mockResolvedValue(
+      wrap({ databases: [{ id: 1, name: "neondb", branch_id: "b1", owner_name: "owner" }] }),
+    );
+
+    const client = makeClient();
+    const cfg = await client.getCreateConfig("neon-data-api");
+    expect(cfg.fields[0]).toMatchObject({
+      key: "databaseRef",
+      defaultValue: "p1/b1/neondb",
+    });
   });
 
   it("throws for unknown type", async () => {
@@ -1058,6 +1174,56 @@ describe("createResource", () => {
     );
   });
 
+  it("creates Data API using parent database", async () => {
+    api.createProjectBranchDataApi.mockResolvedValue(
+      wrap({ url: "https://api.neon.tech/rest/v1" }),
+    );
+    const client = makeClient();
+    const res = await client.createResource(
+      "neon-data-api",
+      ACCOUNT,
+      {
+        authProvider: "external",
+        providerName: "Auth0",
+        jwksUrl: "https://auth.example/.well-known/jwks.json",
+        jwtAudience: "api",
+        anonymousRole: "anonymous",
+        schemas: "public,api",
+        corsAllowedOrigins: "https://app.example",
+      },
+      "acct1:neon-database:p1/b1/neondb",
+    );
+
+    expect(res).toMatchObject({
+      id: "acct1:neon-data-api:p1/b1/neondb",
+      fields: { url: "https://api.neon.tech/rest/v1", status: "created" },
+    });
+    expect(api.createProjectBranchDataApi).toHaveBeenCalledWith("p1", "b1", "neondb", {
+      auth_provider: "external",
+      provider_name: "Auth0",
+      jwks_url: "https://auth.example/.well-known/jwks.json",
+      jwt_audience: "api",
+      settings: {
+        db_anon_role: "anonymous",
+        db_schemas: ["public", "api"],
+        server_cors_allowed_origins: "https://app.example",
+      },
+    });
+  });
+
+  it("creates Data API from selected database and throws when database is missing", async () => {
+    api.createProjectBranchDataApi.mockResolvedValue(
+      wrap({ url: "https://api.neon.tech/rest/v1" }),
+    );
+    const client = makeClient();
+    await client.createResource("neon-data-api", ACCOUNT, { databaseRef: "p1/b1/neondb" });
+    expect(api.createProjectBranchDataApi).toHaveBeenCalledWith("p1", "b1", "neondb", {});
+
+    await expect(client.createResource("neon-data-api", ACCOUNT, {})).rejects.toThrow(
+      /project, branch, and database are required/,
+    );
+  });
+
   it("throws for unsupported type", async () => {
     const client = makeClient();
     await expect(client.createResource("nope", ACCOUNT, {})).rejects.toThrow(
@@ -1116,6 +1282,19 @@ describe("deleteResource", () => {
     const client = makeClient();
     await client.deleteResource("neon-role", "acct1:neon-role:p1/b1/alice", ACCOUNT);
     expect(api.deleteProjectBranchRole).toHaveBeenCalledWith("p1", "b1", "alice");
+  });
+
+  it("deletes Data API", async () => {
+    const client = makeClient();
+    await client.deleteResource("neon-data-api", "acct1:neon-data-api:p1/b1/neondb", ACCOUNT);
+    expect(api.deleteProjectBranchDataApi).toHaveBeenCalledWith("p1", "b1", "neondb");
+  });
+
+  it("Data API delete throws on bad id", async () => {
+    const client = makeClient();
+    await expect(
+      client.deleteResource("neon-data-api", "acct1:neon-data-api:p1/b1", ACCOUNT),
+    ).rejects.toThrow(/cannot parse Data API ID/);
   });
 
   it("role delete throws on bad id", async () => {

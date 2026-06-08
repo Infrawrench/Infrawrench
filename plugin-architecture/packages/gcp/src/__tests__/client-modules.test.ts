@@ -665,6 +665,72 @@ describe("compute-extras-client", () => {
     ).rejects.toThrow("does not match instance zone");
   });
 
+  it("attachResource instance group→global backend service adds backend", async () => {
+    const group = makeResource({
+      fields: { zone: "z1", name: "ig1" },
+      resolvedOutputs: {
+        selfLink: "https://www.googleapis.com/compute/v1/projects/proj/zones/z1/instanceGroups/ig1",
+      },
+    });
+    const backendService = makeResource({ fields: { name: "bs1" } });
+    const ctx = makeCtx({
+      getResource: vi.fn(async (t: string) => (t === "instance-group" ? group : backendService)),
+      get: vi.fn(async () => ({
+        fingerprint: "fp",
+        backends: [
+          {
+            group:
+              "https://www.googleapis.com/compute/v1/projects/proj/zones/z1/instanceGroups/existing",
+          },
+        ],
+      })),
+    });
+    fetchSpy.mockResolvedValue(ok({}));
+
+    await attachResource(ctx, "instance-group", "ig", "backend-service", "bs", "acct");
+
+    expect(fetchSpy.mock.calls[0]![0]).toBe(
+      "https://compute.googleapis.com/compute/v1/projects/proj/global/backendServices/bs1",
+    );
+    const body = JSON.parse((fetchSpy.mock.calls[0]![1] as RequestInit).body as string) as {
+      fingerprint: string;
+      backends: Array<{ group: string }>;
+    };
+    expect(body).toEqual({
+      fingerprint: "fp",
+      backends: [
+        {
+          group:
+            "https://www.googleapis.com/compute/v1/projects/proj/zones/z1/instanceGroups/existing",
+        },
+        {
+          group: "https://www.googleapis.com/compute/v1/projects/proj/zones/z1/instanceGroups/ig1",
+        },
+      ],
+    });
+  });
+
+  it("attachResource instance group→regional backend service preserves existing backend", async () => {
+    const group = makeResource({ fields: { region: "us-central1", name: "ig1" } });
+    const backendService = makeResource({
+      fields: { name: "bs1" },
+      resolvedOutputs: {
+        selfLink:
+          "https://www.googleapis.com/compute/v1/projects/proj/regions/us-central1/backendServices/bs1",
+      },
+    });
+    const groupLink =
+      "https://www.googleapis.com/compute/v1/projects/proj/regions/us-central1/instanceGroups/ig1";
+    const ctx = makeCtx({
+      getResource: vi.fn(async (t: string) => (t === "instance-group" ? group : backendService)),
+      get: vi.fn(async () => ({ fingerprint: "fp", backends: [{ group: groupLink }] })),
+    });
+
+    await attachResource(ctx, "instance-group", "ig", "backend-service", "bs", "acct");
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   it("attachResource unsupported pair throws", async () => {
     await expect(attachResource(makeCtx(), "x", "s", "y", "t", "acct")).rejects.toThrow(
       "not supported",

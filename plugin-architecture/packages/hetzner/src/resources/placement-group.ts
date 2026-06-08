@@ -12,5 +12,7 @@ export const PlacementGroupResourceType: ResourceTypeDefinition = {
   ],
   outputs: [{ key: "placementGroupId", label: "Placement Group ID", sensitive: false }],
   dashboardPinnable: true,
+  supportsCreate: true,
   iconKey: "group",
+  attachTargets: [{ pluginId: "hetzner", resourceTypeId: "server", verb: "Add server" }],
 };

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
+import type { HostServices } from "@infrawrench/plugin-base";
 
 // --- Mock the @clickhouse/client-web SDK -----------------------------------
 const sdkState: {
@@ -40,6 +41,7 @@ vi.mock("@clickhouse/client-web", () => ({
 }));
 
 import { ClickHouseClient } from "../client.js";
+import { plugin } from "../plugin.js";
 
 const ACCOUNT = "acct-1";
 
@@ -90,6 +92,10 @@ const CREDS = {
 
 function client(over: Record<string, string> = {}) {
   return new ClickHouseClient({ ...CREDS, ...over });
+}
+
+function hostClient(services: HostServices, over: Record<string, string> = {}): ClickHouseClient {
+  return new ClickHouseClient({ ...CREDS, ...over }, services);
 }
 
 const RUNNING_SERVICE = {
@@ -156,6 +162,39 @@ describe("cloudApi (via listResources ch-service)", () => {
     const res = await client().listResources("ch-service", ACCOUNT);
     expect(res).toEqual([]);
   });
+
+  it("routes through host http and forwards optional CA when supplied", async () => {
+    const request = vi.fn(async () => ({
+      status: 200,
+      headers: {},
+      body: JSON.stringify({ result: [RUNNING_SERVICE] }),
+    }));
+    const res = await hostClient({ http: { request } } as unknown as HostServices, {
+      caCert: "-----BEGIN CERTIFICATE-----\nCA\n-----END CERTIFICATE-----",
+    }).listResources("ch-service", ACCOUNT);
+
+    expect(res).toHaveLength(1);
+    expect(calls).toEqual([]);
+    expect(request).toHaveBeenCalledWith({
+      url: "https://api.clickhouse.cloud/v1/organizations/org-1/services",
+      method: "GET",
+      headers: {
+        Authorization: `Basic ${btoa("kid:secret")}`,
+        "Content-Type": "application/json",
+      },
+      caCert: "-----BEGIN CERTIFICATE-----\nCA\n-----END CERTIFICATE-----",
+    });
+  });
+
+  it("throws host http errors with the ClickHouse Cloud path", async () => {
+    const request = vi.fn(async () => ({ status: 401, headers: {}, body: "denied" }));
+    await expect(
+      hostClient({ http: { request } } as unknown as HostServices).listResources(
+        "ch-service",
+        ACCOUNT,
+      ),
+    ).rejects.toThrow("ClickHouse Cloud GET /v1/organizations/org-1/services failed: 401 denied");
+  });
 });
 
 describe("listResources ch-database", () => {
@@ -187,7 +226,7 @@ describe("listResources ch-database", () => {
     // configured credential host — one SDK client per queried service.
     const urls = sdkState.createArgs.map((a) => (a as { url: string }).url);
     expect(urls).toHaveLength(2);
-    expect(urls.every((u) => u === "https://h.clickhouse.cloud")).toBe(true);
+    expect(urls.every((u) => u === "https://h.clickhouse.cloud:8443")).toBe(true);
   });
 
   it("skips service when chQuery throws (listDatabases swallows)", async () => {
@@ -447,6 +486,18 @@ describe("executeQuery + introspectResource", () => {
     await client({ chHost: "http://plain.host:8123" }).executeQuery("rid", ACCOUNT, "SELECT 1");
     expect((sdkState.createArgs[0] as { url: string }).url).toBe("http://plain.host:8123");
   });
+
+  it("normalizeChUrl: bare hosts default to the ClickHouse HTTPS port", async () => {
+    sdkState.jsonResult = [];
+    await client({ chHost: "bare.host" }).executeQuery("rid", ACCOUNT, "SELECT 1");
+    expect((sdkState.createArgs[0] as { url: string }).url).toBe("https://bare.host:8443");
+  });
+
+  it("normalizeChUrl: chPort overrides the default HTTPS port", async () => {
+    sdkState.jsonResult = [];
+    await client({ chHost: "bare.host", chPort: "9443" }).executeQuery("rid", ACCOUNT, "SELECT 1");
+    expect((sdkState.createArgs[0] as { url: string }).url).toBe("https://bare.host:9443");
+  });
 });
 
 describe("getCreateConfig", () => {
@@ -505,7 +556,7 @@ describe("createResource ch-database", () => {
     );
     // SDK client points at service host
     expect((sdkState.createArgs.at(-1) as { url: string }).url).toBe(
-      "https://svc1.clickhouse.cloud",
+      "https://svc1.clickhouse.cloud:8443",
     );
   });
 
@@ -660,7 +711,7 @@ describe("deleteResource", () => {
     expect(cmd.query).toContain("DROP DATABASE");
     expect(cmd.query_params).toEqual({ name: "analytics" });
     expect((sdkState.createArgs.at(-1) as { url: string }).url).toBe(
-      "https://svc1.clickhouse.cloud",
+      "https://svc1.clickhouse.cloud:8443",
     );
   });
 
@@ -711,5 +762,27 @@ describe("deleteResource", () => {
     await expect(client().deleteResource("nope", "acct-1:nope:x", ACCOUNT)).rejects.toThrow(
       /delete not supported/,
     );
+  });
+});
+
+describe("plugin manifest", () => {
+  it("exposes SQL port and CA certificate credential fields", () => {
+    expect(plugin.manifest.credentialFields.some((f) => f.key === "chPort")).toBe(true);
+    expect(plugin.manifest.credentialFields.some((f) => f.key === "caCert")).toBe(true);
+  });
+
+  it("passes host services into created clients", async () => {
+    const request = vi.fn(async () => ({
+      status: 200,
+      headers: {},
+      body: JSON.stringify({ result: [RUNNING_SERVICE] }),
+    }));
+    const created = plugin.createClient(CREDS, {
+      http: { request },
+    } as unknown as HostServices) as ClickHouseClient;
+
+    await created.listResources("ch-service", ACCOUNT);
+
+    expect(request).toHaveBeenCalled();
   });
 });

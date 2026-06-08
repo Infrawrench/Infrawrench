@@ -112,6 +112,20 @@ describe("MongoDBClient", () => {
       const c = new MongoDBClient({ connectionString: CS });
       expect(await c.resolveOutput("mongodb-database", "x", "connectionString")).toBe(CS);
     });
+    it("returns serverVersion via kv for selected database", async () => {
+      kv.command.mockResolvedValue("7.0.11");
+      const c = new MongoDBClient({ connectionString: CS }, services(kv));
+      await expect(
+        c.resolveOutput("mongodb-database", "acct:mongodb-database:shop", "serverVersion"),
+      ).resolves.toBe("7.0.11");
+      expect(kv.command).toHaveBeenCalledWith("serverVersion", "shop");
+    });
+    it("throws for serverVersion when kv missing", async () => {
+      const c = new MongoDBClient({ connectionString: CS });
+      await expect(
+        c.resolveOutput("mongodb-database", "acct:mongodb-database:shop", "serverVersion"),
+      ).rejects.toThrow(/KV service not available/);
+    });
     it("throws for unknown output", async () => {
       const c = new MongoDBClient({ connectionString: CS });
       await expect(c.resolveOutput("mongodb-database", "x", "nope")).rejects.toThrow(

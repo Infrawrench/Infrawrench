@@ -112,10 +112,10 @@ describe("listResources", () => {
     await expect(client.listResources("nope", ACCOUNT)).rejects.toThrow(/unknown resource type/);
   });
 
-  it("maps organization invites through the REST API", async () => {
+  it("maps organization invites through the documented REST API", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
       response({
-        invites: [{ email: "new@example.com", username: "", role: "viewer" }],
+        invites: [{ Email: "new@example.com", Role: "viewer", Accepted: false }],
       }),
     );
     const client = makeClient();
@@ -126,7 +126,7 @@ describe("listResources", () => {
       fields: { email: "new@example.com", role: "viewer" },
     });
     const [url, init] = fetchMock.mock.calls[0]!;
-    expect(url).toBe("https://api.turso.tech/v2/organizations/myorg/invites");
+    expect(url).toBe("https://api.turso.tech/v1/organizations/myorg/invites");
     expect((init as { headers: Record<string, string> }).headers["Authorization"]).toBe(
       "Bearer tok",
     );
@@ -218,9 +218,34 @@ describe("lifecycle operations", () => {
       ACCOUNT,
     );
     expect(fetchMock.mock.calls[1]![0]).toBe(
-      "https://api.turso.tech/v2/organizations/myorg/invites/new%40example.com",
+      "https://api.turso.tech/v1/organizations/myorg/invites/new%40example.com",
     );
     expect((fetchMock.mock.calls[1]![1] as RequestInit).method).toBe("DELETE");
+  });
+
+  it("routes direct organization REST calls through host http services", async () => {
+    const request = vi.fn().mockResolvedValue({
+      status: 200,
+      headers: {},
+      body: JSON.stringify({ invites: [{ Email: "new@example.com", Role: "member" }] }),
+    });
+    const client = new TursoClient(creds, { http: { request } });
+
+    const invites = await client.listResources("turso-organization-invite", ACCOUNT);
+
+    expect(invites[0]).toMatchObject({
+      externalId: "new@example.com",
+      fields: { email: "new@example.com", role: "member" },
+    });
+    expect(request).toHaveBeenCalledWith({
+      url: "https://api.turso.tech/v1/organizations/myorg/invites",
+      method: "GET",
+      headers: {
+        Authorization: "Bearer tok",
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+    });
   });
 
   it("updates and removes organization members", async () => {

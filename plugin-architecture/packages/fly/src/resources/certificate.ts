@@ -19,4 +19,5 @@ export const CertificateResourceType: ResourceTypeDefinition = {
   outputs: [{ key: "hostname", label: "Hostname", sensitive: false }],
   dashboardPinnable: true,
   iconKey: "certificate",
+  supportsCreate: true,
 };

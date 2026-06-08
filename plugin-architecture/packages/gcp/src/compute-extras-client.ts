@@ -280,6 +280,57 @@ async function applyFirewallToInstance(
   if (!res.ok) throw new Error(`GCP Compute API ${res.status}: ${await res.text()}`);
 }
 
+function computeBackendServiceUrl(ctx: GcpClientContext, backendService: ResourceInstance): string {
+  const p = ctx.project;
+  const selfLink = String(backendService.resolvedOutputs["selfLink"] ?? "");
+  if (selfLink.includes("/regions/")) {
+    const match = selfLink.match(/\/regions\/([^/]+)\/backendServices\/([^/]+)$/);
+    if (!match) throw new Error("Cannot determine regional backend service URL");
+    return `https://compute.googleapis.com/compute/v1/projects/${p}/regions/${match[1]}/backendServices/${match[2]}`;
+  }
+  const name = String(backendService.fields["name"] ?? backendService.displayName);
+  if (!name) throw new Error("Cannot determine backend service name");
+  return `https://compute.googleapis.com/compute/v1/projects/${p}/global/backendServices/${name}`;
+}
+
+function instanceGroupSelfLink(ctx: GcpClientContext, group: ResourceInstance): string {
+  const p = ctx.project;
+  const output = String(group.resolvedOutputs["selfLink"] ?? "");
+  if (output) return output;
+  const name = String(group.fields["name"] ?? group.displayName);
+  const zone = String(group.fields["zone"] ?? "");
+  const region = String(group.fields["region"] ?? "");
+  if (!name || (!zone && !region)) throw new Error("Cannot determine instance group location");
+  return zone
+    ? `https://www.googleapis.com/compute/v1/projects/${p}/zones/${zone}/instanceGroups/${name}`
+    : `https://www.googleapis.com/compute/v1/projects/${p}/regions/${region}/instanceGroups/${name}`;
+}
+
+async function addInstanceGroupToBackendService(
+  ctx: GcpClientContext,
+  group: ResourceInstance,
+  backendService: ResourceInstance,
+): Promise<void> {
+  const tok = await ctx.token();
+  const serviceUrl = computeBackendServiceUrl(ctx, backendService);
+  const groupUrl = instanceGroupSelfLink(ctx, group);
+  const current = await ctx.get<{
+    fingerprint?: string;
+    backends?: Array<Record<string, unknown>>;
+  }>(serviceUrl);
+  const backends = current.backends ?? [];
+  if (backends.some((backend) => String(backend["group"]) === groupUrl)) return;
+  const res = await fetch(serviceUrl, {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${tok}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      fingerprint: current.fingerprint,
+      backends: [...backends, { group: groupUrl }],
+    }),
+  });
+  if (!res.ok) throw new Error(`GCP Compute API ${res.status}: ${await res.text()}`);
+}
+
 /**
  * Attach a disk, static IP, firewall, or Cloud NAT to a target resource.
  * Each pair has its own attachment semantics (see GCP docs).
@@ -373,6 +424,14 @@ export async function attachResource(
       ctx.getResource(targetTypeId, targetResourceId, accountId),
     ]);
     await applyFirewallToInstance(ctx, firewall, instance);
+    return;
+  }
+  if (sourceTypeId === "instance-group" && targetTypeId === "backend-service") {
+    const [group, backendService] = await Promise.all([
+      ctx.getResource(sourceTypeId, sourceResourceId, accountId),
+      ctx.getResource(targetTypeId, targetResourceId, accountId),
+    ]);
+    await addInstanceGroupToBackendService(ctx, group, backendService);
     return;
   }
   if (sourceTypeId === "cloud-nat" && targetTypeId === "subnet") {

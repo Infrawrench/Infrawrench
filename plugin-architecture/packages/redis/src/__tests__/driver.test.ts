@@ -5,6 +5,8 @@ const mockDisconnect = vi.fn();
 const mockGet = vi.fn();
 const mockSet = vi.fn();
 const mockDel = vi.fn();
+const mockMemory = vi.fn();
+const mockCall = vi.fn();
 const mockOn = vi.fn();
 
 vi.mock("ioredis", () => ({
@@ -15,6 +17,8 @@ vi.mock("ioredis", () => ({
       get: mockGet,
       set: mockSet,
       del: mockDel,
+      memory: mockMemory,
+      call: mockCall,
       on: mockOn,
     };
   }),
@@ -70,9 +74,36 @@ describe("redis driver", () => {
       expect(mockDel).toHaveBeenCalledWith("key1");
     });
 
-    it("throws for unknown commands", async () => {
-      await expect(driver.command("redis://localhost:6379", "UNKNOWNCMD", [])).rejects.toThrow(
-        "Unknown Redis command: UNKNOWNCMD",
+    it("splits multi-word command names for typed subcommand methods", async () => {
+      mockMemory.mockResolvedValue(128);
+
+      const result = await driver.command("redis://localhost:6379", "MEMORY USAGE", ["foo"]);
+
+      expect(result).toBe(128);
+      expect(mockMemory).toHaveBeenCalledWith("USAGE", "foo");
+    });
+
+    it("falls back to raw command calls for module commands", async () => {
+      mockCall.mockResolvedValue('{"name":"Ada"}');
+
+      const result = await driver.command("redis://localhost:6379", "JSON.GET", ["user:1", "$"]);
+
+      expect(result).toBe('{"name":"Ada"}');
+      expect(mockCall).toHaveBeenCalledWith("JSON.GET", "user:1", "$");
+    });
+
+    it("falls back to raw command calls for unknown core commands", async () => {
+      mockCall.mockResolvedValue("OK");
+
+      const result = await driver.command("redis://localhost:6379", "CLIENT", ["SETNAME", "iw"]);
+
+      expect(result).toBe("OK");
+      expect(mockCall).toHaveBeenCalledWith("CLIENT", "SETNAME", "iw");
+    });
+
+    it("throws for an empty command", async () => {
+      await expect(driver.command("redis://localhost:6379", " ", [])).rejects.toThrow(
+        "Redis command is required",
       );
     });
 

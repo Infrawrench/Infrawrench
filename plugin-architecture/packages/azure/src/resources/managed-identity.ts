@@ -18,4 +18,11 @@ export const ManagedIdentityResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   iconKey: "user",
   supportsCreate: true,
+  attachTargets: [
+    {
+      pluginId: "azure",
+      resourceTypeId: "azure-vm",
+      verb: "Assign to VM",
+    },
+  ],
 };

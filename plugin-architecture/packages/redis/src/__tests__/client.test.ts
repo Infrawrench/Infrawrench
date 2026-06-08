@@ -200,7 +200,9 @@ describe("RedisClient", () => {
       expect(stats).toEqual([
         { label: "Version", value: "" },
         { label: "Memory", value: "" },
+        { label: "Keys", value: "0" },
         { label: "Databases", value: "0" },
+        { label: "Clients", value: "" },
       ]);
     });
 
@@ -210,6 +212,7 @@ describe("RedisClient", () => {
           "# Server",
           "redis_version:7.2.0",
           "used_memory_human:1.50M",
+          "connected_clients:4",
           "# Keyspace",
           "db0:keys=10,expires=0",
           "db1:keys=5,expires=0",
@@ -221,7 +224,9 @@ describe("RedisClient", () => {
       expect(stats).toEqual([
         { label: "Version", value: "7.2.0" },
         { label: "Memory", value: "1.50M" },
+        { label: "Keys", value: "15" },
         { label: "Databases", value: "2" },
+        { label: "Clients", value: "4" },
       ]);
       expect(kv.command).toHaveBeenCalledWith("INFO", "all");
     });
@@ -233,7 +238,9 @@ describe("RedisClient", () => {
       expect(stats).toEqual([
         { label: "Version", value: "" },
         { label: "Memory", value: "" },
+        { label: "Keys", value: "0" },
         { label: "Databases", value: "0" },
+        { label: "Clients", value: "" },
       ]);
     });
 
@@ -241,7 +248,7 @@ describe("RedisClient", () => {
       kv.command.mockRejectedValue(new Error("boom"));
       const c = new RedisClient({ connectionString: CS }, services(kv));
       const stats = await c.fetchDashboardStats("redis-instance", "x", "acct");
-      expect(stats[2]).toEqual({ label: "Databases", value: "0" });
+      expect(stats[3]).toEqual({ label: "Databases", value: "0" });
     });
   });
 });

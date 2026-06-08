@@ -4,4 +4,5 @@ export { NeonBranchResourceType } from "./resources/branch.js";
 export { NeonEndpointResourceType } from "./resources/endpoint.js";
 export { NeonDatabaseResourceType } from "./resources/database.js";
 export { NeonRoleResourceType } from "./resources/role.js";
+export { NeonDataApiResourceType } from "./resources/data-api.js";
 export { NeonClient } from "./client.js";

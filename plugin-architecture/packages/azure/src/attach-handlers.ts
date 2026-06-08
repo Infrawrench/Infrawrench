@@ -8,6 +8,8 @@
  *   configuration.
  * - `azure-load-balancer` / `azure-app-gateway` → `azure-vm`: appends the
  *   VM's primary NIC IP configuration to the first backend pool.
+ * - `azure-managed-identity` → `azure-vm`: adds a user-assigned managed
+ *   identity to the VM.
  *
  * Both paths read the live ARM representation first, then PATCH a delta — Azure
  * doesn't have a separate "attach" verb for these.
@@ -188,6 +190,32 @@ export async function attachAzureResource(
     }));
     return;
   }
+  if (sourceTypeId === "azure-managed-identity" && targetTypeId === "azure-vm") {
+    const [identity, vm] = await Promise.all([
+      ctx.getResource(sourceTypeId, sourceResourceId, accountId),
+      ctx.getResource(targetTypeId, targetResourceId, accountId),
+    ]);
+    assertSameLocation(identity, vm, "Managed identity", "VM");
+    const identityId = azureResourceId(
+      ctx,
+      identity,
+      "Microsoft.ManagedIdentity/userAssignedIdentities",
+    );
+    const vmUrl = virtualMachineUrl(ctx, vm);
+    const vmData = await ctx.get<Record<string, unknown>>(vmUrl);
+    const currentIdentity = (vmData["identity"] ?? {}) as Record<string, unknown>;
+    const userAssigned = isRecord(currentIdentity["userAssignedIdentities"])
+      ? { ...(currentIdentity["userAssignedIdentities"] as Record<string, unknown>) }
+      : {};
+    userAssigned[identityId] = {};
+    await ctx.patch(vmUrl, {
+      identity: {
+        type: identityTypeWithUserAssigned(String(currentIdentity["type"] ?? "")),
+        userAssignedIdentities: userAssigned,
+      },
+    });
+    return;
+  }
   if (sourceTypeId === "azure-route-table" && targetTypeId === "azure-subnet") {
     const [routeTable, subnet] = await Promise.all([
       ctx.getResource(sourceTypeId, sourceResourceId, accountId),
@@ -254,11 +282,7 @@ function assertSameLocation(
 }
 
 async function primaryNicUrl(ctx: AttachContext, vm: ResourceInstance): Promise<string> {
-  const vmRg = String(vm.fields["resourceGroup"] ?? "");
-  const vmName = String(vm.fields["name"] ?? "");
-  if (!vmRg || !vmName) throw new Error("Cannot determine VM identity for attachment");
-
-  const vmUrl = `${ARM}/subscriptions/${ctx.subscriptionId}/resourceGroups/${vmRg}/providers/Microsoft.Compute/virtualMachines/${vmName}?api-version=2024-03-01`;
+  const vmUrl = virtualMachineUrl(ctx, vm);
   const vmData = await ctx.get<Record<string, unknown>>(vmUrl);
   const props = (vmData["properties"] ?? {}) as Record<string, unknown>;
   const netProfile = (props["networkProfile"] ?? {}) as Record<string, unknown>;
@@ -272,6 +296,13 @@ async function primaryNicUrl(ctx: AttachContext, vm: ResourceInstance): Promise<
   const nicArmId = String(primaryNic?.["id"] ?? "");
   if (!nicArmId) throw new Error("Cannot determine primary NIC of VM");
   return `${ARM}${nicArmId}?api-version=2023-09-01`;
+}
+
+function virtualMachineUrl(ctx: AttachContext, vm: ResourceInstance): string {
+  const vmRg = String(vm.fields["resourceGroup"] ?? "");
+  const vmName = String(vm.fields["name"] ?? "");
+  if (!vmRg || !vmName) throw new Error("Cannot determine VM identity for attachment");
+  return `${ARM}/subscriptions/${ctx.subscriptionId}/resourceGroups/${vmRg}/providers/Microsoft.Compute/virtualMachines/${vmName}?api-version=2024-03-01`;
 }
 
 async function patchPrimaryNicIpConfig(
@@ -331,6 +362,15 @@ function appendIdRef(value: unknown, id: string): Array<{ id: string }> {
         .map((refId) => ({ id: refId }))
     : [];
   return refs.some((ref) => ref.id === id) ? refs : [...refs, { id }];
+}
+
+function identityTypeWithUserAssigned(type: string): string {
+  if (type.includes("SystemAssigned")) return "SystemAssigned, UserAssigned";
+  return "UserAssigned";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 async function updateSubnetProperties(

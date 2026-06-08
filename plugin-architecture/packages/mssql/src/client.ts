@@ -6,6 +6,7 @@ import type {
   SidebarItemSchema,
   SqlTableMeta,
   DashboardStat,
+  CreateResourceConfig,
 } from "@infrawrench/plugin-base";
 
 const SYSTEM_DBS = new Set(["master", "tempdb", "model", "msdb"]);
@@ -44,6 +45,7 @@ export class MSSQLClient implements PluginClient {
           resourceTypeId: "mssql-database",
           accountId,
           displayName: row.name,
+          externalId: row.name,
           fields: { host, database: row.name },
           resolvedOutputs: {},
           secretStates: [],
@@ -72,6 +74,7 @@ export class MSSQLClient implements PluginClient {
         resourceTypeId: "mssql-database",
         accountId,
         displayName: dbName,
+        externalId: dbName,
         fields: { host, database: dbName },
         resolvedOutputs: {},
         secretStates: [],
@@ -92,8 +95,78 @@ export class MSSQLClient implements PluginClient {
     return found;
   }
 
-  async resolveOutput(typeId: string, _resourceId: string, outputKey: string): Promise<string> {
+  async resolveOutput(typeId: string, resourceId: string, outputKey: string): Promise<string> {
+    if (typeId === "mssql-database") {
+      if (outputKey === "connectionString") {
+        return this.connectionStringForDatabase(this.databaseNameFromResourceId(resourceId));
+      }
+      if (outputKey === "serverVersion") {
+        const sql = this.services?.sql;
+        if (!sql) return "";
+        const rows = (await sql.query("SELECT @@VERSION AS version")) as Array<{
+          version?: unknown;
+        }>;
+        return String(rows[0]?.version ?? "").split("\n")[0] ?? "";
+      }
+    }
     throw new Error(`MSSQL plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
+  }
+
+  async getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
+    if (typeId !== "mssql-database") {
+      throw new Error(`MSSQL plugin: no create config for type "${typeId}"`);
+    }
+    return {
+      fields: [
+        {
+          key: "name",
+          label: "Database name",
+          kind: "text",
+          required: true,
+          placeholder: "appdb",
+        },
+        {
+          key: "collation",
+          label: "Collation",
+          kind: "text",
+          required: false,
+          placeholder: "SQL_Latin1_General_CP1_CI_AS",
+        },
+      ],
+    };
+  }
+
+  async createResource(
+    typeId: string,
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
+    if (typeId !== "mssql-database") {
+      throw new Error(`MSSQL plugin: createResource not supported for type "${typeId}"`);
+    }
+    const sql = this.services?.sql;
+    if (!sql) throw new Error("MSSQL SQL service not available");
+
+    const dbName = this.validateDatabaseName(fields["name"] ?? "");
+    const collation = this.optionalIdentifier(fields["collation"] ?? "");
+    let statement = `CREATE DATABASE [${dbName}]`;
+    if (collation) statement += ` COLLATE ${collation}`;
+    await sql.execute(statement, []);
+
+    const now = new Date().toISOString();
+    return {
+      id: `${accountId}:mssql-database:${dbName}`,
+      pluginId: "mssql",
+      resourceTypeId: "mssql-database",
+      accountId,
+      displayName: dbName,
+      externalId: dbName,
+      fields: { host: this.hostFromConnectionString(), database: dbName },
+      resolvedOutputs: {},
+      secretStates: [],
+      createdAt: now,
+      updatedAt: now,
+    };
   }
 
   async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
@@ -102,14 +175,11 @@ export class MSSQLClient implements PluginClient {
     }
     const sql = this.services?.sql;
     if (!sql) throw new Error("MSSQL SQL service not available");
-    const dbName = resourceId.split(":").pop();
-    if (!dbName) throw new Error("Cannot parse database name");
+    const dbName = this.databaseNameFromResourceId(resourceId);
     if (SYSTEM_DBS.has(dbName)) {
       throw new Error(`Cannot delete system database "${dbName}"`);
     }
-    if (dbName.includes("]")) {
-      throw new Error("Invalid database name");
-    }
+    this.validateDatabaseName(dbName);
     await sql.execute(`DROP DATABASE [${dbName}]`, []);
   }
 
@@ -175,7 +245,10 @@ export class MSSQLClient implements PluginClient {
       sql.query(
         `SELECT kcu.TABLE_SCHEMA + '.' + kcu.TABLE_NAME AS table_name, kcu.COLUMN_NAME AS column_name
          FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
-         JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu ON tc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME
+         JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu
+           ON tc.CONSTRAINT_CATALOG = kcu.CONSTRAINT_CATALOG
+          AND tc.CONSTRAINT_SCHEMA = kcu.CONSTRAINT_SCHEMA
+          AND tc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME
          WHERE tc.CONSTRAINT_TYPE = 'PRIMARY KEY' AND kcu.TABLE_CATALOG = DB_NAME()
          ORDER BY kcu.ORDINAL_POSITION`,
       ),
@@ -230,5 +303,50 @@ export class MSSQLClient implements PluginClient {
       { label: "Version", value: version },
       { label: "Tables", value: String(tableCount) },
     ];
+  }
+
+  private databaseNameFromResourceId(resourceId: string): string {
+    const dbName = resourceId.split(":").pop();
+    if (!dbName) throw new Error("Cannot parse database name");
+    return dbName;
+  }
+
+  private validateDatabaseName(value: string): string {
+    const dbName = value.trim();
+    if (!dbName) throw new Error("Database name is required");
+    if (dbName.length > 128 || dbName.includes("]") || dbName.includes("\0")) {
+      throw new Error("Invalid database name");
+    }
+    if (SYSTEM_DBS.has(dbName)) {
+      throw new Error(`Cannot create system database "${dbName}"`);
+    }
+    return dbName;
+  }
+
+  private optionalIdentifier(value: string): string {
+    const identifier = value.trim();
+    if (!identifier) return "";
+    if (!/^[A-Za-z0-9_]+$/.test(identifier)) {
+      throw new Error("Invalid SQL Server identifier");
+    }
+    return identifier;
+  }
+
+  private hostFromConnectionString(): string {
+    try {
+      return new URL(this.connectionString).hostname;
+    } catch {
+      return "unknown";
+    }
+  }
+
+  private connectionStringForDatabase(dbName: string): string {
+    try {
+      const url = new URL(this.connectionString);
+      url.pathname = `/${dbName}`;
+      return url.toString();
+    } catch {
+      return this.connectionString;
+    }
   }
 }

@@ -14,6 +14,7 @@ import {
   type Api,
   type Branch,
   type Database,
+  type DataAPIReponse,
   type ProjectListItem,
   type Role,
   ConsumptionHistoryGranularity,
@@ -61,6 +62,8 @@ export class NeonClient implements PluginClient {
         return this.listAllDatabases(accountId);
       case "neon-role":
         return this.listAllRoles(accountId);
+      case "neon-data-api":
+        return this.listAllDataApis(accountId);
       default:
         throw new Error(`Neon plugin: unknown resource type "${typeId}"`);
     }
@@ -121,6 +124,11 @@ export class NeonClient implements PluginClient {
       if (outputKey === "password") {
         return this.resolveRolePassword(resourceId, accountId);
       }
+    }
+
+    if (typeId === "neon-data-api") {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      if (outputKey === "url") return String(resource.fields["url"] ?? "");
     }
 
     throw new Error(`Neon plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
@@ -256,6 +264,8 @@ export class NeonClient implements PluginClient {
         return this.renderDatabaseDetail(resource);
       case "neon-role":
         return this.renderRoleDetail(resource);
+      case "neon-data-api":
+        return this.renderDataApiDetail(resource);
       default:
         return this.renderGenericDetail(resource);
     }
@@ -473,6 +483,65 @@ export class NeonClient implements PluginClient {
       return { fields };
     }
 
+    if (typeId === "neon-data-api") {
+      const fields: CreateResourceConfig["fields"] = [];
+      if (!parentResourceId) {
+        const databases = await this.listAllDatabases("create");
+        const options = databases.map((db) => ({
+          id: `${String(db.fields["projectId"])}/${String(db.fields["branchId"])}/${String(
+            db.fields["name"],
+          )}`,
+          label: `${String(db.fields["projectId"])} / ${String(
+            db.fields["branchId"],
+          )} / ${String(db.fields["name"])}`,
+        }));
+        fields.push({
+          key: "databaseRef",
+          label: "Database",
+          kind: "select",
+          required: true,
+          options,
+          ...(options[0] ? { defaultValue: options[0].id } : {}),
+        });
+      }
+      fields.push({
+        key: "authProvider",
+        label: "Auth Provider",
+        kind: "select",
+        required: false,
+        options: [
+          { id: "", label: "Default" },
+          { id: "external", label: "External JWT" },
+          { id: "neon_auth", label: "Neon Auth" },
+        ],
+        defaultValue: "",
+      });
+      fields.push({ key: "providerName", label: "Provider Name", kind: "text", required: false });
+      fields.push({ key: "jwksUrl", label: "JWKS URL", kind: "text", required: false });
+      fields.push({ key: "jwtAudience", label: "JWT Audience", kind: "text", required: false });
+      fields.push({
+        key: "anonymousRole",
+        label: "Anonymous Role",
+        kind: "text",
+        required: false,
+        defaultValue: "anonymous",
+      });
+      fields.push({
+        key: "schemas",
+        label: "Schemas",
+        kind: "string-list",
+        required: false,
+        defaultValue: "public",
+      });
+      fields.push({
+        key: "corsAllowedOrigins",
+        label: "CORS Allowed Origins",
+        kind: "text",
+        required: false,
+      });
+      return { fields };
+    }
+
     throw new Error(`Neon plugin: no create config for type "${typeId}"`);
   }
 
@@ -658,6 +727,50 @@ export class NeonClient implements PluginClient {
       };
     }
 
+    if (typeId === "neon-data-api") {
+      const [parentProjectId, parentBranchId, ...parentDbParts] = parentExternalId.split("/");
+      const selected = fields["databaseRef"]?.split("/") ?? [];
+      const projectId = fields["projectId"] || parentProjectId || selected[0] || "";
+      const branchId = fields["branchId"] || parentBranchId || selected[1] || "";
+      const databaseName =
+        fields["databaseName"] || parentDbParts.join("/") || selected.slice(2).join("/") || "";
+      if (!projectId || !branchId || !databaseName) {
+        throw new Error("Neon plugin: project, branch, and database are required for Data API");
+      }
+
+      const schemas = parseCsv(fields["schemas"]);
+      const settings: NonNullable<
+        Parameters<typeof this.api.createProjectBranchDataApi>[3]
+      >["settings"] = {};
+      if (fields["anonymousRole"]) settings.db_anon_role = fields["anonymousRole"];
+      if (schemas.length > 0) settings.db_schemas = schemas;
+      if (fields["corsAllowedOrigins"]) {
+        settings.server_cors_allowed_origins = fields["corsAllowedOrigins"];
+      }
+
+      const body: Parameters<typeof this.api.createProjectBranchDataApi>[3] = {};
+      if (fields["authProvider"]) {
+        body.auth_provider = fields["authProvider"] === "neon_auth" ? "neon_auth" : "external";
+      }
+      if (fields["providerName"]) body.provider_name = fields["providerName"];
+      if (fields["jwksUrl"]) body.jwks_url = fields["jwksUrl"];
+      if (fields["jwtAudience"]) body.jwt_audience = fields["jwtAudience"];
+      if (Object.keys(settings).length > 0) body.settings = settings;
+
+      const response = await this.api.createProjectBranchDataApi(
+        projectId,
+        branchId,
+        databaseName,
+        body,
+      );
+      const dataApi = {
+        url: response.data.url,
+        status: "created",
+        settings: body.settings ?? null,
+      };
+      return this.buildDataApiResource(accountId, projectId, branchId, databaseName, dataApi);
+    }
+
     throw new Error(`Neon plugin: createResource not supported for type "${typeId}"`);
   }
 
@@ -712,6 +825,20 @@ export class NeonClient implements PluginClient {
       const roleName = roleParts.join("/");
       if (!projectId || !branchId) throw new Error("Neon plugin: cannot parse role ID");
       await this.api.deleteProjectBranchRole(projectId, branchId, roleName);
+      return;
+    }
+
+    if (typeId === "neon-data-api") {
+      const compound = resourceId.split(":").pop();
+      if (!compound) throw new Error("Neon plugin: cannot parse Data API ID");
+      const parts = compound.split("/");
+      if (parts.length < 3) throw new Error("Neon plugin: cannot parse Data API ID");
+      const [projectId, branchId, ...dbParts] = parts;
+      const databaseName = dbParts.join("/");
+      if (!projectId || !branchId || !databaseName) {
+        throw new Error("Neon plugin: cannot parse Data API ID");
+      }
+      await this.api.deleteProjectBranchDataApi(projectId, branchId, databaseName);
       return;
     }
 
@@ -902,6 +1029,57 @@ export class NeonClient implements PluginClient {
       }
     }
     return results;
+  }
+
+  private async listAllDataApis(accountId: string): Promise<ResourceInstance[]> {
+    const databases = await this.listAllDatabases(accountId);
+    const results: ResourceInstance[] = [];
+    for (const db of databases) {
+      const projectId = String(db.fields["projectId"] ?? "");
+      const branchId = String(db.fields["branchId"] ?? "");
+      const databaseName = String(db.fields["name"] ?? "");
+      if (!projectId || !branchId || !databaseName) continue;
+      try {
+        const resp = await this.api.getProjectBranchDataApi(projectId, branchId, databaseName);
+        results.push(
+          this.buildDataApiResource(accountId, projectId, branchId, databaseName, resp.data),
+        );
+      } catch {
+        /* Data API is disabled or unavailable for this database. */
+      }
+    }
+    return results;
+  }
+
+  private buildDataApiResource(
+    accountId: string,
+    projectId: string,
+    branchId: string,
+    databaseName: string,
+    dataApi: Pick<DataAPIReponse, "url" | "status" | "settings" | "available_schemas">,
+  ): ResourceInstance {
+    return {
+      id: `${accountId}:neon-data-api:${projectId}/${branchId}/${databaseName}`,
+      pluginId: "neon",
+      resourceTypeId: "neon-data-api",
+      accountId,
+      displayName: databaseName,
+      fields: {
+        url: dataApi.url,
+        status: dataApi.status,
+        projectId,
+        branchId,
+        database: databaseName,
+        schemas: (dataApi.available_schemas ?? dataApi.settings?.db_schemas ?? []).join(", "),
+        anonymousRole: dataApi.settings?.db_anon_role ?? "",
+      },
+      resolvedOutputs: {},
+      secretStates: [],
+      externalId: databaseName,
+      parentResourceId: `${accountId}:neon-database:${projectId}/${branchId}/${databaseName}`,
+      createdAt: "",
+      updatedAt: "",
+    };
   }
 
   private buildRoleResource(
@@ -1276,6 +1454,39 @@ export class NeonClient implements PluginClient {
     };
   }
 
+  private renderDataApiDetail(resource: ResourceInstance): DetailViewSchema {
+    const status = String(resource.fields["status"] ?? "unknown");
+    return {
+      title: resource.displayName,
+      subtitle: `Data API · ${status}`,
+      status: { kind: "status-dot", status: mapNeonState(status) },
+      sections: [
+        {
+          kind: "section",
+          title: "Data API",
+          children: [
+            {
+              kind: "key-value-list",
+              items: [
+                { key: "URL", value: String(resource.fields["url"] ?? "—"), copyable: true },
+                { key: "Status", value: status },
+                { key: "Database", value: String(resource.fields["database"] ?? "—") },
+                { key: "Project ID", value: String(resource.fields["projectId"] ?? "—") },
+                { key: "Branch ID", value: String(resource.fields["branchId"] ?? "—") },
+                { key: "Schemas", value: String(resource.fields["schemas"] ?? "—") || "—" },
+                {
+                  key: "Anonymous Role",
+                  value: String(resource.fields["anonymousRole"] ?? "—") || "—",
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+    };
+  }
+
   private renderGenericDetail(resource: ResourceInstance): DetailViewSchema {
     return {
       title: resource.displayName,
@@ -1310,10 +1521,19 @@ function isDefaultBranch(branch: Branch | { default?: boolean; primary?: boolean
   return branch.default === true || branch.primary === true;
 }
 
+function parseCsv(value: string | undefined): string[] {
+  return (value ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 function mapNeonState(state: string): ResourceStatus {
   switch (state.toLowerCase()) {
     case "active":
     case "ready":
+    case "created":
+    case "enabled":
       return "healthy";
     case "idle":
       return "healthy";

@@ -399,6 +399,26 @@ describe("CloudflareClient KV / R2 / SQL / manifest / action passthrough", () =>
     expect(cfWithCache.cache.purge).toHaveBeenCalled();
   });
 
+  it("invokeAction(zone dnssec-enable / dnssec-disable) delegates", async () => {
+    const { client, fakeApi } = makeClient();
+    const cfWithDnssec = fakeApi.cf as unknown as Record<string, unknown> & {
+      dns: { dnssec: { edit: ReturnType<typeof ok> } };
+    };
+    cfWithDnssec.dns = { dnssec: { edit: ok({}) } };
+
+    await client.invokeAction("zone", "acct:zone:z1", "dnssec-enable", "acct");
+    await client.invokeAction("zone", "acct:zone:z1", "dnssec-disable", "acct");
+
+    expect(cfWithDnssec.dns.dnssec.edit).toHaveBeenNthCalledWith(1, {
+      zone_id: "z1",
+      status: "active",
+    });
+    expect(cfWithDnssec.dns.dnssec.edit).toHaveBeenNthCalledWith(2, {
+      zone_id: "z1",
+      status: "disabled",
+    });
+  });
+
   it("invokeAction throws for an unknown action", async () => {
     const { client } = makeClient();
     await expect(client.invokeAction("zone", "acct:zone:z1", "bogus", "acct")).rejects.toThrow(

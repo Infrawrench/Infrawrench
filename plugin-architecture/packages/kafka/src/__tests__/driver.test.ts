@@ -173,6 +173,20 @@ describe("driver.command — produce", () => {
     expect(sent.messages).toHaveLength(1);
   });
 
+  it("passes an explicit partition to producer.send", async () => {
+    await driver.command(CONN, "produce", ["events", "v", "", "", "2"]);
+    const sent = (producerMethods.send.mock.calls as unknown as unknown[][])[
+      producerMethods.send.mock.calls.length - 1
+    ]![0] as { messages: Array<{ partition?: number }> };
+    expect(sent.messages[0]!.partition).toBe(2);
+  });
+
+  it("rejects invalid explicit partitions", async () => {
+    await expect(driver.command(CONN, "produce", ["events", "v", "", "", "-1"])).rejects.toThrow(
+      /zero-based integer/,
+    );
+  });
+
   it("requires a topic", async () => {
     await expect(driver.command(CONN, "produce", [])).rejects.toThrow(/requires a topic name/);
   });

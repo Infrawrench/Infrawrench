@@ -388,6 +388,43 @@ describe("attachResource route53-record-set → alb", () => {
   });
 });
 
+describe("attachResource route53-record-set → cloudfront-distribution", () => {
+  it("upserts an alias record to the CloudFront distribution", async () => {
+    fetchSigned.mockResolvedValue({});
+    const c = ctx({
+      "route53-record-set": res({
+        hostedZoneId: "ZROOT",
+        name: "www.example.com.",
+        type: "A",
+      }),
+      "cloudfront-distribution": res({
+        domainName: "d111111abcdef8.cloudfront.net",
+      }),
+    });
+    await attachResource(c, "route53-record-set", "s", "cloudfront-distribution", "t", "acct");
+    const arg = fetchSigned.mock.calls[0]![0] as {
+      method: string;
+      url: string;
+      body: string;
+    };
+    expect(arg.method).toBe("POST");
+    expect(arg.url).toContain("/2013-04-01/hostedzone/ZROOT/rrset");
+    expect(arg.body).toContain("<Action>UPSERT</Action>");
+    expect(arg.body).toContain("<HostedZoneId>Z2FDTNDATAQYW2</HostedZoneId>");
+    expect(arg.body).toContain("<DNSName>d111111abcdef8.cloudfront.net</DNSName>");
+  });
+
+  it("rejects non-A/AAAA record types", async () => {
+    const c = ctx({
+      "route53-record-set": res({ hostedZoneId: "ZROOT", name: "www.example.com.", type: "CNAME" }),
+      "cloudfront-distribution": res({ domainName: "d111111abcdef8.cloudfront.net" }),
+    });
+    await expect(
+      attachResource(c, "route53-record-set", "s", "cloudfront-distribution", "t", "acct"),
+    ).rejects.toThrow(/must be A or AAAA/);
+  });
+});
+
 describe("attachResource unsupported", () => {
   it("throws", async () => {
     await expect(attachResource(ctx({}), "x", "s", "y", "t", "acct")).rejects.toThrow(

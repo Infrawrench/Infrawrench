@@ -104,10 +104,104 @@ describe("MSSQLClient", () => {
   });
 
   describe("resolveOutput", () => {
-    it("throws (unsupported)", async () => {
+    it("resolves connection string for selected database", async () => {
       const c = new MSSQLClient({ connectionString: CS });
-      await expect(c.resolveOutput("mssql-database", "x", "connectionString")).rejects.toThrow(
+      await expect(
+        c.resolveOutput("mssql-database", "acct:mssql-database:shop", "connectionString"),
+      ).resolves.toBe("mssql://sa:pass@db.example.com:1433/shop");
+    });
+
+    it("resolves server version first line", async () => {
+      sql.query.mockResolvedValue([{ version: "Microsoft SQL Server 2022\nbuild info" }]);
+      const c = new MSSQLClient({ connectionString: CS }, services(sql));
+      await expect(c.resolveOutput("mssql-database", "x", "serverVersion")).resolves.toBe(
+        "Microsoft SQL Server 2022",
+      );
+      expect(sql.query).toHaveBeenCalledWith("SELECT @@VERSION AS version");
+    });
+
+    it("returns empty version without sql service", async () => {
+      const c = new MSSQLClient({ connectionString: CS });
+      await expect(c.resolveOutput("mssql-database", "x", "serverVersion")).resolves.toBe("");
+    });
+
+    it("throws for unsupported output", async () => {
+      const c = new MSSQLClient({ connectionString: CS });
+      await expect(c.resolveOutput("mssql-database", "x", "x")).rejects.toThrow(
         /cannot resolve output/,
+      );
+    });
+  });
+
+  describe("getCreateConfig", () => {
+    it("returns database create fields", async () => {
+      const c = new MSSQLClient({ connectionString: CS });
+      const cfg = await c.getCreateConfig("mssql-database");
+      expect(cfg.fields.map((f) => f.key)).toEqual(["name", "collation"]);
+    });
+
+    it("throws for unsupported type", async () => {
+      const c = new MSSQLClient({ connectionString: CS });
+      await expect(c.getCreateConfig("x")).rejects.toThrow(/no create config/);
+    });
+  });
+
+  describe("createResource", () => {
+    it("creates a database", async () => {
+      const c = new MSSQLClient({ connectionString: CS }, services(sql));
+      const res = await c.createResource("mssql-database", "acct", { name: "shop" });
+      expect(sql.execute).toHaveBeenCalledWith("CREATE DATABASE [shop]", []);
+      expect(res).toMatchObject({
+        id: "acct:mssql-database:shop",
+        displayName: "shop",
+        externalId: "shop",
+        fields: { host: "db.example.com", database: "shop" },
+      });
+    });
+
+    it("creates with collation", async () => {
+      const c = new MSSQLClient({ connectionString: CS }, services(sql));
+      await c.createResource("mssql-database", "acct", {
+        name: "shop",
+        collation: "SQL_Latin1_General_CP1_CI_AS",
+      });
+      expect(sql.execute).toHaveBeenCalledWith(
+        "CREATE DATABASE [shop] COLLATE SQL_Latin1_General_CP1_CI_AS",
+        [],
+      );
+    });
+
+    it("throws when sql service missing", async () => {
+      const c = new MSSQLClient({ connectionString: CS });
+      await expect(c.createResource("mssql-database", "acct", { name: "shop" })).rejects.toThrow(
+        /SQL service not available/,
+      );
+    });
+
+    it("rejects invalid names and collation", async () => {
+      const c = new MSSQLClient({ connectionString: CS }, services(sql));
+      await expect(
+        c.createResource("mssql-database", "acct", { name: "bad]name" }),
+      ).rejects.toThrow(/Invalid database name/);
+      await expect(
+        c.createResource("mssql-database", "acct", {
+          name: "shop",
+          collation: "bad-name",
+        }),
+      ).rejects.toThrow(/Invalid SQL Server identifier/);
+    });
+
+    it("refuses system database names", async () => {
+      const c = new MSSQLClient({ connectionString: CS }, services(sql));
+      await expect(c.createResource("mssql-database", "acct", { name: "master" })).rejects.toThrow(
+        /system database/,
+      );
+    });
+
+    it("throws on unsupported type", async () => {
+      const c = new MSSQLClient({ connectionString: CS }, services(sql));
+      await expect(c.createResource("x", "acct", { name: "shop" })).rejects.toThrow(
+        /not supported/,
       );
     });
   });
@@ -201,6 +295,10 @@ describe("MSSQLClient", () => {
         { name: "dbo.users", columns: [{ name: "id", type: "int" }], pkColumns: ["id"] },
         { name: "dbo.orders", columns: [{ name: "id", type: "int" }], pkColumns: [] },
       ]);
+      expect(sql.query).toHaveBeenNthCalledWith(
+        3,
+        expect.stringContaining("tc.CONSTRAINT_SCHEMA = kcu.CONSTRAINT_SCHEMA"),
+      );
     });
   });
 

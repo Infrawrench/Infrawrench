@@ -5,47 +5,66 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // constructed with the shared client. We replace each `.API` with a stub class
 // that delegates to per-test method spies stored on module-level objects.
 
-const { instanceMethods, k8sMethods, rdbMethods, blockMethods, s3Mocks } = vi.hoisted(() => ({
-  instanceMethods: {
-    listServers: vi.fn(),
-    listServersTypes: vi.fn(),
-    listImages: vi.fn(),
-    createServer: vi.fn(),
-    serverAction: vi.fn(),
-    attachVolume: vi.fn(),
-  },
-  k8sMethods: {
-    listClusters: vi.fn(),
-    listPools: vi.fn(),
-    listVersions: vi.fn(),
-    createCluster: vi.fn(),
-    deleteCluster: vi.fn(),
-    getClusterKubeConfig: vi.fn(),
-  },
-  rdbMethods: {
-    listInstances: vi.fn(),
-    getInstance: vi.fn(),
-    createInstance: vi.fn(),
-    deleteInstance: vi.fn(),
-  },
-  blockMethods: {
-    listVolumes: vi.fn(),
-    createVolume: vi.fn(),
-    deleteVolume: vi.fn(),
-  },
-  s3Mocks: {
-    signedS3Fetch: vi.fn(),
-    listS3Objects: vi.fn(),
-    uploadS3Object: vi.fn(),
-    makeS3Folder: vi.fn(),
-    deleteS3Object: vi.fn(),
-    getS3BucketPolicy: vi.fn(),
-    putS3BucketPolicy: vi.fn(),
-  },
-}));
+const { sdkMocks, instanceMethods, k8sMethods, rdbMethods, blockMethods, s3Mocks } = vi.hoisted(
+  () => ({
+    sdkMocks: {
+      createClient: vi.fn(() => ({ __fakeClient: true })),
+      createAdvancedClient: vi.fn(() => ({ __fakeClient: true })),
+      withHTTPClient: vi.fn((httpClient: typeof fetch) => (settings: Record<string, unknown>) => ({
+        ...settings,
+        httpClient,
+      })),
+      withProfile: vi.fn(
+        (profile: Record<string, unknown>) => (settings: Record<string, unknown>) => ({
+          ...settings,
+          ...profile,
+        }),
+      ),
+    },
+    instanceMethods: {
+      listServers: vi.fn(),
+      listServersTypes: vi.fn(),
+      listImages: vi.fn(),
+      createServer: vi.fn(),
+      serverAction: vi.fn(),
+      attachVolume: vi.fn(),
+    },
+    k8sMethods: {
+      listClusters: vi.fn(),
+      listPools: vi.fn(),
+      listVersions: vi.fn(),
+      createCluster: vi.fn(),
+      deleteCluster: vi.fn(),
+      getClusterKubeConfig: vi.fn(),
+    },
+    rdbMethods: {
+      listInstances: vi.fn(),
+      getInstance: vi.fn(),
+      createInstance: vi.fn(),
+      deleteInstance: vi.fn(),
+    },
+    blockMethods: {
+      listVolumes: vi.fn(),
+      createVolume: vi.fn(),
+      deleteVolume: vi.fn(),
+    },
+    s3Mocks: {
+      signedS3Fetch: vi.fn(),
+      listS3Objects: vi.fn(),
+      uploadS3Object: vi.fn(),
+      makeS3Folder: vi.fn(),
+      deleteS3Object: vi.fn(),
+      getS3BucketPolicy: vi.fn(),
+      putS3BucketPolicy: vi.fn(),
+    },
+  }),
+);
 
 vi.mock("@scaleway/sdk-client", () => ({
-  createClient: vi.fn(() => ({ __fakeClient: true })),
+  createClient: sdkMocks.createClient,
+  createAdvancedClient: sdkMocks.createAdvancedClient,
+  withHTTPClient: sdkMocks.withHTTPClient,
+  withProfile: sdkMocks.withProfile,
 }));
 vi.mock("@scaleway/sdk-instance", () => ({
   Instancev1: {
@@ -119,6 +138,7 @@ let fetchMock: any;
 beforeEach(() => {
   fetchMock = vi.spyOn(globalThis, "fetch");
   for (const m of [
+    ...Object.values(sdkMocks),
     ...Object.values(instanceMethods),
     ...Object.values(k8sMethods),
     ...Object.values(rdbMethods),
@@ -133,6 +153,20 @@ beforeEach(() => {
   k8sMethods.listPools.mockResolvedValue({ pools: [] });
   rdbMethods.listInstances.mockResolvedValue({ instances: [] });
   blockMethods.listVolumes.mockResolvedValue({ volumes: [] });
+  sdkMocks.createClient.mockReturnValue({ __fakeClient: true });
+  sdkMocks.createAdvancedClient.mockReturnValue({ __fakeClient: true });
+  sdkMocks.withHTTPClient.mockImplementation(
+    (httpClient: typeof fetch) => (settings: Record<string, unknown>) => ({
+      ...settings,
+      httpClient,
+    }),
+  );
+  sdkMocks.withProfile.mockImplementation(
+    (profile: Record<string, unknown>) => (settings: Record<string, unknown>) => ({
+      ...settings,
+      ...profile,
+    }),
+  );
 });
 
 afterEach(() => {
@@ -145,6 +179,39 @@ describe("constructor", () => {
   });
   it("constructs with secretKey only", () => {
     expect(new ScalewayClient({ secretKey: "sk" }, resourceTypes)).toBeInstanceOf(ScalewayClient);
+  });
+
+  it("routes SDK calls through host HTTP services when provided by plugin factory", async () => {
+    const request = vi.fn(async () => ({
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+      body: '{"ok":true}',
+    }));
+    const c = plugin.createClient(CREDS, { http: { request } } as any) as ScalewayClient;
+
+    await c.listResources("instance", ACCOUNT);
+
+    expect(sdkMocks.createAdvancedClient).toHaveBeenCalled();
+    expect(sdkMocks.withHTTPClient).toHaveBeenCalled();
+    const httpClient = sdkMocks.withHTTPClient.mock.calls[0]![0] as typeof fetch;
+    const response = await httpClient(
+      new Request("https://api.scaleway.com/instance/v1/zones/fr-par-1/servers", {
+        method: "POST",
+        headers: { "X-Auth-Token": "sk", "Content-Type": "application/json" },
+        body: '{"name":"vm"}',
+      }),
+    );
+
+    expect(request).toHaveBeenCalledWith({
+      url: "https://api.scaleway.com/instance/v1/zones/fr-par-1/servers",
+      method: "POST",
+      headers: expect.objectContaining({
+        "x-auth-token": "sk",
+        "content-type": "application/json",
+      }),
+      body: '{"name":"vm"}',
+    });
+    expect(await response.json()).toEqual({ ok: true });
   });
 });
 
@@ -1043,6 +1110,55 @@ describe("fetchMetricSeries", () => {
     );
     expect(series.length).toBe(3);
     expect(series[0]!.points[0]).toEqual({ timestamp: 1700000000000, value: 12.5 });
+  });
+
+  it("queries cockpit through host HTTP services when provided", async () => {
+    const request = vi.fn(async ({ url }: { url: string }) => {
+      if (url.includes("/data-sources")) {
+        return {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ data_sources: [{ url: "https://cockpit" }] }),
+        };
+      }
+      return {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          status: "success",
+          data: { result: [{ values: [[1700000000, "7"]] }] },
+        }),
+      };
+    });
+    const c = plugin.createClient({ ...CREDS, cockpitQueryToken: "tok" }, {
+      http: { request },
+    } as any) as ScalewayClient;
+
+    const series = await c.fetchMetricSeries(
+      "instance",
+      `${ACCOUNT}:instance:fr-par-1/srv1`,
+      ACCOUNT,
+    );
+
+    expect(series).toHaveLength(3);
+    expect(request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: expect.stringContaining("/cockpit/v1/regions/fr-par/data-sources"),
+        method: "GET",
+        headers: expect.objectContaining({ "X-Auth-Token": "sk" }),
+      }),
+    );
+    expect(request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: "https://cockpit/prometheus/api/v1/query_range",
+        method: "POST",
+        headers: expect.objectContaining({
+          Authorization: "Bearer tok",
+          "Content-Type": "application/x-www-form-urlencoded",
+        }),
+        body: expect.stringContaining("query="),
+      }),
+    );
   });
 
   it("data source cache + query failure returns []", async () => {

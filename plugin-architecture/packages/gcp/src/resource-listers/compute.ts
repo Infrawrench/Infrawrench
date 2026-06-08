@@ -200,6 +200,7 @@ export async function listInstanceGroups(
         .pop() ?? "";
     const igmStatus = igm["status"] as Record<string, unknown> | undefined;
     const isStable = igmStatus?.["isStable"] === true;
+    const selfLink = String(igm["instanceGroup"] ?? igm["selfLink"] ?? "");
     return {
       id: ctx.id(accountId, "instance-group", `${zone || region}/${name}`),
       pluginId: "gcp",
@@ -216,7 +217,7 @@ export async function listInstanceGroups(
         instanceTemplate,
         status: igmStatus ? (isStable ? "RUNNING" : "UPDATING") : "",
       },
-      resolvedOutputs: {},
+      resolvedOutputs: selfLink ? { selfLink } : {},
       secretStates: [],
       externalId: `${zone || region}/${name}`,
       createdAt: String(igm["creationTimestamp"] ?? ctx.now()),
@@ -292,14 +293,20 @@ export async function listBackendServices(
     const healthChecks = bs["healthChecks"];
     const draining = bs["connectionDraining"] as Record<string, unknown> | undefined;
     const selfLink = String(bs["selfLink"] ?? "");
+    const region =
+      String(bs["region"] ?? "")
+        .split("/")
+        .pop() ?? "";
+    const externalId = `${region || "global"}/${name}`;
     return {
-      id: ctx.id(accountId, "backend-service", name),
+      id: ctx.id(accountId, "backend-service", externalId),
       pluginId: "gcp",
       resourceTypeId: "backend-service",
       accountId,
       displayName: name,
       fields: {
         name,
+        region,
         description: String(bs["description"] ?? ""),
         protocol: String(bs["protocol"] ?? ""),
         port: Number(bs["port"] ?? 0),
@@ -314,7 +321,7 @@ export async function listBackendServices(
       },
       resolvedOutputs: selfLink ? { selfLink } : {},
       secretStates: [],
-      externalId: name,
+      externalId,
       createdAt: String(bs["creationTimestamp"] ?? ctx.now()),
       updatedAt: ctx.now(),
     };

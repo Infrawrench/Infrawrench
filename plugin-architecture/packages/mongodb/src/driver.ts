@@ -140,6 +140,27 @@ export const driver = {
           const collName = String(args[1] ?? "");
           if (!collName) throw new Error("collectionStats requires a collection name");
           const coll = db.collection(collName);
+          try {
+            const stats = (await db.command({ collStats: collName })) as {
+              count?: number;
+              size?: number;
+              avgObjSize?: number;
+              storageSize?: number;
+              nindexes?: number;
+              totalIndexSize?: number;
+            };
+            return {
+              count: stats.count ?? 0,
+              size: stats.size ?? 0,
+              avgObjSize: stats.avgObjSize ?? 0,
+              storageSize: stats.storageSize ?? 0,
+              nindexes: stats.nindexes ?? 0,
+              totalIndexSize: stats.totalIndexSize ?? 0,
+            };
+          } catch {
+            // Atlas free-tier and restricted accounts can deny collStats; keep
+            // the query surface useful with driver-level estimates.
+          }
           const [count, indexes] = await Promise.all([
             coll.estimatedDocumentCount().catch(() => coll.countDocuments()),
             coll

@@ -101,7 +101,7 @@ const PLUGIN_ALLOWLIST: Record<string, string[]> = {
   neon: ["console.neon.tech"],
   turso: ["api.turso.tech"],
   ovh: ["*.ovh.com"],
-  scaleway: ["api.scaleway.com"],
+  scaleway: ["api.scaleway.com", "*.scw.cloud"],
   vultr: ["api.vultr.com"],
   kubernetes: [], // kubeconfig-relative; v1 doesn't bastion-route Kubernetes
 };

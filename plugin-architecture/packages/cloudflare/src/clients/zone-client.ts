@@ -80,7 +80,7 @@ export async function deleteZone(api: CloudflareApi, externalId: string): Promis
 }
 
 /**
- * Enable or disable DNSSEC for a zone (`PATCH /zones/{id}/dns_dnssec` with
+ * Enable or disable DNSSEC for a zone (`PATCH /zones/{id}/dnssec` with
  * `status: active | disabled`). After enabling, the user must add the returned
  * DS record at their domain registrar to complete activation.
  */

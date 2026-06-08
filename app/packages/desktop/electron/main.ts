@@ -147,7 +147,7 @@ app.whenReady().then(() => {
       if (k.toLowerCase() === "access-control-allow-headers") delete headers[k];
     }
     headers["Access-Control-Allow-Headers"] = [
-      "Authorization, Content-Type, Accept, Api-Version, cf-aig-gateway-id, cf-aig-authorization, X-Amz-Content-Sha256, X-Amz-Date, X-Amz-Target, X-Amz-Security-Token, X-Amz-User-Agent, X-Amz-Algorithm, X-Amz-Credential, X-Amz-Signature, X-Amz-SignedHeaders, X-Stainless-Arch, X-Stainless-Lang, X-Stainless-Os, X-Stainless-Package-Version, X-Stainless-Retry-Count, X-Stainless-Runtime, X-Stainless-Runtime-Version, X-Stainless-Timeout",
+      "Authorization, Content-Type, Accept, Api-Version, cf-aig-gateway-id, cf-aig-authorization, X-Amz-Content-Sha256, X-Amz-Date, X-Amz-Target, X-Amz-Security-Token, X-Amz-User-Agent, X-Amz-Algorithm, X-Amz-Credential, X-Amz-Signature, X-Amz-SignedHeaders, X-Auth-Token, X-Ovh-Application, X-Ovh-Timestamp, X-Ovh-Consumer, X-Ovh-Signature, X-ClickHouse-User, X-ClickHouse-Key, X-ClickHouse-Database, X-ClickHouse-Format, X-Stainless-Arch, X-Stainless-Lang, X-Stainless-Os, X-Stainless-Package-Version, X-Stainless-Retry-Count, X-Stainless-Runtime, X-Stainless-Runtime-Version, X-Stainless-Timeout",
     ];
 
     if (!hasACAO) {

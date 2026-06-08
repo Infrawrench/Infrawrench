@@ -55,9 +55,15 @@ export class MongoDBClient implements PluginClient {
     return found;
   }
 
-  async resolveOutput(typeId: string, _resourceId: string, outputKey: string): Promise<string> {
+  async resolveOutput(typeId: string, resourceId: string, outputKey: string): Promise<string> {
     if (typeId === "mongodb-database" && outputKey === "connectionString") {
       return this.connectionString;
+    }
+    if (typeId === "mongodb-database" && outputKey === "serverVersion") {
+      const kv = this.services?.kv;
+      if (!kv) throw new Error("MongoDB KV service not available");
+      const dbName = resourceId.split(":").pop() ?? this.parseDatabaseName();
+      return String(await kv.command("serverVersion", dbName));
     }
     throw new Error(`MongoDB plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
   }

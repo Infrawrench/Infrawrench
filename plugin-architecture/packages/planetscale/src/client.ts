@@ -360,6 +360,42 @@ export class PlanetScaleClient implements PluginClient {
       };
     }
 
+    if (typeId === "ps-password") {
+      const parent = parentResourceId ? PlanetScaleClient.parseBranchId(parentResourceId) : null;
+      return {
+        fields: [
+          ...(parent
+            ? []
+            : [
+                { key: "databaseName", label: "Database", kind: "text" as const, required: true },
+                { key: "branchName", label: "Branch", kind: "text" as const, required: true },
+              ]),
+          { key: "name", label: "Password Name", kind: "text", required: false },
+          {
+            key: "role",
+            label: "Role",
+            kind: "select",
+            required: false,
+            defaultValue: "reader",
+            options: [
+              { id: "reader", label: "Reader" },
+              { id: "writer", label: "Writer" },
+              { id: "readwriter", label: "Read/Write" },
+              { id: "admin", label: "Admin" },
+            ],
+          },
+          { key: "ttl", label: "TTL seconds", kind: "number", required: false },
+          {
+            key: "cidrs",
+            label: "Allowed CIDRs",
+            kind: "string-list",
+            required: false,
+            addLabel: "Add CIDR",
+          },
+        ],
+      };
+    }
+
     throw new Error(`PlanetScale plugin: no create config for type "${typeId}"`);
   }
 
@@ -374,6 +410,9 @@ export class PlanetScaleClient implements PluginClient {
     }
     if (typeId === "ps-branch") {
       return this.createBranch(accountId, fields, parentResourceId);
+    }
+    if (typeId === "ps-password") {
+      return this.createPassword(accountId, fields, parentResourceId);
     }
     throw new Error(`PlanetScale plugin: cannot create type "${typeId}"`);
   }
@@ -896,6 +935,43 @@ export class PlanetScaleClient implements PluginClient {
     const branch = data.data;
     const now = new Date().toISOString();
     return this.toBranchResource(branch, dbName, accountId, now);
+  }
+
+  private async createPassword(
+    accountId: string,
+    fields: Record<string, string>,
+    parentResourceId?: string,
+  ): Promise<ResourceInstance> {
+    const parent = parentResourceId ? PlanetScaleClient.parseBranchId(parentResourceId) : null;
+    const databaseName = parent?.databaseName ?? fields["databaseName"] ?? "";
+    const branchName = parent?.branchName ?? fields["branchName"] ?? "";
+    if (!databaseName || !branchName) {
+      throw new Error("PlanetScale plugin: password creation requires a database and branch.");
+    }
+
+    const body: Record<string, unknown> = {};
+    if (fields["name"]) body["name"] = fields["name"];
+    if (fields["role"]) body["role"] = fields["role"];
+    if (fields["ttl"]) body["ttl"] = Number(fields["ttl"]);
+    if (fields["cidrs"]) {
+      body["cidrs"] = fields["cidrs"]
+        .split(",")
+        .map((cidr) => cidr.trim())
+        .filter(Boolean);
+    }
+
+    const data = await this.fetch<{ data: PsPassword }>(
+      `/organizations/${enc(this.orgName)}/databases/${enc(databaseName)}/branches/${enc(branchName)}/passwords`,
+      { method: "POST", body: JSON.stringify(body) },
+    );
+
+    return this.toPasswordResource(
+      data.data,
+      databaseName,
+      branchName,
+      accountId,
+      new Date().toISOString(),
+    );
   }
 
   private async resolveBranchConnectionString(resourceId: string): Promise<string> {

@@ -65,6 +65,12 @@ describe("allowlistForPlugins", () => {
   it("kubernetes contributes nothing (not bastion-routed in v1)", () => {
     expect(registry.allowlistForPlugins(["kubernetes"])).toEqual([]);
   });
+
+  it("includes Scaleway control-plane and regional service hosts", () => {
+    const out = registry.allowlistForPlugins(["scaleway"]);
+    expect(out).toContain("api.scaleway.com");
+    expect(out).toContain("*.scw.cloud");
+  });
 });
 
 describe("register / unregister / lookup", () => {

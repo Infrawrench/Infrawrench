@@ -90,9 +90,23 @@ describe("constructor", () => {
     const h = calls[0]!.init?.headers as Record<string, string>;
     expect(h["Authorization"]).toBe("Bearer tok");
     expect(h["Accept"]).toBe("application/json");
+    expect(h["User-Agent"]).toBeUndefined();
   });
 
-  it("uses host http when caCert + services.http", async () => {
+  it("uses host http when services.http is supplied", async () => {
+    const request = vi.fn(async () => ({ status: 200, body: JSON.stringify([SITE]) }));
+    const spy = installFetch(() => jsonResponse({}));
+    await client({ accessToken: "tok" }, { http: { request } }).listResources(
+      "netlify-site",
+      ACCOUNT,
+    );
+    expect(request).toHaveBeenCalled();
+    const [requestArg] = (request.mock.calls as unknown as Array<[{ caCert?: string }]>)[0]!;
+    expect(requestArg.caCert).toBeUndefined();
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("passes caCert through host http when configured", async () => {
     const request = vi.fn(async () => ({ status: 200, body: JSON.stringify([SITE]) }));
     const spy = installFetch(() => jsonResponse({}));
     await client({ accessToken: "tok", caCert: "PEM" }, { http: { request } }).listResources(
@@ -104,6 +118,18 @@ describe("constructor", () => {
       ((request.mock.calls as unknown as [unknown[]])[0]![0] as { caCert?: string }).caCert,
     ).toBe("PEM");
     expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("routes legacy env calls through host http", async () => {
+    const request = vi.fn(async () => ({ status: 200, body: JSON.stringify([{ key: "K" }]) }));
+    await client({ accessToken: "tok" }, { http: { request } }).createResource(
+      "netlify-env-var",
+      ACCOUNT,
+      { siteId: "site1", key: "K", value: "V" },
+    );
+    expect(request).toHaveBeenCalled();
+    const [requestArg] = (request.mock.calls as unknown as Array<[{ url: string }]>)[0]!;
+    expect(requestArg.url).toContain("/sites/site1/env");
   });
 });
 

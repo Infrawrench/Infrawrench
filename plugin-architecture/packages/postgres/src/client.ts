@@ -11,6 +11,19 @@ import type {
   PeerPaneResource,
 } from "@infrawrench/plugin-base";
 
+const VISIBLE_SCHEMA_FILTER =
+  "schema_name NOT IN ('pg_catalog', 'information_schema') AND schema_name NOT LIKE 'pg_toast%' AND schema_name NOT LIKE 'pg_temp_%'";
+const VISIBLE_TABLE_SCHEMA_FILTER =
+  "table_schema NOT IN ('pg_catalog', 'information_schema') AND table_schema NOT LIKE 'pg_toast%' AND table_schema NOT LIKE 'pg_temp_%'";
+
+function sqlStringLiteral(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+function tableDisplayName(schemaName: string, tableName: string): string {
+  return schemaName === "public" ? tableName : `${schemaName}.${tableName}`;
+}
+
 /**
  * Postgres plugin client.
  * The connectionString is already resolved (decrypted) by the host's SecretResolver
@@ -64,18 +77,37 @@ export class PostgresClient implements PluginClient {
 
   async resolveOutput(
     typeId: string,
-    _resourceId: string,
+    resourceId: string,
     outputKey: string,
-    _accountId: string,
+    accountId: string,
   ): Promise<string> {
     if (typeId === "pg-database" && outputKey === "connectionString") {
       return this.connectionString;
     }
     if (typeId === "pg-database" && outputKey === "serverVersion") {
-      return "PostgreSQL 16.2";
+      const sql = this.services?.sql;
+      if (!sql) return "";
+      const rows = await sql.query("SELECT version()");
+      return String(rows[0]?.["version"] ?? "")
+        .split(" ")
+        .slice(0, 2)
+        .join(" ");
     }
     if (typeId === "pg-database" && outputKey === "schemaNames") {
-      return JSON.stringify(["public"]);
+      const schemas = await this.listSchemas(accountId);
+      return JSON.stringify(schemas.map((schema) => String(schema.fields["name"] ?? "")));
+    }
+    if (typeId === "pg-schema" && outputKey === "tableCount") {
+      const sql = this.services?.sql;
+      if (!sql) return "0";
+      const schemaName = resourceId.split(":").pop();
+      if (!schemaName) throw new Error("Cannot parse schema name");
+      const rows = await sql.query(
+        `SELECT COUNT(*) AS n
+         FROM information_schema.tables
+         WHERE table_schema = ${sqlStringLiteral(schemaName)} AND table_type = 'BASE TABLE'`,
+      );
+      return String(Number(rows[0]?.["n"] ?? 0));
     }
     throw new Error(`Postgres plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
   }
@@ -226,7 +258,10 @@ export class PostgresClient implements PluginClient {
     const schemas: PeerPaneResource[] = [];
     if (sql) {
       const rows = (await sql.query(
-        "SELECT schema_name FROM information_schema.schemata WHERE schema_name NOT IN ('pg_catalog', 'information_schema', 'pg_toast') ORDER BY schema_name",
+        `SELECT schema_name
+         FROM information_schema.schemata
+         WHERE ${VISIBLE_SCHEMA_FILTER}
+         ORDER BY schema_name`,
       )) as { schema_name: string }[];
       for (const row of rows) {
         schemas.push({
@@ -235,7 +270,7 @@ export class PostgresClient implements PluginClient {
           resourceTypeId: "pg-schema",
           displayName: row.schema_name,
           status: "healthy",
-          fields: { name: row.schema_name },
+          fields: { name: row.schema_name, host },
         });
       }
     }
@@ -264,41 +299,62 @@ export class PostgresClient implements PluginClient {
 
     const [tableRows, columnRows, pkRows] = await Promise.all([
       sql.query(
-        "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name",
+        `SELECT table_schema, table_name
+         FROM information_schema.tables
+         WHERE table_type = 'BASE TABLE' AND ${VISIBLE_TABLE_SCHEMA_FILTER}
+         ORDER BY table_schema, table_name`,
       ),
       sql.query(
-        "SELECT table_name, column_name, data_type FROM information_schema.columns WHERE table_schema = 'public' ORDER BY table_name, ordinal_position",
+        `SELECT table_schema, table_name, column_name, data_type
+         FROM information_schema.columns
+         WHERE ${VISIBLE_TABLE_SCHEMA_FILTER}
+         ORDER BY table_schema, table_name, ordinal_position`,
       ),
       sql.query(
-        `SELECT kcu.table_name, kcu.column_name
+        `SELECT kcu.table_schema, kcu.table_name, kcu.column_name
          FROM information_schema.table_constraints tc
          JOIN information_schema.key_column_usage kcu
-           ON tc.constraint_name = kcu.constraint_name AND tc.table_schema = kcu.table_schema
-         WHERE tc.constraint_type = 'PRIMARY KEY' AND tc.table_schema = 'public'
-         ORDER BY kcu.table_name, kcu.ordinal_position`,
+           ON tc.constraint_catalog = kcu.constraint_catalog
+          AND tc.constraint_schema = kcu.constraint_schema
+          AND tc.constraint_name = kcu.constraint_name
+         WHERE tc.constraint_type = 'PRIMARY KEY' AND ${VISIBLE_TABLE_SCHEMA_FILTER.replaceAll(
+           "table_schema",
+           "tc.table_schema",
+         )}
+         ORDER BY kcu.table_schema, kcu.table_name, kcu.ordinal_position`,
       ),
     ]);
 
     const colsByTable = new Map<string, { name: string; type: string }[]>();
     for (const col of columnRows as {
+      table_schema: string;
       table_name: string;
       column_name: string;
       data_type: string;
     }[]) {
-      if (!colsByTable.has(col.table_name)) colsByTable.set(col.table_name, []);
-      colsByTable.get(col.table_name)!.push({ name: col.column_name, type: col.data_type });
+      const key = tableDisplayName(col.table_schema, col.table_name);
+      if (!colsByTable.has(key)) colsByTable.set(key, []);
+      colsByTable.get(key)!.push({ name: col.column_name, type: col.data_type });
     }
     const pksByTable = new Map<string, string[]>();
-    for (const pk of pkRows as { table_name: string; column_name: string }[]) {
-      if (!pksByTable.has(pk.table_name)) pksByTable.set(pk.table_name, []);
-      pksByTable.get(pk.table_name)!.push(pk.column_name);
+    for (const pk of pkRows as {
+      table_schema: string;
+      table_name: string;
+      column_name: string;
+    }[]) {
+      const key = tableDisplayName(pk.table_schema, pk.table_name);
+      if (!pksByTable.has(key)) pksByTable.set(key, []);
+      pksByTable.get(key)!.push(pk.column_name);
     }
 
-    return (tableRows as { table_name: string }[]).map((t) => ({
-      name: t.table_name,
-      columns: colsByTable.get(t.table_name) ?? [],
-      pkColumns: pksByTable.get(t.table_name) ?? [],
-    }));
+    return (tableRows as { table_schema: string; table_name: string }[]).map((t) => {
+      const name = tableDisplayName(t.table_schema, t.table_name);
+      return {
+        name,
+        columns: colsByTable.get(name) ?? [],
+        pkColumns: pksByTable.get(name) ?? [],
+      };
+    });
   }
 
   async fetchDashboardStats(
@@ -319,7 +375,9 @@ export class PostgresClient implements PluginClient {
       sql.query("SELECT version()"),
       sql.query("SELECT pg_size_pretty(pg_database_size(current_database())) AS size"),
       sql.query(
-        "SELECT COUNT(*) AS n FROM information_schema.tables WHERE table_schema = 'public'",
+        `SELECT COUNT(*) AS n
+         FROM information_schema.tables
+         WHERE table_type = 'BASE TABLE' AND ${VISIBLE_TABLE_SCHEMA_FILTER}`,
       ),
     ]);
 
@@ -368,25 +426,16 @@ export class PostgresClient implements PluginClient {
       }
     }
 
-    // Fallback: parse the connection string
-    let dbName = "postgres";
-    let host = "unknown";
-    try {
-      const url = new URL(this.connectionString);
-      dbName = url.pathname.replace(/^\//, "") || "postgres";
-      host = url.hostname;
-    } catch {
-      /* connection string may not be a parseable URL */
-    }
+    const { database, host } = this.connectionInfo();
 
     return [
       {
-        id: `${accountId}:pg-database:${dbName}`,
+        id: `${accountId}:pg-database:${database}`,
         pluginId: "postgres",
         resourceTypeId: "pg-database",
         accountId,
-        displayName: dbName,
-        fields: { host, database: dbName },
+        displayName: database,
+        fields: { host, database },
         resolvedOutputs: {},
         secretStates: [],
         createdAt: now,
@@ -395,7 +444,61 @@ export class PostgresClient implements PluginClient {
     ];
   }
 
-  private async listSchemas(_accountId: string): Promise<ResourceInstance[]> {
-    return [];
+  private async listSchemas(accountId: string): Promise<ResourceInstance[]> {
+    const now = new Date().toISOString();
+    const { database, host } = this.connectionInfo();
+
+    if (this.services?.sql) {
+      try {
+        const rows = await this.services.sql.query(
+          `SELECT schema_name
+           FROM information_schema.schemata
+           WHERE ${VISIBLE_SCHEMA_FILTER}
+           ORDER BY schema_name`,
+        );
+        return (rows as { schema_name: string }[]).map((row) => ({
+          id: `${accountId}:pg-schema:${row.schema_name}`,
+          pluginId: "postgres",
+          resourceTypeId: "pg-schema",
+          accountId,
+          displayName: row.schema_name,
+          fields: { name: row.schema_name, database, host },
+          resolvedOutputs: {},
+          secretStates: [],
+          createdAt: now,
+          updatedAt: now,
+        }));
+      } catch {
+        // Fall through to the default public schema placeholder.
+      }
+    }
+
+    return [
+      {
+        id: `${accountId}:pg-schema:public`,
+        pluginId: "postgres",
+        resourceTypeId: "pg-schema",
+        accountId,
+        displayName: "public",
+        fields: { name: "public", database, host },
+        resolvedOutputs: {},
+        secretStates: [],
+        createdAt: now,
+        updatedAt: now,
+      },
+    ];
+  }
+
+  private connectionInfo(): { database: string; host: string } {
+    let database = "postgres";
+    let host = "unknown";
+    try {
+      const url = new URL(this.connectionString);
+      database = url.pathname.replace(/^\//, "") || "postgres";
+      host = url.hostname || "unknown";
+    } catch {
+      /* connection string may not be a parseable URL */
+    }
+    return { database, host };
   }
 }

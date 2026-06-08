@@ -1,4 +1,5 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { OvhClient } from "./client.js";
 import { InstanceResourceType } from "./resources/instance.js";
 import { ManagedKubeResourceType } from "./resources/managed-kube.js";
@@ -57,6 +58,7 @@ const manifest: PluginManifest = {
       sensitive: false,
       placeholder: "12345678-abcd-1234-abcd-1234567890ab",
     },
+    caCertCredentialField,
   ],
 };
 
@@ -70,5 +72,5 @@ const resourceTypes: ResourceTypeDefinition[] = [
 export const plugin: Plugin = {
   manifest,
   resourceTypes,
-  createClient: (credentials) => new OvhClient(credentials, resourceTypes),
+  createClient: (credentials, services) => new OvhClient(credentials, resourceTypes, services),
 };

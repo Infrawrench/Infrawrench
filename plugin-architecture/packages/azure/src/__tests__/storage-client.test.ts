@@ -117,7 +117,8 @@ describe("makeStorageFolder", () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(okText());
     await makeStorageFolder(ctx, "acc", "container/newfolder/");
     const [, init] = fetchSpy.mock.calls[0]!;
-    expect((init!.headers as Record<string, string>)["Content-Length"]).toBe("0");
+    expect((init!.headers as Record<string, string>)["Content-Length"]).toBeUndefined();
+    expect(init!.body).toBeInstanceOf(Uint8Array);
   });
 
   it("throws on mkdir failure", async () => {

@@ -481,6 +481,48 @@ describe("attachAzureResource", () => {
     ).toEqual([{ id: "/gw/backendAddressPools/pool1" }]);
   });
 
+  it("assigns a user-assigned managed identity to a VM", async () => {
+    const identity = res({
+      resourceTypeId: "azure-managed-identity",
+      fields: { name: "mi1", resourceGroup: "rg1", location: "eastus" },
+      resolvedOutputs: {
+        resourceId:
+          "/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.ManagedIdentity/userAssignedIdentities/mi1",
+      },
+    });
+    const patch = vi.fn(async (_url: string, _body: unknown) => ({}));
+    const get = vi.fn(async () => ({
+      identity: {
+        type: "SystemAssigned",
+        userAssignedIdentities: {
+          "/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.ManagedIdentity/userAssignedIdentities/existing":
+            {},
+        },
+      },
+    }));
+    const ctx = {
+      ...httpCtx({ get, patch }),
+      getResource: vi.fn(async (t: string) => (t === "azure-managed-identity" ? identity : vm)),
+    };
+    await attachAzureResource(
+      ctx as never,
+      "azure-managed-identity",
+      "mi",
+      "azure-vm",
+      "vm",
+      "acct",
+    );
+    expect(patch.mock.calls[0]![0]).toContain("/virtualMachines/vm1");
+    const body = patch.mock.calls[0]![1] as {
+      identity: { type: string; userAssignedIdentities: Record<string, unknown> };
+    };
+    expect(body.identity.type).toBe("SystemAssigned, UserAssigned");
+    expect(Object.keys(body.identity.userAssignedIdentities)).toEqual([
+      "/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.ManagedIdentity/userAssignedIdentities/existing",
+      "/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.ManagedIdentity/userAssignedIdentities/mi1",
+    ]);
+  });
+
   it("does not duplicate an existing load balancer backend pool reference", async () => {
     const lb = res({
       resourceTypeId: "azure-load-balancer",

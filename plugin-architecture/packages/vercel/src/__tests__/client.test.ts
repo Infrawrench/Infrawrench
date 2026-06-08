@@ -219,6 +219,8 @@ describe("listResources dispatch + mappers", () => {
       }),
     );
     const res = await client().listResources("vercel-domain", ACCOUNT);
+    expect(res[0]!.id).toBe("acct-1:vercel-domain:example.com");
+    expect(res[0]!.externalId).toBe("example.com");
     expect(res[0]!.fields["nameservers"]).toBe("ns1, ns2");
     expect(res[0]!.fields["verified"]).toBe("true");
     expect(res[0]!.fields["renew"]).toBe("true");
@@ -476,7 +478,7 @@ describe("resolveOutput", () => {
     expect(
       await client().resolveOutput(
         "vercel-domain",
-        "acct-1:vercel-domain:dom1",
+        "acct-1:vercel-domain:d.com",
         "domainName",
         ACCOUNT,
       ),
@@ -484,7 +486,7 @@ describe("resolveOutput", () => {
     expect(
       await client().resolveOutput(
         "vercel-domain",
-        "acct-1:vercel-domain:dom1",
+        "acct-1:vercel-domain:d.com",
         "nameservers",
         ACCOUNT,
       ),
@@ -659,7 +661,7 @@ describe("fetchDashboardStats", () => {
     );
     const stats = await client().fetchDashboardStats(
       "vercel-domain",
-      "acct-1:vercel-domain:dom1",
+      "acct-1:vercel-domain:d.com",
       ACCOUNT,
     );
     expect(stats[0]!.value).toBe("Yes");
@@ -922,7 +924,12 @@ describe("createResource", () => {
     const r = await client().createResource("vercel-domain", ACCOUNT, { name: "ex.com" });
     expect(r.externalId).toBe("ex.com");
     expect(r.fields["verified"]).toBe("true");
-    expect(calls[0]!.url).toContain("/v5/domains");
+    expect(r.fields["nameservers"]).toBe("");
+    expect(calls[0]!.url).toContain("/v7/domains");
+    expect(JSON.parse(calls[0]!.init?.body as string)).toEqual({
+      name: "ex.com",
+      method: "add",
+    });
   });
 
   it("creates a domain (no envelope, defaults)", async () => {
@@ -998,8 +1005,8 @@ describe("deleteResource", () => {
 
   it("deletes domain", async () => {
     installFetch(() => jsonResponse(null, 204));
-    await client().deleteResource("vercel-domain", "acct-1:vercel-domain:dom1", ACCOUNT);
-    expect(calls[0]!.url).toContain("/v6/domains/dom1");
+    await client().deleteResource("vercel-domain", "acct-1:vercel-domain:example.com", ACCOUNT);
+    expect(calls[0]!.url).toContain("/v6/domains/example.com");
   });
 
   it("deletes env var", async () => {
@@ -1036,7 +1043,6 @@ describe("attachResource", () => {
         return jsonResponse({
           domains: [
             {
-              id: "dom1",
               name: "example.com",
               verified: true,
               serviceType: "external",
@@ -1056,7 +1062,7 @@ describe("attachResource", () => {
     });
     await client({ accessToken: "tok", teamId: "team_x" }).attachResource(
       "vercel-domain",
-      "acct-1:vercel-domain:dom1",
+      "acct-1:vercel-domain:example.com",
       "vercel-project",
       "acct-1:vercel-project:p1",
       ACCOUNT,

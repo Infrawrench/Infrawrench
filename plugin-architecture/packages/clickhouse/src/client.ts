@@ -8,6 +8,7 @@ import type {
   ResourceStatus,
   DashboardStat,
   CreateResourceConfig,
+  HostServices,
 } from "@infrawrench/plugin-base";
 import type { ListerContext } from "./resource-listers.js";
 import { listServices, listDatabases } from "./resource-listers.js";
@@ -31,16 +32,22 @@ export class ClickHouseClient implements PluginClient {
   private readonly apiKeySecret: string;
   private readonly organizationId: string;
   private readonly chHost: string;
+  private readonly chPort: string;
   private readonly chUser: string;
   private readonly chPassword: string;
+  private readonly caCert: string;
+  private readonly services: HostServices | undefined;
 
-  constructor(credentials: Record<string, string>) {
+  constructor(credentials: Record<string, string>, services?: HostServices) {
     this.apiKeyId = credentials["apiKeyId"] ?? "";
     this.apiKeySecret = credentials["apiKeySecret"] ?? "";
     this.organizationId = credentials["organizationId"] ?? "";
     this.chHost = (credentials["chHost"] ?? "").replace(/\/+$/, "");
+    this.chPort = credentials["chPort"] || "8443";
     this.chUser = credentials["chUser"] ?? "default";
     this.chPassword = credentials["chPassword"] ?? "";
+    this.caCert = credentials["caCert"] ?? "";
+    this.services = services;
 
     if (!this.apiKeyId || !this.apiKeySecret) {
       throw new Error("ClickHouse plugin: missing API key credentials");
@@ -57,15 +64,35 @@ export class ClickHouseClient implements PluginClient {
   ): Promise<T> {
     const url = `https://api.clickhouse.cloud${path}`;
     const authHeader = `Basic ${btoa(`${this.apiKeyId}:${this.apiKeySecret}`)}`;
-    const init: RequestInit = {
-      method,
-      headers: {
-        Authorization: authHeader,
-        "Content-Type": "application/json",
-      },
+    const headers = {
+      Authorization: authHeader,
+      "Content-Type": "application/json",
     };
-    if (body && (method === "POST" || method === "PUT" || method === "PATCH")) {
-      init.body = JSON.stringify(body);
+    const serializedBody =
+      body && (method === "POST" || method === "PUT" || method === "PATCH")
+        ? JSON.stringify(body)
+        : undefined;
+
+    if (this.services?.http) {
+      const result = await this.services.http.request({
+        url,
+        method,
+        headers,
+        ...(serializedBody ? { body: serializedBody } : {}),
+        ...(this.caCert ? { caCert: this.caCert } : {}),
+      });
+      if (result.status < 200 || result.status >= 300) {
+        throw new Error(
+          `ClickHouse Cloud ${method} ${path} failed: ${result.status} ${result.body}`,
+        );
+      }
+      if (!result.body) return {} as T;
+      return JSON.parse(result.body) as T;
+    }
+
+    const init: RequestInit = { method, headers };
+    if (serializedBody) {
+      init.body = serializedBody;
     }
 
     const res = await fetch(url, init);
@@ -82,9 +109,17 @@ export class ClickHouseClient implements PluginClient {
   private normalizeChUrl(rawHost: string): string {
     const trimmed = rawHost.replace(/\/+$/, "");
     if (!trimmed) return "";
-    return trimmed.startsWith("http://") || trimmed.startsWith("https://")
-      ? trimmed
-      : `https://${trimmed}`;
+    const withScheme =
+      trimmed.startsWith("http://") || trimmed.startsWith("https://")
+        ? trimmed
+        : `https://${trimmed}`;
+    try {
+      const url = new URL(withScheme);
+      if (!url.port && this.chPort) url.port = this.chPort;
+      return url.toString().replace(/\/+$/, "");
+    } catch {
+      return withScheme;
+    }
   }
 
   private makeSdkClient(rawHost: string): ClickHouseSdkClient | null {

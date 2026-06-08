@@ -181,6 +181,35 @@ describe("K8sFetcher via services.k8s driver", () => {
 });
 
 describe("K8sFetcher via host http service (CA pinning)", () => {
+  it("uses host http when available even without kubeconfig CA data", async () => {
+    const request = vi.fn(async () => ({
+      status: 200,
+      headers: {} as Record<string, string>,
+      body: JSON.stringify({ ok: true }),
+    }));
+    const parsed: ParsedKubeconfig = {
+      server: "https://k8s.example",
+      token: "tok",
+    };
+    const fetcher = new K8sFetcher(parsed, { http: { request } });
+    const result = await fetcher.fetch("/api/v1/pods", {
+      method: "POST",
+      body: "{}",
+    });
+    expect(result).toEqual({ ok: true });
+    expect(request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: "https://k8s.example/api/v1/pods",
+        method: "POST",
+        body: "{}",
+        headers: expect.objectContaining({ Authorization: "Bearer tok" }),
+      }),
+    );
+    expect(request).toHaveBeenCalledWith(
+      expect.not.objectContaining({ caCert: expect.anything() }),
+    );
+  });
+
   it("decodes the CA, calls http.request, parses the JSON body", async () => {
     const request = vi.fn(async () => ({
       status: 200,
@@ -269,6 +298,28 @@ describe("K8sFetcher via host http service (CA pinning)", () => {
     await expect(
       new K8sFetcher(parsed, { http: { request: throws } }).fetchText("/log"),
     ).rejects.toThrow(/unreachable.*net down/);
+  });
+
+  it("fetchText also uses host http without kubeconfig CA data", async () => {
+    const request = vi.fn(async () => ({
+      status: 200,
+      headers: {} as Record<string, string>,
+      body: "plain logs",
+    }));
+    const parsed: ParsedKubeconfig = { server: "https://k8s.example", token: "tok" };
+    expect(await new K8sFetcher(parsed, { http: { request } }).fetchText("/log")).toBe(
+      "plain logs",
+    );
+    expect(request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: "https://k8s.example/log",
+        method: "GET",
+        headers: expect.objectContaining({ Authorization: "Bearer tok" }),
+      }),
+    );
+    expect(request).toHaveBeenCalledWith(
+      expect.not.objectContaining({ caCert: expect.anything() }),
+    );
   });
 });
 

@@ -3,10 +3,17 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const mockVersion = vi.fn();
 const mockListContainers = vi.fn();
 const mockListImages = vi.fn();
+const mockListVolumes = vi.fn();
+const mockListNetworks = vi.fn();
 const mockInspect = vi.fn();
 const mockStart = vi.fn();
 const mockStop = vi.fn();
 const mockRestart = vi.fn();
+const mockCreateVolume = vi.fn();
+const mockCreateNetwork = vi.fn();
+const mockRemoveImage = vi.fn();
+const mockRemoveVolume = vi.fn();
+const mockRemoveNetwork = vi.fn();
 
 const mockGetContainer = vi.fn(() => ({
   inspect: mockInspect,
@@ -15,13 +22,24 @@ const mockGetContainer = vi.fn(() => ({
   restart: mockRestart,
 }));
 
+const mockGetImage = vi.fn(() => ({ remove: mockRemoveImage }));
+const mockGetVolume = vi.fn(() => ({ remove: mockRemoveVolume }));
+const mockGetNetwork = vi.fn(() => ({ remove: mockRemoveNetwork }));
+
 vi.mock("dockerode", () => ({
   default: vi.fn(function () {
     return {
       version: mockVersion,
       listContainers: mockListContainers,
       listImages: mockListImages,
+      listVolumes: mockListVolumes,
+      listNetworks: mockListNetworks,
+      createVolume: mockCreateVolume,
+      createNetwork: mockCreateNetwork,
       getContainer: mockGetContainer,
+      getImage: mockGetImage,
+      getVolume: mockGetVolume,
+      getNetwork: mockGetNetwork,
     };
   }),
 }));
@@ -108,6 +126,66 @@ describe("docker driver", () => {
 
       expect(result).toEqual(images);
       expect(mockListImages).toHaveBeenCalledWith({ all: false });
+    });
+
+    it("listVolumes unwraps Docker's volume response envelope", async () => {
+      const volumes = [{ Name: "data", Driver: "local" }];
+      mockListVolumes.mockResolvedValue({ Volumes: volumes, Warnings: [] });
+
+      const result = await driver.command("unix:///var/run/docker.sock", "listVolumes");
+
+      expect(result).toEqual(volumes);
+    });
+
+    it("listNetworks returns Docker networks", async () => {
+      const networks = [{ Id: "net123", Name: "bridge" }];
+      mockListNetworks.mockResolvedValue(networks);
+
+      const result = await driver.command("unix:///var/run/docker.sock", "listNetworks");
+
+      expect(result).toEqual(networks);
+    });
+
+    it("creates volumes and networks", async () => {
+      mockCreateVolume.mockResolvedValue({ Name: "data" });
+      mockCreateNetwork.mockResolvedValue({ Id: "net123" });
+
+      await driver.command("unix:///var/run/docker.sock", "createVolume", {
+        name: "data",
+        driver: "local",
+      });
+      await driver.command("unix:///var/run/docker.sock", "createNetwork", {
+        name: "frontend",
+        driver: "bridge",
+        internal: true,
+      });
+
+      expect(mockCreateVolume).toHaveBeenCalledWith({ Name: "data", Driver: "local" });
+      expect(mockCreateNetwork).toHaveBeenCalledWith({
+        Name: "frontend",
+        Driver: "bridge",
+        Internal: true,
+      });
+    });
+
+    it("removes images, volumes, and networks", async () => {
+      mockRemoveImage.mockResolvedValue(undefined);
+      mockRemoveVolume.mockResolvedValue(undefined);
+      mockRemoveNetwork.mockResolvedValue(undefined);
+
+      await expect(
+        driver.command("unix:///var/run/docker.sock", "removeImage", { id: "sha256:abc" }),
+      ).resolves.toEqual({ ok: true });
+      await expect(
+        driver.command("unix:///var/run/docker.sock", "removeVolume", { name: "data" }),
+      ).resolves.toEqual({ ok: true });
+      await expect(
+        driver.command("unix:///var/run/docker.sock", "removeNetwork", { id: "net123" }),
+      ).resolves.toEqual({ ok: true });
+
+      expect(mockGetImage).toHaveBeenCalledWith("sha256:abc");
+      expect(mockGetVolume).toHaveBeenCalledWith("data");
+      expect(mockGetNetwork).toHaveBeenCalledWith("net123");
     });
 
     it("throws for unknown ops", async () => {

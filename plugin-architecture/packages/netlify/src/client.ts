@@ -185,10 +185,9 @@ class NetlifyAPI {
       headers: {
         Authorization: `Bearer ${this.token}`,
         Accept: "application/json",
-        "User-Agent": "Infrawrench/0.1.0",
       },
       init: { method, ...(body !== undefined ? { body: JSON.stringify(body) } : {}) },
-      ...(this.caCert && this.http ? { caCert: this.caCert, http: this.http } : {}),
+      ...(this.http ? { http: this.http, ...(this.caCert ? { caCert: this.caCert } : {}) } : {}),
     });
   }
   private query(params: Record<string, unknown>): string {
@@ -1003,11 +1002,10 @@ export class NetlifyClient implements PluginClient {
       headers: {
         Authorization: `Bearer ${this.token}`,
         Accept: "application/json",
-        "User-Agent": "Infrawrench/0.1.0",
       },
       init,
-      ...(this.caCert && this.services?.http
-        ? { caCert: this.caCert, http: this.services.http }
+      ...(this.services?.http
+        ? { http: this.services.http, ...(this.caCert ? { caCert: this.caCert } : {}) }
         : {}),
     });
   }

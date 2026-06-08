@@ -1,4 +1,5 @@
 import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { ClickHouseClient } from "./client.js";
 import { ServiceResourceType } from "./resources/service.js";
 import { DatabaseResourceType } from "./resources/database.js";
@@ -52,6 +53,15 @@ const manifest: PluginManifest = {
       placeholder: "abc123.us-east-1.aws.clickhouse.cloud",
     },
     {
+      key: "chPort",
+      label: "SQL HTTPS Port",
+      description: "HTTPS interface port for SQL queries. ClickHouse Cloud uses 8443 by default.",
+      sensitive: false,
+      placeholder: "8443",
+      defaultValue: "8443",
+      optional: true,
+    },
+    {
       key: "chUser",
       label: "SQL Username",
       description: "ClickHouse database user for SQL queries.",
@@ -66,6 +76,7 @@ const manifest: PluginManifest = {
       sensitive: true,
       placeholder: "password",
     },
+    caCertCredentialField,
   ],
 };
 
@@ -74,5 +85,5 @@ const resourceTypes: ResourceTypeDefinition[] = [ServiceResourceType, DatabaseRe
 export const plugin: Plugin = {
   manifest,
   resourceTypes,
-  createClient: (credentials) => new ClickHouseClient(credentials),
+  createClient: (credentials, services) => new ClickHouseClient(credentials, services),
 };

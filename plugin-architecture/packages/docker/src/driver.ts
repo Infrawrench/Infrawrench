@@ -38,6 +38,12 @@ export const driver = {
         return { ok: true };
       case "listImages":
         return docker.listImages({ all: false });
+      case "listVolumes": {
+        const result = await docker.listVolumes();
+        return result.Volumes ?? [];
+      }
+      case "listNetworks":
+        return docker.listNetworks();
       case "createContainer": {
         const image = params["image"] as string;
 
@@ -63,8 +69,31 @@ export const driver = {
         if (params["start"]) await container.start();
         return container.inspect();
       }
+      case "createVolume":
+        return docker.createVolume({
+          Name: params["name"] as string,
+          Driver: params["driver"] as string | undefined,
+        });
+      case "createNetwork":
+        return docker.createNetwork({
+          Name: params["name"] as string,
+          Driver: params["driver"] as string | undefined,
+          Internal: Boolean(params["internal"]),
+        });
       case "removeContainer": {
         await docker.getContainer(params["id"] as string).remove({ force: true });
+        return { ok: true };
+      }
+      case "removeImage": {
+        await docker.getImage(params["id"] as string).remove({ force: true });
+        return { ok: true };
+      }
+      case "removeVolume": {
+        await docker.getVolume(params["name"] as string).remove();
+        return { ok: true };
+      }
+      case "removeNetwork": {
+        await docker.getNetwork(params["id"] as string).remove();
         return { ok: true };
       }
       default:

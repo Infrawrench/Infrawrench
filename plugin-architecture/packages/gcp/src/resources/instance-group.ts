@@ -18,4 +18,11 @@ export const InstanceGroupResourceType: ResourceTypeDefinition = {
   outputs: [],
   dashboardPinnable: true,
   supportsCreate: true,
+  attachTargets: [
+    {
+      pluginId: "gcp",
+      resourceTypeId: "backend-service",
+      verb: "Add backend",
+    },
+  ],
 };

@@ -10,7 +10,17 @@ export const SshTargetResourceType: ResourceTypeDefinition = {
     { key: "port", label: "Port", kind: "string", required: false },
     { key: "username", label: "Username", kind: "string", required: false },
   ],
-  outputs: [],
+  outputs: [
+    { key: "host", label: "Host", sensitive: false },
+    { key: "port", label: "Port", sensitive: false },
+    { key: "username", label: "Username", sensitive: false },
+    {
+      key: "sshCommand",
+      label: "SSH Command",
+      sensitive: false,
+      description: "OpenSSH command for connecting to this target.",
+    },
+  ],
   dashboardPinnable: true,
   supportsTerminal: true,
   supportsSftpBrowser: true,

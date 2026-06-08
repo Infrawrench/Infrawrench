@@ -4,6 +4,8 @@ import { ensureArray } from "./auth.js";
 import { ec2Call, ec2QueryCall, hostForService } from "./client-transport.js";
 import { fetchSigned } from "./signed-request.js";
 
+const CLOUDFRONT_ALIAS_HOSTED_ZONE_ID = "Z2FDTNDATAQYW2";
+
 interface AttachContext {
   /** Home/default creds — used only for global services. */
   creds: AwsCredentials;
@@ -288,33 +290,34 @@ export async function attachResource(
         `Route53 alias records to load balancers must be A or AAAA, got ${recordType}`,
       );
     }
-    const host = hostForService(ctx.creds, "route53");
-    const url = `https://${host}/2013-04-01/hostedzone/${hostedZoneId}/rrset`;
-    const bodyXml = [
-      `<?xml version="1.0" encoding="UTF-8"?>`,
-      `<ChangeResourceRecordSetsRequest xmlns="https://route53.amazonaws.com/doc/2013-04-01/">`,
-      `<ChangeBatch><Changes><Change>`,
-      `<Action>UPSERT</Action>`,
-      `<ResourceRecordSet>`,
-      `<Name>${xmlEscape(recordName)}</Name>`,
-      `<Type>${xmlEscape(recordType)}</Type>`,
-      `<AliasTarget>`,
-      `<HostedZoneId>${xmlEscape(lbZoneId)}</HostedZoneId>`,
-      `<DNSName>${xmlEscape(lbDnsName)}</DNSName>`,
-      `<EvaluateTargetHealth>false</EvaluateTargetHealth>`,
-      `</AliasTarget>`,
-      `</ResourceRecordSet>`,
-      `</Change></Changes></ChangeBatch>`,
-      `</ChangeResourceRecordSetsRequest>`,
-    ].join("");
-    await fetchSigned({
-      method: "POST",
-      url,
-      headers: { Host: host, "Content-Type": "application/xml" },
-      body: bodyXml,
-      service: "route53",
-      credentials: ctx.creds,
-    });
+    await upsertRoute53Alias(ctx.creds, hostedZoneId, recordName, recordType, lbZoneId, lbDnsName);
+    return;
+  }
+  if (sourceTypeId === "route53-record-set" && targetTypeId === "cloudfront-distribution") {
+    const [record, distribution] = await Promise.all([
+      ctx.getResource(sourceTypeId, sourceResourceId, accountId),
+      ctx.getResource(targetTypeId, targetResourceId, accountId),
+    ]);
+    const hostedZoneId = String(record.fields["hostedZoneId"] ?? "");
+    const recordName = String(record.fields["name"] ?? "");
+    const recordType = String(record.fields["type"] ?? "A");
+    const distributionDomainName = String(distribution.fields["domainName"] ?? "");
+    if (!hostedZoneId || !recordName || !distributionDomainName) {
+      throw new Error("Cannot determine Route53 record or CloudFront alias target");
+    }
+    if (recordType !== "A" && recordType !== "AAAA") {
+      throw new Error(
+        `Route53 alias records to CloudFront distributions must be A or AAAA, got ${recordType}`,
+      );
+    }
+    await upsertRoute53Alias(
+      ctx.creds,
+      hostedZoneId,
+      recordName,
+      recordType,
+      CLOUDFRONT_ALIAS_HOSTED_ZONE_ID,
+      distributionDomainName,
+    );
     return;
   }
   throw new Error(`AWS plugin: attachResource not supported for ${sourceTypeId} → ${targetTypeId}`);
@@ -352,6 +355,43 @@ async function upsertDefaultRoute(
     if (!/RouteAlreadyExists|InvalidRoute\.Duplicate/i.test(message)) throw error;
     await ec2Call(creds, "ReplaceRoute", params);
   }
+}
+
+async function upsertRoute53Alias(
+  creds: AwsCredentials,
+  hostedZoneId: string,
+  recordName: string,
+  recordType: string,
+  aliasHostedZoneId: string,
+  aliasDnsName: string,
+): Promise<void> {
+  const host = hostForService(creds, "route53");
+  const url = `https://${host}/2013-04-01/hostedzone/${hostedZoneId}/rrset`;
+  const bodyXml = [
+    `<?xml version="1.0" encoding="UTF-8"?>`,
+    `<ChangeResourceRecordSetsRequest xmlns="https://route53.amazonaws.com/doc/2013-04-01/">`,
+    `<ChangeBatch><Changes><Change>`,
+    `<Action>UPSERT</Action>`,
+    `<ResourceRecordSet>`,
+    `<Name>${xmlEscape(recordName)}</Name>`,
+    `<Type>${xmlEscape(recordType)}</Type>`,
+    `<AliasTarget>`,
+    `<HostedZoneId>${xmlEscape(aliasHostedZoneId)}</HostedZoneId>`,
+    `<DNSName>${xmlEscape(aliasDnsName)}</DNSName>`,
+    `<EvaluateTargetHealth>false</EvaluateTargetHealth>`,
+    `</AliasTarget>`,
+    `</ResourceRecordSet>`,
+    `</Change></Changes></ChangeBatch>`,
+    `</ChangeResourceRecordSetsRequest>`,
+  ].join("");
+  await fetchSigned({
+    method: "POST",
+    url,
+    headers: { Host: host, "Content-Type": "application/xml" },
+    body: bodyXml,
+    service: "route53",
+    credentials: creds,
+  });
 }
 
 function xmlEscape(value: string): string {

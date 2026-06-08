@@ -1296,6 +1296,20 @@ describe("attachResource", () => {
 });
 
 describe("caCert host http routing", () => {
+  it("exposes caCert and passes host services through the plugin factory", async () => {
+    expect(plugin.manifest.credentialFields.map((field) => field.key)).toContain("caCert");
+    const request = vi.fn(async () => ({ status: 200, body: JSON.stringify({ clusters: [] }) }));
+    const client = plugin.createClient(
+      { host: "dbc-test.cloud.databricks.com", token: "dapi123", caCert: "PEM" },
+      { http: { request } } as never,
+    );
+
+    await client.listResources("databricks-cluster", ACCOUNT);
+
+    expect(request).toHaveBeenCalledWith(expect.objectContaining({ caCert: "PEM" }));
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("routes api through services.http when caCert set", async () => {
     const request = vi.fn(async () => ({ status: 200, body: JSON.stringify({ clusters: [] }) }));
     const client = makeClient({ caCert: "PEM" }, { http: { request } });

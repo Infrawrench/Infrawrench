@@ -25,6 +25,7 @@ export const PsPasswordResourceType: ResourceTypeDefinition = {
   ],
   parentTypeId: "ps-branch",
   dashboardPinnable: false,
+  supportsCreate: true,
   supportsUpdate: true,
   iconKey: "planetscale",
 };

@@ -2146,7 +2146,7 @@ export class CloudflareClient implements PluginClient {
   /**
    * Invoke a plugin-defined action against a resource (host calls this for an
    * `ActionNode` whose action is `{ type: "plugin-action" }`). Currently powers
-   * the zone "Purge Everything" cache action.
+   * zone-level cache purge and DNSSEC toggles.
    */
   async invokeAction(
     typeId: string,
@@ -2157,6 +2157,12 @@ export class CloudflareClient implements PluginClient {
     const externalId = resourceId.split(":").slice(2).join(":");
     if (typeId === "zone" && actionId === "purge-cache-all") {
       return withCloudflareErrors(() => zoneApi.purgeCacheEverything(this.api, externalId));
+    }
+    if (typeId === "zone" && actionId === "dnssec-enable") {
+      return withCloudflareErrors(() => zoneApi.setDnssec(this.api, externalId, true));
+    }
+    if (typeId === "zone" && actionId === "dnssec-disable") {
+      return withCloudflareErrors(() => zoneApi.setDnssec(this.api, externalId, false));
     }
     throw new Error(`Cloudflare plugin: unknown action "${actionId}" for type "${typeId}"`);
   }

@@ -88,8 +88,11 @@ export class FlyClient implements PluginClient {
       errorPath: path,
       headers: { Authorization: `Bearer ${this.token}` },
       ...(options ? { init: options } : {}),
-      ...(this.caCert && this.services?.http
-        ? { caCert: this.caCert, http: this.services.http }
+      ...(this.services?.http
+        ? {
+            http: this.services.http,
+            ...(this.caCert ? { caCert: this.caCert } : {}),
+          }
         : {}),
     });
   }
@@ -191,7 +194,16 @@ export class FlyClient implements PluginClient {
   async getCreateConfig(typeId: string, parentResourceId?: string): Promise<CreateResourceConfig> {
     if (typeId === "app") {
       return {
-        fields: [{ key: "name", label: "App Name", kind: "text", required: true }],
+        fields: [
+          { key: "name", label: "App Name", kind: "text", required: true },
+          {
+            key: "network",
+            label: "Private Network",
+            kind: "text",
+            required: false,
+            description: "Optional private network name for segmenting this app",
+          },
+        ],
       };
     }
 
@@ -292,6 +304,27 @@ export class FlyClient implements PluginClient {
       return { fields };
     }
 
+    if (typeId === "certificate") {
+      const fields: CreateResourceConfig["fields"] = [];
+      if (!parentResourceId) {
+        fields.push({
+          key: "appName",
+          label: "App",
+          kind: "resource-picker",
+          required: true,
+          description: "Fly app to request the certificate for",
+          associationSources: [{ pluginId: "fly", resourceTypeId: "app", outputKey: "appName" }],
+        });
+      }
+      fields.push({
+        key: "hostname",
+        label: "Hostname",
+        kind: "text",
+        required: true,
+      });
+      return { fields };
+    }
+
     throw new Error(`No create config for type "${typeId}"`);
   }
 
@@ -305,6 +338,7 @@ export class FlyClient implements PluginClient {
       const body = {
         app_name: fields["name"],
         org_slug: this.orgSlug,
+        ...(fields["network"] ? { network: fields["network"] } : {}),
       };
       await this.fetch<{ id: string }>("/v1/apps", {
         method: "POST",
@@ -370,6 +404,19 @@ export class FlyClient implements PluginClient {
       };
     }
 
+    if (typeId === "certificate") {
+      const appName = fields["appName"] || parentAppName;
+      const hostname = fields["hostname"];
+      if (!appName) throw new Error("Fly plugin: appName is required to create a certificate");
+      if (!hostname) throw new Error("Fly plugin: hostname is required to create a certificate");
+
+      const data = await this.fetch<FlyCertificate>(`/v1/apps/${appName}/certificates/acme`, {
+        method: "POST",
+        body: JSON.stringify({ hostname }),
+      });
+      return this.mapCertificate(data, appName, accountId);
+    }
+
     throw new Error(`Fly plugin: createResource not supported for type "${typeId}"`);
   }
 
@@ -394,6 +441,17 @@ export class FlyClient implements PluginClient {
       await this.fetch<unknown>(`/v1/apps/${parts.appName}/volumes/${parts.volumeId}`, {
         method: "DELETE",
       });
+      return;
+    }
+
+    if (typeId === "certificate") {
+      const parts = parseAppChildId(resourceId);
+      await this.fetch<unknown>(
+        `/v1/apps/${parts.appName}/certificates/${encodeURIComponent(parts.childId)}`,
+        {
+          method: "DELETE",
+        },
+      );
       return;
     }
 
@@ -554,14 +612,18 @@ export class FlyClient implements PluginClient {
         u.searchParams.set("start", String(start));
         u.searchParams.set("end", String(end));
         u.searchParams.set("step", step);
-        const res = await fetch(u.toString(), {
-          headers: {
-            Authorization: `Bearer ${this.token}`,
-            "Content-Type": "application/json",
-          },
+        const data = await jsonRestFetch<PromResp>({
+          vendor: "Fly",
+          url: u.toString(),
+          errorPath: `/prometheus/${this.orgSlug}/api/v1/query_range`,
+          headers: { Authorization: `Bearer ${this.token}` },
+          ...(this.services?.http
+            ? {
+                http: this.services.http,
+                ...(this.caCert ? { caCert: this.caCert } : {}),
+              }
+            : {}),
         });
-        if (!res.ok) return null;
-        const data = (await res.json()) as PromResp;
         // Sum across all returned series (when multiple machines match).
         const points = new Map<number, number>();
         for (const series of data.data?.result ?? []) {
@@ -804,7 +866,10 @@ export class FlyClient implements PluginClient {
       apps.map(async (app) => {
         const appName = String(app.fields["name"]);
         try {
-          const certs = await this.fetch<FlyCertificate[]>(`/v1/apps/${appName}/certificates`);
+          const data = await this.fetch<FlyCertificate[] | FlyCertificateListResponse>(
+            `/v1/apps/${appName}/certificates`,
+          );
+          const certs = Array.isArray(data) ? data : (data.certificates ?? []);
           return (certs ?? []).map((cert) => this.mapCertificate(cert, appName, accountId));
         } catch {
           return [];
@@ -1122,8 +1187,10 @@ interface FlyVolume {
 interface FlyCertificate {
   id?: string;
   hostname?: string;
+  status?: string;
   configured?: boolean;
   acme_dns_configured?: boolean;
+  acme_requested?: boolean;
   certificate_authority?: string;
   dns_provider?: string;
   issued?: {
@@ -1132,6 +1199,10 @@ interface FlyCertificate {
   };
   created_at?: string;
   updated_at?: string;
+}
+
+interface FlyCertificateListResponse {
+  certificates?: FlyCertificate[];
 }
 
 interface FlyIpAllocation {

@@ -17,7 +17,7 @@ const REQUEST_TIMEOUT_MS = 12000;
  *   describeGroup         (groupId)                       → { groupId, state, protocol, members }
  *   fetchOffsets          (groupId)                       → [{ topic, partition, offset, … }]
  *   deleteGroup           (groupId)                       → { ok: true }
- *   produce               (topic, value, key, headersJson) → { partition, offset }
+ *   produce               (topic, value, key, headersJson, partition) → { partition, offset }
  */
 export function buildKafkaConfig(connectionString: string): KafkaConfig {
   let bootstrap = connectionString;
@@ -224,7 +224,7 @@ export const driver = {
 } satisfies KvNodeDriver;
 
 /**
- * One-shot produce. Args: [topic, value, key, headersJson].
+ * One-shot produce. Args: [topic, value, key, headersJson, partition].
  *
  * We spin up a producer per call rather than pooling it — produce-from-the-
  * UI is rare, and the connect cost (~connection + metadata fetch) is fine
@@ -239,6 +239,11 @@ async function runProduceCommand(
   const value = String(args[1] ?? "");
   const key = args[2] !== undefined && String(args[2]).length > 0 ? String(args[2]) : undefined;
   const headersJson = args[3] !== undefined ? String(args[3]) : "";
+  const partitionValue = args[4] !== undefined ? String(args[4]).trim() : "";
+  const partition = partitionValue ? Number(partitionValue) : undefined;
+  if (partition !== undefined && (!Number.isInteger(partition) || partition < 0)) {
+    throw new Error("produce partition must be a zero-based integer");
+  }
   let headers: Record<string, string> | undefined;
   if (headersJson) {
     try {
@@ -260,6 +265,7 @@ async function runProduceCommand(
           value,
           ...(key !== undefined ? { key } : {}),
           ...(headers ? { headers } : {}),
+          ...(partition !== undefined ? { partition } : {}),
         },
       ],
     });

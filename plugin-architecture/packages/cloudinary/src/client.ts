@@ -29,6 +29,11 @@ interface CloudinaryResource {
   asset_folder?: string;
 }
 
+interface CloudinaryResourceList {
+  resources: CloudinaryResource[];
+  next_cursor?: string;
+}
+
 interface CloudinaryFolder {
   name: string;
   path: string;
@@ -46,6 +51,17 @@ interface CloudinaryTransformation {
   named: boolean;
   used: boolean;
   derived?: Array<Record<string, unknown>>;
+}
+
+interface CloudinaryTransformationList {
+  transformations: CloudinaryTransformation[];
+  next_cursor?: string;
+}
+
+interface CloudinaryUploadPresetList {
+  upload_presets?: CloudinaryUploadPreset[];
+  presets?: CloudinaryUploadPreset[];
+  next_cursor?: string;
 }
 
 /**
@@ -290,9 +306,9 @@ export class CloudinaryClient implements PluginClient {
     if (typeId === "transformation") {
       const name = fields["name"] ?? "";
       const transformation = fields["transformation"] ?? "";
-      await this.fetch<Record<string, unknown>>("/transformations", {
+      await this.fetch<Record<string, unknown>>(`/transformations/${encodeURIComponent(name)}`, {
         method: "POST",
-        body: JSON.stringify({ name, transformation }),
+        body: JSON.stringify({ transformation }),
       });
       const now = new Date().toISOString();
       return {
@@ -724,18 +740,23 @@ export class CloudinaryClient implements PluginClient {
   }
 
   private async listMediaAssets(accountId: string): Promise<ResourceInstance[]> {
-    // Fetch images, videos, and raw files — up to 100 each
+    // Fetch images, videos, and raw files.
     const resourceTypes = ["image", "video", "raw"] as const;
     const results: ResourceInstance[] = [];
 
     for (const rType of resourceTypes) {
       try {
-        const data = await this.fetch<{ resources: CloudinaryResource[] }>(
-          `/resources/${rType}?max_results=100`,
-        );
-        for (const asset of data.resources ?? []) {
-          results.push(this.mapMediaAsset(asset, accountId));
-        }
+        let nextCursor: string | undefined;
+        do {
+          const cursor = nextCursor ? `&next_cursor=${encodeURIComponent(nextCursor)}` : "";
+          const data = await this.fetch<CloudinaryResourceList>(
+            `/resources/${rType}?max_results=500${cursor}`,
+          );
+          for (const asset of data.resources ?? []) {
+            results.push(this.mapMediaAsset(asset, accountId));
+          }
+          nextCursor = data.next_cursor;
+        } while (nextCursor);
       } catch {
         // Skip resource types that fail (e.g. no raw files)
       }
@@ -776,8 +797,23 @@ export class CloudinaryClient implements PluginClient {
   }
 
   private async listUploadPresets(accountId: string): Promise<ResourceInstance[]> {
-    const data = await this.fetch<CloudinaryUploadPreset[]>("/upload_presets");
-    return (data ?? []).map((preset) => {
+    const presets: CloudinaryUploadPreset[] = [];
+    let nextCursor: string | undefined;
+    do {
+      const cursor = nextCursor ? `&next_cursor=${encodeURIComponent(nextCursor)}` : "";
+      const data = await this.fetch<CloudinaryUploadPresetList | CloudinaryUploadPreset[]>(
+        `/upload_presets?max_results=500${cursor}`,
+      );
+      if (Array.isArray(data)) {
+        presets.push(...data);
+        nextCursor = undefined;
+      } else {
+        presets.push(...(data.upload_presets ?? data.presets ?? []));
+        nextCursor = data.next_cursor;
+      }
+    } while (nextCursor);
+
+    return presets.map((preset) => {
       const mode = preset.unsigned ? "unsigned" : "signed";
       const settings = preset.settings ?? {};
       return {
@@ -810,10 +846,18 @@ export class CloudinaryClient implements PluginClient {
   }
 
   private async listTransformations(accountId: string): Promise<ResourceInstance[]> {
-    const data = await this.fetch<{ transformations: CloudinaryTransformation[] }>(
-      "/transformations?named=true",
-    );
-    return (data.transformations ?? []).map((t) => ({
+    const transformations: CloudinaryTransformation[] = [];
+    let nextCursor: string | undefined;
+    do {
+      const cursor = nextCursor ? `&next_cursor=${encodeURIComponent(nextCursor)}` : "";
+      const data = await this.fetch<CloudinaryTransformationList>(
+        `/transformations?named=true&max_results=500${cursor}`,
+      );
+      transformations.push(...(data.transformations ?? []));
+      nextCursor = data.next_cursor;
+    } while (nextCursor);
+
+    return transformations.map((t) => ({
       id: `${accountId}:transformation:${t.name}`,
       pluginId: "cloudinary",
       resourceTypeId: "transformation",

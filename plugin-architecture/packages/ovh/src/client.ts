@@ -10,6 +10,7 @@ import type {
   ResourceTypeDefinition,
   DashboardStat,
   MetricSeries,
+  HostServices,
 } from "@infrawrench/plugin-base";
 import { labeledFieldItems, resourceTypeDisplayName } from "@infrawrench/plugin-base";
 
@@ -39,6 +40,19 @@ function normalizeKafkaUri(uri: string): string {
   return normalized;
 }
 
+function headersFromInit(headers: HeadersInit | undefined): Record<string, string> {
+  if (!headers) return {};
+  if (headers instanceof Headers) {
+    const out: Record<string, string> = {};
+    headers.forEach((value, key) => {
+      out[key] = value;
+    });
+    return out;
+  }
+  if (Array.isArray(headers)) return Object.fromEntries(headers);
+  return headers;
+}
+
 /**
  * OVHcloud plugin client.
  * Created per account (per credential set) by the host.
@@ -55,6 +69,8 @@ export class OvhClient implements PluginClient {
   private readonly consumerKey: string;
   private readonly projectId: string;
   private readonly baseUrl: string;
+  private readonly caCert: string;
+  private readonly services: HostServices | undefined;
   private timeDelta: number | null = null;
 
   private static readonly ENDPOINT_URLS: Record<string, string> = {
@@ -81,7 +97,11 @@ export class OvhClient implements PluginClient {
 
   private readonly resourceTypes: ResourceTypeDefinition[];
 
-  constructor(credentials: Record<string, string>, resourceTypes: ResourceTypeDefinition[] = []) {
+  constructor(
+    credentials: Record<string, string>,
+    resourceTypes: ResourceTypeDefinition[] = [],
+    services?: HostServices,
+  ) {
     const ak = credentials["applicationKey"];
     const as = credentials["applicationSecret"];
     const ck = credentials["consumerKey"];
@@ -96,6 +116,8 @@ export class OvhClient implements PluginClient {
     this.consumerKey = ck;
     this.projectId = pid;
     this.resourceTypes = resourceTypes;
+    this.caCert = credentials["caCert"] ?? "";
+    this.services = services;
 
     const endpoint = (credentials["endpoint"] ?? "eu").toLowerCase();
     this.baseUrl = OvhClient.ENDPOINT_URLS[endpoint] ?? OvhClient.ENDPOINT_URLS["eu"]!;
@@ -111,8 +133,22 @@ export class OvhClient implements PluginClient {
   private async getTimestamp(): Promise<number> {
     if (this.timeDelta === null) {
       try {
-        const res = await fetch(`${this.baseUrl}/auth/time`);
-        const serverTime = (await res.json()) as number;
+        let serverTime: number;
+        if (this.services?.http) {
+          const result = await this.services.http.request({
+            url: `${this.baseUrl}/auth/time`,
+            method: "GET",
+            headers: {},
+            ...(this.caCert ? { caCert: this.caCert } : {}),
+          });
+          if (result.status < 200 || result.status >= 300) {
+            throw new Error(`OVH API error ${result.status} for /auth/time: ${result.body}`);
+          }
+          serverTime = Number(JSON.parse(result.body));
+        } else {
+          const res = await fetch(`${this.baseUrl}/auth/time`);
+          serverTime = (await res.json()) as number;
+        }
         this.timeDelta = serverTime - Math.floor(Date.now() / 1000);
       } catch {
         this.timeDelta = 0;
@@ -145,18 +181,34 @@ export class OvhClient implements PluginClient {
     const body = options?.body ? String(options.body) : "";
     const timestamp = await this.getTimestamp();
     const signature = await this.sign(method, url, body, timestamp);
+    const headers = {
+      "Content-Type": "application/json",
+      "X-Ovh-Application": this.applicationKey,
+      "X-Ovh-Timestamp": String(timestamp),
+      "X-Ovh-Consumer": this.consumerKey,
+      "X-Ovh-Signature": signature,
+      ...headersFromInit(options?.headers),
+    };
+
+    if (this.services?.http) {
+      const result = await this.services.http.request({
+        url,
+        method,
+        headers,
+        ...(body ? { body } : {}),
+        ...(this.caCert ? { caCert: this.caCert } : {}),
+      });
+      if (result.status < 200 || result.status >= 300) {
+        throw new Error(`OVH API error ${result.status} for ${path}: ${result.body}`);
+      }
+      if (result.status === 204 || !result.body) return undefined as unknown as T;
+      return JSON.parse(result.body) as T;
+    }
 
     const res = await fetch(url, {
       ...options,
       method,
-      headers: {
-        "Content-Type": "application/json",
-        "X-Ovh-Application": this.applicationKey,
-        "X-Ovh-Timestamp": String(timestamp),
-        "X-Ovh-Consumer": this.consumerKey,
-        "X-Ovh-Signature": signature,
-        ...(options?.headers ?? {}),
-      },
+      headers,
     });
 
     if (!res.ok) {
@@ -164,6 +216,17 @@ export class OvhClient implements PluginClient {
     }
     if (res.status === 204) return undefined as unknown as T;
     return res.json() as Promise<T>;
+  }
+
+  private databaseEnginePath(engine: string): string {
+    const safeEngine = engine.trim().toLowerCase();
+    if (!safeEngine) throw new Error("OVH plugin: managed database engine is required");
+    return `/database/${encodeURIComponent(safeEngine)}`;
+  }
+
+  private serviceDisplayName(svc: OvhDatabaseService): string {
+    const engine = svc.engine ?? "database";
+    return svc.description || `${engine} (${svc.id.slice(0, 8)})`;
   }
 
   private cloudPath(suffix: string): string {
@@ -489,6 +552,14 @@ export class OvhClient implements PluginClient {
             defaultValue: "1",
             minValue: 1,
           },
+          {
+            key: "region",
+            label: "Region",
+            kind: "text",
+            required: true,
+            defaultValue: "GRA",
+            description: "Database node region, e.g. GRA, SBG, BHS.",
+          },
         ],
       };
     }
@@ -691,34 +762,41 @@ export class OvhClient implements PluginClient {
     }
 
     if (typeId === "managed-db") {
-      const data = await this.ovhFetch<OvhDatabaseService>(this.cloudPath("/database/service"), {
-        method: "POST",
-        body: JSON.stringify({
-          description: fields["description"] ?? "",
-          engine: fields["engine"] ?? "postgresql",
-          version: fields["version"] ?? "16",
-          plan: fields["plan"] ?? "essential",
-          flavor: fields["flavor"] ?? "db1-7",
-          nodeList: Array.from({ length: Number(fields["nodeCount"] ?? 1) }, () => ({
-            region: "GRA",
-          })),
-        }),
-      });
+      const engine = fields["engine"] ?? "postgresql";
+      const nodeCount = Math.max(1, Number(fields["nodeCount"] ?? 1) || 1);
+      const region = fields["region"] ?? "GRA";
+      const flavor = fields["flavor"] ?? "db1-7";
+      const data = await this.ovhFetch<OvhDatabaseService>(
+        this.cloudPath(this.databaseEnginePath(engine)),
+        {
+          method: "POST",
+          body: JSON.stringify({
+            description: fields["description"] ?? "",
+            version: fields["version"] ?? "16",
+            plan: fields["plan"] ?? "essential",
+            nodesPattern: {
+              flavor,
+              number: nodeCount,
+              region,
+            },
+          }),
+        },
+      );
       const now = new Date().toISOString();
       return {
         id: `${accountId}:managed-db:${data.id}`,
         pluginId: "ovh",
         resourceTypeId: "managed-db",
         accountId,
-        displayName: data.description || `${data.engine} (${data.id.slice(0, 8)})`,
+        displayName: this.serviceDisplayName({ ...data, engine }),
         fields: {
           description: data.description ?? "",
           engine: data.engine ?? fields["engine"] ?? "",
           version: data.version ?? fields["version"] ?? "",
           plan: data.plan ?? fields["plan"] ?? "",
-          region: "",
-          flavor: data.flavor ?? fields["flavor"] ?? "",
-          nodeCount: Number(fields["nodeCount"] ?? 1),
+          region: data.nodes?.[0]?.region ?? region,
+          flavor: data.flavor ?? flavor,
+          nodeCount: data.nodeNumber ?? data.nodes?.length ?? nodeCount,
           status: data.status ?? "CREATING",
         },
         resolvedOutputs: {},
@@ -789,11 +867,16 @@ export class OvhClient implements PluginClient {
       case "managed-kube":
         await this.ovhFetch<unknown>(this.cloudPath(`/kube/${externalId}`), { method: "DELETE" });
         break;
-      case "managed-db":
-        await this.ovhFetch<unknown>(this.cloudPath(`/database/service/${externalId}`), {
-          method: "DELETE",
-        });
+      case "managed-db": {
+        const svc = await this.ovhFetch<OvhDatabaseService>(
+          this.cloudPath(`/database/service/${externalId}`),
+        );
+        await this.ovhFetch<unknown>(
+          this.cloudPath(`${this.databaseEnginePath(svc.engine ?? "")}/${externalId}`),
+          { method: "DELETE" },
+        );
         break;
+      }
       case "volume":
         await this.ovhFetch<unknown>(this.cloudPath(`/volume/${externalId}`), { method: "DELETE" });
         break;
@@ -1093,13 +1176,18 @@ export class OvhClient implements PluginClient {
   }
 
   private async listManagedDatabases(accountId: string): Promise<ResourceInstance[]> {
-    const services = await this.ovhFetch<OvhDatabaseService[]>(this.cloudPath("/database/service"));
+    const serviceIds = await this.ovhFetch<string[]>(this.cloudPath("/database/service"));
+    const services = await Promise.all(
+      serviceIds.map((id) =>
+        this.ovhFetch<OvhDatabaseService>(this.cloudPath(`/database/service/${id}`)),
+      ),
+    );
     return services.map((svc) => ({
       id: `${accountId}:managed-db:${svc.id}`,
       pluginId: "ovh",
       resourceTypeId: "managed-db",
       accountId,
-      displayName: svc.description || `${svc.engine} (${svc.id.slice(0, 8)})`,
+      displayName: this.serviceDisplayName(svc),
       fields: {
         description: svc.description ?? "",
         engine: svc.engine ?? "",

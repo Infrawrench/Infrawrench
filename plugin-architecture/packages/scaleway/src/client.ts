@@ -10,10 +10,12 @@ import type {
   ResourceTypeDefinition,
   DashboardStat,
   MetricSeries,
+  HostServices,
 } from "@infrawrench/plugin-base";
 import {
   deleteS3Object,
   getS3BucketPolicy,
+  jsonRestFetch,
   labeledFieldItems,
   listS3Objects,
   makeS3Folder,
@@ -24,7 +26,12 @@ import {
 } from "@infrawrench/plugin-base";
 import type { S3StorageConfig, StorageObject } from "@infrawrench/plugin-base";
 import type { Client, Region, Zone } from "@scaleway/sdk-client";
-import { createClient } from "@scaleway/sdk-client";
+import {
+  createAdvancedClient,
+  createClient,
+  withHTTPClient,
+  withProfile,
+} from "@scaleway/sdk-client";
 import { Instancev1 } from "@scaleway/sdk-instance";
 import { K8Sv1 } from "@scaleway/sdk-k8s";
 import { Rdbv1 } from "@scaleway/sdk-rdb";
@@ -45,6 +52,7 @@ export class ScalewayClient implements PluginClient {
   private readonly defaultProjectId: string;
   private readonly resourceTypes: ResourceTypeDefinition[];
   private readonly cockpitQueryToken: string | null;
+  private readonly services: HostServices | undefined;
 
   // Cache of discovered Cockpit data-source URLs keyed by region slug.
   private cockpitDataSourceCache: Map<string, string> = new Map();
@@ -96,7 +104,11 @@ export class ScalewayClient implements PluginClient {
     "pl-waw": { location: "Warsaw, Poland", flag: "\u{1F1F5}\u{1F1F1}" },
   };
 
-  constructor(credentials: Record<string, string>, resourceTypes: ResourceTypeDefinition[] = []) {
+  constructor(
+    credentials: Record<string, string>,
+    resourceTypes: ResourceTypeDefinition[] = [],
+    services?: HostServices,
+  ) {
     const secretKey = credentials["secretKey"];
     if (!secretKey) throw new Error("Scaleway plugin: missing secretKey credential");
     this.secretKey = secretKey;
@@ -104,6 +116,7 @@ export class ScalewayClient implements PluginClient {
     this.defaultProjectId = credentials["defaultProjectId"] ?? "";
     this.resourceTypes = resourceTypes;
     this.cockpitQueryToken = credentials["cockpitQueryToken"] ?? null;
+    this.services = services;
   }
 
   /**
@@ -122,9 +135,36 @@ export class ScalewayClient implements PluginClient {
       if (this.defaultProjectId) {
         settings.defaultProjectId = this.defaultProjectId;
       }
-      this.sdkClient = createClient(settings);
+      if (this.services?.http) {
+        this.sdkClient = createAdvancedClient(
+          withProfile(settings),
+          withHTTPClient((request) => this.fetchThroughHost(request)),
+        );
+      } else {
+        this.sdkClient = createClient(settings);
+      }
     }
     return this.sdkClient;
+  }
+
+  private async fetchThroughHost(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+    const request = input instanceof Request ? input : new Request(input, init);
+    const headers: Record<string, string> = {};
+    request.headers.forEach((value, key) => {
+      headers[key] = value;
+    });
+    const body =
+      request.method === "GET" || request.method === "HEAD" ? undefined : await request.text();
+    const response = await this.services!.http!.request({
+      url: request.url,
+      method: request.method,
+      headers,
+      ...(body ? { body } : {}),
+    });
+    return new Response(response.body, {
+      status: response.status,
+      headers: response.headers,
+    });
   }
 
   private instanceApi(): InstanceType<typeof Instancev1.API> {
@@ -710,14 +750,15 @@ export class ScalewayClient implements PluginClient {
       const qs = this.defaultProjectId
         ? `project_id=${this.defaultProjectId}&types=metrics&origin=scaleway`
         : `types=metrics&origin=scaleway`;
-      const resp = await fetch(
-        `https://api.scaleway.com/cockpit/v1/regions/${region}/data-sources?${qs}`,
-        { headers: { "X-Auth-Token": this.secretKey } },
-      );
-      if (!resp.ok) return null;
-      const body = (await resp.json()) as {
+      const body = await jsonRestFetch<{
         data_sources?: Array<{ url?: string }>;
-      };
+      }>({
+        vendor: "Scaleway",
+        url: `https://api.scaleway.com/cockpit/v1/regions/${region}/data-sources?${qs}`,
+        errorPath: `/cockpit/v1/regions/${region}/data-sources`,
+        headers: { "X-Auth-Token": this.secretKey },
+        ...(this.services?.http ? { http: this.services.http } : {}),
+      });
       const url = body.data_sources?.[0]?.url ?? null;
       if (url) {
         this.cockpitDataSourceCache.set(region, url);
@@ -749,21 +790,23 @@ export class ScalewayClient implements PluginClient {
         end: String(end),
         step: "60s",
       });
-      const resp = await fetch(`${dataSourceUrl}/prometheus/api/v1/query_range`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${this.cockpitQueryToken}`,
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: body.toString(),
-      });
-      if (!resp.ok) return null;
-      const json = (await resp.json()) as {
+      const json = await jsonRestFetch<{
         status?: string;
         data?: {
           result?: Array<{ values?: Array<[number, string]> }>;
         };
-      };
+      }>({
+        vendor: "Scaleway",
+        url: `${dataSourceUrl}/prometheus/api/v1/query_range`,
+        errorPath: "/prometheus/api/v1/query_range",
+        headers: { Authorization: `Bearer ${this.cockpitQueryToken}` },
+        init: {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: body.toString(),
+        },
+        ...(this.services?.http ? { http: this.services.http } : {}),
+      });
       const values = json.data?.result?.[0]?.values ?? [];
       if (values.length === 0) return null;
       return {

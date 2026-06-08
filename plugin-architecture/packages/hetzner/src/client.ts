@@ -422,6 +422,22 @@ export class HetznerClient implements PluginClient {
       };
     }
 
+    if (typeId === "placement-group") {
+      return {
+        fields: [
+          { key: "name", label: "Name", kind: "text", required: true },
+          {
+            key: "type",
+            label: "Type",
+            kind: "select",
+            required: true,
+            defaultValue: "spread",
+            options: [{ id: "spread", label: "Spread" }],
+          },
+        ],
+      };
+    }
+
     throw new Error(`No create config for type "${typeId}"`);
   }
 
@@ -584,6 +600,37 @@ export class HetznerClient implements PluginClient {
       };
     }
 
+    if (typeId === "placement-group") {
+      const data = await this.fetch<{ placement_group: HetznerPlacementGroup }>(
+        "/placement_groups",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            name: fields["name"],
+            type: fields["type"] || "spread",
+          }),
+        },
+      );
+      const group = data.placement_group;
+      return {
+        id: `${accountId}:placement-group:${group.id}`,
+        pluginId: "hetzner",
+        resourceTypeId: "placement-group",
+        accountId,
+        displayName: group.name,
+        fields: {
+          name: group.name,
+          type: group.type,
+          serverCount: (group.servers ?? []).length,
+        },
+        resolvedOutputs: { placementGroupId: String(group.id) },
+        secretStates: [],
+        externalId: String(group.id),
+        createdAt: group.created ?? new Date().toISOString(),
+        updatedAt: group.created ?? new Date().toISOString(),
+      };
+    }
+
     throw new Error(`Hetzner plugin: createResource not supported for type "${typeId}"`);
   }
 
@@ -603,6 +650,9 @@ export class HetznerClient implements PluginClient {
         break;
       case "firewall":
         await this.fetch<unknown>(`/firewalls/${externalId}`, { method: "DELETE" });
+        break;
+      case "placement-group":
+        await this.fetch<unknown>(`/placement_groups/${externalId}`, { method: "DELETE" });
         break;
       default:
         throw new Error(`Hetzner plugin: deleteResource not supported for type "${typeId}"`);
@@ -741,6 +791,22 @@ export class HetznerClient implements PluginClient {
       await this.fetch(`/primary_ips/${primaryIpId}/actions/assign`, {
         method: "POST",
         body: JSON.stringify({ assignee_id: Number(serverId), assignee_type: "server" }),
+      });
+      return;
+    }
+    if (sourceTypeId === "placement-group" && targetTypeId === "server") {
+      const [placementGroup, server] = await Promise.all([
+        this.getResource(sourceTypeId, sourceResourceId, accountId),
+        this.getResource(targetTypeId, targetResourceId, accountId),
+      ]);
+      const placementGroupId = placementGroup.externalId ?? sourceResourceId.split(":").pop();
+      const serverId = server.externalId ?? targetResourceId.split(":").pop();
+      if (!placementGroupId || !serverId) {
+        throw new Error("Cannot determine placement group or server id for attachment");
+      }
+      await this.fetch(`/servers/${serverId}/actions/add_to_placement_group`, {
+        method: "POST",
+        body: JSON.stringify({ placement_group: Number(placementGroupId) }),
       });
       return;
     }

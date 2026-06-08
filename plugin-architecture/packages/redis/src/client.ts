@@ -176,7 +176,9 @@ export class RedisClient implements PluginClient {
       return [
         { label: "Version", value: "" },
         { label: "Memory", value: "" },
+        { label: "Keys", value: "0" },
         { label: "Databases", value: "0" },
+        { label: "Clients", value: "" },
       ];
     }
 
@@ -186,19 +188,26 @@ export class RedisClient implements PluginClient {
 
       const version = info["redis_version"] ?? "";
       const usedMemory = info["used_memory_human"] ?? "";
+      const connectedClients = info["connected_clients"] ?? "";
       // Count databases that have keys
-      const dbCount = Object.keys(info).filter((k) => k.startsWith("db")).length;
+      const keyspaceEntries = Object.entries(info).filter(([k]) => /^db\d+$/.test(k));
+      const dbCount = keyspaceEntries.length;
+      const totalKeys = keyspaceEntries.reduce((sum, [, value]) => sum + parseKeyCount(value), 0);
 
       return [
         { label: "Version", value: version },
         { label: "Memory", value: usedMemory },
+        { label: "Keys", value: String(totalKeys) },
         { label: "Databases", value: String(dbCount) },
+        { label: "Clients", value: connectedClients },
       ];
     } catch {
       return [
         { label: "Version", value: "" },
         { label: "Memory", value: "" },
+        { label: "Keys", value: "0" },
         { label: "Databases", value: "0" },
+        { label: "Clients", value: "" },
       ];
     }
   }
@@ -212,4 +221,9 @@ function parseRedisInfo(raw: string): Record<string, string> {
     result[line.slice(0, colon).trim()] = line.slice(colon + 1).trim();
   }
   return result;
+}
+
+function parseKeyCount(raw: string): number {
+  const match = raw.match(/(?:^|,)keys=(\d+)(?:,|$)/);
+  return match ? Number(match[1]) : 0;
 }

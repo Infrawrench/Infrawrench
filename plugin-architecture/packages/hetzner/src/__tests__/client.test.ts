@@ -440,6 +440,14 @@ describe("getCreateConfig", () => {
     expect(cfg.fields).toHaveLength(1);
   });
 
+  it("builds placement-group config", async () => {
+    const c = makeClient();
+    const cfg = await c.getCreateConfig("placement-group");
+    expect(cfg.fields.map((f) => f.key)).toEqual(["name", "type"]);
+    const typeField = cfg.fields.find((f) => f.key === "type") as any;
+    expect(typeField.defaultValue).toBe("spread");
+  });
+
   it("throws for unknown type", async () => {
     const c = makeClient();
     await expect(c.getCreateConfig("nope")).rejects.toThrow(/No create config/);
@@ -620,6 +628,30 @@ describe("createResource", () => {
     expect(r.fields["rulesCount"]).toBe(0);
   });
 
+  it("creates a placement group", async () => {
+    const c = makeClient();
+    fetchMock.mockResolvedValueOnce(
+      okJson({
+        placement_group: {
+          id: 400,
+          name: "spread-a",
+          type: "spread",
+          servers: [7],
+          created: "2024-01-01T00:00:00Z",
+        },
+      }),
+    );
+    const r = await c.createResource("placement-group", ACCOUNT, {
+      name: "spread-a",
+      type: "spread",
+    });
+    expect(r.id).toBe(`${ACCOUNT}:placement-group:400`);
+    expect(r.fields["serverCount"]).toBe(1);
+    const [url, init] = lastCall();
+    expect(String(url)).toBe("https://api.hetzner.cloud/v1/placement_groups");
+    expect(JSON.parse(init.body as string)).toEqual({ name: "spread-a", type: "spread" });
+  });
+
   it("throws for unsupported create type", async () => {
     const c = makeClient();
     await expect(c.createResource("nope", ACCOUNT, {})).rejects.toThrow(/not supported/);
@@ -632,6 +664,7 @@ describe("deleteResource", () => {
     ["volume", "/volumes/1"],
     ["floating-ip", "/floating_ips/1"],
     ["firewall", "/firewalls/1"],
+    ["placement-group", "/placement_groups/1"],
   ])("deletes %s", async (type, path) => {
     const c = makeClient();
     fetchMock.mockResolvedValueOnce(okJson({}, 204));
@@ -880,6 +913,32 @@ describe("attachResource", () => {
       assignee_id: 7,
       assignee_type: "server",
     });
+  });
+
+  it("adds a server to a placement group", async () => {
+    const c = makeClient();
+    fetchMock
+      .mockResolvedValueOnce(
+        okJson({
+          placement_groups: [
+            { id: 70, name: "spread-a", type: "spread", servers: [], created: "2024-01-01" },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(okJson({ server: { id: 7, name: "s", status: "running" } }))
+      .mockResolvedValueOnce(okJson({}, 204));
+    await c.attachResource(
+      "placement-group",
+      `${ACCOUNT}:placement-group:70`,
+      "server",
+      `${ACCOUNT}:server:7`,
+      ACCOUNT,
+    );
+    const [url, init] = lastCall();
+    expect(String(url)).toBe(
+      "https://api.hetzner.cloud/v1/servers/7/actions/add_to_placement_group",
+    );
+    expect(JSON.parse(init.body as string)).toEqual({ placement_group: 70 });
   });
 
   it("throws for unsupported attach combo", async () => {

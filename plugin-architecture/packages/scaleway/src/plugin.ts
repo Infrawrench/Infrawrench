@@ -62,5 +62,5 @@ const resourceTypes: ResourceTypeDefinition[] = [
 export const plugin: Plugin = {
   manifest,
   resourceTypes,
-  createClient: (credentials) => new ScalewayClient(credentials, resourceTypes),
+  createClient: (credentials, services) => new ScalewayClient(credentials, resourceTypes, services),
 };

@@ -115,6 +115,20 @@ describe("constructor", () => {
     ).toBe("PEM");
     expect(spy).not.toHaveBeenCalled();
   });
+
+  it("routes through host http when services.http is available", async () => {
+    const request = vi.fn(async () => ({ status: 200, body: JSON.stringify(APP_LIST) }));
+    const spy = installFetch(() => jsonResponse({}));
+    await client({ apiToken: "tok" }, { http: { request } }).listResources("app", ACCOUNT);
+    expect(request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: "https://api.machines.dev/v1/apps?org_slug=personal",
+        method: "GET",
+        headers: expect.objectContaining({ Authorization: "Bearer tok" }),
+      }),
+    );
+    expect(spy).not.toHaveBeenCalled();
+  });
 });
 
 describe("listResources", () => {
@@ -178,6 +192,30 @@ describe("listResources", () => {
     expect(res).toHaveLength(1);
     expect(res[0]!.id).toBe("acct-1:volume:app-one/v1");
     expect(res[0]!.fields["sizeGb"]).toBe(10);
+  });
+
+  it("lists certificates from Fly's response envelope", async () => {
+    router([
+      [(u) => u.includes("/v1/apps?"), { apps: [{ id: "a1", name: "app-one" }], total_apps: 1 }],
+      [
+        (u) => u.includes("/v1/apps/app-one/certificates"),
+        {
+          certificates: [
+            {
+              hostname: "example.com",
+              configured: true,
+              acme_dns_configured: true,
+              dns_provider: "flydns",
+            },
+          ],
+        },
+      ],
+    ]);
+    const res = await client().listResources("certificate", ACCOUNT);
+    expect(res).toHaveLength(1);
+    expect(res[0]!.id).toBe("acct-1:certificate:app-one/example.com");
+    expect(res[0]!.fields["configured"]).toBe(true);
+    expect(res[0]!.fields["dnsProvider"]).toBe("flydns");
   });
 
   it("throws on unknown type", async () => {
@@ -281,6 +319,7 @@ describe("getCreateConfig", () => {
   it("app config", async () => {
     const cfg = await client().getCreateConfig("app");
     expect(cfg.fields[0]!.key).toBe("name");
+    expect(cfg.fields.find((f) => f.key === "network")?.required).toBe(false);
   });
 
   it("machine config without parent has app picker + regions", async () => {
@@ -324,6 +363,19 @@ describe("getCreateConfig", () => {
     expect(cfg.fields[0]!.key).toBe("name");
   });
 
+  it("certificate config without parent has app picker", async () => {
+    const cfg = await client().getCreateConfig("certificate");
+    expect(cfg.fields[0]!.key).toBe("appName");
+    expect(cfg.fields[0]!.kind).toBe("resource-picker");
+    expect(cfg.fields.find((f) => f.key === "hostname")).toBeTruthy();
+  });
+
+  it("certificate config with parent omits app field", async () => {
+    const cfg = await client().getCreateConfig("certificate", "acct-1:app:app-one");
+    expect(cfg.fields.find((f) => f.key === "appName")).toBeUndefined();
+    expect(cfg.fields[0]!.key).toBe("hostname");
+  });
+
   it("throws for unknown type", async () => {
     await expect(client().getCreateConfig("nope")).rejects.toThrow(/No create config/);
   });
@@ -339,6 +391,20 @@ describe("createResource", () => {
     expect(r.externalId).toBe("new-app");
     const postBody = JSON.parse(calls[0]!.init?.body as string);
     expect(postBody).toEqual({ app_name: "new-app", org_slug: "personal" });
+  });
+
+  it("creates an app with optional private network", async () => {
+    router([
+      [(u, i) => method(i) === "POST" && u.endsWith("/v1/apps"), { id: "a1" }],
+      [(u) => u.includes("/v1/apps/new-app"), { id: "a1", name: "new-app", status: "pending" }],
+    ]);
+    await client().createResource("app", ACCOUNT, { name: "new-app", network: "isolated" });
+    const postBody = JSON.parse(calls[0]!.init?.body as string);
+    expect(postBody).toEqual({
+      app_name: "new-app",
+      org_slug: "personal",
+      network: "isolated",
+    });
   });
 
   it("creates a machine with name and parent app", async () => {
@@ -411,6 +477,33 @@ describe("createResource", () => {
     expect(JSON.parse(calls[0]!.init?.body as string).size_gb).toBe(1);
   });
 
+  it("creates an ACME certificate", async () => {
+    router([
+      [
+        (u, i) => method(i) === "POST" && u.includes("/app-one/certificates/acme"),
+        { hostname: "example.com", configured: false, acme_requested: true, status: "pending" },
+      ],
+    ]);
+    const r = await client().createResource(
+      "certificate",
+      ACCOUNT,
+      { hostname: "example.com" },
+      "acct-1:app:app-one",
+    );
+    expect(r.id).toBe("acct-1:certificate:app-one/example.com");
+    const body = JSON.parse(calls[0]!.init?.body as string);
+    expect(body).toEqual({ hostname: "example.com" });
+  });
+
+  it("requires appName and hostname to create a certificate", async () => {
+    await expect(
+      client().createResource("certificate", ACCOUNT, { hostname: "example.com" }),
+    ).rejects.toThrow(/appName is required/);
+    await expect(
+      client().createResource("certificate", ACCOUNT, { appName: "app-one" }),
+    ).rejects.toThrow(/hostname is required/);
+  });
+
   it("throws when volume missing appName", async () => {
     await expect(
       client().createResource("volume", ACCOUNT, { name: "d", region: "iad", sizeGb: "1" }),
@@ -442,6 +535,13 @@ describe("deleteResource", () => {
     ok();
     await client().deleteResource("volume", "acct-1:volume:app-one/v1", ACCOUNT);
     expect(calls[0]!.url).toContain("/v1/apps/app-one/volumes/v1");
+  });
+
+  it("deletes certificate hostname", async () => {
+    ok();
+    await client().deleteResource("certificate", "acct-1:certificate:app-one/example.com", ACCOUNT);
+    expect(calls[0]!.url).toContain("/v1/apps/app-one/certificates/example.com");
+    expect(method(calls[0]!.init)).toBe("DELETE");
   });
 
   it("throws on unparseable app id", async () => {
@@ -663,6 +763,37 @@ describe("fetchMetricSeries", () => {
       ACCOUNT,
     );
     expect(series).toEqual([]);
+  });
+
+  it("routes prometheus metrics through host http when available", async () => {
+    const request = vi.fn(async (req: { url: string }) => {
+      if (req.url.includes("/v1/apps/app-one")) {
+        return {
+          status: 200,
+          body: JSON.stringify({ id: "a", name: "app-one", status: "deployed" }),
+        };
+      }
+      return {
+        status: 200,
+        body: JSON.stringify({
+          data: { result: [{ metric: {}, values: [[1000, "2"]] }] },
+        }),
+      };
+    });
+    const spy = installFetch(() => jsonResponse({}));
+    const series = await client({ apiToken: "tok" }, { http: { request } }).fetchMetricSeries(
+      "app",
+      "acct-1:app:app-one",
+      ACCOUNT,
+    );
+    expect(series.length).toBeGreaterThan(0);
+    expect(request).toHaveBeenCalledWith(
+      expect.objectContaining({
+        url: expect.stringContaining("https://api.fly.io/prometheus/personal/api/v1/query_range"),
+        headers: expect.objectContaining({ Authorization: "Bearer tok" }),
+      }),
+    );
+    expect(spy).not.toHaveBeenCalled();
   });
 
   it("handles app-level metrics without instance filter", async () => {

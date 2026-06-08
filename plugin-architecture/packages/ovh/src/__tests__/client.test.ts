@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from "vitest";
+import type { HostServices } from "@infrawrench/plugin-base";
 import { OvhClient } from "../client.js";
 import { plugin } from "../plugin.js";
 
@@ -102,6 +103,35 @@ describe("auth signing / timestamp", () => {
     expect(headers["X-Ovh-Consumer"]).toBe("ck");
     expect(headers["X-Ovh-Signature"]).toMatch(/^\$1\$[0-9a-f]{40}$/);
     expect(headers["X-Ovh-Timestamp"]).toBeDefined();
+  });
+
+  it("routes signed requests through host http when provided", async () => {
+    const request = vi.fn(async (req: { url: string }) => {
+      if (req.url.endsWith("/auth/time")) return { status: 200, headers: {}, body: "1700000000" };
+      return { status: 200, headers: {}, body: "[]" };
+    });
+    const c = new OvhClient(
+      { ...CREDS, caCert: "-----BEGIN CERTIFICATE-----\nCA\n-----END CERTIFICATE-----" },
+      resourceTypes,
+      { http: { request } } as unknown as HostServices,
+    );
+
+    await c.listResources("instance", ACCOUNT);
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(request).toHaveBeenCalledTimes(2);
+    const apiReq = request.mock.calls[1]![0] as {
+      url: string;
+      method: string;
+      headers: Record<string, string>;
+      caCert?: string;
+    };
+    expect(apiReq.url).toBe("https://eu.api.ovh.com/1.0/cloud/project/proj123/instance");
+    expect(apiReq.method).toBe("GET");
+    expect(apiReq.headers["X-Ovh-Application"]).toBe("ak");
+    expect(apiReq.headers["X-Ovh-Consumer"]).toBe("ck");
+    expect(apiReq.headers["X-Ovh-Signature"]).toMatch(/^\$1\$[0-9a-f]{40}$/);
+    expect(apiReq.caCert).toContain("BEGIN CERTIFICATE");
   });
 
   it("recovers when /auth/time fetch fails (delta 0)", async () => {
@@ -270,9 +300,11 @@ describe("listResources managed-db", () => {
   it("maps services", async () => {
     const c = makeClient();
     fetchMock.mockImplementation(async (url: string | URL | Request) => {
-      if (String(url).includes("/auth/time")) return okJson(1700000000);
-      return okJson([
-        {
+      const u = String(url);
+      if (u.includes("/auth/time")) return okJson(1700000000);
+      if (u.endsWith("/database/service")) return okJson(["db-abcdef123456", "db-2222"]);
+      if (u.endsWith("/database/service/db-abcdef123456"))
+        return okJson({
           id: "db-abcdef123456",
           description: "mydb",
           engine: "postgresql",
@@ -282,9 +314,10 @@ describe("listResources managed-db", () => {
           status: "READY",
           nodeNumber: 2,
           nodes: [{ region: "GRA" }],
-        },
-        { id: "db-2222", engine: "mysql", nodes: [{ region: "SBG" }] },
-      ]);
+        });
+      if (u.endsWith("/database/service/db-2222"))
+        return okJson({ id: "db-2222", engine: "mysql", nodes: [{ region: "SBG" }] });
+      return okJson({});
     });
     const res = await c.listResources("managed-db", ACCOUNT);
     expect(res[0]!.displayName).toBe("mydb");
@@ -549,6 +582,7 @@ describe("getCreateConfig", () => {
     const c = makeClient();
     const cfg = await c.getCreateConfig("managed-db");
     expect(cfg.fields.map((f) => f.key)).toContain("engine");
+    expect(cfg.fields.map((f) => f.key)).toContain("region");
   });
 
   it("volume config", async () => {
@@ -723,11 +757,18 @@ describe("createResource", () => {
       plan: "essential",
       flavor: "db1-7",
       nodeCount: "2",
+      region: "SBG",
     });
     expect(r.externalId).toBe("db-9999aaaa");
     expect(r.fields["nodeCount"]).toBe(2);
+    expect(String(lastApiCall()[0])).toContain("/database/postgresql");
     const body = JSON.parse(lastApiCall()[1]!.body as string);
-    expect(body.nodeList).toHaveLength(2);
+    expect(body).toMatchObject({
+      description: "mydb",
+      version: "16",
+      plan: "essential",
+      nodesPattern: { flavor: "db1-7", number: 2, region: "SBG" },
+    });
   });
 
   it("creates managed-db with fallbacks when response sparse", async () => {
@@ -743,7 +784,7 @@ describe("createResource", () => {
       flavor: "db1-4",
     });
     expect(r.fields["engine"]).toBe("mysql");
-    expect(r.displayName).toBe("undefined (db-1111b)");
+    expect(r.displayName).toBe("mysql (db-1111b)");
     expect(r.fields["nodeCount"]).toBe(1);
   });
 
@@ -795,7 +836,6 @@ describe("deleteResource", () => {
   it.each([
     ["instance", "/instance/x"],
     ["managed-kube", "/kube/x"],
-    ["managed-db", "/database/service/x"],
     ["volume", "/volume/x"],
   ])("deletes %s", async (type, suffix) => {
     const c = makeClient();
@@ -805,6 +845,19 @@ describe("deleteResource", () => {
     });
     await c.deleteResource(type, `${ACCOUNT}:${type}:x`, ACCOUNT);
     expect(String(lastApiCall()[0])).toContain(`/cloud/project/proj123${suffix}`);
+    expect(lastApiCall()[1]!.method).toBe("DELETE");
+  });
+
+  it("deletes managed-db through engine-specific endpoint", async () => {
+    const c = makeClient();
+    fetchMock.mockImplementation(async (url: string | URL | Request) => {
+      const u = String(url);
+      if (u.includes("/auth/time")) return okJson(1700000000);
+      if (u.endsWith("/database/service/x")) return okJson({ id: "x", engine: "postgresql" });
+      return okJson({}, 204);
+    });
+    await c.deleteResource("managed-db", `${ACCOUNT}:managed-db:x`, ACCOUNT);
+    expect(String(lastApiCall()[0])).toContain("/cloud/project/proj123/database/postgresql/x");
     expect(lastApiCall()[1]!.method).toBe("DELETE");
   });
 
@@ -940,9 +993,12 @@ describe("fetchDashboardStats", () => {
 
   it("managed-db stats degraded", async () => {
     const c = makeClient();
-    fetchMock.mockImplementation(
-      listImpl([{ id: "db-1", engine: "mysql", plan: "essential", status: "CREATING" }]),
-    );
+    fetchMock.mockImplementation(async (url: string | URL | Request) => {
+      const u = String(url);
+      if (u.includes("/auth/time")) return okJson(1700000000);
+      if (u.endsWith("/database/service")) return okJson(["db-1"]);
+      return okJson({ id: "db-1", engine: "mysql", plan: "essential", status: "CREATING" });
+    });
     const stats = await c.fetchDashboardStats("managed-db", `${ACCOUNT}:managed-db:db-1`, ACCOUNT);
     expect(stats[0]!.variant).toBe("status-degraded");
     expect(stats.find((s) => s.label === "Engine")?.value).toBe("mysql");

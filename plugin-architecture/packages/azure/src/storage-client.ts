@@ -97,7 +97,6 @@ export async function uploadStorageObject(
       "x-ms-version": "2023-11-03",
       "x-ms-blob-type": "BlockBlob",
       "Content-Type": file.type || "application/octet-stream",
-      "Content-Length": String(arrayBuffer.byteLength),
     },
     body: arrayBuffer,
   });
@@ -120,8 +119,8 @@ export async function makeStorageFolder(
       Authorization: `Bearer ${tok}`,
       "x-ms-version": "2023-11-03",
       "x-ms-blob-type": "BlockBlob",
-      "Content-Length": "0",
     },
+    body: new Uint8Array(0),
   });
   if (!res.ok) throw new Error(`Azure Blob mkdir failed: ${res.status}`);
 }

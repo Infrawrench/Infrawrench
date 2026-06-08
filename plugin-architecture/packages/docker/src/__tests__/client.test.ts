@@ -31,6 +31,32 @@ const sampleContainer = {
   Created: 1_700_000_000,
 };
 
+const sampleImage = {
+  Id: "sha256:abcdef0123456789",
+  RepoTags: ["nginx:latest"],
+  Created: 1_700_000_000,
+  Size: 12_582_912,
+  Containers: 2,
+};
+
+const sampleVolume = {
+  Name: "app-data",
+  Driver: "local",
+  Mountpoint: "/var/lib/docker/volumes/app-data/_data",
+  CreatedAt: "2024-01-01T00:00:00Z",
+  Scope: "local",
+};
+
+const sampleNetwork = {
+  Id: "networkabcdef0123456789",
+  Name: "frontend",
+  Driver: "bridge",
+  Scope: "local",
+  Created: "2024-01-02T00:00:00Z",
+  Internal: false,
+  IPAM: { Config: [{ Subnet: "172.18.0.0/16", Gateway: "172.18.0.1" }] },
+};
+
 describe("DockerClient.listResources", () => {
   it("maps containers to ResourceInstances with formatted ports and slugged id", async () => {
     const { services } = makeServices((op) => (op === "listContainers" ? [sampleContainer] : []));
@@ -69,6 +95,58 @@ describe("DockerClient.listResources", () => {
   it("throws for unknown resource types", async () => {
     const client = new DockerClient({ dockerHost: "" });
     await expect(client.listResources("widget", "a")).rejects.toThrow(/unknown resource type/);
+  });
+
+  it("maps images to ResourceInstances with encoded Docker ids", async () => {
+    const { services } = makeServices((op) => (op === "listImages" ? [sampleImage] : []));
+    const client = new DockerClient({ dockerHost: "" }, services);
+
+    const [r] = await client.listResources("docker-image", "acct");
+
+    expect(r).toMatchObject({
+      id: "acct:docker-image:sha256%3Aabcdef0123456789",
+      resourceTypeId: "docker-image",
+      displayName: "nginx:latest",
+      fields: { tags: "nginx:latest", size: "12 MB", containers: 2 },
+      resolvedOutputs: { imageId: "sha256:abcdef0123456789" },
+      externalId: "sha256:abcdef0123456789",
+    });
+  });
+
+  it("maps volumes and networks to ResourceInstances", async () => {
+    const { services } = makeServices((op) => {
+      if (op === "listVolumes") return [sampleVolume];
+      if (op === "listNetworks") return [sampleNetwork];
+      return [];
+    });
+    const client = new DockerClient({ dockerHost: "" }, services);
+
+    const [volume] = await client.listResources("docker-volume", "acct");
+    const [network] = await client.listResources("docker-network", "acct");
+
+    expect(volume).toMatchObject({
+      id: "acct:docker-volume:app-data",
+      displayName: "app-data",
+      fields: {
+        name: "app-data",
+        driver: "local",
+        mountpoint: "/var/lib/docker/volumes/app-data/_data",
+        scope: "local",
+      },
+      resolvedOutputs: { volumeName: "app-data" },
+    });
+    expect(network).toMatchObject({
+      id: "acct:docker-network:networkabcdef0123456789",
+      displayName: "frontend",
+      fields: {
+        name: "frontend",
+        driver: "bridge",
+        scope: "local",
+        subnet: "172.18.0.0/16",
+        internal: false,
+      },
+      resolvedOutputs: { networkId: "networkabcdef0123456789" },
+    });
   });
 });
 
@@ -212,6 +290,20 @@ describe("DockerClient.getCreateConfig", () => {
     const client = new DockerClient({ dockerHost: "" });
     await expect(client.getCreateConfig("widget")).rejects.toThrow(/not supported/);
   });
+
+  it("returns create configs for volumes and networks", async () => {
+    const client = new DockerClient({ dockerHost: "" });
+
+    expect((await client.getCreateConfig("docker-volume")).fields.map((f) => f.key)).toEqual([
+      "name",
+      "driver",
+    ]);
+    expect((await client.getCreateConfig("docker-network")).fields.map((f) => f.key)).toEqual([
+      "name",
+      "driver",
+      "internal",
+    ]);
+  });
 });
 
 describe("DockerClient.createResource", () => {
@@ -303,6 +395,54 @@ describe("DockerClient.createResource", () => {
     const client = new DockerClient({ dockerHost: "" });
     await expect(client.createResource("widget", "a", {})).rejects.toThrow(/not supported/);
   });
+
+  it("creates a Docker volume", async () => {
+    const { services, docker } = makeServices((op, params) => {
+      if (op === "createVolume") {
+        expect(params).toEqual({ name: "app-data", driver: "local" });
+        return sampleVolume;
+      }
+      return {};
+    });
+    const client = new DockerClient({ dockerHost: "" }, services);
+
+    const r = await client.createResource("docker-volume", "acct", {
+      name: "app-data",
+      driver: "local",
+    });
+
+    expect(docker.command).toHaveBeenCalledWith("createVolume", {
+      name: "app-data",
+      driver: "local",
+    });
+    expect(r.resourceTypeId).toBe("docker-volume");
+    expect(r.displayName).toBe("app-data");
+  });
+
+  it("creates a Docker network", async () => {
+    const { services, docker } = makeServices((op, params) => {
+      if (op === "createNetwork") {
+        expect(params).toEqual({ name: "frontend", driver: "bridge", internal: true });
+        return { Id: "networkabcdef0123456789" };
+      }
+      return {};
+    });
+    const client = new DockerClient({ dockerHost: "" }, services);
+
+    const r = await client.createResource("docker-network", "acct", {
+      name: "frontend",
+      driver: "bridge",
+      internal: "true",
+    });
+
+    expect(docker.command).toHaveBeenCalledWith("createNetwork", {
+      name: "frontend",
+      driver: "bridge",
+      internal: true,
+    });
+    expect(r.resourceTypeId).toBe("docker-network");
+    expect(r.displayName).toBe("frontend");
+  });
 });
 
 describe("DockerClient.deleteResource", () => {
@@ -311,6 +451,29 @@ describe("DockerClient.deleteResource", () => {
     const client = new DockerClient({ dockerHost: "" }, services);
     await client.deleteResource("docker-container", "acct:docker-container:abcdef012345", "acct");
     expect(docker.command).toHaveBeenCalledWith("removeContainer", { id: "abcdef012345" });
+  });
+
+  it("removes images, volumes, and networks with decoded ids", async () => {
+    const { services, docker } = makeServices(() => ({ ok: true }));
+    const client = new DockerClient({ dockerHost: "" }, services);
+
+    await client.deleteResource(
+      "docker-image",
+      "acct:docker-image:sha256%3Aabcdef0123456789",
+      "acct",
+    );
+    await client.deleteResource("docker-volume", "acct:docker-volume:app-data", "acct");
+    await client.deleteResource(
+      "docker-network",
+      "acct:docker-network:networkabcdef0123456789",
+      "acct",
+    );
+
+    expect(docker.command).toHaveBeenCalledWith("removeImage", { id: "sha256:abcdef0123456789" });
+    expect(docker.command).toHaveBeenCalledWith("removeVolume", { name: "app-data" });
+    expect(docker.command).toHaveBeenCalledWith("removeNetwork", {
+      id: "networkabcdef0123456789",
+    });
   });
 
   it("throws for unsupported types", async () => {

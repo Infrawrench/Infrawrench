@@ -5,6 +5,7 @@ import { NeonBranchResourceType } from "./resources/branch.js";
 import { NeonEndpointResourceType } from "./resources/endpoint.js";
 import { NeonDatabaseResourceType } from "./resources/database.js";
 import { NeonRoleResourceType } from "./resources/role.js";
+import { NeonDataApiResourceType } from "./resources/data-api.js";
 
 const manifest: PluginManifest = {
   id: "neon",
@@ -36,6 +37,7 @@ const resourceTypes: ResourceTypeDefinition[] = [
   NeonEndpointResourceType,
   NeonDatabaseResourceType,
   NeonRoleResourceType,
+  NeonDataApiResourceType,
 ];
 
 export const plugin: Plugin = {

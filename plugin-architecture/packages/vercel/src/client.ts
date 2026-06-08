@@ -60,12 +60,12 @@ interface VercelDeployment {
 }
 
 interface VercelDomain {
-  id: string;
+  id?: string;
   name: string;
   verified: boolean;
-  serviceType: string;
-  nameservers: string[];
-  intendedNameservers: string[];
+  serviceType?: string;
+  nameservers?: string[];
+  intendedNameservers?: string[];
   renew?: boolean;
   expiresAt: number | null;
   boughtAt: number | null;
@@ -496,12 +496,18 @@ export class VercelClient implements PluginClient {
     }
 
     if (typeId === "vercel-domain") {
-      const data = await this.fetch<Record<string, unknown>>("/v5/domains", {
+      const data = await this.fetch<Record<string, unknown>>("/v7/domains", {
         method: "POST",
-        body: JSON.stringify({ name: fields["name"] }),
+        body: JSON.stringify({ name: fields["name"], method: "add" }),
       });
       const domain = (data["domain"] ?? data) as Record<string, unknown>;
       const name = String(domain["name"] ?? fields["name"]);
+      const nameservers = Array.isArray(domain["nameservers"])
+        ? domain["nameservers"].join(", ")
+        : "";
+      const intendedNameservers = Array.isArray(domain["intendedNameservers"])
+        ? domain["intendedNameservers"].join(", ")
+        : "";
       const now = new Date().toISOString();
       return {
         id: `${accountId}:vercel-domain:${name}`,
@@ -513,14 +519,14 @@ export class VercelClient implements PluginClient {
           name,
           verified: String(domain["verified"] ?? false),
           serviceType: String(domain["serviceType"] ?? ""),
-          nameservers: "",
-          intendedNameservers: "",
+          nameservers,
+          intendedNameservers,
           renew: String(domain["renew"] ?? false),
           expiresAt: String(domain["expiresAt"] ?? ""),
           boughtAt: String(domain["boughtAt"] ?? ""),
           createdAt: String(domain["createdAt"] ?? now),
         },
-        resolvedOutputs: { domainName: name, nameservers: "" },
+        resolvedOutputs: { domainName: name, nameservers },
         secretStates: [],
         externalId: name,
         createdAt: String(domain["createdAt"] ?? now),
@@ -807,8 +813,10 @@ export class VercelClient implements PluginClient {
   }
 
   private mapDomain(d: VercelDomain, accountId: string): ResourceInstance {
+    const nameservers = d.nameservers ?? [];
+    const intendedNameservers = d.intendedNameservers ?? [];
     return {
-      id: `${accountId}:vercel-domain:${d.id}`,
+      id: `${accountId}:vercel-domain:${d.name}`,
       pluginId: "vercel",
       resourceTypeId: "vercel-domain",
       accountId,
@@ -817,8 +825,8 @@ export class VercelClient implements PluginClient {
         name: d.name,
         verified: String(d.verified),
         serviceType: d.serviceType,
-        nameservers: d.nameservers.join(", "),
-        intendedNameservers: d.intendedNameservers.join(", "),
+        nameservers: nameservers.join(", "),
+        intendedNameservers: intendedNameservers.join(", "),
         renew: d.renew != null ? String(d.renew) : null,
         expiresAt: formatTimestamp(d.expiresAt),
         boughtAt: formatTimestamp(d.boughtAt),
@@ -826,7 +834,7 @@ export class VercelClient implements PluginClient {
       }),
       resolvedOutputs: {},
       secretStates: [],
-      externalId: d.id,
+      externalId: d.name,
       createdAt: formatTimestamp(d.createdAt),
       updatedAt: formatTimestamp(d.createdAt),
     };
