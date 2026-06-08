@@ -1029,6 +1029,59 @@ describe("deleteResource", () => {
   });
 });
 
+describe("attachResource", () => {
+  it("adds a domain to a project", async () => {
+    installFetch((url) => {
+      if (url.includes("/v5/domains")) {
+        return jsonResponse({
+          domains: [
+            {
+              id: "dom1",
+              name: "example.com",
+              verified: true,
+              serviceType: "external",
+              nameservers: [],
+              intendedNameservers: [],
+              expiresAt: null,
+              boughtAt: null,
+              createdAt: 1,
+            },
+          ],
+        });
+      }
+      if (url.includes("/v9/projects/p1")) {
+        return jsonResponse({ id: "p1", name: "proj", createdAt: 1 });
+      }
+      return jsonResponse({});
+    });
+    await client({ accessToken: "tok", teamId: "team_x" }).attachResource(
+      "vercel-domain",
+      "acct-1:vercel-domain:dom1",
+      "vercel-project",
+      "acct-1:vercel-project:p1",
+      ACCOUNT,
+    );
+    const attachCall = calls.find((c) => c.url.includes("/v10/projects/p1/domains"));
+    expect(attachCall).toBeTruthy();
+    expect(attachCall!.url).toContain("teamId=team_x");
+    expect(attachCall!.init?.method).toBe("POST");
+    expect(JSON.parse(attachCall!.init?.body as string)).toEqual({ name: "example.com" });
+  });
+
+  it("throws for unsupported attach pair", async () => {
+    installFetch(() => jsonResponse({}));
+    await expect(
+      client().attachResource(
+        "vercel-env-var",
+        "acct-1:vercel-env-var:p1/e1",
+        "vercel-project",
+        "acct-1:vercel-project:p1",
+        ACCOUNT,
+      ),
+    ).rejects.toThrow(/attachResource not supported/);
+  });
+});
+
 describe("error handling", () => {
   it("throws vendor error on non-ok response", async () => {
     installFetch(() => jsonResponse("boom", 500));

@@ -626,6 +626,35 @@ export class VercelClient implements PluginClient {
     throw new Error(`Vercel plugin: deleteResource not supported for type "${typeId}"`);
   }
 
+  async attachResource(
+    sourceTypeId: string,
+    sourceResourceId: string,
+    targetTypeId: string,
+    targetResourceId: string,
+    accountId: string,
+  ): Promise<void> {
+    if (sourceTypeId === "vercel-domain" && targetTypeId === "vercel-project") {
+      const [domain, project] = await Promise.all([
+        this.getResource(sourceTypeId, sourceResourceId, accountId),
+        this.getResource(targetTypeId, targetResourceId, accountId),
+      ]);
+      const domainName = String(domain.fields["name"] ?? domain.externalId ?? "");
+      const projectIdOrName = String(project.externalId ?? project.fields["name"] ?? "");
+      if (!domainName || !projectIdOrName) {
+        throw new Error("Cannot determine Vercel domain or project identity for attachment");
+      }
+      await this.fetch<unknown>(`/v10/projects/${encodeURIComponent(projectIdOrName)}/domains`, {
+        method: "POST",
+        body: JSON.stringify({ name: domainName }),
+      });
+      return;
+    }
+
+    throw new Error(
+      `Vercel plugin: attachResource not supported for ${sourceTypeId} → ${targetTypeId}`,
+    );
+  }
+
   /* ================================================================
    *  Private list methods
    * ================================================================ */

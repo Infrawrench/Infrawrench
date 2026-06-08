@@ -28,4 +28,11 @@ export const VercelDomainResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   supportsCreate: true,
   iconKey: "domain",
+  attachTargets: [
+    {
+      pluginId: "vercel",
+      resourceTypeId: "vercel-project",
+      verb: "Add to project",
+    },
+  ],
 };
