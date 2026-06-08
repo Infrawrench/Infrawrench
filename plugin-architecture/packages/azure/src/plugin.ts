@@ -3,6 +3,9 @@ import { AzureClient } from "./client.js";
 import { VMResourceType } from "./resources/vm.js";
 import { DiskResourceType } from "./resources/disk.js";
 import { VNetResourceType } from "./resources/vnet.js";
+import { SubnetResourceType } from "./resources/subnet.js";
+import { RouteTableResourceType } from "./resources/route-table.js";
+import { NatGatewayResourceType } from "./resources/nat-gateway.js";
 import { AKSClusterResourceType } from "./resources/aks-cluster.js";
 import { SQLDatabaseResourceType } from "./resources/sql-database.js";
 import { CosmosDBAccountResourceType } from "./resources/cosmos-db.js";
@@ -16,6 +19,7 @@ import { ServiceBusNamespaceResourceType } from "./resources/service-bus.js";
 import { ContainerRegistryResourceType } from "./resources/container-registry.js";
 import { LoadBalancerResourceType } from "./resources/load-balancer.js";
 import { DNSZoneResourceType } from "./resources/dns-zone.js";
+import { PrivateDNSZoneResourceType } from "./resources/private-dns-zone.js";
 import { ResourceGroupResourceType } from "./resources/resource-group.js";
 import { NSGResourceType } from "./resources/nsg.js";
 import { PublicIPResourceType } from "./resources/public-ip.js";
@@ -80,6 +84,9 @@ const resourceTypes: ResourceTypeDefinition[] = [
   VMResourceType,
   DiskResourceType,
   VNetResourceType,
+  SubnetResourceType,
+  RouteTableResourceType,
+  NatGatewayResourceType,
   AKSClusterResourceType,
   SQLDatabaseResourceType,
   CosmosDBAccountResourceType,
@@ -93,6 +100,7 @@ const resourceTypes: ResourceTypeDefinition[] = [
   ContainerRegistryResourceType,
   LoadBalancerResourceType,
   DNSZoneResourceType,
+  PrivateDNSZoneResourceType,
   NSGResourceType,
   PublicIPResourceType,
   PostgresFlexibleServerResourceType,

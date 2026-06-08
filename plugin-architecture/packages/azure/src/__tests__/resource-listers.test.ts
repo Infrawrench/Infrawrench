@@ -220,6 +220,48 @@ describe("listVNets", () => {
   });
 });
 
+describe("listSubnets", () => {
+  it("expands subnets from virtual networks", async () => {
+    const ctx = makeCtx(() => ({
+      value: [
+        {
+          id: "/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/virtualNetworks/vn1",
+          name: "vn1",
+          location: "eastus",
+          properties: {
+            subnets: [
+              {
+                id: "/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/virtualNetworks/vn1/subnets/default",
+                name: "default",
+                properties: {
+                  addressPrefix: "10.0.0.0/24",
+                  provisioningState: "Succeeded",
+                  routeTable: { id: "/routeTables/rt1" },
+                  natGateway: { id: "/natGateways/nat1" },
+                  networkSecurityGroup: { id: "/networkSecurityGroups/nsg1" },
+                },
+              },
+            ],
+          },
+        },
+      ],
+    }));
+    const out = await listers.listSubnets(ctx, ACCT);
+    expect(out[0]).toMatchObject({
+      resourceTypeId: "azure-subnet",
+      displayName: "vn1/default",
+      externalId: "rg1/vn1/default",
+      fields: {
+        vnetName: "vn1",
+        addressPrefix: "10.0.0.0/24",
+        routeTable: "rt1",
+        natGateway: "nat1",
+        networkSecurityGroup: "nsg1",
+      },
+    });
+  });
+});
+
 describe("listAKSClusters", () => {
   it("sums node counts and reads pool/network info", async () => {
     const ctx = makeCtx(() => ({
@@ -378,6 +420,36 @@ describe("simple ARM list mappers", () => {
       expectField: ["adminEnabled", true],
     },
     {
+      name: "listRouteTables",
+      fn: listers.listRouteTables,
+      urlPart: "routeTables",
+      item: {
+        id: "/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/routeTables/rt1",
+        name: "rt1",
+        location: "eastus",
+        properties: { provisioningState: "Succeeded", routes: [{}, {}], subnets: [{}] },
+      },
+      expectField: ["routeCount", 2],
+    },
+    {
+      name: "listNatGateways",
+      fn: listers.listNatGateways,
+      urlPart: "natGateways",
+      item: {
+        id: "/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/natGateways/nat1",
+        name: "nat1",
+        location: "eastus",
+        sku: { name: "Standard" },
+        properties: {
+          provisioningState: "Succeeded",
+          idleTimeoutInMinutes: 8,
+          publicIpAddresses: [{}],
+          subnets: [{}, {}],
+        },
+      },
+      expectField: ["subnetCount", 2],
+    },
+    {
       name: "listLoadBalancers",
       fn: listers.listLoadBalancers,
       urlPart: "loadBalancers",
@@ -403,6 +475,21 @@ describe("simple ARM list mappers", () => {
         properties: { zoneType: "Public", numberOfRecordSets: 5, nameServers: ["ns1", "ns2"] },
       },
       expectField: ["numberOfRecordSets", 5],
+    },
+    {
+      name: "listPrivateDNSZones",
+      fn: listers.listPrivateDNSZones,
+      urlPart: "privateDnsZones",
+      item: {
+        id: "/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/privateDnsZones/privatelink.database.windows.net",
+        name: "privatelink.database.windows.net",
+        properties: {
+          numberOfRecordSets: 5,
+          maxNumberOfRecordSets: 25000,
+          numberOfVirtualNetworkLinks: 2,
+        },
+      },
+      expectField: ["virtualNetworkLinkCount", 2],
     },
     {
       name: "listNSGs",

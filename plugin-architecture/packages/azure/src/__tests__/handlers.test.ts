@@ -463,6 +463,128 @@ describe("attachAzureResource", () => {
     );
   });
 
+  it("associates a route table with a subnet", async () => {
+    const routeTable = res({
+      resourceTypeId: "azure-route-table",
+      fields: { name: "rt1", resourceGroup: "rg1", location: "eastus" },
+      resolvedOutputs: {
+        resourceId:
+          "/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/routeTables/rt1",
+      },
+    });
+    const subnet = res({
+      resourceTypeId: "azure-subnet",
+      fields: {
+        name: "default",
+        resourceGroup: "rg1",
+        location: "eastus",
+        vnetName: "vnet1",
+      },
+    });
+    const put = vi.fn(async (_url: string, _body: unknown) => ({}));
+    const get = vi.fn(async () => ({
+      properties: {
+        addressPrefix: "10.0.0.0/24",
+        networkSecurityGroup: { id: "/nsg1" },
+      },
+    }));
+    const ctx = {
+      ...httpCtx({ get, put }),
+      getResource: vi.fn(async (t: string) => (t === "azure-route-table" ? routeTable : subnet)),
+    };
+    await attachAzureResource(
+      ctx as never,
+      "azure-route-table",
+      "rt",
+      "azure-subnet",
+      "subnet",
+      "acct",
+    );
+    expect(put.mock.calls[0]![0]).toContain("/virtualNetworks/vnet1/subnets/default");
+    const body = put.mock.calls[0]![1] as {
+      properties: {
+        addressPrefix: string;
+        networkSecurityGroup: { id: string };
+        routeTable: { id: string };
+      };
+    };
+    expect(body.properties.addressPrefix).toBe("10.0.0.0/24");
+    expect(body.properties.networkSecurityGroup.id).toBe("/nsg1");
+    expect(body.properties.routeTable.id).toContain("/routeTables/rt1");
+  });
+
+  it("associates a NAT gateway with a subnet", async () => {
+    const natGateway = res({
+      resourceTypeId: "azure-nat-gateway",
+      fields: { name: "nat1", resourceGroup: "rg1", location: "eastus" },
+    });
+    const subnet = res({
+      resourceTypeId: "azure-subnet",
+      fields: {
+        name: "default",
+        resourceGroup: "rg1",
+        location: "eastus",
+        vnetName: "vnet1",
+      },
+    });
+    const put = vi.fn(async (_url: string, _body: unknown) => ({}));
+    const ctx = {
+      ...httpCtx({
+        get: vi.fn(async () => ({ properties: { addressPrefix: "10.0.0.0/24" } })),
+        put,
+      }),
+      getResource: vi.fn(async (t: string) => (t === "azure-nat-gateway" ? natGateway : subnet)),
+    };
+    await attachAzureResource(
+      ctx as never,
+      "azure-nat-gateway",
+      "nat",
+      "azure-subnet",
+      "subnet",
+      "acct",
+    );
+    const body = put.mock.calls[0]![1] as { properties: { natGateway: { id: string } } };
+    expect(body.properties.natGateway.id).toContain("/natGateways/nat1");
+  });
+
+  it("creates a private DNS virtual network link", async () => {
+    const zone = res({
+      resourceTypeId: "azure-private-dns-zone",
+      fields: { name: "privatelink.database.windows.net", resourceGroup: "dns-rg" },
+    });
+    const vnet = res({
+      resourceTypeId: "azure-vnet",
+      fields: { name: "app vnet", resourceGroup: "net-rg" },
+      resolvedOutputs: {
+        resourceId:
+          "/subscriptions/sub1/resourceGroups/net-rg/providers/Microsoft.Network/virtualNetworks/app-vnet",
+      },
+    });
+    const put = vi.fn(async (_url: string, _body: unknown) => ({}));
+    const ctx = {
+      ...httpCtx({ put }),
+      getResource: vi.fn(async (t: string) => (t === "azure-private-dns-zone" ? zone : vnet)),
+    };
+    await attachAzureResource(
+      ctx as never,
+      "azure-private-dns-zone",
+      "zone",
+      "azure-vnet",
+      "vnet",
+      "acct",
+    );
+    expect(put.mock.calls[0]![0]).toContain(
+      "/privateDnsZones/privatelink.database.windows.net/virtualNetworkLinks/app-vnet-link",
+    );
+    const body = put.mock.calls[0]![1] as {
+      location: string;
+      properties: { registrationEnabled: boolean; virtualNetwork: { id: string } };
+    };
+    expect(body.location).toBe("global");
+    expect(body.properties.registrationEnabled).toBe(false);
+    expect(body.properties.virtualNetwork.id).toContain("/virtualNetworks/app-vnet");
+  });
+
   it("throws when the load balancer has no backend pools", async () => {
     const lb = res({
       resourceTypeId: "azure-load-balancer",

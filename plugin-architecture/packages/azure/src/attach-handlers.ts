@@ -161,6 +161,51 @@ export async function attachAzureResource(
     }));
     return;
   }
+  if (sourceTypeId === "azure-route-table" && targetTypeId === "azure-subnet") {
+    const [routeTable, subnet] = await Promise.all([
+      ctx.getResource(sourceTypeId, sourceResourceId, accountId),
+      ctx.getResource(targetTypeId, targetResourceId, accountId),
+    ]);
+    assertSameLocation(routeTable, subnet, "Route table", "Subnet");
+    await updateSubnetProperties(ctx, subnet, (subnetProps) => ({
+      ...subnetProps,
+      routeTable: { id: azureResourceId(ctx, routeTable, "Microsoft.Network/routeTables") },
+    }));
+    return;
+  }
+  if (sourceTypeId === "azure-nat-gateway" && targetTypeId === "azure-subnet") {
+    const [natGateway, subnet] = await Promise.all([
+      ctx.getResource(sourceTypeId, sourceResourceId, accountId),
+      ctx.getResource(targetTypeId, targetResourceId, accountId),
+    ]);
+    assertSameLocation(natGateway, subnet, "NAT gateway", "Subnet");
+    await updateSubnetProperties(ctx, subnet, (subnetProps) => ({
+      ...subnetProps,
+      natGateway: { id: azureResourceId(ctx, natGateway, "Microsoft.Network/natGateways") },
+    }));
+    return;
+  }
+  if (sourceTypeId === "azure-private-dns-zone" && targetTypeId === "azure-vnet") {
+    const [zone, vnet] = await Promise.all([
+      ctx.getResource(sourceTypeId, sourceResourceId, accountId),
+      ctx.getResource(targetTypeId, targetResourceId, accountId),
+    ]);
+    const zoneRg = String(zone.fields["resourceGroup"] ?? "");
+    const zoneName = String(zone.fields["name"] ?? "");
+    if (!zoneRg || !zoneName) throw new Error("Cannot determine private DNS zone identity");
+    const linkName = virtualNetworkLinkName(vnet);
+    const url = `${ARM}/subscriptions/${ctx.subscriptionId}/resourceGroups/${zoneRg}/providers/Microsoft.Network/privateDnsZones/${zoneName}/virtualNetworkLinks/${linkName}?api-version=2020-06-01`;
+    await ctx.put(url, {
+      location: "global",
+      properties: {
+        registrationEnabled: false,
+        virtualNetwork: {
+          id: azureResourceId(ctx, vnet, "Microsoft.Network/virtualNetworks"),
+        },
+      },
+    });
+    return;
+  }
   throw new Error(
     `Azure plugin: attachResource not supported for ${sourceTypeId} → ${targetTypeId}`,
   );
@@ -259,4 +304,36 @@ function appendIdRef(value: unknown, id: string): Array<{ id: string }> {
         .map((refId) => ({ id: refId }))
     : [];
   return refs.some((ref) => ref.id === id) ? refs : [...refs, { id }];
+}
+
+async function updateSubnetProperties(
+  ctx: AttachContext,
+  subnet: ResourceInstance,
+  update: (subnetProps: Record<string, unknown>) => Record<string, unknown>,
+): Promise<void> {
+  const rg = String(subnet.fields["resourceGroup"] ?? "");
+  const vnetName = String(subnet.fields["vnetName"] ?? "");
+  const subnetName = String(subnet.fields["name"] ?? "");
+  if (!rg || !vnetName || !subnetName) throw new Error("Cannot determine subnet identity");
+  const url = `${ARM}/subscriptions/${ctx.subscriptionId}/resourceGroups/${rg}/providers/Microsoft.Network/virtualNetworks/${vnetName}/subnets/${subnetName}?api-version=2023-09-01`;
+  const current = await ctx.get<Record<string, unknown>>(url);
+  const subnetProps = (current["properties"] ?? {}) as Record<string, unknown>;
+  await ctx.put(url, {
+    ...current,
+    properties: update(subnetProps),
+  });
+}
+
+function azureResourceId(ctx: AttachContext, resource: ResourceInstance, provider: string): string {
+  const fromOutput = String(resource.resolvedOutputs["resourceId"] ?? "");
+  if (fromOutput) return fromOutput;
+  const rg = String(resource.fields["resourceGroup"] ?? "");
+  const name = String(resource.fields["name"] ?? "");
+  if (!rg || !name) throw new Error(`Cannot determine ${resource.displayName} identity`);
+  return `/subscriptions/${ctx.subscriptionId}/resourceGroups/${rg}/providers/${provider}/${name}`;
+}
+
+function virtualNetworkLinkName(vnet: ResourceInstance): string {
+  const name = String(vnet.fields["name"] ?? vnet.displayName ?? "vnet");
+  return `${name.replace(/[^A-Za-z0-9_.-]/g, "-").slice(0, 64)}-link`;
 }

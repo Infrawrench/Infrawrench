@@ -9,7 +9,7 @@ Resource associations are the drag-and-drop or picker-driven relationships betwe
 ## Implemented
 
 - **AWS** — Elastic IP to EC2 instance, EBS volume to EC2 instance, security group to EC2 instance, target group to EC2 instance, Auto Scaling group to target group, internet gateway to VPC, route table to subnet, internet gateway or NAT gateway default route to route table, Route 53 alias record to load balancer.
-- **Azure** — managed disk to VM, network security group to VM primary NIC, public IP to VM primary NIC IP configuration, load balancer backend pool to VM primary NIC IP configuration, application gateway backend pool to VM primary NIC IP configuration.
+- **Azure** — managed disk to VM, network security group to VM primary NIC, public IP to VM primary NIC IP configuration, load balancer backend pool to VM primary NIC IP configuration, application gateway backend pool to VM primary NIC IP configuration, route table to subnet, NAT gateway to subnet, private DNS zone link to virtual network.
 - **Fly.io** — volume to machine, with region validation.
 - **Hetzner Cloud** — volume to server, firewall to server, load balancer to server target, network to server, network to load balancer, primary IP to server.
 
@@ -18,7 +18,7 @@ Resource associations are the drag-and-drop or picker-driven relationships betwe
 These need a richer association form because the provider requires more than a source and target resource:
 
 - **AWS** — ALB/NLB listener to target group, NAT gateway creation from subnet plus Elastic IP, non-default route-table routes, Route 53 alias/record creation from arbitrary public endpoints.
-- **Azure** — explicit backend-pool selection for load balancer/application gateway attachments, backend pools to private endpoints, route table to subnet, NAT gateway to subnet, private DNS zone link to virtual network.
+- **Azure** — explicit backend-pool selection for load balancer/application gateway attachments, backend pools to private endpoints, private DNS registration-enabled links, subnet delegation/service endpoint updates.
 - **Hetzner Cloud** — load balancer service creation and health-check tuning, load balancer label-selector targets, firewall label-selector application, subnet and route management inside networks.
 - **Fly.io** — certificate hostname creation, shared/dedicated IPv4 allocation, app secrets to machines, service/port exposure from machine config.
 - **Vercel and Netlify** — domain to project/site, DNS record to deployment target, environment variable import from another resource output.

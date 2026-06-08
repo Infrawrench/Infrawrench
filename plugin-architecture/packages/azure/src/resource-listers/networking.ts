@@ -1,5 +1,5 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
-import { ARM, extractResourceGroup, type ListerContext } from "./shared.js";
+import { ARM, extractName, extractResourceGroup, type ListerContext } from "./shared.js";
 
 export async function listVNets(
   ctx: ListerContext,
@@ -30,6 +30,135 @@ export async function listVNets(
         provisioningState: String(props?.["provisioningState"] ?? ""),
         subnetCount: subnets?.length ?? 0,
         enableDdosProtection: (props?.["enableDdosProtection"] as boolean) ?? false,
+      },
+      resolvedOutputs: { resourceId: azureId },
+      secretStates: [],
+      externalId: `${rg}/${name}`,
+      createdAt: ctx.now(),
+      updatedAt: ctx.now(),
+    };
+  });
+}
+
+export async function listSubnets(
+  ctx: ListerContext,
+  accountId: string,
+): Promise<ResourceInstance[]> {
+  const data = await ctx.get<{ value: Record<string, unknown>[] }>(
+    `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.Network/virtualNetworks?api-version=2023-09-01`,
+  );
+  const resources: ResourceInstance[] = [];
+  for (const vnet of data.value ?? []) {
+    const vnetName = String(vnet["name"] ?? "");
+    const vnetId = String(vnet["id"] ?? "");
+    const rg = extractResourceGroup(vnetId);
+    const location = String(vnet["location"] ?? "");
+    const props = vnet["properties"] as Record<string, unknown> | undefined;
+    const subnets = Array.isArray(props?.["subnets"])
+      ? (props["subnets"] as Array<Record<string, unknown>>)
+      : [];
+    for (const subnet of subnets) {
+      const name = String(subnet["name"] ?? "");
+      const azureId = String(subnet["id"] ?? `${vnetId}/subnets/${name}`);
+      const subnetProps = (subnet["properties"] ?? {}) as Record<string, unknown>;
+      const nsg = subnetProps["networkSecurityGroup"] as Record<string, unknown> | undefined;
+      const routeTable = subnetProps["routeTable"] as Record<string, unknown> | undefined;
+      const natGateway = subnetProps["natGateway"] as Record<string, unknown> | undefined;
+      resources.push({
+        id: ctx.id(accountId, "azure-subnet", `${rg}/${vnetName}/${name}`),
+        pluginId: "azure",
+        resourceTypeId: "azure-subnet",
+        accountId,
+        displayName: `${vnetName}/${name}`,
+        fields: {
+          name,
+          resourceGroup: rg,
+          location,
+          vnetName,
+          addressPrefix: String(subnetProps["addressPrefix"] ?? ""),
+          provisioningState: String(subnetProps["provisioningState"] ?? ""),
+          networkSecurityGroup: extractName(String(nsg?.["id"] ?? "")),
+          routeTable: extractName(String(routeTable?.["id"] ?? "")),
+          natGateway: extractName(String(natGateway?.["id"] ?? "")),
+        },
+        resolvedOutputs: { resourceId: azureId },
+        secretStates: [],
+        externalId: `${rg}/${vnetName}/${name}`,
+        createdAt: ctx.now(),
+        updatedAt: ctx.now(),
+      });
+    }
+  }
+  return resources;
+}
+
+export async function listRouteTables(
+  ctx: ListerContext,
+  accountId: string,
+): Promise<ResourceInstance[]> {
+  const data = await ctx.get<{ value: Record<string, unknown>[] }>(
+    `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.Network/routeTables?api-version=2023-09-01`,
+  );
+  return (data.value ?? []).map((routeTable) => {
+    const name = String(routeTable["name"] ?? "");
+    const azureId = String(routeTable["id"] ?? "");
+    const rg = extractResourceGroup(azureId);
+    const props = routeTable["properties"] as Record<string, unknown> | undefined;
+    const routes = props?.["routes"] as unknown[] | undefined;
+    const subnets = props?.["subnets"] as unknown[] | undefined;
+    return {
+      id: ctx.id(accountId, "azure-route-table", `${rg}/${name}`),
+      pluginId: "azure",
+      resourceTypeId: "azure-route-table",
+      accountId,
+      displayName: name,
+      fields: {
+        name,
+        resourceGroup: rg,
+        location: String(routeTable["location"] ?? ""),
+        provisioningState: String(props?.["provisioningState"] ?? ""),
+        routeCount: routes?.length ?? 0,
+        subnetCount: subnets?.length ?? 0,
+      },
+      resolvedOutputs: { resourceId: azureId },
+      secretStates: [],
+      externalId: `${rg}/${name}`,
+      createdAt: ctx.now(),
+      updatedAt: ctx.now(),
+    };
+  });
+}
+
+export async function listNatGateways(
+  ctx: ListerContext,
+  accountId: string,
+): Promise<ResourceInstance[]> {
+  const data = await ctx.get<{ value: Record<string, unknown>[] }>(
+    `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.Network/natGateways?api-version=2023-09-01`,
+  );
+  return (data.value ?? []).map((natGateway) => {
+    const name = String(natGateway["name"] ?? "");
+    const azureId = String(natGateway["id"] ?? "");
+    const rg = extractResourceGroup(azureId);
+    const props = natGateway["properties"] as Record<string, unknown> | undefined;
+    const sku = natGateway["sku"] as Record<string, unknown> | undefined;
+    const publicIps = props?.["publicIpAddresses"] as unknown[] | undefined;
+    const subnets = props?.["subnets"] as unknown[] | undefined;
+    return {
+      id: ctx.id(accountId, "azure-nat-gateway", `${rg}/${name}`),
+      pluginId: "azure",
+      resourceTypeId: "azure-nat-gateway",
+      accountId,
+      displayName: name,
+      fields: {
+        name,
+        resourceGroup: rg,
+        location: String(natGateway["location"] ?? ""),
+        sku: String(sku?.["name"] ?? ""),
+        provisioningState: String(props?.["provisioningState"] ?? ""),
+        idleTimeout: Number(props?.["idleTimeoutInMinutes"] ?? 0),
+        publicIpCount: publicIps?.length ?? 0,
+        subnetCount: subnets?.length ?? 0,
       },
       resolvedOutputs: { resourceId: azureId },
       secretStates: [],

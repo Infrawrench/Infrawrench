@@ -13,6 +13,9 @@ export {
 } from "./resource-listers/compute.js";
 export {
   listVNets,
+  listSubnets,
+  listRouteTables,
+  listNatGateways,
   listLoadBalancers,
   listNSGs,
   listPublicIPs,
@@ -28,7 +31,7 @@ export {
 } from "./resource-listers/database.js";
 export { listStorageAccounts, listKeyVaults } from "./resource-listers/storage.js";
 export { listServiceBusNamespaces, listEventHubNamespaces } from "./resource-listers/messaging.js";
-export { listDNSZones } from "./resource-listers/dns.js";
+export { listDNSZones, listPrivateDNSZones } from "./resource-listers/dns.js";
 export {
   listResourceGroups,
   listLogAnalyticsWorkspaces,

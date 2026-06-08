@@ -37,6 +37,14 @@ export const AZURE_ARM_SPECS: Record<string, ArmResourceSpec> = {
   "azure-vm": { provider: "Microsoft.Compute/virtualMachines", apiVersion: "2024-03-01" },
   "azure-disk": { provider: "Microsoft.Compute/disks", apiVersion: "2023-10-02" },
   "azure-vnet": { provider: "Microsoft.Network/virtualNetworks", apiVersion: "2023-09-01" },
+  "azure-route-table": {
+    provider: "Microsoft.Network/routeTables",
+    apiVersion: "2023-09-01",
+  },
+  "azure-nat-gateway": {
+    provider: "Microsoft.Network/natGateways",
+    apiVersion: "2023-09-01",
+  },
   "azure-aks-cluster": {
     provider: "Microsoft.ContainerService/managedClusters",
     apiVersion: "2024-01-01",
@@ -72,6 +80,10 @@ export const AZURE_ARM_SPECS: Record<string, ArmResourceSpec> = {
   "azure-dns-zone": {
     provider: "Microsoft.Network/dnszones",
     apiVersion: "2023-07-01-preview",
+  },
+  "azure-private-dns-zone": {
+    provider: "Microsoft.Network/privateDnsZones",
+    apiVersion: "2020-06-01",
   },
   "azure-nsg": {
     provider: "Microsoft.Network/networkSecurityGroups",
