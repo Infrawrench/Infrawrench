@@ -5,6 +5,12 @@ import { ServerResourceType } from "./resources/server.js";
 import { VolumeResourceType } from "./resources/volume.js";
 import { FloatingIpResourceType } from "./resources/floating-ip.js";
 import { FirewallResourceType } from "./resources/firewall.js";
+import { NetworkResourceType } from "./resources/network.js";
+import { LoadBalancerResourceType } from "./resources/load-balancer.js";
+import { PrimaryIpResourceType } from "./resources/primary-ip.js";
+import { SshKeyResourceType } from "./resources/ssh-key.js";
+import { ImageResourceType } from "./resources/image.js";
+import { PlacementGroupResourceType } from "./resources/placement-group.js";
 
 const manifest: PluginManifest = {
   id: "hetzner",
@@ -36,6 +42,12 @@ const resourceTypes: ResourceTypeDefinition[] = [
   VolumeResourceType,
   FloatingIpResourceType,
   FirewallResourceType,
+  NetworkResourceType,
+  LoadBalancerResourceType,
+  PrimaryIpResourceType,
+  SshKeyResourceType,
+  ImageResourceType,
+  PlacementGroupResourceType,
 ];
 
 export const plugin: Plugin = {

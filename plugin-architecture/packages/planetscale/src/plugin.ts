@@ -3,6 +3,9 @@ import { caCertCredentialField } from "@infrawrench/plugin-base";
 import { PlanetScaleClient } from "./client.js";
 import { PsDatabaseResourceType } from "./resources/ps-database.js";
 import { PsBranchResourceType } from "./resources/ps-branch.js";
+import { PsPasswordResourceType } from "./resources/ps-password.js";
+import { PsDeployRequestResourceType } from "./resources/ps-deploy-request.js";
+import { PsBackupResourceType } from "./resources/ps-backup.js";
 
 const manifest: PluginManifest = {
   id: "planetscale",
@@ -43,7 +46,13 @@ const manifest: PluginManifest = {
   ],
 };
 
-const resourceTypes: ResourceTypeDefinition[] = [PsDatabaseResourceType, PsBranchResourceType];
+const resourceTypes: ResourceTypeDefinition[] = [
+  PsDatabaseResourceType,
+  PsBranchResourceType,
+  PsPasswordResourceType,
+  PsDeployRequestResourceType,
+  PsBackupResourceType,
+];
 
 export const plugin: Plugin = {
   manifest,

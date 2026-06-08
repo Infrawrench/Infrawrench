@@ -728,6 +728,136 @@ describe("attachResource", () => {
     });
   });
 
+  it("adds a server as a load-balancer target when locations match", async () => {
+    const c = makeClient();
+    fetchMock
+      .mockResolvedValueOnce(
+        okJson({
+          load_balancers: [{ id: 40, name: "lb", status: "running", location: { name: "fsn1" } }],
+        }),
+      )
+      .mockResolvedValueOnce(
+        okJson({
+          server: {
+            id: 7,
+            name: "s",
+            status: "running",
+            datacenter: { name: "d", location: { name: "fsn1", city: "F" } },
+          },
+        }),
+      )
+      .mockResolvedValueOnce(okJson({}, 204));
+    await c.attachResource(
+      "load-balancer",
+      `${ACCOUNT}:load-balancer:40`,
+      "server",
+      `${ACCOUNT}:server:7`,
+      ACCOUNT,
+    );
+    const [url, init] = lastCall();
+    expect(String(url)).toBe("https://api.hetzner.cloud/v1/load_balancers/40/actions/add_target");
+    expect(JSON.parse(init.body as string)).toEqual({
+      type: "server",
+      server: { id: 7 },
+    });
+  });
+
+  it("rejects load-balancer target attach when locations differ", async () => {
+    const c = makeClient();
+    fetchMock
+      .mockResolvedValueOnce(
+        okJson({
+          load_balancers: [{ id: 40, name: "lb", status: "running", location: { name: "nbg1" } }],
+        }),
+      )
+      .mockResolvedValueOnce(
+        okJson({
+          server: {
+            id: 7,
+            name: "s",
+            status: "running",
+            datacenter: { name: "d", location: { name: "fsn1", city: "F" } },
+          },
+        }),
+      );
+    await expect(
+      c.attachResource(
+        "load-balancer",
+        `${ACCOUNT}:load-balancer:40`,
+        "server",
+        `${ACCOUNT}:server:7`,
+        ACCOUNT,
+      ),
+    ).rejects.toThrow(/does not match server location/);
+  });
+
+  it("attaches a network to a server", async () => {
+    const c = makeClient();
+    fetchMock
+      .mockResolvedValueOnce(
+        okJson({ networks: [{ id: 50, name: "net", ip_range: "10.0.0.0/16" }] }),
+      )
+      .mockResolvedValueOnce(okJson({ server: { id: 7, name: "s", status: "running" } }))
+      .mockResolvedValueOnce(okJson({}, 204));
+    await c.attachResource(
+      "network",
+      `${ACCOUNT}:network:50`,
+      "server",
+      `${ACCOUNT}:server:7`,
+      ACCOUNT,
+    );
+    const [url, init] = lastCall();
+    expect(String(url)).toBe("https://api.hetzner.cloud/v1/servers/7/actions/attach_to_network");
+    expect(JSON.parse(init.body as string)).toEqual({ network: 50 });
+  });
+
+  it("attaches a network to a load balancer", async () => {
+    const c = makeClient();
+    fetchMock
+      .mockResolvedValueOnce(
+        okJson({ networks: [{ id: 50, name: "net", ip_range: "10.0.0.0/16" }] }),
+      )
+      .mockResolvedValueOnce(
+        okJson({ load_balancers: [{ id: 40, name: "lb", status: "running" }] }),
+      )
+      .mockResolvedValueOnce(okJson({}, 204));
+    await c.attachResource(
+      "network",
+      `${ACCOUNT}:network:50`,
+      "load-balancer",
+      `${ACCOUNT}:load-balancer:40`,
+      ACCOUNT,
+    );
+    const [url, init] = lastCall();
+    expect(String(url)).toBe(
+      "https://api.hetzner.cloud/v1/load_balancers/40/actions/attach_to_network",
+    );
+    expect(JSON.parse(init.body as string)).toEqual({ network: 50 });
+  });
+
+  it("assigns a primary IP to a server", async () => {
+    const c = makeClient();
+    fetchMock
+      .mockResolvedValueOnce(
+        okJson({ primary_ips: [{ id: 60, ip: "1.2.3.4", type: "ipv4", assignee_id: null }] }),
+      )
+      .mockResolvedValueOnce(okJson({ server: { id: 7, name: "s", status: "running" } }))
+      .mockResolvedValueOnce(okJson({}, 204));
+    await c.attachResource(
+      "primary-ip",
+      `${ACCOUNT}:primary-ip:60`,
+      "server",
+      `${ACCOUNT}:server:7`,
+      ACCOUNT,
+    );
+    const [url, init] = lastCall();
+    expect(String(url)).toBe("https://api.hetzner.cloud/v1/primary_ips/60/actions/assign");
+    expect(JSON.parse(init.body as string)).toEqual({
+      assignee_id: 7,
+      assignee_type: "server",
+    });
+  });
+
   it("throws for unsupported attach combo", async () => {
     const c = makeClient();
     await expect(c.attachResource("volume", "a", "volume", "b", ACCOUNT)).rejects.toThrow(

@@ -2,7 +2,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 
 const ec2Call = vi.fn();
-vi.mock("../client-transport.js", () => ({ ec2Call: (...a: unknown[]) => ec2Call(...a) }));
+const ec2QueryCall = vi.fn();
+vi.mock("../client-transport.js", () => ({
+  ec2Call: (...a: unknown[]) => ec2Call(...a),
+  ec2QueryCall: (...a: unknown[]) => ec2QueryCall(...a),
+}));
 
 import { attachResource } from "../attach-handlers.js";
 
@@ -36,7 +40,10 @@ function ctx(map: Record<string, ResourceInstance>) {
   };
 }
 
-beforeEach(() => ec2Call.mockReset());
+beforeEach(() => {
+  ec2Call.mockReset();
+  ec2QueryCall.mockReset();
+});
 
 describe("attachResource elastic-ip → ec2", () => {
   it("associates the address", async () => {
@@ -124,6 +131,85 @@ describe("attachResource security-group → ec2", () => {
     await expect(
       attachResource(c, "security-group", "s", "ec2-instance", "t", "acct"),
     ).rejects.toThrow(/security group/);
+  });
+});
+
+describe("attachResource target-group → ec2", () => {
+  it("registers the instance as a target", async () => {
+    ec2QueryCall.mockResolvedValue({});
+    const c = ctx({
+      "target-group": res(
+        { targetType: "instance", vpcId: "vpc-1", region: "us-east-2" },
+        { targetGroupArn: "arn:aws:elasticloadbalancing:us-east-2:1:targetgroup/tg/abc" },
+      ),
+      "ec2-instance": res({ instanceId: "i-1", vpcId: "vpc-1", region: "us-east-2" }),
+    });
+    await attachResource(c, "target-group", "s", "ec2-instance", "t", "acct");
+    expect(ec2QueryCall.mock.calls[0]![1]).toBe("elasticloadbalancing");
+    expect(ec2QueryCall.mock.calls[0]![2]).toBe("RegisterTargets");
+    expect(ec2QueryCall.mock.calls[0]![4]).toMatchObject({
+      TargetGroupArn: "arn:aws:elasticloadbalancing:us-east-2:1:targetgroup/tg/abc",
+      "Targets.member.1.Id": "i-1",
+    });
+  });
+
+  it("rejects non-instance target groups", async () => {
+    const c = ctx({
+      "target-group": res({ targetType: "ip" }, { targetGroupArn: "arn:tg" }),
+      "ec2-instance": res({ instanceId: "i-1" }),
+    });
+    await expect(
+      attachResource(c, "target-group", "s", "ec2-instance", "t", "acct"),
+    ).rejects.toThrow(/cannot register EC2 instances/);
+  });
+
+  it("rejects VPC mismatch", async () => {
+    const c = ctx({
+      "target-group": res({ targetType: "instance", vpcId: "vpc-a" }, { targetGroupArn: "arn:tg" }),
+      "ec2-instance": res({ instanceId: "i-1", vpcId: "vpc-b" }),
+    });
+    await expect(
+      attachResource(c, "target-group", "s", "ec2-instance", "t", "acct"),
+    ).rejects.toThrow(/does not match instance VPC/);
+  });
+
+  it("throws when ids are missing", async () => {
+    const c = ctx({ "target-group": res({}, {}, ""), "ec2-instance": res({}, {}, "") });
+    await expect(
+      attachResource(c, "target-group", "s", "ec2-instance", "t", "acct"),
+    ).rejects.toThrow(/TargetGroupArn/);
+  });
+});
+
+describe("attachResource internet-gateway → vpc", () => {
+  it("attaches the internet gateway to the VPC", async () => {
+    ec2Call.mockResolvedValue({});
+    const c = ctx({
+      "internet-gateway": res({ internetGatewayId: "igw-1", region: "us-west-1" }),
+      vpc: res({ vpcId: "vpc-1", region: "us-west-1" }),
+    });
+    await attachResource(c, "internet-gateway", "s", "vpc", "t", "acct");
+    expect(ec2Call.mock.calls[0]![1]).toBe("AttachInternetGateway");
+    expect(ec2Call.mock.calls[0]![2]).toEqual({
+      InternetGatewayId: "igw-1",
+      VpcId: "vpc-1",
+    });
+  });
+
+  it("no-ops when already attached to the VPC", async () => {
+    const c = ctx({
+      "internet-gateway": res({ internetGatewayId: "igw-1", vpcId: "vpc-1" }),
+      vpc: res({ vpcId: "vpc-1" }),
+    });
+    await attachResource(c, "internet-gateway", "s", "vpc", "t", "acct");
+    expect(ec2Call).not.toHaveBeenCalled();
+  });
+
+  it("throws when ids are missing", async () => {
+    const c = ctx({ "internet-gateway": res({}, {}, ""), vpc: res({}, {}, "") });
+    await expect(attachResource(c, "internet-gateway", "s", "vpc", "t", "acct")).rejects.toThrow(
+      /InternetGatewayId/,
+    );
   });
 });
 

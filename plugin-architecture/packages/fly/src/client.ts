@@ -106,6 +106,10 @@ export class FlyClient implements PluginClient {
         return this.listAllMachines(accountId);
       case "volume":
         return this.listAllVolumes(accountId);
+      case "certificate":
+        return this.listAllCertificates(accountId);
+      case "ip-allocation":
+        return this.listAllIpAllocations(accountId);
       default:
         throw new Error(`Fly plugin: unknown resource type "${typeId}"`);
     }
@@ -139,6 +143,21 @@ export class FlyClient implements PluginClient {
       return this.mapVolume(data, parts.appName, accountId);
     }
 
+    if (typeId === "certificate") {
+      const parts = parseAppChildId(resourceId);
+      const data = await this.fetch<FlyCertificate>(
+        `/v1/apps/${parts.appName}/certificates/${encodeURIComponent(parts.childId)}`,
+      );
+      return this.mapCertificate(data, parts.appName, accountId);
+    }
+
+    if (typeId === "ip-allocation") {
+      const all = await this.listResources(typeId, accountId);
+      const found = all.find((r) => r.id === resourceId);
+      if (found) return found;
+      throw new Error(`Fly plugin: resource ${typeId}/${resourceId} not found`);
+    }
+
     throw new Error(`Fly plugin: unknown resource type "${typeId}"`);
   }
 
@@ -159,6 +178,12 @@ export class FlyClient implements PluginClient {
     if (typeId === "app" && outputKey === "appName") {
       // The app's name is its external id (resource id = account:app:<name>).
       return resourceId.split(":").pop() ?? "";
+    }
+    if (typeId === "certificate" && outputKey === "hostname") {
+      return parseAppChildId(resourceId).childId;
+    }
+    if (typeId === "ip-allocation" && outputKey === "address") {
+      return parseAppChildId(resourceId).childId;
     }
     throw new Error(`Fly plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
   }
@@ -464,6 +489,22 @@ export class FlyClient implements PluginClient {
       ];
     }
 
+    if (resourceTypeId === "certificate") {
+      return [
+        { label: "Hostname", value: String(f["hostname"] ?? "") },
+        { label: "Configured", value: f["configured"] ? "Yes" : "No" },
+        ...(f["expires"] ? [{ label: "Expires", value: String(f["expires"]) }] : []),
+      ];
+    }
+
+    if (resourceTypeId === "ip-allocation") {
+      return [
+        { label: "Address", value: String(f["address"] ?? "") },
+        ...(f["type"] ? [{ label: "Type", value: String(f["type"]) }] : []),
+        ...(f["region"] ? [{ label: "Region", value: formatRegion(String(f["region"])) }] : []),
+      ];
+    }
+
     return [];
   }
 
@@ -642,6 +683,30 @@ export class FlyClient implements PluginClient {
       };
     }
 
+    if (resource.resourceTypeId === "certificate") {
+      return {
+        title: resource.displayName,
+        subtitle: `certificate · ${String(fields["appName"] ?? "")}`,
+        status: {
+          kind: "status-dot",
+          status: fields["configured"] === true ? "healthy" : "degraded",
+        },
+        sections: [
+          {
+            kind: "section",
+            title: "Details",
+            children: [
+              {
+                kind: "key-value-list",
+                items: labeledFieldItems(fields, this.resourceTypes, resource.resourceTypeId),
+              },
+            ],
+          },
+        ],
+        headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+      };
+    }
+
     // volume or fallback
     return {
       title: resource.displayName,
@@ -674,6 +739,8 @@ export class FlyClient implements PluginClient {
       status = resource.fields["status"] === "deployed" ? "healthy" : "degraded";
     } else if (resource.resourceTypeId === "volume") {
       status = resource.fields["state"] === "created" ? "healthy" : "error";
+    } else if (resource.resourceTypeId === "certificate") {
+      status = resource.fields["configured"] === true ? "healthy" : "degraded";
     }
 
     return {
@@ -729,6 +796,38 @@ export class FlyClient implements PluginClient {
     );
     for (const batch of batches) results.push(...batch);
     return results;
+  }
+
+  private async listAllCertificates(accountId: string): Promise<ResourceInstance[]> {
+    const apps = await this.listApps(accountId);
+    const batches = await Promise.all(
+      apps.map(async (app) => {
+        const appName = String(app.fields["name"]);
+        try {
+          const certs = await this.fetch<FlyCertificate[]>(`/v1/apps/${appName}/certificates`);
+          return (certs ?? []).map((cert) => this.mapCertificate(cert, appName, accountId));
+        } catch {
+          return [];
+        }
+      }),
+    );
+    return batches.flat();
+  }
+
+  private async listAllIpAllocations(accountId: string): Promise<ResourceInstance[]> {
+    const apps = await this.listApps(accountId);
+    const batches = await Promise.all(
+      apps.map(async (app) => {
+        const appName = String(app.fields["name"]);
+        try {
+          const ips = await this.fetch<FlyIpAllocation[]>(`/v1/apps/${appName}/ips`);
+          return (ips ?? []).map((ip) => this.mapIpAllocation(ip, appName, accountId));
+        } catch {
+          return [];
+        }
+      }),
+    );
+    return batches.flat();
   }
 
   /* ------------------------------------------------------------------ */
@@ -829,6 +928,66 @@ export class FlyClient implements PluginClient {
       updatedAt: v.created_at ?? new Date().toISOString(),
     };
   }
+
+  private mapCertificate(
+    cert: FlyCertificate,
+    appName: string,
+    accountId: string,
+  ): ResourceInstance {
+    const hostname = cert.hostname ?? cert.id ?? "";
+    return {
+      id: `${accountId}:certificate:${appName}/${hostname}`,
+      pluginId: "fly",
+      resourceTypeId: "certificate",
+      accountId,
+      displayName: hostname,
+      fields: {
+        hostname,
+        appName,
+        configured: cert.configured ?? false,
+        acmeDnsConfigured: cert.acme_dns_configured ?? false,
+        certificateAuthority: cert.certificate_authority ?? "",
+        issued: cert.issued?.["not_before"] ?? "",
+        expires: cert.issued?.["not_after"] ?? "",
+        dnsProvider: cert.dns_provider ?? "",
+      },
+      resolvedOutputs: { hostname },
+      secretStates: [],
+      externalId: `${appName}/${hostname}`,
+      parentResourceId: `${accountId}:app:${appName}`,
+      createdAt: cert.created_at ?? new Date().toISOString(),
+      updatedAt: cert.updated_at ?? cert.created_at ?? new Date().toISOString(),
+    };
+  }
+
+  private mapIpAllocation(
+    ip: FlyIpAllocation,
+    appName: string,
+    accountId: string,
+  ): ResourceInstance {
+    const address = ip.address ?? ip.ip ?? "";
+    return {
+      id: `${accountId}:ip-allocation:${appName}/${address}`,
+      pluginId: "fly",
+      resourceTypeId: "ip-allocation",
+      accountId,
+      displayName: address,
+      fields: {
+        address,
+        appName,
+        type: ip.type ?? "",
+        region: ip.region ?? "",
+        network: ip.network ?? "",
+        private: ip.private ?? false,
+      },
+      resolvedOutputs: { address },
+      secretStates: [],
+      externalId: `${appName}/${address}`,
+      parentResourceId: `${accountId}:app:${appName}`,
+      createdAt: ip.created_at ?? new Date().toISOString(),
+      updatedAt: ip.created_at ?? new Date().toISOString(),
+    };
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -896,6 +1055,16 @@ function parseVolumeId(resourceId: string): { appName: string; volumeId: string 
   };
 }
 
+function parseAppChildId(resourceId: string): { appName: string; childId: string } {
+  const externalId = resourceId.split(":").slice(2).join(":");
+  const slashIdx = externalId.indexOf("/");
+  if (slashIdx === -1) throw new Error(`Cannot parse Fly child resource ID: ${resourceId}`);
+  return {
+    appName: externalId.substring(0, slashIdx),
+    childId: externalId.substring(slashIdx + 1),
+  };
+}
+
 /* ------------------------------------------------------------------ */
 /*  Fly API types                                                       */
 /* ------------------------------------------------------------------ */
@@ -947,5 +1116,30 @@ interface FlyVolume {
   blocks_free?: number;
   snapshot_retention?: number;
   auto_backup_enabled?: boolean;
+  created_at?: string;
+}
+
+interface FlyCertificate {
+  id?: string;
+  hostname?: string;
+  configured?: boolean;
+  acme_dns_configured?: boolean;
+  certificate_authority?: string;
+  dns_provider?: string;
+  issued?: {
+    not_before?: string;
+    not_after?: string;
+  };
+  created_at?: string;
+  updated_at?: string;
+}
+
+interface FlyIpAllocation {
+  address?: string;
+  ip?: string;
+  type?: string;
+  region?: string;
+  network?: string;
+  private?: boolean;
   created_at?: string;
 }

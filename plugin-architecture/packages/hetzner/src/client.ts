@@ -98,6 +98,18 @@ export class HetznerClient implements PluginClient {
         return this.listFloatingIps(accountId);
       case "firewall":
         return this.listFirewalls(accountId);
+      case "network":
+        return this.listNetworks(accountId);
+      case "load-balancer":
+        return this.listLoadBalancers(accountId);
+      case "primary-ip":
+        return this.listPrimaryIps(accountId);
+      case "ssh-key":
+        return this.listSshKeys(accountId);
+      case "image":
+        return this.listImages(accountId);
+      case "placement-group":
+        return this.listPlacementGroups(accountId);
       default:
         throw new Error(`Hetzner plugin: unknown resource type "${typeId}"`);
     }
@@ -157,6 +169,28 @@ export class HetznerClient implements PluginClient {
     }
 
     if (typeId === "firewall" && outputKey === "id") {
+      return resourceId.split(":").pop() ?? "";
+    }
+
+    if (typeId === "network" && outputKey === "networkId") return resourceId.split(":").pop() ?? "";
+    if (typeId === "load-balancer") {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      if (outputKey === "loadBalancerId") return resource.externalId ?? "";
+      if (outputKey === "ipv4") return String(resource.resolvedOutputs["ipv4"] ?? "");
+      if (outputKey === "ipv6") return String(resource.resolvedOutputs["ipv6"] ?? "");
+    }
+    if (typeId === "primary-ip") {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      if (outputKey === "primaryIpId") return resource.externalId ?? "";
+      if (outputKey === "ip") return String(resource.resolvedOutputs["ip"] ?? "");
+    }
+    if (typeId === "ssh-key") {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      if (outputKey === "sshKeyId") return resource.externalId ?? "";
+      if (outputKey === "publicKey") return String(resource.resolvedOutputs["publicKey"] ?? "");
+    }
+    if (typeId === "image" && outputKey === "imageId") return resourceId.split(":").pop() ?? "";
+    if (typeId === "placement-group" && outputKey === "placementGroupId") {
       return resourceId.split(":").pop() ?? "";
     }
 
@@ -623,6 +657,77 @@ export class HetznerClient implements PluginClient {
       });
       return;
     }
+    if (sourceTypeId === "load-balancer" && targetTypeId === "server") {
+      const [loadBalancer, server] = await Promise.all([
+        this.getResource(sourceTypeId, sourceResourceId, accountId),
+        this.getResource(targetTypeId, targetResourceId, accountId),
+      ]);
+      const loadBalancerId = loadBalancer.externalId ?? sourceResourceId.split(":").pop();
+      const serverId = server.externalId ?? targetResourceId.split(":").pop();
+      const loadBalancerLocation = String(loadBalancer.fields["location"] ?? "");
+      const serverLocation = String(server.fields["location"] ?? "");
+      if (!loadBalancerId || !serverId) {
+        throw new Error("Cannot determine load balancer or server id for attachment");
+      }
+      if (loadBalancerLocation && serverLocation && loadBalancerLocation !== serverLocation) {
+        throw new Error(
+          `Load balancer location ${loadBalancerLocation} does not match server location ${serverLocation}.`,
+        );
+      }
+      await this.fetch(`/load_balancers/${loadBalancerId}/actions/add_target`, {
+        method: "POST",
+        body: JSON.stringify({ type: "server", server: { id: Number(serverId) } }),
+      });
+      return;
+    }
+    if (sourceTypeId === "network" && targetTypeId === "server") {
+      const [network, server] = await Promise.all([
+        this.getResource(sourceTypeId, sourceResourceId, accountId),
+        this.getResource(targetTypeId, targetResourceId, accountId),
+      ]);
+      const networkId = network.externalId ?? sourceResourceId.split(":").pop();
+      const serverId = server.externalId ?? targetResourceId.split(":").pop();
+      if (!networkId || !serverId) {
+        throw new Error("Cannot determine network or server id for attachment");
+      }
+      await this.fetch(`/servers/${serverId}/actions/attach_to_network`, {
+        method: "POST",
+        body: JSON.stringify({ network: Number(networkId) }),
+      });
+      return;
+    }
+    if (sourceTypeId === "network" && targetTypeId === "load-balancer") {
+      const [network, loadBalancer] = await Promise.all([
+        this.getResource(sourceTypeId, sourceResourceId, accountId),
+        this.getResource(targetTypeId, targetResourceId, accountId),
+      ]);
+      const networkId = network.externalId ?? sourceResourceId.split(":").pop();
+      const loadBalancerId = loadBalancer.externalId ?? targetResourceId.split(":").pop();
+      if (!networkId || !loadBalancerId) {
+        throw new Error("Cannot determine network or load balancer id for attachment");
+      }
+      await this.fetch(`/load_balancers/${loadBalancerId}/actions/attach_to_network`, {
+        method: "POST",
+        body: JSON.stringify({ network: Number(networkId) }),
+      });
+      return;
+    }
+    if (sourceTypeId === "primary-ip" && targetTypeId === "server") {
+      const [primaryIp, server] = await Promise.all([
+        this.getResource(sourceTypeId, sourceResourceId, accountId),
+        this.getResource(targetTypeId, targetResourceId, accountId),
+      ]);
+      const primaryIpId = primaryIp.externalId ?? sourceResourceId.split(":").pop();
+      const serverId = server.externalId ?? targetResourceId.split(":").pop();
+      if (!primaryIpId || !serverId) {
+        throw new Error("Cannot determine primary IP or server id for assignment");
+      }
+      await this.fetch(`/primary_ips/${primaryIpId}/actions/assign`, {
+        method: "POST",
+        body: JSON.stringify({ assignee_id: Number(serverId), assignee_type: "server" }),
+      });
+      return;
+    }
     throw new Error(
       `Hetzner plugin: attachResource not supported for ${sourceTypeId} → ${targetTypeId}`,
     );
@@ -672,6 +777,40 @@ export class HetznerClient implements PluginClient {
       return [
         { label: "Rules", value: String(f["rulesCount"] ?? 0) },
         { label: "Applied To", value: String(f["appliedToCount"] ?? 0) },
+      ];
+    }
+
+    if (resourceTypeId === "network") {
+      return [
+        { label: "IP Range", value: String(f["ipRange"] ?? "") },
+        { label: "Subnets", value: String(f["subnetCount"] ?? 0) },
+        { label: "Servers", value: String(f["serverCount"] ?? 0) },
+      ];
+    }
+
+    if (resourceTypeId === "load-balancer") {
+      return [
+        { label: "Status", value: String(f["status"] ?? "unknown") },
+        { label: "Type", value: String(f["type"] ?? "") },
+        { label: "Targets", value: String(f["targetCount"] ?? 0) },
+        ...(resource.resolvedOutputs["ipv4"]
+          ? [{ label: "IPv4", value: resource.resolvedOutputs["ipv4"] }]
+          : []),
+      ];
+    }
+
+    if (resourceTypeId === "primary-ip") {
+      return [
+        { label: "IP", value: String(f["ip"] ?? "") },
+        { label: "Type", value: String(f["type"] ?? "") },
+        { label: "Assigned", value: String(f["assigneeId"] ?? "") || "No" },
+      ];
+    }
+
+    if (resourceTypeId === "placement-group") {
+      return [
+        { label: "Type", value: String(f["type"] ?? "") },
+        { label: "Servers", value: String(f["serverCount"] ?? 0) },
       ];
     }
 
@@ -911,6 +1050,161 @@ export class HetznerClient implements PluginClient {
       updatedAt: fw.created ?? new Date().toISOString(),
     }));
   }
+
+  private async listNetworks(accountId: string): Promise<ResourceInstance[]> {
+    const networks = await this.fetchAll<HetznerNetwork>("/networks", "networks");
+    return networks.map((n) => ({
+      id: `${accountId}:network:${n.id}`,
+      pluginId: "hetzner",
+      resourceTypeId: "network",
+      accountId,
+      displayName: n.name,
+      fields: {
+        name: n.name,
+        ipRange: n.ip_range,
+        subnetCount: (n.subnets ?? []).length,
+        routeCount: (n.routes ?? []).length,
+        serverCount: (n.servers ?? []).length,
+        exposesRoutesToVswitch: n.exposes_routes_to_vswitch ?? false,
+      },
+      resolvedOutputs: { networkId: String(n.id) },
+      secretStates: [],
+      externalId: String(n.id),
+      createdAt: n.created ?? new Date().toISOString(),
+      updatedAt: n.created ?? new Date().toISOString(),
+    }));
+  }
+
+  private async listLoadBalancers(accountId: string): Promise<ResourceInstance[]> {
+    const loadBalancers = await this.fetchAll<HetznerLoadBalancer>(
+      "/load_balancers",
+      "load_balancers",
+    );
+    return loadBalancers.map((lb) => ({
+      id: `${accountId}:load-balancer:${lb.id}`,
+      pluginId: "hetzner",
+      resourceTypeId: "load-balancer",
+      accountId,
+      displayName: lb.name,
+      fields: {
+        name: lb.name,
+        status: lb.status ?? "unknown",
+        type: lb.load_balancer_type?.name ?? "",
+        location: lb.location?.name ?? "",
+        ipv4: lb.public_net?.ipv4?.ip ?? "",
+        ipv6: lb.public_net?.ipv6?.ip ?? "",
+        targetCount: (lb.targets ?? []).length,
+        serviceCount: (lb.services ?? []).length,
+      },
+      resolvedOutputs: {
+        loadBalancerId: String(lb.id),
+        ipv4: lb.public_net?.ipv4?.ip ?? "",
+        ipv6: lb.public_net?.ipv6?.ip ?? "",
+      },
+      secretStates: [],
+      externalId: String(lb.id),
+      createdAt: lb.created ?? new Date().toISOString(),
+      updatedAt: lb.created ?? new Date().toISOString(),
+    }));
+  }
+
+  private async listPrimaryIps(accountId: string): Promise<ResourceInstance[]> {
+    const ips = await this.fetchAll<HetznerPrimaryIp>("/primary_ips", "primary_ips");
+    return ips.map((ip) => ({
+      id: `${accountId}:primary-ip:${ip.id}`,
+      pluginId: "hetzner",
+      resourceTypeId: "primary-ip",
+      accountId,
+      displayName: ip.name || ip.ip,
+      fields: {
+        name: ip.name || "",
+        ip: ip.ip,
+        type: ip.type,
+        datacenter: ip.datacenter?.name ?? "",
+        assigneeId: ip.assignee_id != null ? String(ip.assignee_id) : "",
+        assigneeType: ip.assignee_type ?? "",
+        blocked: ip.blocked ?? false,
+        autoDelete: ip.auto_delete ?? false,
+      },
+      resolvedOutputs: { primaryIpId: String(ip.id), ip: ip.ip },
+      secretStates: [],
+      externalId: String(ip.id),
+      createdAt: ip.created ?? new Date().toISOString(),
+      updatedAt: ip.created ?? new Date().toISOString(),
+    }));
+  }
+
+  private async listSshKeys(accountId: string): Promise<ResourceInstance[]> {
+    const keys = await this.fetchAll<HetznerSshKey>("/ssh_keys", "ssh_keys");
+    return keys.map((key) => ({
+      id: `${accountId}:ssh-key:${key.id}`,
+      pluginId: "hetzner",
+      resourceTypeId: "ssh-key",
+      accountId,
+      displayName: key.name,
+      fields: {
+        name: key.name,
+        fingerprint: key.fingerprint ?? "",
+        publicKey: key.public_key ?? "",
+      },
+      resolvedOutputs: { sshKeyId: String(key.id), publicKey: key.public_key ?? "" },
+      secretStates: [],
+      externalId: String(key.id),
+      createdAt: key.created ?? new Date().toISOString(),
+      updatedAt: key.created ?? new Date().toISOString(),
+    }));
+  }
+
+  private async listImages(accountId: string): Promise<ResourceInstance[]> {
+    const images = await this.fetchAll<HetznerImageDetail>("/images?sort=name", "images");
+    return images.map((image) => ({
+      id: `${accountId}:image:${image.id}`,
+      pluginId: "hetzner",
+      resourceTypeId: "image",
+      accountId,
+      displayName: image.description || image.name || String(image.id),
+      fields: {
+        name: image.name ?? "",
+        description: image.description ?? "",
+        type: image.type,
+        status: image.status,
+        osFlavor: image.os_flavor ?? "",
+        osVersion: image.os_version ?? "",
+        imageSizeGb: image.image_size ?? 0,
+        diskSizeGb: image.disk_size ?? 0,
+        boundTo: image.bound_to != null ? String(image.bound_to) : "",
+      },
+      resolvedOutputs: { imageId: String(image.id) },
+      secretStates: [],
+      externalId: String(image.id),
+      createdAt: image.created ?? new Date().toISOString(),
+      updatedAt: image.created ?? new Date().toISOString(),
+    }));
+  }
+
+  private async listPlacementGroups(accountId: string): Promise<ResourceInstance[]> {
+    const groups = await this.fetchAll<HetznerPlacementGroup>(
+      "/placement_groups",
+      "placement_groups",
+    );
+    return groups.map((group) => ({
+      id: `${accountId}:placement-group:${group.id}`,
+      pluginId: "hetzner",
+      resourceTypeId: "placement-group",
+      accountId,
+      displayName: group.name,
+      fields: {
+        name: group.name,
+        type: group.type,
+        serverCount: (group.servers ?? []).length,
+      },
+      resolvedOutputs: { placementGroupId: String(group.id) },
+      secretStates: [],
+      externalId: String(group.id),
+      createdAt: group.created ?? new Date().toISOString(),
+      updatedAt: group.created ?? new Date().toISOString(),
+    }));
+  }
 }
 
 function serverStatusToDot(status: string): ResourceStatus {
@@ -1014,4 +1308,64 @@ interface HetznerImage {
   type: string;
   os_flavor: string;
   os_version: string | null;
+}
+
+interface HetznerNetwork {
+  id: number;
+  name: string;
+  ip_range: string;
+  subnets?: unknown[];
+  routes?: unknown[];
+  servers?: number[];
+  exposes_routes_to_vswitch?: boolean;
+  created: string;
+}
+
+interface HetznerLoadBalancer {
+  id: number;
+  name: string;
+  status?: string;
+  created: string;
+  load_balancer_type?: { name: string };
+  location?: { name: string };
+  public_net?: { ipv4?: { ip: string }; ipv6?: { ip: string } };
+  targets?: unknown[];
+  services?: unknown[];
+  protection?: { delete?: boolean };
+}
+
+interface HetznerPrimaryIp {
+  id: number;
+  name: string;
+  ip: string;
+  type: string;
+  created: string;
+  datacenter?: { name: string };
+  assignee_id: number | null;
+  assignee_type: string | null;
+  blocked: boolean;
+  auto_delete: boolean;
+}
+
+interface HetznerSshKey {
+  id: number;
+  name: string;
+  public_key: string;
+  fingerprint: string;
+  created: string;
+}
+
+interface HetznerImageDetail extends HetznerImage {
+  created: string;
+  image_size: number | null;
+  disk_size: number;
+  bound_to: number | null;
+}
+
+interface HetznerPlacementGroup {
+  id: number;
+  name: string;
+  type: string;
+  servers?: number[];
+  created: string;
 }

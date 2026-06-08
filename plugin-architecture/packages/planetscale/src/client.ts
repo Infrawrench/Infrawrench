@@ -44,10 +44,52 @@ interface PsPassword {
   id: string;
   name: string;
   access_host_url: string;
+  role?: string;
   username: string;
-  plain_text: string;
+  plain_text?: string;
+  cidrs?: string[];
+  expired?: boolean;
+  replica?: boolean;
+  renewable?: boolean;
+  expires_at?: string;
+  last_used_at?: string;
   database_branch: { name: string };
   created_at: string;
+}
+
+interface PsDeployRequest {
+  id: string;
+  number: number;
+  branch: string;
+  into_branch: string;
+  approved: boolean;
+  html_url: string;
+  created_at: string;
+  updated_at: string;
+  closed_at?: string;
+  deployed_at?: string;
+  deployment?: {
+    finished_at?: string;
+    queued_at?: string;
+    ready_to_cutover_at?: string;
+    started_at?: string;
+    deployable?: boolean;
+    deploy_operations?: unknown[];
+    deploy_operation_summaries?: unknown[];
+  };
+}
+
+interface PsBackup {
+  id: string;
+  name: string;
+  state?: string;
+  size?: number;
+  protected?: boolean;
+  required?: boolean;
+  created_at?: string;
+  started_at?: string;
+  completed_at?: string;
+  expires_at?: string;
 }
 
 // PlanetScale regions
@@ -115,6 +157,12 @@ export class PlanetScaleClient implements PluginClient {
         return this.listDatabases(accountId);
       case "ps-branch":
         return this.listAllBranches(accountId);
+      case "ps-password":
+        return this.listAllPasswords(accountId);
+      case "ps-deploy-request":
+        return this.listAllDeployRequests(accountId);
+      case "ps-backup":
+        return this.listAllBackups(accountId);
       default:
         throw new Error(`PlanetScale plugin: unknown resource type "${typeId}"`);
     }
@@ -153,6 +201,22 @@ export class PlanetScaleClient implements PluginClient {
       if (outputKey === "databaseName") return String(resource.fields["databaseName"] ?? "");
     }
 
+    if (typeId === "ps-password") {
+      if (outputKey === "username") return String(resource.fields["username"] ?? "");
+      if (outputKey === "host") return String(resource.fields["host"] ?? "");
+    }
+
+    if (typeId === "ps-deploy-request") {
+      if (outputKey === "deployRequestNumber") return String(resource.fields["number"] ?? "");
+      if (outputKey === "sourceBranch") return String(resource.fields["branch"] ?? "");
+      if (outputKey === "targetBranch") return String(resource.fields["intoBranch"] ?? "");
+    }
+
+    if (typeId === "ps-backup") {
+      if (outputKey === "backupName") return String(resource.fields["name"] ?? "");
+      if (outputKey === "backupId") return String(resource.externalId ?? "");
+    }
+
     throw new Error(
       `PlanetScale plugin: cannot resolve output "${outputKey}" for type "${typeId}"`,
     );
@@ -164,6 +228,12 @@ export class PlanetScaleClient implements PluginClient {
         return this.renderDatabaseDetail(resource);
       case "ps-branch":
         return this.renderBranchDetail(resource);
+      case "ps-password":
+        return this.renderPasswordDetail(resource);
+      case "ps-deploy-request":
+        return this.renderDeployRequestDetail(resource);
+      case "ps-backup":
+        return this.renderBackupDetail(resource);
       default:
         return {
           title: resource.displayName,
@@ -364,6 +434,34 @@ export class PlanetScaleClient implements PluginClient {
       ];
     }
 
+    if (resourceTypeId === "ps-password") {
+      const resource = await this.getResource(resourceTypeId, resourceId, accountId);
+      return [
+        { label: "Role", value: String(resource.fields["role"] ?? "") },
+        {
+          label: "Expired",
+          value: resource.fields["expired"] === true ? "Yes" : "No",
+          variant: resource.fields["expired"] === true ? "status-error" : "status-healthy",
+        },
+      ];
+    }
+
+    if (resourceTypeId === "ps-deploy-request") {
+      const resource = await this.getResource(resourceTypeId, resourceId, accountId);
+      return [
+        { label: "State", value: String(resource.fields["state"] ?? "") },
+        { label: "Approved", value: resource.fields["approved"] === true ? "Yes" : "No" },
+      ];
+    }
+
+    if (resourceTypeId === "ps-backup") {
+      const resource = await this.getResource(resourceTypeId, resourceId, accountId);
+      return [
+        { label: "State", value: String(resource.fields["state"] ?? "") },
+        { label: "Size", value: String(resource.fields["size"] ?? "") },
+      ];
+    }
+
     // Default: count databases
     const databases = await this.fetchDatabases();
     return [
@@ -465,6 +563,195 @@ export class PlanetScaleClient implements PluginClient {
     return branchLists.flat();
   }
 
+  private async listAllPasswords(accountId: string): Promise<ResourceInstance[]> {
+    const branches = await this.listAllBranches(accountId);
+    const now = new Date().toISOString();
+
+    const passwordLists = await Promise.all(
+      branches.map(async (branch) => {
+        const dbName = String(branch.fields["databaseName"] ?? "");
+        const branchName = String(branch.fields["name"] ?? "");
+        const passwords = await this.fetchPasswords(dbName, branchName);
+        return passwords.map((password) =>
+          this.toPasswordResource(password, dbName, branchName, accountId, now),
+        );
+      }),
+    );
+
+    return passwordLists.flat();
+  }
+
+  private async fetchPasswords(databaseName: string, branchName: string): Promise<PsPassword[]> {
+    const data = await this.fetch<{ data: PsPassword[] }>(
+      `/organizations/${enc(this.orgName)}/databases/${enc(databaseName)}/branches/${enc(branchName)}/passwords`,
+    );
+    return data.data ?? [];
+  }
+
+  private toPasswordResource(
+    password: PsPassword,
+    databaseName: string,
+    branchName: string,
+    accountId: string,
+    now: string,
+  ): ResourceInstance {
+    return {
+      id: `${accountId}:ps-password:${databaseName}/${branchName}/${password.id}`,
+      pluginId: "planetscale",
+      resourceTypeId: "ps-password",
+      accountId,
+      displayName: password.name,
+      externalId: `${databaseName}/${branchName}/${password.id}`,
+      parentResourceId: `${accountId}:ps-branch:${databaseName}/${branchName}`,
+      fields: {
+        name: password.name,
+        databaseName,
+        branchName,
+        role: password.role ?? "",
+        username: password.username ?? "",
+        host: password.access_host_url ?? "",
+        expired: password.expired === true,
+        replica: password.replica === true,
+        renewable: password.renewable === true,
+        cidrs: (password.cidrs ?? []).join(", "),
+        createdAt: password.created_at ?? "",
+        expiresAt: password.expires_at ?? "",
+        lastUsedAt: password.last_used_at ?? "",
+      },
+      resolvedOutputs: {},
+      secretStates: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
+
+  private async listAllDeployRequests(accountId: string): Promise<ResourceInstance[]> {
+    const databases = await this.fetchDatabases();
+    const now = new Date().toISOString();
+
+    const requestLists = await Promise.all(
+      databases.map(async (db) => {
+        const requests = await this.fetchDeployRequests(db.name);
+        return requests.map((request) =>
+          this.toDeployRequestResource(request, db.name, accountId, now),
+        );
+      }),
+    );
+
+    return requestLists.flat();
+  }
+
+  private async fetchDeployRequests(databaseName: string): Promise<PsDeployRequest[]> {
+    const data = await this.fetch<{ data: PsDeployRequest[] }>(
+      `/organizations/${enc(this.orgName)}/databases/${enc(databaseName)}/deploy-requests`,
+    );
+    return data.data ?? [];
+  }
+
+  private toDeployRequestResource(
+    request: PsDeployRequest,
+    databaseName: string,
+    accountId: string,
+    now: string,
+  ): ResourceInstance {
+    const state = request.deployed_at ? "deployed" : request.closed_at ? "closed" : "open";
+
+    return {
+      id: `${accountId}:ps-deploy-request:${databaseName}/${request.number}`,
+      pluginId: "planetscale",
+      resourceTypeId: "ps-deploy-request",
+      accountId,
+      displayName: `#${request.number} ${request.branch} -> ${request.into_branch}`,
+      externalId: `${databaseName}/${request.number}`,
+      parentResourceId: `${accountId}:ps-database:${databaseName}`,
+      fields: {
+        number: request.number,
+        databaseName,
+        branch: request.branch ?? "",
+        intoBranch: request.into_branch ?? "",
+        approved: request.approved === true,
+        state,
+        deployable: request.deployment?.deployable === true,
+        htmlUrl: request.html_url ?? "",
+        createdAt: request.created_at ?? "",
+        updatedAt: request.updated_at ?? "",
+        deployedAt: request.deployed_at ?? "",
+        closedAt: request.closed_at ?? "",
+        deploymentStartedAt: request.deployment?.started_at ?? "",
+        deploymentFinishedAt: request.deployment?.finished_at ?? "",
+        deployOperationCount:
+          request.deployment?.deploy_operation_summaries?.length ??
+          request.deployment?.deploy_operations?.length ??
+          0,
+      },
+      resolvedOutputs: {},
+      secretStates: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
+
+  private async listAllBackups(accountId: string): Promise<ResourceInstance[]> {
+    const branches = await this.listAllBranches(accountId);
+    const now = new Date().toISOString();
+
+    const backupLists = await Promise.all(
+      branches.map(async (branch) => {
+        const dbName = String(branch.fields["databaseName"] ?? "");
+        const branchName = String(branch.fields["name"] ?? "");
+        const backups = await this.fetchBackups(dbName, branchName);
+        return backups.map((backup) =>
+          this.toBackupResource(backup, dbName, branchName, accountId, now),
+        );
+      }),
+    );
+
+    return backupLists.flat();
+  }
+
+  private async fetchBackups(databaseName: string, branchName: string): Promise<PsBackup[]> {
+    const data = await this.fetch<{ data: PsBackup[] }>(
+      `/organizations/${enc(this.orgName)}/databases/${enc(databaseName)}/branches/${enc(branchName)}/backups`,
+    );
+    return data.data ?? [];
+  }
+
+  private toBackupResource(
+    backup: PsBackup,
+    databaseName: string,
+    branchName: string,
+    accountId: string,
+    now: string,
+  ): ResourceInstance {
+    return {
+      id: `${accountId}:ps-backup:${databaseName}/${branchName}/${backup.id}`,
+      pluginId: "planetscale",
+      resourceTypeId: "ps-backup",
+      accountId,
+      displayName: backup.name,
+      externalId: `${databaseName}/${branchName}/${backup.id}`,
+      parentResourceId: `${accountId}:ps-branch:${databaseName}/${branchName}`,
+      fields: {
+        id: backup.id,
+        name: backup.name,
+        databaseName,
+        branchName,
+        state: backup.state ?? "",
+        size: backup.size ?? 0,
+        protected: backup.protected === true,
+        required: backup.required === true,
+        createdAt: backup.created_at ?? "",
+        startedAt: backup.started_at ?? "",
+        completedAt: backup.completed_at ?? "",
+        expiresAt: backup.expires_at ?? "",
+      },
+      resolvedOutputs: {},
+      secretStates: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
+
   private toBranchResource(
     branch: PsBranch,
     databaseName: string,
@@ -534,7 +821,7 @@ export class PlanetScaleClient implements PluginClient {
 
     const pw = data.data;
     const user = encodeURIComponent(pw.username);
-    const pass = encodeURIComponent(pw.plain_text);
+    const pass = encodeURIComponent(pw.plain_text ?? "");
     const host = pw.access_host_url;
 
     return `mysql://${user}:${pass}@${host}/${dbName}`;
@@ -617,6 +904,109 @@ export class PlanetScaleClient implements PluginClient {
         connectionStringOutputKey: "connectionString",
         defaultQuery: "SHOW TABLES;",
       },
+    };
+  }
+
+  private renderPasswordDetail(resource: ResourceInstance): DetailViewSchema {
+    const expired = resource.fields["expired"] === true;
+    return {
+      title: resource.displayName,
+      subtitle: `PlanetScale Password · ${String(resource.fields["databaseName"] ?? "")}/${String(resource.fields["branchName"] ?? "")}`,
+      status: { kind: "status-dot", status: expired ? "error" : "healthy" },
+      sections: [
+        {
+          kind: "section",
+          title: "Password",
+          children: [
+            {
+              kind: "key-value-list",
+              items: [
+                { key: "Database", value: String(resource.fields["databaseName"] ?? "—") },
+                { key: "Branch", value: String(resource.fields["branchName"] ?? "—") },
+                { key: "Role", value: String(resource.fields["role"] ?? "—") },
+                { key: "Username", value: String(resource.fields["username"] ?? "—") },
+                { key: "Host", value: String(resource.fields["host"] ?? "—") },
+                { key: "Expired", value: expired ? "Yes" : "No" },
+                { key: "Created", value: String(resource.fields["createdAt"] ?? "—") },
+                { key: "Last Used", value: String(resource.fields["lastUsedAt"] ?? "—") },
+              ],
+            },
+          ],
+        },
+      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+    };
+  }
+
+  private renderDeployRequestDetail(resource: ResourceInstance): DetailViewSchema {
+    const state = String(resource.fields["state"] ?? "open");
+    return {
+      title: resource.displayName,
+      subtitle: `PlanetScale Deploy Request · ${String(resource.fields["databaseName"] ?? "")}`,
+      status: {
+        kind: "status-dot",
+        status: state === "deployed" ? "healthy" : state === "closed" ? "degraded" : "info",
+      },
+      sections: [
+        {
+          kind: "section",
+          title: "Deploy Request",
+          children: [
+            {
+              kind: "key-value-list",
+              items: [
+                { key: "Number", value: String(resource.fields["number"] ?? "—") },
+                { key: "Database", value: String(resource.fields["databaseName"] ?? "—") },
+                { key: "Branch", value: String(resource.fields["branch"] ?? "—") },
+                { key: "Into Branch", value: String(resource.fields["intoBranch"] ?? "—") },
+                { key: "State", value: state },
+                { key: "Approved", value: resource.fields["approved"] === true ? "Yes" : "No" },
+                { key: "Deployable", value: resource.fields["deployable"] === true ? "Yes" : "No" },
+                { key: "Operations", value: String(resource.fields["deployOperationCount"] ?? 0) },
+                { key: "Created", value: String(resource.fields["createdAt"] ?? "—") },
+                { key: "Deployed", value: String(resource.fields["deployedAt"] ?? "—") },
+              ],
+            },
+          ],
+        },
+      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+    };
+  }
+
+  private renderBackupDetail(resource: ResourceInstance): DetailViewSchema {
+    const state = String(resource.fields["state"] ?? "");
+    return {
+      title: resource.displayName,
+      subtitle: `PlanetScale Backup · ${String(resource.fields["databaseName"] ?? "")}/${String(resource.fields["branchName"] ?? "")}`,
+      status: {
+        kind: "status-dot",
+        status: state === "success" ? "healthy" : state === "failed" ? "error" : "info",
+      },
+      sections: [
+        {
+          kind: "section",
+          title: "Backup",
+          children: [
+            {
+              kind: "key-value-list",
+              items: [
+                { key: "Database", value: String(resource.fields["databaseName"] ?? "—") },
+                { key: "Branch", value: String(resource.fields["branchName"] ?? "—") },
+                { key: "State", value: state || "—" },
+                { key: "Size", value: String(resource.fields["size"] ?? "—") },
+                { key: "Protected", value: resource.fields["protected"] === true ? "Yes" : "No" },
+                { key: "Required", value: resource.fields["required"] === true ? "Yes" : "No" },
+                { key: "Created", value: String(resource.fields["createdAt"] ?? "—") },
+                { key: "Started", value: String(resource.fields["startedAt"] ?? "—") },
+                { key: "Completed", value: String(resource.fields["completedAt"] ?? "—") },
+                { key: "Expires", value: String(resource.fields["expiresAt"] ?? "—") },
+              ],
+            },
+          ],
+        },
+      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
     };
   }
 }

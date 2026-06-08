@@ -1,7 +1,7 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { AwsCredentials } from "./auth.js";
 import { ensureArray } from "./auth.js";
-import { ec2Call } from "./client-transport.js";
+import { ec2Call, ec2QueryCall } from "./client-transport.js";
 
 interface AttachContext {
   /** Home/default creds — used only for global services. */
@@ -103,6 +103,61 @@ export async function attachResource(
       params[`GroupId.${i + 1}`] = g;
     });
     await ec2Call(creds, "ModifyInstanceAttribute", params);
+    return;
+  }
+  if (sourceTypeId === "target-group" && targetTypeId === "ec2-instance") {
+    const [targetGroup, instance] = await Promise.all([
+      ctx.getResource(sourceTypeId, sourceResourceId, accountId),
+      ctx.getResource(targetTypeId, targetResourceId, accountId),
+    ]);
+    const targetGroupArn = String(
+      targetGroup.fields["targetGroupArn"] ??
+        targetGroup.resolvedOutputs["targetGroupArn"] ??
+        targetGroup.externalId ??
+        "",
+    );
+    const instanceId = String(instance.fields["instanceId"] ?? instance.externalId ?? "");
+    if (!targetGroupArn || !instanceId) {
+      throw new Error("Cannot determine TargetGroupArn or InstanceId for target registration");
+    }
+    const targetType = String(targetGroup.fields["targetType"] ?? "instance");
+    if (targetType && targetType !== "instance") {
+      throw new Error(`Target group target type ${targetType} cannot register EC2 instances`);
+    }
+    const targetVpcId = String(targetGroup.fields["vpcId"] ?? "");
+    const instanceVpcId = String(instance.fields["vpcId"] ?? "");
+    if (targetVpcId && instanceVpcId && targetVpcId !== instanceVpcId) {
+      throw new Error(
+        `Target group VPC ${targetVpcId} does not match instance VPC ${instanceVpcId}.`,
+      );
+    }
+    const region = String(
+      instance.fields["region"] ?? targetGroup.fields["region"] ?? ctx.creds.region,
+    );
+    const creds = ctx.credsFor(region);
+    await ec2QueryCall(creds, "elasticloadbalancing", "RegisterTargets", "2015-12-01", {
+      TargetGroupArn: targetGroupArn,
+      "Targets.member.1.Id": instanceId,
+    });
+    return;
+  }
+  if (sourceTypeId === "internet-gateway" && targetTypeId === "vpc") {
+    const [gateway, vpc] = await Promise.all([
+      ctx.getResource(sourceTypeId, sourceResourceId, accountId),
+      ctx.getResource(targetTypeId, targetResourceId, accountId),
+    ]);
+    const gatewayId = String(gateway.fields["internetGatewayId"] ?? gateway.externalId ?? "");
+    const vpcId = String(vpc.fields["vpcId"] ?? vpc.externalId ?? "");
+    if (!gatewayId || !vpcId) {
+      throw new Error("Cannot determine InternetGatewayId or VpcId for attachment");
+    }
+    if (String(gateway.fields["vpcId"] ?? "") === vpcId) return;
+    const region = String(vpc.fields["region"] ?? gateway.fields["region"] ?? ctx.creds.region);
+    const creds = ctx.credsFor(region);
+    await ec2Call(creds, "AttachInternetGateway", {
+      InternetGatewayId: gatewayId,
+      VpcId: vpcId,
+    });
     return;
   }
   throw new Error(`AWS plugin: attachResource not supported for ${sourceTypeId} → ${targetTypeId}`);

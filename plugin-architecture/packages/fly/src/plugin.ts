@@ -4,6 +4,8 @@ import { FlyClient } from "./client.js";
 import { AppResourceType } from "./resources/app.js";
 import { MachineResourceType } from "./resources/machine.js";
 import { VolumeResourceType } from "./resources/volume.js";
+import { CertificateResourceType } from "./resources/certificate.js";
+import { IpAllocationResourceType } from "./resources/ip-allocation.js";
 
 const manifest: PluginManifest = {
   id: "fly",
@@ -45,6 +47,8 @@ const resourceTypes: ResourceTypeDefinition[] = [
   AppResourceType,
   MachineResourceType,
   VolumeResourceType,
+  CertificateResourceType,
+  IpAllocationResourceType,
 ];
 
 export const plugin: Plugin = {

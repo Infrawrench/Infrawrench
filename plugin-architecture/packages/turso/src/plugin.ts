@@ -2,6 +2,10 @@ import type { Plugin, PluginManifest, ResourceTypeDefinition } from "@infrawrenc
 import { TursoClient } from "./client.js";
 import { TursoGroupResourceType } from "./resources/turso-group.js";
 import { TursoDatabaseResourceType } from "./resources/turso-database.js";
+import { TursoLocationResourceType } from "./resources/turso-location.js";
+import { TursoDatabaseInstanceResourceType } from "./resources/turso-database-instance.js";
+import { TursoApiTokenResourceType } from "./resources/turso-api-token.js";
+import { TursoOrganizationMemberResourceType } from "./resources/turso-organization-member.js";
 
 const manifest: PluginManifest = {
   id: "turso",
@@ -34,7 +38,14 @@ const manifest: PluginManifest = {
   ],
 };
 
-const resourceTypes: ResourceTypeDefinition[] = [TursoGroupResourceType, TursoDatabaseResourceType];
+const resourceTypes: ResourceTypeDefinition[] = [
+  TursoGroupResourceType,
+  TursoDatabaseResourceType,
+  TursoDatabaseInstanceResourceType,
+  TursoLocationResourceType,
+  TursoApiTokenResourceType,
+  TursoOrganizationMemberResourceType,
+];
 
 export const plugin: Plugin = {
   manifest,

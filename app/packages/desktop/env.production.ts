@@ -7,25 +7,11 @@ export const SHOW_SIGN_IN_BUTTON = false;
 export const BANNERS: { message: string; variant?: "info" | "warning" }[] = [
   {
     message:
-      "Infrawrench is in alpha and therefore a lot of providers and resources are still being tested and are right now off.",
+      "Infrawrench is in alpha. Scaleway and OVH remain hidden while broader API coverage is finished; other bundled providers are available.",
     variant: "warning",
   },
 ];
 
-export const DISABLED_PLUGINS: string[] = [
-  "azure",
-  "hetzner",
-  "scaleway",
-  "ovh",
-  "databricks",
-  "turso",
-  "planetscale",
-  "fly",
-  "vercel",
-  "netlify",
-  "cloudinary",
-];
+export const DISABLED_PLUGINS: string[] = ["scaleway", "ovh"];
 
-export const ENABLED_RESOURCE_TYPES: Record<string, string[]> = {
-  aws: ["ec2-instance", "eks-cluster", "dynamodb-table", "s3-bucket"],
-};
+export const ENABLED_RESOURCE_TYPES: Record<string, string[]> = {};

@@ -27,4 +27,12 @@ export const TargetGroupResourceType: ResourceTypeDefinition = {
   iconKey: "load-balancer",
   supportsCreate: true,
   supportsMetrics: true,
+  attachTargets: [
+    {
+      pluginId: "aws",
+      resourceTypeId: "ec2-instance",
+      matchField: "vpcId",
+      verb: "Register target",
+    },
+  ],
 };

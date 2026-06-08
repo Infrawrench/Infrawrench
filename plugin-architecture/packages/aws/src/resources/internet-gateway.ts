@@ -14,4 +14,5 @@ export const InternetGatewayResourceType: ResourceTypeDefinition = {
   dashboardPinnable: false,
   iconKey: "network",
   supportsCreate: true,
+  attachTargets: [{ pluginId: "aws", resourceTypeId: "vpc", verb: "Attach" }],
 };

@@ -8,7 +8,15 @@ import type {
   DashboardStat,
 } from "@infrawrench/plugin-base";
 import { createClient as createTursoApiClient } from "@tursodatabase/api";
-import type { Database, Group, LocationKeys } from "@tursodatabase/api";
+import type {
+  ApiToken,
+  Database,
+  DatabaseInstance,
+  Group,
+  Location,
+  LocationKeys,
+  OrganizationMember,
+} from "@tursodatabase/api";
 
 type TursoApiClient = ReturnType<typeof createTursoApiClient>;
 
@@ -78,6 +86,14 @@ export class TursoClient implements PluginClient {
         return this.listDatabases(accountId);
       case "turso-group":
         return this.listGroups(accountId);
+      case "turso-database-instance":
+        return this.listDatabaseInstances(accountId);
+      case "turso-location":
+        return this.listLocations(accountId);
+      case "turso-api-token":
+        return this.listApiTokens(accountId);
+      case "turso-organization-member":
+        return this.listOrganizationMembers(accountId);
       default:
         throw new Error(`Turso plugin: unknown resource type "${typeId}"`);
     }
@@ -115,6 +131,28 @@ export class TursoClient implements PluginClient {
       if (outputKey === "primaryLocation") return String(resource.fields["primaryLocation"] ?? "");
     }
 
+    if (typeId === "turso-database-instance") {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      if (outputKey === "hostname") return String(resource.fields["hostname"] ?? "");
+      if (outputKey === "instanceName") return String(resource.fields["name"] ?? "");
+    }
+
+    if (typeId === "turso-location") {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      if (outputKey === "locationCode") return String(resource.fields["code"] ?? "");
+    }
+
+    if (typeId === "turso-api-token") {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      if (outputKey === "tokenName") return String(resource.fields["name"] ?? "");
+    }
+
+    if (typeId === "turso-organization-member") {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      if (outputKey === "username") return String(resource.fields["username"] ?? "");
+      if (outputKey === "email") return String(resource.fields["email"] ?? "");
+    }
+
     throw new Error(`Turso plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
   }
 
@@ -149,6 +187,21 @@ export class TursoClient implements PluginClient {
       ];
     }
 
+    if (resourceTypeId === "turso-database-instance") {
+      return [
+        { label: "Database", value: String(f["database"] ?? "") },
+        { label: "Type", value: String(f["type"] ?? "") },
+        { label: "Region", value: formatLocation(String(f["region"] ?? "")) },
+      ];
+    }
+
+    if (resourceTypeId === "turso-organization-member") {
+      return [
+        { label: "Role", value: String(f["role"] ?? "") },
+        { label: "Email", value: String(f["email"] ?? "") },
+      ];
+    }
+
     return [];
   }
 
@@ -158,6 +211,14 @@ export class TursoClient implements PluginClient {
         return this.renderDatabaseDetail(resource);
       case "turso-group":
         return this.renderGroupDetail(resource);
+      case "turso-database-instance":
+        return this.renderDatabaseInstanceDetail(resource);
+      case "turso-location":
+        return this.renderLocationDetail(resource);
+      case "turso-api-token":
+        return this.renderApiTokenDetail(resource);
+      case "turso-organization-member":
+        return this.renderOrganizationMemberDetail(resource);
       default:
         return this.renderGenericDetail(resource);
     }
@@ -262,6 +323,10 @@ export class TursoClient implements PluginClient {
     }
     if (typeId === "turso-group") {
       await this.api.groups.delete(externalId);
+      return;
+    }
+    if (typeId === "turso-api-token") {
+      await this.api.apiTokens.revoke(externalId);
       return;
     }
     throw new Error(`Turso plugin: cannot delete type "${typeId}"`);
@@ -379,6 +444,132 @@ export class TursoClient implements PluginClient {
       createdAt: now,
       updatedAt: now,
     }));
+  }
+
+  private async listDatabaseInstances(accountId: string): Promise<ResourceInstance[]> {
+    const databases = await this.fetchDatabases();
+    const instanceGroups = await Promise.all(
+      databases.map(async (db) => ({
+        database: db.name,
+        instances: await this.api.databases.listInstances(db.name),
+      })),
+    );
+    const now = new Date().toISOString();
+
+    return instanceGroups.flatMap(({ database, instances }) =>
+      instances.map((instance) => this.mapDatabaseInstance(accountId, database, instance, now)),
+    );
+  }
+
+  private mapDatabaseInstance(
+    accountId: string,
+    database: string,
+    instance: DatabaseInstance,
+    now: string,
+  ): ResourceInstance {
+    return {
+      id: `${accountId}:turso-database-instance:${database}:${instance.name}`,
+      pluginId: "turso",
+      resourceTypeId: "turso-database-instance",
+      accountId,
+      displayName: `${database}/${instance.name}`,
+      externalId: `${database}:${instance.name}`,
+      fields: {
+        database,
+        name: instance.name,
+        uuid: instance.uuid,
+        type: instance.type,
+        region: instance.region,
+        hostname: instance.hostname,
+      },
+      resolvedOutputs: {},
+      secretStates: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
+
+  private async listLocations(accountId: string): Promise<ResourceInstance[]> {
+    const locations = await this.api.locations.list();
+    const now = new Date().toISOString();
+
+    return locations.map((location) => this.mapLocation(accountId, location, now));
+  }
+
+  private mapLocation(accountId: string, location: Location, now: string): ResourceInstance {
+    return {
+      id: `${accountId}:turso-location:${location.code}`,
+      pluginId: "turso",
+      resourceTypeId: "turso-location",
+      accountId,
+      displayName: location.description,
+      externalId: String(location.code),
+      fields: {
+        code: location.code,
+        description: location.description,
+      },
+      resolvedOutputs: {},
+      secretStates: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
+
+  private async listApiTokens(accountId: string): Promise<ResourceInstance[]> {
+    const tokens = await this.api.apiTokens.list();
+    const now = new Date().toISOString();
+
+    return tokens.map((token) => this.mapApiToken(accountId, token, now));
+  }
+
+  private mapApiToken(accountId: string, token: ApiToken, now: string): ResourceInstance {
+    return {
+      id: `${accountId}:turso-api-token:${token.name}`,
+      pluginId: "turso",
+      resourceTypeId: "turso-api-token",
+      accountId,
+      displayName: token.name,
+      externalId: token.name,
+      fields: {
+        id: token.id,
+        name: token.name,
+      },
+      resolvedOutputs: {},
+      secretStates: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
+
+  private async listOrganizationMembers(accountId: string): Promise<ResourceInstance[]> {
+    const members = await this.api.organizations.members();
+    const now = new Date().toISOString();
+
+    return members.map((member) => this.mapOrganizationMember(accountId, member, now));
+  }
+
+  private mapOrganizationMember(
+    accountId: string,
+    member: OrganizationMember,
+    now: string,
+  ): ResourceInstance {
+    return {
+      id: `${accountId}:turso-organization-member:${member.username}`,
+      pluginId: "turso",
+      resourceTypeId: "turso-organization-member",
+      accountId,
+      displayName: member.username,
+      externalId: member.username,
+      fields: {
+        username: member.username,
+        email: member.email,
+        role: member.role,
+      },
+      resolvedOutputs: {},
+      secretStates: [],
+      createdAt: now,
+      updatedAt: now,
+    };
   }
 
   private async createGroup(
@@ -509,6 +700,110 @@ export class TursoClient implements PluginClient {
                 },
                 { key: "Locations", value: locations || "\u2014" },
                 { key: "Version", value: String(resource.fields["version"] ?? "\u2014") },
+              ],
+            },
+          ],
+        },
+      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+    };
+  }
+
+  private renderDatabaseInstanceDetail(resource: ResourceInstance): DetailViewSchema {
+    return {
+      title: resource.displayName,
+      subtitle: `Turso Database Instance · ${String(resource.fields["database"] ?? "")}`,
+      status: {
+        kind: "status-dot",
+        status: resource.fields["type"] === "primary" ? "healthy" : "info",
+      },
+      sections: [
+        {
+          kind: "section",
+          title: "Instance",
+          children: [
+            {
+              kind: "key-value-list",
+              items: [
+                { key: "Database", value: String(resource.fields["database"] ?? "—") },
+                { key: "Name", value: String(resource.fields["name"] ?? "—") },
+                { key: "UUID", value: String(resource.fields["uuid"] ?? "—") },
+                { key: "Type", value: String(resource.fields["type"] ?? "—") },
+                { key: "Region", value: formatLocation(String(resource.fields["region"] ?? "")) },
+                { key: "Hostname", value: String(resource.fields["hostname"] ?? "—") },
+              ],
+            },
+          ],
+        },
+      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+    };
+  }
+
+  private renderLocationDetail(resource: ResourceInstance): DetailViewSchema {
+    return {
+      title: resource.displayName,
+      subtitle: "Turso Location",
+      status: { kind: "status-dot", status: "info" },
+      sections: [
+        {
+          kind: "section",
+          title: "Location",
+          children: [
+            {
+              kind: "key-value-list",
+              items: [
+                { key: "Code", value: String(resource.fields["code"] ?? "—") },
+                { key: "Description", value: String(resource.fields["description"] ?? "—") },
+              ],
+            },
+          ],
+        },
+      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+    };
+  }
+
+  private renderApiTokenDetail(resource: ResourceInstance): DetailViewSchema {
+    return {
+      title: resource.displayName,
+      subtitle: "Turso API Token",
+      status: { kind: "status-dot", status: "info" },
+      sections: [
+        {
+          kind: "section",
+          title: "Token",
+          children: [
+            {
+              kind: "key-value-list",
+              items: [
+                { key: "ID", value: String(resource.fields["id"] ?? "—") },
+                { key: "Name", value: String(resource.fields["name"] ?? "—") },
+              ],
+            },
+          ],
+        },
+      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+    };
+  }
+
+  private renderOrganizationMemberDetail(resource: ResourceInstance): DetailViewSchema {
+    return {
+      title: resource.displayName,
+      subtitle: "Turso Organization Member",
+      status: { kind: "status-dot", status: "info" },
+      sections: [
+        {
+          kind: "section",
+          title: "Member",
+          children: [
+            {
+              kind: "key-value-list",
+              items: [
+                { key: "Username", value: String(resource.fields["username"] ?? "—") },
+                { key: "Email", value: String(resource.fields["email"] ?? "—") },
+                { key: "Role", value: String(resource.fields["role"] ?? "—") },
               ],
             },
           ],
