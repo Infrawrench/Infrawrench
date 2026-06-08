@@ -27,6 +27,18 @@ export const PipelineResourceType: ResourceTypeDefinition = {
     { key: "pipelineId", label: "Pipeline ID", sensitive: false },
     { key: "pipelineUrl", label: "Pipeline URL", sensitive: false },
   ],
+  attachTargets: [
+    {
+      pluginId: "databricks",
+      resourceTypeId: "databricks-catalog",
+      verb: "Publish to catalog",
+    },
+    {
+      pluginId: "databricks",
+      resourceTypeId: "databricks-schema",
+      verb: "Publish to schema",
+    },
+  ],
   dashboardPinnable: true,
   supportsCreate: true,
   iconKey: "pipeline",

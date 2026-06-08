@@ -24,6 +24,14 @@ export const PsBranchResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   supportsCreate: true,
   iconKey: "planetscale",
+  attachTargets: [
+    {
+      pluginId: "planetscale",
+      resourceTypeId: "ps-branch",
+      matchField: "databaseName",
+      verb: "Create deploy request",
+    },
+  ],
   peerIntegrations: [
     {
       pluginId: "mysql",

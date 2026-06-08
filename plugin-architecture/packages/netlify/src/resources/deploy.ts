@@ -29,4 +29,11 @@ export const NetlifyDeployResourceType: ResourceTypeDefinition = {
   parentTypeId: "netlify-site",
   dashboardPinnable: false,
   iconKey: "deployment",
+  attachTargets: [
+    {
+      pluginId: "netlify",
+      resourceTypeId: "netlify-site",
+      verb: "Publish deploy",
+    },
+  ],
 };

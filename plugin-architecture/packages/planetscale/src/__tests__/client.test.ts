@@ -25,6 +25,15 @@ function okJson(json: unknown): FetchExpectation {
   return { ok: true, status: 200, json };
 }
 
+function response(json: unknown, status = 200): Response {
+  return {
+    ok: status < 400,
+    status,
+    json: async () => json,
+    text: async () => JSON.stringify(json),
+  } as unknown as Response;
+}
+
 function mockFetchSequence(...responses: FetchExpectation[]) {
   let i = 0;
   fetchMock.mockImplementation(async () => {
@@ -73,6 +82,21 @@ const branchRecord = (over: Record<string, unknown> = {}) => ({
   schema_last_updated_at: "",
   created_at: "2024-01-01",
   updated_at: "2024-01-02",
+  ...over,
+});
+
+const passwordRecord = (over: Record<string, unknown> = {}) => ({
+  id: "pw1",
+  name: "password",
+  access_host_url: "host.psdb.cloud",
+  role: "reader",
+  username: "user",
+  cidrs: [],
+  expired: false,
+  replica: false,
+  renewable: true,
+  database_branch: { name: "main" },
+  created_at: "2024-01-01",
   ...over,
 });
 
@@ -241,6 +265,93 @@ describe("resolveOutput", () => {
     await expect(
       client.resolveOutput("ps-database", "acct1:ps-database:mydb", "weird", ACCOUNT),
     ).rejects.toThrow(/cannot resolve output/);
+  });
+});
+
+describe("lifecycle operations", () => {
+  it("creates a deploy request when attaching one branch to another", async () => {
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url.endsWith("/databases")) return response({ data: [dbRecord()] });
+      if (url.endsWith("/databases/mydb/branches")) {
+        return response({
+          data: [
+            branchRecord({ name: "feature", production: false }),
+            branchRecord({ name: "main", production: true }),
+          ],
+        });
+      }
+      if (url.endsWith("/databases/mydb/deploy-requests")) {
+        expect(init?.method).toBe("POST");
+        expect(JSON.parse(String(init?.body))).toMatchObject({
+          branch: "feature",
+          into_branch: "main",
+        });
+        return response({ data: { id: "drid", number: 7 } });
+      }
+      throw new Error(`unexpected URL ${url}`);
+    });
+
+    const client = makeClient();
+    await client.attachResource(
+      "ps-branch",
+      "acct1:ps-branch:mydb/feature",
+      "ps-branch",
+      "acct1:ps-branch:mydb/main",
+      ACCOUNT,
+    );
+
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/deploy-requests"))).toBe(
+      true,
+    );
+  });
+
+  it("updates and deletes branch passwords", async () => {
+    mockFetchSequence(
+      okJson({
+        data: {
+          ...passwordRecord(),
+          name: "rotated",
+          cidrs: ["10.0.0.0/8"],
+        },
+      }),
+      okJson({}),
+    );
+    const client = makeClient();
+
+    const updated = await client.updateResource(
+      "ps-password",
+      "acct1:ps-password:mydb/main/pw1",
+      ACCOUNT,
+      { name: "rotated", cidrs: "10.0.0.0/8" },
+    );
+    expect(updated.fields).toMatchObject({ name: "rotated", cidrs: "10.0.0.0/8" });
+    expect(fetchMock.mock.calls[0]![0]).toContain("/passwords/pw1");
+    expect((fetchMock.mock.calls[0]![1] as RequestInit).method).toBe("PATCH");
+
+    await client.deleteResource("ps-password", "acct1:ps-password:mydb/main/pw1", ACCOUNT);
+    expect((fetchMock.mock.calls[1]![1] as RequestInit).method).toBe("DELETE");
+  });
+
+  it("calls documented branch, password, and deploy-request lifecycle endpoints", async () => {
+    mockFetchSequence(
+      okJson({ data: passwordRecord({ name: "renewed" }) }),
+      okJson({}),
+      okJson({}),
+      okJson({}),
+    );
+    const client = makeClient();
+
+    await client.renewPassword("acct1:ps-password:mydb/main/pw1", ACCOUNT);
+    await client.promoteBranch("acct1:ps-branch:mydb/dev");
+    await client.closeDeployRequest("acct1:ps-deploy-request:mydb/3");
+    await client.applyDeployRequest("acct1:ps-deploy-request:mydb/3");
+
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
+      "https://api.planetscale.com/v1/organizations/myorg/databases/mydb/branches/main/passwords/pw1/renew",
+      "https://api.planetscale.com/v1/organizations/myorg/databases/mydb/branches/dev/promote",
+      "https://api.planetscale.com/v1/organizations/myorg/databases/mydb/deploy-requests/3",
+      "https://api.planetscale.com/v1/organizations/myorg/databases/mydb/deploy-requests/3/apply-deploy",
+    ]);
   });
 });
 

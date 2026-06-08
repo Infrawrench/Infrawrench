@@ -22,6 +22,11 @@ export const ElasticIPResourceType: ResourceTypeDefinition = {
       resourceTypeId: "ec2-instance",
       verb: "attach",
     },
+    {
+      pluginId: "aws",
+      resourceTypeId: "subnet",
+      verb: "Create NAT gateway",
+    },
   ],
   iconKey: "network",
 };

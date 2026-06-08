@@ -835,6 +835,30 @@ describe("attachResource", () => {
     expect(JSON.parse(init.body as string)).toEqual({ network: 50 });
   });
 
+  it("assigns a floating IP to a server", async () => {
+    const c = makeClient();
+    fetchMock
+      .mockResolvedValueOnce(
+        okJson({
+          floating_ips: [
+            { id: 20, name: "vip", ip: "5.5.5.5", type: "ipv4", server: null, blocked: false },
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(okJson({ server: { id: 7, name: "s", status: "running" } }))
+      .mockResolvedValueOnce(okJson({}, 204));
+    await c.attachResource(
+      "floating-ip",
+      `${ACCOUNT}:floating-ip:20`,
+      "server",
+      `${ACCOUNT}:server:7`,
+      ACCOUNT,
+    );
+    const [url, init] = lastCall();
+    expect(String(url)).toBe("https://api.hetzner.cloud/v1/floating_ips/20/actions/assign");
+    expect(JSON.parse(init.body as string)).toEqual({ server: 7 });
+  });
+
   it("assigns a primary IP to a server", async () => {
     const c = makeClient();
     fetchMock

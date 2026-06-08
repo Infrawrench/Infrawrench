@@ -7,6 +7,7 @@ import type {
   CreateResourceConfig,
   DashboardStat,
 } from "@infrawrench/plugin-base";
+import { jsonRestFetch } from "@infrawrench/plugin-base";
 import { createClient as createTursoApiClient } from "@tursodatabase/api";
 import type {
   ApiToken,
@@ -19,6 +20,12 @@ import type {
 } from "@tursodatabase/api";
 
 type TursoApiClient = ReturnType<typeof createTursoApiClient>;
+
+interface TursoInvite {
+  email?: string;
+  username?: string;
+  role?: string;
+}
 
 const TURSO_LOCATIONS: Record<string, { location: string; flag: string }> = {
   ams: { location: "Amsterdam, Netherlands", flag: "\u{1F1F3}\u{1F1F1}" },
@@ -67,17 +74,35 @@ function formatLocation(code: string): string {
  */
 export class TursoClient implements PluginClient {
   private readonly orgName: string;
+  private readonly token: string;
+  private readonly services: HostServices | undefined;
   private readonly api: TursoApiClient;
 
   constructor(credentials: Record<string, string>, _services?: HostServices) {
     const token = credentials["apiToken"];
     if (!token) throw new Error("Turso plugin: missing apiToken credential");
+    this.token = token;
 
     const org = credentials["organizationName"];
     if (!org) throw new Error("Turso plugin: missing organizationName credential");
     this.orgName = org;
+    this.services = _services;
 
     this.api = createTursoApiClient({ org, token });
+  }
+
+  private async fetch<T>(path: string, options?: RequestInit): Promise<T> {
+    return jsonRestFetch<T>({
+      vendor: "Turso",
+      url: `https://api.turso.tech${path}`,
+      errorPath: path,
+      headers: {
+        Authorization: `Bearer ${this.token}`,
+        Accept: "application/json",
+      },
+      ...(options ? { init: options } : {}),
+      ...(this.services?.http ? { http: this.services.http } : {}),
+    });
   }
 
   async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
@@ -94,6 +119,8 @@ export class TursoClient implements PluginClient {
         return this.listApiTokens(accountId);
       case "turso-organization-member":
         return this.listOrganizationMembers(accountId);
+      case "turso-organization-invite":
+        return this.listOrganizationInvites(accountId);
       default:
         throw new Error(`Turso plugin: unknown resource type "${typeId}"`);
     }
@@ -219,6 +246,8 @@ export class TursoClient implements PluginClient {
         return this.renderApiTokenDetail(resource);
       case "turso-organization-member":
         return this.renderOrganizationMemberDetail(resource);
+      case "turso-organization-invite":
+        return this.renderOrganizationInviteDetail(resource);
       default:
         return this.renderGenericDetail(resource);
     }
@@ -298,6 +327,26 @@ export class TursoClient implements PluginClient {
       };
     }
 
+    if (typeId === "turso-organization-invite") {
+      return {
+        fields: [
+          { key: "email", label: "Email", kind: "text", required: true },
+          {
+            key: "role",
+            label: "Role",
+            kind: "select",
+            required: true,
+            options: [
+              { id: "member", label: "member" },
+              { id: "viewer", label: "viewer" },
+              { id: "admin", label: "admin" },
+            ],
+            defaultValue: "member",
+          },
+        ],
+      };
+    }
+
     throw new Error(`Turso plugin: no create config for type "${typeId}"`);
   }
 
@@ -312,7 +361,31 @@ export class TursoClient implements PluginClient {
     if (typeId === "turso-group") {
       return this.createGroup(accountId, fields);
     }
+    if (typeId === "turso-organization-invite") {
+      return this.createOrganizationInvite(accountId, fields);
+    }
     throw new Error(`Turso plugin: cannot create type "${typeId}"`);
+  }
+
+  async updateResource(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
+    if (typeId === "turso-organization-member") {
+      const username = resourceId.split(":").slice(2).join(":");
+      const role = fields["role"];
+      if (!username) throw new Error("Turso plugin: missing member username");
+      if (!role) throw new Error("Turso plugin: missing member role");
+      const data = await this.fetch<{ member: OrganizationMember }>(
+        `/v1/organizations/${encodeURIComponent(this.orgName)}/members/${encodeURIComponent(username)}`,
+        { method: "PATCH", body: JSON.stringify({ role }) },
+      );
+      return this.mapOrganizationMember(accountId, data.member, new Date().toISOString());
+    }
+
+    throw new Error(`Turso plugin: cannot update type "${typeId}"`);
   }
 
   async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
@@ -329,7 +402,37 @@ export class TursoClient implements PluginClient {
       await this.api.apiTokens.revoke(externalId);
       return;
     }
+    if (typeId === "turso-organization-member") {
+      await this.fetch(
+        `/v1/organizations/${encodeURIComponent(this.orgName)}/members/${encodeURIComponent(externalId)}`,
+        { method: "DELETE" },
+      );
+      return;
+    }
+    if (typeId === "turso-organization-invite") {
+      await this.fetch(
+        `/v2/organizations/${encodeURIComponent(this.orgName)}/invites/${encodeURIComponent(externalId)}`,
+        { method: "DELETE" },
+      );
+      return;
+    }
     throw new Error(`Turso plugin: cannot delete type "${typeId}"`);
+  }
+
+  async invalidateDatabaseAuthTokens(resourceId: string): Promise<void> {
+    const databaseName = resourceId.split(":").slice(2).join(":");
+    await this.fetch(
+      `/v1/organizations/${encodeURIComponent(this.orgName)}/databases/${encodeURIComponent(databaseName)}/auth/rotate`,
+      { method: "POST" },
+    );
+  }
+
+  async invalidateGroupAuthTokens(resourceId: string): Promise<void> {
+    const groupName = resourceId.split(":").slice(2).join(":");
+    await this.fetch(
+      `/v1/organizations/${encodeURIComponent(this.orgName)}/groups/${encodeURIComponent(groupName)}/auth/rotate`,
+      { method: "POST" },
+    );
   }
 
   private async fetchDatabases(): Promise<Database[]> {
@@ -548,6 +651,14 @@ export class TursoClient implements PluginClient {
     return members.map((member) => this.mapOrganizationMember(accountId, member, now));
   }
 
+  private async listOrganizationInvites(accountId: string): Promise<ResourceInstance[]> {
+    const data = await this.fetch<{ invites?: TursoInvite[] }>(
+      `/v2/organizations/${encodeURIComponent(this.orgName)}/invites`,
+    );
+    const now = new Date().toISOString();
+    return (data.invites ?? []).map((invite) => this.mapOrganizationInvite(accountId, invite, now));
+  }
+
   private mapOrganizationMember(
     accountId: string,
     member: OrganizationMember,
@@ -596,6 +707,52 @@ export class TursoClient implements PluginClient {
         primaryLocation: g.primary,
         locations: (g.locations ?? []).join(", "),
         version: "",
+      },
+      resolvedOutputs: {},
+      secretStates: [],
+      createdAt: now,
+      updatedAt: now,
+    };
+  }
+
+  private async createOrganizationInvite(
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
+    const email = fields["email"];
+    const role = fields["role"] || "member";
+    if (!email) throw new Error("Turso plugin: missing invite email");
+
+    const data = await this.fetch<{ invited: TursoInvite }>(
+      `/v2/organizations/${encodeURIComponent(this.orgName)}/invites`,
+      {
+        method: "POST",
+        body: JSON.stringify({ email, role }),
+      },
+    );
+
+    return this.mapOrganizationInvite(accountId, data.invited, new Date().toISOString());
+  }
+
+  private mapOrganizationInvite(
+    accountId: string,
+    invite: TursoInvite,
+    now: string,
+  ): ResourceInstance {
+    const email = invite.email ?? "";
+    const username = invite.username ?? "";
+    const externalId = email || username;
+    return {
+      id: `${accountId}:turso-organization-invite:${externalId}`,
+      pluginId: "turso",
+      resourceTypeId: "turso-organization-invite",
+      accountId,
+      displayName: email || username,
+      externalId,
+      fields: {
+        email,
+        username,
+        role: invite.role ?? "",
       },
       resolvedOutputs: {},
       secretStates: [],
@@ -803,6 +960,31 @@ export class TursoClient implements PluginClient {
               items: [
                 { key: "Username", value: String(resource.fields["username"] ?? "—") },
                 { key: "Email", value: String(resource.fields["email"] ?? "—") },
+                { key: "Role", value: String(resource.fields["role"] ?? "—") },
+              ],
+            },
+          ],
+        },
+      ],
+      headerActions: [{ kind: "action", label: "Refresh", action: { type: "refresh-resource" } }],
+    };
+  }
+
+  private renderOrganizationInviteDetail(resource: ResourceInstance): DetailViewSchema {
+    return {
+      title: resource.displayName,
+      subtitle: "Turso Organization Invite",
+      status: { kind: "status-dot", status: "info" },
+      sections: [
+        {
+          kind: "section",
+          title: "Invite",
+          children: [
+            {
+              kind: "key-value-list",
+              items: [
+                { key: "Email", value: String(resource.fields["email"] ?? "—") },
+                { key: "Username", value: String(resource.fields["username"] ?? "—") },
                 { key: "Role", value: String(resource.fields["role"] ?? "—") },
               ],
             },

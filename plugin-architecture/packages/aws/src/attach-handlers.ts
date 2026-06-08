@@ -43,6 +43,35 @@ export async function attachResource(
     });
     return;
   }
+  if (sourceTypeId === "elastic-ip" && targetTypeId === "subnet") {
+    const [ipResource, subnet] = await Promise.all([
+      ctx.getResource(sourceTypeId, sourceResourceId, accountId),
+      ctx.getResource(targetTypeId, targetResourceId, accountId),
+    ]);
+    const allocationId = String(
+      ipResource.fields["allocationId"] ?? ipResource.resolvedOutputs["allocationId"] ?? "",
+    );
+    const subnetId = String(subnet.fields["subnetId"] ?? subnet.externalId ?? "");
+    if (!allocationId || !subnetId) {
+      throw new Error("Cannot determine AllocationId or SubnetId for NAT gateway creation");
+    }
+    const associationId = String(ipResource.fields["associationId"] ?? "");
+    if (associationId) {
+      throw new Error(
+        "Elastic IP is already associated; disassociate it before creating a NAT gateway.",
+      );
+    }
+    const region = String(
+      subnet.fields["region"] ?? ipResource.fields["region"] ?? ctx.creds.region,
+    );
+    const creds = ctx.credsFor(region);
+    await ec2Call<unknown>(creds, "CreateNatGateway", {
+      AllocationId: allocationId,
+      SubnetId: subnetId,
+      ConnectivityType: "public",
+    });
+    return;
+  }
   if (sourceTypeId === "ebs-volume" && targetTypeId === "ec2-instance") {
     const [volume, instance] = await Promise.all([
       ctx.getResource(sourceTypeId, sourceResourceId, accountId),

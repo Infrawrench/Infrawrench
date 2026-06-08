@@ -774,6 +774,51 @@ export async function listRegisteredModels(
   });
 }
 
+export async function listModelVersions(
+  ctx: ListerContext,
+  accountId: string,
+  modelFullName: string,
+): Promise<ResourceInstance[]> {
+  const versions = await listPaginated(
+    ctx,
+    `/api/2.1/unity-catalog/models/${encodeURIComponent(modelFullName)}/versions?max_results=100`,
+    "model_versions",
+  );
+
+  return versions.map((v) => {
+    const version = Number(v["version"] ?? 0);
+    const fullName = `${modelFullName}@${version}`;
+    const id = String(v["id"] ?? "");
+
+    return {
+      id: ctx.id(accountId, "databricks-model-version", fullName),
+      pluginId: "databricks",
+      resourceTypeId: "databricks-model-version",
+      accountId,
+      displayName: fullName,
+      parentResourceId: ctx.id(accountId, "databricks-registered-model", modelFullName),
+      fields: {
+        id,
+        modelName: String(v["model_name"] ?? modelFullName.split(".").at(-1) ?? modelFullName),
+        fullName: modelFullName,
+        version,
+        status: String(v["status"] ?? ""),
+        createdBy: String(v["created_by"] ?? ""),
+        runId: String(v["run_id"] ?? ""),
+        source: String(v["source"] ?? ""),
+      },
+      resolvedOutputs: {
+        fullName: modelFullName,
+        version: String(version),
+      },
+      secretStates: [],
+      externalId: fullName,
+      createdAt: timestamp(v["created_at"], ctx.now()),
+      updatedAt: timestamp(v["updated_at"], ctx.now()),
+    };
+  });
+}
+
 export async function listVectorSearchEndpoints(
   ctx: ListerContext,
   accountId: string,

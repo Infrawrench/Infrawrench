@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const api = {
   databases: {
@@ -33,6 +33,19 @@ function makeClient() {
 beforeEach(() => {
   vi.clearAllMocks();
 });
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+function response(json: unknown, status = 200): Response {
+  return {
+    ok: status < 400,
+    status,
+    json: async () => json,
+    text: async () => JSON.stringify(json),
+  } as unknown as Response;
+}
 
 describe("constructor", () => {
   it("throws without apiToken", () => {
@@ -98,6 +111,26 @@ describe("listResources", () => {
     const client = makeClient();
     await expect(client.listResources("nope", ACCOUNT)).rejects.toThrow(/unknown resource type/);
   });
+
+  it("maps organization invites through the REST API", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      response({
+        invites: [{ email: "new@example.com", username: "", role: "viewer" }],
+      }),
+    );
+    const client = makeClient();
+    const res = await client.listResources("turso-organization-invite", ACCOUNT);
+    expect(res[0]).toMatchObject({
+      id: "acct1:turso-organization-invite:new@example.com",
+      externalId: "new@example.com",
+      fields: { email: "new@example.com", role: "viewer" },
+    });
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toBe("https://api.turso.tech/v2/organizations/myorg/invites");
+    expect((init as { headers: Record<string, string> }).headers["Authorization"]).toBe(
+      "Bearer tok",
+    );
+  });
 });
 
 describe("getResource", () => {
@@ -155,6 +188,88 @@ describe("resolveOutput", () => {
     await expect(
       client.resolveOutput("turso-group", "acct1:turso-group:g1", "weird", ACCOUNT),
     ).rejects.toThrow(/cannot resolve output/);
+  });
+});
+
+describe("lifecycle operations", () => {
+  it("creates and deletes organization invites", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(response({ invited: { email: "new@example.com", role: "member" } }))
+      .mockResolvedValueOnce(response({}));
+
+    const client = makeClient();
+    const invite = await client.createResource("turso-organization-invite", ACCOUNT, {
+      email: "new@example.com",
+      role: "member",
+    });
+    expect(invite).toMatchObject({
+      externalId: "new@example.com",
+      fields: { email: "new@example.com", role: "member" },
+    });
+    expect(JSON.parse(String((fetchMock.mock.calls[0]![1] as RequestInit).body))).toEqual({
+      email: "new@example.com",
+      role: "member",
+    });
+
+    await client.deleteResource(
+      "turso-organization-invite",
+      "acct1:turso-organization-invite:new@example.com",
+      ACCOUNT,
+    );
+    expect(fetchMock.mock.calls[1]![0]).toBe(
+      "https://api.turso.tech/v2/organizations/myorg/invites/new%40example.com",
+    );
+    expect((fetchMock.mock.calls[1]![1] as RequestInit).method).toBe("DELETE");
+  });
+
+  it("updates and removes organization members", async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        response({ member: { username: "alice", email: "alice@example.com", role: "admin" } }),
+      )
+      .mockResolvedValueOnce(response({}));
+
+    const client = makeClient();
+    const updated = await client.updateResource(
+      "turso-organization-member",
+      "acct1:turso-organization-member:alice",
+      ACCOUNT,
+      { role: "admin" },
+    );
+    expect(updated.fields).toMatchObject({ username: "alice", role: "admin" });
+    expect((fetchMock.mock.calls[0]![1] as RequestInit).method).toBe("PATCH");
+    expect(JSON.parse(String((fetchMock.mock.calls[0]![1] as RequestInit).body))).toEqual({
+      role: "admin",
+    });
+
+    await client.deleteResource(
+      "turso-organization-member",
+      "acct1:turso-organization-member:alice",
+      ACCOUNT,
+    );
+    expect(fetchMock.mock.calls[1]![0]).toBe(
+      "https://api.turso.tech/v1/organizations/myorg/members/alice",
+    );
+    expect((fetchMock.mock.calls[1]![1] as RequestInit).method).toBe("DELETE");
+  });
+
+  it("invalidates database and group auth tokens", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(response({}));
+    const client = makeClient();
+
+    await client.invalidateDatabaseAuthTokens("acct1:turso-database:app-db");
+    await client.invalidateGroupAuthTokens("acct1:turso-group:default");
+
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual([
+      "https://api.turso.tech/v1/organizations/myorg/databases/app-db/auth/rotate",
+      "https://api.turso.tech/v1/organizations/myorg/groups/default/auth/rotate",
+    ]);
+    expect(fetchMock.mock.calls.map(([, init]) => (init as RequestInit).method)).toEqual([
+      "POST",
+      "POST",
+    ]);
   });
 });
 

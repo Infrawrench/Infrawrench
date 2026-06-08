@@ -400,7 +400,100 @@ export class PlanetScaleClient implements PluginClient {
       return;
     }
 
+    if (typeId === "ps-password") {
+      const { databaseName, branchName, passwordId } =
+        PlanetScaleClient.parsePasswordId(resourceId);
+      await this.fetch(
+        `/organizations/${enc(this.orgName)}/databases/${enc(databaseName)}/branches/${enc(branchName)}/passwords/${enc(passwordId)}`,
+        { method: "DELETE" },
+      );
+      return;
+    }
+
     throw new Error(`PlanetScale plugin: cannot delete type "${typeId}"`);
+  }
+
+  async updateResource(
+    typeId: string,
+    resourceId: string,
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
+    if (typeId === "ps-password") {
+      const { databaseName, branchName, passwordId } =
+        PlanetScaleClient.parsePasswordId(resourceId);
+      const body: Record<string, unknown> = {};
+      if (fields["name"] !== undefined) body["name"] = fields["name"];
+      if (fields["cidrs"] !== undefined) {
+        body["cidrs"] = fields["cidrs"]
+          .split(",")
+          .map((cidr) => cidr.trim())
+          .filter(Boolean);
+      }
+
+      const data = await this.fetch<{ data: PsPassword }>(
+        `/organizations/${enc(this.orgName)}/databases/${enc(databaseName)}/branches/${enc(branchName)}/passwords/${enc(passwordId)}`,
+        { method: "PATCH", body: JSON.stringify(body) },
+      );
+
+      return this.toPasswordResource(
+        data.data,
+        databaseName,
+        branchName,
+        accountId,
+        new Date().toISOString(),
+      );
+    }
+
+    throw new Error(`PlanetScale plugin: cannot update type "${typeId}"`);
+  }
+
+  async attachResource(
+    sourceTypeId: string,
+    sourceResourceId: string,
+    targetTypeId: string,
+    targetResourceId: string,
+    accountId: string,
+  ): Promise<void> {
+    if (sourceTypeId === "ps-branch" && targetTypeId === "ps-branch") {
+      const [source, target] = await Promise.all([
+        this.getResource(sourceTypeId, sourceResourceId, accountId),
+        this.getResource(targetTypeId, targetResourceId, accountId),
+      ]);
+      const sourceDb = String(source.fields["databaseName"] ?? "");
+      const targetDb = String(target.fields["databaseName"] ?? "");
+      const sourceBranch = String(source.fields["name"] ?? "");
+      const targetBranch = String(target.fields["name"] ?? "");
+
+      if (!sourceDb || !targetDb || !sourceBranch || !targetBranch) {
+        throw new Error("PlanetScale plugin: missing branch identity for deploy request.");
+      }
+      if (sourceDb !== targetDb) {
+        throw new Error(
+          "PlanetScale plugin: deploy requests require branches in the same database.",
+        );
+      }
+      if (sourceBranch === targetBranch) {
+        throw new Error("PlanetScale plugin: cannot create a deploy request into the same branch.");
+      }
+
+      await this.fetch<{ data: PsDeployRequest }>(
+        `/organizations/${enc(this.orgName)}/databases/${enc(sourceDb)}/deploy-requests`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            branch: sourceBranch,
+            into_branch: targetBranch,
+            notes: "Created by Infrawrench resource association.",
+          }),
+        },
+      );
+      return;
+    }
+
+    throw new Error(
+      `PlanetScale plugin: attachResource not supported for ${sourceTypeId} → ${targetTypeId}`,
+    );
   }
 
   async fetchDashboardStats(
@@ -825,6 +918,86 @@ export class PlanetScaleClient implements PluginClient {
     const host = pw.access_host_url;
 
     return `mysql://${user}:${pass}@${host}/${dbName}`;
+  }
+
+  async renewPassword(resourceId: string, accountId: string): Promise<ResourceInstance> {
+    const { databaseName, branchName, passwordId } = PlanetScaleClient.parsePasswordId(resourceId);
+    const data = await this.fetch<{ data: PsPassword }>(
+      `/organizations/${enc(this.orgName)}/databases/${enc(databaseName)}/branches/${enc(branchName)}/passwords/${enc(passwordId)}/renew`,
+      { method: "POST" },
+    );
+    return this.toPasswordResource(
+      data.data,
+      databaseName,
+      branchName,
+      accountId,
+      new Date().toISOString(),
+    );
+  }
+
+  async promoteBranch(resourceId: string): Promise<void> {
+    const { databaseName, branchName } = PlanetScaleClient.parseBranchId(resourceId);
+    await this.fetch(
+      `/organizations/${enc(this.orgName)}/databases/${enc(databaseName)}/branches/${enc(branchName)}/promote`,
+      { method: "POST" },
+    );
+  }
+
+  async closeDeployRequest(resourceId: string): Promise<void> {
+    const { databaseName, number } = PlanetScaleClient.parseDeployRequestId(resourceId);
+    await this.fetch(
+      `/organizations/${enc(this.orgName)}/databases/${enc(databaseName)}/deploy-requests/${enc(number)}`,
+      { method: "PATCH", body: JSON.stringify({ state: "closed" }) },
+    );
+  }
+
+  async applyDeployRequest(resourceId: string): Promise<void> {
+    const { databaseName, number } = PlanetScaleClient.parseDeployRequestId(resourceId);
+    await this.fetch(
+      `/organizations/${enc(this.orgName)}/databases/${enc(databaseName)}/deploy-requests/${enc(number)}/apply-deploy`,
+      { method: "POST" },
+    );
+  }
+
+  private static parseBranchId(resourceId: string): { databaseName: string; branchName: string } {
+    const externalId = resourceId.split(":").slice(2).join(":");
+    const parts = externalId.split("/");
+    const databaseName = parts[0] ?? "";
+    const branchName = parts.slice(1).join("/");
+    if (!databaseName || !branchName) {
+      throw new Error("PlanetScale plugin: cannot parse branch resource id.");
+    }
+    return { databaseName, branchName };
+  }
+
+  private static parsePasswordId(resourceId: string): {
+    databaseName: string;
+    branchName: string;
+    passwordId: string;
+  } {
+    const externalId = resourceId.split(":").slice(2).join(":");
+    const parts = externalId.split("/");
+    const databaseName = parts[0] ?? "";
+    const branchName = parts[1] ?? "";
+    const passwordId = parts.slice(2).join("/");
+    if (!databaseName || !branchName || !passwordId) {
+      throw new Error("PlanetScale plugin: cannot parse password resource id.");
+    }
+    return { databaseName, branchName, passwordId };
+  }
+
+  private static parseDeployRequestId(resourceId: string): {
+    databaseName: string;
+    number: string;
+  } {
+    const externalId = resourceId.split(":").slice(2).join(":");
+    const parts = externalId.split("/");
+    const databaseName = parts[0] ?? "";
+    const number = parts.slice(1).join("/");
+    if (!databaseName || !number) {
+      throw new Error("PlanetScale plugin: cannot parse deploy request resource id.");
+    }
+    return { databaseName, number };
   }
 
   private renderDatabaseDetail(resource: ResourceInstance): DetailViewSchema {

@@ -231,6 +231,12 @@ class NetlifyAPI {
   deleteDeploy(p: { deployId: string }): Promise<void> {
     return this.call("DELETE", `/deploys/${encodeURIComponent(p.deployId)}`);
   }
+  restoreSiteDeploy(p: { siteId: string; deployId: string }): Promise<NetlifyDeploy> {
+    return this.call(
+      "POST",
+      `/sites/${encodeURIComponent(p.siteId)}/deploys/${encodeURIComponent(p.deployId)}/restore`,
+    );
+  }
 
   // Forms
   listSiteForms(p: { siteId: string }): Promise<NetlifyForm[]> {
@@ -939,6 +945,43 @@ export class NetlifyClient implements PluginClient {
       await this.api.updateSite({
         siteId,
         body: { domain_aliases: [...domainAliases, domain] },
+      });
+      return;
+    }
+
+    if (sourceTypeId === "netlify-deploy" && targetTypeId === "netlify-site") {
+      const [deploy, site] = await Promise.all([
+        this.getResource(sourceTypeId, sourceResourceId, accountId),
+        this.getResource(targetTypeId, targetResourceId, accountId),
+      ]);
+      const deployId = String(deploy.externalId ?? sourceResourceId.split(":").pop() ?? "");
+      const siteId = String(site.externalId ?? targetResourceId.split(":").pop() ?? "");
+      if (!deployId || !siteId) {
+        throw new Error("Cannot determine Netlify deploy or site identity for publishing");
+      }
+      await this.api.restoreSiteDeploy({ siteId, deployId });
+      return;
+    }
+
+    if (sourceTypeId === "netlify-build-hook" && targetTypeId === "netlify-site") {
+      const [hook, site] = await Promise.all([
+        this.getResource(sourceTypeId, sourceResourceId, accountId),
+        this.getResource(targetTypeId, targetResourceId, accountId),
+      ]);
+      const hookUrl = String(hook.fields["url"] ?? "");
+      const siteId = String(site.externalId ?? targetResourceId.split(":").pop() ?? "");
+      if (!hookUrl || !siteId) {
+        throw new Error("Cannot determine Netlify build hook URL or site identity for env import");
+      }
+      await this.legacyFetch<NetlifyEnvVar[]>(`/sites/${siteId}/env`, {
+        method: "POST",
+        body: JSON.stringify([
+          {
+            key: "NETLIFY_BUILD_HOOK_URL",
+            scopes: ["builds", "functions", "runtime", "post-processing"],
+            values: [{ context: "all", value: hookUrl }],
+          },
+        ]),
       });
       return;
     }

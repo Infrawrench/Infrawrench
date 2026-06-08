@@ -18,6 +18,13 @@ export const ServingEndpointResourceType: ResourceTypeDefinition = {
     { key: "creator", label: "Creator", kind: "string", required: false },
   ],
   outputs: [],
+  attachTargets: [
+    {
+      pluginId: "databricks",
+      resourceTypeId: "databricks-model-version",
+      verb: "Serve model version",
+    },
+  ],
   dashboardPinnable: true,
   iconKey: "compute",
 };

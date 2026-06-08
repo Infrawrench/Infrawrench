@@ -45,4 +45,5 @@ export const FloatingIpResourceType: ResourceTypeDefinition = {
   dashboardPinnable: true,
   supportsCreate: true,
   iconKey: "network",
+  attachTargets: [{ pluginId: "hetzner", resourceTypeId: "server", verb: "Assign" }],
 };

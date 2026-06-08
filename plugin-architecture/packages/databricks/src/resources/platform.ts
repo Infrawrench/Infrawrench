@@ -193,6 +193,30 @@ export const RegisteredModelResourceType: ResourceTypeDefinition = {
   iconKey: "model",
 };
 
+export const ModelVersionResourceType: ResourceTypeDefinition = {
+  id: "databricks-model-version",
+  displayName: "Model Version",
+  pluralDisplayName: "Model Versions",
+  description: "A Unity Catalog MLflow model version",
+  fields: [
+    { key: "id", label: "ID", kind: "string", required: false },
+    { key: "modelName", label: "Model", kind: "string", required: true },
+    { key: "fullName", label: "Full Name", kind: "string", required: true },
+    { key: "version", label: "Version", kind: "number", required: true },
+    { key: "status", label: "Status", kind: "string", required: false },
+    { key: "createdBy", label: "Created By", kind: "string", required: false },
+    { key: "runId", label: "Run ID", kind: "string", required: false },
+    { key: "source", label: "Source", kind: "string", required: false },
+  ],
+  outputs: [
+    { key: "fullName", label: "Full Name", sensitive: false },
+    { key: "version", label: "Version", sensitive: false },
+  ],
+  parentTypeId: "databricks-registered-model",
+  dashboardPinnable: true,
+  iconKey: "model",
+};
+
 export const VectorSearchEndpointResourceType: ResourceTypeDefinition = {
   id: "databricks-vector-search-endpoint",
   displayName: "Vector Search Endpoint",

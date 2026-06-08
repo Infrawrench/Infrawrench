@@ -21,5 +21,13 @@ export const NSGResourceType: ResourceTypeDefinition = {
   // Flow-log analytics are the recommended observability surface for NSGs.
   iconKey: "firewall",
   supportsCreate: true,
-  attachTargets: [{ pluginId: "azure", resourceTypeId: "azure-vm", verb: "Apply NSG" }],
+  attachTargets: [
+    { pluginId: "azure", resourceTypeId: "azure-vm", verb: "Apply NSG" },
+    {
+      pluginId: "azure",
+      resourceTypeId: "azure-subnet",
+      matchField: "location",
+      verb: "Apply NSG",
+    },
+  ],
 };

@@ -7,3 +7,4 @@ export { PipelineResourceType } from "./resources/pipeline.js";
 export { CatalogResourceType } from "./resources/catalog.js";
 export { SchemaResourceType } from "./resources/schema.js";
 export { TableResourceType } from "./resources/table.js";
+export { ModelVersionResourceType } from "./resources/platform.js";

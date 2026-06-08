@@ -113,6 +113,20 @@ export async function attachAzureResource(
     });
     return;
   }
+  if (sourceTypeId === "azure-nsg" && targetTypeId === "azure-subnet") {
+    const [nsg, subnet] = await Promise.all([
+      ctx.getResource(sourceTypeId, sourceResourceId, accountId),
+      ctx.getResource(targetTypeId, targetResourceId, accountId),
+    ]);
+    assertSameLocation(nsg, subnet, "NSG", "Subnet");
+    await updateSubnetProperties(ctx, subnet, (subnetProps) => ({
+      ...subnetProps,
+      networkSecurityGroup: {
+        id: azureResourceId(ctx, nsg, "Microsoft.Network/networkSecurityGroups"),
+      },
+    }));
+    return;
+  }
   if (sourceTypeId === "azure-public-ip" && targetTypeId === "azure-vm") {
     const [publicIp, vm] = await Promise.all([
       ctx.getResource(sourceTypeId, sourceResourceId, accountId),
@@ -126,6 +140,19 @@ export async function attachAzureResource(
     await patchPrimaryNicIpConfig(ctx, vm, (ipConfigProps) => ({
       ...ipConfigProps,
       publicIPAddress: { id: pipId },
+    }));
+    return;
+  }
+  if (sourceTypeId === "azure-public-ip" && targetTypeId === "azure-nat-gateway") {
+    const [publicIp, natGateway] = await Promise.all([
+      ctx.getResource(sourceTypeId, sourceResourceId, accountId),
+      ctx.getResource(targetTypeId, targetResourceId, accountId),
+    ]);
+    assertSameLocation(publicIp, natGateway, "Public IP", "NAT gateway");
+    const publicIpId = azureResourceId(ctx, publicIp, "Microsoft.Network/publicIPAddresses");
+    await updateNatGatewayProperties(ctx, natGateway, (natProps) => ({
+      ...natProps,
+      publicIpAddresses: appendIdRef(natProps["publicIpAddresses"], publicIpId),
     }));
     return;
   }
@@ -331,6 +358,23 @@ function azureResourceId(ctx: AttachContext, resource: ResourceInstance, provide
   const name = String(resource.fields["name"] ?? "");
   if (!rg || !name) throw new Error(`Cannot determine ${resource.displayName} identity`);
   return `/subscriptions/${ctx.subscriptionId}/resourceGroups/${rg}/providers/${provider}/${name}`;
+}
+
+async function updateNatGatewayProperties(
+  ctx: AttachContext,
+  natGateway: ResourceInstance,
+  update: (natProps: Record<string, unknown>) => Record<string, unknown>,
+): Promise<void> {
+  const rg = String(natGateway.fields["resourceGroup"] ?? "");
+  const name = String(natGateway.fields["name"] ?? "");
+  if (!rg || !name) throw new Error("Cannot determine NAT gateway identity");
+  const url = `${ARM}/subscriptions/${ctx.subscriptionId}/resourceGroups/${rg}/providers/Microsoft.Network/natGateways/${name}?api-version=2023-09-01`;
+  const current = await ctx.get<Record<string, unknown>>(url);
+  const natProps = (current["properties"] ?? {}) as Record<string, unknown>;
+  await ctx.put(url, {
+    ...current,
+    properties: update(natProps),
+  });
 }
 
 function virtualNetworkLinkName(vnet: ResourceInstance): string {

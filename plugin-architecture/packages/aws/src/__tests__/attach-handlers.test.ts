@@ -67,6 +67,33 @@ describe("attachResource elastic-ip → ec2", () => {
   });
 });
 
+describe("attachResource elastic-ip → subnet", () => {
+  it("creates a public NAT gateway in the subnet with the Elastic IP", async () => {
+    ec2Call.mockResolvedValue({});
+    const c = ctx({
+      "elastic-ip": res({ allocationId: "eipalloc-1", region: "us-west-2" }),
+      subnet: res({ subnetId: "subnet-1", region: "us-west-2" }),
+    });
+    await attachResource(c, "elastic-ip", "s", "subnet", "t", "acct");
+    expect(ec2Call.mock.calls[0]![1]).toBe("CreateNatGateway");
+    expect(ec2Call.mock.calls[0]![2]).toEqual({
+      AllocationId: "eipalloc-1",
+      SubnetId: "subnet-1",
+      ConnectivityType: "public",
+    });
+  });
+
+  it("rejects an already-associated Elastic IP", async () => {
+    const c = ctx({
+      "elastic-ip": res({ allocationId: "eipalloc-1", associationId: "eipassoc-1" }),
+      subnet: res({ subnetId: "subnet-1" }),
+    });
+    await expect(attachResource(c, "elastic-ip", "s", "subnet", "t", "acct")).rejects.toThrow(
+      /already associated/,
+    );
+  });
+});
+
 describe("attachResource ebs-volume → ec2", () => {
   it("attaches volume in matching AZ", async () => {
     ec2Call.mockResolvedValue({});

@@ -19,6 +19,7 @@ import {
   listSqlWarehouses,
   listServingEndpoints,
   listJobs,
+  listModelVersions,
   listPipelines,
   listCatalogs,
   listSchemas,
@@ -144,6 +145,7 @@ export class DatabricksClient implements PluginClient {
     "databricks-sql-query": listSqlQueries,
     "databricks-catalog": listCatalogs,
     "databricks-registered-model": listRegisteredModels,
+    "databricks-model-version": async () => [],
     "databricks-vector-search-endpoint": listVectorSearchEndpoints,
     "databricks-app": listApps,
     "databricks-secret-scope": listSecretScopes,
@@ -170,6 +172,22 @@ export class DatabricksClient implements PluginClient {
     }
     settings["tasks"] = tasks.map((task) => ({ ...(task as Record<string, unknown>) }));
     return settings;
+  }
+
+  private async getPipelineSpec(pipelineId: string): Promise<Record<string, unknown>> {
+    const pipeline = await this.api<{ spec?: Record<string, unknown> }>(
+      "GET",
+      `/api/2.0/pipelines/${encodeURIComponent(pipelineId)}`,
+    );
+    return { ...(pipeline.spec ?? {}) };
+  }
+
+  private async getServingEndpointConfig(name: string): Promise<Record<string, unknown>> {
+    const endpoint = await this.api<{ config?: Record<string, unknown> }>(
+      "GET",
+      `/api/2.0/serving-endpoints/${encodeURIComponent(name)}`,
+    );
+    return { ...(endpoint.config ?? {}) };
   }
 
   async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
@@ -256,6 +274,19 @@ export class DatabricksClient implements PluginClient {
           );
         } catch {
           // Skip endpoints where index listing is not allowed.
+        }
+      }
+      return results;
+    }
+
+    if (typeId === "databricks-model-version") {
+      const models = await listRegisteredModels(this.ctx, accountId);
+      const results: ResourceInstance[] = [];
+      for (const model of models) {
+        try {
+          results.push(...(await listModelVersions(this.ctx, accountId, String(model.externalId))));
+        } catch {
+          // Skip models where version listing is not allowed.
         }
       }
       return results;
@@ -410,6 +441,13 @@ export class DatabricksClient implements PluginClient {
           { label: "Schema", value: String(f.schemaName ?? "") },
           ...(f.owner ? [{ label: "Owner", value: String(f.owner) }] : []),
           ...(f.aliasCount != null ? [{ label: "Aliases", value: String(f.aliasCount) }] : []),
+        ];
+      }
+      case "databricks-model-version": {
+        return [
+          { label: "Model", value: String(f.fullName ?? "") },
+          { label: "Version", value: String(f.version ?? "") },
+          ...(f.status ? [{ label: "Status", value: String(f.status) }] : []),
         ];
       }
       case "databricks-vector-search-endpoint": {
@@ -838,6 +876,92 @@ export class DatabricksClient implements PluginClient {
         job_id: jobId,
         new_settings: settings,
       });
+      return;
+    }
+
+    if (sourceTypeId === "databricks-pipeline" && targetTypeId === "databricks-catalog") {
+      const [pipeline, catalog] = await Promise.all([
+        this.getResource(sourceTypeId, sourceResourceId, accountId),
+        this.getResource(targetTypeId, targetResourceId, accountId),
+      ]);
+      const pipelineId = DatabricksClient.resourceField(pipeline, "pipelineId");
+      const catalogName = DatabricksClient.resourceField(catalog, "name");
+      if (!pipelineId || !catalogName) {
+        throw new Error("Databricks plugin: missing pipeline ID or catalog name.");
+      }
+
+      const spec = await this.getPipelineSpec(pipelineId);
+      await this.api("PUT", `/api/2.0/pipelines/${encodeURIComponent(pipelineId)}`, {
+        ...spec,
+        catalog: catalogName,
+      });
+      return;
+    }
+
+    if (sourceTypeId === "databricks-pipeline" && targetTypeId === "databricks-schema") {
+      const [pipeline, schema] = await Promise.all([
+        this.getResource(sourceTypeId, sourceResourceId, accountId),
+        this.getResource(targetTypeId, targetResourceId, accountId),
+      ]);
+      const pipelineId = DatabricksClient.resourceField(pipeline, "pipelineId");
+      const catalogName = DatabricksClient.resourceField(schema, "catalogName");
+      const schemaName = DatabricksClient.resourceField(schema, "name");
+      if (!pipelineId || !catalogName || !schemaName) {
+        throw new Error("Databricks plugin: missing pipeline ID, catalog name, or schema name.");
+      }
+
+      const spec = await this.getPipelineSpec(pipelineId);
+      delete spec["target"];
+      await this.api("PUT", `/api/2.0/pipelines/${encodeURIComponent(pipelineId)}`, {
+        ...spec,
+        catalog: catalogName,
+        schema: schemaName,
+      });
+      return;
+    }
+
+    if (
+      sourceTypeId === "databricks-serving-endpoint" &&
+      targetTypeId === "databricks-model-version"
+    ) {
+      const [endpoint, modelVersion] = await Promise.all([
+        this.getResource(sourceTypeId, sourceResourceId, accountId),
+        this.getResource(targetTypeId, targetResourceId, accountId),
+      ]);
+      const endpointName = DatabricksClient.resourceField(endpoint, "name");
+      const modelFullName = DatabricksClient.resourceField(modelVersion, "fullName");
+      const version = DatabricksClient.resourceField(modelVersion, "version");
+      if (!endpointName || !modelFullName || !version) {
+        throw new Error("Databricks plugin: missing serving endpoint, model name, or version.");
+      }
+
+      const config = await this.getServingEndpointConfig(endpointName);
+      const servedEntities = config["served_entities"];
+      if (!Array.isArray(servedEntities) || servedEntities.length === 0) {
+        throw new Error(
+          "Databricks plugin: serving endpoint has no existing served entity to update.",
+        );
+      }
+      if (servedEntities.length > 1) {
+        throw new Error(
+          "Databricks plugin: serving endpoint has multiple served entities; select one before attaching a model version.",
+        );
+      }
+
+      await this.api(
+        "PUT",
+        `/api/2.0/serving-endpoints/${encodeURIComponent(endpointName)}/config`,
+        {
+          ...config,
+          served_entities: [
+            {
+              ...(servedEntities[0] as Record<string, unknown>),
+              entity_name: modelFullName,
+              entity_version: version,
+            },
+          ],
+        },
+      );
       return;
     }
 

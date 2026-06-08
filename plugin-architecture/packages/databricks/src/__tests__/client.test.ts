@@ -1117,6 +1117,170 @@ describe("attachResource", () => {
     ).rejects.toThrow(/multiple tasks/);
   });
 
+  it("attaches a pipeline to a catalog", async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes("/api/2.0/pipelines?")) {
+        return jsonResp({ statuses: [{ pipeline_id: "p1", name: "Pipe" }] });
+      }
+      if (url.includes("/unity-catalog/catalogs")) {
+        return jsonResp({ catalogs: [{ name: "main" }] });
+      }
+      if (url.includes("/api/2.0/pipelines/p1")) {
+        return jsonResp({ spec: { name: "Pipe", target: "old_schema", continuous: true } });
+      }
+      return jsonResp({});
+    });
+
+    const client = makeClient();
+    await client.attachResource(
+      "databricks-pipeline",
+      "acct1:databricks-pipeline:p1",
+      "databricks-catalog",
+      "acct1:databricks-catalog:main",
+      ACCOUNT,
+    );
+
+    const updateCall = fetchMock.mock.calls.find(
+      (call) => call[0].includes("/api/2.0/pipelines/p1") && call[1]?.method === "PUT",
+    );
+    expect(updateCall).toBeTruthy();
+    expect(JSON.parse(updateCall![1]!.body)).toMatchObject({
+      name: "Pipe",
+      target: "old_schema",
+      continuous: true,
+      catalog: "main",
+    });
+  });
+
+  it("attaches a pipeline to a schema", async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes("/api/2.0/pipelines?")) {
+        return jsonResp({ statuses: [{ pipeline_id: "p1", name: "Pipe" }] });
+      }
+      if (url.includes("/unity-catalog/catalogs")) {
+        return jsonResp({ catalogs: [{ name: "main" }] });
+      }
+      if (url.includes("/unity-catalog/schemas")) {
+        return jsonResp({ schemas: [{ name: "silver" }] });
+      }
+      if (url.includes("/api/2.0/pipelines/p1")) {
+        return jsonResp({ spec: { name: "Pipe", target: "old_schema", continuous: true } });
+      }
+      return jsonResp({});
+    });
+
+    const client = makeClient();
+    await client.attachResource(
+      "databricks-pipeline",
+      "acct1:databricks-pipeline:p1",
+      "databricks-schema",
+      "acct1:databricks-schema:main.silver",
+      ACCOUNT,
+    );
+
+    const updateCall = fetchMock.mock.calls.find(
+      (call) => call[0].includes("/api/2.0/pipelines/p1") && call[1]?.method === "PUT",
+    );
+    const body = JSON.parse(updateCall![1]!.body);
+    expect(body).toMatchObject({
+      name: "Pipe",
+      continuous: true,
+      catalog: "main",
+      schema: "silver",
+    });
+    expect(body.target).toBeUndefined();
+  });
+
+  it("attaches a serving endpoint to a concrete model version", async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes("/serving-endpoints/ep/config")) {
+        return jsonResp({});
+      }
+      if (url.endsWith("/api/2.0/serving-endpoints/ep")) {
+        return jsonResp({
+          config: {
+            served_entities: [
+              {
+                name: "current",
+                entity_name: "main.ml.old_model",
+                entity_version: "1",
+                workload_size: "Small",
+                scale_to_zero_enabled: true,
+              },
+            ],
+            traffic_config: {
+              routes: [{ served_entity_name: "current", traffic_percentage: 100 }],
+            },
+          },
+        });
+      }
+      if (url.includes("/api/2.0/serving-endpoints")) {
+        return jsonResp({ endpoints: [{ name: "ep", state: { ready: "READY" } }] });
+      }
+      if (url.includes("/unity-catalog/models/main.ml.model/versions")) {
+        return jsonResp({ model_versions: [{ model_name: "model", version: 3 }] });
+      }
+      if (url.includes("/unity-catalog/models")) {
+        return jsonResp({ registered_models: [{ full_name: "main.ml.model", name: "model" }] });
+      }
+      return jsonResp({});
+    });
+
+    const client = makeClient();
+    await client.attachResource(
+      "databricks-serving-endpoint",
+      "acct1:databricks-serving-endpoint:ep",
+      "databricks-model-version",
+      "acct1:databricks-model-version:main.ml.model@3",
+      ACCOUNT,
+    );
+
+    const updateCall = fetchMock.mock.calls.find((call) =>
+      call[0].includes("/api/2.0/serving-endpoints/ep/config"),
+    );
+    const body = JSON.parse(updateCall![1]!.body);
+    expect(body.served_entities[0]).toMatchObject({
+      name: "current",
+      entity_name: "main.ml.model",
+      entity_version: "3",
+      workload_size: "Small",
+    });
+    expect(body.traffic_config.routes[0].served_entity_name).toBe("current");
+  });
+
+  it("rejects attaching model versions to endpoints with multiple served entities", async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.endsWith("/api/2.0/serving-endpoints/ep")) {
+        return jsonResp({
+          config: {
+            served_entities: [{ name: "one" }, { name: "two" }],
+          },
+        });
+      }
+      if (url.includes("/api/2.0/serving-endpoints")) {
+        return jsonResp({ endpoints: [{ name: "ep", state: { ready: "READY" } }] });
+      }
+      if (url.includes("/unity-catalog/models/main.ml.model/versions")) {
+        return jsonResp({ model_versions: [{ model_name: "model", version: 3 }] });
+      }
+      if (url.includes("/unity-catalog/models")) {
+        return jsonResp({ registered_models: [{ full_name: "main.ml.model", name: "model" }] });
+      }
+      return jsonResp({});
+    });
+
+    const client = makeClient();
+    await expect(
+      client.attachResource(
+        "databricks-serving-endpoint",
+        "acct1:databricks-serving-endpoint:ep",
+        "databricks-model-version",
+        "acct1:databricks-model-version:main.ml.model@3",
+        ACCOUNT,
+      ),
+    ).rejects.toThrow(/multiple served entities/);
+  });
+
   it("rejects unsupported associations", async () => {
     const client = makeClient();
     await expect(

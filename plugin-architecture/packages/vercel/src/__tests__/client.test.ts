@@ -1068,6 +1068,46 @@ describe("attachResource", () => {
     expect(JSON.parse(attachCall!.init?.body as string)).toEqual({ name: "example.com" });
   });
 
+  it("imports a deployment URL as a project env var", async () => {
+    installFetch((url) => {
+      if (url.includes("/v6/deployments")) {
+        return jsonResponse({
+          deployments: [
+            {
+              uid: "d1",
+              name: "proj",
+              url: "proj-abc.vercel.app",
+              readyState: "READY",
+              projectId: "p1",
+              created: 1,
+            },
+          ],
+        });
+      }
+      if (url.includes("/v9/projects/p1")) {
+        return jsonResponse({ id: "p1", name: "proj", createdAt: 1 });
+      }
+      return jsonResponse({});
+    });
+    await client({ accessToken: "tok", teamId: "team_x" }).attachResource(
+      "vercel-deployment",
+      "acct-1:vercel-deployment:d1",
+      "vercel-project",
+      "acct-1:vercel-project:p1",
+      ACCOUNT,
+    );
+    const envCall = calls.find((c) => c.url.includes("/v10/projects/p1/env"));
+    expect(envCall).toBeTruthy();
+    expect(envCall!.url).toContain("teamId=team_x");
+    expect(envCall!.init?.method).toBe("POST");
+    expect(JSON.parse(envCall!.init?.body as string)).toEqual({
+      key: "VERCEL_DEPLOYMENT_URL",
+      value: "https://proj-abc.vercel.app",
+      type: "plain",
+      target: ["production"],
+    });
+  });
+
   it("throws for unsupported attach pair", async () => {
     installFetch(() => jsonResponse({}));
     await expect(

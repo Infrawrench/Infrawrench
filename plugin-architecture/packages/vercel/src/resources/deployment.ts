@@ -28,4 +28,11 @@ export const VercelDeploymentResourceType: ResourceTypeDefinition = {
   ],
   dashboardPinnable: false,
   iconKey: "deployment",
+  attachTargets: [
+    {
+      pluginId: "vercel",
+      resourceTypeId: "vercel-project",
+      verb: "Import URL env var",
+    },
+  ],
 };

@@ -274,6 +274,35 @@ describe("attachAzureResource", () => {
     expect(body.properties.networkSecurityGroup.id).toContain("/networkSecurityGroups/nsg1");
   });
 
+  it("associates an NSG with a subnet", async () => {
+    const nsg = res({
+      resourceTypeId: "azure-nsg",
+      fields: { name: "nsg1", resourceGroup: "rg1", location: "eastus" },
+    });
+    const subnet = res({
+      resourceTypeId: "azure-subnet",
+      fields: {
+        name: "default",
+        resourceGroup: "rg1",
+        location: "eastus",
+        vnetName: "vnet1",
+      },
+    });
+    const put = vi.fn(async (_url: string, _body: unknown) => ({}));
+    const ctx = {
+      ...httpCtx({
+        get: vi.fn(async () => ({ properties: { addressPrefix: "10.0.0.0/24" } })),
+        put,
+      }),
+      getResource: vi.fn(async (t: string) => (t === "azure-nsg" ? nsg : subnet)),
+    };
+    await attachAzureResource(ctx as never, "azure-nsg", "nsg", "azure-subnet", "subnet", "acct");
+    const body = put.mock.calls[0]![1] as {
+      properties: { networkSecurityGroup: { id: string } };
+    };
+    expect(body.properties.networkSecurityGroup.id).toContain("/networkSecurityGroups/nsg1");
+  });
+
   it("attaches a public IP to the primary NIC IP configuration", async () => {
     const pip = res({
       resourceTypeId: "azure-public-ip",
@@ -309,6 +338,43 @@ describe("attachAzureResource", () => {
     expect(body.properties.ipConfigurations[0]!.properties.publicIPAddress.id).toContain(
       "/publicIPAddresses/pip1",
     );
+  });
+
+  it("adds a public IP to a NAT gateway", async () => {
+    const pip = res({
+      resourceTypeId: "azure-public-ip",
+      fields: { name: "pip1", resourceGroup: "rg1", location: "eastus" },
+    });
+    const natGateway = res({
+      resourceTypeId: "azure-nat-gateway",
+      fields: { name: "nat1", resourceGroup: "rg1", location: "eastus" },
+    });
+    const put = vi.fn(async (_url: string, _body: unknown) => ({}));
+    const ctx = {
+      ...httpCtx({
+        get: vi.fn(async () => ({
+          location: "eastus",
+          properties: { publicIpAddresses: [{ id: "/publicIPAddresses/existing" }] },
+        })),
+        put,
+      }),
+      getResource: vi.fn(async (t: string) => (t === "azure-public-ip" ? pip : natGateway)),
+    };
+    await attachAzureResource(
+      ctx as never,
+      "azure-public-ip",
+      "pip",
+      "azure-nat-gateway",
+      "nat",
+      "acct",
+    );
+    const body = put.mock.calls[0]![1] as {
+      properties: { publicIpAddresses: Array<{ id: string }> };
+    };
+    expect(body.properties.publicIpAddresses.map((ref) => ref.id)).toEqual([
+      "/publicIPAddresses/existing",
+      "/subscriptions/sub1/resourceGroups/rg1/providers/Microsoft.Network/publicIPAddresses/pip1",
+    ]);
   });
 
   it("adds a VM NIC IP configuration to a load balancer backend pool", async () => {

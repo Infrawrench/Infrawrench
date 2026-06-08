@@ -29,5 +29,11 @@ export const PublicIPResourceType: ResourceTypeDefinition = {
       matchField: "location",
       verb: "Attach public IP",
     },
+    {
+      pluginId: "azure",
+      resourceTypeId: "azure-nat-gateway",
+      matchField: "location",
+      verb: "Use for NAT",
+    },
   ],
 };

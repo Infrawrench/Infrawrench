@@ -19,6 +19,13 @@ export const NetlifyBuildHookResourceType: ResourceTypeDefinition = {
   dashboardPinnable: false,
   supportsCreate: true,
   iconKey: "hook",
+  attachTargets: [
+    {
+      pluginId: "netlify",
+      resourceTypeId: "netlify-site",
+      verb: "Import as env var",
+    },
+  ],
   secretExportTemplates: [
     {
       id: "build-hook-url",

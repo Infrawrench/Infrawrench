@@ -5,6 +5,7 @@ import {
   listSqlWarehouses,
   listServingEndpoints,
   listJobs,
+  listModelVersions,
   listPipelines,
   listCatalogs,
   listSchemas,
@@ -232,6 +233,47 @@ describe("listPipelines", () => {
   it("handles empty", async () => {
     const ctx = makeCtx(() => ({}));
     expect(await listPipelines(ctx, ACCOUNT)).toEqual([]);
+  });
+});
+
+describe("listModelVersions", () => {
+  it("maps Unity Catalog model versions", async () => {
+    const ctx = makeCtx(() => ({
+      model_versions: [
+        {
+          id: "mv1",
+          model_name: "model",
+          version: 3,
+          status: "READY",
+          created_by: "me",
+          run_id: "run1",
+          source: "dbfs:/models/model/3",
+          created_at: 1700000000000,
+          updated_at: 1700000001000,
+        },
+      ],
+    }));
+
+    const res = await listModelVersions(ctx, ACCOUNT, "main.ml.model");
+    expect(res[0]).toMatchObject({
+      id: "acct1:databricks-model-version:main.ml.model@3",
+      parentResourceId: "acct1:databricks-registered-model:main.ml.model",
+      fields: {
+        modelName: "model",
+        fullName: "main.ml.model",
+        version: 3,
+        status: "READY",
+      },
+      resolvedOutputs: {
+        fullName: "main.ml.model",
+        version: "3",
+      },
+    });
+  });
+
+  it("handles empty model version lists", async () => {
+    const ctx = makeCtx(() => ({}));
+    expect(await listModelVersions(ctx, ACCOUNT, "main.ml.model")).toEqual([]);
   });
 });
 

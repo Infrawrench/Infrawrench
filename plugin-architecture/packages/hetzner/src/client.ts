@@ -712,6 +712,22 @@ export class HetznerClient implements PluginClient {
       });
       return;
     }
+    if (sourceTypeId === "floating-ip" && targetTypeId === "server") {
+      const [floatingIp, server] = await Promise.all([
+        this.getResource(sourceTypeId, sourceResourceId, accountId),
+        this.getResource(targetTypeId, targetResourceId, accountId),
+      ]);
+      const floatingIpId = floatingIp.externalId ?? sourceResourceId.split(":").pop();
+      const serverId = server.externalId ?? targetResourceId.split(":").pop();
+      if (!floatingIpId || !serverId) {
+        throw new Error("Cannot determine floating IP or server id for assignment");
+      }
+      await this.fetch(`/floating_ips/${floatingIpId}/actions/assign`, {
+        method: "POST",
+        body: JSON.stringify({ server: Number(serverId) }),
+      });
+      return;
+    }
     if (sourceTypeId === "primary-ip" && targetTypeId === "server") {
       const [primaryIp, server] = await Promise.all([
         this.getResource(sourceTypeId, sourceResourceId, accountId),

@@ -6,6 +6,7 @@ import { TursoLocationResourceType } from "./resources/turso-location.js";
 import { TursoDatabaseInstanceResourceType } from "./resources/turso-database-instance.js";
 import { TursoApiTokenResourceType } from "./resources/turso-api-token.js";
 import { TursoOrganizationMemberResourceType } from "./resources/turso-organization-member.js";
+import { TursoOrganizationInviteResourceType } from "./resources/turso-organization-invite.js";
 
 const manifest: PluginManifest = {
   id: "turso",
@@ -45,6 +46,7 @@ const resourceTypes: ResourceTypeDefinition[] = [
   TursoLocationResourceType,
   TursoApiTokenResourceType,
   TursoOrganizationMemberResourceType,
+  TursoOrganizationInviteResourceType,
 ];
 
 export const plugin: Plugin = {

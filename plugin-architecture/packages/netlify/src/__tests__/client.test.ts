@@ -774,6 +774,78 @@ describe("attachResource", () => {
     expect(calls.some((c) => method(c.init) === "PATCH")).toBe(false);
   });
 
+  it("publishes a deploy to a site", async () => {
+    router([
+      [(u) => u.includes("/sites?"), [SITE]],
+      [
+        (u, i) => u.includes("/sites/site1/deploys") && method(i) === "GET",
+        [
+          {
+            id: "dep1",
+            site_id: "site1",
+            state: "ready",
+            deploy_ssl_url: "https://dep1.netlify.app",
+            created_at: "x",
+            updated_at: "y",
+          },
+        ],
+      ],
+      [(u, i) => u.includes("/sites/site1") && method(i) === "GET", SITE],
+      [
+        (u, i) => u.includes("/sites/site1/deploys/dep1/restore") && method(i) === "POST",
+        {
+          id: "dep1",
+          site_id: "site1",
+          state: "ready",
+          created_at: "x",
+          updated_at: "y",
+        },
+      ],
+    ]);
+    await client().attachResource(
+      "netlify-deploy",
+      "acct-1:netlify-deploy:dep1",
+      "netlify-site",
+      "acct-1:netlify-site:site1",
+      ACCOUNT,
+    );
+    expect(
+      calls.some(
+        (c) => c.url.includes("/sites/site1/deploys/dep1/restore") && method(c.init) === "POST",
+      ),
+    ).toBe(true);
+  });
+
+  it("imports a build hook URL as a site env var", async () => {
+    router([
+      [(u) => u.includes("/sites?"), [SITE]],
+      [
+        (u, i) => u.includes("/sites/site1/build_hooks") && method(i) === "GET",
+        [{ id: "hook1", title: "CMS", url: "https://hooks.netlify.com/hook" }],
+      ],
+      [(u, i) => u.includes("/sites/site1") && method(i) === "GET", SITE],
+      [(u, i) => u.includes("/sites/site1/env") && method(i) === "POST", [{ key: "K" }]],
+    ]);
+    await client().attachResource(
+      "netlify-build-hook",
+      "acct-1:netlify-build-hook:site1/hook1",
+      "netlify-site",
+      "acct-1:netlify-site:site1",
+      ACCOUNT,
+    );
+    const envCall = calls.find(
+      (c) => c.url.includes("/sites/site1/env") && method(c.init) === "POST",
+    );
+    expect(envCall).toBeTruthy();
+    expect(JSON.parse(envCall!.init!.body as string)).toEqual([
+      {
+        key: "NETLIFY_BUILD_HOOK_URL",
+        scopes: ["builds", "functions", "runtime", "post-processing"],
+        values: [{ context: "all", value: "https://hooks.netlify.com/hook" }],
+      },
+    ]);
+  });
+
   it("throws for an unsupported attach pair", async () => {
     await expect(
       client().attachResource(

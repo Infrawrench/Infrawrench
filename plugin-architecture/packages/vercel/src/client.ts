@@ -650,6 +650,30 @@ export class VercelClient implements PluginClient {
       return;
     }
 
+    if (sourceTypeId === "vercel-deployment" && targetTypeId === "vercel-project") {
+      const [deployment, project] = await Promise.all([
+        this.getResource(sourceTypeId, sourceResourceId, accountId),
+        this.getResource(targetTypeId, targetResourceId, accountId),
+      ]);
+      const deploymentUrl = String(deployment.fields["url"] ?? "");
+      const projectIdOrName = String(project.externalId ?? project.fields["name"] ?? "");
+      if (!deploymentUrl || !projectIdOrName) {
+        throw new Error(
+          "Cannot determine Vercel deployment URL or project identity for env import",
+        );
+      }
+      await this.fetch<unknown>(`/v10/projects/${encodeURIComponent(projectIdOrName)}/env`, {
+        method: "POST",
+        body: JSON.stringify({
+          key: "VERCEL_DEPLOYMENT_URL",
+          value: deploymentUrl,
+          type: "plain",
+          target: ["production"],
+        }),
+      });
+      return;
+    }
+
     throw new Error(
       `Vercel plugin: attachResource not supported for ${sourceTypeId} → ${targetTypeId}`,
     );
