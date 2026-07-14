@@ -28,7 +28,7 @@ function notifyRenderer(event: string, data: unknown) {
   }
 }
 
-async function pushChanges(token: string): Promise<void> {
+export async function pushChanges(token: string): Promise<void> {
   const db = await getDb();
   const lastPushAt = (await getSyncState("last_push_at")) ?? "1970-01-01T00:00:00Z";
   const encKey = getEncryptionKey();
@@ -114,7 +114,38 @@ async function pushChanges(token: string): Promise<void> {
   await setSyncState("last_push_at", new Date().toISOString());
 }
 
-async function pullChanges(token: string): Promise<void> {
+export interface PendingPull {
+  accounts: number;
+  resources: number;
+  dashboards: number;
+}
+
+/**
+ * Pull is currently FETCH-ONLY: it reports how many remote changes are
+ * pending but applies nothing locally, and it deliberately does NOT advance
+ * the `last_sync_version` cursor. The server only returns records with
+ * `syncVersion > lastSyncVersion`, so advancing the cursor without applying
+ * the records would permanently skip them once apply is implemented.
+ *
+ * TODO(pull-apply): applying pulled records is blocked on a protocol change,
+ * not on local plumbing. `/api/v1/sync/pull` returns account credentials
+ * encrypted with the SERVER's master key (`encryptedCredentials` /
+ * `credentialsIv`, see web `src/api/routes/sync.ts`), which this process
+ * cannot decrypt — the desktop only holds its own per-install key
+ * (`main-utils.getEncryptionKey`). Push works because the desktop sends
+ * plaintext credentials over TLS and the server re-encrypts. Full pull-apply
+ * needs:
+ *   1. The server to return credentials in a client-decryptable form (e.g.
+ *      plaintext over TLS, mirroring push).
+ *   2. Decided conflict semantics between the server's per-org `syncVersion`
+ *      counter and local `updated_at` timestamps.
+ *   3. Local upserts into accounts / resources / dashboards (re-encrypting
+ *      credentials with the local master key), deletion handling via
+ *      `deletedAt`, and the `dashboardPins` / `associations` collections the
+ *      payload also carries.
+ * Only after records are actually applied may `last_sync_version` advance.
+ */
+export async function pullChanges(token: string): Promise<PendingPull> {
   const lastSyncVersion = Number((await getSyncState("last_sync_version")) ?? "0");
 
   const response = await fetch(`${CLOUD_URL}/api/v1/sync/pull`, {
@@ -131,32 +162,19 @@ async function pullChanges(token: string): Promise<void> {
   }
 
   const data = (await response.json()) as {
-    accounts: Array<{ id: string; syncVersion: number; [k: string]: unknown }>;
-    resources: Array<{ id: string; syncVersion: number; [k: string]: unknown }>;
-    dashboards: Array<{ id: string; syncVersion: number; [k: string]: unknown }>;
+    accounts?: Array<{ id: string; syncVersion: number }>;
+    resources?: Array<{ id: string; syncVersion: number }>;
+    dashboards?: Array<{ id: string; syncVersion: number }>;
   };
 
-  let maxVersion = lastSyncVersion;
-
-  for (const acct of data.accounts ?? []) {
-    if (acct.syncVersion > maxVersion) maxVersion = acct.syncVersion;
-  }
-  for (const res of data.resources ?? []) {
-    if (res.syncVersion > maxVersion) maxVersion = res.syncVersion;
-  }
-  for (const dash of data.dashboards ?? []) {
-    if (dash.syncVersion > maxVersion) maxVersion = dash.syncVersion;
-  }
-
-  if (maxVersion > lastSyncVersion) {
-    await setSyncState("last_sync_version", String(maxVersion));
-  }
-
-  // TODO: upsert pulled data into local SQLite (needs re-encrypt with the
-  // local master key).
+  return {
+    accounts: data.accounts?.length ?? 0,
+    resources: data.resources?.length ?? 0,
+    dashboards: data.dashboards?.length ?? 0,
+  };
 }
 
-async function runSyncCycle(): Promise<void> {
+export async function runSyncCycle(): Promise<void> {
   if (isSyncing) return;
   isSyncing = true;
 
@@ -167,12 +185,28 @@ async function runSyncCycle(): Promise<void> {
     notifyRenderer("cloud-sync-status", { status: "syncing" });
 
     await pushChanges(token);
-    await pullChanges(token);
 
+    // Only push actually syncs data today; scope the success signal so
+    // "synced" never claims remote changes were applied locally.
     notifyRenderer("cloud-sync-status", {
       status: "synced",
       lastSyncedAt: new Date().toISOString(),
+      pushOnly: true,
     });
+
+    // Best-effort probe of the pull endpoint. It applies nothing (see
+    // pullChanges), so a failure here must not flip the cycle to "error".
+    try {
+      const pending = await pullChanges(token);
+      const total = pending.accounts + pending.resources + pending.dashboards;
+      if (total > 0) {
+        console.info(
+          `[cloud-sync] ${total} remote change(s) pending; pull-apply is not implemented yet`,
+        );
+      }
+    } catch (probeError) {
+      console.warn("[cloud-sync] pull probe failed:", probeError);
+    }
   } catch (e) {
     console.error("[cloud-sync] Sync error:", e);
     notifyRenderer("cloud-sync-status", {

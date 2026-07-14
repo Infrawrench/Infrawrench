@@ -20,13 +20,13 @@ Infrawrench ships as both a desktop app and a hosted web app. They share the sam
 | Team / billing      | n/a                             | Full multi-user, Stripe billing  |
 | Audit log, API keys | n/a                             | Paid plan                        |
 | SSH agent           | System keys + Pageant (Windows) | System keys server-side          |
-| Cloud sync          | Optional, OAuth PKCE            | n/a (you are the cloud)          |
+| Cloud sync          | Optional, OAuth PKCE, push-only | n/a (you are the cloud)          |
 
 ## Which should you use
 
 - **Solo, want offline, don’t want your credentials on a server** → desktop.
 - **Team, want a shared workspace, want audit and API access** → web.
-- **Both** → run desktop and link it to a web workspace. Credentials stay encrypted in both places; you get the best of each.
+- **Both** → run desktop and link it to a web workspace. Credentials stay encrypted in both places. Sync is currently one-way: the desktop pushes its changes up to the workspace, but changes made on the web do not flow back down to the desktop yet.
 
 ## Feature-parity gaps to know about
 
