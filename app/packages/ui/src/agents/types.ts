@@ -67,6 +67,30 @@ export interface AgentSession {
   updatedAt?: string;
 }
 
+/**
+ * SSH endpoint of an agent-session VM as resolved by the setup pipeline.
+ * Shared wire shape between the web server pipeline (`web/services/agent-setup.ts`)
+ * and its desktop mirror (`desktop/src/lib/agent-client.ts`).
+ */
+export interface AgentSshTarget {
+  host: string;
+  port: number;
+  username: string;
+}
+
+/**
+ * Resolved SSH launch metadata (managed key + launch command/cwd) for an agent
+ * session's terminal tab. Both hosts rehydrate this when a deep link or
+ * restored tab only carries `agentSession` — see `web/src/lib/agent-launch.ts`
+ * and desktop's ResourcePanel agent-launch resolution.
+ */
+export interface AgentLaunchDefaults {
+  sshKeyId?: string;
+  sshKeyName?: string;
+  initialCommand?: string;
+  initialCwd?: string;
+}
+
 export interface AgentCreateBody {
   repo: string;
   projectName?: string;

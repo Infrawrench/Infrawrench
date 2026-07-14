@@ -4,6 +4,7 @@ import type {
   AgentSession,
   AgentSettings,
   AgentSetupPlan,
+  AgentSshTarget,
   AgentVmAccount,
 } from "@infrawrench/ui/agents";
 import {
@@ -78,12 +79,6 @@ interface SessionRow {
 
 interface ResourceRow {
   id: string;
-}
-
-interface AgentSshTarget {
-  host: string;
-  port: number;
-  username: string;
 }
 
 interface AgentSyncFilesResult {

@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { eq, and, inArray, isNull, desc, max } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import type { ProbeStatus } from "@infrawrench/plugin-base";
+import type { StoredWorkflowMetricDef as MetricDef } from "@infrawrench/ui/workflows";
 import { db } from "../../db/client";
 import {
   dashboards,
@@ -32,13 +33,6 @@ declare module "hono" {
 }
 
 const app = new Hono();
-
-interface MetricDef {
-  key: string;
-  label: string;
-  unit?: string | null;
-  type?: string;
-}
 
 export interface WorkflowPinDto {
   pinId: string;

@@ -19,7 +19,12 @@
 import { Client as SshClient } from "ssh2";
 import { and, eq } from "drizzle-orm";
 import type { Plugin, ResourceInstance } from "@infrawrench/plugin-base";
-import type { AgentSetupPlan, AgentStatus, AgentTool } from "@infrawrench/ui/agents";
+import type {
+  AgentSetupPlan,
+  AgentSshTarget,
+  AgentStatus,
+  AgentTool,
+} from "@infrawrench/ui/agents";
 import {
   AGENT_SETUP_FAILED_LOG_PREFIX,
   AGENT_SETUP_STEP_PREFIX,
@@ -46,12 +51,6 @@ const AGENT_SETUP_RETRY_MS = 5 * 1000;
 const AGENT_SSH_READY_TIMEOUT_MS = 15 * 1000;
 
 type SessionRow = typeof agentSessions.$inferSelect;
-
-interface AgentSshTarget {
-  host: string;
-  port: number;
-  username: string;
-}
 
 interface AgentSshExecResult {
   stdout: string;

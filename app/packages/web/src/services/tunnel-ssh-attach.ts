@@ -5,21 +5,18 @@
  * account and the host's provider account), so it lives in the host rather than
  * a single plugin's attachResource.
  */
+import type {
+  TunnelServiceType,
+  TunnelSshAttachResult,
+  TunnelSshAttachStep,
+} from "@infrawrench/ui";
 import { getClientForAccount } from "./plugin-clients";
 import { resolveSshConfig, sshExec } from "./ssh";
 
-export interface TunnelSshAttachStep {
-  label: string;
-  ok: boolean;
-  detail?: string;
-}
-
-export interface TunnelSshAttachResult {
-  steps: TunnelSshAttachStep[];
-  connectCommand?: string;
-}
-
-export type TunnelServiceType = "http" | "https" | "ssh" | "tcp";
+// Canonical wire shapes live in `@infrawrench/ui` (TunnelSshAttachModal) — the
+// modal renders exactly what this service produces. Re-exported so callers of
+// this service can keep importing them from here.
+export type { TunnelServiceType, TunnelSshAttachResult, TunnelSshAttachStep };
 
 export interface TunnelSshAttachInput {
   organizationId: string;

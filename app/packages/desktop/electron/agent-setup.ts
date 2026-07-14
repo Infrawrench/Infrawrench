@@ -10,6 +10,17 @@ import path from "node:path";
 import { workflowSshExec } from "./ssh-tunnel";
 import { sftpUpload, sftpDownloadToBuffer } from "./sftp";
 import { getDb, isDialogBlessedPath } from "./main-utils";
+// The agent IPC protocol types are canonical in @infrawrench/ui (the renderer
+// side imports them from there); type-only import keeps main/renderer in sync.
+import type {
+  AgentRuntimeLanguage,
+  AgentRuntimePlan,
+  AgentRuntimeVersionSource,
+  AgentSetupPlan,
+  AgentTool,
+} from "@infrawrench/ui/agents" with { "resolution-mode": "import" };
+
+export type { AgentTool };
 
 export type WorkflowSshConfig = {
   sshHost: string;
@@ -19,31 +30,6 @@ export type WorkflowSshConfig = {
 };
 
 export type SftpCfg = { host: string; port: number; username: string; privateKey: string };
-export type AgentTool = "codex" | "claude-code";
-type AgentRuntimeLanguage = "node" | "php" | "ruby" | "go";
-type AgentRuntimeVersionSource = "project" | "latest";
-
-interface AgentRuntimePlan {
-  language: AgentRuntimeLanguage;
-  version: string;
-  versionSource: AgentRuntimeVersionSource;
-  source: string;
-  reasons: string[];
-}
-
-interface AgentSetupPlan {
-  source: "git-url" | "local-folder";
-  workspaceName: string;
-  initialCloneUrl?: string;
-  runtimes: AgentRuntimePlan[];
-  packageManagers: string[];
-  configSources: Array<{
-    label: string;
-    localPath: string;
-    exists: boolean;
-  }>;
-  warnings: string[];
-}
 
 interface RuntimeCandidate {
   language: AgentRuntimeLanguage;

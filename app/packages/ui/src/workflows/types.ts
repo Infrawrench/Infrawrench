@@ -7,6 +7,19 @@ export interface WorkflowMetricDef {
   unit?: string;
 }
 
+/**
+ * Loose shape of a workflow metric def as persisted (jsonb/text column) and
+ * read back by dashboard pins. Older rows may carry `unit: null` and `type`
+ * is unvalidated on this read path — see {@link WorkflowMetricDef} for the
+ * strict editor-side shape.
+ */
+export interface StoredWorkflowMetricDef {
+  key: string;
+  label: string;
+  unit?: string | null;
+  type?: string;
+}
+
 export type WorkflowTrigger =
   | { kind: "manual" }
   | { kind: "cron"; expression: string; timezone?: string }

@@ -85,7 +85,7 @@ import type {
   PublishMessagePayload,
   PublishMessageResult,
 } from "@infrawrench/plugin-base";
-import type { PeerPaneData } from "@infrawrench/ui";
+import type { AgentLaunchDefaults, PeerPaneData } from "@infrawrench/ui";
 import {
   accountTabTarget,
   navigateToWorkspaceTarget,
@@ -159,13 +159,6 @@ interface ResourcePanelProps {
   initialCommand?: string | undefined;
   initialCwd?: string | undefined;
 }
-
-type AgentLaunchDefaults = {
-  sshKeyId?: string;
-  sshKeyName?: string;
-  initialCommand?: string;
-  initialCwd?: string;
-};
 
 type AgentLaunchSession = {
   id: string;

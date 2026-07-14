@@ -1,14 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { WorkflowDashboardCard, type WorkflowDashboardCardData } from "@infrawrench/ui/workflows";
+import {
+  WorkflowDashboardCard,
+  type StoredWorkflowMetricDef as MetricDef,
+  type WorkflowDashboardCardData,
+} from "@infrawrench/ui/workflows";
 import { getDb } from "../../db/client";
 import { createDesktopWorkflowClient } from "../../lib/workflow-client";
-
-interface MetricDef {
-  key: string;
-  label: string;
-  unit?: string | null;
-  type?: string;
-}
 
 // One client for all dashboard workflow runs — building it is cheap, but a
 // singleton keeps run state tidy.

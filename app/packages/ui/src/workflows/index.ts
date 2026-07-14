@@ -14,6 +14,7 @@ export type {
   DebugSession,
   WorkflowSummary,
   WorkflowSaveBody,
+  StoredWorkflowMetricDef,
   WorkflowMetricDef,
   WorkflowMetricRow,
   WorkflowRunRow,

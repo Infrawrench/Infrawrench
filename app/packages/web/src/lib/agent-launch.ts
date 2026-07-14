@@ -7,12 +7,9 @@
 // the server (POST /agents/sessions/:id/open) and gate auto-connect until the
 // resolution settles. Mirrors desktop's ResourcePanel agent-launch resolution.
 
-export interface AgentLaunchDefaults {
-  sshKeyId?: string;
-  sshKeyName?: string;
-  initialCommand?: string;
-  initialCwd?: string;
-}
+import type { AgentLaunchDefaults } from "@infrawrench/ui/agents";
+
+export type { AgentLaunchDefaults } from "@infrawrench/ui/agents";
 
 /**
  * Key identifying an agent-launch lookup that still needs server resolution.

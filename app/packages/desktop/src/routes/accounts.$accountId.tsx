@@ -11,6 +11,7 @@ import {
   dispatchResourcesChanged,
   dispatchRefreshResource,
   AccountResourceSections,
+  type SectionCategoryState,
   type DraggableResource,
   formatErrorMessage,
   toast,
@@ -51,12 +52,7 @@ export const Route = createFileRoute("/accounts/$accountId")({
   component: () => null,
 });
 
-interface CategoryState {
-  typeDef: ResourceTypeDefinition;
-  loading: boolean;
-  error: string | null;
-  resources: ResourceInstance[];
-}
+type CategoryState = SectionCategoryState<ResourceTypeDefinition, ResourceInstance>;
 
 interface AccountPanelProps {
   accountId: string;
