@@ -1,11 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import { attachAltBufferScrollHandler, type ScrollableTerminal } from "../xterm-scroll";
 
-function makeTerm(bufferType: string, withElement = true) {
+function makeTerm(bufferType: string, withElement = true, mouseTrackingMode = "none") {
   const element = withElement ? document.createElement("div") : undefined;
   const term: ScrollableTerminal = {
     element,
     buffer: { active: { type: bufferType } },
+    modes: { mouseTrackingMode },
   };
   return { term, element };
 }
@@ -63,6 +64,16 @@ describe("attachAltBufferScrollHandler", () => {
     expect(sendInput).not.toHaveBeenCalled();
   });
 
+  it("does nothing while the app has mouse tracking enabled", () => {
+    // xterm already converts wheel events to mouse reports the app scrolls
+    // with — synthesizing keys on top would double-scroll or walk history.
+    const { term, element } = makeTerm("alternate", true, "any");
+    const sendInput = vi.fn();
+    attachAltBufferScrollHandler(term, sendInput);
+    element!.dispatchEvent(wheel({ deltaY: -3 }));
+    expect(sendInput).not.toHaveBeenCalled();
+  });
+
   it("ignores zero-delta wheel events", () => {
     const { term, element } = makeTerm("alternate");
     const sendInput = vi.fn();
@@ -78,5 +89,56 @@ describe("attachAltBufferScrollHandler", () => {
     handle.dispose();
     element!.dispatchEvent(wheel({ deltaY: -3 }));
     expect(sendInput).not.toHaveBeenCalled();
+  });
+
+  describe("page mode (agent terminals)", () => {
+    it("sends PageDown/PageUp instead of arrows", () => {
+      const { term, element } = makeTerm("alternate");
+      const sendInput = vi.fn();
+      attachAltBufferScrollHandler(term, sendInput, { wheelKeys: "page" });
+      element!.dispatchEvent(wheel({ deltaY: 3, deltaMode: 1 }));
+      expect(sendInput).toHaveBeenCalledWith("\x1b[6~");
+      element!.dispatchEvent(wheel({ deltaY: -3, deltaMode: 1 }));
+      expect(sendInput).toHaveBeenCalledWith("\x1b[5~");
+    });
+
+    it("accumulates small deltas before emitting a page key", () => {
+      const { term, element } = makeTerm("alternate");
+      const sendInput = vi.fn();
+      attachAltBufferScrollHandler(term, sendInput, { wheelKeys: "page" });
+      element!.dispatchEvent(wheel({ deltaY: 1, deltaMode: 1 }));
+      element!.dispatchEvent(wheel({ deltaY: 1, deltaMode: 1 }));
+      expect(sendInput).not.toHaveBeenCalled();
+      element!.dispatchEvent(wheel({ deltaY: 1, deltaMode: 1 }));
+      expect(sendInput).toHaveBeenCalledWith("\x1b[6~");
+    });
+
+    it("resets accumulated momentum when the direction flips", () => {
+      const { term, element } = makeTerm("alternate");
+      const sendInput = vi.fn();
+      attachAltBufferScrollHandler(term, sendInput, { wheelKeys: "page" });
+      element!.dispatchEvent(wheel({ deltaY: 2, deltaMode: 1 }));
+      element!.dispatchEvent(wheel({ deltaY: -1, deltaMode: 1 }));
+      element!.dispatchEvent(wheel({ deltaY: -1, deltaMode: 1 }));
+      expect(sendInput).not.toHaveBeenCalled();
+      element!.dispatchEvent(wheel({ deltaY: -1, deltaMode: 1 }));
+      expect(sendInput).toHaveBeenCalledWith("\x1b[5~");
+    });
+
+    it("caps a huge fling at 3 page keys", () => {
+      const { term, element } = makeTerm("alternate");
+      const sendInput = vi.fn();
+      attachAltBufferScrollHandler(term, sendInput, { wheelKeys: "page" });
+      element!.dispatchEvent(wheel({ deltaY: 100, deltaMode: 1 }));
+      expect(sendInput).toHaveBeenCalledWith("\x1b[6~".repeat(3));
+    });
+
+    it("still does nothing in the normal buffer", () => {
+      const { term, element } = makeTerm("normal");
+      const sendInput = vi.fn();
+      attachAltBufferScrollHandler(term, sendInput, { wheelKeys: "page" });
+      element!.dispatchEvent(wheel({ deltaY: 6, deltaMode: 1 }));
+      expect(sendInput).not.toHaveBeenCalled();
+    });
   });
 });

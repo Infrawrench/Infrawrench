@@ -12,6 +12,8 @@ import { getPlugin } from "@/plugins/loader";
 import { buildPluginHostServices } from "@/services/host-services";
 import { buildInProcessAgent, type AgentAuditContext } from "@/services/ssh-agent";
 import { logAudit } from "@/services/audit";
+import { HostKeyTrustRequiredError, makeHostKeyVerifier } from "@/services/ssh-host-keys";
+import { makeWsBackpressure, type WsBackpressure } from "@/services/ws-backpressure";
 import { forwardOutHop, resolveSshChain, type SshHop } from "@infrawrench/plugin-ssh";
 
 interface DirectSshParams {
@@ -77,6 +79,8 @@ export async function handleSshSession(
   agentForward?: boolean,
   userId?: string,
 ): Promise<void> {
+  // Hoisted so the outer catch can tear down anything opened before a throw.
+  let cleanup: () => void = () => {};
   try {
     let targetConfig: { host: string; port: number; username: string; privateKey: string };
     let connectThroughAccountId: string | undefined;
@@ -160,32 +164,119 @@ export async function handleSshSession(
     const finalConfig = hops[hops.length - 1]!;
     const intermediates: Client[] = [];
     const conn = new Client();
+    let shellStream: import("ssh2").ClientChannel | null = null;
+    let backpressure: WsBackpressure | null = null;
+    let torndown = false;
+
+    /** Idempotent teardown of everything opened so far (shell, hops, final conn). */
+    cleanup = () => {
+      if (torndown) return;
+      torndown = true;
+      backpressure?.dispose();
+      try {
+        shellStream?.end();
+      } catch {
+        /* ignore */
+      }
+      for (const c of intermediates) {
+        try {
+          c.end();
+        } catch {
+          /* ignore */
+        }
+      }
+      try {
+        conn.end();
+      } catch {
+        /* ignore */
+      }
+    };
+
+    // Registered BEFORE dialing: if the browser goes away mid-connect (or
+    // mid-chain-establishment) we tear down whatever exists at that point —
+    // the shell may not be open yet (or ever).
+    ws.on("close", cleanup);
+    ws.on("error", cleanup);
+
+    const sendJson = (frame: Record<string, unknown>) => {
+      if (ws.readyState === ws.OPEN) {
+        ws.send(JSON.stringify(frame));
+      }
+    };
+
+    const sendError = (err: unknown) => {
+      if (err instanceof HostKeyTrustRequiredError) {
+        // Structured frame so the client can distinguish an untrusted/changed
+        // host key from a generic failure (mirrors hostKeyTrustResponse's 409).
+        sendJson({
+          type: "ssh:error",
+          error: err.message,
+          code: "ssh_host_key_trust_required",
+          kind: err.kind,
+          host: err.host,
+          port: err.port,
+          presentedFingerprint: err.presentedFingerprint,
+          storedFingerprint: err.storedFingerprint,
+        });
+        return;
+      }
+      sendJson({ type: "ssh:error", error: err instanceof Error ? err.message : String(err) });
+    };
 
     conn.on("ready", () => {
+      if (torndown) {
+        // ws closed while the handshake was completing — drop the connection.
+        try {
+          conn.end();
+        } catch {
+          /* ignore */
+        }
+        return;
+      }
       conn.shell({ term: "xterm-256color", cols: cols ?? 80, rows: rows ?? 24 }, (err, stream) => {
         if (err) {
-          ws.send(JSON.stringify({ type: "ssh:error", error: err.message }));
-          conn.end();
+          sendError(err);
+          cleanup();
+          return;
+        }
+        if (torndown || ws.readyState !== ws.OPEN) {
+          // ws closed while the shell was opening — discard it.
+          try {
+            stream.end();
+          } catch {
+            /* ignore */
+          }
+          cleanup();
           return;
         }
 
-        ws.send(JSON.stringify({ type: "ssh:connected" }));
+        shellStream = stream;
+        backpressure = makeWsBackpressure(ws, {
+          pause: () => {
+            stream.pause();
+            stream.stderr.pause();
+          },
+          resume: () => {
+            stream.resume();
+            stream.stderr.resume();
+          },
+        });
+
+        sendJson({ type: "ssh:connected" });
 
         stream.on("data", (data: Buffer) => {
-          if (ws.readyState === ws.OPEN) {
-            ws.send(JSON.stringify({ type: "ssh:data", data: data.toString("base64") }));
-          }
+          sendJson({ type: "ssh:data", data: data.toString("base64") });
+          backpressure?.check();
         });
 
         stream.stderr.on("data", (data: Buffer) => {
-          if (ws.readyState === ws.OPEN) {
-            ws.send(JSON.stringify({ type: "ssh:data", data: data.toString("base64") }));
-          }
+          sendJson({ type: "ssh:data", data: data.toString("base64") });
+          backpressure?.check();
         });
 
         stream.on("close", () => {
-          ws.send(JSON.stringify({ type: "ssh:closed" }));
-          conn.end();
+          sendJson({ type: "ssh:closed" });
+          cleanup();
         });
 
         ws.on("message", (raw) => {
@@ -206,30 +297,15 @@ export async function handleSshSession(
             /* ignore malformed messages */
           }
         });
-
-        ws.on("close", () => {
-          stream.end();
-          for (const c of intermediates) {
-            try {
-              c.end();
-            } catch {
-              /* ignore */
-            }
-          }
-          conn.end();
-        });
       });
     });
 
+    const hostKeyErrorRef = { value: null as HostKeyTrustRequiredError | null };
     conn.on("error", (err) => {
-      ws.send(JSON.stringify({ type: "ssh:error", error: err.message }));
-      for (const c of intermediates) {
-        try {
-          c.end();
-        } catch {
-          /* ignore */
-        }
-      }
+      // A verifier rejection surfaces as a generic ssh2 connect error — report
+      // the typed host-key error instead when that's what aborted us.
+      sendError(hostKeyErrorRef.value ?? err);
+      cleanup();
     });
 
     const auditContext: AgentAuditContext | undefined = agentForward
@@ -297,10 +373,18 @@ export async function handleSshSession(
     // `forwardOut` stream is in fact a full duplex — cast accordingly.
     type SshSock = import("stream").Readable;
     const dialFinal = (sock?: SshSock) => {
+      if (torndown) return;
       conn.connect({
         ...(sock ? { sock } : { host: finalConfig.host, port: finalConfig.port ?? 22 }),
         username: finalConfig.username,
         privateKey: finalConfig.privateKey,
+        hostVerifier: makeHostKeyVerifier(
+          organizationId,
+          finalConfig.host,
+          finalConfig.port ?? 22,
+          hostKeyErrorRef,
+          "ssh-proxy",
+        ),
         ...(forwardAgent ? { agent: forwardAgent, agentForward: true } : {}),
       });
     };
@@ -311,25 +395,40 @@ export async function handleSshSession(
       try {
         let prev: Client | null = null;
         for (let i = 0; i < hops.length - 1; i++) {
+          if (torndown) throw new Error("SSH session closed before the connection completed");
           const hop = hops[i]!;
           const client = new Client();
           intermediates.push(client);
           const sockForThis = prev
             ? ((await forwardOutHop(prev, hop.host, hop.port)) as SshSock)
             : undefined;
+          const hopKeyErrorRef = { value: null as HostKeyTrustRequiredError | null };
           await new Promise<void>((resolve, reject) => {
             client.once("ready", () => resolve());
-            client.once("error", (err) =>
-              reject(err instanceof Error ? err : new Error(String(err))),
+            client.on("error", (err) =>
+              reject(hopKeyErrorRef.value ?? (err instanceof Error ? err : new Error(String(err)))),
+            );
+            // `end()` from a concurrent ws-close teardown emits "close"
+            // without "error" — settle the promise so we don't hang.
+            client.once("close", () =>
+              reject(new Error("SSH connection closed while establishing the jump chain")),
             );
             client.connect({
               ...(sockForThis ? { sock: sockForThis } : { host: hop.host, port: hop.port ?? 22 }),
               username: hop.username,
               privateKey: hop.privateKey,
+              hostVerifier: makeHostKeyVerifier(
+                organizationId,
+                hop.host,
+                hop.port ?? 22,
+                hopKeyErrorRef,
+                "ssh-proxy",
+              ),
             });
           });
           prev = client;
         }
+        if (torndown) throw new Error("SSH session closed before the connection completed");
         const finalSock = (await forwardOutHop(
           prev!,
           finalConfig.host,
@@ -337,28 +436,20 @@ export async function handleSshSession(
         )) as SshSock;
         dialFinal(finalSock);
       } catch (err) {
-        for (const c of intermediates) {
-          try {
-            c.end();
-          } catch {
-            /* ignore */
-          }
-        }
-        ws.send(
-          JSON.stringify({
-            type: "ssh:error",
-            error: err instanceof Error ? err.message : String(err),
-          }),
-        );
+        sendError(err);
+        cleanup();
         return;
       }
     }
   } catch (e) {
-    ws.send(
-      JSON.stringify({
-        type: "ssh:error",
-        error: e instanceof Error ? e.message : "Unknown SSH error",
-      }),
-    );
+    if (ws.readyState === ws.OPEN) {
+      ws.send(
+        JSON.stringify({
+          type: "ssh:error",
+          error: e instanceof Error ? e.message : "Unknown SSH error",
+        }),
+      );
+    }
+    cleanup();
   }
 }

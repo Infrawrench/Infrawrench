@@ -13,6 +13,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as crypto from "node:crypto";
 import type { WebSocket } from "ws";
+import { makeWsBackpressure } from "./ws-backpressure";
 
 interface KubectlPtyMessageTypes {
   /** Server → client when the PTY is ready (k8s-exec only). May be undefined. */
@@ -106,6 +107,11 @@ export async function handleKubectlPtySession(
     ws.send(JSON.stringify({ type: messageTypes.connected, sessionId }));
   }
 
+  const backpressure = makeWsBackpressure(ws, {
+    pause: () => proc.pause(),
+    resume: () => proc.resume(),
+  });
+
   proc.onData((data) => {
     if (ws.readyState === ws.OPEN) {
       ws.send(
@@ -114,6 +120,7 @@ export async function handleKubectlPtySession(
           data: Buffer.from(data, "utf8").toString("base64"),
         }),
       );
+      backpressure.check();
     }
   });
 
@@ -121,6 +128,7 @@ export async function handleKubectlPtySession(
     if (ws.readyState === ws.OPEN) {
       ws.send(JSON.stringify({ type: messageTypes.closed, code: exitCode }));
     }
+    backpressure.dispose();
     cleanupSession(sessionId);
   });
 
@@ -149,6 +157,7 @@ export async function handleKubectlPtySession(
   ws.on("message", messageHandler);
 
   ws.on("close", () => {
+    backpressure.dispose();
     try {
       proc.kill();
     } catch {

@@ -17,6 +17,7 @@ import * as crypto from "node:crypto";
 import * as net from "node:net";
 import { spawn, type ChildProcess } from "node:child_process";
 import type { WebSocket } from "ws";
+import { makeWsBackpressure, type WsBackpressure } from "./ws-backpressure";
 
 interface K8sPfConfig {
   kubeconfig: string;
@@ -72,8 +73,20 @@ export function handleK8sPfSession(ws: WebSocket, config: K8sPfConfig): void {
 
   let assignedPort: number | null = null;
   let socket: net.Socket | null = null;
+  let backpressure: WsBackpressure | null = null;
+  let closeFrameSent = false;
+
+  /** Both the TCP socket closing and kubectl exiting notify the client; send the frame once. */
+  function sendCloseFrame() {
+    if (closeFrameSent) return;
+    closeFrameSent = true;
+    if (ws.readyState === ws.OPEN) {
+      ws.send(JSON.stringify({ type: "k8s:pf:close" }));
+    }
+  }
 
   function teardown() {
+    backpressure?.dispose();
     try {
       proc.kill();
     } catch {
@@ -102,16 +115,17 @@ export function handleK8sPfSession(ws: WebSocket, config: K8sPfConfig): void {
       }
     });
 
+    backpressure = makeWsBackpressure(ws, socket);
+
     socket.on("data", (data: Buffer) => {
       if (ws.readyState === ws.OPEN) {
         ws.send(JSON.stringify({ type: "k8s:pf:data", data: data.toString("base64") }));
+        backpressure?.check();
       }
     });
 
     socket.on("close", () => {
-      if (ws.readyState === ws.OPEN) {
-        ws.send(JSON.stringify({ type: "k8s:pf:close" }));
-      }
+      sendCloseFrame();
       teardown();
     });
 
@@ -130,9 +144,8 @@ export function handleK8sPfSession(ws: WebSocket, config: K8sPfConfig): void {
   });
 
   proc.on("close", () => {
-    if (ws.readyState === ws.OPEN) {
-      ws.send(JSON.stringify({ type: "k8s:pf:close" }));
-    }
+    sendCloseFrame();
+    backpressure?.dispose();
     cleanupSession(sessionId);
   });
 

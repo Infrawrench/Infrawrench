@@ -25,6 +25,18 @@ interface SshTerminalProps {
   resourceId?: string;
   /** Forward the local SSH agent to the remote host (local mode only). */
   agentForward?: boolean;
+  /** Optional command to run after the shell connects. */
+  initialCommand?: string | undefined;
+  /** Optional remote directory to cd into before running initialCommand. */
+  initialCwd?: string | undefined;
+  /**
+   * This terminal hosts a coding agent (Claude Code/Codex inside tmux). The
+   * agent scrolls via native mouse reporting (tmux passes SGR mouse through);
+   * when mouse tracking is off, the wheel falls back to PageUp/PageDown
+   * instead of arrow keys, because arrows edit the agent's prompt/history
+   * instead of scrolling.
+   */
+  agentTerminal?: boolean | undefined;
 }
 
 export function SshTerminal({
@@ -36,6 +48,9 @@ export function SshTerminal({
   accountId,
   resourceId,
   agentForward,
+  initialCommand,
+  initialCwd,
+  agentTerminal,
 }: SshTerminalProps) {
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -99,6 +114,10 @@ export function SshTerminal({
           handle.onData((data) => term.write(data));
           handle.onExit(() => term.write("\r\n\x1b[90m[Connection closed]\x1b[0m\r\n"));
           handle.onError((err) => term.write(`\r\n\x1b[31m${err}\x1b[0m\r\n`));
+          const launchCommand = buildInitialShellCommand(initialCommand, initialCwd);
+          if (launchCommand) {
+            handle.write(`${launchCommand}\n`);
+          }
         })
         .catch((err: unknown) => {
           term.write(`\r\n\x1b[31mFailed: ${String(err)}\x1b[0m\r\n`);
@@ -109,7 +128,11 @@ export function SshTerminal({
       shell?.write(data);
     };
     const onData = term.onData(sendToShell);
-    const altScroll = attachAltBufferScrollHandler(term, sendToShell);
+    const altScroll = attachAltBufferScrollHandler(
+      term,
+      sendToShell,
+      agentTerminal ? { wheelKeys: "page" } : undefined,
+    );
 
     const ro = new ResizeObserver(() => {
       if (disposed) return;
@@ -128,11 +151,45 @@ export function SshTerminal({
       term.dispose();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [host, port, username, privateKey, keySource?.type, accountId, resourceId, activeCloudOrgId]);
+  }, [
+    host,
+    port,
+    username,
+    privateKey,
+    keySource?.type,
+    accountId,
+    resourceId,
+    activeCloudOrgId,
+    initialCommand,
+    initialCwd,
+    agentTerminal,
+  ]);
 
   return (
     <div className="h-full w-full relative bg-[var(--color-terminal-bg)] overflow-hidden">
       <div ref={containerRef} className="absolute inset-0 p-2" />
     </div>
   );
+}
+
+export function buildInitialShellCommand(
+  command: string | undefined,
+  cwd: string | undefined,
+): string {
+  const trimmedCommand = command?.trim();
+  if (!trimmedCommand) return "";
+  const trimmedCwd = cwd?.trim();
+  if (!trimmedCwd) return trimmedCommand;
+  return `cd ${shellQuote(trimmedCwd)} && ${trimmedCommand}`;
+}
+
+export function shellQuote(value: string): string {
+  // Keep a leading `~` or `~/` bare so the shell still expands it, but
+  // double-quote the remainder so spaces and metacharacters can't split
+  // or inject into the command.
+  if (value === "~") return "~";
+  if (value.startsWith("~/")) {
+    return `~/"${value.slice(2).replace(/(["\\$`])/g, "\\$1")}"`;
+  }
+  return `'${value.replace(/'/g, `'\\''`)}'`;
 }

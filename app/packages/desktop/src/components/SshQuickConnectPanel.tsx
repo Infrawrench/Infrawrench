@@ -8,12 +8,16 @@ import type { SystemKey, AppKey, KeySource, CloudKey } from "../lib/ssh-key-sour
 interface SshQuickConnectPanelProps {
   host: string;
   defaultUsername?: string;
+  preferredAppKeyId?: string | undefined;
+  preferredAppKeyName?: string | undefined;
   onConnect: (config: { username: string; privateKey: string; keySource: KeySource }) => void;
 }
 
 export function SshQuickConnectPanel({
   host,
   defaultUsername,
+  preferredAppKeyId,
+  preferredAppKeyName,
   onConnect,
 }: SshQuickConnectPanelProps) {
   const [systemKeys, setSystemKeys] = useState<SystemKey[]>([]);
@@ -33,7 +37,7 @@ export function SshQuickConnectPanel({
 
   useEffect(() => {
     void loadKeys();
-  }, [activeCloudOrgId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeCloudOrgId, preferredAppKeyId, preferredAppKeyName]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadKeys() {
     const [sys, db, pageant, onePassword] = await Promise.all([
@@ -62,7 +66,13 @@ export function SshQuickConnectPanel({
     const effectiveUsername = (defaultUsername ?? "root").toLowerCase();
     const sysMatch = sys.find((k) => k.name.toLowerCase() === effectiveUsername);
     const appMatch = rows.find((k) => k.name.toLowerCase() === effectiveUsername);
+    const preferredAppKey =
+      (preferredAppKeyId ? rows.find((k) => k.id === preferredAppKeyId) : undefined) ??
+      (preferredAppKeyName ? rows.find((k) => k.name === preferredAppKeyName) : undefined);
     setSelectedKey((prev) => {
+      if (preferredAppKey) {
+        return { type: "app", id: preferredAppKey.id, name: preferredAppKey.name };
+      }
       if (prev) return prev;
       if (sysMatch) return { type: "system", name: sysMatch.name };
       if (appMatch) return { type: "app", id: appMatch.id, name: appMatch.name };

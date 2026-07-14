@@ -19,6 +19,7 @@ const INVOKE_CHANNELS = [
   "account_create",
   "ssh_key_get_private_key",
   "ssh_key_get_public_key",
+  "ssh_key_ensure_agent_key",
   "ssh_key_save_private_key",
   "ssh_tunnel_config_get_private_key",
   "ssh_tunnel_config_encrypt_private_key",
@@ -66,6 +67,9 @@ const INVOKE_CHANNELS = [
   "workflow_sftp_put",
   "workflow_sftp_mkdir",
   "workflow_sftp_delete",
+  "agent_plan_setup",
+  "agent_sync_files",
+  "agent_reconcile_fetch",
   // sftp
   "sftp_list",
   "sftp_mkdir",

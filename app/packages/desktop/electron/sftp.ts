@@ -66,6 +66,23 @@ async function buildOptions(): Promise<{
   return { options, hostKeyErrorRef };
 }
 
+async function buildOptionsWithSkip(skipHostKeyCheck = false): Promise<{
+  options: WithSftpOptions;
+  hostKeyErrorRef: { value: HostKeyMismatchError | null };
+}> {
+  if (!skipHostKeyCheck) return buildOptions();
+  const hostKeyErrorRef = { value: null as HostKeyMismatchError | null };
+  return {
+    hostKeyErrorRef,
+    options: {
+      configureConnect: (opts) => ({
+        ...opts,
+        hostVerifier: (_hostKey: Buffer, verify: (matches: boolean) => void) => verify(true),
+      }),
+    },
+  };
+}
+
 async function withMismatchRethrow<T>(
   fn: () => Promise<T>,
   ref: { value: HostKeyMismatchError | null },
@@ -104,8 +121,9 @@ export async function sftpUpload(
   config: SftpConfig,
   remotePath: string,
   data: Buffer,
+  opts?: { skipHostKeyCheck?: boolean },
 ): Promise<void> {
-  const { options, hostKeyErrorRef } = await buildOptions();
+  const { options, hostKeyErrorRef } = await buildOptionsWithSkip(Boolean(opts?.skipHostKeyCheck));
   return withMismatchRethrow(
     () => sftpUploadImpl(config, remotePath, data, options),
     hostKeyErrorRef,

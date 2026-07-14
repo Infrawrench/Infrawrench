@@ -10,6 +10,8 @@ import {
 } from "electron";
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
+import { promisify } from "node:util";
 import { z } from "zod";
 import initSqlJs, { type Database as SqlJsDb, type SqlValue } from "sql.js";
 import { closeAllTunnels } from "./ssh-tunnel";
@@ -60,6 +62,8 @@ function hasBackgroundWork(): boolean {
 // itself, so `autoInstallOnAppQuit` is effectively a no-op on macOS without this.
 let pendingUpdateInstall: (() => void) | null = null;
 let installingUpdate = false;
+const generateKeyPair = promisify(crypto.generateKeyPair);
+const AGENT_SSH_KEY_NAME = "infrawrench-agent";
 
 function startAutoUpdater() {
   if (!app.isPackaged) return;
@@ -364,13 +368,61 @@ ipcMain.handle("ssh_key_get_public_key", async (_e, raw: unknown) => {
   );
   // Desktop app keys persist only the private half — derive the OpenSSH public
   // key from it on demand.
-  const { utils } = await import("ssh2");
-  const parsed = utils.parseKey(privateKey);
+  const parsed = (await getSsh2Utils()).parseKey(privateKey);
   if (parsed instanceof Error) {
     throw new Error(`Could not derive public key for SSH key: ${parsed.message}`);
   }
   const key = Array.isArray(parsed) ? parsed[0] : parsed;
   return `${key.type} ${key.getPublicSSH().toString("base64")}`;
+});
+
+ipcMain.handle("ssh_key_ensure_agent_key", async () => {
+  const db = await getSqlite();
+  const existing = db.prepare("SELECT id FROM ssh_keys WHERE name = ? LIMIT 1");
+  existing.bind([AGENT_SSH_KEY_NAME]);
+  const row = existing.step() ? (existing.getAsObject() as Record<string, unknown>) : null;
+  existing.free();
+  if (row) {
+    const keyId = String(row["id"] ?? "");
+    const stmt = db.prepare("SELECT encrypted_key, key_iv FROM ssh_keys WHERE id = ? LIMIT 1");
+    stmt.bind([keyId]);
+    const keyRow = stmt.step() ? (stmt.getAsObject() as Record<string, unknown>) : null;
+    stmt.free();
+    if (!keyRow) throw new Error("Agent SSH key not found");
+    const privateKey = decryptValue(
+      String(keyRow["encrypted_key"] ?? ""),
+      String(keyRow["key_iv"] ?? ""),
+      getEncryptionKey(),
+      buildAad("sshKey", keyId, "privateKey"),
+    );
+    return {
+      id: keyId,
+      name: AGENT_SSH_KEY_NAME,
+      publicKey: await deriveOpenSshPublicKey(privateKey),
+    };
+  }
+
+  const { publicKey: pubPem, privateKey: privPem } = await generateKeyPair("ed25519", {
+    publicKeyEncoding: { type: "spki", format: "pem" },
+    privateKeyEncoding: { type: "pkcs8", format: "pem" },
+  });
+  const spkiDer = crypto.createPublicKey(pubPem).export({ type: "spki", format: "der" });
+  const pkcs8Der = crypto.createPrivateKey(privPem).export({ type: "pkcs8", format: "der" });
+  const rawPubKey = Buffer.from(spkiDer).subarray(12);
+  const rawPrivKey = Buffer.from(pkcs8Der).subarray(16);
+  const publicKey = `ssh-ed25519 ${sshWireString("ssh-ed25519", rawPubKey).toString("base64")} ${AGENT_SSH_KEY_NAME}`;
+  const privateKey = buildOpenSshPrivateKey(rawPrivKey, rawPubKey, AGENT_SSH_KEY_NAME);
+  const keyId = crypto.randomUUID();
+  const aad = buildAad("sshKey", keyId, "privateKey");
+  const { ciphertext, iv } = encryptValue(privateKey, getEncryptionKey(), aad);
+  db.run("INSERT INTO ssh_keys (id, name, encrypted_key, key_iv) VALUES (?, ?, ?, ?)", [
+    keyId,
+    AGENT_SSH_KEY_NAME,
+    ciphertext,
+    iv,
+  ]);
+  persist();
+  return { id: keyId, name: AGENT_SSH_KEY_NAME, publicKey };
 });
 
 ipcMain.handle("ssh_key_save_private_key", async (_e, raw: unknown) => {
@@ -386,6 +438,105 @@ ipcMain.handle("ssh_key_save_private_key", async (_e, raw: unknown) => {
   ]);
   persist();
 });
+
+async function deriveOpenSshPublicKey(privateKey: string): Promise<string> {
+  const parsed = (await getSsh2Utils()).parseKey(privateKey);
+  if (parsed instanceof Error) {
+    throw new Error(`Could not derive public key for SSH key: ${parsed.message}`);
+  }
+  const key = Array.isArray(parsed) ? parsed[0] : parsed;
+  return `${key.type} ${key.getPublicSSH().toString("base64")} ${AGENT_SSH_KEY_NAME}`;
+}
+
+async function getSsh2Utils(): Promise<typeof import("ssh2").utils> {
+  const mod = await import("ssh2");
+  const utils = mod.utils ?? mod.default?.utils;
+  if (!utils) throw new Error("Could not load ssh2 key utilities");
+  return utils;
+}
+
+function sshWireString(type: string, ...bufs: Uint8Array[]): Buffer {
+  const typeLen = Buffer.alloc(4);
+  typeLen.writeUInt32BE(type.length);
+  const parts: Uint8Array[] = [typeLen, Buffer.from(type)];
+  for (const buf of bufs) {
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(buf.length);
+    parts.push(len, buf);
+  }
+  return Buffer.concat(parts);
+}
+
+function buildOpenSshPrivateKey(privSeed: Buffer, pubKey: Buffer, comment: string): string {
+  const AUTH_MAGIC = "openssh-key-v1\0";
+  const cipherName = "none";
+  const kdfName = "none";
+  const kdfOptions = Buffer.alloc(0);
+  const keyCount = 1;
+  const pubBlob = sshWireString("ssh-ed25519", pubKey);
+  const checkInt = crypto.randomBytes(4);
+  const keyType = Buffer.from("ssh-ed25519");
+  const keyTypeLenBuf = Buffer.alloc(4);
+  keyTypeLenBuf.writeUInt32BE(keyType.length);
+  const pubLenBuf = Buffer.alloc(4);
+  pubLenBuf.writeUInt32BE(pubKey.length);
+  const fullPriv = Buffer.concat([privSeed, pubKey]);
+  const fullPrivLenBuf = Buffer.alloc(4);
+  fullPrivLenBuf.writeUInt32BE(fullPriv.length);
+  const commentBuf = Buffer.from(comment);
+  const commentLenBuf = Buffer.alloc(4);
+  commentLenBuf.writeUInt32BE(commentBuf.length);
+  const privSection = Buffer.concat([
+    checkInt,
+    checkInt,
+    keyTypeLenBuf,
+    keyType,
+    pubLenBuf,
+    pubKey,
+    fullPrivLenBuf,
+    fullPriv,
+    commentLenBuf,
+    commentBuf,
+  ]);
+  const padLen = 8 - (privSection.length % 8);
+  const padding = Buffer.alloc(padLen === 8 ? 0 : padLen);
+  for (let i = 0; i < padding.length; i++) padding[i] = i + 1;
+  const paddedPriv = Buffer.concat([privSection, padding]);
+  const cipherBuf = Buffer.from(cipherName);
+  const cipherLenBuf = Buffer.alloc(4);
+  cipherLenBuf.writeUInt32BE(cipherBuf.length);
+  const kdfBuf = Buffer.from(kdfName);
+  const kdfLenBuf = Buffer.alloc(4);
+  kdfLenBuf.writeUInt32BE(kdfBuf.length);
+  const kdfOptionsLenBuf = Buffer.alloc(4);
+  kdfOptionsLenBuf.writeUInt32BE(kdfOptions.length);
+  const keyCountBuf = Buffer.alloc(4);
+  keyCountBuf.writeUInt32BE(keyCount);
+  const pubBlobLenBuf = Buffer.alloc(4);
+  pubBlobLenBuf.writeUInt32BE(pubBlob.length);
+  const privLenBuf = Buffer.alloc(4);
+  privLenBuf.writeUInt32BE(paddedPriv.length);
+  const payload = Buffer.concat([
+    Buffer.from(AUTH_MAGIC),
+    cipherLenBuf,
+    cipherBuf,
+    kdfLenBuf,
+    kdfBuf,
+    kdfOptionsLenBuf,
+    kdfOptions,
+    keyCountBuf,
+    pubBlobLenBuf,
+    pubBlob,
+    privLenBuf,
+    paddedPriv,
+  ]);
+  const b64 =
+    payload
+      .toString("base64")
+      .match(/.{1,70}/g)
+      ?.join("\n") ?? "";
+  return `-----BEGIN OPENSSH PRIVATE KEY-----\n${b64}\n-----END OPENSSH PRIVATE KEY-----`;
+}
 
 ipcMain.handle("ssh_tunnel_config_get_private_key", (_e, raw: unknown) => {
   const { tunnelConfigId, ciphertext, iv } = SshTunnelConfigDecryptArgs.parse(raw);

@@ -14,6 +14,16 @@ interface WebTerminalProps {
   sshHost?: string;
   sshUsername?: string;
   agentForward?: boolean;
+  initialCommand?: string | undefined;
+  initialCwd?: string | undefined;
+  /**
+   * This terminal hosts a coding agent (Claude Code/Codex inside tmux). The
+   * agent scrolls via native mouse reporting (tmux passes SGR mouse through);
+   * when mouse tracking is off, the wheel falls back to PageUp/PageDown
+   * instead of arrow keys, because arrows edit the agent's prompt/history
+   * instead of scrolling.
+   */
+  agentTerminal?: boolean | undefined;
 }
 
 export function WebTerminal({
@@ -24,6 +34,9 @@ export function WebTerminal({
   sshHost,
   sshUsername,
   agentForward,
+  initialCommand,
+  initialCwd,
+  agentTerminal,
 }: WebTerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -48,14 +61,18 @@ export function WebTerminal({
 
       const sendToShell = (data: string) => {
         if (connected && wsRef.current?.readyState === WebSocket.OPEN) {
-          wsRef.current.send(JSON.stringify({ type: "ssh:data", data: btoa(data) }));
+          wsRef.current.send(JSON.stringify({ type: "ssh:data", data: base64EncodeUtf8(data) }));
         }
       };
       // Guard terminal input — only forward after SSH session is ready.
       // Mirrors desktop's `if (shellId)` guard: xterm.js auto-sends device
       // attribute responses which must not reach the shell before it's ready.
       const onData = term.onData(sendToShell);
-      const altScroll = attachAltBufferScrollHandler(term, sendToShell);
+      const altScroll = attachAltBufferScrollHandler(
+        term,
+        sendToShell,
+        agentTerminal ? { wheelKeys: "page" } : undefined,
+      );
 
       requestAnimationFrame(() => {
         if (disposed || !term) return;
@@ -96,6 +113,17 @@ export function WebTerminal({
           switch (msg.type) {
             case "ssh:connected":
               connected = true;
+              {
+                const launchCommand = buildInitialShellCommand(initialCommand, initialCwd);
+                if (launchCommand && wsRef.current?.readyState === WebSocket.OPEN) {
+                  wsRef.current.send(
+                    JSON.stringify({
+                      type: "ssh:data",
+                      data: base64EncodeUtf8(`${launchCommand}\n`),
+                    }),
+                  );
+                }
+              }
               break;
             case "ssh:data":
               if (msg.data && term) {
@@ -144,11 +172,53 @@ export function WebTerminal({
       wsRef.current?.close();
       term?.dispose();
     };
-  }, [accountId, resourceId, token, sshKeyId, sshHost, sshUsername]);
+  }, [
+    accountId,
+    resourceId,
+    token,
+    sshKeyId,
+    sshHost,
+    sshUsername,
+    initialCommand,
+    initialCwd,
+    agentTerminal,
+  ]);
 
   return (
     <div className="h-full w-full relative bg-[var(--color-terminal-bg)] overflow-hidden">
       <div ref={containerRef} className="absolute inset-0 p-2" />
     </div>
   );
+}
+
+// btoa alone throws on code points above U+00FF, so encode to UTF-8 bytes first.
+// The server side decodes with Buffer.from(data, "base64") and writes the raw
+// bytes to the SSH stream, matching desktop's direct UTF-8 writes.
+export function base64EncodeUtf8(value: string): string {
+  const bytes = new TextEncoder().encode(value);
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+export function buildInitialShellCommand(
+  command: string | undefined,
+  cwd: string | undefined,
+): string {
+  const trimmedCommand = command?.trim();
+  if (!trimmedCommand) return "";
+  const trimmedCwd = cwd?.trim();
+  if (!trimmedCwd) return trimmedCommand;
+  return `cd ${shellQuote(trimmedCwd)} && ${trimmedCommand}`;
+}
+
+export function shellQuote(value: string): string {
+  // Keep a leading `~` or `~/` bare so the shell still expands it, but
+  // double-quote the remainder so spaces and metacharacters can't split
+  // or inject into the command.
+  if (value === "~") return "~";
+  if (value.startsWith("~/")) {
+    return `~/"${value.slice(2).replace(/(["\\$`])/g, "\\$1")}"`;
+  }
+  return `'${value.replace(/'/g, `'\\''`)}'`;
 }

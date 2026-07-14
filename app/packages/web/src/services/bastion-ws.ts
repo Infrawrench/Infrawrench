@@ -69,6 +69,7 @@ function setupBastionAgentSocket(
 ): void {
   const conn = new BastionAgentConnection(bastion.bastionId, ws);
   let registered = false;
+  let closed = false;
 
   // Mark the bastion active on first connect; we mark it again on every
   // message to keep `lastSeenAt` fresh (cheap because it's a single UPDATE).
@@ -122,6 +123,10 @@ function setupBastionAgentSocket(
 
   ws.on("close", () => {
     clearInterval(heartbeat);
+    closed = true;
+    // If registration is still in flight, the .then() below notices `closed`
+    // and unregisters as soon as it lands — otherwise the entry (and its
+    // undici Agent) would sit in the registry forever.
     if (registered) {
       void unregisterAgentConnection(bastion.bastionId);
     }
@@ -136,6 +141,13 @@ function setupBastionAgentSocket(
   void registerAgentConnection(conn)
     .then(() => {
       registered = true;
+      if (closed) {
+        // Socket closed while registration was in flight — the close handler
+        // saw registered=false, so unregister here.
+        void unregisterAgentConnection(bastion.bastionId);
+        return;
+      }
+      if (ws.readyState !== ws.OPEN) return;
       ws.send(
         JSON.stringify({
           op: "hello",
