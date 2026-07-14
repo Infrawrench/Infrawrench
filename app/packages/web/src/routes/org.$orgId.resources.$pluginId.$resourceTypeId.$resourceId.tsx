@@ -210,7 +210,11 @@ export function ResourcePanel({
         .then((d) => {
           if (!cancelled) setStore({ forKey: detailUrl, data: d, error: null });
         })
-        .catch(() => {});
+        .catch((e: unknown) => {
+          // Keep the last-good detail on a failed background refresh, but log it
+          // — the initial load surfaces errors, so this shouldn't stay invisible.
+          console.error(`[resource-detail] refresh failed for ${detailUrl}:`, e);
+        });
     }
     // Manual refresh button: hit the provider for just this one resource, then re-read detail.
     async function refreshFromProvider() {

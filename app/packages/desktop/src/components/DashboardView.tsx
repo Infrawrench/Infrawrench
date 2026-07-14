@@ -451,6 +451,8 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
                 }
               }
             } catch {
+              // Stats are best-effort decoration for SSH-target cards — the card's
+              // purpose is connecting, so keep it usable without stats.
               if (!cancelled) {
                 setAccountConnected(row.account_id, true);
                 setCardStatus((prev) => ({
