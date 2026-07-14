@@ -1,10 +1,10 @@
 import https from "node:https";
 import http from "node:http";
-import net from "node:net";
 import { ipcMain } from "electron";
 import { killK8sExec, resizeK8sExec, spawnK8sExec, writeK8sExec } from "./k8s-exec";
 import { checkK9sInstalled, killK9s, resizeK9s, spawnK9s, writeK9s } from "./k9s";
 import { startPortForward, stopPortForward } from "./k8s-port-forward";
+import { isK8sApiEndpointAllowed } from "./k8s-endpoints";
 
 ipcMain.handle("k8s_exec_spawn", (event, args) => spawnK8sExec(event.sender, args));
 ipcMain.handle("k8s_exec_write", (_event, { sessionId, data }) => writeK8sExec(sessionId, data));
@@ -35,39 +35,6 @@ interface K8sApiRequest {
   caCert?: string; // PEM-encoded CA certificate
 }
 
-// SSRF defense: requests to private/loopback/link-local addresses are refused
-// unless the host:port was registered via registerK8sEndpoint (e.g. by the
-// kubeconfig loader). Blocks XSS-driven scans of metadata services
-// (169.254.169.254), the local Docker daemon, internal corporate services, etc.
-const REGISTERED_K8S_HOSTS = new Set<string>();
-
-export function registerK8sEndpoint(host: string, port: number | string): void {
-  REGISTERED_K8S_HOSTS.add(`${host.toLowerCase()}:${port}`);
-}
-
-function isPrivateOrLoopbackHost(hostname: string): boolean {
-  const lower = hostname.toLowerCase();
-  if (lower === "localhost" || lower.endsWith(".localhost")) return true;
-  if (lower === "metadata.google.internal") return true;
-  if (net.isIPv4(lower)) {
-    const [a = 0, b = 0] = lower.split(".").map((p) => Number(p));
-    if (a === 127) return true;
-    if (a === 10) return true;
-    if (a === 169 && b === 254) return true; // link-local (cloud metadata)
-    if (a === 172 && b >= 16 && b <= 31) return true;
-    if (a === 192 && b === 168) return true;
-    if (a === 0) return true;
-    return false;
-  }
-  if (net.isIPv6(lower)) {
-    if (lower === "::1") return true;
-    if (lower.startsWith("fe80:") || lower.startsWith("fe80::")) return true;
-    if (lower.startsWith("fc") || lower.startsWith("fd")) return true;
-    return false;
-  }
-  return false;
-}
-
 ipcMain.handle(
   "k8s_api_request",
   (
@@ -88,9 +55,9 @@ ipcMain.handle(
       }
       const isHttps = parsed.protocol === "https:";
       const port = parsed.port || (isHttps ? "443" : "80");
-      const endpointKey = `${parsed.hostname.toLowerCase()}:${port}`;
 
-      if (isPrivateOrLoopbackHost(parsed.hostname) && !REGISTERED_K8S_HOSTS.has(endpointKey)) {
+      // SSRF defense — see k8s-endpoints.ts for the allowlist trust model.
+      if (!isK8sApiEndpointAllowed(parsed.hostname, port)) {
         reject(
           new Error(
             `k8s_api_request: refused private/loopback host "${parsed.hostname}". ` +

@@ -20,6 +20,7 @@ import { killAllK8sExecs } from "./k8s-exec";
 import { killAllK9sSessions } from "./k9s";
 import { MIGRATIONS } from "../src/db/schema";
 import { validateSql, validateParams, classifyMutation } from "./db-guard";
+import { registerKubeconfigClusterEndpoints } from "./k8s-endpoints";
 import {
   getEncryptionKey,
   encryptValue,
@@ -297,7 +298,12 @@ ipcMain.handle("account_get_credentials", async (_e, raw: unknown) => {
   const iv = String(row["credentials_iv"] ?? "");
   const aad = buildAad("account", accountId, "credentials");
   const plaintext = decryptValue(ciphertext, iv, getEncryptionKey(), aad);
-  return JSON.parse(plaintext) as Record<string, string>;
+  const credentials = JSON.parse(plaintext) as Record<string, string>;
+  // The renderer always loads an account's credentials through here before
+  // talking to its cluster, so decrypt-time registration keeps the SSRF
+  // allowlist populated across app restarts.
+  await registerKubeconfigClusterEndpoints(credentials["kubeconfig"]);
+  return credentials;
 });
 
 ipcMain.handle("account_save_credentials", async (_e, raw: unknown) => {
@@ -318,6 +324,7 @@ ipcMain.handle("account_save_credentials", async (_e, raw: unknown) => {
     throw new Error("Account not found");
   }
   persist();
+  await registerKubeconfigClusterEndpoints(credentials["kubeconfig"]);
 });
 
 ipcMain.handle("account_create", async (_e, raw: unknown) => {
@@ -335,6 +342,7 @@ ipcMain.handle("account_create", async (_e, raw: unknown) => {
     [accountId, pluginId, displayName, ciphertext, iv],
   );
   persist();
+  await registerKubeconfigClusterEndpoints(credentials["kubeconfig"]);
 });
 
 ipcMain.handle("ssh_key_get_private_key", async (_e, raw: unknown) => {
