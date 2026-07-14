@@ -1,6 +1,6 @@
 import { index, jsonb, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 
-import { accounts, organizations } from "./schema.js";
+import { accounts, organizations } from "./core-schema.js";
 
 export const agentSettings = pgTable("agent_settings", {
   id: text("id").primaryKey(),

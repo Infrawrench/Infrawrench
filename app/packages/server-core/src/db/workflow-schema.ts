@@ -15,7 +15,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 
-import { organizations, dashboards } from "./schema.js";
+import { organizations, dashboards } from "./core-schema.js";
 
 export const workflows = pgTable(
   "workflows",
