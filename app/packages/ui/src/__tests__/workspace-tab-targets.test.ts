@@ -50,6 +50,26 @@ describe("tab target factories", () => {
     });
   });
 
+  it("resourceSshTabTarget can carry agent launch metadata", () => {
+    expect(
+      resourceSshTabTarget("acc-1", "r", "aws", "ec2", {
+        agentSessionId: "session-1",
+        initialCommand: "codex",
+        initialCwd: "~/repo",
+      }),
+    ).toEqual({
+      kind: "resource",
+      accountId: "acc-1",
+      resourceId: "r",
+      view: "ssh",
+      pluginId: "aws",
+      resourceTypeId: "ec2",
+      agentSessionId: "session-1",
+      initialCommand: "codex",
+      initialCwd: "~/repo",
+    });
+  });
+
   it("resourceSftpTabTarget sets sftp view", () => {
     expect(resourceSftpTabTarget("acc-1", "r")).toEqual({
       kind: "resource",

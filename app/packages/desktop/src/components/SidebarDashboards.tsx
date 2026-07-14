@@ -5,6 +5,7 @@ import { createDashboard } from "../lib/pins";
 import { DroppableDashboardItem, useUIStore } from "@infrawrench/ui";
 import { WorkflowIcon } from "@infrawrench/ui/workflows";
 import {
+  agentsTabTarget,
   dashboardTabTarget,
   workflowsTabTarget,
   navigateToWorkspaceTarget,
@@ -82,7 +83,19 @@ export function SidebarDashboards() {
 
   return (
     <div className="mb-2">
-      {/* Workflows entry — opens the Workflows workspace tab. */}
+      <div className="mx-2 mb-1">
+        <button
+          type="button"
+          onClick={() =>
+            void navigateToWorkspaceTarget(navigate, agentsTabTarget(), { label: "Agents" })
+          }
+          className="group w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-on-surface-tertiary hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
+        >
+          <span className="opacity-60 flex-shrink-0 font-mono text-[11px]">&gt;_</span>
+          <span className="truncate">Agents</span>
+        </button>
+      </div>
+
       <div className="mx-2 mb-1">
         <button
           type="button"

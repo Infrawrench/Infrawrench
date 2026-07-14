@@ -66,7 +66,16 @@ export function SftpViewPane({
           {...(sshDefaultUsername ? { defaultUsername: sshDefaultUsername } : {})}
           onConnect={onConnect}
         />
-      ) : null}
+      ) : (
+        <div className="flex h-full flex-col items-center justify-center gap-1 px-4 text-center">
+          <div className="text-sm text-on-surface-muted animate-pulse">
+            Waiting for an SSH address…
+          </div>
+          <div className="text-xs text-on-surface-faint">
+            The server may still be starting up. This view refreshes automatically.
+          </div>
+        </div>
+      )}
     </div>
   );
 }

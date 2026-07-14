@@ -3,6 +3,7 @@ import {
   useUIStore,
   dashboardTabTarget,
   accountTabTarget,
+  agentsTabTarget,
   workflowsTabTarget,
   resourceTabTarget,
   resourceSshTabTarget,
@@ -15,6 +16,7 @@ import {
 export {
   dashboardTabTarget,
   accountTabTarget,
+  agentsTabTarget,
   workflowsTabTarget,
   resourceTabTarget,
   resourceSshTabTarget,
@@ -51,6 +53,12 @@ export function getWorkspaceNavigateArgs(
         params: { orgId, accountId: target.accountId },
         ...(replace ? { replace: true } : {}),
       };
+    case "agents":
+      return {
+        to: "/org/$orgId/agents",
+        params: { orgId },
+        ...(replace ? { replace: true } : {}),
+      };
     case "workflows":
       return {
         to: "/org/$orgId/workflows",
@@ -63,6 +71,9 @@ export function getWorkspaceNavigateArgs(
       if (target.pluginId && target.resourceTypeId) {
         const search: Record<string, string> = { accountId: target.accountId };
         if (target.parentResourceId) search["parent"] = target.parentResourceId;
+        if (target.agentSessionId) search["agentSession"] = target.agentSessionId;
+        if (target.sshKeyId) search["sshKeyId"] = target.sshKeyId;
+        if (target.sshKeyName) search["sshKeyName"] = target.sshKeyName;
         return {
           to: "/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId",
           params: {
@@ -107,6 +118,10 @@ export function navigateToWorkspaceTarget(
 export function syncWorkspaceRouteFromPath(
   pathname: string,
   hash?: string,
+  // Optional router search string (ParsedLocation.searchStr). The web app
+  // runs on browser history, so window.location.search is a valid fallback
+  // when the caller doesn't pass one (unlike desktop's hash history).
+  search?: string,
 ): WorkspaceTabTarget | null {
   const normalizedHash = hash?.replace(/^#/, "");
   const segments = pathname.split("/").filter(Boolean);
@@ -124,6 +139,9 @@ export function syncWorkspaceRouteFromPath(
   if (s[0] === "workflows") {
     return workflowsTabTarget();
   }
+  if (s[0] === "agents") {
+    return agentsTabTarget();
+  }
   if (s[0] === "dashboard" && s[1]) {
     return dashboardTabTarget(s[1]);
   }
@@ -133,11 +151,24 @@ export function syncWorkspaceRouteFromPath(
   if (s[0] === "resources" && s[1] && s[2] && s[3]) {
     const pluginId = decodeURIComponent(s[1]);
     const resourceTypeId = decodeURIComponent(s[2]);
-    const resourceId = decodeURIComponent(s[3]);
-    const params = new URLSearchParams(window.location.search);
-    const accountId = params.get("accountId") ?? resourceId.split(":")[0] ?? "";
+    // Pass the raw path segment through — the shared target factories decode
+    // it exactly once via normalizeResourceId (decoding here too would
+    // double-decode IDs containing literal %-sequences).
+    const resourceId = s[3];
+    const params = new URLSearchParams(
+      search ?? (typeof window === "undefined" ? "" : window.location.search),
+    );
+    const accountId =
+      params.get("accountId") ?? normalizeResourceId(resourceId).split(":")[0] ?? "";
+    const agentSessionId = params.get("agentSession") ?? undefined;
+    const sshKeyId = params.get("sshKeyId") ?? undefined;
+    const sshKeyName = params.get("sshKeyName") ?? undefined;
     if (normalizedHash === "ssh")
-      return resourceSshTabTarget(accountId, resourceId, pluginId, resourceTypeId);
+      return resourceSshTabTarget(accountId, resourceId, pluginId, resourceTypeId, {
+        ...(agentSessionId ? { agentSessionId } : {}),
+        ...(sshKeyId ? { sshKeyId } : {}),
+        ...(sshKeyName ? { sshKeyName } : {}),
+      });
     if (normalizedHash === "sftp")
       return resourceSftpTabTarget(accountId, resourceId, pluginId, resourceTypeId);
     return resourceTabTarget(accountId, resourceId, pluginId, resourceTypeId);

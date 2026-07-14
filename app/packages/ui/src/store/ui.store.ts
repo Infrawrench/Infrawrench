@@ -4,6 +4,7 @@ import { createJSONStorage, persist } from "zustand/middleware";
 export type WorkspaceTabTarget =
   | { kind: "dashboard"; dashboardId: string }
   | { kind: "account"; accountId: string }
+  | { kind: "agents" }
   | { kind: "workflows"; workflowId?: string }
   | {
       kind: "resource";
@@ -13,6 +14,11 @@ export type WorkspaceTabTarget =
       pluginId?: string;
       resourceTypeId?: string;
       parentResourceId?: string;
+      agentSessionId?: string;
+      sshKeyId?: string;
+      sshKeyName?: string;
+      initialCommand?: string;
+      initialCwd?: string;
     };
 
 export interface WorkspaceTab {
@@ -37,11 +43,15 @@ export function getWorkspaceTabId(target: WorkspaceTabTarget): string {
       return `dashboard:${target.dashboardId}`;
     case "account":
       return `account:${target.accountId}`;
+    case "agents":
+      return "agents";
     case "workflows":
       return target.workflowId ? `workflows:${target.workflowId}` : "workflows";
     case "resource":
-      if (target.view === "ssh")
-        return `resource:${target.accountId}:${normalizeResourceId(target.resourceId)}:ssh`;
+      if (target.view === "ssh") {
+        const suffix = target.agentSessionId ? `:agent:${target.agentSessionId}` : "";
+        return `resource:${target.accountId}:${normalizeResourceId(target.resourceId)}:ssh${suffix}`;
+      }
       if (target.view === "sftp")
         return `resource:${target.accountId}:${normalizeResourceId(target.resourceId)}:sftp`;
       return `resource:${target.accountId}:${normalizeResourceId(target.resourceId)}`;
@@ -54,6 +64,8 @@ export function getWorkspaceTabFallbackTitle(target: WorkspaceTabTarget): string
       return "Dashboard";
     case "account":
       return "Account";
+    case "agents":
+      return "Agents";
     case "workflows":
       return "Workflows";
     case "resource":
@@ -70,6 +82,8 @@ export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabT
       return a.dashboardId === (b as { dashboardId: string }).dashboardId;
     case "account":
       return a.accountId === (b as { accountId: string }).accountId;
+    case "agents":
+      return true;
     case "workflows":
       return a.workflowId === (b as { workflowId?: string }).workflowId;
     case "resource":
@@ -77,7 +91,11 @@ export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabT
         a.accountId === (b as { accountId: string }).accountId &&
         normalizeResourceId(a.resourceId) ===
           normalizeResourceId((b as { resourceId: string }).resourceId) &&
-        (a.view ?? "details") === ((b as { view?: "details" | "ssh" | "sftp" }).view ?? "details")
+        (a.view ?? "details") ===
+          ((b as { view?: "details" | "ssh" | "sftp" }).view ?? "details") &&
+        a.agentSessionId === (b as { agentSessionId?: string }).agentSessionId &&
+        a.sshKeyId === (b as { sshKeyId?: string }).sshKeyId &&
+        a.sshKeyName === (b as { sshKeyName?: string }).sshKeyName
       );
   }
 }
@@ -106,6 +124,40 @@ function upsertWorkspaceTabTitle(tab: WorkspaceTab, title?: string): WorkspaceTa
   return { ...tab, title };
 }
 
+function updateWorkspaceTab(
+  tab: WorkspaceTab,
+  target: WorkspaceTabTarget,
+  title?: string,
+): WorkspaceTab {
+  const next = createWorkspaceTab(mergeWorkspaceTabTarget(tab.target, target), title, tab.id);
+  return {
+    ...next,
+    title: title?.trim() || tab.title,
+  };
+}
+
+function mergeWorkspaceTabTarget(
+  existing: WorkspaceTabTarget,
+  next: WorkspaceTabTarget,
+): WorkspaceTabTarget {
+  if (existing.kind !== "resource" || next.kind !== "resource") return next;
+  if (existing.accountId !== next.accountId) return next;
+  if (normalizeResourceId(existing.resourceId) !== normalizeResourceId(next.resourceId))
+    return next;
+  if ((existing.view ?? "details") !== (next.view ?? "details")) return next;
+  if (existing.agentSessionId !== next.agentSessionId) return next;
+  return {
+    ...next,
+    pluginId: next.pluginId ?? existing.pluginId,
+    resourceTypeId: next.resourceTypeId ?? existing.resourceTypeId,
+    parentResourceId: next.parentResourceId ?? existing.parentResourceId,
+    sshKeyId: next.sshKeyId ?? existing.sshKeyId,
+    sshKeyName: next.sshKeyName ?? existing.sshKeyName,
+    initialCommand: next.initialCommand ?? existing.initialCommand,
+    initialCwd: next.initialCwd ?? existing.initialCwd,
+  };
+}
+
 function applyWorkspaceNavigation(
   tabs: WorkspaceTab[],
   activeTabId: string | null,
@@ -116,10 +168,20 @@ function applyWorkspaceNavigation(
   const nextTab = createWorkspaceTab(target, title);
   const activeTab = activeTabId ? tabs.find((tab) => tab.id === activeTabId) : undefined;
 
+  const existingById = tabs.find((tab) => tab.id === nextTab.id);
+  if (existingById) {
+    return {
+      workspaceTabs: tabs.map((tab) =>
+        tab.id === existingById.id ? updateWorkspaceTab(tab, target, title) : tab,
+      ),
+      activeWorkspaceTabId: existingById.id,
+    };
+  }
+
   if (activeTab && workspaceTabTargetsEqual(activeTab.target, nextTab.target)) {
     return {
       workspaceTabs: tabs.map((tab) =>
-        tab.id === activeTab.id ? upsertWorkspaceTabTitle(tab, title) : tab,
+        tab.id === activeTab.id ? updateWorkspaceTab(tab, target, title) : tab,
       ),
       activeWorkspaceTabId: activeTab.id,
     };
@@ -130,7 +192,7 @@ function applyWorkspaceNavigation(
   if (existing) {
     return {
       workspaceTabs: tabs.map((tab) =>
-        tab.id === existing.id ? upsertWorkspaceTabTitle(tab, title) : tab,
+        tab.id === existing.id ? updateWorkspaceTab(tab, target, title) : tab,
       ),
       activeWorkspaceTabId: existing.id,
     };

@@ -26,6 +26,7 @@ import { Route as OrgOrgIdSettingsAuditLogRouteImport } from './routes/org.$orgI
 import { Route as OrgOrgIdSettingsApiKeysRouteImport } from './routes/org.$orgId.settings.api-keys'
 import { Route as OrgOrgIdSettingsPagingRouteImport } from './routes/org.$orgId.settings.paging'
 import { Route as OrgOrgIdWorkflowsRouteImport } from './routes/org.$orgId.workflows'
+import { Route as OrgOrgIdAgentsRouteImport } from './routes/org.$orgId.agents'
 import { Route as OrgOrgIdDashboardDashboardIdRouteImport } from './routes/org.$orgId.dashboard.$dashboardId'
 import { Route as OrgOrgIdChatConversationIdRouteImport } from './routes/org.$orgId.chat.$conversationId'
 import { Route as OrgOrgIdAccountsAccountIdRouteImport } from './routes/org.$orgId.accounts.$accountId'
@@ -119,6 +120,11 @@ const OrgOrgIdWorkflowsRoute = OrgOrgIdWorkflowsRouteImport.update({
   path: '/workflows',
   getParentRoute: () => OrgOrgIdRoute,
 } as any)
+const OrgOrgIdAgentsRoute = OrgOrgIdAgentsRouteImport.update({
+  id: '/agents',
+  path: '/agents',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
 const OrgOrgIdDashboardDashboardIdRoute =
   OrgOrgIdDashboardDashboardIdRouteImport.update({
     id: '/dashboard/$dashboardId',
@@ -151,6 +157,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/chat': typeof OrgOrgIdChatRouteWithChildren
   '/org/$orgId/settings': typeof OrgOrgIdSettingsRouteWithChildren
   '/org/$orgId/': typeof OrgOrgIdIndexRoute
+  '/org/$orgId/agents': typeof OrgOrgIdAgentsRoute
   '/org/$orgId/workflows': typeof OrgOrgIdWorkflowsRoute
   '/org/$orgId/accounts/$accountId': typeof OrgOrgIdAccountsAccountIdRoute
   '/org/$orgId/chat/$conversationId': typeof OrgOrgIdChatConversationIdRoute
@@ -172,6 +179,7 @@ export interface FileRoutesByTo {
   '/invite/$token': typeof InviteTokenRoute
   '/org/$orgId/chat': typeof OrgOrgIdChatRouteWithChildren
   '/org/$orgId': typeof OrgOrgIdIndexRoute
+  '/org/$orgId/agents': typeof OrgOrgIdAgentsRoute
   '/org/$orgId/workflows': typeof OrgOrgIdWorkflowsRoute
   '/org/$orgId/accounts/$accountId': typeof OrgOrgIdAccountsAccountIdRoute
   '/org/$orgId/chat/$conversationId': typeof OrgOrgIdChatConversationIdRoute
@@ -196,6 +204,7 @@ export interface FileRoutesById {
   '/org/$orgId/chat': typeof OrgOrgIdChatRouteWithChildren
   '/org/$orgId/settings': typeof OrgOrgIdSettingsRouteWithChildren
   '/org/$orgId/': typeof OrgOrgIdIndexRoute
+  '/org/$orgId/agents': typeof OrgOrgIdAgentsRoute
   '/org/$orgId/workflows': typeof OrgOrgIdWorkflowsRoute
   '/org/$orgId/accounts/$accountId': typeof OrgOrgIdAccountsAccountIdRoute
   '/org/$orgId/chat/$conversationId': typeof OrgOrgIdChatConversationIdRoute
@@ -221,6 +230,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/chat'
     | '/org/$orgId/settings'
     | '/org/$orgId/'
+    | '/org/$orgId/agents'
     | '/org/$orgId/workflows'
     | '/org/$orgId/accounts/$accountId'
     | '/org/$orgId/chat/$conversationId'
@@ -242,6 +252,7 @@ export interface FileRouteTypes {
     | '/invite/$token'
     | '/org/$orgId/chat'
     | '/org/$orgId'
+    | '/org/$orgId/agents'
     | '/org/$orgId/workflows'
     | '/org/$orgId/accounts/$accountId'
     | '/org/$orgId/chat/$conversationId'
@@ -265,6 +276,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/chat'
     | '/org/$orgId/settings'
     | '/org/$orgId/'
+    | '/org/$orgId/agents'
     | '/org/$orgId/workflows'
     | '/org/$orgId/accounts/$accountId'
     | '/org/$orgId/chat/$conversationId'
@@ -409,6 +421,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgIdWorkflowsRouteImport
       parentRoute: typeof OrgOrgIdRoute
     }
+    '/org/$orgId/agents': {
+      id: '/org/$orgId/agents'
+      path: '/agents'
+      fullPath: '/org/$orgId/agents'
+      preLoaderRoute: typeof OrgOrgIdAgentsRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
     '/org/$orgId/dashboard/$dashboardId': {
       id: '/org/$orgId/dashboard/$dashboardId'
       path: '/dashboard/$dashboardId'
@@ -484,6 +503,7 @@ const OrgOrgIdSettingsRouteWithChildren =
 interface OrgOrgIdRouteChildren {
   OrgOrgIdChatRoute: typeof OrgOrgIdChatRouteWithChildren
   OrgOrgIdSettingsRoute: typeof OrgOrgIdSettingsRouteWithChildren
+  OrgOrgIdAgentsRoute: typeof OrgOrgIdAgentsRoute
   OrgOrgIdWorkflowsRoute: typeof OrgOrgIdWorkflowsRoute
   OrgOrgIdIndexRoute: typeof OrgOrgIdIndexRoute
   OrgOrgIdAccountsAccountIdRoute: typeof OrgOrgIdAccountsAccountIdRoute
@@ -494,6 +514,7 @@ interface OrgOrgIdRouteChildren {
 const OrgOrgIdRouteChildren: OrgOrgIdRouteChildren = {
   OrgOrgIdChatRoute: OrgOrgIdChatRouteWithChildren,
   OrgOrgIdSettingsRoute: OrgOrgIdSettingsRouteWithChildren,
+  OrgOrgIdAgentsRoute: OrgOrgIdAgentsRoute,
   OrgOrgIdWorkflowsRoute: OrgOrgIdWorkflowsRoute,
   OrgOrgIdIndexRoute: OrgOrgIdIndexRoute,
   OrgOrgIdAccountsAccountIdRoute: OrgOrgIdAccountsAccountIdRoute,

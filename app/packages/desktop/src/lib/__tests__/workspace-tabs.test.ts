@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   dashboardTabTarget,
   accountTabTarget,
@@ -73,6 +73,21 @@ describe("getWorkspaceNavigateArgs", () => {
     expect(args.hash).toBe("ssh");
   });
 
+  it("includes agent SSH key metadata in resource search params", () => {
+    const target = resourceSshTabTarget("acc-1", "res-1", undefined, undefined, {
+      agentSessionId: "session-1",
+      sshKeyId: "agent-key-1",
+      sshKeyName: "infrawrench-agent",
+    });
+    const args = getWorkspaceNavigateArgs(target);
+    expect(args.search).toEqual({
+      agentSession: "session-1",
+      sshKeyId: "agent-key-1",
+      sshKeyName: "infrawrench-agent",
+    });
+    expect(args.hash).toBe("ssh");
+  });
+
   it("returns resource route args with sftp hash", () => {
     const target = resourceSftpTabTarget("acc-1", "res-1");
     const args = getWorkspaceNavigateArgs(target);
@@ -139,6 +154,50 @@ describe("syncWorkspaceRouteFromPath", () => {
       kind: "resource",
       view: "ssh",
     });
+  });
+
+  // The desktop app runs on createHashHistory: the real URL looks like
+  // `…/index.html#/resource/acc-1/res-1?agentSession=…#ssh`, so the query
+  // string lives inside the hash fragment and window.location.search is
+  // ALWAYS empty. Callers pass the router's ParsedLocation.searchStr.
+  it("parses agent SSH key metadata from the router search string", () => {
+    const result = syncWorkspaceRouteFromPath(
+      "/resource/acc-1/res-1",
+      "#ssh",
+      "?agentSession=session-1&sshKeyId=agent-key-1&sshKeyName=infrawrench-agent",
+    );
+    expect(result).toMatchObject({
+      kind: "resource",
+      view: "ssh",
+      agentSessionId: "session-1",
+      sshKeyId: "agent-key-1",
+      sshKeyName: "infrawrench-agent",
+    });
+  });
+
+  it("omits agent metadata when no search string is passed", () => {
+    const result = syncWorkspaceRouteFromPath("/resource/acc-1/res-1", "#ssh");
+    expect(result).toMatchObject({ kind: "resource", view: "ssh" });
+    expect(result).not.toHaveProperty("agentSessionId");
+    expect(result).not.toHaveProperty("sshKeyId");
+    expect(result).not.toHaveProperty("sshKeyName");
+  });
+
+  it("never reads window.location.search (empty under hash history)", () => {
+    // Regression guard: under hash history window.location.search can never
+    // contain the router's search params — reading it silently drops agent
+    // metadata. Even if something IS in window.location.search, it must not
+    // leak into the parsed target.
+    vi.stubGlobal("window", {
+      location: { search: "?agentSession=leaked-session&sshKeyId=leaked-key" },
+    });
+    try {
+      const result = syncWorkspaceRouteFromPath("/resource/acc-1/res-1", "#ssh");
+      expect(result).not.toHaveProperty("agentSessionId");
+      expect(result).not.toHaveProperty("sshKeyId");
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("parses resource paths with sftp hash", () => {

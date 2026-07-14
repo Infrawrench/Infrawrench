@@ -42,6 +42,12 @@ import type {
 } from "@infrawrench/plugin-base";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
 import { useOrgId } from "@/lib/useOrgId";
+import { createWebAgentClient } from "@/lib/agent-client";
+import {
+  agentLaunchLookupKey,
+  resolveEffectiveAgentLaunch,
+  type AgentLaunchDefaults,
+} from "@/lib/agent-launch";
 import {
   navigateToWorkspaceTarget,
   resourceSshTabTarget,
@@ -134,6 +140,11 @@ interface Props {
   databaseName?: string | undefined;
   storageBucketName?: string | undefined;
   initialView?: "ssh" | "sftp" | undefined;
+  agentSessionId?: string | undefined;
+  initialSshKeyId?: string | undefined;
+  initialSshKeyName?: string | undefined;
+  initialCommand?: string | undefined;
+  initialCwd?: string | undefined;
   supportsMetrics?: boolean | undefined;
   resourceFields?: Record<string, string | number | boolean> | undefined;
   parentResourceId?: string | undefined;
@@ -175,6 +186,11 @@ export function ResourceDetailClient({
   databaseName,
   storageBucketName,
   initialView,
+  agentSessionId,
+  initialSshKeyId,
+  initialSshKeyName,
+  initialCommand,
+  initialCwd,
   supportsMetrics,
   resourceFields,
   parentResourceId,
@@ -239,6 +255,122 @@ export function ResourceDetailClient({
   const isSshView = initialView === "ssh";
   const isSftpView = initialView === "sftp";
   const hasSshPanel = hasSshTerminal || !!sshHost;
+
+  // Rehydrate launch metadata ONLY for agent tabs (agentSessionId present)
+  // that are missing pieces of it (deep link or restored tab — the URL never
+  // carries initialCommand/initialCwd). Plain SSH tabs must never look up
+  // agent sessions — a VM that once hosted an agent session would otherwise
+  // silently attach the agent's screen.
+  const launchLookupKey = agentLaunchLookupKey({
+    isSshView,
+    accountId,
+    resourceId,
+    agentSessionId,
+    sshKeyId: initialSshKeyId,
+    sshKeyName: initialSshKeyName,
+    initialCommand,
+    initialCwd,
+  });
+  const [agentLaunchDefaults, setAgentLaunchDefaults] = useState<AgentLaunchDefaults>({});
+  const [resolvedLaunchLookupKey, setResolvedLaunchLookupKey] = useState<string | null>(null);
+  const [agentLaunchError, setAgentLaunchError] = useState<string | null>(null);
+  const [autoConnectPending, setAutoConnectPending] = useState(false);
+  const [autoConnectError, setAutoConnectError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!launchLookupKey || !agentSessionId) {
+      setAgentLaunchDefaults({});
+      setResolvedLaunchLookupKey(null);
+      setAgentLaunchError(null);
+      return;
+    }
+
+    let cancelled = false;
+    setAgentLaunchError(null);
+    createWebAgentClient(orgId)
+      .openSession(agentSessionId)
+      .then((opened) => {
+        if (cancelled) return;
+        const next: AgentLaunchDefaults = {};
+        if (!initialSshKeyId && opened.sshKeyId) next.sshKeyId = opened.sshKeyId;
+        if (!initialSshKeyName && opened.sshKeyName) next.sshKeyName = opened.sshKeyName;
+        if (!initialCommand) next.initialCommand = opened.command;
+        if (!initialCwd) next.initialCwd = opened.cwd;
+        setAgentLaunchDefaults(next);
+        setResolvedLaunchLookupKey(launchLookupKey);
+      })
+      .catch((err) => {
+        console.warn(`Failed to resolve agent SSH launch metadata for ${agentSessionId}`, err);
+        if (cancelled) return;
+        setAgentLaunchDefaults({});
+        setAgentLaunchError(
+          `Couldn't prepare the agent SSH session: ${formatErrorMessage(err)}. You can still connect to the VM manually below.`,
+        );
+        setResolvedLaunchLookupKey(launchLookupKey);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    launchLookupKey,
+    agentSessionId,
+    orgId,
+    initialSshKeyId,
+    initialSshKeyName,
+    initialCommand,
+    initialCwd,
+  ]);
+
+  const agentLaunch = resolveEffectiveAgentLaunch({
+    agentSessionId,
+    sshKeyId: initialSshKeyId,
+    sshKeyName: initialSshKeyName,
+    initialCommand,
+    initialCwd,
+    defaults: agentLaunchDefaults,
+    resolving: Boolean(launchLookupKey && resolvedLaunchLookupKey !== launchLookupKey),
+    failed: agentLaunchError !== null,
+  });
+
+  useEffect(() => {
+    const keyId = agentLaunch.sshKeyId;
+    // Auto-connect only applies to the full-screen SSH view — mirrors desktop,
+    // where this effect lives in SshViewPane and never mounts for other views.
+    if (!isSshView || !sshHost || !keyId || sshQuickConnect || wsToken) return;
+    if (!agentLaunch.autoConnectReady) return;
+    let cancelled = false;
+    setAutoConnectError(null);
+    setAutoConnectPending(true);
+    apiPost<{ token: string }>(`/api/org/${orgId}/ws-token`)
+      .then(({ token }) => {
+        if (cancelled) return;
+        setSshQuickConnect({
+          sshKeyId: keyId,
+          username: defaultSshUsername ?? "root",
+        });
+        setWsToken(token);
+      })
+      .catch((error) => {
+        console.warn(`Failed to auto-connect SSH tab with key ${keyId}`, error);
+        if (!cancelled) setAutoConnectError(formatErrorMessage(error));
+      })
+      .finally(() => {
+        if (!cancelled) setAutoConnectPending(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    isSshView,
+    sshHost,
+    agentLaunch.sshKeyId,
+    agentLaunch.autoConnectReady,
+    sshQuickConnect,
+    wsToken,
+    orgId,
+    defaultSshUsername,
+  ]);
 
   const handleRunQuery = useCallback(
     async (sql: string): Promise<QueryResult> => {
@@ -755,6 +887,8 @@ export function ResourceDetailClient({
             <SshQuickConnectPanel
               host={sshHost}
               {...(defaultSshUsername ? { defaultUsername: defaultSshUsername } : {})}
+              preferredSshKeyId={agentLaunch.sshKeyId}
+              preferredSshKeyName={agentLaunch.sshKeyName}
               onConnect={(config) => setSshQuickConnect(config)}
             />
           ) : (
@@ -780,7 +914,7 @@ export function ResourceDetailClient({
       {/* SSH view — full screen */}
       {isSshView && (
         <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
-          {sshHost && !sshQuickConnect && (
+          {sshHost && !sshQuickConnect && !autoConnectPending && agentLaunch.autoConnectReady && (
             <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 border-b border-border/60 bg-surface/40">
               <label className="flex items-center gap-2 text-xs text-on-surface-muted cursor-pointer select-none">
                 <input
@@ -801,16 +935,39 @@ export function ResourceDetailClient({
             </div>
           )}
           <div className="flex-1 min-h-0 overflow-hidden">
-            {sshHost && !sshQuickConnect ? (
-              <SshQuickConnectPanel
-                host={sshHost}
-                {...(defaultSshUsername ? { defaultUsername: defaultSshUsername } : {})}
-                onConnect={async (config) => {
-                  setSshQuickConnect(config);
-                  const { token } = await apiPost<{ token: string }>(`/api/org/${orgId}/ws-token`);
-                  setWsToken(token);
-                }}
-              />
+            {sshHost && !sshQuickConnect && (autoConnectPending || !agentLaunch.autoConnectReady) ? (
+              <div className="flex h-full items-center justify-center px-4 text-sm text-on-surface-muted">
+                {agentLaunch.autoConnectReady
+                  ? "Connecting with infrawrench-agent..."
+                  : "Preparing agent SSH session..."}
+              </div>
+            ) : sshHost && !sshQuickConnect ? (
+              <>
+                {agentLaunchError && (
+                  <div className="shrink-0 border-b border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                    {agentLaunchError}
+                  </div>
+                )}
+                {autoConnectError && (
+                  <div className="shrink-0 border-b border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                    Could not auto-connect with {agentLaunch.sshKeyName ?? "the agent key"}:{" "}
+                    {autoConnectError}
+                  </div>
+                )}
+                <SshQuickConnectPanel
+                  host={sshHost}
+                  {...(defaultSshUsername ? { defaultUsername: defaultSshUsername } : {})}
+                  preferredSshKeyId={agentLaunch.sshKeyId}
+                  preferredSshKeyName={agentLaunch.sshKeyName}
+                  onConnect={async (config) => {
+                    setSshQuickConnect(config);
+                    const { token } = await apiPost<{ token: string }>(
+                      `/api/org/${orgId}/ws-token`,
+                    );
+                    setWsToken(token);
+                  }}
+                />
+              </>
             ) : sshHost && sshQuickConnect && wsToken ? (
               <WebTerminal
                 accountId={accountId}
@@ -820,6 +977,9 @@ export function ResourceDetailClient({
                 sshHost={sshHost}
                 sshUsername={sshQuickConnect.username}
                 agentForward={agentForward}
+                initialCommand={agentLaunch.initialCommand}
+                initialCwd={agentLaunch.initialCwd}
+                agentTerminal={Boolean(agentSessionId)}
               />
             ) : wsToken ? (
               <WebTerminal
@@ -827,6 +987,9 @@ export function ResourceDetailClient({
                 resourceId={resourceId}
                 token={wsToken}
                 agentForward={agentForward}
+                initialCommand={agentLaunch.initialCommand}
+                initialCwd={agentLaunch.initialCwd}
+                agentTerminal={Boolean(agentSessionId)}
               />
             ) : !sshHost ? (
               <div className="flex items-center justify-center h-full">

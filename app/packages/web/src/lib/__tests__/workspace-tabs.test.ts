@@ -134,6 +134,27 @@ describe("getWorkspaceNavigateArgs", () => {
     });
   });
 
+  it("includes agent SSH key metadata in resource search params", () => {
+    const args = getWorkspaceNavigateArgs(
+      resourceSshTabTarget("a1", "r1", "digitalocean", "droplet", {
+        agentSessionId: "session-1",
+        sshKeyId: "agent-key-1",
+        sshKeyName: "infrawrench-agent",
+      }),
+    );
+
+    expect(args).toMatchObject({
+      to: "/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId",
+      search: {
+        accountId: "a1",
+        agentSession: "session-1",
+        sshKeyId: "agent-key-1",
+        sshKeyName: "infrawrench-agent",
+      },
+      hash: "ssh",
+    });
+  });
+
   it("returns resource route args with sftp hash", () => {
     const args = getWorkspaceNavigateArgs({
       kind: "resource",
@@ -167,6 +188,61 @@ describe("syncWorkspaceRouteFromPath", () => {
       kind: "account",
       accountId: "a1",
     });
+  });
+
+  it("parses agent SSH key metadata from resource search params", () => {
+    (globalThis as Record<string, unknown>).window = {
+      location: {
+        pathname: "/org/myorg/resources/digitalocean/droplet/r1",
+        search:
+          "?accountId=a1&agentSession=session-1&sshKeyId=agent-key-1&sshKeyName=infrawrench-agent",
+      },
+    };
+
+    expect(
+      syncWorkspaceRouteFromPath("/org/myorg/resources/digitalocean/droplet/r1", "#ssh"),
+    ).toEqual({
+      kind: "resource",
+      accountId: "a1",
+      resourceId: "r1",
+      view: "ssh",
+      pluginId: "digitalocean",
+      resourceTypeId: "droplet",
+      agentSessionId: "session-1",
+      sshKeyId: "agent-key-1",
+      sshKeyName: "infrawrench-agent",
+    });
+  });
+
+  it("prefers an explicitly passed search string over window.location", () => {
+    const result = syncWorkspaceRouteFromPath(
+      "/org/myorg/resources/digitalocean/droplet/r1",
+      "#ssh",
+      "?accountId=a1&agentSession=session-1",
+    );
+    expect(result).toMatchObject({
+      kind: "resource",
+      accountId: "a1",
+      view: "ssh",
+      agentSessionId: "session-1",
+    });
+  });
+
+  it("decodes the resource ID exactly once", () => {
+    // A resource ID literally containing "%2F" arrives in the path as
+    // "%252F"; decoding twice would corrupt it into "/".
+    const result = syncWorkspaceRouteFromPath("/org/myorg/resources/p/t/ns%252Fname");
+    expect(result).toMatchObject({ kind: "resource", resourceId: "ns%2Fname" });
+  });
+
+  it("tolerates a missing window (SSR) when no search string is passed", () => {
+    delete (globalThis as Record<string, unknown>).window;
+    const result = syncWorkspaceRouteFromPath(
+      "/org/myorg/resources/digitalocean/droplet/r1",
+      "#ssh",
+    );
+    expect(result).toMatchObject({ kind: "resource", accountId: "r1", view: "ssh" });
+    expect(result).not.toHaveProperty("agentSessionId");
   });
 
   it("returns null for unknown paths", () => {

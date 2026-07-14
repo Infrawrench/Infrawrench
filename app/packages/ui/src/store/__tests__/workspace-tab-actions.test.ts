@@ -73,6 +73,111 @@ describe("pinWorkspaceTab", () => {
     expect(workspaceTabs).toHaveLength(2);
     expect(activeWorkspaceTabId).toBe("dashboard:main");
   });
+
+  it("refreshes metadata on an existing matching tab", () => {
+    useUIStore.getState().pinWorkspaceTab(
+      {
+        kind: "resource",
+        accountId: "acc-1",
+        resourceId: "vm-1",
+        view: "ssh",
+        agentSessionId: "session-1",
+      },
+      "SSH",
+    );
+
+    useUIStore.getState().pinWorkspaceTab(
+      {
+        kind: "resource",
+        accountId: "acc-1",
+        resourceId: "vm-1",
+        view: "ssh",
+        agentSessionId: "session-1",
+        sshKeyId: "agent-key-1",
+        sshKeyName: "infrawrench-agent",
+        initialCommand: "codex",
+        initialCwd: "~/app",
+      },
+      "codex · app",
+    );
+
+    const { workspaceTabs, activeWorkspaceTabId } = useUIStore.getState();
+    expect(workspaceTabs).toHaveLength(1);
+    expect(activeWorkspaceTabId).toBe("resource:acc-1:vm-1:ssh:agent:session-1");
+    expect(workspaceTabs[0]!.title).toBe("codex · app");
+    expect(workspaceTabs[0]!.target).toMatchObject({
+      kind: "resource",
+      view: "ssh",
+      agentSessionId: "session-1",
+      sshKeyId: "agent-key-1",
+      sshKeyName: "infrawrench-agent",
+      initialCommand: "codex",
+      initialCwd: "~/app",
+    });
+  });
+
+  it("keeps agent SSH tabs distinct from ordinary SSH tabs", () => {
+    useUIStore.getState().pinWorkspaceTab(
+      {
+        kind: "resource",
+        accountId: "acc-1",
+        resourceId: "vm-1",
+        view: "ssh",
+        agentSessionId: "session-1",
+        initialCommand: "codex",
+        initialCwd: "~/app",
+      },
+      "codex",
+    );
+    useUIStore
+      .getState()
+      .pinWorkspaceTab(
+        { kind: "resource", accountId: "acc-1", resourceId: "vm-1", view: "ssh" },
+        "SSH",
+      );
+    const { workspaceTabs } = useUIStore.getState();
+    expect(workspaceTabs).toHaveLength(2);
+    expect(workspaceTabs[0]!.id).toBe("resource:acc-1:vm-1:ssh:agent:session-1");
+    expect(workspaceTabs[1]!.id).toBe("resource:acc-1:vm-1:ssh");
+  });
+
+  it("preserves agent SSH launch metadata when route sync omits transient fields", () => {
+    useUIStore.getState().createWorkspaceTabInstance(
+      {
+        kind: "resource",
+        accountId: "acc-1",
+        resourceId: "vm-1",
+        view: "ssh",
+        pluginId: "digitalocean",
+        resourceTypeId: "droplet",
+        agentSessionId: "session-1",
+        sshKeyId: "agent-key-1",
+        sshKeyName: "infrawrench-agent",
+        initialCommand: "codex --yolo",
+        initialCwd: "~/infrawrench",
+      },
+      "codex · test",
+    );
+
+    useUIStore.getState().syncWorkspaceRoute({
+      kind: "resource",
+      accountId: "acc-1",
+      resourceId: "vm-1",
+      view: "ssh",
+      agentSessionId: "session-1",
+      sshKeyId: "agent-key-1",
+      sshKeyName: "infrawrench-agent",
+    });
+
+    const tab = useUIStore.getState().workspaceTabs[0]!;
+    expect(tab.title).toBe("codex · test");
+    expect(tab.target).toMatchObject({
+      pluginId: "digitalocean",
+      resourceTypeId: "droplet",
+      initialCommand: "codex --yolo",
+      initialCwd: "~/infrawrench",
+    });
+  });
 });
 
 describe("createWorkspaceTabInstance", () => {

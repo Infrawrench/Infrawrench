@@ -378,7 +378,21 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
         </div>
 
         <div className="flex-1 overflow-y-auto py-2">
-          {/* Workflows */}
+          <div className="mb-2">
+            <div className="mx-2">
+              <button
+                type="button"
+                onClick={() =>
+                  void navigate({ to: "/org/$orgId/agents", params: { orgId: orgId! } })
+                }
+                className="group w-full flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs text-on-surface-tertiary hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
+              >
+                <span className="opacity-60 flex-shrink-0 font-mono text-[11px]">&gt;_</span>
+                <span className="truncate">Agents</span>
+              </button>
+            </div>
+          </div>
+
           <div className="mb-2">
             <div className="mx-2">
               <button

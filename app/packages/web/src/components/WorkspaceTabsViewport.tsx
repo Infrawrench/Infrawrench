@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import { useRouterState } from "@tanstack/react-router";
 import {
   WorkspaceTabsViewport as BaseViewport,
@@ -9,9 +10,11 @@ import {
 import { DashboardPanel } from "@/routes/org.$orgId.dashboard.$dashboardId";
 import { AccountPanel } from "@/routes/org.$orgId.accounts.$accountId";
 import { ResourcePanel } from "@/routes/org.$orgId.resources.$pluginId.$resourceTypeId.$resourceId";
-import { syncWorkspaceRouteFromPath } from "@/lib/workspace-tabs";
+import { getWorkspaceNavigateArgs, syncWorkspaceRouteFromPath } from "@/lib/workspace-tabs";
 import { type WorkflowClient } from "@infrawrench/ui/workflows";
+import { AgentsPanel, type AgentClient } from "@infrawrench/ui/agents";
 import { createWebWorkflowClient } from "@/lib/workflow-client";
+import { createWebAgentClient } from "@/lib/agent-client";
 import { WebWorkflowsPanel } from "./WebWorkflowsPanel";
 
 interface WebWorkspaceTabsViewportProps {
@@ -22,6 +25,7 @@ interface WebWorkspaceTabsViewportProps {
 // per-kind panel components. Each open tab is rendered once and kept mounted
 // across tab switches — see WorkspaceTabsViewport for the rendering rules.
 export function WebWorkspaceTabsViewport({ orgId }: WebWorkspaceTabsViewportProps) {
+  const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const hash = useRouterState({ select: (s) => s.location.hash });
   const tabsHydrated = useUIStore((s) => s.tabsHydrated);
@@ -46,11 +50,17 @@ export function WebWorkspaceTabsViewport({ orgId }: WebWorkspaceTabsViewportProp
     useUIStore.getState().syncWorkspaceRoute(target);
   }, [tabsHydrated, pathname, hash]);
 
-  return <BaseViewport showActive={showActive} renderTabPanel={(tab) => renderPanel(tab, orgId)} />;
+  return (
+    <BaseViewport
+      showActive={showActive}
+      renderTabPanel={(tab) => renderPanel(tab, orgId, navigate)}
+    />
+  );
 }
 
 // Stable WorkflowClient per org so the panel's effects don't refire each render.
 const workflowClients = new Map<string, WorkflowClient>();
+const agentClients = new Map<string, AgentClient>();
 function getWorkflowClient(orgId: string): WorkflowClient {
   let client = workflowClients.get(orgId);
   if (!client) {
@@ -60,13 +70,29 @@ function getWorkflowClient(orgId: string): WorkflowClient {
   return client;
 }
 
-function renderPanel(tab: WorkspaceTab, orgId: string) {
+function getAgentClient(orgId: string): AgentClient {
+  let client = agentClients.get(orgId);
+  if (!client) {
+    client = createWebAgentClient(orgId);
+    agentClients.set(orgId, client);
+  }
+  return client;
+}
+
+function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<typeof useNavigate>) {
   const t = tab.target;
   switch (t.kind) {
     case "dashboard":
       return <DashboardPanel orgId={orgId} dashboardId={t.dashboardId} />;
     case "account":
       return <AccountPanel orgId={orgId} accountId={t.accountId} />;
+    case "agents":
+      return (
+        <AgentsPanel
+          client={getAgentClient(orgId)}
+          openWorkspaceTarget={(target) => void navigate(getWorkspaceNavigateArgs(target))}
+        />
+      );
     case "workflows":
       return <WebWorkflowsPanel client={getWorkflowClient(orgId)} orgId={orgId} />;
     case "resource":
@@ -85,6 +111,11 @@ function renderPanel(tab: WorkspaceTab, orgId: string) {
           accountId={t.accountId}
           parent={t.parentResourceId}
           view={t.view ?? "details"}
+          agentSessionId={t.agentSessionId}
+          sshKeyId={t.sshKeyId}
+          sshKeyName={t.sshKeyName}
+          initialCommand={t.initialCommand}
+          initialCwd={t.initialCwd}
         />
       );
   }
@@ -93,13 +124,17 @@ function renderPanel(tab: WorkspaceTab, orgId: string) {
 function targetsMatch(a: WorkspaceTabTarget, b: WorkspaceTabTarget): boolean {
   if (a.kind !== b.kind) return false;
   if (a.kind === "workflows" && b.kind === "workflows") return a.workflowId === b.workflowId;
+  if (a.kind === "agents" && b.kind === "agents") return true;
   if (a.kind === "dashboard" && b.kind === "dashboard") return a.dashboardId === b.dashboardId;
   if (a.kind === "account" && b.kind === "account") return a.accountId === b.accountId;
   if (a.kind === "resource" && b.kind === "resource") {
     return (
       a.accountId === b.accountId &&
       a.resourceId === b.resourceId &&
-      (a.view ?? "details") === (b.view ?? "details")
+      (a.view ?? "details") === (b.view ?? "details") &&
+      a.agentSessionId === b.agentSessionId &&
+      a.sshKeyId === b.sshKeyId &&
+      a.sshKeyName === b.sshKeyName
     );
   }
   return false;

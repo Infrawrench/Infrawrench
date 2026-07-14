@@ -47,6 +47,7 @@ import {
   INVOKE_PLUGIN_ACTION_EVENT,
   PROMPT_NOSQL_COMMAND_EVENT,
   REROLL_PARENT_OUTPUT_EVENT,
+  buildAgentLaunchCommand,
   dispatchResourcesChanged,
   dispatchRefreshResource,
   resourceTabTitle,
@@ -74,6 +75,7 @@ import {
 } from "../lib/sql-drivers";
 import { createPluginClient } from "../lib/plugin-client";
 import { applyCredentialRewriters } from "../lib/credential-rewriters";
+import { invoke } from "../lib/invoke";
 import type {
   PluginClient,
   PeerPaneContext,
@@ -126,10 +128,20 @@ export const Route = createFileRoute("/resource/$accountId/$resourceId")({
   component: () => null,
   validateSearch: (
     search: Record<string, unknown>,
-  ): { plugin?: string; type?: string; parent?: string } => ({
+  ): {
+    plugin?: string;
+    type?: string;
+    parent?: string;
+    agentSession?: string;
+    sshKeyId?: string;
+    sshKeyName?: string;
+  } => ({
     ...(typeof search["plugin"] === "string" ? { plugin: search["plugin"] } : {}),
     ...(typeof search["type"] === "string" ? { type: search["type"] } : {}),
     ...(typeof search["parent"] === "string" ? { parent: search["parent"] } : {}),
+    ...(typeof search["agentSession"] === "string" ? { agentSession: search["agentSession"] } : {}),
+    ...(typeof search["sshKeyId"] === "string" ? { sshKeyId: search["sshKeyId"] } : {}),
+    ...(typeof search["sshKeyName"] === "string" ? { sshKeyName: search["sshKeyName"] } : {}),
   }),
 });
 
@@ -141,7 +153,27 @@ interface ResourcePanelProps {
   peerParent?: string | undefined;
   /** "" | "ssh" | "sftp" — drives the view selection. */
   view: string;
+  agentSessionId?: string | undefined;
+  sshKeyId?: string | undefined;
+  sshKeyName?: string | undefined;
+  initialCommand?: string | undefined;
+  initialCwd?: string | undefined;
 }
+
+type AgentLaunchDefaults = {
+  sshKeyId?: string;
+  sshKeyName?: string;
+  initialCommand?: string;
+  initialCwd?: string;
+};
+
+type AgentLaunchSession = {
+  id: string;
+  tool: string;
+  workspace_name: string | null;
+  project_name: string;
+  repo: string;
+};
 
 export function ResourcePanel({
   accountId,
@@ -150,9 +182,17 @@ export function ResourcePanel({
   peerType,
   peerParent,
   view: locationHash,
+  agentSessionId,
+  sshKeyId,
+  sshKeyName,
+  initialCommand,
+  initialCwd,
 }: ResourcePanelProps) {
   const tabId = useTabId();
   const decodedResourceId = decodeURIComponent(resourceId);
+  const currentView = locationHash.replace(/^#/, "");
+  const isSshView = currentView === "ssh";
+  const isSftpView = currentView === "sftp";
 
   const [account, setAccount] = useState<AccountRow | null>(null);
   const [resource, setResource] = useState<ResourceInstance | null>(null);
@@ -179,6 +219,11 @@ export function ResourcePanel({
   const [sshHost, setSshHost] = useState<string | null>(null);
   const [sshDefaultUsername, setSshDefaultUsername] = useState<string | null>(null);
   const [quickSshConnection, setQuickSshConnection] = useState<QuickSshConnection | null>(null);
+  const [agentLaunchDefaults, setAgentLaunchDefaults] = useState<AgentLaunchDefaults>({});
+  const [resolvedAgentLaunchLookupKey, setResolvedAgentLaunchLookupKey] = useState<string | null>(
+    null,
+  );
+  const [agentLaunchError, setAgentLaunchError] = useState<string | null>(null);
   const [showTunnelModal, setShowTunnelModal] = useState(false);
   const [showDockerSetup, setShowDockerSetup] = useState(false);
   const [showDropSpotlight, setShowDropSpotlight] = useState(false);
@@ -213,6 +258,14 @@ export function ResourcePanel({
   } | null>(null);
   const peerParentRerollRef = useRef<((outputKey: string) => Promise<void>) | null>(null);
   const navigate = useNavigate();
+  // Rehydrate launch metadata ONLY for agent tabs (agentSessionId present)
+  // that are missing pieces of it (e.g. restored after a restart). Plain SSH
+  // tabs must never look up agent sessions — a VM that once hosted an agent
+  // session would otherwise silently attach the agent's screen.
+  const agentLaunchLookupKey =
+    isSshView && agentSessionId && !(sshKeyId && sshKeyName && initialCommand && initialCwd)
+      ? `${accountId}:${decodedResourceId}:${agentSessionId}`
+      : null;
 
   useEffect(() => {
     let cancelled = false;
@@ -326,6 +379,84 @@ export function ResourcePanel({
     peerPlugin,
     peerType,
     peerParent,
+  ]);
+
+  useEffect(() => {
+    if (!agentLaunchLookupKey || !agentSessionId) {
+      setAgentLaunchDefaults({});
+      setResolvedAgentLaunchLookupKey(null);
+      setAgentLaunchError(null);
+      return;
+    }
+
+    let cancelled = false;
+    setAgentLaunchError(null);
+
+    async function resolveAgentLaunchDefaults() {
+      const db = await getDb();
+      // Look up the exact session this tab was opened for — never "the
+      // latest session on this VM", which could belong to another tab.
+      const rows = await db.select<AgentLaunchSession[]>(
+        `SELECT id, tool, workspace_name, project_name, repo
+         FROM agent_sessions
+         WHERE id = $1 AND account_id = $2 AND vm_resource_id = $3
+         LIMIT 1`,
+        [agentSessionId, accountId, decodedResourceId],
+      );
+      const session = rows[0];
+      if (cancelled) return;
+      if (!session) {
+        setAgentLaunchDefaults({});
+        setAgentLaunchError(
+          "This agent session no longer exists. You can still connect to the VM manually below.",
+        );
+        setResolvedAgentLaunchLookupKey(agentLaunchLookupKey);
+        return;
+      }
+
+      const next: AgentLaunchDefaults = {};
+      if (!sshKeyId || !sshKeyName) {
+        const key = await invoke<{ id: string; name: string; publicKey: string }>(
+          "ssh_key_ensure_agent_key",
+        );
+        if (!sshKeyId) next.sshKeyId = key.id;
+        if (!sshKeyName) next.sshKeyName = key.name;
+      }
+      if (!initialCommand) {
+        next.initialCommand = buildAgentResourceLaunchCommand(session);
+      }
+      if (!initialCwd) {
+        next.initialCwd = `~/${agentWorkspaceName(session)}`;
+      }
+      if (!cancelled) {
+        setAgentLaunchDefaults(next);
+        setResolvedAgentLaunchLookupKey(agentLaunchLookupKey);
+      }
+    }
+
+    void resolveAgentLaunchDefaults().catch((err) => {
+      console.warn(`Failed to resolve agent SSH launch metadata for ${agentSessionId}`, err);
+      if (!cancelled) {
+        setAgentLaunchDefaults({});
+        setAgentLaunchError(
+          `Couldn't prepare the agent SSH session: ${formatErrorMessage(err)}. You can still connect to the VM manually below.`,
+        );
+        setResolvedAgentLaunchLookupKey(agentLaunchLookupKey);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    accountId,
+    agentSessionId,
+    agentLaunchLookupKey,
+    decodedResourceId,
+    initialCommand,
+    initialCwd,
+    sshKeyId,
+    sshKeyName,
   ]);
 
   useEffect(() => {
@@ -1342,10 +1473,30 @@ export function ResourcePanel({
   const hasStorageBrowser = !!schema?.storageBrowser;
   const hasTerminal = !!sshConfig;
   const hasSshPanel = hasTerminal || !!sshHost;
-  const currentView = locationHash.replace(/^#/, "");
-  const isSshView = currentView === "ssh";
-  const isSftpView = currentView === "sftp";
   const hasSftpBrowser = !!sshConfig || !!sshHost;
+  const agentLaunchResolving = Boolean(
+    agentLaunchLookupKey && resolvedAgentLaunchLookupKey !== agentLaunchLookupKey,
+  );
+  // When agent metadata can't be resolved (session deleted, key provisioning
+  // failed), drop the agent fields entirely so the pane falls back to the
+  // ordinary quick-connect panel instead of waiting forever.
+  const agentLaunchFailed = agentLaunchError !== null;
+  const effectiveAgentSessionId = agentLaunchFailed ? undefined : agentSessionId;
+  const effectiveSshKeyId = agentLaunchFailed
+    ? undefined
+    : (sshKeyId ?? agentLaunchDefaults.sshKeyId);
+  const effectiveSshKeyName = agentLaunchFailed
+    ? undefined
+    : (sshKeyName ?? agentLaunchDefaults.sshKeyName);
+  const effectiveInitialCommand = agentLaunchFailed
+    ? undefined
+    : (initialCommand ?? agentLaunchDefaults.initialCommand);
+  const effectiveInitialCwd = agentLaunchFailed
+    ? undefined
+    : (initialCwd ?? agentLaunchDefaults.initialCwd);
+  const agentAutoConnectReady =
+    !agentLaunchResolving &&
+    (!effectiveAgentSessionId || Boolean(effectiveInitialCommand && effectiveInitialCwd));
 
   function openSshTab() {
     void navigateToWorkspaceTarget(navigate, resourceSshTabTarget(accountId, decodedResourceId), {
@@ -1454,6 +1605,13 @@ export function ResourcePanel({
             sshDefaultUsername={sshDefaultUsername}
             quickSshConnection={quickSshConnection}
             onConnect={(config) => setQuickSshConnection(config)}
+            agentSessionId={effectiveAgentSessionId}
+            sshKeyId={effectiveSshKeyId}
+            sshKeyName={effectiveSshKeyName}
+            initialCommand={effectiveInitialCommand}
+            initialCwd={effectiveInitialCwd}
+            autoConnectReady={agentAutoConnectReady}
+            agentLaunchError={agentLaunchError ?? undefined}
           />
         )}
       </div>
@@ -1561,4 +1719,33 @@ export function ResourcePanel({
       )}
     </div>
   );
+}
+
+function agentWorkspaceName(session: {
+  workspace_name: string | null;
+  project_name: string;
+  repo: string;
+}): string {
+  const inferred = workspaceNameFromRepo(session.repo);
+  const stored = session.workspace_name?.trim();
+  if (!stored || stored === session.project_name) return inferred || session.project_name;
+  return stored;
+}
+
+function workspaceNameFromRepo(repo: string): string {
+  const trimmed = repo.trim().replace(/[\\/]+$/g, "");
+  if (!trimmed) return "";
+  const lastSegment = trimmed.split(/[\\/]/).pop() ?? "";
+  return lastSegment.replace(/\.git$/i, "") || "";
+}
+
+function buildAgentResourceLaunchCommand(session: AgentLaunchSession): string {
+  // No launchReadyToken here: this fallback path re-attaches to an existing
+  // session's screen, so the shared launch command only waits on the setup
+  // marker written by the bootstrap script.
+  return buildAgentLaunchCommand({
+    sessionId: session.id,
+    tool: session.tool === "claude-code" ? "claude-code" : "codex",
+    workspaceName: agentWorkspaceName(session),
+  });
 }

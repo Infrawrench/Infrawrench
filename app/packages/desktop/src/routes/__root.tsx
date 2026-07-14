@@ -9,6 +9,7 @@ import {
 import type { DragEndEvent } from "@dnd-kit/core";
 import {
   DndShell,
+  getWorkspaceTabFallbackTitle,
   normalizeResourceId,
   resourceTabTitle,
   toast,
@@ -87,8 +88,8 @@ async function validateWorkspaceTab(tab: WorkspaceTab): Promise<WorkspaceTab | n
     return rows[0] ? { ...tab, title: rows[0].display_name } : null;
   }
 
-  // Workflows tabs aren't backed by a DB row; keep them as-is.
-  if (target.kind === "workflows") {
+  // Agents and Workflows tabs aren't backed by a single resource row; keep them as-is.
+  if (target.kind === "agents" || target.kind === "workflows") {
     return tab;
   }
 
@@ -113,15 +114,25 @@ async function validateWorkspaceTab(tab: WorkspaceTab): Promise<WorkspaceTab | n
     const found = resources.find(
       (resource) => resource.id === normalizeResourceId(target.resourceId),
     );
+    // Agent SSH tabs carry a custom "tool · project" title assigned when the
+    // tab was created (AgentsPanel.openSession); keep it across restarts.
+    // Other resource tabs re-synthesize from the live displayName so renames
+    // propagate. Fall back to synthesizing when the stored title is missing
+    // or just the generic per-view placeholder.
+    const keepStoredTitle =
+      !!target.agentSessionId &&
+      !!tab.title.trim() &&
+      tab.title !== getWorkspaceTabFallbackTitle(target);
     return found
       ? {
           ...tab,
-          title: resourceTabTitle(found.displayName, target.view),
+          title: keepStoredTitle ? tab.title : resourceTabTitle(found.displayName, target.view),
           target: {
-            kind: "resource",
-            accountId: target.accountId,
+            ...target,
             resourceId: normalizeResourceId(found.id),
             view: target.view ?? "details",
+            pluginId: target.pluginId ?? account.plugin_id,
+            resourceTypeId: target.resourceTypeId ?? typeId,
           },
         }
       : null;
@@ -178,6 +189,9 @@ function RootLayout() {
   const router = useRouter();
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const hash = useRouterState({ select: (state) => state.location.hash });
+  // Under hash history the query string lives inside the hash fragment, so
+  // window.location.search is always empty — read it from router state.
+  const searchStr = useRouterState({ select: (state) => state.location.searchStr });
   const [showAddAccount, setShowAddAccount] = useState(false);
   const [spotlightOpen, setSpotlightOpen] = useState(false);
   const [tabsValidated, setTabsValidated] = useState(false);
@@ -249,7 +263,7 @@ function RootLayout() {
 
   useEffect(() => {
     if (!tabsHydrated) return;
-    const currentTarget = syncWorkspaceRouteFromPath(pathname, hash);
+    const currentTarget = syncWorkspaceRouteFromPath(pathname, hash, searchStr);
     if (!currentTarget) {
       setActiveDashboard(null);
       return;
@@ -262,6 +276,7 @@ function RootLayout() {
   }, [
     hash,
     pathname,
+    searchStr,
     activeWorkspaceTabId,
     setActiveDashboard,
     syncWorkspaceRoute,

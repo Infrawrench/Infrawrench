@@ -459,7 +459,9 @@ app.post("/validate-tabs", async (c) => {
 
   for (const tab of tabs) {
     const { target } = tab;
-    if (target.kind === "dashboard" && target.dashboardId) {
+    if (target.kind === "agents" || target.kind === "workflows") {
+      validIds.add(tab.id);
+    } else if (target.kind === "dashboard" && target.dashboardId) {
       const [row] = await db
         .select({ id: dashboards.id, name: dashboards.name })
         .from(dashboards)

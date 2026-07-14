@@ -94,9 +94,22 @@ export const Route = createFileRoute("/org/$orgId/resources/$pluginId/$resourceT
     // Rendering is handled by WorkspaceTabsViewport in __root.tsx, which mounts
     // every open tab simultaneously and keeps them alive across tab switches.
     component: () => null,
-    validateSearch: (search: Record<string, unknown>): { accountId?: string; parent?: string } => ({
+    validateSearch: (
+      search: Record<string, unknown>,
+    ): {
+      accountId?: string;
+      parent?: string;
+      agentSession?: string;
+      sshKeyId?: string;
+      sshKeyName?: string;
+    } => ({
       ...(typeof search["accountId"] === "string" ? { accountId: search["accountId"] } : {}),
       ...(typeof search["parent"] === "string" ? { parent: search["parent"] } : {}),
+      ...(typeof search["agentSession"] === "string"
+        ? { agentSession: search["agentSession"] }
+        : {}),
+      ...(typeof search["sshKeyId"] === "string" ? { sshKeyId: search["sshKeyId"] } : {}),
+      ...(typeof search["sshKeyName"] === "string" ? { sshKeyName: search["sshKeyName"] } : {}),
     }),
   },
 );
@@ -110,6 +123,11 @@ interface ResourcePanelProps {
   parent?: string | undefined;
   /** "ssh" / "sftp" / "" — derived from the tab target's `view`. */
   view: string;
+  agentSessionId?: string | undefined;
+  sshKeyId?: string | undefined;
+  sshKeyName?: string | undefined;
+  initialCommand?: string | undefined;
+  initialCwd?: string | undefined;
 }
 
 export function ResourcePanel({
@@ -120,6 +138,11 @@ export function ResourcePanel({
   accountId,
   parent,
   view: currentView,
+  agentSessionId,
+  sshKeyId,
+  sshKeyName,
+  initialCommand,
+  initialCwd,
 }: ResourcePanelProps) {
   const tabId = useTabId();
   const [store, setStore] = useState<{
@@ -295,6 +318,11 @@ export function ResourcePanel({
         databaseName={data.databaseName}
         storageBucketName={data.storageBucketName}
         initialView={currentView === "ssh" || currentView === "sftp" ? currentView : undefined}
+        agentSessionId={agentSessionId}
+        initialSshKeyId={sshKeyId}
+        initialSshKeyName={sshKeyName}
+        initialCommand={initialCommand}
+        initialCwd={initialCwd}
         supportsMetrics={data.supportsMetrics}
         resourceFields={data.resourceFields}
         parentResourceId={parent}

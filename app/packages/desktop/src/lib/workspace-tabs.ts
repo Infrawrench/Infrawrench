@@ -3,6 +3,7 @@ import {
   useUIStore,
   dashboardTabTarget,
   accountTabTarget,
+  agentsTabTarget,
   workflowsTabTarget,
   resourceTabTarget,
   resourceSshTabTarget,
@@ -15,6 +16,7 @@ import {
 export {
   dashboardTabTarget,
   accountTabTarget,
+  agentsTabTarget,
   workflowsTabTarget,
   resourceTabTarget,
   resourceSshTabTarget,
@@ -44,6 +46,8 @@ export function getWorkspaceNavigateArgs(
         params: { accountId: target.accountId },
         ...(replace ? { replace: true } : {}),
       };
+    case "agents":
+      return { to: "/agents", ...(replace ? { replace: true } : {}) };
     case "workflows":
       return { to: "/workflows", ...(replace ? { replace: true } : {}) };
     case "resource": {
@@ -51,6 +55,9 @@ export function getWorkspaceNavigateArgs(
       if (target.pluginId) search["plugin"] = target.pluginId;
       if (target.resourceTypeId) search["type"] = target.resourceTypeId;
       if (target.parentResourceId) search["parent"] = target.parentResourceId;
+      if (target.agentSessionId) search["agentSession"] = target.agentSessionId;
+      if (target.sshKeyId) search["sshKeyId"] = target.sshKeyId;
+      if (target.sshKeyName) search["sshKeyName"] = target.sshKeyName;
       return {
         to: "/resource/$accountId/$resourceId",
         params: {
@@ -91,12 +98,20 @@ export function navigateToWorkspaceTarget(
 export function syncWorkspaceRouteFromPath(
   pathname: string,
   hash?: string,
+  // The router's search string (ParsedLocation.searchStr). The desktop app
+  // runs on createHashHistory, so the real URL is `…#/path?query#view` and
+  // window.location.search is always empty — callers must pass the search
+  // string from router state instead of relying on window.location.
+  search?: string,
 ): WorkspaceTabTarget | null {
   if (pathname === "/") return null;
   const normalizedHash = hash?.replace(/^#/, "");
   const segments = pathname.split("/").filter(Boolean);
   if (segments[0] === "workflows") {
     return workflowsTabTarget();
+  }
+  if (segments[0] === "agents") {
+    return agentsTabTarget();
   }
   if (segments[0] === "dashboard" && segments[1]) {
     return dashboardTabTarget(segments[1]);
@@ -105,8 +120,16 @@ export function syncWorkspaceRouteFromPath(
     return accountTabTarget(segments[1]);
   }
   if (segments[0] === "resource" && segments[1] && segments[2]) {
+    const params = new URLSearchParams(search ?? "");
+    const agentSessionId = params.get("agentSession") ?? undefined;
+    const sshKeyId = params.get("sshKeyId") ?? undefined;
+    const sshKeyName = params.get("sshKeyName") ?? undefined;
     if (normalizedHash === "ssh")
-      return resourceSshTabTarget(segments[1], segments.slice(2).join("/"));
+      return resourceSshTabTarget(segments[1], segments.slice(2).join("/"), undefined, undefined, {
+        ...(agentSessionId ? { agentSessionId } : {}),
+        ...(sshKeyId ? { sshKeyId } : {}),
+        ...(sshKeyName ? { sshKeyName } : {}),
+      });
     if (normalizedHash === "sftp")
       return resourceSftpTabTarget(segments[1], segments.slice(2).join("/"));
     return resourceTabTarget(segments[1], segments.slice(2).join("/"));

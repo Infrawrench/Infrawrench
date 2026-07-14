@@ -29,6 +29,10 @@ export function workflowsTabTarget(workflowId?: string): WorkspaceTabTarget {
   return { kind: "workflows", ...(workflowId ? { workflowId } : {}) };
 }
 
+export function agentsTabTarget(): WorkspaceTabTarget {
+  return { kind: "agents" };
+}
+
 export function resourceTabTarget(
   accountId: string,
   resourceId: string,
@@ -52,6 +56,13 @@ export function resourceSshTabTarget(
   resourceId: string,
   pluginId?: string,
   resourceTypeId?: string,
+  options?: {
+    agentSessionId?: string;
+    sshKeyId?: string;
+    sshKeyName?: string;
+    initialCommand?: string;
+    initialCwd?: string;
+  },
 ): WorkspaceTabTarget {
   return {
     kind: "resource",
@@ -60,6 +71,11 @@ export function resourceSshTabTarget(
     view: "ssh",
     ...(pluginId ? { pluginId } : {}),
     ...(resourceTypeId ? { resourceTypeId } : {}),
+    ...(options?.agentSessionId ? { agentSessionId: options.agentSessionId } : {}),
+    ...(options?.sshKeyId ? { sshKeyId: options.sshKeyId } : {}),
+    ...(options?.sshKeyName ? { sshKeyName: options.sshKeyName } : {}),
+    ...(options?.initialCommand ? { initialCommand: options.initialCommand } : {}),
+    ...(options?.initialCwd ? { initialCwd: options.initialCwd } : {}),
   };
 }
 
