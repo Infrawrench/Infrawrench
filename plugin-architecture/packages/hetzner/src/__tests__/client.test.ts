@@ -27,8 +27,7 @@ function notOk(status: number, text = "boom"): Response {
   } as unknown as Response;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let fetchMock: MockInstance<any>;
+let fetchMock: MockInstance<typeof fetch>;
 
 beforeEach(() => {
   fetchMock = vi.spyOn(globalThis, "fetch");

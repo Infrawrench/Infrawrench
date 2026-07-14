@@ -1,5 +1,6 @@
 import type { ResourceInstance, SqlTableMeta } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
+import { asRecord } from "./shared.js";
 
 function mapD1Database(db: Record<string, unknown>, accountId: string): ResourceInstance {
   const uuid = String(db["uuid"] ?? db["id"] ?? "");
@@ -32,7 +33,7 @@ export async function listD1Databases(
   const account_id = await api.getAccountId();
   const results: ResourceInstance[] = [];
   for await (const db of api.cf.d1.database.list({ account_id })) {
-    results.push(mapD1Database(db as unknown as Record<string, unknown>, accountId));
+    results.push(mapD1Database(asRecord(db), accountId));
   }
   return results;
 }
@@ -57,7 +58,7 @@ export async function createD1Database(
 ): Promise<ResourceInstance> {
   const account_id = await api.getAccountId();
   const db = await api.cf.d1.database.create({ account_id, name: fields["name"] ?? "" });
-  return mapD1Database(db as unknown as Record<string, unknown>, accountId);
+  return mapD1Database(asRecord(db), accountId);
 }
 
 export async function deleteD1Database(api: CloudflareApi, externalId: string): Promise<void> {
@@ -76,7 +77,7 @@ export async function executeD1Query(
 
   const rows: Record<string, unknown>[] = [];
   for await (const item of api.cf.d1.database.query(externalId, { account_id, sql })) {
-    const raw = item as unknown as Record<string, unknown>;
+    const raw = asRecord(item);
     const results = raw["results"];
     if (Array.isArray(results)) {
       for (const r of results) rows.push(r as Record<string, unknown>);

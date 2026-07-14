@@ -1,6 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
-import { withAuthErrorHint } from "./shared.js";
+import { asRecord, withAuthErrorHint } from "./shared.js";
 import type {
   AIGatewayCreateParams,
   AIGatewayUpdateParams,
@@ -51,7 +51,7 @@ export async function listAiGateways(
       const account_id = await api.getAccountId();
       const results: ResourceInstance[] = [];
       for await (const gw of api.cf.aiGateway.list({ account_id })) {
-        results.push(mapGateway(gw as unknown as Record<string, unknown>, accountId));
+        results.push(mapGateway(asRecord(gw), accountId));
       }
       return results;
     },
@@ -67,7 +67,7 @@ export async function getAiGateway(
 ): Promise<ResourceInstance> {
   const account_id = await api.getAccountId();
   const gw = await api.cf.aiGateway.get(externalId, { account_id });
-  return mapGateway(gw as unknown as Record<string, unknown>, accountId);
+  return mapGateway(asRecord(gw), accountId);
 }
 
 /**
@@ -101,7 +101,7 @@ export async function createAiGateway(
     ...(technique ? { rate_limiting_technique: technique as "fixed" | "sliding" } : {}),
   };
   const gw = await api.cf.aiGateway.create(params);
-  return mapGateway((gw ?? { id: fields["id"] }) as unknown as Record<string, unknown>, accountId);
+  return mapGateway(asRecord(gw ?? { id: fields["id"] }), accountId);
 }
 
 export async function editAiGateway(
@@ -124,7 +124,7 @@ export async function editAiGateway(
     ...(technique ? { rate_limiting_technique: technique as "fixed" | "sliding" } : {}),
   };
   const gw = await api.cf.aiGateway.update(externalId, params);
-  return mapGateway((gw ?? { id: externalId }) as unknown as Record<string, unknown>, accountId);
+  return mapGateway(asRecord(gw ?? { id: externalId }), accountId);
 }
 
 export async function deleteAiGateway(api: CloudflareApi, externalId: string): Promise<void> {

@@ -57,6 +57,7 @@ export type {
   WorkflowMetricDef,
   WorkflowMetricRow,
   WorkflowRunLog,
+  WorkflowRunResult,
   WorkflowRunRow,
   WorkflowSaveBody,
   WorkflowSummary,

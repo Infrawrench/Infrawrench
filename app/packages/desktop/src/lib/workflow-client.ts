@@ -31,6 +31,7 @@ import type {
   DebugSession,
   WorkflowClient,
   WorkflowMetricRow,
+  WorkflowRunResult,
   WorkflowRunRow,
   WorkflowSaveBody,
   WorkflowSummary,
@@ -637,7 +638,7 @@ export async function runWorkflowById(
     interactive: true,
     triggerSource: "manual",
   },
-): Promise<{ runId: string; result: WorkflowRunRow }> {
+): Promise<{ runId: string; result: WorkflowRunResult }> {
   const wf = await loadRow(id);
   if (!wf) throw new Error("Workflow not found");
   const db = await getDb();
@@ -842,5 +843,7 @@ export async function runWorkflowById(
     id,
   ]);
 
-  return { runId, result: result as unknown as WorkflowRunRow };
+  // The sandbox `RunResult` is structurally a `WorkflowRunResult` (its extra
+  // numeric timestamps are simply not part of the narrower type).
+  return { runId, result };
 }

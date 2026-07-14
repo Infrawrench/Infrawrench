@@ -1,6 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
-import { withAuthErrorHint } from "./shared.js";
+import { asRecord, withAuthErrorHint } from "./shared.js";
 
 /**
  * Cloudflare AI Search — formerly AutoRAG — managed retrieval-augmented
@@ -48,7 +48,7 @@ export async function listAiSearchInstances(
       const account_id = await api.getAccountId();
       const results: ResourceInstance[] = [];
       for await (const inst of api.cf.aiSearch.instances.list({ account_id })) {
-        results.push(mapInstance(inst as unknown as Record<string, unknown>, accountId));
+        results.push(mapInstance(asRecord(inst), accountId));
       }
       return results;
     },

@@ -4,6 +4,7 @@ import type {
   PublishMessageResult,
 } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
+import { asRecord } from "./shared.js";
 
 export interface QueueConsumer {
   consumerId: string;
@@ -56,7 +57,7 @@ export async function listQueues(
   const account_id = await api.getAccountId();
   const results: ResourceInstance[] = [];
   for await (const q of api.cf.queues.list({ account_id })) {
-    results.push(mapQueue(q as unknown as Record<string, unknown>, accountId));
+    results.push(mapQueue(asRecord(q), accountId));
   }
   return results;
 }
@@ -73,7 +74,7 @@ export async function getQueue(
 ): Promise<ResourceInstance> {
   const account_id = await api.getAccountId();
   const q = await api.cf.queues.get(externalId, { account_id });
-  return mapQueue(q as unknown as Record<string, unknown>, accountId);
+  return mapQueue(asRecord(q), accountId);
 }
 
 export async function createQueue(
@@ -86,7 +87,7 @@ export async function createQueue(
     account_id,
     queue_name: fields["queue_name"] ?? "",
   });
-  return mapQueue(q as unknown as Record<string, unknown>, accountId);
+  return mapQueue(asRecord(q), accountId);
 }
 
 export async function deleteQueue(api: CloudflareApi, externalId: string): Promise<void> {
@@ -101,7 +102,7 @@ export async function listConsumers(
   const account_id = await api.getAccountId();
   const results: QueueConsumer[] = [];
   for await (const c of api.cf.queues.consumers.list(externalId, { account_id })) {
-    const raw = c as unknown as Record<string, unknown>;
+    const raw = asRecord(c);
     const settings = (raw["settings"] as Record<string, unknown> | undefined) ?? {};
     const entry: QueueConsumer = {
       consumerId: String(raw["consumer_id"] ?? ""),

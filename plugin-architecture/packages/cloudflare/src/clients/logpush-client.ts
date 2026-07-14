@@ -1,6 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
-import { collectPerZone } from "./shared.js";
+import { asRecord, collectPerZone } from "./shared.js";
 
 function mapLogpushJob(
   job: Record<string, unknown>,
@@ -48,7 +48,7 @@ export async function listAllLogpushJobs(
       const part: ResourceInstance[] = [];
       for await (const job of api.cf.logpush.jobs.list({ zone_id: zoneId })) {
         if (!job) continue;
-        part.push(mapLogpushJob(job as unknown as Record<string, unknown>, accountId, zoneId));
+        part.push(mapLogpushJob(asRecord(job), accountId, zoneId));
       }
       return part;
     },
@@ -76,7 +76,7 @@ export async function createLogpushJob(
     body as unknown as Parameters<typeof api.cf.logpush.jobs.create>[0],
   );
   if (!job) throw new Error("Cloudflare plugin: failed to create logpush job (null response)");
-  return mapLogpushJob(job as unknown as Record<string, unknown>, accountId, zoneId);
+  return mapLogpushJob(asRecord(job), accountId, zoneId);
 }
 
 export async function editLogpushJob(
@@ -98,7 +98,7 @@ export async function editLogpushJob(
     body as unknown as Parameters<typeof api.cf.logpush.jobs.update>[1],
   );
   if (!job) throw new Error("Cloudflare plugin: failed to update logpush job (null response)");
-  return mapLogpushJob(job as unknown as Record<string, unknown>, accountId, zoneId);
+  return mapLogpushJob(asRecord(job), accountId, zoneId);
 }
 
 export async function deleteLogpushJob(api: CloudflareApi, externalId: string): Promise<void> {

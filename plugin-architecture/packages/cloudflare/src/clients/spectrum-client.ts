@@ -1,6 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
-import { collectPerZone } from "./shared.js";
+import { asRecord, collectPerZone } from "./shared.js";
 import type { AppCreateParams } from "cloudflare/resources/spectrum/apps";
 
 function mapSpectrumApplication(
@@ -52,9 +52,7 @@ export async function listAllSpectrumApplications(
     async (zoneId) => {
       const part: ResourceInstance[] = [];
       for await (const app of api.cf.spectrum.apps.list({ zone_id: zoneId })) {
-        part.push(
-          mapSpectrumApplication(app as unknown as Record<string, unknown>, accountId, zoneId),
-        );
+        part.push(mapSpectrumApplication(asRecord(app), accountId, zoneId));
       }
       return part;
     },
@@ -86,7 +84,7 @@ export async function createSpectrumApplication(
     ip_firewall: fields["ipFirewall"] === "true",
   };
   const app = await api.cf.spectrum.apps.create(body as unknown as AppCreateParams);
-  return mapSpectrumApplication(app as unknown as Record<string, unknown>, accountId, zoneId);
+  return mapSpectrumApplication(asRecord(app), accountId, zoneId);
 }
 
 export async function editSpectrumApplication(
@@ -116,7 +114,7 @@ export async function editSpectrumApplication(
     appId,
     body as unknown as Parameters<typeof api.cf.spectrum.apps.update>[1],
   );
-  return mapSpectrumApplication(app as unknown as Record<string, unknown>, accountId, zoneId);
+  return mapSpectrumApplication(asRecord(app), accountId, zoneId);
 }
 
 export async function deleteSpectrumApplication(

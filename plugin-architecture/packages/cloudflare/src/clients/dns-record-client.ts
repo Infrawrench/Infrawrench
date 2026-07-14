@@ -1,6 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
-import { collectPerZone, withAuthErrorHint } from "./shared.js";
+import { asRecord, collectPerZone, withAuthErrorHint } from "./shared.js";
 import type { RecordResponse, RecordCreateParams } from "cloudflare/resources/dns/records";
 
 function recordFields(r: RecordResponse, zoneId: string): ResourceInstance {
@@ -9,7 +9,7 @@ function recordFields(r: RecordResponse, zoneId: string): ResourceInstance {
   // `content` and `proxied` are only present on certain record types in the
   // discriminated union (A/AAAA/CNAME etc.) — read them through a permissive
   // view so we can extract them uniformly without a giant per-type switch.
-  const rec = r as unknown as Record<string, unknown>;
+  const rec = asRecord(r);
   const content = String(rec["content"] ?? "");
   return {
     id: `:dns-record:${zoneId}/${r.id}`,
@@ -134,7 +134,12 @@ export async function updateDnsRecord(
   if (fields["priority"] !== undefined && fields["priority"] !== "")
     body["priority"] = Number(fields["priority"]);
   if (fields["comment"] !== undefined) body["comment"] = fields["comment"];
-  const record = await api.cf.dns.records.edit(recordId, body as never);
+  // Same story as create: RecordEditParams is a per-type discriminated union,
+  // but this PATCH body is assembled generically from the changed fields.
+  const record = await api.cf.dns.records.edit(
+    recordId,
+    body as unknown as Parameters<typeof api.cf.dns.records.edit>[1],
+  );
   return mapDnsRecord(record, accountId, zoneId);
 }
 

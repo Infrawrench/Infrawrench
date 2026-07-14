@@ -1,6 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
-import { withAuthErrorHint } from "./shared.js";
+import { asRecord, withAuthErrorHint } from "./shared.js";
 import type { IndexCreateParams } from "cloudflare/resources/vectorize/indexes/indexes";
 
 /**
@@ -40,7 +40,7 @@ export async function listVectorizeIndexes(
       const account_id = await api.getAccountId();
       const results: ResourceInstance[] = [];
       for await (const idx of api.cf.vectorize.indexes.list({ account_id })) {
-        results.push(mapIndex(idx as unknown as Record<string, unknown>, accountId));
+        results.push(mapIndex(asRecord(idx), accountId));
       }
       return results;
     },
@@ -63,10 +63,7 @@ export async function createVectorizeIndex(
     ...(fields["description"] ? { description: fields["description"] } : {}),
   } as unknown as IndexCreateParams;
   const idx = await api.cf.vectorize.indexes.create(params);
-  return mapIndex(
-    (idx ?? { name: fields["name"] }) as unknown as Record<string, unknown>,
-    accountId,
-  );
+  return mapIndex(asRecord(idx ?? { name: fields["name"] }), accountId);
 }
 
 export async function deleteVectorizeIndex(api: CloudflareApi, externalId: string): Promise<void> {

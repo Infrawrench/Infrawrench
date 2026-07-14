@@ -1,6 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
-import { collectPerZone } from "./shared.js";
+import { asRecord, collectPerZone } from "./shared.js";
 import type { HealthcheckCreateParams } from "cloudflare/resources/healthchecks/healthchecks";
 
 /**
@@ -53,7 +53,7 @@ export async function listAllHealthchecks(
     async (zoneId) => {
       const part: ResourceInstance[] = [];
       for await (const hc of api.cf.healthchecks.list({ zone_id: zoneId })) {
-        part.push(mapHealthcheck(hc as unknown as Record<string, unknown>, accountId, zoneId));
+        part.push(mapHealthcheck(asRecord(hc), accountId, zoneId));
       }
       return part;
     },
@@ -88,7 +88,7 @@ export async function createHealthcheck(
     };
   }
   const hc = await api.cf.healthchecks.create(body as unknown as HealthcheckCreateParams);
-  return mapHealthcheck(hc as unknown as Record<string, unknown>, accountId, zoneId);
+  return mapHealthcheck(asRecord(hc), accountId, zoneId);
 }
 
 export async function editHealthcheck(
@@ -115,7 +115,7 @@ export async function editHealthcheck(
     checkId,
     body as unknown as Parameters<typeof api.cf.healthchecks.edit>[1],
   );
-  return mapHealthcheck(hc as unknown as Record<string, unknown>, accountId, zoneId);
+  return mapHealthcheck(asRecord(hc), accountId, zoneId);
 }
 
 export async function deleteHealthcheck(api: CloudflareApi, externalId: string): Promise<void> {

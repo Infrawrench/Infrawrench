@@ -1,6 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
-import { withAuthErrorHint } from "./shared.js";
+import { asRecord, withAuthErrorHint } from "./shared.js";
 import type { ConfigCreateParams } from "cloudflare/resources/hyperdrive/configs";
 
 function mapHyperdrive(c: Record<string, unknown>, accountId: string): ResourceInstance {
@@ -40,7 +40,7 @@ export async function listHyperdrives(
       const account_id = await api.getAccountId();
       const results: ResourceInstance[] = [];
       for await (const c of api.cf.hyperdrive.configs.list({ account_id })) {
-        results.push(mapHyperdrive(c as unknown as Record<string, unknown>, accountId));
+        results.push(mapHyperdrive(asRecord(c), accountId));
       }
       return results;
     },
@@ -69,7 +69,7 @@ export async function createHyperdrive(
     origin: origin as unknown as ConfigCreateParams["origin"],
   };
   const hd = await api.cf.hyperdrive.configs.create(params);
-  return mapHyperdrive(hd as unknown as Record<string, unknown>, accountId);
+  return mapHyperdrive(asRecord(hd), accountId);
 }
 
 /** Origin field keys (resource-field names) that, when changed, require an
@@ -121,7 +121,7 @@ export async function editHyperdrive(
     externalId,
     body as unknown as Parameters<typeof api.cf.hyperdrive.configs.edit>[1],
   );
-  return mapHyperdrive(hd as unknown as Record<string, unknown>, accountId);
+  return mapHyperdrive(asRecord(hd), accountId);
 }
 
 export async function deleteHyperdrive(api: CloudflareApi, externalId: string): Promise<void> {

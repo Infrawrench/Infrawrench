@@ -1,6 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
-import { collectPerZone } from "./shared.js";
+import { asRecord, collectPerZone } from "./shared.js";
 
 function mapSSLCertificate(
   cert: Record<string, unknown>,
@@ -47,14 +47,7 @@ export async function listAllSSLCertificates(
     async (zoneId, zoneName) => {
       const part: ResourceInstance[] = [];
       for await (const cert of api.cf.customCertificates.list({ zone_id: zoneId })) {
-        part.push(
-          mapSSLCertificate(
-            cert as unknown as Record<string, unknown>,
-            accountId,
-            zoneId,
-            zoneName,
-          ),
-        );
+        part.push(mapSSLCertificate(asRecord(cert), accountId, zoneId, zoneName));
       }
       return part;
     },
@@ -85,7 +78,7 @@ export async function createSSLCertificate(
       break;
     }
   }
-  return mapSSLCertificate(cert as unknown as Record<string, unknown>, accountId, zoneId, zoneName);
+  return mapSSLCertificate(asRecord(cert), accountId, zoneId, zoneName);
 }
 
 export async function deleteSSLCertificate(api: CloudflareApi, externalId: string): Promise<void> {

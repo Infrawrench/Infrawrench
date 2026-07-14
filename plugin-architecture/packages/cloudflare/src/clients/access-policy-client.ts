@@ -1,5 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
+import { asRecord } from "./shared.js";
 import type { PolicyCreateParams } from "cloudflare/resources/zero-trust/access/applications/policies";
 
 function mapAccessPolicy(
@@ -60,9 +61,7 @@ export async function listAllAccessPolicies(
       for await (const policy of api.cf.zeroTrust.access.applications.policies.list(appId, {
         account_id,
       })) {
-        results.push(
-          mapAccessPolicy(policy as unknown as Record<string, unknown>, accountId, appId),
-        );
+        results.push(mapAccessPolicy(asRecord(policy), accountId, appId));
       }
     } catch {
       // Skip apps where we can't read policies
@@ -112,7 +111,7 @@ export async function createAccessPolicy(
     appId,
     body as unknown as PolicyCreateParams,
   );
-  return mapAccessPolicy(policy as unknown as Record<string, unknown>, accountId, appId);
+  return mapAccessPolicy(asRecord(policy), accountId, appId);
 }
 
 export async function editAccessPolicy(
@@ -127,9 +126,11 @@ export async function editAccessPolicy(
   // The include/exclude/require rule arrays are flattened to display strings on
   // read, so preserve them from the live policy and only edit name/decision/
   // precedence.
-  const current = (await api.cf.zeroTrust.access.applications.policies.get(appId, policyId, {
-    account_id,
-  })) as unknown as Record<string, unknown>;
+  const current = asRecord(
+    await api.cf.zeroTrust.access.applications.policies.get(appId, policyId, {
+      account_id,
+    }),
+  );
   const body: Record<string, unknown> = {
     account_id,
     name: fields["name"] ?? String(current["name"] ?? ""),
@@ -146,5 +147,5 @@ export async function editAccessPolicy(
     policyId,
     body as unknown as Parameters<typeof api.cf.zeroTrust.access.applications.policies.update>[2],
   );
-  return mapAccessPolicy(policy as unknown as Record<string, unknown>, accountId, appId);
+  return mapAccessPolicy(asRecord(policy), accountId, appId);
 }

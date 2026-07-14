@@ -1,6 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
-import { collectPerZone } from "./shared.js";
+import { asRecord, collectPerZone } from "./shared.js";
 
 function mapWorkerRoute(
   route: Record<string, unknown>,
@@ -38,7 +38,7 @@ export async function listAllWorkerRoutes(
     async (zoneId) => {
       const part: ResourceInstance[] = [];
       for await (const route of api.cf.workers.routes.list({ zone_id: zoneId })) {
-        part.push(mapWorkerRoute(route as unknown as Record<string, unknown>, accountId, zoneId));
+        part.push(mapWorkerRoute(asRecord(route), accountId, zoneId));
       }
       return part;
     },
@@ -60,7 +60,7 @@ export async function createWorkerRoute(
     pattern: fields["pattern"] ?? "",
     script: fields["scriptName"] ?? "",
   });
-  return mapWorkerRoute(route as unknown as Record<string, unknown>, accountId, zoneId);
+  return mapWorkerRoute(asRecord(route), accountId, zoneId);
 }
 
 export async function deleteWorkerRoute(api: CloudflareApi, externalId: string): Promise<void> {

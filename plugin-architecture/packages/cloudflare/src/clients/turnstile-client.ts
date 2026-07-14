@@ -1,6 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
-import { withAuthErrorHint } from "./shared.js";
+import { asRecord, withAuthErrorHint } from "./shared.js";
 import type { WidgetCreateParams } from "cloudflare/resources/turnstile/widgets";
 
 /**
@@ -44,7 +44,7 @@ export async function listTurnstileWidgets(
       const account_id = await api.getAccountId();
       const results: ResourceInstance[] = [];
       for await (const w of api.cf.turnstile.widgets.list({ account_id })) {
-        results.push(mapWidget(w as unknown as Record<string, unknown>, accountId));
+        results.push(mapWidget(asRecord(w), accountId));
       }
       return results;
     },
@@ -71,7 +71,7 @@ export async function createTurnstileWidget(
     ...(fields["region"] ? { region: fields["region"] as "world" | "china" } : {}),
   } as unknown as WidgetCreateParams;
   const w = await api.cf.turnstile.widgets.create(params);
-  return mapWidget(w as unknown as Record<string, unknown>, accountId);
+  return mapWidget(asRecord(w), accountId);
 }
 
 export async function editTurnstileWidget(
@@ -100,15 +100,17 @@ export async function editTurnstileWidget(
     externalId,
     body as unknown as Parameters<typeof api.cf.turnstile.widgets.update>[1],
   );
-  return mapWidget(w as unknown as Record<string, unknown>, accountId);
+  return mapWidget(asRecord(w), accountId);
 }
 
 /** The widget secret (used by the `siteverify` endpoint). Fetched on demand. */
 export async function getWidgetSecret(api: CloudflareApi, sitekey: string): Promise<string> {
   const account_id = await api.getAccountId();
-  const w = (await api.cf.turnstile.widgets.get(sitekey, {
-    account_id,
-  })) as unknown as Record<string, unknown>;
+  const w = asRecord(
+    await api.cf.turnstile.widgets.get(sitekey, {
+      account_id,
+    }),
+  );
   return String(w["secret"] ?? "");
 }
 

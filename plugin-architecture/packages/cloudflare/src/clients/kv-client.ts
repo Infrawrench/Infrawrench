@@ -1,9 +1,10 @@
 import type { KvKeyEntry, KvListResult, ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
+import { asRecord } from "./shared.js";
 import type { Namespace } from "cloudflare/resources/kv/namespaces/namespaces";
 
 function mapKVNamespace(ns: Namespace, accountId: string): ResourceInstance {
-  const raw = ns as unknown as Record<string, unknown>;
+  const raw = asRecord(ns);
   const id = String(raw["id"] ?? "");
   const title = String(raw["title"] ?? "");
   return {

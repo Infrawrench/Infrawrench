@@ -1,6 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
-import { collectPerZone } from "./shared.js";
+import { asRecord, collectPerZone } from "./shared.js";
 import type { RuleCreateParams } from "cloudflare/resources/email-routing/rules/rules";
 
 function mapEmailRoutingRule(
@@ -59,9 +59,7 @@ export async function listAllEmailRoutingRules(
     async (zoneId) => {
       const part: ResourceInstance[] = [];
       for await (const rule of api.cf.emailRouting.rules.list({ zone_id: zoneId })) {
-        part.push(
-          mapEmailRoutingRule(rule as unknown as Record<string, unknown>, accountId, zoneId),
-        );
+        part.push(mapEmailRoutingRule(asRecord(rule), accountId, zoneId));
       }
       return part;
     },
@@ -96,7 +94,7 @@ export async function createEmailRoutingRule(
     ],
   };
   const rule = await api.cf.emailRouting.rules.create(body as unknown as RuleCreateParams);
-  return mapEmailRoutingRule(rule as unknown as Record<string, unknown>, accountId, zoneId);
+  return mapEmailRoutingRule(asRecord(rule), accountId, zoneId);
 }
 
 export async function editEmailRoutingRule(
@@ -109,9 +107,11 @@ export async function editEmailRoutingRule(
   if (!zoneId || !tag) throw new Error("Invalid email routing rule ID");
   // The update is a full replace, so preserve the current matchers/actions and
   // only override the editable name + enabled flag.
-  const current = (await api.cf.emailRouting.rules.get(tag, {
-    zone_id: zoneId,
-  })) as unknown as Record<string, unknown>;
+  const current = asRecord(
+    await api.cf.emailRouting.rules.get(tag, {
+      zone_id: zoneId,
+    }),
+  );
   const body: Record<string, unknown> = {
     zone_id: zoneId,
     name: fields["name"] ?? String(current["name"] ?? ""),
@@ -124,5 +124,5 @@ export async function editEmailRoutingRule(
     tag,
     body as unknown as Parameters<typeof api.cf.emailRouting.rules.update>[1],
   );
-  return mapEmailRoutingRule(rule as unknown as Record<string, unknown>, accountId, zoneId);
+  return mapEmailRoutingRule(asRecord(rule), accountId, zoneId);
 }

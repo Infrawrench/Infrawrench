@@ -52,16 +52,26 @@ export interface WorkflowRunLog {
   message: string;
 }
 
-export interface WorkflowRunRow {
-  id: string;
+/**
+ * Outcome of a single run as returned by `run()`. This is the sandbox's
+ * `RunResult` shape (status/logs/output/error/duration) — not a persisted
+ * run row: it has no id/triggerSource, and its timestamps (when present)
+ * are epoch numbers rather than ISO strings, so they are deliberately
+ * omitted here. Fetch `listRuns()` for the full row.
+ */
+export interface WorkflowRunResult {
   status: string;
-  triggerSource: string;
   logs: WorkflowRunLog[];
   output?: unknown;
   error?: { message: string; stack?: string } | null;
+  durationMs?: number | null;
+}
+
+export interface WorkflowRunRow extends WorkflowRunResult {
+  id: string;
+  triggerSource: string;
   startedAt?: string | null;
   finishedAt?: string | null;
-  durationMs?: number | null;
   createdAt?: string;
 }
 
@@ -137,7 +147,7 @@ export interface WorkflowClient {
   remove(id: string): Promise<void>;
   getTypings(id: string): Promise<string>;
   /** Run a workflow. Pass `debug` for a live-debug (manual) run. */
-  run(id: string, debug?: DebugSession): Promise<{ runId: string; result: WorkflowRunRow }>;
+  run(id: string, debug?: DebugSession): Promise<{ runId: string; result: WorkflowRunResult }>;
   listRuns(id: string): Promise<WorkflowRunRow[]>;
   listMetrics(id: string): Promise<WorkflowMetricRow[]>;
 }

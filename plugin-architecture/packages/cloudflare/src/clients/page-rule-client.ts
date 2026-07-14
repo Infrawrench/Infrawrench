@@ -1,6 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
-import { collectPerZone } from "./shared.js";
+import { asRecord, collectPerZone } from "./shared.js";
 import type { PageRuleCreateParams } from "cloudflare/resources/page-rules/page-rules";
 
 function mapPageRule(
@@ -55,7 +55,7 @@ export async function listAllPageRules(
       const part: ResourceInstance[] = [];
       const rules = await api.cf.pageRules.list({ zone_id: zoneId });
       for (const rule of rules) {
-        part.push(mapPageRule(rule as unknown as Record<string, unknown>, accountId, zoneId));
+        part.push(mapPageRule(asRecord(rule), accountId, zoneId));
       }
       return part;
     },
@@ -89,7 +89,7 @@ export async function createPageRule(
     status: "active",
   };
   const rule = await api.cf.pageRules.create(body as unknown as PageRuleCreateParams);
-  return mapPageRule(rule as unknown as Record<string, unknown>, accountId, zoneId);
+  return mapPageRule(asRecord(rule), accountId, zoneId);
 }
 
 export async function editPageRule(
@@ -102,9 +102,11 @@ export async function editPageRule(
   if (!zoneId || !ruleId) throw new Error("Invalid page rule ID");
   // targets/actions are flattened to display strings on read, so preserve them
   // from the live rule and only edit the toggleable status + priority.
-  const current = (await api.cf.pageRules.get(ruleId, {
-    zone_id: zoneId,
-  })) as unknown as Record<string, unknown>;
+  const current = asRecord(
+    await api.cf.pageRules.get(ruleId, {
+      zone_id: zoneId,
+    }),
+  );
   const body: Record<string, unknown> = {
     zone_id: zoneId,
     targets: current["targets"] ?? [],
@@ -118,7 +120,7 @@ export async function editPageRule(
     ruleId,
     body as unknown as Parameters<typeof api.cf.pageRules.update>[1],
   );
-  return mapPageRule(rule as unknown as Record<string, unknown>, accountId, zoneId);
+  return mapPageRule(asRecord(rule), accountId, zoneId);
 }
 
 export async function deletePageRule(api: CloudflareApi, externalId: string): Promise<void> {

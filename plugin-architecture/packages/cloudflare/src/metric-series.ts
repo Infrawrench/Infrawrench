@@ -1,5 +1,5 @@
 import type { MetricSeries } from "@infrawrench/plugin-base";
-import type { CloudflareApi } from "./clients/shared.js";
+import { asRecord, type CloudflareApi } from "./clients/shared.js";
 
 export async function fetchMetricSeries(
   api: CloudflareApi,
@@ -1521,9 +1521,11 @@ async function fetchLoadBalancerMetricSeries(
   // (the LB hostname / configured name) rather than UUID. Look it up.
   let lbName = "";
   try {
-    const lb = (await api.cf.loadBalancers.get(lbUuid, {
-      zone_id: zoneId,
-    })) as unknown as Record<string, unknown>;
+    const lb = asRecord(
+      await api.cf.loadBalancers.get(lbUuid, {
+        zone_id: zoneId,
+      }),
+    );
     lbName = String(lb["name"] ?? "");
   } catch {
     return [];

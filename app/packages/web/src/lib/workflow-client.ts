@@ -6,6 +6,7 @@ import type {
   DebugSession,
   WorkflowClient,
   WorkflowMetricRow,
+  WorkflowRunResult,
   WorkflowRunRow,
   WorkflowSaveBody,
   WorkflowSummary,
@@ -41,7 +42,7 @@ export function createWebWorkflowClient(orgId: string): WorkflowClient {
   async function runDebug(
     id: string,
     debug: DebugSession,
-  ): Promise<{ runId: string; result: WorkflowRunRow }> {
+  ): Promise<{ runId: string; result: WorkflowRunResult }> {
     const { token } = await fetch(`/api/org/${orgId}/ws-token`, opts("POST")).then((r) =>
       json<{ token: string }>(r),
     );
@@ -117,7 +118,7 @@ export function createWebWorkflowClient(orgId: string): WorkflowClient {
             break;
           }
           case "workflow:result":
-            finish(() => resolve({ runId: m.runId ?? "", result: m.result as WorkflowRunRow }));
+            finish(() => resolve({ runId: m.runId ?? "", result: m.result as WorkflowRunResult }));
             break;
           case "workflow:error":
             finish(() => reject(new Error(m.message ?? "Workflow run failed")));
@@ -145,7 +146,7 @@ export function createWebWorkflowClient(orgId: string): WorkflowClient {
       debug
         ? runDebug(id, debug)
         : fetch(`${base}/${id}/run`, opts("POST")).then((r) =>
-            json<{ runId: string; result: WorkflowRunRow }>(r),
+            json<{ runId: string; result: WorkflowRunResult }>(r),
           ),
     listRuns: (id: string) =>
       fetch(`${base}/${id}/runs`, opts("GET")).then((r) => json<WorkflowRunRow[]>(r)),

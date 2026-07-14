@@ -1,6 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
-import { withAuthErrorHint } from "./shared.js";
+import { asRecord, withAuthErrorHint } from "./shared.js";
 
 /**
  * Cloudflare Durable Object namespaces (`/accounts/{id}/workers/durable_objects/namespaces`).
@@ -40,7 +40,7 @@ export async function listDurableObjectNamespaces(
       const account_id = await api.getAccountId();
       const results: ResourceInstance[] = [];
       for await (const ns of api.cf.durableObjects.namespaces.list({ account_id })) {
-        results.push(mapNamespace(ns as unknown as Record<string, unknown>, accountId));
+        results.push(mapNamespace(asRecord(ns), accountId));
       }
       return results;
     },
@@ -94,7 +94,7 @@ export async function listDurableObjectInstances(
           truncated = true;
           break;
         }
-        const o = obj as unknown as Record<string, unknown>;
+        const o = asRecord(obj);
         instances.push({
           id: String(o["id"] ?? ""),
           hasStoredData: Boolean(o["hasStoredData"]),

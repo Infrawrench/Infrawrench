@@ -17,6 +17,7 @@ export type {
   StoredWorkflowMetricDef,
   WorkflowMetricDef,
   WorkflowMetricRow,
+  WorkflowRunResult,
   WorkflowRunRow,
   WorkflowRunLog,
   WorkflowTrigger,

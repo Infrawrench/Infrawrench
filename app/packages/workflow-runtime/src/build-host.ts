@@ -147,10 +147,9 @@ export function buildWorkflowHost(deps: ClientHostDeps): WorkflowHost {
         transformed.fields,
         parentResourceId,
       );
-      const instance =
-        result && typeof result === "object" && "resource" in result
-          ? (result as { resource: ResourceInstance }).resource
-          : (result as unknown as ResourceInstance);
+      // `createResource` returns `ResourceCreateReturn`: either a bare
+      // `ResourceInstance` or a `{ resource, warnings }` envelope.
+      const instance = "resource" in result ? result.resource : result;
       const lite = toLite(instance);
       // Remember the SSH key attached at create time so resource.ssh() can use
       // it without the author repeating it.

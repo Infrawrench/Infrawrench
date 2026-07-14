@@ -1,6 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
-import { collectPerZone } from "./shared.js";
+import { asRecord, collectPerZone } from "./shared.js";
 import type { RulesetCreateParams } from "cloudflare/resources/rulesets/rulesets";
 import type { RuleCreateParams } from "cloudflare/resources/rulesets/rules";
 
@@ -40,7 +40,7 @@ async function findCustomRuleset(
   zoneId: string,
 ): Promise<Record<string, unknown> | null> {
   for await (const rs of api.cf.rulesets.list({ zone_id: zoneId })) {
-    const raw = rs as unknown as Record<string, unknown>;
+    const raw = asRecord(rs);
     if (raw["phase"] === "http_request_firewall_custom") return raw;
   }
   return null;
@@ -58,7 +58,7 @@ export async function listAllFirewallRules(
       if (customRuleset) {
         const rsId = String(customRuleset["id"]);
         const fullRuleset = await api.cf.rulesets.get(rsId, { zone_id: zoneId });
-        const full = fullRuleset as unknown as Record<string, unknown>;
+        const full = asRecord(fullRuleset);
         const rules = (full["rules"] as Array<Record<string, unknown>>) ?? [];
         for (const rule of rules) {
           part.push(mapFirewallRule(rule, accountId, zoneId, rsId));
@@ -102,7 +102,7 @@ export async function createFirewallRule(
       zone_id: zoneId,
       ...ruleBody,
     } as unknown as RuleCreateParams);
-    const full = ruleset as unknown as Record<string, unknown>;
+    const full = asRecord(ruleset);
     const rules = (full["rules"] as Array<Record<string, unknown>>) ?? [];
     result = rules[rules.length - 1] ?? full;
   } else {
@@ -113,7 +113,7 @@ export async function createFirewallRule(
       phase: "http_request_firewall_custom",
       rules: [ruleBody],
     } as unknown as RulesetCreateParams);
-    const full = ruleset as unknown as Record<string, unknown>;
+    const full = asRecord(ruleset);
     rulesetId = String(full["id"] ?? "");
     const rules = (full["rules"] as Array<Record<string, unknown>>) ?? [];
     result = rules[0] ?? full;
@@ -139,7 +139,7 @@ export async function editFirewallRule(
     zone_id: zoneId,
     ...ruleBody,
   } as unknown as Parameters<typeof api.cf.rulesets.rules.edit>[2]);
-  const full = ruleset as unknown as Record<string, unknown>;
+  const full = asRecord(ruleset);
   const rules = (full["rules"] as Array<Record<string, unknown>>) ?? [];
   const updated = rules.find((r) => String(r["id"]) === ruleId) ?? { ...full, id: ruleId };
   return mapFirewallRule(updated, accountId, zoneId, rulesetId);

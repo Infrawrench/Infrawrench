@@ -1,6 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
-import { collectPerZone } from "./shared.js";
+import { asRecord, collectPerZone } from "./shared.js";
 import type { CustomHostnameCreateParams } from "cloudflare/resources/custom-hostnames/custom-hostnames";
 
 function mapCustomHostname(
@@ -43,7 +43,7 @@ export async function listAllCustomHostnames(
     async (zoneId) => {
       const part: ResourceInstance[] = [];
       for await (const h of api.cf.customHostnames.list({ zone_id: zoneId })) {
-        part.push(mapCustomHostname(h as unknown as Record<string, unknown>, accountId, zoneId));
+        part.push(mapCustomHostname(asRecord(h), accountId, zoneId));
       }
       return part;
     },
@@ -69,7 +69,7 @@ export async function createCustomHostname(
     },
   };
   const ch = await api.cf.customHostnames.create(body as unknown as CustomHostnameCreateParams);
-  return mapCustomHostname(ch as unknown as Record<string, unknown>, accountId, zoneId);
+  return mapCustomHostname(asRecord(ch), accountId, zoneId);
 }
 
 export async function editCustomHostname(
@@ -90,7 +90,7 @@ export async function editCustomHostname(
     hostnameId,
     body as unknown as Parameters<typeof api.cf.customHostnames.edit>[1],
   );
-  return mapCustomHostname(ch as unknown as Record<string, unknown>, accountId, zoneId);
+  return mapCustomHostname(asRecord(ch), accountId, zoneId);
 }
 
 export async function deleteCustomHostname(api: CloudflareApi, externalId: string): Promise<void> {

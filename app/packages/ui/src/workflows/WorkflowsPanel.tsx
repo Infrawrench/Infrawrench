@@ -9,6 +9,7 @@ import type {
   WorkflowMetricDef,
   WorkflowMetricRow,
   WorkflowRunLog,
+  WorkflowRunResult,
   WorkflowRunRow,
   WorkflowSummary,
   WorkflowTrigger,
@@ -88,7 +89,7 @@ export function WorkflowsPanel({
   const [busy, setBusy] = useState(false);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [lastRun, setLastRun] = useState<WorkflowRunRow | null>(null);
+  const [lastRun, setLastRun] = useState<WorkflowRunResult | null>(null);
   // Logs streamed live during a run (e.g. infra.log(ssh streams)).
   const [liveLogs, setLiveLogs] = useState<WorkflowRunLog[]>([]);
   // Debugger state. `breakpointsRef` is the live set the running client reads
@@ -714,7 +715,7 @@ function MetricsEditor({
   );
 }
 
-function RunResultPanel({ run }: { run: WorkflowRunRow }) {
+function RunResultPanel({ run }: { run: WorkflowRunResult }) {
   return (
     <div className="h-48 border-t border-white/10 flex flex-col min-h-0">
       <div className="px-3 py-1 text-xs border-b border-white/10 flex items-center gap-2">

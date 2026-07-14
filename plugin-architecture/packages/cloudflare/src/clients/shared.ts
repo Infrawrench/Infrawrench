@@ -136,6 +136,21 @@ function stripErrorCodePrefix(message: string): string {
 }
 
 /**
+ * Widen a typed SDK response object to a generic string-keyed record.
+ *
+ * The per-feature mappers deliberately read Cloudflare responses as untyped
+ * JSON (coercing every field with `String()`/`Number()`/`Boolean()`) so a
+ * drifting or partially-permissioned API response degrades gracefully instead
+ * of crashing. Any object satisfies `Record<string, unknown>` at runtime; the
+ * assertion is only needed because SDK interfaces lack an index signature.
+ * Requiring `object` (rather than `unknown`) keeps nullable SDK results from
+ * sneaking through without an explicit `?? {...}` fallback.
+ */
+export function asRecord(value: object): Record<string, unknown> {
+  return value as Record<string, unknown>;
+}
+
+/**
  * Turn a raw Cloudflare error into a clean, human message by pulling out
  * `errors[].message`. Handles both the SDK's structured error object and the
  * raw-fetch path whose message embeds the JSON body (e.g.

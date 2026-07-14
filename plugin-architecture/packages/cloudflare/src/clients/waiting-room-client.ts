@@ -1,6 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
-import { collectPerZone } from "./shared.js";
+import { asRecord, collectPerZone } from "./shared.js";
 import type { WaitingRoomCreateParams } from "cloudflare/resources/waiting-rooms/waiting-rooms";
 
 function mapWaitingRoom(
@@ -44,7 +44,7 @@ export async function listAllWaitingRooms(
     async (zoneId) => {
       const part: ResourceInstance[] = [];
       for await (const room of api.cf.waitingRooms.list({ zone_id: zoneId })) {
-        part.push(mapWaitingRoom(room as unknown as Record<string, unknown>, accountId, zoneId));
+        part.push(mapWaitingRoom(asRecord(room), accountId, zoneId));
       }
       return part;
     },
@@ -69,7 +69,7 @@ export async function createWaitingRoom(
     new_users_per_minute: Number(fields["newUsersPerMinute"] ?? 200),
   } as WaitingRoomCreateParams;
   const room = await api.cf.waitingRooms.create(params);
-  return mapWaitingRoom(room as unknown as Record<string, unknown>, accountId, zoneId);
+  return mapWaitingRoom(asRecord(room), accountId, zoneId);
 }
 
 export async function editWaitingRoom(
@@ -94,7 +94,7 @@ export async function editWaitingRoom(
     ...(fields["suspended"] !== undefined ? { suspended: fields["suspended"] === "true" } : {}),
   } as unknown as Parameters<typeof api.cf.waitingRooms.edit>[1];
   const room = await api.cf.waitingRooms.edit(roomId, params);
-  return mapWaitingRoom(room as unknown as Record<string, unknown>, accountId, zoneId);
+  return mapWaitingRoom(asRecord(room), accountId, zoneId);
 }
 
 export async function deleteWaitingRoom(api: CloudflareApi, externalId: string): Promise<void> {

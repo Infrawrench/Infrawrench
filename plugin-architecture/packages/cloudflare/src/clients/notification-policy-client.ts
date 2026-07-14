@@ -1,6 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
-import { withAuthErrorHint } from "./shared.js";
+import { asRecord, withAuthErrorHint } from "./shared.js";
 import type { PolicyCreateParams } from "cloudflare/resources/alerting/policies";
 
 /**
@@ -58,7 +58,7 @@ export async function listNotificationPolicies(
       const account_id = await api.getAccountId();
       const results: ResourceInstance[] = [];
       for await (const p of api.cf.alerting.policies.list({ account_id })) {
-        results.push(mapPolicy(p as unknown as Record<string, unknown>, accountId));
+        results.push(mapPolicy(asRecord(p), accountId));
       }
       return results;
     },
@@ -91,7 +91,7 @@ export async function createNotificationPolicy(
     ...(fields["description"] ? { description: fields["description"] } : {}),
   };
   const p = await api.cf.alerting.policies.create(body as unknown as PolicyCreateParams);
-  return mapPolicy(p as unknown as Record<string, unknown>, accountId);
+  return mapPolicy(asRecord(p), accountId);
 }
 
 export async function editNotificationPolicy(
@@ -112,7 +112,7 @@ export async function editNotificationPolicy(
     externalId,
     body as unknown as Parameters<typeof api.cf.alerting.policies.update>[1],
   );
-  return mapPolicy(p as unknown as Record<string, unknown>, accountId);
+  return mapPolicy(asRecord(p), accountId);
 }
 
 export async function deleteNotificationPolicy(

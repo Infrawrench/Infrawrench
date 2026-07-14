@@ -1,6 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
-import { collectPerZone } from "./shared.js";
+import { asRecord, collectPerZone } from "./shared.js";
 import type { LoadBalancerCreateParams } from "cloudflare/resources/load-balancers/load-balancers";
 
 function mapLoadBalancer(
@@ -48,7 +48,7 @@ export async function listAllLoadBalancers(
     async (zoneId) => {
       const part: ResourceInstance[] = [];
       for await (const lb of api.cf.loadBalancers.list({ zone_id: zoneId })) {
-        part.push(mapLoadBalancer(lb as unknown as Record<string, unknown>, accountId, zoneId));
+        part.push(mapLoadBalancer(asRecord(lb), accountId, zoneId));
       }
       return part;
     },
@@ -76,7 +76,7 @@ export async function createLoadBalancer(
     default_pools: defaultPoolIds,
   } as LoadBalancerCreateParams;
   const lb = await api.cf.loadBalancers.create(params);
-  return mapLoadBalancer(lb as unknown as Record<string, unknown>, accountId, zoneId);
+  return mapLoadBalancer(asRecord(lb), accountId, zoneId);
 }
 
 export async function editLoadBalancer(
@@ -104,7 +104,7 @@ export async function editLoadBalancer(
     lbId,
     body as unknown as Parameters<typeof api.cf.loadBalancers.edit>[1],
   );
-  return mapLoadBalancer(lb as unknown as Record<string, unknown>, accountId, zoneId);
+  return mapLoadBalancer(asRecord(lb), accountId, zoneId);
 }
 
 export async function deleteLoadBalancer(api: CloudflareApi, externalId: string): Promise<void> {

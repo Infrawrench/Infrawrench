@@ -1,5 +1,6 @@
 import type { CredentialExport, ResourceInstance } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
+import { asRecord } from "./shared.js";
 
 function mapTunnel(t: Record<string, unknown>, accountId: string): ResourceInstance {
   const id = String(t["id"] ?? "");
@@ -35,7 +36,7 @@ export async function listTunnels(
   const account_id = await api.getAccountId();
   const results: ResourceInstance[] = [];
   for await (const t of api.cf.zeroTrust.tunnels.cloudflared.list({ account_id })) {
-    const raw = t as unknown as Record<string, unknown>;
+    const raw = asRecord(t);
     if (raw["deleted_at"]) continue; // exclude soft-deleted tunnels
     results.push(mapTunnel(raw, accountId));
   }
@@ -53,7 +54,7 @@ export async function createTunnel(
     name: fields["name"] ?? "",
     tunnel_secret: btoa(crypto.randomUUID()),
   });
-  return mapTunnel(tunnel as unknown as Record<string, unknown>, accountId);
+  return mapTunnel(asRecord(tunnel), accountId);
 }
 
 export async function deleteTunnel(api: CloudflareApi, externalId: string): Promise<void> {

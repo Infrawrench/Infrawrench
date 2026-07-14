@@ -1,5 +1,6 @@
 import type { ResourceInstance, StorageObject } from "@infrawrench/plugin-base";
 import type { CloudflareApi } from "./shared.js";
+import { asRecord } from "./shared.js";
 
 /**
  * R2 bucket CRUD uses the official SDK (`cf.r2.buckets.*`). The R2 *object*
@@ -41,8 +42,7 @@ export async function listR2Buckets(
 ): Promise<ResourceInstance[]> {
   const account_id = await api.getAccountId();
   const response = await api.cf.r2.buckets.list({ account_id });
-  const buckets = (response.buckets ?? []) as unknown as Array<Record<string, unknown>>;
-  return buckets.map((b) => mapR2Bucket(b, accountId, account_id));
+  return (response.buckets ?? []).map((b) => mapR2Bucket(asRecord(b), accountId, account_id));
 }
 
 export async function getR2Bucket(
@@ -52,7 +52,7 @@ export async function getR2Bucket(
 ): Promise<ResourceInstance> {
   const account_id = await api.getAccountId();
   const bucket = await api.cf.r2.buckets.get(externalId, { account_id });
-  return mapR2Bucket(bucket as unknown as Record<string, unknown>, accountId, account_id);
+  return mapR2Bucket(asRecord(bucket), accountId, account_id);
 }
 
 export async function createR2Bucket(
@@ -66,7 +66,7 @@ export async function createR2Bucket(
   const bucket = await api.cf.r2.buckets.create(
     params as unknown as Parameters<typeof api.cf.r2.buckets.create>[0],
   );
-  return mapR2Bucket(bucket as unknown as Record<string, unknown>, accountId, account_id);
+  return mapR2Bucket(asRecord(bucket), accountId, account_id);
 }
 
 export async function deleteR2Bucket(api: CloudflareApi, externalId: string): Promise<void> {
