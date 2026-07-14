@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import workflowRoutes from "./routes/workflows.js";
+import agentRoutes from "./routes/agents.js";
 import { HTTPException } from "hono/http-exception";
 import { setCookie } from "hono/cookie";
 import { randomBytes, randomUUID } from "node:crypto";
@@ -121,6 +122,7 @@ orgScoped.use("*", permissionsMiddleware);
 
 orgScoped.route("/dashboards", dashboardRoutes);
 orgScoped.route("/workflows", workflowRoutes);
+orgScoped.route("/agents", agentRoutes);
 orgScoped.route("/github", githubRoutes);
 orgScoped.route("/accounts", accountRoutes);
 orgScoped.route("/api-keys", apiKeyRoutes);

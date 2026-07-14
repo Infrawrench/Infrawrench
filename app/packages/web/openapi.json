@@ -89,6 +89,10 @@
       "description": "Per-account egress agents — register a bastion, run the agent container on your infra, and bind accounts to it so cloud control-plane traffic exits from your IP."
     },
     {
+      "name": "Agents",
+      "description": "Agent VM defaults, sessions, and reconciliation helpers."
+    },
+    {
       "name": "Team",
       "description": "Members and invitations."
     },
@@ -732,14 +736,18 @@
           "azure-log-analytics",
           "azure-managed-identity",
           "azure-mysql-flexible",
+          "azure-nat-gateway",
           "azure-nsg",
           "azure-postgres-flexible",
+          "azure-private-dns-zone",
           "azure-public-ip",
           "azure-redis-cache",
           "azure-resource-group",
+          "azure-route-table",
           "azure-service-bus",
           "azure-sql-database",
           "azure-storage-account",
+          "azure-subnet",
           "azure-vm",
           "azure-vnet",
           "backend-service",
@@ -751,6 +759,7 @@
           "bigtable-instance",
           "block-volume",
           "cache-rule",
+          "certificate",
           "ch-database",
           "ch-service",
           "cloud-armor-policy",
@@ -776,19 +785,36 @@
           "composer-environment",
           "custom-hostname",
           "d1-database",
+          "databricks-app",
           "databricks-catalog",
           "databricks-cluster",
+          "databricks-cluster-policy",
+          "databricks-dashboard",
+          "databricks-function",
           "databricks-job",
+          "databricks-model-version",
+          "databricks-node-type",
           "databricks-pipeline",
+          "databricks-registered-model",
+          "databricks-repo",
           "databricks-schema",
+          "databricks-secret-scope",
           "databricks-serving-endpoint",
+          "databricks-sql-query",
           "databricks-sql-warehouse",
           "databricks-table",
+          "databricks-vector-search-endpoint",
+          "databricks-vector-search-index",
+          "databricks-volume",
+          "databricks-workspace-object",
           "dataflow-job",
           "db-user",
           "dedicated-inference",
           "dns-record",
           "docker-container",
+          "docker-image",
+          "docker-network",
+          "docker-volume",
           "documentdb-cluster",
           "doks-cluster",
           "domain",
@@ -811,6 +837,7 @@
           "floating-ip",
           "folder",
           "forwarding-rule",
+          "gateway",
           "gce-disk",
           "gce-instance",
           "gcp-service-account",
@@ -832,6 +859,7 @@
           "instance-template",
           "internet-gateway",
           "ip-access-rule",
+          "ip-allocation",
           "k8s-cluster",
           "k8s-configmap",
           "k8s-cronjob",
@@ -872,6 +900,7 @@
           "mysql-database",
           "nat-gateway",
           "neon-branch",
+          "neon-data-api",
           "neon-database",
           "neon-endpoint",
           "neon-project",
@@ -884,19 +913,24 @@
           "netlify-env-var",
           "netlify-form",
           "netlify-site",
+          "network",
           "nfs-share",
           "notification-policy",
           "object-storage-bucket",
           "opensearch-cluster",
           "opensearch-domain",
           "page-rule",
-          "pages-deployment",
-          "pages-project",
           "pg-database",
           "pg-schema",
+          "placement-group",
+          "primary-ip",
+          "private-network",
           "project",
+          "ps-backup",
           "ps-branch",
           "ps-database",
+          "ps-deploy-request",
+          "ps-password",
           "pubsub-subscription",
           "pubsub-topic",
           "queue",
@@ -908,6 +942,7 @@
           "redirect-rule",
           "redis-instance",
           "redshift-cluster",
+          "route-table",
           "route53-health-check",
           "route53-hosted-zone",
           "route53-record-set",
@@ -925,6 +960,7 @@
           "spanner-instance",
           "spectrum-application",
           "sqs-queue",
+          "ssh-key",
           "ssh-target",
           "ssl-certificate",
           "ssm-parameter",
@@ -935,8 +971,13 @@
           "transformation",
           "tunnel",
           "turnstile-widget",
+          "turso-api-token",
           "turso-database",
+          "turso-database-instance",
           "turso-group",
+          "turso-location",
+          "turso-organization-invite",
+          "turso-organization-member",
           "upload-preset",
           "vectorize-index",
           "vercel-deployment",
@@ -3631,6 +3672,195 @@
           }
         },
         "required": ["name"],
+        "additionalProperties": false
+      },
+      "AgentVmAccount": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "accountName": {
+            "type": "string"
+          },
+          "pluginId": {
+            "type": "string"
+          },
+          "pluginName": {
+            "type": "string"
+          },
+          "pluginLogoSvg": {
+            "type": "string"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "resourceTypeName": {
+            "type": "string"
+          },
+          "defaultUsername": {
+            "type": "string"
+          },
+          "defaultFields": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "defaultFieldLabels": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "createFields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/JsonObject"
+            }
+          },
+          "hiddenFieldKeys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "accountId",
+          "accountName",
+          "pluginId",
+          "pluginName",
+          "resourceTypeId",
+          "resourceTypeName",
+          "defaultUsername",
+          "defaultFields",
+          "hiddenFieldKeys"
+        ],
+        "additionalProperties": false
+      },
+      "AgentSettings": {
+        "type": ["object", "null"],
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "pluginId": {
+            "type": "string"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string",
+            "enum": ["codex", "claude-code"]
+          },
+          "fields": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        },
+        "required": ["accountId", "pluginId", "resourceTypeId", "tool", "fields"],
+        "additionalProperties": false
+      },
+      "AgentSession": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "repo": {
+            "type": "string"
+          },
+          "projectName": {
+            "type": "string"
+          },
+          "workspaceName": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string"
+          },
+          "pluginId": {
+            "type": "string"
+          },
+          "resourceTypeId": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string",
+            "enum": ["codex", "claude-code"]
+          },
+          "branchName": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["pending", "provisioning", "setting-up", "up", "failed", "stopped"]
+          },
+          "vmResourceId": {
+            "type": ["string", "null"]
+          },
+          "logs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "repo",
+          "projectName",
+          "workspaceName",
+          "accountId",
+          "pluginId",
+          "resourceTypeId",
+          "tool",
+          "branchName",
+          "status",
+          "vmResourceId",
+          "logs",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "CreateAgentSession": {
+        "type": "object",
+        "properties": {
+          "repo": {
+            "type": "string",
+            "minLength": 1
+          },
+          "projectName": {
+            "type": "string"
+          },
+          "workspaceName": {
+            "type": "string"
+          },
+          "settings": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AgentSettings"
+              },
+              {
+                "type": "object"
+              }
+            ]
+          }
+        },
+        "required": ["repo", "settings"],
         "additionalProperties": false
       },
       "RoleSummary": {
@@ -10080,6 +10310,352 @@
         "operationId": "deleteOrgOrgIdBastionsId",
         "x-required-permission": "bastions:write",
         "description": "_Requires permission: `bastions:write`._"
+      }
+    },
+    "/api/org/{orgId}/agents/accounts": {
+      "get": {
+        "tags": ["Agents"],
+        "summary": "List accounts whose plugins can create agent VMs",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Accounts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AgentVmAccount"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdAgentsAccounts",
+        "x-required-permission": "accounts:read",
+        "description": "_Requires permission: `accounts:read`._"
+      }
+    },
+    "/api/org/{orgId}/agents/settings": {
+      "get": {
+        "tags": ["Agents"],
+        "summary": "Get saved Agents defaults",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentSettings"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdAgentsSettings",
+        "x-required-permission": "accounts:read",
+        "description": "_Requires permission: `accounts:read`._"
+      },
+      "put": {
+        "tags": ["Agents"],
+        "summary": "Save Agents defaults",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/AgentSettings"
+                  },
+                  {
+                    "type": "object"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/AgentSettings"
+                    },
+                    {
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdAgentsSettings",
+        "x-required-permission": "accounts:write",
+        "description": "_Requires permission: `accounts:write`._"
+      }
+    },
+    "/api/org/{orgId}/agents/sessions": {
+      "get": {
+        "tags": ["Agents"],
+        "summary": "List agent sessions",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sessions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AgentSession"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdAgentsSessions",
+        "x-required-permission": "resources:read",
+        "description": "_Requires permission: `resources:read`._"
+      },
+      "post": {
+        "tags": ["Agents"],
+        "summary": "Create an agent session",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAgentSession"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentSession"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdAgentsSessions",
+        "x-required-permission": "resources:write",
+        "description": "_Requires permission: `resources:write`._"
+      }
+    },
+    "/api/org/{orgId}/agents/sessions/{id}/open": {
+      "post": {
+        "tags": ["Agents"],
+        "summary": "Return the command and working directory for an agent session",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Open command",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "command": {
+                      "type": "string"
+                    },
+                    "cwd": {
+                      "type": "string"
+                    },
+                    "sshKeyId": {
+                      "type": "string"
+                    },
+                    "sshKeyName": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["command", "cwd"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdAgentsSessionsIdOpen",
+        "x-required-permission": "resources:execute",
+        "description": "_Requires permission: `resources:execute`._"
+      }
+    },
+    "/api/org/{orgId}/agents/sessions/{id}/reconcile": {
+      "post": {
+        "tags": ["Agents"],
+        "summary": "Return reconciliation branch metadata",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Reconciliation metadata",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "branchName": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["branchName", "message"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdAgentsSessionsIdReconcile",
+        "x-required-permission": "resources:execute",
+        "description": "_Requires permission: `resources:execute`._"
       }
     },
     "/api/org/{orgId}/team/me": {

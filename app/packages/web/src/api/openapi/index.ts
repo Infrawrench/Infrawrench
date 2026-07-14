@@ -19,6 +19,7 @@ import { registerSftpUploadPaths } from "./paths/sftp-upload";
 import { registerSshKeyPaths } from "./paths/ssh-keys";
 import { registerSshTunnelPaths } from "./paths/ssh-tunnels";
 import { registerBastionPaths } from "./paths/bastions";
+import { registerAgentPaths } from "./paths/agents";
 import { registerTeamPaths } from "./paths/team";
 import { registerBillingPaths } from "./paths/billing";
 import { registerAuditPaths } from "./paths/audit";
@@ -69,6 +70,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerSshKeyPaths(ctx);
   registerSshTunnelPaths(ctx);
   registerBastionPaths(ctx);
+  registerAgentPaths(ctx);
   registerTeamPaths(ctx);
   registerBillingPaths(ctx);
   registerAuditPaths(ctx);
@@ -119,6 +121,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
         description:
           "Per-account egress agents — register a bastion, run the agent container on your infra, and bind accounts to it so cloud control-plane traffic exits from your IP.",
       },
+      { name: "Agents", description: "Agent VM defaults, sessions, and reconciliation helpers." },
       { name: "Team", description: "Members and invitations." },
       { name: "Billing", description: "Stripe checkout and portal." },
       { name: "Audit", description: "Audit log access." },
@@ -185,6 +188,14 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "POST /dashboards/validate-tabs": "dashboards:read",
   "GET /dashboards/pin/{pinId}": "dashboards:read",
   "POST /dashboards/probe": "dashboards:read",
+  // agents
+  "GET /agents/accounts": "accounts:read",
+  "GET /agents/settings": "accounts:read",
+  "PUT /agents/settings": "accounts:write",
+  "GET /agents/sessions": "resources:read",
+  "POST /agents/sessions": "resources:write",
+  "POST /agents/sessions/{id}/open": "resources:execute",
+  "POST /agents/sessions/{id}/reconcile": "resources:execute",
   // resources
   "GET /resources/{pluginId}/{typeId}/detail": "resources:read",
   "GET /resources/{pluginId}/{typeId}/manifest": "resources:read",

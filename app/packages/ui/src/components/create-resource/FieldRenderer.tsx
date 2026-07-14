@@ -245,7 +245,7 @@ export function FieldRenderer({
           value={value}
           onChange={onChange}
           mode={field.datetimeMode ?? "datetime"}
-          placeholder={field.placeholder}
+          {...(field.placeholder ? { placeholder: field.placeholder } : {})}
         />
       )}
 
@@ -336,12 +336,18 @@ export function FieldRenderer({
             loadKeys={sshKeyProps.loadKeys}
             generateKey={sshKeyProps.generateKey}
             deleteKey={sshKeyProps.deleteKey}
-            currentUserId={sshKeyProps.currentUserId}
-            systemKeys={sshKeyProps.systemKeys}
-            onePasswordKeys={sshKeyProps.onePasswordKeys}
-            cloudEnabled={sshKeyProps.cloudEnabled}
-            showCloudSection={sshKeyProps.showCloudSection}
-            onCloudSignIn={sshKeyProps.onCloudSignIn}
+            {...(sshKeyProps.currentUserId ? { currentUserId: sshKeyProps.currentUserId } : {})}
+            {...(sshKeyProps.systemKeys ? { systemKeys: sshKeyProps.systemKeys } : {})}
+            {...(sshKeyProps.onePasswordKeys
+              ? { onePasswordKeys: sshKeyProps.onePasswordKeys }
+              : {})}
+            {...(sshKeyProps.cloudEnabled != null
+              ? { cloudEnabled: sshKeyProps.cloudEnabled }
+              : {})}
+            {...(sshKeyProps.showCloudSection != null
+              ? { showCloudSection: sshKeyProps.showCloudSection }
+              : {})}
+            {...(sshKeyProps.onCloudSignIn ? { onCloudSignIn: sshKeyProps.onCloudSignIn } : {})}
           />
         ) : (
           <textarea

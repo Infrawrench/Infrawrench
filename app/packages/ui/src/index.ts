@@ -10,6 +10,56 @@ export {
 export { WorkspaceTabsViewport } from "./workspace/WorkspaceTabsViewport.js";
 export { WorkspaceTabProvider, useTabId } from "./workspace/WorkspaceTabContext.js";
 
+export { AgentsPanel } from "./agents/AgentsPanel.js";
+export {
+  AGENT_SETUP_FAILED_LOG_PREFIX,
+  AGENT_SETUP_STEP_PREFIX,
+  agentToolLabel,
+  buildAgentBootstrapCommand,
+  buildAgentLaunchCommand,
+  isCloneableGitRepo,
+} from "./agents/launch-command.js";
+export type {
+  AgentBootstrapCommandInput,
+  AgentLaunchCommandInput,
+} from "./agents/launch-command.js";
+export type {
+  AgentClient,
+  AgentCreateBody,
+  AgentRuntimeLanguage,
+  AgentRuntimePlan,
+  AgentRuntimeVersionSource,
+  AgentSession,
+  AgentSettings,
+  AgentSetupPlan,
+  AgentStatus,
+  AgentTool,
+  AgentVmAccount,
+} from "./agents/types.js";
+
+export {
+  WorkflowDashboardCard,
+  WorkflowEditorView,
+  WorkflowIcon,
+  WorkflowsPanel,
+} from "./workflows/index.js";
+export type {
+  DebugSession,
+  GitIntegration,
+  GitRepoOption,
+  WorkflowCardMetric,
+  WorkflowClient,
+  WorkflowDashboardCardData,
+  WorkflowDashboardCardProps,
+  WorkflowMetricDef,
+  WorkflowMetricRow,
+  WorkflowRunLog,
+  WorkflowRunRow,
+  WorkflowSaveBody,
+  WorkflowSummary,
+  WorkflowTrigger,
+} from "./workflows/index.js";
+
 export { SchemaRenderer, StatusDotNodeRenderer } from "./components/renderer/SchemaRenderer.js";
 
 export { MetricChart } from "./components/charts/MetricChart.js";
@@ -147,6 +197,7 @@ export type { DraggableResource, DraggableWorkflow } from "./dnd/types.js";
 export {
   dashboardTabTarget,
   accountTabTarget,
+  agentsTabTarget,
   workflowsTabTarget,
   resourceTabTarget,
   resourceSshTabTarget,

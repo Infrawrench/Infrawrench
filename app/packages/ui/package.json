@@ -9,7 +9,21 @@
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     },
-    "./workflows": "./src/workflows/index.ts"
+    "./workflows": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./agents": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./agents/launch-command": {
+      "types": "./dist/agents/launch-command.d.ts",
+      "import": "./dist/agents/launch-command.js",
+      "require": "./dist/agents/launch-command.cjs"
+    }
   },
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",

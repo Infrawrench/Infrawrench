@@ -1,0 +1,579 @@
+/**
+ * Canonical agent-VM shell command builders shared by the desktop and web
+ * apps. Both the SSH launch command (which polls until setup is done and then
+ * attaches a `tmux` session running the coding tool) and the bootstrap
+ * command (which installs runtimes/tools and prepares the workspace) live
+ * here so the setup markers written on the VM always match what the launch
+ * command polls for.
+ *
+ * This module is intentionally free of React/DOM/Node dependencies — it is
+ * imported by the web API server as well as the desktop renderer.
+ */
+import type { AgentRuntimePlan, AgentSetupPlan, AgentTool } from "./types.js";
+
+/** Prefix bootstrap scripts print before each human-readable setup step. */
+export const AGENT_SETUP_STEP_PREFIX = "INFRAWRENCH_AGENT_STEP:";
+
+/**
+ * Prefix of the session log line written when a setup run fails. The desktop
+ * and web setup pipelines both write it, and the agents panel reads it to
+ * offer a manual "Retry setup".
+ */
+export const AGENT_SETUP_FAILED_LOG_PREFIX = "Setup failed:";
+
+export interface AgentLaunchCommandInput {
+  /** Agent session id; its first 8 chars name the remote tmux session. */
+  sessionId: string;
+  tool: AgentTool;
+  /** Workspace directory name under the remote `$HOME`. */
+  workspaceName: string;
+  /**
+   * When set, the launch script also waits for
+   * `$HOME/.infrawrench-agent/launch-ready/<token>` before attaching. An
+   * empty/absent token skips the marker wait — used when setup has already
+   * completed and re-syncing would be redundant (or destructive).
+   */
+  launchReadyToken?: string;
+}
+
+export interface AgentBootstrapCommandInput {
+  tool: AgentTool;
+  /** Workspace directory name under the remote `$HOME`. */
+  workspaceName: string;
+  /** Branch the agent works on inside the remote workspace. */
+  branchName: string;
+  /** Session repo — a clone URL or a local folder path. */
+  repo: string;
+  setupPlan: AgentSetupPlan;
+}
+
+export function isCloneableGitRepo(repo: string): boolean {
+  const value = repo.trim();
+  return /^(?:https?|ssh|git):\/\//i.test(value) || /^git@[^:]+:.+/.test(value);
+}
+
+export function agentToolLabel(tool: AgentTool): string {
+  return tool === "claude-code" ? "Claude Code" : "Codex";
+}
+
+/**
+ * Build the SSH command that waits for agent-VM setup to finish and then
+ * attaches a detached `tmux` session running the coding tool. Polls for the
+ * tool executable, `tmux`, the setup marker written by the bootstrap
+ * command, and (when `launchReadyToken` is set) the launch-ready marker.
+ *
+ * tmux (not GNU screen): screen cannot pass SGR mouse reports through, which
+ * turns the tool's native mouse-wheel scrolling into prompt garbage. tmux
+ * translates mouse reporting correctly, so the tool handles the wheel itself.
+ */
+export function buildAgentLaunchCommand(input: AgentLaunchCommandInput): string {
+  const sessionName = `infrawrench-agent-${input.sessionId.slice(0, 8)}`;
+  const toolCommand =
+    input.tool === "claude-code" ? "claude --dangerously-skip-permissions" : "codex --yolo";
+  const toolExecutable = input.tool === "claude-code" ? "claude" : "codex";
+  const launchReadyMarker = input.launchReadyToken
+    ? `$HOME/.infrawrench-agent/launch-ready/${shellDoubleQuoteContent(input.launchReadyToken)}`
+    : "";
+  const waitingMessage = input.launchReadyToken
+    ? "Waiting for agent VM setup and workspace sync to finish..."
+    : "Waiting for agent VM setup to finish...";
+  const script = `
+set -e
+refresh_agent_shell() {
+  export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:/usr/local/bin:/usr/bin:/bin:$PATH"
+  if command -v mise >/dev/null 2>&1; then
+    eval "$(mise activate bash)" || true
+  fi
+  hash -r
+}
+refresh_agent_shell
+SESSION=${shellQuote(sessionName)}
+PROJECT_DIR="$HOME/${shellDoubleQuoteContent(input.workspaceName)}"
+TOOL_EXECUTABLE=${shellQuote(toolExecutable)}
+SETUP_MARKER="$HOME/.infrawrench-agent/setup-$TOOL_EXECUTABLE"
+LAUNCH_READY_MARKER=${launchReadyMarker ? `"${launchReadyMarker}"` : '""'}
+# Self-heal VMs bootstrapped before the screen->tmux switch.
+ensure_tmux() {
+  if command -v tmux >/dev/null 2>&1; then return 0; fi
+  SUDO=""
+  if [ "$(id -u)" -ne 0 ] && command -v sudo >/dev/null 2>&1; then SUDO="sudo"; fi
+  if command -v apt-get >/dev/null 2>&1; then
+    $SUDO env DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=120 install -y tmux >/dev/null 2>&1 || true
+  elif command -v dnf >/dev/null 2>&1; then
+    $SUDO dnf install -y tmux >/dev/null 2>&1 || true
+  elif command -v apk >/dev/null 2>&1; then
+    $SUDO apk add --no-cache tmux >/dev/null 2>&1 || true
+  fi
+}
+ensure_tmux
+deadline=$((SECONDS + 900))
+announced=0
+while true; do
+  refresh_agent_shell
+  ready=1
+  if ! command -v "$TOOL_EXECUTABLE" >/dev/null 2>&1; then
+    ready=0
+  fi
+  if ! command -v tmux >/dev/null 2>&1; then
+    ready=0
+  fi
+  if [ ! -f "$SETUP_MARKER" ]; then
+    ready=0
+  fi
+  if [ -n "$LAUNCH_READY_MARKER" ] && [ ! -f "$LAUNCH_READY_MARKER" ]; then
+    ready=0
+  fi
+  if [ "$ready" = "1" ]; then
+    break
+  fi
+  if [ "$SECONDS" -ge "$deadline" ]; then
+    echo "Agent VM setup did not finish before the SSH launch timeout." >&2
+    echo "Missing pieces:" >&2
+    command -v "$TOOL_EXECUTABLE" >/dev/null 2>&1 || echo "- $TOOL_EXECUTABLE is not installed or not on PATH" >&2
+    command -v tmux >/dev/null 2>&1 || echo "- tmux is not installed or not on PATH" >&2
+    [ -f "$SETUP_MARKER" ] || echo "- setup marker is missing: $SETUP_MARKER" >&2
+    if [ -n "$LAUNCH_READY_MARKER" ] && [ ! -f "$LAUNCH_READY_MARKER" ]; then
+      echo "- workspace sync marker is missing: $LAUNCH_READY_MARKER" >&2
+    fi
+    exit 1
+  fi
+  if [ "$announced" = "0" ]; then
+    echo "${shellDoubleQuoteContent(waitingMessage)}"
+    announced=1
+  fi
+  sleep 2
+done
+# IS_SANDBOX: agent VMs are dedicated throwaway machines and the default SSH
+# user is often root — Claude Code refuses --dangerously-skip-permissions as
+# root unless it knows it runs inside a sandbox. Don't exec the tool: when it
+# exits non-zero at startup the tmux session would close instantly and eat
+# the error, so keep the window open until the user has read it.
+START_SCRIPT="export PATH=\\"\\$HOME/.local/bin:\\$HOME/.local/share/mise/shims:/usr/local/bin:/usr/bin:/bin:\\$PATH\\"; export IS_SANDBOX=1; if command -v mise >/dev/null 2>&1; then eval \\"\\$(mise activate bash)\\" || true; fi; cd $(printf '%q' "$PROJECT_DIR") && ${toolCommand}; rc=\\$?; if [ \\$rc -ne 0 ]; then echo; echo \\"${toolExecutable} exited with status \\$rc.\\"; echo \\"Press Enter to close.\\"; read -r _; fi"
+if ! tmux has-session -t "=$SESSION" 2>/dev/null; then
+  tmux new-session -d -s "$SESSION" bash -lc "$START_SCRIPT"
+  tmux set-option -t "=$SESSION" status off >/dev/null 2>&1 || true
+fi
+exec tmux attach-session -d -t "=$SESSION"
+`;
+  return `bash -lc ${shellQuote(script)}`;
+}
+
+/**
+ * Build the bootstrap command run over SSH during agent-VM setup: installs
+ * system packages, mise-managed runtimes, package managers, and the coding
+ * tool CLI, prepares the workspace (cloning the repo when a clone URL is
+ * known), and finally writes the `~/.infrawrench-agent/setup-$TOOL` marker
+ * the launch command polls for.
+ */
+export function buildAgentBootstrapCommand(input: AgentBootstrapCommandInput): string {
+  const toolCommand = input.tool === "claude-code" ? "claude" : "codex";
+  const toolPackage = input.tool === "claude-code" ? "@anthropic-ai/claude-code" : "@openai/codex";
+  const runtimeInstallLines = runtimeInstallCommands(input.setupPlan);
+  const packageManagerInstallLines = packageManagerInstallCommands(input.setupPlan);
+  const initialCloneUrl =
+    input.setupPlan.initialCloneUrl?.trim() ||
+    (isCloneableGitRepo(input.repo) ? input.repo : "");
+  const script = `
+set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
+export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:/usr/local/bin:/usr/bin:/bin:$PATH"
+export MISE_YES=1
+
+TOOL_COMMAND=${shellQuote(toolCommand)}
+TOOL_PACKAGE=${shellQuote(toolPackage)}
+PROJECT_NAME=${shellQuote(input.workspaceName)}
+PROJECT_DIR="$HOME/$PROJECT_NAME"
+REPO_URL=${shellQuote(initialCloneUrl)}
+REPO_CLONEABLE=${initialCloneUrl ? "1" : "0"}
+BRANCH_NAME=${shellQuote(input.branchName)}
+MARKER_DIR="$HOME/.infrawrench-agent"
+MARKER="$MARKER_DIR/setup-$TOOL_COMMAND"
+
+log_step() {
+  printf '%s%s\\n' ${shellQuote(AGENT_SETUP_STEP_PREFIX)} "$1" >&2
+}
+
+mkdir -p "$MARKER_DIR"
+if command -v "$TOOL_COMMAND" >/dev/null 2>&1 && command -v tmux >/dev/null 2>&1 && [ -f "$MARKER" ]; then
+  log_step "Bootstrap already complete."
+  exit 0
+fi
+
+SUDO=""
+if [ "$(id -u)" -ne 0 ]; then
+  if ! command -v sudo >/dev/null 2>&1; then
+    echo "sudo is required to prepare this VM as a non-root user" >&2
+    exit 1
+  fi
+  SUDO="sudo"
+fi
+
+log_step "Installing system packages."
+if command -v apt-get >/dev/null 2>&1; then
+  # Fresh cloud VMs often run unattended-upgrades on first boot, which holds
+  # the dpkg lock for minutes. Wait for it instead of failing immediately.
+  $SUDO apt-get -o DPkg::Lock::Timeout=120 update -y
+  $SUDO apt-get -o DPkg::Lock::Timeout=120 install -y ca-certificates curl git tmux tar xz-utils unzip build-essential pkg-config autoconf bison libssl-dev zlib1g-dev libreadline-dev libyaml-dev libffi-dev libgdbm-dev libncurses-dev libdb-dev libsqlite3-dev libgmp-dev
+elif command -v dnf >/dev/null 2>&1; then
+  $SUDO dnf install -y ca-certificates curl git tmux tar xz unzip gcc gcc-c++ make pkgconf-pkg-config openssl-devel zlib-devel readline-devel libyaml-devel libffi-devel gdbm-devel ncurses-devel sqlite-devel gmp-devel
+elif command -v apk >/dev/null 2>&1; then
+  $SUDO apk add --no-cache ca-certificates curl git tmux tar xz unzip bash build-base pkgconf openssl-dev zlib-dev readline-dev yaml-dev libffi-dev gdbm-dev ncurses-dev sqlite-dev gmp-dev
+else
+  echo "Unsupported Linux package manager; install git, curl, tmux, and build tools manually" >&2
+  exit 1
+fi
+
+if ! command -v mise >/dev/null 2>&1; then
+  log_step "Installing mise runtime manager."
+  curl -fsSL https://mise.run | sh
+fi
+export PATH="$HOME/.local/bin:$PATH"
+if ! command -v mise >/dev/null 2>&1; then
+  echo "mise did not install into PATH" >&2
+  exit 1
+fi
+
+ensure_shell_runtime_path() {
+  mkdir -p "$HOME/.local/bin"
+  for rc in "$HOME/.profile" "$HOME/.bashrc" "$HOME/.bash_profile"; do
+    touch "$rc"
+    if ! grep -F 'export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:$PATH"' "$rc" >/dev/null 2>&1; then
+      printf '%s\\n' 'export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:$PATH"' >> "$rc"
+    fi
+    if ! grep -F 'mise activate bash' "$rc" >/dev/null 2>&1; then
+      printf '%s\\n' 'if command -v mise >/dev/null 2>&1; then eval "$(mise activate bash)"; fi' >> "$rc"
+    fi
+  done
+}
+
+ensure_shell_runtime_path
+
+install_runtime() {
+  runtime="$1"
+  version="$2"
+  if [ -z "$runtime" ] || [ -z "$version" ]; then
+    return 0
+  fi
+  if [ "$version" = "latest" ]; then
+    version="$(mise latest "$runtime")"
+  fi
+  log_step "Installing $runtime $version."
+  mise use -g "$runtime@$version"
+  mise install "$runtime@$version"
+}
+
+${runtimeInstallLines}
+
+eval "$(mise activate bash)" || true
+hash -r
+
+ensure_npm_global_prefix() {
+  if command -v npm >/dev/null 2>&1; then
+    npm config set prefix "$HOME/.local"
+    export PATH="$HOME/.local/bin:$PATH"
+  fi
+}
+
+ensure_npm_global_prefix
+
+link_tool_command() {
+  cmd="$1"
+  target="$(command -v "$cmd" 2>/dev/null || true)"
+  if [ -z "$target" ] && [ -x "$HOME/.local/bin/$cmd" ]; then
+    target="$HOME/.local/bin/$cmd"
+  fi
+  if [ -z "$target" ] && command -v npm >/dev/null 2>&1; then
+    prefix="$(npm config get prefix 2>/dev/null || true)"
+    if [ -n "$prefix" ] && [ -x "$prefix/bin/$cmd" ]; then
+      target="$prefix/bin/$cmd"
+    fi
+  fi
+  # Never link a path onto itself: when the launcher already lives in
+  # ~/.local/bin (npm prefix is ~/.local), ln -sf X X destroys the real file
+  # and leaves a self-looping symlink behind.
+  if [ -n "$target" ] && [ "$target" != "$HOME/.local/bin/$cmd" ]; then
+    ln -sf "$target" "$HOME/.local/bin/$cmd" || echo "warning: could not link $cmd into ~/.local/bin" >&2
+  fi
+}
+
+install_package_manager() {
+  spec="$1"
+  name="\${spec%%@*}"
+  if [ -z "$name" ]; then
+    return 0
+  fi
+  log_step "Installing package manager $spec."
+  case "$name" in
+    npm)
+      if [ "$spec" != "npm" ]; then
+        npm install -g "$spec"
+      fi
+      ;;
+    pnpm|yarn)
+      if ! command -v npm >/dev/null 2>&1; then
+        echo "npm is required to install $name" >&2
+        exit 1
+      fi
+      if [ "$spec" = "$name" ]; then
+        spec="$name@latest"
+      fi
+      if command -v corepack >/dev/null 2>&1; then
+        corepack enable
+        corepack prepare "$spec" --activate
+      else
+        npm install -g "$spec"
+      fi
+      ;;
+    bun)
+      version="\${spec#bun@}"
+      if [ "$version" = "$spec" ]; then
+        version="latest"
+      fi
+      install_runtime bun "$version"
+      eval "$(mise activate bash)" || true
+      hash -r
+      ;;
+    composer)
+      if ! command -v composer >/dev/null 2>&1; then
+        if ! command -v php >/dev/null 2>&1; then
+          echo "php is required to install composer" >&2
+          exit 1
+        fi
+        curl -fsSL https://getcomposer.org/installer -o /tmp/infrawrench-composer-setup.php
+        php /tmp/infrawrench-composer-setup.php --install-dir="$HOME/.local/bin" --filename=composer
+        rm -f /tmp/infrawrench-composer-setup.php
+      fi
+      ;;
+    bundler)
+      if ! command -v bundle >/dev/null 2>&1; then
+        if ! command -v gem >/dev/null 2>&1; then
+          echo "gem is required to install bundler" >&2
+          exit 1
+        fi
+        gem install bundler
+      fi
+      ;;
+    go)
+      ;;
+  esac
+}
+
+${packageManagerInstallLines}
+
+if ! command -v "$TOOL_COMMAND" >/dev/null 2>&1; then
+  log_step "Installing ${agentToolLabel(input.tool)} CLI."
+  if command -v npm >/dev/null 2>&1; then
+    ensure_npm_global_prefix
+    # Newer npm blocks package install scripts unless allow-listed; the tool
+    # CLIs rely on a postinstall to set up their launcher, so without this the
+    # package "installs" but the command never lands in PATH. Don't abort on
+    # npm failure — a native-installer fallback may still succeed below.
+    npm install -g --allow-scripts="$TOOL_PACKAGE" "$TOOL_PACKAGE@latest" || echo "npm install of $TOOL_PACKAGE failed; trying fallback installer" >&2
+  else
+    echo "npm is not available; trying fallback installer for $TOOL_COMMAND" >&2
+  fi
+fi
+
+eval "$(mise activate bash)" || true
+ensure_npm_global_prefix
+hash -r
+link_tool_command "$TOOL_COMMAND"
+hash -r
+
+# Strict usability check: command -v alone reports non-executable files as
+# found (running them then fails with 126), so also require the execute bit.
+tool_command_usable() {
+  usable_path="$(command -v "$TOOL_COMMAND" 2>/dev/null || true)"
+  [ -n "$usable_path" ] && [ -x "$usable_path" ]
+}
+
+# npm can leave a broken launcher behind (a dangling symlink or a stub with
+# no execute bit) when the package's postinstall was skipped or failed. Try
+# to repair it — and if that fails, remove it so a fallback installer can
+# install cleanly instead of being masked by the corpse.
+repair_tool_launcher() {
+  launcher="$HOME/.local/bin/$TOOL_COMMAND"
+  if ! [ -e "$launcher" ] && ! [ -L "$launcher" ]; then
+    return 0
+  fi
+  if tool_command_usable; then
+    return 0
+  fi
+  echo "launcher exists but is unusable: $(ls -l "$launcher" 2>/dev/null)" >&2
+  launcher_target="$(readlink -f "$launcher" 2>/dev/null || true)"
+  if [ -n "$launcher_target" ] && [ -f "$launcher_target" ]; then
+    chmod +x "$launcher" "$launcher_target" 2>/dev/null || true
+    hash -r
+    if tool_command_usable; then
+      echo "repaired launcher permissions for $TOOL_COMMAND" >&2
+      return 0
+    fi
+  fi
+  if command -v npm >/dev/null 2>&1; then
+    npm rebuild -g --allow-scripts="$TOOL_PACKAGE" "$TOOL_PACKAGE" >/dev/null 2>&1 || true
+    hash -r
+    if tool_command_usable; then
+      echo "repaired $TOOL_COMMAND by re-running its install scripts" >&2
+      return 0
+    fi
+  fi
+  echo "removing unusable $TOOL_COMMAND launcher" >&2
+  rm -f "$launcher"
+  hash -r
+}
+
+repair_tool_launcher
+
+# The npm route depends on prefix/shim wiring that varies across npm and mise
+# versions. Claude Code ships a self-contained native installer that always
+# lands in ~/.local/bin — use it whenever npm didn't produce a working CLI.
+# Download to a file first: piping curl straight into bash fails with no
+# output at all when the download itself errors.
+if ! tool_command_usable && [ "$TOOL_COMMAND" = "claude" ]; then
+  log_step "Installing Claude Code via native installer."
+  CLAUDE_INSTALLER="$(mktemp)"
+  if curl -fsSL --retry 3 --retry-delay 2 -o "$CLAUDE_INSTALLER" https://claude.ai/install.sh; then
+    # Route installer output to stderr — the setup failure log keeps only the
+    # stderr tail, and the installer reports errors on stdout.
+    bash "$CLAUDE_INSTALLER" >&2 || echo "Claude Code native installer exited with status $?" >&2
+  else
+    echo "Failed to download the Claude Code installer (curl exit $?)" >&2
+  fi
+  rm -f "$CLAUDE_INSTALLER"
+  export PATH="$HOME/.local/bin:$PATH"
+  hash -r
+  link_tool_command "$TOOL_COMMAND"
+  hash -r
+fi
+
+# Installers don't always put the binary on this (non-interactive) shell's
+# PATH — some drop it in their own directory and wire PATH via shell rc
+# "integration" that only interactive shells read. Hunt down the binary in
+# the known install locations and link it into ~/.local/bin ourselves.
+locate_and_link_tool() {
+  if tool_command_usable; then
+    return 0
+  fi
+  candidates="$HOME/.claude/local/$TOOL_COMMAND
+$HOME/.claude/local/bin/$TOOL_COMMAND
+$HOME/.claude/bin/$TOOL_COMMAND
+$HOME/.codex/bin/$TOOL_COMMAND
+$HOME/bin/$TOOL_COMMAND
+$(find "$HOME" -maxdepth 4 -name "$TOOL_COMMAND" -type f -perm -100 2>/dev/null | head -n 3)"
+  for candidate in $candidates; do
+    if [ "$candidate" = "$HOME/.local/bin/$TOOL_COMMAND" ]; then
+      continue
+    fi
+    if [ -x "$candidate" ] && [ -f "$candidate" ]; then
+      ln -sf "$candidate" "$HOME/.local/bin/$TOOL_COMMAND" || continue
+      hash -r
+      if tool_command_usable; then
+        echo "linked $TOOL_COMMAND from $candidate" >&2
+        return 0
+      fi
+    fi
+  done
+  return 0
+}
+
+locate_and_link_tool
+
+if ! tool_command_usable; then
+  echo "$TOOL_COMMAND did not install into PATH" >&2
+  echo "diagnostics: npm prefix: $(npm config get prefix 2>/dev/null || echo unavailable)" >&2
+  echo "diagnostics: launcher: $(ls -l "$HOME/.local/bin/$TOOL_COMMAND" 2>/dev/null || echo none)" >&2
+  echo "diagnostics: ~/.local/bin: $(ls -m "$HOME/.local/bin" 2>/dev/null | tr -d '\\n' | head -c 300)" >&2
+  echo "diagnostics: mise shims: $(ls -m "$HOME/.local/share/mise/shims" 2>/dev/null | tr -d '\\n' | head -c 300)" >&2
+  echo "diagnostics: found on disk: $(find "$HOME" -maxdepth 4 -name "$TOOL_COMMAND" 2>/dev/null | head -n 5 | tr '\\n' ' ')" >&2
+  exit 1
+fi
+
+log_step "Preparing workspace $PROJECT_DIR."
+mkdir -p "$PROJECT_DIR"
+if [ "$REPO_CLONEABLE" = "1" ]; then
+  log_step "Pulling initial workspace from Git remote."
+  if [ -d "$PROJECT_DIR/.git" ]; then
+    git -C "$PROJECT_DIR" remote get-url origin >/dev/null 2>&1 || git -C "$PROJECT_DIR" remote add origin "$REPO_URL"
+    git -C "$PROJECT_DIR" fetch --all --prune || echo "git fetch failed; continuing with existing workspace" >&2
+    git -C "$PROJECT_DIR" pull --ff-only || echo "git pull failed; continuing with existing workspace" >&2
+  elif [ -z "$(find "$PROJECT_DIR" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]; then
+    rmdir "$PROJECT_DIR" 2>/dev/null || true
+    if ! git clone "$REPO_URL" "$PROJECT_DIR"; then
+      mkdir -p "$PROJECT_DIR"
+      echo "git clone failed; created empty workspace at $PROJECT_DIR" >&2
+    fi
+  else
+    echo "workspace is not empty and is not a git repository: $PROJECT_DIR" >&2
+  fi
+fi
+
+if [ "$REPO_CLONEABLE" = "1" ] && [ -d "$PROJECT_DIR/.git" ]; then
+  cd "$PROJECT_DIR"
+  git checkout -B "$BRANCH_NAME" || true
+elif [ "$REPO_CLONEABLE" = "1" ]; then
+  echo "workspace is not a git repository: $PROJECT_DIR" >&2
+fi
+
+log_step "Bootstrap complete."
+touch "$MARKER"
+`;
+  return `timeout 420s bash -lc ${shellQuote(script)}`;
+}
+
+function runtimeInstallCommands(plan: AgentSetupPlan): string {
+  return dedupeRuntimesForBootstrap(plan.runtimes)
+    .map(
+      (runtime) => `install_runtime ${shellQuote(runtime.language)} ${shellQuote(runtime.version)}`,
+    )
+    .join("\n");
+}
+
+function packageManagerInstallCommands(plan: AgentSetupPlan): string {
+  return dedupePackageManagersForBootstrap(plan.packageManagers)
+    .map((packageManager) => `install_package_manager ${shellQuote(packageManager)}`)
+    .join("\n");
+}
+
+function dedupeRuntimesForBootstrap(runtimes: AgentRuntimePlan[]): AgentRuntimePlan[] {
+  const byLanguage = new Map<AgentRuntimePlan["language"], AgentRuntimePlan>();
+  for (const runtime of runtimes) {
+    if (!runtime.version.trim()) continue;
+    byLanguage.set(runtime.language, runtime);
+  }
+  if (!byLanguage.has("node")) {
+    byLanguage.set("node", {
+      language: "node",
+      version: "latest",
+      versionSource: "latest",
+      source: "mise latest resolver at setup time",
+      reasons: ["Agent CLI packages require Node"],
+    });
+  }
+  return Array.from(byLanguage.values());
+}
+
+function dedupePackageManagersForBootstrap(packageManagers: string[]): string[] {
+  const byName = new Map<string, string>();
+  for (const packageManager of packageManagers) {
+    const spec = packageManager.trim();
+    if (!spec) continue;
+    const name = packageManagerName(spec);
+    const existing = byName.get(name);
+    if (!existing || spec.includes("@")) {
+      byName.set(name, spec);
+    }
+  }
+  return Array.from(byName.values());
+}
+
+function packageManagerName(spec: string): string {
+  return spec.split("@")[0] || spec;
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+function shellDoubleQuoteContent(value: string): string {
+  return value.replace(/(["\\$`])/g, "\\$1").replace(/\n/g, "\\n");
+}

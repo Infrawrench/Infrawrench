@@ -751,3 +751,4 @@ export const chatUsage = pgTable(
 );
 
 export * from "./workflow-schema.js";
+export * from "./agent-schema.js";

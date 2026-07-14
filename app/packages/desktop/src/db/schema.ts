@@ -254,3 +254,50 @@ CREATE INDEX IF NOT EXISTS dashboard_workflow_pins_dashboard_idx ON dashboard_wo
 `;
 
 MIGRATIONS.push(DASHBOARD_WORKFLOW_PINS_MIGRATION);
+
+const AGENTS_MIGRATION = `
+CREATE TABLE IF NOT EXISTS agent_settings (
+  id TEXT PRIMARY KEY DEFAULT 'default',
+  account_id TEXT NOT NULL,
+  plugin_id TEXT NOT NULL,
+  resource_type_id TEXT NOT NULL,
+  tool TEXT NOT NULL DEFAULT 'codex',
+  fields_json TEXT NOT NULL DEFAULT '{}',
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE IF NOT EXISTS agent_sessions (
+  id TEXT PRIMARY KEY,
+  repo TEXT NOT NULL,
+  project_name TEXT NOT NULL,
+  workspace_name TEXT,
+  account_id TEXT NOT NULL,
+  plugin_id TEXT NOT NULL,
+  resource_type_id TEXT NOT NULL,
+  tool TEXT NOT NULL DEFAULT 'codex',
+  branch_name TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  vm_resource_id TEXT,
+  logs_json TEXT NOT NULL DEFAULT '[]',
+  setup_plan_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS agent_sessions_status_idx ON agent_sessions(status);
+`;
+
+MIGRATIONS.push(AGENTS_MIGRATION);
+
+const AGENT_WORKSPACE_NAME_MIGRATION = `
+ALTER TABLE agent_sessions ADD COLUMN workspace_name TEXT;
+UPDATE agent_sessions
+SET workspace_name = project_name
+WHERE workspace_name IS NULL OR workspace_name = '';
+`;
+
+MIGRATIONS.push(AGENT_WORKSPACE_NAME_MIGRATION);
+
+const AGENT_SETUP_PLAN_MIGRATION = `
+ALTER TABLE agent_sessions ADD COLUMN setup_plan_json TEXT NOT NULL DEFAULT '{}';
+`;
+
+MIGRATIONS.push(AGENT_SETUP_PLAN_MIGRATION);

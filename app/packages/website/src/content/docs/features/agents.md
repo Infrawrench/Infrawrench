@@ -1,0 +1,33 @@
+---
+title: Agents
+description: Provision coding VMs from VM-capable cloud accounts and reconcile their branches locally.
+sidebar_order: 24
+---
+
+Agents create coding VM records from accounts whose provider plugins declare VM support. Open **Agents** from the sidebar, use the configuration menu in the header to choose a VM-capable account and save defaults for the VM shape and tool, then create a named session from a Git repo URL or local path.
+
+<insert [Agents panel showing the header configuration menu, repo input, and a setting-up agent session with its VM id] here>
+
+## Defaults
+
+Infrawrench lists accounts that can create VMs through provider plugin capabilities. The header configuration menu stores VM settings such as size, image, region, and selected coding tool. Those controls come from the provider plugin's create form metadata, so the Agents defaults match the normal create flow for the provider.
+
+Agents can target either Codex or Claude Code. The selected tool is stored on the session so setup installs and launches the right coding environment on the VM. Desktop sessions copy the selected tool's local credential and settings files into the VM. Codex sessions copy selected files from `~/.codex`, such as `auth.json`, `config.toml`, and skills. Claude Code sessions copy selected settings and plugins from `~/.claude` plus `~/.claude.json` when those paths exist. Local sessions, logs, caches, temp files, downloads, and package stores are skipped.
+
+Agent VMs use a dedicated Infrawrench-managed SSH key named `infrawrench-agent`. Cloud sessions create or reuse that key inside the organization. Desktop-only sessions create or reuse it in the local app key store. The key is injected into the provider's VM create field declared by the plugin, so providers such as DigitalOcean attach it during VM creation instead of falling back to password access.
+
+## Sessions
+
+Creating a session records the repo, session name, workspace folder name, generated branch name, selected account, and tool, then asks the selected provider plugin to create the VM with the saved defaults. The session name is the label shown in the Agents list; the workspace folder name comes from the repo basename, so `/Users/alex/infrawrench` opens as `~/infrawrench` even if the session is named differently. When the provider accepts the request, Infrawrench stores the created resource id on the session and shows it in the agent row.
+
+Desktop local-folder sessions are inspected before provider provisioning starts. The selected folder must exist and be a Git work tree, otherwise session creation fails before a VM is created. Infrawrench reads the folder's `origin` remote when one is present and uses that clone URL for the VM's initial workspace pull. It detects Node, PHP, Ruby, and Go from project files such as `package.json`, `.nvmrc`, `composer.json`, `.php-version`, `Gemfile`, `.ruby-version`, `go.mod`, and `.tool-versions`. Exact project versions are used directly; when a runtime is detected but the project only provides a range or no version, Infrawrench resolves the current release from the runtime's public release feed before creating the VM. It also detects package managers from `packageManager`, lockfiles, and language manifests, including `pnpm`, `yarn`, `bun`, Composer, Bundler, npm, and Go. The setup log records the workspace folder, planned runtimes, package managers, initial Git pull plan, and whether the selected tool's local config was found.
+
+The session list refreshes automatically while the page is open, so setup state moves to ready without a manual reload once the VM is running and the bootstrap finishes. The bootstrap uses the `infrawrench-agent` key to connect over SSH, waits until the VM accepts SSH commands, installs `screen`, installs the planned runtimes through `mise`, installs detected package managers, installs the selected coding tool, prepares `~/<workspace name>`, pulls from the Git remote when possible, and checks out the generated branch when the repo can be cloned. For desktop local-folder sessions, **Open** refreshes the VM workspace before launching by uploading one compressed archive and extracting it on the VM. The archive uses Git's ignored-file rules (`git ls-files --cached --others --exclude-standard`) for worktree files and includes normal `.git` metadata so the VM workspace remains a Git repository.
+
+**Open** starts an SSH workspace tab for the agent VM, automatically selects the `infrawrench-agent` SSH key, and attaches to one named `screen` session for that agent. If the screen does not exist, Infrawrench starts `codex --yolo` or `claude --dangerously-skip-permissions` inside `~/<workspace name>` first; if it already exists, Open resumes it. Opening the same agent again closes other SSH tabs for that VM before attaching, and the remote screen attach detaches any other display for that session.
+
+The setup policy is conservative: sessions stay in a setup state until the VM bootstrap flow can finish clearly. Provider errors leave a failed session row with the error in the log so you can see what the create API rejected.
+
+## Reconciliation
+
+Use **Reconcile** to bring the agent branch back to the local repository as an `infrawrench/agent-*` branch. Infrawrench does not apply the diff to the current working tree automatically; review, merge, cherry-pick, or discard it with normal Git tools.
