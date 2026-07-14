@@ -4,12 +4,15 @@ import {
   attachAltBufferScrollHandler,
   attachTerminalClipboard,
   getXtermTerminalOptions,
+  pastedImageFilename,
 } from "@infrawrench/ui";
 
 interface WebTerminalProps {
   accountId: string;
   resourceId?: string;
   token: string;
+  /** Enables image paste — pasted clipboard images upload via the org's SFTP route. */
+  orgId?: string;
   sshKeyId?: string;
   sshHost?: string;
   sshUsername?: string;
@@ -30,6 +33,7 @@ export function WebTerminal({
   accountId,
   resourceId,
   token,
+  orgId,
   sshKeyId,
   sshHost,
   sshUsername,
@@ -57,7 +61,37 @@ export function WebTerminal({
       term.loadAddon(fitAddon);
       term.open(containerRef.current);
 
-      const clipboard = attachTerminalClipboard(term);
+      // Pasting an image uploads it to the remote host over SFTP and pastes
+      // the resulting remote path into the shell. Needs orgId for the
+      // org-scoped upload route; without it, image paste is disabled.
+      const clipboard = attachTerminalClipboard(term, {
+        onPasteImage: async (image) => {
+          if (!orgId) return null;
+          const filename = pastedImageFilename(image.mime, new Date());
+          const remotePath = `/tmp/${filename}`;
+          try {
+            const formData = new FormData();
+            formData.append("accountId", accountId);
+            formData.append("remotePath", remotePath);
+            formData.append("file", new Blob([image.data], { type: image.mime }), filename);
+            if (sshKeyId) formData.append("sshKeyId", sshKeyId);
+            if (sshHost) formData.append("sshHost", sshHost);
+            if (sshUsername) formData.append("sshUsername", sshUsername);
+            const resp = await fetch(`/api/org/${orgId}/v1/sftp/upload`, {
+              method: "POST",
+              credentials: "include",
+              body: formData,
+            });
+            if (!resp.ok) throw new Error(await resp.text());
+            return remotePath;
+          } catch (err) {
+            term?.write(
+              `\r\n\x1b[31mImage paste failed: ${err instanceof Error ? err.message : String(err)}\x1b[0m\r\n`,
+            );
+            return null;
+          }
+        },
+      });
 
       const sendToShell = (data: string) => {
         if (connected && wsRef.current?.readyState === WebSocket.OPEN) {
@@ -176,6 +210,7 @@ export function WebTerminal({
     accountId,
     resourceId,
     token,
+    orgId,
     sshKeyId,
     sshHost,
     sshUsername,

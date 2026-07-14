@@ -973,6 +973,7 @@ export function ResourceDetailClient({
                 accountId={accountId}
                 resourceId={resourceId}
                 token={wsToken}
+                orgId={orgId}
                 sshKeyId={sshQuickConnect.sshKeyId}
                 sshHost={sshHost}
                 sshUsername={sshQuickConnect.username}
@@ -986,6 +987,7 @@ export function ResourceDetailClient({
                 accountId={accountId}
                 resourceId={resourceId}
                 token={wsToken}
+                orgId={orgId}
                 agentForward={agentForward}
                 initialCommand={agentLaunch.initialCommand}
                 initialCwd={agentLaunch.initialCwd}

@@ -5,6 +5,9 @@
  *    to the system clipboard.
  *  - Paste with Cmd+V (macOS) or Ctrl+Shift+V (Linux/Windows). Plain Ctrl+V
  *    is left alone so readline's quoted-insert keeps working.
+ *  - Optional image paste — when the clipboard holds an image and no plain
+ *    text, `onPasteImage` is invoked with the raw bytes so callers can e.g.
+ *    upload it to the remote host and paste the resulting path.
  *
  * Typed loosely so the `@infrawrench/ui` package does not need a hard
  * dependency on `@xterm/xterm` — callers pass their real `Terminal`.
@@ -15,6 +18,20 @@ export interface ClipboardTerminal {
   onSelectionChange(handler: () => void): { dispose: () => void };
   getSelection(): string;
   paste(data: string): void;
+}
+
+export interface TerminalPastedImage {
+  data: Uint8Array<ArrayBuffer>;
+  mime: string;
+}
+
+export interface AttachTerminalClipboardOptions {
+  /**
+   * Called when the paste shortcut fires and the clipboard holds an image
+   * but no plain text. Return the text to paste in its place (e.g. the
+   * remote path of an uploaded file), or null to paste nothing.
+   */
+  onPasteImage?: (image: TerminalPastedImage) => Promise<string | null>;
 }
 
 export interface AttachTerminalClipboardHandle {
@@ -28,7 +45,49 @@ function isMacPlatform(): boolean {
   return /Mac|iPod|iPhone|iPad/.test(platform) || /Mac OS X/.test(ua);
 }
 
-export function attachTerminalClipboard(term: ClipboardTerminal): AttachTerminalClipboardHandle {
+async function pasteTextFromClipboard(term: ClipboardTerminal): Promise<void> {
+  if (typeof navigator === "undefined" || !navigator.clipboard?.readText) return;
+  try {
+    const text = await navigator.clipboard.readText();
+    if (text) term.paste(text);
+  } catch {
+    // Clipboard read can fail without user-gesture or permission.
+  }
+}
+
+async function handlePaste(
+  term: ClipboardTerminal,
+  options: AttachTerminalClipboardOptions | undefined,
+): Promise<void> {
+  const onPasteImage = options?.onPasteImage;
+  if (onPasteImage && typeof navigator !== "undefined" && navigator.clipboard?.read) {
+    try {
+      const items = await navigator.clipboard.read();
+      // Text wins when both are present (e.g. copying from a rich editor) so
+      // plain-text paste keeps behaving exactly as before.
+      const hasText = items.some((item) => item.types.includes("text/plain"));
+      if (!hasText) {
+        for (const item of items) {
+          const imageType = item.types.find((t) => t.startsWith("image/"));
+          if (!imageType) continue;
+          const blob = await item.getType(imageType);
+          const data = new Uint8Array(await blob.arrayBuffer());
+          const text = await onPasteImage({ data, mime: imageType });
+          if (text) term.paste(text);
+          return;
+        }
+      }
+    } catch {
+      // clipboard.read() unavailable or denied — fall back to text paste.
+    }
+  }
+  await pasteTextFromClipboard(term);
+}
+
+export function attachTerminalClipboard(
+  term: ClipboardTerminal,
+  options?: AttachTerminalClipboardOptions,
+): AttachTerminalClipboardHandle {
   const isMac = isMacPlatform();
 
   const selectionSub = term.onSelectionChange(() => {
@@ -51,16 +110,7 @@ export function attachTerminalClipboard(term: ClipboardTerminal): AttachTerminal
 
     if (isPaste) {
       event.preventDefault();
-      if (typeof navigator !== "undefined" && navigator.clipboard?.readText) {
-        void navigator.clipboard
-          .readText()
-          .then((text) => {
-            if (text) term.paste(text);
-          })
-          .catch(() => {
-            // Clipboard read can fail without user-gesture or permission.
-          });
-      }
+      void handlePaste(term, options);
       return false;
     }
 
@@ -72,4 +122,24 @@ export function attachTerminalClipboard(term: ClipboardTerminal): AttachTerminal
       selectionSub.dispose();
     },
   };
+}
+
+const PASTED_IMAGE_EXTENSIONS: Record<string, string> = {
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "image/gif": "gif",
+  "image/webp": "webp",
+  "image/bmp": "bmp",
+  "image/svg+xml": "svg",
+  "image/tiff": "tiff",
+};
+
+/** Filename for a clipboard image pasted into a terminal, e.g. `pasted-image-20260714-211530.png`. */
+export function pastedImageFilename(mime: string, now: Date): string {
+  const ext = PASTED_IMAGE_EXTENSIONS[mime.toLowerCase()] ?? "png";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const stamp =
+    `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}` +
+    `-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+  return `pasted-image-${stamp}.${ext}`;
 }

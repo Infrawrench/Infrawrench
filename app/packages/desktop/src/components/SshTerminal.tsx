@@ -6,10 +6,13 @@ import {
   attachAltBufferScrollHandler,
   attachTerminalClipboard,
   getXtermTerminalOptions,
+  pastedImageFilename,
   useUIStore,
 } from "@infrawrench/ui";
 import type { KeySource } from "../lib/ssh-key-source";
 import { openSshShell, type SshShellHandle } from "../lib/ssh-dispatch";
+import { invoke } from "../lib/invoke";
+import { cloudSftpUpload } from "../lib/cloud-api";
 
 interface SshTerminalProps {
   host: string;
@@ -64,7 +67,37 @@ export function SshTerminal({
     term.loadAddon(fitAddon);
     term.open(containerRef.current);
 
-    const clipboard = attachTerminalClipboard(term);
+    // Pasting an image uploads it to the remote host over SFTP and pastes
+    // the resulting remote path into the shell.
+    const clipboard = attachTerminalClipboard(term, {
+      onPasteImage: async (image) => {
+        const remotePath = `/tmp/${pastedImageFilename(image.mime, new Date())}`;
+        try {
+          const cloudSource = keySource?.type === "cloud" ? keySource : null;
+          if (cloudSource && accountId && activeCloudOrgId) {
+            await cloudSftpUpload({
+              orgId: activeCloudOrgId,
+              accountId,
+              remotePath,
+              data: image.data,
+              sshKeyId: cloudSource.sshKeyId,
+              sshHost: host,
+              sshUsername: username,
+            });
+          } else {
+            await invoke("sftp_upload", {
+              config: { host, port, username, privateKey },
+              remotePath,
+              data: image.data,
+            });
+          }
+          return remotePath;
+        } catch (err) {
+          term.write(`\r\n\x1b[31mImage paste failed: ${String(err)}\x1b[0m\r\n`);
+          return null;
+        }
+      },
+    });
 
     let shell: SshShellHandle | null = null;
     let disposed = false;

@@ -271,8 +271,13 @@ export { useChartTheme } from "./chart-theme.js";
 export { getTerminalTheme } from "./terminal-theme.js";
 export type { TerminalThemeColors } from "./terminal-theme.js";
 export { getXtermTerminalOptions } from "./xterm-options.js";
-export { attachTerminalClipboard } from "./terminal-clipboard.js";
-export type { ClipboardTerminal, AttachTerminalClipboardHandle } from "./terminal-clipboard.js";
+export { attachTerminalClipboard, pastedImageFilename } from "./terminal-clipboard.js";
+export type {
+  ClipboardTerminal,
+  AttachTerminalClipboardHandle,
+  AttachTerminalClipboardOptions,
+  TerminalPastedImage,
+} from "./terminal-clipboard.js";
 export { attachAltBufferScrollHandler } from "./xterm-scroll.js";
 export type { ScrollableTerminal, AttachAltBufferScrollHandle } from "./xterm-scroll.js";
 
