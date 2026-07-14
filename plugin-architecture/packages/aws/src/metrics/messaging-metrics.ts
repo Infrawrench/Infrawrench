@@ -263,8 +263,7 @@ export async function eventBridgeRuleMetrics(
     results.push({ ...triggered, label: "Rule Triggered" });
   if (invocations && invocations.points.length > 0)
     results.push({ ...invocations, label: "Target Invocations" });
-  if (failed && failed.points.length > 0)
-    results.push({ ...failed, label: "Failed Invocations" });
+  if (failed && failed.points.length > 0) results.push({ ...failed, label: "Failed Invocations" });
   if (throttled && throttled.points.length > 0) results.push({ ...throttled, label: "Throttled" });
   if (sentToDlq && sentToDlq.points.length > 0)
     results.push({ ...sentToDlq, label: "Sent to DLQ" });

@@ -43,20 +43,24 @@ function plan(overrides: Partial<AgentSetupPlan> = {}): AgentSetupPlan {
 
 describe("buildAgentLaunchCommand", () => {
   it("names the tmux session after the first 8 chars of the session id", () => {
-    const command = unwrap(buildAgentLaunchCommand({
-      sessionId: SESSION_ID,
-      tool: "codex",
-      workspaceName: "my-app",
-    }));
+    const command = unwrap(
+      buildAgentLaunchCommand({
+        sessionId: SESSION_ID,
+        tool: "codex",
+        workspaceName: "my-app",
+      }),
+    );
     expect(command).toContain("SESSION='infrawrench-agent-6f9619ff'");
   });
 
   it("polls the setup marker for the selected tool", () => {
-    const claude = unwrap(buildAgentLaunchCommand({
-      sessionId: SESSION_ID,
-      tool: "claude-code",
-      workspaceName: "my-app",
-    }));
+    const claude = unwrap(
+      buildAgentLaunchCommand({
+        sessionId: SESSION_ID,
+        tool: "claude-code",
+        workspaceName: "my-app",
+      }),
+    );
     expect(claude).toContain("TOOL_EXECUTABLE='claude'");
     expect(claude).toContain('SETUP_MARKER="$HOME/.infrawrench-agent/setup-$TOOL_EXECUTABLE"');
     expect(claude).toContain("claude --dangerously-skip-permissions");
@@ -68,11 +72,13 @@ describe("buildAgentLaunchCommand", () => {
     expect(claude).not.toContain("exec claude");
     expect(claude).toContain("exited with status");
 
-    const codex = unwrap(buildAgentLaunchCommand({
-      sessionId: SESSION_ID,
-      tool: "codex",
-      workspaceName: "my-app",
-    }));
+    const codex = unwrap(
+      buildAgentLaunchCommand({
+        sessionId: SESSION_ID,
+        tool: "codex",
+        workspaceName: "my-app",
+      }),
+    );
     expect(codex).toContain("TOOL_EXECUTABLE='codex'");
     expect(codex).toContain("codex --yolo");
     expect(codex).not.toContain("exec codex");
@@ -80,12 +86,14 @@ describe("buildAgentLaunchCommand", () => {
 
   it("waits on the launch-ready marker when a token is provided", () => {
     const token = "abc-123";
-    const command = unwrap(buildAgentLaunchCommand({
-      sessionId: SESSION_ID,
-      tool: "codex",
-      workspaceName: "my-app",
-      launchReadyToken: token,
-    }));
+    const command = unwrap(
+      buildAgentLaunchCommand({
+        sessionId: SESSION_ID,
+        tool: "codex",
+        workspaceName: "my-app",
+        launchReadyToken: token,
+      }),
+    );
     expect(command).toContain(
       `LAUNCH_READY_MARKER="$HOME/.infrawrench-agent/launch-ready/${token}"`,
     );
@@ -94,12 +102,14 @@ describe("buildAgentLaunchCommand", () => {
 
   it("skips the launch-ready marker wait when no token is provided", () => {
     for (const launchReadyToken of [undefined, ""]) {
-      const command = unwrap(buildAgentLaunchCommand({
-        sessionId: SESSION_ID,
-        tool: "codex",
-        workspaceName: "my-app",
-        ...(launchReadyToken === undefined ? {} : { launchReadyToken }),
-      }));
+      const command = unwrap(
+        buildAgentLaunchCommand({
+          sessionId: SESSION_ID,
+          tool: "codex",
+          workspaceName: "my-app",
+          ...(launchReadyToken === undefined ? {} : { launchReadyToken }),
+        }),
+      );
       expect(command).toContain('LAUNCH_READY_MARKER=""');
       expect(command).not.toContain("launch-ready/");
       expect(command).toContain("Waiting for agent VM setup to finish...");
@@ -107,20 +117,24 @@ describe("buildAgentLaunchCommand", () => {
   });
 
   it("escapes shell-sensitive characters in the workspace name", () => {
-    const command = unwrap(buildAgentLaunchCommand({
-      sessionId: SESSION_ID,
-      tool: "codex",
-      workspaceName: 'my"app$1',
-    }));
+    const command = unwrap(
+      buildAgentLaunchCommand({
+        sessionId: SESSION_ID,
+        tool: "codex",
+        workspaceName: 'my"app$1',
+      }),
+    );
     expect(command).toContain('PROJECT_DIR="$HOME/my\\"app\\$1"');
   });
 
   it("polls until ready with a 900s deadline and attaches tmux", () => {
-    const command = unwrap(buildAgentLaunchCommand({
-      sessionId: SESSION_ID,
-      tool: "codex",
-      workspaceName: "my-app",
-    }));
+    const command = unwrap(
+      buildAgentLaunchCommand({
+        sessionId: SESSION_ID,
+        tool: "codex",
+        workspaceName: "my-app",
+      }),
+    );
     expect(command).toContain("deadline=$((SECONDS + 900))");
     expect(command).toContain('tmux new-session -d -s "$SESSION" bash -lc "$START_SCRIPT"');
     expect(command).toContain('exec tmux attach-session -d -t "=$SESSION"');
@@ -133,13 +147,15 @@ describe("buildAgentLaunchCommand", () => {
 
 describe("buildAgentBootstrapCommand", () => {
   it("writes the setup marker the launch command polls for", () => {
-    const bootstrap = unwrap(buildAgentBootstrapCommand({
-      tool: "claude-code",
-      workspaceName: "my-app",
-      branchName: "infrawrench/agent-6f9619ff",
-      repo: "https://example.com/org/my-app.git",
-      setupPlan: plan(),
-    }));
+    const bootstrap = unwrap(
+      buildAgentBootstrapCommand({
+        tool: "claude-code",
+        workspaceName: "my-app",
+        branchName: "infrawrench/agent-6f9619ff",
+        repo: "https://example.com/org/my-app.git",
+        setupPlan: plan(),
+      }),
+    );
     // Both scripts must agree on ~/.infrawrench-agent/setup-<tool>.
     expect(bootstrap).toContain('MARKER_DIR="$HOME/.infrawrench-agent"');
     expect(bootstrap).toContain('MARKER="$MARKER_DIR/setup-$TOOL_COMMAND"');
@@ -148,25 +164,29 @@ describe("buildAgentBootstrapCommand", () => {
   });
 
   it("waits for the dpkg lock instead of failing on fresh VMs", () => {
-    const bootstrap = unwrap(buildAgentBootstrapCommand({
-      tool: "claude-code",
-      workspaceName: "my-app",
-      branchName: "infrawrench/agent-6f9619ff",
-      repo: "https://example.com/org/my-app.git",
-      setupPlan: plan(),
-    }));
+    const bootstrap = unwrap(
+      buildAgentBootstrapCommand({
+        tool: "claude-code",
+        workspaceName: "my-app",
+        branchName: "infrawrench/agent-6f9619ff",
+        repo: "https://example.com/org/my-app.git",
+        setupPlan: plan(),
+      }),
+    );
     expect(bootstrap).toContain("apt-get -o DPkg::Lock::Timeout=120 update -y");
     expect(bootstrap).toContain("apt-get -o DPkg::Lock::Timeout=120 install -y");
   });
 
   it("allow-lists the tool package's install scripts for npm", () => {
-    const bootstrap = unwrap(buildAgentBootstrapCommand({
-      tool: "claude-code",
-      workspaceName: "my-app",
-      branchName: "infrawrench/agent-6f9619ff",
-      repo: "https://example.com/org/my-app.git",
-      setupPlan: plan(),
-    }));
+    const bootstrap = unwrap(
+      buildAgentBootstrapCommand({
+        tool: "claude-code",
+        workspaceName: "my-app",
+        branchName: "infrawrench/agent-6f9619ff",
+        repo: "https://example.com/org/my-app.git",
+        setupPlan: plan(),
+      }),
+    );
     // Without allow-scripts, npm skips the CLI's postinstall and the `claude`
     // launcher never lands in PATH.
     expect(bootstrap).toContain(
@@ -175,13 +195,15 @@ describe("buildAgentBootstrapCommand", () => {
   });
 
   it("falls back to the Claude Code native installer when npm produces no CLI", () => {
-    const bootstrap = unwrap(buildAgentBootstrapCommand({
-      tool: "claude-code",
-      workspaceName: "my-app",
-      branchName: "infrawrench/agent-6f9619ff",
-      repo: "https://example.com/org/my-app.git",
-      setupPlan: plan(),
-    }));
+    const bootstrap = unwrap(
+      buildAgentBootstrapCommand({
+        tool: "claude-code",
+        workspaceName: "my-app",
+        branchName: "infrawrench/agent-6f9619ff",
+        repo: "https://example.com/org/my-app.git",
+        setupPlan: plan(),
+      }),
+    );
     expect(bootstrap).toContain('[ "$TOOL_COMMAND" = "claude" ]');
     expect(bootstrap).toContain(
       'curl -fsSL --retry 3 --retry-delay 2 -o "$CLAUDE_INSTALLER" https://claude.ai/install.sh',
@@ -203,13 +225,15 @@ describe("buildAgentBootstrapCommand", () => {
   });
 
   it("clones the plan's Git URL and checks out the session branch", () => {
-    const bootstrap = unwrap(buildAgentBootstrapCommand({
-      tool: "codex",
-      workspaceName: "my-app",
-      branchName: "infrawrench/agent-6f9619ff",
-      repo: "https://example.com/org/my-app.git",
-      setupPlan: plan(),
-    }));
+    const bootstrap = unwrap(
+      buildAgentBootstrapCommand({
+        tool: "codex",
+        workspaceName: "my-app",
+        branchName: "infrawrench/agent-6f9619ff",
+        repo: "https://example.com/org/my-app.git",
+        setupPlan: plan(),
+      }),
+    );
     expect(bootstrap).toContain("REPO_URL='https://example.com/org/my-app.git'");
     expect(bootstrap).toContain("REPO_CLONEABLE=1");
     expect(bootstrap).toContain("BRANCH_NAME='infrawrench/agent-6f9619ff'");
@@ -218,25 +242,29 @@ describe("buildAgentBootstrapCommand", () => {
   });
 
   it("marks non-cloneable repos so the workspace is left to the file sync", () => {
-    const bootstrap = unwrap(buildAgentBootstrapCommand({
-      tool: "codex",
-      workspaceName: "my-app",
-      branchName: "infrawrench/agent-6f9619ff",
-      repo: "/Users/me/projects/my-app",
-      setupPlan: plan({ source: "local-folder", initialCloneUrl: undefined }),
-    }));
+    const bootstrap = unwrap(
+      buildAgentBootstrapCommand({
+        tool: "codex",
+        workspaceName: "my-app",
+        branchName: "infrawrench/agent-6f9619ff",
+        repo: "/Users/me/projects/my-app",
+        setupPlan: plan({ source: "local-folder", initialCloneUrl: undefined }),
+      }),
+    );
     expect(bootstrap).toContain("REPO_CLONEABLE=0");
     expect(bootstrap).toContain("REPO_URL=''");
   });
 
   it("always installs a node runtime even when the plan has none", () => {
-    const bootstrap = unwrap(buildAgentBootstrapCommand({
-      tool: "codex",
-      workspaceName: "my-app",
-      branchName: "infrawrench/agent-6f9619ff",
-      repo: "https://example.com/org/my-app.git",
-      setupPlan: plan({ runtimes: [], packageManagers: [] }),
-    }));
+    const bootstrap = unwrap(
+      buildAgentBootstrapCommand({
+        tool: "codex",
+        workspaceName: "my-app",
+        branchName: "infrawrench/agent-6f9619ff",
+        repo: "https://example.com/org/my-app.git",
+        setupPlan: plan({ runtimes: [], packageManagers: [] }),
+      }),
+    );
     expect(bootstrap).toContain("install_runtime 'node' 'latest'");
   });
 });

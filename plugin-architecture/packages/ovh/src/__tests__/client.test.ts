@@ -1121,10 +1121,15 @@ describe("fetchMetricSeries", () => {
     });
 
     const c = makeClient();
-    const series = await c.fetchMetricSeries("managed-db", `${ACCOUNT}:managed-db:${dbId}`, ACCOUNT, {
-      startMs: 1699990000000,
-      endMs: 1700001000000,
-    });
+    const series = await c.fetchMetricSeries(
+      "managed-db",
+      `${ACCOUNT}:managed-db:${dbId}`,
+      ACCOUNT,
+      {
+        startMs: 1699990000000,
+        endMs: 1700001000000,
+      },
+    );
 
     expect(series).toHaveLength(1);
     expect(series[0]!.label).toBe("cpu_usage");

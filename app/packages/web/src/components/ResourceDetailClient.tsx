@@ -935,7 +935,9 @@ export function ResourceDetailClient({
             </div>
           )}
           <div className="flex-1 min-h-0 overflow-hidden">
-            {sshHost && !sshQuickConnect && (autoConnectPending || !agentLaunch.autoConnectReady) ? (
+            {sshHost &&
+            !sshQuickConnect &&
+            (autoConnectPending || !agentLaunch.autoConnectReady) ? (
               <div className="flex h-full items-center justify-center px-4 text-sm text-on-surface-muted">
                 {agentLaunch.autoConnectReady
                   ? "Connecting with infrawrench-agent..."

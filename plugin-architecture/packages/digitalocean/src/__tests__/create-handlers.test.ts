@@ -320,8 +320,7 @@ describe("doCreateResource — REST create branches", () => {
       if (path === "/account/keys?per_page=200&page=1") return { ssh_keys: page1 };
       if (path === "/account/keys?per_page=200&page=2")
         return { ssh_keys: [{ id: 999, public_key: sshPub }] };
-      if (path === "/droplets")
-        return { droplet: { id: 43, name: "web-2", networks: { v4: [] } } };
+      if (path === "/droplets") return { droplet: { id: 43, name: "web-2", networks: { v4: [] } } };
       return {};
     }) as Mock;
     const ctx = { fetch, credentials: {} } as DoCreateContext;

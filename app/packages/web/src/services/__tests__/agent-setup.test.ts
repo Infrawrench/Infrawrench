@@ -161,9 +161,7 @@ describe("extractBootstrapWarning / isRetryableSshSetupError", () => {
     expect(isRetryableSshSetupError("SSH connection failed: connect ECONNREFUSED")).toBe(true);
     expect(isRetryableSshSetupError("Timed out while waiting for handshake")).toBe(true);
     expect(isRetryableSshSetupError("All configured authentication methods failed")).toBe(true);
-    expect(isRetryableSshSetupError("Agent VM setup command failed with exit 1: boom")).toBe(
-      false,
-    );
+    expect(isRetryableSshSetupError("Agent VM setup command failed with exit 1: boom")).toBe(false);
   });
 
   it("classifies dpkg/apt lock contention as retryable", () => {
@@ -186,18 +184,14 @@ describe("extractBootstrapWarning / isRetryableSshSetupError", () => {
 
   it("classifies a timeout-killed bootstrap (exit 124) as retryable", () => {
     expect(isRetryableSshSetupError("Agent VM setup command failed with exit 124")).toBe(true);
-    expect(isRetryableSshSetupError("Agent VM setup command failed with exit 1: boom")).toBe(
-      false,
-    );
+    expect(isRetryableSshSetupError("Agent VM setup command failed with exit 1: boom")).toBe(false);
   });
 });
 
 describe("ensureAgentVmSetupForSession", () => {
   it("no-ops when setup already completed and forceSync is off", async () => {
     selectResults.push([sessionRow({ logs: [AGENT_SETUP_COMPLETE_LOG] })]);
-    await expect(
-      ensureAgentVmSetupForSession("session-1", "org-1"),
-    ).resolves.toBeUndefined();
+    await expect(ensureAgentVmSetupForSession("session-1", "org-1")).resolves.toBeUndefined();
     expect(updateSetCalls).toHaveLength(0);
   });
 
@@ -232,8 +226,6 @@ describe("ensureAgentVmSetupForSession", () => {
   it("records a failure when the session has no VM", async () => {
     selectResults.push([sessionRow({ vmResourceId: null })]);
     selectResults.push([{ logs: [], status: "setting-up" }]);
-    await expect(ensureAgentVmSetupForSession("session-1", "org-1")).rejects.toThrow(
-      /has no VM/,
-    );
+    await expect(ensureAgentVmSetupForSession("session-1", "org-1")).rejects.toThrow(/has no VM/);
   });
 });

@@ -1241,7 +1241,9 @@ export class OvhClient implements PluginClient {
               .sort((a, b) => a.timestamp - b.timestamp);
             if (points.length === 0) return [];
             const label =
-              hosts.length > 1 ? `${metric.name ?? name} (${host.hostname})` : metric.name ?? name;
+              hosts.length > 1
+                ? `${metric.name ?? name} (${host.hostname})`
+                : (metric.name ?? name);
             return [{ label, unit, points }];
           });
         } catch {

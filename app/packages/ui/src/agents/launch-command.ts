@@ -171,8 +171,7 @@ export function buildAgentBootstrapCommand(input: AgentBootstrapCommandInput): s
   const runtimeInstallLines = runtimeInstallCommands(input.setupPlan);
   const packageManagerInstallLines = packageManagerInstallCommands(input.setupPlan);
   const initialCloneUrl =
-    input.setupPlan.initialCloneUrl?.trim() ||
-    (isCloneableGitRepo(input.repo) ? input.repo : "");
+    input.setupPlan.initialCloneUrl?.trim() || (isCloneableGitRepo(input.repo) ? input.repo : "");
   const script = `
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
