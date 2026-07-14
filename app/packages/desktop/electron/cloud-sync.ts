@@ -28,7 +28,7 @@ function notifyRenderer(event: string, data: unknown) {
   }
 }
 
-export async function pushChanges(token: string): Promise<void> {
+async function pushChanges(token: string): Promise<void> {
   const db = await getDb();
   const lastPushAt = (await getSyncState("last_push_at")) ?? "1970-01-01T00:00:00Z";
   const encKey = getEncryptionKey();
@@ -114,7 +114,7 @@ export async function pushChanges(token: string): Promise<void> {
   await setSyncState("last_push_at", new Date().toISOString());
 }
 
-export interface PendingPull {
+interface PendingPull {
   accounts: number;
   resources: number;
   dashboards: number;
