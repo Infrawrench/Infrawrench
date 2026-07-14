@@ -68,11 +68,13 @@ export async function getAzureCreateConfig(
     );
   }
   if (typeId === "azure-dns-zone") {
+    // ARM only accepts location "global" for DNS zones, so no region field.
     return getSimpleCreateConfig(
       ctx,
       "DNS Zone Name",
       "DNS zone name (e.g. example.com)",
       "azure-dns-zone",
+      { includeRegion: false },
     );
   }
   if (typeId === "azure-vnet") return getVNetCreateConfig(ctx);

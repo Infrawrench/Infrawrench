@@ -17,6 +17,7 @@
  *   - manifest.ts                  get/applyManifest
  *   - export-credential.ts         exportCredential
  *   - create-config-dispatch.ts    getCreateConfig dispatch
+ *   - create-dispatch.ts           createResource dispatch
  *   - pricing-estimates.ts         per-type cost estimation
  *   - resource-listers.ts          listResources per type
  *   - create-handlers.ts           per-type create flows
@@ -73,6 +74,7 @@ import { attachAzureResource } from "./attach-handlers.js";
 import { applyAzureManifest, getAzureManifest } from "./manifest.js";
 import { exportAzureCredential } from "./export-credential.js";
 import { getAzureCreateConfig } from "./create-config-dispatch.js";
+import { createAzureResource } from "./create-dispatch.js";
 import {
   azureSupportsSizePricing,
   getAzureCreateCostEstimate,
@@ -466,6 +468,14 @@ export class AzureClient implements PluginClient {
 
   getCreateConfig(typeId: string): Promise<CreateResourceConfig> {
     return getAzureCreateConfig(this.createCtx, typeId);
+  }
+
+  createResource(
+    typeId: string,
+    accountId: string,
+    fields: Record<string, string>,
+  ): Promise<ResourceInstance> {
+    return createAzureResource(this.createCtx, typeId, accountId, fields);
   }
 
   attachResource(

@@ -1,6 +1,6 @@
-import type { CreateResourceConfig } from "@infrawrench/plugin-base";
+import type { CreateResourceConfig, ResourceInstance } from "@infrawrench/plugin-base";
 import { AZURE_REGIONS } from "./regions.js";
-import { fetchResourceGroups, type AzureCreateContext } from "./create-handlers-shared.js";
+import { ARM, fetchResourceGroups, type AzureCreateContext } from "./create-handlers-shared.js";
 
 export async function getLoadBalancerCreateConfig(
   ctx: AzureCreateContext,
@@ -41,5 +41,48 @@ export async function getLoadBalancerCreateConfig(
         defaultValue: "Standard",
       },
     ],
+  };
+}
+
+export async function createLoadBalancer(
+  ctx: AzureCreateContext,
+  accountId: string,
+  fields: Record<string, string>,
+): Promise<ResourceInstance> {
+  const name = fields["name"]!;
+  const rg = fields["resourceGroup"]!;
+  const location = fields["region"]!;
+  const sku = fields["sku"] ?? "Standard";
+
+  const result = await ctx.put<Record<string, unknown>>(
+    `${ARM}/subscriptions/${ctx.subscriptionId}/resourceGroups/${rg}/providers/Microsoft.Network/loadBalancers/${name}?api-version=2023-09-01`,
+    {
+      location,
+      sku: { name: sku },
+      properties: {},
+    },
+  );
+  const props = result["properties"] as Record<string, unknown> | undefined;
+  return {
+    id: ctx.makeId(accountId, "azure-load-balancer", `${rg}/${name}`),
+    pluginId: "azure",
+    resourceTypeId: "azure-load-balancer",
+    accountId,
+    displayName: name,
+    fields: {
+      name,
+      resourceGroup: rg,
+      location,
+      sku,
+      provisioningState: String(props?.["provisioningState"] ?? "Creating"),
+      frontendIpCount: 0,
+      backendPoolCount: 0,
+      ruleCount: 0,
+    },
+    resolvedOutputs: {},
+    secretStates: [],
+    externalId: `${rg}/${name}`,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
   };
 }

@@ -7,6 +7,7 @@ export async function getSimpleCreateConfig(
   nameLabel: string,
   description: string,
   _typeId: string,
+  options?: { includeRegion?: boolean },
 ): Promise<CreateResourceConfig> {
   const rgOptions = await fetchResourceGroups(ctx);
   return {
@@ -19,13 +20,17 @@ export async function getSimpleCreateConfig(
         required: true,
         options: rgOptions,
       },
-      {
-        key: "region",
-        label: "Region",
-        kind: "region-picker",
-        required: true,
-        regions: AZURE_REGIONS,
-      },
+      ...(options?.includeRegion === false
+        ? []
+        : [
+            {
+              key: "region",
+              label: "Region",
+              kind: "region-picker" as const,
+              required: true,
+              regions: AZURE_REGIONS,
+            },
+          ]),
     ],
   };
 }

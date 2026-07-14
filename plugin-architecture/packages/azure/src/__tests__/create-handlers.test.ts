@@ -21,6 +21,7 @@ import { createAppService } from "../app-service-create-handlers.js";
 import { createFunctionApp } from "../function-app-create-handlers.js";
 import { createAKSCluster } from "../aks-create-handlers.js";
 import { createAppRegistration } from "../app-registration-create-handlers.js";
+import { createLoadBalancer } from "../load-balancer-create-handlers.js";
 
 function makeCtx(overrides: Record<string, unknown> = {}): AzureCreateContext {
   return {
@@ -266,6 +267,24 @@ describe("single-PUT create handlers", () => {
     });
     expect(out.resolvedOutputs["ipAddress"]).toBe("1.2.3.4");
     expect(out.fields["containers"]).toBe(1);
+  });
+
+  it("createLoadBalancer", async () => {
+    const put = vi.fn(async () => ({ properties: { provisioningState: "Succeeded" } }));
+    const out = await createLoadBalancer(makeCtx({ put }), ACCT, {
+      name: "lb1",
+      resourceGroup: "rg1",
+      region: "eastus",
+      sku: "Standard",
+    });
+    const [url, body] = put.mock.calls[0] as unknown as [string, Record<string, unknown>];
+    expect(url).toContain("/loadBalancers/lb1?api-version=2023-09-01");
+    expect(body).toMatchObject({ location: "eastus", sku: { name: "Standard" } });
+    expect(out).toMatchObject({
+      resourceTypeId: "azure-load-balancer",
+      externalId: "rg1/lb1",
+      fields: { name: "lb1", sku: "Standard", provisioningState: "Succeeded" },
+    });
   });
 
   it("createMessagingNamespace", async () => {
