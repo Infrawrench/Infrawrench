@@ -43,6 +43,58 @@ async function ensureEc2KeyPair(rctx: AwsCreateContext, publicKey: string): Prom
 }
 
 /**
+ * Find or create a shared "infrawrench-agent-ssh" security group with TCP/22
+ * open, in the region's default VPC. Used when `openSshPort=true` is submitted
+ * without an explicit security group — notably the Agents VM flow, which
+ * submits only field defaults. Without this, the instance lands in the default
+ * security group, where port 22 is typically closed and SSH setup can never
+ * reach the VM.
+ */
+async function ensureAgentSshSecurityGroup(rctx: AwsCreateContext): Promise<string> {
+  const groupName = "infrawrench-agent-ssh";
+  const vpcs = await rctx.ec2<Record<string, unknown>>("DescribeVpcs", {
+    "Filter.1.Name": "is-default",
+    "Filter.1.Value": "true",
+  });
+  const vpcSet = vpcs["vpcSet"] as Record<string, unknown> | undefined;
+  const vpcItems = ensureArray(vpcSet?.["item"]) as Record<string, unknown>[];
+  const vpcId = String(vpcItems[0]?.["vpcId"] ?? "");
+  if (!vpcId) {
+    throw new Error(
+      "openSshPort requested but no default VPC exists in this region — pick a security group explicitly instead.",
+    );
+  }
+
+  const existing = await rctx.ec2<Record<string, unknown>>("DescribeSecurityGroups", {
+    "Filter.1.Name": "group-name",
+    "Filter.1.Value": groupName,
+    "Filter.2.Name": "vpc-id",
+    "Filter.2.Value": vpcId,
+  });
+  const sgInfo = existing["securityGroupInfo"] as Record<string, unknown> | undefined;
+  const sgItems = ensureArray(sgInfo?.["item"]) as Record<string, unknown>[];
+  const existingId = String(sgItems[0]?.["groupId"] ?? "");
+  if (existingId) return existingId;
+
+  const created = await rctx.ec2<Record<string, unknown>>("CreateSecurityGroup", {
+    GroupName: groupName,
+    GroupDescription: "SSH access for Infrawrench agent VMs",
+    VpcId: vpcId,
+  });
+  const groupId = String(created["groupId"] ?? "");
+  if (!groupId) throw new Error("CreateSecurityGroup returned no groupId");
+  await rctx.ec2("AuthorizeSecurityGroupIngress", {
+    GroupId: groupId,
+    "IpPermissions.1.IpProtocol": "tcp",
+    "IpPermissions.1.FromPort": "22",
+    "IpPermissions.1.ToPort": "22",
+    "IpPermissions.1.IpRanges.1.CidrIp": "0.0.0.0/0",
+    "IpPermissions.1.IpRanges.1.Description": "SSH for Infrawrench agent VMs",
+  });
+  return groupId;
+}
+
+/**
  * List IAM roles via the legacy XML Query API. Returns the raw role records.
  * Service-linked roles (path `/aws-service-role/`) are excluded since
  * `iam:PassRole` rejects them.
@@ -872,6 +924,8 @@ export async function computeCreateResource(
     const securityGroup = fields["securityGroup"];
     if (securityGroup) {
       params["SecurityGroupId.1"] = securityGroup;
+    } else if (fields["openSshPort"] === "true") {
+      params["SecurityGroupId.1"] = await ensureAgentSshSecurityGroup(rctx);
     }
 
     const data = await rctx.ec2<Record<string, unknown>>("RunInstances", params);

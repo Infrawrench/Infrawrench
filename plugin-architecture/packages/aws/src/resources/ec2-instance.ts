@@ -48,5 +48,20 @@ export const EC2InstanceResourceType = rt({
     runningWhen: { fieldKey: "state", value: "running" },
     usernameFieldKey: "sshUsername",
   },
+  agentVm: {
+    sshKeyFieldKey: "sshKey",
+    defaultUsername: "ubuntu",
+    defaultFields: {
+      instanceType: "t3.small",
+      diskSizeGb: "40",
+      imageId: "ubuntu-2404",
+      // Agent VMs are created without a security-group pick, which lands them
+      // in the default group where TCP/22 is typically closed. This makes the
+      // create handler attach a shared find-or-create SG with port 22 open.
+      openSshPort: "true",
+    },
+    linuxImageDefaults: { imageId: "ubuntu-2404" },
+    hiddenFieldKeys: ["sshKey"],
+  },
   supportsCreate: true,
 });

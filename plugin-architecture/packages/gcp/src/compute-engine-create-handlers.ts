@@ -538,6 +538,11 @@ export const computeEngineCreateResourceHandlers: Record<
   "gce-instance": async (ctx, accountId, fields, parentResourceId) => {
     const p = ctx.project;
     const zone = fields["zone"] ?? "";
+    if (!zone) {
+      throw new Error(
+        'GCP Compute: no zone specified for the new instance — pass a "zone" field (e.g. "us-central1-a").',
+      );
+    }
     const machineType = fields["machineType"] ?? "";
     const name = fields["name"] ?? "";
     const tok = await ctx.token();

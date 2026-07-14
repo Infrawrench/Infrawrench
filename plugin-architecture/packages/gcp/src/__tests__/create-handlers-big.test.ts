@@ -145,6 +145,13 @@ describe("compute-engine create", () => {
     expect(boot!.source).toBe("dsl1");
   });
 
+  it("gce-instance create fails fast when no zone is given", async () => {
+    await expect(
+      gcpCreateResource(ctx(), "gce-instance", "acct", { name: "v", machineType: "m" }),
+    ).rejects.toThrow(/no zone specified/);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
   it("gce-instance error", async () => {
     fetchSpy.mockResolvedValue(err());
     await expect(

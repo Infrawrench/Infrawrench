@@ -1395,27 +1395,35 @@ async function doCreateResourceImpl(
     if (sshPub) {
       try {
         const comment = sshPub.trim().split(" ")[2] ?? "infrawrench";
-        type KeyResponse =
-          | { ssh_key: { id: number } }
-          | { ssh_keys: Array<{ id: number; public_key: string }> };
-        const keyData = await ctx
-          .fetch<KeyResponse>("/account/keys", {
+        let keyId: number | undefined;
+        try {
+          const created = await ctx.fetch<{ ssh_key: { id: number } }>("/account/keys", {
             method: "POST",
             body: JSON.stringify({ name: comment, public_key: sshPub.trim() }),
-          })
-          .catch(async (e: unknown) => {
-            if (String(e).includes("422")) {
-              return ctx.fetch<KeyResponse>("/account/keys");
-            }
-            throw e;
           });
-        const keyId =
-          "ssh_key" in keyData
-            ? keyData.ssh_key.id
-            : keyData.ssh_keys.find((k) => k.public_key.trim() === sshPub.trim())?.id;
+          keyId = created.ssh_key.id;
+        } catch (e: unknown) {
+          if (!String(e).includes("422")) throw e;
+          // 422 means the key already exists on the account — look up its id.
+          // Keys can span multiple pages, so walk them until we find the
+          // match or exhaust the list.
+          const perPage = 200;
+          for (let page = 1; keyId === undefined; page += 1) {
+            const data = await ctx.fetch<{
+              ssh_keys?: Array<{ id: number; public_key: string }>;
+            }>(`/account/keys?per_page=${perPage}&page=${page}`);
+            const keys = data.ssh_keys ?? [];
+            keyId = keys.find((k) => k.public_key.trim() === sshPub.trim())?.id;
+            if (keys.length < perPage) break;
+          }
+        }
         if (keyId) sshKeyIds.push(keyId);
-      } catch {
-        /* skip SSH key if upload fails */
+        if (!keyId) {
+          throw new Error("DigitalOcean did not return an id for the uploaded SSH key");
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(`Failed to attach SSH key to DigitalOcean Droplet: ${message}`);
       }
     }
 

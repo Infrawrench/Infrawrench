@@ -38,6 +38,22 @@ export const InstanceResourceType = rt({
     runningWhen: { fieldKey: "state", value: "running" },
     defaultUsername: "root",
   },
+  agentVm: {
+    sshKeyFieldKey: "sshPublicKey",
+    defaultUsername: "root",
+    defaultFields: {
+      // The agents flow submits only these defaults; without a zone the
+      // create call omits it and placement becomes nondeterministic.
+      zone: "fr-par-1",
+      commercialType: "DEV1-M",
+      // Image label understood by createServer (and used as the image-picker
+      // fallback id) — display names like "Ubuntu 24.04 Noble Numbat" are not
+      // valid image ids/labels for the API.
+      image: "ubuntu_noble",
+    },
+    linuxImageDefaults: { image: "ubuntu_noble" },
+    hiddenFieldKeys: ["sshPublicKey"],
+  },
   supportsCreate: true,
   supportsMetrics: true,
 });

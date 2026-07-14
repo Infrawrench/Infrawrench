@@ -33,5 +33,27 @@ export const GceInstanceResourceType = rt({
     runningWhen: { fieldKey: "status", value: "RUNNING" },
     usernameFieldKey: "sshUsername",
   },
+  agentVm: {
+    sshKeyFieldKey: "sshPublicKey",
+    defaultUsername: "ubuntu",
+    defaultFields: {
+      // The agents flow submits only these defaults, and the create handler
+      // requires a zone — without one the request URL is malformed.
+      zone: "us-central1-a",
+      image: "projects/ubuntu-os-cloud/global/images/family/ubuntu-2404-lts-amd64",
+      machineType: "e2-standard-2",
+      diskGb: "40",
+    },
+    defaultFieldLabels: {
+      zone: "Zone",
+      image: "OS image",
+      machineType: "Machine type",
+      diskGb: "Boot disk size",
+    },
+    linuxImageDefaults: {
+      image: "projects/ubuntu-os-cloud/global/images/family/ubuntu-2404-lts-amd64",
+    },
+    hiddenFieldKeys: ["sshPublicKey"],
+  },
   supportsCreate: true,
 });

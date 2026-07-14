@@ -846,25 +846,27 @@ export class ScalewayClient implements PluginClient {
       const dsUrl = await this.getCockpitDataSource(region);
       if (!dsUrl) return [];
 
-      // PromQL metric names for Scaleway instance servers.
-      // Verified names to try when you have a working Cockpit setup:
-      //   scaleway_instance_server_cpu_seconds_total{instance_id="<id>"}
-      //   scaleway_instance_server_network_bytes_total{instance_id="<id>",direction="rx"}
-      //   scaleway_instance_server_network_bytes_total{instance_id="<id>",direction="tx"}
-      // We use rate()[1m] for counters and fall back gracefully on 4xx / empty.
+      // Metric/label names verified against Scaleway's own preconfigured Cockpit
+      // alert rules: the series carry no `scaleway_` prefix and are keyed by
+      // `resource_id` (server UUID), e.g.
+      //   rate(instance_server_cpu_seconds_total[1m]) / instance_server_vcpu_count > 0.9
+      // Only the CPU pair is confirmed; the network names follow the same
+      // convention and fall back gracefully on empty results.
       const queries: Array<{ promql: string; label: string; unit: string }> = [
         {
-          promql: `rate(scaleway_instance_server_cpu_seconds_total{instance_id="${serverId}"}[1m])`,
+          promql:
+            `100 * rate(instance_server_cpu_seconds_total{resource_id="${serverId}"}[1m])` +
+            ` / instance_server_vcpu_count{resource_id="${serverId}"}`,
           label: "CPU Usage",
           unit: "%",
         },
         {
-          promql: `rate(scaleway_instance_server_network_bytes_total{instance_id="${serverId}",direction="rx"}[1m])`,
+          promql: `rate(instance_server_network_bytes_total{resource_id="${serverId}",direction="rx"}[1m])`,
           label: "Network In",
           unit: "bytes/s",
         },
         {
-          promql: `rate(scaleway_instance_server_network_bytes_total{instance_id="${serverId}",direction="tx"}[1m])`,
+          promql: `rate(instance_server_network_bytes_total{resource_id="${serverId}",direction="tx"}[1m])`,
           label: "Network Out",
           unit: "bytes/s",
         },
@@ -879,8 +881,73 @@ export class ScalewayClient implements PluginClient {
     }
 
     if (resourceTypeId === "kapsule-cluster") {
-      // Cockpit PromQL metric names for Kapsule clusters are unverified against a live setup.
-      return [];
+      // externalId format: {region}/{clusterId}
+      const externalId = resourceId.split(":").pop() ?? "";
+      const [region, clusterId] = externalId.split("/");
+      if (!region || !clusterId) return [];
+
+      const dsUrl = await this.getCockpitDataSource(region);
+      if (!dsUrl) return [];
+
+      // Kapsule pushes control-plane metrics to the Scaleway Cockpit data
+      // source natively (data-plane metrics need a user-installed Helm chart
+      // and land in a custom data source — not covered here). Series names
+      // and labels verified against Scaleway's preconfigured alert rules:
+      // metrics are `kubernetes_cluster_k8s_shoot_*` gauges keyed by
+      // `resource_name` (the cluster NAME, not its UUID), so resolve the
+      // name first.
+      let clusterName: string;
+      try {
+        const cluster = await this.k8sApi().getCluster({
+          region: region as Region,
+          clusterId,
+        });
+        clusterName = cluster.name;
+      } catch {
+        return [];
+      }
+      if (!clusterName) return [];
+      const byName = `resource_name="${clusterName}"`;
+      const apiServer = `component="api-server",${byName}`;
+
+      const queries: Array<{ promql: string; label: string; unit: string }> = [
+        {
+          promql: `sum(kubernetes_cluster_k8s_shoot_nodes{${byName}})`,
+          label: "Nodes",
+          unit: "count",
+        },
+        {
+          promql: `sum(kubernetes_cluster_k8s_shoot_nodes_ready{${byName}})`,
+          label: "Nodes Ready",
+          unit: "count",
+        },
+        {
+          promql: `sum(kubernetes_cluster_k8s_shoot_nodes_pods_usage_total{${byName}})`,
+          label: "Pods Running",
+          unit: "count",
+        },
+        {
+          promql:
+            `100 * max(kubernetes_cluster_k8s_shoot_controlplane_cpu_usage{${apiServer}})` +
+            ` / sum(kubernetes_cluster_k8s_shoot_controlplane_cpu_limit{${apiServer}})`,
+          label: "API Server CPU",
+          unit: "%",
+        },
+        {
+          promql:
+            `100 * max(kubernetes_cluster_k8s_shoot_controlplane_memory_usage_bytes{${apiServer}})` +
+            ` / sum(kubernetes_cluster_k8s_shoot_controlplane_memory_limit_bytes{${apiServer}})`,
+          label: "API Server Memory",
+          unit: "%",
+        },
+      ];
+
+      const series = await Promise.all(
+        queries.map((q) =>
+          this.queryCockpitRange(dsUrl, q.promql, startUnix, endUnix, q.label, q.unit),
+        ),
+      );
+      return series.filter((s): s is MetricSeries => s != null);
     }
 
     return [];
@@ -1187,6 +1254,29 @@ export class ScalewayClient implements PluginClient {
     const server = created.server;
     if (!server) {
       throw new Error("Scaleway plugin: createServer returned no server");
+    }
+
+    // Authorize the SSH key (agent flow routes it via `sshPublicKey`).
+    // createServer has no SSH-key parameter; the supported mechanism is the
+    // `cloud-init` user-data key, which cloud-init consumes on first boot —
+    // so it must be set before the poweron below. Failing silently would
+    // produce an instance the caller can never SSH into, so surface it.
+    const sshPublicKey = fields["sshPublicKey"]?.trim();
+    if (sshPublicKey) {
+      const cloudInit = `#cloud-config\nssh_authorized_keys:\n  - ${sshPublicKey}\n`;
+      try {
+        await api.setServerUserData({
+          zone,
+          serverId: server.id,
+          key: "cloud-init",
+          content: cloudInit,
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        throw new Error(
+          `Scaleway plugin: instance ${server.id} was created but attaching the SSH key failed: ${message}`,
+        );
+      }
     }
 
     // Boot the instance after creation

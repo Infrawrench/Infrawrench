@@ -39,6 +39,19 @@ export const ServerResourceType = rt({
     runningWhen: { fieldKey: "status", value: "running" },
     defaultUsername: "root",
   },
+  agentVm: {
+    sshKeyFieldKey: "sshPublicKey",
+    defaultUsername: "root",
+    defaultFields: {
+      // The agents flow submits only these defaults; without a location the
+      // create call omits it and placement becomes nondeterministic.
+      location: "fsn1",
+      serverType: "cx22",
+      image: "ubuntu-24.04",
+    },
+    linuxImageDefaults: { image: "ubuntu-24.04" },
+    hiddenFieldKeys: ["sshPublicKey"],
+  },
   supportsCreate: true,
   supportsMetrics: true,
 });

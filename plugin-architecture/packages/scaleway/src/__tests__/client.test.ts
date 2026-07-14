@@ -27,6 +27,7 @@ const { sdkMocks, instanceMethods, k8sMethods, rdbMethods, blockMethods, s3Mocks
       listImages: vi.fn(),
       createServer: vi.fn(),
       serverAction: vi.fn(),
+      setServerUserData: vi.fn(),
       attachVolume: vi.fn(),
     },
     k8sMethods: {
@@ -658,6 +659,60 @@ describe("createResource", () => {
       serverId: "srv9",
       action: "poweron",
     });
+  });
+
+  it("instance create authorizes the SSH key via cloud-init user data before poweron", async () => {
+    const c = makeClient();
+    const callOrder: string[] = [];
+    instanceMethods.createServer.mockResolvedValue({
+      server: { id: "srv11", name: "agent", state: "stopped" },
+    });
+    instanceMethods.setServerUserData.mockImplementation(async () => {
+      callOrder.push("setServerUserData");
+    });
+    instanceMethods.serverAction.mockImplementation(async () => {
+      callOrder.push("serverAction");
+      return {};
+    });
+    await c.createResource("instance", ACCOUNT, {
+      name: "agent",
+      zone: "fr-par-1",
+      commercialType: "DEV1-M",
+      image: "ubuntu_noble",
+      sshPublicKey: "ssh-ed25519 AAAA agent@infrawrench",
+    });
+    expect(instanceMethods.setServerUserData).toHaveBeenCalledWith({
+      zone: "fr-par-1",
+      serverId: "srv11",
+      key: "cloud-init",
+      content: "#cloud-config\nssh_authorized_keys:\n  - ssh-ed25519 AAAA agent@infrawrench\n",
+    });
+    expect(callOrder).toEqual(["setServerUserData", "serverAction"]);
+  });
+
+  it("instance create skips user data when no SSH key is given", async () => {
+    const c = makeClient();
+    instanceMethods.createServer.mockResolvedValue({
+      server: { id: "srv12", name: "n", state: "stopped" },
+    });
+    instanceMethods.serverAction.mockResolvedValue({});
+    await c.createResource("instance", ACCOUNT, { zone: "fr-par-1", name: "n" });
+    expect(instanceMethods.setServerUserData).not.toHaveBeenCalled();
+  });
+
+  it("instance create surfaces SSH key attachment failures", async () => {
+    const c = makeClient();
+    instanceMethods.createServer.mockResolvedValue({
+      server: { id: "srv13", name: "n", state: "stopped" },
+    });
+    instanceMethods.setServerUserData.mockRejectedValue(new Error("nope"));
+    await expect(
+      c.createResource("instance", ACCOUNT, {
+        zone: "fr-par-1",
+        name: "n",
+        sshPublicKey: "ssh-ed25519 AAAA x",
+      }),
+    ).rejects.toThrow(/attaching the SSH key failed: nope/);
   });
 
   it("instance create tolerates poweron failure", async () => {

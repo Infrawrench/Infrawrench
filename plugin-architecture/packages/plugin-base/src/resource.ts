@@ -242,6 +242,13 @@ export interface ResourceTypeDefinition {
     usernameFieldKey?: string;
   };
   /**
+   * Declares that this VM resource type can host an Infrawrench agent session.
+   * Hosts use this metadata to list eligible accounts and to hide/provider-fill
+   * fields such as SSH keys while keeping provider-specific create behavior in
+   * the plugin.
+   */
+  agentVm?: AgentVmCapability;
+  /**
    * When true, instances of this type can be dragged onto any resource that
    * declares `sshEndpoint` to set up an SSH-over-tunnel (e.g. a Cloudflare
    * Tunnel dropped on a server). The host orchestrates the cross-account wiring;
@@ -302,6 +309,21 @@ export interface ResourceTypeDefinition {
    * also match between source and target (e.g. matching zone).
    */
   attachTargets?: AttachTarget[];
+}
+
+export interface AgentVmCapability {
+  /** Create-field key that accepts an SSH public key or provider key reference. */
+  sshKeyFieldKey: string;
+  /** Default SSH username for setup when the resource's sshEndpoint has none. */
+  defaultUsername: string;
+  /** Field defaults the Agents setup form should apply unless the user overrides them. */
+  defaultFields?: Record<string, string>;
+  /** Human-readable labels for default fields shown in the Agents setup form. */
+  defaultFieldLabels?: Record<string, string>;
+  /** Preferred image/create field values for an Ubuntu-like Linux image. */
+  linuxImageDefaults?: Record<string, string>;
+  /** Create-field keys the Agents defaults form should not show. */
+  hiddenFieldKeys?: string[];
 }
 
 /**

@@ -33,6 +33,7 @@ export type {
   SecretExportEntry,
   CredentialFormat,
   AttachTarget,
+  AgentVmCapability,
 } from "./resource.js";
 
 export type {

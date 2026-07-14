@@ -282,8 +282,87 @@ describe("doCreateResource — REST create branches", () => {
     expect(result.resource.id).toBe("acc:droplet:42");
     expect(result.resource.resolvedOutputs).toEqual({ ipv4: "1.2.3.4", ipv4Private: "10.0.0.1" });
     expect(result.resource.parentResourceId).toBe("acc:project:proj-2");
+    expect(fetch).toHaveBeenCalledWith(
+      "/account/keys",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ name: "comment", public_key: "ssh-ed25519 AAAA comment" }),
+      }),
+    );
+    expect(fetch).toHaveBeenCalledWith(
+      "/droplets",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          name: "web-1",
+          region: "nyc3",
+          size: "s-1vcpu-1gb",
+          image: "ubuntu-22-04-x64",
+          ssh_keys: [555],
+        }),
+      }),
+    );
     // project assignment POST happened
     expect(fetch).toHaveBeenCalledWith("/projects/proj-2/resources", expect.any(Object));
+  });
+
+  it("resolves a duplicate SSH key beyond page 1 when the upload 422s", async () => {
+    const sshPub = "ssh-ed25519 AAAA comment";
+    // Page 1 is full (200 non-matching keys); the match sits on page 2.
+    const page1 = Array.from({ length: 200 }, (_, i) => ({
+      id: i + 1,
+      public_key: `ssh-ed25519 OTHER${i} other`,
+    }));
+    const fetch = vi.fn(async (path: string, init?: { method?: string }) => {
+      if (path === "/account/keys" && init?.method === "POST") {
+        throw new Error("DigitalOcean API 422: SSH Key is already in use on your account");
+      }
+      if (path === "/account/keys?per_page=200&page=1") return { ssh_keys: page1 };
+      if (path === "/account/keys?per_page=200&page=2")
+        return { ssh_keys: [{ id: 999, public_key: sshPub }] };
+      if (path === "/droplets")
+        return { droplet: { id: 43, name: "web-2", networks: { v4: [] } } };
+      return {};
+    }) as Mock;
+    const ctx = { fetch, credentials: {} } as DoCreateContext;
+    const result = await doCreateResource(ctx, "droplet", "acc", {
+      name: "web-2",
+      region: "nyc3",
+      size: "s-1vcpu-1gb",
+      image: "ubuntu-22-04-x64",
+      sshPublicKey: sshPub,
+    });
+    expect(result.resource.id).toBe("acc:droplet:43");
+    expect(fetch).toHaveBeenCalledWith("/account/keys?per_page=200&page=2");
+    expect(fetch).toHaveBeenCalledWith(
+      "/droplets",
+      expect.objectContaining({
+        method: "POST",
+        body: expect.stringContaining('"ssh_keys":[999]'),
+      }),
+    );
+  });
+
+  it("fails droplet creation when the duplicate SSH key cannot be found on any page", async () => {
+    const fetch = vi.fn(async (path: string, init?: { method?: string }) => {
+      if (path === "/account/keys" && init?.method === "POST") {
+        throw new Error("DigitalOcean API 422: SSH Key is already in use on your account");
+      }
+      if (path.startsWith("/account/keys?"))
+        return { ssh_keys: [{ id: 1, public_key: "ssh-ed25519 OTHER other" }] };
+      return {};
+    }) as Mock;
+    const ctx = { fetch, credentials: {} } as DoCreateContext;
+    await expect(
+      doCreateResource(ctx, "droplet", "acc", {
+        name: "web-3",
+        region: "nyc3",
+        size: "s-1vcpu-1gb",
+        image: "ubuntu-22-04-x64",
+        sshPublicKey: "ssh-ed25519 AAAA comment",
+      }),
+    ).rejects.toThrow(/Failed to attach SSH key/);
+    expect(fetch).not.toHaveBeenCalledWith("/droplets", expect.anything());
   });
 
   it("creates a droplet and an extra attached volume when addExtraDisk is set", async () => {

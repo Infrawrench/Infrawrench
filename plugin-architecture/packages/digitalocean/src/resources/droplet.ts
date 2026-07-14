@@ -36,5 +36,18 @@ export const DropletResourceType = rt({
     defaultUsername: "root",
     runningWhen: { fieldKey: "status", value: "active" },
   },
+  agentVm: {
+    sshKeyFieldKey: "sshPublicKey",
+    defaultUsername: "root",
+    defaultFields: {
+      // The agents flow submits only these defaults; without a region the
+      // create call omits it and placement becomes nondeterministic.
+      region: "nyc3",
+      size: "s-2vcpu-4gb",
+      image: "ubuntu-24-04-x64",
+    },
+    linuxImageDefaults: { image: "ubuntu-24-04-x64" },
+    hiddenFieldKeys: ["sshPublicKey"],
+  },
   supportsCreate: true,
 });
