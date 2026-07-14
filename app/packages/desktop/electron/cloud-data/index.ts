@@ -7,5 +7,4 @@ import "./secrets";
 import "./metrics";
 import "./sql-kv-docker";
 import "./sftp";
-import "./connect";
 import "./ssh-tunnels";

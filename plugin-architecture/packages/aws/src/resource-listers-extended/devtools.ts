@@ -1,5 +1,5 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
-import { ensureArray } from "../auth.js";
+import { ensureArray } from "../xml.js";
 import type { ListerContext } from "../resource-listers.js";
 
 export async function listCodeBuildProjects(

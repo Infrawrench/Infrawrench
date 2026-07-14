@@ -12,7 +12,7 @@
  */
 
 import type { AwsCredentials } from "./auth.js";
-import { ensureArray } from "./auth.js";
+import { ensureArray } from "./xml.js";
 import { ec2Call } from "./client-transport.js";
 import { generateServiceRole } from "./iam-role-generator.js";
 

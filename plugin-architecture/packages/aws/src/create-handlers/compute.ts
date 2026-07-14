@@ -1,5 +1,5 @@
 import type { CreateResourceConfig, ResourceInstance } from "@infrawrench/plugin-base";
-import { ensureArray } from "../auth.js";
+import { ensureArray } from "../xml.js";
 import { fetchSigned } from "../signed-request.js";
 import { ec2SshUsername, ec2SshUsernameFromImageName } from "../ssh-username.js";
 import {

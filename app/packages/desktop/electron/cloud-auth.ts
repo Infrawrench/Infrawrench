@@ -350,24 +350,6 @@ export async function getAuthStatus(): Promise<{
   };
 }
 
-async function logout(): Promise<void> {
-  currentTokens = null;
-  clearProactiveRefresh();
-  for (const key of [
-    "access_token_encrypted",
-    "access_token_iv",
-    "refresh_token_encrypted",
-    "refresh_token_iv",
-    "token_expires_at",
-    "email",
-    "organization_id",
-    "last_sync_version",
-    "last_push_at",
-  ]) {
-    await deleteSyncState(key);
-  }
-}
-
 async function fetchCloudOrgs(): Promise<Array<{ id: string; displayName: string; role: string }>> {
   let token = await getAccessToken();
   if (!token) return [];
@@ -397,7 +379,6 @@ ipcMain.handle("cloud_auth_start", () => {
 });
 
 ipcMain.handle("cloud_auth_status", () => getAuthStatus());
-ipcMain.handle("cloud_auth_logout", () => logout());
 ipcMain.handle("cloud_auth_get_token", () => getAccessToken());
 ipcMain.handle("cloud_auth_orgs", () => fetchCloudOrgs());
 ipcMain.handle("cloud_get_url", () => CLOUD_URL);

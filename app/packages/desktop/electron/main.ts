@@ -586,15 +586,6 @@ ipcMain.handle("show_open_dialog", async (_e, options: Electron.OpenDialogOption
   return result;
 });
 
-ipcMain.handle("show_save_dialog", async (_e, options: Electron.SaveDialogOptions) => {
-  const win = BrowserWindow.getFocusedWindow();
-  const result = win
-    ? await dialog.showSaveDialog(win, options)
-    : await dialog.showSaveDialog(options);
-  if (!result.canceled && result.filePath) registerDialogBlessedPath(result.filePath);
-  return result;
-});
-
 const EXTERNAL_URL_SCHEMES = new Set(["http:", "https:", "mailto:"]);
 
 ipcMain.handle("open_external_url", async (_e, { url }: { url: string }) => {

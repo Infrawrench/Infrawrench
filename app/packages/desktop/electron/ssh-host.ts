@@ -4,7 +4,6 @@ import os from "node:os";
 import path from "node:path";
 import {
   openTunnel,
-  closeTunnel,
   getActiveTunnels,
   sshExecCommand,
   workflowSshExec,
@@ -45,11 +44,6 @@ import {
 } from "./agent-setup";
 
 ipcMain.handle("ssh_open_tunnel", (_e, config: SshTunnelConfig) => openTunnel(config));
-
-ipcMain.handle("ssh_close_tunnel", (_e, { tunnelId }: { tunnelId: string }) => {
-  closeTunnel(tunnelId);
-  return { ok: true };
-});
 
 ipcMain.handle("ssh_get_active_tunnels", () => getActiveTunnels());
 

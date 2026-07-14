@@ -1,6 +1,6 @@
 import type { StorageObject } from "@infrawrench/plugin-base";
 import type { AwsCredentials } from "./auth.js";
-import { parseXml, ensureArray } from "./auth.js";
+import { parseXml, ensureArray } from "./xml.js";
 import { fetchSigned } from "./signed-request.js";
 
 /** S3-specific XML GET for ListObjectsV2 */

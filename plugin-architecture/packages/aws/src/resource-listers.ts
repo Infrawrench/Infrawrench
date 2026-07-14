@@ -2,7 +2,8 @@ import type { ResourceInstance } from "@infrawrench/plugin-base";
 import { Sha256 } from "@aws-crypto/sha256-js";
 import { HttpRequest } from "@smithy/protocol-http";
 import { SignatureV4 } from "@smithy/signature-v4";
-import { ensureArray, type AwsCredentials } from "./auth.js";
+import { ensureArray } from "./xml.js";
+import type { AwsCredentials } from "./auth.js";
 import { ec2SshUsernameFromImageName } from "./ssh-username.js";
 
 export interface ListerContext {

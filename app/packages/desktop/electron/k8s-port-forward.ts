@@ -151,21 +151,3 @@ export function stopPortForward(id: string) {
   session.proc.kill();
   cleanup(id);
 }
-
-export function listPortForwards(): Array<{
-  sessionId: string;
-  localPort: number;
-  remotePort: number;
-  resourceName: string;
-  namespace: string;
-  resourceType: string;
-}> {
-  return Array.from(sessions.entries()).map(([id, s]) => ({
-    sessionId: id,
-    localPort: s.localPort,
-    remotePort: s.remotePort,
-    resourceName: s.resourceName,
-    namespace: s.namespace,
-    resourceType: s.resourceType,
-  }));
-}

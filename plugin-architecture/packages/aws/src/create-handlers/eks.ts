@@ -1,5 +1,6 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
-import { ensureArray, type AwsCredentials } from "../auth.js";
+import { ensureArray } from "../xml.js";
+import type { AwsCredentials } from "../auth.js";
 import { fetchSigned } from "../signed-request.js";
 import { instanceTypeArch } from "../ami-lookup.js";
 import type { AwsCreateContext } from "./shared.js";

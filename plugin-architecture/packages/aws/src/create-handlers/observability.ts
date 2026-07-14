@@ -1,5 +1,5 @@
 import type { CreateResourceConfig, ResourceInstance } from "@infrawrench/plugin-base";
-import { ensureArray } from "../auth.js";
+import { ensureArray } from "../xml.js";
 import { AWS_REGIONS } from "../constants.js";
 import type { AwsCreateContext } from "./shared.js";
 

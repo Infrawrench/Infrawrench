@@ -1,5 +1,5 @@
-import { ipcMain, BrowserWindow } from "electron";
-import { getAccessToken, getAuthStatus } from "./cloud-auth";
+import { BrowserWindow } from "electron";
+import { getAccessToken } from "./cloud-auth";
 import { getDb, getEncryptionKey, decryptValue, buildAad } from "./main-utils";
 import { CLOUD_URL } from "../env";
 
@@ -183,18 +183,3 @@ async function runSyncCycle(): Promise<void> {
     isSyncing = false;
   }
 }
-
-ipcMain.handle("cloud_sync_now", async () => {
-  await runSyncCycle();
-  return { ok: true };
-});
-
-ipcMain.handle("cloud_sync_status", async () => {
-  const status = await getAuthStatus();
-  const lastSyncedAt = await getSyncState("last_sync_version");
-  return {
-    ...status,
-    syncing: isSyncing,
-    lastSyncedAt,
-  };
-});

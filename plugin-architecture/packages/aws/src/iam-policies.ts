@@ -1,6 +1,6 @@
 import type { PolicyOption } from "@infrawrench/plugin-base";
 import type { AwsCredentials } from "./auth.js";
-import { ensureArray } from "./auth.js";
+import { ensureArray } from "./xml.js";
 import { ec2QueryCall } from "./client-transport.js";
 
 /**

@@ -60,10 +60,3 @@ ipcMain.handle(
     return cloudFetch(orgId, `/kv-browser/delete`, { method: "POST", body: JSON.stringify(body) });
   },
 );
-
-ipcMain.handle(
-  "cloud_docker_command",
-  async (_e, { orgId, body }: { orgId: string; body: unknown }) => {
-    return cloudFetch(orgId, `/docker/command`, { method: "POST", body: JSON.stringify(body) });
-  },
-);

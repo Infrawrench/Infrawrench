@@ -1,6 +1,6 @@
 import type { CreateResourceConfig, ResourceInstance } from "@infrawrench/plugin-base";
 import { dnsContentField } from "@infrawrench/plugin-base";
-import { parseXml, ensureArray } from "../auth.js";
+import { parseXml, ensureArray } from "../xml.js";
 import { fetchSigned } from "../signed-request.js";
 import { AWS_REGIONS } from "../constants.js";
 import type { AwsCreateContext } from "./shared.js";

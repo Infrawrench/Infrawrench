@@ -4,7 +4,7 @@ import net from "node:net";
 import { ipcMain } from "electron";
 import { killK8sExec, resizeK8sExec, spawnK8sExec, writeK8sExec } from "./k8s-exec";
 import { checkK9sInstalled, killK9s, resizeK9s, spawnK9s, writeK9s } from "./k9s";
-import { startPortForward, stopPortForward, listPortForwards } from "./k8s-port-forward";
+import { startPortForward, stopPortForward } from "./k8s-port-forward";
 
 ipcMain.handle("k8s_exec_spawn", (event, args) => spawnK8sExec(event.sender, args));
 ipcMain.handle("k8s_exec_write", (_event, { sessionId, data }) => writeK8sExec(sessionId, data));
@@ -23,7 +23,6 @@ ipcMain.handle("k9s_kill", (_event, { sessionId }) => killK9s(sessionId));
 
 ipcMain.handle("k8s_pf_start", (event, args) => startPortForward(event.sender, args));
 ipcMain.handle("k8s_pf_stop", (_event, { sessionId }) => stopPortForward(sessionId));
-ipcMain.handle("k8s_pf_list", () => listPortForwards());
 
 // Routed through Node so we can supply the cluster CA cert; Chromium's fetch
 // won't trust per-request CAs.

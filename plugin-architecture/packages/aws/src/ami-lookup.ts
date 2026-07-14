@@ -1,4 +1,4 @@
-import { ensureArray } from "./auth.js";
+import { ensureArray } from "./xml.js";
 import type { AwsCreateContext } from "./create-handlers/shared.js";
 
 type Arch = "x86_64" | "arm64";

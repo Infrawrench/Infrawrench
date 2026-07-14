@@ -1,14 +1,10 @@
 /**
- * AWS credentials shape + a handful of compat helpers retained for
- * existing call sites. SigV4 signing and XML parsing now live in
+ * AWS credentials shape. SigV4 signing and XML parsing live in
  * `signed-request.ts` and `xml.ts` respectively — backed by
- * `@smithy/signature-v4` and `fast-xml-parser`, so this module no
- * longer relies on DOMParser or hand-rolled HMAC.
+ * `@smithy/signature-v4` and `fast-xml-parser`.
  */
 
 import type { HttpHostServices } from "@infrawrench/plugin-base";
-
-export { parseXml, ensureArray } from "./xml.js";
 
 export interface AwsCredentials {
   accessKeyId: string;
