@@ -12,7 +12,7 @@
  * fingerprints — the operator can compare them and explicitly accept the new
  * key.
  */
-import * as crypto from "node:crypto";
+import { sha256Fingerprint } from "@infrawrench/ssh-tunnel-core";
 import { v4 as uuid } from "uuid";
 import { and, eq } from "drizzle-orm";
 import type { ConnectConfig } from "ssh2";
@@ -65,12 +65,6 @@ export class HostKeyMismatchError extends HostKeyTrustRequiredError {
   }
 }
 
-function fingerprint(hostKey: Buffer): string {
-  return (
-    "SHA256:" + crypto.createHash("sha256").update(hostKey).digest("base64").replace(/=+$/, "")
-  );
-}
-
 /**
  * Read-only check: compare a presented host key against the persisted pin.
  * Never writes. Throws `HostKeyTrustRequiredError` when the host is unknown
@@ -82,7 +76,7 @@ async function verifyHostKey(
   port: number,
   hostKey: Buffer,
 ): Promise<string> {
-  const fp = fingerprint(hostKey);
+  const fp = sha256Fingerprint(hostKey);
 
   const [existing] = await db
     .select({ fingerprint: sshHostKeys.fingerprint })

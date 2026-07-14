@@ -1,4 +1,5 @@
 import type { ResourceInstance } from "@infrawrench/plugin-base";
+import { decodePromptArgs } from "@infrawrench/plugin-base";
 
 /**
  * Action handlers for DigitalOcean's two action endpoints:
@@ -23,18 +24,6 @@ export interface ActionContext {
 /** Strip `{accountId}:{typeId}:` off a resource id to get the DO external id. */
 function externalIdOf(resourceId: string): string {
   return resourceId.split(":").slice(2).join(":");
-}
-
-/** Parse the JSON-encoded form-values payload the host attaches as args[0]. */
-function decodePromptArgs(args: (string | number)[]): Record<string, string> {
-  const first = args[0];
-  if (typeof first !== "string") return {};
-  try {
-    const parsed = JSON.parse(first) as Record<string, string>;
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
 }
 
 /**

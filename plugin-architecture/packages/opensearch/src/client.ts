@@ -16,6 +16,7 @@ import type {
   TableNode,
   TableRow,
 } from "@infrawrench/plugin-base";
+import { decodePromptArgs } from "@infrawrench/plugin-base";
 import { osRequest, parseConfig, type OpenSearchConfig } from "./api.js";
 
 interface ClusterHealth {
@@ -976,17 +977,6 @@ function buildReposTable(repos: Record<string, { type: string }>): TableNode {
 function required(v: string | undefined, name: string): string {
   if (!v || !v.trim()) throw new Error(`Missing required field: ${name}`);
   return v.trim();
-}
-
-function decodePromptArgs(args: (string | number)[]): Record<string, string> {
-  const first = args[0];
-  if (typeof first !== "string") return {};
-  try {
-    const parsed = JSON.parse(first) as Record<string, string>;
-    return parsed && typeof parsed === "object" ? parsed : {};
-  } catch {
-    return {};
-  }
 }
 
 function parseJson<T>(v: unknown): T | undefined {

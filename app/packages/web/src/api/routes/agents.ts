@@ -1,7 +1,10 @@
 import { Hono } from "hono";
 import { and, desc, eq, isNull } from "drizzle-orm";
-import crypto, { randomUUID } from "node:crypto";
-import { promisify } from "node:util";
+import { randomUUID } from "node:crypto";
+import {
+  computeSshPublicKeyFingerprint,
+  generateEd25519OpenSshKeyPair,
+} from "@infrawrench/ssh-tunnel-core";
 import type {
   AgentVmCapability,
   CreateFieldConfig,
@@ -11,10 +14,7 @@ import type {
 } from "@infrawrench/plugin-base";
 import { normalizeResourceCreateResult } from "@infrawrench/plugin-base";
 import type { AgentTool } from "@infrawrench/ui/agents";
-import {
-  buildAgentLaunchCommand,
-  isCloneableGitRepo,
-} from "@infrawrench/ui/agents/launch-command";
+import { buildAgentLaunchCommand, isCloneableGitRepo } from "@infrawrench/ui/agents/launch-command";
 
 import { db } from "../../db/client";
 import { accounts, agentSessions, agentSettings, resources, sshKeys } from "../../db/schema";
@@ -33,7 +33,6 @@ import {
 } from "../../services/agent-setup";
 
 const app = new Hono();
-const generateKeyPair = promisify(crypto.generateKeyPair);
 const AGENT_SSH_KEY_NAME = "infrawrench-agent";
 const AGENT_SESSION_DELETE_GRACE_MS = 15 * 60 * 1000;
 const AGENT_SESSION_NOT_FOUND_DELETE_THRESHOLD = 3;
@@ -570,16 +569,7 @@ async function ensureOrgAgentSshKey(
     return { id: existing.id, name: existing.name, publicKey };
   }
 
-  const { publicKey: pubPem, privateKey: privPem } = await generateKeyPair("ed25519", {
-    publicKeyEncoding: { type: "spki", format: "pem" },
-    privateKeyEncoding: { type: "pkcs8", format: "pem" },
-  });
-  const spkiDer = crypto.createPublicKey(pubPem).export({ type: "spki", format: "der" });
-  const pkcs8Der = crypto.createPrivateKey(privPem).export({ type: "pkcs8", format: "der" });
-  const rawPubKey = Buffer.from(spkiDer).subarray(12);
-  const rawPrivKey = Buffer.from(pkcs8Der).subarray(16);
-  const publicKey = `ssh-ed25519 ${sshWireString("ssh-ed25519", rawPubKey).toString("base64")} ${AGENT_SSH_KEY_NAME}`;
-  const privateKey = buildOpenSshPrivateKey(rawPrivKey, rawPubKey, AGENT_SSH_KEY_NAME);
+  const { publicKey, privateKey } = await generateEd25519OpenSshKeyPair(AGENT_SSH_KEY_NAME);
   const id = randomUUID();
   const encPub = await encrypt(publicKey, buildAad("sshKey", id, "publicKey"));
   const encPriv = await encrypt(privateKey, buildAad("sshKey", id, "privateKey"));
@@ -594,98 +584,9 @@ async function ensureOrgAgentSshKey(
     privateKeyIv: encPriv.iv,
     keyType: "ssh-ed25519",
     isImported: false,
-    fingerprint: computeFingerprint(publicKey),
+    fingerprint: computeSshPublicKeyFingerprint(publicKey),
   });
   return { id, name: AGENT_SSH_KEY_NAME, publicKey };
-}
-
-function computeFingerprint(sshPublicKey: string): string {
-  const blob = Buffer.from(sshPublicKey.trim().split(/\s+/)[1] ?? "", "base64");
-  const hash = crypto.createHash("sha256").update(blob).digest("base64");
-  return `SHA256:${hash.replace(/=+$/, "")}`;
-}
-
-function sshWireString(type: string, ...bufs: Uint8Array[]): Buffer {
-  const typeLen = Buffer.alloc(4);
-  typeLen.writeUInt32BE(type.length);
-  const parts: Uint8Array[] = [typeLen, Buffer.from(type)];
-  for (const buf of bufs) {
-    const len = Buffer.alloc(4);
-    len.writeUInt32BE(buf.length);
-    parts.push(len, buf);
-  }
-  return Buffer.concat(parts);
-}
-
-function buildOpenSshPrivateKey(privSeed: Buffer, pubKey: Buffer, comment: string): string {
-  const AUTH_MAGIC = "openssh-key-v1\0";
-  const cipherName = "none";
-  const kdfName = "none";
-  const kdfOptions = Buffer.alloc(0);
-  const keyCount = 1;
-  const pubBlob = sshWireString("ssh-ed25519", pubKey);
-  const checkInt = crypto.randomBytes(4);
-  const keyType = Buffer.from("ssh-ed25519");
-  const keyTypeLenBuf = Buffer.alloc(4);
-  keyTypeLenBuf.writeUInt32BE(keyType.length);
-  const pubLenBuf = Buffer.alloc(4);
-  pubLenBuf.writeUInt32BE(pubKey.length);
-  const fullPriv = Buffer.concat([privSeed, pubKey]);
-  const fullPrivLenBuf = Buffer.alloc(4);
-  fullPrivLenBuf.writeUInt32BE(fullPriv.length);
-  const commentBuf = Buffer.from(comment);
-  const commentLenBuf = Buffer.alloc(4);
-  commentLenBuf.writeUInt32BE(commentBuf.length);
-  const privSection = Buffer.concat([
-    checkInt,
-    checkInt,
-    keyTypeLenBuf,
-    keyType,
-    pubLenBuf,
-    pubKey,
-    fullPrivLenBuf,
-    fullPriv,
-    commentLenBuf,
-    commentBuf,
-  ]);
-  const padLen = 8 - (privSection.length % 8);
-  const padding = Buffer.alloc(padLen === 8 ? 0 : padLen);
-  for (let i = 0; i < padding.length; i++) padding[i] = i + 1;
-  const paddedPriv = Buffer.concat([privSection, padding]);
-  const cipherBuf = Buffer.from(cipherName);
-  const cipherLenBuf = Buffer.alloc(4);
-  cipherLenBuf.writeUInt32BE(cipherBuf.length);
-  const kdfBuf = Buffer.from(kdfName);
-  const kdfLenBuf = Buffer.alloc(4);
-  kdfLenBuf.writeUInt32BE(kdfBuf.length);
-  const kdfOptionsLenBuf = Buffer.alloc(4);
-  kdfOptionsLenBuf.writeUInt32BE(kdfOptions.length);
-  const keyCountBuf = Buffer.alloc(4);
-  keyCountBuf.writeUInt32BE(keyCount);
-  const pubBlobLenBuf = Buffer.alloc(4);
-  pubBlobLenBuf.writeUInt32BE(pubBlob.length);
-  const privLenBuf = Buffer.alloc(4);
-  privLenBuf.writeUInt32BE(paddedPriv.length);
-  const payload = Buffer.concat([
-    Buffer.from(AUTH_MAGIC),
-    cipherLenBuf,
-    cipherBuf,
-    kdfLenBuf,
-    kdfBuf,
-    kdfOptionsLenBuf,
-    kdfOptions,
-    keyCountBuf,
-    pubBlobLenBuf,
-    pubBlob,
-    privLenBuf,
-    paddedPriv,
-  ]);
-  const b64 =
-    payload
-      .toString("base64")
-      .match(/.{1,70}/g)
-      ?.join("\n") ?? "";
-  return `-----BEGIN OPENSSH PRIVATE KEY-----\n${b64}\n-----END OPENSSH PRIVATE KEY-----`;
 }
 
 export default app;

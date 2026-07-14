@@ -10,7 +10,7 @@
     "rootDir": ".",
     "paths": {
       "@/*": ["./src/*"],
-      "@blessed-plugins": ["../web/src/plugins/blessed-plugins.json"]
+      "@blessed-plugins": ["../server-core/src/blessed-plugins.json"]
     }
   },
   "include": ["src", "env.ts"],

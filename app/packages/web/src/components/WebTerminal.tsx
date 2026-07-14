@@ -3,6 +3,7 @@ import "@xterm/xterm/css/xterm.css";
 import {
   attachAltBufferScrollHandler,
   attachTerminalClipboard,
+  buildInitialShellCommand,
   getXtermTerminalOptions,
   pastedImageFilename,
 } from "@infrawrench/ui";
@@ -234,26 +235,4 @@ export function base64EncodeUtf8(value: string): string {
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
   return btoa(binary);
-}
-
-export function buildInitialShellCommand(
-  command: string | undefined,
-  cwd: string | undefined,
-): string {
-  const trimmedCommand = command?.trim();
-  if (!trimmedCommand) return "";
-  const trimmedCwd = cwd?.trim();
-  if (!trimmedCwd) return trimmedCommand;
-  return `cd ${shellQuote(trimmedCwd)} && ${trimmedCommand}`;
-}
-
-export function shellQuote(value: string): string {
-  // Keep a leading `~` or `~/` bare so the shell still expands it, but
-  // double-quote the remainder so spaces and metacharacters can't split
-  // or inject into the command.
-  if (value === "~") return "~";
-  if (value.startsWith("~/")) {
-    return `~/"${value.slice(2).replace(/(["\\$`])/g, "\\$1")}"`;
-  }
-  return `'${value.replace(/'/g, `'\\''`)}'`;
 }

@@ -11,6 +11,7 @@
  * refreshes it asynchronously around each connect.
  */
 import * as crypto from "node:crypto";
+import { sha256Fingerprint } from "@infrawrench/ssh-tunnel-core";
 import { getDb } from "./main-utils";
 import { promptHostKeyDecision } from "./ssh-host-key-prompt";
 
@@ -40,12 +41,6 @@ let cacheLoaded = false;
 
 function cacheKey(host: string, port: number): string {
   return `${host}:${port}`;
-}
-
-function fingerprint(hostKey: Buffer): string {
-  return (
-    "SHA256:" + crypto.createHash("sha256").update(hostKey).digest("base64").replace(/=+$/, "")
-  );
 }
 
 /** Hydrate the in-memory cache from sql.js. Safe to call repeatedly. */
@@ -98,7 +93,7 @@ export async function verifyOrPinHostKeyInteractive(
   hostKey: Buffer,
 ): Promise<{ ok: true; fingerprint: string } | { ok: false; error: HostKeyMismatchError }> {
   await ensureCacheLoaded();
-  const fp = fingerprint(hostKey);
+  const fp = sha256Fingerprint(hostKey);
   const existing = cache.get(cacheKey(host, port));
 
   if (existing === fp) {

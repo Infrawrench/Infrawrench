@@ -8,11 +8,11 @@ import type {
 } from "@infrawrench/plugin-base";
 import { evaluatePeerIntegrationUnreachable } from "@infrawrench/plugin-base";
 import { db } from "../db/client";
-import { accounts, resources } from "../db/schema";
-import { decrypt, buildAad } from "./encryption";
+import { resources } from "../db/schema";
 import { getPlugin } from "../plugins/loader";
 import { buildPluginHostServices } from "./host-services";
 import { applyCredentialRewriters } from "./credential-rewriters";
+import { getOrgAccountClient } from "@infrawrench/server-core/org-accounts";
 
 interface PeerPaneResult {
   tabLabel: string;
@@ -214,40 +214,8 @@ export async function buildPeerPanes(
   return panes;
 }
 
-export async function getClientForAccount(accountId: string, organizationId: string) {
-  const [account] = await db
-    .select({
-      id: accounts.id,
-      pluginId: accounts.pluginId,
-      encryptedCredentials: accounts.encryptedCredentials,
-      credentialsIv: accounts.credentialsIv,
-      bastionId: accounts.bastionId,
-    })
-    .from(accounts)
-    .where(and(eq(accounts.id, accountId), eq(accounts.organizationId, organizationId)))
-    .limit(1);
-
-  if (!account) return null;
-
-  const plaintext = await decrypt(
-    account.encryptedCredentials,
-    account.credentialsIv,
-    buildAad("account", account.id, "credentials"),
-  );
-  const credentials = JSON.parse(plaintext) as Record<string, string>;
-
-  await applyCredentialRewriters({ orgId: organizationId, accountId }, credentials);
-
-  const loaded = await getPlugin(account.pluginId);
-  if (!loaded) return null;
-
-  const hostServices = await buildPluginHostServices(loaded.plugin.manifest, credentials, {
-    accountId,
-    bastionId: account.bastionId ?? null,
-  });
-  const client = loaded.plugin.createClient(credentials, hostServices);
-  return { client, plugin: loaded.plugin, credentials, account };
-}
+/** Decrypt an account's credentials and instantiate its plugin client. */
+export const getClientForAccount = getOrgAccountClient;
 
 /**
  * Resolves a plugin client for a peer resource. When `pluginId` matches the

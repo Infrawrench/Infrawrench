@@ -1,8 +1,5 @@
-/**
- * @vitest-environment jsdom
- */
 import { describe, expect, it } from "vitest";
-import { buildInitialShellCommand, shellQuote } from "../SshTerminal";
+import { buildInitialShellCommand, shellQuote } from "../terminal-shell.js";
 
 describe("shellQuote", () => {
   it("single-quotes plain paths", () => {

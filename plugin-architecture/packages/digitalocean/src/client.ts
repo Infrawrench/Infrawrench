@@ -18,6 +18,7 @@ import type {
   HostServices,
 } from "@infrawrench/plugin-base";
 import {
+  streamOpenAiSseChat,
   dnsRecordBadgeColor,
   deleteS3Object,
   getS3BucketPolicy,
@@ -2523,71 +2524,7 @@ export class DigitalOceanClient implements PluginClient {
       return;
     }
 
-    // Parse SSE chunks. The OpenAI-compatible stream format is
-    // `data: {json}\n\n` lines until `data: [DONE]`. We accumulate the
-    // `choices[0].delta.content` strings into `assembled` so we can hand
-    // the host the full message in the terminal `done` event.
-    const decoder = new TextDecoder();
-    const reader = res.body.getReader();
-    let buffer = "";
-    let assembled = "";
-    let usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number } | undefined;
-
-    try {
-      for (;;) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        // SSE messages are separated by blank lines. Split on `\n\n`,
-        // keeping the trailing partial in `buffer` for the next read.
-        const parts = buffer.split("\n\n");
-        buffer = parts.pop() ?? "";
-        for (const part of parts) {
-          const line = part.trim();
-          if (!line.startsWith("data:")) continue;
-          const payload = line.slice(5).trim();
-          if (payload === "[DONE]") continue;
-          try {
-            const parsed = JSON.parse(payload) as {
-              choices?: Array<{ delta?: { content?: string } }>;
-              usage?: {
-                prompt_tokens?: number;
-                completion_tokens?: number;
-                total_tokens?: number;
-              };
-            };
-            const delta = parsed.choices?.[0]?.delta?.content;
-            if (delta) {
-              assembled += delta;
-              yield { kind: "delta", text: delta };
-            }
-            if (parsed.usage) {
-              usage = {};
-              if (parsed.usage.prompt_tokens !== undefined) {
-                usage.inputTokens = parsed.usage.prompt_tokens;
-              }
-              if (parsed.usage.completion_tokens !== undefined) {
-                usage.outputTokens = parsed.usage.completion_tokens;
-              }
-              if (parsed.usage.total_tokens !== undefined) {
-                usage.totalTokens = parsed.usage.total_tokens;
-              }
-            }
-          } catch {
-            // Malformed SSE chunk — skip rather than abort the whole stream.
-          }
-        }
-      }
-    } catch (err) {
-      yield { kind: "error", message: err instanceof Error ? err.message : String(err) };
-      return;
-    }
-
-    yield {
-      kind: "done",
-      message: { role: "assistant", content: assembled },
-      ...(usage ? { usage } : {}),
-    };
+    yield* streamOpenAiSseChat(res.body);
   }
 
   async fetchDashboardStats(

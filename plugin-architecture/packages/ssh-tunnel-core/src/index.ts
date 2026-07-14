@@ -11,6 +11,14 @@ export {
   type SignOutcome,
 } from "./in-process-agent.js";
 
+export {
+  sshWireString,
+  buildOpenSshPrivateKey,
+  generateEd25519OpenSshKeyPair,
+  sha256Fingerprint,
+  computeSshPublicKeyFingerprint,
+} from "./openssh-keys.js";
+
 import * as net from "node:net";
 import * as crypto from "node:crypto";
 import { Client as SshClient, type ConnectConfig } from "ssh2";

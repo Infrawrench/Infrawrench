@@ -1,7 +1,8 @@
 /**
  * Desktop plugin loader.
- * Imports the same blessed-plugins.json from the web package.
- * Same security boundary — same file, same workspace.
+ * Imports the same blessed-plugins.json the server uses (from
+ * @infrawrench/server-core). Same security boundary — same file, same
+ * workspace.
  */
 import type { Plugin, PluginRegistry } from "@infrawrench/plugin-base";
 import { pluginManifestSchema } from "@infrawrench/plugin-base";

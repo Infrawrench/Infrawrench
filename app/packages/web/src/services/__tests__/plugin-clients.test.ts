@@ -1,27 +1,16 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 
-const mockSelect = vi.fn();
-vi.mock("@/db/client", () => ({ db: { select: (...a: unknown[]) => mockSelect(...a) } }));
+// Mocked only to keep the module import side-effect free (the real db client
+// throws without DATABASE_URL; the plugin loader loads every plugin).
+vi.mock("@/db/client", () => ({ db: {} }));
+vi.mock("@/plugins/loader", () => ({ getPlugin: vi.fn() }));
+vi.mock("@/services/host-services", () => ({ buildPluginHostServices: vi.fn() }));
+vi.mock("@/services/credential-rewriters", () => ({ applyCredentialRewriters: vi.fn() }));
+vi.mock("@infrawrench/server-core/org-accounts", () => ({ getOrgAccountClient: vi.fn() }));
 
-vi.mock("@/services/encryption", () => ({
-  decrypt: vi.fn().mockResolvedValue(JSON.stringify({ token: "secret" })),
-  buildAad: vi.fn().mockReturnValue("aad"),
-}));
-
-const mockGetPlugin = vi.fn();
-vi.mock("@/plugins/loader", () => ({ getPlugin: (...a: unknown[]) => mockGetPlugin(...a) }));
-
-vi.mock("@/services/host-services", () => ({
-  buildPluginHostServices: vi.fn().mockResolvedValue({}),
-}));
-
-const mockApplyRewriters = vi.fn();
-vi.mock("@/services/credential-rewriters", () => ({
-  applyCredentialRewriters: (...a: unknown[]) => mockApplyRewriters(...a),
-}));
-
-const { filterVisiblePeerIntegrations, getClientForAccount } =
-  await import("@/services/plugin-clients");
+// getClientForAccount is a re-export of server-core's getOrgAccountClient;
+// its unit tests live in server-core (src/__tests__/org-accounts.test.ts).
+const { filterVisiblePeerIntegrations } = await import("@/services/plugin-clients");
 
 describe("filterVisiblePeerIntegrations", () => {
   it("keeps integrations with no gates", () => {
@@ -63,60 +52,5 @@ describe("filterVisiblePeerIntegrations", () => {
     expect(
       filterVisiblePeerIntegrations([integration as never], { engine: "MYSQL_8" }),
     ).toHaveLength(0);
-  });
-});
-
-describe("getClientForAccount", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockApplyRewriters.mockResolvedValue(undefined);
-  });
-
-  function selectAccount(rows: unknown[]) {
-    const limit = vi.fn().mockResolvedValue(rows);
-    const where = vi.fn().mockReturnValue({ limit });
-    const from = vi.fn().mockReturnValue({ where });
-    mockSelect.mockReturnValue({ from });
-  }
-
-  it("returns null when the account does not exist", async () => {
-    selectAccount([]);
-    expect(await getClientForAccount("a1", "org-1")).toBeNull();
-  });
-
-  it("returns null when the plugin is not registered", async () => {
-    selectAccount([
-      {
-        id: "a1",
-        pluginId: "ghost",
-        encryptedCredentials: "e",
-        credentialsIv: "iv",
-        bastionId: null,
-      },
-    ]);
-    mockGetPlugin.mockResolvedValue(null);
-    expect(await getClientForAccount("a1", "org-1")).toBeNull();
-  });
-
-  it("decrypts credentials and instantiates the plugin client", async () => {
-    selectAccount([
-      {
-        id: "a1",
-        pluginId: "aws",
-        encryptedCredentials: "e",
-        credentialsIv: "iv",
-        bastionId: null,
-      },
-    ]);
-    const createClient = vi.fn().mockReturnValue({ kind: "client" });
-    mockGetPlugin.mockResolvedValue({
-      plugin: { manifest: { id: "aws" }, createClient },
-    });
-
-    const result = await getClientForAccount("a1", "org-1");
-    expect(result).not.toBeNull();
-    expect(result!.client).toEqual({ kind: "client" });
-    expect(createClient).toHaveBeenCalledWith({ token: "secret" }, {});
-    expect(mockApplyRewriters).toHaveBeenCalled();
   });
 });

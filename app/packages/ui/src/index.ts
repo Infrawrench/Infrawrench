@@ -280,6 +280,7 @@ export type {
 } from "./terminal-clipboard.js";
 export { attachAltBufferScrollHandler } from "./xterm-scroll.js";
 export type { ScrollableTerminal, AttachAltBufferScrollHandle } from "./xterm-scroll.js";
+export { buildInitialShellCommand, shellQuote } from "./terminal-shell.js";
 
 export { SSH_TUNNEL_PRESETS, buildSshTunnelCredentials } from "./ssh-tunnel-presets.js";
 export type { SshTunnelPresetKey } from "./ssh-tunnel-presets.js";

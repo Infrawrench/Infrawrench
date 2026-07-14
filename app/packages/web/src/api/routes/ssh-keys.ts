@@ -1,7 +1,10 @@
 import { Hono } from "hono";
 import { eq, and } from "drizzle-orm";
 import crypto from "node:crypto";
-import { promisify } from "node:util";
+import {
+  computeSshPublicKeyFingerprint,
+  generateEd25519OpenSshKeyPair,
+} from "@infrawrench/ssh-tunnel-core";
 import { db } from "../../db/client";
 import { sshKeys, users } from "../../db/schema";
 import { encrypt, decrypt, buildAad } from "../../services/encryption";
@@ -9,117 +12,13 @@ import { requirePermission } from "../../auth/permissions";
 import { hasPermission } from "@infrawrench/server-core/permissions";
 import type { AuthSession } from "../auth-middleware";
 
-const generateKeyPair = promisify(crypto.generateKeyPair);
-
 declare module "hono" {
   interface ContextVariableMap {
     session: AuthSession;
   }
 }
 
-// Length-prefixed SSH wire string: uint32be(len) + data.
-function sshWireString(type: string, ...bufs: Uint8Array[]): Buffer {
-  const typeLen = Buffer.alloc(4);
-  typeLen.writeUInt32BE(type.length);
-  const parts: Uint8Array[] = [typeLen, Buffer.from(type)];
-  for (const buf of bufs) {
-    const len = Buffer.alloc(4);
-    len.writeUInt32BE(buf.length);
-    parts.push(len, buf);
-  }
-  return Buffer.concat(parts);
-}
-
-// Unencrypted OpenSSH private key file, matching `ssh-keygen -t ed25519`.
-// Spec: https://github.com/openssh/openssh-portable/blob/master/PROTOCOL.key
-function buildOpenSshPrivateKey(privSeed: Buffer, pubKey: Buffer, comment: string): string {
-  const AUTH_MAGIC = "openssh-key-v1\0";
-  const cipherName = "none";
-  const kdfName = "none";
-  const kdfOptions = Buffer.alloc(0);
-  const keyCount = 1;
-
-  const pubBlob = sshWireString("ssh-ed25519", pubKey);
-
-  const checkInt = crypto.randomBytes(4);
-  const keyType = Buffer.from("ssh-ed25519");
-  const keyTypeLenBuf = Buffer.alloc(4);
-  keyTypeLenBuf.writeUInt32BE(keyType.length);
-  const pubLenBuf = Buffer.alloc(4);
-  pubLenBuf.writeUInt32BE(pubKey.length);
-  // Ed25519 private key in OpenSSH = 64 bytes: seed (32) + public (32)
-  const fullPriv = Buffer.concat([privSeed, pubKey]);
-  const fullPrivLenBuf = Buffer.alloc(4);
-  fullPrivLenBuf.writeUInt32BE(fullPriv.length);
-  const commentBuf = Buffer.from(comment);
-  const commentLenBuf = Buffer.alloc(4);
-  commentLenBuf.writeUInt32BE(commentBuf.length);
-
-  // The OpenSSH format repeats the checkint to detect bad decryption.
-  const privSection = Buffer.concat([
-    checkInt,
-    checkInt,
-    keyTypeLenBuf,
-    keyType,
-    pubLenBuf,
-    pubKey,
-    fullPrivLenBuf,
-    fullPriv,
-    commentLenBuf,
-    commentBuf,
-  ]);
-
-  // Pad to 8-byte boundary (cipher block size for "none").
-  const padLen = 8 - (privSection.length % 8);
-  const padding = Buffer.alloc(padLen === 8 ? 0 : padLen);
-  for (let i = 0; i < padding.length; i++) padding[i] = i + 1;
-  const paddedPriv = Buffer.concat([privSection, padding]);
-
-  const cipherBuf = Buffer.from(cipherName);
-  const cipherLenBuf = Buffer.alloc(4);
-  cipherLenBuf.writeUInt32BE(cipherBuf.length);
-  const kdfBuf = Buffer.from(kdfName);
-  const kdfLenBuf = Buffer.alloc(4);
-  kdfLenBuf.writeUInt32BE(kdfBuf.length);
-  const kdfOptLenBuf = Buffer.alloc(4);
-  kdfOptLenBuf.writeUInt32BE(kdfOptions.length);
-  const keyCountBuf = Buffer.alloc(4);
-  keyCountBuf.writeUInt32BE(keyCount);
-  const pubBlobLenBuf = Buffer.alloc(4);
-  pubBlobLenBuf.writeUInt32BE(pubBlob.length);
-  const privLenBuf = Buffer.alloc(4);
-  privLenBuf.writeUInt32BE(paddedPriv.length);
-
-  const full = Buffer.concat([
-    Buffer.from(AUTH_MAGIC),
-    cipherLenBuf,
-    cipherBuf,
-    kdfLenBuf,
-    kdfBuf,
-    kdfOptLenBuf,
-    kdfOptions,
-    keyCountBuf,
-    pubBlobLenBuf,
-    pubBlob,
-    privLenBuf,
-    paddedPriv,
-  ]);
-
-  const b64 = full.toString("base64");
-  const lines = b64.match(/.{1,70}/g) ?? [];
-  return `-----BEGIN OPENSSH PRIVATE KEY-----\n${lines.join("\n")}\n-----END OPENSSH PRIVATE KEY-----\n`;
-}
-
 const app = new Hono();
-
-function computeFingerprint(publicKey: string): string {
-  const parts = publicKey.trim().split(/\s+/);
-  if (parts.length < 2) throw new Error("Invalid SSH public key format");
-  const blob = Buffer.from(parts[1]!, "base64");
-  const hash = crypto.createHash("sha256").update(blob).digest("base64");
-  // Strip trailing '=' to match ssh-keygen's output.
-  return `SHA256:${hash.replace(/=+$/, "")}`;
-}
 
 function validateSshPublicKey(key: string): { keyType: string; publicKey: string } {
   const trimmed = key.trim();
@@ -210,21 +109,11 @@ app.post("/", async (c) => {
 
   if (!name?.trim()) return c.json({ error: "Name is required" }, 400);
 
-  const { publicKey: pubPem, privateKey: privPem } = await generateKeyPair("ed25519", {
-    publicKeyEncoding: { type: "spki", format: "pem" },
-    privateKeyEncoding: { type: "pkcs8", format: "pem" },
-  });
-
-  const spkiDer = crypto.createPublicKey(pubPem).export({ type: "spki", format: "der" });
-  const pkcs8Der = crypto.createPrivateKey(privPem).export({ type: "pkcs8", format: "der" });
-  const rawPubKey = spkiDer.subarray(12); // 32 bytes after SPKI header
-  const rawPrivKey = pkcs8Der.subarray(16); // 32 bytes after PKCS#8 header
-
-  const sshPublicKey = `ssh-ed25519 ${sshWireString("ssh-ed25519", rawPubKey).toString("base64")} ${name.trim()}`;
-  const privateKeyOpenSsh = buildOpenSshPrivateKey(rawPrivKey, rawPubKey, name.trim());
+  const { publicKey: sshPublicKey, privateKey: privateKeyOpenSsh } =
+    await generateEd25519OpenSshKeyPair(name.trim());
 
   const id = crypto.randomUUID();
-  const fingerprint = computeFingerprint(sshPublicKey);
+  const fingerprint = computeSshPublicKeyFingerprint(sshPublicKey);
 
   // AAD binds the ciphertext to this row id.
   const encPub = await encrypt(sshPublicKey, buildAad("sshKey", id, "publicKey"));
@@ -277,7 +166,7 @@ app.post("/import", async (c) => {
     return c.json({ error: e instanceof Error ? e.message : "Invalid SSH public key" }, 400);
   }
 
-  const fingerprint = computeFingerprint(publicKey);
+  const fingerprint = computeSshPublicKeyFingerprint(publicKey);
 
   const id = crypto.randomUUID();
   const encPub = await encrypt(publicKey, buildAad("sshKey", id, "publicKey"));

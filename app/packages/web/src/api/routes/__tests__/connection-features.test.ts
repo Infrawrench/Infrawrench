@@ -38,6 +38,34 @@ vi.mock("@/services/credential-rewriters", () => ({
   applyCredentialRewriters: vi.fn().mockResolvedValue(undefined),
 }));
 
+// getClientForAccount is server-core's getOrgAccountClient, which imports
+// server-core's own db/encryption/loader modules (not the web shims mocked
+// above), so mirror the same mocks at the server-core module ids.
+vi.mock("@infrawrench/server-core/db/client", () => ({
+  db: {
+    select: (...args: unknown[]) => mockSelect(...args),
+  },
+}));
+vi.mock("@infrawrench/server-core/encryption", () => ({
+  decrypt: vi.fn().mockResolvedValue(
+    JSON.stringify({
+      connectionString: "postgres://localhost/db",
+      redisUrl: "redis://localhost",
+      dockerHost: "tcp://localhost:2375",
+    }),
+  ),
+  buildAad: vi.fn().mockReturnValue("aad"),
+}));
+vi.mock("@infrawrench/server-core/plugin-loader", () => ({
+  getPlugin: (...args: unknown[]) => mockGetPlugin(...args),
+}));
+vi.mock("@infrawrench/server-core/host-services", () => ({
+  buildPluginHostServices: vi.fn().mockResolvedValue({}),
+}));
+vi.mock("@infrawrench/server-core/credential-rewriters", () => ({
+  applyCredentialRewriters: vi.fn().mockResolvedValue(undefined),
+}));
+
 const mockSqlQuery = vi.fn();
 const mockSqlExecute = vi.fn();
 const mockKvCommand = vi.fn();

@@ -39,7 +39,7 @@ import { Client as SshClient } from "ssh2";
 import { db } from "../db/client";
 import { sshHostKeys, sshKeys } from "../db/schema";
 import { decrypt, buildAad } from "../encryption";
-import { getOrgAccountClient } from "./runner";
+import { getOrgAccountClient } from "../org-accounts";
 
 const DEFAULT_EXEC_TIMEOUT_MS = 60_000;
 const DEFAULT_PROBE_TIMEOUT_MS = 180_000;

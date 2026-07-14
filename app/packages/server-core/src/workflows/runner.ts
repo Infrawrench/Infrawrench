@@ -1,21 +1,25 @@
 /**
- * Shared, platform-agnostic workflow runner for automated (non-interactive)
- * triggers. Both the web manual-run route and the poller (cron/git) drive
- * workflows through {@link runOrgWorkflow}.
+ * Shared, platform-agnostic workflow runner. Both the web host and the
+ * poller (cron/git) drive workflows through {@link runOrgWorkflow}.
  *
  * It loads the workflow row, seeds its declared metrics, records a
  * `workflow_runs` row, builds a {@link WorkflowHost} backed by the org's
  * encrypted accounts and the `workflow_metrics` table, executes the source in
  * the isolate via the runtime, and persists the outcome.
  *
- * Automated runs are non-interactive: `infra.prompt()` and storage-object
- * reads throw, since there is no user/websocket attached.
+ * Automated runs (the default) are non-interactive: `infra.prompt()` and
+ * storage-object reads throw, since there is no user/websocket attached.
+ * The cloud web host attaches its websocket-backed callbacks (prompt,
+ * storage reads, live logs, debugger) via the optional fields on
+ * {@link RunOrgWorkflowOptions}.
  */
 import {
   buildWorkflowHost,
   runWorkflow,
   type MetricDef,
   type MetricValue,
+  type PromptSpec,
+  type RunLogEntry,
   type RunResult,
   type RunTriggerSource,
   type WorkflowHost,
@@ -25,10 +29,8 @@ import { and, eq, isNull } from "drizzle-orm";
 
 import { db } from "../db/client";
 import { accounts, workflowMetrics, workflowRuns, workflows } from "../db/schema";
-import { decrypt, buildAad } from "../encryption";
-import { getPlugin, loadPlugins } from "../plugin-loader";
-import { buildPluginHostServices } from "../host-services";
-import { applyCredentialRewriters } from "../credential-rewriters";
+import { loadPlugins } from "../plugin-loader";
+import { getOrgAccountClient } from "../org-accounts";
 import { buildWorkflowSshDeps } from "./ssh-host";
 import { enrichPlugin } from "./create-fields-cache";
 import { buildSshKeyFieldResolver } from "./ssh-key-fields";
@@ -40,11 +42,35 @@ import { staticResourceCapabilities } from "@infrawrench/workflow-runtime";
 export { buildWorkflowSshDeps } from "./ssh-host";
 export { enrichPlugin } from "./create-fields-cache";
 export { buildSshKeyFieldResolver, listOrgSshKeyNames } from "./ssh-key-fields";
+export { getOrgAccountClient } from "../org-accounts";
 
-export interface RunOrgWorkflowOptions {
+/**
+ * Interactive callbacks a host may attach to a run. Automated triggers
+ * (poller cron/git, plain HTTP manual runs) pass none of these; the cloud
+ * web host supplies them for websocket-driven manual runs (prompts, storage
+ * reads, live log streaming, debugger).
+ */
+export interface OrgWorkflowHostExtras {
+  /** Provided for interactive (manual) runs; omitted for automated triggers. */
+  prompt?: (spec: PromptSpec) => Promise<MetricValue>;
+  /** Provided when storage object reads should be supported for this run. */
+  readStorageObject?: (accountId: string, bucket: string, key: string) => Promise<Uint8Array>;
+  /** Debugger line hook (instrumented runs); blocks per line until continued. */
+  line?: (line: number) => Promise<void>;
+  /** Abort the run (Stop) — lets in-flight SSH probes bail out. */
+  signal?: AbortSignal;
+}
+
+export interface RunOrgWorkflowOptions extends OrgWorkflowHostExtras {
   organizationId: string;
   workflowId: string;
   triggerSource: RunTriggerSource;
+  /** Enables `infra.prompt()` / storage reads for websocket-driven manual runs. */
+  interactive?: boolean;
+  /** Live log streaming callback (interactive runs). */
+  onLog?: (entry: RunLogEntry) => void;
+  /** Instrument the run so `line` is called before each statement (debugger). */
+  debug?: boolean;
 }
 
 export interface RunOrgWorkflowResult {
@@ -116,41 +142,6 @@ export async function listOrgPlugins(
   return Array.from(byPlugin.values());
 }
 
-/** Decrypt an account's credentials and instantiate its plugin client. */
-export async function getOrgAccountClient(accountId: string, organizationId: string) {
-  const [account] = await db
-    .select({
-      id: accounts.id,
-      pluginId: accounts.pluginId,
-      encryptedCredentials: accounts.encryptedCredentials,
-      credentialsIv: accounts.credentialsIv,
-      bastionId: accounts.bastionId,
-    })
-    .from(accounts)
-    .where(and(eq(accounts.id, accountId), eq(accounts.organizationId, organizationId)))
-    .limit(1);
-  if (!account) return null;
-
-  const plaintext = await decrypt(
-    account.encryptedCredentials,
-    account.credentialsIv,
-    buildAad("account", account.id, "credentials"),
-  );
-  const credentials = JSON.parse(plaintext) as Record<string, string>;
-
-  await applyCredentialRewriters({ orgId: organizationId, accountId }, credentials);
-
-  const loaded = await getPlugin(account.pluginId);
-  if (!loaded) return null;
-
-  const hostServices = await buildPluginHostServices(loaded.plugin.manifest, credentials, {
-    accountId,
-    bastionId: account.bastionId ?? null,
-  });
-  const client = loaded.plugin.createClient(credentials, hostServices);
-  return { client, plugin: loaded.plugin, credentials, account };
-}
-
 function metricTypeOf(value: MetricValue): "number" | "string" | "boolean" {
   if (typeof value === "number") return "number";
   if (typeof value === "boolean") return "boolean";
@@ -204,8 +195,17 @@ async function setMetric(
     });
 }
 
-/** Build a non-interactive {@link WorkflowHost} for an org's automated run. */
-export function buildOrgWorkflowHost(organizationId: string, workflowId: string): WorkflowHost {
+/**
+ * Build a {@link WorkflowHost} for an org's run. With no `extras` the host is
+ * non-interactive (automated triggers): `infra.prompt()` and storage-object
+ * reads throw. Interactive hosts (cloud web manual runs) inject their
+ * websocket-backed callbacks through `extras`.
+ */
+export function buildOrgWorkflowHost(
+  organizationId: string,
+  workflowId: string,
+  extras: OrgWorkflowHostExtras = {},
+): WorkflowHost {
   return buildWorkflowHost({
     listPlugins: () => listOrgPlugins(organizationId),
     getClient: async (accountId: string) => {
@@ -213,21 +213,28 @@ export function buildOrgWorkflowHost(organizationId: string, workflowId: string)
       if (!ctx) throw new Error(`Account ${accountId} not found in this organization.`);
       return ctx.client;
     },
-    readStorageObject: async () => {
-      throw new Error("Storage object reads from workflows are not available in this run context.");
-    },
+    readStorageObject:
+      extras.readStorageObject ??
+      (async () => {
+        throw new Error(
+          "Storage object reads from workflows are not available in this run context.",
+        );
+      }),
     getMetric: (key: string) => getMetric(workflowId, key),
     listMetrics: () => listMetrics(workflowId),
     setMetric: (key: string, value: MetricValue) =>
       setMetric(organizationId, workflowId, key, value),
-    prompt: async () => {
-      throw new Error("This run is not interactive; infra.prompt() is unavailable.");
-    },
+    prompt:
+      extras.prompt ??
+      (async () => {
+        throw new Error("This run is not interactive; infra.prompt() is unavailable.");
+      }),
     transformCreateFields: buildSshKeyFieldResolver(organizationId, async (accountId) => {
       const ctx = await getOrgAccountClient(accountId, organizationId);
       return ctx ? { client: ctx.client, pluginId: ctx.account.pluginId } : null;
     }),
-    ...buildWorkflowSshDeps(organizationId),
+    ...(extras.line ? { line: extras.line } : {}),
+    ...buildWorkflowSshDeps(organizationId, extras.signal ? { signal: extras.signal } : {}),
   });
 }
 
@@ -288,12 +295,20 @@ export async function runOrgWorkflow(opts: RunOrgWorkflowOptions): Promise<RunOr
     startedAt,
   });
 
-  const host = buildOrgWorkflowHost(opts.organizationId, wf.id);
+  const host = buildOrgWorkflowHost(opts.organizationId, wf.id, {
+    ...(opts.prompt ? { prompt: opts.prompt } : {}),
+    ...(opts.readStorageObject ? { readStorageObject: opts.readStorageObject } : {}),
+    ...(opts.line ? { line: opts.line } : {}),
+    ...(opts.signal ? { signal: opts.signal } : {}),
+  });
 
   const result = await runWorkflow({
     source: wf.source,
     host,
-    interactive: false,
+    interactive: Boolean(opts.interactive),
+    ...(opts.onLog ? { onLog: opts.onLog } : {}),
+    ...(opts.debug ? { debug: true } : {}),
+    ...(opts.signal ? { signal: opts.signal } : {}),
   });
 
   const finishedAt = new Date(result.finishedAt);

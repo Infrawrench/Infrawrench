@@ -183,6 +183,9 @@ export type { DnsContentFieldOptions } from "./dns-helpers.js";
 export { jsonRestFetch, formatBytes, caCertCredentialField } from "./http.js";
 export type { JsonRestFetchOptions } from "./http.js";
 
+export { streamOpenAiSseChat } from "./chat-stream.js";
+export { decodePromptArgs } from "./prompt-args.js";
+
 export { signedS3Fetch } from "./signed-s3-request.js";
 export type { SignedS3FetchOptions } from "./signed-s3-request.js";
 
