@@ -13,12 +13,10 @@ import type {
 import { getClientForAccount } from "./plugin-clients";
 import { resolveSshConfig, sshExec } from "./ssh";
 
-// Canonical wire shapes live in `@infrawrench/ui` (TunnelSshAttachModal) — the
-// modal renders exactly what this service produces. Re-exported so callers of
-// this service can keep importing them from here.
-export type { TunnelServiceType, TunnelSshAttachResult, TunnelSshAttachStep };
+// Canonical wire shapes live in `@infrawrench/ui` (TunnelSshAttachModal) —
+// the modal renders exactly what this service produces.
 
-export interface TunnelSshAttachInput {
+interface TunnelSshAttachInput {
   organizationId: string;
   tunnel: { accountId: string; pluginId: string; resourceId: string };
   host: { accountId: string; pluginId: string; resourceTypeId: string; resourceId: string };

@@ -16,8 +16,6 @@ import {
 export {
   dashboardTabTarget,
   accountTabTarget,
-  agentsTabTarget,
-  workflowsTabTarget,
   resourceTabTarget,
   resourceSshTabTarget,
   resourceSftpTabTarget,

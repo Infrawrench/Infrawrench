@@ -50,13 +50,13 @@ export async function listDurableObjectNamespaces(
 }
 
 /** A single live Durable Object instance within a namespace. */
-export interface DurableObjectInstance {
+interface DurableObjectInstance {
   id: string;
   hasStoredData: boolean;
 }
 
 /** Result of {@link listDurableObjectInstances} — instances plus a truncation flag. */
-export interface DurableObjectInstanceList {
+interface DurableObjectInstanceList {
   instances: DurableObjectInstance[];
   /** True when there were more instances than {@link INSTANCE_FETCH_CAP}. */
   truncated: boolean;

@@ -31,7 +31,7 @@ export interface WorkerSettings {
 }
 
 /** Everything the detail form needs, gathered from the three endpoints. */
-export interface WorkerSettingsInput {
+interface WorkerSettingsInput {
   settings: WorkerSettings;
   /** workers.dev subdomain enablement; undefined when the lookup failed. */
   subdomainEnabled?: boolean;
@@ -164,13 +164,13 @@ function splitList(value: string): string[] {
 }
 
 /** Script-level fields patchable via `PATCH /workers/scripts/{name}/settings`. */
-export interface WorkerScriptSettingsPatch {
+interface WorkerScriptSettingsPatch {
   logpush: boolean;
   tags: string[];
   observability: { enabled: boolean; head_sampling_rate: number | null };
 }
 
-export interface WorkerSettingsApply {
+interface WorkerSettingsApply {
   /** Script-settings patch for `settings.edit`, or null if unchanged. */
   settings: WorkerScriptSettingsPatch | null;
   /** New workers.dev subdomain state, or undefined if unchanged. */

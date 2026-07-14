@@ -14,7 +14,7 @@ export interface TranspileResult {
   warnings: string[];
 }
 
-export interface TranspileOptions {
+interface TranspileOptions {
   /**
    * Inject `await __line(n)` before each statement (n = 1-based source line),
    * so a debugger can highlight the current line and pause at breakpoints. Only

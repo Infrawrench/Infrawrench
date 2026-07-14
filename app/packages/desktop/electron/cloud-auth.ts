@@ -332,7 +332,7 @@ export async function getAccessToken(): Promise<string | null> {
   return currentTokens?.accessToken ?? null;
 }
 
-export async function getAuthStatus(): Promise<{
+async function getAuthStatus(): Promise<{
   authenticated: boolean;
   email?: string | undefined;
   organizationId?: string | undefined;

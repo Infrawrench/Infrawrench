@@ -20,7 +20,7 @@ export interface AttachAltBufferScrollHandle {
   dispose: () => void;
 }
 
-export interface AltBufferScrollOptions {
+interface AltBufferScrollOptions {
   /**
    * Key sequences synthesized per wheel tick. "arrows" (default) suits
    * cursor-driven TUIs (vim, k9s, less). "page" sends PageUp/PageDown, for

@@ -7,8 +7,4 @@
  * live log streaming, debugger) attach their web-only callbacks through the
  * optional fields on the shared runner's options.
  */
-export {
-  runOrgWorkflow as runWorkflowById,
-  type RunOrgWorkflowOptions as RunWorkflowByIdOptions,
-  type RunOrgWorkflowResult as RunWorkflowByIdResult,
-} from "@infrawrench/server-core/workflows/runner";
+export { runOrgWorkflow as runWorkflowById } from "@infrawrench/server-core/workflows/runner";

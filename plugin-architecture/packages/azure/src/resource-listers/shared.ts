@@ -1,5 +1,3 @@
-import type { ResourceInstance } from "@infrawrench/plugin-base";
-
 export interface ListerContext {
   get<T>(url: string): Promise<T>;
   post<T>(url: string, body: unknown): Promise<T>;
@@ -9,8 +7,6 @@ export interface ListerContext {
   now(): string;
   subscriptionId: string;
 }
-
-export type { ResourceInstance };
 
 export const ARM = "https://management.azure.com";
 

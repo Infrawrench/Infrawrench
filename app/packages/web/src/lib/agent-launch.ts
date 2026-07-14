@@ -42,7 +42,7 @@ export function agentLaunchLookupKey(params: {
     : null;
 }
 
-export interface EffectiveAgentLaunch {
+interface EffectiveAgentLaunch {
   agentSessionId?: string | undefined;
   sshKeyId?: string | undefined;
   sshKeyName?: string | undefined;

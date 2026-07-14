@@ -34,7 +34,7 @@ declare module "hono" {
 
 const app = new Hono();
 
-export interface WorkflowPinDto {
+interface WorkflowPinDto {
   pinId: string;
   workflowId: string;
   gridX: number;

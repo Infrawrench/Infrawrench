@@ -1,5 +1,7 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
+  "ignoreBinaries": ["workerapt-upload"],
+  "ignoreUnresolved": ["../env", "../../env"],
   "workspaces": {
     "plugin-architecture/packages/plugin-base": {
       "entry": ["src/index.ts", "src/test-harness.ts", "src/**/*.test.ts"],
@@ -15,7 +17,7 @@
       "project": ["src/**/*.{ts,tsx}"]
     },
     "app/packages/ui": {
-      "entry": ["src/index.ts", "src/**/*.test.{ts,tsx}"],
+      "entry": ["src/index.ts", "src/agents/launch-command.ts", "src/**/*.test.{ts,tsx}"],
       "project": ["src/**/*.{ts,tsx}"]
     },
     "app/packages/web": {
@@ -30,7 +32,8 @@
         "src/routes/**/*.{ts,tsx}",
         "src/**/*.test.{ts,tsx}"
       ],
-      "project": ["src/**/*.{ts,tsx}"]
+      "project": ["src/**/*.{ts,tsx}"],
+      "ignoreDependencies": ["tailwindcss"]
     },
     "app/packages/desktop": {
       "entry": [
@@ -39,11 +42,17 @@
         "electron.vite.config.ts",
         "vitest.config.ts",
         "src/main.tsx",
+        "src/env.d.ts",
         "src/routeTree.gen.ts",
         "src/routes/**/*.{ts,tsx}",
         "src/**/*.test.{ts,tsx}"
       ],
-      "project": ["src/**/*.{ts,tsx}", "electron/**/*.ts"]
+      "project": ["src/**/*.{ts,tsx}", "electron/**/*.ts"],
+      "ignoreDependencies": [
+        "tailwindcss",
+        "electron-builder",
+        "@jitl/quickjs-ng-wasmfile-release-asyncify"
+      ]
     },
     "app/packages/server-core": {
       "entry": ["src/**/*.ts"],
@@ -52,6 +61,25 @@
     "app/packages/poller": {
       "entry": ["src/index.ts", "src/**/*.test.ts"],
       "project": ["src/**/*.ts"]
+    },
+    "app/packages/bastion-agent": {
+      "entry": ["src/index.ts", "src/**/*.test.ts"],
+      "project": ["src/**/*.ts"]
+    },
+    "app/packages/github-watcher": {
+      "entry": ["src/index.ts", "src/**/*.test.ts"],
+      "project": ["src/**/*.ts"]
+    },
+    "app/packages/telemetry": {
+      "entry": ["src/index.ts", "src/**/*.test.ts"],
+      "project": ["src/**/*.ts"]
+    },
+    "app/packages/workflow-runtime": {
+      "entry": ["src/index.ts", "src/client.ts", "src/__smoke__/run.ts", "src/**/*.test.ts"],
+      "project": ["src/**/*.ts"]
+    },
+    "app/packages/website": {
+      "ignoreDependencies": ["cloudflare"]
     }
   }
 }

@@ -1,6 +1,6 @@
 // Barrel for Cloudflare detail-view renderers, split by resource domain.
 // Re-exports keep the historical `./detail-renderers.js` import path stable.
-export { tunnelStatus, deploymentStatus, sslStatus } from "./detail-renderers/status.js";
+export { tunnelStatus, sslStatus } from "./detail-renderers/status.js";
 export {
   renderZoneDetail,
   renderSSLCertificateDetail,

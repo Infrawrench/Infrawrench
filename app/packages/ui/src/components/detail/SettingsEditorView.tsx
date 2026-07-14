@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { SettingsEditorCapability, SettingDescriptor } from "@infrawrench/plugin-base";
 import { ErrorNotice } from "../ErrorNotice.js";
 
-export interface SettingsEditorViewProps {
+interface SettingsEditorViewProps {
   capability: SettingsEditorCapability;
   /** Returns a JSON string of `{ settings: SettingDescriptor[] }`. */
   onGetManifest: () => Promise<string>;
