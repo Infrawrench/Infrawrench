@@ -196,10 +196,6 @@ export class VercelClient implements PluginClient {
     return results;
   }
 
-  /* ================================================================
-   *  Core PluginClient methods
-   * ================================================================ */
-
   async listResources(typeId: string, accountId: string): Promise<ResourceInstance[]> {
     switch (typeId) {
       case "vercel-project":
@@ -685,10 +681,6 @@ export class VercelClient implements PluginClient {
     );
   }
 
-  /* ================================================================
-   *  Private list methods
-   * ================================================================ */
-
   private async listProjects(accountId: string): Promise<ResourceInstance[]> {
     const projects = await this.paginate<VercelProject>("/v9/projects", "projects");
     return projects.map((p) => this.mapProject(p, accountId));
@@ -734,10 +726,6 @@ export class VercelClient implements PluginClient {
       return [];
     }
   }
-
-  /* ================================================================
-   *  Mappers
-   * ================================================================ */
 
   private mapProject(p: VercelProject, accountId: string): ResourceInstance {
     const gitRepo = p.link
@@ -891,10 +879,6 @@ export class VercelClient implements PluginClient {
       updatedAt: formatTimestamp(t.updatedAt),
     };
   }
-
-  /* ================================================================
-   *  Detail renderers
-   * ================================================================ */
 
   private renderProjectDetail(resource: ResourceInstance): DetailViewSchema {
     const f = resource.fields;

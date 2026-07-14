@@ -216,7 +216,6 @@ app.get("/active", async (c) => {
   requirePermission(c, "resources:execute");
   const organizationId = c.get("organizationId");
   const all = getActiveTunnels();
-  // Filter to tunnels belonging to this org
   const result: Record<string, { localPort: number; sshHost: string; remotePort: number }> = {};
   for (const [id, info] of Object.entries(all)) {
     if (info.organizationId === organizationId) {

@@ -209,7 +209,6 @@ export async function listFunctionApps(
   const data = await ctx.get<{ value: Record<string, unknown>[] }>(
     `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.Web/sites?api-version=2023-01-01`,
   );
-  // Filter to only function apps (kind contains "functionapp")
   const functionApps = (data.value ?? []).filter((site) => {
     const kind = String(site["kind"] ?? "");
     return kind.toLowerCase().includes("functionapp");
@@ -258,7 +257,6 @@ export async function listAppServices(
   const data = await ctx.get<{ value: Record<string, unknown>[] }>(
     `${ARM}/subscriptions/${ctx.subscriptionId}/providers/Microsoft.Web/sites?api-version=2023-01-01`,
   );
-  // Filter to non-function apps
   const webApps = (data.value ?? []).filter((site) => {
     const kind = String(site["kind"] ?? "");
     return !kind.toLowerCase().includes("functionapp");

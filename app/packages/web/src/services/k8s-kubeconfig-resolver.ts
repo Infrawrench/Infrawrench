@@ -20,7 +20,6 @@ export async function resolveKubeconfig(
   resourceId: string,
   peerPluginId: string,
 ): Promise<string | null> {
-  // Load the parent account + plugin
   const [account] = await db
     .select()
     .from(accounts)
@@ -65,7 +64,6 @@ export async function resolveKubeconfig(
   const resourceTypeDef = loaded.plugin.resourceTypes.find((t) => t.id === resource.resourceTypeId);
   if (!resourceTypeDef?.peerIntegrations?.length) return null;
 
-  // Find the peer integration for the requested plugin
   const integration = resourceTypeDef.peerIntegrations.find((i) => i.pluginId === peerPluginId);
   if (!integration) return null;
 
