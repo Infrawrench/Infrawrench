@@ -2,10 +2,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 let loader: typeof import("../plugin-loader");
 
+// The first import transforms all 31 plugin packages; under a fully parallel
+// `turbo test` run that can exceed the default 10s hook timeout.
 beforeEach(async () => {
   vi.resetModules();
   loader = await import("../plugin-loader");
-});
+}, 60_000);
 
 describe("loadPlugins", () => {
   it("loads a non-empty set of plugins", async () => {
