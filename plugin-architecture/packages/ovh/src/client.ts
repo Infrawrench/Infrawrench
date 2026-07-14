@@ -57,6 +57,34 @@ function enc(value: string): string {
   return encodeURIComponent(value);
 }
 
+/** Map OVH's MetricUnitEnum to the short units the metrics chart renders. */
+function ovhMetricUnit(units: string): string {
+  switch (units) {
+    case "PERCENT":
+      return "%";
+    case "BYTES":
+      return "bytes";
+    case "BYTES_PER_SECOND":
+      return "bytes/s";
+    case "MEGABYTES":
+      return "MB";
+    case "MEGABYTES_PER_SECOND":
+      return "MB/s";
+    case "GIGABYTES":
+      return "GB";
+    case "GIGABYTES_PER_HOUR":
+      return "GB/h";
+    case "MILLISECONDS":
+      return "ms";
+    case "SECONDS":
+      return "s";
+    case "SCALAR_PER_SECOND":
+      return "/s";
+    default:
+      return "";
+  }
+}
+
 function stringifyAddress(address: unknown): string {
   if (!address || typeof address !== "object") return "";
   const value = address as Record<string, unknown>;
@@ -1151,19 +1179,81 @@ export class OvhClient implements PluginClient {
     );
   }
 
-  // OVH metrics live in the separate Metrics Data Platform (a distinct service with its
-  // own token and endpoint — not the OVHcloud Public Cloud API used here).
-  // See: https://docs.ovh.com/gb/en/metrics/
-  // Wiring it up requires an additional credential (Metrics token) and a different base
-  // URL, which is out of scope for the current single-credential plugin setup. Skipped.
+  // Managed databases are the only OVH Public Cloud resources with a metrics API:
+  // GET .../database/{engine}/{clusterId}/metric lists metric names and
+  // GET .../metric/{metricName}?period= returns per-host series. Instances used to
+  // have /instance/{id}/monitoring but OVH removed it from the API (404s today);
+  // everything else only exists in the separate Metrics Data Platform, which needs
+  // its own token and endpoint and is out of scope for this single-credential plugin.
   async fetchMetricSeries(
-    _resourceTypeId: string,
-    _resourceId: string,
+    resourceTypeId: string,
+    resourceId: string,
     _accountId: string,
-    _timeRange?: { startMs: number; endMs: number },
+    timeRange?: { startMs: number; endMs: number },
   ): Promise<MetricSeries[]> {
-    return [];
+    if (resourceTypeId !== "managed-db") return [];
+    const externalId = resourceId.split(":").pop();
+    if (!externalId) return [];
+
+    // The metric routes embed the engine in the path, which the resource id
+    // doesn't carry — resolve it from the service first.
+    const svc = await this.ovhFetch<OvhDatabaseService>(
+      this.cloudPath(`/database/service/${enc(externalId)}`),
+    );
+    const engine = (svc.engine ?? "").trim().toLowerCase();
+    if (!engine) return [];
+    const metricBase = this.cloudPath(
+      `${this.databaseEnginePath(engine)}/${enc(externalId)}/metric`,
+    );
+
+    // The API only supports fixed lookback windows; pick the smallest one that
+    // covers the requested range, then trim points back down to the range.
+    const now = Date.now();
+    const startMs = timeRange?.startMs ?? now - 3_600_000;
+    const spanMs = (timeRange?.endMs ?? now) - startMs;
+    let period: string;
+    if (spanMs <= 3_600_000) period = "lastHour";
+    else if (spanMs <= 86_400_000) period = "lastDay";
+    else if (spanMs <= 7 * 86_400_000) period = "lastWeek";
+    else if (spanMs <= 31 * 86_400_000) period = "lastMonth";
+    else period = "lastYear";
+
+    let metricNames: string[];
+    try {
+      metricNames = await this.ovhFetch<string[]>(metricBase);
+    } catch {
+      // Not ready yet (Client::Conflict::ServiceNotReady) or no metric access.
+      return [];
+    }
+
+    const results = await Promise.all(
+      metricNames.slice(0, OvhClient.DB_METRIC_LIMIT).map(async (name) => {
+        try {
+          const metric = await this.ovhFetch<OvhDatabaseMetric>(
+            `${metricBase}/${enc(name)}?period=${enc(period)}`,
+          );
+          const unit = ovhMetricUnit(metric.units ?? "");
+          const hosts = metric.metrics ?? [];
+          return hosts.flatMap((host): MetricSeries[] => {
+            const points = (host.dataPoints ?? [])
+              .map((p) => ({ timestamp: p.timestamp * 1000, value: p.value }))
+              .filter((p) => p.timestamp >= startMs)
+              .sort((a, b) => a.timestamp - b.timestamp);
+            if (points.length === 0) return [];
+            const label =
+              hosts.length > 1 ? `${metric.name ?? name} (${host.hostname})` : metric.name ?? name;
+            return [{ label, unit, points }];
+          });
+        } catch {
+          return [];
+        }
+      }),
+    );
+    return results.flat();
   }
+
+  /** Metric-name list order is provider-defined; cap fan-out per fetch. */
+  private static readonly DB_METRIC_LIMIT = 8;
 
   async fetchDashboardStats(
     resourceTypeId: string,
@@ -1776,6 +1866,16 @@ interface OvhKubeNodePool {
   minNodes?: number;
   maxNodes?: number;
   status?: string;
+}
+
+/** Response of GET .../database/{engine}/{clusterId}/metric/{name} (timestamps in epoch seconds). */
+interface OvhDatabaseMetric {
+  name?: string;
+  units?: string;
+  metrics?: Array<{
+    hostname?: string;
+    dataPoints?: Array<{ timestamp: number; value: number }>;
+  }>;
 }
 
 interface OvhDatabaseService {

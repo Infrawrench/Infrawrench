@@ -69,11 +69,12 @@ const SERVICE_BINDINGS: Record<string, ServiceBinding> = {
   logs: { clientKey: "cloudWatchLogs", signingName: "logs" },
   monitoring: { clientKey: "cloudWatch", signingName: "monitoring" },
   mq: { clientKey: "mq", signingName: "mq" },
-  // Neptune's own management endpoint, NOT rds.*. This is the headline
-  // correctness fix in this migration. Neptune shares the RDS API
-  // surface, so SigV4 still signs with the rds service name.
+  // Neptune requests must go to rds.<region> — the neptune.<region> host the
+  // SDK would use does not exist in DNS (resolveEndpoint below forces the RDS
+  // host). Neptune shares the RDS control plane and API surface, and SigV4
+  // signs with the rds service name.
   neptune: { clientKey: "neptune", signingName: "rds" },
-  // Same story for DocumentDB — its own endpoint, RDS-compatible API.
+  // Same story for DocumentDB — served from the RDS endpoint, RDS-compatible API.
   docdb: { clientKey: "docDb", signingName: "rds" },
   rds: { clientKey: "rds", signingName: "rds" },
   redshift: { clientKey: "redshift", signingName: "redshift" },

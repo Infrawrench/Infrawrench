@@ -12,6 +12,7 @@ export const PrivateDNSZoneResourceType = rt({
     f("virtualNetworkLinkCount", "Virtual Network Links", { kind: "number", required: false }),
   ],
   outputs: [o("resourceId", "Resource ID")],
+  supportsMetrics: true,
   iconKey: "dns",
   attachTargets: [
     {

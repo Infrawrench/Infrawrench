@@ -163,9 +163,12 @@ export async function listNeptuneClusters(
   ctx: ListerContext,
   accountId: string,
 ): Promise<ResourceInstance[]> {
-  // Talk to neptune.<region>.amazonaws.com — NOT rds.<region>. Neptune
-  // shares the DescribeDBClusters action with RDS but has its own
-  // endpoint; the previous SERVICE_HOSTS aliasing was a known bug.
+  // The "neptune" service key is routed to rds.<region>.amazonaws.com by the
+  // transport layer (see client-transport.ts resolveEndpoint): the SDK's
+  // neptune.<region> endpoint template does not resolve in DNS. Neptune
+  // shares the DescribeDBClusters action (and control plane) with RDS, so
+  // the RDS host is the one that actually works — do not "fix" this back to
+  // a neptune.* host.
   const data = await ctx.ec2Query<Record<string, unknown>>(
     "neptune",
     "DescribeDBClusters",

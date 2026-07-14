@@ -39,6 +39,7 @@ export const ManagedDbResourceType = rt({
     o("database", "Database Name"),
   ],
   supportsCreate: true,
+  supportsMetrics: true,
   iconKey: "database",
   peerIntegrations: [
     {

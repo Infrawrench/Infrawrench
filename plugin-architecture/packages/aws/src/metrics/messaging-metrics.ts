@@ -3,7 +3,7 @@ import type { MetricsContext } from "./cw-helpers.js";
 
 /**
  * Messaging / streaming metric handlers — SQS, SNS, Kinesis, MSK, MQ,
- * Step Functions.
+ * Step Functions, EventBridge.
  */
 
 export async function sqsQueueMetrics(
@@ -230,5 +230,45 @@ export async function stepFunctionMetrics(
   if (throttled && throttled.points.length > 0) results.push({ ...throttled, label: "Throttled" });
   if (time && time.points.length > 0)
     results.push({ ...time, label: "Execution Time", unit: "ms" });
+  return results;
+}
+
+export async function eventBridgeRuleMetrics(
+  ctx: MetricsContext,
+  resource: ResourceInstance,
+): Promise<MetricSeries[]> {
+  // Verified against
+  // https://docs.aws.amazon.com/eventbridge/latest/userguide/eb-monitoring.html
+  // AWS/Events dimension is RuleName; rules on a custom bus publish with an
+  // additional EventBusName dimension, and CloudWatch matches dimension sets
+  // exactly, so include it only for non-default buses.
+  const f = resource.fields;
+  const ruleName = String(f.name ?? resource.externalId ?? "");
+  if (!ruleName) return [];
+  const eventBusName = String(f.eventBusName ?? "");
+  const dims = [{ Name: "RuleName", Value: ruleName }];
+  if (eventBusName && eventBusName !== "default") {
+    dims.push({ Name: "EventBusName", Value: eventBusName });
+  }
+  const [triggered, invocations, failed, throttled, sentToDlq, dlqFailed] = await Promise.all([
+    ctx.fetchCw("AWS/Events", "TriggeredRules", dims, "Sum").catch(() => null),
+    ctx.fetchCw("AWS/Events", "Invocations", dims, "Sum").catch(() => null),
+    ctx.fetchCw("AWS/Events", "FailedInvocations", dims, "Sum").catch(() => null),
+    ctx.fetchCw("AWS/Events", "ThrottledRules", dims, "Sum").catch(() => null),
+    ctx.fetchCw("AWS/Events", "InvocationsSentToDlq", dims, "Sum").catch(() => null),
+    ctx.fetchCw("AWS/Events", "InvocationsFailedToBeSentToDlq", dims, "Sum").catch(() => null),
+  ]);
+  const results: MetricSeries[] = [];
+  if (triggered && triggered.points.length > 0)
+    results.push({ ...triggered, label: "Rule Triggered" });
+  if (invocations && invocations.points.length > 0)
+    results.push({ ...invocations, label: "Target Invocations" });
+  if (failed && failed.points.length > 0)
+    results.push({ ...failed, label: "Failed Invocations" });
+  if (throttled && throttled.points.length > 0) results.push({ ...throttled, label: "Throttled" });
+  if (sentToDlq && sentToDlq.points.length > 0)
+    results.push({ ...sentToDlq, label: "Sent to DLQ" });
+  if (dlqFailed && dlqFailed.points.length > 0)
+    results.push({ ...dlqFailed, label: "DLQ Delivery Failed" });
   return results;
 }

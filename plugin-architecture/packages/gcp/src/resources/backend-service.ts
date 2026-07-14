@@ -24,4 +24,5 @@ export const BackendServiceResourceType = rt({
   ],
   outputs: [o("selfLink", "Self Link")],
   supportsCreate: true,
+  supportsMetrics: true,
 });

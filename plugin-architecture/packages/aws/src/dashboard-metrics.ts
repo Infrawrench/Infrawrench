@@ -34,6 +34,7 @@ import {
   mskClusterMetrics,
   mqBrokerMetrics,
   stepFunctionMetrics,
+  eventBridgeRuleMetrics,
 } from "./metrics/messaging-metrics.js";
 import {
   s3BucketMetrics,
@@ -215,6 +216,8 @@ export async function fetchMetricSeries(
       return efsFileSystemMetrics(ctx, resource);
     case "step-function":
       return stepFunctionMetrics(ctx, resource);
+    case "eventbridge-rule":
+      return eventBridgeRuleMetrics(ctx, resource);
     case "redshift-cluster":
       return redshiftClusterMetrics(ctx, resource);
     case "documentdb-cluster":

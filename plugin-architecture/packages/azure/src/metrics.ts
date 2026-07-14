@@ -136,6 +136,11 @@ const METRICS_BY_TYPE: Record<string, MetricDescriptor[]> = {
     { name: "QueryVolume", label: "Query volume" },
     { name: "RecordSetCapacityUtilization", label: "Record-set capacity" },
   ],
+  "azure-private-dns-zone": [
+    { name: "QueryVolume", label: "Query volume" },
+    { name: "RecordSetCapacityUtilization", label: "Record-set capacity" },
+    { name: "VirtualNetworkLinkCapacityUtilization", label: "VNet-link capacity" },
+  ],
   "azure-log-analytics": [
     { name: "IngestionVolume", label: "Ingestion volume" },
     { name: "IngestionLatency", label: "Ingestion latency" },

@@ -164,8 +164,10 @@ export function getAwsClients(creds: AwsCredentials): AwsClients {
     kinesis: () => new KinesisClient(baseConfig),
     lambda: () => new LambdaClient(baseConfig),
     mq: () => new MqClient(baseConfig),
-    // Neptune correctly resolves to neptune.<region>.amazonaws.com — the
-    // previous SERVICE_HOSTS map incorrectly pointed Neptune at rds.<region>
+    // NeptuneClient's built-in endpoint template (neptune.<region>) is
+    // NXDOMAIN — requests only work against rds.<region>, which hosts the
+    // shared RDS/Neptune control plane. client-transport.ts overrides the
+    // resolved host accordingly; this client is kept for signing/config only.
     neptune: () => new NeptuneClient(baseConfig),
     openSearch: () => new OpenSearchClient(baseConfig),
     rds: () => new RDSClient(baseConfig),

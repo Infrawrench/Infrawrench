@@ -1086,9 +1086,107 @@ describe("attachResource", () => {
 });
 
 describe("fetchMetricSeries", () => {
-  it("returns [] (not wired)", async () => {
+  it("returns [] for types without a metrics API (instance monitoring was removed by OVH)", async () => {
     const c = makeClient();
     expect(await c.fetchMetricSeries("instance", "x", ACCOUNT)).toEqual([]);
+    expect(apiCalls()).toHaveLength(0);
+  });
+
+  it("fetches managed-db metrics per engine path and converts points", async () => {
+    const dbId = "11111111-2222-3333-4444-555555555555";
+    fetchMock.mockImplementation(async (url: string | URL | Request) => {
+      const u = String(url);
+      if (u.includes("/auth/time")) return okJson(1700000000);
+      if (u.endsWith(`/database/service/${dbId}`))
+        return okJson({ id: dbId, engine: "postgresql" });
+      if (u.endsWith(`/database/postgresql/${dbId}/metric`))
+        return okJson(["cpu_usage", "mem_usage"]);
+      if (u.includes(`/database/postgresql/${dbId}/metric/cpu_usage`))
+        return okJson({
+          name: "cpu_usage",
+          units: "PERCENT",
+          metrics: [
+            {
+              hostname: "node-1",
+              dataPoints: [
+                { timestamp: 1700000100, value: 12.5 },
+                { timestamp: 1700000040, value: 10 },
+              ],
+            },
+          ],
+        });
+      if (u.includes(`/database/postgresql/${dbId}/metric/mem_usage`))
+        return okJson({ name: "mem_usage", units: "PERCENT", metrics: [] });
+      return okJson({});
+    });
+
+    const c = makeClient();
+    const series = await c.fetchMetricSeries("managed-db", `${ACCOUNT}:managed-db:${dbId}`, ACCOUNT, {
+      startMs: 1699990000000,
+      endMs: 1700001000000,
+    });
+
+    expect(series).toHaveLength(1);
+    expect(series[0]!.label).toBe("cpu_usage");
+    expect(series[0]!.unit).toBe("%");
+    // Points are converted to ms and sorted ascending.
+    expect(series[0]!.points).toEqual([
+      { timestamp: 1700000040000, value: 10 },
+      { timestamp: 1700000100000, value: 12.5 },
+    ]);
+    // ~3h span selects the lastDay period.
+    const metricCall = apiCalls().find((call) => String(call[0]).includes("/metric/cpu_usage"));
+    expect(String(metricCall![0])).toContain("period=lastDay");
+  });
+
+  it("labels series per host when a cluster has several nodes", async () => {
+    const dbId = "aaaa1111-2222-3333-4444-555555555555";
+    const host = (hostname: string, value: number) => ({
+      hostname,
+      dataPoints: [{ timestamp: 1700000100, value }],
+    });
+    fetchMock.mockImplementation(async (url: string | URL | Request) => {
+      const u = String(url);
+      if (u.includes("/auth/time")) return okJson(1700000000);
+      if (u.endsWith(`/database/service/${dbId}`)) return okJson({ id: dbId, engine: "mysql" });
+      if (u.endsWith(`/database/mysql/${dbId}/metric`)) return okJson(["disk_usage"]);
+      if (u.includes(`/database/mysql/${dbId}/metric/disk_usage`))
+        return okJson({
+          name: "disk_usage",
+          units: "GIGABYTES",
+          metrics: [host("node-1", 5), host("node-2", 7)],
+        });
+      return okJson({});
+    });
+
+    const c = makeClient();
+    const series = await c.fetchMetricSeries(
+      "managed-db",
+      `${ACCOUNT}:managed-db:${dbId}`,
+      ACCOUNT,
+      { startMs: 1699999000000, endMs: 1700001000000 },
+    );
+    expect(series.map((s) => s.label).sort()).toEqual([
+      "disk_usage (node-1)",
+      "disk_usage (node-2)",
+    ]);
+    expect(series[0]!.unit).toBe("GB");
+  });
+
+  it("returns [] when the metric list call fails (service not ready)", async () => {
+    const dbId = "bbbb1111-2222-3333-4444-555555555555";
+    fetchMock.mockImplementation(async (url: string | URL | Request) => {
+      const u = String(url);
+      if (u.includes("/auth/time")) return okJson(1700000000);
+      if (u.endsWith(`/database/service/${dbId}`)) return okJson({ id: dbId, engine: "redis" });
+      if (u.endsWith(`/database/redis/${dbId}/metric`)) return notOk(409, "ServiceNotReady");
+      return okJson({});
+    });
+
+    const c = makeClient();
+    expect(
+      await c.fetchMetricSeries("managed-db", `${ACCOUNT}:managed-db:${dbId}`, ACCOUNT),
+    ).toEqual([]);
   });
 });
 

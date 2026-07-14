@@ -14,4 +14,5 @@ export const EventBridgeRuleResourceType = rt({
   outputs: [o("ruleArn", "Rule ARN")],
   iconKey: "event",
   supportsCreate: true,
+  supportsMetrics: true,
 });
