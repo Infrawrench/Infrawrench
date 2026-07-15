@@ -32,6 +32,14 @@ export interface AttachTerminalClipboardOptions {
    * remote path of an uploaded file), or null to paste nothing.
    */
   onPasteImage?: (image: TerminalPastedImage) => Promise<string | null>;
+  /**
+   * Platform-native clipboard image reader, tried before the async Clipboard
+   * API. Electron renderers need this: `navigator.clipboard.read()` fails
+   * its permission check there and rejects, so the desktop app supplies a
+   * reader backed by Electron's native clipboard via IPC. Return null when
+   * the clipboard holds no image.
+   */
+  readClipboardImage?: () => Promise<TerminalPastedImage | null>;
 }
 
 export interface AttachTerminalClipboardHandle {
@@ -60,6 +68,32 @@ async function handlePaste(
   options: AttachTerminalClipboardOptions | undefined,
 ): Promise<void> {
   const onPasteImage = options?.onPasteImage;
+
+  if (onPasteImage && options?.readClipboardImage) {
+    try {
+      // Text wins when both are present — readText works everywhere,
+      // including Electron where clipboard.read() does not.
+      const text =
+        typeof navigator !== "undefined" && navigator.clipboard?.readText
+          ? await navigator.clipboard.readText()
+          : "";
+      if (text) {
+        term.paste(text);
+        return;
+      }
+      const image = await options.readClipboardImage();
+      if (image && image.data.length > 0) {
+        const pasted = await onPasteImage(image);
+        if (pasted) term.paste(pasted);
+        return;
+      }
+      // No text and no image — nothing to paste.
+      return;
+    } catch {
+      // Native reader failed — fall through to the Clipboard API paths.
+    }
+  }
+
   if (onPasteImage && typeof navigator !== "undefined" && navigator.clipboard?.read) {
     try {
       const items = await navigator.clipboard.read();

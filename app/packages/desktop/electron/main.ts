@@ -1,6 +1,7 @@
 import {
   app,
   BrowserWindow,
+  clipboard,
   ipcMain,
   dialog,
   nativeTheme,
@@ -602,6 +603,15 @@ ipcMain.handle("db_execute", async (_e, { sql, params }: { sql: string; params?:
   const rowsAffected = db.getRowsModified();
   persist();
   return { rowsAffected, lastInsertId: 0 };
+});
+
+// Native clipboard image read. The renderer cannot use
+// navigator.clipboard.read() — Electron fails its permission check and the
+// promise rejects — so terminal image paste goes through the main process.
+ipcMain.handle("clipboard_read_image", () => {
+  const image = clipboard.readImage();
+  if (image.isEmpty()) return null;
+  return { pngBase64: image.toPNG().toString("base64"), mime: "image/png" };
 });
 
 ipcMain.handle("show_open_dialog", async (_e, options: Electron.OpenDialogOptions) => {

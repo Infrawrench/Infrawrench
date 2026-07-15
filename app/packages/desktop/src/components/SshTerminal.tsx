@@ -72,6 +72,18 @@ export function SshTerminal({
     // Pasting an image uploads it to the remote host over SFTP and pastes
     // the resulting remote path into the shell.
     const clipboard = attachTerminalClipboard(term, {
+      // navigator.clipboard.read() rejects in Electron renderers (permission
+      // check fails), so read images via the main process's native clipboard.
+      readClipboardImage: async () => {
+        const result = await invoke<{ pngBase64: string; mime: string } | null>(
+          "clipboard_read_image",
+        );
+        if (!result) return null;
+        const binary = atob(result.pngBase64);
+        const data = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) data[i] = binary.charCodeAt(i);
+        return { data, mime: result.mime };
+      },
       onPasteImage: async (image) => {
         const remotePath = `/tmp/${pastedImageFilename(image.mime, new Date())}`;
         try {

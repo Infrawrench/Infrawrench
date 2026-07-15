@@ -199,6 +199,59 @@ describe("attachTerminalClipboard", () => {
     expect(term.paste).toHaveBeenCalledWith("pasted");
   });
 
+  it("uses the native clipboard reader when provided (Electron path)", async () => {
+    (navigator.clipboard.readText as ReturnType<typeof vi.fn>).mockResolvedValue("");
+    const readClipboardImage = vi
+      .fn()
+      .mockResolvedValue({ data: new Uint8Array([9, 9]), mime: "image/png" });
+    const onPasteImage = vi.fn().mockResolvedValue("/tmp/native.png");
+    const { term } = makeTerm();
+    attachTerminalClipboard(term, { onPasteImage, readClipboardImage });
+    term.fireKey(macPasteKey);
+    await flush();
+    expect(readClipboardImage).toHaveBeenCalled();
+    expect(onPasteImage).toHaveBeenCalledWith({ data: new Uint8Array([9, 9]), mime: "image/png" });
+    expect(term.paste).toHaveBeenCalledWith("/tmp/native.png");
+  });
+
+  it("native reader path: text still wins over an image", async () => {
+    const readClipboardImage = vi.fn();
+    const onPasteImage = vi.fn();
+    const { term } = makeTerm();
+    attachTerminalClipboard(term, { onPasteImage, readClipboardImage });
+    term.fireKey(macPasteKey);
+    await flush();
+    expect(readClipboardImage).not.toHaveBeenCalled();
+    expect(onPasteImage).not.toHaveBeenCalled();
+    expect(term.paste).toHaveBeenCalledWith("pasted");
+  });
+
+  it("native reader path: empty clipboard pastes nothing", async () => {
+    (navigator.clipboard.readText as ReturnType<typeof vi.fn>).mockResolvedValue("");
+    const readClipboardImage = vi.fn().mockResolvedValue(null);
+    const onPasteImage = vi.fn();
+    const { term } = makeTerm();
+    attachTerminalClipboard(term, { onPasteImage, readClipboardImage });
+    term.fireKey(macPasteKey);
+    await flush();
+    expect(onPasteImage).not.toHaveBeenCalled();
+    expect(term.paste).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the Clipboard API when the native reader throws", async () => {
+    (navigator.clipboard.readText as ReturnType<typeof vi.fn>).mockResolvedValue("");
+    const read = vi.fn().mockResolvedValue([makeClipboardItem(["image/png"])]);
+    (navigator.clipboard as unknown as { read: typeof read }).read = read;
+    const readClipboardImage = vi.fn().mockRejectedValue(new Error("ipc down"));
+    const onPasteImage = vi.fn().mockResolvedValue("/tmp/fallback.png");
+    const { term } = makeTerm();
+    attachTerminalClipboard(term, { onPasteImage, readClipboardImage });
+    term.fireKey(macPasteKey);
+    await flush();
+    expect(onPasteImage).toHaveBeenCalled();
+    expect(term.paste).toHaveBeenCalledWith("/tmp/fallback.png");
+  });
+
   it("pastes on Ctrl+Shift+V on non-mac", () => {
     vi.stubGlobal("navigator", {
       userAgent: "Mozilla/5.0 (X11; Linux x86_64)",

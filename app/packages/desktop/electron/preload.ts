@@ -73,6 +73,7 @@ const INVOKE_CHANNELS = [
   "sftp_mkdir",
   "sftp_delete",
   "sftp_upload",
+  "clipboard_read_image",
   "sftp_download",
   // k8s
   "k8s_exec_spawn",
