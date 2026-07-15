@@ -835,7 +835,6 @@ function agentConfigSources(
   ];
 }
 
-
 function listAgentConfigFiles(root: string, tool: "codex" | "claude-code"): FileListResult {
   const allow = agentConfigAllowlist(tool);
   const listed = listDirectoryFiles(root, {
