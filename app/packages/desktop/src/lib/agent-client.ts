@@ -567,9 +567,24 @@ async function ensureAgentVmSetup(
   await appendAgentSessionLog(db, row.id, AGENT_SETUP_WAIT_SSH_LOG, "setting-up");
   const remoteHome = await resolveAgentRemoteHome(target, privateKey);
 
+  const syncLocalRepo = shouldSyncLocalRepo(row, opts);
   await appendAgentSessionLog(db, row.id, AGENT_SETUP_BOOTSTRAP_LOG, "setting-up");
+  await appendAgentSessionLog(
+    db,
+    row.id,
+    syncLocalRepo
+      ? "Syncing local tool config and repository files in parallel."
+      : "Syncing local tool config in parallel.",
+    "setting-up",
+  );
+
+  // Bootstrap (apt/mise/CLI install) and the file sync run CONCURRENTLY:
+  // they touch disjoint remote paths (the bootstrap only mkdir -p's the
+  // workspace for local-folder sessions, and cloneable sessions get no repo
+  // sync at all), and the sync's SFTP traffic doesn't contend with the
+  // bootstrap's CPU-bound work. The branch checkout below needs both.
   const setupLogger = createAgentSetupOutputLogger(db, row.id);
-  const result = await (async () => {
+  const bootstrapPromise = (async () => {
     try {
       return await runAgentSetupCommand(
         target,
@@ -587,26 +602,18 @@ async function ensureAgentVmSetup(
       await setupLogger.flush();
     }
   })();
-  const warning = extractBootstrapWarning(result.stderr);
-  if (warning) {
-    await appendAgentSessionLog(db, row.id, `Warning: ${warning}`, "setting-up");
-  }
-  const syncLocalRepo = shouldSyncLocalRepo(row, opts);
-  await appendAgentSessionLog(
-    db,
-    row.id,
-    syncLocalRepo
-      ? "Syncing local tool config and repository files."
-      : "Syncing local tool config.",
-    "setting-up",
-  );
   // Watchdog: a wedged SFTP session would otherwise leave the session stuck
   // on "Syncing local tool config." forever with no error and no retry.
-  const syncResult = await withTimeout(
+  const syncPromise = withTimeout(
     syncAgentFiles(row, target, privateKey, remoteHome, { syncLocalRepo }),
     AGENT_SYNC_TIMEOUT_MS,
     "Timed out syncing local files to the agent VM",
   );
+  const [result, syncResult] = await Promise.all([bootstrapPromise, syncPromise]);
+  const warning = extractBootstrapWarning(result.stderr);
+  if (warning) {
+    await appendAgentSessionLog(db, row.id, `Warning: ${warning}`, "setting-up");
+  }
   if (syncResult.configFiles > 0) {
     await appendAgentSessionLog(
       db,

@@ -171,8 +171,8 @@ exec detachproc run --session "$SESSION" -- bash -lc "$START_SCRIPT"
 export function buildAgentBootstrapCommand(input: AgentBootstrapCommandInput): string {
   const toolCommand = input.tool === "claude-code" ? "claude" : "codex";
   const toolPackage = input.tool === "claude-code" ? "@anthropic-ai/claude-code" : "@openai/codex";
-  const runtimeInstallLines = runtimeInstallCommands(input.setupPlan);
-  const packageManagerInstallLines = packageManagerInstallCommands(input.setupPlan);
+  const runtimeLines = runtimeInstallCommands(input.setupPlan);
+  const packageManagerLines = packageManagerInstallCommands(input.setupPlan);
   const initialCloneUrl =
     input.setupPlan.initialCloneUrl?.trim() || (isCloneableGitRepo(input.repo) ? input.repo : "");
   const script = `
@@ -210,20 +210,38 @@ if [ "$(id -u)" -ne 0 ]; then
   SUDO="sudo"
 fi
 
-log_step "Installing system packages."
-if command -v apt-get >/dev/null 2>&1; then
-  # Fresh cloud VMs often run unattended-upgrades on first boot, which holds
-  # the dpkg lock for minutes. Wait for it instead of failing immediately.
-  $SUDO apt-get -o DPkg::Lock::Timeout=120 update -y
-  $SUDO apt-get -o DPkg::Lock::Timeout=120 install -y ca-certificates curl git tar xz-utils unzip build-essential pkg-config autoconf bison libssl-dev zlib1g-dev libreadline-dev libyaml-dev libffi-dev libgdbm-dev libncurses-dev libdb-dev libsqlite3-dev libgmp-dev
-elif command -v dnf >/dev/null 2>&1; then
-  $SUDO dnf install -y ca-certificates curl git tar xz unzip gcc gcc-c++ make pkgconf-pkg-config openssl-devel zlib-devel readline-devel libyaml-devel libffi-devel gdbm-devel ncurses-devel sqlite-devel gmp-devel
-elif command -v apk >/dev/null 2>&1; then
-  $SUDO apk add --no-cache ca-certificates curl git tar xz unzip bash build-base pkgconf openssl-dev zlib-dev readline-dev yaml-dev libffi-dev gdbm-dev ncurses-dev sqlite-dev gmp-dev
-else
-  echo "Unsupported Linux package manager; install git, curl, and build tools manually" >&2
-  exit 1
-fi
+# System packages install in the BACKGROUND: everything until the wait
+# below (detachproc, mise, Node — a prebuilt tarball — and the tool CLI)
+# only needs curl/tar/gzip, which every cloud image ships. Build-dependent
+# work (compiled runtimes, the workspace clone) waits for it.
+install_system_packages() {
+  if command -v apt-get >/dev/null 2>&1; then
+    # Fresh cloud VMs often run unattended-upgrades on first boot, which holds
+    # the dpkg lock for minutes. Wait for it instead of failing immediately.
+    $SUDO apt-get -o DPkg::Lock::Timeout=120 update -y
+    $SUDO apt-get -o DPkg::Lock::Timeout=120 install -y ca-certificates curl git tar xz-utils unzip libatomic1 build-essential pkg-config autoconf bison libssl-dev zlib1g-dev libreadline-dev libyaml-dev libffi-dev libgdbm-dev libncurses-dev libdb-dev libsqlite3-dev libgmp-dev
+  elif command -v dnf >/dev/null 2>&1; then
+    $SUDO dnf install -y ca-certificates curl git tar xz unzip libatomic gcc gcc-c++ make pkgconf-pkg-config openssl-devel zlib-devel readline-devel libyaml-devel libffi-devel gdbm-devel ncurses-devel sqlite-devel gmp-devel
+  elif command -v apk >/dev/null 2>&1; then
+    $SUDO apk add --no-cache ca-certificates curl git tar xz unzip bash libatomic build-base pkgconf openssl-dev zlib-dev readline-dev yaml-dev libffi-dev gdbm-dev ncurses-dev sqlite-dev gmp-dev
+  else
+    echo "Unsupported Linux package manager; install git, curl, and build tools manually" >&2
+    return 1
+  fi
+}
+log_step "Installing system packages (in the background)."
+install_system_packages &
+SYS_PKG_PID=$!
+
+wait_for_system_packages() {
+  if [ -z "$SYS_PKG_PID" ]; then return 0; fi
+  log_step "Waiting for system packages to finish."
+  if ! wait "$SYS_PKG_PID"; then
+    echo "System package installation failed" >&2
+    exit 1
+  fi
+  SYS_PKG_PID=""
+}
 
 if ! command -v detachproc >/dev/null 2>&1 && [ ! -x "$HOME/.local/bin/detachproc" ]; then
   log_step "Installing detachproc session holder."
@@ -274,7 +292,17 @@ install_runtime() {
   mise install "$runtime@$version"
 }
 
-${runtimeInstallLines}
+# Node is a prebuilt tarball, but newer releases link shared libs the
+# minimal cloud images lack (e.g. libatomic.so.1) that arrive with the
+# system packages — if the parallel install fails, wait for them and retry.
+install_node_runtime() {
+${runtimeLines.nodeLines}
+}
+if ! install_node_runtime; then
+  echo "Node install failed while system packages were still installing; retrying after they finish." >&2
+  wait_for_system_packages
+  install_node_runtime
+fi
 
 eval "$(mise activate bash)" || true
 hash -r
@@ -370,7 +398,7 @@ install_package_manager() {
   esac
 }
 
-${packageManagerInstallLines}
+${packageManagerLines.nodeLines}
 
 if ! command -v "$TOOL_COMMAND" >/dev/null 2>&1; then
   log_step "Installing ${agentToolLabel(input.tool)} CLI."
@@ -500,6 +528,17 @@ if ! tool_command_usable; then
   exit 1
 fi
 
+# Everything below needs the system packages: compiled runtimes want build
+# tools, composer/bundler want those runtimes, and the clone wants git.
+wait_for_system_packages
+
+${runtimeLines.otherLines}
+
+eval "$(mise activate bash)" || true
+hash -r
+
+${packageManagerLines.otherLines}
+
 log_step "Preparing workspace $PROJECT_DIR."
 mkdir -p "$PROJECT_DIR"
 if [ "$REPO_CLONEABLE" = "1" ]; then
@@ -532,18 +571,51 @@ touch "$MARKER"
   return `timeout 420s bash -lc ${shellQuote(script)}`;
 }
 
-function runtimeInstallCommands(plan: AgentSetupPlan): string {
-  return dedupeRuntimesForBootstrap(plan.runtimes)
-    .map(
-      (runtime) => `install_runtime ${shellQuote(runtime.language)} ${shellQuote(runtime.version)}`,
-    )
-    .join("\n");
+/**
+ * Runtime installs split by what they need: Node is a prebuilt tarball and
+ * can install while the system packages are still downloading; PHP/Ruby are
+ * compiled by mise and need build-essential & co from apt first.
+ */
+function runtimeInstallCommands(plan: AgentSetupPlan): {
+  nodeLines: string;
+  otherLines: string;
+} {
+  const runtimes = dedupeRuntimesForBootstrap(plan.runtimes);
+  const line = (runtime: AgentRuntimePlan) =>
+    `install_runtime ${shellQuote(runtime.language)} ${shellQuote(runtime.version)}`;
+  return {
+    nodeLines: runtimes
+      .filter((r) => r.language === "node")
+      .map(line)
+      .join("\n"),
+    otherLines: runtimes
+      .filter((r) => r.language !== "node")
+      .map(line)
+      .join("\n"),
+  };
 }
 
-function packageManagerInstallCommands(plan: AgentSetupPlan): string {
-  return dedupePackageManagersForBootstrap(plan.packageManagers)
-    .map((packageManager) => `install_package_manager ${shellQuote(packageManager)}`)
-    .join("\n");
+/**
+ * Package-manager installs split the same way: npm/pnpm/yarn/bun only need
+ * Node; composer/bundler need the PHP/Ruby runtimes that wait on apt.
+ */
+function packageManagerInstallCommands(plan: AgentSetupPlan): {
+  nodeLines: string;
+  otherLines: string;
+} {
+  const NODE_ONLY = new Set(["npm", "pnpm", "yarn", "bun"]);
+  const specs = dedupePackageManagersForBootstrap(plan.packageManagers);
+  const line = (spec: string) => `install_package_manager ${shellQuote(spec)}`;
+  return {
+    nodeLines: specs
+      .filter((spec) => NODE_ONLY.has(packageManagerName(spec)))
+      .map(line)
+      .join("\n"),
+    otherLines: specs
+      .filter((spec) => !NODE_ONLY.has(packageManagerName(spec)))
+      .map(line)
+      .join("\n"),
+  };
 }
 
 function dedupeRuntimesForBootstrap(runtimes: AgentRuntimePlan[]): AgentRuntimePlan[] {
