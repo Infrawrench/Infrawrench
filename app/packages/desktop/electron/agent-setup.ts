@@ -9,6 +9,7 @@ import os from "node:os";
 import path from "node:path";
 import { workflowSshExec } from "./ssh-tunnel";
 import { sftpUpload, sftpDownloadToBuffer } from "./sftp";
+import { sanitizeGitConfigForAgentVm } from "./agent-gitconfig";
 import { getDb, isDialogBlessedPath } from "./main-utils";
 // The agent IPC protocol types are canonical in @infrawrench/ui (the renderer
 // side imports them from there); type-only import keeps main/renderer in sync.
@@ -700,7 +701,11 @@ export async function syncAgentFiles({
       configFiles += listed.files.length;
     } else if (stat.isFile()) {
       await ensureRemoteDirs(config, [path.posix.dirname(source.remotePath)]);
-      await sftpUpload(sftpConfig, source.remotePath, fs.readFileSync(source.localPath), {
+      const raw = fs.readFileSync(source.localPath);
+      const data = source.transform
+        ? Buffer.from(source.transform(raw.toString("utf8")), "utf8")
+        : raw;
+      await sftpUpload(sftpConfig, source.remotePath, data, {
         skipHostKeyCheck: true,
       });
       configFiles += 1;
@@ -783,8 +788,28 @@ function loadClaudeCredentials(): string | null {
   }
 }
 
-function agentConfigSources(tool: "codex" | "claude-code", remoteHome: string) {
+interface AgentConfigSource {
+  label: string;
+  localPath: string;
+  remotePath: string;
+  /** Optional content rewrite applied before upload (file sources only). */
+  transform?: (content: string) => string;
+}
+
+function agentConfigSources(
+  tool: "codex" | "claude-code",
+  remoteHome: string,
+): AgentConfigSource[] {
   const home = os.homedir();
+  // The agent commits on the VM, so it needs the user's git identity (plus
+  // aliases, URL rewrites, …). Signing/credential-helper settings are
+  // stripped — the keys and helpers they reference don't exist on the VM.
+  const gitConfig: AgentConfigSource = {
+    label: "Git",
+    localPath: path.join(home, ".gitconfig"),
+    remotePath: joinRemote(remoteHome, ".gitconfig"),
+    transform: sanitizeGitConfigForAgentVm,
+  };
   if (tool === "claude-code") {
     return [
       {
@@ -797,6 +822,7 @@ function agentConfigSources(tool: "codex" | "claude-code", remoteHome: string) {
         localPath: path.join(home, ".claude.json"),
         remotePath: joinRemote(remoteHome, ".claude.json"),
       },
+      gitConfig,
     ];
   }
   return [
@@ -805,8 +831,10 @@ function agentConfigSources(tool: "codex" | "claude-code", remoteHome: string) {
       localPath: path.join(home, ".codex"),
       remotePath: joinRemote(remoteHome, ".codex"),
     },
+    gitConfig,
   ];
 }
+
 
 function listAgentConfigFiles(root: string, tool: "codex" | "claude-code"): FileListResult {
   const allow = agentConfigAllowlist(tool);
