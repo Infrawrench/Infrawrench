@@ -160,7 +160,6 @@ export default defineConfig({
     resolve: {
       alias: {
         "@": resolve(__dirname, "src"),
-        "@blessed-plugins": resolve(__dirname, "../server-core/src/blessed-plugins.json"),
         // `@netlify/api` (and any other Node-only dep we transitively pull in)
         // imports `node-fetch`, which in v3 reaches into `node:util` and fails
         // the renderer's browser build. Map it to a shim over the platform

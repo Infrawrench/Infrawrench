@@ -1,6 +1,5 @@
-import type { Plugin, PluginRegistry } from "@infrawrench/plugin-base";
+import type { Plugin } from "@infrawrench/plugin-base";
 import { pluginManifestSchema } from "@infrawrench/plugin-base";
-import registry from "./blessed-plugins.json";
 
 // Static imports — keep plugin registration eager so esbuild bundles them all
 import { plugin as awsPlugin } from "@infrawrench/plugin-aws";
@@ -32,48 +31,45 @@ import { plugin as cloudinaryPlugin } from "@infrawrench/plugin-cloudinary";
 import { plugin as clickhousePlugin } from "@infrawrench/plugin-clickhouse";
 import { plugin as opensearchPlugin } from "@infrawrench/plugin-opensearch";
 
-const blessedRegistry = registry as PluginRegistry;
-
-const PLUGIN_MODULES: Record<string, Plugin> = {
-  "@infrawrench/plugin-aws": awsPlugin,
-  "@infrawrench/plugin-cloudflare": cloudflarePlugin,
-  "@infrawrench/plugin-digitalocean": digitaloceanPlugin,
-  "@infrawrench/plugin-docker": dockerPlugin,
-  "@infrawrench/plugin-gcp": gcpPlugin,
-  "@infrawrench/plugin-hetzner": hetznerPlugin,
-  "@infrawrench/plugin-kafka": kafkaPlugin,
-  "@infrawrench/plugin-kubernetes": kubernetesPlugin,
-  "@infrawrench/plugin-memcached": memcachedPlugin,
-  "@infrawrench/plugin-mongodb": mongodbPlugin,
-  "@infrawrench/plugin-mysql": mysqlPlugin,
-  "@infrawrench/plugin-mssql": mssqlPlugin,
-  "@infrawrench/plugin-neon": neonPlugin,
-  "@infrawrench/plugin-ovh": ovhPlugin,
-  "@infrawrench/plugin-postgres": postgresPlugin,
-  "@infrawrench/plugin-redis": redisPlugin,
-  "@infrawrench/plugin-scaleway": scalewayPlugin,
-  "@infrawrench/plugin-ssh": sshPlugin,
-  "@infrawrench/plugin-databricks": databricksPlugin,
-  "@infrawrench/plugin-turso": tursoPlugin,
-  "@infrawrench/plugin-planetscale": planetscalePlugin,
-  "@infrawrench/plugin-azure": azurePlugin,
-  "@infrawrench/plugin-fly": flyPlugin,
-  "@infrawrench/plugin-vercel": vercelPlugin,
-  "@infrawrench/plugin-netlify": netlifyPlugin,
-  "@infrawrench/plugin-cloudinary": cloudinaryPlugin,
-  "@infrawrench/plugin-clickhouse": clickhousePlugin,
-  "@infrawrench/plugin-opensearch": opensearchPlugin,
-};
+const PLUGINS: Plugin[] = [
+  awsPlugin,
+  cloudflarePlugin,
+  digitaloceanPlugin,
+  dockerPlugin,
+  gcpPlugin,
+  hetznerPlugin,
+  kafkaPlugin,
+  kubernetesPlugin,
+  memcachedPlugin,
+  mongodbPlugin,
+  mysqlPlugin,
+  mssqlPlugin,
+  neonPlugin,
+  ovhPlugin,
+  postgresPlugin,
+  redisPlugin,
+  scalewayPlugin,
+  sshPlugin,
+  databricksPlugin,
+  tursoPlugin,
+  planetscalePlugin,
+  azurePlugin,
+  flyPlugin,
+  vercelPlugin,
+  netlifyPlugin,
+  cloudinaryPlugin,
+  clickhousePlugin,
+  opensearchPlugin,
+];
 
 export interface LoadedPlugin {
   plugin: Plugin;
-  registryEntry: (typeof blessedRegistry.entries)[number];
 }
 
 let _loaded: LoadedPlugin[] | null = null;
 
 /**
- * Load and validate all blessed plugins.
+ * Load and validate all bundled plugins.
  * Results are cached after the first call.
  */
 export async function loadPlugins(): Promise<LoadedPlugin[]> {
@@ -81,30 +77,16 @@ export async function loadPlugins(): Promise<LoadedPlugin[]> {
 
   const loaded: LoadedPlugin[] = [];
 
-  for (const entry of blessedRegistry.entries) {
-    const plugin = PLUGIN_MODULES[entry.packageName];
-    if (!plugin) {
-      console.warn(`[plugin-loader] No module registered for "${entry.packageName}" — skipping`);
-      continue;
-    }
-
+  for (const plugin of PLUGINS) {
     const result = pluginManifestSchema.safeParse(plugin.manifest);
     if (!result.success) {
       console.error(
-        `[plugin-loader] Invalid manifest for "${entry.packageName}":`,
+        `[plugin-loader] Invalid manifest for "${plugin.manifest?.id ?? "unknown"}":`,
         result.error.flatten(),
       );
       continue;
     }
-
-    if (plugin.manifest.id !== entry.id) {
-      console.error(
-        `[plugin-loader] Plugin manifest id "${plugin.manifest.id}" does not match registry id "${entry.id}" — refusing to load`,
-      );
-      continue;
-    }
-
-    loaded.push({ plugin, registryEntry: entry });
+    loaded.push({ plugin });
   }
 
   _loaded = loaded;

@@ -98,7 +98,7 @@ export interface KubernetesDriverDeclaration {
 }
 
 export interface PluginManifest {
-  /** Unique identifier — must match the blessed registry entry */
+  /** Unique plugin identifier, e.g. "digitalocean" */
   id: string;
   version: string;
   displayName: string;

@@ -9,8 +9,7 @@
     "outDir": "dist",
     "rootDir": ".",
     "paths": {
-      "@/*": ["./src/*"],
-      "@blessed-plugins": ["../server-core/src/blessed-plugins.json"]
+      "@/*": ["./src/*"]
     }
   },
   "include": ["src", "env.ts"],

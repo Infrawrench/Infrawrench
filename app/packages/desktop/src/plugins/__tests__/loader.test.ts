@@ -1,17 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// The desktop plugin loader pulls in the blessed-plugins registry, ~30 plugin
-// packages, and env. All are mocked so the loader's selection/validation/filter
-// logic can be exercised in isolation.
-
-const entries = [
-  { id: "aws", packageName: "@infrawrench/plugin-aws" },
-  { id: "docker", packageName: "@infrawrench/plugin-docker" },
-  { id: "ghost", packageName: "@infrawrench/plugin-unmapped" }, // no module loader
-  { id: "disabled-one", packageName: "@infrawrench/plugin-postgres" },
-];
-
-vi.mock("@blessed-plugins", () => ({ default: { entries } }));
+// The desktop plugin loader pulls in ~30 plugin packages and env. All are
+// mocked so the loader's validation/filter logic can be exercised in
+// isolation.
 
 const safeParse = vi.fn();
 vi.mock("@infrawrench/plugin-base", () => ({
@@ -34,15 +25,15 @@ const awsPlugin = {
   resourceTypes: [{ id: "ec2" }, { id: "s3" }],
 };
 const pgPlugin = {
-  manifest: { id: "disabled-one" },
+  manifest: { id: "postgres" },
   resourceTypes: [{ id: "table" }],
 };
 
 vi.mock("@infrawrench/plugin-aws", () => ({ plugin: awsPlugin }));
 vi.mock("@infrawrench/plugin-postgres", () => ({ plugin: pgPlugin }));
 // Stub every other statically-listed dynamic import so the module graph
-// resolves; they are never reached for our entry list. `vi.mock` is hoisted
-// and requires literal specifiers, hence the explicit list.
+// resolves. `vi.mock` is hoisted and requires literal specifiers, hence the
+// explicit list.
 const stub = (id: string) => ({ plugin: { manifest: { id }, resourceTypes: [] } });
 vi.mock("@infrawrench/plugin-digitalocean", () => stub("digitalocean"));
 vi.mock("@infrawrench/plugin-docker", () => stub("docker"));
@@ -84,12 +75,14 @@ afterEach(() => {
 });
 
 describe("loadPlugins", () => {
-  it("loads valid plugins, skips unmapped package names, and caches", async () => {
+  it("loads all bundled plugins and caches the result", async () => {
     const { loadPlugins } = await import("../loader");
     const loaded = await loadPlugins();
-    const ids = loaded.map((l) => l.plugin.manifest.id).sort();
-    // ghost (no module loader) is skipped; aws + docker + postgres load.
-    expect(ids).toEqual(["aws", "disabled-one", "docker"]);
+    const ids = loaded.map((l) => l.plugin.manifest.id);
+    expect(ids).toContain("aws");
+    expect(ids).toContain("postgres");
+    expect(ids).toContain("docker");
+    expect(new Set(ids).size).toBe(ids.length);
 
     // cached — calling again returns the same array reference
     const again = await loadPlugins();
@@ -97,11 +90,12 @@ describe("loadPlugins", () => {
   });
 
   it("skips disabled plugins by id", async () => {
-    disabled = ["disabled-one"];
+    disabled = ["postgres"];
     const { loadPlugins } = await import("../loader");
     const loaded = await loadPlugins();
-    // ghost has no module loader and disabled-one is disabled → aws + docker remain.
-    expect(loaded.map((l) => l.plugin.manifest.id)).toEqual(["aws", "docker"]);
+    const ids = loaded.map((l) => l.plugin.manifest.id);
+    expect(ids).toContain("aws");
+    expect(ids).not.toContain("postgres");
   });
 
   it("skips plugins whose manifest fails schema validation", async () => {
@@ -110,8 +104,9 @@ describe("loadPlugins", () => {
     );
     const { loadPlugins } = await import("../loader");
     const loaded = await loadPlugins();
-    // aws fails schema validation → docker + disabled-one remain.
-    expect(loaded.map((l) => l.plugin.manifest.id)).toEqual(["docker", "disabled-one"]);
+    const ids = loaded.map((l) => l.plugin.manifest.id);
+    expect(ids).not.toContain("aws");
+    expect(ids).toContain("postgres");
   });
 
   it("applies the resource-type allowlist", async () => {

@@ -153,8 +153,6 @@ export {
 } from "./output-ref.js";
 export type { OutputRefValue } from "./output-ref.js";
 
-export type { PluginRegistry, PluginRegistryEntry } from "./registry.js";
-
 export {
   camelToTitle,
   labeledFieldItems,

@@ -23,13 +23,6 @@ describe("plugin loader", () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it("each plugin manifest ID matches its registry entry ID", async () => {
-    const plugins = await loadPlugins();
-    for (const { plugin, registryEntry } of plugins) {
-      expect(plugin.manifest.id).toBe(registryEntry.id);
-    }
-  });
-
   it("every plugin exposes createClient and at least one resource type", async () => {
     const plugins = await loadPlugins();
     for (const { plugin } of plugins) {
