@@ -20,14 +20,6 @@ interface WebTerminalProps {
   agentForward?: boolean;
   initialCommand?: string | undefined;
   initialCwd?: string | undefined;
-  /**
-   * This terminal hosts a coding agent (Claude Code/Codex inside tmux). The
-   * agent scrolls via native mouse reporting (tmux passes SGR mouse through);
-   * when mouse tracking is off, the wheel falls back to PageUp/PageDown
-   * instead of arrow keys, because arrows edit the agent's prompt/history
-   * instead of scrolling.
-   */
-  agentTerminal?: boolean | undefined;
 }
 
 export function WebTerminal({
@@ -41,7 +33,6 @@ export function WebTerminal({
   agentForward,
   initialCommand,
   initialCwd,
-  agentTerminal,
 }: WebTerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -103,11 +94,7 @@ export function WebTerminal({
       // Mirrors desktop's `if (shellId)` guard: xterm.js auto-sends device
       // attribute responses which must not reach the shell before it's ready.
       const onData = term.onData(sendToShell);
-      const altScroll = attachAltBufferScrollHandler(
-        term,
-        sendToShell,
-        agentTerminal ? { wheelKeys: "page" } : undefined,
-      );
+      const altScroll = attachAltBufferScrollHandler(term, sendToShell);
 
       requestAnimationFrame(() => {
         if (disposed || !term) return;
@@ -217,7 +204,6 @@ export function WebTerminal({
     sshUsername,
     initialCommand,
     initialCwd,
-    agentTerminal,
   ]);
 
   return (

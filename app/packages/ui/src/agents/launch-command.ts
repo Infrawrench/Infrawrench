@@ -1,7 +1,7 @@
 /**
  * Canonical agent-VM shell command builders shared by the desktop and web
  * apps. Both the SSH launch command (which polls until setup is done and then
- * attaches a `tmux` session running the coding tool) and the bootstrap
+ * attaches a `detachproc` session running the coding tool) and the bootstrap
  * command (which installs runtimes/tools and prepares the workspace) live
  * here so the setup markers written on the VM always match what the launch
  * command polls for.
@@ -22,7 +22,7 @@ export const AGENT_SETUP_STEP_PREFIX = "INFRAWRENCH_AGENT_STEP:";
 export const AGENT_SETUP_FAILED_LOG_PREFIX = "Setup failed:";
 
 export interface AgentLaunchCommandInput {
-  /** Agent session id; its first 8 chars name the remote tmux session. */
+  /** Agent session id; its first 8 chars name the remote detachproc session. */
   sessionId: string;
   tool: AgentTool;
   /** Workspace directory name under the remote `$HOME`. */
@@ -58,13 +58,15 @@ export function agentToolLabel(tool: AgentTool): string {
 
 /**
  * Build the SSH command that waits for agent-VM setup to finish and then
- * attaches a detached `tmux` session running the coding tool. Polls for the
- * tool executable, `tmux`, the setup marker written by the bootstrap
- * command, and (when `launchReadyToken` is set) the launch-ready marker.
+ * attaches a detached `detachproc` session running the coding tool. Polls for
+ * the tool executable, `detachproc`, the setup marker written by the
+ * bootstrap command, and (when `launchReadyToken` is set) the launch-ready
+ * marker.
  *
- * tmux (not GNU screen): screen cannot pass SGR mouse reports through, which
- * turns the tool's native mouse-wheel scrolling into prompt garbage. tmux
- * translates mouse reporting correctly, so the tool handles the wheel itself.
+ * detachproc (https://github.com/Infrawrench/detachproc) is a transparent
+ * detached-PTY holder: unlike screen/tmux it never parses the terminal
+ * stream, so the tool's native mouse reporting and bracketed paste work
+ * end-to-end with no client-side workarounds.
  */
 export function buildAgentLaunchCommand(input: AgentLaunchCommandInput): string {
   const sessionName = `infrawrench-agent-${input.sessionId.slice(0, 8)}`;
@@ -92,20 +94,13 @@ PROJECT_DIR="$HOME/${shellDoubleQuoteContent(input.workspaceName)}"
 TOOL_EXECUTABLE=${shellQuote(toolExecutable)}
 SETUP_MARKER="$HOME/.infrawrench-agent/setup-$TOOL_EXECUTABLE"
 LAUNCH_READY_MARKER=${launchReadyMarker ? `"${launchReadyMarker}"` : '""'}
-# Self-heal VMs bootstrapped before the screen->tmux switch.
-ensure_tmux() {
-  if command -v tmux >/dev/null 2>&1; then return 0; fi
-  SUDO=""
-  if [ "$(id -u)" -ne 0 ] && command -v sudo >/dev/null 2>&1; then SUDO="sudo"; fi
-  if command -v apt-get >/dev/null 2>&1; then
-    $SUDO env DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=120 install -y tmux >/dev/null 2>&1 || true
-  elif command -v dnf >/dev/null 2>&1; then
-    $SUDO dnf install -y tmux >/dev/null 2>&1 || true
-  elif command -v apk >/dev/null 2>&1; then
-    $SUDO apk add --no-cache tmux >/dev/null 2>&1 || true
-  fi
+# Self-heal VMs bootstrapped before the detachproc switch.
+ensure_detachproc() {
+  if command -v detachproc >/dev/null 2>&1; then return 0; fi
+  mkdir -p "$HOME/.local/bin"
+  curl -fsSL --retry 3 --retry-delay 2 "https://github.com/Infrawrench/detachproc/releases/latest/download/detachproc-$(uname -m)-unknown-linux-musl" -o "$HOME/.local/bin/detachproc" 2>/dev/null && chmod +x "$HOME/.local/bin/detachproc" || true
 }
-ensure_tmux
+ensure_detachproc
 deadline=$((SECONDS + 900))
 announced=0
 while true; do
@@ -114,7 +109,7 @@ while true; do
   if ! command -v "$TOOL_EXECUTABLE" >/dev/null 2>&1; then
     ready=0
   fi
-  if ! command -v tmux >/dev/null 2>&1; then
+  if ! command -v detachproc >/dev/null 2>&1; then
     ready=0
   fi
   if [ ! -f "$SETUP_MARKER" ]; then
@@ -130,7 +125,7 @@ while true; do
     echo "Agent VM setup did not finish before the SSH launch timeout." >&2
     echo "Missing pieces:" >&2
     command -v "$TOOL_EXECUTABLE" >/dev/null 2>&1 || echo "- $TOOL_EXECUTABLE is not installed or not on PATH" >&2
-    command -v tmux >/dev/null 2>&1 || echo "- tmux is not installed or not on PATH" >&2
+    command -v detachproc >/dev/null 2>&1 || echo "- detachproc is not installed or not on PATH" >&2
     [ -f "$SETUP_MARKER" ] || echo "- setup marker is missing: $SETUP_MARKER" >&2
     if [ -n "$LAUNCH_READY_MARKER" ] && [ ! -f "$LAUNCH_READY_MARKER" ]; then
       echo "- workspace sync marker is missing: $LAUNCH_READY_MARKER" >&2
@@ -145,15 +140,11 @@ while true; do
 done
 # IS_SANDBOX: agent VMs are dedicated throwaway machines and the default SSH
 # user is often root — Claude Code refuses --dangerously-skip-permissions as
-# root unless it knows it runs inside a sandbox. Don't exec the tool: when it
-# exits non-zero at startup the tmux session would close instantly and eat
-# the error, so keep the window open until the user has read it.
-START_SCRIPT="export PATH=\\"\\$HOME/.local/bin:\\$HOME/.local/share/mise/shims:/usr/local/bin:/usr/bin:/bin:\\$PATH\\"; export IS_SANDBOX=1; if command -v mise >/dev/null 2>&1; then eval \\"\\$(mise activate bash)\\" || true; fi; cd $(printf '%q' "$PROJECT_DIR") && ${toolCommand}; rc=\\$?; if [ \\$rc -ne 0 ]; then echo; echo \\"${toolExecutable} exited with status \\$rc.\\"; echo \\"Press Enter to close.\\"; read -r _; fi"
-if ! tmux has-session -t "=$SESSION" 2>/dev/null; then
-  tmux new-session -d -s "$SESSION" bash -lc "$START_SCRIPT"
-  tmux set-option -t "=$SESSION" status off >/dev/null 2>&1 || true
-fi
-exec tmux attach-session -d -t "=$SESSION"
+# root unless it knows it runs inside a sandbox. detachproc propagates the
+# child's exit status and its client prints it, so startup failures stay
+# visible in the terminal.
+START_SCRIPT="export PATH=\\"\\$HOME/.local/bin:\\$HOME/.local/share/mise/shims:/usr/local/bin:/usr/bin:/bin:\\$PATH\\"; export IS_SANDBOX=1; if command -v mise >/dev/null 2>&1; then eval \\"\\$(mise activate bash)\\" || true; fi; cd $(printf '%q' "$PROJECT_DIR") && exec ${toolCommand}"
+exec detachproc run --session "$SESSION" -- bash -lc "$START_SCRIPT"
 `;
   return `bash -lc ${shellQuote(script)}`;
 }
@@ -193,7 +184,7 @@ log_step() {
 }
 
 mkdir -p "$MARKER_DIR"
-if command -v "$TOOL_COMMAND" >/dev/null 2>&1 && command -v tmux >/dev/null 2>&1 && [ -f "$MARKER" ]; then
+if command -v "$TOOL_COMMAND" >/dev/null 2>&1 && command -v detachproc >/dev/null 2>&1 && [ -f "$MARKER" ]; then
   log_step "Bootstrap already complete."
   exit 0
 fi
@@ -212,14 +203,24 @@ if command -v apt-get >/dev/null 2>&1; then
   # Fresh cloud VMs often run unattended-upgrades on first boot, which holds
   # the dpkg lock for minutes. Wait for it instead of failing immediately.
   $SUDO apt-get -o DPkg::Lock::Timeout=120 update -y
-  $SUDO apt-get -o DPkg::Lock::Timeout=120 install -y ca-certificates curl git tmux tar xz-utils unzip build-essential pkg-config autoconf bison libssl-dev zlib1g-dev libreadline-dev libyaml-dev libffi-dev libgdbm-dev libncurses-dev libdb-dev libsqlite3-dev libgmp-dev
+  $SUDO apt-get -o DPkg::Lock::Timeout=120 install -y ca-certificates curl git tar xz-utils unzip build-essential pkg-config autoconf bison libssl-dev zlib1g-dev libreadline-dev libyaml-dev libffi-dev libgdbm-dev libncurses-dev libdb-dev libsqlite3-dev libgmp-dev
 elif command -v dnf >/dev/null 2>&1; then
-  $SUDO dnf install -y ca-certificates curl git tmux tar xz unzip gcc gcc-c++ make pkgconf-pkg-config openssl-devel zlib-devel readline-devel libyaml-devel libffi-devel gdbm-devel ncurses-devel sqlite-devel gmp-devel
+  $SUDO dnf install -y ca-certificates curl git tar xz unzip gcc gcc-c++ make pkgconf-pkg-config openssl-devel zlib-devel readline-devel libyaml-devel libffi-devel gdbm-devel ncurses-devel sqlite-devel gmp-devel
 elif command -v apk >/dev/null 2>&1; then
-  $SUDO apk add --no-cache ca-certificates curl git tmux tar xz unzip bash build-base pkgconf openssl-dev zlib-dev readline-dev yaml-dev libffi-dev gdbm-dev ncurses-dev sqlite-dev gmp-dev
+  $SUDO apk add --no-cache ca-certificates curl git tar xz unzip bash build-base pkgconf openssl-dev zlib-dev readline-dev yaml-dev libffi-dev gdbm-dev ncurses-dev sqlite-dev gmp-dev
 else
-  echo "Unsupported Linux package manager; install git, curl, tmux, and build tools manually" >&2
+  echo "Unsupported Linux package manager; install git, curl, and build tools manually" >&2
   exit 1
+fi
+
+if ! command -v detachproc >/dev/null 2>&1 && [ ! -x "$HOME/.local/bin/detachproc" ]; then
+  log_step "Installing detachproc session holder."
+  mkdir -p "$HOME/.local/bin"
+  if ! curl -fsSL --retry 3 --retry-delay 2 "https://github.com/Infrawrench/detachproc/releases/latest/download/detachproc-$(uname -m)-unknown-linux-musl" -o "$HOME/.local/bin/detachproc"; then
+    echo "Failed to download detachproc for $(uname -m) (curl exit $?)" >&2
+    exit 1
+  fi
+  chmod +x "$HOME/.local/bin/detachproc"
 fi
 
 if ! command -v mise >/dev/null 2>&1; then

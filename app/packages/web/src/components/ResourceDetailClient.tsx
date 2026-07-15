@@ -982,7 +982,6 @@ export function ResourceDetailClient({
                 agentForward={agentForward}
                 initialCommand={agentLaunch.initialCommand}
                 initialCwd={agentLaunch.initialCwd}
-                agentTerminal={Boolean(agentSessionId)}
               />
             ) : wsToken ? (
               <WebTerminal
@@ -993,7 +992,6 @@ export function ResourceDetailClient({
                 agentForward={agentForward}
                 initialCommand={agentLaunch.initialCommand}
                 initialCwd={agentLaunch.initialCwd}
-                agentTerminal={Boolean(agentSessionId)}
               />
             ) : !sshHost ? (
               <div className="flex items-center justify-center h-full">

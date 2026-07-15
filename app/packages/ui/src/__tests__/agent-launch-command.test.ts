@@ -42,7 +42,7 @@ function plan(overrides: Partial<AgentSetupPlan> = {}): AgentSetupPlan {
 }
 
 describe("buildAgentLaunchCommand", () => {
-  it("names the tmux session after the first 8 chars of the session id", () => {
+  it("names the detachproc session after the first 8 chars of the session id", () => {
     const command = unwrap(
       buildAgentLaunchCommand({
         sessionId: SESSION_ID,
@@ -67,10 +67,9 @@ describe("buildAgentLaunchCommand", () => {
     // Root VMs: Claude Code refuses --dangerously-skip-permissions as root
     // unless it knows it's in a sandbox.
     expect(claude).toContain("export IS_SANDBOX=1");
-    // Startup failures must stay visible instead of the tmux session closing
-    // instantly and eating the error.
-    expect(claude).not.toContain("exec claude");
-    expect(claude).toContain("exited with status");
+    // detachproc propagates the child's exit status to the attached client,
+    // so startup failures stay visible in the terminal.
+    expect(claude).toContain("exec claude");
 
     const codex = unwrap(
       buildAgentLaunchCommand({
@@ -80,8 +79,7 @@ describe("buildAgentLaunchCommand", () => {
       }),
     );
     expect(codex).toContain("TOOL_EXECUTABLE='codex'");
-    expect(codex).toContain("codex --yolo");
-    expect(codex).not.toContain("exec codex");
+    expect(codex).toContain("exec codex --yolo");
   });
 
   it("waits on the launch-ready marker when a token is provided", () => {
@@ -127,7 +125,7 @@ describe("buildAgentLaunchCommand", () => {
     expect(command).toContain('PROJECT_DIR="$HOME/my\\"app\\$1"');
   });
 
-  it("polls until ready with a 900s deadline and attaches tmux", () => {
+  it("polls until ready with a 900s deadline and attaches detachproc", () => {
     const command = unwrap(
       buildAgentLaunchCommand({
         sessionId: SESSION_ID,
@@ -136,12 +134,14 @@ describe("buildAgentLaunchCommand", () => {
       }),
     );
     expect(command).toContain("deadline=$((SECONDS + 900))");
-    expect(command).toContain('tmux new-session -d -s "$SESSION" bash -lc "$START_SCRIPT"');
-    expect(command).toContain('exec tmux attach-session -d -t "=$SESSION"');
-    // Old VMs were bootstrapped with screen only — the launch script installs
-    // tmux itself so completed sessions keep working after the switch.
-    expect(command).toContain("ensure_tmux");
+    expect(command).toContain(
+      'exec detachproc run --session "$SESSION" -- bash -lc "$START_SCRIPT"',
+    );
+    // VMs bootstrapped before the detachproc switch lack the binary — the
+    // launch script downloads it itself so those sessions keep working.
+    expect(command).toContain("ensure_detachproc");
     expect(command).not.toContain("exec screen");
+    expect(command).not.toContain("exec tmux");
   });
 });
 
@@ -175,6 +175,22 @@ describe("buildAgentBootstrapCommand", () => {
     );
     expect(bootstrap).toContain("apt-get -o DPkg::Lock::Timeout=120 update -y");
     expect(bootstrap).toContain("apt-get -o DPkg::Lock::Timeout=120 install -y");
+  });
+
+  it("installs the detachproc session holder from GitHub releases", () => {
+    const bootstrap = unwrap(
+      buildAgentBootstrapCommand({
+        tool: "claude-code",
+        workspaceName: "my-app",
+        branchName: "infrawrench/agent-6f9619ff",
+        repo: "https://example.com/org/my-app.git",
+        setupPlan: plan(),
+      }),
+    );
+    expect(bootstrap).toContain(
+      "https://github.com/Infrawrench/detachproc/releases/latest/download/detachproc-$(uname -m)-unknown-linux-musl",
+    );
+    expect(bootstrap).toContain('chmod +x "$HOME/.local/bin/detachproc"');
   });
 
   it("allow-lists the tool package's install scripts for npm", () => {

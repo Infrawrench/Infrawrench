@@ -33,14 +33,6 @@ interface SshTerminalProps {
   initialCommand?: string | undefined;
   /** Optional remote directory to cd into before running initialCommand. */
   initialCwd?: string | undefined;
-  /**
-   * This terminal hosts a coding agent (Claude Code/Codex inside tmux). The
-   * agent scrolls via native mouse reporting (tmux passes SGR mouse through);
-   * when mouse tracking is off, the wheel falls back to PageUp/PageDown
-   * instead of arrow keys, because arrows edit the agent's prompt/history
-   * instead of scrolling.
-   */
-  agentTerminal?: boolean | undefined;
 }
 
 export function SshTerminal({
@@ -54,7 +46,6 @@ export function SshTerminal({
   agentForward,
   initialCommand,
   initialCwd,
-  agentTerminal,
 }: SshTerminalProps) {
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -162,11 +153,7 @@ export function SshTerminal({
       shell?.write(data);
     };
     const onData = term.onData(sendToShell);
-    const altScroll = attachAltBufferScrollHandler(
-      term,
-      sendToShell,
-      agentTerminal ? { wheelKeys: "page" } : undefined,
-    );
+    const altScroll = attachAltBufferScrollHandler(term, sendToShell);
 
     const ro = new ResizeObserver(() => {
       if (disposed) return;
@@ -196,7 +183,6 @@ export function SshTerminal({
     activeCloudOrgId,
     initialCommand,
     initialCwd,
-    agentTerminal,
   ]);
 
   return (
