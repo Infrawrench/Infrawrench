@@ -8,10 +8,14 @@ import type {
   AgentVmAccount,
 } from "@infrawrench/ui/agents";
 import {
+  AGENT_ENV_REMOTE_PATH,
   AGENT_SETUP_FAILED_LOG_PREFIX,
   AGENT_SETUP_STEP_PREFIX,
   buildAgentBootstrapCommand,
+  buildAgentEnvFile,
   buildAgentLaunchCommand,
+  buildAgentRepoSetupCommand,
+  resolveAgentEnvTemplate,
 } from "@infrawrench/ui/agents";
 import { dispatchResourcesChanged } from "@infrawrench/ui";
 import type {
@@ -74,8 +78,17 @@ interface SessionRow {
   vm_resource_id: string | null;
   logs_json: string;
   setup_plan_json: string;
+  setup_env_json: string;
+  created_resources_json: string;
   created_at: string;
   updated_at: string;
+}
+
+interface CreatedResourceRef {
+  id: string;
+  pluginId: string;
+  resourceTypeId: string;
+  accountId: string;
 }
 
 interface ResourceRow {
@@ -325,6 +338,25 @@ export function createDesktopAgentClient(): AgentClient {
           JSON.stringify(setupPlan),
         ],
       );
+      // Resources declared by .infrawrench/agent.json (e.g. a db branch).
+      // Created ONCE here, not in the retryable setup pipeline — resource
+      // creation is not idempotent. A failure marks the session failed so
+      // the user sees it and Delete cleans up whatever was created.
+      try {
+        await createRepoConfigResources(db, id, setupPlan.repoConfig);
+      } catch (error) {
+        await appendAgentSessionLog(
+          db,
+          id,
+          `${AGENT_SETUP_FAILED_LOG_PREFIX} ${formatErrorMessage(error)}`,
+          "failed",
+        );
+        const failedRows = await db.select<SessionRow[]>(
+          "SELECT * FROM agent_sessions WHERE id = $1",
+          [id],
+        );
+        return rowToSession(failedRows[0]!);
+      }
       scheduleAgentVmSetup(id);
 
       const rows = await db.select<SessionRow[]>("SELECT * FROM agent_sessions WHERE id = $1", [
@@ -415,6 +447,33 @@ export function createDesktopAgentClient(): AgentClient {
       ]);
       const row = rows[0];
       if (!row) return;
+      // Resources created from .infrawrench/agent.json (db branches etc.)
+      // go first — same rule as the VM: gone upstream is success, any other
+      // failure aborts so nothing keeps billing silently.
+      const createdRefs = parseJson<CreatedResourceRef[]>(row.created_resources_json ?? "[]", []);
+      for (const ref of createdRefs) {
+        try {
+          const client = await createPluginClient(ref.accountId, ref.pluginId);
+          if (client.deleteResource) {
+            await client.deleteResource(ref.resourceTypeId, ref.id, ref.accountId);
+          }
+        } catch (error) {
+          if (!isNotFoundError(error)) {
+            throw new Error(
+              `Could not delete ${ref.pluginId}/${ref.resourceTypeId} created for this agent: ${formatErrorMessage(error)}`,
+            );
+          }
+        }
+        await db.execute("DELETE FROM dashboard_pins WHERE resource_id = $1", [ref.id]);
+        await db.execute("DELETE FROM resources WHERE id = $1", [ref.id]);
+        // Checkpoint so a later failure doesn't retry already-deleted ones.
+        const remaining = createdRefs.slice(createdRefs.indexOf(ref) + 1);
+        await db.execute("UPDATE agent_sessions SET created_resources_json = $1 WHERE id = $2", [
+          JSON.stringify(remaining),
+          id,
+        ]);
+        dispatchResourcesChanged({ accountId: ref.accountId, resourceTypeId: ref.resourceTypeId });
+      }
       if (row.vm_resource_id) {
         const resourceRows = await db.select<ResourceRow[]>(
           "SELECT id FROM resources WHERE id = $1 AND deleted_at IS NULL LIMIT 1",
@@ -603,6 +662,10 @@ async function ensureAgentVmSetup(
   const target = await waitForAgentSshTarget(row);
   await appendAgentSessionLog(db, row.id, AGENT_SETUP_WAIT_SSH_LOG, "setting-up");
   const remoteHome = await resolveAgentRemoteHome(target, privateKey);
+  // The launch command and the repo setup script both source this env file;
+  // it must land before either can run, so upload it ahead of the parallel
+  // bootstrap/sync pair (it is tiny).
+  await uploadAgentEnvFile(row, target, privateKey, remoteHome);
 
   const syncLocalRepo = shouldSyncLocalRepo(row, opts);
   await appendAgentSessionLog(db, row.id, AGENT_SETUP_BOOTSTRAP_LOG, "setting-up");
@@ -673,6 +736,10 @@ async function ensureAgentVmSetup(
   for (const syncWarning of syncResult.warnings.slice(0, 10)) {
     await appendAgentSessionLog(db, row.id, `Warning: ${syncWarning}`, "setting-up");
   }
+  // Repo-provided setup script — needs the workspace (sync) AND the
+  // runtimes (bootstrap), so it runs after both. The bootstrap's own script
+  // hook only fires on git-URL clones (web); desktop always runs it here.
+  await runAgentRepoSetupScript(db, row, target, privateKey);
   if (opts?.launchReadyToken) {
     await markAgentLaunchReady(target, privateKey, opts.launchReadyToken);
   }
@@ -805,6 +872,168 @@ async function syncAgentFiles(
     projectDir: `${remoteHome}/${workspaceNameForRow(row)}`,
     ...(opts?.syncLocalRepo && !isCloneableGitRepo(row.repo) ? { repoPath: row.repo } : {}),
   });
+}
+
+/**
+ * Create the resources `.infrawrench/agent.json` declares (e.g. a database
+ * branch), resolve their outputs into the session's env map, and persist
+ * both onto the session row. Runs exactly once per session at create time.
+ */
+async function createRepoConfigResources(
+  db: Awaited<ReturnType<typeof getDb>>,
+  sessionId: string,
+  repoConfig: AgentSetupPlan["repoConfig"],
+): Promise<void> {
+  const env: Record<string, string> = { ...(repoConfig?.env ?? {}) };
+  const created: CreatedResourceRef[] = [];
+
+  const persist = async () => {
+    await db.execute(
+      `UPDATE agent_sessions SET setup_env_json = $1, created_resources_json = $2, updated_at = datetime('now') WHERE id = $3`,
+      [JSON.stringify(env), JSON.stringify(created), sessionId],
+    );
+  };
+
+  try {
+    for (const spec of repoConfig?.resources ?? []) {
+      const accounts = await db.select<AccountRow[]>(
+        "SELECT id, plugin_id, display_name FROM accounts WHERE deleted_at IS NULL AND plugin_id = $1 ORDER BY display_name",
+        [spec.pluginId],
+      );
+      const matching = spec.account
+        ? accounts.filter((a) => a.display_name === spec.account)
+        : accounts;
+      if (matching.length === 0) {
+        throw new Error(
+          `agent.json asks for a ${spec.pluginId} resource but no matching ${spec.pluginId} account exists${spec.account ? ` with the name ${JSON.stringify(spec.account)}` : ""}`,
+        );
+      }
+      if (matching.length > 1) {
+        throw new Error(
+          `agent.json: multiple ${spec.pluginId} accounts exist — set "account" to one of: ${matching.map((a) => a.display_name).join(", ")}`,
+        );
+      }
+      const account = matching[0]!;
+      const client = await createPluginClient(account.id, spec.pluginId);
+      if (!client.createResource) {
+        throw new Error(`Plugin ${spec.pluginId} does not support resource creation`);
+      }
+      await appendAgentSessionLog(
+        db,
+        sessionId,
+        `Creating ${spec.pluginId}/${spec.resourceTypeId} from .infrawrench/agent.json.`,
+        "setting-up",
+      );
+      const name = `${spec.name ?? "agent"}-${sessionId.slice(0, 8)}`;
+      const createReturn = await client.createResource(spec.resourceTypeId, account.id, {
+        name,
+        ...(spec.fields ?? {}),
+      });
+      const { resource: createdResource, warnings } = normalizeResourceCreateResult(createReturn);
+      await db.execute(
+        `INSERT OR REPLACE INTO resources
+         (id, plugin_id, resource_type_id, account_id, display_name, external_id, fields_json, outputs_json, parent_resource_id, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, datetime('now'))`,
+        [
+          createdResource.id,
+          createdResource.pluginId,
+          createdResource.resourceTypeId,
+          createdResource.accountId,
+          createdResource.displayName,
+          createdResource.externalId ?? createdResource.id,
+          JSON.stringify(createdResource.fields ?? {}),
+          JSON.stringify(createdResource.resolvedOutputs ?? {}),
+          createdResource.parentResourceId ?? null,
+        ],
+      );
+      created.push({
+        id: createdResource.id,
+        pluginId: spec.pluginId,
+        resourceTypeId: spec.resourceTypeId,
+        accountId: account.id,
+      });
+      for (const warning of warnings) {
+        await appendAgentSessionLog(db, sessionId, `Warning: ${warning.message}`, "setting-up");
+      }
+      for (const [key, template] of Object.entries(spec.env ?? {})) {
+        env[key] = resolveAgentEnvTemplate(template, {
+          fields: createdResource.fields ?? {},
+          resolvedOutputs: createdResource.resolvedOutputs ?? {},
+        });
+      }
+      await appendAgentSessionLog(
+        db,
+        sessionId,
+        `Created ${createdResource.displayName} (${spec.pluginId}/${spec.resourceTypeId}).`,
+        "setting-up",
+      );
+      dispatchResourcesChanged({ accountId: account.id, resourceTypeId: spec.resourceTypeId });
+    }
+  } finally {
+    // Persist whatever was created even on failure — Delete must be able to
+    // clean up partial progress, and the env map is still valid as far as it
+    // got.
+    await persist();
+  }
+}
+
+/** Upload the session env file the launch command and setup script source. */
+async function uploadAgentEnvFile(
+  row: SessionRow,
+  target: AgentSshTarget,
+  privateKey: string,
+  remoteHome: string,
+): Promise<void> {
+  const env = parseJson<Record<string, string>>(row.setup_env_json ?? "{}", {});
+  if (Object.keys(env).length === 0) return;
+  const remotePath = `${remoteHome}/${AGENT_ENV_REMOTE_PATH}`;
+  const config = {
+    sshHost: target.host,
+    sshPort: target.port,
+    sshUser: target.username,
+    privateKey,
+  };
+  const mkdir = await agentSshExecCommand(
+    config,
+    `mkdir -p "$HOME/.infrawrench-agent" && chmod 700 "$HOME/.infrawrench-agent"`,
+  );
+  if (mkdir.code !== 0) throw new Error(formatCommandFailure(mkdir));
+  await invoke("sftp_upload", {
+    config: { host: target.host, port: target.port, username: target.username, privateKey },
+    remotePath,
+    data: new TextEncoder().encode(buildAgentEnvFile(env)),
+  });
+  const chmod = await agentSshExecCommand(config, `chmod 600 ${shellQuote(remotePath)}`);
+  if (chmod.code !== 0) throw new Error(formatCommandFailure(chmod));
+}
+
+/** Run the repo's `.infrawrench/agent-setup.sh` on the VM (no-op if absent). */
+async function runAgentRepoSetupScript(
+  db: Awaited<ReturnType<typeof getDb>>,
+  row: SessionRow,
+  target: AgentSshTarget,
+  privateKey: string,
+): Promise<void> {
+  const logger = createAgentSetupOutputLogger(db, row.id);
+  const result = await (async () => {
+    try {
+      return await agentSshStreamCommand(
+        {
+          sshHost: target.host,
+          sshPort: target.port,
+          sshUser: target.username,
+          privateKey,
+        },
+        buildAgentRepoSetupCommand(workspaceNameForRow(row)),
+        logger,
+      );
+    } finally {
+      await logger.flush();
+    }
+  })();
+  if (result.code !== 0) {
+    throw new Error(`Repository agent-setup script failed: ${formatCommandFailure(result)}`);
+  }
 }
 
 function shouldSyncLocalRepo(row: SessionRow, _opts?: { forceSync?: boolean }): boolean {

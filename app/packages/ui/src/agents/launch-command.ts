@@ -45,6 +45,55 @@ export interface AgentBootstrapCommandInput {
   /** Session repo — a clone URL or a local folder path. */
   repo: string;
   setupPlan: AgentSetupPlan;
+  /**
+   * Run the repo's `.infrawrench/agent-setup.sh` at the end of the
+   * bootstrap. Used for git-URL sessions where the clone happens inside the
+   * bootstrap; desktop sessions run the script client-side instead, after
+   * the (parallel) workspace sync has landed.
+   */
+  runRepoSetupScript?: boolean;
+}
+
+/**
+ * Runs the repo's optional `.infrawrench/agent-setup.sh` inside the
+ * workspace with the mise runtimes on PATH and the session env sourced —
+ * after runtimes/package managers are installed, before the user connects.
+ * Expects `$PROJECT_DIR` (and log_step) to be defined by the surrounding
+ * script. Failures fail the setup so they surface with Retry available.
+ */
+const AGENT_REPO_SETUP_SNIPPET = `
+if [ -f "$PROJECT_DIR/.infrawrench/agent-setup.sh" ]; then
+  log_step "Running repository agent-setup script."
+  (
+    set -a
+    [ -f "$HOME/.infrawrench-agent/agent.env" ] && . "$HOME/.infrawrench-agent/agent.env"
+    set +a
+    cd "$PROJECT_DIR"
+    bash .infrawrench/agent-setup.sh
+  )
+fi
+`;
+
+/**
+ * Standalone command that runs the repo's `.infrawrench/agent-setup.sh` on
+ * the VM — the desktop client executes this after the workspace sync and
+ * bootstrap have both finished (the two race, so the script can't run
+ * inside either). No-op when the repo has no script.
+ */
+export function buildAgentRepoSetupCommand(workspaceName: string): string {
+  const script = `
+set -euo pipefail
+export PATH="$HOME/.local/bin:$HOME/.local/share/mise/shims:/usr/local/bin:/usr/bin:/bin:$PATH"
+if command -v mise >/dev/null 2>&1; then
+  eval "$(mise activate bash)" || true
+fi
+PROJECT_DIR="$HOME/${shellDoubleQuoteContent(workspaceName)}"
+log_step() {
+  printf '%s%s\\n' ${shellQuote(AGENT_SETUP_STEP_PREFIX)} "$1" >&2
+}
+${AGENT_REPO_SETUP_SNIPPET}
+`;
+  return `timeout 600s bash -lc ${shellQuote(script)}`;
 }
 
 export function isCloneableGitRepo(repo: string): boolean {
@@ -155,7 +204,7 @@ fi
 # root unless it knows it runs inside a sandbox. detachproc propagates the
 # child's exit status and its client prints it, so startup failures stay
 # visible in the terminal.
-START_SCRIPT="export PATH=\\"\\$HOME/.local/bin:\\$HOME/.local/share/mise/shims:/usr/local/bin:/usr/bin:/bin:\\$PATH\\"; export IS_SANDBOX=1; if command -v mise >/dev/null 2>&1; then eval \\"\\$(mise activate bash)\\" || true; fi; cd $(printf '%q' "$PROJECT_DIR") && exec ${toolCommand}"
+START_SCRIPT="export PATH=\\"\\$HOME/.local/bin:\\$HOME/.local/share/mise/shims:/usr/local/bin:/usr/bin:/bin:\\$PATH\\"; export IS_SANDBOX=1; if command -v mise >/dev/null 2>&1; then eval \\"\\$(mise activate bash)\\" || true; fi; if [ -f \\"\\$HOME/.infrawrench-agent/agent.env\\" ]; then set -a; . \\"\\$HOME/.infrawrench-agent/agent.env\\"; set +a; fi; cd $(printf '%q' "$PROJECT_DIR") && exec ${toolCommand}"
 exec detachproc run --session "$SESSION" -- bash -lc "$START_SCRIPT"
 `;
   return `bash -lc ${shellQuote(script)}`;
@@ -564,6 +613,8 @@ if [ "$REPO_CLONEABLE" = "1" ] && [ -d "$PROJECT_DIR/.git" ]; then
 elif [ "$REPO_CLONEABLE" = "1" ]; then
   echo "workspace is not a git repository: $PROJECT_DIR" >&2
 fi
+
+${input.runRepoSetupScript ? AGENT_REPO_SETUP_SNIPPET : ""}
 
 log_step "Bootstrap complete."
 touch "$MARKER"

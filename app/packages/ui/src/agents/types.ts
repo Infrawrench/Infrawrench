@@ -13,6 +13,36 @@ export interface AgentRuntimePlan {
   reasons: string[];
 }
 
+/**
+ * A resource the repo asks Infrawrench to create per agent session (e.g. a
+ * database branch). Declared in `.infrawrench/agent.json`; matched to one of
+ * the user's accounts by plugin id (and optional account display name).
+ */
+export interface AgentRepoResourceSpec {
+  /** Plugin that creates the resource, e.g. "neon". */
+  pluginId: string;
+  resourceTypeId: string;
+  /** Disambiguates when several accounts exist for the plugin (display name). */
+  account?: string;
+  /** Base name for the created resource; the session id is appended. */
+  name?: string;
+  /** Create-form fields passed through to the plugin. */
+  fields?: Record<string, string>;
+  /**
+   * Env vars derived from the created resource. Values may reference
+   * `{{outputs.<key>}}` and `{{fields.<key>}}` of the created resource.
+   */
+  env?: Record<string, string>;
+}
+
+/** Parsed `.infrawrench/agent.json` from the session's repository. */
+export interface AgentRepoConfig {
+  /** Static env vars for the agent VM. */
+  env?: Record<string, string>;
+  /** Resources created per session, with env mapped from their outputs. */
+  resources?: AgentRepoResourceSpec[];
+}
+
 export interface AgentSetupPlan {
   source: "git-url" | "local-folder";
   workspaceName: string;
@@ -25,6 +55,8 @@ export interface AgentSetupPlan {
     exists: boolean;
   }>;
   warnings: string[];
+  /** Repo-provided agent config (local-folder sessions only). */
+  repoConfig?: AgentRepoConfig;
 }
 
 export interface AgentVmAccount {

@@ -17,16 +17,24 @@ export {
   agentToolLabel,
   buildAgentBootstrapCommand,
   buildAgentLaunchCommand,
+  buildAgentRepoSetupCommand,
   isCloneableGitRepo,
 } from "./agents/launch-command.js";
 export type {
   AgentBootstrapCommandInput,
   AgentLaunchCommandInput,
 } from "./agents/launch-command.js";
+export {
+  AGENT_ENV_REMOTE_PATH,
+  buildAgentEnvFile,
+  resolveAgentEnvTemplate,
+} from "./agents/repo-config.js";
 export type {
   AgentClient,
   AgentCreateBody,
   AgentLaunchDefaults,
+  AgentRepoConfig,
+  AgentRepoResourceSpec,
   AgentRuntimeLanguage,
   AgentRuntimePlan,
   AgentRuntimeVersionSource,

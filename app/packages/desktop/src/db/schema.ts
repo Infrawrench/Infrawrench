@@ -301,3 +301,13 @@ ALTER TABLE agent_sessions ADD COLUMN setup_plan_json TEXT NOT NULL DEFAULT '{}'
 `;
 
 MIGRATIONS.push(AGENT_SETUP_PLAN_MIGRATION);
+
+// Env vars delivered to the agent VM (static + templated from created
+// resources) and the resources .infrawrench/agent.json asked us to create
+// for this session, so Delete can clean them up.
+const AGENT_REPO_CONFIG_MIGRATION = `
+ALTER TABLE agent_sessions ADD COLUMN setup_env_json TEXT NOT NULL DEFAULT '{}';
+ALTER TABLE agent_sessions ADD COLUMN created_resources_json TEXT NOT NULL DEFAULT '[]';
+`;
+
+MIGRATIONS.push(AGENT_REPO_CONFIG_MIGRATION);

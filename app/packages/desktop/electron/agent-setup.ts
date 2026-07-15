@@ -11,9 +11,11 @@ import { workflowSshExec } from "./ssh-tunnel";
 import { sftpUpload, sftpDownloadToBuffer } from "./sftp";
 import { sanitizeGitConfigForAgentVm } from "./agent-gitconfig";
 import { getDb, isDialogBlessedPath } from "./main-utils";
+import { z } from "zod";
 // The agent IPC protocol types are canonical in @infrawrench/ui (the renderer
 // side imports them from there); type-only import keeps main/renderer in sync.
 import type {
+  AgentRepoConfig,
   AgentRuntimeLanguage,
   AgentRuntimePlan,
   AgentRuntimeVersionSource,
@@ -234,16 +236,76 @@ export async function planAgentSetup({
   // private (or an SSH URL) that the VM has no credentials for, so a remote
   // clone silently produces an empty workspace. Local folders always sync via
   // the archive upload, which carries the working tree including .git.
+  const repoConfig = readAgentRepoConfig(localRepoPath);
   return {
     source: "local-folder",
     workspaceName,
     runtimes,
     packageManagers: detectPackageManagers(localRepoPath),
     configSources,
-    warnings: configSources
-      .filter((source) => !source.exists)
-      .map((source) => `No local ${source.label} config found at ${source.localPath}`),
+    warnings: [
+      ...configSources
+        .filter((source) => !source.exists)
+        .map((source) => `No local ${source.label} config found at ${source.localPath}`),
+      ...repoConfig.warnings,
+    ],
+    ...(repoConfig.config ? { repoConfig: repoConfig.config } : {}),
   };
+}
+
+const agentRepoConfigSchema = z
+  .object({
+    env: z.record(z.string()).optional(),
+    resources: z
+      .array(
+        z
+          .object({
+            pluginId: z.string().min(1),
+            resourceTypeId: z.string().min(1),
+            account: z.string().min(1).optional(),
+            name: z.string().min(1).optional(),
+            fields: z.record(z.string()).optional(),
+            env: z.record(z.string()).optional(),
+          })
+          .strict(),
+      )
+      .optional(),
+  })
+  .strict();
+
+/**
+ * Read and validate the repo's optional `.infrawrench/agent.json`. Invalid
+ * config is surfaced as a plan warning instead of failing planning — the
+ * session still works, just without the repo's env/resources.
+ */
+function readAgentRepoConfig(localRepoPath: string): {
+  config?: AgentRepoConfig;
+  warnings: string[];
+} {
+  const configPath = path.join(localRepoPath, ".infrawrench", "agent.json");
+  if (!fs.existsSync(configPath)) return { warnings: [] };
+  let raw: unknown;
+  try {
+    raw = JSON.parse(fs.readFileSync(configPath, "utf8"));
+  } catch (error) {
+    return {
+      warnings: [
+        `.infrawrench/agent.json is not valid JSON and was ignored: ${error instanceof Error ? error.message : String(error)}`,
+      ],
+    };
+  }
+  const parsed = agentRepoConfigSchema.safeParse(raw);
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0];
+    return {
+      warnings: [
+        `.infrawrench/agent.json is invalid and was ignored: ${issue ? `${issue.path.join(".") || "(root)"}: ${issue.message}` : "schema mismatch"}`,
+      ],
+    };
+  }
+  // zod's .optional() infers `| undefined`, which exactOptionalPropertyTypes
+  // rejects against the shared type — the shapes are otherwise identical.
+  return { config: parsed.data as AgentRepoConfig, warnings: [] };
 }
 
 function ensureGitIsAvailable(): void {

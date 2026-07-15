@@ -35,3 +35,33 @@ Use **Reconcile** to bring the agent branch back to the local repository as an `
 ## Deleting an agent
 
 Use **Delete** on a session row to remove the agent. After a confirmation, Infrawrench destroys the agent's VM at the provider (stopping its billing), removes the session, and closes any open SSH tabs for that VM. Any work on the VM that hasn't been reconciled is lost, so reconcile first if you want to keep the agent's branch. If the provider refuses to delete the VM, the session is kept and the error is shown so nothing is silently orphaned.
+
+## Repository configuration (`.infrawrench/`)
+
+A repository can optionally shape its agent sessions with two files:
+
+### `.infrawrench/agent.json`
+
+```json
+{
+  "env": { "APP_ENV": "agent" },
+  "resources": [
+    {
+      "pluginId": "neon",
+      "resourceTypeId": "branch",
+      "name": "agent-db",
+      "fields": { "parentBranchId": "main" },
+      "env": { "DATABASE_URL": "{{outputs.connectionString}}" }
+    }
+  ]
+}
+```
+
+- **`env`** — static environment variables delivered to the VM. They are written to `~/.infrawrench-agent/agent.env` and sourced before the coding tool starts, so the agent and everything it runs sees them.
+- **`resources`** — resources Infrawrench creates once per session from your existing accounts (for example a database branch). Each entry is matched to an account by `pluginId` (set `account` to an account display name when you have several). The created resource's outputs and fields can be templated into env vars with `{{outputs.<key>}}` and `{{fields.<key>}}`. Created resources are destroyed again when you delete the agent.
+
+Session resources and env from `agent.json` are currently read for desktop local-folder sessions; git-URL sessions get the setup script only.
+
+### `.infrawrench/agent-setup.sh`
+
+An optional bash script that runs on the VM after the runtimes, package managers, and coding tool are installed and the workspace is in place — but before you connect. It runs inside the workspace with the session env sourced, so it is the right place for `pnpm install`, database migrations, or seeding. A non-zero exit fails the session setup (with Retry available), so keep it idempotent.

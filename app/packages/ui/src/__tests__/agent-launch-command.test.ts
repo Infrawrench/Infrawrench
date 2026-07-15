@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildAgentBootstrapCommand,
   buildAgentLaunchCommand,
+  buildAgentRepoSetupCommand,
   isCloneableGitRepo,
 } from "../agents/launch-command.js";
 import type { AgentSetupPlan } from "../agents/types.js";
@@ -165,6 +166,43 @@ describe("buildAgentLaunchCommand", () => {
     expect(command).toContain("ensure_detachproc");
     expect(command).not.toContain("exec screen");
     expect(command).not.toContain("exec tmux");
+  });
+});
+
+describe("repo config integration", () => {
+  it("sources the session env file before exec'ing the tool", () => {
+    const command = unwrap(
+      buildAgentLaunchCommand({
+        sessionId: SESSION_ID,
+        tool: "claude-code",
+        workspaceName: "my-app",
+      }),
+    );
+    expect(command).toContain(".infrawrench-agent/agent.env");
+    expect(command).toContain("set -a");
+  });
+
+  it("runs the repo setup script in the bootstrap only when asked (web)", () => {
+    const base = {
+      tool: "claude-code" as const,
+      workspaceName: "my-app",
+      branchName: "infrawrench/agent-6f9619ff",
+      repo: "https://example.com/org/my-app.git",
+      setupPlan: plan(),
+    };
+    const withScript = unwrap(buildAgentBootstrapCommand({ ...base, runRepoSetupScript: true }));
+    expect(withScript).toContain(".infrawrench/agent-setup.sh");
+    expect(withScript).toContain("Running repository agent-setup script.");
+    const withoutScript = unwrap(buildAgentBootstrapCommand(base));
+    expect(withoutScript).not.toContain(".infrawrench/agent-setup.sh");
+  });
+
+  it("builds a standalone repo-setup command for the desktop client", () => {
+    const command = buildAgentRepoSetupCommand("my-app");
+    expect(command).toContain("timeout 600s bash -lc");
+    const script = unwrap(command);
+    expect(script).toContain(".infrawrench/agent-setup.sh");
+    expect(script).toContain(".infrawrench-agent/agent.env");
   });
 });
 

@@ -239,6 +239,10 @@ async function runAgentVmSetup(
     branchName: row.branchName,
     repo: row.repo,
     setupPlan: setupPlanForRow(row),
+    // Web sessions clone inside the bootstrap, so the repo's optional
+    // .infrawrench/agent-setup.sh runs there too (desktop runs it
+    // client-side after the parallel workspace sync lands).
+    runRepoSetupScript: true,
   });
   const result = await (async () => {
     try {
