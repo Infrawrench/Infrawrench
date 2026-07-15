@@ -30,6 +30,27 @@ import {
   registerDialogBlessedPath,
 } from "./main-utils";
 
+// ssh2 has a teardown race when compression is negotiated: a channel's
+// final ticks can try to compress a close packet through already-destroyed
+// zlib writers, throwing inside ssh2's own tick callbacks where no caller
+// try/catch can reach. We defer connection teardown to avoid it (see
+// ssh-shell.ts), but swallow the specific error as a last resort — it is
+// strictly a post-session cleanup artifact and never affects live traffic.
+process.on("uncaughtException", (err) => {
+  if (err instanceof Error && err.message === "Invalid Zlib instance") {
+    console.warn("[ssh] ignored ssh2 compression teardown race:", err.stack?.split("\n")[1]);
+    return;
+  }
+  // Registering any listener suppresses Electron's default crash dialog —
+  // reproduce it for every other error so real crashes stay loud.
+  console.error("Uncaught exception:", err);
+  dialog.showErrorBox(
+    "Uncaught Exception",
+    err instanceof Error ? (err.stack ?? err.message) : String(err),
+  );
+  process.exit(1);
+});
+
 // Side-effect imports register IPC handlers for each domain.
 import "./plugin-host";
 import "./ssh-host";

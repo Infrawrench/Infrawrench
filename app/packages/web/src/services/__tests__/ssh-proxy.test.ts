@@ -244,6 +244,14 @@ describe("handleSshSession", () => {
 
     ws.close();
     expect(stream.ended).toBe(true);
+    // The connection must NOT end synchronously: with SSH compression on,
+    // ending it while the channel is still finalizing crashes ssh2 with an
+    // uncaught "Invalid Zlib instance". It ends a beat after the channel
+    // closes, once the channel's remaining teardown ticks have drained.
+    expect(conn.ended).toBe(false);
+    stream.emit("close");
+    expect(conn.ended).toBe(false);
+    await new Promise((resolve) => setTimeout(resolve, 150));
     expect(conn.ended).toBe(true);
   });
 

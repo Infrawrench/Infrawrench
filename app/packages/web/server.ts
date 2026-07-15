@@ -98,7 +98,10 @@ async function start() {
     server.listen(port);
   }
 
-  const wss = new WebSocketServer({ noServer: true });
+  // permessage-deflate: terminal sessions ship base64-in-JSON frames of TUI
+  // redraws, which compress extremely well; browsers and Electron negotiate
+  // the extension automatically and plain clients fall back to uncompressed.
+  const wss = new WebSocketServer({ noServer: true, perMessageDeflate: true });
 
   server.on("upgrade", async (request, socket, head) => {
     const url = parse(request.url ?? "", true);

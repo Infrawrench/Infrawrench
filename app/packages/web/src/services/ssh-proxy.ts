@@ -173,23 +173,45 @@ export async function handleSshSession(
       if (torndown) return;
       torndown = true;
       backpressure?.dispose();
-      try {
-        shellStream?.end();
-      } catch {
-        /* ignore */
-      }
-      for (const c of intermediates) {
+      const endConnections = () => {
+        for (const c of intermediates) {
+          try {
+            c.end();
+          } catch {
+            /* ignore */
+          }
+        }
         try {
-          c.end();
+          conn.end();
         } catch {
           /* ignore */
         }
+      };
+      if (!shellStream) {
+        endConnections();
+        return;
       }
+      // With compression negotiated, ending the connection while the channel
+      // is still finalizing makes ssh2 compress the channel-close packet
+      // through already-destroyed zlib writers — an uncaught "Invalid Zlib
+      // instance" throw on a later tick that would take the process down.
+      // End the channel first, and close the connections only after its
+      // "close" has fired AND its remaining teardown ticks (readable-end →
+      // destroy) have drained — hence the extra deferral.
+      let ended = false;
+      const endOnce = () => {
+        if (ended) return;
+        ended = true;
+        setTimeout(endConnections, 100).unref();
+      };
+      shellStream.once("close", endOnce);
       try {
-        conn.end();
+        shellStream.end();
       } catch {
         /* ignore */
       }
+      // Fallback for wedged connections where "close" never fires.
+      setTimeout(endOnce, 3000).unref();
     };
 
     // Registered BEFORE dialing: if the browser goes away mid-connect (or
@@ -386,6 +408,9 @@ export async function handleSshSession(
           "ssh-proxy",
         ),
         ...(forwardAgent ? { agent: forwardAgent, agentForward: true } : {}),
+        // TUI apps redraw whole screen regions constantly and that text
+        // compresses extremely well — the `ssh -C` equivalent.
+        algorithms: { compress: ["zlib@openssh.com", "zlib", "none"] },
       });
     };
 

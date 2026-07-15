@@ -7,6 +7,7 @@ import {
   attachTerminalClipboard,
   buildInitialShellCommand,
   getXtermTerminalOptions,
+  hideXtermScrollbar,
   pastedImageFilename,
   useUIStore,
 } from "@infrawrench/ui";
@@ -33,6 +34,11 @@ interface SshTerminalProps {
   initialCommand?: string | undefined;
   /** Optional remote directory to cd into before running initialCommand. */
   initialCwd?: string | undefined;
+  /**
+   * This terminal hosts a coding agent (Claude Code/Codex) that scrolls
+   * in-app: disable xterm scrollback and hide the scrollbar.
+   */
+  agentTerminal?: boolean | undefined;
 }
 
 export function SshTerminal({
@@ -46,6 +52,7 @@ export function SshTerminal({
   agentForward,
   initialCommand,
   initialCwd,
+  agentTerminal,
 }: SshTerminalProps) {
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -53,11 +60,14 @@ export function SshTerminal({
   useEffect(() => {
     if (!containerRef.current) return;
 
-    const term = new Terminal(getXtermTerminalOptions());
+    const term = new Terminal(
+      getXtermTerminalOptions(agentTerminal ? { scrollback: 0 } : undefined),
+    );
 
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
     term.open(containerRef.current);
+    if (agentTerminal) hideXtermScrollbar(containerRef.current);
 
     // Pasting an image uploads it to the remote host over SFTP and pastes
     // the resulting remote path into the shell.
@@ -183,6 +193,7 @@ export function SshTerminal({
     activeCloudOrgId,
     initialCommand,
     initialCwd,
+    agentTerminal,
   ]);
 
   return (

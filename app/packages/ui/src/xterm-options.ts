@@ -13,7 +13,16 @@ import { getTerminalTheme } from "./terminal-theme.js";
  * The shape mirrors `ITerminalOptions` from `@xterm/xterm` but we don't
  * import that type here to keep this package free of an xterm dependency.
  */
-export function getXtermTerminalOptions() {
+export interface XtermTerminalOptionOverrides {
+  /**
+   * Coding-agent tabs (Claude Code, Codex) manage their own scrolling
+   * in-app, so xterm's scrollback buffer — and the scrollbar it draws — are
+   * pure noise there. 0 disables scrollback entirely.
+   */
+  scrollback?: number;
+}
+
+export function getXtermTerminalOptions(overrides?: XtermTerminalOptionOverrides) {
   const termTheme = getTerminalTheme();
   return {
     theme: {
@@ -42,6 +51,20 @@ export function getXtermTerminalOptions() {
     cursorStyle: "block" as const,
     allowTransparency: true,
     convertEol: false,
-    scrollback: 10000,
+    scrollback: overrides?.scrollback ?? 10000,
   };
+}
+
+/**
+ * Hide the xterm viewport's scrollbar inside `container`. Used for
+ * coding-agent tabs where scrollback is disabled and the tool scrolls
+ * in-app — without this an empty scrollbar gutter still renders.
+ * Call after `terminal.open(container)`.
+ */
+export function hideXtermScrollbar(container: HTMLElement): void {
+  const viewport = container.querySelector<HTMLElement>(".xterm-viewport");
+  if (viewport) {
+    viewport.style.scrollbarWidth = "none";
+    viewport.style.overflowY = "hidden";
+  }
 }

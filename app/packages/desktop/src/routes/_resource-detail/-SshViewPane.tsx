@@ -145,6 +145,7 @@ export function SshViewPane({
             agentForward={agentForward}
             initialCommand={initialCommand}
             initialCwd={initialCwd}
+            agentTerminal={Boolean(agentSessionId)}
           />
         ) : sshHost && quickSshConnection ? (
           <SshTerminal
@@ -158,6 +159,7 @@ export function SshViewPane({
             agentForward={agentForward}
             initialCommand={initialCommand}
             initialCwd={initialCwd}
+            agentTerminal={Boolean(agentSessionId)}
           />
         ) : sshHost && (autoConnectPending || !autoConnectReady) ? (
           <div className="flex h-full items-center justify-center px-4 text-sm text-on-surface-muted">

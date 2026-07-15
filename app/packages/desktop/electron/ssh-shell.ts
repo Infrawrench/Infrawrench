@@ -78,6 +78,11 @@ function connectOneHop(opts: {
       ...(useAgentForAuth ? {} : { privateKey: opts.privateKey }),
       ...(opts.agent ? { agent: opts.agent } : {}),
       ...(opts.agentForward ? { agentForward: true } : {}),
+      // TUI apps redraw whole screen regions constantly and that text
+      // compresses extremely well — the `ssh -C` equivalent. Prefer
+      // zlib@openssh.com (compression only after auth) and fall back to
+      // uncompressed when the server doesn't offer it.
+      algorithms: { compress: ["zlib@openssh.com", "zlib", "none"] },
       hostVerifier: (hostKey: Buffer, verify: (matches: boolean) => void) => {
         verifyOrPinHostKeyInteractive(opts.host, opts.port, hostKey).then(
           (result) => {
@@ -233,14 +238,25 @@ export async function spawnSshShell(
             wc.send(`ssh_shell_exit_${shellId}`);
           }
           shells.delete(shellId);
-          client.end();
-          for (const c of intermediates) {
+          // Defer ending the connections past the channel's remaining
+          // teardown ticks: with compression negotiated, ending the client
+          // inside the "close" event destroys the zlib writers before the
+          // channel's readable-end tick writes its final packet, which
+          // crashes ssh2 with an uncaught "Invalid Zlib instance".
+          setTimeout(() => {
             try {
-              c.end();
+              client.end();
             } catch {
               /* ignore */
             }
-          }
+            for (const c of intermediates) {
+              try {
+                c.end();
+              } catch {
+                /* ignore */
+              }
+            }
+          }, 100).unref?.();
         });
 
         resolve(shellId);
@@ -260,17 +276,29 @@ export function resizeSshShell(shellId: string, cols: number, rows: number): voi
 export function killSshShell(shellId: string): void {
   const s = shells.get(shellId);
   if (!s) return;
+  // Only close the channel here; the stream's "close" handler ends the
+  // client. Ending the client synchronously destroys the protocol's zlib
+  // writers while the channel is still finalizing, and with compression
+  // negotiated the channel-close packet then throws "Invalid Zlib instance"
+  // as an uncaught exception inside ssh2 (the write happens on a later tick,
+  // outside any try/catch of ours).
   try {
     s.stream?.end?.();
   } catch {
     /* ignore */
   }
-  try {
-    s.client.end();
-  } catch {
-    /* ignore */
-  }
-  shells.delete(shellId);
+  // Fallback: if the connection is wedged and "close" never fires, force the
+  // client shut and drop the map entry. By then any channel teardown has
+  // long settled.
+  const client = s.client;
+  setTimeout(() => {
+    shells.delete(shellId);
+    try {
+      client.end();
+    } catch {
+      /* ignore */
+    }
+  }, 3000).unref?.();
 }
 
 export function killAllSshShells(): void {

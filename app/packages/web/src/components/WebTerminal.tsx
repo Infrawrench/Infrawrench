@@ -5,6 +5,7 @@ import {
   attachTerminalClipboard,
   buildInitialShellCommand,
   getXtermTerminalOptions,
+  hideXtermScrollbar,
   pastedImageFilename,
 } from "@infrawrench/ui";
 
@@ -20,6 +21,11 @@ interface WebTerminalProps {
   agentForward?: boolean;
   initialCommand?: string | undefined;
   initialCwd?: string | undefined;
+  /**
+   * This terminal hosts a coding agent (Claude Code/Codex) that scrolls
+   * in-app: disable xterm scrollback and hide the scrollbar.
+   */
+  agentTerminal?: boolean | undefined;
 }
 
 export function WebTerminal({
@@ -33,6 +39,7 @@ export function WebTerminal({
   agentForward,
   initialCommand,
   initialCwd,
+  agentTerminal,
 }: WebTerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -47,11 +54,12 @@ export function WebTerminal({
       const { FitAddon } = await import("@xterm/addon-fit");
       if (!containerRef.current || disposed) return;
 
-      term = new Terminal(getXtermTerminalOptions());
+      term = new Terminal(getXtermTerminalOptions(agentTerminal ? { scrollback: 0 } : undefined));
 
       const fitAddon = new FitAddon();
       term.loadAddon(fitAddon);
       term.open(containerRef.current);
+      if (agentTerminal) hideXtermScrollbar(containerRef.current);
 
       // Pasting an image uploads it to the remote host over SFTP and pastes
       // the resulting remote path into the shell. Needs orgId for the
@@ -204,6 +212,7 @@ export function WebTerminal({
     sshUsername,
     initialCommand,
     initialCwd,
+    agentTerminal,
   ]);
 
   return (
