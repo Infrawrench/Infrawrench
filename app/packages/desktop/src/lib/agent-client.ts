@@ -13,6 +13,7 @@ import {
   buildAgentBootstrapCommand,
   buildAgentLaunchCommand,
 } from "@infrawrench/ui/agents";
+import { dispatchResourcesChanged } from "@infrawrench/ui";
 import type {
   AgentVmCapability,
   CreateFieldConfig,
@@ -406,6 +407,42 @@ export function createDesktopAgentClient(): AgentClient {
         repoPath: row.repo,
       });
       return { branchName: row.branch_name, message: result.message };
+    },
+    async deleteSession(id: string) {
+      const db = await getDb();
+      const rows = await db.select<SessionRow[]>("SELECT * FROM agent_sessions WHERE id = $1", [
+        id,
+      ]);
+      const row = rows[0];
+      if (!row) return;
+      if (row.vm_resource_id) {
+        const resourceRows = await db.select<ResourceRow[]>(
+          "SELECT id FROM resources WHERE id = $1 AND deleted_at IS NULL LIMIT 1",
+          [row.vm_resource_id],
+        );
+        if (resourceRows[0]) {
+          try {
+            const client = await createPluginClient(row.account_id, row.plugin_id);
+            if (!client.deleteResource) throw new Error("Plugin does not support VM deletion");
+            await client.deleteResource(row.resource_type_id, row.vm_resource_id, row.account_id);
+          } catch (error) {
+            // Already gone upstream is success for a delete; anything else
+            // must abort so we don't orphan a still-billing VM silently.
+            if (!isNotFoundError(error)) {
+              throw new Error(`Could not delete the agent VM: ${formatErrorMessage(error)}`);
+            }
+          }
+          await db.execute("DELETE FROM dashboard_pins WHERE resource_id = $1", [
+            row.vm_resource_id,
+          ]);
+          await db.execute("DELETE FROM resources WHERE id = $1", [row.vm_resource_id]);
+          dispatchResourcesChanged({
+            accountId: row.account_id,
+            resourceTypeId: row.resource_type_id,
+          });
+        }
+      }
+      await db.execute("DELETE FROM agent_sessions WHERE id = $1", [id]);
     },
   };
 }

@@ -112,4 +112,6 @@ export interface AgentClient {
     sshKeyName?: string;
   }>;
   reconcileSession(id: string): Promise<{ branchName: string; message: string }>;
+  /** Delete the session and destroy its VM (if it still exists). */
+  deleteSession(id: string): Promise<void>;
 }

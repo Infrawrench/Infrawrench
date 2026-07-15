@@ -345,6 +345,38 @@ app.post("/sessions/:id/open", async (c) => {
   });
 });
 
+app.delete("/sessions/:id", async (c) => {
+  requirePermission(c, "resources:delete");
+  const organizationId = orgId(c);
+  const row = await loadSession(c.req.param("id"), organizationId);
+  if (!row) return c.json({ error: "Not found" }, 404);
+  if (row.vmResourceId) {
+    const [resourceRow] = await db
+      .select({ id: resources.id })
+      .from(resources)
+      .where(and(eq(resources.id, row.vmResourceId), isNull(resources.deletedAt)))
+      .limit(1);
+    if (resourceRow) {
+      try {
+        const ctx = await getClientForAccount(row.accountId, organizationId);
+        if (!ctx) throw new Error("Account not found");
+        if (!ctx.client.deleteResource) throw new Error("Plugin does not support VM deletion");
+        await ctx.client.deleteResource(row.resourceTypeId, row.vmResourceId, row.accountId);
+      } catch (error) {
+        // Already gone upstream is success for a delete; anything else must
+        // abort so we don't orphan a still-billing VM silently.
+        if (!isNotFoundError(error)) {
+          const message = error instanceof Error ? error.message : String(error);
+          return c.json({ error: `Could not delete the agent VM: ${message}` }, 502);
+        }
+      }
+      await db.delete(resources).where(eq(resources.id, row.vmResourceId));
+    }
+  }
+  await db.delete(agentSessions).where(eq(agentSessions.id, row.id));
+  return c.json({ ok: true });
+});
+
 app.post("/sessions/:id/reconcile", async (c) => {
   requirePermission(c, "resources:execute");
   const organizationId = orgId(c);

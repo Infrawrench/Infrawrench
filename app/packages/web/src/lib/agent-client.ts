@@ -50,5 +50,8 @@ export function createWebAgentClient(orgId: string): AgentClient {
       fetch(`${base}/sessions/${id}/reconcile`, opts("POST")).then((r) =>
         json<{ branchName: string; message: string }>(r),
       ),
+    deleteSession: async (id: string) => {
+      await fetch(`${base}/sessions/${id}`, opts("DELETE")).then((r) => json<{ ok: boolean }>(r));
+    },
   };
 }

@@ -32,6 +32,7 @@ function makeClient(
     })),
     openSession: vi.fn(),
     reconcileSession: vi.fn(),
+    deleteSession: vi.fn(async () => {}),
     ...overrides,
   };
 }
@@ -649,6 +650,86 @@ describe("AgentsPanel", () => {
       sshKeyId: "agent-key-1",
       initialCommand: "bash -lc 'screen -D -r infrawrench-agent'",
     });
+  });
+
+  it("deletes a session after confirmation and removes its row", async () => {
+    const account: AgentVmAccount = {
+      accountId: "acct-1",
+      accountName: "test",
+      pluginId: "digitalocean",
+      pluginName: "DigitalOcean",
+      resourceTypeId: "droplet",
+      resourceTypeName: "Droplet",
+      defaultUsername: "root",
+      defaultFields: {},
+      hiddenFieldKeys: [],
+    };
+    const client = makeClient(account);
+    vi.mocked(client.listSessions).mockResolvedValue([
+      {
+        id: "session-1",
+        repo: "/Users/astrid/infrawrench",
+        projectName: "doomed-agent",
+        workspaceName: "infrawrench",
+        accountId: "acct-1",
+        pluginId: "digitalocean",
+        resourceTypeId: "droplet",
+        tool: "codex",
+        branchName: "infrawrench/agent-session",
+        status: "up",
+        vmResourceId: "acct-1:droplet:123",
+        logs: [],
+      },
+    ]);
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<AgentsPanel client={client} />);
+
+    await screen.findByText("doomed-agent");
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+    await waitFor(() => expect(client.deleteSession).toHaveBeenCalledWith("session-1"));
+    await waitFor(() => expect(screen.queryByText("doomed-agent")).not.toBeInTheDocument());
+    confirmSpy.mockRestore();
+  });
+
+  it("does not delete when the confirmation is declined", async () => {
+    const account: AgentVmAccount = {
+      accountId: "acct-1",
+      accountName: "test",
+      pluginId: "digitalocean",
+      pluginName: "DigitalOcean",
+      resourceTypeId: "droplet",
+      resourceTypeName: "Droplet",
+      defaultUsername: "root",
+      defaultFields: {},
+      hiddenFieldKeys: [],
+    };
+    const client = makeClient(account);
+    vi.mocked(client.listSessions).mockResolvedValue([
+      {
+        id: "session-1",
+        repo: "/Users/astrid/infrawrench",
+        projectName: "kept-agent",
+        workspaceName: "infrawrench",
+        accountId: "acct-1",
+        pluginId: "digitalocean",
+        resourceTypeId: "droplet",
+        tool: "codex",
+        branchName: "infrawrench/agent-session",
+        status: "up",
+        vmResourceId: "acct-1:droplet:123",
+        logs: [],
+      },
+    ]);
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(<AgentsPanel client={client} />);
+
+    await screen.findByText("kept-agent");
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+    expect(client.deleteSession).not.toHaveBeenCalled();
+    expect(screen.getByText("kept-agent")).toBeInTheDocument();
+    confirmSpy.mockRestore();
   });
 
   it("hides sessions that do not have a backing VM", async () => {

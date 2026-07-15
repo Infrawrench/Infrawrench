@@ -155,6 +155,25 @@ export function registerAgentPaths(ctx: BuildContext) {
   });
 
   registry.registerPath({
+    method: "delete",
+    path: "/api/org/{orgId}/agents/sessions/{id}",
+    tags: ["Agents"],
+    summary: "Delete an agent session and destroy its VM",
+    request: { params: SessionIdParam },
+    responses: {
+      200: {
+        description: "Session deleted",
+        content: { "application/json": { schema: strict({ ok: z.boolean() }) } },
+      },
+      404: ErrorResponses[404],
+      502: {
+        description: "The provider refused to delete the VM",
+        content: { "application/json": { schema: strict({ error: z.string() }) } },
+      },
+    },
+  });
+
+  registry.registerPath({
     method: "post",
     path: "/api/org/{orgId}/agents/sessions/{id}/reconcile",
     tags: ["Agents"],

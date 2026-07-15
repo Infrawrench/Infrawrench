@@ -42,6 +42,7 @@ export function AgentsPanel({ client, openWorkspaceTarget }: AgentsPanelProps) {
   const [repoSource, setRepoSource] = useState<RepoSource>("git-url");
   const [busy, setBusy] = useState(false);
   const [openingSessionId, setOpeningSessionId] = useState<string | null>(null);
+  const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [saveNotice, setSaveNotice] = useState(false);
   const [configOpen, setConfigOpen] = useState(false);
@@ -283,6 +284,34 @@ export function AgentsPanel({ client, openWorkspaceTarget }: AgentsPanelProps) {
     }
   }
 
+  async function deleteSession(session: AgentSession) {
+    if (deletingSessionId) return;
+    const confirmed = window.confirm(
+      `Delete agent "${session.projectName}"? This destroys its VM and any work on it that hasn't been reconciled.`,
+    );
+    if (!confirmed) return;
+    setDeletingSessionId(session.id);
+    try {
+      await client.deleteSession(session.id);
+      if (session.vmResourceId) {
+        closeSshTabsForAgentTarget(
+          resourceSshTabTarget(
+            session.accountId,
+            session.vmResourceId,
+            session.pluginId,
+            session.resourceTypeId,
+          ),
+        );
+      }
+      setSessions((prev) => prev.filter((s) => s.id !== session.id));
+      setMessage(null);
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : String(e));
+    } finally {
+      setDeletingSessionId(null);
+    }
+  }
+
   return (
     <div className="h-full overflow-auto bg-surface text-on-surface">
       <div className="max-w-6xl mx-auto p-4 space-y-4">
@@ -514,6 +543,15 @@ export function AgentsPanel({ client, openWorkspaceTarget }: AgentsPanelProps) {
                               Reconcile
                             </button>
                           )}
+                          <button
+                            type="button"
+                            disabled={!!deletingSessionId}
+                            onClick={() => void deleteSession(session)}
+                            aria-busy={deletingSessionId === session.id}
+                            className="px-2 py-1 rounded border border-red-500/40 text-xs text-red-400 hover:bg-red-500/10 disabled:opacity-50"
+                          >
+                            {deletingSessionId === session.id ? "Deleting..." : "Delete"}
+                          </button>
                         </div>
                       </div>
                       {session.logs.length > 0 && (

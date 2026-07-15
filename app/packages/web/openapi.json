@@ -10596,6 +10596,82 @@
         "description": "_Requires permission: `resources:execute`._"
       }
     },
+    "/api/org/{orgId}/agents/sessions/{id}": {
+      "delete": {
+        "tags": ["Agents"],
+        "summary": "Delete an agent session and destroy its VM",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Session deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": ["ok"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "The provider refused to delete the VM",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["error"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdAgentsSessionsId",
+        "x-required-permission": "resources:delete",
+        "description": "_Requires permission: `resources:delete`._"
+      }
+    },
     "/api/org/{orgId}/agents/sessions/{id}/reconcile": {
       "post": {
         "tags": ["Agents"],

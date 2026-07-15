@@ -196,6 +196,7 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "POST /agents/sessions": "resources:write",
   "POST /agents/sessions/{id}/open": "resources:execute",
   "POST /agents/sessions/{id}/reconcile": "resources:execute",
+  "DELETE /agents/sessions/{id}": "resources:delete",
   // resources
   "GET /resources/{pluginId}/{typeId}/detail": "resources:read",
   "GET /resources/{pluginId}/{typeId}/manifest": "resources:read",
