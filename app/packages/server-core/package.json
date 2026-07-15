@@ -34,6 +34,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@clickhouse/client": "^1.13.0",
     "@infrawrench/plugin-aws": "workspace:*",
     "@infrawrench/plugin-azure": "workspace:*",
     "@infrawrench/plugin-base": "workspace:*",
@@ -50,8 +51,8 @@
     "@infrawrench/plugin-kubernetes": "workspace:*",
     "@infrawrench/plugin-memcached": "workspace:*",
     "@infrawrench/plugin-mongodb": "workspace:*",
-    "@infrawrench/plugin-mysql": "workspace:*",
     "@infrawrench/plugin-mssql": "workspace:*",
+    "@infrawrench/plugin-mysql": "workspace:*",
     "@infrawrench/plugin-neon": "workspace:*",
     "@infrawrench/plugin-netlify": "workspace:*",
     "@infrawrench/plugin-opensearch": "workspace:*",
@@ -66,12 +67,11 @@
     "@infrawrench/sftp-host": "workspace:*",
     "@infrawrench/ssh-tunnel-core": "workspace:*",
     "@infrawrench/workflow-runtime": "workspace:*",
-    "@clickhouse/client": "^1.13.0",
     "drizzle-orm": "^0.45.2",
     "postgres": "^3.4.5",
     "ssh2": "^1.16.0",
-    "undici": "^7.0.0",
-    "ws": "^8.18.0"
+    "undici": "^7.28.0",
+    "ws": "^8.21.1"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

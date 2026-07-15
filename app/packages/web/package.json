@@ -25,6 +25,7 @@
     "@infrawrench/sftp-host": "workspace:*",
     "@infrawrench/ssh-tunnel-core": "workspace:*",
     "@infrawrench/ui": "workspace:*",
+    "@infrawrench/workflow-runtime": "workspace:*",
     "@libsql/client": "^0.14.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@scalar/hono-api-reference": "^0.5.172",
@@ -34,7 +35,7 @@
     "@xterm/xterm": "^5.5.0",
     "archiver": "^7.0.0",
     "drizzle-orm": "^0.45.2",
-    "hono": "^4.12.18",
+    "hono": "^4.12.30",
     "jose": "^6.2.2",
     "mysql2": "^3.22.3",
     "node-pty": "^1.1.0",
@@ -45,10 +46,9 @@
     "ssh2": "^1.16.0",
     "stripe": "^17.7.0",
     "uuid": "^11.1.0",
-    "ws": "^8.18.0",
+    "ws": "^8.21.1",
     "zod": "^3.24.1",
-    "zod-to-json-schema": "^3.25.2",
-    "@infrawrench/workflow-runtime": "workspace:*"
+    "zod-to-json-schema": "^3.25.2"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.2.2",
@@ -63,11 +63,11 @@
     "@types/ws": "^8.5.13",
     "@vitejs/plugin-react": "^4.3.4",
     "drizzle-kit": "^0.31.10",
-    "esbuild": "^0.25.0",
+    "esbuild": "^0.25.12",
     "tailwindcss": "^4.2.2",
-    "tsx": "^4.19.0",
+    "tsx": "^4.23.1",
     "typescript": "^5.7.3",
-    "vite": "^6.4.2",
+    "vite": "^6.4.3",
     "vitest": "^4.1.8"
   }
 }

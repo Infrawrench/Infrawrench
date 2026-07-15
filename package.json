@@ -29,7 +29,8 @@
   "pnpm": {
     "overrides": {
       "yaml": ">=2.8.3",
-      "@esbuild-kit/core-utils>esbuild": ">=0.25.0"
+      "@esbuild-kit/core-utils>esbuild": ">=0.25.0",
+      "tsup>esbuild": ">=0.28.1"
     },
     "patchedDependencies": {
       "app-builder-lib@26.10.0": "patches/app-builder-lib@26.10.0.patch"

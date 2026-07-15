@@ -37,7 +37,7 @@
   },
   "dependencies": {
     "@infrawrench/plugin-base": "workspace:*",
-    "js-yaml": "^4.1.0",
+    "js-yaml": "^4.3.0",
     "zod": "^3.24.1"
   },
   "devDependencies": {

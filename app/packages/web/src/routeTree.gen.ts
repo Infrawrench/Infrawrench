@@ -13,20 +13,20 @@ import { Route as OnboardingRouteImport } from './routes/onboarding'
 import { Route as OrgOrgIdRouteImport } from './routes/org.$orgId'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as OrgOrgIdIndexRouteImport } from './routes/org.$orgId.index'
+import { Route as OrgOrgIdWorkflowsRouteImport } from './routes/org.$orgId.workflows'
 import { Route as OrgOrgIdSettingsRouteImport } from './routes/org.$orgId.settings'
 import { Route as OrgOrgIdChatRouteImport } from './routes/org.$orgId.chat'
+import { Route as OrgOrgIdAgentsRouteImport } from './routes/org.$orgId.agents'
 import { Route as OrgOrgIdSettingsIndexRouteImport } from './routes/org.$orgId.settings.index'
 import { Route as OrgOrgIdSettingsTeamRouteImport } from './routes/org.$orgId.settings.team'
 import { Route as OrgOrgIdSettingsSshKeysRouteImport } from './routes/org.$orgId.settings.ssh-keys'
 import { Route as OrgOrgIdSettingsSshHostKeysRouteImport } from './routes/org.$orgId.settings.ssh-host-keys'
 import { Route as OrgOrgIdSettingsRolesRouteImport } from './routes/org.$orgId.settings.roles'
+import { Route as OrgOrgIdSettingsPagingRouteImport } from './routes/org.$orgId.settings.paging'
 import { Route as OrgOrgIdSettingsBillingRouteImport } from './routes/org.$orgId.settings.billing'
 import { Route as OrgOrgIdSettingsBastionsRouteImport } from './routes/org.$orgId.settings.bastions'
 import { Route as OrgOrgIdSettingsAuditLogRouteImport } from './routes/org.$orgId.settings.audit-log'
 import { Route as OrgOrgIdSettingsApiKeysRouteImport } from './routes/org.$orgId.settings.api-keys'
-import { Route as OrgOrgIdSettingsPagingRouteImport } from './routes/org.$orgId.settings.paging'
-import { Route as OrgOrgIdWorkflowsRouteImport } from './routes/org.$orgId.workflows'
-import { Route as OrgOrgIdAgentsRouteImport } from './routes/org.$orgId.agents'
 import { Route as OrgOrgIdDashboardDashboardIdRouteImport } from './routes/org.$orgId.dashboard.$dashboardId'
 import { Route as OrgOrgIdChatConversationIdRouteImport } from './routes/org.$orgId.chat.$conversationId'
 import { Route as OrgOrgIdAccountsAccountIdRouteImport } from './routes/org.$orgId.accounts.$accountId'
@@ -52,6 +52,11 @@ const OrgOrgIdIndexRoute = OrgOrgIdIndexRouteImport.update({
   path: '/',
   getParentRoute: () => OrgOrgIdRoute,
 } as any)
+const OrgOrgIdWorkflowsRoute = OrgOrgIdWorkflowsRouteImport.update({
+  id: '/workflows',
+  path: '/workflows',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
 const OrgOrgIdSettingsRoute = OrgOrgIdSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -60,6 +65,11 @@ const OrgOrgIdSettingsRoute = OrgOrgIdSettingsRouteImport.update({
 const OrgOrgIdChatRoute = OrgOrgIdChatRouteImport.update({
   id: '/chat',
   path: '/chat',
+  getParentRoute: () => OrgOrgIdRoute,
+} as any)
+const OrgOrgIdAgentsRoute = OrgOrgIdAgentsRouteImport.update({
+  id: '/agents',
+  path: '/agents',
   getParentRoute: () => OrgOrgIdRoute,
 } as any)
 const OrgOrgIdSettingsIndexRoute = OrgOrgIdSettingsIndexRouteImport.update({
@@ -88,6 +98,11 @@ const OrgOrgIdSettingsRolesRoute = OrgOrgIdSettingsRolesRouteImport.update({
   path: '/roles',
   getParentRoute: () => OrgOrgIdSettingsRoute,
 } as any)
+const OrgOrgIdSettingsPagingRoute = OrgOrgIdSettingsPagingRouteImport.update({
+  id: '/paging',
+  path: '/paging',
+  getParentRoute: () => OrgOrgIdSettingsRoute,
+} as any)
 const OrgOrgIdSettingsBillingRoute = OrgOrgIdSettingsBillingRouteImport.update({
   id: '/billing',
   path: '/billing',
@@ -109,21 +124,6 @@ const OrgOrgIdSettingsApiKeysRoute = OrgOrgIdSettingsApiKeysRouteImport.update({
   id: '/api-keys',
   path: '/api-keys',
   getParentRoute: () => OrgOrgIdSettingsRoute,
-} as any)
-const OrgOrgIdSettingsPagingRoute = OrgOrgIdSettingsPagingRouteImport.update({
-  id: '/paging',
-  path: '/paging',
-  getParentRoute: () => OrgOrgIdSettingsRoute,
-} as any)
-const OrgOrgIdWorkflowsRoute = OrgOrgIdWorkflowsRouteImport.update({
-  id: '/workflows',
-  path: '/workflows',
-  getParentRoute: () => OrgOrgIdRoute,
-} as any)
-const OrgOrgIdAgentsRoute = OrgOrgIdAgentsRouteImport.update({
-  id: '/agents',
-  path: '/agents',
-  getParentRoute: () => OrgOrgIdRoute,
 } as any)
 const OrgOrgIdDashboardDashboardIdRoute =
   OrgOrgIdDashboardDashboardIdRouteImport.update({
@@ -154,11 +154,11 @@ export interface FileRoutesByFullPath {
   '/onboarding': typeof OnboardingRoute
   '/invite/$token': typeof InviteTokenRoute
   '/org/$orgId': typeof OrgOrgIdRouteWithChildren
+  '/org/$orgId/agents': typeof OrgOrgIdAgentsRoute
   '/org/$orgId/chat': typeof OrgOrgIdChatRouteWithChildren
   '/org/$orgId/settings': typeof OrgOrgIdSettingsRouteWithChildren
-  '/org/$orgId/': typeof OrgOrgIdIndexRoute
-  '/org/$orgId/agents': typeof OrgOrgIdAgentsRoute
   '/org/$orgId/workflows': typeof OrgOrgIdWorkflowsRoute
+  '/org/$orgId/': typeof OrgOrgIdIndexRoute
   '/org/$orgId/accounts/$accountId': typeof OrgOrgIdAccountsAccountIdRoute
   '/org/$orgId/chat/$conversationId': typeof OrgOrgIdChatConversationIdRoute
   '/org/$orgId/dashboard/$dashboardId': typeof OrgOrgIdDashboardDashboardIdRoute
@@ -177,10 +177,10 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/onboarding': typeof OnboardingRoute
   '/invite/$token': typeof InviteTokenRoute
-  '/org/$orgId/chat': typeof OrgOrgIdChatRouteWithChildren
-  '/org/$orgId': typeof OrgOrgIdIndexRoute
   '/org/$orgId/agents': typeof OrgOrgIdAgentsRoute
+  '/org/$orgId/chat': typeof OrgOrgIdChatRouteWithChildren
   '/org/$orgId/workflows': typeof OrgOrgIdWorkflowsRoute
+  '/org/$orgId': typeof OrgOrgIdIndexRoute
   '/org/$orgId/accounts/$accountId': typeof OrgOrgIdAccountsAccountIdRoute
   '/org/$orgId/chat/$conversationId': typeof OrgOrgIdChatConversationIdRoute
   '/org/$orgId/dashboard/$dashboardId': typeof OrgOrgIdDashboardDashboardIdRoute
@@ -201,11 +201,11 @@ export interface FileRoutesById {
   '/onboarding': typeof OnboardingRoute
   '/invite/$token': typeof InviteTokenRoute
   '/org/$orgId': typeof OrgOrgIdRouteWithChildren
+  '/org/$orgId/agents': typeof OrgOrgIdAgentsRoute
   '/org/$orgId/chat': typeof OrgOrgIdChatRouteWithChildren
   '/org/$orgId/settings': typeof OrgOrgIdSettingsRouteWithChildren
-  '/org/$orgId/': typeof OrgOrgIdIndexRoute
-  '/org/$orgId/agents': typeof OrgOrgIdAgentsRoute
   '/org/$orgId/workflows': typeof OrgOrgIdWorkflowsRoute
+  '/org/$orgId/': typeof OrgOrgIdIndexRoute
   '/org/$orgId/accounts/$accountId': typeof OrgOrgIdAccountsAccountIdRoute
   '/org/$orgId/chat/$conversationId': typeof OrgOrgIdChatConversationIdRoute
   '/org/$orgId/dashboard/$dashboardId': typeof OrgOrgIdDashboardDashboardIdRoute
@@ -227,11 +227,11 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/invite/$token'
     | '/org/$orgId'
+    | '/org/$orgId/agents'
     | '/org/$orgId/chat'
     | '/org/$orgId/settings'
-    | '/org/$orgId/'
-    | '/org/$orgId/agents'
     | '/org/$orgId/workflows'
+    | '/org/$orgId/'
     | '/org/$orgId/accounts/$accountId'
     | '/org/$orgId/chat/$conversationId'
     | '/org/$orgId/dashboard/$dashboardId'
@@ -250,10 +250,10 @@ export interface FileRouteTypes {
   to:
     | '/onboarding'
     | '/invite/$token'
-    | '/org/$orgId/chat'
-    | '/org/$orgId'
     | '/org/$orgId/agents'
+    | '/org/$orgId/chat'
     | '/org/$orgId/workflows'
+    | '/org/$orgId'
     | '/org/$orgId/accounts/$accountId'
     | '/org/$orgId/chat/$conversationId'
     | '/org/$orgId/dashboard/$dashboardId'
@@ -273,11 +273,11 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/invite/$token'
     | '/org/$orgId'
+    | '/org/$orgId/agents'
     | '/org/$orgId/chat'
     | '/org/$orgId/settings'
-    | '/org/$orgId/'
-    | '/org/$orgId/agents'
     | '/org/$orgId/workflows'
+    | '/org/$orgId/'
     | '/org/$orgId/accounts/$accountId'
     | '/org/$orgId/chat/$conversationId'
     | '/org/$orgId/dashboard/$dashboardId'
@@ -330,6 +330,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgIdIndexRouteImport
       parentRoute: typeof OrgOrgIdRoute
     }
+    '/org/$orgId/workflows': {
+      id: '/org/$orgId/workflows'
+      path: '/workflows'
+      fullPath: '/org/$orgId/workflows'
+      preLoaderRoute: typeof OrgOrgIdWorkflowsRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
     '/org/$orgId/settings': {
       id: '/org/$orgId/settings'
       path: '/settings'
@@ -342,6 +349,13 @@ declare module '@tanstack/react-router' {
       path: '/chat'
       fullPath: '/org/$orgId/chat'
       preLoaderRoute: typeof OrgOrgIdChatRouteImport
+      parentRoute: typeof OrgOrgIdRoute
+    }
+    '/org/$orgId/agents': {
+      id: '/org/$orgId/agents'
+      path: '/agents'
+      fullPath: '/org/$orgId/agents'
+      preLoaderRoute: typeof OrgOrgIdAgentsRouteImport
       parentRoute: typeof OrgOrgIdRoute
     }
     '/org/$orgId/settings/': {
@@ -379,6 +393,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgOrgIdSettingsRolesRouteImport
       parentRoute: typeof OrgOrgIdSettingsRoute
     }
+    '/org/$orgId/settings/paging': {
+      id: '/org/$orgId/settings/paging'
+      path: '/paging'
+      fullPath: '/org/$orgId/settings/paging'
+      preLoaderRoute: typeof OrgOrgIdSettingsPagingRouteImport
+      parentRoute: typeof OrgOrgIdSettingsRoute
+    }
     '/org/$orgId/settings/billing': {
       id: '/org/$orgId/settings/billing'
       path: '/billing'
@@ -406,27 +427,6 @@ declare module '@tanstack/react-router' {
       fullPath: '/org/$orgId/settings/api-keys'
       preLoaderRoute: typeof OrgOrgIdSettingsApiKeysRouteImport
       parentRoute: typeof OrgOrgIdSettingsRoute
-    }
-    '/org/$orgId/settings/paging': {
-      id: '/org/$orgId/settings/paging'
-      path: '/paging'
-      fullPath: '/org/$orgId/settings/paging'
-      preLoaderRoute: typeof OrgOrgIdSettingsPagingRouteImport
-      parentRoute: typeof OrgOrgIdSettingsRoute
-    }
-    '/org/$orgId/workflows': {
-      id: '/org/$orgId/workflows'
-      path: '/workflows'
-      fullPath: '/org/$orgId/workflows'
-      preLoaderRoute: typeof OrgOrgIdWorkflowsRouteImport
-      parentRoute: typeof OrgOrgIdRoute
-    }
-    '/org/$orgId/agents': {
-      id: '/org/$orgId/agents'
-      path: '/agents'
-      fullPath: '/org/$orgId/agents'
-      preLoaderRoute: typeof OrgOrgIdAgentsRouteImport
-      parentRoute: typeof OrgOrgIdRoute
     }
     '/org/$orgId/dashboard/$dashboardId': {
       id: '/org/$orgId/dashboard/$dashboardId'
@@ -501,9 +501,9 @@ const OrgOrgIdSettingsRouteWithChildren =
   OrgOrgIdSettingsRoute._addFileChildren(OrgOrgIdSettingsRouteChildren)
 
 interface OrgOrgIdRouteChildren {
+  OrgOrgIdAgentsRoute: typeof OrgOrgIdAgentsRoute
   OrgOrgIdChatRoute: typeof OrgOrgIdChatRouteWithChildren
   OrgOrgIdSettingsRoute: typeof OrgOrgIdSettingsRouteWithChildren
-  OrgOrgIdAgentsRoute: typeof OrgOrgIdAgentsRoute
   OrgOrgIdWorkflowsRoute: typeof OrgOrgIdWorkflowsRoute
   OrgOrgIdIndexRoute: typeof OrgOrgIdIndexRoute
   OrgOrgIdAccountsAccountIdRoute: typeof OrgOrgIdAccountsAccountIdRoute
@@ -512,9 +512,9 @@ interface OrgOrgIdRouteChildren {
 }
 
 const OrgOrgIdRouteChildren: OrgOrgIdRouteChildren = {
+  OrgOrgIdAgentsRoute: OrgOrgIdAgentsRoute,
   OrgOrgIdChatRoute: OrgOrgIdChatRouteWithChildren,
   OrgOrgIdSettingsRoute: OrgOrgIdSettingsRouteWithChildren,
-  OrgOrgIdAgentsRoute: OrgOrgIdAgentsRoute,
   OrgOrgIdWorkflowsRoute: OrgOrgIdWorkflowsRoute,
   OrgOrgIdIndexRoute: OrgOrgIdIndexRoute,
   OrgOrgIdAccountsAccountIdRoute: OrgOrgIdAccountsAccountIdRoute,
