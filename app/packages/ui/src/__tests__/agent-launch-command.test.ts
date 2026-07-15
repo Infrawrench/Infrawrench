@@ -125,6 +125,29 @@ describe("buildAgentLaunchCommand", () => {
     expect(command).toContain('PROJECT_DIR="$HOME/my\\"app\\$1"');
   });
 
+  it("pre-trusts the workspace for the selected tool", () => {
+    const claude = unwrap(
+      buildAgentLaunchCommand({
+        sessionId: SESSION_ID,
+        tool: "claude-code",
+        workspaceName: "my-app",
+      }),
+    );
+    // Claude Code keys trust by absolute path in ~/.claude.json.
+    expect(claude).toContain("hasTrustDialogAccepted:true");
+    expect(claude).toContain("hasCompletedProjectOnboarding:true");
+
+    const codex = unwrap(
+      buildAgentLaunchCommand({
+        sessionId: SESSION_ID,
+        tool: "codex",
+        workspaceName: "my-app",
+      }),
+    );
+    // Codex keys trust in ~/.codex/config.toml's projects table.
+    expect(codex).toContain('trust_level = "trusted"');
+  });
+
   it("polls until ready with a 900s deadline and attaches detachproc", () => {
     const command = unwrap(
       buildAgentLaunchCommand({

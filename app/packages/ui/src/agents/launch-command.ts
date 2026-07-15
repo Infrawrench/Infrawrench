@@ -138,6 +138,18 @@ while true; do
   fi
   sleep 2
 done
+# Pre-trust the workspace so the tool skips its "do you trust this folder?"
+# dialog. The synced local config only trusts paths from the user's machine,
+# never the VM's workspace path. Runs after setup (so a config re-sync can't
+# overwrite it) and is idempotent across reattaches.
+if [ "$TOOL_EXECUTABLE" = "claude" ]; then
+  node -e "const fs=require(\\"fs\\");const p=process.env.HOME+\\"/.claude.json\\";let j={};try{j=JSON.parse(fs.readFileSync(p,\\"utf8\\"))}catch(e){}if(typeof j!==\\"object\\"||j===null)j={};if(typeof j.projects!==\\"object\\"||j.projects===null)j.projects={};const d=process.argv[1];j.projects[d]=Object.assign({},j.projects[d],{hasTrustDialogAccepted:true,hasCompletedProjectOnboarding:true});fs.writeFileSync(p,JSON.stringify(j,null,2));" "$PROJECT_DIR" || echo "warning: could not pre-trust $PROJECT_DIR for claude" >&2
+else
+  mkdir -p "$HOME/.codex"
+  if ! grep -qF "[projects.\\"$PROJECT_DIR\\"]" "$HOME/.codex/config.toml" 2>/dev/null; then
+    printf '\\n[projects."%s"]\\ntrust_level = "trusted"\\n' "$PROJECT_DIR" >> "$HOME/.codex/config.toml"
+  fi
+fi
 # IS_SANDBOX: agent VMs are dedicated throwaway machines and the default SSH
 # user is often root — Claude Code refuses --dangerously-skip-permissions as
 # root unless it knows it runs inside a sandbox. detachproc propagates the
