@@ -113,15 +113,26 @@ export class GithubWatcher {
       if (!sha || sha === w.row.gitLastSha) return;
 
       // Record the new SHA up-front so a slow/failing run isn't re-triggered.
-      const firstSight = w.row.gitLastSha == null;
-      await db
+      // The compare-and-swap on the observed SHA makes this transition atomic
+      // across watcher instances: only the one whose UPDATE matches gets to run
+      // the workflow, so a commit fires exactly once even with N replicas (or
+      // two instances overlapping during a rolling deploy).
+      const observed = w.row.gitLastSha;
+      const claimed = await db
         .update(workflows)
         .set({ gitLastSha: sha, updatedAt: new Date() })
-        .where(eq(workflows.id, w.row.id));
+        .where(
+          and(
+            eq(workflows.id, w.row.id),
+            observed == null ? isNull(workflows.gitLastSha) : eq(workflows.gitLastSha, observed),
+          ),
+        )
+        .returning({ id: workflows.id });
+      if (claimed.length === 0) return; // another instance claimed this transition
 
       // Don't run on the very first observation (i.e. on connect) — only on
       // subsequent commits.
-      if (firstSight) return;
+      if (observed == null) return;
 
       await runOrgWorkflow({
         organizationId: w.row.organizationId,
