@@ -25,7 +25,7 @@
   },
   "dependencies": {
     "@infrawrench/plugin-base": "workspace:*",
-    "@neondatabase/api-client": "^2.7.1"
+    "@neondatabase/api-client": "^2.7.3"
   },
   "devDependencies": {
     "tsup": "^8.3.5",

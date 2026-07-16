@@ -33,6 +33,20 @@ vi.mock("@neondatabase/api-client", () => ({
   createApiClient: (...args: any[]) => createApiClient(...(args as [])),
   ConsumptionHistoryGranularity: { Hourly: "hourly" },
   EndpointType: { ReadWrite: "read_write", ReadOnly: "read_only" },
+  BucketAccessLevel: { Private: "private", PublicRead: "public_read" },
+  CredentialScope: {
+    StorageRead: "storage:read",
+    StorageWrite: "storage:write",
+    AiGatewayInvoke: "ai_gateway:invoke",
+    FunctionsInvoke: "functions:invoke",
+  },
+  NeonAuthOauthProviderId: {
+    Google: "google",
+    Github: "github",
+    Microsoft: "microsoft",
+    Vercel: "vercel",
+  },
+  NeonAuthSupportedAuthProvider: { Mock: "mock", Stack: "stack", BetterAuth: "better_auth" },
 }));
 
 import { NeonClient } from "../client.js";
@@ -1242,7 +1256,7 @@ describe("deleteResource", () => {
   it("deletes branch", async () => {
     const client = makeClient();
     await client.deleteResource("neon-branch", "acct1:neon-branch:p1/b1", ACCOUNT);
-    expect(api.deleteProjectBranch).toHaveBeenCalledWith("p1", "b1");
+    expect(api.deleteProjectBranch).toHaveBeenCalledWith({ projectId: "p1", branchId: "b1" });
   });
 
   it("branch delete throws on bad id", async () => {

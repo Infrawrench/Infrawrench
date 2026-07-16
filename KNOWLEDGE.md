@@ -466,6 +466,18 @@ All reuse the DO SSE-parsing structure; the chat-capable resource sets `detail.c
 - Supports create for projects (with region/pg-version picker), branches, and databases
 - Supports delete for projects, branches, and databases
 
+**Beta / Private Beta services** (added on `@neondatabase/api-client` 2.7.3; 2.7.1 had none of these endpoints):
+
+- Resource types: `neon-snapshot`, `neon-bucket`, `neon-credential`, `neon-function`, `neon-ai-gateway`, `neon-auth`, `neon-auth-oauth-provider`, `neon-auth-domain`. All live in `src/services/` (storage, snapshots, functions, auth) rather than `client.ts`, following the DigitalOcean split.
+- **Access stages differ and this matters**: snapshots / Data API / Neon Auth are open Beta (any API key). Object Storage, Functions, and AI Gateway are **Private Beta gated per-org** behind a `PlatformBranchableStorage` entitlement and limited regions — non-entitled orgs get **404**. `isServiceUnavailable()` (`services/common.ts`) treats 403/404/501 as "not available on this branch" and skips it; anything else propagates. Don't "fix" a silent empty list by swallowing all errors.
+- **The SDK's generated types lie for three endpoints.** `listSnapshots` and `createSnapshot` are typed `OperationsResponse`, and `listProjectBranchFunctions` is typed as the single `{function}` response. The published OpenAPI spec (`https://neon.com/api_spec/release/v2.json`) documents them as `{snapshots}`, `{snapshot, operations}`, and `{functions}`. The services re-assert the documented shapes via local interfaces + `as unknown as`. Recheck on the next SDK bump.
+- **Bucket names are unique per branch, not per account.** The host's storage browser passes only a bucket name (`listStorageObjects(bucket, prefix)`), so `BucketLocator` caches bucketName → branch and re-lists to warm a cold cache. Two branches with the same bucket name is a known ambiguity (same flaw as Scaleway's region cache).
+- Buckets use the **management API**, not `s3-storage-helpers.ts` — listing/delete go through `console.neon.tech`, and uploads through a presigned URL, so no SigV4 signing or credential minting is needed for the browser. Neon's S3 endpoint is always `force_path_style: true`.
+- **Credential secrets (`api_token`, `s3_secret_access_key`) are returned only by the create call** — there is no read-back endpoint. They're attached to `resolvedOutputs` in `createResource`; `resolveOutput` throws an explanatory error instead of returning empty.
+- **Functions have no JSON create** (creation is an implicit multipart zip deploy driven by `neon.ts`), so `neon-function` is list/rename/delete only. **AI Gateway has no management API at all** — one read-only GET returning `{enabled, base_url}` — hence read-only. **Neon Auth has no list-users endpoint** (only create/delete/set-role), so there's no auth-user resource type.
+- `deleteBranchNeonAuthTrustedDomain` requires the owning `auth_provider`, so `neon-auth-domain` carries an `authProvider` field captured at list time purely to make delete possible.
+- **SDK 2.7.1 → 2.7.3 was a breaking change**: `deleteProjectBranch(projectId, branchId)` became `deleteProjectBranch({projectId, branchId})`. Only `plugin-neon` depends on this SDK.
+
 ### Hetzner Cloud (`@infrawrench/plugin-hetzner`)
 
 - Auth: Bearer token against `https://api.hetzner.cloud/v1`

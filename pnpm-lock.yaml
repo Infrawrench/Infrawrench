@@ -1285,8 +1285,8 @@ importers:
         specifier: workspace:*
         version: link:../plugin-base
       '@neondatabase/api-client':
-        specifier: ^2.7.1
-        version: 2.7.1
+        specifier: ^2.7.3
+        version: 2.7.3
     devDependencies:
       tsup:
         specifier: ^8.3.5
@@ -3429,8 +3429,8 @@ packages:
   '@neon-rs/load@0.0.4':
     resolution: {integrity: sha512-kTPhdZyTQxB+2wpiRcFWrDcejc4JI6tkPuS7UZCG4l6Zvc5kU/gGQ/ozvHTh1XR5tS+UlfAfGuPajjzQjCiHCw==}
 
-  '@neondatabase/api-client@2.7.1':
-    resolution: {integrity: sha512-hEYOJ89xIa2eEXBu9HRKYTJc9lrmszhNc0SIxzJvNE/3Av4xK7vkXWQ3LWy0DTTFY4Kn6wfM2wAjRIjf/jOu6w==}
+  '@neondatabase/api-client@2.7.3':
+    resolution: {integrity: sha512-hqJmcd8qeCNjcsSNlz77peGIwB9SLj8NC6kK6AjPRyb4bUvXB+TCmffx5893/0oRHYjqpua0nBLa5ql8z6acmw==}
 
   '@nodable/entities@2.1.0':
     resolution: {integrity: sha512-nyT7T3nbMyBI/lvr6L5TyWbFJAI9FTgVRakNoBqCD+PmID8DzFrrNdLLtHMwMszOtqZa8PAOV24ZqDnQrhQINA==}
@@ -7018,6 +7018,7 @@ packages:
 
   libsql@0.4.7:
     resolution: {integrity: sha512-T9eIRCs6b0J1SHKYIvD8+KCJMcWZ900iZyxdnSCdqxN12Z1ijzT+jY5nrk72Jw4B0HGzms2NgpryArlJqvc3Lw==}
+    cpu: [x64, arm64, wasm32]
     os: [darwin, linux, win32]
 
   lightningcss-android-arm64@1.32.0:
@@ -13339,7 +13340,7 @@ snapshots:
 
   '@neon-rs/load@0.0.4': {}
 
-  '@neondatabase/api-client@2.7.1':
+  '@neondatabase/api-client@2.7.3':
     dependencies:
       axios: 1.16.0
     transitivePeerDependencies:
@@ -14761,7 +14762,7 @@ snapshots:
       obug: 2.1.1
       std-env: 4.1.0
       tinyrainbow: 3.1.0
-      vitest: 4.1.8(@types/node@22.20.1)(@vitest/coverage-v8@4.1.8)(jsdom@29.1.1)(vite@8.1.4(@types/node@22.20.1)(esbuild@0.25.12)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.8.3))
+      vitest: 4.1.8(@types/node@24.12.2)(@vitest/coverage-v8@4.1.8)(jsdom@29.1.1)(vite@8.1.4(@types/node@24.12.2)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.23.1)(yaml@2.8.3))
 
   '@vitest/expect@4.1.8':
     dependencies:

@@ -8,6 +8,7 @@ import type {
   ResourceStatus,
   DashboardStat,
   MetricSeries,
+  StorageObject,
 } from "@infrawrench/plugin-base";
 import {
   createApiClient,
@@ -19,7 +20,39 @@ import {
   type Role,
   ConsumptionHistoryGranularity,
   EndpointType,
+  BucketAccessLevel,
+  CredentialScope,
+  NeonAuthOauthProviderId,
+  NeonAuthSupportedAuthProvider,
 } from "@neondatabase/api-client";
+import { parseBranchExternalId, externalIdOf, type BranchRef } from "./services/common.js";
+import {
+  listAllSnapshots,
+  createSnapshot as createSnapshotResource,
+  restoreSnapshot,
+} from "./services/snapshots.js";
+import {
+  BucketLocator,
+  buildBucketResource,
+  buildCredentialResource,
+  deleteBucketObject,
+  fetchBranchStorage,
+  listAllBuckets,
+  listAllCredentials,
+  listBucketObjects,
+  locateBucket,
+  uploadBucketObject,
+} from "./services/storage.js";
+import { listAllAiGateways, listAllFunctions } from "./services/functions.js";
+import {
+  buildAuthResource,
+  buildDomainResource,
+  buildOauthProviderResource,
+  fetchAuthSnapshot,
+  listAllAuth,
+  listAllAuthDomains,
+  listAllOauthProviders,
+} from "./services/auth.js";
 
 const NEON_REGIONS: Record<string, { location: string; flag: string }> = {
   "aws-us-east-1": { location: "Virginia, USA", flag: "🇺🇸" },
@@ -37,12 +70,51 @@ const NEON_REGIONS: Record<string, { location: string; flag: string }> = {
 };
 
 /**
+ * Neon's credential scopes are fine-grained, but users pick a job to do rather
+ * than a scope list — so the create form offers bundles and we expand them here.
+ */
+const SCOPE_BUNDLES: Array<{ id: string; label: string; scopes: CredentialScope[] }> = [
+  {
+    id: "storage-rw",
+    label: "Object Storage — read & write",
+    scopes: [CredentialScope.StorageRead, CredentialScope.StorageWrite],
+  },
+  {
+    id: "storage-ro",
+    label: "Object Storage — read only",
+    scopes: [CredentialScope.StorageRead],
+  },
+  {
+    id: "ai-gateway",
+    label: "AI Gateway — invoke models",
+    scopes: [CredentialScope.AiGatewayInvoke],
+  },
+  {
+    id: "functions",
+    label: "Functions — invoke",
+    scopes: [CredentialScope.FunctionsInvoke],
+  },
+  {
+    id: "all",
+    label: "All branch services",
+    scopes: [
+      CredentialScope.StorageRead,
+      CredentialScope.StorageWrite,
+      CredentialScope.AiGatewayInvoke,
+      CredentialScope.FunctionsInvoke,
+    ],
+  },
+];
+
+/**
  * Neon plugin client.
  * Manages Neon serverless Postgres projects, branches, endpoints, databases, and roles
  * via the official Neon control-plane SDK (@neondatabase/api-client).
  */
 export class NeonClient implements PluginClient {
   private readonly api: Api<unknown>;
+  /** Maps bucket name → branch, since the host's storage browser passes only a name. */
+  private readonly bucketLocator = new BucketLocator();
 
   constructor(credentials: Record<string, string>, _services?: HostServices) {
     const key = credentials["apiKey"];
@@ -64,6 +136,27 @@ export class NeonClient implements PluginClient {
         return this.listAllRoles(accountId);
       case "neon-data-api":
         return this.listAllDataApis(accountId);
+      case "neon-snapshot":
+        return listAllSnapshots(this.api, accountId, await this.fetchAllProjects());
+      case "neon-bucket":
+        return listAllBuckets(
+          this.api,
+          accountId,
+          await this.fetchAllProjects(),
+          this.bucketLocator,
+        );
+      case "neon-credential":
+        return listAllCredentials(this.api, accountId, await this.fetchAllProjects());
+      case "neon-function":
+        return listAllFunctions(this.api, accountId, await this.fetchAllProjects());
+      case "neon-ai-gateway":
+        return listAllAiGateways(this.api, accountId, await this.fetchAllProjects());
+      case "neon-auth":
+        return listAllAuth(this.api, accountId, await this.fetchAllProjects());
+      case "neon-auth-oauth-provider":
+        return listAllOauthProviders(this.api, accountId, await this.fetchAllProjects());
+      case "neon-auth-domain":
+        return listAllAuthDomains(this.api, accountId, await this.fetchAllProjects());
       default:
         throw new Error(`Neon plugin: unknown resource type "${typeId}"`);
     }
@@ -129,6 +222,31 @@ export class NeonClient implements PluginClient {
     if (typeId === "neon-data-api") {
       const resource = await this.getResource(typeId, resourceId, accountId);
       if (outputKey === "url") return String(resource.fields["url"] ?? "");
+    }
+
+    if (
+      typeId === "neon-credential" &&
+      (outputKey === "apiToken" || outputKey === "s3SecretAccessKey")
+    ) {
+      // Neon returns the token and S3 secret only in the create response and has
+      // no endpoint to read them back, so there is nothing to resolve later.
+      throw new Error(
+        "Neon plugin: credential secrets are shown only once, when the credential is created. Create a new credential to get fresh values.",
+      );
+    }
+
+    // The remaining new types resolve straight from values captured at list time.
+    if (
+      typeId === "neon-snapshot" ||
+      typeId === "neon-bucket" ||
+      typeId === "neon-credential" ||
+      typeId === "neon-function" ||
+      typeId === "neon-ai-gateway" ||
+      typeId === "neon-auth"
+    ) {
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      const value = resource.resolvedOutputs[outputKey];
+      if (typeof value === "string" && value) return value;
     }
 
     throw new Error(`Neon plugin: cannot resolve output "${outputKey}" for type "${typeId}"`);
@@ -266,9 +384,41 @@ export class NeonClient implements PluginClient {
         return this.renderRoleDetail(resource);
       case "neon-data-api":
         return this.renderDataApiDetail(resource);
+      case "neon-snapshot":
+        return this.renderSnapshotDetail(resource);
+      case "neon-bucket":
+        return this.renderBucketDetail(resource);
       default:
         return this.renderGenericDetail(resource);
     }
+  }
+
+  private renderSnapshotDetail(resource: ResourceInstance): DetailViewSchema {
+    const detail = this.renderGenericDetail(resource);
+    detail.headerActions = [
+      {
+        kind: "action",
+        label: "Restore",
+        action: {
+          type: "plugin-action",
+          actionId: "restore",
+          confirmMessage:
+            "Restore this snapshot into a new branch? The branch is created unfinalized so you can inspect the data before moving computes onto it.",
+          successMessage: "Restore started — a new branch is being created.",
+        },
+      },
+    ];
+    // A snapshot is immutable data, not a running thing with a lifecycle state.
+    delete detail.status;
+    return detail;
+  }
+
+  private renderBucketDetail(resource: ResourceInstance): DetailViewSchema {
+    const detail = this.renderGenericDetail(resource);
+    const bucketName = String(resource.fields["name"] ?? resource.displayName);
+    if (bucketName) detail.storageBrowser = { bucketName };
+    delete detail.status;
+    return detail;
   }
 
   renderSidebarItem(resource: ResourceInstance): SidebarItemSchema {
@@ -282,7 +432,174 @@ export class NeonClient implements PluginClient {
     };
   }
 
+  /**
+   * Project + branch pickers for the branch-scoped types. Returns nothing when the
+   * user is already creating from inside a branch (or a branch-scoped parent such
+   * as `neon-auth`), since the scope is implied.
+   */
+  private async branchScopedCreateFields(
+    parentResourceId?: string,
+  ): Promise<CreateResourceConfig["fields"]> {
+    if (parentResourceId) return [];
+
+    const projects = await this.fetchAllProjects();
+    const projectOptions = projects.map((p) => ({ id: p.id, label: p.name }));
+
+    let branchOptions: Array<{ id: string; label: string }> = [];
+    const firstProject = projectOptions[0];
+    if (firstProject) {
+      const branches = await this.api.listProjectBranches({ projectId: firstProject.id });
+      branchOptions = branches.data.branches.map((b) => ({
+        id: b.id,
+        label: `${b.name}${isDefaultBranch(b) ? " (primary)" : ""}`,
+      }));
+    }
+
+    return [
+      {
+        key: "projectId",
+        label: "Project",
+        kind: "select",
+        required: true,
+        options: projectOptions,
+        ...(firstProject ? { defaultValue: firstProject.id } : {}),
+      },
+      {
+        key: "branchId",
+        label: "Branch",
+        kind: "select",
+        required: true,
+        options: branchOptions,
+        ...(branchOptions[0] ? { defaultValue: branchOptions[0].id } : {}),
+      },
+    ];
+  }
+
+  /** Resolve the branch a create targets, from the parent resource or the form fields. */
+  private resolveCreateBranchRef(
+    fields: Record<string, string>,
+    parentResourceId?: string,
+  ): BranchRef {
+    if (parentResourceId) {
+      const ref = parseBranchExternalId(externalIdOf(parentResourceId));
+      if (ref.projectId && ref.branchId) return ref;
+    }
+    const projectId = fields["projectId"] ?? "";
+    const branchId = fields["branchId"] ?? "";
+    if (!projectId || !branchId) {
+      throw new Error("Neon plugin: a project and branch are required");
+    }
+    return { projectId, branchId };
+  }
+
   async getCreateConfig(typeId: string, parentResourceId?: string): Promise<CreateResourceConfig> {
+    if (typeId === "neon-snapshot") {
+      const fields = await this.branchScopedCreateFields(parentResourceId);
+      fields.push({
+        key: "name",
+        label: "Snapshot Name",
+        kind: "text",
+        required: false,
+        placeholder: "Leave blank to let Neon name it",
+      });
+      return { fields };
+    }
+
+    if (typeId === "neon-bucket") {
+      const fields = await this.branchScopedCreateFields(parentResourceId);
+      fields.push(
+        { key: "name", label: "Bucket Name", kind: "text", required: true },
+        {
+          key: "accessLevel",
+          label: "Access Level",
+          kind: "select",
+          required: true,
+          options: [
+            { id: "private", label: "Private — all access requires credentials" },
+            { id: "public_read", label: "Public read — anyone can read objects" },
+          ],
+          defaultValue: "private",
+        },
+      );
+      return { fields };
+    }
+
+    if (typeId === "neon-credential") {
+      const fields = await this.branchScopedCreateFields(parentResourceId);
+      fields.push(
+        { key: "name", label: "Name", kind: "text", required: false },
+        {
+          key: "scopes",
+          label: "Grants",
+          kind: "select",
+          required: true,
+          description: "What this credential is allowed to do on the branch.",
+          options: SCOPE_BUNDLES.map((b) => ({ id: b.id, label: b.label })),
+          defaultValue: "storage-rw",
+        },
+      );
+      return { fields };
+    }
+
+    if (typeId === "neon-auth") {
+      const fields = await this.branchScopedCreateFields(parentResourceId);
+      fields.push({
+        key: "databaseName",
+        label: "Database",
+        kind: "text",
+        required: false,
+        description: "Database to hold the neon_auth schema. Defaults to the branch's own default.",
+      });
+      return { fields };
+    }
+
+    if (typeId === "neon-auth-oauth-provider") {
+      const fields = await this.branchScopedCreateFields(parentResourceId);
+      fields.push(
+        {
+          key: "providerId",
+          label: "Provider",
+          kind: "select",
+          required: true,
+          options: [
+            { id: "google", label: "Google" },
+            { id: "github", label: "GitHub" },
+            { id: "microsoft", label: "Microsoft" },
+            { id: "vercel", label: "Vercel" },
+          ],
+          defaultValue: "google",
+        },
+        {
+          key: "clientId",
+          label: "Client ID",
+          kind: "text",
+          required: false,
+          description: "Leave blank to use Neon's shared development credentials.",
+        },
+        { key: "clientSecret", label: "Client Secret", kind: "password", required: false },
+        {
+          key: "microsoftTenantId",
+          label: "Microsoft Tenant ID",
+          kind: "text",
+          required: false,
+          showWhen: { fieldKey: "providerId", fieldValue: "microsoft" },
+        },
+      );
+      return { fields };
+    }
+
+    if (typeId === "neon-auth-domain") {
+      const fields = await this.branchScopedCreateFields(parentResourceId);
+      fields.push({
+        key: "domain",
+        label: "Domain",
+        kind: "text",
+        required: true,
+        placeholder: "https://app.example.com",
+      });
+      return { fields };
+    }
+
     if (typeId === "neon-project") {
       const regions = Object.entries(NEON_REGIONS).map(([id, info]) => ({
         id,
@@ -551,6 +868,101 @@ export class NeonClient implements PluginClient {
     fields: Record<string, string>,
     parentResourceId?: string,
   ): Promise<ResourceInstance> {
+    if (typeId === "neon-snapshot") {
+      const ref = this.resolveCreateBranchRef(fields, parentResourceId);
+      return createSnapshotResource(this.api, accountId, ref, fields["name"] ?? "");
+    }
+
+    if (typeId === "neon-bucket") {
+      const ref = this.resolveCreateBranchRef(fields, parentResourceId);
+      const name = fields["name"] ?? "";
+      const accessLevel =
+        fields["accessLevel"] === "public_read"
+          ? BucketAccessLevel.PublicRead
+          : BucketAccessLevel.Private;
+
+      const resp = await this.api.createProjectBranchBucket(ref.projectId, ref.branchId, {
+        name,
+        access_level: accessLevel,
+      });
+      const storage = await fetchBranchStorage(this.api, ref);
+      this.bucketLocator.remember(name, ref);
+      return buildBucketResource(accountId, ref, resp.data.bucket, storage);
+    }
+
+    if (typeId === "neon-credential") {
+      const ref = this.resolveCreateBranchRef(fields, parentResourceId);
+      const bundle = SCOPE_BUNDLES.find((b) => b.id === fields["scopes"]) ?? SCOPE_BUNDLES[0]!;
+      const name = fields["name"] ?? "";
+
+      const resp = await this.api.createCredential(ref.projectId, ref.branchId, {
+        ...(name ? { name } : {}),
+        scopes: bundle.scopes,
+        principal_type: "user",
+      });
+
+      // This is the only moment the token and S3 secret exist in a response;
+      // surface them as resolved outputs so the host can store them now.
+      const created = resp.data;
+      const resource = buildCredentialResource(accountId, ref, {
+        token_id: created.token_id,
+        token_id_short: created.token_id_short,
+        ...(created.name ? { name: created.name } : {}),
+        scopes: created.scopes,
+        principal_type: "user",
+        created_at: created.created_at,
+        ...(created.expires_at ? { expires_at: created.expires_at } : {}),
+      });
+      resource.resolvedOutputs = {
+        ...resource.resolvedOutputs,
+        apiToken: created.api_token,
+        s3SecretAccessKey: created.s3_secret_access_key,
+      };
+      return resource;
+    }
+
+    if (typeId === "neon-auth") {
+      const ref = this.resolveCreateBranchRef(fields, parentResourceId);
+      const databaseName = fields["databaseName"] ?? "";
+      await this.api.createNeonAuth(ref.projectId, ref.branchId, {
+        auth_provider: NeonAuthSupportedAuthProvider.BetterAuth,
+        ...(databaseName ? { database_name: databaseName } : {}),
+      });
+
+      // Re-read so the resource carries the same shape as a listed one.
+      const snapshot = await fetchAuthSnapshot(this.api, ref);
+      if (!snapshot) throw new Error("Neon plugin: auth was enabled but could not be read back");
+      return buildAuthResource(accountId, ref, snapshot);
+    }
+
+    if (typeId === "neon-auth-oauth-provider") {
+      const ref = this.resolveCreateBranchRef(fields, parentResourceId);
+      const clientId = fields["clientId"] ?? "";
+      const clientSecret = fields["clientSecret"] ?? "";
+      const tenantId = fields["microsoftTenantId"] ?? "";
+
+      const resp = await this.api.addBranchNeonAuthOauthProvider(ref.projectId, ref.branchId, {
+        id: (fields["providerId"] ?? "google") as NeonAuthOauthProviderId,
+        ...(clientId ? { client_id: clientId } : {}),
+        ...(clientSecret ? { client_secret: clientSecret } : {}),
+        ...(tenantId ? { microsoft_tenant_id: tenantId } : {}),
+      });
+      return buildOauthProviderResource(accountId, ref, resp.data);
+    }
+
+    if (typeId === "neon-auth-domain") {
+      const ref = this.resolveCreateBranchRef(fields, parentResourceId);
+      const domain = fields["domain"] ?? "";
+      await this.api.addBranchNeonAuthTrustedDomain(ref.projectId, ref.branchId, {
+        domain,
+        auth_provider: NeonAuthSupportedAuthProvider.BetterAuth,
+      });
+      return buildDomainResource(accountId, ref, {
+        domain,
+        auth_provider: NeonAuthSupportedAuthProvider.BetterAuth,
+      });
+    }
+
     // Parent resource IDs:
     //   neon-project → `{accountId}:neon-project:{projectId}`
     //   neon-branch  → `{accountId}:neon-branch:{projectId}/{branchId}`
@@ -774,7 +1186,66 @@ export class NeonClient implements PluginClient {
     throw new Error(`Neon plugin: createResource not supported for type "${typeId}"`);
   }
 
-  async deleteResource(typeId: string, resourceId: string, _accountId: string): Promise<void> {
+  async deleteResource(typeId: string, resourceId: string, accountId: string): Promise<void> {
+    if (typeId === "neon-snapshot") {
+      // externalId: {projectId}/{snapshotId}
+      const [projectId, snapshotId] = externalIdOf(resourceId).split("/");
+      if (!projectId || !snapshotId) throw new Error("Neon plugin: cannot parse snapshot ID");
+      await this.api.deleteSnapshot(projectId, snapshotId);
+      return;
+    }
+
+    if (typeId === "neon-bucket") {
+      const { ref, name } = this.parseBranchScoped(resourceId, "bucket");
+      await this.api.deleteProjectBranchBucket(ref.projectId, ref.branchId, name);
+      return;
+    }
+
+    if (typeId === "neon-credential") {
+      const { ref, name } = this.parseBranchScoped(resourceId, "credential");
+      await this.api.revokeCredential(ref.projectId, ref.branchId, name);
+      return;
+    }
+
+    if (typeId === "neon-function") {
+      const { ref, name } = this.parseBranchScoped(resourceId, "function");
+      await this.api.deleteProjectBranchFunction(ref.projectId, ref.branchId, name);
+      return;
+    }
+
+    if (typeId === "neon-auth") {
+      const ref = parseBranchExternalId(externalIdOf(resourceId));
+      if (!ref.projectId || !ref.branchId) throw new Error("Neon plugin: cannot parse auth ID");
+      // Leave the neon_auth schema in place: disabling the integration shouldn't
+      // drop the user's auth tables.
+      await this.api.disableNeonAuth(ref.projectId, ref.branchId, { delete_data: false });
+      return;
+    }
+
+    if (typeId === "neon-auth-oauth-provider") {
+      const { ref, name } = this.parseBranchScoped(resourceId, "OAuth provider");
+      await this.api.deleteBranchNeonAuthOauthProvider(
+        ref.projectId,
+        ref.branchId,
+        name as NeonAuthOauthProviderId,
+      );
+      return;
+    }
+
+    if (typeId === "neon-auth-domain") {
+      const { ref, name } = this.parseBranchScoped(resourceId, "trusted domain");
+      // Neon keys the delete by auth provider, which we captured when listing.
+      const resource = await this.getResource(typeId, resourceId, accountId);
+      const authProvider = String(
+        resource.fields["authProvider"] ?? NeonAuthSupportedAuthProvider.BetterAuth,
+      ) as NeonAuthSupportedAuthProvider;
+      await this.api.deleteBranchNeonAuthTrustedDomain(ref.projectId, ref.branchId, {
+        auth_provider: authProvider,
+        domains: [{ domain: name }],
+      });
+      return;
+    }
+
     if (typeId === "neon-project") {
       const projectId = resourceId.split(":").pop();
       if (!projectId) throw new Error("Neon plugin: cannot parse project ID");
@@ -788,7 +1259,7 @@ export class NeonClient implements PluginClient {
       if (!compound) throw new Error("Neon plugin: cannot parse branch ID");
       const [projectId, branchId] = compound.split("/");
       if (!projectId || !branchId) throw new Error("Neon plugin: cannot parse branch ID");
-      await this.api.deleteProjectBranch(projectId, branchId);
+      await this.api.deleteProjectBranch({ projectId, branchId });
       return;
     }
 
@@ -843,6 +1314,68 @@ export class NeonClient implements PluginClient {
     }
 
     throw new Error(`Neon plugin: deleteResource not supported for type "${typeId}"`);
+  }
+
+  /**
+   * Split a `{accountId}:{typeId}:{projectId}/{branchId}/{name}` id, where `name`
+   * may itself contain slashes.
+   */
+  private parseBranchScoped(
+    resourceIdValue: string,
+    label: string,
+  ): { ref: BranchRef; name: string } {
+    const parts = externalIdOf(resourceIdValue).split("/");
+    const [projectId, branchId, ...rest] = parts;
+    const name = rest.join("/");
+    if (!projectId || !branchId || !name) {
+      throw new Error(`Neon plugin: cannot parse ${label} ID`);
+    }
+    return { ref: { projectId, branchId }, name };
+  }
+
+  async listStorageObjects(bucket: string, prefix: string): Promise<StorageObject[]> {
+    const ref = await this.resolveBucketRef(bucket);
+    return listBucketObjects(this.api, ref, bucket, prefix);
+  }
+
+  async uploadStorageObject(bucket: string, key: string, file: File): Promise<void> {
+    const ref = await this.resolveBucketRef(bucket);
+    await uploadBucketObject(this.api, ref, bucket, key, file, file.type || undefined);
+  }
+
+  async makeStorageFolder(bucket: string, key: string): Promise<void> {
+    const ref = await this.resolveBucketRef(bucket);
+    // S3 has no folders; a zero-byte object with a trailing slash is the marker.
+    const folderKey = key.endsWith("/") ? key : `${key}/`;
+    await uploadBucketObject(this.api, ref, bucket, folderKey, new Blob([]));
+  }
+
+  async deleteStorageObject(bucket: string, key: string): Promise<void> {
+    const ref = await this.resolveBucketRef(bucket);
+    await deleteBucketObject(this.api, ref, bucket, key);
+  }
+
+  /** The host's storage browser knows only a bucket name, so map it back to a branch. */
+  private async resolveBucketRef(bucket: string): Promise<BranchRef> {
+    const cached = this.bucketLocator.lookup(bucket);
+    if (cached) return cached;
+    return locateBucket(this.api, "", await this.fetchAllProjects(), this.bucketLocator, bucket);
+  }
+
+  async invokeAction(
+    typeId: string,
+    resourceId: string,
+    actionId: string,
+    _accountId: string,
+  ): Promise<void> {
+    if (typeId === "neon-snapshot" && actionId === "restore") {
+      const [projectId, snapshotId] = externalIdOf(resourceId).split("/");
+      if (!projectId || !snapshotId) throw new Error("Neon plugin: cannot parse snapshot ID");
+      await restoreSnapshot(this.api, projectId, snapshotId);
+      return;
+    }
+
+    throw new Error(`Neon plugin: unknown action "${actionId}" for type "${typeId}"`);
   }
 
   /**

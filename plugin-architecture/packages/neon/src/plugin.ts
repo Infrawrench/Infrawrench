@@ -6,6 +6,14 @@ import { NeonEndpointResourceType } from "./resources/endpoint.js";
 import { NeonDatabaseResourceType } from "./resources/database.js";
 import { NeonRoleResourceType } from "./resources/role.js";
 import { NeonDataApiResourceType } from "./resources/data-api.js";
+import { NeonSnapshotResourceType } from "./resources/snapshot.js";
+import { NeonBucketResourceType } from "./resources/bucket.js";
+import { NeonCredentialResourceType } from "./resources/credential.js";
+import { NeonFunctionResourceType } from "./resources/function.js";
+import { NeonAiGatewayResourceType } from "./resources/ai-gateway.js";
+import { NeonAuthResourceType } from "./resources/auth.js";
+import { NeonAuthOauthProviderResourceType } from "./resources/auth-oauth-provider.js";
+import { NeonAuthDomainResourceType } from "./resources/auth-domain.js";
 
 const manifest: PluginManifest = {
   id: "neon",
@@ -38,6 +46,14 @@ const resourceTypes: ResourceTypeDefinition[] = [
   NeonDatabaseResourceType,
   NeonRoleResourceType,
   NeonDataApiResourceType,
+  NeonSnapshotResourceType,
+  NeonBucketResourceType,
+  NeonCredentialResourceType,
+  NeonFunctionResourceType,
+  NeonAiGatewayResourceType,
+  NeonAuthResourceType,
+  NeonAuthOauthProviderResourceType,
+  NeonAuthDomainResourceType,
 ];
 
 export const plugin: Plugin = {
