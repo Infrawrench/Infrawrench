@@ -1,0 +1,28 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: web
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    # SSH terminals, SQL sessions, and the bastion agent hold WebSockets open
+    # for hours — don't let nginx reap them at its 60s default.
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-body-size: 25m
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - app.infrawrench.com
+      secretName: web-tls
+  rules:
+    - host: app.infrawrench.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web
+                port:
+                  name: http

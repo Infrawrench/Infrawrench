@@ -1,0 +1,128 @@
+name: web-deploy
+
+# Builds commit-SHA-tagged images for web, poller, and github-watcher, pushes
+# them to DOCR, runs DB migrations, then points the in-cluster kustomize
+# manifests at the new tag. The cluster/registry/secrets are provisioned by
+# infra/terraform.
+#
+# Required repo secrets:
+#   DIGITALOCEAN_ACCESS_TOKEN — DO API token (registry push + kubeconfig)
+#   PROD_DATABASE_URL         — Neon connection string for drizzle migrations
+# Optional repo variables (defaults match infra/terraform defaults):
+#   DOCR_NAME    — registry name (default: infrawrench)
+#   DOKS_CLUSTER — cluster name  (default: infrawrench-prod)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/packages/web/**"
+      - "app/packages/server-core/**"
+      - "app/packages/poller/**"
+      - "app/packages/github-watcher/**"
+      - "app/packages/ui/**"
+      - "app/packages/workflow-runtime/**"
+      - "plugin-architecture/**"
+      - "infra/docker/**"
+      - "infra/k8s/**"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/web-deploy.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: web-deploy
+  cancel-in-progress: false
+
+env:
+  REGISTRY: registry.digitalocean.com/${{ vars.DOCR_NAME || 'infrawrench' }}
+  CLUSTER: ${{ vars.DOKS_CLUSTER || 'infrawrench-prod' }}
+
+jobs:
+  build-push:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - service: web
+            package: "@infrawrench/web"
+            app_dir: app/packages/web
+          - service: poller
+            package: "@infrawrench/poller"
+            app_dir: app/packages/poller
+          - service: github-watcher
+            package: "@infrawrench/github-watcher"
+            app_dir: app/packages/github-watcher
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Log in to DOCR
+        run: doctl registry login --expiry-seconds 5400
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build and push ${{ matrix.service }}:${{ github.sha }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/docker/service.Dockerfile
+          push: true
+          tags: ${{ env.REGISTRY }}/${{ matrix.service }}:${{ github.sha }}
+          build-args: |
+            PACKAGE=${{ matrix.package }}
+            APP_DIR=${{ matrix.app_dir }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,scope=${{ matrix.service }},mode=max
+
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Enable corepack (pinned pnpm)
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run drizzle migrations
+        run: pnpm --filter @infrawrench/web db:migrate
+        env:
+          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [build-push, migrate]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Fetch kubeconfig
+        run: doctl kubernetes cluster kubeconfig save "$CLUSTER"
+
+      - name: Point manifests at ${{ github.sha }}
+        working-directory: infra/k8s
+        run: |
+          kustomize edit set image \
+            "$REGISTRY/web:${GITHUB_SHA}" \
+            "$REGISTRY/poller:${GITHUB_SHA}" \
+            "$REGISTRY/github-watcher:${GITHUB_SHA}"
+
+      - name: Apply manifests
+        run: kubectl apply -k infra/k8s
+
+      - name: Wait for rollouts
+        run: |
+          kubectl -n infrawrench rollout status deployment/web --timeout=300s
+          kubectl -n infrawrench rollout status deployment/poller --timeout=300s
+          kubectl -n infrawrench rollout status deployment/github-watcher --timeout=300s

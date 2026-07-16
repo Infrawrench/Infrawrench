@@ -23,6 +23,13 @@ import { authenticateBastionAgent, handleBastionAgentUpgrade } from "./src/servi
 const dev = process.env["NODE_ENV"] !== "production";
 const port = parseInt(process.env["PORT"] ?? "3000", 10);
 
+/** Unauthenticated liveness/readiness endpoint for load balancers and k8s probes. */
+function respondHealthz(res: import("node:http").ServerResponse): void {
+  res.statusCode = 200;
+  res.setHeader("content-type", "text/plain");
+  res.end("ok");
+}
+
 async function start() {
   try {
     await migrateMetrics();
@@ -47,7 +54,9 @@ async function start() {
     server = createHttpServer((req, res) => {
       const url = req.url ?? "";
       const path = url.split("?", 1)[0] ?? "";
-      if (path === "/api/mcp") {
+      if (path === "/healthz") {
+        respondHealthz(res);
+      } else if (path === "/api/mcp") {
         void handleMcpHttp(req, res).catch((e) => {
           console.error("[mcp] handler error:", e);
           if (!res.headersSent) {
@@ -82,6 +91,10 @@ async function start() {
     server = createHttpServer((req, res) => {
       const url = req.url ?? "";
       const path = url.split("?", 1)[0] ?? "";
+      if (path === "/healthz") {
+        respondHealthz(res);
+        return;
+      }
       if (path === "/api/mcp") {
         void handleMcpHttp(req, res).catch((e) => {
           console.error("[mcp] handler error:", e);

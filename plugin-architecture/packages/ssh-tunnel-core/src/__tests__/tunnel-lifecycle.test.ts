@@ -16,14 +16,18 @@ class FakeSshClient extends EventEmitter {
 
 let lastClient: FakeSshClient | undefined;
 
-vi.mock("ssh2", () => ({
-  Client: vi.fn(function () {
-    lastClient = new FakeSshClient();
-    return lastClient;
-  }),
-  BaseAgent: class {},
-  utils: { parseKey: vi.fn() },
-}));
+vi.mock("ssh2", () => {
+  const mod = {
+    Client: vi.fn(function () {
+      lastClient = new FakeSshClient();
+      return lastClient;
+    }),
+    BaseAgent: class {},
+    utils: { parseKey: vi.fn() },
+  };
+  // The source default-imports ssh2 (CJS interop), so mirror the module there.
+  return { ...mod, default: mod };
+});
 
 import {
   openTunnel,

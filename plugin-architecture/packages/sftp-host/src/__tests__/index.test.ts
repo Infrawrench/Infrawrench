@@ -47,14 +47,18 @@ let connectError: Error | undefined;
 let sftpError: Error | undefined;
 let lastClient: FakeClient;
 
-vi.mock("ssh2", () => ({
-  Client: class {
-    constructor() {
-      lastClient = new FakeClient();
-      return lastClient as unknown as object;
-    }
-  },
-}));
+vi.mock("ssh2", () => {
+  const mod = {
+    Client: class {
+      constructor() {
+        lastClient = new FakeClient();
+        return lastClient as unknown as object;
+      }
+    },
+  };
+  // The source default-imports ssh2 (CJS interop), so mirror the module there.
+  return { ...mod, default: mod };
+});
 
 import {
   withSftp,

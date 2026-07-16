@@ -1041,6 +1041,19 @@ Database creation accepts `dialect` (`GOOGLE_STANDARD_SQL` or `POSTGRESQL`) and 
 
 ---
 
+## Production deployment (DigitalOcean, `infra/`)
+
+Prod web runs on a **DOKS** cluster: `web` (2 replicas, HTTP+WS behind ingress-nginx + cert-manager/LE), `poller` (2 replicas — safe via atomic claiming), `github-watcher` (1 replica — CAS makes overlap safe; more replicas just multiply GitHub API reads). Postgres is Neon, metrics ClickHouse Cloud; website/telemetry stay on CF Workers.
+
+- **Ownership split**: `infra/terraform` (manually applied) owns cluster/DOCR/VPC/namespace/secrets/helm(ingress-nginx, cert-manager); `infra/k8s` (kustomize, applied by CI) owns Deployments/Service/Ingress/ClusterIssuer; `.github/workflows/web-deploy.yml` builds all three images from `infra/docker/service.Dockerfile` (ARG-parametrized, turbo-prune based), tags them `:<commit sha>`, pushes to DOCR, runs drizzle migrations against Neon from CI, then `kustomize edit set image` + `kubectl apply -k` + rollout status. Runtime env lives in one k8s secret `infrawrench-env` fed from the terraform `app_env` var (rotate: edit tfvars → apply → `rollout restart`).
+- **Web's server bundle previously couldn't run in prod at all**: `--packages=external` externalized `@infrawrench/server-core`, whose exports point at `.ts` source (no build). Fixed by bundling workspace deps like the poller does, keeping only native/dev-only deps external (`ssh2 cpu-features dockerode @kubernetes/client-node cloudflare @libsql/client libsql vite bufferutil utf-8-validate`).
+- **esbuild externals must be direct deps** of web/poller/github-watcher (pnpm isolated resolution resolves them from the importing package's node_modules) — that's why `ssh2`/`dockerode`/`@kubernetes/client-node`/`cloudflare`/`@libsql/client` appear in all three package.jsons.
+- **ssh2 is CJS with lazy getter exports**: `import { Client } from "ssh2"` fails under real node ESM when ssh2 is external (works in dev only because tsx interops). All server-side runtime imports use default-import + destructure (`import ssh2 from "ssh2"; const { Client } = ssh2`), with `type X = InstanceType<typeof X>` re-establishing the class type half. ssh2 test mocks must expose the module under `default` too. Don't reintroduce named value-imports of ssh2 in server code (desktop/electron is bundled differently and unaffected).
+- The esbuild banner on all three services defines `require`, `__filename`, and `__dirname` (aliased imports to dodge bundle collisions) — bundled CJS deps probe them.
+- `turbo prune --docker` does NOT copy root `tsconfig.base.json` (Dockerfile copies it explicitly) but DOES rewrite `pnpm.patchedDependencies` to drop patches outside the subtree (the app-builder-lib patch is desktop-only, so backend images are unaffected).
+- Web exposes unauthenticated `GET /healthz` (raw HTTP level, dev+prod) for k8s probes and the DO LB.
+- The full Docker pipeline (prune → frozen install → turbo build → prod install → boot) is reproducible on a host without docker; all three services were boot-smoke-tested this way (web answered /healthz + SPA + API 401; poller loaded 28 plugins and issued the claim SQL).
+
 ## website package — Astro on Cloudflare Workers
 
 Public landing site + releases proxy for the desktop app. The GH repo `Infrawrench/Infrawrench` is private, but releases need to be downloadable; the worker proxies them with a server-side fine-grained PAT and caches at the edge.

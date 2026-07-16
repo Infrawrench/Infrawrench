@@ -2,8 +2,12 @@
  * Server-side SSH terminal proxy.
  * Connects to user infrastructure via ssh2, streams I/O over WebSocket.
  */
-import { Client } from "ssh2";
+import ssh2 from "ssh2";
 import type { WebSocket } from "ws";
+
+const { Client } = ssh2;
+// Re-establish the class's dual value/type nature lost by destructuring.
+type Client = InstanceType<typeof Client>;
 import { eq, and } from "drizzle-orm";
 import { db } from "@/db/client";
 import { accounts, sshKeys } from "@/db/schema";

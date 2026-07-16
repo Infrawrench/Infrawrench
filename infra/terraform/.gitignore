@@ -1,0 +1,8 @@
+# Local state and secrets — never commit these.
+# (.terraform.lock.hcl IS committed: it pins provider versions.)
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+.terraform/
+crash.log

@@ -13,16 +13,19 @@
  * core stay free of `db` / Postgres / org-scoped dependencies.
  */
 import { Duplex } from "node:stream";
-import {
-  BaseAgent,
-  utils,
-  type GetStreamCallback,
-  type IdentityCallback,
-  type ParsedKey,
-  type SignCallback,
-  type SigningRequestOptions,
+// ssh2 is CJS with lazy getter exports; when it stays external to the server
+// bundles, node's ESM interop can't see its named exports. Default-import +
+// destructure works everywhere (dev tsx, bundled, external).
+import ssh2 from "ssh2";
+import type {
+  GetStreamCallback,
+  IdentityCallback,
+  ParsedKey,
+  SignCallback,
+  SigningRequestOptions,
 } from "ssh2";
 
+const { BaseAgent, utils } = ssh2;
 const { parseKey } = utils;
 
 // SSH agent protocol message types (draft-miller-ssh-agent).

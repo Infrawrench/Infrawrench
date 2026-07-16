@@ -1,8 +1,12 @@
 /**
  * SSH command execution via ssh2 — used by the connect/env-deploy API.
  */
-import { Client as SshClient } from "ssh2";
+import ssh2 from "ssh2";
 import { eq, and } from "drizzle-orm";
+
+const { Client: SshClient } = ssh2;
+// Re-establish the class's dual value/type nature lost by destructuring.
+type SshClient = InstanceType<typeof SshClient>;
 import type { PluginClient, SshConfig } from "@infrawrench/plugin-base";
 import { db } from "../db/client";
 import { sshKeys } from "../db/schema";

@@ -1,0 +1,45 @@
+# Copy to terraform.tfvars (gitignored) and fill in. The token can also come
+# from TF_VAR_do_token to keep it out of the file entirely.
+
+# do_token = "dop_v1_..."
+
+region       = "nyc1"
+cluster_name = "infrawrench-prod"
+
+# Runtime env for web + poller + github-watcher (one shared k8s secret).
+app_env = {
+  NODE_ENV = "production"
+
+  # Core
+  DATABASE_URL          = "postgres://...@....neon.tech/infrawrench?sslmode=require"
+  ENCRYPTION_MASTER_KEY = "<openssl rand -base64 32>"
+  APP_URL               = "https://app.infrawrench.com"
+
+  # WorkOS
+  WORKOS_API_KEY         = "sk_live_..."
+  WORKOS_CLIENT_ID       = "client_..."
+  WORKOS_REDIRECT_URI    = "https://app.infrawrench.com/callback"
+  WORKOS_COOKIE_PASSWORD = "<openssl rand -base64 32>"
+
+  # Stripe
+  STRIPE_SECRET_KEY                    = "sk_live_..."
+  STRIPE_WEBHOOK_SECRET                = "whsec_..."
+  STRIPE_PRICE_ID                      = "price_..."
+  INFRAWRENCH_STRIPE_CHAT_METER_EVENT  = "..."
+
+  # ClickHouse Cloud (metrics; all four together or writes/reads no-op)
+  CLICKHOUSE_METRICS_URL      = "https://xxxxx.clickhouse.cloud:8443"
+  CLICKHOUSE_METRICS_USER     = "default"
+  CLICKHOUSE_METRICS_PASSWORD = "..."
+  CLICKHOUSE_METRICS_DATABASE = "infrawrench"
+
+  # GitHub App (workflow git triggers; used by web + github-watcher)
+  GITHUB_APP_ID          = "..."
+  GITHUB_APP_PRIVATE_KEY = "-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----"
+  GITHUB_APP_SLUG        = "..."
+
+  # Optional
+  # TURNSTILE_SECRET_KEY = "..."
+  # ANTHROPIC_API_KEY    = "..."
+  # OPENAI_API_KEY       = "..."
+}

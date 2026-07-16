@@ -1,0 +1,25 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# The namespace, the `infrawrench-env` secret, and the `docr-pull` registry
+# secret are created by terraform (infra/terraform); everything here is the
+# workload layer, applied by CI (.github/workflows/web-deploy.yml).
+namespace: infrawrench
+
+resources:
+  - web-deployment.yaml
+  - web-service.yaml
+  - web-ingress.yaml
+  - poller-deployment.yaml
+  - github-watcher-deployment.yaml
+  - cluster-issuer.yaml
+
+# CI pins these to the commit SHA before applying:
+#   kustomize edit set image registry.digitalocean.com/infrawrench/<svc>:${GITHUB_SHA}
+images:
+  - name: registry.digitalocean.com/infrawrench/web
+    newTag: bootstrap
+  - name: registry.digitalocean.com/infrawrench/poller
+    newTag: bootstrap
+  - name: registry.digitalocean.com/infrawrench/github-watcher
+    newTag: bootstrap

@@ -6,16 +6,20 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch --import ./env-loader.mjs src/index.ts",
-    "build": "esbuild src/index.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/index.mjs --external:ssh2 --external:cpu-features --external:dockerode --external:@kubernetes/client-node --external:cloudflare --external:@libsql/client --external:libsql --banner:js=\"import{createRequire}from'node:module';const require=createRequire(import.meta.url);\"",
+    "build": "esbuild src/index.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/index.mjs --external:ssh2 --external:cpu-features --external:dockerode --external:@kubernetes/client-node --external:cloudflare --external:@libsql/client --external:libsql --banner:js=\"import{createRequire as __bannerCreateRequire}from'node:module';import{fileURLToPath as __bannerFileURLToPath}from'node:url';import{dirname as __bannerDirname}from'node:path';const require=__bannerCreateRequire(import.meta.url);const __filename=__bannerFileURLToPath(import.meta.url);const __dirname=__bannerDirname(__filename);\"",
     "start": "node dist/index.mjs",
     "typecheck": "tsgo --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
     "@infrawrench/server-core": "workspace:*",
+    "@kubernetes/client-node": "^1.4.0",
     "@libsql/client": "^0.14.0",
+    "cloudflare": "^6.1.0",
+    "dockerode": "^5.0.0",
     "drizzle-orm": "^0.45.2",
-    "postgres": "^3.4.5"
+    "postgres": "^3.4.5",
+    "ssh2": "^1.17.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

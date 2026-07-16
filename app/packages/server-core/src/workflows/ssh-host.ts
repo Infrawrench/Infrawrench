@@ -34,7 +34,11 @@ import {
   sftpDownloadToBuffer as sftpHostDownload,
 } from "@infrawrench/sftp-host";
 import { and, eq } from "drizzle-orm";
-import { Client as SshClient } from "ssh2";
+import ssh2 from "ssh2";
+
+const { Client: SshClient } = ssh2;
+// Re-establish the class's dual value/type nature lost by destructuring.
+type SshClient = InstanceType<typeof SshClient>;
 
 import { db } from "../db/client";
 import { sshHostKeys, sshKeys } from "../db/schema";

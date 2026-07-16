@@ -46,7 +46,11 @@ class FakeShellStream extends EventEmitter {
   }
 }
 
-vi.mock("ssh2", () => ({ Client: FakeSshClient }));
+// The source default-imports ssh2 (CJS interop), so mirror the module there.
+vi.mock("ssh2", () => {
+  const mod = { Client: FakeSshClient };
+  return { ...mod, default: mod };
+});
 
 const mockSelect = vi.fn();
 vi.mock("@/db/client", () => ({ db: { select: (...a: unknown[]) => mockSelect(...a) } }));

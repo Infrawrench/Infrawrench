@@ -1,0 +1,16 @@
+# Applied by CI alongside the workloads (cert-manager itself, and its CRDs,
+# are installed by terraform's helm_release — see infra/terraform/helm.tf).
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: astridgealer@gmail.com
+    privateKeySecretRef:
+      name: letsencrypt-prod-account-key
+    solvers:
+      - http01:
+          ingress:
+            ingressClassName: nginx

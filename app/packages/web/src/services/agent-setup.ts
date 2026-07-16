@@ -16,8 +16,12 @@
  * always cloneable Git URLs and the clone happens on the VM, so there is no
  * config/repo file sync step.
  */
-import { Client as SshClient } from "ssh2";
+import ssh2 from "ssh2";
 import { and, eq } from "drizzle-orm";
+
+const { Client: SshClient } = ssh2;
+// Re-establish the class's dual value/type nature lost by destructuring.
+type SshClient = InstanceType<typeof SshClient>;
 import type { Plugin, ResourceInstance } from "@infrawrench/plugin-base";
 import type {
   AgentSetupPlan,

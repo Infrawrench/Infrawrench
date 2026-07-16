@@ -1,7 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
-import { Client as SshClient } from "ssh2";
+import ssh2 from "ssh2";
 import type { ConnectConfig, SFTPWrapper, FileEntry } from "ssh2";
+
+const { Client: SshClient } = ssh2;
+// Re-establish the class's dual value/type nature lost by destructuring.
+type SshClient = InstanceType<typeof SshClient>;
 import type { SftpConfig, StorageObject } from "@infrawrench/plugin-base" with {
   "resolution-mode": "import",
 };

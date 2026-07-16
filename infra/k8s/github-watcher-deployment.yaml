@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: github-watcher
+  labels:
+    app: github-watcher
+spec:
+  # One replica on purpose: the watcher's SHA compare-and-swap makes overlap
+  # *safe* (rolling deploys can't double-fire), but every extra replica
+  # multiplies GitHub API reads for zero benefit.
+  replicas: 1
+  selector:
+    matchLabels:
+      app: github-watcher
+  template:
+    metadata:
+      labels:
+        app: github-watcher
+    spec:
+      imagePullSecrets:
+        - name: docr-pull
+      containers:
+        - name: github-watcher
+          image: registry.digitalocean.com/infrawrench/github-watcher:bootstrap
+          envFrom:
+            - secretRef:
+                name: infrawrench-env
+          resources:
+            requests:
+              cpu: 50m
+              memory: 192Mi
+            limits:
+              memory: 512Mi
+      terminationGracePeriodSeconds: 45

@@ -21,7 +21,12 @@ export {
 
 import * as net from "node:net";
 import * as crypto from "node:crypto";
-import { Client as SshClient, type ConnectConfig } from "ssh2";
+import ssh2 from "ssh2";
+import type { ConnectConfig } from "ssh2";
+
+const { Client: SshClient } = ssh2;
+// Re-establish the class's dual value/type nature lost by destructuring.
+type SshClient = InstanceType<typeof SshClient>;
 import type { SshTunnelConfig } from "@infrawrench/plugin-base" with {
   "resolution-mode": "import",
 };
