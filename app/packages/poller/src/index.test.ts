@@ -8,6 +8,8 @@ vi.mock("@infrawrench/server-core/plugin-loader", () => ({
 const start = vi.fn();
 const stop = vi.fn();
 vi.mock("./loop", () => ({
+  DEFAULT_TICK_MS: 15_000,
+  DEFAULT_CONCURRENCY: 8,
   PollerLoop: vi.fn().mockImplementation(function () {
     return { start, stop };
   }),

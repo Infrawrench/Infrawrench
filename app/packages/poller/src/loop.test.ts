@@ -1,41 +1,37 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// --- DB query-builder mock: db.select()...limit() resolves to rows ---
-const limit = vi.fn();
-const orderBy = vi.fn(() => ({ limit }));
-const where = vi.fn(() => ({ orderBy }));
-const from = vi.fn(() => ({ where }));
-const select = vi.fn((_opts?: unknown) => ({ from }));
+// --- Claim mock: the loop's only source of work ---
+const claimDueAccounts = vi.fn();
+const claimDueWorkflows = vi.fn();
+vi.mock("./claim", () => ({
+  claimDueAccounts: (...a: unknown[]) => claimDueAccounts(...a),
+  claimDueWorkflows: (...a: unknown[]) => claimDueWorkflows(...a),
+}));
 
+// --- DB mock: only the workflow-reschedule update path remains in the loop ---
+const updateWhere = vi.fn();
+const updateSet = vi.fn((_values: unknown) => ({ where: updateWhere }));
+const update = vi.fn((_table: unknown) => ({ set: updateSet }));
 vi.mock("@infrawrench/server-core/db/client", () => ({
-  db: { select: (a?: unknown) => select(a) },
+  db: { update: (t: unknown) => update(t) },
 }));
 
 vi.mock("@infrawrench/server-core/db/schema", () => ({
-  accounts: {
-    id: "id",
-    organizationId: "organizationId",
-    pluginId: "pluginId",
-    displayName: "displayName",
-    pollFailureCount: "pollFailureCount",
-    deletedAt: "deletedAt",
-    nextPollAt: "nextPollAt",
-    lastPolledAt: "lastPolledAt",
-  },
+  workflows: { id: "id" },
 }));
 
 vi.mock("drizzle-orm", () => ({
-  and: (...a: unknown[]) => ({ and: a }),
-  asc: (a: unknown) => ({ asc: a }),
-  isNull: (a: unknown) => ({ isNull: a }),
-  lte: (a: unknown, b: unknown) => ({ lte: [a, b] }),
-  or: (...a: unknown[]) => ({ or: a }),
-  sql: (strings: TemplateStringsArray, ...v: unknown[]) => ({ sql: [strings, v] }),
+  eq: (a: unknown, b: unknown) => ({ eq: [a, b] }),
 }));
 
 const pollAccount = vi.fn();
 vi.mock("./poll-account", () => ({
   pollAccount: (...a: unknown[]) => pollAccount(...a),
+}));
+
+const runOrgWorkflow = vi.fn();
+vi.mock("@infrawrench/server-core/workflows/runner", () => ({
+  runOrgWorkflow: (...a: unknown[]) => runOrgWorkflow(...a),
 }));
 
 import { PollerLoop } from "./loop";
@@ -50,11 +46,18 @@ function row(id: string) {
   };
 }
 
+function workflowRow(id: string, trigger: unknown) {
+  return { id, organizationId: "org", trigger };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   vi.useFakeTimers();
-  limit.mockResolvedValue([]);
+  claimDueAccounts.mockResolvedValue([]);
+  claimDueWorkflows.mockResolvedValue([]);
   pollAccount.mockResolvedValue(undefined);
+  runOrgWorkflow.mockResolvedValue(undefined);
+  updateWhere.mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -63,16 +66,16 @@ afterEach(() => {
 
 describe("PollerLoop", () => {
   it("does nothing on a tick when no rows are due", async () => {
-    limit.mockResolvedValue([]);
     const loop = new PollerLoop();
     loop.start();
     await vi.advanceTimersByTimeAsync(0);
     expect(pollAccount).not.toHaveBeenCalled();
+    expect(runOrgWorkflow).not.toHaveBeenCalled();
     await loop.stop();
   });
 
-  it("polls each due account on the first immediate tick", async () => {
-    limit.mockResolvedValue([row("a"), row("b")]);
+  it("polls each claimed account on the first immediate tick", async () => {
+    claimDueAccounts.mockResolvedValue([row("a"), row("b")]);
     const loop = new PollerLoop({ concurrency: 8 });
     loop.start();
     await vi.advanceTimersByTimeAsync(0);
@@ -81,7 +84,7 @@ describe("PollerLoop", () => {
   });
 
   it("passes the shared bucket registry to pollAccount", async () => {
-    limit.mockResolvedValue([row("a")]);
+    claimDueAccounts.mockResolvedValue([row("a")]);
     const loop = new PollerLoop();
     loop.start();
     await vi.advanceTimersByTimeAsync(0);
@@ -97,17 +100,16 @@ describe("PollerLoop", () => {
     await loop.stop();
   });
 
-  it("uses the configured limit (concurrency) when querying", async () => {
-    limit.mockResolvedValue([]);
+  it("claims with the configured concurrency", async () => {
     const loop = new PollerLoop({ concurrency: 3 });
     loop.start();
     await vi.advanceTimersByTimeAsync(0);
-    expect(limit).toHaveBeenCalledWith(3);
+    expect(claimDueAccounts).toHaveBeenCalledWith(3);
     await loop.stop();
   });
 
   it("schedules subsequent ticks on the configured interval", async () => {
-    limit.mockResolvedValue([row("a")]);
+    claimDueAccounts.mockResolvedValue([row("a")]);
     const loop = new PollerLoop({ tickMs: 5_000 });
     loop.start();
     await vi.advanceTimersByTimeAsync(0); // first immediate tick
@@ -120,7 +122,7 @@ describe("PollerLoop", () => {
   });
 
   it("swallows a failing pollAccount so other accounts still run", async () => {
-    limit.mockResolvedValue([row("a"), row("b")]);
+    claimDueAccounts.mockResolvedValue([row("a"), row("b")]);
     pollAccount.mockRejectedValueOnce(new Error("nope"));
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const loop = new PollerLoop();
@@ -132,15 +134,15 @@ describe("PollerLoop", () => {
     await loop.stop();
   });
 
-  it("logs and recovers when the DB query throws during a tick", async () => {
-    limit.mockRejectedValueOnce(new Error("db down"));
+  it("logs and recovers when the account claim throws during a tick", async () => {
+    claimDueAccounts.mockRejectedValueOnce(new Error("db down"));
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const loop = new PollerLoop();
     loop.start();
     await vi.advanceTimersByTimeAsync(0);
     expect(errSpy).toHaveBeenCalledWith("[poller] tick failed:", expect.any(Error));
     // next tick still works
-    limit.mockResolvedValue([row("a")]);
+    claimDueAccounts.mockResolvedValue([row("a")]);
     await vi.advanceTimersByTimeAsync(15_000);
     expect(pollAccount).toHaveBeenCalledTimes(1);
     errSpy.mockRestore();
@@ -148,11 +150,10 @@ describe("PollerLoop", () => {
   });
 
   it("start() is idempotent (does not double-schedule)", async () => {
-    limit.mockResolvedValue([row("a")]);
+    claimDueAccounts.mockResolvedValue([row("a")]);
     const loop = new PollerLoop();
     loop.start();
     await vi.advanceTimersByTimeAsync(0);
-    // second start before any timer is set still returns early once timer exists
     await vi.advanceTimersByTimeAsync(15_000);
     const callsAfterTwoTicks = pollAccount.mock.calls.length;
     loop.start(); // timer already set -> no-op
@@ -163,7 +164,7 @@ describe("PollerLoop", () => {
   });
 
   it("stop() clears the timer and prevents further ticks", async () => {
-    limit.mockResolvedValue([row("a")]);
+    claimDueAccounts.mockResolvedValue([row("a")]);
     const loop = new PollerLoop();
     loop.start();
     await vi.advanceTimersByTimeAsync(0);
@@ -175,7 +176,7 @@ describe("PollerLoop", () => {
 
   it("stop() waits for an in-flight tick to drain", async () => {
     let resolvePoll: () => void = () => {};
-    limit.mockResolvedValue([row("a")]);
+    claimDueAccounts.mockResolvedValue([row("a")]);
     pollAccount.mockImplementation(
       () =>
         new Promise<void>((r) => {
@@ -195,7 +196,7 @@ describe("PollerLoop", () => {
 
   it("skips overlapping ticks when one is still running", async () => {
     let resolvePoll: () => void = () => {};
-    limit.mockResolvedValue([row("a")]);
+    claimDueAccounts.mockResolvedValue([row("a")]);
     pollAccount.mockImplementationOnce(
       () =>
         new Promise<void>((r) => {
@@ -213,5 +214,94 @@ describe("PollerLoop", () => {
     const stopPromise = loop.stop();
     await vi.advanceTimersByTimeAsync(200); // drain loop
     await stopPromise;
+  });
+});
+
+describe("PollerLoop workflows", () => {
+  it("runs a claimed cron workflow and reschedules it to its true next fire", async () => {
+    claimDueWorkflows.mockResolvedValue([
+      workflowRow("w1", { kind: "cron", expression: "*/5 * * * *" }),
+    ]);
+    const loop = new PollerLoop();
+    loop.start();
+    await vi.advanceTimersByTimeAsync(0);
+
+    // The 10-minute claim lease gets replaced with the real cron next-fire.
+    expect(updateSet).toHaveBeenCalledWith(
+      expect.objectContaining({ nextRunAt: expect.any(Date) }),
+    );
+    expect(runOrgWorkflow).toHaveBeenCalledWith({
+      organizationId: "org",
+      workflowId: "w1",
+      triggerSource: "cron",
+    });
+    await loop.stop();
+  });
+
+  it("de-schedules a workflow whose trigger is no longer parseable cron", async () => {
+    claimDueWorkflows.mockResolvedValue([
+      workflowRow("w1", { kind: "cron", expression: "not a cron" }),
+    ]);
+    const loop = new PollerLoop();
+    loop.start();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(updateSet).toHaveBeenCalledWith(expect.objectContaining({ nextRunAt: null }));
+    // It still runs this one time — de-scheduling only stops future fires.
+    expect(runOrgWorkflow).toHaveBeenCalledTimes(1);
+    await loop.stop();
+  });
+
+  it("swallows a failing workflow run so other workflows and accounts continue", async () => {
+    claimDueAccounts.mockResolvedValue([row("a")]);
+    claimDueWorkflows.mockResolvedValue([
+      workflowRow("w1", { kind: "cron", expression: "*/5 * * * *" }),
+      workflowRow("w2", { kind: "cron", expression: "*/5 * * * *" }),
+    ]);
+    runOrgWorkflow.mockRejectedValueOnce(new Error("boom"));
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const loop = new PollerLoop();
+    loop.start();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(runOrgWorkflow).toHaveBeenCalledTimes(2);
+    expect(pollAccount).toHaveBeenCalledTimes(1);
+    expect(errSpy).toHaveBeenCalledWith("[poller] workflow w1 run failed:", expect.any(Error));
+    errSpy.mockRestore();
+    await loop.stop();
+  });
+
+  it("still runs the workflow when the reschedule write fails (lease bounds the retry)", async () => {
+    claimDueWorkflows.mockResolvedValue([
+      workflowRow("w1", { kind: "cron", expression: "*/5 * * * *" }),
+    ]);
+    updateWhere.mockRejectedValueOnce(new Error("db down"));
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const loop = new PollerLoop();
+    loop.start();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(runOrgWorkflow).toHaveBeenCalledTimes(1);
+    expect(errSpy).toHaveBeenCalledWith(
+      "[poller] workflow w1 reschedule failed:",
+      expect.any(Error),
+    );
+    errSpy.mockRestore();
+    await loop.stop();
+  });
+
+  it("logs and recovers when the workflow claim throws", async () => {
+    claimDueAccounts.mockResolvedValue([row("a")]);
+    claimDueWorkflows.mockRejectedValueOnce(new Error("db down"));
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const loop = new PollerLoop();
+    loop.start();
+    await vi.advanceTimersByTimeAsync(0);
+
+    // Account polling in the same tick is unaffected.
+    expect(pollAccount).toHaveBeenCalledTimes(1);
+    expect(errSpy).toHaveBeenCalledWith("[poller] workflow tick failed:", expect.any(Error));
+    errSpy.mockRestore();
+    await loop.stop();
   });
 });

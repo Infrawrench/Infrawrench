@@ -1,13 +1,14 @@
-import { and, asc, eq, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { CronExpressionParser } from "cron-parser";
 import { db } from "@infrawrench/server-core/db/client";
-import { accounts, workflows } from "@infrawrench/server-core/db/schema";
+import { workflows } from "@infrawrench/server-core/db/schema";
 import { runOrgWorkflow } from "@infrawrench/server-core/workflows/runner";
 import { pollAccount, type PollAccountRow } from "./poll-account";
+import { claimDueAccounts, claimDueWorkflows, type DueWorkflowRow } from "./claim";
 import { TokenBucketRegistry } from "./token-bucket";
 
-const TICK_MS = 15_000;
-const CONCURRENCY = 8;
+export const DEFAULT_TICK_MS = 15_000;
+export const DEFAULT_CONCURRENCY = 8;
 const WORKFLOW_LIMIT = 8;
 
 /** A workflow's `trigger` jsonb, narrowed to the cron fields we read. */
@@ -15,12 +16,6 @@ interface CronTrigger {
   kind?: string;
   expression?: string;
   timezone?: string;
-}
-
-interface DueWorkflowRow {
-  id: string;
-  organizationId: string;
-  trigger: unknown;
 }
 
 /**
@@ -47,6 +42,11 @@ interface LoopOptions {
   concurrency?: number;
 }
 
+/**
+ * Each tick atomically claims a batch of due accounts and workflows (see
+ * `claim.ts`), so any number of poller instances can run concurrently against
+ * the same database — scale out by adding replicas, no shard configuration.
+ */
 export class PollerLoop {
   private buckets = new TokenBucketRegistry();
   private stopping = false;
@@ -56,8 +56,8 @@ export class PollerLoop {
   private readonly concurrency: number;
 
   constructor(options: LoopOptions = {}) {
-    this.tickMs = options.tickMs ?? TICK_MS;
-    this.concurrency = options.concurrency ?? CONCURRENCY;
+    this.tickMs = options.tickMs ?? DEFAULT_TICK_MS;
+    this.concurrency = options.concurrency ?? DEFAULT_CONCURRENCY;
   }
 
   start(): void {
@@ -90,27 +90,9 @@ export class PollerLoop {
     if (this.running) return;
     this.running = true;
     try {
-      const now = new Date();
-      const dueRows = await db
-        .select({
-          id: accounts.id,
-          organizationId: accounts.organizationId,
-          pluginId: accounts.pluginId,
-          displayName: accounts.displayName,
-          pollFailureCount: accounts.pollFailureCount,
-        })
-        .from(accounts)
-        .where(
-          and(
-            isNull(accounts.deletedAt),
-            or(isNull(accounts.nextPollAt), lte(accounts.nextPollAt, now)),
-          ),
-        )
-        .orderBy(sql`${accounts.lastPolledAt} asc nulls first`, asc(accounts.id))
-        .limit(this.concurrency);
-
-      if (dueRows.length > 0) {
-        await Promise.allSettled(dueRows.map((row) => this.runOne(row)));
+      const claimed = await claimDueAccounts(this.concurrency);
+      if (claimed.length > 0) {
+        await Promise.allSettled(claimed.map((row) => this.runOne(row)));
       }
 
       // Second pass: due cron workflows. Kept separate and defensive so a bad
@@ -127,43 +109,28 @@ export class PollerLoop {
     try {
       await pollAccount(row, this.buckets);
     } catch (e) {
+      // The claim lease stays in place, so this account retries when it
+      // expires rather than hot-looping every tick.
       console.error(`[poller] account ${row.id} (${row.pluginId}) poll failed:`, e);
     }
   }
 
-  /** Run all cron workflows whose `nextRunAt` is due, then reschedule them. */
+  /** Claim due cron workflows, reschedule them to their true next fire, run them. */
   private async tickWorkflows(): Promise<void> {
     try {
-      const now = new Date();
-      const dueWorkflows: DueWorkflowRow[] = await db
-        .select({
-          id: workflows.id,
-          organizationId: workflows.organizationId,
-          trigger: workflows.trigger,
-        })
-        .from(workflows)
-        .where(
-          and(
-            eq(workflows.enabled, true),
-            isNull(workflows.deletedAt),
-            isNotNull(workflows.nextRunAt),
-            lte(workflows.nextRunAt, now),
-          ),
-        )
-        .orderBy(asc(workflows.nextRunAt), asc(workflows.id))
-        .limit(WORKFLOW_LIMIT);
+      const claimed = await claimDueWorkflows(WORKFLOW_LIMIT);
+      if (claimed.length === 0) return;
 
-      if (dueWorkflows.length === 0) return;
-
-      await Promise.allSettled(dueWorkflows.map((row) => this.runWorkflowOnce(row)));
+      await Promise.allSettled(claimed.map((row) => this.runWorkflowOnce(row)));
     } catch (e) {
       console.error("[poller] workflow tick failed:", e);
     }
   }
 
   private async runWorkflowOnce(row: DueWorkflowRow): Promise<void> {
-    // Reschedule from "now" up-front so a long-running or failing workflow can't
-    // be re-picked on the next tick before this run finishes.
+    // The claim leased this workflow ~10 minutes out; replace that with the
+    // cron's true next fire time before running. If this write fails, the
+    // lease bounds the retry rather than letting the next tick re-fire it.
     const nextRunAt = nextRunAtFromTrigger(row.trigger, new Date());
     try {
       await db
