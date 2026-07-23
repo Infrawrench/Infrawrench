@@ -38,3 +38,9 @@ Create a service principal (Azure Portal → Microsoft Entra ID → App registra
 
 - One account ties to one subscription. For multi-subscription tenants, add one infrawrench account per subscription.
 - Key Vault access requires the principal to have an access policy or RBAC role on the vault — the subscription role is not enough.
+
+## Cost graphs
+
+Azure subscriptions feed [cost graphs & budgets](../features/cloud-costs.md) via the Cost Management Query API, collected daily with service and region breakdowns (13 months of history).
+
+- The service principal needs the **Cost Management Reader** role on the subscription — plain **Reader** is not enough.

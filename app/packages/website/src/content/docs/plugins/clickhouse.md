@@ -35,3 +35,10 @@ ClickHouse accounts hold two complementary credential sets in a single record �
 
 - Very large result sets stream into the grid; expect high memory use on the client for 10M+ row selects. Use `LIMIT` or export.
 - Cloud services scale to zero; a first query after idle can take 10–20 seconds to wake.
+
+## Cost graphs
+
+ClickHouse Cloud organizations feed [cost graphs & budgets](../features/cloud-costs.md) via the organization `usageCost` API — daily costs per service with compute / storage / backup / data-transfer / ClickPipes breakdowns.
+
+- A read-only (Developer role) Cloud API key is sufficient.
+- Amounts are ClickHouse Credits at the 1 CHC = $1 **list price** — negotiated committed-spend discounts are not reflected.

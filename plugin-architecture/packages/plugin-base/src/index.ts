@@ -22,6 +22,8 @@ export type {
   RateLimitDeclaration,
 } from "./manifest.js";
 
+export type { CostCapabilityDeclaration, CostFetchRange, CostRow } from "./cost.js";
+
 export type {
   ResourceTypeDefinition,
   FieldDefinition,

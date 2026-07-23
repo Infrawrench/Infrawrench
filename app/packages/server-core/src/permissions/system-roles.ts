@@ -39,6 +39,8 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<SystemRoleKey, SystemRoleDefinition
       "storage:read",
       "dashboards:read",
       "dashboards:write",
+      "costs:read",
+      "budgets:read",
       "team:read",
       "audit:read",
       "ssh-keys:read",

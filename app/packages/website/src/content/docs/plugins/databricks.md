@@ -49,3 +49,10 @@ The Playground is disabled until the endpoint is `READY` — wait for it to come
 - Catalog, volume, function, and registered-model browsing requires Unity Catalog permissions. The plugin skips catalogs or schemas the token cannot browse.
 - The Playground only works with chat-completion-style serving endpoints; classic ML model endpoints that expect a different request shape won't respond.
 - Workspace object inventory is intentionally shallow across the main workspace roots so large workspaces do not trigger a full recursive crawl.
+
+## Cost graphs
+
+Databricks workspaces feed [cost graphs & budgets](../features/cloud-costs.md) from the `system.billing.usage` and `system.billing.list_prices` system tables, queried through a SQL warehouse — daily costs by product with per-cluster/warehouse attribution.
+
+- The workspace must be Unity Catalog-enabled and the token's principal needs `USE CATALOG system` plus `SELECT` on the `system.billing` tables, and access to at least one SQL warehouse (a stopped warehouse will auto-start; queries are tiny).
+- Dollars are DBUs × **list price** — contract discounts are not reflected. Underlying cloud infra (e.g. EC2 under your clusters) is never included; that spend belongs to your AWS/Azure/GCP account.

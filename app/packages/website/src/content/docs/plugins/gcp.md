@@ -47,3 +47,12 @@ If the instance has no public IP, the tab renders a static guidance pane explain
 - Service account keys never expire on Google's side, but rotating them is good hygiene — paste a new key any time.
 - VM pricing is shown at creation time. It is an estimate — actual billing depends on sustained-use discounts and committed-use contracts.
 - BigQuery results are paged; very large queries stream into the grid.
+
+## Cost graphs
+
+GCP has no cost API, so [cost graphs & budgets](../features/cloud-costs.md) read your Cloud Billing **BigQuery export**. One-time setup:
+
+1. [Enable the standard usage cost export](https://cloud.google.com/billing/docs/how-to/export-data-bigquery) on your billing account (a billing admin does this in the console).
+2. Put the export table — `project.dataset.table` — into the account's **Billing export table** field in infrawrench.
+
+The service account needs `roles/bigquery.jobUser` on its project and `roles/bigquery.dataViewer` on the export dataset. Costs are net of credits, broken down by service, region, and project. Note the export only accumulates data from the day it is enabled — it is not retroactive.

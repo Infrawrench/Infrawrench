@@ -29,3 +29,10 @@ If you belong to a Team, provide the team ID so infrawrench lists team-owned pro
 ## Tips & limits
 
 - Some destructive or workflow-heavy deployment actions, such as rollback and alias promotion, are still left to Vercel until the plugin has a safer confirmation flow for them.
+
+## Cost graphs
+
+Vercel teams feed [cost graphs & budgets](../features/cloud-costs.md) via the FOCUS billing-charges API — daily costs by product, region, and project (projects appear as the `project` tag).
+
+- The existing access token works as long as its team role can view billing (Owner, Member, Developer, Security, Billing, or Enterprise Viewer).
+- Credits appear as negative amounts; taxes and one-off purchases are included.

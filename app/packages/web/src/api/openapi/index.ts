@@ -9,6 +9,8 @@ import { registerOrgPaths } from "./paths/orgs";
 import { registerInvitationPaths } from "./paths/invitations";
 import { registerAccountPaths } from "./paths/accounts";
 import { registerDashboardPaths } from "./paths/dashboards";
+import { registerCostPaths } from "./paths/costs";
+import { registerBudgetPaths } from "./paths/budgets";
 import { registerResourcePaths } from "./paths/resources";
 import { registerConnectionFeaturePaths } from "./paths/connection-features";
 import { registerAssociationPaths } from "./paths/associations";
@@ -60,6 +62,8 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerInvitationPaths(ctx);
   registerAccountPaths(ctx);
   registerDashboardPaths(ctx);
+  registerCostPaths(ctx);
+  registerBudgetPaths(ctx);
   registerResourcePaths(ctx);
   registerConnectionFeaturePaths(ctx);
   registerAssociationPaths(ctx);

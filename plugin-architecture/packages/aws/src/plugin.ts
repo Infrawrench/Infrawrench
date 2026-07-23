@@ -97,6 +97,10 @@ const manifest: PluginManifest = {
     },
   ],
   rateLimit: { capacity: 120, refillPerSecond: 8 },
+  // Cost Explorer GetCostAndUsage, grouped by SERVICE + REGION. Per-resource
+  // granularity is intentionally omitted (CE keeps it 14 days only, and it
+  // explodes cardinality). Needs the ce:GetCostAndUsage IAM action.
+  costs: { dimensions: ["service", "region"], maxHistoryDays: 365, restatementDays: 3 },
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [

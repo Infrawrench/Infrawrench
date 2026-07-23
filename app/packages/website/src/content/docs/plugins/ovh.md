@@ -37,3 +37,9 @@ Generate API credentials at the [OVH API token page](https://www.ovh.com/auth/ap
 
 - OVH’s API is organized by region (eu, us, ca). Make sure the token has scope for every region you plan to use.
 - Consumer keys can be time-limited — pay attention to expiry when creating.
+
+## Cost graphs
+
+OVHcloud accounts feed [cost graphs & budgets](../features/cloud-costs.md) from bills (`/me/bill`) plus current unbilled consumption — pre-tax amounts on bill dates, broken down by service.
+
+- The consumer key needs access rules for `GET /me/bill*` and `GET /me/consumption*`. Without the consumption rule, invoiced history still collects and only the current-period preview is missing.

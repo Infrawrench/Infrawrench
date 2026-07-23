@@ -44,6 +44,17 @@ const manifest: PluginManifest = {
     },
     caCertCredentialField,
   ],
+  // Invoices API (GET /organizations/{org}/invoices + .../line-items):
+  // monthly invoices with line items keyed by metric + database. In-progress
+  // invoice line items refresh hourly; finalized invoices can still gain
+  // late credits, hence the restatement window. Needs a service token with
+  // the `read_invoices` organization access.
+  costs: {
+    dimensions: ["service", "resource"],
+    maxHistoryDays: 365,
+    restatementDays: 5,
+    periodNative: true,
+  },
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [

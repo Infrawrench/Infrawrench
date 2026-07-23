@@ -124,11 +124,12 @@ describe("Dashboard routes", () => {
     it("creates the default dashboard when none exists", async () => {
       // First select() for finding default dashboard returns empty
       const selectChain1 = chainMock([]);
-      // Second select() for pins — uses innerJoin().where().orderBy()
+      // Later selects: pins/workflow pins use innerJoin().where().orderBy(),
+      // widgets use where().orderBy() directly — support both, resolving [].
       const pinsOrderBy = vi.fn().mockResolvedValue([]);
       const pinsWhere = vi.fn().mockReturnValue({ orderBy: pinsOrderBy });
       const pinsInnerJoin = vi.fn().mockReturnValue({ where: pinsWhere });
-      const pinsFrom = vi.fn().mockReturnValue({ innerJoin: pinsInnerJoin });
+      const pinsFrom = vi.fn().mockReturnValue({ innerJoin: pinsInnerJoin, where: pinsWhere });
       const selectChain2 = { from: pinsFrom };
 
       let selectCallCount = 0;

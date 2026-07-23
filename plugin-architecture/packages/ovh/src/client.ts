@@ -8,11 +8,14 @@ import type {
   ImageOption,
   ResourceStatus,
   ResourceTypeDefinition,
+  CostFetchRange,
+  CostRow,
   DashboardStat,
   MetricSeries,
   HostServices,
 } from "@infrawrench/plugin-base";
 import { labeledFieldItems, resourceTypeDisplayName } from "@infrawrench/plugin-base";
+import { fetchOvhCostData } from "./cost-data.js";
 
 function ovhSshUsername(imageName: string): string {
   const lower = imageName.toLowerCase();
@@ -1256,6 +1259,12 @@ export class OvhClient implements PluginClient {
 
   /** Metric-name list order is provider-defined; cap fan-out per fetch. */
   private static readonly DB_METRIC_LIMIT = 8;
+
+  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
+    // Bind preserves the generic signature of the private signed fetch
+    // helper so cost calls carry OVH request signing + bastion routing.
+    return fetchOvhCostData(this.ovhFetch.bind(this), range);
+  }
 
   async fetchDashboardStats(
     resourceTypeId: string,

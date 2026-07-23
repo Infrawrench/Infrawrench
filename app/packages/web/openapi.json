@@ -899,12 +899,20 @@
           "mssql-database",
           "mysql-database",
           "nat-gateway",
+          "neon-ai-gateway",
+          "neon-auth",
+          "neon-auth-domain",
+          "neon-auth-oauth-provider",
           "neon-branch",
+          "neon-bucket",
+          "neon-credential",
           "neon-data-api",
           "neon-database",
           "neon-endpoint",
+          "neon-function",
           "neon-project",
           "neon-role",
+          "neon-snapshot",
           "neptune-cluster",
           "netlify-build-hook",
           "netlify-deploy",
@@ -1143,6 +1151,58 @@
         "required": ["pinId", "workflowId", "gridX", "name", "lastRunAt", "lastStatus", "metrics"],
         "additionalProperties": false
       },
+      "DashboardWidgetKind": {
+        "type": "string",
+        "enum": ["cost_graph", "budget"]
+      },
+      "DashboardWidget": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "dashboardId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/DashboardWidgetKind"
+          },
+          "title": {
+            "type": "string"
+          },
+          "config": {
+            "$ref": "#/components/schemas/JsonObject"
+          },
+          "gridX": {
+            "type": "integer"
+          },
+          "gridY": {
+            "type": "integer"
+          },
+          "gridW": {
+            "type": "integer"
+          },
+          "gridH": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "dashboardId",
+          "kind",
+          "title",
+          "config",
+          "gridX",
+          "gridY",
+          "gridW",
+          "gridH"
+        ],
+        "additionalProperties": false
+      },
       "DashboardWithPins": {
         "type": "object",
         "properties": {
@@ -1160,9 +1220,137 @@
             "items": {
               "$ref": "#/components/schemas/DashboardWorkflowPin"
             }
+          },
+          "widgets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DashboardWidget"
+            }
           }
         },
-        "required": ["dashboard", "pins", "workflowPins"],
+        "required": ["dashboard", "pins", "workflowPins", "widgets"],
+        "additionalProperties": false
+      },
+      "DashboardWidgetFull": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "organizationId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "dashboardId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/DashboardWidgetKind"
+          },
+          "title": {
+            "type": "string"
+          },
+          "config": {
+            "$ref": "#/components/schemas/JsonObject"
+          },
+          "gridX": {
+            "type": "integer"
+          },
+          "gridY": {
+            "type": "integer"
+          },
+          "gridW": {
+            "type": "integer"
+          },
+          "gridH": {
+            "type": "integer"
+          },
+          "syncVersion": {
+            "type": "integer"
+          },
+          "deletedAt": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "organizationId",
+          "dashboardId",
+          "kind",
+          "title",
+          "config",
+          "gridX",
+          "gridY",
+          "gridW",
+          "gridH",
+          "syncVersion",
+          "deletedAt",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "CreateWidgetRequest": {
+        "type": "object",
+        "properties": {
+          "dashboardId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/DashboardWidgetKind"
+          },
+          "title": {
+            "type": "string"
+          },
+          "config": {
+            "$ref": "#/components/schemas/JsonObject"
+          }
+        },
+        "required": ["dashboardId", "kind", "config"],
+        "additionalProperties": false
+      },
+      "UpdateWidgetRequest": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "config": {
+            "$ref": "#/components/schemas/JsonObject"
+          },
+          "gridX": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "gridY": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "gridW": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "gridH": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
         "additionalProperties": false
       },
       "PinRequest": {
@@ -1489,6 +1677,523 @@
           }
         },
         "required": ["items"],
+        "additionalProperties": false
+      },
+      "CostSeriesPoint": {
+        "type": "object",
+        "properties": {
+          "bucket": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2026-07-01"
+          },
+          "amount": {
+            "type": "number"
+          }
+        },
+        "required": ["bucket", "amount"],
+        "additionalProperties": false
+      },
+      "CostQuerySeries": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "points": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostSeriesPoint"
+            }
+          }
+        },
+        "required": ["key", "label", "currency", "points"],
+        "additionalProperties": false
+      },
+      "CostQueryResponse": {
+        "type": "object",
+        "properties": {
+          "series": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostQuerySeries"
+            }
+          },
+          "comparison": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostQuerySeries"
+            }
+          },
+          "forecast": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostSeriesPoint"
+            }
+          },
+          "currencies": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "totals": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number"
+            }
+          },
+          "previousTotals": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number"
+            }
+          }
+        },
+        "required": ["series", "currencies", "totals"],
+        "additionalProperties": false
+      },
+      "CostDimension": {
+        "type": "string",
+        "enum": ["provider", "account", "service", "region", "resource", "tag"]
+      },
+      "CostFilter": {
+        "type": "object",
+        "properties": {
+          "dimension": {
+            "$ref": "#/components/schemas/CostDimension"
+          },
+          "op": {
+            "type": "string",
+            "enum": ["in", "not_in"]
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          },
+          "tagKey": {
+            "type": "string"
+          }
+        },
+        "required": ["dimension", "op", "values"],
+        "additionalProperties": false
+      },
+      "CostQueryRequest": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2026-07-01"
+          },
+          "to": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2026-07-01"
+          },
+          "binning": {
+            "type": "string",
+            "enum": ["daily", "weekly", "monthly", "cumulative"]
+          },
+          "groupBy": {
+            "type": "string",
+            "enum": ["none", "provider", "account", "service", "region", "resource", "tag"]
+          },
+          "groupByTagKey": {
+            "type": "string"
+          },
+          "filters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CostFilter"
+            }
+          },
+          "topN": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 15
+          },
+          "comparePreviousPeriod": {
+            "type": "boolean"
+          },
+          "forecast": {
+            "type": "boolean"
+          }
+        },
+        "required": ["from", "to", "binning", "groupBy"],
+        "additionalProperties": false
+      },
+      "CostDimensionValues": {
+        "type": "object",
+        "properties": {
+          "values": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["value", "label"],
+                  "additionalProperties": false
+                }
+              ]
+            }
+          }
+        },
+        "required": ["values"],
+        "additionalProperties": false
+      },
+      "CostAccountStatus": {
+        "type": "object",
+        "properties": {
+          "accountId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "pluginId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "supportsCosts": {
+            "type": "boolean"
+          },
+          "periodNative": {
+            "type": "boolean"
+          },
+          "dimensions": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["service", "region", "resource", "tag"]
+            }
+          },
+          "costLastPolledAt": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          },
+          "costBackfilledAt": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          },
+          "costPollFailureCount": {
+            "type": "integer"
+          },
+          "coverage": {
+            "type": ["object", "null"],
+            "properties": {
+              "firstDay": {
+                "type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                "example": "2026-07-01"
+              },
+              "lastDay": {
+                "type": "string",
+                "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                "example": "2026-07-01"
+              }
+            },
+            "required": ["firstDay", "lastDay"],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "accountId",
+          "pluginId",
+          "displayName",
+          "supportsCosts",
+          "periodNative",
+          "dimensions",
+          "costLastPolledAt",
+          "costBackfilledAt",
+          "costPollFailureCount",
+          "coverage"
+        ],
+        "additionalProperties": false
+      },
+      "BudgetCostFilter": {
+        "type": "object",
+        "properties": {
+          "dimension": {
+            "type": "string",
+            "enum": ["provider", "account", "service", "region", "resource", "tag"]
+          },
+          "op": {
+            "type": "string",
+            "enum": ["in", "not_in"]
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1
+          },
+          "tagKey": {
+            "type": "string"
+          }
+        },
+        "required": ["dimension", "op", "values"],
+        "additionalProperties": false
+      },
+      "BudgetThreshold": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["actual", "forecast"]
+          },
+          "percent": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000
+          }
+        },
+        "required": ["type", "percent"],
+        "additionalProperties": false
+      },
+      "BudgetWithStatus": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "name": {
+            "type": "string"
+          },
+          "amountCents": {
+            "type": "integer"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "filters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BudgetCostFilter"
+            }
+          },
+          "thresholds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BudgetThreshold"
+            }
+          },
+          "month": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}$",
+            "example": "2026-07"
+          },
+          "actualCents": {
+            "type": "integer"
+          },
+          "forecastCents": {
+            "type": ["integer", "null"]
+          },
+          "currentMonthEvents": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid",
+                  "example": "00000000-0000-0000-0000-000000000000"
+                },
+                "thresholdType": {
+                  "type": "string",
+                  "enum": ["actual", "forecast"]
+                },
+                "thresholdPercent": {
+                  "type": "integer"
+                },
+                "triggeredAt": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              },
+              "required": ["id", "thresholdType", "thresholdPercent", "triggeredAt"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "amountCents",
+          "currency",
+          "filters",
+          "thresholds",
+          "month",
+          "actualCents",
+          "forecastCents",
+          "currentMonthEvents"
+        ],
+        "additionalProperties": false
+      },
+      "BudgetFull": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "organizationId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "name": {
+            "type": "string"
+          },
+          "amountCents": {
+            "type": "integer"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "filters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BudgetCostFilter"
+            }
+          },
+          "thresholds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BudgetThreshold"
+            }
+          },
+          "createdByUserId": {
+            "type": ["string", "null"]
+          },
+          "deletedAt": {
+            "type": ["string", "null"],
+            "format": "date-time"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "organizationId",
+          "name",
+          "amountCents",
+          "currency",
+          "filters",
+          "thresholds",
+          "createdByUserId",
+          "deletedAt",
+          "createdAt",
+          "updatedAt"
+        ],
+        "additionalProperties": false
+      },
+      "BudgetInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "amountCents": {
+            "type": "integer",
+            "exclusiveMinimum": 0
+          },
+          "currency": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 3
+          },
+          "filters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BudgetCostFilter"
+            }
+          },
+          "thresholds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BudgetThreshold"
+            },
+            "minItems": 1,
+            "maxItems": 10
+          }
+        },
+        "required": ["name", "amountCents", "thresholds"],
+        "additionalProperties": false
+      },
+      "BudgetAlertEvent": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
+          },
+          "month": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}$",
+            "example": "2026-07"
+          },
+          "thresholdType": {
+            "type": "string",
+            "enum": ["actual", "forecast"]
+          },
+          "thresholdPercent": {
+            "type": "integer"
+          },
+          "actualAmountCents": {
+            "type": "integer"
+          },
+          "forecastAmountCents": {
+            "type": ["integer", "null"]
+          },
+          "triggeredAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "month",
+          "thresholdType",
+          "thresholdPercent",
+          "actualAmountCents",
+          "forecastAmountCents",
+          "triggeredAt"
+        ],
         "additionalProperties": false
       },
       "ResourceStatus": {
@@ -3903,6 +4608,9 @@
           "storage:write",
           "dashboards:read",
           "dashboards:write",
+          "costs:read",
+          "budgets:read",
+          "budgets:write",
           "audit:read",
           "team:read",
           "team:invite",
@@ -5934,6 +6642,190 @@
         "description": "_Requires permission: `dashboards:write`._"
       }
     },
+    "/api/org/{orgId}/dashboards/widgets": {
+      "post": {
+        "tags": ["Dashboards"],
+        "summary": "Add a cost-graph or budget widget to a dashboard",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateWidgetRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardWidgetFull"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdDashboardsWidgets"
+      }
+    },
+    "/api/org/{orgId}/dashboards/widgets/{widgetId}": {
+      "patch": {
+        "tags": ["Dashboards"],
+        "summary": "Update a widget's title, config, or layout",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "widgetId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateWidgetRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardWidgetFull"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "patchOrgOrgIdDashboardsWidgetsWidgetId"
+      },
+      "delete": {
+        "tags": ["Dashboards"],
+        "summary": "Remove a widget from a dashboard",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "widgetId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdDashboardsWidgetsWidgetId"
+      }
+    },
     "/api/org/{orgId}/dashboards/pin": {
       "post": {
         "tags": ["Dashboards"],
@@ -6432,6 +7324,474 @@
         "operationId": "postOrgOrgIdDashboardsProbe",
         "x-required-permission": "dashboards:read",
         "description": "_Requires permission: `dashboards:read`._"
+      }
+    },
+    "/api/org/{orgId}/costs/query": {
+      "post": {
+        "tags": ["Costs"],
+        "summary": "Query aggregated cost series",
+        "description": "Aggregates collected provider spend into per-bucket, per-group series for cost graphs. Currencies are never merged; mixed-currency orgs get one series per currency. Optionally returns a previous-period comparison and a trend forecast.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CostQueryRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Cost series",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostQueryResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdCostsQuery"
+      }
+    },
+    "/api/org/{orgId}/costs/dimensions": {
+      "get": {
+        "tags": ["Costs"],
+        "summary": "List distinct values for a cost dimension",
+        "description": "Feeds the filter and group-by pickers. Pass dimension=tag-keys for tag keys; dimension=tag requires tagKey.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": ["provider", "account", "service", "region", "resource", "tag", "tag-keys"]
+            },
+            "required": true,
+            "name": "dimension",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "tagKey",
+            "in": "query"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Values",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CostDimensionValues"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCostsDimensions"
+      }
+    },
+    "/api/org/{orgId}/costs/status": {
+      "get": {
+        "tags": ["Costs"],
+        "summary": "Per-account cost collection status",
+        "description": "Which accounts support cost collection, whether their history backfill has completed, and the ingested date coverage.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "accounts": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/CostAccountStatus"
+                      }
+                    }
+                  },
+                  "required": ["accounts"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdCostsStatus"
+      }
+    },
+    "/api/org/{orgId}/budgets": {
+      "get": {
+        "tags": ["Budgets"],
+        "summary": "List budgets with current-month actuals and forecasts",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Budgets",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BudgetWithStatus"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdBudgets"
+      },
+      "post": {
+        "tags": ["Budgets"],
+        "summary": "Create a budget",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BudgetInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BudgetFull"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdBudgets"
+      }
+    },
+    "/api/org/{orgId}/budgets/{id}": {
+      "get": {
+        "tags": ["Budgets"],
+        "summary": "Get a budget with current-month status",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Budget",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BudgetFull"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdBudgetsId"
+      },
+      "put": {
+        "tags": ["Budgets"],
+        "summary": "Update a budget",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BudgetInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BudgetFull"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdBudgetsId"
+      },
+      "delete": {
+        "tags": ["Budgets"],
+        "summary": "Delete a budget",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ok"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deleteOrgOrgIdBudgetsId"
+      }
+    },
+    "/api/org/{orgId}/budgets/{id}/events": {
+      "get": {
+        "tags": ["Budgets"],
+        "summary": "Alert event history for a budget",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Events",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BudgetAlertEvent"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdBudgetsIdEvents"
       }
     },
     "/api/org/{orgId}/resources/{pluginId}/{typeId}/detail": {

@@ -16,6 +16,8 @@ import type {
   SizeOption,
   ImageOption,
   HostServices,
+  CostFetchRange,
+  CostRow,
 } from "@infrawrench/plugin-base";
 import {
   streamOpenAiSseChat,
@@ -68,6 +70,7 @@ import {
   renderDomainDetail,
   renderDnsRecordDetail,
 } from "./detail-renderers.js";
+import { fetchDoCostData } from "./cost-data.js";
 
 /**
  * DO's managed-database `connection.uri` doesn't always carry the credentials
@@ -1234,6 +1237,10 @@ export class DigitalOceanClient implements PluginClient {
       fetch: this.fetch.bind(this),
       credentials: this.credentials,
     };
+  }
+
+  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
+    return fetchDoCostData({ fetch: this.fetch.bind(this) }, range);
   }
 
   async getCreateConfig(typeId: string, parentResourceId?: string): Promise<CreateResourceConfig> {

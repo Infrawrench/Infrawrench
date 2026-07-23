@@ -8,6 +8,8 @@ import type {
   ImageOption,
   ResourceStatus,
   ResourceTypeDefinition,
+  CostFetchRange,
+  CostRow,
   DashboardStat,
   MetricSeries,
   HostServices,
@@ -25,6 +27,7 @@ import {
   uploadS3Object,
 } from "@infrawrench/plugin-base";
 import type { S3StorageConfig, StorageObject } from "@infrawrench/plugin-base";
+import { fetchScalewayCostData } from "./cost-data.js";
 import type { Client, Region, Zone } from "@scaleway/sdk-client";
 import {
   createAdvancedClient,
@@ -733,6 +736,17 @@ export class ScalewayClient implements PluginClient {
       default:
         return [];
     }
+  }
+
+  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
+    return fetchScalewayCostData(
+      {
+        secretKey: this.secretKey,
+        projectId: this.defaultProjectId,
+        ...(this.services?.http ? { http: this.services.http } : {}),
+      },
+      range,
+    );
   }
 
   /**

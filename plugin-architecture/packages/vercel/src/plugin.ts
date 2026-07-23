@@ -36,6 +36,11 @@ const manifest: PluginManifest = {
     },
     caCertCredentialField,
   ],
+  // FOCUS billing charges (`/v1/billing/charges`), aggregated per day by
+  // ServiceName + RegionId + project (surfaced as the `project` tag). Daily
+  // granularity, ≤1-year window per request; works with the same access
+  // token given a billing-capable team role.
+  costs: { dimensions: ["service", "region", "tag"], maxHistoryDays: 365, restatementDays: 3 },
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [

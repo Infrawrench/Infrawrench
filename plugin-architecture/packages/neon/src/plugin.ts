@@ -37,6 +37,10 @@ const manifest: PluginManifest = {
       placeholder: "neon_...",
     },
   ],
+  // Usage units from the consumption-history API converted to dollars with
+  // Neon's published rates (estimate — plan allowances/discounts not
+  // modeled). Daily granularity; Neon keeps 60 days of daily history.
+  costs: { dimensions: ["service", "resource"], maxHistoryDays: 60 },
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [

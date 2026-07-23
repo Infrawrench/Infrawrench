@@ -6,8 +6,11 @@ import type {
   SidebarItemSchema,
   CreateResourceConfig,
   DashboardStat,
+  CostFetchRange,
+  CostRow,
 } from "@infrawrench/plugin-base";
 import { jsonRestFetch } from "@infrawrench/plugin-base";
+import { fetchTursoCostData } from "./cost-data.js";
 import { createClient as createTursoApiClient } from "@tursodatabase/api";
 import type {
   ApiToken,
@@ -425,6 +428,10 @@ export class TursoClient implements PluginClient {
       return;
     }
     throw new Error(`Turso plugin: cannot delete type "${typeId}"`);
+  }
+
+  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
+    return fetchTursoCostData(<T>(path: string) => this.fetch<T>(path), this.orgName, range);
   }
 
   async invalidateDatabaseAuthTokens(resourceId: string): Promise<void> {

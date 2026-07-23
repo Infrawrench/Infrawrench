@@ -95,6 +95,17 @@ export const accounts = pgTable(
     lastPolledAt: timestamp("last_polled_at"),
     nextPollAt: timestamp("next_poll_at"),
     pollFailureCount: integer("poll_failure_count").notNull().default(0),
+    /**
+     * Cost-collection schedule — parallel to the resource-poll columns but on
+     * a ~daily cadence (provider billing APIs are rate-limited and sometimes
+     * billed per request). Only meaningful for accounts whose plugin declares
+     * a `costs` capability; NULL costNextPollAt means "due now".
+     */
+    costLastPolledAt: timestamp("cost_last_polled_at"),
+    costNextPollAt: timestamp("cost_next_poll_at"),
+    costPollFailureCount: integer("cost_poll_failure_count").notNull().default(0),
+    /** Set once the initial cost-history backfill completes. */
+    costBackfilledAt: timestamp("cost_backfilled_at"),
     deletedAt: timestamp("deleted_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -102,6 +113,7 @@ export const accounts = pgTable(
   (t) => ({
     orgPluginIdx: index("accounts_org_plugin_idx").on(t.organizationId, t.pluginId),
     pollDueIdx: index("accounts_poll_due_idx").on(t.nextPollAt),
+    costPollDueIdx: index("accounts_cost_poll_due_idx").on(t.costNextPollAt),
     bastionIdx: index("accounts_bastion_idx").on(t.bastionId),
   }),
 );

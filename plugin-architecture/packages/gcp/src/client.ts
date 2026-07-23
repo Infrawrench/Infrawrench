@@ -21,6 +21,8 @@ import type {
   ChatStreamEvent,
   PublishMessagePayload,
   PublishMessageResult,
+  CostFetchRange,
+  CostRow,
 } from "@infrawrench/plugin-base";
 import type { HostServices } from "@infrawrench/plugin-base";
 import { streamOpenAiSseChat } from "@infrawrench/plugin-base";
@@ -67,6 +69,7 @@ import {
 import type { CloudArmorContext } from "./cloud-armor-handlers.js";
 import { executeCloudArmorCommand } from "./cloud-armor-handlers.js";
 import { publishPubsubTopic, publishCloudTasksQueue } from "./publish-handlers.js";
+import { fetchGcpCostData } from "./cost-data.js";
 
 import type { GcpClientContext } from "./shared.js";
 import { deleteResource as runDeleteResource } from "./delete-client.js";
@@ -109,6 +112,8 @@ const VERTEX_DEFAULT_LOCATION = "us-central1";
 export class GcpClient implements PluginClient {
   private readonly key: ServiceAccountKey;
   private readonly project: string;
+  /** Cloud Billing BigQuery export table (`project.dataset.table`), "" when unset. */
+  private readonly billingExportTable: string;
   private readonly resourceTypes: ResourceTypeDefinition[];
   private readonly hostServices: HostServices | undefined;
   private machineTypeFamilyRateCache = new Map<string, PricingCacheEntry>();
@@ -128,6 +133,7 @@ export class GcpClient implements PluginClient {
     this.key = serviceAccountKeySchema.parse(JSON.parse(raw));
     this.project = credentials["project"]?.trim() || this.key.project_id;
     if (!this.project) throw new Error("GCP plugin: could not determine project ID");
+    this.billingExportTable = credentials["billingExportTable"]?.trim() ?? "";
   }
 
   private token(): Promise<string> {
@@ -880,6 +886,17 @@ export class GcpClient implements PluginClient {
     timeRange?: { startMs: number; endMs: number },
   ): Promise<MetricSeries[]> {
     return runFetchMetricSeries(this.sharedCtx, resourceTypeId, resourceId, accountId, timeRange);
+  }
+
+  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
+    return fetchGcpCostData(
+      {
+        project: this.project,
+        token: () => this.token(),
+        billingExportTable: this.billingExportTable,
+      },
+      range,
+    );
   }
 
   async getLogs(

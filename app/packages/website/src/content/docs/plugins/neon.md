@@ -124,3 +124,10 @@ them** — so infrawrench doesn't show a user list. Manage users from the Neon c
 - Branches take a few seconds to provision; the sidebar refreshes on the next tick.
 - Object storage, functions, and AI gateway are branch-scoped: the same bucket name can exist
   on two branches independently.
+
+## Cost graphs
+
+Neon organizations feed [cost graphs & budgets](../features/cloud-costs.md) from the consumption-history API — daily usage per project (compute, storage, network, branches) converted to dollars using Neon's published per-plan rates.
+
+- Works on paid plans (the consumption API is not available on Free); an org-scoped API key covers all projects.
+- Figures are **estimates**: infrawrench multiplies metered units by list rates and does not subtract plan-included allowances. History is limited to Neon's 60-day daily retention.

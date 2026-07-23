@@ -33,3 +33,10 @@ Scaleway Console → **Identity and Access Management → API keys → Generate 
 
 - Resources are scoped to a Project; pick the default at account add-time.
 - Kapsule kubeconfigs can be exported to the [Kubernetes plugin](./kubernetes.md) via output reference.
+
+## Cost graphs
+
+Scaleway projects feed [cost graphs & budgets](../features/cloud-costs.md) from the Billing consumption API — monthly billing periods broken down by product, resource, and project.
+
+- The API key's IAM principal needs the **BillingReadOnly** permission set.
+- Collection is scoped to the account's configured default project, so org-level discounts (only visible unscoped) are not captured.

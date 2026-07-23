@@ -3,13 +3,21 @@ import { CronExpressionParser } from "cron-parser";
 import { db } from "@infrawrench/server-core/db/client";
 import { workflows } from "@infrawrench/server-core/db/schema";
 import { runOrgWorkflow } from "@infrawrench/server-core/workflows/runner";
+import { loadPlugins } from "@infrawrench/server-core/plugin-loader";
 import { pollAccount, type PollAccountRow } from "./poll-account";
-import { claimDueAccounts, claimDueWorkflows, type DueWorkflowRow } from "./claim";
+import { pollAccountCosts } from "./cost-poll";
+import {
+  claimDueAccounts,
+  claimDueCostAccounts,
+  claimDueWorkflows,
+  type DueWorkflowRow,
+} from "./claim";
 import { TokenBucketRegistry } from "./token-bucket";
 
 export const DEFAULT_TICK_MS = 15_000;
 export const DEFAULT_CONCURRENCY = 8;
 const WORKFLOW_LIMIT = 8;
+const COST_LIMIT = 2;
 
 /** A workflow's `trigger` jsonb, narrowed to the cron fields we read. */
 interface CronTrigger {
@@ -54,6 +62,8 @@ export class PollerLoop {
   private running = false;
   private readonly tickMs: number;
   private readonly concurrency: number;
+  /** Plugin IDs whose manifest declares a `costs` capability; resolved lazily on first tick. */
+  private costCapablePluginIds: string[] | null = null;
 
   constructor(options: LoopOptions = {}) {
     this.tickMs = options.tickMs ?? DEFAULT_TICK_MS;
@@ -98,6 +108,10 @@ export class PollerLoop {
       // Second pass: due cron workflows. Kept separate and defensive so a bad
       // workflow never affects account polling.
       await this.tickWorkflows();
+
+      // Third pass: cost collection (daily cadence per account). Also
+      // defensive — billing-API problems never affect resource polling.
+      await this.tickCosts();
     } catch (e) {
       console.error("[poller] tick failed:", e);
     } finally {
@@ -124,6 +138,23 @@ export class PollerLoop {
       await Promise.allSettled(claimed.map((row) => this.runWorkflowOnce(row)));
     } catch (e) {
       console.error("[poller] workflow tick failed:", e);
+    }
+  }
+
+  /** Claim accounts due for cost collection and run them. */
+  private async tickCosts(): Promise<void> {
+    try {
+      if (!this.costCapablePluginIds) {
+        const loaded = await loadPlugins();
+        this.costCapablePluginIds = loaded
+          .filter((l) => l.plugin.manifest.costs)
+          .map((l) => l.plugin.manifest.id);
+      }
+      const claimed = await claimDueCostAccounts(COST_LIMIT, this.costCapablePluginIds);
+      if (claimed.length === 0) return;
+      await Promise.allSettled(claimed.map((row) => pollAccountCosts(row)));
+    } catch (e) {
+      console.error("[poller] cost tick failed:", e);
     }
   }
 

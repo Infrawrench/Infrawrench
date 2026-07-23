@@ -36,6 +36,12 @@ Only **pinned** resources accumulate history. Unpin a resource and its history s
 
 <insert [Resource Metrics tab with a 7-day range selector showing CPU/memory series] here>
 
+## Cost graphs and budgets
+
+The **+** tile on a dashboard is a menu: pin a resource, or add a **Cost graph** or **Budget** widget (cloud orgs only). Cost widgets chart the actual spend of your connected accounts and track monthly budgets with alerts — see [Cost graphs & budgets](./cloud-costs.md).
+
+<insert [Dashboard "+" tile menu open showing Pin a resource, Cost graph, and Budget entries] here>
+
 ## Multiple dashboards
 
 You can create additional dashboards from **Dashboards → New**. Useful for splitting by environment (prod, staging) or by responsibility (mine vs team).

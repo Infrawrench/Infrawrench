@@ -132,3 +132,10 @@ The token needs the **Account Analytics:Read** permission for account-scoped dat
 - Cloudflare’s API returns paginated lists; very large zones (1000s of records) load in chunks.
 - Tokens can be scoped to specific zones. If you only see some zones, check the token scope.
 - GraphQL Analytics datasets retain the last 31 days of data; older ranges return no points.
+
+## Cost graphs
+
+Cloudflare accounts feed [cost graphs & budgets](../features/cloud-costs.md) via the PayGo billable-usage API — per-product costs (with zone attribution as the `zone` tag) on billing-period boundaries.
+
+- The API is **v1 alpha**: it may not be enabled for every account yet, and its shape can change. If it is unavailable for your account the cost card shows a clear error and collection backs off.
+- Amounts are contracted costs per billing period, so daily-binned graphs show them as period steps.

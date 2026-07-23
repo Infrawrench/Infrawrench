@@ -1,4 +1,5 @@
 import type { Dashboard } from "@infrawrench/ui";
+import type { DashboardWidget } from "@infrawrench/ui/cost";
 import type { ProbeStatus } from "@infrawrench/plugin-base";
 import { invoke } from "./invoke";
 
@@ -14,6 +15,7 @@ interface CloudDashboardPin {
 interface CloudDashboardFull {
   dashboard: Dashboard & { organizationId: string; createdAt?: string };
   pins: CloudDashboardPin[];
+  widgets?: DashboardWidget[];
 }
 
 export interface CloudProbeItem {

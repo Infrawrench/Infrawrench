@@ -21,6 +21,8 @@ import { orgManagementRoutes } from "./routes/orgs";
 import { invitationAcceptRoutes } from "./routes/invitation-accept";
 
 import { dashboardRoutes } from "./routes/dashboards";
+import { costRoutes } from "./routes/costs";
+import { budgetRoutes } from "./routes/budgets";
 import { accountRoutes } from "./routes/accounts";
 import { apiKeyRoutes } from "./routes/api-keys";
 import { teamRoutes } from "./routes/team";
@@ -121,6 +123,8 @@ orgScoped.use("*", orgMiddleware);
 orgScoped.use("*", permissionsMiddleware);
 
 orgScoped.route("/dashboards", dashboardRoutes);
+orgScoped.route("/costs", costRoutes);
+orgScoped.route("/budgets", budgetRoutes);
 orgScoped.route("/workflows", workflowRoutes);
 orgScoped.route("/agents", agentRoutes);
 orgScoped.route("/github", githubRoutes);

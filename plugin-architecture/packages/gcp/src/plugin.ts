@@ -84,8 +84,31 @@ const manifest: PluginManifest = {
       sensitive: false,
       placeholder: "my-gcp-project",
     },
+    {
+      key: "billingExportTable",
+      label: "Billing export table",
+      description:
+        'BigQuery table of the Cloud Billing "standard usage cost" export, in project.dataset.table form. ' +
+        "Used for actual-spend reporting; leave blank to skip cost collection. The service account needs " +
+        "BigQuery Data Viewer on the export dataset and BigQuery Job User on the project.",
+      sensitive: false,
+      optional: true,
+      placeholder: "my-project.billing_export.gcp_billing_export_v1_012345_ABCDEF_678901",
+      helpLink: {
+        label: "Set up Cloud Billing export to BigQuery",
+        url: "https://cloud.google.com/billing/docs/how-to/export-data-bigquery",
+      },
+    },
   ],
   rateLimit: { capacity: 100, refillPerSecond: 5 },
+  // Static declaration — costs are advertised unconditionally; fetchCostData
+  // throws a user-actionable error when billingExportTable isn't configured,
+  // which the host surfaces and backs off on.
+  costs: {
+    dimensions: ["service", "region", "resource", "tag"],
+    maxHistoryDays: 365,
+    restatementDays: 5,
+  },
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [

@@ -1,5 +1,5 @@
 import { useNavigate } from "@tanstack/react-router";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   DroppableDashboardArea,
   SortableDashboardCard,
@@ -14,7 +14,23 @@ import {
 } from "@infrawrench/ui";
 import type { ProbeStatus } from "@infrawrench/plugin-base";
 import { WorkflowDashboardCard, type WorkflowDashboardCardData } from "@infrawrench/ui/workflows";
-import { apiGet, apiPost, apiDelete } from "@/lib/api";
+import {
+  BudgetCard,
+  BudgetConfigModal,
+  CostGraphCard,
+  CostGraphConfigModal,
+  DEFAULT_BUDGET_INPUT,
+  DEFAULT_COST_GRAPH_CONFIG,
+  type BudgetInput,
+  type BudgetWithStatus,
+  type CostApi,
+  type CostDimensionOption,
+  type CostGraphConfig,
+  type CostQueryRequest,
+  type CostQueryResponse,
+  type DashboardWidget,
+} from "@infrawrench/ui/cost";
+import { apiGet, apiPost, apiDelete, apiPatch, apiPut } from "@/lib/api";
 import { useOrgId } from "@/lib/useOrgId";
 import { SpotlightSearch } from "./SpotlightSearch";
 
@@ -61,6 +77,7 @@ interface DashboardViewProps {
   isHome?: boolean | undefined;
   pins: PinnedResource[];
   workflowPins?: WorkflowPin[] | undefined;
+  widgets?: DashboardWidget[] | undefined;
 }
 
 export function DashboardView({
@@ -69,12 +86,18 @@ export function DashboardView({
   isHome = false,
   pins: initialPins,
   workflowPins: initialWorkflowPins,
+  widgets: initialWidgets,
 }: DashboardViewProps) {
   const navigate = useNavigate();
   const orgId = useOrgId();
   const [pins, setPins] = useState(initialPins);
   const [workflowPins, setWorkflowPins] = useState<WorkflowPin[]>(initialWorkflowPins ?? []);
+  const [widgets, setWidgets] = useState<DashboardWidget[]>(initialWidgets ?? []);
   const [spotlightMode, setSpotlightMode] = useState<"pin" | "navigate" | null>(null);
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [costModal, setCostModal] = useState<{ widget: DashboardWidget | null } | null>(null);
+  const [budgetModal, setBudgetModal] = useState<{ widget: DashboardWidget | null } | null>(null);
+  const [budgets, setBudgets] = useState<Map<string, BudgetWithStatus>>(new Map());
   const [dashboardName, setDashboardName] = useState(initialName);
   const [editingName, setEditingName] = useState(false);
 
@@ -87,6 +110,90 @@ export function DashboardView({
   useEffect(() => {
     setWorkflowPins(initialWorkflowPins ?? []);
   }, [initialWorkflowPins]);
+
+  useEffect(() => {
+    setWidgets(initialWidgets ?? []);
+  }, [initialWidgets]);
+
+  const costApi: CostApi = useMemo(
+    () => ({
+      queryCosts: (req: CostQueryRequest) =>
+        apiPost<CostQueryResponse>(`/api/org/${orgId}/costs/query`, req),
+      loadDimensionValues: async (dimension: string, tagKey?: string) => {
+        const params = new URLSearchParams({ dimension });
+        if (tagKey) params.set("tagKey", tagKey);
+        const res = await apiGet<{ values: Array<string | CostDimensionOption> }>(
+          `/api/org/${orgId}/costs/dimensions?${params}`,
+        );
+        return res.values.map((v) => (typeof v === "string" ? { value: v, label: v } : v));
+      },
+    }),
+    [orgId],
+  );
+
+  const refetchBudgets = useCallback(async () => {
+    try {
+      const rows = await apiGet<BudgetWithStatus[]>(`/api/org/${orgId}/budgets`);
+      setBudgets(new Map(rows.map((b) => [b.id, b])));
+    } catch {
+      /* budget cards show their own empty state */
+    }
+  }, [orgId]);
+
+  const hasBudgetWidgets = widgets.some((w) => w.kind === "budget");
+  useEffect(() => {
+    if (hasBudgetWidgets) void refetchBudgets();
+  }, [hasBudgetWidgets, refetchBudgets]);
+
+  async function handleRemoveWidget(widgetId: string) {
+    try {
+      await apiDelete(`/api/org/${orgId}/dashboards/widgets/${widgetId}`);
+      setWidgets((prev) => prev.filter((w) => w.id !== widgetId));
+    } catch (e) {
+      toast.error("Couldn't remove widget", {
+        description: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+
+  async function saveCostWidget(
+    widget: DashboardWidget | null,
+    title: string,
+    config: CostGraphConfig,
+  ) {
+    if (widget) {
+      const updated = await apiPatch<DashboardWidget>(
+        `/api/org/${orgId}/dashboards/widgets/${widget.id}`,
+        { title, config },
+      );
+      setWidgets((prev) => prev.map((w) => (w.id === widget.id ? { ...w, ...updated } : w)));
+    } else {
+      const created = await apiPost<DashboardWidget>(`/api/org/${orgId}/dashboards/widgets`, {
+        dashboardId,
+        kind: "cost_graph",
+        title,
+        config,
+      });
+      setWidgets((prev) => [...prev, created]);
+    }
+  }
+
+  async function saveBudgetWidget(widget: DashboardWidget | null, input: BudgetInput) {
+    if (widget) {
+      const budgetId = (widget.config as { budgetId: string }).budgetId;
+      await apiPut(`/api/org/${orgId}/budgets/${budgetId}`, input);
+    } else {
+      const budget = await apiPost<{ id: string }>(`/api/org/${orgId}/budgets`, input);
+      const created = await apiPost<DashboardWidget>(`/api/org/${orgId}/dashboards/widgets`, {
+        dashboardId,
+        kind: "budget",
+        title: input.name,
+        config: { version: 1, budgetId: budget.id },
+      });
+      setWidgets((prev) => [...prev, created]);
+    }
+    await refetchBudgets();
+  }
 
   const refetchWorkflowPins = useCallback(async () => {
     try {
@@ -249,16 +356,35 @@ export function DashboardView({
       {/* Content */}
       <div className="flex-1 overflow-auto px-8 py-6">
         <DroppableDashboardArea dashboardId={dashboardId}>
-          {pins.length === 0 && workflowPins.length === 0 ? (
-            <button
-              type="button"
-              onClick={() => setSpotlightMode("pin")}
-              className="w-full flex flex-col items-center justify-center h-64 rounded-2xl border-2 border-dashed border-border text-on-surface-faint hover:border-border-strong hover:text-on-surface-muted transition-colors"
-            >
-              <span className="text-3xl mb-3">&#8862;</span>
-              <p className="text-sm">Click to add a resource</p>
-              <p className="text-xs mt-1 opacity-60">or drag a resource or workflow here</p>
-            </button>
+          {pins.length === 0 && workflowPins.length === 0 && widgets.length === 0 ? (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setAddMenuOpen((v) => !v)}
+                className="w-full flex flex-col items-center justify-center h-64 rounded-2xl border-2 border-dashed border-border text-on-surface-faint hover:border-border-strong hover:text-on-surface-muted transition-colors"
+              >
+                <span className="text-3xl mb-3">&#8862;</span>
+                <p className="text-sm">Click to add to this dashboard</p>
+                <p className="text-xs mt-1 opacity-60">or drag a resource or workflow here</p>
+              </button>
+              {addMenuOpen && (
+                <AddMenu
+                  onPickResource={() => {
+                    setAddMenuOpen(false);
+                    setSpotlightMode("pin");
+                  }}
+                  onPickCostGraph={() => {
+                    setAddMenuOpen(false);
+                    setCostModal({ widget: null });
+                  }}
+                  onPickBudget={() => {
+                    setAddMenuOpen(false);
+                    setBudgetModal({ widget: null });
+                  }}
+                  onClose={() => setAddMenuOpen(false)}
+                />
+              )}
+            </div>
           ) : (
             <SortableContext
               items={pins.map((p) => `dashboard-card:${p.resourceId}`)}
@@ -299,14 +425,65 @@ export function DashboardView({
                   />
                 ))}
 
-                <button
-                  type="button"
-                  onClick={() => setSpotlightMode("pin")}
-                  className="rounded-2xl border-2 border-dashed border-border text-on-surface-faint hover:border-border-strong hover:text-on-surface-muted flex flex-col items-center justify-center gap-1.5 transition-colors min-h-[140px]"
-                >
-                  <span className="text-2xl">+</span>
-                  <span className="text-xs">Add resource</span>
-                </button>
+                {widgets.map((widget) =>
+                  widget.kind === "cost_graph" ? (
+                    <CostGraphCard
+                      key={widget.id}
+                      title={widget.title}
+                      config={widget.config as CostGraphConfig}
+                      api={costApi}
+                      onEdit={() => setCostModal({ widget })}
+                      onRemove={() => void handleRemoveWidget(widget.id)}
+                    />
+                  ) : (
+                    (() => {
+                      const budget = budgets.get((widget.config as { budgetId: string }).budgetId);
+                      return budget ? (
+                        <BudgetCard
+                          key={widget.id}
+                          budget={budget}
+                          onEdit={() => setBudgetModal({ widget })}
+                          onRemove={() => void handleRemoveWidget(widget.id)}
+                        />
+                      ) : (
+                        <div
+                          key={widget.id}
+                          className="rounded-2xl border border-border bg-surface-raised flex items-center justify-center text-xs text-on-surface-faint min-h-[140px]"
+                        >
+                          Loading budget…
+                        </div>
+                      );
+                    })()
+                  ),
+                )}
+
+                <div className="relative min-h-[140px]">
+                  <button
+                    type="button"
+                    onClick={() => setAddMenuOpen((v) => !v)}
+                    className="w-full h-full rounded-2xl border-2 border-dashed border-border text-on-surface-faint hover:border-border-strong hover:text-on-surface-muted flex flex-col items-center justify-center gap-1.5 transition-colors"
+                  >
+                    <span className="text-2xl">+</span>
+                    <span className="text-xs">Add</span>
+                  </button>
+                  {addMenuOpen && (
+                    <AddMenu
+                      onPickResource={() => {
+                        setAddMenuOpen(false);
+                        setSpotlightMode("pin");
+                      }}
+                      onPickCostGraph={() => {
+                        setAddMenuOpen(false);
+                        setCostModal({ widget: null });
+                      }}
+                      onPickBudget={() => {
+                        setAddMenuOpen(false);
+                        setBudgetModal({ widget: null });
+                      }}
+                      onClose={() => setAddMenuOpen(false)}
+                    />
+                  )}
+                </div>
               </div>
             </SortableContext>
           )}
@@ -323,8 +500,88 @@ export function DashboardView({
             }}
           />
         )}
+
+        {costModal && (
+          <CostGraphConfigModal
+            initialConfig={
+              costModal.widget
+                ? (costModal.widget.config as CostGraphConfig)
+                : DEFAULT_COST_GRAPH_CONFIG
+            }
+            initialTitle={costModal.widget?.title ?? ""}
+            api={costApi}
+            onSave={(title, config) => saveCostWidget(costModal.widget, title, config)}
+            onClose={() => setCostModal(null)}
+          />
+        )}
+
+        {budgetModal && (
+          <BudgetConfigModal
+            initialInput={
+              budgetModal.widget
+                ? budgetToInput(
+                    budgets.get((budgetModal.widget.config as { budgetId: string }).budgetId),
+                  )
+                : DEFAULT_BUDGET_INPUT
+            }
+            api={costApi}
+            onSave={(input) => saveBudgetWidget(budgetModal.widget, input)}
+            onClose={() => setBudgetModal(null)}
+          />
+        )}
       </div>
     </div>
+  );
+}
+
+function budgetToInput(budget: BudgetWithStatus | undefined): BudgetInput {
+  if (!budget) return DEFAULT_BUDGET_INPUT;
+  return {
+    name: budget.name,
+    amountCents: budget.amountCents,
+    currency: budget.currency,
+    filters: budget.filters as BudgetInput["filters"],
+    thresholds: budget.thresholds,
+  };
+}
+
+function AddMenu({
+  onPickResource,
+  onPickCostGraph,
+  onPickBudget,
+  onClose,
+}: {
+  onPickResource: () => void;
+  onPickCostGraph: () => void;
+  onPickBudget: () => void;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const itemClass =
+    "w-full text-left px-3 py-2 text-sm text-on-surface-secondary hover:text-on-surface hover:bg-surface-sunken transition-colors flex items-center gap-2";
+
+  return (
+    <>
+      <div className="fixed inset-0 z-20" onClick={onClose} />
+      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-30 w-48 rounded-xl border border-border bg-surface-raised shadow-xl overflow-hidden py-1">
+        <button type="button" onClick={onPickResource} className={itemClass}>
+          <span className="text-on-surface-faint">▣</span> Pin a resource
+        </button>
+        <button type="button" onClick={onPickCostGraph} className={itemClass}>
+          <span className="text-on-surface-faint">▤</span> Cost graph
+        </button>
+        <button type="button" onClick={onPickBudget} className={itemClass}>
+          <span className="text-on-surface-faint">◔</span> Budget
+        </button>
+      </div>
+    </>
   );
 }
 

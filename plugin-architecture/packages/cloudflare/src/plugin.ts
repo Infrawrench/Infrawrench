@@ -108,6 +108,10 @@ const manifest: PluginManifest = {
     },
   ],
   rateLimit: { capacity: 80, refillPerSecond: 6 },
+  // PayGo billable-usage API — v1 ALPHA, restricted to select self-serve
+  // accounts; conservative history window while the endpoint can change.
+  // Charge periods follow the billing cycle, hence periodNative.
+  costs: { dimensions: ["service", "tag"], maxHistoryDays: 90, periodNative: true },
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [

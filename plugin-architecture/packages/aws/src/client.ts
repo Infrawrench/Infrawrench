@@ -9,6 +9,8 @@ import type {
   CreateResourceConfig,
   DashboardStat,
   MetricSeries,
+  CostFetchRange,
+  CostRow,
   CredentialExport,
   HostServices,
   ChatMessage,
@@ -109,6 +111,7 @@ import {
   fetchMetricSeries as fetchMetricSeriesImpl,
 } from "./dashboard-metrics.js";
 import { getCreateCostEstimate as getCreateCostEstimateImpl } from "./cost-estimate.js";
+import { fetchAwsCostData } from "./cost-data.js";
 import { attachResource as attachResourceImpl } from "./attach-handlers.js";
 import { resolveOutput as resolveOutputImpl } from "./resolve-output.js";
 import { deleteResource as deleteResourceImpl } from "./delete-handlers.js";
@@ -458,6 +461,10 @@ export class AWSClient implements PluginClient {
     const resource = await this.getResource(resourceTypeId, resourceId, accountId);
     const region = String(resource.fields["region"] ?? this.creds.region);
     return fetchMetricSeriesImpl(this.credsFor(region), resource, resourceTypeId, timeRange);
+  }
+
+  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
+    return fetchAwsCostData(this.creds, range);
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {

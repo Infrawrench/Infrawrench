@@ -15,6 +15,8 @@ import type {
   KvListResult,
   PublishMessagePayload,
   PublishMessageResult,
+  CostFetchRange,
+  CostRow,
 } from "@infrawrench/plugin-base";
 import {
   streamOpenAiSseChat,
@@ -57,6 +59,7 @@ import {
   renderAiGatewayDetail,
 } from "./detail-renderers.js";
 import { CloudflareApi, withCloudflareErrors } from "./clients/shared.js";
+import { fetchCloudflareCostData } from "./cost-data.js";
 import { getCreateConfig as getCreateConfigImpl } from "./create-configs.js";
 import { fetchMetricSeries as fetchMetricSeriesImpl } from "./metric-series.js";
 import * as zoneApi from "./clients/zone-client.js";
@@ -1156,6 +1159,10 @@ export class CloudflareClient implements PluginClient {
     timeRange?: { startMs: number; endMs: number },
   ): Promise<MetricSeries[]> {
     return fetchMetricSeriesImpl(this.api, resourceTypeId, resourceId, _accountId, timeRange);
+  }
+
+  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
+    return fetchCloudflareCostData(this.api, range);
   }
 
   /**

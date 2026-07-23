@@ -24,6 +24,8 @@
  *   - shared.ts                    common types/constants
  */
 import type {
+  CostFetchRange,
+  CostRow,
   PluginClient,
   ResourceInstance,
   DetailViewSchema,
@@ -69,6 +71,7 @@ import { resolveAzureOutput } from "./output-resolver.js";
 import { buildAzureDashboardStats } from "./dashboard-stats.js";
 import { fetchAzureMetricSeries } from "./metrics.js";
 import { renderAzureDetail, renderAzureSidebarItem } from "./renderers.js";
+import { fetchAzureCostData } from "./cost-data.js";
 import { deleteAzureResource } from "./delete-handlers.js";
 import { attachAzureResource } from "./attach-handlers.js";
 import { applyAzureManifest, getAzureManifest } from "./manifest.js";
@@ -400,6 +403,10 @@ export class AzureClient implements PluginClient {
   ): Promise<MetricSeries[]> {
     const resource = await this.getResource(resourceTypeId, resourceId, accountId);
     return fetchAzureMetricSeries(this.httpCtx, resourceTypeId, resource, timeRange);
+  }
+
+  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
+    return fetchAzureCostData(this.httpCtx, range);
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {

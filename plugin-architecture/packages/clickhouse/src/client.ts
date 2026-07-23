@@ -1,5 +1,7 @@
 import { createClient, type ClickHouseClient as ClickHouseSdkClient } from "@clickhouse/client-web";
 import type {
+  CostFetchRange,
+  CostRow,
   PluginClient,
   ResourceInstance,
   DetailViewSchema,
@@ -12,6 +14,7 @@ import type {
 } from "@infrawrench/plugin-base";
 import type { ListerContext } from "./resource-listers.js";
 import { listServices, listDatabases } from "./resource-listers.js";
+import { fetchClickHouseCostData } from "./cost-data.js";
 
 const SQL_REQUEST_TIMEOUT_MS = 30_000;
 
@@ -229,6 +232,10 @@ export class ClickHouseClient implements PluginClient {
       throw new Error(`ClickHouse plugin: resource ${typeId}/${resourceId} not found`);
     }
     return found;
+  }
+
+  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
+    return fetchClickHouseCostData(this.ctx, range);
   }
 
   async resolveOutput(

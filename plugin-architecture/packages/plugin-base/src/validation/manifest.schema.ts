@@ -66,4 +66,12 @@ export const pluginManifestSchema = z.object({
       refillPerSecond: z.number().positive(),
     })
     .optional(),
+  costs: z
+    .object({
+      dimensions: z.array(z.enum(["service", "region", "resource", "tag"])),
+      maxHistoryDays: z.number().int().positive().optional(),
+      restatementDays: z.number().int().positive().optional(),
+      periodNative: z.boolean().optional(),
+    })
+    .optional(),
 });

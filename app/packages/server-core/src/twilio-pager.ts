@@ -236,6 +236,31 @@ async function fanOutPage(
   return { attempted: jobs.length, succeeded, failed: jobs.length - succeeded };
 }
 
+/**
+ * One-shot SMS page for budget alerts. Skips the poll-failure incident
+ * machinery — budget alerts dedupe upstream (once per budget/threshold/month
+ * via the budget_alert_events unique index) — but respects the org's Twilio
+ * enabled flag and recipient SMS opt-ins. Voice is intentionally not used for
+ * budgets. Returns true when at least one SMS was delivered to Twilio.
+ */
+export async function sendBudgetAlertPage(organizationId: string, body: string): Promise<boolean> {
+  try {
+    const settings = await loadSettings(organizationId);
+    if (!settings || !settings.enabled || !settings.creds) return false;
+    const recipients = (await loadRecipients(organizationId)).filter((r) => r.sms);
+    if (recipients.length === 0) return false;
+    const result = await fanOutPage(
+      settings.creds,
+      recipients.map((r) => ({ ...r, voice: false })),
+      truncate(body, 320),
+    );
+    return result.succeeded > 0;
+  } catch (err) {
+    console.error("[twilio-pager] budget alert page failed:", err);
+    return false;
+  }
+}
+
 export interface NotePollOutcomeArgs {
   organizationId: string;
   accountId: string;

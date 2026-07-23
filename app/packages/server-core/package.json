@@ -27,7 +27,12 @@
     "./clickhouse/client": "./src/clickhouse/client.ts",
     "./clickhouse/migrate": "./src/clickhouse/migrate.ts",
     "./clickhouse/readers": "./src/clickhouse/readers.ts",
-    "./clickhouse/writers": "./src/clickhouse/writers.ts"
+    "./clickhouse/writers": "./src/clickhouse/writers.ts",
+    "./clickhouse/cost-readers": "./src/clickhouse/cost-readers.ts",
+    "./clickhouse/cost-writers": "./src/clickhouse/cost-writers.ts",
+    "./cost/collect": "./src/cost/collect.ts",
+    "./cost/forecast": "./src/cost/forecast.ts",
+    "./cost/budget-eval": "./src/cost/budget-eval.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",

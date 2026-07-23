@@ -9,6 +9,8 @@ import type {
   DashboardStat,
   MetricSeries,
   StorageObject,
+  CostFetchRange,
+  CostRow,
 } from "@infrawrench/plugin-base";
 import {
   createApiClient,
@@ -25,6 +27,7 @@ import {
   NeonAuthOauthProviderId,
   NeonAuthSupportedAuthProvider,
 } from "@neondatabase/api-client";
+import { fetchNeonCostData } from "./cost-data.js";
 import { parseBranchExternalId, externalIdOf, type BranchRef } from "./services/common.js";
 import {
   listAllSnapshots,
@@ -368,6 +371,10 @@ export class NeonClient implements PluginClient {
     } catch {
       return [];
     }
+  }
+
+  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
+    return fetchNeonCostData(this.api, range);
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {

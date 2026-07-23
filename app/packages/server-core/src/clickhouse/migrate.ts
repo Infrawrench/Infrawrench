@@ -89,6 +89,34 @@ const STATEMENTS: string[] = [
   ORDER BY (organization_id, account_id, ts)
   TTL ts + INTERVAL 30 DAY`,
 
+  // Daily cost rows collected from provider billing APIs. ReplacingMergeTree
+  // keyed on the full dimension tuple: re-fetching a day (restatement window,
+  // backfill retry) writes newer ingested_at versions that supersede the old
+  // rows — readers query with FINAL. tags_hash is a writer-computed stable
+  // hash of the canonicalized tags map, included in the key because Map
+  // columns can't be key columns and rows differing only by tags must not
+  // collapse. NOTE: the ORDER BY is frozen once shipped (this file has no
+  // ALTER path).
+  `CREATE TABLE IF NOT EXISTS cost_daily (
+    organization_id String,
+    account_id      String,
+    plugin_id       LowCardinality(String),
+    day             Date,
+    service         LowCardinality(String),
+    region          LowCardinality(String),
+    resource_id     String,
+    tags            Map(LowCardinality(String), String),
+    tags_hash       UInt64,
+    currency        LowCardinality(String),
+    amount          Float64,
+    usage_amount    Float64,
+    usage_unit      LowCardinality(String),
+    ingested_at     DateTime DEFAULT now()
+  ) ENGINE = ReplacingMergeTree(ingested_at)
+  PARTITION BY toYYYYMM(day)
+  ORDER BY (organization_id, account_id, day, service, region, resource_id, tags_hash, currency)
+  TTL day + INTERVAL 3 YEAR`,
+
   `CREATE TABLE IF NOT EXISTS poll_outcomes (
     organization_id      String,
     account_id           String,

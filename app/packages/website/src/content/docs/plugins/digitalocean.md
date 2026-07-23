@@ -211,3 +211,10 @@ The connection string and CA certificate outputs flow the same way as the other 
 
 - Droplet creation needs at least one SSH key. Upload via **Settings → SSH keys** on DigitalOcean (not infrawrench) or use an existing key reference.
 - DOKS kubeconfigs rotate periodically. Infrawrench re-fetches on refresh.
+
+## Cost graphs
+
+DigitalOcean accounts feed [cost graphs & budgets](../features/cloud-costs.md) via the Billing Insights API — true daily costs broken down by product and region.
+
+- The API token needs the `billing:read` scope (plus `account:read`, which the plugin already uses).
+- DigitalOcean's daily figures are nightly invoice estimates and can drift slightly from month-end invoice totals; insights data exists from December 2025 onward.

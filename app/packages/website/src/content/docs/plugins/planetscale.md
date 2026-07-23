@@ -36,3 +36,9 @@ PlanetScale dashboard → **Settings → Service tokens → New service token**.
 
 - PlanetScale uses Vitess. Cross-shard joins and some DDL shapes are restricted. Raw errors are passed through.
 - Branch passwords are listed without exposing plaintext. A new plaintext password is only returned by PlanetScale at creation time, so connection-string generation still creates a dedicated password on demand.
+
+## Cost graphs
+
+PlanetScale organizations feed [cost graphs & budgets](../features/cloud-costs.md) from invoices and their line items — monthly billing periods with per-database and per-metric breakdowns (line items for the in-progress invoice refresh hourly).
+
+- The service token needs the `read_invoices` organization access grant.

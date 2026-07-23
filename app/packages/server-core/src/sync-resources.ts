@@ -35,7 +35,7 @@ function listableTopLevelTypes<T extends { parentTypeId?: string; showInSidebar?
  * Load the plugin + decrypted credentials for an account and build a ready-to-use client.
  * Callers are responsible for wrapping errors.
  */
-async function loadAccountClient(accountId: string, organizationId: string) {
+export async function loadAccountClient(accountId: string, organizationId: string) {
   const [account] = await db
     .select()
     .from(accounts)

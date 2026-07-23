@@ -5,9 +5,12 @@ import type {
   DetailViewSchema,
   SidebarItemSchema,
   CreateResourceConfig,
+  CostFetchRange,
+  CostRow,
   DashboardStat,
 } from "@infrawrench/plugin-base";
 import { jsonRestFetch } from "@infrawrench/plugin-base";
+import { fetchPlanetScaleCostData } from "./cost-data.js";
 
 // PlanetScale API response types
 interface PsRegion {
@@ -600,6 +603,12 @@ export class PlanetScaleClient implements PluginClient {
       { label: "Version", value: "PlanetScale" },
       { label: "Databases", value: String(databases.length) },
     ];
+  }
+
+  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
+    // Bind preserves the generic signature of the private fetch helper so the
+    // cost module reuses the token auth + optional CA/bastion routing.
+    return fetchPlanetScaleCostData(this.fetch.bind(this), this.orgName, range);
   }
 
   private async fetchDatabases(): Promise<PsDatabase[]> {

@@ -35,3 +35,9 @@ Turso dashboard → **Settings → API Tokens → Create Token**. You also need 
 
 - libsql SQL is SQLite-compatible; some Postgres idioms will not work.
 - Replicas are eventually consistent. A write committed to the primary can take a moment to appear on a far-away replica.
+
+## Cost graphs
+
+Turso organizations feed [cost graphs & budgets](../features/cloud-costs.md) from issued invoices — monthly org-level totals (Turso's API does not expose per-database dollar breakdowns), shown on invoice dates.
+
+- The existing platform API token is sufficient.

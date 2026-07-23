@@ -28,11 +28,11 @@ The `Settings → Roles` page lists the full catalogue grouped by category (Acco
 
 Every organization has three pre-seeded system roles. They cannot be edited or deleted.
 
-| Role   | Permissions                                                                  |
-| ------ | ---------------------------------------------------------------------------- |
-| Owner  | `*` — everything, including billing and deleting the organization.           |
-| Admin  | Everything except `billing:write` and `org:settings:write`.                  |
-| Member | Read everything; connect to resources (SSH/SQL/exec); manage own dashboards. |
+| Role   | Permissions                                                                                                                                                                                        |
+| ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Owner  | `*` — everything, including billing and deleting the organization.                                                                                                                                 |
+| Admin  | Everything except `billing:write` and `org:settings:write`.                                                                                                                                        |
+| Member | Read everything; connect to resources (SSH/SQL/exec); manage own dashboards; view cost graphs and budgets (`costs:read`, `budgets:read` — creating budgets needs `budgets:write`, held by Admin+). |
 
 System role permissions are computed in code, so upgrades extend them automatically when new permissions are added.
 

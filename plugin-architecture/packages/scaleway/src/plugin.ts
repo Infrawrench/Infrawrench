@@ -49,6 +49,17 @@ const manifest: PluginManifest = {
       sensitive: true,
     },
   ],
+  // Billing API v2beta1 monthly consumptions, broken down by product +
+  // resource + project. Scoped to the Default Project ID credential (the
+  // endpoint takes exactly one of project_id/organization_id and the plugin
+  // stores no organization ID). The IAM `BillingReadOnly` permission set is
+  // sufficient.
+  costs: {
+    dimensions: ["service", "resource", "tag"],
+    maxHistoryDays: 365,
+    restatementDays: 5,
+    periodNative: true,
+  },
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [

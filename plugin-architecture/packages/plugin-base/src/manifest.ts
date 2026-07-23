@@ -143,6 +143,12 @@ export interface PluginManifest {
    * paths use when fanning out listResources calls. Missing → default bucket.
    */
   rateLimit?: RateLimitDeclaration;
+  /**
+   * If present, this plugin can report actual spend for an account via
+   * `fetchCostData`, and the host schedules a low-frequency cost collection
+   * pass for its accounts.
+   */
+  costs?: CostCapabilityDeclaration;
 }
 
 export interface RateLimitDeclaration {
@@ -341,6 +347,15 @@ export interface PluginClient {
     accountId: string,
     timeRange?: { startMs: number; endMs: number },
   ): Promise<MetricSeries[]>;
+  /**
+   * Fetch normalized daily cost rows for an account over an inclusive date
+   * range. Only called when the manifest declares `costs`. The host invokes
+   * this from a low-frequency background pass (roughly daily, plus an initial
+   * history backfill in month-sized chunks) — implementations should stay
+   * within the provider's billing-API budget and go through `services.http`
+   * so bastion routing and custom CAs keep working.
+   */
+  fetchCostData?(accountId: string, range: CostFetchRange): Promise<CostRow[]>;
   /** List objects in a storage bucket at a given prefix (delimiter="/") */
   listStorageObjects?(bucket: string, prefix: string): Promise<StorageObject[]>;
   /** Upload a file to the given key within a bucket */
@@ -761,6 +776,7 @@ export interface Plugin {
 }
 
 // Forward declarations — defined in their own modules but used here
+import type { CostCapabilityDeclaration, CostFetchRange, CostRow } from "./cost.js";
 import type { ResourceCreateReturn, ResourceInstance } from "./instance.js";
 import type {
   ArtifactEntry,

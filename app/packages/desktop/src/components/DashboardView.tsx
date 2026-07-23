@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { SpotlightSearch } from "./SpotlightSearch";
 import { invoke } from "../lib/invoke";
@@ -39,8 +39,29 @@ import {
   reorderCloudPins,
   renameCloudDashboard,
   deleteCloudDashboard,
+  queryCloudCosts,
+  loadCloudCostDimensionValues,
+  listCloudBudgets,
+  createCloudBudget,
+  updateCloudBudget,
+  createCloudWidget,
+  updateCloudWidget,
+  deleteCloudWidget,
   type CloudProbeItem,
 } from "../lib/cloud-api";
+import {
+  BudgetCard,
+  BudgetConfigModal,
+  CostGraphCard,
+  CostGraphConfigModal,
+  DEFAULT_BUDGET_INPUT,
+  DEFAULT_COST_GRAPH_CONFIG,
+  type BudgetInput,
+  type BudgetWithStatus,
+  type CostApi,
+  type CostGraphConfig,
+  type DashboardWidget,
+} from "@infrawrench/ui/cost";
 import type { SearchResult } from "./SpotlightSearch";
 
 import { ResourceCard } from "./DashboardView/ResourceCard";
@@ -64,6 +85,11 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
   const [cardStatus, setCardStatus] = useState<Record<string, CardStatus>>({});
 
   const [spotlightMode, setSpotlightMode] = useState<"pin" | "navigate" | null>(null);
+  const [widgets, setWidgets] = useState<DashboardWidget[]>([]);
+  const [budgets, setBudgets] = useState<Map<string, BudgetWithStatus>>(new Map());
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [costModal, setCostModal] = useState<{ widget: DashboardWidget | null } | null>(null);
+  const [budgetModal, setBudgetModal] = useState<{ widget: DashboardWidget | null } | null>(null);
   const dashboardPinsVersion = useUIStore((s) => s.dashboardPinsVersion);
   const bumpDashboardPins = useUIStore((s) => s.bumpDashboardPins);
   const tabId = useTabId();
@@ -149,6 +175,12 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
         }
         loadedName = full.dashboard.name;
         isDefault = full.dashboard.isDefault;
+        setWidgets(full.widgets ?? []);
+        if ((full.widgets ?? []).some((w) => w.kind === "budget")) {
+          void listCloudBudgets(orgId)
+            .then((rows) => setBudgets(new Map(rows.map((b) => [b.id, b]))))
+            .catch(() => {});
+        }
 
         const enriched = await Promise.all(
           [...full.pins]
@@ -197,6 +229,8 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
         // Workflow pins are local-only; cloud dashboards don't carry them.
         setWorkflowPins([]);
       } else {
+        // Cost widgets are cloud-only; local dashboards never carry them.
+        setWidgets([]);
         const db = await getDb();
         const nameRows = await db.select<{ name: string; is_default: number }[]>(
           "SELECT name, is_default FROM dashboards WHERE id = $1 LIMIT 1",
@@ -642,6 +676,90 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
     }
   }
 
+  const costApi: CostApi = useMemo(
+    () => ({
+      queryCosts: (req) => {
+        const orgId = useUIStore.getState().activeCloudOrgId;
+        if (!orgId) return Promise.reject(new Error("Cost graphs require cloud mode"));
+        return queryCloudCosts(orgId, req);
+      },
+      loadDimensionValues: (dimension, tagKey) => {
+        const orgId = useUIStore.getState().activeCloudOrgId;
+        if (!orgId) return Promise.resolve([]);
+        return loadCloudCostDimensionValues(orgId, dimension, tagKey);
+      },
+    }),
+    [],
+  );
+
+  const refetchBudgets = useCallback(async () => {
+    const orgId = useUIStore.getState().activeCloudOrgId;
+    if (!orgId) return;
+    try {
+      const rows = await listCloudBudgets(orgId);
+      setBudgets(new Map(rows.map((b) => [b.id, b])));
+    } catch {
+      /* budget cards keep their loading state on transient failure */
+    }
+  }, []);
+
+  async function removeWidget(widgetId: string) {
+    const orgId = useUIStore.getState().activeCloudOrgId;
+    if (!orgId) return;
+    await deleteCloudWidget(orgId, widgetId);
+    setWidgets((prev) => prev.filter((w) => w.id !== widgetId));
+  }
+
+  async function saveCostWidget(
+    widget: DashboardWidget | null,
+    title: string,
+    config: CostGraphConfig,
+  ) {
+    const orgId = useUIStore.getState().activeCloudOrgId;
+    if (!orgId) return;
+    if (widget) {
+      const updated = await updateCloudWidget(orgId, widget.id, { title, config });
+      setWidgets((prev) => prev.map((w) => (w.id === widget.id ? { ...w, ...updated } : w)));
+    } else {
+      const created = await createCloudWidget(orgId, {
+        dashboardId,
+        kind: "cost_graph",
+        title,
+        config,
+      });
+      setWidgets((prev) => [...prev, created]);
+    }
+  }
+
+  async function saveBudgetWidget(widget: DashboardWidget | null, input: BudgetInput) {
+    const orgId = useUIStore.getState().activeCloudOrgId;
+    if (!orgId) return;
+    if (widget) {
+      await updateCloudBudget(orgId, (widget.config as { budgetId: string }).budgetId, input);
+    } else {
+      const budget = await createCloudBudget(orgId, input);
+      const created = await createCloudWidget(orgId, {
+        dashboardId,
+        kind: "budget",
+        title: input.name,
+        config: { version: 1, budgetId: budget.id },
+      });
+      setWidgets((prev) => [...prev, created]);
+    }
+    await refetchBudgets();
+  }
+
+  function budgetToInput(budget: BudgetWithStatus | undefined): BudgetInput {
+    if (!budget) return DEFAULT_BUDGET_INPUT;
+    return {
+      name: budget.name,
+      amountCents: budget.amountCents,
+      currency: budget.currency,
+      filters: budget.filters as BudgetInput["filters"],
+      thresholds: budget.thresholds,
+    };
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-full text-on-surface-faint text-sm">
@@ -701,16 +819,39 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
       </div>
 
       <div className="flex-1 overflow-auto px-8 py-6">
-        {pinned.length === 0 && workflowPins.length === 0 ? (
-          <button
-            type="button"
-            onClick={() => setSpotlightMode("pin")}
-            className={`w-full flex flex-col items-center justify-center h-64 rounded-2xl border-2 border-dashed transition-colors ${isOver ? "border-blue-500 text-accent" : "border-border text-on-surface-faint hover:border-border-strong hover:text-on-surface-muted"}`}
-          >
-            <span className="text-3xl mb-3">⊞</span>
-            <p className="text-sm">Click to add a resource</p>
-            <p className="text-xs mt-1 opacity-60">or drag a resource or workflow here</p>
-          </button>
+        {pinned.length === 0 && workflowPins.length === 0 && widgets.length === 0 ? (
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() =>
+                activeCloudOrgId ? setAddMenuOpen((v) => !v) : setSpotlightMode("pin")
+              }
+              className={`w-full flex flex-col items-center justify-center h-64 rounded-2xl border-2 border-dashed transition-colors ${isOver ? "border-blue-500 text-accent" : "border-border text-on-surface-faint hover:border-border-strong hover:text-on-surface-muted"}`}
+            >
+              <span className="text-3xl mb-3">⊞</span>
+              <p className="text-sm">
+                {activeCloudOrgId ? "Click to add to this dashboard" : "Click to add a resource"}
+              </p>
+              <p className="text-xs mt-1 opacity-60">or drag a resource or workflow here</p>
+            </button>
+            {addMenuOpen && (
+              <DashboardAddMenu
+                onPickResource={() => {
+                  setAddMenuOpen(false);
+                  setSpotlightMode("pin");
+                }}
+                onPickCostGraph={() => {
+                  setAddMenuOpen(false);
+                  setCostModal({ widget: null });
+                }}
+                onPickBudget={() => {
+                  setAddMenuOpen(false);
+                  setBudgetModal({ widget: null });
+                }}
+                onClose={() => setAddMenuOpen(false)}
+              />
+            )}
+          </div>
         ) : (
           <SortableContext
             items={pinned.map((r) => `dashboard-card:${r.resource_id}`)}
@@ -748,16 +889,98 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
                 />
               ))}
 
-              <button
-                type="button"
-                onClick={() => setSpotlightMode("pin")}
-                className={`rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-1.5 transition-colors min-h-[140px] ${isOver ? "border-blue-500 text-accent bg-accent-muted" : "border-border text-on-surface-faint hover:border-border-strong hover:text-on-surface-muted"}`}
-              >
-                <span className="text-2xl">+</span>
-                <span className="text-xs">Add resource</span>
-              </button>
+              {widgets.map((widget) =>
+                widget.kind === "cost_graph" ? (
+                  <CostGraphCard
+                    key={widget.id}
+                    title={widget.title}
+                    config={widget.config as CostGraphConfig}
+                    api={costApi}
+                    onEdit={() => setCostModal({ widget })}
+                    onRemove={() => void removeWidget(widget.id)}
+                  />
+                ) : (
+                  (() => {
+                    const budget = budgets.get((widget.config as { budgetId: string }).budgetId);
+                    return budget ? (
+                      <BudgetCard
+                        key={widget.id}
+                        budget={budget}
+                        onEdit={() => setBudgetModal({ widget })}
+                        onRemove={() => void removeWidget(widget.id)}
+                      />
+                    ) : (
+                      <div
+                        key={widget.id}
+                        className="rounded-2xl border border-border bg-surface-raised flex items-center justify-center text-xs text-on-surface-faint min-h-[140px]"
+                      >
+                        Loading budget…
+                      </div>
+                    );
+                  })()
+                ),
+              )}
+
+              <div className="relative min-h-[140px]">
+                <button
+                  type="button"
+                  onClick={() =>
+                    activeCloudOrgId ? setAddMenuOpen((v) => !v) : setSpotlightMode("pin")
+                  }
+                  className={`w-full h-full rounded-2xl border-2 border-dashed flex flex-col items-center justify-center gap-1.5 transition-colors ${isOver ? "border-blue-500 text-accent bg-accent-muted" : "border-border text-on-surface-faint hover:border-border-strong hover:text-on-surface-muted"}`}
+                >
+                  <span className="text-2xl">+</span>
+                  <span className="text-xs">{activeCloudOrgId ? "Add" : "Add resource"}</span>
+                </button>
+                {addMenuOpen && (
+                  <DashboardAddMenu
+                    onPickResource={() => {
+                      setAddMenuOpen(false);
+                      setSpotlightMode("pin");
+                    }}
+                    onPickCostGraph={() => {
+                      setAddMenuOpen(false);
+                      setCostModal({ widget: null });
+                    }}
+                    onPickBudget={() => {
+                      setAddMenuOpen(false);
+                      setBudgetModal({ widget: null });
+                    }}
+                    onClose={() => setAddMenuOpen(false)}
+                  />
+                )}
+              </div>
             </div>
           </SortableContext>
+        )}
+
+        {costModal && (
+          <CostGraphConfigModal
+            initialConfig={
+              costModal.widget
+                ? (costModal.widget.config as CostGraphConfig)
+                : DEFAULT_COST_GRAPH_CONFIG
+            }
+            initialTitle={costModal.widget?.title ?? ""}
+            api={costApi}
+            onSave={(title, config) => saveCostWidget(costModal.widget, title, config)}
+            onClose={() => setCostModal(null)}
+          />
+        )}
+
+        {budgetModal && (
+          <BudgetConfigModal
+            initialInput={
+              budgetModal.widget
+                ? budgetToInput(
+                    budgets.get((budgetModal.widget.config as { budgetId: string }).budgetId),
+                  )
+                : DEFAULT_BUDGET_INPUT
+            }
+            api={costApi}
+            onSave={(input) => saveBudgetWidget(budgetModal.widget, input)}
+            onClose={() => setBudgetModal(null)}
+          />
         )}
 
         {spotlightMode && (
@@ -781,5 +1004,45 @@ export function DashboardView({ dashboardId }: DashboardViewProps) {
         )}
       </div>
     </div>
+  );
+}
+
+function DashboardAddMenu({
+  onPickResource,
+  onPickCostGraph,
+  onPickBudget,
+  onClose,
+}: {
+  onPickResource: () => void;
+  onPickCostGraph: () => void;
+  onPickBudget: () => void;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const itemClass =
+    "w-full text-left px-3 py-2 text-sm text-on-surface-secondary hover:text-on-surface hover:bg-surface-sunken transition-colors flex items-center gap-2";
+
+  return (
+    <>
+      <div className="fixed inset-0 z-20" onClick={onClose} />
+      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-30 w-48 rounded-xl border border-border bg-surface-raised shadow-xl overflow-hidden py-1">
+        <button type="button" onClick={onPickResource} className={itemClass}>
+          <span className="text-on-surface-faint">▣</span> Pin a resource
+        </button>
+        <button type="button" onClick={onPickCostGraph} className={itemClass}>
+          <span className="text-on-surface-faint">▤</span> Cost graph
+        </button>
+        <button type="button" onClick={onPickBudget} className={itemClass}>
+          <span className="text-on-surface-faint">◔</span> Budget
+        </button>
+      </div>
+    </>
   );
 }

@@ -9,6 +9,7 @@
  */
 export * from "./cloud-auth";
 export * from "./cloud-accounts";
+export * from "./cloud-costs";
 export * from "./cloud-dashboards";
 export * from "./cloud-resources";
 export * from "./cloud-secrets";

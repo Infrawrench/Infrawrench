@@ -27,6 +27,12 @@ export const ACCOUNT_LEASE_MS = 5 * 60 * 1000;
  */
 export const WORKFLOW_LEASE_MS = 10 * 60 * 1000;
 
+/**
+ * Cost collection leases are long because the first run backfills up to a
+ * year of history in month chunks against slow, rate-limited billing APIs.
+ */
+export const COST_LEASE_MS = 30 * 60 * 1000;
+
 export interface DueWorkflowRow {
   id: string;
   organizationId: string;
@@ -59,6 +65,42 @@ export async function claimDueAccounts(limit: number): Promise<PollAccountRow[]>
     pluginId: String(r["plugin_id"]),
     displayName: String(r["display_name"]),
     pollFailureCount: Number(r["poll_failure_count"]),
+  }));
+}
+
+/**
+ * Claim up to `limit` accounts due for cost collection, leasing each for
+ * {@link COST_LEASE_MS}. `costCapablePluginIds` is the static list of plugins
+ * whose manifest declares a `costs` capability (known at boot); accounts of
+ * other plugins are never claimed. NULL cost_next_poll_at means "due now" so
+ * pre-existing accounts are picked up automatically after deploy.
+ */
+export async function claimDueCostAccounts(
+  limit: number,
+  costCapablePluginIds: string[],
+): Promise<PollAccountRow[]> {
+  if (costCapablePluginIds.length === 0) return [];
+  const rows = await db.execute(sql`
+    UPDATE accounts
+    SET cost_next_poll_at = now() + ${COST_LEASE_MS}::float8 * interval '1 millisecond'
+    WHERE id IN (
+      SELECT id FROM accounts
+      WHERE deleted_at IS NULL
+        AND plugin_id = ANY(${costCapablePluginIds})
+        AND (cost_next_poll_at IS NULL OR cost_next_poll_at <= now())
+      ORDER BY cost_last_polled_at ASC NULLS FIRST, id ASC
+      LIMIT ${limit}
+      FOR UPDATE SKIP LOCKED
+    )
+    RETURNING id, organization_id, plugin_id, display_name, cost_poll_failure_count
+  `);
+
+  return Array.from(rows as Iterable<Record<string, unknown>>, (r) => ({
+    id: String(r["id"]),
+    organizationId: String(r["organization_id"]),
+    pluginId: String(r["plugin_id"]),
+    displayName: String(r["display_name"]),
+    pollFailureCount: Number(r["cost_poll_failure_count"]),
   }));
 }
 

@@ -210,6 +210,110 @@ export const dashboardPins = pgTable(
   }),
 );
 
+/**
+ * Non-resource dashboard cards (cost graphs, budget views). A separate table
+ * from dashboardPins — which FKs resources — following the
+ * dashboardWorkflowPins precedent of one table per pin kind. `config` is a
+ * kind-discriminated JSONB blob validated against the zod schemas in
+ * `@infrawrench/ui/cost` at the API boundary.
+ */
+export const dashboardWidgets = pgTable(
+  "dashboard_widgets",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    dashboardId: text("dashboard_id")
+      .notNull()
+      .references(() => dashboards.id, { onDelete: "cascade" }),
+    /** "cost_graph" | "budget" */
+    kind: text("kind").notNull(),
+    title: text("title").notNull().default(""),
+    config: jsonb("config").notNull(),
+    gridX: integer("grid_x").notNull().default(0),
+    gridY: integer("grid_y").notNull().default(0),
+    /** Cost charts want width — default to a double-wide card. */
+    gridW: integer("grid_w").notNull().default(2),
+    gridH: integer("grid_h").notNull().default(1),
+    syncVersion: integer("sync_version").notNull().default(0),
+    deletedAt: timestamp("deleted_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    dashboardIdx: index("dashboard_widgets_dashboard_idx").on(t.dashboardId),
+    orgIdx: index("dashboard_widgets_org_idx").on(t.organizationId),
+  }),
+);
+
+/**
+ * Spend budgets. Independent of dashboard widgets — a budget keeps evaluating
+ * and alerting even when no widget shows it. `filters` scopes which cost rows
+ * count (CostFilter[] from `@infrawrench/ui/cost`); `thresholds` is
+ * Array<{ type: "actual" | "forecast"; percent: number }>.
+ */
+export const budgets = pgTable(
+  "budgets",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    /** Monthly budget amount in cents of `currency`. */
+    amountCents: integer("amount_cents").notNull(),
+    currency: text("currency").notNull().default("USD"),
+    filters: jsonb("filters").notNull().default([]),
+    thresholds: jsonb("thresholds").notNull().default([]),
+    createdByUserId: text("created_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    deletedAt: timestamp("deleted_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    orgIdx: index("budgets_org_idx").on(t.organizationId),
+  }),
+);
+
+/**
+ * Fired budget-threshold crossings. The unique index makes each threshold
+ * fire at most once per calendar month — evaluation inserts with
+ * onConflictDoNothing and only notifies on a fresh insert.
+ */
+export const budgetAlertEvents = pgTable(
+  "budget_alert_events",
+  {
+    id: text("id").primaryKey(),
+    budgetId: text("budget_id")
+      .notNull()
+      .references(() => budgets.id, { onDelete: "cascade" }),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    /** "YYYY-MM" (UTC) the crossing was observed in. */
+    month: text("month").notNull(),
+    /** "actual" | "forecast" */
+    thresholdType: text("threshold_type").notNull(),
+    thresholdPercent: integer("threshold_percent").notNull(),
+    actualAmountCents: integer("actual_amount_cents").notNull(),
+    forecastAmountCents: integer("forecast_amount_cents"),
+    triggeredAt: timestamp("triggered_at").notNull().defaultNow(),
+    notifiedAt: timestamp("notified_at"),
+  },
+  (t) => ({
+    onceUnique: uniqueIndex("budget_alert_once_unique").on(
+      t.budgetId,
+      t.month,
+      t.thresholdType,
+      t.thresholdPercent,
+    ),
+    orgIdx: index("budget_alert_events_org_idx").on(t.organizationId),
+  }),
+);
+
 export const sshKeys = pgTable(
   "ssh_keys",
   {

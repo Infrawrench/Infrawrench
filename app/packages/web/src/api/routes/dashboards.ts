@@ -3,10 +3,17 @@ import { eq, and, inArray, isNull, desc, max } from "drizzle-orm";
 import { v4 as uuidv4 } from "uuid";
 import type { ProbeStatus } from "@infrawrench/plugin-base";
 import type { StoredWorkflowMetricDef as MetricDef } from "@infrawrench/ui/workflows";
+import {
+  widgetConfigSchemaFor,
+  DASHBOARD_WIDGET_KINDS,
+  type DashboardWidget,
+  type DashboardWidgetKind,
+} from "@infrawrench/ui/cost/config";
 import { db } from "../../db/client";
 import {
   dashboards,
   dashboardPins,
+  dashboardWidgets,
   dashboardWorkflowPins,
   resources,
   accounts,
@@ -116,6 +123,26 @@ async function loadWorkflowPins(dashboardId: string): Promise<WorkflowPinDto[]> 
   });
 }
 
+/** Load the non-resource widgets (cost graphs, budgets) for a dashboard. */
+async function loadWidgets(dashboardId: string): Promise<DashboardWidget[]> {
+  const rows = await db
+    .select()
+    .from(dashboardWidgets)
+    .where(and(eq(dashboardWidgets.dashboardId, dashboardId), isNull(dashboardWidgets.deletedAt)))
+    .orderBy(dashboardWidgets.gridX, dashboardWidgets.createdAt);
+  return rows.map((w) => ({
+    id: w.id,
+    dashboardId: w.dashboardId,
+    kind: w.kind as DashboardWidgetKind,
+    title: w.title,
+    config: w.config as DashboardWidget["config"],
+    gridX: w.gridX,
+    gridY: w.gridY,
+    gridW: w.gridW,
+    gridH: w.gridH,
+  }));
+}
+
 /** GET /api/dashboards — list all dashboards */
 app.get("/", async (c) => {
   requirePermission(c, "dashboards:read");
@@ -181,8 +208,9 @@ app.get("/:id", async (c) => {
     .orderBy(dashboardPins.gridX, dashboardPins.createdAt);
 
   const workflowPins = await loadWorkflowPins(dashboardId);
+  const widgets = await loadWidgets(dashboardId);
 
-  return c.json({ dashboard, pins, workflowPins });
+  return c.json({ dashboard, pins, workflowPins, widgets });
 });
 
 /** GET /api/dashboards/default/full — get-or-create default dashboard with pins */
@@ -231,8 +259,132 @@ app.get("/default/full", async (c) => {
     .orderBy(dashboardPins.gridX, dashboardPins.createdAt);
 
   const workflowPins = await loadWorkflowPins(defaultDashboard.id);
+  const widgets = await loadWidgets(defaultDashboard.id);
 
-  return c.json({ dashboard: defaultDashboard, pins, workflowPins });
+  return c.json({ dashboard: defaultDashboard, pins, workflowPins, widgets });
+});
+
+/** POST /api/dashboards/widgets — add a cost-graph or budget widget. */
+app.post("/widgets", async (c) => {
+  requirePermission(c, "dashboards:write");
+  const organizationId = c.get("organizationId");
+  const body = await c.req.json<{
+    dashboardId?: string;
+    kind?: string;
+    title?: string;
+    config?: unknown;
+  }>();
+
+  const kind = body.kind as DashboardWidgetKind;
+  if (!DASHBOARD_WIDGET_KINDS.includes(kind)) {
+    return c.json({ error: "Invalid widget kind" }, 400);
+  }
+  if (!body.dashboardId) return c.json({ error: "dashboardId is required" }, 400);
+
+  const [dashboard] = await db
+    .select({ id: dashboards.id })
+    .from(dashboards)
+    .where(
+      and(
+        eq(dashboards.id, body.dashboardId),
+        eq(dashboards.organizationId, organizationId),
+        isNull(dashboards.deletedAt),
+      ),
+    )
+    .limit(1);
+  if (!dashboard) return c.json({ error: "Dashboard not found" }, 404);
+
+  const parsed = widgetConfigSchemaFor(kind).safeParse(body.config);
+  if (!parsed.success) {
+    return c.json({ error: "Invalid widget config", issues: parsed.error.issues }, 400);
+  }
+
+  const [maxX] = await db
+    .select({ value: max(dashboardWidgets.gridX) })
+    .from(dashboardWidgets)
+    .where(and(eq(dashboardWidgets.dashboardId, dashboard.id), isNull(dashboardWidgets.deletedAt)));
+
+  const [created] = await db
+    .insert(dashboardWidgets)
+    .values({
+      id: uuidv4(),
+      organizationId,
+      dashboardId: dashboard.id,
+      kind,
+      title: body.title ?? "",
+      config: parsed.data,
+      gridX: (maxX?.value ?? -1) + 1,
+    })
+    .returning();
+  return c.json(created);
+});
+
+/** PATCH /api/dashboards/widgets/:widgetId — update title/config/layout. */
+app.patch("/widgets/:widgetId", async (c) => {
+  requirePermission(c, "dashboards:write");
+  const organizationId = c.get("organizationId");
+  const body = await c.req.json<{
+    title?: string;
+    config?: unknown;
+    gridX?: number;
+    gridY?: number;
+    gridW?: number;
+    gridH?: number;
+  }>();
+
+  const [widget] = await db
+    .select()
+    .from(dashboardWidgets)
+    .where(
+      and(
+        eq(dashboardWidgets.id, c.req.param("widgetId")),
+        eq(dashboardWidgets.organizationId, organizationId),
+        isNull(dashboardWidgets.deletedAt),
+      ),
+    )
+    .limit(1);
+  if (!widget) return c.json({ error: "Not found" }, 404);
+
+  const updates: Partial<typeof dashboardWidgets.$inferInsert> = { updatedAt: new Date() };
+  if (body.title !== undefined) updates.title = body.title;
+  if (body.config !== undefined) {
+    const parsed = widgetConfigSchemaFor(widget.kind as DashboardWidgetKind).safeParse(body.config);
+    if (!parsed.success) {
+      return c.json({ error: "Invalid widget config", issues: parsed.error.issues }, 400);
+    }
+    updates.config = parsed.data;
+  }
+  for (const key of ["gridX", "gridY", "gridW", "gridH"] as const) {
+    const value = body[key];
+    if (typeof value === "number" && Number.isInteger(value) && value >= 0) updates[key] = value;
+  }
+
+  const [updated] = await db
+    .update(dashboardWidgets)
+    .set(updates)
+    .where(eq(dashboardWidgets.id, widget.id))
+    .returning();
+  return c.json(updated);
+});
+
+/** DELETE /api/dashboards/widgets/:widgetId — soft delete. */
+app.delete("/widgets/:widgetId", async (c) => {
+  requirePermission(c, "dashboards:write");
+  const organizationId = c.get("organizationId");
+
+  const [deleted] = await db
+    .update(dashboardWidgets)
+    .set({ deletedAt: new Date(), updatedAt: new Date() })
+    .where(
+      and(
+        eq(dashboardWidgets.id, c.req.param("widgetId")),
+        eq(dashboardWidgets.organizationId, organizationId),
+        isNull(dashboardWidgets.deletedAt),
+      ),
+    )
+    .returning({ id: dashboardWidgets.id });
+  if (!deleted) return c.json({ error: "Not found" }, 404);
+  return c.json({ ok: true });
 });
 
 /** POST /api/dashboards/:id/rename */

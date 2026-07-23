@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { useUIStore, useTabId, RESOURCES_CHANGED_EVENT } from "@infrawrench/ui";
+import type { DashboardWidget } from "@infrawrench/ui/cost/config";
 import { DashboardView, type WorkflowPin } from "@/components/DashboardView";
 import { apiGet } from "@/lib/api";
 
@@ -23,6 +24,7 @@ interface DashboardPanelData {
     gridH: number;
   }>;
   workflowPins?: WorkflowPin[];
+  widgets?: DashboardWidget[];
 }
 
 interface DashboardPanelProps {
@@ -61,6 +63,7 @@ export function DashboardPanel({ orgId, dashboardId }: DashboardPanelProps) {
       isHome={data.dashboard.isDefault}
       pins={data.pins}
       workflowPins={data.workflowPins}
+      widgets={data.widgets}
     />
   );
 }

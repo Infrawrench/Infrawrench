@@ -23,6 +23,16 @@
       "types": "./dist/agents/launch-command.d.ts",
       "import": "./dist/agents/launch-command.js",
       "require": "./dist/agents/launch-command.cjs"
+    },
+    "./cost": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./cost/config": {
+      "types": "./dist/cost/config.d.ts",
+      "import": "./dist/cost/config.js",
+      "require": "./dist/cost/config.cjs"
     }
   },
   "main": "./dist/index.cjs",
@@ -47,6 +57,7 @@
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "recharts": "^3.8.1",
+    "zod": "^3.24.1",
     "zustand": "^5.0.3"
   },
   "devDependencies": {

@@ -11,12 +11,15 @@ import type {
   HostServices,
   ChatMessage,
   ChatStreamEvent,
+  CostFetchRange,
+  CostRow,
 } from "@infrawrench/plugin-base";
 import {
   labeledFieldItems,
   labeledOutputItems,
   streamOpenAiSseChat,
 } from "@infrawrench/plugin-base";
+import { fetchDatabricksCostData } from "./cost-data.js";
 import type { ListerContext } from "./resource-listers.js";
 import {
   listClusters,
@@ -726,6 +729,14 @@ export class DatabricksClient implements PluginClient {
     });
 
     return { rows, durationMs };
+  }
+
+  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
+    return fetchDatabricksCostData(
+      <T>(method: string, path: string, body?: Record<string, unknown>) =>
+        this.api<T>(method, path, body),
+      range,
+    );
   }
 
   async introspectResource(resourceId: string, accountId: string): Promise<SqlTableMeta[]> {

@@ -60,6 +60,10 @@ const manifest: PluginManifest = {
     },
   ],
   rateLimit: { capacity: 60, refillPerSecond: 4 },
+  // Billing Insights (`/v2/billing/{urn}/insights/...`): daily usage deltas
+  // per invoice line + region. Needs the `billing:read` token scope. Data
+  // exists from 1 Dec 2025 onward; earlier backfill windows come back empty.
+  costs: { dimensions: ["service", "region"], maxHistoryDays: 365, restatementDays: 3 },
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [

@@ -7,8 +7,11 @@ import type {
   ResourceStatus,
   DashboardStat,
   HostServices,
+  CostFetchRange,
+  CostRow,
 } from "@infrawrench/plugin-base";
 import { jsonRestFetch } from "@infrawrench/plugin-base";
+import { fetchVercelCostData } from "./cost-data.js";
 
 interface VercelProject {
   id: string;
@@ -321,6 +324,18 @@ export class VercelClient implements PluginClient {
       default:
         return [];
     }
+  }
+
+  async fetchCostData(_accountId: string, range: CostFetchRange): Promise<CostRow[]> {
+    return fetchVercelCostData(
+      {
+        accessToken: this.accessToken,
+        teamId: this.teamId,
+        caCert: this.caCert,
+        http: this.services?.http,
+      },
+      range,
+    );
   }
 
   renderDetail(resource: ResourceInstance): DetailViewSchema {

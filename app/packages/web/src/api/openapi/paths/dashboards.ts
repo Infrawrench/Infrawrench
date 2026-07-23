@@ -54,10 +54,59 @@ const WorkflowPin = strict({
   ),
 }).openapi("DashboardWorkflowPin");
 
+const WidgetKind = z.enum(["cost_graph", "budget"]).openapi("DashboardWidgetKind");
+
+const Widget = strict({
+  id: Uuid,
+  dashboardId: Uuid,
+  kind: WidgetKind,
+  title: z.string(),
+  /** Kind-discriminated config — costGraphConfig or budgetWidgetConfig (see @infrawrench/ui/cost). */
+  config: JsonObject,
+  gridX: z.number().int(),
+  gridY: z.number().int(),
+  gridW: z.number().int(),
+  gridH: z.number().int(),
+}).openapi("DashboardWidget");
+
+const WidgetFull = strict({
+  id: Uuid,
+  organizationId: Uuid,
+  dashboardId: Uuid,
+  kind: WidgetKind,
+  title: z.string(),
+  config: JsonObject,
+  gridX: z.number().int(),
+  gridY: z.number().int(),
+  gridW: z.number().int(),
+  gridH: z.number().int(),
+  syncVersion: z.number().int(),
+  deletedAt: IsoDateTime.nullable(),
+  createdAt: IsoDateTime,
+  updatedAt: IsoDateTime,
+}).openapi("DashboardWidgetFull");
+
+const CreateWidgetRequest = strict({
+  dashboardId: Uuid,
+  kind: WidgetKind,
+  title: z.string().optional(),
+  config: JsonObject,
+}).openapi("CreateWidgetRequest");
+
+const UpdateWidgetRequest = strict({
+  title: z.string().optional(),
+  config: JsonObject.optional(),
+  gridX: z.number().int().min(0).optional(),
+  gridY: z.number().int().min(0).optional(),
+  gridW: z.number().int().min(0).optional(),
+  gridH: z.number().int().min(0).optional(),
+}).openapi("UpdateWidgetRequest");
+
 const DashboardWithPins = strict({
   dashboard: DashboardFull,
   pins: z.array(Pin),
   workflowPins: z.array(WorkflowPin),
+  widgets: z.array(Widget),
 }).openapi("DashboardWithPins");
 
 const WorkflowPinRequest = strict({
@@ -237,6 +286,52 @@ export function registerDashboardPaths(ctx: BuildContext) {
     responses: {
       200: { description: "Deleted", content: { "application/json": { schema: Ok } } },
       400: ErrorResponses[400],
+      404: ErrorResponses[404],
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/org/{orgId}/dashboards/widgets",
+    tags: ["Dashboards"],
+    summary: "Add a cost-graph or budget widget to a dashboard",
+    request: {
+      params: OrgIdParam,
+      body: { content: { "application/json": { schema: CreateWidgetRequest } }, required: true },
+    },
+    responses: {
+      200: { description: "Created", content: { "application/json": { schema: WidgetFull } } },
+      400: ErrorResponses[400],
+      404: ErrorResponses[404],
+    },
+  });
+
+  registry.registerPath({
+    method: "patch",
+    path: "/api/org/{orgId}/dashboards/widgets/{widgetId}",
+    tags: ["Dashboards"],
+    summary: "Update a widget's title, config, or layout",
+    request: {
+      params: params({ widgetId: Uuid.openapi({ param: { name: "widgetId", in: "path" } }) }),
+      body: { content: { "application/json": { schema: UpdateWidgetRequest } }, required: true },
+    },
+    responses: {
+      200: { description: "Updated", content: { "application/json": { schema: WidgetFull } } },
+      400: ErrorResponses[400],
+      404: ErrorResponses[404],
+    },
+  });
+
+  registry.registerPath({
+    method: "delete",
+    path: "/api/org/{orgId}/dashboards/widgets/{widgetId}",
+    tags: ["Dashboards"],
+    summary: "Remove a widget from a dashboard",
+    request: {
+      params: params({ widgetId: Uuid.openapi({ param: { name: "widgetId", in: "path" } }) }),
+    },
+    responses: {
+      200: { description: "Deleted", content: { "application/json": { schema: Ok } } },
       404: ErrorResponses[404],
     },
   });

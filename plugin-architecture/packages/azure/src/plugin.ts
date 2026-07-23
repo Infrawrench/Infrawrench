@@ -77,6 +77,11 @@ const manifest: PluginManifest = {
     },
   ],
   rateLimit: { capacity: 100, refillPerSecond: 5 },
+  // Cost Management Query API (ActualCost, Daily) at subscription scope,
+  // grouped by ServiceName + ResourceLocation. Needs the "Cost Management
+  // Reader" role — plain "Reader" is not enough. Azure serves ~13 months
+  // of cost history.
+  costs: { dimensions: ["service", "region"], maxHistoryDays: 395, restatementDays: 3 },
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [

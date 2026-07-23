@@ -58,6 +58,11 @@ const manifest: PluginManifest = {
     },
     caCertCredentialField,
   ],
+  // Billed usage read from the system.billing tables via a SQL warehouse.
+  // Dollars are DBUs × current *list* price (discounts not reflected). The
+  // querying principal needs USE CATALOG system + SELECT on system.billing;
+  // system tables retain a year of usage history.
+  costs: { dimensions: ["service", "resource"], maxHistoryDays: 365 },
 };
 
 const resourceTypes: ResourceTypeDefinition[] = [

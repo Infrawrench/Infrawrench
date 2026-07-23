@@ -52,3 +52,11 @@ Use least-privilege policies. For read-only browsing, the `ReadOnlyAccess` manag
 - Each AWS account in infrawrench is tied to one region for defaults — add multiple accounts if you operate across regions.
 - STS assume-role is not yet supported; use a dedicated IAM user for now.
 - Rate limits (especially EC2 describe APIs) can slow down very large accounts. Sidebar refresh is 30s; that is usually fine.
+
+## Cost graphs
+
+AWS accounts feed [cost graphs & budgets](../features/cloud-costs.md) via Cost Explorer (`GetCostAndUsage`), collected daily with service and region breakdowns.
+
+- The IAM user needs the `ce:GetCostAndUsage` action — it is **not** part of typical read-only policies, so add a small policy for it.
+- AWS charges **$0.01 per Cost Explorer request**. Infrawrench fetches once a day (plus a one-time history backfill in month-sized chunks), so expect a few cents per month per account.
+- Per-resource cost breakdown is not collected (Cost Explorer only retains it for 14 days).

@@ -148,6 +148,20 @@
       "when": 1783781689374,
       "tag": "0020_dashing_living_lightning",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1784835189157,
+      "tag": "0021_talented_blur",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1784835471394,
+      "tag": "0022_ambiguous_rage",
+      "breakpoints": true
     }
   ]
 }
