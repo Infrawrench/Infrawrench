@@ -2,7 +2,9 @@ name: bastion-deploy
 
 # Builds the bastion agent image and pushes it to the self-hosted registry
 # (registry.infrawrench.com — a cloudflare/serverless-registry Worker backed by
-# R2, deployed from infra/registry). Pushes both a commit-SHA tag and :latest.
+# R2, deployed from infra/registry). Each architecture builds natively on its
+# own runner (no qemu) and pushes by digest; a final job stitches the digests
+# into one multi-arch manifest tagged :<commit sha> and :latest.
 #
 # Required repo secrets:
 #   REGISTRY_USERNAME — push credentials for registry.infrawrench.com
@@ -24,12 +26,18 @@ env:
   IMAGE: registry.infrawrench.com/bastion-agent
 
 jobs:
-  build-push:
-    runs-on: ubuntu-latest
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
-
-      - uses: docker/setup-qemu-action@v3
 
       - uses: docker/setup-buildx-action@v3
 
@@ -40,14 +48,55 @@ jobs:
           username: ${{ secrets.REGISTRY_USERNAME }}
           password: ${{ secrets.REGISTRY_PASSWORD }}
 
-      - name: Build and push bastion-agent:${{ github.sha }}
+      - name: Build and push ${{ matrix.arch }} by digest
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: app/packages/bastion-agent
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            ${{ env.IMAGE }}:${{ github.sha }}
-            ${{ env.IMAGE }}:latest
-          cache-from: type=gha,scope=bastion-agent
-          cache-to: type=gha,scope=bastion-agent,mode=max
+          platforms: linux/${{ matrix.arch }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=bastion-agent-${{ matrix.arch }}
+          cache-to: type=gha,scope=bastion-agent-${{ matrix.arch }},mode=max
+
+      - name: Export digest
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ matrix.arch }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  push-manifest:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-*
+          merge-multiple: true
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to registry.infrawrench.com
+        uses: docker/login-action@v3
+        with:
+          registry: registry.infrawrench.com
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: Create multi-arch manifest for :${{ github.sha }} and :latest
+        working-directory: /tmp/digests
+        run: |
+          docker buildx imagetools create \
+            --tag "$IMAGE:${GITHUB_SHA}" \
+            --tag "$IMAGE:latest" \
+            $(printf -- "$IMAGE@sha256:%s " *)
+
+      - name: Verify pushed manifest
+        run: docker buildx imagetools inspect "$IMAGE:${GITHUB_SHA}"
