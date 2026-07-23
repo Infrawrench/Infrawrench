@@ -14,20 +14,20 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { generateEd25519OpenSshKeyPair } from "@infrawrench/ssh-tunnel-core";
 import { z } from "zod";
-import initSqlJs, { type Database as SqlJsDb, type SqlValue } from "sql.js";
+import { type SqlValue } from "sql.js";
+import { getSqlite, persist, normalizeSql, wireDbGetter } from "./db";
 import { closeAllTunnels } from "./ssh-tunnel";
 import { killAllSshShells } from "./ssh-shell";
 import { killAllK8sExecs } from "./k8s-exec";
 import { killAllK9sSessions } from "./k9s";
-import { MIGRATIONS } from "../src/db/schema";
 import { validateSql, validateParams, classifyMutation } from "./db-guard";
 import { registerKubeconfigClusterEndpoints } from "./k8s-endpoints";
+import { getShellCommandStatus, installShellCommand, uninstallShellCommand } from "./shell-command";
 import {
   getEncryptionKey,
   encryptValue,
   decryptValue,
   buildAad,
-  setDbGetter,
   registerDialogBlessedPath,
 } from "./main-utils";
 
@@ -502,74 +502,7 @@ ipcMain.handle("secret_field_encrypt", (_e, raw: unknown) => {
   return encryptValue(plaintext, getEncryptionKey(), aad);
 });
 
-let _sqlite: SqlJsDb | null = null;
-let _sqlitePath: string;
-
-async function getSqlite(): Promise<SqlJsDb> {
-  if (_sqlite) return _sqlite;
-
-  const sqlJsMain = require.resolve("sql.js");
-  const wasmPath = path.join(path.dirname(sqlJsMain), "sql-wasm.wasm");
-  const SQL = await initSqlJs({ locateFile: () => wasmPath });
-
-  _sqlitePath = path.join(app.getPath("userData"), "infrawrench.db");
-  if (fs.existsSync(_sqlitePath)) {
-    _sqlite = new SQL.Database(fs.readFileSync(_sqlitePath));
-  } else {
-    _sqlite = new SQL.Database();
-    fs.mkdirSync(path.dirname(_sqlitePath), { recursive: true });
-  }
-
-  _sqlite.run("PRAGMA journal_mode = WAL");
-  _sqlite.run("PRAGMA foreign_keys = ON");
-
-  for (const migration of MIGRATIONS) {
-    // Run each statement individually and ignore "duplicate column" errors so
-    // re-running ALTER TABLE on an already-migrated DB is a no-op.
-    const statements = migration.split(";").flatMap((s) => {
-      const trimmed = s.trim();
-      return trimmed ? [trimmed] : [];
-    });
-    for (const stmt of statements) {
-      try {
-        _sqlite.run(stmt);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        if (!msg.includes("duplicate column name")) throw err;
-      }
-    }
-  }
-  persist();
-
-  return _sqlite;
-}
-
-setDbGetter(async () => {
-  const db = await getSqlite();
-  return {
-    select: async <T>(sql: string, params?: unknown[]): Promise<T> => {
-      const stmt = db.prepare(normalizeSql(sql));
-      const rows: Record<string, unknown>[] = [];
-      stmt.bind((params ?? []) as SqlValue[]);
-      while (stmt.step()) rows.push(stmt.getAsObject() as Record<string, unknown>);
-      stmt.free();
-      return rows as T;
-    },
-    execute: async (sql: string, params?: unknown[]): Promise<void> => {
-      db.run(normalizeSql(sql), (params ?? []) as SqlValue[]);
-      persist();
-    },
-  };
-});
-
-function persist() {
-  if (!_sqlite) return;
-  fs.writeFileSync(_sqlitePath, Buffer.from(_sqlite.export()));
-}
-
-function normalizeSql(sql: string): string {
-  return sql.replace(/\$\d+/g, "?");
-}
+wireDbGetter();
 
 // db_select / db_execute expose the local sql.js DB to the renderer. Access is
 // gated by the typed preload bridge plus db-guard's validateSql/validateParams
@@ -604,6 +537,11 @@ ipcMain.handle("db_execute", async (_e, { sql, params }: { sql: string; params?:
   persist();
   return { rowsAffected, lastInsertId: 0 };
 });
+
+// `infrawrench` shell command (CLI shim) management — see shell-command.ts.
+ipcMain.handle("cli_shell_command_status", () => getShellCommandStatus());
+ipcMain.handle("cli_install_shell_command", () => installShellCommand());
+ipcMain.handle("cli_uninstall_shell_command", () => uninstallShellCommand());
 
 // Native clipboard image read. The renderer cannot use
 // navigator.clipboard.read() — Electron fails its permission check and the

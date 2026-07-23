@@ -204,6 +204,7 @@ function RootLayout() {
   } | null>(null);
 
   const [cloudOrgs, setCloudOrgs] = useState<CloudOrg[]>([]);
+  const [shellCommandInstalled, setShellCommandInstalled] = useState<boolean | null>(null);
   const [activeOrgId, setActiveOrgId] = useState<string | null>(
     () => useUIStore.getState().activeCloudOrgId,
   );
@@ -216,7 +217,26 @@ function RootLayout() {
   useEffect(() => {
     startMetricPinger();
     startCronRunner();
+    invoke<{ installed: boolean; stale: boolean }>("cli_shell_command_status")
+      .then((status) => setShellCommandInstalled(status.installed && !status.stale))
+      .catch(() => setShellCommandInstalled(null));
   }, []);
+
+  async function handleInstallShellCommand() {
+    try {
+      const result = await invoke<{ path: string; note: string | null }>(
+        "cli_install_shell_command",
+      );
+      setShellCommandInstalled(true);
+      toast.success(`Installed \`infrawrench\` at ${result.path}`, {
+        ...(result.note ? { description: result.note } : {}),
+      });
+    } catch (e) {
+      toast.error("Couldn't install the shell command", {
+        description: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
 
   // Global Cmd/Ctrl+K opens the spotlight (navigate) from any tab — dashboards,
   // the Workflows tab, resource detail, etc.
@@ -567,6 +587,19 @@ function RootLayout() {
                   <span className="text-base leading-none">+</span>
                   Add account
                 </button>
+                {shellCommandInstalled === false && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void handleInstallShellCommand();
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-on-surface-muted hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
+                    title="Adds an `infrawrench` command to your PATH so you can use the CLI and TUI from any terminal."
+                  >
+                    <span className="text-base leading-none font-mono">&gt;_</span>
+                    Install shell command
+                  </button>
+                )}
                 {SHOW_SIGN_IN_BUTTON && !cloudAuthenticated && (
                   <button
                     type="button"

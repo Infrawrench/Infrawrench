@@ -240,6 +240,25 @@ Handles `plugin_*` IPC calls by looking up the right driver from `drivers.ts`.
 
 ---
 
+## CLI (`infrawrench …`)
+
+The desktop app doubles as a terminal tool: a shell shim (VS Code's `code` model) execs the app binary with `--cli`, and the bootstrap entry (`electron/index.ts`, now the electron-vite main input) dynamically imports either `electron/main.ts` (GUI) or `electron/cli/main.ts` (headless runner). The dynamic-import split means a CLI invocation never runs GUI import-time side effects (protocol registration, single-instance lock, ipcMain handlers) and vice versa.
+
+**Why full Electron and not `ELECTRON_RUN_AS_NODE`:** the master key is `safeStorage`-encrypted (`master.key.enc`, Keychain/DPAPI-backed) and `safeStorage` only exists inside a real Electron app. The CLI therefore boots the whole app object headlessly (`app.dock.hide()` on macOS, `disable-gpu`, no windows) and reads the same `userData` dir: same SQLite DB, same master key, same cloud session.
+
+**Refactors that enable it** (keep these boundaries intact):
+
+- `electron/cloud-tokens.ts` — side-effect-free token store (storage/refresh/PKCE helpers/orgs fetch). `cloud-auth.ts` keeps only GUI wiring (protocol, single-instance lock, IPC) and re-exports `getAccessToken`/`forceRefreshAccessToken` for its existing importers.
+- `electron/db.ts` — shared sql.js open/persist (`getSqlite`/`persist`/`normalizeSql`/`wireDbGetter`) with a read-only mode.
+
+**Concurrent-process safety:** sql.js persists by rewriting the whole DB file, so GUI + CLI must never both write. The CLI probes `app.requestSingleInstanceLock()` (releasing it immediately if acquired); if the GUI holds it, the CLI sets `setDatabaseReadOnly(true)` + `setTokenStoreReadOnly(true)`. Read-only token mode also refuses to refresh — WorkOS rotates refresh tokens, so a CLI refresh it couldn't persist would sign the desktop out. It just uses the stored access token (the GUI refreshes ~60s before expiry, so it's almost always fresh) and `login`/`logout` redirect the user to the app. The GUI's `second-instance` handler ignores argv containing `--cli` so the probe doesn't yank the window forward.
+
+**Commands** (`electron/cli/`): `login`/`logout`/`whoami` (login is loopback PKCE on `http://127.0.0.1:43117/callback` — that redirect URI must be whitelisted on the WorkOS app), `orgs`, `accounts` (local + all orgs by default), `resources`/`resource` (cloud via HTTP API, local via the `resources` table cache — no direct plugin calls), `metrics` (ClickHouse-backed org metrics), `costs` (`POST /costs/query`), `cli install|uninstall|status`, `tui`. Output: `--json` or text (default); charts in `cli/charts.ts` are hand-rolled ANSI (sparkline / block area chart / bar chart) — deliberately zero new runtime deps (no ink/blessed/commander; flags via `node:util` parseArgs). The TUI (`cli/tui.ts`) is a hand-rolled alternate-screen renderer.
+
+**Shell shim install** (`electron/shell-command.ts`, shared by `infrawrench cli install` and the sidebar-footer button via `cli_install_shell_command`/`cli_uninstall_shell_command`/`cli_shell_command_status` IPC): POSIX writes an `exec "<app binary>" --cli "$@"` script to `/usr/local/bin` or `~/.local/bin` (no privilege escalation; refuses to overwrite a file it didn't write — marker comment "Installed by Infrawrench"); Windows writes `userData\bin\infrawrench.cmd` and appends the dir to the user PATH via PowerShell. In dev the shim includes the app path after the electron binary. Windows caveat: Electron is a GUI-subsystem exe, so stdout in a console can be unreliable — documented as best-effort.
+
+---
+
 ## Workflows runtime (`@infrawrench/workflow-runtime`)
 
 Sandboxed TypeScript automations over `infra.accounts.*`. User source runs in a QuickJS/WASM isolate; the only powers crossing the boundary are a single async RPC `__host(method, argsJson)` and a read-only accounts tree. The ergonomic `infra` object is built in pure JS by `prelude.ts`, and `codegen.ts` generates an `infra.d.ts` whose shape mirrors the prelude exactly (Monaco autocomplete). Each platform supplies a `WorkflowHost` via `buildWorkflowHost` (`ClientHostDeps`): web `services/workflow-host.ts`, poller/cloud `server-core/workflows/runner.ts` (shared `runOrgWorkflow`), desktop builds the host in the **renderer** and runs the isolate in **electron main** (`electron/workflow-host.ts` bridges every host method back over IPC).

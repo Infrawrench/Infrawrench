@@ -90,6 +90,10 @@ const INVOKE_CHANNELS = [
   "k8s_pf_cloud_start",
   "k8s_pf_cloud_stop",
   "k8s_api_request",
+  // shell command (`infrawrench` CLI shim)
+  "cli_install_shell_command",
+  "cli_uninstall_shell_command",
+  "cli_shell_command_status",
   // cloud
   "cloud_auth_start",
   "cloud_auth_status",

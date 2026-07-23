@@ -4,6 +4,8 @@ All code must be formatted with Prettier. Run `pnpm format` to format the entire
 
 When you make changes to content that isn't specific to either web or desktop, make sure to implement on the other. Prefer sharing code where it makes sense to do so.
 
+The desktop app doubles as the `infrawrench` CLI (`app/packages/desktop/electron/cli/`, entered via `--cli` in `electron/index.ts`). Keep `electron/cloud-tokens.ts` and `electron/db.ts` free of GUI side effects — the CLI depends on that. The CLI takes zero new runtime dependencies (hand-rolled ANSI output/charts, `node:util` parseArgs). When you add a user-facing data surface (new listing, metrics, costs-style feature), consider a CLI subcommand with `--json` + text output.
+
 When you make code for providers remember that the user shouldn't have to know the API. If it needs a resource or a slug of some kind, add a picker. Also remember this replaces the cloud dash by in large and is not a replacement to it. If you add something, think about how the user can edit it if possible. Look online to verify API's, assume your memory is wrong. Make sure to include all possible metrics/side tools where possible. When you want a logo SVG, please also look online. You aren't good at freestyling logos.
 
 ## Documentation

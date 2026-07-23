@@ -30,6 +30,7 @@ Infrawrench ships as both a desktop app and a hosted web app. They share the sam
 
 ## Feature-parity gaps to know about
 
+- **The [`infrawrench` CLI](../features/cli.md)** ships with the desktop app (it launches the app headlessly), so the terminal/TUI experience is desktop-only — though it can browse all your cloud organizations once you're signed in.
 - **SFTP file browser** is desktop-only; the web app cannot open a raw SSH file system.
 - **Docker Unix socket** is desktop-only; web needs a remote Docker daemon reachable over TCP.
 - **Pageant** is Windows desktop only.
