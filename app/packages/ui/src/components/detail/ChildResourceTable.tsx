@@ -248,6 +248,20 @@ export function ChildResourceTable({
                   <tr
                     key={child.id}
                     onClick={rowClickable ? () => handleRowClick(child) : undefined}
+                    onKeyDown={
+                      rowClickable
+                        ? (e) => {
+                            // Only activate for keys on the row itself, not on
+                            // the Delete button (whose keydown bubbles up here).
+                            if (e.target !== e.currentTarget) return;
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              handleRowClick(child);
+                            }
+                          }
+                        : undefined
+                    }
+                    tabIndex={rowClickable ? 0 : undefined}
                     className={`border-b border-border last:border-0 ${
                       rowClickable ? "cursor-pointer hover:bg-surface-overlay/40" : ""
                     }`}

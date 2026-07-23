@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import {
   COST_BINNINGS,
   COST_CHART_TYPES,
@@ -92,6 +92,7 @@ export function CostFilterRows({ filters, onChange, api }: FilterRowEditorProps)
         return (
           <div key={i} className="flex items-start gap-2">
             <select
+              aria-label="Filter dimension"
               className={`${selectClass} w-28 flex-shrink-0`}
               value={filter.dimension}
               onChange={(e) => {
@@ -112,6 +113,7 @@ export function CostFilterRows({ filters, onChange, api }: FilterRowEditorProps)
             </select>
             {filter.dimension === "tag" && (
               <input
+                aria-label="Tag key"
                 className={`${selectClass} w-24 flex-shrink-0`}
                 placeholder="tag key"
                 value={filter.tagKey ?? ""}
@@ -120,6 +122,7 @@ export function CostFilterRows({ filters, onChange, api }: FilterRowEditorProps)
               />
             )}
             <select
+              aria-label="Filter operator"
               className={`${selectClass} w-24 flex-shrink-0`}
               value={filter.op}
               onChange={(e) => update(i, { op: e.target.value as CostFilter["op"] })}
@@ -129,6 +132,7 @@ export function CostFilterRows({ filters, onChange, api }: FilterRowEditorProps)
             </select>
             <select
               multiple
+              aria-label="Filter values"
               className={`${selectClass} min-h-[4.5rem]`}
               value={filter.values}
               onFocus={() =>
@@ -190,6 +194,7 @@ export function CostGraphConfigModal({
   onSave,
   onClose,
 }: CostGraphConfigModalProps) {
+  const uid = useId();
   const [title, setTitle] = useState(initialTitle);
   const [config, setConfig] = useState<CostGraphConfig>(initialConfig);
   const [tagKeys, setTagKeys] = useState<CostDimensionOption[]>([]);
@@ -247,8 +252,11 @@ export function CostGraphConfigModal({
 
         <div className="space-y-4">
           <div>
-            <label className={labelClass}>Title</label>
+            <label htmlFor={`${uid}-title`} className={labelClass}>
+              Title
+            </label>
             <input
+              id={`${uid}-title`}
               className={selectClass}
               placeholder="e.g. Cloud spend by provider"
               value={title}
@@ -258,8 +266,11 @@ export function CostGraphConfigModal({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={labelClass}>Chart type</label>
+              <label htmlFor={`${uid}-chart-type`} className={labelClass}>
+                Chart type
+              </label>
               <select
+                id={`${uid}-chart-type`}
                 className={selectClass}
                 value={config.chartType}
                 onChange={(e) => set({ chartType: e.target.value as CostGraphConfig["chartType"] })}
@@ -272,8 +283,11 @@ export function CostGraphConfigModal({
               </select>
             </div>
             <div>
-              <label className={labelClass}>Binning</label>
+              <label htmlFor={`${uid}-binning`} className={labelClass}>
+                Binning
+              </label>
               <select
+                id={`${uid}-binning`}
                 className={selectClass}
                 value={config.binning}
                 onChange={(e) => set({ binning: e.target.value as CostGraphConfig["binning"] })}
@@ -286,8 +300,11 @@ export function CostGraphConfigModal({
               </select>
             </div>
             <div>
-              <label className={labelClass}>Date range</label>
+              <label htmlFor={`${uid}-date-range`} className={labelClass}>
+                Date range
+              </label>
               <select
+                id={`${uid}-date-range`}
                 className={selectClass}
                 value={config.dateRange.kind === "relative" ? config.dateRange.preset : "custom"}
                 onChange={(e) => {
@@ -314,8 +331,11 @@ export function CostGraphConfigModal({
               </select>
             </div>
             <div>
-              <label className={labelClass}>Group by</label>
+              <label htmlFor={`${uid}-group-by`} className={labelClass}>
+                Group by
+              </label>
               <select
+                id={`${uid}-group-by`}
                 className={selectClass}
                 value={config.groupBy}
                 onChange={(e) => set({ groupBy: e.target.value as CostGraphConfig["groupBy"] })}
@@ -333,8 +353,11 @@ export function CostGraphConfigModal({
           {config.dateRange.kind === "absolute" && (
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className={labelClass}>From</label>
+                <label htmlFor={`${uid}-from`} className={labelClass}>
+                  From
+                </label>
                 <input
+                  id={`${uid}-from`}
                   type="date"
                   className={selectClass}
                   value={config.dateRange.from}
@@ -353,8 +376,11 @@ export function CostGraphConfigModal({
                 />
               </div>
               <div>
-                <label className={labelClass}>To</label>
+                <label htmlFor={`${uid}-to`} className={labelClass}>
+                  To
+                </label>
                 <input
+                  id={`${uid}-to`}
                   type="date"
                   className={selectClass}
                   value={config.dateRange.to}
@@ -377,8 +403,11 @@ export function CostGraphConfigModal({
 
           {config.groupBy === "tag" && (
             <div>
-              <label className={labelClass}>Tag key</label>
+              <label htmlFor={`${uid}-tag-key`} className={labelClass}>
+                Tag key
+              </label>
               <select
+                id={`${uid}-tag-key`}
                 className={selectClass}
                 value={config.groupByTagKey ?? ""}
                 onChange={(e) => set({ groupByTagKey: e.target.value })}
@@ -393,8 +422,10 @@ export function CostGraphConfigModal({
             </div>
           )}
 
-          <div>
-            <label className={labelClass}>Filters</label>
+          <div role="group" aria-labelledby={`${uid}-filters-label`}>
+            <span id={`${uid}-filters-label`} className={labelClass}>
+              Filters
+            </span>
             <CostFilterRows
               filters={config.filters}
               onChange={(filters) => set({ filters })}
@@ -404,8 +435,11 @@ export function CostGraphConfigModal({
 
           <div className="flex items-center gap-5">
             <div className="flex items-center gap-2">
-              <label className="text-xs text-on-surface-secondary">Top groups</label>
+              <label htmlFor={`${uid}-top-n`} className="text-xs text-on-surface-secondary">
+                Top groups
+              </label>
               <input
+                id={`${uid}-top-n`}
                 type="number"
                 min={1}
                 max={15}

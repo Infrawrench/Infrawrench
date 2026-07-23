@@ -19,7 +19,8 @@
   --color-on-surface-secondary: #374151;
   --color-on-surface-tertiary: #6b7280;
   --color-on-surface-muted: #6b7280;
-  --color-on-surface-faint: #9ca3af;
+  /* Faint must still clear WCAG AA (4.5:1) on surface/raised; #9ca3af was 2.5:1. */
+  --color-on-surface-faint: #6b7280;
 
   /* ── Borders ── */
   --color-border: #e5e7eb;
@@ -66,8 +67,10 @@
     --color-on-surface: #f3f4f6;
     --color-on-surface-secondary: #e5e7eb;
     --color-on-surface-tertiary: #9ca3af;
-    --color-on-surface-muted: #6b7280;
-    --color-on-surface-faint: #4b5563;
+    /* Muted/faint keep the tertiary > muted > faint hierarchy while clearing
+       WCAG AA (4.5:1) on all three surfaces; the old values were 2-3.7:1. */
+    --color-on-surface-muted: #949dab;
+    --color-on-surface-faint: #8b93a1;
 
     /* ── Borders ── */
     --color-border: #1f2937;
@@ -95,5 +98,24 @@
     --color-terminal-cursor: #d4d4d4;
     --color-terminal-cursor-accent: #0d0d0d;
     --color-terminal-selection: #264f78;
+  }
+}
+
+/* Keyboard-focus fallback for elements with no explicit focus styling.
+   Utility classes like focus:outline-none / focus:border-* are more specific
+   and still win, so opted-out controls keep their custom treatment. */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

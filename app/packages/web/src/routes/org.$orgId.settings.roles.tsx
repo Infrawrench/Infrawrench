@@ -233,7 +233,7 @@ function RoleEditor({ role, orgId, groups, onClose, onSaved, onError }: RoleEdit
   );
 
   return (
-    <Modal onClose={onClose}>
+    <Modal onClose={onClose} ariaLabel={role ? `Edit role: ${role.name}` : "New role"}>
       <div className="bg-surface w-[min(48rem,92vw)] max-h-[90vh] overflow-auto rounded-xl border border-border p-6">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-base font-semibold">

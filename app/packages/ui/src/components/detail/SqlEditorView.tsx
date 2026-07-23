@@ -527,8 +527,9 @@ export function SqlEditorView({
                               <button
                                 type="button"
                                 onClick={() => startEdit(i, row)}
-                                className="text-on-surface-faint hover:text-on-surface-secondary opacity-0 group-hover:opacity-100 transition-all text-xs"
+                                className="text-on-surface-faint hover:text-on-surface-secondary opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 transition-all text-xs"
                                 title="Edit row"
+                                aria-label="Edit row"
                               >
                                 ✎
                               </button>

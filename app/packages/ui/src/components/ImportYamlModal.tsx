@@ -47,6 +47,7 @@ export function ImportYamlModal({ title, onClose, onSubmit, onApplied }: ImportY
       onClose={() => {
         if (!busy) onClose();
       }}
+      ariaLabel={title ?? "Import YAML"}
     >
       <div className="w-[min(900px,92vw)] h-[min(700px,85vh)] overflow-hidden rounded-2xl border border-border-strong bg-surface shadow-2xl flex flex-col">
         <div className="flex items-center justify-between border-b border-border px-4 py-3">

@@ -32,12 +32,13 @@ export function BudgetCard({ budget, onEdit, onRemove }: BudgetCardProps) {
 
   return (
     <div className="group relative rounded-2xl border border-border bg-surface-raised hover:border-border-strong transition-colors flex flex-col overflow-hidden">
-      <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all z-10">
+      <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-all z-10">
         {onEdit && (
           <button
             type="button"
             onClick={onEdit}
             title="Edit budget"
+            aria-label="Edit budget"
             className="size-5 rounded-full text-on-surface-faint hover:text-on-surface-secondary hover:bg-surface-sunken text-xs flex items-center justify-center"
           >
             ✎
@@ -48,6 +49,7 @@ export function BudgetCard({ budget, onEdit, onRemove }: BudgetCardProps) {
             type="button"
             onClick={onRemove}
             title="Remove from dashboard"
+            aria-label="Remove from dashboard"
             className="size-5 rounded-full text-on-surface-faint hover:text-on-surface-secondary hover:bg-surface-sunken text-xs flex items-center justify-center"
           >
             ✕

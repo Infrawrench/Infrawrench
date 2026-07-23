@@ -100,7 +100,7 @@ export function PromptNoSqlCommandModal({
     : "px-3 py-1.5 rounded bg-blue-600 text-xs text-white hover:bg-blue-500 transition-colors disabled:opacity-50";
 
   return (
-    <Modal onClose={onCancel}>
+    <Modal onClose={onCancel} ariaLabel={title}>
       <div
         ref={cardRef}
         className={`bg-surface border border-border-strong rounded-lg shadow-xl flex flex-col ${

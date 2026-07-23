@@ -88,7 +88,7 @@ export function EditCredentialsModal({
   }
 
   return (
-    <Modal onClose={onClose}>
+    <Modal onClose={onClose} ariaLabel={`Update credentials: ${accountDisplayName}`}>
       <div className="bg-surface-raised border border-border-strong rounded-xl w-full max-w-md shadow-2xl">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <div className="flex items-center gap-2 min-w-0">

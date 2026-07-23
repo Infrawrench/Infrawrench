@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useDraggable } from "@dnd-kit/core";
 
 import { WorkflowEditorView } from "./WorkflowEditorView.js";
@@ -307,6 +307,7 @@ export function WorkflowsPanel({
               onChange={(e) => patch({ name: e.target.value })}
               className="bg-transparent border border-white/15 rounded px-2 py-1 text-sm flex-1 min-w-40"
               placeholder="Workflow name"
+              aria-label="Workflow name"
             />
             <label className="text-xs flex items-center gap-1">
               <input
@@ -505,10 +506,14 @@ function TriggerEditor({
   onChange: (t: WorkflowTrigger) => void;
 }) {
   const kind = trigger.kind;
+  const triggerSelectId = useId();
   return (
     <div className="px-3 py-2 border-b border-white/10 flex items-center gap-2 flex-wrap text-xs">
-      <span className="opacity-60">Trigger</span>
+      <label htmlFor={triggerSelectId} className="opacity-60">
+        Trigger
+      </label>
       <select
+        id={triggerSelectId}
         value={kind}
         onChange={(e) => {
           const k = e.target.value as TriggerKind;
@@ -678,17 +683,20 @@ function MetricsEditor({
             value={d.key}
             onChange={(e) => update(i, { key: e.target.value })}
             placeholder="key"
+            aria-label="Metric key"
             className="bg-transparent border border-white/15 rounded px-1 py-0.5 w-28 font-mono"
           />
           <input
             value={d.label}
             onChange={(e) => update(i, { label: e.target.value })}
             placeholder="label"
+            aria-label="Metric label"
             className="bg-transparent border border-white/15 rounded px-1 py-0.5 w-32"
           />
           <select
             value={d.type}
             onChange={(e) => update(i, { type: e.target.value as WorkflowMetricDef["type"] })}
+            aria-label="Metric type"
             className="bg-transparent border border-white/15 rounded px-1 py-0.5"
           >
             <option value="number">number</option>
@@ -699,6 +707,7 @@ function MetricsEditor({
             value={d.unit ?? ""}
             onChange={(e) => update(i, { unit: e.target.value })}
             placeholder="unit"
+            aria-label="Metric unit"
             className="bg-transparent border border-white/15 rounded px-1 py-0.5 w-16"
           />
           <span className="opacity-60">= {String(valueByKey.get(d.key) ?? "—")}</span>

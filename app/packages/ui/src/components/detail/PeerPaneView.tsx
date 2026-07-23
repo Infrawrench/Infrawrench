@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from "react";
 import { useDraggable, useDndContext, useDndMonitor, useDroppable } from "@dnd-kit/core";
 import type {
   PeerPaneResource,
@@ -207,7 +207,10 @@ export function PeerPaneView({
   if (isProvisioning) {
     return (
       <div className="flex flex-col items-center justify-center py-16 px-6 text-center gap-y-4">
-        <div className="size-10 rounded-full border-2 border-blue-400/30 border-t-blue-400 animate-spin" />
+        <div
+          aria-hidden="true"
+          className="size-10 rounded-full border-2 border-blue-400/30 border-t-blue-400 animate-spin"
+        />
         <div className="space-y-1.5">
           <p className="text-sm font-medium text-on-surface-secondary">Cluster is provisioning</p>
           <p className="text-xs text-on-surface-muted max-w-xs">
@@ -238,6 +241,7 @@ export function PeerPaneView({
             <select
               value={nsFilter ?? ""}
               onChange={(e) => setNsFilter(e.target.value || null)}
+              aria-label="Filter by namespace"
               className="text-xs bg-surface-overlay border border-border-strong text-on-surface-secondary rounded-lg px-2 py-1.5 focus:outline-none focus:border-blue-500 transition-colors"
             >
               <option value="">All namespaces ({namespaces.length})</option>
@@ -575,19 +579,11 @@ function PeerResourcePill({
   });
 
   return (
+    // The wrapper is non-interactive; the native button below carries the dnd
+    // drag ref/listeners/attributes so the exec/port-forward buttons stay
+    // siblings rather than focusable descendants of an interactive element.
     <div
-      ref={setNodeRef}
-      {...listeners}
-      {...attributes}
-      onClick={
-        onClick
-          ? (event) => {
-              if ((event.target as HTMLElement).closest("button")) return;
-              onClick();
-            }
-          : undefined
-      }
-      className={`group flex items-center gap-2 rounded-full border bg-surface-raised px-3 py-2 ${onClick ? "cursor-pointer hover:bg-surface-sunken" : "cursor-grab"} active:cursor-grabbing transition-colors ${
+      className={`group flex items-center gap-2 pr-3 rounded-full border bg-surface-raised ${onClick ? "cursor-pointer hover:bg-surface-sunken" : "cursor-grab"} active:cursor-grabbing transition-colors ${
         activePortForward
           ? "border-emerald-500/40"
           : isDragging
@@ -595,33 +591,52 @@ function PeerResourcePill({
             : "border-border-strong hover:border-border-strong"
       }`}
     >
-      <span
-        className="size-4 flex-shrink-0"
-        dangerouslySetInnerHTML={{ __html: pane.pluginLogoSvg }}
-        aria-hidden
-      />
-      <div className="min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-on-surface truncate">
-            {resource.displayName}
-          </span>
-          {resource.status && (
-            <span
-              role="img"
-              aria-label={`Status: ${resource.status}`}
-              className={`size-2 rounded-full flex-shrink-0 ${statusClassName(resource.status)}`}
-            />
+      <button
+        ref={setNodeRef}
+        {...listeners}
+        {...attributes}
+        type="button"
+        onClick={onClick}
+        {...(onClick
+          ? {
+              onKeyDown: (event: KeyboardEvent<HTMLButtonElement>) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  onClick();
+                }
+              },
+            }
+          : {})}
+        className={`flex items-center gap-2 min-w-0 pl-3 py-2 text-left ${onClick ? "cursor-pointer" : "cursor-grab"} active:cursor-grabbing`}
+      >
+        <span
+          className="size-4 flex-shrink-0"
+          dangerouslySetInnerHTML={{ __html: pane.pluginLogoSvg }}
+          aria-hidden
+        />
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium text-on-surface truncate">
+              {resource.displayName}
+            </span>
+            {resource.status && (
+              <span
+                role="img"
+                aria-label={`Status: ${resource.status}`}
+                className={`size-2 rounded-full flex-shrink-0 ${statusClassName(resource.status)}`}
+              />
+            )}
+          </div>
+          {resource.subtitle && (
+            <p className="text-xs text-on-surface-muted truncate">{resource.subtitle}</p>
+          )}
+          {activePortForward && (
+            <p className="text-xs text-emerald-400 font-mono truncate">
+              :{activePortForward.localPort} → :{activePortForward.remotePort}
+            </p>
           )}
         </div>
-        {resource.subtitle && (
-          <p className="text-xs text-on-surface-muted truncate">{resource.subtitle}</p>
-        )}
-        {activePortForward && (
-          <p className="text-xs text-emerald-400 font-mono truncate">
-            :{activePortForward.localPort} → :{activePortForward.remotePort}
-          </p>
-        )}
-      </div>
+      </button>
       {onExec && (
         <button
           type="button"

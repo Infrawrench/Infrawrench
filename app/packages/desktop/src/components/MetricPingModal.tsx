@@ -149,7 +149,7 @@ export function MetricPingModal({
   const latestPoint = selected?.points.at(-1);
 
   return (
-    <Modal onClose={onClose}>
+    <Modal onClose={onClose} ariaLabel={`Ping when out of range: ${resourceDisplayName}`}>
       <div className="bg-surface-overlay border border-border rounded-xl shadow-2xl p-5 w-[28rem] max-w-[90vw]">
         <h2 className="text-sm font-semibold text-on-surface mb-3">
           Ping when out of range: {resourceDisplayName}

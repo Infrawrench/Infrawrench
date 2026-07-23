@@ -272,7 +272,7 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
       </div>
 
       {reveal && (
-        <Modal onClose={() => setReveal(null)}>
+        <Modal onClose={() => setReveal(null)} ariaLabel={`Version ${reveal.id}`}>
           <div className="w-[560px] max-w-[92vw] bg-surface-raised border border-border-strong rounded-lg shadow-2xl p-5 space-y-4">
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -314,7 +314,7 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
       )}
 
       {revealError && (
-        <Modal onClose={() => setRevealError(null)}>
+        <Modal onClose={() => setRevealError(null)} ariaLabel="Cannot reveal">
           <div className="w-[480px] max-w-[92vw] bg-surface-raised border border-border-strong rounded-lg shadow-2xl p-5 space-y-4">
             <h2 className="text-sm font-semibold text-on-surface">Cannot reveal</h2>
             <p className="text-xs text-red-400 font-mono whitespace-pre-wrap">{revealError}</p>
@@ -332,7 +332,7 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
       )}
 
       {showAdd && (
-        <Modal onClose={() => (adding ? undefined : setShowAdd(false))}>
+        <Modal onClose={() => (adding ? undefined : setShowAdd(false))} ariaLabel="Add new version">
           <div className="w-[560px] max-w-[92vw] bg-surface-raised border border-border-strong rounded-lg shadow-2xl p-5 space-y-4">
             <div>
               <h2 className="text-sm font-semibold text-on-surface">Add new version</h2>
@@ -390,7 +390,7 @@ export function SecretVersionsView({ capability, onList, onAccess, onAdd, onModi
       )}
 
       {confirm && (
-        <Modal onClose={() => setConfirm(null)}>
+        <Modal onClose={() => setConfirm(null)} ariaLabel={`Destroy version ${confirm.version.id}`}>
           <div className="w-[460px] max-w-[92vw] bg-surface-raised border border-border-strong rounded-lg shadow-2xl p-5 space-y-4">
             <h2 className="text-sm font-semibold text-on-surface">
               Destroy version {confirm.version.id}?

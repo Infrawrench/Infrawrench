@@ -25,7 +25,10 @@ export function ResourcePill({
   supportsMetrics?: boolean;
   onPin: () => void;
   onOpen: () => void;
-  onContextMenuOpen?: (e: React.MouseEvent, sshHost: string) => void;
+  onContextMenuOpen?: (
+    e: { preventDefault: () => void; clientX: number; clientY: number },
+    sshHost: string,
+  ) => void;
 }) {
   const subtitle = String(
     resource.fields["host"] ?? resource.fields["region"] ?? resource.fields["engine"] ?? "",
@@ -99,37 +102,52 @@ export function ResourcePill({
   return (
     <div ref={setDropRef} className="inline-flex">
       <div
-        ref={setDragRef}
-        {...listeners}
-        {...attributes}
-        role="button"
-        tabIndex={0}
-        onClick={onOpen}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            onOpen();
-          }
-        }}
-        onContextMenu={
-          (sshHost || supportsMetrics) && onContextMenuOpen
-            ? (e) => onContextMenuOpen(e, sshHost)
-            : undefined
-        }
-        className={`group flex items-center gap-1 pl-3 pr-1.5 py-1.5 rounded-full border transition-colors cursor-grab active:cursor-grabbing ${
+        className={`group flex items-center gap-1 pr-1.5 rounded-full border transition-colors cursor-grab active:cursor-grabbing ${
           showDropHint
             ? "border-blue-500 bg-accent-muted"
             : "border-border-strong bg-surface-raised hover:border-border-strong"
         } ${isDragging ? "opacity-40" : ""}`}
       >
-        <div className="flex items-center gap-2 min-w-0">
+        <button
+          ref={setDragRef}
+          {...listeners}
+          {...attributes}
+          type="button"
+          onClick={onOpen}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              onOpen();
+              return;
+            }
+            // Keyboard equivalent of right-click: open the context menu at the pill.
+            if (
+              (sshHost || supportsMetrics) &&
+              onContextMenuOpen &&
+              (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10"))
+            ) {
+              e.preventDefault();
+              const rect = e.currentTarget.getBoundingClientRect();
+              onContextMenuOpen(
+                { preventDefault: () => {}, clientX: rect.left, clientY: rect.bottom },
+                sshHost,
+              );
+            }
+          }}
+          onContextMenu={
+            (sshHost || supportsMetrics) && onContextMenuOpen
+              ? (e) => onContextMenuOpen(e, sshHost)
+              : undefined
+          }
+          className="flex items-center gap-2 min-w-0 pl-3 py-1.5 text-left cursor-grab active:cursor-grabbing"
+        >
           <span className="text-sm font-medium text-on-surface-secondary leading-none">
             {resource.displayName}
           </span>
           {subtitle && (
             <span className="text-xs text-on-surface-muted leading-none">{subtitle}</span>
           )}
-        </div>
+        </button>
 
         {showDropHint ? (
           <span className="ml-1 text-xs text-accent">{dropHintLabel}</span>
@@ -146,7 +164,7 @@ export function ResourcePill({
               className={`ml-1 p-1 rounded-full text-xs transition-all ${
                 pinned
                   ? "text-accent hover:text-accent-on-muted"
-                  : "text-on-surface-faint hover:text-on-surface-tertiary opacity-0 group-hover:opacity-100"
+                  : "text-on-surface-faint hover:text-on-surface-tertiary opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100"
               }`}
             >
               📌
@@ -160,7 +178,7 @@ export function ResourcePill({
               }}
               title="Open detail view"
               aria-label="Open detail view"
-              className="p-1 rounded-full text-on-surface-faint hover:text-on-surface-secondary opacity-0 group-hover:opacity-100 transition-all text-xs"
+              className="p-1 rounded-full text-on-surface-faint hover:text-on-surface-secondary opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 transition-all text-xs"
             >
               →
             </button>

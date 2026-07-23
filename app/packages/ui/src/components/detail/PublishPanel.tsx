@@ -232,14 +232,16 @@ function ExtraFieldInput({ field, value, onChange }: ExtraFieldInputProps) {
     const obj = (value && typeof value === "object" ? value : {}) as Record<string, string>;
     return (
       <div className="col-span-full">
-        <label className="block text-xs font-semibold text-on-surface-muted uppercase tracking-wide mb-1">
+        {/* Caption, not a <label>: the key-value editor is a composite widget
+            with several inputs, so there is no single control to associate. */}
+        <span className="block text-xs font-semibold text-on-surface-muted uppercase tracking-wide mb-1">
           {field.label}
           {field.optional && (
             <span className="ml-2 text-[10px] text-on-surface-faint normal-case font-normal">
               optional
             </span>
           )}
-        </label>
+        </span>
         <KeyValueListEditor value={obj} onChange={onChange} />
         {field.helpText && (
           <p className="text-[11px] text-on-surface-faint mt-1">{field.helpText}</p>

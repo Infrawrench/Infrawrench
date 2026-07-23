@@ -39,12 +39,27 @@ export function MetricChart({ node }: MetricChartProps) {
 
   const unit = node.series[0]?.unit ?? "";
 
+  // Text alternative for the chart: metric name plus the latest value of
+  // each series, read as a single image by assistive tech.
+  const lastRow = data[data.length - 1];
+  const latestSummary = lastRow
+    ? node.series
+        .map((series) =>
+          lastRow[series.label] !== undefined
+            ? `${series.label} ${lastRow[series.label]}${unit}`
+            : null,
+        )
+        .filter((part): part is string => part !== null)
+        .join(", ")
+    : "";
+  const chartAriaLabel = `${node.title || "Metric"} chart${latestSummary ? `, latest: ${latestSummary}` : ""}`;
+
   return (
     <div className="w-full">
       {node.title && (
         <h3 className="text-sm font-medium text-on-surface-secondary mb-2">{node.title}</h3>
       )}
-      <div className="h-64">
+      <div className="h-64" role="img" aria-label={chartAriaLabel}>
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={data} margin={{ top: 4, right: 4, left: 4, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke={chart.grid} />

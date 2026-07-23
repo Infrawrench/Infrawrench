@@ -198,7 +198,7 @@ export function SecretExportModal({
   const entryCount = selectedTemplate?.entries.length ?? 0;
 
   return (
-    <Modal onClose={onClose}>
+    <Modal onClose={onClose} ariaLabel="Create Kubernetes Secret">
       <div className="w-[min(520px,90vw)] max-h-[80vh] overflow-y-auto rounded-2xl border border-border-strong bg-surface-raised shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border px-5 py-4">
@@ -267,9 +267,9 @@ export function SecretExportModal({
               {/* Secret keys preview / editor */}
               {selectedTemplate && (
                 <div className="space-y-2">
-                  <label className="text-xs font-medium text-on-surface-tertiary uppercase tracking-wider">
+                  <span className="text-xs font-medium text-on-surface-tertiary uppercase tracking-wider">
                     Secret Keys ({entryCount})
-                  </label>
+                  </span>
                   <div className="rounded-lg border border-border-strong divide-y divide-border">
                     {selectedTemplate.entries.map((entry) => (
                       <div key={entry.outputKey} className="flex items-center gap-3 px-3 py-2">

@@ -88,7 +88,8 @@ export function WorkflowDashboardCard({
           onUnpin();
         }}
         title="Remove from dashboard"
-        className="absolute top-2 right-2 size-5 rounded-full text-on-surface-faint hover:text-on-surface-secondary hover:bg-surface-sunken transition-all opacity-0 group-hover:opacity-100 text-xs flex items-center justify-center z-10"
+        aria-label="Remove from dashboard"
+        className="absolute top-2 right-2 size-5 rounded-full text-on-surface-faint hover:text-on-surface-secondary hover:bg-surface-sunken transition-all opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 text-xs flex items-center justify-center z-10"
       >
         ✕
       </button>

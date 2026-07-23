@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
@@ -56,6 +56,9 @@ export function SshTerminal({
 }: SshTerminalProps) {
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
   const containerRef = useRef<HTMLDivElement>(null);
+  // Connection state mirrored into a visually hidden live region so screen
+  // readers announce it — the xterm buffer writes are not reliably read.
+  const [statusMessage, setStatusMessage] = useState("");
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -123,6 +126,7 @@ export function SshTerminal({
       term.write(
         "\x1b[90mConnecting to \x1b[0m" + `${username}@${host}:${port}` + "\x1b[90m…\x1b[0m\r\n",
       );
+      setStatusMessage(`Connecting to ${username}@${host}:${port}…`);
 
       const cloudSource = keySource?.type === "cloud" ? keySource : null;
       const openPromise =
@@ -158,9 +162,16 @@ export function SshTerminal({
             return;
           }
           shell = handle;
+          setStatusMessage("Connected");
           handle.onData((data) => term.write(data));
-          handle.onExit(() => term.write("\r\n\x1b[90m[Connection closed]\x1b[0m\r\n"));
-          handle.onError((err) => term.write(`\r\n\x1b[31m${err}\x1b[0m\r\n`));
+          handle.onExit(() => {
+            term.write("\r\n\x1b[90m[Connection closed]\x1b[0m\r\n");
+            setStatusMessage("Connection closed");
+          });
+          handle.onError((err) => {
+            term.write(`\r\n\x1b[31m${err}\x1b[0m\r\n`);
+            setStatusMessage(String(err));
+          });
           const launchCommand = buildInitialShellCommand(initialCommand, initialCwd);
           if (launchCommand) {
             handle.write(`${launchCommand}\n`);
@@ -168,6 +179,7 @@ export function SshTerminal({
         })
         .catch((err: unknown) => {
           term.write(`\r\n\x1b[31mFailed: ${String(err)}\x1b[0m\r\n`);
+          setStatusMessage(`Failed: ${String(err)}`);
         });
     });
 
@@ -210,6 +222,9 @@ export function SshTerminal({
 
   return (
     <div className="h-full w-full relative bg-[var(--color-terminal-bg)] overflow-hidden">
+      <div role="status" aria-live="polite" className="sr-only">
+        {statusMessage}
+      </div>
       <div ref={containerRef} className="absolute inset-0 p-2" />
     </div>
   );

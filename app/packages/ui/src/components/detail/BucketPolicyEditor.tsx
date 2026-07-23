@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
 const Editor = lazy(() => import("@monaco-editor/react"));
 import type { BucketPolicyEditorCapability } from "@infrawrench/plugin-base";
@@ -458,18 +458,16 @@ function StatementCard({
 
   return (
     <div className="border border-border rounded-lg overflow-hidden bg-surface">
-      <div
-        className="flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-surface-overlay/40"
-        role="button"
-        tabIndex={0}
-        onClick={onToggle}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            onToggle();
-          }
-        }}
-      >
+      <div className="relative flex items-center gap-2 px-3 py-2 cursor-pointer hover:bg-surface-overlay/40">
+        {/* Full-row toggle target. The action buttons are positioned (relative)
+            so they paint above this overlay and stay independently clickable. */}
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={expanded}
+          aria-label={`${expanded ? "Collapse" : "Expand"} statement ${index + 1}`}
+          className="absolute inset-0 cursor-pointer"
+        />
         <span className="text-on-surface-faint text-xs font-mono">#{index + 1}</span>
         <span
           className={`px-1.5 py-0.5 rounded text-xs font-semibold uppercase tracking-wide ${effectColor}`}
@@ -490,7 +488,7 @@ function StatementCard({
               onMoveUp();
             }}
             disabled={index === 0}
-            className="text-on-surface-faint hover:text-on-surface-secondary disabled:opacity-30 px-1 text-xs"
+            className="relative text-on-surface-faint hover:text-on-surface-secondary disabled:opacity-30 px-1 text-xs"
             title="Move up"
           >
             ↑
@@ -502,7 +500,7 @@ function StatementCard({
               onMoveDown();
             }}
             disabled={index === total - 1}
-            className="text-on-surface-faint hover:text-on-surface-secondary disabled:opacity-30 px-1 text-xs"
+            className="relative text-on-surface-faint hover:text-on-surface-secondary disabled:opacity-30 px-1 text-xs"
             title="Move down"
           >
             ↓
@@ -513,7 +511,7 @@ function StatementCard({
               e.stopPropagation();
               onDelete();
             }}
-            className="text-on-surface-faint hover:text-red-400 px-1 text-xs"
+            className="relative text-on-surface-faint hover:text-red-400 px-1 text-xs"
             title="Delete"
           >
             ✕
@@ -596,6 +594,7 @@ function StatementForm({ statement, bucketArn, onChange }: StatementFormProps) {
                 editablePrincipal.values,
               )
             }
+            aria-label="Principal type"
             className="bg-surface border border-border-strong rounded px-2 py-1 text-xs focus:outline-none focus:border-blue-500"
           >
             <option value="everyone">Everyone (*)</option>
@@ -646,10 +645,12 @@ function StatementForm({ statement, bucketArn, onChange }: StatementFormProps) {
   );
 }
 
+// The caption is a <span>, not a <label>: rows hold composite widgets (button
+// groups, pickers, multiple inputs), so each control carries its own aria-label.
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="grid grid-cols-[120px_1fr] gap-3 items-start">
-      <label className="text-on-surface-tertiary text-xs pt-1.5">{label}</label>
+      <span className="text-on-surface-tertiary text-xs pt-1.5">{label}</span>
       <div>{children}</div>
     </div>
   );
@@ -933,6 +934,7 @@ function ConditionEditor({
           <select
             value={row.op}
             onChange={(e) => update(i, { op: e.target.value })}
+            aria-label="Condition operator"
             className="bg-surface border border-border-strong rounded px-1.5 py-1 text-xs focus:outline-none focus:border-blue-500"
           >
             {CONDITION_OPS.includes(row.op) ? null : <option value={row.op}>{row.op}</option>}
@@ -997,6 +999,7 @@ function TemplatePickerModal({
   onApply: (t: PolicyTemplate, inputs: Record<string, string>) => void;
 }) {
   const templates = templatesForVendor(vendor);
+  const fieldIdPrefix = useId();
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
@@ -1015,24 +1018,11 @@ function TemplatePickerModal({
         {!pending ? (
           <ul className="flex-1 overflow-y-auto divide-y divide-border/40">
             {templates.map((t) => (
-              <li
-                key={t.id}
-                role="button"
-                tabIndex={0}
-                className="px-4 py-3 hover:bg-surface-overlay/40 cursor-pointer"
-                onClick={() => {
-                  if (t.inputs && t.inputs.length > 0) {
-                    onPendingChange({
-                      template: t,
-                      inputs: Object.fromEntries(t.inputs.map((i) => [i.key, ""])),
-                    });
-                  } else {
-                    onApply(t, {});
-                  }
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.preventDefault();
+              <li key={t.id}>
+                <button
+                  type="button"
+                  className="w-full px-4 py-3 text-left hover:bg-surface-overlay/40 cursor-pointer"
+                  onClick={() => {
                     if (t.inputs && t.inputs.length > 0) {
                       onPendingChange({
                         template: t,
@@ -1041,11 +1031,13 @@ function TemplatePickerModal({
                     } else {
                       onApply(t, {});
                     }
-                  }
-                }}
-              >
-                <div className="text-sm font-medium text-on-surface-secondary">{t.label}</div>
-                <div className="text-xs text-on-surface-faint mt-1">{t.description}</div>
+                  }}
+                >
+                  <span className="block text-sm font-medium text-on-surface-secondary">
+                    {t.label}
+                  </span>
+                  <span className="block text-xs text-on-surface-faint mt-1">{t.description}</span>
+                </button>
               </li>
             ))}
           </ul>
@@ -1061,8 +1053,14 @@ function TemplatePickerModal({
             </div>
             {pending.template.inputs?.map((field) => (
               <div key={field.key} className="space-y-1">
-                <label className="text-xs text-on-surface-tertiary">{field.label}</label>
+                <label
+                  htmlFor={`${fieldIdPrefix}-${field.key}`}
+                  className="text-xs text-on-surface-tertiary"
+                >
+                  {field.label}
+                </label>
                 <input
+                  id={`${fieldIdPrefix}-${field.key}`}
                   value={pending.inputs[field.key] ?? ""}
                   onChange={(e) =>
                     onPendingChange({

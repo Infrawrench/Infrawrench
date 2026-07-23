@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Modal } from "@infrawrench/ui";
 import type { MetricValue } from "@infrawrench/workflow-runtime/client";
 import {
@@ -17,6 +17,7 @@ export function WorkflowPromptHost() {
   const [queue, setQueue] = useState<WorkflowPromptRequest[]>([]);
   const [text, setText] = useState("");
   const inputRef = useRef<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null>(null);
+  const messageId = useId();
 
   useEffect(() => {
     function onPrompt(e: Event) {
@@ -63,14 +64,16 @@ export function WorkflowPromptHost() {
   }
 
   return (
-    <Modal onClose={() => answer(null)}>
+    <Modal onClose={() => answer(null)} ariaLabel="Workflow input">
       <div
         className={`bg-surface-raised border border-border-strong rounded-xl shadow-2xl p-6 ${
           kind === "code" ? "w-[640px] max-w-[90vw]" : "w-[440px]"
         }`}
       >
         <h2 className="text-sm font-semibold text-on-surface mb-1">Workflow input</h2>
-        <p className="text-sm text-on-surface-secondary whitespace-pre-wrap mb-4">{spec.message}</p>
+        <p id={messageId} className="text-sm text-on-surface-secondary whitespace-pre-wrap mb-4">
+          {spec.message}
+        </p>
 
         {kind === "boolean" ? (
           <div className="flex justify-end gap-2">
@@ -105,6 +108,7 @@ export function WorkflowPromptHost() {
                 }}
                 value={text}
                 onChange={(e) => setText(e.target.value)}
+                aria-labelledby={messageId}
                 spellCheck={false}
                 onKeyDown={(e) => {
                   // ⌘/Ctrl+Enter submits; plain Enter inserts a newline.
@@ -134,6 +138,7 @@ export function WorkflowPromptHost() {
                 }}
                 value={text}
                 onChange={(e) => setText(e.target.value)}
+                aria-labelledby={messageId}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") submitText();
                 }}
@@ -153,6 +158,7 @@ export function WorkflowPromptHost() {
                 type={kind === "password" ? "password" : kind === "number" ? "number" : "text"}
                 value={text}
                 onChange={(e) => setText(e.target.value)}
+                aria-labelledby={messageId}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") submitText();
                 }}

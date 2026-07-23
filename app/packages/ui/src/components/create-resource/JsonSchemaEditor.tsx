@@ -87,6 +87,7 @@ export function JsonSchemaEditor({ value, onChange }: JsonSchemaEditorProps) {
             <select
               value={row.type}
               onChange={(e) => update(i, { type: e.target.value as PropertyType })}
+              aria-label="Property type"
               className="w-24 bg-surface-overlay border border-border-strong rounded-lg px-2 py-1.5 text-sm text-on-surface-secondary focus:outline-none focus:border-blue-500"
             >
               {PROPERTY_TYPES.map((t) => (

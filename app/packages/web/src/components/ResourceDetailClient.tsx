@@ -1450,6 +1450,7 @@ export function ResourceDetailClient({
             setConsoleOpen(false);
             setConsoleToken(null);
           }}
+          ariaLabel={`Console: ${resourceDisplayName}`}
         >
           <div className="w-[min(1100px,92vw)] h-[min(720px,82vh)] overflow-hidden rounded-2xl border border-border-strong bg-surface shadow-2xl flex flex-col">
             <div className="flex items-center justify-between border-b border-border px-4 py-3">
@@ -1503,7 +1504,7 @@ export function ResourceDetailClient({
       )}
 
       {k9sPane && (
-        <Modal onClose={() => setK9sPane(null)}>
+        <Modal onClose={() => setK9sPane(null)} ariaLabel={`k9s: ${resourceDisplayName}`}>
           <div className="w-[min(1100px,92vw)] h-[min(720px,82vh)] overflow-hidden rounded-2xl border border-border-strong bg-surface shadow-2xl flex flex-col">
             <div className="flex items-center justify-between border-b border-border px-4 py-3">
               <h2 className="text-sm font-semibold text-on-surface">k9s: {resourceDisplayName}</h2>

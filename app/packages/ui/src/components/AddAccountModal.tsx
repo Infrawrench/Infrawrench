@@ -185,7 +185,10 @@ export function AddAccountModal({
   }
 
   return (
-    <Modal onClose={onClose}>
+    <Modal
+      onClose={onClose}
+      ariaLabel={step === "pick-plugin" ? "Add account" : `Add ${selected?.displayName} account`}
+    >
       <div className="bg-surface-raised border border-border-strong rounded-xl w-full max-w-md shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">

@@ -27,7 +27,7 @@ describe("OrgSwitcher", () => {
     const onSwitch = vi.fn();
     render(<OrgSwitcher orgs={orgs} activeOrgId="o1" onSwitch={onSwitch} />);
     fireEvent.click(screen.getByRole("button", { name: /Acme/ }));
-    fireEvent.click(screen.getByRole("button", { name: /Beta Co/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /Beta Co/ }));
     expect(onSwitch).toHaveBeenCalledWith("o2");
   });
 
@@ -35,7 +35,7 @@ describe("OrgSwitcher", () => {
     const onSwitch = vi.fn();
     render(<OrgSwitcher orgs={orgs} activeOrgId="o1" onSwitch={onSwitch} showLocalOption />);
     fireEvent.click(screen.getByRole("button", { name: /Acme/ }));
-    fireEvent.click(screen.getByRole("button", { name: "Local" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Local" }));
     expect(onSwitch).toHaveBeenCalledWith(null);
   });
 
@@ -50,15 +50,15 @@ describe("OrgSwitcher", () => {
       <OrgSwitcher orgs={orgs} activeOrgId="o1" onSwitch={vi.fn()} onCreateOrg={onCreateOrg} />,
     );
     fireEvent.click(screen.getByRole("button", { name: /Acme/ }));
-    fireEvent.click(screen.getByRole("button", { name: "+ Create organization" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "+ Create organization" }));
     expect(onCreateOrg).toHaveBeenCalledOnce();
   });
 
   it("closes when clicking outside", () => {
     render(<OrgSwitcher orgs={orgs} activeOrgId="o1" onSwitch={vi.fn()} />);
     fireEvent.click(screen.getByRole("button", { name: /Acme/ }));
-    expect(screen.getByRole("button", { name: /Beta Co/ })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /Beta Co/ })).toBeInTheDocument();
     fireEvent.mouseDown(document.body);
-    expect(screen.queryByRole("button", { name: /Beta Co/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /Beta Co/ })).not.toBeInTheDocument();
   });
 });

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { budgetInputSchema, type BudgetInput, type CostFilter } from "./config.js";
 import { CostFilterRows } from "./CostGraphConfigModal.js";
 import type { CostApi } from "./types.js";
@@ -26,6 +26,7 @@ export interface BudgetConfigModalProps {
 }
 
 export function BudgetConfigModal({ initialInput, api, onSave, onClose }: BudgetConfigModalProps) {
+  const uid = useId();
   const [input, setInput] = useState<BudgetInput>(initialInput);
   const [amountText, setAmountText] = useState((initialInput.amountCents / 100).toString());
   const [saving, setSaving] = useState(false);
@@ -78,8 +79,11 @@ export function BudgetConfigModal({ initialInput, api, onSave, onClose }: Budget
 
         <div className="space-y-4">
           <div>
-            <label className={labelClass}>Name</label>
+            <label htmlFor={`${uid}-name`} className={labelClass}>
+              Name
+            </label>
             <input
+              id={`${uid}-name`}
               className={inputClass}
               placeholder="e.g. Production AWS"
               value={input.name}
@@ -89,8 +93,11 @@ export function BudgetConfigModal({ initialInput, api, onSave, onClose }: Budget
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className={labelClass}>Monthly amount</label>
+              <label htmlFor={`${uid}-amount`} className={labelClass}>
+                Monthly amount
+              </label>
               <input
+                id={`${uid}-amount`}
                 type="number"
                 min={0}
                 step="0.01"
@@ -100,8 +107,11 @@ export function BudgetConfigModal({ initialInput, api, onSave, onClose }: Budget
               />
             </div>
             <div>
-              <label className={labelClass}>Currency</label>
+              <label htmlFor={`${uid}-currency`} className={labelClass}>
+                Currency
+              </label>
               <input
+                id={`${uid}-currency`}
                 className={inputClass}
                 maxLength={3}
                 value={input.currency}
@@ -110,8 +120,10 @@ export function BudgetConfigModal({ initialInput, api, onSave, onClose }: Budget
             </div>
           </div>
 
-          <div>
-            <label className={labelClass}>Scope (all spend when empty)</label>
+          <div role="group" aria-labelledby={`${uid}-scope-label`}>
+            <span id={`${uid}-scope-label`} className={labelClass}>
+              Scope (all spend when empty)
+            </span>
             <CostFilterRows
               filters={input.filters as CostFilter[]}
               onChange={(filters) => set({ filters })}
@@ -119,12 +131,15 @@ export function BudgetConfigModal({ initialInput, api, onSave, onClose }: Budget
             />
           </div>
 
-          <div>
-            <label className={labelClass}>Alert thresholds</label>
+          <div role="group" aria-labelledby={`${uid}-thresholds-label`}>
+            <span id={`${uid}-thresholds-label`} className={labelClass}>
+              Alert thresholds
+            </span>
             <div className="space-y-2">
               {input.thresholds.map((t, i) => (
                 <div key={i} className="flex items-center gap-2">
                   <select
+                    aria-label="Threshold type"
                     className={`${inputClass} w-32`}
                     value={t.type}
                     onChange={(e) =>
@@ -140,6 +155,7 @@ export function BudgetConfigModal({ initialInput, api, onSave, onClose }: Budget
                   </select>
                   <span className="text-xs text-on-surface-secondary">reaches</span>
                   <input
+                    aria-label="Threshold percent"
                     type="number"
                     min={1}
                     max={1000}

@@ -38,7 +38,7 @@ export function ConfirmDeleteModal({ kind, name, onConfirm, onClose }: ConfirmDe
   }
 
   return (
-    <Modal onClose={onClose}>
+    <Modal onClose={onClose} ariaLabel={`Delete ${kind}`}>
       <div className="bg-surface-raised border border-border-strong rounded-xl shadow-2xl w-[420px] p-6">
         <h2 className="text-sm font-semibold text-on-surface mb-1">Delete {kind}</h2>
         <p className="text-xs text-on-surface-tertiary mb-4">

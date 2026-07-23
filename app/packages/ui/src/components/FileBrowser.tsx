@@ -666,7 +666,7 @@ export function FileBrowser({
                               e.stopPropagation();
                               setConfirmDeleteKey(d.key);
                             }}
-                            className="opacity-0 group-hover:opacity-100 text-on-surface-faint hover:text-red-400 transition-all px-1"
+                            className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 text-on-surface-faint hover:text-red-400 transition-all px-1"
                             title="Delete folder"
                             aria-label={`Delete folder ${d.name}`}
                           >
@@ -743,7 +743,7 @@ export function FileBrowser({
                           <span className="text-on-surface-faint">
                             {formatDate(f.lastModified)}
                           </span>
-                          <span className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                          <span className="flex items-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-all">
                             {onBatchDownload && (
                               <button
                                 type="button"

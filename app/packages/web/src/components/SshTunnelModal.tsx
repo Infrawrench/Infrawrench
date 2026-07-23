@@ -109,7 +109,7 @@ export function SshTunnelModal({
   return (
     <>
       {hostKeyDialog}
-      <Modal onClose={onClose}>
+      <Modal onClose={onClose} ariaLabel="Connect to service via SSH">
         <div className="bg-surface-raised border border-border-strong rounded-2xl shadow-2xl w-[480px] max-h-[90vh] overflow-auto">
           <div className="p-6 border-b border-border">
             <h2 className="text-base font-semibold text-on-surface">Connect to service via SSH</h2>

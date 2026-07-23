@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useId, useMemo, useState } from "react";
 import type { FieldDefinition } from "@infrawrench/plugin-base";
 import { Modal } from "./Modal.js";
 import { ErrorNotice } from "./ErrorNotice.js";
@@ -82,7 +82,7 @@ export function EditResourceModal({
   }, [changed, hasChanges, isValid, onClose, onSubmit, saving]);
 
   return (
-    <Modal onClose={onClose}>
+    <Modal onClose={onClose} ariaLabel={`Edit ${displayName}`}>
       <div className="bg-surface-raised border border-border-strong rounded-xl shadow-2xl flex flex-col w-[520px] max-h-[72vh]">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border flex-shrink-0">
           <h2 className="text-base font-semibold text-on-surface">Edit {displayName}</h2>
@@ -149,8 +149,9 @@ interface EditFieldProps {
 }
 
 function EditField({ field, value, onChange }: EditFieldProps) {
+  const inputId = useId();
   const labelEl = (
-    <label className="block text-xs font-medium text-on-surface-secondary mb-1.5">
+    <label htmlFor={inputId} className="block text-xs font-medium text-on-surface-secondary mb-1.5">
       {field.label}
       {field.required && <span className="text-red-500 ml-0.5">*</span>}
     </label>
@@ -184,7 +185,12 @@ function EditField({ field, value, onChange }: EditFieldProps) {
     return (
       <div>
         {labelEl}
-        <select value={value} onChange={(e) => onChange(e.target.value)} className={inputClass}>
+        <select
+          id={inputId}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className={inputClass}
+        >
           {!field.required && <option value="">(none)</option>}
           {field.enumValues.map((opt) => (
             <option key={opt} value={opt}>
@@ -202,6 +208,7 @@ function EditField({ field, value, onChange }: EditFieldProps) {
       <div>
         {labelEl}
         <input
+          id={inputId}
           type="number"
           value={value}
           onChange={(e) => onChange(e.target.value)}
@@ -218,6 +225,7 @@ function EditField({ field, value, onChange }: EditFieldProps) {
       <div>
         {labelEl}
         <input
+          id={inputId}
           type="password"
           value={value}
           onChange={(e) => onChange(e.target.value)}
@@ -236,6 +244,7 @@ function EditField({ field, value, onChange }: EditFieldProps) {
     <div>
       {labelEl}
       <input
+        id={inputId}
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}

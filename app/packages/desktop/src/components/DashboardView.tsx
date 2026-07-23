@@ -1031,7 +1031,8 @@ function DashboardAddMenu({
 
   return (
     <>
-      <div className="fixed inset-0 z-20" onClick={onClose} />
+      {/* Mouse-only click-away backdrop; keyboard users close the menu with Escape (handled above). */}
+      <div aria-hidden="true" className="fixed inset-0 z-20" onClick={onClose} />
       <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-30 w-48 rounded-xl border border-border bg-surface-raised shadow-xl overflow-hidden py-1">
         <button type="button" onClick={onPickResource} className={itemClass}>
           <span className="text-on-surface-faint">▣</span> Pin a resource

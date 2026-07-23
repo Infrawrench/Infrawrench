@@ -170,6 +170,7 @@ function RevokePinConfirm({
       onClose={() => {
         if (!submitting) onCancel();
       }}
+      ariaLabel="Revoke trusted host"
     >
       <div className="bg-surface-raised border border-border-strong rounded-xl w-[min(28rem,92vw)] shadow-2xl">
         <div className="px-5 py-4 border-b border-border">

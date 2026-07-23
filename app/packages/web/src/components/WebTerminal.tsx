@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import "@xterm/xterm/css/xterm.css";
 import {
   attachAltBufferScrollHandler,
@@ -43,6 +43,9 @@ export function WebTerminal({
 }: WebTerminalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  // Connection state mirrored into a visually hidden live region so screen
+  // readers announce it — the xterm buffer writes are not reliably read.
+  const [statusMessage, setStatusMessage] = useState("");
 
   useEffect(() => {
     let term: import("@xterm/xterm").Terminal | null = null;
@@ -110,6 +113,7 @@ export function WebTerminal({
 
         const connectLabel = sshHost && sshUsername ? `${sshUsername}@${sshHost}:22` : "SSH";
         term.write(`\x1b[90mConnecting to \x1b[0m${connectLabel}\x1b[90m…\x1b[0m\r\n`);
+        setStatusMessage(`Connecting to ${connectLabel}…`);
 
         const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
         const ws = new WebSocket(
@@ -143,6 +147,7 @@ export function WebTerminal({
           switch (msg.type) {
             case "ssh:connected":
               connected = true;
+              setStatusMessage("Connected");
               {
                 const launchCommand = buildInitialShellCommand(initialCommand, initialCwd);
                 if (launchCommand && wsRef.current?.readyState === WebSocket.OPEN) {
@@ -162,16 +167,19 @@ export function WebTerminal({
               break;
             case "ssh:error":
               term?.write(`\r\n\x1b[31m${msg.error ?? "Connection error"}\x1b[0m\r\n`);
+              setStatusMessage(msg.error ?? "Connection error");
               break;
             case "ssh:closed":
               connected = false;
               term?.write("\r\n\x1b[90m[Connection closed]\x1b[0m\r\n");
+              setStatusMessage("Connection closed");
               break;
           }
         };
 
         ws.onerror = () => {
           term?.write("\r\n\x1b[31mWebSocket connection failed\x1b[0m\r\n");
+          setStatusMessage("WebSocket connection failed");
         };
       });
 
@@ -217,6 +225,9 @@ export function WebTerminal({
 
   return (
     <div className="h-full w-full relative bg-[var(--color-terminal-bg)] overflow-hidden">
+      <div role="status" aria-live="polite" className="sr-only">
+        {statusMessage}
+      </div>
       <div ref={containerRef} className="absolute inset-0 p-2" />
     </div>
   );

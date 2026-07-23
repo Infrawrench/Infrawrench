@@ -105,7 +105,7 @@ export function CredentialExportModal({
   }
 
   return (
-    <Modal onClose={onClose}>
+    <Modal onClose={onClose} ariaLabel="Get credentials">
       <div className="bg-surface-raised border border-border-strong rounded-xl shadow-2xl w-[560px] max-h-[80vh] flex flex-col">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
           <div>

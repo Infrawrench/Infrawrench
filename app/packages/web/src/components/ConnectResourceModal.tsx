@@ -258,7 +258,12 @@ export function ConnectResourceModal({
   const canSwitchMode = supportsSecretImport && !!sshHost;
 
   return (
-    <Modal onClose={onClose}>
+    <Modal
+      onClose={onClose}
+      ariaLabel={
+        mode === "secret-export" ? "Create Kubernetes Secret" : "Deploy Credentials via SSH"
+      }
+    >
       <div className="w-[min(520px,90vw)] max-h-[80vh] overflow-y-auto rounded-2xl border border-border-strong bg-surface-raised shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border px-5 py-4">
@@ -399,6 +404,7 @@ export function ConnectResourceModal({
                         value={namespace}
                         onChange={(e) => setNamespace(e.target.value)}
                         className="w-full rounded-lg border border-border-strong bg-surface-overlay px-3 py-2 text-sm text-on-surface outline-none focus:border-blue-500"
+                        aria-label="Namespace"
                       >
                         {namespaces.map((ns) => (
                           <option key={ns} value={ns}>

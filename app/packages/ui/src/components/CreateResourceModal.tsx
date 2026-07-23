@@ -36,7 +36,7 @@ export function CreateResourceModal({
   const splitPane = codeFields.length > 0;
 
   return (
-    <Modal onClose={onClose}>
+    <Modal onClose={onClose} ariaLabel={`Create ${displayName}`}>
       <div
         className={`bg-surface-raised border border-border-strong rounded-xl shadow-2xl flex flex-col ${
           splitPane ? "w-[1100px] h-[80vh]" : "w-[560px] max-h-[72vh]"
@@ -99,7 +99,10 @@ export function CreateResourceModal({
           <div className="overflow-y-auto flex-1 px-6 py-5">
             {form.loadingConfig ? (
               <div className="flex items-center gap-3 text-sm text-on-surface-muted py-8 justify-center">
-                <span className="animate-spin inline-block size-4 rounded-full border-2 border-border-strong border-t-gray-300" />
+                <span
+                  aria-hidden="true"
+                  className="animate-spin inline-block size-4 rounded-full border-2 border-border-strong border-t-gray-300"
+                />
                 Fetching available options…
               </div>
             ) : form.configError ? (

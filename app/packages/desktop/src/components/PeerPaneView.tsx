@@ -482,21 +482,11 @@ function TerminalOverlay({
   children: React.ReactNode;
 }) {
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      aria-label="Close terminal"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70"
-      onClick={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
-      onKeyDown={(event) => {
-        if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) {
-          onClose();
-        }
-      }}
-    >
-      <div className="w-[min(1100px,92vw)] h-[min(720px,82vh)] overflow-hidden rounded-2xl border border-border-strong bg-surface shadow-2xl flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      {/* Mouse-only click-away backdrop; keyboard users close via the × button. No Escape
+          handler on purpose — Escape is meaningful input inside the terminal. */}
+      <div aria-hidden="true" className="absolute inset-0 bg-black/70" onClick={onClose} />
+      <div className="relative w-[min(1100px,92vw)] h-[min(720px,82vh)] overflow-hidden rounded-2xl border border-border-strong bg-surface shadow-2xl flex flex-col">
         <div className="flex items-center justify-between border-b border-border px-4 py-3">
           <h2 className="text-sm font-semibold text-on-surface">{title}</h2>
           <button

@@ -12,7 +12,9 @@ export function SidebarResourceItem({
   draggable: DraggableResource;
   acceptsSecretImport?: boolean;
   sshHostValue?: string | undefined;
-  onContextMenu?: ((e: React.MouseEvent) => void) | undefined;
+  onContextMenu?:
+    | ((e: { preventDefault: () => void; clientX: number; clientY: number }) => void)
+    | undefined;
 }) {
   const navigate = useNavigate();
   const {
@@ -47,7 +49,7 @@ export function SidebarResourceItem({
 
   const showDropHint = isOver && isDropTarget;
 
-  function setRefs(node: HTMLDivElement | null) {
+  function setRefs(node: HTMLButtonElement | null) {
     setDragRef(node);
     setDropRef(node);
   }
@@ -58,13 +60,12 @@ export function SidebarResourceItem({
     });
 
   return (
-    <div
+    <button
       ref={setRefs}
       {...listeners}
       {...attributes}
-      role="button"
-      tabIndex={0}
-      className={`flex items-center gap-2 px-3 py-1 text-xs rounded cursor-pointer transition-colors ${
+      type="button"
+      className={`flex w-full items-center gap-2 px-3 py-1 text-left text-xs rounded cursor-pointer transition-colors ${
         showDropHint
           ? "bg-accent-muted text-accent-on-muted ring-1 ring-inset ring-blue-500"
           : "text-on-surface-tertiary hover:text-on-surface-secondary hover:bg-surface-overlay"
@@ -75,6 +76,17 @@ export function SidebarResourceItem({
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
           activate();
+          return;
+        }
+        // Keyboard equivalent of right-click: open the context menu at the row.
+        if (onContextMenu && (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10"))) {
+          e.preventDefault();
+          const rect = e.currentTarget.getBoundingClientRect();
+          onContextMenu({
+            preventDefault: () => {},
+            clientX: rect.left,
+            clientY: rect.bottom,
+          });
         }
       }}
       onContextMenu={onContextMenu}
@@ -86,6 +98,6 @@ export function SidebarResourceItem({
           {tunnelAttachOk ? "Set up SSH tunnel" : "Drop"}
         </span>
       )}
-    </div>
+    </button>
   );
 }

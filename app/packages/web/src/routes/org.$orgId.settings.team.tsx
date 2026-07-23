@@ -129,6 +129,7 @@ function TeamPage() {
             <select
               value={inviteRoleId}
               onChange={(e) => setInviteRoleId(e.target.value)}
+              aria-label="Invite role"
               className="bg-surface-overlay border border-border-strong rounded-lg px-3 py-2 text-sm text-on-surface-secondary"
             >
               {assignableRoles.map((r) => (
@@ -194,6 +195,7 @@ function TeamPage() {
                         <select
                           value={currentRoleId}
                           onChange={(e) => void handleRoleChange(member.id, e.target.value)}
+                          aria-label={`Role for ${member.email}`}
                           className="bg-surface-overlay border border-border-strong rounded px-2 py-1 text-xs text-on-surface-secondary"
                         >
                           {assignableRoles.map((r) => (

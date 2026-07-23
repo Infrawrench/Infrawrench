@@ -73,25 +73,37 @@ export function ResourcePill({
 
   return (
     <div ref={setDropRef} className="inline-flex">
+      {/* The wrapper is non-interactive; the native button below carries the dnd
+          drag ref/listeners/attributes so the pin/open buttons stay siblings
+          rather than focusable descendants of an interactive element. */}
       <div
-        ref={setDragRef}
-        {...listeners}
-        {...attributes}
-        onClick={onOpen}
-        className={`group flex items-center gap-1 pl-3 pr-1.5 py-1.5 rounded-full border transition-colors cursor-grab active:cursor-grabbing ${
+        className={`group flex items-center gap-1 pr-1.5 rounded-full border transition-colors cursor-grab active:cursor-grabbing ${
           showDropHint
             ? "border-blue-500 bg-accent-muted"
             : "border-border-strong bg-surface-raised hover:border-border-strong"
         } ${isDragging ? "opacity-40" : ""}`}
       >
-        <div className="flex items-center gap-2 min-w-0">
+        <button
+          ref={setDragRef}
+          {...listeners}
+          {...attributes}
+          type="button"
+          onClick={onOpen}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              onOpen();
+            }
+          }}
+          className="flex items-center gap-2 min-w-0 pl-3 py-1.5 text-left cursor-grab active:cursor-grabbing"
+        >
           <span className="text-sm font-medium text-on-surface-secondary leading-none">
             {resource.displayName}
           </span>
           {subtitle && (
             <span className="text-xs text-on-surface-muted leading-none">{subtitle}</span>
           )}
-        </div>
+        </button>
 
         {showDropHint ? (
           <span className="ml-1 text-xs text-accent">{dropHintLabel}</span>
@@ -105,10 +117,11 @@ export function ResourcePill({
                   onPin();
                 }}
                 title={pinned ? "Unpin" : "Pin to dashboard"}
+                aria-label={pinned ? "Unpin" : "Pin to dashboard"}
                 className={`ml-1 p-1 rounded-full text-xs transition-all ${
                   pinned
                     ? "text-accent hover:text-accent-on-muted"
-                    : "text-on-surface-faint hover:text-on-surface-tertiary opacity-0 group-hover:opacity-100"
+                    : "text-on-surface-faint hover:text-on-surface-tertiary opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100"
                 }`}
               >
                 📌
@@ -122,7 +135,8 @@ export function ResourcePill({
                 onOpen();
               }}
               title="Open detail view"
-              className="p-1 rounded-full text-on-surface-faint hover:text-on-surface-secondary opacity-0 group-hover:opacity-100 transition-all text-xs"
+              aria-label="Open detail view"
+              className="p-1 rounded-full text-on-surface-faint hover:text-on-surface-secondary opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 transition-all text-xs"
             >
               →
             </button>

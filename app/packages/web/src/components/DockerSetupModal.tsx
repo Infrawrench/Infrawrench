@@ -134,7 +134,7 @@ export function DockerSetupModal({
   return (
     <>
       {hostKeyDialog}
-      <Modal onClose={onClose}>
+      <Modal onClose={onClose} ariaLabel="Setup Docker on VM">
         <div className="bg-surface-raised border border-border-strong rounded-2xl shadow-2xl w-[520px] max-h-[90vh] overflow-auto">
           <div className="p-6 border-b border-border">
             <h2 className="text-base font-semibold text-on-surface">Setup Docker on VM</h2>

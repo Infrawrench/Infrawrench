@@ -375,8 +375,9 @@ function KeyRow({
               e.stopPropagation();
               onDelete();
             }}
-            className="opacity-0 group-hover:opacity-100 text-on-surface-faint hover:text-red-400 text-xs px-1 transition-all"
+            className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 text-on-surface-faint hover:text-red-400 text-xs px-1 transition-all"
             title="Remove key"
+            aria-label="Remove key"
           >
             ✕
           </button>

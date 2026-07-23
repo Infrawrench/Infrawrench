@@ -378,7 +378,7 @@ export function KvBrowserView({
 
       {/* Add-key modal */}
       {showAdd && (
-        <Modal onClose={() => (adding ? undefined : setShowAdd(false))}>
+        <Modal onClose={() => (adding ? undefined : setShowAdd(false))} ariaLabel="Add KV pair">
           <div className="p-5 w-[480px] max-w-[90vw]">
             <h2 className="text-base font-semibold text-on-surface mb-3">Add KV pair</h2>
             <label
@@ -439,7 +439,10 @@ export function KvBrowserView({
 
       {/* Delete-confirm modal */}
       {confirmDelete && (
-        <Modal onClose={() => (deleting ? undefined : setConfirmDelete(null))}>
+        <Modal
+          onClose={() => (deleting ? undefined : setConfirmDelete(null))}
+          ariaLabel="Delete key"
+        >
           <div className="p-5 w-[420px] max-w-[90vw]">
             <h2 className="text-base font-semibold text-on-surface mb-2">Delete key?</h2>
             <p className="text-sm text-on-surface-secondary mb-4">

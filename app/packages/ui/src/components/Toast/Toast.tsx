@@ -35,7 +35,11 @@ interface ToastRowProps {
 
 export function ToastRow({ toast }: ToastRowProps) {
   const dismiss = useToastStore((s) => s.dismiss);
-  const [paused, setPaused] = useState(false);
+  // Auto-dismiss pauses while hovered or while any element inside the toast
+  // (action button, dismiss button) has keyboard focus.
+  const [hovered, setHovered] = useState(false);
+  const [focused, setFocused] = useState(false);
+  const paused = hovered || focused;
   const remainingRef = useRef(toast.duration);
 
   useEffect(() => {
@@ -54,8 +58,12 @@ export function ToastRow({ toast }: ToastRowProps) {
   return (
     <output
       aria-live={toast.variant === "error" ? "assertive" : "polite"}
-      onMouseEnter={() => setPaused(true)}
-      onMouseLeave={() => setPaused(false)}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onFocus={() => setFocused(true)}
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFocused(false);
+      }}
       className={`flex items-start gap-3 rounded-lg border ${style.border} ${style.bg} bg-surface-raised p-3 shadow-lg backdrop-blur min-w-[300px] max-w-[420px]`}
     >
       <span

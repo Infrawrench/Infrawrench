@@ -134,6 +134,17 @@ export function CostGraphCard({
     return ((cur - prev) / prev) * 100;
   }, [state, currency]);
 
+  const chartAriaLabel = useMemo(() => {
+    const parts = [`${title || "Costs"} chart`];
+    if (total) parts.push(`total ${total}`);
+    if (deltaPct !== null) {
+      parts.push(
+        `${deltaPct > 0 ? "up" : "down"} ${Math.abs(deltaPct).toFixed(1)}% vs previous period`,
+      );
+    }
+    return parts.join(", ");
+  }, [title, total, deltaPct]);
+
   const tooltipStyle = {
     backgroundColor: chart.tooltipBg,
     border: `1px solid ${chart.tooltipBorder}`,
@@ -143,6 +154,11 @@ export function CostGraphCard({
 
   const colorFor = (index: number, isOther: boolean): string =>
     isOther ? OTHER_COLOR : (chart.colors[index % chart.colors.length] ?? OTHER_COLOR);
+
+  // The chart body is exposed as a single role="img" with a summary label
+  // only when a chart is actually rendered — loading, error, and empty
+  // states keep their own text visible to assistive tech.
+  const hasChartData = !loading && !error && (state?.pivot.rows.length ?? 0) > 0;
 
   const renderChart = () => {
     if (!state) return null;
@@ -307,12 +323,13 @@ export function CostGraphCard({
 
   return (
     <div className="group relative rounded-2xl border border-border bg-surface-raised hover:border-border-strong transition-colors flex flex-col overflow-hidden col-span-2 min-h-[18rem]">
-      <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all z-10">
+      <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-all z-10">
         {onEdit && (
           <button
             type="button"
             onClick={onEdit}
             title="Edit widget"
+            aria-label="Edit widget"
             className="size-5 rounded-full text-on-surface-faint hover:text-on-surface-secondary hover:bg-surface-sunken text-xs flex items-center justify-center"
           >
             ✎
@@ -323,6 +340,7 @@ export function CostGraphCard({
             type="button"
             onClick={onRemove}
             title="Remove from dashboard"
+            aria-label="Remove from dashboard"
             className="size-5 rounded-full text-on-surface-faint hover:text-on-surface-secondary hover:bg-surface-sunken text-xs flex items-center justify-center"
           >
             ✕
@@ -355,13 +373,23 @@ export function CostGraphCard({
         )}
       </div>
 
-      <div className="flex-1 min-h-0 px-3 pb-3 flex flex-col">
+      <div
+        className="flex-1 min-h-0 px-3 pb-3 flex flex-col"
+        role={hasChartData ? "img" : undefined}
+        aria-label={hasChartData ? chartAriaLabel : undefined}
+      >
         {loading ? (
-          <div className="flex-1 flex items-center justify-center text-sm text-on-surface-faint">
+          <div
+            role="status"
+            className="flex-1 flex items-center justify-center text-sm text-on-surface-faint"
+          >
             Loading costs…
           </div>
         ) : error ? (
-          <div className="flex-1 flex items-center justify-center text-sm text-red-400 px-4 text-center">
+          <div
+            role="alert"
+            className="flex-1 flex items-center justify-center text-sm text-red-400 px-4 text-center"
+          >
             {error}
           </div>
         ) : (

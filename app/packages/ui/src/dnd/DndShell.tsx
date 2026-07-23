@@ -2,6 +2,7 @@ import { useState } from "react";
 import {
   DndContext,
   DragOverlay,
+  KeyboardSensor,
   PointerSensor,
   pointerWithin,
   useSensor,
@@ -9,6 +10,7 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
+import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import type { DraggableResource, DraggableWorkflow } from "./types.js";
 
 export interface DndShellProps {
@@ -44,7 +46,13 @@ export function DndShell({
   onTabDrop,
 }: DndShellProps) {
   const [dragPreview, setDragPreview] = useState<string | null>(null);
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  // Keyboard: dnd-kit's attributes/listeners spreads already make draggables
+  // focusable buttons; the KeyboardSensor lets Space/Enter lift and arrow keys
+  // move them. Activation constraints stay on the pointer sensor only.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   function handleDragStart(event: DragStartEvent) {
     const data = event.active.data.current;

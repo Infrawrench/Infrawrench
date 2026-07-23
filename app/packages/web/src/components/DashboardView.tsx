@@ -569,7 +569,8 @@ function AddMenu({
 
   return (
     <>
-      <div className="fixed inset-0 z-20" onClick={onClose} />
+      {/* Mouse-only click-away backdrop; keyboard users close the menu with Escape (handled above). */}
+      <div aria-hidden="true" className="fixed inset-0 z-20" onClick={onClose} />
       <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-30 w-48 rounded-xl border border-border bg-surface-raised shadow-xl overflow-hidden py-1">
         <button type="button" onClick={onPickResource} className={itemClass}>
           <span className="text-on-surface-faint">▣</span> Pin a resource
@@ -681,7 +682,7 @@ function PinCard({
         disabled={unpinning}
         title="Remove from dashboard"
         aria-label="Remove from dashboard"
-        className="absolute top-2 right-2 size-5 rounded-full text-on-surface-faint hover:text-on-surface-secondary hover:bg-surface-sunken transition-all opacity-0 group-hover:opacity-100 text-xs flex items-center justify-center z-10"
+        className="absolute top-2 right-2 size-5 rounded-full text-on-surface-faint hover:text-on-surface-secondary hover:bg-surface-sunken transition-all opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 text-xs flex items-center justify-center z-10"
       >
         &#10005;
       </button>
@@ -754,7 +755,12 @@ function ConnectionFooter({ status }: { status: ProbeStatus }) {
       })}
       {status.sparkline && status.sparkline.length >= 2 && (
         <div className="flex items-center gap-2 mt-2.5">
-          <SparklineChart points={status.sparkline} width={120} height={24} />
+          <SparklineChart
+            points={status.sparkline}
+            width={120}
+            height={24}
+            label={status.sparklineLabel}
+          />
           {status.sparklineLabel && (
             <span className="text-[10px] text-on-surface-faint">{status.sparklineLabel}</span>
           )}

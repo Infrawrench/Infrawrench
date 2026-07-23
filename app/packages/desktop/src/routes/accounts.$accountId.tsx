@@ -54,6 +54,21 @@ export const Route = createFileRoute("/accounts/$accountId")({
 
 type CategoryState = SectionCategoryState<ResourceTypeDefinition, ResourceInstance>;
 
+function handleContextMenuKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+  if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+  e.preventDefault();
+  const items = Array.from(e.currentTarget.querySelectorAll<HTMLElement>('[role="menuitem"]'));
+  if (items.length === 0) return;
+  const index = items.indexOf(document.activeElement as HTMLElement);
+  const next =
+    index === -1
+      ? e.key === "ArrowDown"
+        ? 0
+        : items.length - 1
+      : (index + (e.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
+  items[next]?.focus();
+}
+
 interface AccountPanelProps {
   accountId: string;
 }
@@ -151,11 +166,15 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
     function handleKey(e: KeyboardEvent) {
       if (e.key === "Escape") setContextMenu(null);
     }
+    const previouslyFocused =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    contextMenuRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
     document.addEventListener("mousedown", handleClick);
     document.addEventListener("keydown", handleKey);
     return () => {
       document.removeEventListener("mousedown", handleClick);
       document.removeEventListener("keydown", handleKey);
+      previouslyFocused?.focus();
     };
   }, [contextMenu]);
 
@@ -898,6 +917,7 @@ export function AccountPanel({ accountId }: AccountPanelProps) {
         <div
           ref={contextMenuRef}
           role="menu"
+          onKeyDown={handleContextMenuKeyDown}
           style={{ position: "fixed", left: contextMenu.x, top: contextMenu.y, zIndex: 50 }}
           className="bg-surface-overlay border border-border-strong rounded-lg shadow-xl py-1 min-w-[200px]"
         >

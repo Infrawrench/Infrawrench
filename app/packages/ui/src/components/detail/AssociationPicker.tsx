@@ -75,7 +75,7 @@ export function AssociationPicker({
   };
 
   return (
-    <Modal onClose={onCancel}>
+    <Modal onClose={onCancel} ariaLabel={`Reroll ${fieldKey}`}>
       <div
         className="bg-surface-raised border border-border-strong rounded-xl shadow-2xl overflow-hidden"
         style={{ width: "28rem", maxWidth: "calc(100vw - 2rem)" }}

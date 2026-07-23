@@ -294,8 +294,9 @@ export function FirestoreDocumentBrowser({
                           e.stopPropagation();
                           setDroppingCollection(col);
                         }}
-                        className="absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 text-on-surface-faint hover:text-red-400 transition-all text-xs px-1"
+                        className="absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 text-on-surface-faint hover:text-red-400 transition-all text-xs px-1"
                         title="Delete collection"
+                        aria-label="Delete collection"
                       >
                         ×
                       </button>
@@ -553,7 +554,7 @@ function FirestoreDocumentRow({
             startEdit();
             if (!expanded) onToggle();
           }}
-          className="opacity-0 group-hover:opacity-100 text-xs text-on-surface-faint hover:text-blue-400 px-1 transition-all flex-shrink-0"
+          className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 text-xs text-on-surface-faint hover:text-blue-400 px-1 transition-all flex-shrink-0"
           title="Edit document"
           aria-label={docId ? `Edit document ${docId}` : "Edit document"}
         >
@@ -565,7 +566,7 @@ function FirestoreDocumentRow({
             e.stopPropagation();
             onDelete();
           }}
-          className="opacity-0 group-hover:opacity-100 text-xs text-on-surface-faint hover:text-red-400 px-1 transition-all flex-shrink-0"
+          className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 text-xs text-on-surface-faint hover:text-red-400 px-1 transition-all flex-shrink-0"
           title="Delete document"
           aria-label={docId ? `Delete document ${docId}` : "Delete document"}
         >

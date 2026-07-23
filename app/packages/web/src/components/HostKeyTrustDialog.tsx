@@ -52,7 +52,10 @@ export function HostKeyTrustDialog({
   }
 
   return (
-    <Modal onClose={submitting ? () => {} : onCanceled}>
+    <Modal
+      onClose={submitting ? () => {} : onCanceled}
+      ariaLabel={isMismatch ? "Host key has changed!" : "Verify SSH host key"}
+    >
       <div className="bg-surface-raised border border-border-strong rounded-2xl shadow-2xl w-[520px] max-h-[90vh] overflow-auto">
         <div
           className={`p-6 border-b ${

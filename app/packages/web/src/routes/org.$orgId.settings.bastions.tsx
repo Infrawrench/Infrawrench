@@ -210,7 +210,7 @@ function CreateBastionModal({
   }
 
   return (
-    <Modal onClose={onClose}>
+    <Modal onClose={onClose} ariaLabel="Register a bastion">
       <div className="bg-surface-raised border border-border-strong rounded-xl w-full max-w-md shadow-2xl">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <h2 className="text-sm font-semibold text-on-surface-secondary">Register a bastion</h2>
@@ -287,7 +287,7 @@ function CreatedBastionModal({
   registry.infrawrench.com/bastion-agent:latest`;
 
   return (
-    <Modal onClose={onClose}>
+    <Modal onClose={onClose} ariaLabel="Bastion created: start the agent">
       <div className="bg-surface-raised border border-border-strong rounded-xl w-full max-w-2xl shadow-2xl p-5">
         <h2 className="text-sm font-semibold text-on-surface-secondary mb-3">
           Bastion created: start the agent

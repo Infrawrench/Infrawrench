@@ -540,6 +540,37 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
     return () => document.removeEventListener("mousedown", handleClick);
   }, [contextMenu]);
 
+  useEffect(() => {
+    if (!contextMenu) return;
+    const previouslyFocused =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    contextMenuRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+    return () => {
+      previouslyFocused?.focus();
+    };
+  }, [contextMenu]);
+
+  function handleContextMenuKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
+    if (e.key === "Escape") {
+      e.preventDefault();
+      setContextMenu(null);
+      return;
+    }
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const items = Array.from(e.currentTarget.querySelectorAll<HTMLElement>('[role="menuitem"]'));
+      if (items.length === 0) return;
+      const index = items.indexOf(document.activeElement as HTMLElement);
+      const next =
+        index === -1
+          ? e.key === "ArrowDown"
+            ? 0
+            : items.length - 1
+          : (index + (e.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
+      items[next]?.focus();
+    }
+  }
+
   if (loading) {
     return <div className="px-3 py-2 text-xs text-on-surface-faint">Loading…</div>;
   }
@@ -667,12 +698,16 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
       {contextMenu && (
         <div
           ref={contextMenuRef}
+          role="menu"
+          aria-label={`Actions for ${contextMenu.displayName}`}
+          onKeyDown={handleContextMenuKeyDown}
           style={{ position: "fixed", left: contextMenu.x, top: contextMenu.y, zIndex: 50 }}
           className="bg-surface-overlay border border-border-strong rounded-lg shadow-xl py-1 min-w-[200px]"
         >
           {contextMenu.sshHost && (
             <button
               type="button"
+              role="menuitem"
               className="w-full px-3 py-2 text-xs text-on-surface-secondary hover:bg-surface-sunken text-left flex items-center gap-2"
               onClick={() => {
                 setTunnelTarget({
@@ -692,6 +727,7 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
           {contextMenu.sshHost && (
             <button
               type="button"
+              role="menuitem"
               className="w-full px-3 py-2 text-xs text-on-surface-secondary hover:bg-surface-sunken text-left flex items-center gap-2"
               onClick={() => {
                 setDockerSetupTarget({
@@ -711,6 +747,7 @@ export function SidebarAccounts({ refreshKey }: SidebarAccountsProps) {
           {contextMenu.supportsMetrics && (
             <button
               type="button"
+              role="menuitem"
               className="w-full px-3 py-2 text-xs text-on-surface-secondary hover:bg-surface-sunken text-left flex items-center gap-2"
               onClick={() => {
                 setPingTarget({

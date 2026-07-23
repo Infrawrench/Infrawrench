@@ -35,7 +35,10 @@ export function UpdatePromptHost() {
   }
 
   return (
-    <Modal onClose={() => setPending(null)}>
+    <Modal
+      onClose={() => setPending(null)}
+      ariaLabel={`Infrawrench ${pending.version} is ready to install`}
+    >
       <div className="bg-surface-raised border border-border-strong rounded-xl shadow-2xl w-[460px] p-6">
         <h2 className="text-sm font-semibold text-on-surface">
           Infrawrench {pending.version} is ready to install

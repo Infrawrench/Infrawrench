@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { Modal } from "../Modal.js";
 import { ErrorNotice } from "../ErrorNotice.js";
 
@@ -83,6 +83,7 @@ export function TunnelSshAttachModal({
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<TunnelSshAttachResult | null>(null);
+  const sshUsernameId = useId();
 
   // Switching service resets the port to that service's default.
   const onServiceChange = (next: TunnelServiceType) => {
@@ -132,7 +133,7 @@ export function TunnelSshAttachModal({
   };
 
   return (
-    <Modal onClose={onClose}>
+    <Modal onClose={onClose} ariaLabel="Expose over Cloudflare Tunnel">
       <div className="bg-surface-raised border border-border-strong rounded-xl shadow-2xl flex flex-col w-[560px] max-h-[80vh]">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border flex-shrink-0">
           <h2 className="text-base font-semibold text-on-surface">Expose over Cloudflare Tunnel</h2>
@@ -269,7 +270,10 @@ export function TunnelSshAttachModal({
                 <span className="font-mono">cloudflared access</span> client.
               </p>
               <div>
-                <label className="block text-xs font-medium text-on-surface-secondary mb-1.5">
+                <label
+                  htmlFor={sshUsernameId}
+                  className="block text-xs font-medium text-on-surface-secondary mb-1.5"
+                >
                   SSH username<span className="text-red-500 ml-0.5">*</span>
                   <span className="text-on-surface-faint font-normal">
                     {" "}
@@ -277,6 +281,7 @@ export function TunnelSshAttachModal({
                   </span>
                 </label>
                 <input
+                  id={sshUsernameId}
                   type="text"
                   value={sshUsername}
                   onChange={(e) => setSshUsername(e.target.value)}

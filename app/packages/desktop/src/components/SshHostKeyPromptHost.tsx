@@ -42,7 +42,10 @@ export function SshHostKeyPromptHost() {
   const isMismatch = current.kind === "mismatch";
 
   return (
-    <Modal onClose={() => void decide(false)}>
+    <Modal
+      onClose={() => void decide(false)}
+      ariaLabel={isMismatch ? "SSH host key changed" : "Unknown SSH host"}
+    >
       <div className="bg-surface-raised border border-border-strong rounded-xl shadow-2xl w-[520px] p-6">
         <div className="flex items-start gap-3 mb-4">
           <div

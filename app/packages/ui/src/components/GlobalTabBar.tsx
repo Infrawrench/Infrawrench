@@ -158,7 +158,7 @@ function TabBarItem({
           e.stopPropagation();
           onClose(tab.id);
         }}
-        className="shrink-0 mr-2 size-3.5 flex items-center justify-center rounded text-on-surface-faint hover:text-on-surface-secondary hover:bg-surface-sunken transition-colors opacity-0 group-hover:opacity-100"
+        className="shrink-0 mr-2 size-3.5 flex items-center justify-center rounded text-on-surface-faint hover:text-on-surface-secondary hover:bg-surface-sunken transition-colors opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100"
         aria-label={`Close tab ${tab.title}`}
         title={`Close ${tab.title}`}
       >

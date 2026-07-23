@@ -167,7 +167,7 @@ function SshKeysPage() {
       )}
 
       {generatedKey && (
-        <Modal onClose={() => setGeneratedKey(null)}>
+        <Modal onClose={() => setGeneratedKey(null)} ariaLabel="Key Generated">
           <div className="bg-surface-raised border border-border-strong rounded-xl w-full max-w-lg shadow-2xl p-5">
             <h2 className="text-sm font-semibold text-on-surface-secondary mb-3">Key Generated</h2>
             <p className="text-xs text-on-surface-tertiary mb-3">
@@ -237,7 +237,7 @@ function GenerateKeyModal({
   }
 
   return (
-    <Modal onClose={onClose}>
+    <Modal onClose={onClose} ariaLabel="Generate SSH Key">
       <div className="bg-surface-raised border border-border-strong rounded-xl w-full max-w-md shadow-2xl">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <h2 className="text-sm font-semibold text-on-surface-secondary">Generate SSH Key</h2>
@@ -320,7 +320,7 @@ function ImportKeyModal({ onClose, onImported }: { onClose: () => void; onImport
   }
 
   return (
-    <Modal onClose={onClose}>
+    <Modal onClose={onClose} ariaLabel="Import SSH Key">
       <div className="bg-surface-raised border border-border-strong rounded-xl w-full max-w-lg shadow-2xl">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
           <h2 className="text-sm font-semibold text-on-surface-secondary">Import SSH Key</h2>

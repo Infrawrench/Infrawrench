@@ -172,7 +172,7 @@ export function SshEnvDeployModal({
   }
 
   return (
-    <Modal onClose={onClose}>
+    <Modal onClose={onClose} ariaLabel="Deploy credentials to VM">
       <div className="bg-surface-raised border border-border-strong rounded-2xl shadow-2xl w-[520px] max-h-[90vh] overflow-auto">
         <div className="p-6 border-b border-border">
           <h2 className="text-base font-semibold text-on-surface">Deploy credentials to VM</h2>
@@ -240,9 +240,9 @@ export function SshEnvDeployModal({
               {/* Env keys preview */}
               {selectedTemplate && (
                 <div className="space-y-2">
-                  <label className="text-xs text-on-surface-muted">
+                  <span className="text-xs text-on-surface-muted">
                     Variables ({selectedTemplate.entries.length})
-                  </label>
+                  </span>
                   <div className="rounded-lg border border-border-strong divide-y divide-border">
                     {selectedTemplate.entries.map((entry) => (
                       <div key={entry.outputKey} className="flex items-center gap-3 px-3 py-2">

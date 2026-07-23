@@ -55,7 +55,12 @@ export function ConnectionFooter({
       })}
       {status.sparkline && status.sparkline.length >= 2 && (
         <div className="flex items-center gap-2 mt-2.5">
-          <SparklineChart points={status.sparkline} width={120} height={24} />
+          <SparklineChart
+            points={status.sparkline}
+            width={120}
+            height={24}
+            label={status.sparklineLabel}
+          />
           {status.sparklineLabel && (
             <span className="text-[10px] text-on-surface-faint">{status.sparklineLabel}</span>
           )}

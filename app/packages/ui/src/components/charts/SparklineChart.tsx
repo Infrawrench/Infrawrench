@@ -6,6 +6,13 @@ interface SparklineChartProps {
   color?: string;
   width?: number;
   height?: number;
+  /**
+   * Accessible name for the sparkline (e.g. the metric it plots). When set,
+   * the chart is exposed as an image labelled with the metric and its latest
+   * value; without it the sparkline is hidden from assistive tech, so only
+   * omit it when adjacent visible text already conveys the value.
+   */
+  label?: string | undefined;
 }
 
 export function SparklineChart({
@@ -13,6 +20,7 @@ export function SparklineChart({
   color = "#60a5fa",
   width = 80,
   height = 30,
+  label,
 }: SparklineChartProps) {
   if (points.length < 2) return null;
 
@@ -20,9 +28,16 @@ export function SparklineChart({
     .slice()
     .sort((a, b) => a.timestamp - b.timestamp)
     .map((p) => ({ t: p.timestamp, v: p.value }));
+  const latest = data[data.length - 1]!.v;
 
   return (
-    <div style={{ width, height }} tabIndex={-1}>
+    <div
+      style={{ width, height }}
+      tabIndex={-1}
+      role={label ? "img" : undefined}
+      aria-label={label ? `${label} sparkline, latest value ${latest}` : undefined}
+      aria-hidden={label ? undefined : true}
+    >
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={data} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
           <Area

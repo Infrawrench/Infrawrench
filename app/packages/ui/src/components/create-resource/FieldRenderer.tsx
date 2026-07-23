@@ -1,4 +1,4 @@
-import { useState, useEffect, lazy, Suspense } from "react";
+import { useState, useEffect, useId, lazy, Suspense } from "react";
 import type { CreateFieldConfig, AssociationSource } from "@infrawrench/plugin-base";
 import { DatetimePicker } from "./DatetimePicker.js";
 import { SelectPicker } from "./SelectPicker.js";
@@ -102,6 +102,9 @@ export function FieldRenderer({
   fieldActionProps,
   formValues,
 }: FieldRendererProps) {
+  // Associates the visible label with the native input kinds; picker kinds are
+  // composite widgets that carry their own accessible names.
+  const inputId = useId();
   const actions = field.actions ?? [];
   const actionRunning = fieldActionProps?.runningByKey[field.key] ?? false;
   const actionError = fieldActionProps?.errorByKey[field.key] ?? null;
@@ -150,10 +153,11 @@ export function FieldRenderer({
     return (
       <div className="flex flex-col h-full min-h-0">
         <div className="flex items-baseline justify-between px-3 py-2 border-b border-border bg-surface flex-shrink-0">
-          <label className="text-xs font-medium text-on-surface-tertiary">
+          {/* Monaco isn't reachable by htmlFor; the editor is named via options.ariaLabel. */}
+          <span className="text-xs font-medium text-on-surface-tertiary">
             {field.label}
             {field.required && <span className="text-red-400 ml-1">*</span>}
-          </label>
+          </span>
           {field.description && (
             <p className="text-[11px] text-on-surface-faint ml-3 truncate">{field.description}</p>
           )}
@@ -176,6 +180,7 @@ export function FieldRenderer({
                 renderWhitespace: "boundary",
                 bracketPairColorization: { enabled: true },
                 padding: { top: 8 },
+                ariaLabel: field.label,
               }}
             />
           </Suspense>
@@ -184,9 +189,15 @@ export function FieldRenderer({
     );
   }
 
+  const hasNativeInput =
+    field.kind === "text" || field.kind === "password" || field.kind === "number";
+
   return (
     <div>
-      <label className="block text-xs font-medium text-on-surface-tertiary mb-2">
+      <label
+        htmlFor={hasNativeInput ? inputId : undefined}
+        className="block text-xs font-medium text-on-surface-tertiary mb-2"
+      >
         {field.label}
         {field.required && <span className="text-red-400 ml-1">*</span>}
       </label>
@@ -197,7 +208,7 @@ export function FieldRenderer({
       {field.kind === "text" &&
         (field.multiline ? (
           <textarea
-            aria-label={field.label}
+            id={inputId}
             value={value}
             onChange={(e) => onChange(e.target.value)}
             placeholder={field.placeholder ?? field.label}
@@ -207,8 +218,8 @@ export function FieldRenderer({
           />
         ) : (
           <input
+            id={inputId}
             type="text"
-            aria-label={field.label}
             value={value}
             onChange={(e) => onChange(e.target.value)}
             placeholder={field.placeholder ?? field.label}
@@ -229,8 +240,8 @@ export function FieldRenderer({
 
       {field.kind === "password" && (
         <input
+          id={inputId}
           type="password"
-          aria-label={field.label}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={field.placeholder ?? field.label}
@@ -251,9 +262,9 @@ export function FieldRenderer({
 
       {field.kind === "number" && (
         <input
+          id={inputId}
           type="number"
           inputMode="numeric"
-          aria-label={field.label}
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={field.label}

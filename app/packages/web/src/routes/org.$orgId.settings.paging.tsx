@@ -1,5 +1,5 @@
 import { createFileRoute, useParams } from "@tanstack/react-router";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useId, isValidElement, cloneElement } from "react";
 import { apiGet, apiPost, apiPut, apiDelete } from "@/lib/api";
 import type { Recipient } from "@infrawrench/ui";
 
@@ -411,10 +411,15 @@ function Field({
   hint?: string;
   children: React.ReactNode;
 }) {
+  const generatedId = useId();
+  const child = isValidElement<{ id?: string }>(children) ? children : null;
+  const controlId = child?.props.id ?? generatedId;
   return (
     <div>
-      <label className="block text-xs text-on-surface-tertiary mb-1">{label}</label>
-      {children}
+      <label htmlFor={controlId} className="block text-xs text-on-surface-tertiary mb-1">
+        {label}
+      </label>
+      {child ? cloneElement(child, { id: controlId }) : children}
       {hint && <p className="text-xs text-on-surface-faint mt-1">{hint}</p>}
     </div>
   );
