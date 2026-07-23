@@ -1072,6 +1072,7 @@ Prod web runs on a **DOKS** cluster: `web` (2 replicas, HTTP+WS behind ingress-n
 - `turbo prune --docker` does NOT copy root `tsconfig.base.json` (Dockerfile copies it explicitly) but DOES rewrite `pnpm.patchedDependencies` to drop patches outside the subtree (the app-builder-lib patch is desktop-only, so backend images are unaffected).
 - Web exposes unauthenticated `GET /healthz` (raw HTTP level, dev+prod) for k8s probes and the DO LB.
 - The full Docker pipeline (prune → frozen install → turbo build → prod install → boot) is reproducible on a host without docker; all three services were boot-smoke-tested this way (web answered /healthz + SPA + API 401; poller loaded 28 plugins and issued the claim SQL).
+- **Container registry `registry.infrawrench.com`**: cloudflare/serverless-registry (Worker `infrawrench-registry-production` + R2 bucket `infrawrench-registry`) on the Infrawrench Production CF account. Config + deploy/rotation instructions in `infra/registry/`. Basic auth for push _and_ pull (no anonymous access; `READONLY_USERNAME/READONLY_PASSWORD` Worker secrets exist upstream for pull-only creds). `.github/workflows/bastion-deploy.yml` pushes `bastion-agent:<sha>` + `:latest` (linux/amd64+arm64) there on main pushes touching `app/packages/bastion-agent/**`. Note: user-facing docs/UI still point at `ghcr.io/infrawrench/bastion-agent:latest` for pulls (nothing publishes ghcr from CI).
 
 ## website package — Astro on Cloudflare Workers
 

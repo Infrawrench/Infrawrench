@@ -1,0 +1,53 @@
+name: bastion-deploy
+
+# Builds the bastion agent image and pushes it to the self-hosted registry
+# (registry.infrawrench.com — a cloudflare/serverless-registry Worker backed by
+# R2, deployed from infra/registry). Pushes both a commit-SHA tag and :latest.
+#
+# Required repo secrets:
+#   REGISTRY_USERNAME — push credentials for registry.infrawrench.com
+#   REGISTRY_PASSWORD
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/packages/bastion-agent/**"
+      - ".github/workflows/bastion-deploy.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: bastion-deploy
+  cancel-in-progress: false
+
+env:
+  IMAGE: registry.infrawrench.com/bastion-agent
+
+jobs:
+  build-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to registry.infrawrench.com
+        uses: docker/login-action@v3
+        with:
+          registry: registry.infrawrench.com
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: Build and push bastion-agent:${{ github.sha }}
+        uses: docker/build-push-action@v6
+        with:
+          context: app/packages/bastion-agent
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.IMAGE }}:latest
+          cache-from: type=gha,scope=bastion-agent
+          cache-to: type=gha,scope=bastion-agent,mode=max

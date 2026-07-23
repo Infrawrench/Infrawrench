@@ -6,11 +6,13 @@ Prod web stack on DOKS: `web` (Hono + WebSockets, 2 replicas), `poller`
 GitHub API reads). Postgres stays on Neon, metrics on ClickHouse Cloud;
 the CF Workers deployables (website, telemetry) are not part of this.
 
-| Layer                                                              | Owner                                |
-| ------------------------------------------------------------------ | ------------------------------------ |
-| Cluster, registry, namespace, secrets, ingress-nginx, cert-manager | `infra/terraform` (applied manually) |
-| Deployments, Service, Ingress, ClusterIssuer                       | `infra/k8s` (applied by CI)          |
-| Images `web` / `poller` / `github-watcher`, tagged `:<commit sha>` | `.github/workflows/web-deploy.yml`   |
+| Layer                                                              | Owner                                  |
+| ------------------------------------------------------------------ | -------------------------------------- |
+| Cluster, registry, namespace, secrets, ingress-nginx, cert-manager | `infra/terraform` (applied manually)   |
+| Deployments, Service, Ingress, ClusterIssuer                       | `infra/k8s` (applied by CI)            |
+| Images `web` / `poller` / `github-watcher`, tagged `:<commit sha>` | `.github/workflows/web-deploy.yml`     |
+| Container registry `registry.infrawrench.com` (CF Worker + R2)     | `infra/registry` (deployed manually)   |
+| Image `bastion-agent`, tagged `:<commit sha>` + `:latest`          | `.github/workflows/bastion-deploy.yml` |
 
 ## One-time bootstrap
 
