@@ -39,7 +39,6 @@ app_env = {
   GITHUB_APP_SLUG        = "..."
 
   # Optional
-  # TURNSTILE_SECRET_KEY = "..."
   # ANTHROPIC_API_KEY    = "..."
   # OPENAI_API_KEY       = "..."
 }
