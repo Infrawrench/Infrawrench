@@ -17,7 +17,7 @@ Infrawrench ships an in-app **AI chat** powered by Anthropic Claude. The model h
 
 ## What the agent can do
 
-Everything the UI exposes. The chat shares the [MCP server](./mcp.md)'s tool registry, plus connection-layer tools that the MCP currently keeps internal:
+Everything the UI exposes. The chat shares the [MCP server](./mcp.md)'s tool registry:
 
 - **Resource lifecycle** — list, search, get, create, delete, attach, invoke action, apply manifest.
 - **SQL** — `sql_query` (read), `sql_execute` (write), `introspect_sql_schema`. Targets either the account's primary database or a per-resource SQL driver (e.g. an individual Neon branch).
@@ -27,6 +27,7 @@ Everything the UI exposes. The chat shares the [MCP server](./mcp.md)'s tool reg
 - **Storage** — list / mkdir / delete on cloud buckets (S3, GCS, R2, Azure Blob, Spaces).
 - **Secrets** — list / access / add / enable / disable / destroy versions on versioned-secret resources (e.g. GCP Secret Manager).
 - **Credentials** — `export_credential` to download IAM access keys, service-account JSON, connection strings, etc.
+- **Costs & budgets** — `query_costs` for spend questions ("what did we spend on AWS last month?"), `list_cost_dimension_values`, `get_cost_status`, and budget CRUD (`list_budgets`, `get_budget`, `create_budget`, `update_budget`, `delete_budget`). These enforce the caller's `costs:read` / `budgets:*` [role permissions](../team-and-billing/roles-and-permissions.md). See [Cloud costs](./cloud-costs.md).
 
 ## Destructive-action approval
 
