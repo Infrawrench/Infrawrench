@@ -1,29 +1,36 @@
 # registry.infrawrench.com — container registry on Cloudflare Workers
 
-A deployment of [cloudflare/serverless-registry](https://github.com/cloudflare/serverless-registry)
+A deployment of [Infrawrench/serverless-registry](https://github.com/Infrawrench/serverless-registry) —
+our fork of [cloudflare/serverless-registry](https://github.com/cloudflare/serverless-registry)
 (Docker Registry v2 API on a Worker, blobs in R2). It holds the bastion agent
 image pushed by `.github/workflows/bastion-deploy.yml`:
 
 - `registry.infrawrench.com/bastion-agent:<commit sha>`
 - `registry.infrawrench.com/bastion-agent:latest`
 
-All access — push **and** pull — requires basic auth. The CI credentials live
-in the repo secrets `REGISTRY_USERNAME` / `REGISTRY_PASSWORD` and in the
-Worker's `USERNAME` / `PASSWORD` secrets. serverless-registry also supports
-pull-only credentials via `READONLY_USERNAME` / `READONLY_PASSWORD` Worker
-secrets if something ever needs pull access without push rights.
+The fork adds one feature over upstream: an `ANONYMOUS_PULL` env var. With it
+set to `"true"` (as deployed), **pulls are public** — GET/HEAD requests need no
+credentials, so `docker pull registry.infrawrench.com/bastion-agent:latest`
+just works. This also makes read-only discovery endpoints (`/v2/_catalog`,
+`/v2/<name>/tags/list`) public, so don't push anything secret here. Pushes and
+deletes still require basic auth: the CI credentials live in the repo secrets
+`REGISTRY_USERNAME` / `REGISTRY_PASSWORD` and in the Worker's `USERNAME` /
+`PASSWORD` secrets.
 
 ## Deploying / upgrading the Worker
 
-The Worker code is upstream's, unmodified; only `wrangler.jsonc` here is ours.
-Deployed at upstream commit `5f97b0ec60179337d01e5f69df944bef088396c9`.
+Only `wrangler.jsonc` here is ours; the Worker code lives in the fork
+(deployed at fork commit `6d3601c`). To pull in upstream changes, merge
+upstream `main` into the fork's `main` (our anonymous-pull commit sits on top),
+then redeploy:
 
 ```sh
-git clone https://github.com/cloudflare/serverless-registry.git
+git clone git@github.com:Infrawrench/serverless-registry.git
 cp infra/registry/wrangler.jsonc serverless-registry/wrangler.jsonc
 cd serverless-registry
 pnpm install
-pnpm run deploy   # wrangler deploy --minify --env production
+pnpm test        # includes the anonymous-pull suite
+pnpm run deploy  # wrangler deploy --minify --env production
 ```
 
 The R2 bucket (`infrawrench-registry`) and the custom domain are created

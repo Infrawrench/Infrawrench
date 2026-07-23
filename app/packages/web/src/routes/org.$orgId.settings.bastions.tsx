@@ -284,7 +284,7 @@ function CreatedBastionModal({
   --restart unless-stopped \\
   -e BASTION_TOKEN=${bastion.token} \\
   -e INFRAWRENCH_URL=${wsUrl} \\
-  ghcr.io/infrawrench/bastion-agent:latest`;
+  registry.infrawrench.com/bastion-agent:latest`;
 
   return (
     <Modal onClose={onClose}>

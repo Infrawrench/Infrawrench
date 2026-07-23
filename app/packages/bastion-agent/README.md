@@ -16,7 +16,7 @@ docker run -d \
   --restart unless-stopped \
   -e BASTION_TOKEN=iwb_… \
   -e INFRAWRENCH_URL=wss://app.infrawrench.com/api/bastions/agent \
-  ghcr.io/infrawrench/bastion-agent:latest
+  registry.infrawrench.com/bastion-agent:latest
 ```
 
 The token cannot be recovered after the modal closes — copy it now. To rotate, revoke the bastion in the UI and create a new one.

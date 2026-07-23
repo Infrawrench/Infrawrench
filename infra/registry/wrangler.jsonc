@@ -1,9 +1,11 @@
 // Config for the registry.infrawrench.com container registry — a deployment of
-// https://github.com/cloudflare/serverless-registry on the Infrawrench
-// Production Cloudflare account, backed by the `infrawrench-registry` R2 bucket.
+// https://github.com/Infrawrench/serverless-registry (our fork of
+// cloudflare/serverless-registry with anonymous-pull support) on the
+// Infrawrench Production Cloudflare account, backed by the
+// `infrawrench-registry` R2 bucket.
 //
-// Deploy (see README.md): clone serverless-registry, drop this file in as
-// wrangler.jsonc at its root, then `pnpm install && pnpm run deploy`.
+// Deploy (see README.md): clone the fork, drop this file in as wrangler.jsonc
+// at its root, then `pnpm install && pnpm run deploy`.
 {
   "name": "infrawrench-registry",
   "main": "./index.ts",
@@ -16,6 +18,9 @@
       "routes": [{ "pattern": "registry.infrawrench.com", "custom_domain": true }],
       "workers_dev": false,
       "r2_buckets": [{ "binding": "REGISTRY", "bucket_name": "infrawrench-registry" }],
+      "vars": {
+        "ANONYMOUS_PULL": "true",
+      },
     },
   },
 }

@@ -45,7 +45,7 @@ docker run -d \
   --restart unless-stopped \
   -e BASTION_TOKEN=iwb_… \
   -e INFRAWRENCH_URL=wss://app.infrawrench.com/api/bastions/agent \
-  ghcr.io/infrawrench/bastion-agent:latest
+  registry.infrawrench.com/bastion-agent:latest
 ```
 
 The agent's status pill in **Settings → Bastions** flips to **Connected** within a few seconds.

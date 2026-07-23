@@ -1,10 +1,11 @@
 name: bastion-deploy
 
 # Builds the bastion agent image and pushes it to the self-hosted registry
-# (registry.infrawrench.com — a cloudflare/serverless-registry Worker backed by
-# R2, deployed from infra/registry). Each architecture builds natively on its
-# own runner (no qemu) and pushes by digest; a final job stitches the digests
-# into one multi-arch manifest tagged :<commit sha> and :latest.
+# (registry.infrawrench.com — our serverless-registry fork on a CF Worker
+# backed by R2, deployed from infra/registry). Each architecture builds
+# natively on its own Blacksmith runner (no qemu) and pushes by digest; a
+# final job stitches the digests into one multi-arch manifest tagged
+# :<commit sha> and :latest.
 #
 # Required repo secrets:
 #   REGISTRY_USERNAME — push credentials for registry.infrawrench.com
@@ -32,9 +33,9 @@ jobs:
       matrix:
         include:
           - arch: amd64
-            runner: ubuntu-latest
+            runner: blacksmith-4vcpu-ubuntu-2404
           - arch: arm64
-            runner: ubuntu-24.04-arm
+            runner: blacksmith-4vcpu-ubuntu-2404-arm
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
@@ -72,7 +73,7 @@ jobs:
           retention-days: 1
 
   push-manifest:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     needs: build
     steps:
       - uses: actions/download-artifact@v4
