@@ -10,9 +10,12 @@ Infrawrench ships an in-app **AI chat** powered by Anthropic Claude. The model h
 
 <insert [Chat page with a streamed assistant reply and a pending-approval card for a delete-resource tool use] here>
 
+<insert [Sidebar Chat section showing several recent chat sessions with the + new-chat button] here>
+
 ## Where it lives
 
 - **In the app** — `/org/{orgId}/chat`. New conversations are private to the user who created them.
+- **In the sidebar** — a **Chat** section lists your recent sessions (like Workflows and Dashboards). Click **+** to start a new chat, click a session to reopen it, or hover and click **×** to archive it. Click the section header to see all chats.
 - **API** — `POST /api/org/{orgId}/chat/conversations/{id}/messages`. Auth is the same WorkOS session as the rest of the web UI, or an [API key](../team-and-billing/api-keys.md) with the `chat:write` scope.
 
 ## What the agent can do

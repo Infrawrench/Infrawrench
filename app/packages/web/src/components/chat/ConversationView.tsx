@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiGet, apiPost } from "@/lib/api";
+import { CHAT_CONVERSATIONS_CHANGED_EVENT } from "@/lib/chat-events";
 import {
   microsToUsd,
   type ChatMessage,
@@ -155,6 +156,9 @@ export function ConversationView({ orgId, conversationId }: Props): React.ReactE
 
       setStreaming((s) => ({ ...s, active: false }));
       await reload();
+      // A completed turn can rename the conversation and bumps updatedAt —
+      // let the sidebar session list pick that up.
+      window.dispatchEvent(new Event(CHAT_CONVERSATIONS_CHANGED_EVENT));
     },
     [conversationId, orgId, reload],
   );

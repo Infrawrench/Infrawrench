@@ -13,6 +13,8 @@ import {
 } from "@infrawrench/ui";
 import { WorkflowIcon } from "@infrawrench/ui/workflows";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
+import { CHAT_CONVERSATIONS_CHANGED_EVENT } from "@/lib/chat-events";
+import type { ConversationSummary } from "@/components/chat/types";
 import { AddAccountModal } from "./AddAccountModal";
 
 interface ResourceSummary {
@@ -88,6 +90,9 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
   const newDashboardRef = useRef<HTMLInputElement>(null);
   const renameRef = useRef<HTMLInputElement>(null);
 
+  // Chat session state
+  const [chatSessions, setChatSessions] = useState<ConversationSummary[]>([]);
+
   // Org switcher state
   const [orgs, setOrgs] = useState<OrgEntry[]>([]);
   const [orgsLoaded, setOrgsLoaded] = useState(false);
@@ -114,6 +119,54 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
     if (!apiBase) return;
     apiGet<Dashboard[]>(`${apiBase}/dashboards`).then(setDashboardList).catch(console.error);
   }, [apiBase, dashboardPinsVersion]);
+
+  // Chat sessions: load on org change and refresh when conversations change
+  // (new chat, archive, rename after the first turn).
+  useEffect(() => {
+    if (!apiBase) return;
+    function loadChats() {
+      apiGet<{ conversations: ConversationSummary[] }>(`${apiBase}/chat/conversations`)
+        .then((res) => setChatSessions(res.conversations))
+        .catch(console.error);
+    }
+    loadChats();
+    window.addEventListener(CHAT_CONVERSATIONS_CHANGED_EVENT, loadChats);
+    return () => window.removeEventListener(CHAT_CONVERSATIONS_CHANGED_EVENT, loadChats);
+  }, [apiBase]);
+
+  async function handleNewChat() {
+    if (!apiBase) return;
+    try {
+      const created = await apiPost<{ id: string }>(`${apiBase}/chat/conversations`, {});
+      window.dispatchEvent(new Event(CHAT_CONVERSATIONS_CHANGED_EVENT));
+      void navigate({
+        to: "/org/$orgId/chat/$conversationId",
+        params: { orgId: orgId!, conversationId: created.id },
+      });
+    } catch (e) {
+      console.error("Failed to create chat:", e);
+      toast.error("Couldn't create chat", {
+        description: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+
+  async function handleArchiveChat(id: string) {
+    if (!apiBase) return;
+    try {
+      await apiDelete(`${apiBase}/chat/conversations/${id}`);
+      setChatSessions((prev) => prev.filter((c) => c.id !== id));
+      window.dispatchEvent(new Event(CHAT_CONVERSATIONS_CHANGED_EVENT));
+      if (pathname === `/org/${orgId}/chat/${id}`) {
+        void navigate({ to: "/org/$orgId/chat", params: { orgId: orgId! } });
+      }
+    } catch (e) {
+      console.error("Failed to archive chat:", e);
+      toast.error("Couldn't archive chat", {
+        description: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
 
   useEffect(() => {
     if (!apiBase) return;
@@ -407,6 +460,73 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
               </button>
             </div>
           </div>
+          {/* Chat sessions section */}
+          <div className="mb-2">
+            <div className="flex items-center justify-between px-3 py-1">
+              <button
+                type="button"
+                onClick={() => void navigate({ to: "/org/$orgId/chat", params: { orgId: orgId! } })}
+                className="text-xs font-medium text-on-surface-muted uppercase tracking-wide hover:text-on-surface-secondary transition-colors"
+              >
+                Chat
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleNewChat()}
+                title="New chat"
+                className="text-on-surface-faint hover:text-on-surface-secondary text-sm leading-none size-5 flex items-center justify-center rounded hover:bg-surface-overlay transition-colors"
+              >
+                +
+              </button>
+            </div>
+
+            {chatSessions.slice(0, 8).map((chat) => {
+              const isActive = pathname === `/org/${orgId}/chat/${chat.id}`;
+              return (
+                <div
+                  key={chat.id}
+                  className={`group mx-2 flex items-center rounded-lg transition-colors ${
+                    isActive
+                      ? "bg-surface-overlay text-on-surface"
+                      : "text-on-surface-tertiary hover:text-on-surface-secondary hover:bg-surface-overlay"
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void navigate({
+                        to: "/org/$orgId/chat/$conversationId",
+                        params: { orgId: orgId!, conversationId: chat.id },
+                      })
+                    }
+                    className="flex-1 min-w-0 text-left px-3 py-1.5 text-xs"
+                  >
+                    <span className="block truncate">{chat.title}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleArchiveChat(chat.id)}
+                    title="Archive chat"
+                    aria-label="Archive chat"
+                    className="opacity-0 group-hover:opacity-100 text-on-surface-faint hover:text-red-500 text-xs px-2 py-1.5 transition-opacity"
+                  >
+                    ×
+                  </button>
+                </div>
+              );
+            })}
+
+            {chatSessions.length > 8 && (
+              <button
+                type="button"
+                onClick={() => void navigate({ to: "/org/$orgId/chat", params: { orgId: orgId! } })}
+                className="mx-2 px-3 py-1 text-xs text-on-surface-faint hover:text-on-surface-secondary transition-colors"
+              >
+                All chats…
+              </button>
+            )}
+          </div>
+
           {/* Dashboards section */}
           <div className="mb-2">
             <div className="flex items-center justify-between px-3 py-1">
@@ -628,14 +748,6 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
           >
             <span className="text-base leading-none">+</span>
             Add account
-          </button>
-          <button
-            type="button"
-            onClick={() => void navigate({ to: "/org/$orgId/chat", params: { orgId: orgId! } })}
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-on-surface-muted hover:text-on-surface-secondary hover:bg-surface-overlay transition-colors"
-          >
-            <span className="text-base leading-none">&#9670;</span>
-            Chat
           </button>
           <button
             type="button"

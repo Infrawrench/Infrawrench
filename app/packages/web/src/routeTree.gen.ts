@@ -18,6 +18,7 @@ import { Route as OrgOrgIdSettingsRouteImport } from './routes/org.$orgId.settin
 import { Route as OrgOrgIdChatRouteImport } from './routes/org.$orgId.chat'
 import { Route as OrgOrgIdAgentsRouteImport } from './routes/org.$orgId.agents'
 import { Route as OrgOrgIdSettingsIndexRouteImport } from './routes/org.$orgId.settings.index'
+import { Route as OrgOrgIdChatIndexRouteImport } from './routes/org.$orgId.chat.index'
 import { Route as OrgOrgIdSettingsTeamRouteImport } from './routes/org.$orgId.settings.team'
 import { Route as OrgOrgIdSettingsSshKeysRouteImport } from './routes/org.$orgId.settings.ssh-keys'
 import { Route as OrgOrgIdSettingsSshHostKeysRouteImport } from './routes/org.$orgId.settings.ssh-host-keys'
@@ -76,6 +77,11 @@ const OrgOrgIdSettingsIndexRoute = OrgOrgIdSettingsIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => OrgOrgIdSettingsRoute,
+} as any)
+const OrgOrgIdChatIndexRoute = OrgOrgIdChatIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => OrgOrgIdChatRoute,
 } as any)
 const OrgOrgIdSettingsTeamRoute = OrgOrgIdSettingsTeamRouteImport.update({
   id: '/team',
@@ -171,6 +177,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/settings/ssh-host-keys': typeof OrgOrgIdSettingsSshHostKeysRoute
   '/org/$orgId/settings/ssh-keys': typeof OrgOrgIdSettingsSshKeysRoute
   '/org/$orgId/settings/team': typeof OrgOrgIdSettingsTeamRoute
+  '/org/$orgId/chat/': typeof OrgOrgIdChatIndexRoute
   '/org/$orgId/settings/': typeof OrgOrgIdSettingsIndexRoute
   '/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId': typeof OrgOrgIdResourcesPluginIdResourceTypeIdResourceIdRoute
 }
@@ -178,7 +185,6 @@ export interface FileRoutesByTo {
   '/onboarding': typeof OnboardingRoute
   '/invite/$token': typeof InviteTokenRoute
   '/org/$orgId/agents': typeof OrgOrgIdAgentsRoute
-  '/org/$orgId/chat': typeof OrgOrgIdChatRouteWithChildren
   '/org/$orgId/workflows': typeof OrgOrgIdWorkflowsRoute
   '/org/$orgId': typeof OrgOrgIdIndexRoute
   '/org/$orgId/accounts/$accountId': typeof OrgOrgIdAccountsAccountIdRoute
@@ -193,6 +199,7 @@ export interface FileRoutesByTo {
   '/org/$orgId/settings/ssh-host-keys': typeof OrgOrgIdSettingsSshHostKeysRoute
   '/org/$orgId/settings/ssh-keys': typeof OrgOrgIdSettingsSshKeysRoute
   '/org/$orgId/settings/team': typeof OrgOrgIdSettingsTeamRoute
+  '/org/$orgId/chat': typeof OrgOrgIdChatIndexRoute
   '/org/$orgId/settings': typeof OrgOrgIdSettingsIndexRoute
   '/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId': typeof OrgOrgIdResourcesPluginIdResourceTypeIdResourceIdRoute
 }
@@ -218,6 +225,7 @@ export interface FileRoutesById {
   '/org/$orgId/settings/ssh-host-keys': typeof OrgOrgIdSettingsSshHostKeysRoute
   '/org/$orgId/settings/ssh-keys': typeof OrgOrgIdSettingsSshKeysRoute
   '/org/$orgId/settings/team': typeof OrgOrgIdSettingsTeamRoute
+  '/org/$orgId/chat/': typeof OrgOrgIdChatIndexRoute
   '/org/$orgId/settings/': typeof OrgOrgIdSettingsIndexRoute
   '/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId': typeof OrgOrgIdResourcesPluginIdResourceTypeIdResourceIdRoute
 }
@@ -244,6 +252,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/ssh-host-keys'
     | '/org/$orgId/settings/ssh-keys'
     | '/org/$orgId/settings/team'
+    | '/org/$orgId/chat/'
     | '/org/$orgId/settings/'
     | '/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId'
   fileRoutesByTo: FileRoutesByTo
@@ -251,7 +260,6 @@ export interface FileRouteTypes {
     | '/onboarding'
     | '/invite/$token'
     | '/org/$orgId/agents'
-    | '/org/$orgId/chat'
     | '/org/$orgId/workflows'
     | '/org/$orgId'
     | '/org/$orgId/accounts/$accountId'
@@ -266,6 +274,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/ssh-host-keys'
     | '/org/$orgId/settings/ssh-keys'
     | '/org/$orgId/settings/team'
+    | '/org/$orgId/chat'
     | '/org/$orgId/settings'
     | '/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId'
   id:
@@ -290,6 +299,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/settings/ssh-host-keys'
     | '/org/$orgId/settings/ssh-keys'
     | '/org/$orgId/settings/team'
+    | '/org/$orgId/chat/'
     | '/org/$orgId/settings/'
     | '/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId'
   fileRoutesById: FileRoutesById
@@ -364,6 +374,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/org/$orgId/settings/'
       preLoaderRoute: typeof OrgOrgIdSettingsIndexRouteImport
       parentRoute: typeof OrgOrgIdSettingsRoute
+    }
+    '/org/$orgId/chat/': {
+      id: '/org/$orgId/chat/'
+      path: '/'
+      fullPath: '/org/$orgId/chat/'
+      preLoaderRoute: typeof OrgOrgIdChatIndexRouteImport
+      parentRoute: typeof OrgOrgIdChatRoute
     }
     '/org/$orgId/settings/team': {
       id: '/org/$orgId/settings/team'
@@ -461,10 +478,12 @@ declare module '@tanstack/react-router' {
 
 interface OrgOrgIdChatRouteChildren {
   OrgOrgIdChatConversationIdRoute: typeof OrgOrgIdChatConversationIdRoute
+  OrgOrgIdChatIndexRoute: typeof OrgOrgIdChatIndexRoute
 }
 
 const OrgOrgIdChatRouteChildren: OrgOrgIdChatRouteChildren = {
   OrgOrgIdChatConversationIdRoute: OrgOrgIdChatConversationIdRoute,
+  OrgOrgIdChatIndexRoute: OrgOrgIdChatIndexRoute,
 }
 
 const OrgOrgIdChatRouteWithChildren = OrgOrgIdChatRoute._addFileChildren(
