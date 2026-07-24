@@ -174,6 +174,7 @@ const INVOKE_CHANNELS = [
   "cloud_ssh_keys_delete",
   "cloud_chat_list_conversations",
   "cloud_chat_create_conversation",
+  "cloud_chat_update_conversation",
   "cloud_chat_get_conversation",
   "cloud_chat_archive_conversation",
   "cloud_chat_spend",

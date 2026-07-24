@@ -134,6 +134,8 @@ export interface ChatConversationDetail {
 export interface ChatClient {
   listConversations(): Promise<ConversationSummary[]>;
   createConversation(model?: string): Promise<{ id: string }>;
+  /** Change the model an existing conversation runs on (takes effect next turn). */
+  setConversationModel(conversationId: string, model: string): Promise<void>;
   archiveConversation(conversationId: string): Promise<void>;
   getConversation(conversationId: string): Promise<ChatConversationDetail>;
   getSpend(): Promise<SpendStatus>;

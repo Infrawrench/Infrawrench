@@ -289,20 +289,18 @@ function RootLayout() {
       return;
     }
     setActiveDashboard(currentTarget.kind === "dashboard" ? currentTarget.dashboardId : null);
-    const activeTab = workspaceTabs.find((tab) => tab.id === activeWorkspaceTabId);
+    // Read tab state via getState and depend only on the location: this effect
+    // must react to navigation, never to store-only changes. Depending on
+    // workspaceTabs made it fire between navigateToWorkspaceTarget's eager
+    // store write and the router committing the new location, re-deriving a
+    // target from the STALE pathname and clobbering the tab that was just
+    // opened (e.g. the Chat tab reverting to Workflows).
+    const { workspaceTabs: tabs, activeWorkspaceTabId: activeId } = useUIStore.getState();
+    const activeTab = tabs.find((tab) => tab.id === activeId);
     // Preserves duplicate tab instances that share a target (e.g. multiple Home tabs).
     if (activeTab && workspaceTabTargetsEqual(activeTab.target, currentTarget)) return;
     syncWorkspaceRoute(currentTarget);
-  }, [
-    hash,
-    pathname,
-    searchStr,
-    activeWorkspaceTabId,
-    setActiveDashboard,
-    syncWorkspaceRoute,
-    tabsHydrated,
-    workspaceTabs,
-  ]);
+  }, [hash, pathname, searchStr, setActiveDashboard, syncWorkspaceRoute, tabsHydrated]);
 
   useEffect(() => {
     if (!tabsHydrated || tabsValidated) return;
@@ -316,8 +314,31 @@ function RootLayout() {
     async function validateTabs() {
       const validated = await Promise.all(tabsSnapshot.map((tab) => validateWorkspaceTab(tab)));
       if (cancelled) return;
-      const nextTabs = validated.filter((tab): tab is WorkspaceTab => !!tab);
-      replaceWorkspaceTabs(nextTabs, activeIdSnapshot);
+      // Validation is slow (it can hit plugin APIs), so merge against the LIVE
+      // tab list instead of replacing it with the hydration snapshot — the
+      // user may have opened, closed, or retitled tabs in the meantime, and a
+      // blind replace wipes those out.
+      const snapshotById = new Map(tabsSnapshot.map((tab) => [tab.id, tab]));
+      const validatedById = new Map(
+        tabsSnapshot.map((tab, i) => [tab.id, validated[i] ?? null] as const),
+      );
+      const current = useUIStore.getState();
+      const nextTabs = current.workspaceTabs.flatMap((tab): WorkspaceTab[] => {
+        const snap = snapshotById.get(tab.id);
+        if (!snap) return [tab]; // opened after the snapshot — keep untouched
+        const result = validatedById.get(tab.id);
+        if (!result) return []; // backing row is gone — drop
+        // Take the validator's refreshed title unless the tab was retitled
+        // while validation ran (e.g. a chat auto-rename).
+        return [tab.title === snap.title ? { ...tab, title: result.title } : tab];
+      });
+      const currentActiveId = current.activeWorkspaceTabId;
+      const nextActiveId = nextTabs.some((tab) => tab.id === currentActiveId)
+        ? currentActiveId
+        : ((nextTabs.some((tab) => tab.id === activeIdSnapshot) ? activeIdSnapshot : null) ??
+          nextTabs[0]?.id ??
+          null);
+      replaceWorkspaceTabs(nextTabs, nextActiveId);
       setTabsValidated(true);
     }
 

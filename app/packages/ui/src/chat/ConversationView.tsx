@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  CHAT_MODELS,
   emitChatConversationsChanged,
   microsToUsd,
   type ChatClient,
@@ -137,6 +138,22 @@ export function ConversationView({ client, conversationId }: Props): React.React
     await startStream({ text });
   }
 
+  async function handleModelChange(model: string): Promise<void> {
+    if (!conversation || model === conversation.model) return;
+    // Optimistic — the select shouldn't snap back while the PATCH is in flight.
+    setConversation({ ...conversation, model });
+    try {
+      await client.setConversationModel(conversationId, model);
+      emitChatConversationsChanged();
+    } catch (e) {
+      setConversation(conversation);
+      setStreaming((s) => ({
+        ...s,
+        error: e instanceof Error ? e.message : "Failed to change model",
+      }));
+    }
+  }
+
   const resumeIfResolved = useCallback(async () => {
     const data = await client.getConversation(conversationId);
     const unresolved = data.pendingActions.some(
@@ -197,9 +214,26 @@ export function ConversationView({ client, conversationId }: Props): React.React
   return (
     <div className="flex flex-col h-full">
       <header className="border-b border-border px-6 py-3 flex items-center justify-between">
-        <div>
-          <h1 className="text-sm font-semibold">{conversation?.title ?? "Chat"}</h1>
-          <p className="text-xs text-on-surface-faint">{conversation?.model}</p>
+        <div className="flex items-center gap-3 min-w-0">
+          <h1 className="text-sm font-semibold truncate">{conversation?.title ?? "Chat"}</h1>
+          {conversation && (
+            <select
+              value={conversation.model}
+              onChange={(e) => void handleModelChange(e.target.value)}
+              disabled={streaming.active}
+              aria-label="Model"
+              className="bg-surface-overlay border border-border rounded-md px-2 py-1 text-xs text-on-surface-secondary focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
+            >
+              {CHAT_MODELS.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.label}
+                </option>
+              ))}
+              {!CHAT_MODELS.some((m) => m.id === conversation.model) && (
+                <option value={conversation.model}>{conversation.model} (legacy)</option>
+              )}
+            </select>
+          )}
         </div>
         <div className="text-xs text-on-surface-muted text-right">
           <div>

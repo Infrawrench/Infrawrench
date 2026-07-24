@@ -53,7 +53,7 @@ Every tool the agent executes goes through the same `logAudit` path the UI uses.
 
 ## Models
 
-Pick the model when you start a chat (the picker sits next to **New chat**); each conversation keeps its model for its whole life.
+Pick the model when you start a chat (the picker sits next to **New chat**), or switch an existing conversation's model at any time from the dropdown in the conversation header — the change takes effect on the next turn.
 
 | Model                     | Best for                                |
 | ------------------------- | --------------------------------------- |
@@ -82,6 +82,7 @@ Conversation CRUD, the SSE stream, and pending-action approval are all under `/a
 ```
 GET    /conversations               # list
 POST   /conversations               # create
+PATCH  /conversations/{id}          # change settings; body: {model}
 GET    /conversations/{id}          # fetch with messages + pending actions
 DELETE /conversations/{id}          # archive
 POST   /conversations/{id}/messages # SSE stream; body: {text} or {resume: true}

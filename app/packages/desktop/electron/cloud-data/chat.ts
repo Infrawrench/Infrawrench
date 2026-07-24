@@ -22,6 +22,19 @@ ipcMain.handle(
 );
 
 ipcMain.handle(
+  "cloud_chat_update_conversation",
+  async (
+    _e,
+    { orgId, conversationId, model }: { orgId: string; conversationId: string; model: string },
+  ) => {
+    return cloudFetch(orgId, `/chat/conversations/${encodeURIComponent(conversationId)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ model }),
+    });
+  },
+);
+
+ipcMain.handle(
   "cloud_chat_get_conversation",
   async (_e, { orgId, conversationId }: { orgId: string; conversationId: string }) => {
     return cloudFetch(orgId, `/chat/conversations/${encodeURIComponent(conversationId)}`);

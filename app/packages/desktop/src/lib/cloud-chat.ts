@@ -29,6 +29,9 @@ export function createDesktopChatClient(orgId: string): ChatClient {
         ...(model ? { model } : {}),
       });
     },
+    async setConversationModel(conversationId, model) {
+      await invoke("cloud_chat_update_conversation", { orgId, conversationId, model });
+    },
     async archiveConversation(conversationId) {
       await invoke("cloud_chat_archive_conversation", { orgId, conversationId });
     },

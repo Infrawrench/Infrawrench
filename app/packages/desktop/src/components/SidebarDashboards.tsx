@@ -46,7 +46,18 @@ export function SidebarDashboards() {
       return;
     }
     try {
-      setChatSessions(await getDesktopChatClient(activeCloudOrgId).listConversations());
+      const sessions = await getDesktopChatClient(activeCloudOrgId).listConversations();
+      setChatSessions(sessions);
+      // Keep chat workspace tab titles in sync with conversation titles —
+      // conversations auto-rename after the first message, and restored tabs
+      // carry whatever title they had when the app last closed.
+      const titleById = new Map(sessions.map((c) => [c.id, c.title]));
+      const { workspaceTabs, setWorkspaceTabTitle } = useUIStore.getState();
+      for (const tab of workspaceTabs) {
+        if (tab.target.kind !== "chat" || !tab.target.conversationId) continue;
+        const title = titleById.get(tab.target.conversationId);
+        if (title && title !== tab.title) setWorkspaceTabTitle(tab.id, title);
+      }
     } catch (err) {
       console.error("[sidebar-chat] Failed to load chat sessions:", err);
       setChatSessions([]);

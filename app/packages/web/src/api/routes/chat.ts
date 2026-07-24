@@ -78,6 +78,37 @@ app.post("/conversations", async (c) => {
   return c.json({ id });
 });
 
+/* PATCH /:id — update settings (currently just the model) */
+app.patch("/conversations/:id", async (c) => {
+  const orgId = c.req.param("orgId") ?? "";
+  const auth = await authenticateChat(c, orgId, "chat:write");
+  if (auth instanceof Response) return auth;
+  const conversationId = c.req.param("id");
+
+  const body = await c.req.json<{ model?: string }>().catch(() => ({}) as { model?: string });
+  if (!body.model) return c.json({ error: "`model` is required" }, 400);
+  if (!CHAT_MODELS.some((m) => m.id === body.model)) {
+    return c.json(
+      { error: `Unknown model. Supported: ${CHAT_MODELS.map((m) => m.id).join(", ")}` },
+      400,
+    );
+  }
+
+  const updated = await db
+    .update(chatConversations)
+    .set({ model: body.model, updatedAt: new Date() })
+    .where(
+      and(
+        eq(chatConversations.id, conversationId),
+        eq(chatConversations.organizationId, auth.organizationId),
+        eq(chatConversations.userId, auth.userId),
+      ),
+    )
+    .returning({ id: chatConversations.id });
+  if (updated.length === 0) return c.json({ error: "Not found" }, 404);
+  return c.json({ ok: true });
+});
+
 /* GET /:id — fetch with messages */
 app.get("/conversations/:id", async (c) => {
   const orgId = c.req.param("orgId") ?? "";

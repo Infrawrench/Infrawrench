@@ -53,9 +53,12 @@ export function getWorkspaceNavigateArgs(
     case "workflows":
       return { to: "/workflows", ...(replace ? { replace: true } : {}) };
     case "chat":
+      // Always pass search explicitly: navigating from a conversation
+      // (?conversation=x) to the list must CLEAR the param, or the route
+      // resolves straight back to the conversation.
       return {
         to: "/chat",
-        ...(target.conversationId ? { search: { conversation: target.conversationId } } : {}),
+        search: target.conversationId ? { conversation: target.conversationId } : {},
         ...(replace ? { replace: true } : {}),
       };
     case "resource": {

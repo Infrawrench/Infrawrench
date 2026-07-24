@@ -9,7 +9,7 @@ import type {
   ConversationSummary,
   SpendStatus,
 } from "@infrawrench/ui";
-import { apiDelete, apiGet, apiPost } from "@/lib/api";
+import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
 
 export function createWebChatClient(orgId: string): ChatClient {
   const base = `/api/org/${orgId}/chat`;
@@ -20,6 +20,9 @@ export function createWebChatClient(orgId: string): ChatClient {
     },
     createConversation(model) {
       return apiPost<{ id: string }>(`${base}/conversations`, model ? { model } : {});
+    },
+    async setConversationModel(conversationId, model) {
+      await apiPatch(`${base}/conversations/${conversationId}`, { model });
     },
     async archiveConversation(conversationId) {
       await apiDelete(`${base}/conversations/${conversationId}`);
