@@ -127,7 +127,10 @@ function createWindow() {
     titleBarStyle: "hiddenInset",
     backgroundColor: nativeTheme.shouldUseDarkColors ? "#030712" : "#ffffff",
     webPreferences: {
-      preload: path.join(__dirname, "../preload/index.js"),
+      // Resolve from the app root, not __dirname: main.ts is code-split into
+      // out/main/chunks/ (the CLI bootstrap dynamically imports it), so
+      // __dirname-relative paths would point inside out/main/.
+      preload: path.join(app.getAppPath(), "out/preload/index.js"),
       contextIsolation: true,
       nodeIntegration: false,
     },
@@ -145,7 +148,7 @@ function createWindow() {
     win.loadURL(process.env["ELECTRON_RENDERER_URL"]);
     win.webContents.openDevTools();
   } else {
-    win.loadFile(path.join(__dirname, "../renderer/index.html"));
+    win.loadFile(path.join(app.getAppPath(), "out/renderer/index.html"));
   }
 }
 
