@@ -123,6 +123,10 @@
     {
       "name": "Admin",
       "description": "Platform-operator surface (INFRAWRENCH_PLATFORM_ADMIN_EMAILS allowlist), e.g. complimentary orgs."
+    },
+    {
+      "name": "Push",
+      "description": "Mobile push notification devices and preferences."
     }
   ],
   "components": {
@@ -5497,6 +5501,98 @@
           }
         },
         "required": ["complimentary"],
+        "additionalProperties": false
+      },
+      "PushDevice": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "platform": {
+            "type": "string",
+            "enum": ["ios", "android"]
+          },
+          "deviceName": {
+            "type": ["string", "null"]
+          },
+          "lastSeenAt": {
+            "type": "string",
+            "description": "ISO timestamp of the last registration"
+          },
+          "disabled": {
+            "type": "boolean",
+            "description": "True when delivery failures disabled the device"
+          }
+        },
+        "required": ["id", "platform", "deviceName", "lastSeenAt", "disabled"],
+        "additionalProperties": false
+      },
+      "PushPreferences": {
+        "type": "object",
+        "properties": {
+          "syncIncidents": {
+            "type": "boolean"
+          },
+          "budgetAlerts": {
+            "type": "boolean"
+          }
+        },
+        "required": ["syncIncidents", "budgetAlerts"],
+        "additionalProperties": false
+      },
+      "PushPreferencesUpdate": {
+        "type": "object",
+        "properties": {
+          "syncIncidents": {
+            "type": "boolean"
+          },
+          "budgetAlerts": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "PushRecipient": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": ["string", "null"]
+          },
+          "syncIncidents": {
+            "type": "boolean"
+          },
+          "budgetAlerts": {
+            "type": "boolean"
+          },
+          "devices": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "platform": {
+                  "type": "string",
+                  "enum": ["ios", "android"]
+                },
+                "deviceName": {
+                  "type": ["string", "null"]
+                }
+              },
+              "required": ["id", "platform", "deviceName"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": ["userId", "email", "displayName", "syncIncidents", "budgetAlerts", "devices"],
         "additionalProperties": false
       }
     },
@@ -13467,6 +13563,314 @@
           }
         },
         "operationId": "putAdminOrganizationsOrgIdComplimentary"
+      }
+    },
+    "/api/push/devices": {
+      "post": {
+        "tags": ["Push"],
+        "summary": "Register a mobile push device",
+        "description": "Registers (or refreshes) an Expo push token for the calling user. Devices are user-scoped: one registration covers every organization the user belongs to. Re-registering an existing token refreshes it and re-enables a device disabled by delivery failures.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "expoPushToken": {
+                    "type": "string",
+                    "description": "ExponentPushToken[...] from expo-notifications"
+                  },
+                  "platform": {
+                    "type": "string",
+                    "enum": ["ios", "android"]
+                  },
+                  "deviceName": {
+                    "type": "string"
+                  }
+                },
+                "required": ["expoPushToken", "platform"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Device id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["id"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postPushDevices"
+      },
+      "get": {
+        "tags": ["Push"],
+        "summary": "List the caller's registered devices",
+        "responses": {
+          "200": {
+            "description": "Devices",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PushDevice"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getPushDevices"
+      }
+    },
+    "/api/push/devices/{id}": {
+      "delete": {
+        "tags": ["Push"],
+        "summary": "Remove one of the caller's devices",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": ["ok"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "deletePushDevicesId"
+      }
+    },
+    "/api/org/{orgId}/push/preferences": {
+      "get": {
+        "tags": ["Push"],
+        "summary": "Get the caller's push preferences for this organization",
+        "description": "Absent preferences default to all triggers enabled.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Preferences",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PushPreferences"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdPushPreferences"
+      },
+      "put": {
+        "tags": ["Push"],
+        "summary": "Update the caller's push preferences for this organization",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PushPreferencesUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": ["ok"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putOrgOrgIdPushPreferences"
+      }
+    },
+    "/api/org/{orgId}/push/recipients": {
+      "get": {
+        "tags": ["Push"],
+        "summary": "List members receiving push notifications",
+        "description": "Admin roster of members with at least one active device.\n\n_Requires permission: `org:settings:write`._",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recipients",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PushRecipient"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getOrgOrgIdPushRecipients",
+        "x-required-permission": "org:settings:write"
+      }
+    },
+    "/api/org/{orgId}/push/test": {
+      "post": {
+        "tags": ["Push"],
+        "summary": "Send a test notification to the caller's devices",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Organization id",
+              "example": "00000000-0000-0000-0000-000000000000"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Delivery summary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "attempted": {
+                      "type": "integer"
+                    },
+                    "succeeded": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": ["ok", "attempted", "succeeded"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "postOrgOrgIdPushTest"
       }
     }
   },

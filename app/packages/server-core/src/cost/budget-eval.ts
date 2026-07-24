@@ -14,6 +14,7 @@ import { budgetAlertEvents, budgets } from "../db/schema";
 import { queryCosts, type CostFilter } from "../clickhouse/cost-readers";
 import { forecastMonthTotal, type DailyPoint } from "./forecast";
 import { sendBudgetAlertPage } from "../twilio-pager";
+import { sendPushToOrg } from "../push/dispatch";
 import { isoDay, addDays } from "./dates";
 
 interface BudgetThreshold {
@@ -128,11 +129,22 @@ export async function evaluateBudgetsForOrg(
         if (!inserted) continue; // already fired this month
 
         const kind = threshold.type === "actual" ? "spend" : "forecasted spend";
-        const notified = await sendBudgetAlertPage(
-          organizationId,
-          `infrawrench budget "${budget.name}": ${kind} ${formatCents(observedCents, budget.currency)} has reached ${threshold.percent}% of ${formatCents(budget.amountCents, budget.currency)} for ${status.month}`,
-        );
-        if (notified) {
+        const alertBody = `infrawrench budget "${budget.name}": ${kind} ${formatCents(observedCents, budget.currency)} has reached ${threshold.percent}% of ${formatCents(budget.amountCents, budget.currency)} for ${status.month}`;
+        const paged = await sendBudgetAlertPage(organizationId, alertBody);
+        // Push is independent of the org's Twilio settings — dedupe already
+        // happened via the budget_alert_events insert above.
+        const pushed = await sendPushToOrg(organizationId, "budgetAlerts", {
+          title: `Budget "${budget.name}" at ${threshold.percent}%`,
+          body: alertBody,
+          data: {
+            type: "budget_breach",
+            orgId: organizationId,
+            budgetId: budget.id,
+            month: status.month,
+            thresholdPercent: threshold.percent,
+          },
+        });
+        if (paged || pushed.succeeded > 0) {
           await db
             .update(budgetAlertEvents)
             .set({ notifiedAt: new Date() })

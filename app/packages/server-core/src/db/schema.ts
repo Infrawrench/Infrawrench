@@ -601,6 +601,63 @@ export const pagingIncidents = pgTable(
   }),
 );
 
+/**
+ * Expo push tokens for the mobile app. User-scoped, not org-scoped — a phone
+ * belongs to a person and registers once regardless of org memberships. The
+ * unique index on the token lets re-registration upsert and reassign the row
+ * to the current user (phone handoffs, account switches).
+ */
+export const pushDevices = pgTable(
+  "push_devices",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** `ExponentPushToken[...]` string from expo-notifications. */
+    expoPushToken: text("expo_push_token").notNull(),
+    platform: text("platform").notNull().$type<"ios" | "android">(),
+    deviceName: text("device_name"),
+    /** Refreshed on every register call — the app re-registers on launch. */
+    lastSeenAt: timestamp("last_seen_at").notNull().defaultNow(),
+    /** Consecutive send failures; reset to 0 on success or re-register. */
+    failureCount: integer("failure_count").notNull().default(0),
+    /** Set after repeated send failures; cleared on re-register. */
+    disabledAt: timestamp("disabled_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    tokenUnique: uniqueIndex("push_devices_token_unique").on(t.expoPushToken),
+    userIdx: index("push_devices_user_idx").on(t.userId),
+  }),
+);
+
+/**
+ * Per-(user, org) push trigger opt-outs. No row means everything is enabled —
+ * registering a device is the opt-in act.
+ */
+export const pushPreferences = pgTable(
+  "push_preferences",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    syncIncidents: boolean("sync_incidents").notNull().default(true),
+    budgetAlerts: boolean("budget_alerts").notNull().default(true),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    userOrgUnique: uniqueIndex("push_preferences_user_org_unique").on(t.userId, t.organizationId),
+    orgIdx: index("push_preferences_org_idx").on(t.organizationId),
+  }),
+);
+
 export const sshTunnelConfigs = pgTable(
   "ssh_tunnel_configs",
   {

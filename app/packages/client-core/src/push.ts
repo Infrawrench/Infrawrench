@@ -1,0 +1,81 @@
+import type { CloudFetch } from "./fetch";
+
+/**
+ * Device registration for mobile push. Server contract: user-scoped
+ * `/api/push/devices` routes (see web `api/routes/push-devices.ts`).
+ */
+
+export interface RegisterPushTokenArgs {
+  expoPushToken: string;
+  platform: "ios" | "android";
+  deviceName?: string;
+}
+
+export interface PushDeviceSummary {
+  id: string;
+  platform: "ios" | "android";
+  deviceName: string | null;
+  lastSeenAt: string;
+  disabled: boolean;
+}
+
+/**
+ * The notification `data` payload the server sends — the deep-link contract.
+ * Mirrors server-core `push/dispatch.ts` PushData.
+ */
+export type PushNotificationData =
+  | {
+      type: "sync_incident";
+      orgId: string;
+      accountId: string;
+      resourceTypeId: string;
+      incidentId: string;
+    }
+  | {
+      type: "budget_breach";
+      orgId: string;
+      budgetId: string;
+      month: string;
+      thresholdPercent: number;
+    }
+  | { type: "test"; orgId: string };
+
+export async function registerPushToken(
+  api: CloudFetch,
+  args: RegisterPushTokenArgs,
+): Promise<{ id: string } | null> {
+  return api.api<{ id: string }>("/api/push/devices", {
+    method: "POST",
+    body: JSON.stringify(args),
+  });
+}
+
+export async function listPushDevices(api: CloudFetch): Promise<PushDeviceSummary[]> {
+  return (await api.api<PushDeviceSummary[]>("/api/push/devices")) ?? [];
+}
+
+export async function unregisterPushDevice(api: CloudFetch, deviceId: string): Promise<void> {
+  await api.api(`/api/push/devices/${encodeURIComponent(deviceId)}`, { method: "DELETE" });
+}
+
+export interface PushPreferences {
+  syncIncidents: boolean;
+  budgetAlerts: boolean;
+}
+
+export async function getPushPreferences(api: CloudFetch, orgId: string): Promise<PushPreferences> {
+  return (
+    (await api.org<PushPreferences>(orgId, "/push/preferences")) ?? {
+      syncIncidents: true,
+      budgetAlerts: true,
+    }
+  );
+}
+
+export async function updatePushPreferences(
+  api: CloudFetch,
+  orgId: string,
+  prefs: Partial<PushPreferences>,
+): Promise<void> {
+  await api.org(orgId, "/push/preferences", { method: "PUT", body: JSON.stringify(prefs) });
+}

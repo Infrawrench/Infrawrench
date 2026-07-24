@@ -55,10 +55,12 @@ function PagingPage() {
   return (
     <div className="space-y-8 max-w-2xl">
       <div>
-        <h1 className="text-xl font-semibold">Paging</h1>
+        <h1 className="text-xl font-semibold">Notifications</h1>
         <p className="text-sm text-on-surface-muted mt-1">
-          Send SMS and voice calls via Twilio when a resource type fails to sync repeatedly.
-          Triggered by the background poller; manual syncs from the UI do not page.
+          Alert your team when a resource type fails to sync repeatedly or a budget threshold is
+          crossed. Incidents are triggered by the background poller; manual syncs from the UI never
+          page. Delivery goes to mobile push (the Infrawrench app) and, when Twilio credentials are
+          configured, SMS and voice calls.
         </p>
       </div>
 
@@ -67,6 +69,10 @@ function PagingPage() {
       <RecipientsSection orgId={orgId} recipients={recipients} onChanged={() => void load()} />
 
       <TestSection orgId={orgId} settings={settings} recipientCount={recipients.length} />
+
+      <PushPreferencesSection orgId={orgId} />
+
+      <PushRosterSection orgId={orgId} />
     </div>
   );
 }
@@ -388,6 +394,223 @@ function TestSection({
           {busy ? "Sending..." : "Send test page"}
         </button>
       </div>
+    </section>
+  );
+}
+
+interface PushDevice {
+  id: string;
+  platform: "ios" | "android";
+  deviceName: string | null;
+  lastSeenAt: string;
+  disabled: boolean;
+}
+
+interface PushPreferences {
+  syncIncidents: boolean;
+  budgetAlerts: boolean;
+}
+
+/**
+ * The caller's own mobile push setup: per-org trigger toggles, registered
+ * devices, and a test send. Devices are enrolled by signing in on the mobile
+ * app — there is nothing to add here, only to review and remove.
+ */
+function PushPreferencesSection({ orgId }: { orgId: string }) {
+  const [prefs, setPrefs] = useState<PushPreferences | null>(null);
+  const [devices, setDevices] = useState<PushDevice[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [testMessage, setTestMessage] = useState<{ kind: "ok" | "error"; text: string } | null>(
+    null,
+  );
+  const [testBusy, setTestBusy] = useState(false);
+
+  async function load() {
+    try {
+      const [p, d] = await Promise.all([
+        apiGet<PushPreferences>(`/api/org/${orgId}/push/preferences`),
+        apiGet<PushDevice[]>(`/api/push/devices`),
+      ]);
+      setPrefs(p);
+      setDevices(d);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load push settings");
+    }
+  }
+
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orgId]);
+
+  async function updatePref(patch: Partial<PushPreferences>) {
+    if (!prefs) return;
+    const next = { ...prefs, ...patch };
+    setPrefs(next);
+    try {
+      await apiPut(`/api/org/${orgId}/push/preferences`, next);
+    } catch (e) {
+      setPrefs(prefs);
+      setError(e instanceof Error ? e.message : "Failed to save preferences");
+    }
+  }
+
+  async function handleRemoveDevice(id: string) {
+    await apiDelete(`/api/push/devices/${id}`);
+    void load();
+  }
+
+  async function handleTest() {
+    setTestBusy(true);
+    setTestMessage(null);
+    try {
+      const r = await apiPost<{ attempted: number; succeeded: number }>(
+        `/api/org/${orgId}/push/test`,
+      );
+      setTestMessage({
+        kind: "ok",
+        text: `Delivered ${r.succeeded}/${r.attempted} test notification(s).`,
+      });
+    } catch (e) {
+      setTestMessage({ kind: "error", text: e instanceof Error ? e.message : "Test failed" });
+    } finally {
+      setTestBusy(false);
+    }
+  }
+
+  if (error) {
+    return (
+      <section className="border border-border rounded-xl p-5">
+        <h2 className="text-sm font-semibold text-on-surface-secondary">
+          Your mobile notifications
+        </h2>
+        <p className="text-xs text-red-400 mt-2">{error}</p>
+      </section>
+    );
+  }
+  if (!prefs) return null;
+
+  return (
+    <section className="border border-border rounded-xl p-5 space-y-4">
+      <h2 className="text-sm font-semibold text-on-surface-secondary">Your mobile notifications</h2>
+      <p className="text-xs text-on-surface-muted">
+        Push notifications go to the Infrawrench mobile app. Sign in on your phone to register a
+        device; these toggles apply to this organization only.
+      </p>
+
+      <div className="flex items-center gap-6 text-sm text-on-surface-secondary">
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={prefs.syncIncidents}
+            onChange={(e) => void updatePref({ syncIncidents: e.target.checked })}
+          />
+          <span>Sync-failure incidents</span>
+        </label>
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={prefs.budgetAlerts}
+            onChange={(e) => void updatePref({ budgetAlerts: e.target.checked })}
+          />
+          <span>Budget alerts</span>
+        </label>
+      </div>
+
+      {devices.length === 0 ? (
+        <p className="text-sm text-on-surface-muted">
+          No devices registered. Sign in on the mobile app to enroll this account.
+        </p>
+      ) : (
+        <ul className="divide-y divide-border/50">
+          {devices.map((d) => (
+            <li key={d.id} className="flex items-center justify-between py-2 text-sm">
+              <div>
+                <p className="text-on-surface-secondary">
+                  {d.deviceName ?? (d.platform === "ios" ? "iPhone" : "Android device")}
+                  {d.disabled && <span className="text-red-400 ml-2 text-xs">(disabled)</span>}
+                </p>
+                <p className="text-xs text-on-surface-tertiary">
+                  {d.platform} · last seen {new Date(d.lastSeenAt).toLocaleDateString()}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => void handleRemoveDevice(d.id)}
+                className="text-xs text-red-400 hover:text-red-500 dark:text-red-300"
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {testMessage && (
+        <p className={`text-xs ${testMessage.kind === "ok" ? "text-green-400" : "text-red-400"}`}>
+          {testMessage.text}
+        </p>
+      )}
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() => void handleTest()}
+          disabled={testBusy || devices.length === 0}
+          title={devices.length === 0 ? "Register a device on the mobile app first" : undefined}
+          className="px-3 py-1.5 text-sm font-medium border border-border hover:bg-surface-overlay disabled:opacity-50 text-on-surface-secondary rounded-lg transition-colors"
+        >
+          {testBusy ? "Sending..." : "Send test push"}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+interface PushRecipientRow {
+  userId: string;
+  email: string;
+  displayName: string | null;
+  syncIncidents: boolean;
+  budgetAlerts: boolean;
+  devices: Array<{ id: string; platform: string; deviceName: string | null }>;
+}
+
+/** Read-only admin roster of members with at least one active push device. */
+function PushRosterSection({ orgId }: { orgId: string }) {
+  const [rows, setRows] = useState<PushRecipientRow[] | null>(null);
+  const [forbidden, setForbidden] = useState(false);
+
+  useEffect(() => {
+    apiGet<PushRecipientRow[]>(`/api/org/${orgId}/push/recipients`)
+      .then(setRows)
+      // Non-admins get a 403 — just hide the section.
+      .catch(() => setForbidden(true));
+  }, [orgId]);
+
+  if (forbidden || rows === null) return null;
+
+  return (
+    <section className="border border-border rounded-xl p-5 space-y-3">
+      <h2 className="text-sm font-semibold text-on-surface-secondary">Members receiving push</h2>
+      {rows.length === 0 ? (
+        <p className="text-sm text-on-surface-muted">
+          No members have registered a mobile device yet.
+        </p>
+      ) : (
+        <ul className="divide-y divide-border/50">
+          {rows.map((r) => (
+            <li key={r.userId} className="py-2 text-sm">
+              <p className="text-on-surface-secondary">{r.displayName ?? r.email}</p>
+              <p className="text-xs text-on-surface-tertiary">
+                {r.devices.length} device(s) ·{" "}
+                {[r.syncIncidents && "incidents", r.budgetAlerts && "budgets"]
+                  .filter(Boolean)
+                  .join(", ") || "all triggers off"}
+              </p>
+            </li>
+          ))}
+        </ul>
+      )}
     </section>
   );
 }

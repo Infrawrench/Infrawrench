@@ -8,3 +8,5 @@ coverage
 pnpm-lock.yaml
 *.generated.*
 routeTree.gen.ts
+**/assets/generated
+.expo

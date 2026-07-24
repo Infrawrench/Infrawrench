@@ -32,7 +32,8 @@
     "./clickhouse/cost-writers": "./src/clickhouse/cost-writers.ts",
     "./cost/collect": "./src/cost/collect.ts",
     "./cost/forecast": "./src/cost/forecast.ts",
-    "./cost/budget-eval": "./src/cost/budget-eval.ts"
+    "./cost/budget-eval": "./src/cost/budget-eval.ts",
+    "./push/dispatch": "./src/push/dispatch.ts"
   },
   "scripts": {
     "typecheck": "tsgo --noEmit",

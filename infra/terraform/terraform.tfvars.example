@@ -43,6 +43,11 @@ app_env = {
   # (grant/revoke complimentary orgs). Omit to disable the admin surface.
   INFRAWRENCH_PLATFORM_ADMIN_EMAILS = "you@example.com"
 
+  # Optional: Expo push access token (mobile notifications). Sends work
+  # without it unless the Expo project has Enhanced Push Security enabled —
+  # recommended in production. Create under expo.dev → Access tokens.
+  EXPO_ACCESS_TOKEN = "..."
+
   # Optional
   # ANTHROPIC_API_KEY    = "..."
   # OPENAI_API_KEY       = "..."
