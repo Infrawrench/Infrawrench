@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
   COST_BINNINGS,
   COST_CHART_TYPES,
@@ -70,16 +70,41 @@ interface FilterRowEditorProps {
 
 /** Filter rule rows shared by the graph and budget editors. */
 export function CostFilterRows({ filters, onChange, api }: FilterRowEditorProps) {
-  const [optionsByKey, setOptionsByKey] = useState<Record<string, CostDimensionOption[]>>({});
+  // Loaded options per "dimension" / "dimension:tagKey" key. Missing = load
+  // not finished (in flight or not started), null = load failed (focus
+  // retries via loadOptions).
+  const [optionsByKey, setOptionsByKey] = useState<Record<string, CostDimensionOption[] | null>>(
+    {},
+  );
+  const requestedKeys = useRef(new Set<string>());
 
-  const loadOptions = (dimension: string, tagKey?: string) => {
-    const key = tagKey ? `${dimension}:${tagKey}` : dimension;
-    if (optionsByKey[key]) return;
-    void api
-      .loadDimensionValues(dimension, tagKey)
-      .then((values) => setOptionsByKey((prev) => ({ ...prev, [key]: values })))
-      .catch(() => setOptionsByKey((prev) => ({ ...prev, [key]: [] })));
-  };
+  const loadOptions = useCallback(
+    (dimension: string, tagKey?: string) => {
+      const key = tagKey ? `${dimension}:${tagKey}` : dimension;
+      if (requestedKeys.current.has(key)) return;
+      requestedKeys.current.add(key);
+      void api
+        .loadDimensionValues(dimension, tagKey)
+        .then((values) => setOptionsByKey((prev) => ({ ...prev, [key]: values })))
+        .catch(() => {
+          requestedKeys.current.delete(key);
+          setOptionsByKey((prev) => ({ ...prev, [key]: null }));
+        });
+    },
+    [api],
+  );
+
+  // Load each row's options as soon as the row exists — waiting for focus
+  // leaves the values box looking dead right after "+ Add filter".
+  useEffect(() => {
+    for (const f of filters) {
+      if (f.dimension === "tag") {
+        if (f.tagKey) loadOptions("tag", f.tagKey);
+      } else {
+        loadOptions(f.dimension);
+      }
+    }
+  }, [filters, loadOptions]);
 
   const update = (index: number, patch: Partial<CostFilter>) => {
     onChange(filters.map((f, i) => (i === index ? ({ ...f, ...patch } as CostFilter) : f)));
@@ -89,7 +114,8 @@ export function CostFilterRows({ filters, onChange, api }: FilterRowEditorProps)
     <div className="space-y-2">
       {filters.map((filter, i) => {
         const optKey = filter.tagKey ? `${filter.dimension}:${filter.tagKey}` : filter.dimension;
-        const options = optionsByKey[optKey] ?? [];
+        const optionsState = optionsByKey[optKey];
+        const options = Array.isArray(optionsState) ? optionsState : [];
         return (
           <div key={i} className="flex items-start gap-2">
             <select
@@ -156,6 +182,15 @@ export function CostFilterRows({ filters, onChange, api }: FilterRowEditorProps)
                     {v}
                   </option>
                 ))}
+              {optionsState === undefined && filter.values.length === 0 && (
+                <option disabled>Loading values…</option>
+              )}
+              {optionsState === null && filter.values.length === 0 && (
+                <option disabled>Couldn’t load values — click to retry</option>
+              )}
+              {Array.isArray(optionsState) &&
+                optionsState.length === 0 &&
+                filter.values.length === 0 && <option disabled>No values in cost data yet</option>}
             </select>
             <button
               type="button"
