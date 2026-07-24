@@ -71,6 +71,8 @@ Chat tokens are billed separately from your seat plan as Stripe metered usage. T
 
 Orgs without a paid subscription get **$5 of chat usage per month**. When that runs out, the agent refuses new turns until the next month — add a payment method in **Settings → Billing** to keep going. The chat header shows `(free tier)` next to the spend readout while the free cap applies.
 
+[Complimentary organizations](../team-and-billing/billing-and-plans.md) have no chat cap by default (a self-set monthly cap still applies) and their usage is never billed; the chat header shows `(complimentary)`.
+
 ### Monthly cap
 
 Each org can set `chatMonthlyCapMicros` (in micro-dollars; 1 USD = 1,000,000). When the org's month-to-date chat cost crosses the cap, the agent refuses to start new turns until the next month or the cap is raised. Set the cap in **Settings → Billing → Chat cap**, or via SQL on the `organizations` row. On the free tier, a configured cap below $5 still applies; caps above $5 take effect once the org is on a paid plan.

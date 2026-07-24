@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { eq } from "drizzle-orm";
 import { v4 as uuid } from "uuid";
 import { db } from "../../db/client";
-import { subscriptions } from "../../db/schema";
+import { organizations, subscriptions } from "../../db/schema";
 import { getStripe, getStripePriceId, getStripeChatPriceId } from "../../services/stripe";
 import { requirePermission } from "../../auth/permissions";
 import type { AuthSession } from "../auth-middleware";
@@ -15,26 +15,42 @@ declare module "hono" {
 
 const app = new Hono();
 
+/** Whether the org has platform-granted complimentary (never-billed) access. */
+async function isComplimentary(orgId: string): Promise<boolean> {
+  const [org] = await db
+    .select({ complimentary: organizations.complimentary })
+    .from(organizations)
+    .where(eq(organizations.id, orgId));
+  return org?.complimentary === true;
+}
+
 /** GET /api/billing/status */
 app.get("/status", async (c) => {
   requirePermission(c, "billing:read");
-  const session = c.get("session");
+  const complimentary = await isComplimentary(c.get("organizationId"));
   const [sub] = await db
     .select()
     .from(subscriptions)
     .where(eq(subscriptions.organizationId, c.get("organizationId")));
-  if (!sub) return c.json(null);
   return c.json({
-    status: sub.status,
-    seatCount: sub.seatCount,
-    currentPeriodEnd: sub.currentPeriodEnd,
-    stripeCustomerId: sub.stripeCustomerId,
+    complimentary,
+    subscription: sub
+      ? {
+          status: sub.status,
+          seatCount: sub.seatCount,
+          currentPeriodEnd: sub.currentPeriodEnd,
+          stripeCustomerId: sub.stripeCustomerId,
+        }
+      : null,
   });
 });
 
 /** POST /api/billing/checkout */
 app.post("/checkout", async (c) => {
   requirePermission(c, "billing:write");
+  if (await isComplimentary(c.get("organizationId"))) {
+    return c.json({ error: "This organization has complimentary access — nothing to buy" }, 400);
+  }
   const session = c.get("session");
   const stripe = getStripe();
   const priceId = getStripePriceId();

@@ -9,18 +9,23 @@ interface SubscriptionStatus {
   stripeCustomerId: string;
 }
 
+interface BillingStatus {
+  complimentary: boolean;
+  subscription: SubscriptionStatus | null;
+}
+
 export const Route = createFileRoute("/org/$orgId/settings/billing")({
   component: BillingPage,
 });
 
 function BillingPage() {
   const { orgId } = useParams({ from: "/org/$orgId/settings/billing" });
-  const [sub, setSub] = useState<SubscriptionStatus | null | undefined>(undefined);
+  const [status, setStatus] = useState<BillingStatus | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    apiGet<SubscriptionStatus | null>(`/api/org/${orgId}/billing/status`).then(setSub);
+    apiGet<BillingStatus>(`/api/org/${orgId}/billing/status`).then(setStatus);
   }, []);
 
   async function handleUpgrade() {
@@ -47,12 +52,14 @@ function BillingPage() {
     }
   }
 
-  if (sub === undefined) {
+  if (status === undefined) {
     return <p className="text-sm text-on-surface-faint">Loading…</p>;
   }
 
+  const sub = status.subscription;
+  const complimentary = status.complimentary;
   const isActive = sub?.status === "active";
-  const isFree = !sub || sub.status === "trialing" || sub.status === "canceled";
+  const isFree = !complimentary && (!sub || sub.status === "trialing" || sub.status === "canceled");
 
   return (
     <div>
@@ -62,28 +69,38 @@ function BillingPage() {
         <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className="text-sm font-medium text-on-surface-secondary">
-              {isFree ? "Free Plan" : "Pro Plan"}
+              {complimentary ? "Complimentary Plan" : isFree ? "Free Plan" : "Pro Plan"}
             </h2>
             <p className="text-xs text-on-surface-muted mt-1">
-              {isFree
-                ? "1 user, 3 accounts, no audit trail"
-                : `${sub?.seatCount ?? 1} seat${(sub?.seatCount ?? 1) !== 1 ? "s" : ""} at $20/month each`}
+              {complimentary
+                ? "All Pro features included, on the house — this organization is never billed"
+                : isFree
+                  ? "1 user, 3 accounts, no audit trail"
+                  : `${sub?.seatCount ?? 1} seat${(sub?.seatCount ?? 1) !== 1 ? "s" : ""} at $20/month each`}
             </p>
           </div>
           <span
             className={`text-xs font-medium px-2 py-1 rounded-full ${
-              isActive
-                ? "bg-green-500/10 text-green-400"
-                : sub?.status === "past_due"
-                  ? "bg-yellow-500/10 text-yellow-400"
-                  : "bg-surface-overlay text-on-surface-tertiary"
+              complimentary
+                ? "bg-purple-500/10 text-purple-400"
+                : isActive
+                  ? "bg-green-500/10 text-green-400"
+                  : sub?.status === "past_due"
+                    ? "bg-yellow-500/10 text-yellow-400"
+                    : "bg-surface-overlay text-on-surface-tertiary"
             }`}
           >
-            {isActive ? "Active" : sub?.status === "past_due" ? "Past due" : "Free"}
+            {complimentary
+              ? "Complimentary"
+              : isActive
+                ? "Active"
+                : sub?.status === "past_due"
+                  ? "Past due"
+                  : "Free"}
           </span>
         </div>
 
-        {sub?.currentPeriodEnd && (
+        {!complimentary && sub?.currentPeriodEnd && (
           <p className="text-xs text-on-surface-muted">
             Current period ends: {new Date(sub.currentPeriodEnd).toLocaleDateString()}
           </p>
@@ -92,27 +109,29 @@ function BillingPage() {
 
       {error && <p className="text-sm text-red-400 mb-3">{error}</p>}
 
-      <div className="flex gap-3">
-        {isFree ? (
-          <button
-            type="button"
-            onClick={() => void handleUpgrade()}
-            disabled={loading}
-            className="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
-          >
-            {loading ? "Redirecting..." : "Upgrade to Pro - $20/seat/month"}
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={() => void handleManage()}
-            disabled={loading}
-            className="px-4 py-2 text-sm font-medium border border-border-strong text-on-surface-secondary hover:text-on-surface hover:border-border-strong rounded-lg transition-colors"
-          >
-            {loading ? "Redirecting..." : "Manage subscription"}
-          </button>
-        )}
-      </div>
+      {!complimentary && (
+        <div className="flex gap-3">
+          {isFree ? (
+            <button
+              type="button"
+              onClick={() => void handleUpgrade()}
+              disabled={loading}
+              className="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
+            >
+              {loading ? "Redirecting..." : "Upgrade to Pro - $20/seat/month"}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => void handleManage()}
+              disabled={loading}
+              className="px-4 py-2 text-sm font-medium border border-border-strong text-on-surface-secondary hover:text-on-surface hover:border-border-strong rounded-lg transition-colors"
+            >
+              {loading ? "Redirecting..." : "Manage subscription"}
+            </button>
+          )}
+        </div>
+      )}
 
       {isFree && (
         <div className="mt-8 border border-border rounded-xl p-5">

@@ -19,6 +19,7 @@ import { authRoutes } from "./routes/auth";
 
 import { orgManagementRoutes } from "./routes/orgs";
 import { invitationAcceptRoutes } from "./routes/invitation-accept";
+import { adminRoutes } from "./routes/admin";
 
 import { dashboardRoutes } from "./routes/dashboards";
 import { costRoutes } from "./routes/costs";
@@ -114,6 +115,8 @@ authed.use("*", sessionMiddleware);
 authed.route("/auth", authRoutes);
 authed.route("/orgs", orgManagementRoutes);
 authed.route("/invitations", invitationAcceptRoutes);
+// Platform-admin surface — session-authed here, allowlist-gated inside.
+authed.route("/admin", adminRoutes);
 
 api.route("/api", authed);
 

@@ -29,6 +29,7 @@ import { registerApiKeyPaths } from "./paths/api-keys";
 import { registerWsTokenPaths } from "./paths/ws-token";
 import { registerSyncPaths } from "./paths/sync";
 import { registerWebhookPaths } from "./paths/webhooks";
+import { registerAdminPaths } from "./paths/admin";
 
 interface BuildOptions {
   /** Server URL(s) to advertise in the spec. */
@@ -82,6 +83,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerWsTokenPaths(ctx);
   registerSyncPaths(ctx);
   registerWebhookPaths(ctx);
+  registerAdminPaths(ctx);
 
   const generator = new OpenApiGeneratorV31(registry.definitions);
 
@@ -133,6 +135,11 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
       { name: "WebSocket", description: "Auth tokens for the WebSocket gateway." },
       { name: "Sync", description: "Bi-directional resource sync (used by the desktop app)." },
       { name: "Webhooks", description: "Inbound webhooks from third parties." },
+      {
+        name: "Admin",
+        description:
+          "Platform-operator surface (INFRAWRENCH_PLATFORM_ADMIN_EMAILS allowlist), e.g. complimentary orgs.",
+      },
     ],
   });
 

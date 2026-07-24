@@ -119,6 +119,10 @@
     {
       "name": "Webhooks",
       "description": "Inbound webhooks from third parties."
+    },
+    {
+      "name": "Admin",
+      "description": "Platform-operator surface (INFRAWRENCH_PLATFORM_ADMIN_EMAILS allowlist), e.g. complimentary orgs."
     }
   ],
   "components": {
@@ -4888,6 +4892,20 @@
         "required": ["status", "seatCount", "currentPeriodEnd", "stripeCustomerId"],
         "additionalProperties": false
       },
+      "BillingStatus": {
+        "type": "object",
+        "properties": {
+          "complimentary": {
+            "type": "boolean",
+            "description": "Platform-granted complimentary access: all paid perks, uncapped AI chat, never billed."
+          },
+          "subscription": {
+            "$ref": "#/components/schemas/Subscription"
+          }
+        },
+        "required": ["complimentary", "subscription"],
+        "additionalProperties": false
+      },
       "StripeRedirectUrl": {
         "type": "object",
         "properties": {
@@ -5419,6 +5437,66 @@
           }
         },
         "required": ["maxSyncVersion"],
+        "additionalProperties": false
+      },
+      "AdminOrganization": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "WorkOS organization id"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "complimentary": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "memberCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "subscriptionStatus": {
+            "type": ["string", "null"],
+            "enum": ["trialing", "active", "past_due", "canceled", "unpaid"],
+            "description": "Stripe subscription status, or null when the org never checked out"
+          }
+        },
+        "required": [
+          "id",
+          "displayName",
+          "complimentary",
+          "createdAt",
+          "memberCount",
+          "subscriptionStatus"
+        ],
+        "additionalProperties": false
+      },
+      "ComplimentaryResult": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "complimentary": {
+            "type": "boolean"
+          }
+        },
+        "required": ["id", "complimentary"],
+        "additionalProperties": false
+      },
+      "ComplimentaryUpdate": {
+        "type": "object",
+        "properties": {
+          "complimentary": {
+            "type": "boolean"
+          }
+        },
+        "required": ["complimentary"],
         "additionalProperties": false
       }
     },
@@ -12656,7 +12734,7 @@
     "/api/org/{orgId}/billing/status": {
       "get": {
         "tags": ["Billing"],
-        "summary": "Get the current subscription (or `null` for free tier)",
+        "summary": "Get the org's billing status (complimentary flag + subscription or `null`)",
         "parameters": [
           {
             "schema": {
@@ -12672,11 +12750,11 @@
         ],
         "responses": {
           "200": {
-            "description": "Subscription or null",
+            "description": "Billing status",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Subscription"
+                  "$ref": "#/components/schemas/BillingStatus"
                 }
               }
             }
@@ -12691,6 +12769,7 @@
       "post": {
         "tags": ["Billing"],
         "summary": "Start a Stripe Checkout session",
+        "description": "Rejected with 400 for complimentary organizations — they are never billed.\n\n_Requires permission: `billing:write`._",
         "parameters": [
           {
             "schema": {
@@ -12715,6 +12794,16 @@
               }
             }
           },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
           "500": {
             "description": "Server error",
             "content": {
@@ -12727,8 +12816,7 @@
           }
         },
         "operationId": "postOrgOrgIdBillingCheckout",
-        "x-required-permission": "billing:write",
-        "description": "_Requires permission: `billing:write`._"
+        "x-required-permission": "billing:write"
       }
     },
     "/api/org/{orgId}/billing/portal": {
@@ -13276,6 +13364,109 @@
           }
         },
         "operationId": "postV1WebhooksStripe"
+      }
+    },
+    "/api/admin/organizations": {
+      "get": {
+        "tags": ["Admin"],
+        "summary": "List every organization with billing-relevant state",
+        "description": "Platform admins only (INFRAWRENCH_PLATFORM_ADMIN_EMAILS allowlist). 403 for everyone else.",
+        "responses": {
+          "200": {
+            "description": "All organizations",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AdminOrganization"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "getAdminOrganizations"
+      }
+    },
+    "/api/admin/organizations/{orgId}/complimentary": {
+      "put": {
+        "tags": ["Admin"],
+        "summary": "Grant or revoke complimentary (never-billed) access for an org",
+        "description": "Platform admins only (INFRAWRENCH_PLATFORM_ADMIN_EMAILS allowlist). Complimentary orgs get every paid perk, uncapped AI chat by default, and are never billed or reported to Stripe.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "description": "Organization id"
+            },
+            "required": true,
+            "name": "orgId",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ComplimentaryUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated flag",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComplimentaryResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        },
+        "operationId": "putAdminOrganizationsOrgIdComplimentary"
       }
     }
   },

@@ -43,3 +43,11 @@ A seat is one user in your organization. If you invite a fourth teammate while o
 ## Trial
 
 New orgs get a 14-day trial of the paid plan automatically. No card required. You will get a reminder 3 days before it ends.
+
+## Complimentary organizations
+
+Some organizations (partners, open-source projects, the Infrawrench team's own orgs) are granted **complimentary access** by Infrawrench staff. A complimentary org has every paid feature, no AI chat spend cap (unless you set your own in **Settings → Billing → Chat cap**), and is never billed — there is nothing to upgrade or cancel. The billing page shows a **Complimentary** badge instead of the upgrade button.
+
+Complimentary status can only be granted or revoked by Infrawrench staff; contact support if you think your organization qualifies.
+
+<insert [Billing settings page for a complimentary org, showing the purple "Complimentary" badge and the "All Pro features included, on the house" plan card] here>

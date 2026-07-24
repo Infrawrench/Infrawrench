@@ -981,6 +981,10 @@ $20/month per seat. Free tier: 1 user, 3 accounts, no audit/API keys/team.
 - `POST /api/v1/webhooks/stripe` — handles checkout.session.completed, invoice.paid/failed, subscription.updated/deleted
 - Server Actions: createCheckoutSession, createBillingPortalSession, getSubscriptionStatus
 
+### Complimentary orgs (platform admin)
+
+`organizations.complimentary` (migration `0024`) marks an org as never-billed with every paid perk: `getMonthlySpend` in `web/src/chat/billing.ts` counts it as paid (uncapped chat unless the org set its own `chat_monthly_cap_micros`), `reportUsageToStripe` skips the meter event (usage rows still recorded for internal cost tracking), `POST /billing/checkout` returns 400, and `GET /billing/status` returns `{ complimentary, subscription }`. Toggled by platform admins — emails in the `INFRAWRENCH_PLATFORM_ADMIN_EMAILS` env allowlist (`web/src/auth/platform-admin.ts`) — via `/api/admin/organizations[/{orgId}/complimentary]` and the standalone `/admin` web page. Platform admin is a deployment-operator concept, entirely separate from org roles.
+
 ---
 
 ## Desktop cloud sync

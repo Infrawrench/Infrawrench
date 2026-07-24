@@ -97,6 +97,12 @@ export interface SpendStatus {
    * than an org-configured cap.
    */
   freeTier: boolean;
+  /**
+   * True when the org has platform-granted complimentary access: all paid
+   * perks, never billed, uncapped by default. Optional so clients tolerate
+   * servers that predate the field.
+   */
+  complimentary?: boolean;
 }
 
 export function microsToUsd(micros: number): string {

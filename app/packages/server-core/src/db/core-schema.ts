@@ -27,6 +27,13 @@ export const organizations = pgTable("organizations", {
    * exceeds this, the agent loop refuses new turns. Null means no cap.
    */
   chatMonthlyCapMicros: integer("chat_monthly_cap_micros"),
+  /**
+   * Platform-granted free ride: the org is never billed, gets every paid-plan
+   * perk, and chat usage is uncapped by default (an org-set
+   * chatMonthlyCapMicros still applies) and never reported to Stripe.
+   * Set by platform admins via /api/admin — see web/src/auth/platform-admin.ts.
+   */
+  complimentary: boolean("complimentary").notNull().default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

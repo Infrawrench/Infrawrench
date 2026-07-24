@@ -273,7 +273,7 @@ export function ConversationView({ client, conversationId }: Props): React.React
           <div>
             Spend: ${spend ? microsToUsd(spend.monthToDateMicros) : "0.00"}
             {spend?.monthlyCapMicros != null ? ` / $${microsToUsd(spend.monthlyCapMicros)}` : ""}
-            {spend?.freeTier ? " (free tier)" : ""}
+            {spend?.freeTier ? " (free tier)" : spend?.complimentary ? " (complimentary)" : ""}
           </div>
           {spend?.exceeded && <div className="text-amber-500 font-medium">Cap reached</div>}
         </div>

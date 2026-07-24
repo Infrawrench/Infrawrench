@@ -12,7 +12,7 @@ vi.mock("../../db/client", () => ({
 }));
 vi.mock("../../db/schema", () => ({
   chatUsage: { id: "id", organizationId: "org", costMicros: "cost", createdAt: "ts" },
-  organizations: { id: "id", chatMonthlyCapMicros: "cap" },
+  organizations: { id: "id", chatMonthlyCapMicros: "cap", complimentary: "complimentary" },
   subscriptions: { organizationId: "org", stripeCustomerId: "cust", status: "status" },
 }));
 
@@ -26,8 +26,13 @@ const { getMonthlySpend, recordUsage } = await import("../billing");
 describe("getMonthlySpend", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  function setup(cap: number | null, total: string, subStatus: string | null = "active") {
-    const orgLimit = vi.fn().mockResolvedValue([{ cap }]);
+  function setup(
+    cap: number | null,
+    total: string,
+    subStatus: string | null = "active",
+    complimentary = false,
+  ) {
+    const orgLimit = vi.fn().mockResolvedValue([{ cap, complimentary }]);
     const orgWhere = vi.fn().mockReturnValue({ limit: orgLimit });
     const orgFrom = vi.fn().mockReturnValue({ where: orgWhere });
     const subLimit = vi.fn().mockResolvedValue(subStatus ? [{ status: subStatus }] : []);
@@ -90,6 +95,23 @@ describe("getMonthlySpend", () => {
     const s = await getMonthlySpend("o1");
     expect(s.monthlyCapMicros).toBe(2_000_000);
   });
+
+  it("treats complimentary orgs as paid and uncapped even without a subscription", async () => {
+    setup(null, "999999999", null, true);
+    const s = await getMonthlySpend("o1");
+    expect(s.monthlyCapMicros).toBeNull();
+    expect(s.exceeded).toBe(false);
+    expect(s.freeTier).toBe(false);
+    expect(s.complimentary).toBe(true);
+  });
+
+  it("still honors a self-set org cap on complimentary orgs", async () => {
+    setup(1_000_000, "1500000", null, true);
+    const s = await getMonthlySpend("o1");
+    expect(s.monthlyCapMicros).toBe(1_000_000);
+    expect(s.exceeded).toBe(true);
+    expect(s.freeTier).toBe(false);
+  });
 });
 
 describe("recordUsage", () => {
@@ -115,6 +137,14 @@ describe("recordUsage", () => {
     );
   });
 
+  /** Chain for the org-complimentary lookup inside reportUsageToStripe. */
+  function orgSelectChain(complimentary: boolean) {
+    const limit = vi.fn().mockResolvedValue([{ complimentary }]);
+    const where = vi.fn().mockReturnValue({ limit });
+    const from = vi.fn().mockReturnValue({ where });
+    return { from };
+  }
+
   it("reports to Stripe meter when configured", async () => {
     process.env["INFRAWRENCH_STRIPE_CHAT_METER_EVENT"] = "chat_tokens";
     const values = vi.fn().mockResolvedValue(undefined);
@@ -122,7 +152,7 @@ describe("recordUsage", () => {
     const subLimit = vi.fn().mockResolvedValue([{ stripeCustomerId: "cus_1" }]);
     const subWhere = vi.fn().mockReturnValue({ limit: subLimit });
     const subFrom = vi.fn().mockReturnValue({ where: subWhere });
-    mockSelect.mockReturnValue({ from: subFrom });
+    mockSelect.mockReturnValueOnce(orgSelectChain(false)).mockReturnValue({ from: subFrom });
     const updWhere = vi.fn().mockResolvedValue(undefined);
     const updSet = vi.fn().mockReturnValue({ where: updWhere });
     mockUpdate.mockReturnValue({ set: updSet });
@@ -148,6 +178,27 @@ describe("recordUsage", () => {
     // Only declared payload keys — Stripe treats extras as meter dimensions.
     const payload = (mockMeterCreate.mock.calls[0]?.[0] as { payload: object }).payload;
     expect(Object.keys(payload).sort()).toEqual(["stripe_customer_id", "value"]);
+  });
+
+  it("never reports complimentary orgs to Stripe", async () => {
+    process.env["INFRAWRENCH_STRIPE_CHAT_METER_EVENT"] = "chat_tokens";
+    const values = vi.fn().mockResolvedValue(undefined);
+    mockInsert.mockReturnValue({ values });
+    mockSelect.mockReturnValueOnce(orgSelectChain(true));
+    mockGetStripe.mockReturnValue({ billing: { meterEvents: { create: mockMeterCreate } } });
+
+    const cost = await recordUsage({
+      organizationId: "o1",
+      conversationId: "c1",
+      messageId: "m1",
+      model: "claude-sonnet-5",
+      usage: { inputTokens: 1_000_000, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
+    });
+    await new Promise((r) => setTimeout(r, 0));
+    // Usage is still recorded internally (cost tracking), just never billed.
+    expect(cost).toBe(4_500_000);
+    expect(values).toHaveBeenCalled();
+    expect(mockMeterCreate).not.toHaveBeenCalled();
   });
 
   it("swallows Stripe failures without throwing", async () => {

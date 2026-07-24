@@ -30,7 +30,10 @@ const FREE_TIER_CAP_MICROS = 5_000_000;
 
 export async function getMonthlySpend(organizationId: string): Promise<SpendStatus> {
   const [org] = await db
-    .select({ cap: organizations.chatMonthlyCapMicros })
+    .select({
+      cap: organizations.chatMonthlyCapMicros,
+      complimentary: organizations.complimentary,
+    })
     .from(organizations)
     .where(eq(organizations.id, organizationId))
     .limit(1);
@@ -42,7 +45,10 @@ export async function getMonthlySpend(organizationId: string): Promise<SpendStat
     .limit(1);
   // Same definition of "paid" as the billing settings page: an org is free
   // when it has no subscription row or the subscription never activated.
-  const hasPaidSubscription = sub?.status === "active" || sub?.status === "past_due";
+  // Complimentary orgs count as paid everywhere without a Stripe subscription.
+  const complimentary = org?.complimentary === true;
+  const hasPaidSubscription =
+    complimentary || sub?.status === "active" || sub?.status === "past_due";
 
   const rows = await db
     .select({ total: sql<string>`coalesce(sum(${chatUsage.costMicros}), 0)` })
@@ -61,6 +67,7 @@ export async function getMonthlySpend(organizationId: string): Promise<SpendStat
     monthlyCapMicros,
     exceeded: monthlyCapMicros != null && monthToDateMicros >= monthlyCapMicros,
     freeTier: !hasPaidSubscription,
+    complimentary,
   };
 }
 
@@ -110,6 +117,16 @@ async function reportUsageToStripe(
   // per-deployment env so we don't need a column for it.
   const meterEventName = process.env["INFRAWRENCH_STRIPE_CHAT_METER_EVENT"];
   if (!meterEventName) return;
+
+  // Complimentary orgs are never billed — keep the chat_usage row for internal
+  // cost tracking but don't emit a meter event (the reconciler also skips
+  // rows whose org is complimentary at replay time via this same path).
+  const [org] = await db
+    .select({ complimentary: organizations.complimentary })
+    .from(organizations)
+    .where(eq(organizations.id, organizationId))
+    .limit(1);
+  if (org?.complimentary) return;
 
   const [sub] = await db
     .select({ stripeCustomerId: subscriptions.stripeCustomerId })

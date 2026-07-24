@@ -169,6 +169,13 @@
       "when": 1784898858003,
       "tag": "0023_glamorous_vermin",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1784906948681,
+      "tag": "0024_equal_junta",
+      "breakpoints": true
     }
   ]
 }

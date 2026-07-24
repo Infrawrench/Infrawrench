@@ -50,7 +50,11 @@ function RootLayout() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   useEffect(() => {
-    if (pathname.startsWith("/onboarding") || pathname.startsWith("/invite/")) {
+    if (
+      pathname.startsWith("/onboarding") ||
+      pathname.startsWith("/invite/") ||
+      pathname.startsWith("/admin")
+    ) {
       // These routes still need an auth check, but we don't redirect them to onboarding.
       apiGet<AuthMe>("/api/auth/me")
         .then(() => setAuthChecked(true))
@@ -83,7 +87,11 @@ function RootLayout() {
   }, [navigate, pathname]);
 
   if (!authChecked) {
-    if (pathname.startsWith("/onboarding") || pathname.startsWith("/invite/")) {
+    if (
+      pathname.startsWith("/onboarding") ||
+      pathname.startsWith("/invite/") ||
+      pathname.startsWith("/admin")
+    ) {
       return <Outlet />;
     }
 
@@ -94,7 +102,11 @@ function RootLayout() {
     );
   }
 
-  if (pathname.startsWith("/onboarding") || pathname.startsWith("/invite/")) {
+  if (
+    pathname.startsWith("/onboarding") ||
+    pathname.startsWith("/invite/") ||
+    pathname.startsWith("/admin")
+  ) {
     return <Outlet />;
   }
 

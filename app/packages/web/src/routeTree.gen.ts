@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as OnboardingRouteImport } from './routes/onboarding'
+import { Route as AdminRouteImport } from './routes/admin'
 import { Route as OrgOrgIdRouteImport } from './routes/org.$orgId'
 import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as OrgOrgIdIndexRouteImport } from './routes/org.$orgId.index'
@@ -36,6 +37,11 @@ import { Route as OrgOrgIdResourcesPluginIdResourceTypeIdResourceIdRouteImport }
 const OnboardingRoute = OnboardingRouteImport.update({
   id: '/onboarding',
   path: '/onboarding',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminRoute = AdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
   getParentRoute: () => rootRouteImport,
 } as any)
 const OrgOrgIdRoute = OrgOrgIdRouteImport.update({
@@ -157,6 +163,7 @@ const OrgOrgIdResourcesPluginIdResourceTypeIdResourceIdRoute =
   } as any)
 
 export interface FileRoutesByFullPath {
+  '/admin': typeof AdminRoute
   '/onboarding': typeof OnboardingRoute
   '/invite/$token': typeof InviteTokenRoute
   '/org/$orgId': typeof OrgOrgIdRouteWithChildren
@@ -182,6 +189,7 @@ export interface FileRoutesByFullPath {
   '/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId': typeof OrgOrgIdResourcesPluginIdResourceTypeIdResourceIdRoute
 }
 export interface FileRoutesByTo {
+  '/admin': typeof AdminRoute
   '/onboarding': typeof OnboardingRoute
   '/invite/$token': typeof InviteTokenRoute
   '/org/$orgId/agents': typeof OrgOrgIdAgentsRoute
@@ -205,6 +213,7 @@ export interface FileRoutesByTo {
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
+  '/admin': typeof AdminRoute
   '/onboarding': typeof OnboardingRoute
   '/invite/$token': typeof InviteTokenRoute
   '/org/$orgId': typeof OrgOrgIdRouteWithChildren
@@ -232,6 +241,7 @@ export interface FileRoutesById {
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
+    | '/admin'
     | '/onboarding'
     | '/invite/$token'
     | '/org/$orgId'
@@ -257,6 +267,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/admin'
     | '/onboarding'
     | '/invite/$token'
     | '/org/$orgId/agents'
@@ -279,6 +290,7 @@ export interface FileRouteTypes {
     | '/org/$orgId/resources/$pluginId/$resourceTypeId/$resourceId'
   id:
     | '__root__'
+    | '/admin'
     | '/onboarding'
     | '/invite/$token'
     | '/org/$orgId'
@@ -305,6 +317,7 @@ export interface FileRouteTypes {
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
+  AdminRoute: typeof AdminRoute
   OnboardingRoute: typeof OnboardingRoute
   InviteTokenRoute: typeof InviteTokenRoute
   OrgOrgIdRoute: typeof OrgOrgIdRouteWithChildren
@@ -317,6 +330,13 @@ declare module '@tanstack/react-router' {
       path: '/onboarding'
       fullPath: '/onboarding'
       preLoaderRoute: typeof OnboardingRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin': {
+      id: '/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AdminRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/org/$orgId': {
@@ -547,6 +567,7 @@ const OrgOrgIdRouteWithChildren = OrgOrgIdRoute._addFileChildren(
 )
 
 const rootRouteChildren: RootRouteChildren = {
+  AdminRoute: AdminRoute,
   OnboardingRoute: OnboardingRoute,
   InviteTokenRoute: InviteTokenRoute,
   OrgOrgIdRoute: OrgOrgIdRouteWithChildren,

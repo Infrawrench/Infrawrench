@@ -9,6 +9,14 @@ const Subscription = strict({
   stripeCustomerId: z.string(),
 }).openapi("Subscription");
 
+const BillingStatus = strict({
+  complimentary: z.boolean().openapi({
+    description:
+      "Platform-granted complimentary access: all paid perks, uncapped AI chat, never billed.",
+  }),
+  subscription: Subscription.nullable(),
+}).openapi("BillingStatus");
+
 const RedirectUrl = strict({ url: z.string().url() }).openapi("StripeRedirectUrl");
 
 export function registerBillingPaths(ctx: BuildContext) {
@@ -18,12 +26,12 @@ export function registerBillingPaths(ctx: BuildContext) {
     method: "get",
     path: "/api/org/{orgId}/billing/status",
     tags: ["Billing"],
-    summary: "Get the current subscription (or `null` for free tier)",
+    summary: "Get the org's billing status (complimentary flag + subscription or `null`)",
     request: { params: OrgIdParam },
     responses: {
       200: {
-        description: "Subscription or null",
-        content: { "application/json": { schema: Subscription.nullable() } },
+        description: "Billing status",
+        content: { "application/json": { schema: BillingStatus } },
       },
     },
   });
@@ -33,12 +41,14 @@ export function registerBillingPaths(ctx: BuildContext) {
     path: "/api/org/{orgId}/billing/checkout",
     tags: ["Billing"],
     summary: "Start a Stripe Checkout session",
+    description: "Rejected with 400 for complimentary organizations — they are never billed.",
     request: { params: OrgIdParam },
     responses: {
       200: {
         description: "Redirect URL",
         content: { "application/json": { schema: RedirectUrl } },
       },
+      400: ErrorResponses[400],
       500: ErrorResponses[500],
     },
   });

@@ -36,19 +36,30 @@ function selectReturns(rows: unknown[]) {
   mockSelect.mockReturnValue({ from });
 }
 
+/** Queue one select chain per query, in call order. */
+function selectSequence(...rowSets: unknown[][]) {
+  for (const rows of rowSets) {
+    const where = vi.fn().mockResolvedValue(rows);
+    const from = vi.fn().mockReturnValue({ where });
+    mockSelect.mockReturnValueOnce({ from });
+  }
+}
+
+const orgRow = (complimentary: boolean) => [{ complimentary }];
+
 describe("Billing routes", () => {
   beforeEach(() => vi.clearAllMocks());
 
   describe("GET /status", () => {
-    it("returns null when no subscription exists", async () => {
-      selectReturns([]);
+    it("returns a null subscription when none exists", async () => {
+      selectSequence(orgRow(false), []);
       const res = await buildApp().request("/status");
       expect(res.status).toBe(200);
-      expect(await res.json()).toBeNull();
+      expect(await res.json()).toEqual({ complimentary: false, subscription: null });
     });
 
     it("returns subscription summary fields", async () => {
-      selectReturns([
+      selectSequence(orgRow(false), [
         {
           status: "active",
           seatCount: 5,
@@ -58,13 +69,29 @@ describe("Billing routes", () => {
       ]);
       const res = await buildApp().request("/status");
       const body = await res.json();
-      expect(body).toMatchObject({ status: "active", seatCount: 5, stripeCustomerId: "cus_1" });
+      expect(body).toMatchObject({
+        complimentary: false,
+        subscription: { status: "active", seatCount: 5, stripeCustomerId: "cus_1" },
+      });
+    });
+
+    it("flags complimentary orgs", async () => {
+      selectSequence(orgRow(true), []);
+      const res = await buildApp().request("/status");
+      expect(await res.json()).toEqual({ complimentary: true, subscription: null });
     });
   });
 
   describe("POST /checkout", () => {
+    it("rejects checkout for complimentary orgs", async () => {
+      selectSequence(orgRow(true));
+      const res = await buildApp().request("/checkout", { method: "POST" });
+      expect(res.status).toBe(400);
+      expect(mockCheckoutCreate).not.toHaveBeenCalled();
+    });
+
     it("creates a customer + subscription row when none exists", async () => {
-      selectReturns([]);
+      selectSequence(orgRow(false), []);
       const values = vi.fn().mockResolvedValue(undefined);
       mockInsert.mockReturnValue({ values });
       mockCustomersCreate.mockResolvedValue({ id: "cus_new" });
@@ -83,7 +110,7 @@ describe("Billing routes", () => {
     });
 
     it("reuses an existing customer id without creating a new one", async () => {
-      selectReturns([{ stripeCustomerId: "cus_existing" }]);
+      selectSequence(orgRow(false), [{ stripeCustomerId: "cus_existing" }]);
       mockCheckoutCreate.mockResolvedValue({ url: "https://stripe/checkout2" });
       const res = await buildApp().request("/checkout", { method: "POST" });
       expect(res.status).toBe(200);
@@ -94,7 +121,7 @@ describe("Billing routes", () => {
     });
 
     it("sends adjustable seat quantity plus the metered chat price", async () => {
-      selectReturns([{ stripeCustomerId: "cus_existing" }]);
+      selectSequence(orgRow(false), [{ stripeCustomerId: "cus_existing" }]);
       mockCheckoutCreate.mockResolvedValue({ url: "https://stripe/checkout3" });
       await buildApp().request("/checkout", { method: "POST" });
       expect(mockCheckoutCreate).toHaveBeenCalledWith(
@@ -113,7 +140,7 @@ describe("Billing routes", () => {
 
     it("omits the chat line item when STRIPE_CHAT_PRICE_ID is unset", async () => {
       mockChatPriceId.mockReturnValueOnce(null);
-      selectReturns([{ stripeCustomerId: "cus_existing" }]);
+      selectSequence(orgRow(false), [{ stripeCustomerId: "cus_existing" }]);
       mockCheckoutCreate.mockResolvedValue({ url: "https://stripe/checkout4" });
       await buildApp().request("/checkout", { method: "POST" });
       const args = mockCheckoutCreate.mock.calls[0]?.[0] as {
@@ -124,7 +151,7 @@ describe("Billing routes", () => {
     });
 
     it("returns 500 when Stripe yields no checkout url", async () => {
-      selectReturns([{ stripeCustomerId: "cus_existing" }]);
+      selectSequence(orgRow(false), [{ stripeCustomerId: "cus_existing" }]);
       mockCheckoutCreate.mockResolvedValue({ url: null });
       const res = await buildApp().request("/checkout", { method: "POST" });
       expect(res.status).toBe(500);

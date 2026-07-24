@@ -1,0 +1,1 @@
+ALTER TABLE "organizations" ADD COLUMN "complimentary" boolean DEFAULT false NOT NULL;
