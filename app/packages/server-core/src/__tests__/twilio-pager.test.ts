@@ -66,6 +66,12 @@ const tables = {
 
 vi.mock("../db/schema", () => tables);
 
+// --- push dispatch mock ----------------------------------------------------
+// The pager fans out to mobile push alongside Twilio; tests control the
+// result to exercise the combined pagedAt accounting.
+const sendPushToOrg = vi.fn(async () => ({ attempted: 0, succeeded: 0 }));
+vi.mock("../push/dispatch", () => ({ sendPushToOrg }));
+
 // select() needs to know which logical query is running. We infer from the
 // selected projection columns and the from() table.
 let pendingSelectProjection: Record<string, unknown> | undefined;
@@ -222,6 +228,7 @@ describe("notePollOutcome — early exits", () => {
     });
     expect(inserts).toHaveLength(0);
     expect(fetchSpy).not.toHaveBeenCalled();
+    expect(sendPushToOrg).not.toHaveBeenCalled();
   });
 
   it("swallows credential decryption failures (creds become null => disabled path)", async () => {
@@ -372,6 +379,81 @@ describe("notePollOutcome — error / threshold", () => {
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     // Incident insert happened, but no pagedAt update on pagingIncidents.
     expect(updates.some((u) => u.table === "pagingIncidents")).toBe(false);
+  });
+
+  it("delivers push-only when Twilio creds are missing, and sets pagedAt on push success", async () => {
+    sendPushToOrg.mockResolvedValueOnce({ attempted: 2, succeeded: 2 });
+    // No creds stored at all — previously this org silently skipped incidents.
+    queues.settings = [
+      [
+        settingsRow({
+          encryptedAccountSid: null,
+          accountSidIv: null,
+          encryptedAuthToken: null,
+          authTokenIv: null,
+          fromNumber: null,
+        }),
+      ],
+    ];
+    queues.count = [[{ count: 3 }]];
+    queues.incident = [[]];
+    await pager.notePollOutcome({
+      organizationId: "org1",
+      accountId: "a1",
+      accountLabel: "Prod",
+      resourceTypeId: "vm",
+      outcome: "error",
+      error: new Error("api down"),
+    });
+    expect(inserts.filter((i) => i.table === "pagingIncidents")).toHaveLength(1);
+    expect(fetchSpy).not.toHaveBeenCalled(); // no Twilio without creds
+    expect(sendPushToOrg).toHaveBeenCalledTimes(1);
+    // pagedAt set from the push success alone
+    expect(updates.some((u) => u.table === "pagingIncidents")).toBe(true);
+  });
+
+  it("passes the incident deep-link payload to push", async () => {
+    queues.settings = [[settingsRow()]];
+    queues.count = [[{ count: 3 }]];
+    queues.incident = [[]];
+    queues.recipients = [[recipient({ sms: true })]];
+    await pager.notePollOutcome({
+      organizationId: "org1",
+      accountId: "a1",
+      accountLabel: "Prod",
+      resourceTypeId: "vm",
+      outcome: "error",
+    });
+    expect(sendPushToOrg).toHaveBeenCalledWith(
+      "org1",
+      "syncIncidents",
+      expect.objectContaining({
+        data: expect.objectContaining({
+          type: "sync_incident",
+          orgId: "org1",
+          accountId: "a1",
+          resourceTypeId: "vm",
+          incidentId: expect.any(String),
+        }),
+      }),
+    );
+  });
+
+  it("sets pagedAt when Twilio fails but push succeeds", async () => {
+    fetchSpy.mockResolvedValue(errResponse(500, "twilio down"));
+    sendPushToOrg.mockResolvedValueOnce({ attempted: 1, succeeded: 1 });
+    queues.settings = [[settingsRow()]];
+    queues.count = [[{ count: 3 }]];
+    queues.incident = [[]];
+    queues.recipients = [[recipient({ sms: true })]];
+    await pager.notePollOutcome({
+      organizationId: "org1",
+      accountId: "a1",
+      accountLabel: "Prod",
+      resourceTypeId: "vm",
+      outcome: "error",
+    });
+    expect(updates.some((u) => u.table === "pagingIncidents")).toBe(true);
   });
 
   it("handles a missing count row (defaults to 0, below threshold)", async () => {

@@ -30,6 +30,7 @@ import { registerWsTokenPaths } from "./paths/ws-token";
 import { registerSyncPaths } from "./paths/sync";
 import { registerWebhookPaths } from "./paths/webhooks";
 import { registerAdminPaths } from "./paths/admin";
+import { registerPushPaths } from "./paths/push";
 
 interface BuildOptions {
   /** Server URL(s) to advertise in the spec. */
@@ -84,6 +85,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
   registerSyncPaths(ctx);
   registerWebhookPaths(ctx);
   registerAdminPaths(ctx);
+  registerPushPaths(ctx);
 
   const generator = new OpenApiGeneratorV31(registry.definitions);
 
@@ -140,6 +142,7 @@ export async function buildOpenApiDocument(opts: BuildOptions = {}): Promise<Ope
         description:
           "Platform-operator surface (INFRAWRENCH_PLATFORM_ADMIN_EMAILS allowlist), e.g. complimentary orgs.",
       },
+      { name: "Push", description: "Mobile push notification devices and preferences." },
     ],
   });
 
@@ -303,6 +306,15 @@ const REQUIRED_PERMISSION: Record<string, string | null> = {
   "POST /v1/sync/pull": "resources:read",
   "POST /v1/sync/push": "resources:write",
   "GET /v1/sync/status": "resources:read",
+  // push (device routes are user-scoped; preference/test routes are
+  // membership-only self-service — no permission beyond org membership)
+  "POST /push/devices": null,
+  "GET /push/devices": null,
+  "DELETE /push/devices/{id}": null,
+  "GET /push/preferences": null,
+  "PUT /push/preferences": null,
+  "GET /push/recipients": "org:settings:write",
+  "POST /push/test": null,
 };
 
 /**

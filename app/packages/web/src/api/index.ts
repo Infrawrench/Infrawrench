@@ -42,6 +42,7 @@ import { connectRoutes } from "./routes/connect";
 import { sshTunnelRoutes } from "./routes/ssh-tunnels";
 import { bastionRoutes } from "./routes/bastions";
 import { twilioRoutes } from "./routes/twilio";
+import { pushDeviceRoutes, pushOrgRoutes } from "./routes/push-devices";
 
 // API-key-authed; handles its own auth.
 import { syncRoutes } from "./routes/sync";
@@ -117,6 +118,8 @@ authed.route("/orgs", orgManagementRoutes);
 authed.route("/invitations", invitationAcceptRoutes);
 // Platform-admin surface — session-authed here, allowlist-gated inside.
 authed.route("/admin", adminRoutes);
+// Push devices are user-scoped (a phone registers once across orgs).
+authed.route("/push", pushDeviceRoutes);
 
 api.route("/api", authed);
 
@@ -149,6 +152,7 @@ orgScoped.route("/connect", connectRoutes);
 orgScoped.route("/ssh-tunnels", sshTunnelRoutes);
 orgScoped.route("/bastions", bastionRoutes);
 orgScoped.route("/twilio", twilioRoutes);
+orgScoped.route("/push", pushOrgRoutes);
 
 api.route("/api/org/:orgId", orgScoped);
 

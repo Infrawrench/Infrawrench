@@ -62,4 +62,4 @@ Click any resource to open its detail page. Every detail page has:
 
 - [Output references](./output-references.md) — wire resources together.
 - [Secret rerolls](./secret-rerolls.md) — reassign a reference when upstream changes.
-- [Desktop vs web](./desktop-vs-web.md) — what differs between the two builds.
+- [Desktop, web, and mobile](./desktop-vs-web.md) — what differs between the surfaces.

@@ -8,13 +8,14 @@ import {
   twilioSettings,
 } from "./db/schema";
 import { buildAad, decrypt, encrypt } from "./encryption";
+import { sendPushToOrg } from "./push/dispatch";
 
 /**
- * Twilio paging pipeline. Records sync-failure history per (account, type),
- * opens an incident when the org-configured threshold is crossed, and sends
- * SMS + voice to all configured recipients. Subsequent failures while the
- * incident is open re-page every `cooldownMinutes` until a successful sync
- * closes it.
+ * Paging pipeline. Records sync-failure history per (account, type), opens an
+ * incident when the org-configured threshold is crossed, and delivers via
+ * Twilio SMS + voice (when creds are configured) and mobile push (see
+ * push/dispatch.ts). Subsequent failures while the incident is open re-page
+ * every `cooldownMinutes` until a successful sync closes it.
  *
  * Wired from the background poller only — manual sync calls from the UI go
  * through `syncAccountResources` directly and do not page, by design.
@@ -290,7 +291,8 @@ export async function notePollOutcome(args: NotePollOutcomeArgs): Promise<void> 
 
   try {
     const settings = await loadSettings(args.organizationId);
-    if (!settings || !settings.enabled || !settings.creds) {
+    // Twilio creds are optional: an org can run push-only incident delivery.
+    if (!settings || !settings.enabled) {
       // Even when disabled, we still close incidents on success so toggling
       // back on later doesn't immediately re-page on stale state.
       if (args.outcome === "ok") {
@@ -383,9 +385,6 @@ export async function notePollOutcome(args: NotePollOutcomeArgs): Promise<void> 
 
     if (!shouldPage) return;
 
-    const recipients = await loadRecipients(args.organizationId);
-    if (recipients.length === 0) return;
-
     const body = formatPageBody({
       accountLabel: args.accountLabel,
       resourceTypeId: args.resourceTypeId,
@@ -394,19 +393,38 @@ export async function notePollOutcome(args: NotePollOutcomeArgs): Promise<void> 
       windowMinutes: Math.round(settings.windowMs / 60_000),
     });
 
-    const result = await fanOutPage(settings.creds, recipients, body);
+    let twilioResult: FanOutResult = { attempted: 0, succeeded: 0, failed: 0 };
+    if (settings.creds) {
+      const recipients = await loadRecipients(args.organizationId);
+      if (recipients.length > 0) {
+        twilioResult = await fanOutPage(settings.creds, recipients, body);
+      }
+    }
+
+    const pushResult = await sendPushToOrg(args.organizationId, "syncIncidents", {
+      title: `Sync failure: ${args.accountLabel}`,
+      body,
+      data: {
+        type: "sync_incident",
+        orgId: args.organizationId,
+        accountId: args.accountId,
+        resourceTypeId: args.resourceTypeId,
+        incidentId,
+      },
+    });
 
     // Only mark the incident as paged if at least one transport succeeded —
     // otherwise the cooldown gate would suppress retries even though the
-    // recipients never actually heard from us.
-    if (result.succeeded > 0) {
+    // recipients never actually heard from us. A push success gates Twilio
+    // re-sends too (one cooldown cadence per incident), and vice versa.
+    if (twilioResult.succeeded + pushResult.succeeded > 0) {
       await db
         .update(pagingIncidents)
         .set({ pagedAt: now })
         .where(eq(pagingIncidents.id, incidentId));
     } else {
       console.error(
-        `[twilio-pager] all ${result.attempted} deliveries failed for incident ${incidentId}; will retry on next poll`,
+        `[twilio-pager] all ${twilioResult.attempted + pushResult.attempted} deliveries failed for incident ${incidentId}; will retry on next poll`,
       );
     }
   } catch (err) {

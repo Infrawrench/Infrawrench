@@ -28,6 +28,27 @@ if (typeof globalThis !== "undefined" && !("ResizeObserver" in globalThis)) {
   };
 }
 
+// Node 26 defines an experimental global `localStorage` getter that returns
+// undefined unless --localstorage-file is passed, and it shadows jsdom's
+// implementation. Give tests a real in-memory Storage when that happens.
+if (typeof globalThis !== "undefined" && !globalThis.localStorage) {
+  const data = new Map<string, string>();
+  const memoryStorage: Storage = {
+    get length() {
+      return data.size;
+    },
+    clear: () => data.clear(),
+    getItem: (key) => data.get(key) ?? null,
+    key: (index) => [...data.keys()][index] ?? null,
+    removeItem: (key) => void data.delete(key),
+    setItem: (key, value) => void data.set(key, String(value)),
+  };
+  Object.defineProperty(globalThis, "localStorage", {
+    value: memoryStorage,
+    configurable: true,
+  });
+}
+
 // @testing-library/react only auto-registers afterEach cleanup when Vitest
 // globals are enabled. This config doesn't enable globals, so register the
 // teardown explicitly to keep the jsdom DOM isolated between tests.

@@ -1,0 +1,5 @@
+.expo/
+dist/
+assets/generated/
+ios/
+android/

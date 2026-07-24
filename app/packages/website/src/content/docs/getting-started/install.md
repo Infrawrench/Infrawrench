@@ -4,10 +4,11 @@ description: Pick the desktop app or the web app and get to an empty workspace.
 sidebar_order: 1
 ---
 
-Infrawrench ships in two forms. They share the same plugins, resource views, and features — the difference is where your credentials live and how you sign in. For the longer comparison, see [Desktop vs web](../core-concepts/desktop-vs-web.md).
+Infrawrench ships in three forms. Desktop and web share the same plugins, resource views, and features — the difference is where your credentials live and how you sign in; mobile is a cloud companion with a deliberately smaller read-and-respond feature set. For the longer comparison, see [Desktop, web, and mobile](../core-concepts/desktop-vs-web.md).
 
 - **Desktop app** — local-first. Credentials live in an encrypted SQLite database on your machine and nothing leaves it unless you opt in to cloud sync. No sign-in required.
 - **Web app** — hosted, multi-user. Sign in with email or SSO, invite a team, share an organization.
+- **[Mobile app](../features/mobile-app.md)** — iOS/Android companion to the web app's cloud org: dashboards, resource browsing, chat, terminals, and push notifications on the go.
 
 You can start with either and link them later.
 

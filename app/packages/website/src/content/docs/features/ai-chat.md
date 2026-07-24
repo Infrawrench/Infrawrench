@@ -4,7 +4,7 @@ description: Drive your infrastructure through a Claude-powered agent — same t
 sidebar_order: 12
 ---
 
-> **Cloud feature**; metered separately from your seat plan. Available in the web app and — when signed in to Infrawrench Cloud — in the desktop app, where it proxies through the web backend.
+> **Cloud feature**; metered separately from your seat plan. Available in the web app, the [mobile app](./mobile-app.md), and — when signed in to Infrawrench Cloud — in the desktop app, where it proxies through the web backend.
 
 Infrawrench ships an in-app **AI chat** powered by Anthropic Claude. The model has access to the same tools your UI uses — listing resources, inspecting outputs, running SQL queries, executing Docker commands, rotating secrets, attaching disks, applying manifests — and routes every destructive action through a UI approval step.
 
@@ -18,6 +18,7 @@ Infrawrench ships an in-app **AI chat** powered by Anthropic Claude. The model h
 
 - **In the web app** — `/org/{orgId}/chat`. New conversations are private to the user who created them.
 - **In the desktop app** — chat opens as a workspace tab once you sign in to Infrawrench Cloud and pick an organization ([desktop vs web](../core-concepts/desktop-vs-web.md)). The conversation history, the agent loop, and billing all live in the cloud, so the same sessions appear on web and desktop. In local-only mode the chat section is hidden.
+- **In the [mobile app](./mobile-app.md)** — the Chat tab talks to the same cloud conversations, with the same model picker, approval cards, and sleep countdowns as web and desktop.
 - **In the sidebar** (web and desktop) — a **Chat** section lists your recent sessions (like Workflows and Dashboards). Click **+** to start a new chat, click a session to reopen it, or hover and click **×** to archive it. Click the section header to see all chats.
 - **API** — `POST /api/org/{orgId}/chat/conversations/{id}/messages`. Auth is the same WorkOS session as the rest of the web UI, or an [API key](../team-and-billing/api-keys.md) with the `chat:write` scope.
 
@@ -47,7 +48,7 @@ Tool calls render as compact status cards (`Running…` → `Done`); the input J
 
 ## Waiting on slow operations
 
-The chat agent has a `sleep` tool (chat-only — the [MCP server](./mcp.md) does not expose it) for waiting out slow operations: provisioning a database, DNS propagation, a reboot. Instead of a tool card the UI shows a quiet **"Sleeping N seconds…"** countdown (like "Thinking…"); the wait runs in your browser, and when it finishes the conversation automatically resumes so the agent can re-check. Up to 300 seconds per call; the composer is disabled while a sleep is counting down. Closing the page cancels the wait — reopen the chat and send a message to continue.
+The chat agent has a `sleep` tool (chat-only — the [MCP server](./mcp.md) does not expose it) for waiting out slow operations: provisioning a database, DNS propagation, a reboot. Instead of a tool card the UI shows a quiet **"Sleeping N seconds…"** countdown (like "Thinking…"); the wait runs in your client, and when it finishes the conversation automatically resumes so the agent can re-check. Up to 300 seconds per call; the composer is disabled while a sleep is counting down. Leaving or closing the chat cancels the wait — reopen it and send a message to continue.
 
 API clients see pending actions in the conversation fetch response and POST `{action: "approve" | "reject"}` to `/api/org/{orgId}/chat/conversations/{id}/pending/{pendingId}` to drive the same flow.
 
@@ -96,7 +97,7 @@ POST   /conversations/{id}/pending/{pendingId}  # body: {action: "approve" | "re
 GET    /spend                       # month-to-date + cap
 ```
 
-`POST /messages` streams Server-Sent Events shaped as `{type: "text_delta" | "tool_use_start" | "tool_use_input" | "tool_executed" | "pending_action" | "turn_end" | "spend_blocked" | "error", ...}`. When the agent suspends on a destructive tool, the stream ends with `turn_end {hasPending: true}` — resume after approving by POSTing `{resume: true}`.
+`POST /messages` streams Server-Sent Events shaped as `{type: "text_delta" | "tool_use_start" | "tool_use_input" | "tool_executed" | "pending_action" | "sleep" | "turn_end" | "spend_blocked" | "error", ...}`. When the agent suspends on a destructive tool, the stream ends with `turn_end {hasPending: true}` — resume after approving by POSTing `{resume: true}`.
 
 ## Why an API and not just MCP?
 

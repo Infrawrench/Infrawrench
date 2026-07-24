@@ -12,9 +12,11 @@ Infrawrench is an infrastructure management platform with both a desktop app and
 
 **Web app** — Hono server (Node) + Vite/React frontend with TanStack Router, Neon PostgreSQL via Drizzle ORM, WorkOS auth. All 16 plugins loaded server-side. SSH/SQL/K8s proxied through a custom WebSocket server (`server.ts`).
 
-**Shared UI** — `@infrawrench/ui` React component library used by both apps. Plugins return schema data, both hosts render via SchemaRenderer/DetailView.
+**Mobile app** — Expo SDK 54 + expo-router (iOS/Android), `@infrawrench/mobile`. Signs into the cloud via WorkOS OAuth PKCE (tokens in SecureStore) and talks Bearer to the existing cloud API. Org switcher, dashboards/budgets home, account + resource browser with a native SchemaRenderer for plugin `DetailViewSchema` (actions, logs, metrics), global search, AI chat (SSE), SSH terminal via a WebView-hosted xterm.js on the existing `/api/ws` protocol, SFTP browser (cloud-proxied), read-only workflows/agents, settings incl. push preferences. Deliberate demotions: billing read-only, no Monaco editors, no secret-reroll wizard, dashboards render-only.
 
-**Cloud features** — Desktop syncs to cloud via OAuth PKCE (WorkOS) + bidirectional sync protocol. Stripe billing at $20/seat/month with free tier (1 user, 3 accounts, no audit). API key system for programmatic access. Audit trail, team management, invitations.
+**Shared UI** — `@infrawrench/ui` React component library used by both apps. Plugins return schema data, both hosts render via SchemaRenderer/DetailView. `@infrawrench/client-core` holds the host-agnostic cloud client pieces (TokenManager, `cloudFetch` 401-retry wrapper, SSE parser, bearer ChatClient, WS frame types, push registration) shared by mobile and future hosts; the chat types moved there and `@infrawrench/ui` re-exports them.
+
+**Cloud features** — Desktop syncs to cloud via OAuth PKCE (WorkOS) + bidirectional sync protocol. Stripe billing at $20/seat/month with free tier (1 user, 3 accounts, no audit). API key system for programmatic access. Audit trail, team management, invitations. Mobile push notification pipeline: `server-core/src/push/` dispatches via the Expo Push Service to user-scoped devices (`push_devices`) filtered by per-user+org trigger toggles (`push_preferences`), fanned out from the Twilio pager's sync-failure incidents (Twilio creds now optional — push-only orgs work) and budget threshold breaches.
 
 ---
 
@@ -49,7 +51,9 @@ infrawrench/
 │   └── kafka/                # @infrawrench/plugin-kafka
 ├── app/packages/
 │   ├── desktop/              # @infrawrench/desktop — Electron app
+│   ├── mobile/               # @infrawrench/mobile — Expo (SDK 54) iOS/Android app against the cloud API
 │   ├── ui/                   # @infrawrench/ui — shared React components (incl. Toast feature)
+│   ├── client-core/          # @infrawrench/client-core — host-agnostic cloud client (tokens, cloudFetch, SSE, chat, WS types, push registration)
 │   ├── server-core/          # @infrawrench/server-core — db client, schema, plugin loader, sync, host services (shared by web + poller)
 │   ├── web/                  # @infrawrench/web — Hono + Vite/React SaaS web app
 │   ├── poller/               # @infrawrench/poller — background resource poller microservice

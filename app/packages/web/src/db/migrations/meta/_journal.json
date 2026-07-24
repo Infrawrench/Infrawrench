@@ -176,6 +176,13 @@
       "when": 1784906948681,
       "tag": "0024_equal_junta",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1784911338221,
+      "tag": "0025_colossal_preak",
+      "breakpoints": true
     }
   ]
 }
