@@ -27,7 +27,7 @@ describe("Org management routes", () => {
     mockGetSystemRole.mockResolvedValue({ id: "owner-role-1" });
   });
 
-  it("creates an org and an owner membership", async () => {
+  it("creates an org, an owner membership, and the default Home dashboard", async () => {
     const res = await buildApp().request("/", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -36,10 +36,19 @@ describe("Org management routes", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body).toEqual({ id: "org-uuid-1", displayName: "Acme" });
-    // organizations + organizationMembers inserts
-    expect(mockInsert).toHaveBeenCalledTimes(2);
+    // organizations + organizationMembers + default dashboard inserts
+    expect(mockInsert).toHaveBeenCalledTimes(3);
     expect(mockEnsureSystemRoles).toHaveBeenCalledWith("org-uuid-1");
     expect(mockGetSystemRole).toHaveBeenCalledWith("org-uuid-1", "owner");
+    const insertedValues = mockInsert.mock.results.flatMap((r) =>
+      (r.value.values as ReturnType<typeof vi.fn>).mock.calls.flat(),
+    );
+    expect(insertedValues).toContainEqual({
+      id: "org-uuid-1",
+      organizationId: "org-uuid-1",
+      name: "Home",
+      isDefault: true,
+    });
   });
 
   it("rejects a blank name with 400", async () => {

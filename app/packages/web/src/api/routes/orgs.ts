@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { v4 as uuid } from "uuid";
 import { db } from "../../db/client";
-import { organizations, organizationMembers } from "../../db/schema";
+import { organizations, organizationMembers, dashboards } from "../../db/schema";
 import { ensureSystemRoles, getSystemRole } from "@infrawrench/server-core/permissions";
 import type { AuthSession } from "../auth-middleware";
 
@@ -38,6 +38,15 @@ app.post("/", async (c) => {
     organizationId: orgId,
     role: "owner",
     roleId: ownerRole.id,
+  });
+
+  // Seed the default Home dashboard so it's already in the sidebar's
+  // dashboard list when the client lands on the new org.
+  await db.insert(dashboards).values({
+    id: uuid(),
+    organizationId: orgId,
+    name: "Home",
+    isDefault: true,
   });
 
   return c.json({ id: orgId, displayName: displayName.trim() });
