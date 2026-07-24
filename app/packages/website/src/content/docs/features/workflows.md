@@ -250,7 +250,7 @@ The web app runs cron and git triggers on an always-on cloud host. The **desktop
 
 ### Connecting GitHub
 
-Git triggers use a **GitHub App** (a bot identity) rather than per-repo webhooks. In the git trigger settings, click **Connect GitHub** — you'll install the app on the repositories you want to watch, then they appear in the repo picker. A separate **github-watcher** service polls each watched repo's branch head and runs the workflow on a new commit. Self-hosters configure the app with `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY` (PEM), and `GITHUB_APP_SLUG`, and point the app's setup URL at `/api/github/setup`.
+Git triggers use a **GitHub App** (a bot identity) rather than per-repo webhooks. In the git trigger settings, click **Connect GitHub** — you'll install the app on the repositories you want to watch in a new tab, and when the install finishes that tab returns to Infrawrench with a confirmation and the repositories appear in the repo picker. If you're a member (not an owner) of the GitHub organization, GitHub only lets you _request_ the install — Infrawrench will tell you the install is awaiting an owner's approval, and the repos show up once an owner approves it on GitHub. A separate **github-watcher** service polls each watched repo's branch head and runs the workflow on a new commit. Self-hosters configure the app with `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY` (PEM), and `GITHUB_APP_SLUG`, and point the app's setup URL at `/api/github/setup`.
 
 <insert [Screenshot of the git trigger settings showing Connect GitHub, the repository picker, and the branch field] here>
 

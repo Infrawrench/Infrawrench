@@ -151,15 +151,30 @@ function stateKey(): Buffer {
   return createHash("sha256").update(privateKey()).digest();
 }
 
-export function signInstallState(organizationId: string): string {
-  const mac = createHmac("sha256", stateKey()).update(organizationId).digest("base64url");
-  return `${b64url(organizationId)}.${mac}`;
+export interface InstallState {
+  organizationId: string;
+  /** Where in the app to send the user back to after the install (e.g. "agents"). */
+  returnTo: string | null;
 }
 
-export function verifyInstallState(state: string): string | null {
-  const [orgB64, mac] = state.split(".");
-  if (!orgB64 || !mac) return null;
-  const organizationId = Buffer.from(orgB64, "base64url").toString("utf8");
-  const expected = createHmac("sha256", stateKey()).update(organizationId).digest("base64url");
-  return mac === expected ? organizationId : null;
+export function signInstallState(organizationId: string, returnTo?: string): string {
+  const payload = JSON.stringify({ o: organizationId, ...(returnTo ? { r: returnTo } : {}) });
+  const mac = createHmac("sha256", stateKey()).update(payload).digest("base64url");
+  return `${b64url(payload)}.${mac}`;
+}
+
+export function verifyInstallState(state: string): InstallState | null {
+  const [payloadB64, mac] = state.split(".");
+  if (!payloadB64 || !mac) return null;
+  const payload = Buffer.from(payloadB64, "base64url").toString("utf8");
+  const expected = createHmac("sha256", stateKey()).update(payload).digest("base64url");
+  if (mac !== expected) return null;
+  try {
+    const parsed = JSON.parse(payload) as { o?: string; r?: string };
+    if (!parsed.o) return null;
+    return { organizationId: parsed.o, returnTo: parsed.r ?? null };
+  } catch {
+    // Pre-returnTo states signed the bare org id.
+    return { organizationId: payload, returnTo: null };
+  }
 }

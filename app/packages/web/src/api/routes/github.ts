@@ -65,6 +65,9 @@ app.get("/status", async (c) => {
   });
 });
 
+/** Pages the setup callback may send the user back to (path under /org/:orgId). */
+const INSTALL_RETURN_PAGES = new Set(["agents", "workflows"]);
+
 /** GET install-url: the GitHub "install this app" URL with a signed state. */
 app.get("/install-url", async (c) => {
   requirePermission(c, "dashboards:write");
@@ -73,7 +76,9 @@ app.get("/install-url", async (c) => {
   if (!isGithubAppConfigured() || !slug) {
     return c.json({ error: "GitHub App is not configured on this server." }, 400);
   }
-  const state = signInstallState(organizationId);
+  const returnToRaw = c.req.query("return") ?? "";
+  const returnTo = INSTALL_RETURN_PAGES.has(returnToRaw) ? returnToRaw : "agents";
+  const state = signInstallState(organizationId, returnTo);
   const url = `https://github.com/apps/${slug}/installations/new?state=${encodeURIComponent(state)}`;
   return c.json({ url });
 });
@@ -129,12 +134,30 @@ export const githubSetupRoute = new Hono();
 
 githubSetupRoute.get("/github/setup", async (c) => {
   const installationIdRaw = c.req.query("installation_id");
+  const setupAction = c.req.query("setup_action");
   const state = c.req.query("state") ?? "";
-  const organizationId = verifyInstallState(state);
+  const verified = verifyInstallState(state);
   const installationId = Number(installationIdRaw);
 
-  if (!organizationId || !installationIdRaw || Number.isNaN(installationId)) {
+  if (!verified) {
+    // Without a valid state we don't know the org, so the root is the best we
+    // can do. The root layout surfaces the `github` param as a toast.
     return c.redirect(`${appUrl()}/?github=error`);
+  }
+
+  const { organizationId, returnTo } = verified;
+  const returnUrl = (result: string) =>
+    `${appUrl()}/org/${organizationId}/${returnTo && INSTALL_RETURN_PAGES.has(returnTo) ? returnTo : "agents"}?github=${result}`;
+
+  // A member of an org without app-install rights can only *request* the
+  // install; GitHub redirects here with setup_action=request and no
+  // installation id. Nothing to record — an owner must approve it on GitHub.
+  if (setupAction === "request") {
+    return c.redirect(returnUrl("requested"));
+  }
+
+  if (!installationIdRaw || Number.isNaN(installationId)) {
+    return c.redirect(returnUrl("error"));
   }
 
   const account = await getInstallation(installationId).catch(() => null);
@@ -166,5 +189,5 @@ githubSetupRoute.get("/github/setup", async (c) => {
     });
   }
 
-  return c.redirect(`${appUrl()}/org/${organizationId}?github=connected`);
+  return c.redirect(returnUrl("connected"));
 });

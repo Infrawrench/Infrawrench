@@ -25,6 +25,7 @@ import {
   getWorkspaceNavigateArgs,
   syncWorkspaceRouteFromPath,
 } from "@/lib/workspace-tabs";
+import { useGithubInstallResultToast } from "@/lib/github-install-result";
 
 export const Route = createRootRoute({
   component: RootLayout,
@@ -48,6 +49,9 @@ function RootLayout() {
   const [authChecked, setAuthChecked] = useState(false);
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+
+  // Must run before the auth redirect below replaces the URL (and its params).
+  useGithubInstallResultToast();
 
   useEffect(() => {
     if (

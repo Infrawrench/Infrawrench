@@ -43,7 +43,7 @@ export function WebWorkflowsPanel({ client, orgId }: { client: WorkflowClient; o
   }, [refresh]);
 
   const onConnect = useCallback(() => {
-    void apiGet<{ url: string }>(`/api/org/${orgId}/github/install-url`)
+    void apiGet<{ url: string }>(`/api/org/${orgId}/github/install-url?return=workflows`)
       .then((r) => {
         if (r.url) window.open(r.url, "_blank", "noopener,noreferrer");
       })

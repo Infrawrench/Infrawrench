@@ -53,7 +53,7 @@ export function WebAgentsPanel({
   }, [refresh]);
 
   const onConnect = useCallback(() => {
-    void apiGet<{ url: string }>(`/api/org/${orgId}/github/install-url`)
+    void apiGet<{ url: string }>(`/api/org/${orgId}/github/install-url?return=agents`)
       .then((r) => {
         if (r.url) window.open(r.url, "_blank", "noopener,noreferrer");
       })
