@@ -44,6 +44,11 @@ export function ConversationView({ client, conversationId }: Props): React.React
   const [input, setInput] = useState("");
   /** Seconds remaining of a client-side sleep the agent requested. */
   const [sleeping, setSleeping] = useState<number | null>(null);
+  /**
+   * tool_use ids of sleeps still counting down — their persisted "Slept N
+   * seconds" markers stay hidden until the wait has actually happened.
+   */
+  const [activeSleepIds, setActiveSleepIds] = useState<ReadonlySet<string>>(new Set());
   // Ref mirror for callbacks that must not resume mid-countdown (approving a
   // destructive action while a sleep from the same batch is still running).
   const sleepingRef = useRef(false);
@@ -106,6 +111,8 @@ export function ConversationView({ client, conversationId }: Props): React.React
             setStreaming((s) => ({ ...s, text: s.text + delta }));
           } else if (ev.type === "sleep") {
             sleepSeconds = Math.max(sleepSeconds, Number(ev["seconds"]) || 0);
+            const toolUseId = ev["toolUseId"] as string;
+            setActiveSleepIds((ids) => new Set(ids).add(toolUseId));
           } else if (ev.type === "tool_use_start") {
             // Sleep renders as its own indicator, not as a tool card.
             if (ev["name"] === "sleep") continue;
@@ -187,6 +194,7 @@ export function ConversationView({ client, conversationId }: Props): React.React
         } finally {
           sleepingRef.current = false;
           setSleeping(null);
+          setActiveSleepIds(new Set());
         }
         const data = await client.getConversation(conversationId);
         const unresolved = data.pendingActions.some(
@@ -323,6 +331,7 @@ export function ConversationView({ client, conversationId }: Props): React.React
               message={m}
               pendingActions={pendingByMessage.get(m.id) ?? []}
               toolResults={toolResultsById}
+              activeSleepIds={activeSleepIds}
               onApprove={handleApprove}
               onReject={handleReject}
             />
@@ -400,6 +409,7 @@ interface BubbleProps {
   message: ChatConversationMessage;
   pendingActions: ChatPendingAction[];
   toolResults: Map<string, { text: string; isError: boolean }>;
+  activeSleepIds: ReadonlySet<string>;
   onApprove(id: string): Promise<void>;
   onReject(id: string, reason?: string): Promise<void>;
 }
@@ -408,6 +418,7 @@ function MessageBubble({
   message,
   pendingActions,
   toolResults,
+  activeSleepIds,
   onApprove,
   onReject,
 }: BubbleProps): React.ReactElement {
@@ -440,6 +451,7 @@ function MessageBubble({
           block={block}
           pending={block.type === "tool_use" ? pendingByToolUseId.get(block.id) : undefined}
           result={block.type === "tool_use" ? toolResults.get(block.id) : undefined}
+          sleepInProgress={block.type === "tool_use" && activeSleepIds.has(block.id)}
           onApprove={onApprove}
           onReject={onReject}
         />
@@ -452,6 +464,8 @@ interface BlockProps {
   block: ChatContentBlock;
   pending: ChatPendingAction | undefined;
   result: { text: string; isError: boolean } | undefined;
+  /** True while this sleep tool_use is still counting down client-side. */
+  sleepInProgress: boolean;
   onApprove(id: string): Promise<void>;
   onReject(id: string, reason?: string): Promise<void>;
 }
@@ -460,6 +474,7 @@ function BlockView({
   block,
   pending,
   result,
+  sleepInProgress,
   onApprove,
   onReject,
 }: BlockProps): React.ReactElement | null {
@@ -468,8 +483,11 @@ function BlockView({
   }
   if (block.type === "tool_use") {
     // Sleep is not a real tool call — render it as a quiet marker, matching
-    // the live "Sleeping N seconds…" indicator.
+    // the live "Sleeping N seconds…" indicator. While the countdown is still
+    // running, show nothing here (the live indicator covers it): the past
+    // tense would be a lie.
     if (block.name === "sleep") {
+      if (sleepInProgress) return null;
       const secs = Number(block.input["seconds"]);
       return (
         <div className="text-xs text-on-surface-faint italic">
