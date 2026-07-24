@@ -4,7 +4,7 @@ import { computeCostMicros } from "../pricing";
 describe("computeCostMicros", () => {
   it("returns 0 for an all-zero usage", () => {
     expect(
-      computeCostMicros("claude-opus-4-8", {
+      computeCostMicros("claude-opus-5", {
         inputTokens: 0,
         outputTokens: 0,
         cacheReadTokens: 0,
@@ -24,8 +24,8 @@ describe("computeCostMicros", () => {
     expect(micros).toBe(4_500_000);
   });
 
-  it("computes Opus 4.8 output cost at default markup (25 * 1.5 = 37.5 USD/Mtok)", () => {
-    const micros = computeCostMicros("claude-opus-4-8", {
+  it("computes Opus 5 output cost at default markup (25 * 1.5 = 37.5 USD/Mtok)", () => {
+    const micros = computeCostMicros("claude-opus-5", {
       inputTokens: 0,
       outputTokens: 1_000_000,
       cacheReadTokens: 0,
@@ -42,6 +42,16 @@ describe("computeCostMicros", () => {
       cacheWriteTokens: 0,
     });
     expect(micros).toBe(7_500_000);
+  });
+
+  it("prices legacy opus-4-8 conversations", () => {
+    const micros = computeCostMicros("claude-opus-4-8", {
+      inputTokens: 0,
+      outputTokens: 1_000_000,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+    });
+    expect(micros).toBe(37_500_000);
   });
 
   it("prices legacy sonnet-4-6 conversations", () => {
@@ -61,7 +71,7 @@ describe("computeCostMicros", () => {
       cacheReadTokens: 0,
       cacheWriteTokens: 0,
     });
-    expect(micros).toBe(7_500_000); // Opus 4.8 input rate
+    expect(micros).toBe(7_500_000); // Opus 5 input rate
   });
 
   it("sums all four token buckets (Sonnet 5)", () => {

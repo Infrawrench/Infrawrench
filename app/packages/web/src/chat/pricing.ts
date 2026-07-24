@@ -17,15 +17,16 @@ interface ModelRates {
 
 /** USD per million tokens, before markup. */
 const MODEL_RATES: Record<string, ModelRates> = {
-  "claude-opus-4-8": { input: 5.0, output: 25.0, cacheWrite: 6.25, cacheRead: 0.5 },
+  "claude-opus-5": { input: 5.0, output: 25.0, cacheWrite: 6.25, cacheRead: 0.5 },
   "claude-sonnet-5": { input: 3.0, output: 15.0, cacheWrite: 3.75, cacheRead: 0.3 },
   "claude-haiku-4-5": { input: 1.0, output: 5.0, cacheWrite: 1.25, cacheRead: 0.1 },
   // Legacy: conversations created before the model list moved to the current
-  // generation still carry this id.
+  // generation still carry these ids.
+  "claude-opus-4-8": { input: 5.0, output: 25.0, cacheWrite: 6.25, cacheRead: 0.5 },
   "claude-sonnet-4-6": { input: 3.0, output: 15.0, cacheWrite: 3.75, cacheRead: 0.3 },
 };
 
-const FALLBACK_RATES = MODEL_RATES["claude-opus-4-8"]!;
+const FALLBACK_RATES = MODEL_RATES["claude-opus-5"]!;
 
 export interface TokenUsage {
   inputTokens: number;

@@ -13,6 +13,14 @@
 export type ChatContentBlock =
   | { type: "text"; text: string }
   | {
+      // Opus 5+ thinks by default; the block must be echoed back to the API
+      // unchanged on later loop iterations (text is empty unless the request
+      // opts into display: "summarized"). Renderers skip it.
+      type: "thinking";
+      thinking: string;
+      signature: string;
+    }
+  | {
       type: "tool_use";
       id: string;
       name: string;
@@ -73,8 +81,8 @@ export interface ChatModelOption {
 
 export const CHAT_MODELS: ChatModelOption[] = [
   {
-    id: "claude-opus-4-8",
-    label: "Claude Opus 4.8",
+    id: "claude-opus-5",
+    label: "Claude Opus 5",
     description: "Most capable — best for complex, multi-step infrastructure work",
   },
   {
@@ -89,7 +97,7 @@ export const CHAT_MODELS: ChatModelOption[] = [
   },
 ];
 
-export const DEFAULT_CHAT_MODEL = "claude-opus-4-8";
+export const DEFAULT_CHAT_MODEL = "claude-opus-5";
 
 export interface SpendStatus {
   monthToDateMicros: number;

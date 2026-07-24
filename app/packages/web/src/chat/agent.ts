@@ -22,7 +22,9 @@ import {
 import { recordUsage } from "./billing";
 
 const DEFAULT_MODEL = DEFAULT_CHAT_MODEL;
-const MAX_TOKENS = 8192;
+// Hard cap on thinking + response text per request. Opus 5 thinks by default
+// (no `thinking` param means adaptive), so this needs room for both.
+const MAX_TOKENS = 32000;
 
 const SLEEP_TOOL_NAME = "sleep";
 const MAX_SLEEP_SECONDS = 300;
@@ -305,6 +307,10 @@ export async function* runAgentTurn(input: RunAgentInput): AsyncGenerator<AgentE
     const collectedBlocks: AnthropicContentBlock[] = [];
     let currentTextIdx = -1;
     const partialToolJson: Record<number, { id: string; name: string; json: string }> = {};
+    // Stream index → collectedBlocks index for thinking blocks. They must be
+    // persisted and echoed back verbatim (signature included) or the next
+    // loop iteration's request is rejected.
+    const thinkingIdx: Record<number, number> = {};
 
     try {
       const stream = await client.messages.stream({
@@ -324,6 +330,9 @@ export async function* runAgentTurn(input: RunAgentInput): AsyncGenerator<AgentE
           } else if (block.type === "tool_use") {
             partialToolJson[ev.index] = { id: block.id, name: block.name, json: "" };
             yield { type: "tool_use_start", toolUseId: block.id, name: block.name };
+          } else if (block.type === "thinking") {
+            thinkingIdx[ev.index] = collectedBlocks.length;
+            collectedBlocks.push({ type: "thinking", thinking: "", signature: "" });
           }
         } else if (ev.type === "content_block_delta") {
           const delta = ev.delta;
@@ -331,6 +340,12 @@ export async function* runAgentTurn(input: RunAgentInput): AsyncGenerator<AgentE
             yield { type: "text_delta", delta: delta.text };
             const last = collectedBlocks[currentTextIdx];
             if (last && last.type === "text") last.text += delta.text;
+          } else if (delta.type === "thinking_delta" || delta.type === "signature_delta") {
+            const tb = collectedBlocks[thinkingIdx[ev.index] ?? -1];
+            if (tb && tb.type === "thinking") {
+              if (delta.type === "thinking_delta") tb.thinking += delta.thinking;
+              else tb.signature = delta.signature;
+            }
           } else if (delta.type === "input_json_delta") {
             const acc = partialToolJson[ev.index];
             if (acc) {

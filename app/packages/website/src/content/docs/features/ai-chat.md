@@ -62,11 +62,11 @@ Every tool the agent executes goes through the same `logAudit` path the UI uses.
 
 Pick the model when you start a chat (the picker sits next to **New chat**), or switch an existing conversation's model at any time from the dropdown in the conversation header — the change takes effect on the next turn.
 
-| Model                     | Best for                                |
-| ------------------------- | --------------------------------------- |
-| Claude Opus 4.8 (default) | Complex, multi-step infrastructure work |
-| Claude Sonnet 5           | Near-Opus quality at lower cost         |
-| Claude Haiku 4.5          | Quick lookups, cheapest                 |
+| Model                   | Best for                                |
+| ----------------------- | --------------------------------------- |
+| Claude Opus 5 (default) | Complex, multi-step infrastructure work |
+| Claude Sonnet 5         | Near-Opus quality at lower cost         |
+| Claude Haiku 4.5        | Quick lookups, cheapest                 |
 
 ## Billing
 
