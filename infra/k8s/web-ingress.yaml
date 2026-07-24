@@ -9,6 +9,10 @@ metadata:
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-body-size: 25m
+    # The sealed WorkOS session refresh sets a multi-KB Set-Cookie; nginx's
+    # default 4k proxy buffer rejects those responses with a 502
+    # ("upstream sent too big header").
+    nginx.ingress.kubernetes.io/proxy-buffer-size: 16k
 spec:
   ingressClassName: nginx
   tls:
