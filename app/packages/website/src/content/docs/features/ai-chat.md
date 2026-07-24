@@ -63,7 +63,7 @@ Pick the model when you start a chat (the picker sits next to **New chat**), or 
 
 ## Billing
 
-Chat tokens are billed separately from your seat plan as Stripe metered usage. Pricing tracks Anthropic's published per-model rates per million tokens, with a configurable platform markup (default 1.5×). Cache-read and cache-write tokens are billed at Anthropic's discounted/uplifted rates respectively; the system prompt and the tool registry are aggressively prompt-cached so a long working session typically pays the cache-read rate after the first turn.
+Chat tokens are billed separately from your seat plan as Stripe metered usage. The charge is exactly **1.5× Anthropic's published per-model API rates** per million tokens — no other fees. Cache-read and cache-write tokens are billed at Anthropic's discounted/uplifted rates (×1.5) respectively; the system prompt and the tool registry are aggressively prompt-cached so a long working session typically pays the cache-read rate after the first turn.
 
 ### Free tier
 

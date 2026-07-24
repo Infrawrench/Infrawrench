@@ -1,18 +1,12 @@
 /**
  * Per-million-token pricing for chat, by model. Base rates are Anthropic API
- * passthrough (USD per million tokens; cache write = 1.25x input, cache read =
- * 0.1x input) multiplied by INFRAWRENCH_CHAT_MARKUP (default 1.5). Unknown
+ * list prices (USD per million tokens; cache write = 1.25x input, cache read =
+ * 0.1x input) multiplied by a fixed 1.5x platform markup — the charge is
+ * always exactly 1.5x what the API bills us, nothing configurable. Unknown
  * models fall back to the most expensive tier so we never undercharge.
  */
 
-function envNum(name: string, fallback: number): number {
-  const v = process.env[name];
-  if (!v) return fallback;
-  const n = Number(v);
-  return Number.isFinite(n) ? n : fallback;
-}
-
-const MARKUP = envNum("INFRAWRENCH_CHAT_MARKUP", 1.5);
+const MARKUP = 1.5;
 
 interface ModelRates {
   input: number;

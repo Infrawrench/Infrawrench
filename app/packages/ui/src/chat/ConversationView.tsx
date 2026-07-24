@@ -38,28 +38,40 @@ export function ConversationView({ client, conversationId }: Props): React.React
   const [input, setInput] = useState("");
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
-  const reload = useCallback(async () => {
-    const data = await client.getConversation(conversationId);
-    setConversation(data.conversation);
-    setMessages(data.messages);
-    setPending(data.pendingActions);
-    // Keep any workspace tab pointing at this conversation titled after it —
-    // conversations auto-rename after the first message. Done here (not in a
-    // sidebar component) so it works even when the sidebar is collapsed. On
-    // hosts without workspace tabs (web chat routes) this is a no-op.
-    const { workspaceTabs, setWorkspaceTabTitle } = useUIStore.getState();
-    for (const tab of workspaceTabs) {
-      if (
-        tab.target.kind === "chat" &&
-        tab.target.conversationId === conversationId &&
-        data.conversation.title !== tab.title
-      ) {
-        setWorkspaceTabTitle(tab.id, data.conversation.title);
+  const reload = useCallback(
+    async (opts?: { clearStreamingBuffer?: boolean }) => {
+      const [data, s] = await Promise.all([
+        client.getConversation(conversationId),
+        client.getSpend(),
+      ]);
+      // All state updates in one synchronous block so React batches them into
+      // a single render. Clearing the streaming buffer in a later microtask
+      // than setMessages briefly showed the turn's text twice (persisted +
+      // still-buffered) — a flash of duplicated text at the end of each turn.
+      setConversation(data.conversation);
+      setMessages(data.messages);
+      setPending(data.pendingActions);
+      setSpend(s);
+      if (opts?.clearStreamingBuffer) {
+        setStreaming((st) => ({ ...st, text: "", toolUses: [] }));
       }
-    }
-    const s = await client.getSpend();
-    setSpend(s);
-  }, [client, conversationId]);
+      // Keep any workspace tab pointing at this conversation titled after it —
+      // conversations auto-rename after the first message. Done here (not in a
+      // sidebar component) so it works even when the sidebar is collapsed. On
+      // hosts without workspace tabs (web chat routes) this is a no-op.
+      const { workspaceTabs, setWorkspaceTabTitle } = useUIStore.getState();
+      for (const tab of workspaceTabs) {
+        if (
+          tab.target.kind === "chat" &&
+          tab.target.conversationId === conversationId &&
+          data.conversation.title !== tab.title
+        ) {
+          setWorkspaceTabTitle(tab.id, data.conversation.title);
+        }
+      }
+    },
+    [client, conversationId],
+  );
 
   useEffect(() => {
     void reload();
@@ -109,13 +121,12 @@ export function ConversationView({ client, conversationId }: Props): React.React
             // Server has persisted the action; we'll see it after reload.
           } else if (ev.type === "turn_end") {
             if (ev["hasPending"]) break;
-            // Not the end of the loop: after auto-run tools the server feeds
-            // the results back to the model and streams another assistant
-            // message. Pull the persisted messages in, clear the in-flight
-            // buffer, and keep reading — the stream closes when the model
-            // really is done.
-            await reload();
-            setStreaming((s) => ({ ...s, text: "", toolUses: [] }));
+            // Not necessarily the end of the loop: after auto-run tools the
+            // server feeds the results back to the model and streams another
+            // assistant message. Swap the in-flight buffer for the persisted
+            // messages (atomically — see reload) and keep reading; the stream
+            // closes when the model really is done.
+            await reload({ clearStreamingBuffer: true });
           } else if (ev.type === "spend_blocked") {
             const cap = microsToUsd(Number(ev["monthlyCapMicros"]));
             setStreaming((s) => ({
