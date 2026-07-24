@@ -15,6 +15,11 @@ vi.mock("../costs", () => ({
     { name: "k1", title: "K1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
   ],
 }));
+vi.mock("../ssh-keys", () => ({
+  sshKeyTools: () => [
+    { name: "s1", title: "S1", description: "", inputSchema: {}, risk: "read", handler: vi.fn() },
+  ],
+}));
 const mockPerPlugin = vi.fn();
 vi.mock("../per-plugin-create", () => ({
   perPluginCreateTools: (...a: unknown[]) => mockPerPlugin(...a),
@@ -42,6 +47,7 @@ describe("getToolRegistry", () => {
     expect(names).toContain("g1");
     expect(names).toContain("c1");
     expect(names).toContain("k1");
+    expect(names).toContain("s1");
     expect(names).toContain("p1");
 
     // Second call returns the cached result without re-invoking the loader.

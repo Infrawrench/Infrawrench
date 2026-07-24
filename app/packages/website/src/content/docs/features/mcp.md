@@ -37,10 +37,11 @@ The MCP server registers the full shared tool registry — the same tools the [A
 - **Manifests** — `get_manifest`, `apply_manifest` (see [Manifest editor](./manifest-editor.md)).
 - **Connections** — `sql_query`, `sql_execute`, `introspect_sql_schema`, `kv_command`, `docker_command`, `ssh_exec`, and the storage tools (`list_storage_objects`, `make_storage_folder`, `delete_storage_object`).
 - **Costs & budgets** — `query_costs` (aggregate spend series with grouping, filters, previous-period comparison, and forecasts), `list_cost_dimension_values`, `get_cost_status`, `list_budgets`, `get_budget`, `create_budget`, `update_budget`, `delete_budget`. See [Cloud costs](./cloud-costs.md).
+- **SSH keys** — `list_ssh_keys`, `create_ssh_key` (generates an Ed25519 keypair; the private key stays encrypted server-side and is usable by id with `ssh_exec` and tunnels — it is never returned through a tool), `import_ssh_key` (public key only), `delete_ssh_key`. See [SSH keys](../team-and-billing/ssh-keys.md).
 
 It also registers **per-plugin create tools** at server build time. For every resource type that supports creation, you get a typed tool like `digitalocean_create_droplet` or `aws_create_s3_bucket` with a Zod schema generated from the plugin's field definitions — so the model can discover what to set without first round-tripping `list_resource_types`.
 
-The cost and budget tools enforce the same [role permissions](../team-and-billing/roles-and-permissions.md) as the web dashboard (`costs:read`, `budgets:read`, `budgets:write`) — a member whose role can't see spend in the UI can't read it through MCP either.
+The cost, budget, and SSH-key tools enforce the same [role permissions](../team-and-billing/roles-and-permissions.md) as the web dashboard (`costs:read`, `budgets:read`, `budgets:write`, `ssh-keys:read`, `ssh-keys:write`) — a member whose role can't see spend in the UI can't read it through MCP either. Deleting another member's SSH key additionally requires `team:role:write`, matching the HTTP API.
 
 ## Audit and safety
 

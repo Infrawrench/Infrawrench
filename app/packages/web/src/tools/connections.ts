@@ -256,7 +256,7 @@ export function connectionTools(): ToolDefinition[] {
       name: "ssh_exec",
       title: "Run SSH command",
       description:
-        "Execute a single command on a remote host via SSH. Returns stdout. For plugins that natively expose SSH (Fly machines, Hetzner servers), the plugin's getSshConfig is used and no key id is needed. Otherwise pass sshKeyId + sshHost + sshUsername. Audit-logged.",
+        "Execute a single command on a remote host via SSH. Returns stdout. For plugins that natively expose SSH (Fly machines, Hetzner servers), the plugin's getSshConfig is used and no key id is needed. Otherwise pass sshKeyId (see list_ssh_keys) + sshHost + sshUsername. Audit-logged.",
       inputSchema: {
         accountId: z.string(),
         command: z.string(),
