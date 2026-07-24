@@ -57,8 +57,9 @@ export const DEFAULT_COST_GRAPH_CONFIG: CostGraphConfig = {
   showForecast: false,
 };
 
-const selectClass =
-  "w-full rounded-lg border border-border bg-surface-sunken px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-blue-500";
+const selectBaseClass =
+  "rounded-lg border border-border bg-surface-sunken px-2.5 py-1.5 text-sm text-on-surface focus:outline-none focus:border-blue-500";
+const selectClass = `w-full ${selectBaseClass}`;
 const labelClass = "block text-xs font-medium text-on-surface-secondary mb-1";
 
 interface FilterRowEditorProps {
@@ -93,7 +94,7 @@ export function CostFilterRows({ filters, onChange, api }: FilterRowEditorProps)
           <div key={i} className="flex items-start gap-2">
             <select
               aria-label="Filter dimension"
-              className={`${selectClass} w-28 flex-shrink-0`}
+              className={`${selectBaseClass} w-28 flex-shrink-0`}
               value={filter.dimension}
               onChange={(e) => {
                 const dimension = e.target.value as CostFilter["dimension"];
@@ -114,7 +115,7 @@ export function CostFilterRows({ filters, onChange, api }: FilterRowEditorProps)
             {filter.dimension === "tag" && (
               <input
                 aria-label="Tag key"
-                className={`${selectClass} w-24 flex-shrink-0`}
+                className={`${selectBaseClass} w-24 flex-shrink-0`}
                 placeholder="tag key"
                 value={filter.tagKey ?? ""}
                 onChange={(e) => update(i, { tagKey: e.target.value })}
@@ -123,7 +124,7 @@ export function CostFilterRows({ filters, onChange, api }: FilterRowEditorProps)
             )}
             <select
               aria-label="Filter operator"
-              className={`${selectClass} w-24 flex-shrink-0`}
+              className={`${selectBaseClass} w-24 flex-shrink-0`}
               value={filter.op}
               onChange={(e) => update(i, { op: e.target.value as CostFilter["op"] })}
             >
@@ -133,7 +134,7 @@ export function CostFilterRows({ filters, onChange, api }: FilterRowEditorProps)
             <select
               multiple
               aria-label="Filter values"
-              className={`${selectClass} min-h-[4.5rem]`}
+              className={`${selectBaseClass} min-w-0 flex-1 min-h-[4.5rem]`}
               value={filter.values}
               onFocus={() =>
                 filter.dimension === "tag"
@@ -443,7 +444,7 @@ export function CostGraphConfigModal({
                 type="number"
                 min={1}
                 max={15}
-                className={`${selectClass} w-16`}
+                className={`${selectBaseClass} w-16`}
                 value={config.topN}
                 onChange={(e) =>
                   set({ topN: Math.max(1, Math.min(15, Number(e.target.value) || 5)) })
