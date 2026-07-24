@@ -92,7 +92,14 @@ export function ConversationView({ client, conversationId }: Props): React.React
           } else if (ev.type === "pending_action") {
             // Server has persisted the action; we'll see it after reload.
           } else if (ev.type === "turn_end") {
-            break;
+            if (ev["hasPending"]) break;
+            // Not the end of the loop: after auto-run tools the server feeds
+            // the results back to the model and streams another assistant
+            // message. Pull the persisted messages in, clear the in-flight
+            // buffer, and keep reading — the stream closes when the model
+            // really is done.
+            await reload();
+            setStreaming((s) => ({ ...s, text: "", toolUses: [] }));
           } else if (ev.type === "spend_blocked") {
             const cap = microsToUsd(Number(ev["monthlyCapMicros"]));
             setStreaming((s) => ({
@@ -164,6 +171,29 @@ export function ConversationView({ client, conversationId }: Props): React.React
     return m;
   }, [pending]);
 
+  // Tool results live in follow-up user messages; index them by tool_use_id so
+  // each result renders inside its tool card instead of as a "You" message.
+  const toolResultsById = useMemo(() => {
+    const m = new Map<string, { text: string; isError: boolean }>();
+    for (const msg of messages) {
+      for (const block of msg.content) {
+        if (block.type !== "tool_result") continue;
+        const text = Array.isArray(block.content)
+          ? block.content.map((c) => c.text).join("\n")
+          : block.content;
+        m.set(block.tool_use_id, { text, isError: !!block.is_error });
+      }
+    }
+    return m;
+  }, [messages]);
+
+  // Messages that are pure tool plumbing (only tool_result blocks) are hidden;
+  // their content shows up inside the corresponding tool card.
+  const visibleMessages = useMemo(
+    () => messages.filter((m) => !m.content.every((b) => b.type === "tool_result")),
+    [messages],
+  );
+
   return (
     <div className="flex flex-col h-full">
       <header className="border-b border-border px-6 py-3 flex items-center justify-between">
@@ -182,11 +212,12 @@ export function ConversationView({ client, conversationId }: Props): React.React
       </header>
 
       <main className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-        {messages.map((m) => (
+        {visibleMessages.map((m) => (
           <MessageBubble
             key={m.id}
             message={m}
             pendingActions={pendingByMessage.get(m.id) ?? []}
+            toolResults={toolResultsById}
             onApprove={handleApprove}
             onReject={handleReject}
           />
@@ -198,10 +229,12 @@ export function ConversationView({ client, conversationId }: Props): React.React
             {streaming.toolUses.map((t) => (
               <div
                 key={t.id}
-                className="mt-2 border border-border rounded-md px-3 py-1.5 text-xs text-on-surface-muted bg-surface-overlay"
+                className="mt-2 border border-border rounded-md px-3 py-1.5 text-xs bg-surface-overlay flex items-center justify-between"
               >
-                <span className="font-mono">{t.name}</span>
-                {t.executed ? " ✓" : " …"}
+                <span className="font-mono text-on-surface-secondary">{t.name}</span>
+                <span className={t.executed ? "text-emerald-500" : "text-on-surface-muted"}>
+                  {t.executed ? "Done" : "Running…"}
+                </span>
               </div>
             ))}
           </div>
@@ -246,6 +279,7 @@ export function ConversationView({ client, conversationId }: Props): React.React
 interface BubbleProps {
   message: ChatConversationMessage;
   pendingActions: ChatPendingAction[];
+  toolResults: Map<string, { text: string; isError: boolean }>;
   onApprove(id: string): Promise<void>;
   onReject(id: string, reason?: string): Promise<void>;
 }
@@ -253,6 +287,7 @@ interface BubbleProps {
 function MessageBubble({
   message,
   pendingActions,
+  toolResults,
   onApprove,
   onReject,
 }: BubbleProps): React.ReactElement {
@@ -270,6 +305,7 @@ function MessageBubble({
             key={i}
             block={block}
             pending={block.type === "tool_use" ? pendingByToolUseId.get(block.id) : undefined}
+            result={block.type === "tool_use" ? toolResults.get(block.id) : undefined}
             onApprove={onApprove}
             onReject={onReject}
           />
@@ -282,18 +318,25 @@ function MessageBubble({
 interface BlockProps {
   block: ChatContentBlock;
   pending: ChatPendingAction | undefined;
+  result: { text: string; isError: boolean } | undefined;
   onApprove(id: string): Promise<void>;
   onReject(id: string, reason?: string): Promise<void>;
 }
 
-function BlockView({ block, pending, onApprove, onReject }: BlockProps): React.ReactElement | null {
+function BlockView({
+  block,
+  pending,
+  result,
+  onApprove,
+  onReject,
+}: BlockProps): React.ReactElement | null {
   if (block.type === "text") {
     return (
       <div className="text-sm whitespace-pre-wrap text-on-surface-secondary">{block.text}</div>
     );
   }
   if (block.type === "tool_use") {
-    const status = pending?.status ?? "executed";
+    const status = pending?.status ?? (result?.isError ? "errored" : "executed");
     const statusLabel =
       status === "pending"
         ? "Pending approval"
@@ -312,18 +355,16 @@ function BlockView({ block, pending, onApprove, onReject }: BlockProps): React.R
           : status === "executed"
             ? "text-emerald-500"
             : "text-on-surface-muted";
+    const resultText = pending?.result ?? result?.text;
 
     return (
-      <div className="border border-border rounded-md p-3 bg-surface-overlay text-xs">
-        <div className="flex items-center justify-between">
+      <div className="border border-border rounded-md bg-surface-overlay text-xs">
+        <div className="flex items-center justify-between px-3 py-2">
           <span className="font-mono text-on-surface-secondary">{block.name}</span>
           <span className={statusColor}>{statusLabel}</span>
         </div>
-        <pre className="mt-2 whitespace-pre-wrap break-words text-on-surface-muted font-mono text-[11px]">
-          {JSON.stringify(block.input, null, 2)}
-        </pre>
         {pending?.status === "pending" && (
-          <div className="flex gap-2 mt-2">
+          <div className="flex gap-2 px-3 pb-2">
             <button
               type="button"
               onClick={() => void onApprove(pending.id)}
@@ -340,31 +381,36 @@ function BlockView({ block, pending, onApprove, onReject }: BlockProps): React.R
             </button>
           </div>
         )}
-        {pending?.result && (
-          <details className="mt-2">
-            <summary className="cursor-pointer text-on-surface-faint">Result</summary>
-            <pre className="mt-1 whitespace-pre-wrap break-words text-on-surface-muted text-[11px]">
-              {pending.result}
-            </pre>
-          </details>
-        )}
+        <details
+          className="border-t border-border px-3 py-1.5"
+          // While awaiting approval the input must be visible — the user is
+          // deciding whether to run it. Otherwise collapsed by default.
+          {...(status === "pending" ? { open: true } : {})}
+        >
+          <summary className="cursor-pointer text-on-surface-faint select-none">Details</summary>
+          <div className="mt-1 space-y-2 pb-1">
+            <div>
+              <div className="text-on-surface-faint mb-0.5">Input</div>
+              <pre className="whitespace-pre-wrap break-words text-on-surface-muted font-mono text-[11px]">
+                {JSON.stringify(block.input, null, 2)}
+              </pre>
+            </div>
+            {resultText != null && (
+              <div>
+                <div className="text-on-surface-faint mb-0.5">
+                  Result{(pending?.isError ?? result?.isError) ? " (error)" : ""}
+                </div>
+                <pre className="whitespace-pre-wrap break-words text-on-surface-muted font-mono text-[11px]">
+                  {resultText}
+                </pre>
+              </div>
+            )}
+          </div>
+        </details>
       </div>
     );
   }
-  if (block.type === "tool_result") {
-    const txt = Array.isArray(block.content)
-      ? block.content.map((c) => c.text).join("\n")
-      : block.content;
-    return (
-      <details className="text-xs">
-        <summary className="cursor-pointer text-on-surface-faint">
-          Tool result {block.is_error ? "(error)" : ""}
-        </summary>
-        <pre className="mt-1 whitespace-pre-wrap break-words text-on-surface-muted font-mono text-[11px]">
-          {txt}
-        </pre>
-      </details>
-    );
-  }
+  // tool_result blocks render inside their tool card (see toolResultsById);
+  // nothing to show standalone.
   return null;
 }

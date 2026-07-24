@@ -41,6 +41,8 @@ Every tool is tagged with a risk tier: `read`, `write`, or `destructive`. Read a
 
 The UI surfaces these as Approve / Reject cards inline in the conversation. Approving runs the tool and resumes the model with the result; rejecting feeds the model an error message it can react to.
 
+Tool calls render as compact status cards (`Running…` → `Done`); the input JSON and the tool's result sit behind a collapsed **Details** toggle on each card, except while an action is pending approval, when the input is shown so you can see exactly what you're approving.
+
 API clients see pending actions in the conversation fetch response and POST `{action: "approve" | "reject"}` to `/api/org/{orgId}/chat/conversations/{id}/pending/{pendingId}` to drive the same flow.
 
 <insert [Pending-action card with Approve/Reject buttons and the JSON tool input expanded] here>
