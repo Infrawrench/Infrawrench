@@ -17,7 +17,7 @@
  * config/repo file sync step.
  */
 import ssh2 from "ssh2";
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 
 const { Client: SshClient } = ssh2;
 // Re-establish the class's dual value/type nature lost by destructuring.
@@ -37,8 +37,14 @@ import {
   isCloneableGitRepo,
 } from "@infrawrench/ui/agents/launch-command";
 
+import {
+  getInstallationToken,
+  isGithubAppConfigured,
+  listInstallationRepos,
+} from "@infrawrench/server-core/github/app";
+
 import { db } from "../db/client";
-import { agentSessions, resources, sshKeys } from "../db/schema";
+import { agentSessions, githubInstallations, resources, sshKeys } from "../db/schema";
 import { buildAad, decrypt } from "./encryption";
 import { getClientForAccount } from "./plugin-clients";
 
@@ -237,11 +243,13 @@ async function runAgentVmSetup(
 
   await appendAgentSessionLog(row.id, AGENT_SETUP_BOOTSTRAP_LOG, "setting-up");
   const logger = createAgentSetupOutputLogger(row.id);
+  const cloneUrl = await resolveAgentCloneUrl(organizationId, row.repo);
   const bootstrapCommand = buildAgentBootstrapCommand({
     tool: sessionTool(row),
     workspaceName: row.workspaceName,
     branchName: row.branchName,
     repo: row.repo,
+    ...(cloneUrl ? { cloneUrl } : {}),
     setupPlan: setupPlanForRow(row),
     // Web sessions clone inside the bootstrap, so the repo's optional
     // .infrawrench/agent-setup.sh runs there too (desktop runs it
@@ -281,6 +289,50 @@ export function setupPlanForRow(
     // fall through to the default plan
   }
   return createAgentSetupPlanForRepo(row.repo, sessionTool(row), row.workspaceName);
+}
+
+/** owner/name when `repo` is an https github.com URL, else null. */
+function githubRepoFullName(repo: string): string | null {
+  const match = /^https:\/\/(?:www\.)?github\.com\/([^/]+)\/([^/]+?)(?:\.git)?\/?$/i.exec(
+    repo.trim(),
+  );
+  return match ? `${match[1]}/${match[2]}` : null;
+}
+
+/**
+ * Credentialed clone URL for the bootstrap, or undefined to clone the session
+ * repo as-is. Private GitHub repos can't be cloned anonymously on the VM, so
+ * when one of the org's GitHub App installations covers the repo we embed a
+ * short-lived installation token (minted fresh on every setup run — they
+ * expire after an hour). The bootstrap resets the origin remote to the
+ * canonical URL afterwards, so the token never persists on the VM.
+ */
+async function resolveAgentCloneUrl(
+  organizationId: string,
+  repo: string,
+): Promise<string | undefined> {
+  const fullName = githubRepoFullName(repo);
+  if (!fullName || !isGithubAppConfigured()) return undefined;
+  try {
+    const installs = await db
+      .select({ installationId: githubInstallations.installationId })
+      .from(githubInstallations)
+      .where(
+        and(
+          eq(githubInstallations.organizationId, organizationId),
+          isNull(githubInstallations.deletedAt),
+        ),
+      );
+    for (const install of installs) {
+      const repos = await listInstallationRepos(install.installationId).catch(() => []);
+      if (!repos.some((r) => r.fullName.toLowerCase() === fullName.toLowerCase())) continue;
+      const token = await getInstallationToken(install.installationId);
+      return `https://x-access-token:${token}@github.com/${fullName}.git`;
+    }
+  } catch (error) {
+    console.warn(`[agent-setup] could not resolve a GitHub clone token for ${fullName}`, error);
+  }
+  return undefined;
 }
 
 async function loadOrgAgentSshPrivateKey(organizationId: string): Promise<string> {
@@ -484,11 +536,21 @@ function agentSshExec(
   });
 }
 
+/**
+ * Session logs are org-visible; strip URL-embedded credentials (e.g. the
+ * short-lived GitHub installation token in the clone URL, which git repeats
+ * in its error messages) before persisting.
+ */
+function redactUrlCredentials(message: string): string {
+  return message.replace(/\/\/([^/@:\s]+):([^@\s]+)@/g, "//$1:***@");
+}
+
 async function appendAgentSessionLog(
   sessionId: string,
-  message: string,
+  rawMessage: string,
   status?: AgentStatus,
 ): Promise<void> {
+  const message = redactUrlCredentials(rawMessage);
   const [row] = await db
     .select({ logs: agentSessions.logs, status: agentSessions.status })
     .from(agentSessions)

@@ -732,6 +732,121 @@ describe("AgentsPanel", () => {
     confirmSpy.mockRestore();
   });
 
+  it("creates a session from a GitHub repo picked through the git integration", async () => {
+    const account: AgentVmAccount = {
+      accountId: "acct-1",
+      accountName: "Workspace",
+      pluginId: "digitalocean",
+      pluginName: "DigitalOcean",
+      resourceTypeId: "droplet",
+      resourceTypeName: "Droplet",
+      defaultUsername: "root",
+      defaultFields: {},
+      hiddenFieldKeys: [],
+    };
+    const client = makeClient(account);
+    render(
+      <AgentsPanel
+        client={client}
+        gitIntegration={{
+          configured: true,
+          repos: [
+            { installationId: 7, fullName: "acme/app", defaultBranch: "main", private: true },
+            { installationId: 7, fullName: "acme/site", defaultBranch: "main" },
+          ],
+          onConnect: vi.fn(),
+        }}
+      />,
+    );
+
+    await screen.findByText("Workspace (DigitalOcean)");
+    // The picker replaces the free-text URL input until Custom is chosen.
+    expect(screen.queryByPlaceholderText("https://github.com/org/repo.git")).toBeNull();
+    const picker = screen.getByRole("combobox", { name: "Repository" });
+    expect(
+      Array.from((picker as HTMLSelectElement).options).map((option) => option.textContent),
+    ).toEqual(["Select a repository…", "acme/app (private)", "acme/site", "Custom Git URL…"]);
+
+    fireEvent.change(picker, { target: { value: "acme/app" } });
+    fireEvent.change(screen.getByPlaceholderText("Agent name"), {
+      target: { value: "app-agent" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+
+    await waitFor(() => expect(client.createSession).toHaveBeenCalledTimes(1));
+    expect(client.createSession).toHaveBeenCalledWith({
+      repo: "https://github.com/acme/app.git",
+      projectName: "app-agent",
+      workspaceName: "app",
+      settings: {
+        accountId: "acct-1",
+        pluginId: "digitalocean",
+        resourceTypeId: "droplet",
+        tool: "codex",
+        fields: {},
+      },
+    });
+  });
+
+  it("falls back to a free-text URL when Custom Git URL is picked", async () => {
+    const account: AgentVmAccount = {
+      accountId: "acct-1",
+      accountName: "Workspace",
+      pluginId: "digitalocean",
+      pluginName: "DigitalOcean",
+      resourceTypeId: "droplet",
+      resourceTypeName: "Droplet",
+      defaultUsername: "root",
+      defaultFields: {},
+      hiddenFieldKeys: [],
+    };
+    render(
+      <AgentsPanel
+        client={makeClient(account)}
+        gitIntegration={{
+          configured: true,
+          repos: [{ installationId: 7, fullName: "acme/app", defaultBranch: "main" }],
+          onConnect: vi.fn(),
+        }}
+      />,
+    );
+
+    await screen.findByText("Workspace (DigitalOcean)");
+    fireEvent.change(screen.getByRole("combobox", { name: "Repository" }), {
+      target: { value: "custom" },
+    });
+    const urlInput = await screen.findByPlaceholderText("https://github.com/org/repo.git");
+    fireEvent.change(urlInput, { target: { value: "https://gitlab.com/acme/app.git" } });
+    expect(screen.getByRole("combobox", { name: "Repository" })).toHaveValue("custom");
+  });
+
+  it("offers Connect GitHub when the integration is configured without repos", async () => {
+    const account: AgentVmAccount = {
+      accountId: "acct-1",
+      accountName: "Workspace",
+      pluginId: "digitalocean",
+      pluginName: "DigitalOcean",
+      resourceTypeId: "droplet",
+      resourceTypeName: "Droplet",
+      defaultUsername: "root",
+      defaultFields: {},
+      hiddenFieldKeys: [],
+    };
+    const onConnect = vi.fn();
+    render(
+      <AgentsPanel
+        client={makeClient(account)}
+        gitIntegration={{ configured: true, repos: [], onConnect }}
+      />,
+    );
+
+    await screen.findByText("Workspace (DigitalOcean)");
+    // The free-text URL input stays available alongside the connect button.
+    expect(screen.getByPlaceholderText("https://github.com/org/repo.git")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Connect GitHub" }));
+    expect(onConnect).toHaveBeenCalledTimes(1);
+  });
+
   it("hides sessions that do not have a backing VM", async () => {
     const account: AgentVmAccount = {
       accountId: "acct-1",

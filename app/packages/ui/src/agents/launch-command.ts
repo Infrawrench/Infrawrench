@@ -44,6 +44,13 @@ export interface AgentBootstrapCommandInput {
   branchName: string;
   /** Session repo — a clone URL or a local folder path. */
   repo: string;
+  /**
+   * Credentialed URL used only for the clone/fetch inside this bootstrap run
+   * (e.g. a GitHub App installation token for a private repo). The origin
+   * remote is reset to the canonical URL afterwards so the short-lived
+   * credential never outlives the run.
+   */
+  cloneUrl?: string;
   setupPlan: AgentSetupPlan;
   /**
    * Run the repo's `.infrawrench/agent-setup.sh` at the end of the
@@ -224,6 +231,8 @@ export function buildAgentBootstrapCommand(input: AgentBootstrapCommandInput): s
   const packageManagerLines = packageManagerInstallCommands(input.setupPlan);
   const initialCloneUrl =
     input.setupPlan.initialCloneUrl?.trim() || (isCloneableGitRepo(input.repo) ? input.repo : "");
+  const cloneUrl = input.cloneUrl?.trim() || initialCloneUrl;
+  const hasEphemeralCloneUrl = Boolean(initialCloneUrl) && cloneUrl !== initialCloneUrl;
   const script = `
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
@@ -235,6 +244,7 @@ TOOL_PACKAGE=${shellQuote(toolPackage)}
 PROJECT_NAME=${shellQuote(input.workspaceName)}
 PROJECT_DIR="$HOME/$PROJECT_NAME"
 REPO_URL=${shellQuote(initialCloneUrl)}
+CLONE_URL=${shellQuote(cloneUrl)}
 REPO_CLONEABLE=${initialCloneUrl ? "1" : "0"}
 BRANCH_NAME=${shellQuote(input.branchName)}
 MARKER_DIR="$HOME/.infrawrench-agent"
@@ -593,12 +603,16 @@ mkdir -p "$PROJECT_DIR"
 if [ "$REPO_CLONEABLE" = "1" ]; then
   log_step "Pulling initial workspace from Git remote."
   if [ -d "$PROJECT_DIR/.git" ]; then
-    git -C "$PROJECT_DIR" remote get-url origin >/dev/null 2>&1 || git -C "$PROJECT_DIR" remote add origin "$REPO_URL"
+    ${
+      hasEphemeralCloneUrl
+        ? `git -C "$PROJECT_DIR" remote set-url origin "$CLONE_URL" 2>/dev/null || git -C "$PROJECT_DIR" remote add origin "$CLONE_URL"`
+        : `git -C "$PROJECT_DIR" remote get-url origin >/dev/null 2>&1 || git -C "$PROJECT_DIR" remote add origin "$CLONE_URL"`
+    }
     git -C "$PROJECT_DIR" fetch --all --prune || echo "git fetch failed; continuing with existing workspace" >&2
     git -C "$PROJECT_DIR" pull --ff-only || echo "git pull failed; continuing with existing workspace" >&2
   elif [ -z "$(find "$PROJECT_DIR" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]; then
     rmdir "$PROJECT_DIR" 2>/dev/null || true
-    if ! git clone "$REPO_URL" "$PROJECT_DIR"; then
+    if ! git clone "$CLONE_URL" "$PROJECT_DIR"; then
       mkdir -p "$PROJECT_DIR"
       echo "git clone failed; created empty workspace at $PROJECT_DIR" >&2
     fi
@@ -613,6 +627,14 @@ if [ "$REPO_CLONEABLE" = "1" ] && [ -d "$PROJECT_DIR/.git" ]; then
 elif [ "$REPO_CLONEABLE" = "1" ]; then
   echo "workspace is not a git repository: $PROJECT_DIR" >&2
 fi
+${
+  hasEphemeralCloneUrl
+    ? `
+if [ -d "$PROJECT_DIR/.git" ]; then
+  git -C "$PROJECT_DIR" remote set-url origin "$REPO_URL" || true
+fi`
+    : ""
+}
 
 ${input.runRepoSetupScript ? AGENT_REPO_SETUP_SNIPPET : ""}
 

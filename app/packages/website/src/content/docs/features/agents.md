@@ -4,7 +4,7 @@ description: Provision coding VMs from VM-capable cloud accounts and reconcile t
 sidebar_order: 24
 ---
 
-Agents create coding VM records from accounts whose provider plugins declare VM support. Open **Agents** from the sidebar, use the configuration menu in the header to choose a VM-capable account and save defaults for the VM shape and tool, then create a named session from a Git repo URL or local path.
+Agents create coding VM records from accounts whose provider plugins declare VM support. Open **Agents** from the sidebar, use the configuration menu in the header to choose a VM-capable account and save defaults for the VM shape and tool, then create a named session from a repository — picked from your connected GitHub repos on the cloud, or given as a Git URL or local path.
 
 <insert [Agents panel showing the header configuration menu, repo input, and a setting-up agent session with its VM id] here>
 
@@ -15,6 +15,16 @@ Infrawrench lists accounts that can create VMs through provider plugin capabilit
 Agents can target either Codex or Claude Code. The selected tool is stored on the session so setup installs and launches the right coding environment on the VM. Desktop sessions copy the selected tool's local credential and settings files into the VM. Codex sessions copy selected files from `~/.codex`, such as `auth.json`, `config.toml`, and skills. Claude Code sessions copy selected settings and plugins from `~/.claude` plus `~/.claude.json` when those paths exist. Local sessions, logs, caches, temp files, downloads, and package stores are skipped.
 
 Agent VMs use a dedicated Infrawrench-managed SSH key named `infrawrench-agent`. Cloud sessions create or reuse that key inside the organization. Desktop-only sessions create or reuse it in the local app key store. The key is injected into the provider's VM create field declared by the plugin, so providers such as DigitalOcean attach it during VM creation instead of falling back to password access.
+
+## Choosing a repository
+
+On the cloud, the session form shows a repository picker fed by the same [GitHub App integration](./workflows.md#connecting-github) that powers workflow git triggers. Once GitHub is connected, pick any repository the installation can access — private repos are marked in the list — or choose **Custom Git URL…** to type a clone URL for a repository hosted anywhere else. **+ repos** (or **Connect GitHub** when nothing is connected yet) opens the GitHub App install flow to add repositories.
+
+<insert [Agents session form on the web app with the GitHub repository picker open, showing a private repo entry, the Custom Git URL option, and the + repos button] here>
+
+Private GitHub repositories picked this way clone cleanly on the VM: setup mints a short-lived GitHub App installation token for the clone and resets the workspace's `origin` remote to the plain repository URL afterwards, so no credential persists on the VM. To push the agent branch from the VM you still authenticate as usual (the setup token is not left behind).
+
+The desktop app has no GitHub App integration; it keeps the free-text **Git URL** input and the **Local folder** picker.
 
 ## Sessions
 

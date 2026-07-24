@@ -318,6 +318,42 @@ describe("buildAgentBootstrapCommand", () => {
     expect(bootstrap).toContain("install_package_manager 'pnpm@9.0.0'");
   });
 
+  it("clones with the credentialed URL but resets origin to the canonical one", () => {
+    const bootstrap = unwrap(
+      buildAgentBootstrapCommand({
+        tool: "codex",
+        workspaceName: "my-app",
+        branchName: "infrawrench/agent-6f9619ff",
+        repo: "https://github.com/org/my-app.git",
+        cloneUrl: "https://x-access-token:ghs_secret@github.com/org/my-app.git",
+        setupPlan: plan({ initialCloneUrl: "https://github.com/org/my-app.git" }),
+      }),
+    );
+    expect(bootstrap).toContain("REPO_URL='https://github.com/org/my-app.git'");
+    expect(bootstrap).toContain(
+      "CLONE_URL='https://x-access-token:ghs_secret@github.com/org/my-app.git'",
+    );
+    expect(bootstrap).toContain('git clone "$CLONE_URL" "$PROJECT_DIR"');
+    // Re-runs must refresh the remote to the fresh token before fetching...
+    expect(bootstrap).toContain('git -C "$PROJECT_DIR" remote set-url origin "$CLONE_URL"');
+    // ...and the token must never persist as the origin remote.
+    expect(bootstrap).toContain('git -C "$PROJECT_DIR" remote set-url origin "$REPO_URL" || true');
+  });
+
+  it("does not rewrite the origin remote when no credentialed clone URL is used", () => {
+    const bootstrap = unwrap(
+      buildAgentBootstrapCommand({
+        tool: "codex",
+        workspaceName: "my-app",
+        branchName: "infrawrench/agent-6f9619ff",
+        repo: "https://example.com/org/my-app.git",
+        setupPlan: plan(),
+      }),
+    );
+    expect(bootstrap).toContain("CLONE_URL='https://example.com/org/my-app.git'");
+    expect(bootstrap).not.toContain('remote set-url origin "$REPO_URL"');
+  });
+
   it("marks non-cloneable repos so the workspace is left to the file sync", () => {
     const bootstrap = unwrap(
       buildAgentBootstrapCommand({

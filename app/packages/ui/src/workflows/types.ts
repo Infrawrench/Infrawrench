@@ -80,6 +80,7 @@ export interface GitRepoOption {
   installationId: number;
   fullName: string;
   defaultBranch: string;
+  private?: boolean;
 }
 
 /** GitHub integration surface passed into the panel (web only). */

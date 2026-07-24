@@ -4,6 +4,7 @@ import { FieldRenderer } from "../components/create-resource/FieldRenderer.js";
 import { AGENT_SETUP_FAILED_LOG_PREFIX } from "./launch-command.js";
 import { resourceSshTabTarget } from "../workspace-tabs.js";
 import { useUIStore } from "../store/ui.store.js";
+import type { GitIntegration, GitRepoOption } from "../workflows/types.js";
 import type {
   AgentClient,
   AgentSession,
@@ -17,6 +18,13 @@ type RepoSource = "git-url" | "local-path";
 interface AgentsPanelProps {
   client: AgentClient;
   openWorkspaceTarget?: (target: ReturnType<typeof resourceSshTabTarget>, title: string) => void;
+  /**
+   * GitHub App integration for picking a session repo from the org's
+   * connected installations (same surface the Workflows git triggers use).
+   * Absent on hosts without the integration (desktop), where the Git URL
+   * stays a free-text input.
+   */
+  gitIntegration?: GitIntegration;
 }
 
 function statusClass(status: AgentSession["status"]): string {
@@ -32,7 +40,7 @@ function statusLabel(status: AgentSession["status"]): string {
   return status.charAt(0).toUpperCase() + status.slice(1);
 }
 
-export function AgentsPanel({ client, openWorkspaceTarget }: AgentsPanelProps) {
+export function AgentsPanel({ client, openWorkspaceTarget, gitIntegration }: AgentsPanelProps) {
   const createWorkspaceTabInstance = useUIStore((s) => s.createWorkspaceTabInstance);
   const [accounts, setAccounts] = useState<AgentVmAccount[]>([]);
   const [settings, setSettings] = useState<AgentSettings | null>(null);
@@ -40,6 +48,9 @@ export function AgentsPanel({ client, openWorkspaceTarget }: AgentsPanelProps) {
   const [agentName, setAgentName] = useState("");
   const [repo, setRepo] = useState("");
   const [repoSource, setRepoSource] = useState<RepoSource>("git-url");
+  // "Custom Git URL…" picked in the repo picker while the URL is still empty
+  // (a non-empty URL that matches no repo option already reads as custom).
+  const [customRepoUrl, setCustomRepoUrl] = useState(false);
   const [busy, setBusy] = useState(false);
   const [openingSessionId, setOpeningSessionId] = useState<string | null>(null);
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
@@ -130,6 +141,25 @@ export function AgentsPanel({ client, openWorkspaceTarget }: AgentsPanelProps) {
     ].filter(Boolean);
     return parts.join(" · ");
   }, [selectedAccount, settings?.tool, visibleFields]);
+
+  const gitRepoOptions = useMemo<GitRepoOption[]>(
+    () => (gitIntegration?.configured ? gitIntegration.repos : []),
+    [gitIntegration],
+  );
+  const showRepoPicker = repoSource === "git-url" && gitRepoOptions.length > 0;
+  const pickedRepo = gitRepoOptions.find((option) => gitRepoCloneUrl(option) === repo);
+  const repoPickerValue = pickedRepo ? pickedRepo.fullName : customRepoUrl || repo ? "custom" : "";
+
+  function pickGitRepo(value: string) {
+    if (value === "custom") {
+      setCustomRepoUrl(true);
+      setRepo("");
+      return;
+    }
+    setCustomRepoUrl(false);
+    const option = gitRepoOptions.find((candidate) => candidate.fullName === value);
+    setRepo(option ? gitRepoCloneUrl(option) : "");
+  }
 
   const accountField = useMemo<CreateFieldConfig>(
     () => ({
@@ -447,18 +477,63 @@ export function AgentsPanel({ client, openWorkspaceTarget }: AgentsPanelProps) {
                       Local folder
                     </button>
                   </div>
-                  <input
-                    value={repo}
-                    onChange={(e) => setRepo(e.target.value)}
-                    placeholder={
-                      repoSource === "git-url"
-                        ? "https://github.com/org/repo.git"
-                        : client.pickLocalRepoPath
-                          ? "/path/to/local/repo"
-                          : "Local folders are available in the desktop app"
-                    }
-                    className="min-w-0 flex-1 rounded border border-border bg-surface px-2 py-1.5 text-sm"
-                  />
+                  {showRepoPicker && (
+                    <select
+                      value={repoPickerValue}
+                      onChange={(e) => pickGitRepo(e.target.value)}
+                      aria-label="Repository"
+                      className={`min-w-0 rounded border border-border bg-surface px-2 py-1.5 text-sm ${
+                        repoPickerValue === "custom" ? "md:w-56 md:flex-none" : "flex-1"
+                      }`}
+                    >
+                      <option value="">Select a repository…</option>
+                      {gitRepoOptions.map((option) => (
+                        <option
+                          key={`${option.installationId}:${option.fullName}`}
+                          value={option.fullName}
+                        >
+                          {option.fullName}
+                          {option.private ? " (private)" : ""}
+                        </option>
+                      ))}
+                      <option value="custom">Custom Git URL…</option>
+                    </select>
+                  )}
+                  {(!showRepoPicker || repoPickerValue === "custom") && (
+                    <input
+                      value={repo}
+                      onChange={(e) => setRepo(e.target.value)}
+                      placeholder={
+                        repoSource === "git-url"
+                          ? "https://github.com/org/repo.git"
+                          : client.pickLocalRepoPath
+                            ? "/path/to/local/repo"
+                            : "Local folders are available in the desktop app"
+                      }
+                      className="min-w-0 flex-1 rounded border border-border bg-surface px-2 py-1.5 text-sm"
+                    />
+                  )}
+                  {repoSource === "git-url" &&
+                    gitIntegration?.configured &&
+                    gitRepoOptions.length === 0 && (
+                      <button
+                        type="button"
+                        onClick={gitIntegration.onConnect}
+                        className="rounded border border-border-strong px-3 py-1.5 text-sm text-on-surface-secondary hover:bg-surface-sunken"
+                      >
+                        {gitIntegration.loading ? "Loading repos…" : "Connect GitHub"}
+                      </button>
+                    )}
+                  {showRepoPicker && (
+                    <button
+                      type="button"
+                      onClick={gitIntegration?.onConnect}
+                      title="Add or remove repositories on GitHub"
+                      className="shrink-0 rounded border border-border-strong px-3 py-1.5 text-sm text-on-surface-secondary hover:bg-surface-sunken"
+                    >
+                      + repos
+                    </button>
+                  )}
                   {repoSource === "local-path" && client.pickLocalRepoPath && (
                     <button
                       type="button"
@@ -570,6 +645,10 @@ export function AgentsPanel({ client, openWorkspaceTarget }: AgentsPanelProps) {
       </div>
     </div>
   );
+}
+
+function gitRepoCloneUrl(option: GitRepoOption): string {
+  return `https://github.com/${option.fullName}.git`;
 }
 
 function accountKey(account: AgentVmAccount): string {

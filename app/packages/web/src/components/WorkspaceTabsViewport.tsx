@@ -12,10 +12,11 @@ import { AccountPanel } from "@/routes/org.$orgId.accounts.$accountId";
 import { ResourcePanel } from "@/routes/org.$orgId.resources.$pluginId.$resourceTypeId.$resourceId";
 import { getWorkspaceNavigateArgs, syncWorkspaceRouteFromPath } from "@/lib/workspace-tabs";
 import { type WorkflowClient } from "@infrawrench/ui/workflows";
-import { AgentsPanel, type AgentClient } from "@infrawrench/ui/agents";
+import { type AgentClient } from "@infrawrench/ui/agents";
 import { createWebWorkflowClient } from "@/lib/workflow-client";
 import { createWebAgentClient } from "@/lib/agent-client";
 import { WebWorkflowsPanel } from "./WebWorkflowsPanel";
+import { WebAgentsPanel } from "./WebAgentsPanel";
 
 interface WebWorkspaceTabsViewportProps {
   orgId: string;
@@ -88,8 +89,9 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
       return <AccountPanel orgId={orgId} accountId={t.accountId} />;
     case "agents":
       return (
-        <AgentsPanel
+        <WebAgentsPanel
           client={getAgentClient(orgId)}
+          orgId={orgId}
           openWorkspaceTarget={(target) => void navigate(getWorkspaceNavigateArgs(target))}
         />
       );
