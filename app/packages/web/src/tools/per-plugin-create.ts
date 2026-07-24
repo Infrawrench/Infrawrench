@@ -8,6 +8,7 @@ import { loadPlugins } from "../plugins/loader";
 import { getClientForResource } from "../services/plugin-clients";
 import { normalizeResourceCreateResult } from "@infrawrench/plugin-base";
 import type { FieldDefinition, ResourceTypeDefinition } from "@infrawrench/plugin-base";
+import { resolveStoredSshPublicKey } from "./ssh-key-lookup";
 import { ok, err, type ToolDefinition } from "./types";
 
 function safeName(input: string): string {
@@ -50,6 +51,24 @@ function inputSchemaForType(type: ResourceTypeDefinition): Record<string, ZodTyp
     if (!f.required) leaf = leaf.optional();
     shape[f.key] = leaf;
   }
+  // VM-style types that install an SSH key at create time (agentVm declares
+  // which field carries it) additionally accept a stored org key by id.
+  const sshKeyFieldKey = type.agentVm?.sshKeyFieldKey;
+  if (sshKeyFieldKey) {
+    shape["sshKeyId"] = z
+      .string()
+      .optional()
+      .describe(
+        "Stored org SSH key id (see list_ssh_keys) — its public key is installed on the " +
+          `machine for SSH access. Alternative to ${sshKeyFieldKey}.`,
+      );
+    if (!shape[sshKeyFieldKey]) {
+      shape[sshKeyFieldKey] = z
+        .string()
+        .optional()
+        .describe("OpenSSH public key text to install for SSH access (alternative to sshKeyId)");
+    }
+  }
   return shape;
 }
 
@@ -63,6 +82,7 @@ export async function perPluginCreateTools(): Promise<ToolDefinition[]> {
       if (!type.supportsCreate) continue;
       const toolName = `${safeName(pluginId)}_create_${safeName(type.id)}`;
       const typeId = type.id;
+      const sshKeyFieldKey = type.agentVm?.sshKeyFieldKey;
 
       out.push({
         name: toolName,
@@ -78,14 +98,29 @@ export async function perPluginCreateTools(): Promise<ToolDefinition[]> {
             accountId: string;
             parentResourceId?: string;
           };
+          const orgId = auth.organizationId;
+
+          // Resolve a stored org SSH key to its public key for VM types.
+          let usedSshKeyId: string | undefined;
+          if (sshKeyFieldKey) {
+            const sshKeyId = rest["sshKeyId"];
+            delete rest["sshKeyId"];
+            if (typeof sshKeyId === "string" && sshKeyId !== "") {
+              if (rest[sshKeyFieldKey]) {
+                return err(`Pass either sshKeyId or ${sshKeyFieldKey}, not both`);
+              }
+              const publicKey = await resolveStoredSshPublicKey(orgId, sshKeyId);
+              if (!publicKey) return err("SSH key not found (see list_ssh_keys)");
+              rest[sshKeyFieldKey] = publicKey;
+              usedSshKeyId = sshKeyId;
+            }
+          }
 
           const fields: Record<string, string> = {};
           for (const [k, v] of Object.entries(rest)) {
             if (v == null) continue;
             fields[k] = typeof v === "string" ? v : String(v);
           }
-
-          const orgId = auth.organizationId;
           const ctx = await getClientForResource(pluginId, accountId, orgId, parentResourceId);
           if (!ctx) return err("Account or peer resource not found");
           if (!ctx.client.createResource) return err("Plugin does not support creation");
@@ -181,6 +216,7 @@ export async function perPluginCreateTools(): Promise<ToolDefinition[]> {
               resourceTypeId: typeId,
               source: auth.source,
               tool: toolName,
+              ...(usedSshKeyId ? { sshKeyId: usedSshKeyId } : {}),
             },
           });
 

@@ -10,6 +10,7 @@ import {
   filterVisiblePeerIntegrations,
 } from "../services/plugin-clients";
 import { encrypt, buildAad } from "../services/encryption";
+import { resolveStoredSshPublicKey } from "./ssh-key-lookup";
 import { logAudit } from "../services/audit";
 import {
   evaluatePeerIntegrationUnreachable,
@@ -645,21 +646,45 @@ export function genericTools(): ToolDefinition[] {
         fields: z
           .record(z.string(), z.string())
           .describe("Form-style key/value pairs matching the type's field definitions."),
-        parentResourceId: z.string().optional(),
+        parentResourceId: parentResourceIdField,
+        sshKeyId: z
+          .string()
+          .optional()
+          .describe(
+            "Stored org SSH key id (see list_ssh_keys) to install for SSH access. Only for " +
+              "resource types that accept an SSH key at create time (VM types) — its public " +
+              "key is injected into the type's SSH-key field.",
+          ),
       },
       risk: "write",
       handler: async (input, auth) => {
-        const { pluginId, accountId, resourceTypeId, fields, parentResourceId } = input as {
+        const { pluginId, accountId, resourceTypeId, parentResourceId, sshKeyId } = input as {
           pluginId: string;
           accountId: string;
           resourceTypeId: string;
           fields: Record<string, string>;
           parentResourceId?: string;
+          sshKeyId?: string;
         };
+        let fields = (input["fields"] as Record<string, string> | undefined) ?? {};
         const orgId = auth.organizationId;
         const ctx = await getClientForResource(pluginId, accountId, orgId, parentResourceId);
         if (!ctx) return err("Account or peer resource not found");
         if (!ctx.client.createResource) return err("Plugin does not support creation");
+
+        if (sshKeyId) {
+          const typeDef = ctx.plugin.resourceTypes.find((t) => t.id === resourceTypeId);
+          const sshKeyFieldKey = typeDef?.agentVm?.sshKeyFieldKey;
+          if (!sshKeyFieldKey) {
+            return err(`Resource type ${resourceTypeId} does not accept an SSH key at create time`);
+          }
+          if (fields[sshKeyFieldKey]) {
+            return err(`Pass either sshKeyId or fields.${sshKeyFieldKey}, not both`);
+          }
+          const publicKey = await resolveStoredSshPublicKey(orgId, sshKeyId);
+          if (!publicKey) return err("SSH key not found (see list_ssh_keys)");
+          fields = { ...fields, [sshKeyFieldKey]: publicKey };
+        }
 
         let createReturn;
         try {
@@ -747,7 +772,12 @@ export function genericTools(): ToolDefinition[] {
           action: "resource.create",
           entityType: "resource",
           entityId: created.id,
-          metadata: { pluginId, resourceTypeId, source: auth.source },
+          metadata: {
+            pluginId,
+            resourceTypeId,
+            source: auth.source,
+            ...(sshKeyId ? { sshKeyId } : {}),
+          },
         });
 
         return ok({ id: created.id, displayName: created.displayName, warnings });

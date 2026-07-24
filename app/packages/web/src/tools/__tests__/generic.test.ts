@@ -55,6 +55,10 @@ vi.mock("@infrawrench/plugin-base", () => ({
   normalizeResourceCreateResult: (r: unknown) => ({ resource: r, warnings: [] }),
   evaluatePeerIntegrationUnreachable: () => null,
 }));
+const mockResolveSshKey = vi.fn();
+vi.mock("../ssh-key-lookup", () => ({
+  resolveStoredSshPublicKey: (...a: unknown[]) => mockResolveSshKey(...a),
+}));
 vi.mock("uuid", () => ({ v4: () => "sfs-uuid" }));
 
 const { genericTools } = await import("../generic");
@@ -354,6 +358,62 @@ describe("genericTools", () => {
     expect(out.sidecars[0]!.pluginId).toBe("kubernetes");
     expect(out.sidecars[0]!.resourceTypes.map((t) => t.id)).toEqual(["k8s-deployment", "k8s-pod"]);
     expect(out.usage).toContain('parentResourceId: "c1"');
+  });
+
+  it("create_resource resolves sshKeyId into the type's SSH-key field", async () => {
+    const createResource = vi.fn().mockResolvedValue({ id: "d1", displayName: "vm-1" });
+    mockGetClientForResource.mockResolvedValue({
+      account: { id: "a1", pluginId: "digitalocean" },
+      plugin: {
+        resourceTypes: [{ id: "droplet", agentVm: { sshKeyFieldKey: "sshPublicKey" } }],
+      },
+      client: { createResource },
+    });
+    mockResolveSshKey.mockResolvedValue("ssh-ed25519 AAAA-resolved deploy");
+    const values = vi.fn().mockReturnValue({ onConflictDoUpdate: vi.fn().mockResolvedValue([]) });
+    mockInsert.mockReturnValue({ values });
+
+    const r = await tool("create_resource").handler(
+      {
+        pluginId: "digitalocean",
+        accountId: "a1",
+        resourceTypeId: "droplet",
+        fields: { name: "vm-1", region: "nyc3" },
+        sshKeyId: "key-1",
+      },
+      auth,
+    );
+    expect(r.isError).toBeUndefined();
+    expect(mockResolveSshKey).toHaveBeenCalledWith("o1", "key-1");
+    expect(createResource).toHaveBeenCalledWith(
+      "droplet",
+      "a1",
+      { name: "vm-1", region: "nyc3", sshPublicKey: "ssh-ed25519 AAAA-resolved deploy" },
+      undefined,
+    );
+  });
+
+  it("create_resource rejects sshKeyId on types that take no SSH key", async () => {
+    const createResource = vi.fn();
+    mockGetClientForResource.mockResolvedValue({
+      account: { id: "a1", pluginId: "digitalocean" },
+      plugin: { resourceTypes: [{ id: "volume" }] },
+      client: { createResource },
+    });
+
+    const r = await tool("create_resource").handler(
+      {
+        pluginId: "digitalocean",
+        accountId: "a1",
+        resourceTypeId: "volume",
+        fields: { name: "v1" },
+        sshKeyId: "key-1",
+      },
+      auth,
+    );
+    expect(r.isError).toBe(true);
+    expect(r.content[0]!.text).toMatch(/does not accept an SSH key/);
+    expect(createResource).not.toHaveBeenCalled();
   });
 
   it("list_resource_sidecars reports when a type has no sidecars", async () => {
