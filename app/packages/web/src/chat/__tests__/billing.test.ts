@@ -103,8 +103,15 @@ describe("recordUsage", () => {
     // allow the fire-and-forget reporter to run
     await new Promise((r) => setTimeout(r, 0));
     expect(mockMeterCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ event_name: "chat_tokens" }),
+      expect.objectContaining({
+        event_name: "chat_tokens",
+        identifier: expect.any(String),
+        payload: expect.objectContaining({ stripe_customer_id: "cus_1" }),
+      }),
     );
+    // Only declared payload keys — Stripe treats extras as meter dimensions.
+    const payload = (mockMeterCreate.mock.calls[0]?.[0] as { payload: object }).payload;
+    expect(Object.keys(payload).sort()).toEqual(["stripe_customer_id", "value"]);
   });
 
   it("swallows Stripe failures without throwing", async () => {

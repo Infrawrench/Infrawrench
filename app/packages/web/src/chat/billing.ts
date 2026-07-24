@@ -112,12 +112,15 @@ async function reportUsageToStripe(
   // and the meter aggregator + price-per-unit in Stripe yields the dollar charge.
   // (Using meters API rather than legacy usage records — meters are the
   // forward path for v2024+ accounts.)
+  // The usage row id rides in `identifier`, not the payload: Stripe rejects
+  // undeclared payload keys (they count as meter dimensions), and identifier
+  // gives us 24h dedup for free when the reconciler replays unreported rows.
   await stripe.billing.meterEvents.create({
     event_name: meterEventName,
+    identifier: usageRowId,
     payload: {
       stripe_customer_id: sub.stripeCustomerId,
       value: String(_costMicros),
-      usage_row_id: usageRowId,
     },
   });
 
