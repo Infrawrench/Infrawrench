@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChatMarkdown } from "./ChatMarkdown.js";
 import { useUIStore } from "../store/ui.store.js";
 import {
   CHAT_MODELS,
@@ -19,6 +20,11 @@ interface Props {
 
 interface StreamingState {
   active: boolean;
+  /**
+   * Optimistic echo of the user message just sent, shown as a bubble until
+   * the reload swaps in the persisted copy.
+   */
+  userText?: string | undefined;
   /** Buffered text for the in-flight assistant message. */
   text: string;
   toolUses: Array<{ id: string; name: string; input: string; executed?: boolean }>;
@@ -53,7 +59,7 @@ export function ConversationView({ client, conversationId }: Props): React.React
       setPending(data.pendingActions);
       setSpend(s);
       if (opts?.clearStreamingBuffer) {
-        setStreaming((st) => ({ ...st, text: "", toolUses: [] }));
+        setStreaming((st) => ({ ...st, userText: undefined, text: "", toolUses: [] }));
       }
       // Keep any workspace tab pointing at this conversation titled after it —
       // conversations auto-rename after the first message. Done here (not in a
@@ -79,11 +85,11 @@ export function ConversationView({ client, conversationId }: Props): React.React
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.length, streaming.text, streaming.toolUses.length]);
+  }, [messages.length, streaming.userText, streaming.text, streaming.toolUses.length]);
 
   const startStream = useCallback(
     async (body: { text?: string; resume?: boolean }) => {
-      setStreaming({ active: true, text: "", toolUses: [] });
+      setStreaming({ active: true, userText: body.text, text: "", toolUses: [] });
 
       try {
         for await (const ev of client.streamTurn(conversationId, body)) {
@@ -149,7 +155,9 @@ export function ConversationView({ client, conversationId }: Props): React.React
       }
 
       setStreaming((s) => ({ ...s, active: false }));
-      await reload();
+      // clearStreamingBuffer: the optimistic user bubble is swapped for the
+      // persisted message in the same render.
+      await reload({ clearStreamingBuffer: true });
       // A completed turn can rename the conversation and bumps updatedAt —
       // let session lists pick that up.
       emitChatConversationsChanged();
@@ -283,13 +291,16 @@ export function ConversationView({ client, conversationId }: Props): React.React
               onReject={handleReject}
             />
           ))}
+          {streaming.userText && (
+            <div className="flex justify-end">
+              <div className="max-w-[75%] bg-blue-600 text-white rounded-2xl rounded-br-md px-4 py-2 text-sm whitespace-pre-wrap break-words">
+                {streaming.userText}
+              </div>
+            </div>
+          )}
           {streaming.active && (
             <div className="space-y-2">
-              {streaming.text && (
-                <div className="text-sm whitespace-pre-wrap text-on-surface-secondary">
-                  {streaming.text}
-                </div>
-              )}
+              {streaming.text && <ChatMarkdown text={streaming.text} />}
               {streaming.toolUses.map((t) => (
                 <div
                   key={t.id}
@@ -412,9 +423,7 @@ function BlockView({
   onReject,
 }: BlockProps): React.ReactElement | null {
   if (block.type === "text") {
-    return (
-      <div className="text-sm whitespace-pre-wrap text-on-surface-secondary">{block.text}</div>
-    );
+    return <ChatMarkdown text={block.text} />;
   }
   if (block.type === "tool_use") {
     const status = pending?.status ?? (result?.isError ? "errored" : "executed");
