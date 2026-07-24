@@ -275,10 +275,10 @@ fi
 # work (compiled runtimes, the workspace clone) waits for it.
 install_system_packages() {
   if command -v apt-get >/dev/null 2>&1; then
-    # Fresh cloud VMs often run unattended-upgrades on first boot, which holds
-    # the dpkg lock for minutes. Wait for it instead of failing immediately.
-    $SUDO apt-get -o DPkg::Lock::Timeout=120 update -y
-    $SUDO apt-get -o DPkg::Lock::Timeout=120 install -y ca-certificates curl git tar xz-utils unzip libatomic1 build-essential pkg-config autoconf bison libssl-dev zlib1g-dev libreadline-dev libyaml-dev libffi-dev libgdbm-dev libncurses-dev libdb-dev libsqlite3-dev libgmp-dev
+    # Fresh cloud VMs often run unattended-upgrades on first boot, which can
+    # hold the dpkg lock for many minutes. Wait for it instead of failing.
+    $SUDO apt-get -o DPkg::Lock::Timeout=600 update -y
+    $SUDO apt-get -o DPkg::Lock::Timeout=600 install -y ca-certificates curl git tar xz-utils unzip libatomic1 build-essential pkg-config autoconf bison libssl-dev zlib1g-dev libreadline-dev libyaml-dev libffi-dev libgdbm-dev libncurses-dev libdb-dev libsqlite3-dev libgmp-dev
   elif command -v dnf >/dev/null 2>&1; then
     $SUDO dnf install -y ca-certificates curl git tar xz unzip libatomic gcc gcc-c++ make pkgconf-pkg-config openssl-devel zlib-devel readline-devel libyaml-devel libffi-devel gdbm-devel ncurses-devel sqlite-devel gmp-devel
   elif command -v apk >/dev/null 2>&1; then
@@ -288,8 +288,22 @@ install_system_packages() {
     return 1
   fi
 }
+# First-boot package installs are flaky (mirror hiccups, cloud-init races,
+# lock contention past the timeout) — retry before declaring the VM broken.
+install_system_packages_with_retry() {
+  attempt=1
+  until install_system_packages; do
+    if [ "$attempt" -ge 3 ]; then
+      echo "System package installation failed after $attempt attempts" >&2
+      return 1
+    fi
+    attempt=$((attempt + 1))
+    echo "System package installation failed; retrying (attempt $attempt of 3) in 15s." >&2
+    sleep 15
+  done
+}
 log_step "Installing system packages (in the background)."
-install_system_packages &
+install_system_packages_with_retry &
 SYS_PKG_PID=$!
 
 wait_for_system_packages() {

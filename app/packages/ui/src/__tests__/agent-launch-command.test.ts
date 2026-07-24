@@ -234,8 +234,9 @@ describe("buildAgentBootstrapCommand", () => {
         setupPlan: plan(),
       }),
     );
-    expect(bootstrap).toContain("apt-get -o DPkg::Lock::Timeout=120 update -y");
-    expect(bootstrap).toContain("apt-get -o DPkg::Lock::Timeout=120 install -y");
+    expect(bootstrap).toContain("apt-get -o DPkg::Lock::Timeout=600 update -y");
+    expect(bootstrap).toContain("apt-get -o DPkg::Lock::Timeout=600 install -y");
+    expect(bootstrap).toContain("install_system_packages_with_retry &");
   });
 
   it("installs the detachproc session holder from GitHub releases", () => {

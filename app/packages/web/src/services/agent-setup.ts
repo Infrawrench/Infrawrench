@@ -638,7 +638,7 @@ function formatCommandFailure(result: AgentSshExecResult): string {
   // Prefer stderr (where the actual error lands) and keep only its tail —
   // the full transcript would otherwise become one unreadable log line.
   const source = result.stderr.trim() || result.stdout.trim();
-  const output = tailLines(source, 15);
+  const output = tailLines(source, 40);
   return `Agent VM setup command failed with exit ${result.code}${output ? `: ${output}` : ""}`;
 }
 
