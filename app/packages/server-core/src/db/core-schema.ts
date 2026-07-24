@@ -143,3 +143,23 @@ export const dashboards = pgTable(
     orgIdx: index("dashboards_org_idx").on(t.organizationId),
   }),
 );
+
+/**
+ * One-time WebSocket handshake tokens (SHA-256 hash at rest, ~30s TTL).
+ * DB-backed so any web replica can validate a token minted by another.
+ */
+export const wsTokens = pgTable(
+  "ws_tokens",
+  {
+    hashedToken: text("hashed_token").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organizations.id, { onDelete: "cascade" }),
+    userId: text("user_id").notNull(),
+    expiresAt: timestamp("expires_at").notNull(),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    expiresIdx: index("ws_tokens_expires_idx").on(t.expiresAt),
+  }),
+);

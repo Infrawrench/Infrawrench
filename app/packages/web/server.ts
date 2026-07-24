@@ -143,7 +143,7 @@ async function start() {
     }
 
     // Try short-lived session token first (from web app)
-    let auth = validateWsToken(token);
+    let auth = await validateWsToken(token);
     if (!auth) {
       // Fall back to API key auth (from desktop sync client)
       const fakeRequest = new Request("http://localhost", {

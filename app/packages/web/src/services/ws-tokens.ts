@@ -1,39 +1,41 @@
 import { randomBytes, createHash } from "node:crypto";
+import { and, eq, gt, lt } from "drizzle-orm";
+import { db } from "../db/client";
+import { wsTokens } from "../db/schema";
 
 /**
- * In-memory store for short-lived WebSocket tokens.
- * Tokens expire after 30 seconds — just long enough for the WS handshake.
+ * Short-lived one-time WebSocket handshake tokens, stored hashed in Postgres —
+ * the web deployment runs multiple replicas, so the upgrade request may land
+ * on a different pod than the one that minted the token.
  */
-const tokenStore = new Map<string, { organizationId: string; userId: string; expiresAt: number }>();
 
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, value] of tokenStore) {
-    if (value.expiresAt < now) tokenStore.delete(key);
-  }
-}, 30_000);
+const TTL_MS = 30_000;
 
-export function createWsToken(userId: string, organizationId: string): string {
+export async function createWsToken(userId: string, organizationId: string): Promise<string> {
   const rawToken = randomBytes(32).toString("hex");
   const hashedToken = createHash("sha256").update(rawToken).digest("hex");
-  tokenStore.set(hashedToken, {
+  await db.insert(wsTokens).values({
+    hashedToken,
     organizationId,
     userId,
-    expiresAt: Date.now() + 30_000, // 30 seconds
+    expiresAt: new Date(Date.now() + TTL_MS),
   });
+  // Opportunistic cleanup; the table only ever holds in-flight handshakes.
+  void db
+    .delete(wsTokens)
+    .where(lt(wsTokens.expiresAt, new Date()))
+    .catch(() => undefined);
   return rawToken;
 }
 
-export function validateWsToken(
+export async function validateWsToken(
   rawToken: string,
-): { organizationId: string; userId: string } | null {
+): Promise<{ organizationId: string; userId: string } | null> {
   const hashedToken = createHash("sha256").update(rawToken).digest("hex");
-  const entry = tokenStore.get(hashedToken);
-  if (!entry) return null;
-  if (entry.expiresAt < Date.now()) {
-    tokenStore.delete(hashedToken);
-    return null;
-  }
-  tokenStore.delete(hashedToken); // one-time use
-  return { organizationId: entry.organizationId, userId: entry.userId };
+  // Delete-returning makes the token one-time-use even across replicas.
+  const rows = await db
+    .delete(wsTokens)
+    .where(and(eq(wsTokens.hashedToken, hashedToken), gt(wsTokens.expiresAt, new Date())))
+    .returning({ organizationId: wsTokens.organizationId, userId: wsTokens.userId });
+  return rows[0] ?? null;
 }
