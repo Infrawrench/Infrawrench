@@ -81,14 +81,14 @@ export interface ChatModelOption {
 
 export const CHAT_MODELS: ChatModelOption[] = [
   {
+    id: "claude-sonnet-5",
+    label: "Claude Sonnet 5",
+    description: "Best for most chats — near-Opus quality at lower cost",
+  },
+  {
     id: "claude-opus-5",
     label: "Claude Opus 5",
     description: "Most capable — best for complex, multi-step infrastructure work",
-  },
-  {
-    id: "claude-sonnet-5",
-    label: "Claude Sonnet 5",
-    description: "Near-Opus quality at lower cost",
   },
   {
     id: "claude-haiku-4-5",
@@ -97,7 +97,7 @@ export const CHAT_MODELS: ChatModelOption[] = [
   },
 ];
 
-export const DEFAULT_CHAT_MODEL = "claude-opus-5";
+export const DEFAULT_CHAT_MODEL = "claude-sonnet-5";
 
 export interface SpendStatus {
   monthToDateMicros: number;
