@@ -18,6 +18,7 @@ import {
   type AgentEvent,
 } from "../../chat/agent";
 import { getMonthlySpend } from "../../chat/billing";
+import { CHAT_MODELS } from "@infrawrench/ui";
 import type { ToolAuthContext } from "../../tools/types";
 
 const app = new Hono();
@@ -59,6 +60,12 @@ app.post("/conversations", async (c) => {
   if (auth instanceof Response) return auth;
 
   const body = await c.req.json<{ title?: string; model?: string; systemPrompt?: string }>();
+  if (body.model && !CHAT_MODELS.some((m) => m.id === body.model)) {
+    return c.json(
+      { error: `Unknown model. Supported: ${CHAT_MODELS.map((m) => m.id).join(", ")}` },
+      400,
+    );
+  }
   const id = uuidv4();
   await db.insert(chatConversations).values({
     id,

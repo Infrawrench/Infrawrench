@@ -18,8 +18,8 @@ export function createWebChatClient(orgId: string): ChatClient {
       const res = await apiGet<{ conversations: ConversationSummary[] }>(`${base}/conversations`);
       return res.conversations;
     },
-    createConversation() {
-      return apiPost<{ id: string }>(`${base}/conversations`, {});
+    createConversation(model) {
+      return apiPost<{ id: string }>(`${base}/conversations`, model ? { model } : {});
     },
     async archiveConversation(conversationId) {
       await apiDelete(`${base}/conversations/${conversationId}`);

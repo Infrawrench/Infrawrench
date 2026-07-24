@@ -1,0 +1,1 @@
+ALTER TABLE "chat_conversations" ALTER COLUMN "model" SET DEFAULT 'claude-opus-4-8';

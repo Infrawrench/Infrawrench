@@ -4,7 +4,7 @@ import { computeCostMicros } from "../pricing";
 describe("computeCostMicros", () => {
   it("returns 0 for an all-zero usage", () => {
     expect(
-      computeCostMicros({
+      computeCostMicros("claude-opus-4-8", {
         inputTokens: 0,
         outputTokens: 0,
         cacheReadTokens: 0,
@@ -13,9 +13,9 @@ describe("computeCostMicros", () => {
     ).toBe(0);
   });
 
-  it("computes input cost at default markup (3.0 * 1.5 = 4.5 USD/Mtok)", () => {
+  it("computes Sonnet 5 input cost at default markup (3.0 * 1.5 = 4.5 USD/Mtok)", () => {
     // 1,000,000 input tokens => 4.5 USD => 4_500_000 micros
-    const micros = computeCostMicros({
+    const micros = computeCostMicros("claude-sonnet-5", {
       inputTokens: 1_000_000,
       outputTokens: 0,
       cacheReadTokens: 0,
@@ -24,18 +24,48 @@ describe("computeCostMicros", () => {
     expect(micros).toBe(4_500_000);
   });
 
-  it("computes output cost at default markup (15 * 1.5 = 22.5 USD/Mtok)", () => {
-    const micros = computeCostMicros({
+  it("computes Opus 4.8 output cost at default markup (25 * 1.5 = 37.5 USD/Mtok)", () => {
+    const micros = computeCostMicros("claude-opus-4-8", {
       inputTokens: 0,
       outputTokens: 1_000_000,
       cacheReadTokens: 0,
       cacheWriteTokens: 0,
     });
-    expect(micros).toBe(22_500_000);
+    expect(micros).toBe(37_500_000);
   });
 
-  it("sums all four token buckets", () => {
-    const micros = computeCostMicros({
+  it("computes Haiku 4.5 output cost at default markup (5 * 1.5 = 7.5 USD/Mtok)", () => {
+    const micros = computeCostMicros("claude-haiku-4-5", {
+      inputTokens: 0,
+      outputTokens: 1_000_000,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+    });
+    expect(micros).toBe(7_500_000);
+  });
+
+  it("prices legacy sonnet-4-6 conversations", () => {
+    const micros = computeCostMicros("claude-sonnet-4-6", {
+      inputTokens: 1_000_000,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+    });
+    expect(micros).toBe(4_500_000);
+  });
+
+  it("falls back to the most expensive tier for unknown models", () => {
+    const micros = computeCostMicros("some-unknown-model", {
+      inputTokens: 1_000_000,
+      outputTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+    });
+    expect(micros).toBe(7_500_000); // Opus 4.8 input rate
+  });
+
+  it("sums all four token buckets (Sonnet 5)", () => {
+    const micros = computeCostMicros("claude-sonnet-5", {
       inputTokens: 1_000_000, // 4.5
       outputTokens: 1_000_000, // 22.5
       cacheReadTokens: 1_000_000, // 0.3 * 1.5 = 0.45
@@ -46,7 +76,7 @@ describe("computeCostMicros", () => {
   });
 
   it("never returns a negative value", () => {
-    const micros = computeCostMicros({
+    const micros = computeCostMicros("claude-sonnet-5", {
       inputTokens: -1_000_000,
       outputTokens: 0,
       cacheReadTokens: 0,
@@ -56,7 +86,7 @@ describe("computeCostMicros", () => {
   });
 
   it("rounds to the nearest micro-dollar", () => {
-    const micros = computeCostMicros({
+    const micros = computeCostMicros("claude-sonnet-5", {
       inputTokens: 1,
       outputTokens: 0,
       cacheReadTokens: 0,

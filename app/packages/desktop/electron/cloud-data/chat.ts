@@ -11,9 +11,15 @@ ipcMain.handle("cloud_chat_list_conversations", async (_e, { orgId }: { orgId: s
   return cloudFetch(orgId, "/chat/conversations");
 });
 
-ipcMain.handle("cloud_chat_create_conversation", async (_e, { orgId }: { orgId: string }) => {
-  return cloudFetch(orgId, "/chat/conversations", { method: "POST", body: JSON.stringify({}) });
-});
+ipcMain.handle(
+  "cloud_chat_create_conversation",
+  async (_e, { orgId, model }: { orgId: string; model?: string }) => {
+    return cloudFetch(orgId, "/chat/conversations", {
+      method: "POST",
+      body: JSON.stringify(model ? { model } : {}),
+    });
+  },
+);
 
 ipcMain.handle(
   "cloud_chat_get_conversation",

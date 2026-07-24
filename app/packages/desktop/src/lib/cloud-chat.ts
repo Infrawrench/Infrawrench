@@ -23,8 +23,11 @@ export function createDesktopChatClient(orgId: string): ChatClient {
       );
       return res.conversations;
     },
-    createConversation() {
-      return invoke<{ id: string }>("cloud_chat_create_conversation", { orgId });
+    createConversation(model) {
+      return invoke<{ id: string }>("cloud_chat_create_conversation", {
+        orgId,
+        ...(model ? { model } : {}),
+      });
     },
     async archiveConversation(conversationId) {
       await invoke("cloud_chat_archive_conversation", { orgId, conversationId });

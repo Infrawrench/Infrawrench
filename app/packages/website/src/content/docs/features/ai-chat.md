@@ -49,13 +49,27 @@ API clients see pending actions in the conversation fetch response and POST `{ac
 
 Every tool the agent executes goes through the same `logAudit` path the UI uses. Resource creations, deletions, manifest applies, SQL writes, KV writes, Docker commands, SSH execs, secret access/modify, and credential exports all show up in the [audit log](../team-and-billing/audit-log.md) with `source: "chat"` (or `source: "api"` if the agent was driven by an API key). Audit rows are attributed to the user behind the session or the user who created the API key — there is no service principal.
 
+## Models
+
+Pick the model when you start a chat (the picker sits next to **New chat**); each conversation keeps its model for its whole life.
+
+| Model                     | Best for                                |
+| ------------------------- | --------------------------------------- |
+| Claude Opus 4.8 (default) | Complex, multi-step infrastructure work |
+| Claude Sonnet 5           | Near-Opus quality at lower cost         |
+| Claude Haiku 4.5          | Quick lookups, cheapest                 |
+
 ## Billing
 
-Chat tokens are billed separately from your seat plan as Stripe metered usage. Pricing tracks Anthropic's published rates per million tokens for the model you choose, with a configurable platform markup (default 1.5×). Cache-read and cache-write tokens are billed at Anthropic's discounted/uplifted rates respectively; the system prompt and the tool registry are aggressively prompt-cached so a long working session typically pays the cache-read rate after the first turn.
+Chat tokens are billed separately from your seat plan as Stripe metered usage. Pricing tracks Anthropic's published per-model rates per million tokens, with a configurable platform markup (default 1.5×). Cache-read and cache-write tokens are billed at Anthropic's discounted/uplifted rates respectively; the system prompt and the tool registry are aggressively prompt-cached so a long working session typically pays the cache-read rate after the first turn.
+
+### Free tier
+
+Orgs without a paid subscription get **$5 of chat usage per month**. When that runs out, the agent refuses new turns until the next month — add a payment method in **Settings → Billing** to keep going. The chat header shows `(free tier)` next to the spend readout while the free cap applies.
 
 ### Monthly cap
 
-Each org can set `chatMonthlyCapMicros` (in micro-dollars; 1 USD = 1,000,000). When the org's month-to-date chat cost crosses the cap, the agent refuses to start new turns until the next month or the cap is raised. Set the cap in **Settings → Billing → Chat cap**, or via SQL on the `organizations` row.
+Each org can set `chatMonthlyCapMicros` (in micro-dollars; 1 USD = 1,000,000). When the org's month-to-date chat cost crosses the cap, the agent refuses to start new turns until the next month or the cap is raised. Set the cap in **Settings → Billing → Chat cap**, or via SQL on the `organizations` row. On the free tier, a configured cap below $5 still applies; caps above $5 take effect once the org is on a paid plan.
 
 The header of every chat shows month-to-date spend and remaining headroom against the cap.
 

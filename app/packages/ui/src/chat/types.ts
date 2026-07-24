@@ -56,11 +56,47 @@ export interface ConversationSummary {
   updatedAt: string;
 }
 
+/**
+ * Models the chat can run on. Shared between the picker UI and the server
+ * (which validates the create-conversation body against these ids and prices
+ * each one in web/src/chat/pricing.ts).
+ */
+export interface ChatModelOption {
+  id: string;
+  label: string;
+  description: string;
+}
+
+export const CHAT_MODELS: ChatModelOption[] = [
+  {
+    id: "claude-opus-4-8",
+    label: "Claude Opus 4.8",
+    description: "Most capable — best for complex, multi-step infrastructure work",
+  },
+  {
+    id: "claude-sonnet-5",
+    label: "Claude Sonnet 5",
+    description: "Near-Opus quality at lower cost",
+  },
+  {
+    id: "claude-haiku-4-5",
+    label: "Claude Haiku 4.5",
+    description: "Fastest and cheapest — quick lookups",
+  },
+];
+
+export const DEFAULT_CHAT_MODEL = "claude-opus-4-8";
+
 export interface SpendStatus {
   monthToDateMicros: number;
   monthlyCapMicros: number | null;
   /** True when capMicros is set and monthToDateMicros >= capMicros. */
   exceeded: boolean;
+  /**
+   * True when the cap comes from the free tier (no paid subscription) rather
+   * than an org-configured cap.
+   */
+  freeTier: boolean;
 }
 
 export function microsToUsd(micros: number): string {
@@ -97,7 +133,7 @@ export interface ChatConversationDetail {
  */
 export interface ChatClient {
   listConversations(): Promise<ConversationSummary[]>;
-  createConversation(): Promise<{ id: string }>;
+  createConversation(model?: string): Promise<{ id: string }>;
   archiveConversation(conversationId: string): Promise<void>;
   getConversation(conversationId: string): Promise<ChatConversationDetail>;
   getSpend(): Promise<SpendStatus>;

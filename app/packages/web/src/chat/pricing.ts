@@ -1,8 +1,8 @@
 /**
- * Per-million-token pricing for chat. Defaults are passthrough rates for
- * Claude Sonnet 4.6 (input $3, output $15, cache write $3.75, cache read $0.30
- * per million) multiplied by INFRAWRENCH_CHAT_MARKUP (default 1.5). All env
- * overrides are in USD-per-million-tokens, decimals OK.
+ * Per-million-token pricing for chat, by model. Base rates are Anthropic API
+ * passthrough (USD per million tokens; cache write = 1.25x input, cache read =
+ * 0.1x input) multiplied by INFRAWRENCH_CHAT_MARKUP (default 1.5). Unknown
+ * models fall back to the most expensive tier so we never undercharge.
  */
 
 function envNum(name: string, fallback: number): number {
@@ -14,13 +14,24 @@ function envNum(name: string, fallback: number): number {
 
 const MARKUP = envNum("INFRAWRENCH_CHAT_MARKUP", 1.5);
 
-/** USD per million tokens, after markup. */
-const RATES = {
-  input: envNum("INFRAWRENCH_CHAT_PRICE_INPUT_PER_MTOK", 3.0) * MARKUP,
-  output: envNum("INFRAWRENCH_CHAT_PRICE_OUTPUT_PER_MTOK", 15.0) * MARKUP,
-  cacheWrite: envNum("INFRAWRENCH_CHAT_PRICE_CACHE_WRITE_PER_MTOK", 3.75) * MARKUP,
-  cacheRead: envNum("INFRAWRENCH_CHAT_PRICE_CACHE_READ_PER_MTOK", 0.3) * MARKUP,
+interface ModelRates {
+  input: number;
+  output: number;
+  cacheWrite: number;
+  cacheRead: number;
+}
+
+/** USD per million tokens, before markup. */
+const MODEL_RATES: Record<string, ModelRates> = {
+  "claude-opus-4-8": { input: 5.0, output: 25.0, cacheWrite: 6.25, cacheRead: 0.5 },
+  "claude-sonnet-5": { input: 3.0, output: 15.0, cacheWrite: 3.75, cacheRead: 0.3 },
+  "claude-haiku-4-5": { input: 1.0, output: 5.0, cacheWrite: 1.25, cacheRead: 0.1 },
+  // Legacy: conversations created before the model list moved to the current
+  // generation still carry this id.
+  "claude-sonnet-4-6": { input: 3.0, output: 15.0, cacheWrite: 3.75, cacheRead: 0.3 },
 };
+
+const FALLBACK_RATES = MODEL_RATES["claude-opus-4-8"]!;
 
 export interface TokenUsage {
   inputTokens: number;
@@ -30,11 +41,13 @@ export interface TokenUsage {
 }
 
 /** Compute billable cost in integer micro-dollars (1 USD = 1_000_000). */
-export function computeCostMicros(usage: TokenUsage): number {
+export function computeCostMicros(model: string, usage: TokenUsage): number {
+  const rates = MODEL_RATES[model] ?? FALLBACK_RATES;
   const usd =
-    (usage.inputTokens / 1_000_000) * RATES.input +
-    (usage.outputTokens / 1_000_000) * RATES.output +
-    (usage.cacheReadTokens / 1_000_000) * RATES.cacheRead +
-    (usage.cacheWriteTokens / 1_000_000) * RATES.cacheWrite;
+    ((usage.inputTokens / 1_000_000) * rates.input +
+      (usage.outputTokens / 1_000_000) * rates.output +
+      (usage.cacheReadTokens / 1_000_000) * rates.cacheRead +
+      (usage.cacheWriteTokens / 1_000_000) * rates.cacheWrite) *
+    MARKUP;
   return Math.max(0, Math.round(usd * 1_000_000));
 }

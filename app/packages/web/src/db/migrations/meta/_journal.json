@@ -162,6 +162,13 @@
       "when": 1784835471394,
       "tag": "0022_ambiguous_rage",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1784898858003,
+      "tag": "0023_glamorous_vermin",
+      "breakpoints": true
     }
   ]
 }

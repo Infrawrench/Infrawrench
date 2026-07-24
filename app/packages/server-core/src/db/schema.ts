@@ -643,7 +643,7 @@ export const chatConversations = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     title: text("title").notNull().default("New chat"),
-    model: text("model").notNull().default("claude-sonnet-4-6"),
+    model: text("model").notNull().default("claude-opus-4-8"),
     /** System prompt override; null means use the default from chat/agent.ts */
     systemPrompt: text("system_prompt"),
     archivedAt: timestamp("archived_at"),

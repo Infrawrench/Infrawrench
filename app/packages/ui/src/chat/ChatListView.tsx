@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   CHAT_CONVERSATIONS_CHANGED_EVENT,
+  CHAT_MODELS,
+  DEFAULT_CHAT_MODEL,
   emitChatConversationsChanged,
   type ChatClient,
   type ConversationSummary,
@@ -14,6 +16,7 @@ interface Props {
 /** Conversation list with new-chat and archive — the chat "home" page. */
 export function ChatListView({ client, onOpen }: Props): React.ReactElement {
   const [conversations, setConversations] = useState<ConversationSummary[] | null>(null);
+  const [model, setModel] = useState(DEFAULT_CHAT_MODEL);
 
   const load = useCallback(async () => {
     setConversations(await client.listConversations());
@@ -27,7 +30,7 @@ export function ChatListView({ client, onOpen }: Props): React.ReactElement {
   }, [load]);
 
   async function handleNew(): Promise<void> {
-    const res = await client.createConversation();
+    const res = await client.createConversation(model);
     emitChatConversationsChanged();
     onOpen(res.id);
   }
@@ -42,13 +45,28 @@ export function ChatListView({ client, onOpen }: Props): React.ReactElement {
     <div className="max-w-3xl mx-auto p-6">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-xl font-semibold">Chat</h1>
-        <button
-          type="button"
-          onClick={() => void handleNew()}
-          className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
-        >
-          New chat
-        </button>
+        <div className="flex items-center gap-2">
+          <select
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+            aria-label="Model for new chats"
+            title={CHAT_MODELS.find((m) => m.id === model)?.description}
+            className="bg-surface-overlay border border-border rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+          >
+            {CHAT_MODELS.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={() => void handleNew()}
+            className="px-3 py-1.5 text-sm font-medium bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors"
+          >
+            New chat
+          </button>
+        </div>
       </div>
 
       {conversations === null ? (

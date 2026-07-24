@@ -94,11 +94,12 @@ export function ConversationView({ client, conversationId }: Props): React.React
           } else if (ev.type === "turn_end") {
             break;
           } else if (ev.type === "spend_blocked") {
+            const cap = microsToUsd(Number(ev["monthlyCapMicros"]));
             setStreaming((s) => ({
               ...s,
-              error: `Monthly chat spend cap reached ($${microsToUsd(
-                Number(ev["monthlyCapMicros"]),
-              )}). Increase the cap in org settings or wait for next month.`,
+              error: ev["freeTier"]
+                ? `Free-tier chat limit reached ($${cap}/month). Add a payment method in Settings → Billing to keep chatting, or wait for next month.`
+                : `Monthly chat spend cap reached ($${cap}). Increase the cap in org settings or wait for next month.`,
             }));
             break;
           } else if (ev.type === "error") {
@@ -174,6 +175,7 @@ export function ConversationView({ client, conversationId }: Props): React.React
           <div>
             Spend: ${spend ? microsToUsd(spend.monthToDateMicros) : "0.00"}
             {spend?.monthlyCapMicros != null ? ` / $${microsToUsd(spend.monthlyCapMicros)}` : ""}
+            {spend?.freeTier ? " (free tier)" : ""}
           </div>
           {spend?.exceeded && <div className="text-amber-500 font-medium">Cap reached</div>}
         </div>

@@ -8,16 +8,19 @@ sidebar_order: 3
 
 ## Plans
 
-| Feature            | Free   | Paid            |
-| ------------------ | ------ | --------------- |
-| Users              | 1      | Unlimited       |
-| Connected accounts | 3      | Unlimited       |
-| Plugins            | All 26 | All 26          |
-| Dashboards         | Yes    | Yes             |
-| SSH terminal / SQL | Yes    | Yes             |
-| Audit log          | No     | Yes             |
-| API keys           | No     | Yes             |
-| Price              | $0     | $20 / seat / mo |
+| Feature            | Free                   | Paid                   |
+| ------------------ | ---------------------- | ---------------------- |
+| Users              | 1                      | Unlimited              |
+| Connected accounts | 3                      | Unlimited              |
+| Plugins            | All 26                 | All 26                 |
+| Dashboards         | Yes                    | Yes                    |
+| SSH terminal / SQL | Yes                    | Yes                    |
+| Audit log          | No                     | Yes                    |
+| API keys           | No                     | Yes                    |
+| AI chat            | $5 usage / mo included | Metered, pay-as-you-go |
+| Price              | $0                     | $20 / seat / mo        |
+
+Free orgs (no payment method on file) can use the [AI chat](../features/ai-chat.md) up to **$5 of metered usage per month**; after that the agent refuses new turns until the next month or until you upgrade. Paid orgs are billed for chat usage through Stripe with no built-in limit (set your own cap in **Settings → Billing → Chat cap**).
 
 ## Upgrade
 

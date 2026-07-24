@@ -15,10 +15,13 @@ import { db } from "../db/client";
 import { chatConversations, chatMessages, chatPendingActions } from "../db/schema";
 import { getToolRegistry } from "../tools/registry";
 import type { ToolAuthContext, ToolDefinition, ToolResult } from "../tools/types";
-import type { ChatContentBlock as AnthropicContentBlock } from "@infrawrench/ui";
+import {
+  DEFAULT_CHAT_MODEL,
+  type ChatContentBlock as AnthropicContentBlock,
+} from "@infrawrench/ui";
 import { recordUsage } from "./billing";
 
-const DEFAULT_MODEL = "claude-sonnet-4-6";
+const DEFAULT_MODEL = DEFAULT_CHAT_MODEL;
 const MAX_TOKENS = 8192;
 
 const SYSTEM_PROMPT = `You are Infrawrench's in-app agent. You help the user manage their infrastructure — listing and inspecting resources, executing SQL, running ops actions, rotating credentials, and so on — through the tools exposed to you. Every tool maps to something the user can already do in the Infrawrench UI.
@@ -56,6 +59,7 @@ export type AgentEvent =
       type: "spend_blocked";
       monthToDateMicros: number;
       monthlyCapMicros: number;
+      freeTier: boolean;
     }
   | { type: "error"; message: string };
 
@@ -135,10 +139,13 @@ async function loadConversationForApi(
 }
 
 function toolToAnthropic(t: ToolDefinition): Anthropic.Tool {
-  // The Anthropic SDK expects JSON Schema for tool input. We convert from the
-  // Zod shapes that MCP also uses. zodToJsonSchema produces a $ref-wrapped
-  // schema by default; we want the inline object shape.
-  const schema = zodToJsonSchema(z.object(t.inputSchema), { target: "openApi3" }) as {
+  // The Anthropic SDK expects JSON Schema (draft 2020-12) for tool input. We
+  // convert from the Zod shapes that MCP also uses. Must NOT use the openApi3
+  // target: OpenAPI 3.0 is a different dialect (boolean exclusiveMinimum/
+  // exclusiveMaximum, nullable) that the API rejects with "JSON schema is
+  // invalid". The default draft-07 output is 2020-12-compatible for the
+  // constructs Zod emits. $refStrategy none keeps every schema inline.
+  const schema = zodToJsonSchema(z.object(t.inputSchema), { $refStrategy: "none" }) as {
     type?: string;
     properties?: Record<string, unknown>;
     required?: string[];
@@ -205,6 +212,7 @@ export async function* runAgentTurn(input: RunAgentInput): AsyncGenerator<AgentE
       type: "spend_blocked",
       monthToDateMicros: spend.monthToDateMicros,
       monthlyCapMicros: spend.monthlyCapMicros,
+      freeTier: spend.freeTier,
     };
     return;
   }

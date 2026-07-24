@@ -22,12 +22,27 @@ function monthStart(): Date {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
 }
 
+/**
+ * Orgs without a paid subscription (no payment method on file) get this much
+ * chat usage per month: $5. An org-configured cap below this still applies.
+ */
+const FREE_TIER_CAP_MICROS = 5_000_000;
+
 export async function getMonthlySpend(organizationId: string): Promise<SpendStatus> {
   const [org] = await db
     .select({ cap: organizations.chatMonthlyCapMicros })
     .from(organizations)
     .where(eq(organizations.id, organizationId))
     .limit(1);
+
+  const [sub] = await db
+    .select({ status: subscriptions.status })
+    .from(subscriptions)
+    .where(eq(subscriptions.organizationId, organizationId))
+    .limit(1);
+  // Same definition of "paid" as the billing settings page: an org is free
+  // when it has no subscription row or the subscription never activated.
+  const hasPaidSubscription = sub?.status === "active" || sub?.status === "past_due";
 
   const rows = await db
     .select({ total: sql<string>`coalesce(sum(${chatUsage.costMicros}), 0)` })
@@ -37,11 +52,15 @@ export async function getMonthlySpend(organizationId: string): Promise<SpendStat
     );
 
   const monthToDateMicros = Number(rows[0]?.total ?? 0) || 0;
-  const monthlyCapMicros = org?.cap ?? null;
+  const orgCapMicros = org?.cap ?? null;
+  const monthlyCapMicros = hasPaidSubscription
+    ? orgCapMicros
+    : Math.min(orgCapMicros ?? FREE_TIER_CAP_MICROS, FREE_TIER_CAP_MICROS);
   return {
     monthToDateMicros,
     monthlyCapMicros,
     exceeded: monthlyCapMicros != null && monthToDateMicros >= monthlyCapMicros,
+    freeTier: !hasPaidSubscription,
   };
 }
 
@@ -58,7 +77,7 @@ interface RecordUsageInput {
  * Returns the cost in micros for the caller to surface in SSE events.
  */
 export async function recordUsage(input: RecordUsageInput): Promise<number> {
-  const costMicros = computeCostMicros(input.usage);
+  const costMicros = computeCostMicros(input.model, input.usage);
   const id = uuidv4();
   await db.insert(chatUsage).values({
     id,

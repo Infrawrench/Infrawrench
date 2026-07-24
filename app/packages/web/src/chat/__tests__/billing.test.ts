@@ -13,7 +13,7 @@ vi.mock("../../db/client", () => ({
 vi.mock("../../db/schema", () => ({
   chatUsage: { id: "id", organizationId: "org", costMicros: "cost", createdAt: "ts" },
   organizations: { id: "id", chatMonthlyCapMicros: "cap" },
-  subscriptions: { organizationId: "org", stripeCustomerId: "cust" },
+  subscriptions: { organizationId: "org", stripeCustomerId: "cust", status: "status" },
 }));
 
 const mockMeterCreate = vi.fn();
@@ -26,13 +26,19 @@ const { getMonthlySpend, recordUsage } = await import("../billing");
 describe("getMonthlySpend", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  function setup(cap: number | null, total: string) {
+  function setup(cap: number | null, total: string, subStatus: string | null = "active") {
     const orgLimit = vi.fn().mockResolvedValue([{ cap }]);
     const orgWhere = vi.fn().mockReturnValue({ limit: orgLimit });
     const orgFrom = vi.fn().mockReturnValue({ where: orgWhere });
+    const subLimit = vi.fn().mockResolvedValue(subStatus ? [{ status: subStatus }] : []);
+    const subWhere = vi.fn().mockReturnValue({ limit: subLimit });
+    const subFrom = vi.fn().mockReturnValue({ where: subWhere });
     const sumWhere = vi.fn().mockResolvedValue([{ total }]);
     const sumFrom = vi.fn().mockReturnValue({ where: sumWhere });
-    mockSelect.mockReturnValueOnce({ from: orgFrom }).mockReturnValueOnce({ from: sumFrom });
+    mockSelect
+      .mockReturnValueOnce({ from: orgFrom })
+      .mockReturnValueOnce({ from: subFrom })
+      .mockReturnValueOnce({ from: sumFrom });
   }
 
   it("reports month-to-date and cap", async () => {
@@ -41,6 +47,7 @@ describe("getMonthlySpend", () => {
     expect(s.monthToDateMicros).toBe(250000);
     expect(s.monthlyCapMicros).toBe(1_000_000);
     expect(s.exceeded).toBe(false);
+    expect(s.freeTier).toBe(false);
   });
 
   it("flags exceeded when spend >= cap", async () => {
@@ -49,11 +56,39 @@ describe("getMonthlySpend", () => {
     expect(s.exceeded).toBe(true);
   });
 
-  it("never exceeded when cap is null", async () => {
+  it("never exceeded when cap is null on a paid org", async () => {
     setup(null, "999999999");
     const s = await getMonthlySpend("o1");
     expect(s.monthlyCapMicros).toBeNull();
     expect(s.exceeded).toBe(false);
+  });
+
+  it("applies the $5 free-tier cap when there is no subscription", async () => {
+    setup(null, "4999999", null);
+    const s = await getMonthlySpend("o1");
+    expect(s.monthlyCapMicros).toBe(5_000_000);
+    expect(s.freeTier).toBe(true);
+    expect(s.exceeded).toBe(false);
+  });
+
+  it("blocks free-tier orgs at $5 even with no org cap", async () => {
+    setup(null, "5000000", null);
+    const s = await getMonthlySpend("o1");
+    expect(s.exceeded).toBe(true);
+  });
+
+  it("treats a canceled subscription as free tier", async () => {
+    setup(null, "6000000", "canceled");
+    const s = await getMonthlySpend("o1");
+    expect(s.monthlyCapMicros).toBe(5_000_000);
+    expect(s.freeTier).toBe(true);
+    expect(s.exceeded).toBe(true);
+  });
+
+  it("keeps an org cap below $5 for free-tier orgs", async () => {
+    setup(2_000_000, "1000000", null);
+    const s = await getMonthlySpend("o1");
+    expect(s.monthlyCapMicros).toBe(2_000_000);
   });
 });
 
@@ -66,11 +101,12 @@ describe("recordUsage", () => {
   it("inserts a usage row and returns the cost", async () => {
     const values = vi.fn().mockResolvedValue(undefined);
     mockInsert.mockReturnValue({ values });
+    // Sonnet 5: $3/Mtok input × 1.5 markup = $4.50
     const cost = await recordUsage({
       organizationId: "o1",
       conversationId: "c1",
       messageId: "m1",
-      model: "claude",
+      model: "claude-sonnet-5",
       usage: { inputTokens: 1_000_000, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 },
     });
     expect(cost).toBe(4_500_000);
