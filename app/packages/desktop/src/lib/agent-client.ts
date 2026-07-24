@@ -50,6 +50,21 @@ const agentSetupInflight = new Map<string, { promise: Promise<void>; forceSync: 
 const agentSetupAutoResumeAttempted = new Set<string>();
 const agentSessionNotFoundStreak = new Map<string, number>();
 
+// sessionId -> epoch ms before which live provider verification is skipped.
+// The sessions list polls every few seconds; verifying each session against
+// the provider on every poll burns the provider's API rate limit (mirrors the
+// web API's throttle). Between live checks the session is served from its
+// local row; a provider 429 backs off harder.
+const agentVmVerifyBackoff = new Map<string, number>();
+const AGENT_VM_VERIFY_INTERVAL_MS = 15_000;
+const AGENT_VM_RATE_LIMIT_COOLDOWN_MS = 60_000;
+
+function isRateLimitError(error: unknown): boolean {
+  // Plugin HTTP helpers throw plain errors shaped "<vendor> API error <status> for <label>: ...".
+  const message = error instanceof Error ? error.message : String(error);
+  return /\bAPI error 429\b/.test(message);
+}
+
 interface AccountRow {
   id: string;
   plugin_id: string;
@@ -1407,6 +1422,10 @@ async function refreshAgentSession(row: SessionRow): Promise<AgentSession | null
   );
   if (!resourceRows[0]) return null;
 
+  const now = Date.now();
+  if (now < (agentVmVerifyBackoff.get(row.id) ?? 0)) return rowToSession(row);
+  agentVmVerifyBackoff.set(row.id, now + AGENT_VM_VERIFY_INTERVAL_MS);
+
   const client = await createPluginClient(row.account_id, row.plugin_id).catch(() => null);
   if (!client) return rowToSession(row);
   try {
@@ -1456,6 +1475,9 @@ async function refreshAgentSession(row: SessionRow): Promise<AgentSession | null
       return rowToSession(row);
     }
     agentSessionNotFoundStreak.delete(row.id);
+    if (isRateLimitError(error)) {
+      agentVmVerifyBackoff.set(row.id, Date.now() + AGENT_VM_RATE_LIMIT_COOLDOWN_MS);
+    }
     console.warn(`Failed to verify agent VM ${row.vm_resource_id}`, error);
     return rowToSession(row);
   }

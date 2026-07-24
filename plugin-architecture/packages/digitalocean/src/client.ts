@@ -909,10 +909,13 @@ export class DigitalOceanClient implements PluginClient {
           this.getProjectUrnMap(),
         ]);
         return this.mapDroplet(data.droplet, accountId, projectMap);
-      } catch {
-        // Fall through to the list-and-find path — covers the case where the
-        // single endpoint 404s but the list-cached version still hangs around,
-        // and keeps the existing behaviour for non-droplet types.
+      } catch (error) {
+        // Only fall through to the list-and-find path when the single endpoint
+        // reports the droplet missing (the list cache can still carry it
+        // briefly). Transient failures — 429 rate limits especially — must
+        // propagate: the list call costs far more against the same limit.
+        const message = error instanceof Error ? error.message : String(error);
+        if (!/\bAPI error 404\b/.test(message)) throw error;
       }
     }
     // Spaces buckets aren't exposed via the REST API, and a freshly-created

@@ -39,6 +39,15 @@ const AGENT_SESSION_NOT_FOUND_DELETE_THRESHOLD = 3;
 
 const agentSessionNotFoundStreak = new Map<string, number>();
 
+// sessionId -> epoch ms before which live provider verification is skipped.
+// GET /sessions polls every few seconds per open panel and verified every
+// session against the provider on each poll, which burned through provider
+// rate limits (DigitalOcean 429'd the whole account). Between live checks the
+// session is served from its DB row; a provider 429 backs off harder.
+const agentVmVerifyBackoff = new Map<string, number>();
+const AGENT_VM_VERIFY_INTERVAL_MS = 15_000;
+const AGENT_VM_RATE_LIMIT_COOLDOWN_MS = 60_000;
+
 function orgId(c: { get(key: "organizationId"): string }) {
   return c.get("organizationId");
 }
@@ -366,6 +375,15 @@ app.delete("/sessions/:id", async (c) => {
         // Already gone upstream is success for a delete; anything else must
         // abort so we don't orphan a still-billing VM silently.
         if (!isNotFoundError(error)) {
+          if (isRateLimitError(error)) {
+            return c.json(
+              {
+                error:
+                  "The provider is rate-limiting API requests — try deleting again in a minute.",
+              },
+              429,
+            );
+          }
           const message = error instanceof Error ? error.message : String(error);
           return c.json({ error: `Could not delete the agent VM: ${message}` }, 502);
         }
@@ -374,6 +392,8 @@ app.delete("/sessions/:id", async (c) => {
     }
   }
   await db.delete(agentSessions).where(eq(agentSessions.id, row.id));
+  agentVmVerifyBackoff.delete(row.id);
+  agentSessionNotFoundStreak.delete(row.id);
   return c.json({ ok: true });
 });
 
@@ -440,6 +460,10 @@ async function refreshAgentSession(
     .limit(1);
   if (!resource) return null;
 
+  const now = Date.now();
+  if (now < (agentVmVerifyBackoff.get(row.id) ?? 0)) return rowToSession(row);
+  agentVmVerifyBackoff.set(row.id, now + AGENT_VM_VERIFY_INTERVAL_MS);
+
   const ctx = await getClientForAccount(row.accountId, organizationId).catch(() => null);
   if (!ctx || ctx.account.pluginId !== row.pluginId) return rowToSession(row);
   try {
@@ -492,6 +516,9 @@ async function refreshAgentSession(
       return rowToSession(row);
     }
     agentSessionNotFoundStreak.delete(row.id);
+    if (isRateLimitError(error)) {
+      agentVmVerifyBackoff.set(row.id, Date.now() + AGENT_VM_RATE_LIMIT_COOLDOWN_MS);
+    }
     console.warn(`Failed to verify agent VM ${row.vmResourceId}`, error);
     return rowToSession(row);
   }
@@ -531,6 +558,13 @@ function isNotFoundError(error: unknown): boolean {
   // and plugin clients throw "... resource <type>/<id> not found". Match only those shapes so
   // unrelated errors that merely mention "404" or "not found" are not treated as deletions.
   return /\bAPI error 404\b/.test(message) || /\bresource\b[^\n]*\bnot found\b/i.test(message);
+}
+
+function isRateLimitError(error: unknown): boolean {
+  if (errorHttpStatus(error) === 429) return true;
+  // Plugin HTTP helpers throw plain errors shaped "<vendor> API error <status> for <label>: ...".
+  const message = error instanceof Error ? error.message : String(error);
+  return /\bAPI error 429\b/.test(message);
 }
 
 function shouldDeleteMissingAgentSession(sessionId: string, createdAt: Date): boolean {
