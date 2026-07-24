@@ -93,7 +93,7 @@ export function DashboardView({
   const [pins, setPins] = useState(initialPins);
   const [workflowPins, setWorkflowPins] = useState<WorkflowPin[]>(initialWorkflowPins ?? []);
   const [widgets, setWidgets] = useState<DashboardWidget[]>(initialWidgets ?? []);
-  const [spotlightMode, setSpotlightMode] = useState<"pin" | "navigate" | null>(null);
+  const [spotlightMode, setSpotlightMode] = useState<"pin" | null>(null);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [costModal, setCostModal] = useState<{ widget: DashboardWidget | null } | null>(null);
   const [budgetModal, setBudgetModal] = useState<{ widget: DashboardWidget | null } | null>(null);
@@ -252,17 +252,6 @@ export function DashboardView({
     window.addEventListener("iw:dashboard-card-reorder", handleReorder);
     return () => window.removeEventListener("iw:dashboard-card-reorder", handleReorder);
   }, [handleReorder]);
-
-  useEffect(() => {
-    function onKeyDown(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
-        e.preventDefault();
-        setSpotlightMode("navigate");
-      }
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
 
   async function handleUnpin(pinId: string, resourceId: string) {
     try {
