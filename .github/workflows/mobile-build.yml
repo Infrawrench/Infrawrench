@@ -1,0 +1,25 @@
+name: Mobile Build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  eas-preview:
+    name: EAS preview build
+    runs-on: blacksmith-4vcpu-ubuntu-2404-arm
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - run: corepack enable
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: EAS build (preview)
+        working-directory: app/packages/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: npx eas-cli build --platform all --profile preview --non-interactive
