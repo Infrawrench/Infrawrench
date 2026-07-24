@@ -39,6 +39,10 @@ app_env = {
   GITHUB_APP_PRIVATE_KEY = "-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----"
   GITHUB_APP_SLUG        = "..."
 
+  # Optional: comma-separated emails allowed on /api/admin + the /admin page
+  # (grant/revoke complimentary orgs). Omit to disable the admin surface.
+  INFRAWRENCH_PLATFORM_ADMIN_EMAILS = "you@example.com"
+
   # Optional
   # ANTHROPIC_API_KEY    = "..."
   # OPENAI_API_KEY       = "..."
