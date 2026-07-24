@@ -132,9 +132,16 @@ export { app as githubRoutes };
  */
 export const githubSetupRoute = new Hono();
 
-githubSetupRoute.get("/github/setup", async (c) => {
+// Wildcard: a GitHub App "Setup URL" configured with trailing whitespace or a
+// slash produces callback paths like /api/github/setup%20 — an exact route
+// would miss those and the request would fall through to the SPA shell,
+// silently dropping the installation.
+githubSetupRoute.get("/github/setup*", async (c) => {
   const installationIdRaw = c.req.query("installation_id");
   const setupAction = c.req.query("setup_action");
+  console.log(
+    `[github] setup callback: action=${setupAction ?? "install"} installation=${installationIdRaw ?? "none"}`,
+  );
   const state = c.req.query("state") ?? "";
   const verified = verifyInstallState(state);
   const installationId = Number(installationIdRaw);
