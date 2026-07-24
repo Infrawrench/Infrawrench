@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useUIStore } from "../store/ui.store.js";
 import {
   CHAT_MODELS,
   emitChatConversationsChanged,
@@ -42,6 +43,20 @@ export function ConversationView({ client, conversationId }: Props): React.React
     setConversation(data.conversation);
     setMessages(data.messages);
     setPending(data.pendingActions);
+    // Keep any workspace tab pointing at this conversation titled after it —
+    // conversations auto-rename after the first message. Done here (not in a
+    // sidebar component) so it works even when the sidebar is collapsed. On
+    // hosts without workspace tabs (web chat routes) this is a no-op.
+    const { workspaceTabs, setWorkspaceTabTitle } = useUIStore.getState();
+    for (const tab of workspaceTabs) {
+      if (
+        tab.target.kind === "chat" &&
+        tab.target.conversationId === conversationId &&
+        data.conversation.title !== tab.title
+      ) {
+        setWorkspaceTabTitle(tab.id, data.conversation.title);
+      }
+    }
     const s = await client.getSpend();
     setSpend(s);
   }, [client, conversationId]);
@@ -245,42 +260,50 @@ export function ConversationView({ client, conversationId }: Props): React.React
         </div>
       </header>
 
-      <main className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-        {visibleMessages.map((m) => (
-          <MessageBubble
-            key={m.id}
-            message={m}
-            pendingActions={pendingByMessage.get(m.id) ?? []}
-            toolResults={toolResultsById}
-            onApprove={handleApprove}
-            onReject={handleReject}
-          />
-        ))}
-        {streaming.active && (
-          <div className="text-on-surface-secondary text-sm">
-            <div className="text-xs text-on-surface-faint mb-1">Assistant</div>
-            <div className="whitespace-pre-wrap">{streaming.text}</div>
-            {streaming.toolUses.map((t) => (
-              <div
-                key={t.id}
-                className="mt-2 border border-border rounded-md px-3 py-1.5 text-xs bg-surface-overlay flex items-center justify-between"
-              >
-                <span className="font-mono text-on-surface-secondary">{t.name}</span>
-                <span className={t.executed ? "text-emerald-500" : "text-on-surface-muted"}>
-                  {t.executed ? "Done" : "Running…"}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-        {streaming.error && (
-          <div className="text-red-500 text-sm whitespace-pre-wrap">{streaming.error}</div>
-        )}
-        <div ref={bottomRef} />
+      <main className="flex-1 overflow-y-auto px-6 py-4">
+        <div className="max-w-3xl mx-auto space-y-3">
+          {visibleMessages.map((m) => (
+            <MessageBubble
+              key={m.id}
+              message={m}
+              pendingActions={pendingByMessage.get(m.id) ?? []}
+              toolResults={toolResultsById}
+              onApprove={handleApprove}
+              onReject={handleReject}
+            />
+          ))}
+          {streaming.active && (
+            <div className="space-y-2">
+              {streaming.text && (
+                <div className="text-sm whitespace-pre-wrap text-on-surface-secondary">
+                  {streaming.text}
+                </div>
+              )}
+              {streaming.toolUses.map((t) => (
+                <div
+                  key={t.id}
+                  className="border border-border rounded-lg px-3 py-1.5 text-xs bg-surface-overlay flex items-center justify-between"
+                >
+                  <span className="font-mono text-on-surface-secondary">{t.name}</span>
+                  <span className={t.executed ? "text-emerald-500" : "text-on-surface-muted"}>
+                    {t.executed ? "Done" : "Running…"}
+                  </span>
+                </div>
+              ))}
+              {!streaming.text && streaming.toolUses.length === 0 && (
+                <div className="text-on-surface-faint text-sm animate-pulse">Thinking…</div>
+              )}
+            </div>
+          )}
+          {streaming.error && (
+            <div className="text-red-500 text-sm whitespace-pre-wrap">{streaming.error}</div>
+          )}
+          <div ref={bottomRef} />
+        </div>
       </main>
 
       <footer className="border-t border-border p-4">
-        <div className="flex gap-2">
+        <div className="max-w-3xl mx-auto flex gap-2">
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -330,21 +353,34 @@ function MessageBubble({
     pendingActions.map((p) => [p.toolUseId, p]),
   );
 
-  return (
-    <div className={isAssistant ? "" : "pl-8"}>
-      <div className="text-xs text-on-surface-faint mb-1">{isAssistant ? "Assistant" : "You"}</div>
-      <div className="space-y-2">
-        {message.content.map((block, i) => (
-          <BlockView
-            key={i}
-            block={block}
-            pending={block.type === "tool_use" ? pendingByToolUseId.get(block.id) : undefined}
-            result={block.type === "tool_use" ? toolResults.get(block.id) : undefined}
-            onApprove={onApprove}
-            onReject={onReject}
-          />
-        ))}
+  // DM layout: the user's messages are right-aligned bubbles, the assistant
+  // replies flow plainly on the left — no per-message role labels.
+  if (!isAssistant) {
+    const text = message.content
+      .filter((b): b is Extract<ChatContentBlock, { type: "text" }> => b.type === "text")
+      .map((b) => b.text)
+      .join("\n");
+    return (
+      <div className="flex justify-end">
+        <div className="max-w-[75%] bg-blue-600 text-white rounded-2xl rounded-br-md px-4 py-2 text-sm whitespace-pre-wrap break-words">
+          {text}
+        </div>
       </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {message.content.map((block, i) => (
+        <BlockView
+          key={i}
+          block={block}
+          pending={block.type === "tool_use" ? pendingByToolUseId.get(block.id) : undefined}
+          result={block.type === "tool_use" ? toolResults.get(block.id) : undefined}
+          onApprove={onApprove}
+          onReject={onReject}
+        />
+      ))}
     </div>
   );
 }
@@ -392,7 +428,7 @@ function BlockView({
     const resultText = pending?.result ?? result?.text;
 
     return (
-      <div className="border border-border rounded-md bg-surface-overlay text-xs">
+      <div className="border border-border rounded-lg bg-surface-overlay text-xs">
         <div className="flex items-center justify-between px-3 py-2">
           <span className="font-mono text-on-surface-secondary">{block.name}</span>
           <span className={statusColor}>{statusLabel}</span>
