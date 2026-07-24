@@ -24,7 +24,8 @@ app_env = {
   # Stripe
   STRIPE_SECRET_KEY                    = "sk_live_..."
   STRIPE_WEBHOOK_SECRET                = "whsec_..."
-  STRIPE_PRICE_ID                      = "price_..."
+  STRIPE_PRICE_ID                      = "price_..." # $20/seat/mo licensed price
+  STRIPE_CHAT_PRICE_ID                 = "price_..." # metered price bound to the chat meter
   INFRAWRENCH_STRIPE_CHAT_METER_EVENT  = "..."
 
   # ClickHouse Cloud (metrics; all four together or writes/reads no-op)

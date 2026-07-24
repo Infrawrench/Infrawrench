@@ -7,6 +7,11 @@ import type Stripe from "stripe";
 
 const app = new Hono();
 
+/** Seat quantity from the licensed plan item; metered items carry no quantity. */
+function seatQuantity(sub: Stripe.Subscription): number {
+  return sub.items.data.find((i) => i.quantity != null)?.quantity ?? 1;
+}
+
 /** POST /api/v1/webhooks/stripe */
 app.post("/", async (c) => {
   const stripe = getStripe();
@@ -28,11 +33,15 @@ app.post("/", async (c) => {
       case "checkout.session.completed": {
         const session = event.data.object as Stripe.Checkout.Session;
         if (session.customer && session.subscription) {
+          const sub = await stripe.subscriptions.retrieve(session.subscription as string);
           await db
             .update(subscriptions)
             .set({
               stripeSubscriptionId: session.subscription as string,
               status: "active",
+              seatCount: seatQuantity(sub),
+              currentPeriodStart: new Date(sub.current_period_start * 1000),
+              currentPeriodEnd: new Date(sub.current_period_end * 1000),
               updatedAt: new Date(),
             })
             .where(eq(subscriptions.stripeCustomerId, session.customer as string));
@@ -70,7 +79,7 @@ app.post("/", async (c) => {
 
       case "customer.subscription.updated": {
         const sub = event.data.object as Stripe.Subscription;
-        const quantity = sub.items.data[0]?.quantity ?? 1;
+        const quantity = seatQuantity(sub);
         await db
           .update(subscriptions)
           .set({

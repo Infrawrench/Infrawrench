@@ -18,9 +18,11 @@ const stripeClient = {
   checkout: { sessions: { create: (...a: unknown[]) => mockCheckoutCreate(...a) } },
   billingPortal: { sessions: { create: (...a: unknown[]) => mockPortalCreate(...a) } },
 };
+const mockChatPriceId = vi.fn<() => string | null>(() => "price_chat");
 vi.mock("@/services/stripe", () => ({
   getStripe: () => stripeClient,
   getStripePriceId: () => "price_123",
+  getStripeChatPriceId: () => mockChatPriceId(),
 }));
 
 vi.mock("uuid", () => ({ v4: () => "sub-uuid-1" }));
@@ -89,6 +91,36 @@ describe("Billing routes", () => {
       expect(mockCheckoutCreate).toHaveBeenCalledWith(
         expect.objectContaining({ customer: "cus_existing" }),
       );
+    });
+
+    it("sends adjustable seat quantity plus the metered chat price", async () => {
+      selectReturns([{ stripeCustomerId: "cus_existing" }]);
+      mockCheckoutCreate.mockResolvedValue({ url: "https://stripe/checkout3" });
+      await buildApp().request("/checkout", { method: "POST" });
+      expect(mockCheckoutCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          line_items: [
+            {
+              price: "price_123",
+              quantity: 1,
+              adjustable_quantity: { enabled: true, minimum: 1 },
+            },
+            { price: "price_chat" },
+          ],
+        }),
+      );
+    });
+
+    it("omits the chat line item when STRIPE_CHAT_PRICE_ID is unset", async () => {
+      mockChatPriceId.mockReturnValueOnce(null);
+      selectReturns([{ stripeCustomerId: "cus_existing" }]);
+      mockCheckoutCreate.mockResolvedValue({ url: "https://stripe/checkout4" });
+      await buildApp().request("/checkout", { method: "POST" });
+      const args = mockCheckoutCreate.mock.calls[0]?.[0] as {
+        line_items: Array<{ price: string }>;
+      };
+      expect(args.line_items).toHaveLength(1);
+      expect(args.line_items[0]?.price).toBe("price_123");
     });
 
     it("returns 500 when Stripe yields no checkout url", async () => {

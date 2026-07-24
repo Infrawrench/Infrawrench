@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { v4 as uuid } from "uuid";
 import { db } from "../../db/client";
 import { subscriptions } from "../../db/schema";
-import { getStripe, getStripePriceId } from "../../services/stripe";
+import { getStripe, getStripePriceId, getStripeChatPriceId } from "../../services/stripe";
 import { requirePermission } from "../../auth/permissions";
 import type { AuthSession } from "../auth-middleware";
 
@@ -64,10 +64,15 @@ app.post("/checkout", async (c) => {
 
   const appUrl =
     process.env["APP_URL"] ?? process.env["NEXT_PUBLIC_APP_URL"] ?? "http://localhost:3000";
+  const chatPriceId = getStripeChatPriceId();
   const checkoutSession = await stripe.checkout.sessions.create({
     customer: customerId,
     mode: "subscription",
-    line_items: [{ price: priceId, quantity: 1 }],
+    // Metered prices take no quantity — Stripe bills them from the meter.
+    line_items: [
+      { price: priceId, quantity: 1, adjustable_quantity: { enabled: true, minimum: 1 } },
+      ...(chatPriceId ? [{ price: chatPriceId }] : []),
+    ],
     success_url: `${appUrl}/settings/billing?success=true`,
     cancel_url: `${appUrl}/settings/billing`,
   });

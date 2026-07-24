@@ -2,11 +2,11 @@
  * Chat usage tracking + monthly spend cap enforcement + Stripe metered reporting.
  *
  * After each assistant turn we insert a `chat_usage` row computing the
- * micro-dollar cost from token counts (see ./pricing.ts), then push a usage
- * record to the org's Stripe subscription item id stored in
- * `INFRAWRENCH_STRIPE_CHAT_USAGE_PRICE` (configured per-deployment). Best-effort
- * — a Stripe outage doesn't fail the user's request; we leave the usage row
- * unreported and a periodic reconciler can replay it later.
+ * micro-dollar cost from token counts (see ./pricing.ts), then push a billing
+ * meter event (event name from `INFRAWRENCH_STRIPE_CHAT_METER_EVENT`) keyed by
+ * the org's Stripe customer id. Best-effort — a Stripe outage doesn't fail the
+ * user's request; we leave the usage row unreported and a periodic reconciler
+ * can replay it later.
  */
 import { v4 as uuidv4 } from "uuid";
 import { eq, and, gte, sql } from "drizzle-orm";
@@ -85,13 +85,10 @@ async function reportUsageToStripe(
   organizationId: string,
   _costMicros: number,
 ): Promise<void> {
-  // Stripe usage reporting requires a subscription item id for the metered
-  // chat-tokens price. We look that up from the org's subscription row and
-  // record the total token cost as a single "usage record" (unit-priced).
-  //
-  // The deployment configures the metered price id via env so we don't need
-  // a column for it; the subscription item id is stored on the sub row by
-  // the Stripe webhook when the subscription is first set up.
+  // Meter events are keyed by the org's Stripe customer id; Stripe bills
+  // them through the subscription item whose metered price is bound to the
+  // meter (STRIPE_CHAT_PRICE_ID, attached at checkout). The event name is
+  // per-deployment env so we don't need a column for it.
   const meterEventName = process.env["INFRAWRENCH_STRIPE_CHAT_METER_EVENT"];
   if (!meterEventName) return;
 
