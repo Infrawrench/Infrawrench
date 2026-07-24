@@ -120,6 +120,7 @@ export interface ChatTurnEvent {
     | "tool_use_input"
     | "tool_executed"
     | "pending_action"
+    | "sleep"
     | "turn_end"
     | "spend_blocked"
     | "error";

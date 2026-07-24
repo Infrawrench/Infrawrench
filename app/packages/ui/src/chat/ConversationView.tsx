@@ -42,6 +42,11 @@ export function ConversationView({ client, conversationId }: Props): React.React
     toolUses: [],
   });
   const [input, setInput] = useState("");
+  /** Seconds remaining of a client-side sleep the agent requested. */
+  const [sleeping, setSleeping] = useState<number | null>(null);
+  // Ref mirror for callbacks that must not resume mid-countdown (approving a
+  // destructive action while a sleep from the same batch is still running).
+  const sleepingRef = useRef(false);
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
   const reload = useCallback(
@@ -90,13 +95,20 @@ export function ConversationView({ client, conversationId }: Props): React.React
   const startStream = useCallback(
     async (body: { text?: string; resume?: boolean }) => {
       setStreaming({ active: true, userText: body.text, text: "", toolUses: [] });
+      // Longest sleep the agent requested this turn; the wait runs here on
+      // the client after the stream suspends, then hands back to the server.
+      let sleepSeconds = 0;
 
       try {
         for await (const ev of client.streamTurn(conversationId, body)) {
           if (ev.type === "text_delta") {
             const delta = ev["delta"] as string;
             setStreaming((s) => ({ ...s, text: s.text + delta }));
+          } else if (ev.type === "sleep") {
+            sleepSeconds = Math.max(sleepSeconds, Number(ev["seconds"]) || 0);
           } else if (ev.type === "tool_use_start") {
+            // Sleep renders as its own indicator, not as a tool card.
+            if (ev["name"] === "sleep") continue;
             setStreaming((s) => ({
               ...s,
               toolUses: [
@@ -161,13 +173,34 @@ export function ConversationView({ client, conversationId }: Props): React.React
       // A completed turn can rename the conversation and bumps updatedAt —
       // let session lists pick that up.
       emitChatConversationsChanged();
+
+      if (sleepSeconds > 0) {
+        // Client-side sleep: count down, then hand back to the server — but
+        // only when nothing else is still awaiting approval (a sleep can land
+        // in the same batch as a destructive tool).
+        sleepingRef.current = true;
+        try {
+          for (let remaining = sleepSeconds; remaining > 0; remaining--) {
+            setSleeping(remaining);
+            await new Promise((resolve) => setTimeout(resolve, 1000));
+          }
+        } finally {
+          sleepingRef.current = false;
+          setSleeping(null);
+        }
+        const data = await client.getConversation(conversationId);
+        const unresolved = data.pendingActions.some(
+          (p) => p.status === "pending" || p.status === "approved",
+        );
+        if (!unresolved) await startStream({ resume: true });
+      }
     },
     [client, conversationId, reload],
   );
 
   async function handleSend(): Promise<void> {
     const text = input.trim();
-    if (!text || streaming.active) return;
+    if (!text || streaming.active || sleeping != null) return;
     setInput("");
     await startStream({ text });
   }
@@ -189,6 +222,9 @@ export function ConversationView({ client, conversationId }: Props): React.React
   }
 
   const resumeIfResolved = useCallback(async () => {
+    // A sleep from the same tool batch is still counting down — it will do
+    // its own resolved-check and resume when it finishes.
+    if (sleepingRef.current) return;
     const data = await client.getConversation(conversationId);
     const unresolved = data.pendingActions.some(
       (p) => p.status === "pending" || p.status === "approved",
@@ -317,6 +353,11 @@ export function ConversationView({ client, conversationId }: Props): React.React
               )}
             </div>
           )}
+          {sleeping != null && (
+            <div className="text-on-surface-faint text-sm animate-pulse">
+              Sleeping {sleeping} second{sleeping === 1 ? "" : "s"}…
+            </div>
+          )}
           {streaming.error && (
             <div className="text-red-500 text-sm whitespace-pre-wrap">{streaming.error}</div>
           )}
@@ -335,7 +376,7 @@ export function ConversationView({ client, conversationId }: Props): React.React
                 void handleSend();
               }
             }}
-            disabled={streaming.active}
+            disabled={streaming.active || sleeping != null}
             placeholder="Ask anything about your infrastructure…"
             rows={2}
             className="flex-1 bg-surface-overlay border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
@@ -344,7 +385,7 @@ export function ConversationView({ client, conversationId }: Props): React.React
           <button
             type="button"
             onClick={() => void handleSend()}
-            disabled={streaming.active || input.trim().length === 0}
+            disabled={streaming.active || sleeping != null || input.trim().length === 0}
             className="px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded-lg transition-colors"
           >
             Send
@@ -426,6 +467,16 @@ function BlockView({
     return <ChatMarkdown text={block.text} />;
   }
   if (block.type === "tool_use") {
+    // Sleep is not a real tool call — render it as a quiet marker, matching
+    // the live "Sleeping N seconds…" indicator.
+    if (block.name === "sleep") {
+      const secs = Number(block.input["seconds"]);
+      return (
+        <div className="text-xs text-on-surface-faint italic">
+          Slept {Number.isFinite(secs) ? secs : "a few"} seconds
+        </div>
+      );
+    }
     const status = pending?.status ?? (result?.isError ? "errored" : "executed");
     const statusLabel =
       status === "pending"

@@ -24,6 +24,37 @@ import { recordUsage } from "./billing";
 const DEFAULT_MODEL = DEFAULT_CHAT_MODEL;
 const MAX_TOKENS = 8192;
 
+const SLEEP_TOOL_NAME = "sleep";
+const MAX_SLEEP_SECONDS = 300;
+
+/**
+ * Chat-only tool (deliberately NOT in the shared registry, so MCP clients
+ * never see it): lets the agent wait before re-checking a slow operation.
+ * The wait itself runs on the CLIENT — the server suspends the turn with a
+ * pre-resolved pending action, the UI shows "Sleeping N seconds…" and posts
+ * `resume: true` when the time is up, and the loop continues with the tool
+ * result.
+ */
+const SLEEP_TOOL: Anthropic.Tool = {
+  name: SLEEP_TOOL_NAME,
+  description:
+    "Pause for N seconds before continuing, then automatically resume. Use while waiting for a " +
+    "slow operation to finish (resource provisioning, DNS propagation, a reboot) before " +
+    "re-checking its status. Max 300 seconds per call; sleep again if you need longer.",
+  input_schema: {
+    type: "object",
+    properties: {
+      seconds: {
+        type: "integer",
+        minimum: 1,
+        maximum: MAX_SLEEP_SECONDS,
+        description: "How long to wait",
+      },
+    },
+    required: ["seconds"],
+  },
+};
+
 const SYSTEM_PROMPT = `You are Infrawrench's in-app agent. You help the user manage their infrastructure — listing and inspecting resources, executing SQL, running ops actions, rotating credentials, and so on — through the tools exposed to you. Every tool maps to something the user can already do in the Infrawrench UI.
 
 Style:
@@ -49,6 +80,7 @@ export type AgentEvent =
   | { type: "tool_use_input"; toolUseId: string; partialJson: string }
   | { type: "tool_executed"; toolUseId: string; isError: boolean; resultPreview: string }
   | { type: "pending_action"; pendingActionId: string; toolName: string; toolUseId: string }
+  | { type: "sleep"; toolUseId: string; seconds: number }
   | {
       type: "turn_end";
       messageId: string;
@@ -227,7 +259,7 @@ export async function* runAgentTurn(input: RunAgentInput): AsyncGenerator<AgentE
 
   const registry = await getToolRegistry();
   const toolByName = new Map(registry.map((t) => [t.name, t] as const));
-  const anthropicTools = registry.map(toolToAnthropic);
+  const anthropicTools = [...registry.map(toolToAnthropic), SLEEP_TOOL];
   // Prompt-cache the system prompt + tool definitions. Both are large and
   // stable across a session; the tool list is ~150kb of JSON Schema. Without
   // caching every turn pays full ingestion cost.
@@ -394,6 +426,31 @@ export async function* runAgentTurn(input: RunAgentInput): AsyncGenerator<AgentE
     const autoBlocks: AnthropicContentBlock[] = [];
     let suspended = false;
     for (const tu of toolUses) {
+      if (tu.name === SLEEP_TOOL_NAME) {
+        // The client performs the wait: suspend the turn with a pre-resolved
+        // pending action; the UI shows the sleep indicator and resumes the
+        // loop when the time is up.
+        const raw = Number((tu.input as Record<string, unknown>)["seconds"]);
+        const seconds = Math.min(
+          MAX_SLEEP_SECONDS,
+          Math.max(1, Math.round(Number.isFinite(raw) ? raw : 1)),
+        );
+        await db.insert(chatPendingActions).values({
+          id: uuidv4(),
+          conversationId,
+          messageId: assistantMessageId,
+          toolUseId: tu.id,
+          toolName: SLEEP_TOOL_NAME,
+          toolInput: { seconds },
+          status: "executed",
+          result: `Slept ${seconds} seconds.`,
+          isError: false,
+          resolvedAt: new Date(),
+        });
+        yield { type: "sleep", toolUseId: tu.id, seconds };
+        suspended = true;
+        continue;
+      }
       const tool = toolByName.get(tu.name);
       if (!tool) {
         autoBlocks.push({

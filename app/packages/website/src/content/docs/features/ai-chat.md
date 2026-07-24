@@ -45,6 +45,10 @@ The UI surfaces these as Approve / Reject cards inline in the conversation. Appr
 
 Tool calls render as compact status cards (`Running…` → `Done`); the input JSON and the tool's result sit behind a collapsed **Details** toggle on each card, except while an action is pending approval, when the input is shown so you can see exactly what you're approving.
 
+## Waiting on slow operations
+
+The chat agent has a `sleep` tool (chat-only — the [MCP server](./mcp.md) does not expose it) for waiting out slow operations: provisioning a database, DNS propagation, a reboot. Instead of a tool card the UI shows a quiet **"Sleeping N seconds…"** countdown (like "Thinking…"); the wait runs in your browser, and when it finishes the conversation automatically resumes so the agent can re-check. Up to 300 seconds per call; the composer is disabled while a sleep is counting down. Closing the page cancels the wait — reopen the chat and send a message to continue.
+
 API clients see pending actions in the conversation fetch response and POST `{action: "approve" | "reject"}` to `/api/org/{orgId}/chat/conversations/{id}/pending/{pendingId}` to drive the same flow.
 
 <insert [Pending-action card with Approve/Reject buttons and the JSON tool input expanded] here>
