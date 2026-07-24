@@ -25,6 +25,7 @@ vi.mock("../../db/schema", () => ({
     resourceTypeId: "rt",
     accountId: "aid",
     displayName: "dn",
+    fieldsJson: "fields",
   },
   secretFieldStates: { resourceId: "rid", fieldKey: "fk" },
 }));
@@ -41,6 +42,8 @@ const mockGetClientForResource = vi.fn();
 vi.mock("../../services/plugin-clients", () => ({
   getClientForAccount: (...a: unknown[]) => mockGetClientForAccount(...a),
   getClientForResource: (...a: unknown[]) => mockGetClientForResource(...a),
+  // Pass-through: gating logic is covered by the service's own tests.
+  filterVisiblePeerIntegrations: (integrations: unknown[]) => integrations,
 }));
 
 vi.mock("../../services/encryption", () => ({
@@ -50,6 +53,7 @@ vi.mock("../../services/encryption", () => ({
 vi.mock("../../services/audit", () => ({ logAudit: vi.fn() }));
 vi.mock("@infrawrench/plugin-base", () => ({
   normalizeResourceCreateResult: (r: unknown) => ({ resource: r, warnings: [] }),
+  evaluatePeerIntegrationUnreachable: () => null,
 }));
 vi.mock("uuid", () => ({ v4: () => "sfs-uuid" }));
 
@@ -301,5 +305,69 @@ describe("genericTools", () => {
     );
     expect(r.isError).toBe(true);
     expect(r.content[0]!.text).toMatch(/mismatch/);
+  });
+
+  it("list_resource_sidecars surfaces peer integrations with the peer's resource types", async () => {
+    // DOKS-style cluster: the account plugin's type declares a kubernetes peer.
+    mockGetClientForAccount.mockResolvedValue({
+      account: { id: "a1", pluginId: "digitalocean" },
+      plugin: {
+        resourceTypes: [
+          {
+            id: "doks-cluster",
+            displayName: "Kubernetes Cluster",
+            peerIntegrations: [
+              { pluginId: "kubernetes", tabLabel: "Kubernetes", credentialMappings: [] },
+            ],
+          },
+        ],
+      },
+      client: {
+        getResource: vi.fn().mockResolvedValue({ id: "c1", fields: { region: "nyc1" } }),
+      },
+    });
+    // Synced row resolves the parent's type without probing.
+    const limit = vi.fn().mockResolvedValue([{ resourceTypeId: "doks-cluster", fieldsJson: {} }]);
+    const where = vi.fn().mockReturnValue({ limit });
+    const from = vi.fn().mockReturnValue({ where });
+    mockSelect.mockReturnValue({ from });
+    mockGetPlugin.mockResolvedValue({
+      plugin: {
+        manifest: { id: "kubernetes", displayName: "Kubernetes" },
+        resourceTypes: [
+          { id: "k8s-deployment", displayName: "Deployment", supportsCreate: true },
+          { id: "k8s-pod", displayName: "Pod" },
+        ],
+      },
+    });
+
+    const r = await tool("list_resource_sidecars").handler(
+      { accountId: "a1", resourceId: "c1" },
+      auth,
+    );
+    expect(r.isError).toBeUndefined();
+    const out = JSON.parse(r.content[0]!.text) as {
+      sidecars: Array<{ pluginId: string; resourceTypes: Array<{ id: string }> }>;
+      usage: string;
+    };
+    expect(out.sidecars).toHaveLength(1);
+    expect(out.sidecars[0]!.pluginId).toBe("kubernetes");
+    expect(out.sidecars[0]!.resourceTypes.map((t) => t.id)).toEqual(["k8s-deployment", "k8s-pod"]);
+    expect(out.usage).toContain('parentResourceId: "c1"');
+  });
+
+  it("list_resource_sidecars reports when a type has no sidecars", async () => {
+    mockGetClientForAccount.mockResolvedValue({
+      account: { id: "a1", pluginId: "digitalocean" },
+      plugin: { resourceTypes: [{ id: "droplet", displayName: "Droplet" }] },
+      client: { getResource: vi.fn().mockResolvedValue({ id: "d1", fields: {} }) },
+    });
+    const r = await tool("list_resource_sidecars").handler(
+      { accountId: "a1", resourceId: "d1", resourceTypeId: "droplet" },
+      auth,
+    );
+    expect(r.isError).toBeUndefined();
+    const out = JSON.parse(r.content[0]!.text) as { sidecars: unknown[] };
+    expect(out.sidecars).toEqual([]);
   });
 });

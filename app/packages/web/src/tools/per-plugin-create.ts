@@ -36,7 +36,13 @@ function scalarFor(f: FieldDefinition): ZodTypeAny {
 function inputSchemaForType(type: ResourceTypeDefinition): Record<string, ZodTypeAny> {
   const shape: Record<string, ZodTypeAny> = {
     accountId: z.string().describe("Connected account id (see list_accounts)"),
-    parentResourceId: z.string().optional(),
+    parentResourceId: z
+      .string()
+      .optional()
+      .describe(
+        "For sidecar plugins (e.g. creating a kubernetes resource inside a managed cluster): " +
+          "the parent resource id providing credentials — see list_resource_sidecars",
+      ),
   };
   for (const f of type.fields) {
     let leaf: ZodTypeAny = scalarFor(f);

@@ -26,6 +26,7 @@ Infrawrench ships an in-app **AI chat** powered by Anthropic Claude. The model h
 Everything the UI exposes. The chat shares the [MCP server](./mcp.md)'s tool registry:
 
 - **Resource lifecycle** — list, search, get, create, delete, attach, invoke action, apply manifest.
+- **Sidecars** — operate inside the peer plugins managed resources expose: ask "what's running in my DOKS cluster?" and the agent discovers the cluster's `kubernetes` sidecar (`list_resource_sidecars`) and lists deployments/pods/services through it; same for managed databases (`postgres`/`mysql`/`redis`/`mongodb`).
 - **SQL** — `sql_query` (read), `sql_execute` (write), `introspect_sql_schema`. Targets either the account's primary database or a per-resource SQL driver (e.g. an individual Neon branch).
 - **KV** — `kv_command` for Redis/Memcached/MongoDB-style verbs.
 - **Docker** — `docker_command` for container ops on a Docker-enabled account.

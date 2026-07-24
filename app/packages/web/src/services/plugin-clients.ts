@@ -246,24 +246,48 @@ export async function getClientForResource(
       ),
     )
     .limit(1);
-  if (!parentResource) return null;
 
-  const parentResourceTypeDef = parent.plugin.resourceTypes.find(
-    (t) => t.id === parentResource.resourceTypeId,
-  );
-  const integration = parentResourceTypeDef?.peerIntegrations?.find((i) => i.pluginId === pluginId);
-  if (!integration) return null;
-
+  let parentResourceTypeId: string | undefined = parentResource?.resourceTypeId;
+  let integration: PeerPluginIntegration | undefined;
   // Fetch the parent ResourceInstance so the rewriter context carries live
   // fields/outputs (Cloud SQL Auth Proxy needs `connectionName`).
-  const parentInstance = await parent.client
-    .getResource(parentResource.resourceTypeId, parentResourceId, accountId)
-    .catch(() => null);
+  let parentInstance: ResourceInstance | null = null;
+
+  if (parentResourceTypeId) {
+    const parentResourceTypeDef = parent.plugin.resourceTypes.find(
+      (t) => t.id === parentResourceTypeId,
+    );
+    integration = parentResourceTypeDef?.peerIntegrations?.find((i) => i.pluginId === pluginId);
+    if (!integration) return null;
+    parentInstance = await parent.client
+      .getResource(parentResourceTypeId, parentResourceId, accountId)
+      .catch(() => null);
+  } else {
+    // The parent resource isn't synced into the resources table (live-listed
+    // only — common for discovered managed clusters/databases). Resolve its
+    // type by probing the parent plugin's resource types that declare a peer
+    // integration for the requested plugin; typically that's exactly one type
+    // (e.g. only doks-cluster carries a kubernetes peer).
+    for (const typeDef of parent.plugin.resourceTypes) {
+      const candidate = typeDef.peerIntegrations?.find((i) => i.pluginId === pluginId);
+      if (!candidate) continue;
+      const inst = await parent.client
+        .getResource(typeDef.id, parentResourceId, accountId)
+        .catch(() => null);
+      if (inst) {
+        parentResourceTypeId = typeDef.id;
+        integration = candidate;
+        parentInstance = inst;
+        break;
+      }
+    }
+    if (!integration || !parentResourceTypeId) return null;
+  }
 
   const built = await buildPeerPluginClient({
     parentClient: parent.client,
     parentPluginId: parent.account.pluginId,
-    parentResourceTypeId: parentResource.resourceTypeId,
+    parentResourceTypeId,
     parentResourceId,
     parentResource: parentInstance,
     integration,

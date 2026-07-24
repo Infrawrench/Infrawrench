@@ -4,18 +4,33 @@ import { eq, and, isNull } from "drizzle-orm";
 import { db } from "../db/client";
 import { accounts, resources, secretFieldStates } from "../db/schema";
 import { loadPlugins, getPlugin } from "../plugins/loader";
-import { getClientForAccount, getClientForResource } from "../services/plugin-clients";
+import {
+  getClientForAccount,
+  getClientForResource,
+  filterVisiblePeerIntegrations,
+} from "../services/plugin-clients";
 import { encrypt, buildAad } from "../services/encryption";
 import { logAudit } from "../services/audit";
-import { normalizeResourceCreateResult } from "@infrawrench/plugin-base";
+import {
+  evaluatePeerIntegrationUnreachable,
+  normalizeResourceCreateResult,
+} from "@infrawrench/plugin-base";
 import { ok, okText, err, type ToolDefinition } from "./types";
+
+const parentResourceIdField = z
+  .string()
+  .optional()
+  .describe(
+    "For sidecar (peer plugin) targets only: the id of the parent resource (managed cluster / " +
+      "database) whose outputs provide the sidecar's credentials. See list_resource_sidecars.",
+  );
 
 const resourceTargetSchema = {
   pluginId: z.string(),
   accountId: z.string(),
   resourceTypeId: z.string(),
   resourceId: z.string(),
-  parentResourceId: z.string().optional(),
+  parentResourceId: parentResourceIdField,
 };
 
 export function genericTools(): ToolDefinition[] {
@@ -202,14 +217,133 @@ export function genericTools(): ToolDefinition[] {
     },
 
     {
+      name: "list_resource_sidecars",
+      title: "List resource sidecars",
+      description:
+        "Discover the sidecar (peer plugin) integrations a resource exposes. Managed Kubernetes " +
+        "clusters (DOKS, EKS, GKE, AKS, Kapsule, …) expose the 'kubernetes' plugin via their " +
+        "kubeconfig; managed databases expose 'postgres' / 'mysql' / 'redis' / 'mongodb' via " +
+        "their connection string. Returns each sidecar's pluginId and resource types. To operate " +
+        'inside a sidecar ("what is running in my cluster?"), call list_resources / ' +
+        "get_resource / describe_resource / invoke_action with pluginId = the sidecar's " +
+        "pluginId, the same accountId, and parentResourceId = this resource's id.",
+      inputSchema: {
+        accountId: z.string(),
+        resourceId: z.string().describe("The parent resource id (the cluster / database)"),
+        resourceTypeId: z
+          .string()
+          .optional()
+          .describe("The parent's resource type id, if known — skips a lookup"),
+      },
+      risk: "read",
+      handler: async (input, auth) => {
+        const { accountId, resourceId } = input as { accountId: string; resourceId: string };
+        const ctx = await getClientForAccount(accountId, auth.organizationId);
+        if (!ctx) return err("Account not found");
+
+        // Resolve the parent's resource type: explicit input → synced row →
+        // live probe across the plugin's peer-declaring types.
+        let resourceTypeId = input["resourceTypeId"] as string | undefined;
+        let storedFields: Record<string, unknown> | undefined;
+        if (!resourceTypeId) {
+          const [row] = await db
+            .select({ resourceTypeId: resources.resourceTypeId, fieldsJson: resources.fieldsJson })
+            .from(resources)
+            .where(
+              and(
+                eq(resources.id, resourceId),
+                eq(resources.organizationId, auth.organizationId),
+                isNull(resources.deletedAt),
+              ),
+            )
+            .limit(1);
+          resourceTypeId = row?.resourceTypeId;
+          storedFields = (row?.fieldsJson as Record<string, unknown> | null) ?? undefined;
+        }
+
+        let inst: Awaited<ReturnType<typeof ctx.client.getResource>> | null = null;
+        if (resourceTypeId) {
+          inst = await ctx.client
+            .getResource(resourceTypeId, resourceId, accountId)
+            .catch(() => null);
+        } else {
+          for (const typeDef of ctx.plugin.resourceTypes) {
+            if (!typeDef.peerIntegrations?.length) continue;
+            inst = await ctx.client
+              .getResource(typeDef.id, resourceId, accountId)
+              .catch(() => null);
+            if (inst) {
+              resourceTypeId = typeDef.id;
+              break;
+            }
+          }
+        }
+        if (!resourceTypeId) {
+          return err(
+            "Could not resolve the resource's type — pass resourceTypeId explicitly (see list_resources / search_resources)",
+          );
+        }
+        const typeDef = ctx.plugin.resourceTypes.find((t) => t.id === resourceTypeId);
+        if (!typeDef) return err(`Unknown resource type: ${resourceTypeId}`);
+
+        const integrations = typeDef.peerIntegrations ?? [];
+        if (integrations.length === 0) {
+          return ok({
+            resourceId,
+            resourceTypeId,
+            sidecars: [],
+            note: `Resource type ${resourceTypeId} declares no sidecar integrations.`,
+          });
+        }
+
+        const fields = inst?.fields ?? storedFields;
+        const visible = filterVisiblePeerIntegrations(integrations, fields);
+        const sidecars = await Promise.all(
+          visible.map(async (integration) => {
+            const unreachable = evaluatePeerIntegrationUnreachable(integration, fields);
+            const peer = await getPlugin(integration.pluginId);
+            return {
+              pluginId: integration.pluginId,
+              pluginDisplayName: peer?.plugin.manifest.displayName ?? integration.pluginId,
+              tabLabel: integration.tabLabel,
+              ...(unreachable ? { unreachable } : {}),
+              resourceTypes:
+                peer?.plugin.resourceTypes.map((rt) => ({
+                  id: rt.id,
+                  displayName: rt.displayName,
+                  supportsCreate: !!rt.supportsCreate,
+                })) ?? [],
+            };
+          }),
+        );
+
+        return ok({
+          resourceId,
+          resourceTypeId,
+          sidecars,
+          usage:
+            "Call list_resources { pluginId: <sidecar pluginId>, accountId, resourceTypeId: " +
+            `<sidecar resource type>, parentResourceId: "${resourceId}" }. The same ` +
+            "parentResourceId pattern works for get_resource, describe_resource, invoke_action, " +
+            "apply_manifest, and the per-plugin create tools.",
+        });
+      },
+    },
+
+    {
       name: "list_resources",
       title: "List resources",
-      description: "List live resources of a given type for an account.",
+      description:
+        "List live resources of a given type for an account. Also works inside sidecars: to see " +
+        "what's running in a managed Kubernetes cluster (DOKS, EKS, GKE, …), pass pluginId " +
+        "'kubernetes', the cluster's accountId, a kubernetes resourceTypeId (e.g. " +
+        "'k8s-deployment', 'k8s-pod' — see list_resource_types), and parentResourceId = the " +
+        "cluster's resource id. Same pattern for managed databases (postgres/mysql/redis/mongodb).",
       inputSchema: {
         pluginId: z.string(),
         accountId: z.string(),
         resourceTypeId: z.string(),
-        parentResourceId: z.string().optional(),
+        parentResourceId: parentResourceIdField,
       },
       risk: "read",
       handler: async (input, auth) => {

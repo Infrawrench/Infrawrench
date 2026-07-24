@@ -31,8 +31,11 @@ The bearer token is verified against WorkOS JWKS on every request, then mapped t
 
 The MCP server registers the full shared tool registry — the same tools the [AI chat](./ai-chat.md) uses:
 
-- **Discover** — `list_plugins`, `list_resource_types`, `list_accounts`.
+- **Discover** — `list_plugins`, `list_resource_types`, `list_accounts`, `list_resource_sidecars` (which peer plugins a resource exposes — e.g. `kubernetes` on a managed cluster, `postgres` on a managed database).
 - **Read** — `search_resources`, `list_resources`, `get_resource`, `get_resource_inputs`, `get_resource_outputs`, `get_resource_stats`, `get_resource_metrics`, `describe_resource`.
+
+Most resource tools take an optional `parentResourceId` to target a **sidecar** — the peer plugin a managed resource exposes through its outputs. "What's running in my DOKS cluster?" is `list_resource_sidecars` on the cluster, then `list_resources { pluginId: "kubernetes", resourceTypeId: "k8s-deployment", parentResourceId: <cluster id> }` — the kubeconfig is resolved server-side from the cluster's outputs, and the same pattern drives `describe_resource`, `invoke_action`, `apply_manifest`, and the per-plugin create tools inside the cluster or database.
+
 - **Mutate** — `create_resource`, `delete_resource`, `invoke_action`.
 - **Manifests** — `get_manifest`, `apply_manifest` (see [Manifest editor](./manifest-editor.md)).
 - **Connections** — `sql_query`, `sql_execute`, `introspect_sql_schema`, `kv_command`, `docker_command`, `ssh_exec`, and the storage tools (`list_storage_objects`, `make_storage_folder`, `delete_storage_object`).
