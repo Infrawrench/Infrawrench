@@ -63,6 +63,20 @@ export function getWorkspaceNavigateArgs(
         params: { orgId },
         ...(replace ? { replace: true } : {}),
       };
+    // Chat is not a workspace tab on web — it routes like a normal page — but
+    // the shared target union includes it (desktop renders chat as a tab).
+    case "chat":
+      return target.conversationId
+        ? {
+            to: "/org/$orgId/chat/$conversationId",
+            params: { orgId, conversationId: target.conversationId },
+            ...(replace ? { replace: true } : {}),
+          }
+        : {
+            to: "/org/$orgId/chat",
+            params: { orgId },
+            ...(replace ? { replace: true } : {}),
+          };
     case "resource": {
       const rid = normalizeResourceId(target.resourceId);
       const hash = target.view === "ssh" ? "ssh" : target.view === "sftp" ? "sftp" : undefined;

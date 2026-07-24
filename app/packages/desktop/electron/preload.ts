@@ -172,6 +172,14 @@ const INVOKE_CHANNELS = [
   "cloud_ssh_keys_list",
   "cloud_ssh_keys_create",
   "cloud_ssh_keys_delete",
+  "cloud_chat_list_conversations",
+  "cloud_chat_create_conversation",
+  "cloud_chat_get_conversation",
+  "cloud_chat_archive_conversation",
+  "cloud_chat_spend",
+  "cloud_chat_resolve_pending",
+  "cloud_chat_stream_start",
+  "cloud_chat_stream_abort",
 ] as const;
 
 const INVOKE_SET = new Set<string>(INVOKE_CHANNELS);
@@ -196,6 +204,7 @@ const EVENT_PREFIXES: readonly string[] = [
   "k9s_exit_",
   "k8s_pf_exit_",
   "k8s_pf_cloud_exit_",
+  "cloud_chat_stream_",
 ];
 
 function isAllowedEventChannel(channel: string): boolean {

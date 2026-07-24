@@ -6,6 +6,7 @@ export type WorkspaceTabTarget =
   | { kind: "account"; accountId: string }
   | { kind: "agents" }
   | { kind: "workflows"; workflowId?: string }
+  | { kind: "chat"; conversationId?: string }
   | {
       kind: "resource";
       accountId: string;
@@ -47,6 +48,8 @@ export function getWorkspaceTabId(target: WorkspaceTabTarget): string {
       return "agents";
     case "workflows":
       return target.workflowId ? `workflows:${target.workflowId}` : "workflows";
+    case "chat":
+      return target.conversationId ? `chat:${target.conversationId}` : "chat";
     case "resource":
       if (target.view === "ssh") {
         const suffix = target.agentSessionId ? `:agent:${target.agentSessionId}` : "";
@@ -68,6 +71,8 @@ export function getWorkspaceTabFallbackTitle(target: WorkspaceTabTarget): string
       return "Agents";
     case "workflows":
       return "Workflows";
+    case "chat":
+      return "Chat";
     case "resource":
       if (target.view === "ssh") return "SSH";
       if (target.view === "sftp") return "SFTP";
@@ -86,6 +91,8 @@ export function workspaceTabTargetsEqual(a: WorkspaceTabTarget, b: WorkspaceTabT
       return true;
     case "workflows":
       return a.workflowId === (b as { workflowId?: string }).workflowId;
+    case "chat":
+      return a.conversationId === (b as { conversationId?: string }).conversationId;
     case "resource":
       return (
         a.accountId === (b as { accountId: string }).accountId &&

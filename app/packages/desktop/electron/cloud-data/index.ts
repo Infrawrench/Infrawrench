@@ -1,6 +1,7 @@
 // Cloud IPC handlers, split by concern. Importing this file (or the parent
 // directory) registers all of them via electron's `ipcMain.handle`.
 import "./accounts";
+import "./chat";
 import "./costs";
 import "./dashboards";
 import "./resources";

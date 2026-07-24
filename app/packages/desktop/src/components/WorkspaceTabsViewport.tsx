@@ -15,6 +15,7 @@ import { WorkflowsPanel, type WorkflowClient } from "@infrawrench/ui/workflows";
 import { AgentsPanel, type AgentClient } from "@infrawrench/ui/agents";
 import { createDesktopWorkflowClient } from "@/lib/workflow-client";
 import { createDesktopAgentClient } from "@/lib/agent-client";
+import { CloudChatPanel } from "@/components/CloudChatPanel";
 
 // Stable singleton WorkflowClient so the panel's effects don't refire each
 // render. The desktop client runs workflows in-renderer (isolate + plugin
@@ -81,6 +82,8 @@ function renderPanel(tab: WorkspaceTab, navigate: ReturnType<typeof useNavigate>
       );
     case "workflows":
       return <WorkflowsPanel client={getWorkflowClient()} />;
+    case "chat":
+      return <CloudChatPanel conversationId={t.conversationId} />;
     case "resource":
       return (
         <ResourcePanel
@@ -104,6 +107,7 @@ function targetsMatch(a: WorkspaceTabTarget, b: WorkspaceTabTarget): boolean {
   if (a.kind !== b.kind) return false;
   if (a.kind === "workflows" && b.kind === "workflows") return a.workflowId === b.workflowId;
   if (a.kind === "agents" && b.kind === "agents") return true;
+  if (a.kind === "chat" && b.kind === "chat") return a.conversationId === b.conversationId;
   if (a.kind === "dashboard" && b.kind === "dashboard") return a.dashboardId === b.dashboardId;
   if (a.kind === "account" && b.kind === "account") return a.accountId === b.accountId;
   if (a.kind === "resource" && b.kind === "resource") {

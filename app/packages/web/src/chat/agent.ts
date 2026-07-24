@@ -15,7 +15,7 @@ import { db } from "../db/client";
 import { chatConversations, chatMessages, chatPendingActions } from "../db/schema";
 import { getToolRegistry } from "../tools/registry";
 import type { ToolAuthContext, ToolDefinition, ToolResult } from "../tools/types";
-import type { ContentBlock as AnthropicContentBlock } from "../components/chat/types";
+import type { ChatContentBlock as AnthropicContentBlock } from "@infrawrench/ui";
 import { recordUsage } from "./billing";
 
 const DEFAULT_MODEL = "claude-sonnet-4-6";

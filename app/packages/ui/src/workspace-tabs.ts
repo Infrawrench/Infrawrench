@@ -33,6 +33,10 @@ export function agentsTabTarget(): WorkspaceTabTarget {
   return { kind: "agents" };
 }
 
+export function chatTabTarget(conversationId?: string): WorkspaceTabTarget {
+  return { kind: "chat", ...(conversationId ? { conversationId } : {}) };
+}
+
 export function resourceTabTarget(
   accountId: string,
   resourceId: string,

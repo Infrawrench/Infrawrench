@@ -4,7 +4,7 @@ description: Drive your infrastructure through a Claude-powered agent — same t
 sidebar_order: 12
 ---
 
-> **Web only.** Cloud feature; metered separately from your seat plan.
+> **Cloud feature**; metered separately from your seat plan. Available in the web app and — when signed in to Infrawrench Cloud — in the desktop app, where it proxies through the web backend.
 
 Infrawrench ships an in-app **AI chat** powered by Anthropic Claude. The model has access to the same tools your UI uses — listing resources, inspecting outputs, running SQL queries, executing Docker commands, rotating secrets, attaching disks, applying manifests — and routes every destructive action through a UI approval step.
 
@@ -12,10 +12,13 @@ Infrawrench ships an in-app **AI chat** powered by Anthropic Claude. The model h
 
 <insert [Sidebar Chat section showing several recent chat sessions with the + new-chat button] here>
 
+<insert [Desktop app with a chat conversation open as a workspace tab, cloud org selected in the org switcher] here>
+
 ## Where it lives
 
-- **In the app** — `/org/{orgId}/chat`. New conversations are private to the user who created them.
-- **In the sidebar** — a **Chat** section lists your recent sessions (like Workflows and Dashboards). Click **+** to start a new chat, click a session to reopen it, or hover and click **×** to archive it. Click the section header to see all chats.
+- **In the web app** — `/org/{orgId}/chat`. New conversations are private to the user who created them.
+- **In the desktop app** — chat opens as a workspace tab once you sign in to Infrawrench Cloud and pick an organization ([desktop vs web](../core-concepts/desktop-vs-web.md)). The conversation history, the agent loop, and billing all live in the cloud, so the same sessions appear on web and desktop. In local-only mode the chat section is hidden.
+- **In the sidebar** (web and desktop) — a **Chat** section lists your recent sessions (like Workflows and Dashboards). Click **+** to start a new chat, click a session to reopen it, or hover and click **×** to archive it. Click the section header to see all chats.
 - **API** — `POST /api/org/{orgId}/chat/conversations/{id}/messages`. Auth is the same WorkOS session as the rest of the web UI, or an [API key](../team-and-billing/api-keys.md) with the `chat:write` scope.
 
 ## What the agent can do

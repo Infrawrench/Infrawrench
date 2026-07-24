@@ -8,19 +8,20 @@ Infrawrench ships as both a desktop app and a hosted web app. They share the sam
 
 ## At a glance
 
-| Feature             | Desktop                         | Web                              |
-| ------------------- | ------------------------------- | -------------------------------- |
-| Works offline       | Yes                             | No                               |
-| Credential storage  | Local SQLite, AES-256-GCM       | Server-side, encrypted           |
-| Auth                | None required                   | WorkOS (email / Google / MS)     |
-| SSH terminal        | Native, direct connection       | WebSocket proxied through server |
-| SQL / KV console    | Native drivers                  | Proxied                          |
-| File browsers       | GCS, S3, R2, Azure Blob, + SFTP | GCS, S3, R2, Azure Blob          |
-| Docker              | Native socket / TCP             | Remote TCP only                  |
-| Team / billing      | n/a                             | Full multi-user, Stripe billing  |
-| Audit log, API keys | n/a                             | Paid plan                        |
-| SSH agent           | System keys + Pageant (Windows) | System keys server-side          |
-| Cloud sync          | Optional, OAuth PKCE, push-only | n/a (you are the cloud)          |
+| Feature                           | Desktop                                                   | Web                              |
+| --------------------------------- | --------------------------------------------------------- | -------------------------------- |
+| Works offline                     | Yes                                                       | No                               |
+| Credential storage                | Local SQLite, AES-256-GCM                                 | Server-side, encrypted           |
+| Auth                              | None required                                             | WorkOS (email / Google / MS)     |
+| SSH terminal                      | Native, direct connection                                 | WebSocket proxied through server |
+| SQL / KV console                  | Native drivers                                            | Proxied                          |
+| File browsers                     | GCS, S3, R2, Azure Blob, + SFTP                           | GCS, S3, R2, Azure Blob          |
+| Docker                            | Native socket / TCP                                       | Remote TCP only                  |
+| Team / billing                    | n/a                                                       | Full multi-user, Stripe billing  |
+| Audit log, API keys               | n/a                                                       | Paid plan                        |
+| SSH agent                         | System keys + Pageant (Windows)                           | System keys server-side          |
+| Cloud sync                        | Optional, OAuth PKCE, push-only                           | n/a (you are the cloud)          |
+| [AI chat](../features/ai-chat.md) | When signed in to cloud (proxied through the web backend) | Yes                              |
 
 ## Which should you use
 
@@ -35,3 +36,4 @@ Infrawrench ships as both a desktop app and a hosted web app. They share the sam
 - **Docker Unix socket** is desktop-only; web needs a remote Docker daemon reachable over TCP.
 - **Pageant** is Windows desktop only.
 - **Ephemeral Kubernetes scratch pods** work in both, but the launch button opens a [terminal](../features/ssh-terminal.md) which on web is proxied.
+- **[AI chat](../features/ai-chat.md)** requires a cloud org — the agent loop, billing, and conversation history live in the web backend. On desktop it appears once you sign in to Infrawrench Cloud and select an organization; in local-only mode there is no chat.

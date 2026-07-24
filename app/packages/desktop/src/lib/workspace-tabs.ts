@@ -4,6 +4,7 @@ import {
   dashboardTabTarget,
   accountTabTarget,
   agentsTabTarget,
+  chatTabTarget,
   workflowsTabTarget,
   resourceTabTarget,
   resourceSshTabTarget,
@@ -17,6 +18,7 @@ export {
   dashboardTabTarget,
   accountTabTarget,
   agentsTabTarget,
+  chatTabTarget,
   workflowsTabTarget,
   resourceTabTarget,
   resourceSshTabTarget,
@@ -50,6 +52,12 @@ export function getWorkspaceNavigateArgs(
       return { to: "/agents", ...(replace ? { replace: true } : {}) };
     case "workflows":
       return { to: "/workflows", ...(replace ? { replace: true } : {}) };
+    case "chat":
+      return {
+        to: "/chat",
+        ...(target.conversationId ? { search: { conversation: target.conversationId } } : {}),
+        ...(replace ? { replace: true } : {}),
+      };
     case "resource": {
       const search: Record<string, string> = {};
       if (target.pluginId) search["plugin"] = target.pluginId;
@@ -112,6 +120,10 @@ export function syncWorkspaceRouteFromPath(
   }
   if (segments[0] === "agents") {
     return agentsTabTarget();
+  }
+  if (segments[0] === "chat") {
+    const params = new URLSearchParams(search ?? "");
+    return chatTabTarget(params.get("conversation") ?? undefined);
   }
   if (segments[0] === "dashboard" && segments[1]) {
     return dashboardTabTarget(segments[1]);

@@ -210,6 +210,7 @@ export {
   dashboardTabTarget,
   accountTabTarget,
   agentsTabTarget,
+  chatTabTarget,
   workflowsTabTarget,
   resourceTabTarget,
   resourceSshTabTarget,
@@ -333,3 +334,5 @@ export type {
 } from "./api-types.js";
 
 export * from "./cost/index.js";
+
+export * from "./chat/index.js";

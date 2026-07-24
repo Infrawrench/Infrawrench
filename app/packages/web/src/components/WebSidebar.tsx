@@ -12,9 +12,8 @@ import {
   type OrgEntry,
 } from "@infrawrench/ui";
 import { WorkflowIcon } from "@infrawrench/ui/workflows";
+import { CHAT_CONVERSATIONS_CHANGED_EVENT, type ConversationSummary } from "@infrawrench/ui";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
-import { CHAT_CONVERSATIONS_CHANGED_EVENT } from "@/lib/chat-events";
-import type { ConversationSummary } from "@/components/chat/types";
 import { AddAccountModal } from "./AddAccountModal";
 
 interface ResourceSummary {

@@ -95,6 +95,10 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
       );
     case "workflows":
       return <WebWorkflowsPanel client={getWorkflowClient(orgId)} orgId={orgId} />;
+    // Chat never becomes a tab on web (syncWorkspaceRouteFromPath returns null
+    // for /chat) — it renders through the route Outlet instead.
+    case "chat":
+      return null;
     case "resource":
       if (!t.pluginId || !t.resourceTypeId) {
         // Without pluginId/resourceTypeId we can't construct the detail URL.

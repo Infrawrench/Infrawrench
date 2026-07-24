@@ -1,16 +1,24 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { getDb } from "../db/client";
 import { createDashboard } from "../lib/pins";
-import { DroppableDashboardItem, useUIStore } from "@infrawrench/ui";
+import {
+  CHAT_CONVERSATIONS_CHANGED_EVENT,
+  DroppableDashboardItem,
+  emitChatConversationsChanged,
+  useUIStore,
+  type ConversationSummary,
+} from "@infrawrench/ui";
 import { WorkflowIcon } from "@infrawrench/ui/workflows";
 import {
   agentsTabTarget,
+  chatTabTarget,
   dashboardTabTarget,
   workflowsTabTarget,
   navigateToWorkspaceTarget,
 } from "../lib/workspace-tabs";
 import { listCloudDashboards, createCloudDashboard, deleteCloudDashboard } from "../lib/cloud-api";
+import { getDesktopChatClient } from "./CloudChatPanel";
 
 interface DashboardRow {
   id: string;
@@ -28,6 +36,60 @@ export function SidebarDashboards() {
   const activeCloudOrgId = useUIStore((s) => s.activeCloudOrgId);
   const navigate = useNavigate();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const searchStr = useRouterState({ select: (s) => s.location.searchStr });
+  const [chatSessions, setChatSessions] = useState<ConversationSummary[]>([]);
+
+  // Chat sessions — cloud-mode only (the chat agent runs in the web backend).
+  const loadChats = useCallback(async () => {
+    if (!activeCloudOrgId) {
+      setChatSessions([]);
+      return;
+    }
+    try {
+      setChatSessions(await getDesktopChatClient(activeCloudOrgId).listConversations());
+    } catch (err) {
+      console.error("[sidebar-chat] Failed to load chat sessions:", err);
+      setChatSessions([]);
+    }
+  }, [activeCloudOrgId]);
+
+  useEffect(() => {
+    void loadChats();
+    const handler = () => void loadChats();
+    window.addEventListener(CHAT_CONVERSATIONS_CHANGED_EVENT, handler);
+    return () => window.removeEventListener(CHAT_CONVERSATIONS_CHANGED_EVENT, handler);
+  }, [loadChats]);
+
+  async function handleNewChat() {
+    if (!activeCloudOrgId) return;
+    try {
+      const created = await getDesktopChatClient(activeCloudOrgId).createConversation();
+      emitChatConversationsChanged();
+      void navigateToWorkspaceTarget(navigate, chatTabTarget(created.id), { label: "New chat" });
+    } catch (err) {
+      console.error("[sidebar-chat] Failed to create chat:", err);
+    }
+  }
+
+  async function handleArchiveChat(id: string) {
+    if (!activeCloudOrgId) return;
+    try {
+      await getDesktopChatClient(activeCloudOrgId).archiveConversation(id);
+      setChatSessions((prev) => prev.filter((c) => c.id !== id));
+      emitChatConversationsChanged();
+      useUIStore
+        .getState()
+        .removeWorkspaceTabs(
+          useUIStore
+            .getState()
+            .workspaceTabs.flatMap((tab) =>
+              tab.target.kind === "chat" && tab.target.conversationId === id ? [tab.id] : [],
+            ),
+        );
+    } catch (err) {
+      console.error("[sidebar-chat] Failed to archive chat:", err);
+    }
+  }
 
   async function load() {
     try {
@@ -108,6 +170,81 @@ export function SidebarDashboards() {
           <span className="truncate">Workflows</span>
         </button>
       </div>
+
+      {/* Chat sessions — only when signed in to cloud with an active org */}
+      {activeCloudOrgId && (
+        <div className="mb-2">
+          <div className="flex items-center justify-between px-3 py-1">
+            <button
+              type="button"
+              onClick={() =>
+                void navigateToWorkspaceTarget(navigate, chatTabTarget(), { label: "Chat" })
+              }
+              className="text-xs font-medium text-on-surface-muted uppercase tracking-wide hover:text-on-surface-secondary transition-colors"
+            >
+              Chat
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleNewChat()}
+              title="New chat"
+              aria-label="Start new chat"
+              className="text-on-surface-faint hover:text-on-surface-secondary text-sm leading-none size-5 flex items-center justify-center rounded hover:bg-surface-overlay transition-colors"
+            >
+              +
+            </button>
+          </div>
+
+          {chatSessions.slice(0, 8).map((chat) => {
+            const isActive =
+              pathname === "/chat" &&
+              new URLSearchParams(searchStr ?? "").get("conversation") === chat.id;
+            return (
+              <div
+                key={chat.id}
+                className={`group mx-2 flex items-center rounded-lg transition-colors ${
+                  isActive
+                    ? "bg-surface-overlay text-on-surface"
+                    : "text-on-surface-tertiary hover:text-on-surface-secondary hover:bg-surface-overlay"
+                }`}
+              >
+                <button
+                  type="button"
+                  onClick={() =>
+                    void navigateToWorkspaceTarget(navigate, chatTabTarget(chat.id), {
+                      label: chat.title,
+                    })
+                  }
+                  className="flex-1 min-w-0 text-left px-3 py-1.5 text-xs"
+                >
+                  <span className="block truncate">{chat.title}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleArchiveChat(chat.id)}
+                  title="Archive chat"
+                  aria-label="Archive chat"
+                  className="opacity-0 group-hover:opacity-100 text-on-surface-faint hover:text-red-500 text-xs px-2 py-1.5 transition-opacity"
+                >
+                  ×
+                </button>
+              </div>
+            );
+          })}
+
+          {chatSessions.length > 8 && (
+            <button
+              type="button"
+              onClick={() =>
+                void navigateToWorkspaceTarget(navigate, chatTabTarget(), { label: "Chat" })
+              }
+              className="mx-2 px-3 py-1 text-xs text-on-surface-faint hover:text-on-surface-secondary transition-colors"
+            >
+              All chats…
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Section header */}
       <div className="flex items-center justify-between px-3 py-1">

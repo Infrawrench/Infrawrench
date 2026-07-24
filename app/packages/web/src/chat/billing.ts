@@ -14,7 +14,7 @@ import { db } from "../db/client";
 import { chatUsage, organizations, subscriptions } from "../db/schema";
 import { computeCostMicros, type TokenUsage } from "./pricing";
 import { getStripe } from "../services/stripe";
-import type { SpendStatus } from "../components/chat/types";
+import type { SpendStatus } from "@infrawrench/ui";
 
 /** ISO timestamp of the first day of the current month (UTC). */
 function monthStart(): Date {

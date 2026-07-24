@@ -1,32 +1,32 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { apiGet, apiPost } from "@/lib/api";
-import { CHAT_CONVERSATIONS_CHANGED_EVENT } from "@/lib/chat-events";
 import {
+  emitChatConversationsChanged,
   microsToUsd,
-  type ChatMessage,
-  type ContentBlock,
+  type ChatClient,
+  type ChatConversationMessage,
+  type ChatContentBlock,
+  type ChatPendingAction,
   type ConversationSummary,
-  type PendingAction,
   type SpendStatus,
-} from "./types";
+} from "./types.js";
 
 interface Props {
-  orgId: string;
+  client: ChatClient;
   conversationId: string;
 }
 
 interface StreamingState {
   active: boolean;
-  /** Buffered text for the in-flight assistant message (assistantId → text). */
+  /** Buffered text for the in-flight assistant message. */
   text: string;
   toolUses: Array<{ id: string; name: string; input: string; executed?: boolean }>;
   error?: string | undefined;
 }
 
-export function ConversationView({ orgId, conversationId }: Props): React.ReactElement {
+export function ConversationView({ client, conversationId }: Props): React.ReactElement {
   const [conversation, setConversation] = useState<ConversationSummary | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [pending, setPending] = useState<PendingAction[]>([]);
+  const [messages, setMessages] = useState<ChatConversationMessage[]>([]);
+  const [pending, setPending] = useState<ChatPendingAction[]>([]);
   const [spend, setSpend] = useState<SpendStatus | null>(null);
   const [streaming, setStreaming] = useState<StreamingState>({
     active: false,
@@ -37,17 +37,13 @@ export function ConversationView({ orgId, conversationId }: Props): React.ReactE
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
   const reload = useCallback(async () => {
-    const data = await apiGet<{
-      conversation: ConversationSummary;
-      messages: ChatMessage[];
-      pendingActions: PendingAction[];
-    }>(`/api/org/${orgId}/chat/conversations/${conversationId}`);
+    const data = await client.getConversation(conversationId);
     setConversation(data.conversation);
     setMessages(data.messages);
     setPending(data.pendingActions);
-    const s = await apiGet<SpendStatus>(`/api/org/${orgId}/chat/spend`);
+    const s = await client.getSpend();
     setSpend(s);
-  }, [orgId, conversationId]);
+  }, [client, conversationId]);
 
   useEffect(() => {
     void reload();
@@ -61,47 +57,8 @@ export function ConversationView({ orgId, conversationId }: Props): React.ReactE
     async (body: { text?: string; resume?: boolean }) => {
       setStreaming({ active: true, text: "", toolUses: [] });
 
-      const res = await fetch(`/api/org/${orgId}/chat/conversations/${conversationId}/messages`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-
-      if (!res.ok || !res.body) {
-        const text = await res.text();
-        setStreaming({ active: false, text: "", toolUses: [], error: text });
-        return;
-      }
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buf = "";
-      let stopped = false;
-
-      while (!stopped) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-
-        // SSE frames are separated by a blank line.
-        let idx: number;
-        while ((idx = buf.indexOf("\n\n")) !== -1) {
-          const frame = buf.slice(0, idx);
-          buf = buf.slice(idx + 2);
-          // Parse SSE frame: event:<name>\ndata:<json>
-          const lines = frame.split("\n");
-          let dataLine = "";
-          for (const ln of lines) {
-            if (ln.startsWith("data:")) dataLine += ln.slice(5).trimStart();
-          }
-          if (!dataLine) continue;
-          let ev: { type: string; [key: string]: unknown };
-          try {
-            ev = JSON.parse(dataLine) as { type: string; [key: string]: unknown };
-          } catch {
-            continue;
-          }
+      try {
+        for await (const ev of client.streamTurn(conversationId, body)) {
           if (ev.type === "text_delta") {
             const delta = ev["delta"] as string;
             setStreaming((s) => ({ ...s, text: s.text + delta }));
@@ -135,7 +92,6 @@ export function ConversationView({ orgId, conversationId }: Props): React.ReactE
           } else if (ev.type === "pending_action") {
             // Server has persisted the action; we'll see it after reload.
           } else if (ev.type === "turn_end") {
-            stopped = true;
             break;
           } else if (ev.type === "spend_blocked") {
             setStreaming((s) => ({
@@ -144,23 +100,26 @@ export function ConversationView({ orgId, conversationId }: Props): React.ReactE
                 Number(ev["monthlyCapMicros"]),
               )}). Increase the cap in org settings or wait for next month.`,
             }));
-            stopped = true;
             break;
           } else if (ev.type === "error") {
             setStreaming((s) => ({ ...s, error: ev["message"] as string }));
-            stopped = true;
             break;
           }
         }
+      } catch (e) {
+        setStreaming((s) => ({
+          ...s,
+          error: e instanceof Error ? e.message : "Chat stream failed",
+        }));
       }
 
       setStreaming((s) => ({ ...s, active: false }));
       await reload();
       // A completed turn can rename the conversation and bumps updatedAt —
-      // let the sidebar session list pick that up.
-      window.dispatchEvent(new Event(CHAT_CONVERSATIONS_CHANGED_EVENT));
+      // let session lists pick that up.
+      emitChatConversationsChanged();
     },
-    [conversationId, orgId, reload],
+    [client, conversationId, reload],
   );
 
   async function handleSend(): Promise<void> {
@@ -170,43 +129,32 @@ export function ConversationView({ orgId, conversationId }: Props): React.ReactE
     await startStream({ text });
   }
 
+  const resumeIfResolved = useCallback(async () => {
+    const data = await client.getConversation(conversationId);
+    const unresolved = data.pendingActions.some(
+      (p) => p.status === "pending" || p.status === "approved",
+    );
+    if (!unresolved && data.pendingActions.length > 0) {
+      await startStream({ resume: true });
+    }
+  }, [client, conversationId, startStream]);
+
   async function handleApprove(pendingId: string): Promise<void> {
-    await apiPost(`/api/org/${orgId}/chat/conversations/${conversationId}/pending/${pendingId}`, {
-      action: "approve",
-    });
+    await client.resolvePendingAction(conversationId, pendingId, "approve");
     await reload();
     // If all pending actions for the latest assistant message are now resolved,
     // resume the model loop with the tool results.
-    const data = await apiGet<{ pendingActions: PendingAction[] }>(
-      `/api/org/${orgId}/chat/conversations/${conversationId}`,
-    );
-    const unresolved = data.pendingActions.some(
-      (p) => p.status === "pending" || p.status === "approved",
-    );
-    if (!unresolved && data.pendingActions.length > 0) {
-      await startStream({ resume: true });
-    }
+    await resumeIfResolved();
   }
 
   async function handleReject(pendingId: string, reason?: string): Promise<void> {
-    await apiPost(`/api/org/${orgId}/chat/conversations/${conversationId}/pending/${pendingId}`, {
-      action: "reject",
-      ...(reason ? { reason } : {}),
-    });
+    await client.resolvePendingAction(conversationId, pendingId, "reject", reason);
     await reload();
-    const data = await apiGet<{ pendingActions: PendingAction[] }>(
-      `/api/org/${orgId}/chat/conversations/${conversationId}`,
-    );
-    const unresolved = data.pendingActions.some(
-      (p) => p.status === "pending" || p.status === "approved",
-    );
-    if (!unresolved && data.pendingActions.length > 0) {
-      await startStream({ resume: true });
-    }
+    await resumeIfResolved();
   }
 
   const pendingByMessage = useMemo(() => {
-    const m = new Map<string, PendingAction[]>();
+    const m = new Map<string, ChatPendingAction[]>();
     for (const p of pending) {
       const list = m.get(p.messageId) ?? [];
       list.push(p);
@@ -294,8 +242,8 @@ export function ConversationView({ orgId, conversationId }: Props): React.ReactE
 }
 
 interface BubbleProps {
-  message: ChatMessage;
-  pendingActions: PendingAction[];
+  message: ChatConversationMessage;
+  pendingActions: ChatPendingAction[];
   onApprove(id: string): Promise<void>;
   onReject(id: string, reason?: string): Promise<void>;
 }
@@ -307,7 +255,7 @@ function MessageBubble({
   onReject,
 }: BubbleProps): React.ReactElement {
   const isAssistant = message.role === "assistant";
-  const pendingByToolUseId = new Map<string, PendingAction>(
+  const pendingByToolUseId = new Map<string, ChatPendingAction>(
     pendingActions.map((p) => [p.toolUseId, p]),
   );
 
@@ -330,8 +278,8 @@ function MessageBubble({
 }
 
 interface BlockProps {
-  block: ContentBlock;
-  pending: PendingAction | undefined;
+  block: ChatContentBlock;
+  pending: ChatPendingAction | undefined;
   onApprove(id: string): Promise<void>;
   onReject(id: string, reason?: string): Promise<void>;
 }
