@@ -33,6 +33,11 @@ vi.mock("../../services/ssh", () => ({
 }));
 
 vi.mock("../../services/audit", () => ({ logAudit: vi.fn() }));
+// Not importOriginal: the real module pulls in db/client, which requires
+// DATABASE_URL at import time. Only the class identity matters here.
+vi.mock("../../services/ssh-host-keys", () => ({
+  HostKeyTrustRequiredError: class HostKeyTrustRequiredError extends Error {},
+}));
 
 const { connectionTools } = await import("../connections");
 const tools = connectionTools();

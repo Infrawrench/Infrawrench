@@ -35,10 +35,14 @@ Revoke when:
 - You accepted a key by mistake and want to start over.
 - The host's fingerprint legitimately changed and you want users to re-verify.
 
+## From MCP and chat
+
+The [MCP server](../features/mcp.md) and the [AI chat](../features/ai-chat.md) expose the same pin store as tools: `list_trusted_ssh_hosts`, `trust_ssh_host`, and `remove_ssh_host_trust`. When the agent's `ssh_exec` hits an untrusted host, the error carries the presented fingerprint and tells the model to ask you to verify it before calling `trust_ssh_host`. Trusting and revoking are destructive-tier, so in chat they always stop at an Approve/Reject card — verify the fingerprint out-of-band (provider console, `ssh-keygen -lf`) before approving, exactly as you would in the UI prompt.
+
 ## API and audit
 
 - `GET /api/org/{orgId}/ssh-host-keys` — list pins.
 - `POST /api/org/{orgId}/ssh-host-keys/trust` — pin a fingerprint after user consent.
 - `DELETE /api/org/{orgId}/ssh-host-keys/{id}` — revoke a pin.
 
-Every trust and revoke event lands in the [audit log](./audit-log.md) as `ssh_host_key.trusted`, `ssh_host_key.replaced`, or `ssh_host_key.removed`.
+Every trust and revoke event lands in the [audit log](./audit-log.md) as `ssh_host_key.trusted`, `ssh_host_key.replaced`, or `ssh_host_key.removed` — tool-driven changes included.

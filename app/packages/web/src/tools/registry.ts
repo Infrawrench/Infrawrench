@@ -11,6 +11,7 @@ import { perPluginCreateTools } from "./per-plugin-create";
 import { connectionTools } from "./connections";
 import { costTools } from "./costs";
 import { sshKeyTools } from "./ssh-keys";
+import { sshHostKeyTools } from "./ssh-host-keys";
 import type { ToolDefinition } from "./types";
 
 let cached: ToolDefinition[] | null = null;
@@ -22,6 +23,7 @@ export async function getToolRegistry(): Promise<ToolDefinition[]> {
     ...connectionTools(),
     ...costTools(),
     ...sshKeyTools(),
+    ...sshHostKeyTools(),
     ...(await perPluginCreateTools()),
   ];
   cached = tools;

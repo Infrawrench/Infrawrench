@@ -8,6 +8,7 @@ import { sqlDrivers, kvDrivers, dockerDrivers } from "../services/drivers";
 import { rewriteConnectionForTunnel } from "../services/tunnel-resolver";
 import { getClientForAccount, getClientForResource } from "../services/plugin-clients";
 import { resolveSshConfig, sshExec } from "../services/ssh";
+import { HostKeyTrustRequiredError } from "../services/ssh-host-keys";
 import { logAudit } from "../services/audit";
 import { ok, err, type ToolDefinition } from "./types";
 
@@ -301,7 +302,14 @@ export function connectionTools(): ToolDefinition[] {
           });
           return ok({ stdout, code: 0 });
         } catch (e) {
-          const message = e instanceof Error ? e.message : "SSH exec failed";
+          let message = e instanceof Error ? e.message : "SSH exec failed";
+          if (e instanceof HostKeyTrustRequiredError) {
+            message +=
+              ` Have the user verify this fingerprint out-of-band, then call trust_ssh_host ` +
+              `{ host: "${e.host}", port: ${e.port}, fingerprint: "${e.presentedFingerprint}"` +
+              (e.storedFingerprint ? `, previousFingerprint: "${e.storedFingerprint}"` : "") +
+              ` } and retry.`;
+          }
           void logAudit({
             organizationId: auth.organizationId,
             userId: auth.userId,
