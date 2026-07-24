@@ -15,16 +15,13 @@ resource "helm_release" "ingress_nginx" {
     value = "2"
   }
 
-  # Preserve client IPs and let the DO LB health-check the controller.
+  # DO now provisions REGIONAL_NETWORK (passthrough) LBs by default, which
+  # never inject a PROXY header — with use-proxy-protocol nginx drops every
+  # connection. Client IPs are preserved by keeping traffic on the receiving
+  # node instead.
   set {
-    name  = "controller.service.annotations.service\\.beta\\.kubernetes\\.io/do-loadbalancer-enable-proxy-protocol"
-    value = "true"
-    type  = "string"
-  }
-  set {
-    name  = "controller.config.use-proxy-protocol"
-    value = "true"
-    type  = "string"
+    name  = "controller.service.externalTrafficPolicy"
+    value = "Local"
   }
 
   depends_on = [digitalocean_kubernetes_cluster.prod]
