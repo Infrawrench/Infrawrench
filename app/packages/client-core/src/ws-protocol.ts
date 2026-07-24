@@ -138,6 +138,12 @@ export interface ServerDataFrame {
   data: string;
 }
 
+/**
+ * `ssh:error` frames carry the extra structured fields below when the proxy
+ * refuses an untrusted/changed host key (mirroring the HTTP 409
+ * `ssh_host_key_trust_required` payload). Clients prompt the operator, POST
+ * /ssh-host-keys/trust on accept, and reconnect on a fresh socket + token.
+ */
 export interface ServerStatusFrame {
   type:
     | "ssh:ready"
@@ -155,6 +161,13 @@ export interface ServerStatusFrame {
     | "sql:result"
     | "sql:error";
   error?: string;
+  /** Set to "ssh_host_key_trust_required" on host-key trust refusals. */
+  code?: string;
+  kind?: "unknown" | "mismatch";
+  host?: string;
+  port?: number;
+  presentedFingerprint?: string;
+  storedFingerprint?: string | null;
   [key: string]: unknown;
 }
 

@@ -8,6 +8,9 @@ import {
   hideXtermScrollbar,
   pastedImageFilename,
 } from "@infrawrench/ui";
+import { apiPost } from "@/lib/api";
+import { isHostKeyTrustResponse, type HostKeyTrustPayload } from "@/lib/host-key-trust";
+import { useHostKeyTrust } from "@/lib/useHostKeyTrust";
 
 interface WebTerminalProps {
   accountId: string;
@@ -46,6 +49,7 @@ export function WebTerminal({
   // Connection state mirrored into a visually hidden live region so screen
   // readers announce it — the xterm buffer writes are not reliably read.
   const [statusMessage, setStatusMessage] = useState("");
+  const { promptIfNeeded, dialog } = useHostKeyTrust(orgId ?? "");
 
   useEffect(() => {
     let term: import("@xterm/xterm").Terminal | null = null;
@@ -107,17 +111,37 @@ export function WebTerminal({
       const onData = term.onData(sendToShell);
       const altScroll = attachAltBufferScrollHandler(term, sendToShell);
 
-      requestAnimationFrame(() => {
-        if (disposed || !term) return;
-        fitAddon.fit();
+      // The proxy reports an untrusted/changed host key as a structured
+      // ssh:error frame. Show the same trust dialog the HTTP SSH surfaces use
+      // and, once the pin is recorded, reconnect on a fresh socket + token
+      // (ws tokens are one-time and the proxy tears the session down when the
+      // verifier rejects).
+      const handleTrustRequired = async (payload: HostKeyTrustPayload) => {
+        const accepted = await promptIfNeeded(payload);
+        if (disposed) return;
+        if (!accepted) {
+          term?.write(`\r\n\x1b[31m${payload.message}\x1b[0m\r\n`);
+          setStatusMessage(payload.message);
+          return;
+        }
+        try {
+          const fresh = await apiPost<{ token: string }>(`/api/org/${orgId}/ws-token`, {});
+          if (disposed) return;
+          term?.write(`\x1b[90mHost key trusted — reconnecting…\x1b[0m\r\n`);
+          setStatusMessage("Host key trusted — reconnecting…");
+          wsRef.current?.close();
+          openSocket(fresh.token);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          term?.write(`\r\n\x1b[31m${message}\x1b[0m\r\n`);
+          setStatusMessage(message);
+        }
+      };
 
-        const connectLabel = sshHost && sshUsername ? `${sshUsername}@${sshHost}:22` : "SSH";
-        term.write(`\x1b[90mConnecting to \x1b[0m${connectLabel}\x1b[90m…\x1b[0m\r\n`);
-        setStatusMessage(`Connecting to ${connectLabel}…`);
-
+      const openSocket = (wsToken: string) => {
         const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
         const ws = new WebSocket(
-          `${wsProtocol}//${window.location.host}/api/ws?token=${encodeURIComponent(token)}`,
+          `${wsProtocol}//${window.location.host}/api/ws?token=${encodeURIComponent(wsToken)}`,
         );
         wsRef.current = ws;
 
@@ -142,6 +166,12 @@ export function WebTerminal({
             type: string;
             data?: string;
             error?: string;
+            code?: string;
+            kind?: string;
+            host?: string;
+            port?: number;
+            presentedFingerprint?: string;
+            storedFingerprint?: string | null;
           };
 
           switch (msg.type) {
@@ -165,10 +195,28 @@ export function WebTerminal({
                 term.write(Uint8Array.from(atob(msg.data), (c) => c.charCodeAt(0)));
               }
               break;
-            case "ssh:error":
-              term?.write(`\r\n\x1b[31m${msg.error ?? "Connection error"}\x1b[0m\r\n`);
-              setStatusMessage(msg.error ?? "Connection error");
+            case "ssh:error": {
+              const trustPayload = {
+                error: "ssh_host_key_trust_required",
+                message: msg.error ?? "SSH host key requires trust",
+                kind: msg.kind,
+                host: msg.host,
+                port: msg.port,
+                presentedFingerprint: msg.presentedFingerprint,
+                storedFingerprint: msg.storedFingerprint ?? null,
+              };
+              if (
+                msg.code === "ssh_host_key_trust_required" &&
+                orgId &&
+                isHostKeyTrustResponse(trustPayload)
+              ) {
+                void handleTrustRequired(trustPayload);
+              } else {
+                term?.write(`\r\n\x1b[31m${msg.error ?? "Connection error"}\x1b[0m\r\n`);
+                setStatusMessage(msg.error ?? "Connection error");
+              }
               break;
+            }
             case "ssh:closed":
               connected = false;
               term?.write("\r\n\x1b[90m[Connection closed]\x1b[0m\r\n");
@@ -181,6 +229,17 @@ export function WebTerminal({
           term?.write("\r\n\x1b[31mWebSocket connection failed\x1b[0m\r\n");
           setStatusMessage("WebSocket connection failed");
         };
+      };
+
+      requestAnimationFrame(() => {
+        if (disposed || !term) return;
+        fitAddon.fit();
+
+        const connectLabel = sshHost && sshUsername ? `${sshUsername}@${sshHost}:22` : "SSH";
+        term.write(`\x1b[90mConnecting to \x1b[0m${connectLabel}\x1b[90m…\x1b[0m\r\n`);
+        setStatusMessage(`Connecting to ${connectLabel}…`);
+
+        openSocket(token);
       });
 
       const ro = new ResizeObserver(() => {
@@ -221,6 +280,7 @@ export function WebTerminal({
     initialCommand,
     initialCwd,
     agentTerminal,
+    promptIfNeeded,
   ]);
 
   return (
@@ -229,6 +289,7 @@ export function WebTerminal({
         {statusMessage}
       </div>
       <div ref={containerRef} className="absolute inset-0 p-2" />
+      {dialog}
     </div>
   );
 }

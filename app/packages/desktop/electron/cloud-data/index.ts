@@ -10,3 +10,4 @@ import "./metrics";
 import "./sql-kv-docker";
 import "./sftp";
 import "./ssh-tunnels";
+import "./host-key-trust";

@@ -121,79 +121,138 @@ async function openLocalShell(params: LocalShellParams): Promise<SshShellHandle>
   };
 }
 
-async function openCloudShell(params: CloudShellParams): Promise<SshShellHandle> {
-  const token = await invoke<string | null>("cloud_auth_get_ws_token", { orgId: params.orgId });
-  if (!token) throw new Error("Not authenticated to Infrawrench Cloud");
+interface CloudSshErrorFrame {
+  type: string;
+  data?: string;
+  error?: string;
+  code?: string;
+  kind?: "unknown" | "mismatch";
+  host?: string;
+  port?: number;
+  presentedFingerprint?: string;
+  storedFingerprint?: string | null;
+}
 
+async function openCloudShell(params: CloudShellParams): Promise<SshShellHandle> {
   const wsUrl = await getCloudWsUrl();
-  const ws = new WebSocket(`${wsUrl}/api/ws?token=${encodeURIComponent(token)}`);
-  ws.binaryType = "arraybuffer";
 
   const dataListeners: Array<(d: Uint8Array) => void> = [];
   const exitListeners: Array<() => void> = [];
   const errorListeners: Array<(err: string) => void> = [];
 
-  ws.addEventListener("open", () => {
-    ws.send(
-      JSON.stringify({
-        type: "ssh:open",
-        accountId: params.accountId,
-        resourceId: params.resourceId,
-        sshKeyId: params.keySource.sshKeyId,
-        sshHost: params.host,
-        sshUsername: params.username,
-        cols: params.cols,
-        rows: params.rows,
-        ...(params.agentForward ? { agentForward: true } : {}),
-        ...(params.connectThroughAccountId
-          ? { connectThroughAccountId: params.connectThroughAccountId }
-          : {}),
-      }),
-    );
-  });
-
-  ws.addEventListener("message", (ev) => {
-    try {
-      const msg = JSON.parse(String(ev.data)) as {
-        type: string;
-        data?: string;
-        error?: string;
-      };
-      if (msg.type === "ssh:data" && msg.data) {
-        const bytes = Uint8Array.from(atob(msg.data), (c) => c.charCodeAt(0));
-        for (const cb of dataListeners) cb(bytes);
-      } else if (msg.type === "ssh:closed") {
-        for (const cb of exitListeners) cb();
-      } else if (msg.type === "ssh:error") {
-        for (const cb of errorListeners) cb(msg.error ?? "SSH error");
-      }
-    } catch {
-      /* ignore malformed messages */
-    }
-  });
-
-  ws.addEventListener("close", () => {
-    for (const cb of exitListeners) cb();
-  });
-
   let killed = false;
+  let activeWs: WebSocket | null = null;
+  const size = { cols: params.cols, rows: params.rows };
+
+  const getToken = async (): Promise<string> => {
+    const token = await invoke<string | null>("cloud_auth_get_ws_token", { orgId: params.orgId });
+    if (!token) throw new Error("Not authenticated to Infrawrench Cloud");
+    return token;
+  };
+
+  // The proxy reports an untrusted/changed host key as a structured ssh:error
+  // frame. Mirror the local-IPC terminal: show the native prompt, record the
+  // pin in the org's cloud trust store, then reconnect on a fresh socket (the
+  // proxy tears the SSH session down when the verifier rejects).
+  const handleTrustRequired = async (ws: WebSocket, msg: CloudSshErrorFrame) => {
+    const trusted = await invoke<boolean>("cloud_ssh_host_key_trust", {
+      orgId: params.orgId,
+      host: msg.host,
+      port: msg.port ?? 22,
+      kind: msg.kind ?? "unknown",
+      presentedFingerprint: msg.presentedFingerprint,
+      storedFingerprint: msg.storedFingerprint ?? null,
+    });
+    if (killed) return;
+    if (!trusted) {
+      for (const cb of errorListeners) cb(msg.error ?? "SSH host key not trusted");
+      return;
+    }
+    try {
+      connect(await getToken());
+      try {
+        ws.close();
+      } catch {
+        /* ignore */
+      }
+    } catch (err) {
+      for (const cb of errorListeners) cb(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const connect = (token: string): void => {
+    const ws = new WebSocket(`${wsUrl}/api/ws?token=${encodeURIComponent(token)}`);
+    ws.binaryType = "arraybuffer";
+    activeWs = ws;
+
+    ws.addEventListener("open", () => {
+      ws.send(
+        JSON.stringify({
+          type: "ssh:open",
+          accountId: params.accountId,
+          resourceId: params.resourceId,
+          sshKeyId: params.keySource.sshKeyId,
+          sshHost: params.host,
+          sshUsername: params.username,
+          cols: size.cols,
+          rows: size.rows,
+          ...(params.agentForward ? { agentForward: true } : {}),
+          ...(params.connectThroughAccountId
+            ? { connectThroughAccountId: params.connectThroughAccountId }
+            : {}),
+        }),
+      );
+    });
+
+    ws.addEventListener("message", (ev) => {
+      try {
+        const msg = JSON.parse(String(ev.data)) as CloudSshErrorFrame;
+        if (msg.type === "ssh:data" && msg.data) {
+          const bytes = Uint8Array.from(atob(msg.data), (c) => c.charCodeAt(0));
+          for (const cb of dataListeners) cb(bytes);
+        } else if (msg.type === "ssh:closed") {
+          for (const cb of exitListeners) cb();
+        } else if (msg.type === "ssh:error") {
+          if (msg.code === "ssh_host_key_trust_required" && msg.host && msg.presentedFingerprint) {
+            void handleTrustRequired(ws, msg);
+          } else {
+            for (const cb of errorListeners) cb(msg.error ?? "SSH error");
+          }
+        }
+      } catch {
+        /* ignore malformed messages */
+      }
+    });
+
+    ws.addEventListener("close", () => {
+      // A socket superseded by a post-trust reconnect must not tear the
+      // terminal down.
+      if (ws !== activeWs) return;
+      for (const cb of exitListeners) cb();
+    });
+  };
+
+  connect(await getToken());
+
   return {
     kind: "cloud",
     write: (data: string) => {
-      if (killed || ws.readyState !== WebSocket.OPEN) return;
+      if (killed || activeWs?.readyState !== WebSocket.OPEN) return;
       const bytes = new TextEncoder().encode(data);
       let binary = "";
       for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]!);
-      ws.send(JSON.stringify({ type: "ssh:data", data: btoa(binary) }));
+      activeWs.send(JSON.stringify({ type: "ssh:data", data: btoa(binary) }));
     },
     resize: (cols: number, rows: number) => {
-      if (killed || ws.readyState !== WebSocket.OPEN) return;
-      ws.send(JSON.stringify({ type: "ssh:resize", cols, rows }));
+      size.cols = cols;
+      size.rows = rows;
+      if (killed || activeWs?.readyState !== WebSocket.OPEN) return;
+      activeWs.send(JSON.stringify({ type: "ssh:resize", cols, rows }));
     },
     kill: () => {
       if (killed) return;
       killed = true;
-      ws.close();
+      activeWs?.close();
     },
     onData: (cb) => {
       dataListeners.push(cb);
