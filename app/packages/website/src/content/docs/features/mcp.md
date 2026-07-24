@@ -33,9 +33,6 @@ The MCP server registers the full shared tool registry — the same tools the [A
 
 - **Discover** — `list_plugins`, `list_resource_types`, `list_accounts`, `list_resource_sidecars` (which peer plugins a resource exposes — e.g. `kubernetes` on a managed cluster, `postgres` on a managed database).
 - **Read** — `search_resources`, `list_resources`, `get_resource`, `get_resource_inputs`, `get_resource_outputs`, `get_resource_stats`, `get_resource_metrics`, `describe_resource`.
-
-Most resource tools take an optional `parentResourceId` to target a **sidecar** — the peer plugin a managed resource exposes through its outputs. "What's running in my DOKS cluster?" is `list_resource_sidecars` on the cluster, then `list_resources { pluginId: "kubernetes", resourceTypeId: "k8s-deployment", parentResourceId: <cluster id> }` — the kubeconfig is resolved server-side from the cluster's outputs, and the same pattern drives `describe_resource`, `invoke_action`, `apply_manifest`, and the per-plugin create tools inside the cluster or database.
-
 - **Mutate** — `create_resource`, `delete_resource`, `invoke_action`.
 - **Manifests** — `get_manifest`, `apply_manifest` (see [Manifest editor](./manifest-editor.md)).
 - **Connections** — `sql_query`, `sql_execute`, `introspect_sql_schema`, `kv_command`, `docker_command`, `ssh_exec`, and the storage tools (`list_storage_objects`, `make_storage_folder`, `delete_storage_object`).
@@ -43,6 +40,8 @@ Most resource tools take an optional `parentResourceId` to target a **sidecar** 
 - **SSH keys** — `list_ssh_keys`, `create_ssh_key` (generates an Ed25519 keypair; the private key stays encrypted server-side and is usable by id with `ssh_exec` and tunnels — it is never returned through a tool), `import_ssh_key` (public key only), `delete_ssh_key`. See [SSH keys](../team-and-billing/ssh-keys.md).
 
 It also registers **per-plugin create tools** at server build time. For every resource type that supports creation, you get a typed tool like `digitalocean_create_droplet` or `aws_create_s3_bucket` with a Zod schema generated from the plugin's field definitions — so the model can discover what to set without first round-tripping `list_resource_types`.
+
+Most resource tools take an optional `parentResourceId` to target a **sidecar** — the peer plugin a managed resource exposes through its outputs. "What's running in my DOKS cluster?" is `list_resource_sidecars` on the cluster, then `list_resources { pluginId: "kubernetes", resourceTypeId: "k8s-deployment", parentResourceId: <cluster id> }` — the kubeconfig is resolved server-side from the cluster's outputs, and the same pattern drives `describe_resource`, `invoke_action`, `apply_manifest`, and the per-plugin create tools inside the cluster or database.
 
 The cost, budget, and SSH-key tools enforce the same [role permissions](../team-and-billing/roles-and-permissions.md) as the web dashboard (`costs:read`, `budgets:read`, `budgets:write`, `ssh-keys:read`, `ssh-keys:write`) — a member whose role can't see spend in the UI can't read it through MCP either. Deleting another member's SSH key additionally requires `team:role:write`, matching the HTTP API.
 
