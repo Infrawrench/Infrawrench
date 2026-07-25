@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import path from "node:path";
+import { attachmentDisposition } from "../../lib/content-disposition";
 import os from "node:os";
 import { randomUUID } from "node:crypto";
 import { getClientForAccount } from "../../services/plugin-clients";
@@ -102,7 +103,7 @@ app.get("/download", async (c) => {
       return new Response(data, {
         headers: {
           "Content-Type": "application/octet-stream",
-          "Content-Disposition": `attachment; filename="${path.basename(key)}"`,
+          "Content-Disposition": attachmentDisposition(path.basename(key)),
           "Content-Length": String(data.length),
         },
       });
@@ -133,7 +134,7 @@ app.get("/download", async (c) => {
   return new Response(Readable.toWeb(passthrough) as ReadableStream, {
     headers: {
       "Content-Type": "application/zip",
-      "Content-Disposition": `attachment; filename="download-${Date.now()}.zip"`,
+      "Content-Disposition": attachmentDisposition(`download-${Date.now()}.zip`),
     },
   });
 });

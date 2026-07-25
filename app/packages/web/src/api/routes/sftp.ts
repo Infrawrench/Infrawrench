@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import path from "node:path";
+import { attachmentDisposition } from "../../lib/content-disposition";
 import { sftpUpload, sftpDownloadToBuffer } from "../../services/sftp";
 import { getClientForAccount } from "../../services/plugin-clients";
 import { resolveSshConfig } from "../../services/ssh";
@@ -98,7 +99,7 @@ app.get("/download", async (c) => {
       return new Response(new Uint8Array(data), {
         headers: {
           "Content-Type": "application/octet-stream",
-          "Content-Disposition": `attachment; filename="${path.basename(remotePath)}"`,
+          "Content-Disposition": attachmentDisposition(path.basename(remotePath)),
           "Content-Length": String(data.length),
         },
       });
@@ -149,7 +150,7 @@ app.get("/download", async (c) => {
   return new Response(Readable.toWeb(passthrough) as ReadableStream, {
     headers: {
       "Content-Type": "application/zip",
-      "Content-Disposition": `attachment; filename="download-${Date.now()}.zip"`,
+      "Content-Disposition": attachmentDisposition(`download-${Date.now()}.zip`),
     },
   });
 });
