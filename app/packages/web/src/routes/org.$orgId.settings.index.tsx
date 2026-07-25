@@ -7,6 +7,7 @@ import {
   formatAuthMethod,
   formatProvider,
   type AuthFactor,
+  type PendingEmailChange,
   type Profile,
   type UserSession,
 } from "@/lib/profile";
@@ -72,6 +73,7 @@ function ProfileCard({ profile, onSaved }: { profile: Profile; onSaved: () => Pr
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [changingEmail, setChangingEmail] = useState(false);
 
   const dirty = firstName !== (profile.firstName ?? "") || lastName !== (profile.lastName ?? "");
 
@@ -164,7 +166,14 @@ function ProfileCard({ profile, onSaved }: { profile: Profile; onSaved: () => Pr
             <p className="text-xs text-on-surface-muted mt-1">
               {profile.identities.length > 0
                 ? `Comes from ${profile.identities.map((i) => formatProvider(i.provider)).join(" / ")}, where you sign in.`
-                : "The address you sign in with."}
+                : "The address you sign in with."}{" "}
+              <button
+                type="button"
+                onClick={() => setChangingEmail(true)}
+                className="text-on-surface-tertiary hover:text-on-surface-secondary underline"
+              >
+                Change email
+              </button>
             </p>
           </div>
 
@@ -198,7 +207,172 @@ function ProfileCard({ profile, onSaved }: { profile: Profile; onSaved: () => Pr
           </div>
         </div>
       </div>
+
+      {changingEmail && (
+        <ChangeEmailModal
+          currentEmail={profile.email}
+          hasIdentities={profile.identities.length > 0}
+          onClose={() => setChangingEmail(false)}
+          onChanged={async () => {
+            setChangingEmail(false);
+            await onSaved();
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+/**
+ * Two steps, because WorkOS only moves the account once a code delivered to the
+ * new address comes back. Until then the current address keeps working, so
+ * abandoning this dialog costs nothing.
+ */
+function ChangeEmailModal({
+  currentEmail,
+  hasIdentities,
+  onClose,
+  onChanged,
+}: {
+  currentEmail: string;
+  hasIdentities: boolean;
+  onClose: () => void;
+  onChanged: () => Promise<void>;
+}) {
+  const [newEmail, setNewEmail] = useState("");
+  const [pending, setPending] = useState<PendingEmailChange | null>(null);
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSend() {
+    setBusy(true);
+    setError(null);
+    try {
+      setPending(
+        await apiPost<PendingEmailChange>("/api/profile/email-change", {
+          newEmail: newEmail.trim(),
+        }),
+      );
+      setCode("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't send the confirmation code");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleConfirm() {
+    setBusy(true);
+    setError(null);
+    try {
+      await apiPost("/api/profile/email-change/confirm", { code: code.trim() });
+      await onChanged();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "That code isn't valid");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal onClose={onClose} ariaLabel="Change email address">
+      <div className="bg-surface-raised border border-border-strong rounded-xl w-full max-w-md shadow-2xl">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <h2 className="text-sm font-semibold text-on-surface-secondary">Change email address</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="text-on-surface-faint hover:text-on-surface-tertiary text-lg"
+          >
+            &#215;
+          </button>
+        </div>
+        <div className="p-5 space-y-4">
+          {!pending ? (
+            <>
+              <p className="text-xs text-on-surface-muted">
+                We&apos;ll send a confirmation code to the new address. Your account stays on{" "}
+                <span className="text-on-surface-secondary">{currentEmail}</span> until you enter
+                it.
+              </p>
+              {hasIdentities && (
+                <p className="text-xs text-amber-500">
+                  You sign in with a connected account. Changing this address here won&apos;t change
+                  it there, so make sure you can still sign in afterwards.
+                </p>
+              )}
+              <div>
+                <label htmlFor="new-email" className={LABEL}>
+                  New email address
+                </label>
+                <input
+                  id="new-email"
+                  type="email"
+                  autoComplete="email"
+                  value={newEmail}
+                  onChange={(e) => setNewEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  className={INPUT}
+                />
+              </div>
+              {error && <p className="text-xs text-red-400">{error}</p>}
+              <button
+                type="button"
+                onClick={() => void handleSend()}
+                disabled={busy || !newEmail.trim()}
+                className={`${PRIMARY_BUTTON} w-full`}
+              >
+                {busy ? "Sending…" : "Send confirmation code"}
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="text-xs text-on-surface-muted">
+                Enter the code we sent to{" "}
+                <span className="text-on-surface-secondary">{pending.newEmail}</span>. It expires{" "}
+                {new Date(pending.expiresAt).toLocaleTimeString()}.
+              </p>
+              <div>
+                <label htmlFor="email-change-code" className={LABEL}>
+                  Confirmation code
+                </label>
+                <input
+                  id="email-change-code"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\s/g, ""))}
+                  placeholder="123456"
+                  className={`${INPUT} font-mono tracking-widest`}
+                />
+              </div>
+              {error && <p className="text-xs text-red-400">{error}</p>}
+              <button
+                type="button"
+                onClick={() => void handleConfirm()}
+                disabled={busy || !code.trim()}
+                className={`${PRIMARY_BUTTON} w-full`}
+              >
+                {busy ? "Confirming…" : "Confirm new email"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPending(null);
+                  setError(null);
+                }}
+                className="w-full text-xs text-on-surface-tertiary hover:text-on-surface-secondary"
+              >
+                Use a different address
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </Modal>
   );
 }
 

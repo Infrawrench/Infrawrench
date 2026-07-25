@@ -27,6 +27,12 @@ export interface Profile {
   identities: ProfileIdentity[];
 }
 
+/** An email change waiting on a code delivered to `newEmail`. */
+export interface PendingEmailChange {
+  newEmail: string;
+  expiresAt: string;
+}
+
 export interface AuthFactor {
   id: string;
   type: "totp" | "sms" | "generic_otp";
@@ -75,6 +81,29 @@ export async function createPasswordResetLink(api: CloudFetch): Promise<string |
     method: "POST",
   });
   return result?.passwordResetUrl ?? null;
+}
+
+/**
+ * Sends a confirmation code to `newEmail`. The account does not move until
+ * {@link confirmEmailChange} redeems that code, so an abandoned or mistyped
+ * change leaves the current address intact.
+ */
+export async function startEmailChange(
+  api: CloudFetch,
+  newEmail: string,
+): Promise<PendingEmailChange | null> {
+  return api.api<PendingEmailChange>("/api/profile/email-change", {
+    method: "POST",
+    body: JSON.stringify({ newEmail }),
+  });
+}
+
+export async function confirmEmailChange(api: CloudFetch, code: string): Promise<string | null> {
+  const result = await api.api<{ email: string }>("/api/profile/email-change/confirm", {
+    method: "POST",
+    body: JSON.stringify({ code }),
+  });
+  return result?.email ?? null;
 }
 
 export async function listAuthFactors(api: CloudFetch): Promise<AuthFactor[]> {

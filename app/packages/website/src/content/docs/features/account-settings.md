@@ -13,9 +13,23 @@ Your identity is managed by WorkOS, the same service that handles sign-in. infra
 
 Edit your **first name** and **last name** and press **Save changes**. The name appears next to you in [team lists](../team-and-billing/organizations-and-invites.md), the [audit log](../team-and-billing/audit-log.md), and anywhere a resource records who changed it.
 
-Your **email address** is shown but not editable. It's the identifier you sign in with, so changing it isn't a cosmetic edit — it moves your account. If it shows as **Unverified**, use **Resend verification email** to get a fresh link.
+If your email shows as **Unverified**, use **Resend verification email** to get a fresh link.
 
-If you signed in with Google, Microsoft, GitHub, Apple, or Salesforce, those show under **Connected accounts**, and the address is whatever that provider gives us.
+If you signed in with Google, Microsoft, GitHub, Apple, or Salesforce, those show under **Connected accounts**, and the address you started with is whatever that provider gave us.
+
+### Changing your email
+
+Your email is the identifier you sign in with, so changing it moves your account — it's confirmed in two steps.
+
+1. **Change email** next to your address.
+2. Enter the new address and press **Send confirmation code**.
+3. Read the code from the **new** mailbox and enter it.
+
+Nothing moves until that code comes back. Close the dialog, mistype the address, or never receive the code, and your account stays exactly where it is — so there's no way to strand yourself on an address you can't read. The code expires after a few minutes; start again for a fresh one.
+
+If the new address already belongs to another infrawrench account, the first step fails and tells you so.
+
+> **If you sign in with Google or SSO**, changing your address here does not change it at the provider. You'll still sign in through that provider as before — this only changes the address infrawrench knows you by. Make sure you can still get in before you rely on it.
 
 ## Password
 

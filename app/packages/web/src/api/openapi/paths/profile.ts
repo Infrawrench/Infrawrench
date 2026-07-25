@@ -124,6 +124,51 @@ export function registerProfilePaths(ctx: BuildContext) {
 
   registry.registerPath({
     method: "post",
+    path: "/api/profile/email-change",
+    tags: ["Profile"],
+    summary: "Send a confirmation code to a new email address",
+    description:
+      "Starts an email change. The code goes to the new address and the account keeps its current address until `/api/profile/email-change/confirm` redeems it, so an abandoned or mistyped change is harmless.",
+    request: {
+      body: {
+        content: { "application/json": { schema: strict({ newEmail: Email }) } },
+      },
+    },
+    responses: {
+      200: {
+        description: "Code sent",
+        content: {
+          "application/json": {
+            schema: strict({ newEmail: Email, expiresAt: z.string() }),
+          },
+        },
+      },
+      400: ErrorResponses[400],
+      401: ErrorResponses[401],
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
+    path: "/api/profile/email-change/confirm",
+    tags: ["Profile"],
+    summary: "Redeem an email change code",
+    description: "On success the account's email is the new address and it is marked verified.",
+    request: {
+      body: { content: { "application/json": { schema: strict({ code: z.string() }) } } },
+    },
+    responses: {
+      200: {
+        description: "New email",
+        content: { "application/json": { schema: strict({ email: Email }) } },
+      },
+      400: ErrorResponses[400],
+      401: ErrorResponses[401],
+    },
+  });
+
+  registry.registerPath({
+    method: "post",
     path: "/api/profile/send-verification-email",
     tags: ["Profile"],
     summary: "Re-send the email verification message",

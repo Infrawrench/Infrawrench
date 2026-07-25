@@ -5,6 +5,7 @@ import * as WebBrowser from "expo-web-browser";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   challengeAuthFactor,
+  confirmEmailChange,
   createPasswordResetLink,
   deleteAuthFactor,
   describeUserAgent,
@@ -15,9 +16,11 @@ import {
   listUserSessions,
   revokeOtherUserSessions,
   revokeUserSession,
+  startEmailChange,
   startTotpEnrollment,
   updateProfile,
   verifyTotpEnrollment,
+  type PendingEmailChange,
   type TotpEnrollment,
 } from "@infrawrench/client-core";
 import { useAuth } from "@/lib/auth/AuthProvider";
@@ -43,6 +46,9 @@ export default function AccountScreen() {
   const [firstName, setFirstName] = useState<string | null>(null);
   const [lastName, setLastName] = useState<string | null>(null);
   const [enrollment, setEnrollment] = useState<TotpEnrollment | null>(null);
+  const [newEmail, setNewEmail] = useState("");
+  const [pendingEmail, setPendingEmail] = useState<PendingEmailChange | null>(null);
+  const [emailCode, setEmailCode] = useState("");
   const [code, setCode] = useState("");
 
   const failed = (title: string) => (e: unknown) =>
@@ -60,6 +66,26 @@ export default function AccountScreen() {
       await queryClient.invalidateQueries({ queryKey: ["profile"] });
     },
     onError: failed("Save failed"),
+  });
+
+  const sendEmailCode = useMutation({
+    mutationFn: () => startEmailChange(api, newEmail.trim()),
+    onSuccess: (result) => {
+      setEmailCode("");
+      setPendingEmail(result);
+    },
+    onError: failed("Couldn't send the code"),
+  });
+
+  const confirmEmail = useMutation({
+    mutationFn: () => confirmEmailChange(api, emailCode.trim()),
+    onSuccess: async () => {
+      setPendingEmail(null);
+      setEmailCode("");
+      setNewEmail("");
+      await queryClient.invalidateQueries({ queryKey: ["profile"] });
+    },
+    onError: failed("That code isn't valid"),
   });
 
   const changePassword = useMutation({
@@ -191,6 +217,66 @@ export default function AccountScreen() {
           disabled={saveName.isPending || (firstName === null && lastName === null)}
           onPress={() => saveName.mutate()}
         />
+      </Card>
+
+      <SectionTitle>Email address</SectionTitle>
+      <Card>
+        {pendingEmail ? (
+          <>
+            <Text style={styles.hint}>
+              Enter the code sent to {pendingEmail.newEmail}. Your account stays on {me.email} until
+              you do.
+            </Text>
+            <TextInput
+              style={[styles.input, { letterSpacing: 4 }]}
+              value={emailCode}
+              onChangeText={(next) => setEmailCode(next.replace(/\s/g, ""))}
+              placeholder="123456"
+              placeholderTextColor={colors.textFaint}
+              keyboardType="number-pad"
+              textContentType="oneTimeCode"
+            />
+            <Button
+              label={confirmEmail.isPending ? "Confirming…" : "Confirm new email"}
+              disabled={confirmEmail.isPending || emailCode.trim().length === 0}
+              onPress={() => confirmEmail.mutate()}
+            />
+            <Button
+              label="Cancel"
+              variant="secondary"
+              onPress={() => {
+                setPendingEmail(null);
+                setEmailCode("");
+              }}
+            />
+          </>
+        ) : (
+          <>
+            <Text style={styles.hint}>
+              We&apos;ll send a confirmation code to the new address. Nothing changes until you
+              enter it.
+              {me.identities.length > 0
+                ? " You sign in with a connected account — changing this here won't change it there."
+                : ""}
+            </Text>
+            <TextInput
+              style={styles.input}
+              value={newEmail}
+              onChangeText={setNewEmail}
+              placeholder="you@example.com"
+              placeholderTextColor={colors.textFaint}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
+              textContentType="emailAddress"
+            />
+            <Button
+              label={sendEmailCode.isPending ? "Sending…" : "Send confirmation code"}
+              disabled={sendEmailCode.isPending || newEmail.trim().length === 0}
+              onPress={() => sendEmailCode.mutate()}
+            />
+          </>
+        )}
       </Card>
 
       <SectionTitle>Password</SectionTitle>

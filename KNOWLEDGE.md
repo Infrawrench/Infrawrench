@@ -916,6 +916,8 @@ Things worth knowing before touching it:
 - **Ownership is re-checked on every mutation.** `mfa.deleteFactor` and `revokeSession` take a bare id with no user binding, so each handler first lists the caller's own factors/sessions and 404s ids that aren't in that list.
 - **Enrolment creates the factor immediately.** WorkOS returns the TOTP secret and a first challenge up front; the factor only becomes usable once a code verifies. `listAuthFactors` exposes no verified flag, so an abandoned enrolment is indistinguishable from a live one — the client DELETEs the factor on cancel to compensate.
 - **Password changes go through a hosted reset link**, not a current-password form. `authenticateWithPassword` would fail for exactly the users who enabled MFA, and it's also how an SSO/OAuth-only account sets a first password.
+- **Email changes use WorkOS's two-step flow** (`POST /user_management/users/{id}/email_change/send` then `.../confirm`): the code goes to the _new_ address and the account only moves when it comes back, so an abandoned or mistyped change can't strand anyone. These are called via `workos.post` because they postdate @workos-inc/node 8.11, which is what we pin — swap them for SDK helpers on the v10 bump (latest is 10.x; the major carries breaking session/auth changes, so it's its own piece of work).
+- **`/api/auth/me` reads the email from our `users` row, not `session.email`.** The sealed cookie caches the user WorkOS returned at sign-in, so it reports the pre-change address until the session refreshes.
 - Client contract (types, formatters, and `CloudFetch` helpers) lives in `client-core/src/profile.ts` so mobile shares it; `@infrawrench/ui` re-exports the types for web and desktop.
 
 ### Database

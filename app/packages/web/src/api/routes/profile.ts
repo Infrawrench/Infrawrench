@@ -126,6 +126,76 @@ app.post("/send-verification-email", async (c) => {
   return c.json({ ok: true });
 });
 
+/**
+ * POST /api/profile/email-change — send a confirmation code to the NEW address.
+ *
+ * WorkOS holds the change pending until the code comes back, so the account
+ * only moves once someone has proven they can read mail at the new address. A
+ * typo or a hijacked session therefore can't strand the account on an address
+ * its owner doesn't control.
+ *
+ * Called through `workos.post` rather than a `userManagement` helper: the
+ * email-change endpoints landed after @workos-inc/node 8.11, which is what we
+ * pin. Swap these two calls for the SDK helpers whenever we take the v10 bump.
+ */
+app.post("/email-change", async (c) => {
+  const session = c.get("session");
+  const body = await c.req
+    .json<{ newEmail?: unknown }>()
+    .catch(() => ({}) as { newEmail?: unknown });
+
+  if (typeof body.newEmail !== "string") {
+    return c.json({ error: "newEmail is required" }, 400);
+  }
+  const newEmail = body.newEmail.trim();
+  if (!isEmail(newEmail)) {
+    return c.json({ error: "That doesn't look like an email address" }, 400);
+  }
+
+  const user = await workos.userManagement.getUser(session.userId);
+  if (newEmail.toLowerCase() === user.email.toLowerCase()) {
+    return c.json({ error: "That's already your email address" }, 400);
+  }
+
+  try {
+    const { data } = await workos.post<EmailChangeResponse>(
+      `/user_management/users/${encodeURIComponent(session.userId)}/email_change/send`,
+      { new_email: newEmail },
+    );
+    return c.json({ newEmail: data.new_email, expiresAt: data.expires_at });
+  } catch (err) {
+    return c.json({ error: workosMessage(err, "Couldn't start the email change") }, 400);
+  }
+});
+
+/** POST /api/profile/email-change/confirm — redeem the code and switch the address. */
+app.post("/email-change/confirm", async (c) => {
+  const session = c.get("session");
+  const body = await c.req.json<{ code?: unknown }>().catch(() => ({}) as { code?: unknown });
+
+  if (typeof body.code !== "string" || !body.code.trim()) {
+    return c.json({ error: "code is required" }, 400);
+  }
+
+  let email: string;
+  try {
+    const { data } = await workos.post<EmailChangeConfirmationResponse>(
+      `/user_management/users/${encodeURIComponent(session.userId)}/email_change/confirm`,
+      { code: body.code.trim() },
+    );
+    email = data.user.email;
+  } catch (err) {
+    return c.json({ error: workosMessage(err, "That code isn't valid or has expired") }, 400);
+  }
+
+  // Our mirror is what `/api/auth/me` reports, so it has to move in the same
+  // breath — the sealed session cookie still holds the old address until it
+  // next refreshes.
+  await db.update(users).set({ email }).where(eq(users.id, session.userId));
+
+  return c.json({ email });
+});
+
 /** GET /api/profile/mfa — the user's enrolled authentication factors. */
 app.get("/mfa", async (c) => {
   const session = c.get("session");
@@ -265,6 +335,33 @@ app.post("/sessions/revoke-others", async (c) => {
   }
   return c.json({ revoked: targets.length });
 });
+
+/** Shapes of the two email-change endpoints we call raw (see the routes above). */
+interface EmailChangeResponse {
+  object: "email_change";
+  new_email: string;
+  expires_at: string;
+}
+
+interface EmailChangeConfirmationResponse {
+  object: "email_change_confirmation";
+  user: { id: string; email: string };
+}
+
+/**
+ * Deliberately loose: WorkOS returns a usable sentence for the cases a user can
+ * actually hit here ("email already in use", bad or expired code), and it's more
+ * helpful than anything we'd write. Anything unrecognisable falls back.
+ */
+function workosMessage(err: unknown, fallback: string): string {
+  const message = err instanceof Error ? err.message.trim() : "";
+  return message.length > 0 && message.length < 200 ? message : fallback;
+}
+
+/** Good enough to catch typos; WorkOS is the real authority on deliverability. */
+function isEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value) && value.length <= 320;
+}
 
 /**
  * `undefined` — field absent, leave it alone.

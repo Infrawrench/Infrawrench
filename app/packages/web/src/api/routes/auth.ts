@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { deleteCookie } from "hono/cookie";
 import { eq } from "drizzle-orm";
 import { db } from "../../db/client";
-import { organizations, organizationMembers } from "../../db/schema";
+import { organizations, organizationMembers, users } from "../../db/schema";
 import type { AuthSession } from "../auth-middleware";
 
 declare module "hono" {
@@ -23,9 +23,18 @@ app.get("/me", async (c) => {
     .where(eq(organizationMembers.userId, session.userId))
     .limit(1);
 
+  // Prefer the mirrored row over `session.email`: the sealed cookie caches the
+  // user WorkOS handed us at sign-in, so after an email change it reports the
+  // old address until the session next refreshes.
+  const [row] = await db
+    .select({ email: users.email })
+    .from(users)
+    .where(eq(users.id, session.userId))
+    .limit(1);
+
   return c.json({
     userId: session.userId,
-    email: session.email,
+    email: row?.email ?? session.email,
     needsOnboarding: memberships.length === 0,
   });
 });

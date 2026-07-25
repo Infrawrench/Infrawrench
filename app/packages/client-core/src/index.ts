@@ -23,6 +23,8 @@ export {
   fetchProfile,
   updateProfile,
   createPasswordResetLink,
+  startEmailChange,
+  confirmEmailChange,
   listAuthFactors,
   startTotpEnrollment,
   verifyTotpEnrollment,
@@ -38,6 +40,7 @@ export {
   type ProfileIdentity,
   type AuthFactor,
   type TotpEnrollment,
+  type PendingEmailChange,
   type UserSession,
 } from "./profile";
 export * from "./chat/types";

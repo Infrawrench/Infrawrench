@@ -346,6 +346,7 @@ export {
   type ProfileIdentity,
   type AuthFactor,
   type TotpEnrollment,
+  type PendingEmailChange,
   type UserSession,
 } from "@infrawrench/client-core";
 
