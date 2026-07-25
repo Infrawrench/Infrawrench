@@ -32,6 +32,7 @@ const manifest: PluginManifest = {
       description:
         "If you want to scope requests to a specific team, enter the Team ID. Find it in Team Settings > General. Leave blank for personal account.",
       sensitive: false,
+      optional: true,
       placeholder: "team_...",
     },
     caCertCredentialField,

@@ -82,6 +82,7 @@ const manifest: PluginManifest = {
       description:
         "Override the project ID from the service account JSON. Leave blank to use the project in the key file.",
       sensitive: false,
+      optional: true,
       placeholder: "my-gcp-project",
     },
     {

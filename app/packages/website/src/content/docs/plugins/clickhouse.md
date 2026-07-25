@@ -18,9 +18,9 @@ ClickHouse accounts hold two complementary credential sets in a single record �
 - **Cloud API Key ID** and **Cloud API Key Secret** — generate at ClickHouse Cloud → API Keys.
 - **Organization ID** — your ClickHouse Cloud organization.
 
-**SQL connection** (for the SQL editor — works against Cloud or self-hosted)
+**SQL connection** (optional — for the SQL editor, works against Cloud or self-hosted)
 
-- **Service Hostname (for SQL)** — the HTTPS host of the ClickHouse service.
+- **Service Hostname (for SQL)** — the HTTPS host of the ClickHouse service. Leave blank to skip SQL and use the account for service management only.
 - **SQL Username** and **SQL Password**.
 
 <insert [ClickHouse Add-account form showing the Cloud API and SQL connection field groups] here>

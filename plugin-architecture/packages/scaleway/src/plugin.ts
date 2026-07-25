@@ -47,6 +47,7 @@ const manifest: PluginManifest = {
       description:
         "Optional Scaleway Cockpit token with the `query_metrics` scope. When set, the resource Metrics tab populates from Cockpit. Create one at console.scaleway.com under Observability → Tokens.",
       sensitive: true,
+      optional: true,
     },
   ],
   // Billing API v2beta1 monthly consumptions, broken down by product +

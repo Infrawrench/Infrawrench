@@ -50,6 +50,7 @@ const manifest: PluginManifest = {
       description:
         "HTTPS endpoint of a ClickHouse service for running SQL queries (e.g. abc123.us-east-1.aws.clickhouse.cloud). Leave blank to skip SQL.",
       sensitive: false,
+      optional: true,
       placeholder: "abc123.us-east-1.aws.clickhouse.cloud",
     },
     {
@@ -72,8 +73,9 @@ const manifest: PluginManifest = {
     {
       key: "chPassword",
       label: "SQL Password",
-      description: "Password for the SQL user.",
+      description: "Password for the SQL user. Leave blank if you skipped the SQL hostname.",
       sensitive: true,
+      optional: true,
       placeholder: "password",
     },
     caCertCredentialField,
