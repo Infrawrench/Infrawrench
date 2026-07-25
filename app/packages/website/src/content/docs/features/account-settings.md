@@ -13,9 +13,9 @@ Your identity is managed by WorkOS, the same service that handles sign-in. infra
 
 Edit your **first name** and **last name** and press **Save changes**. The name appears next to you in [team lists](../team-and-billing/organizations-and-invites.md), the [audit log](../team-and-billing/audit-log.md), and anywhere a resource records who changed it.
 
-Your **email address** is read-only — it comes from the identity provider you signed in with. If it shows as **Unverified**, use **Resend verification email** to get a fresh link.
+Your **email address** is shown but not editable. It's the identifier you sign in with, so changing it isn't a cosmetic edit — it moves your account. If it shows as **Unverified**, use **Resend verification email** to get a fresh link.
 
-If you signed in with Google, Microsoft, GitHub, Apple, or Salesforce, those show under **Connected accounts**.
+If you signed in with Google, Microsoft, GitHub, Apple, or Salesforce, those show under **Connected accounts**, and the address is whatever that provider gives us.
 
 ## Password
 

@@ -166,8 +166,9 @@ function ProfileCard({ profile, onSaved }: { profile: Profile; onSaved: () => Pr
               )}
             </div>
             <p className="text-xs text-on-surface-muted mt-1">
-              Your email address is managed by your identity provider and can&apos;t be changed
-              here.
+              {profile.identities.length > 0
+                ? `Comes from ${profile.identities.map((i) => formatProvider(i.provider)).join(" / ")}, where you sign in.`
+                : "The address you sign in with."}
             </p>
           </div>
 
