@@ -32,6 +32,7 @@ export function sshHostKeyTools(): ToolDefinition[] {
         "trusted with trust_ssh_host.",
       inputSchema: {},
       risk: "read",
+      permission: "accounts:read",
       handler: async (_input, auth) => {
         const denied = await denyUnlessPermitted(auth, "accounts:read");
         if (denied) return denied;
@@ -72,6 +73,7 @@ export function sshHostKeyTools(): ToolDefinition[] {
           .describe("When replacing a changed key: the previously-stored fingerprint"),
       },
       risk: "destructive",
+      permission: "accounts:write",
       handler: async (input, auth) => {
         const denied = await denyUnlessPermitted(auth, "accounts:write");
         if (denied) return denied;
@@ -139,6 +141,7 @@ export function sshHostKeyTools(): ToolDefinition[] {
         port: z.number().int().min(1).max(65535).default(22),
       },
       risk: "destructive",
+      permission: "accounts:write",
       handler: async (input, auth) => {
         const denied = await denyUnlessPermitted(auth, "accounts:write");
         if (denied) return denied;

@@ -27,6 +27,7 @@ export function connectionTools(): ToolDefinition[] {
         resourceTypeId: z.string().optional(),
       },
       risk: "read",
+      permission: "resources:execute",
       handler: async (input, auth) => {
         const { accountId, sql, resourceId, resourceTypeId } = input as {
           accountId: string;
@@ -91,6 +92,7 @@ export function connectionTools(): ToolDefinition[] {
         resourceTypeId: z.string().optional(),
       },
       risk: "destructive",
+      permission: "resources:execute",
       handler: async (input, auth) => {
         const { accountId, sql, params, resourceId, resourceTypeId } = input as {
           accountId: string;
@@ -154,6 +156,7 @@ export function connectionTools(): ToolDefinition[] {
         "Return the database's table/column metadata used by the SQL editor's autocomplete. Useful before asking the model to write queries.",
       inputSchema: { accountId: z.string() },
       risk: "read",
+      permission: "resources:execute",
       handler: async (input, auth) => {
         const accountId = input["accountId"] as string;
         const ctx = await getClientForAccount(accountId, auth.organizationId);
@@ -177,6 +180,7 @@ export function connectionTools(): ToolDefinition[] {
         parentResourceId: z.string().optional(),
       },
       risk: "destructive",
+      permission: "resources:execute",
       handler: async (input, auth) => {
         const { accountId, command, args, pluginId, parentResourceId } = input as {
           accountId: string;
@@ -223,6 +227,7 @@ export function connectionTools(): ToolDefinition[] {
         params: z.record(z.string(), z.unknown()).optional(),
       },
       risk: "destructive",
+      permission: "resources:execute",
       handler: async (input, auth) => {
         const { accountId, op, params } = input as {
           accountId: string;
@@ -266,6 +271,7 @@ export function connectionTools(): ToolDefinition[] {
         sshUsername: z.string().optional(),
       },
       risk: "destructive",
+      permission: "resources:execute",
       handler: async (input, auth) => {
         const { accountId, command, sshKeyId, sshHost, sshUsername } = input as {
           accountId: string;
@@ -334,6 +340,7 @@ export function connectionTools(): ToolDefinition[] {
         prefix: z.string(),
       },
       risk: "read",
+      permission: "storage:read",
       handler: async (input, auth) => {
         const { accountId, bucket, prefix } = input as {
           accountId: string;
@@ -358,6 +365,7 @@ export function connectionTools(): ToolDefinition[] {
         key: z.string(),
       },
       risk: "write",
+      permission: "storage:write",
       handler: async (input, auth) => {
         const { accountId, bucket, key } = input as {
           accountId: string;
@@ -391,6 +399,7 @@ export function connectionTools(): ToolDefinition[] {
         key: z.string(),
       },
       risk: "destructive",
+      permission: "storage:write",
       handler: async (input, auth) => {
         const { accountId, bucket, key } = input as {
           accountId: string;
@@ -426,6 +435,7 @@ export function connectionTools(): ToolDefinition[] {
         parentResourceId: z.string().optional(),
       },
       risk: "read",
+      permission: "secrets:read",
       handler: async (input, auth) => {
         const { pluginId, accountId, resourceTypeId, resourceId, parentResourceId } = input as {
           pluginId: string;
@@ -461,6 +471,7 @@ export function connectionTools(): ToolDefinition[] {
         parentResourceId: z.string().optional(),
       },
       risk: "destructive",
+      permission: "secrets:read",
       handler: async (input, auth) => {
         const { pluginId, accountId, resourceTypeId, resourceId, versionId, parentResourceId } =
           input as {
@@ -511,6 +522,7 @@ export function connectionTools(): ToolDefinition[] {
         parentResourceId: z.string().optional(),
       },
       risk: "write",
+      permission: "secrets:write",
       handler: async (input, auth) => {
         const { pluginId, accountId, resourceTypeId, resourceId, value, parentResourceId } =
           input as {
@@ -562,6 +574,7 @@ export function connectionTools(): ToolDefinition[] {
         parentResourceId: z.string().optional(),
       },
       risk: "destructive",
+      permission: "secrets:write",
       handler: async (input, auth) => {
         const {
           pluginId,
@@ -622,6 +635,7 @@ export function connectionTools(): ToolDefinition[] {
         parentResourceId: z.string().optional(),
       },
       risk: "destructive",
+      permission: "secrets:read",
       handler: async (input, auth) => {
         const { pluginId, accountId, resourceTypeId, resourceId, formatId, parentResourceId } =
           input as {

@@ -1,4 +1,5 @@
 import type { ZodTypeAny } from "zod";
+import type { Permission } from "@infrawrench/server-core/permissions/catalog";
 
 /**
  * Tool risk tiers — used to gate destructive actions behind UI approval in the
@@ -18,6 +19,13 @@ export interface ToolAuthContext {
   email?: string;
   /** Set when the caller authed via API key — used for audit metadata. */
   apiKeyId?: string;
+  /**
+   * The API key's scopes, when the caller authed via API key. Effective
+   * permissions are the INTERSECTION of these and the user's role permissions,
+   * so a narrowly-scoped key can never act with its owner's full authority.
+   * Absent for session/OAuth principals, who act with their role's permissions.
+   */
+  scopes?: readonly string[];
   /** "mcp" | "chat" | "api" — written into audit metadata. */
   source: "mcp" | "chat" | "api";
 }
@@ -38,6 +46,18 @@ export interface ToolDefinition {
    */
   inputSchema: Record<string, ZodTypeAny>;
   risk: ToolRisk;
+  /**
+   * Permission the caller must hold, enforced centrally by
+   * {@link authorizeToolCall} at every dispatch site (MCP + chat) — NOT by the
+   * handler. Must mirror the `requirePermission` on the equivalent HTTP route
+   * so the two surfaces can't drift apart.
+   *
+   * `null` means the tool exposes no organization data at all (static plugin
+   * catalogs) and is safe for any authenticated member. It is deliberately
+   * required rather than optional so a new tool cannot silently default to
+   * ungated.
+   */
+  permission: Permission | null;
   handler(input: Record<string, unknown>, auth: ToolAuthContext): Promise<ToolResult>;
 }
 

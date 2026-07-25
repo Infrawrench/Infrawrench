@@ -36,6 +36,7 @@ export function sshKeyTools(): ToolDefinition[] {
         "encrypted server-side). Use the id with ssh_exec or SSH tunnels.",
       inputSchema: {},
       risk: "read",
+      permission: "ssh-keys:read",
       handler: async (_input, auth) => {
         const denied = await denyUnlessPermitted(auth, "ssh-keys:read");
         if (denied) return denied;
@@ -92,6 +93,7 @@ export function sshKeyTools(): ToolDefinition[] {
         name: z.string().min(1).describe("Display name for the key"),
       },
       risk: "write",
+      permission: "ssh-keys:write",
       handler: async (input, auth) => {
         const denied = await denyUnlessPermitted(auth, "ssh-keys:write");
         if (denied) return denied;
@@ -153,6 +155,7 @@ export function sshKeyTools(): ToolDefinition[] {
         publicKey: z.string().min(1).describe("OpenSSH-format public key"),
       },
       risk: "write",
+      permission: "ssh-keys:write",
       handler: async (input, auth) => {
         const denied = await denyUnlessPermitted(auth, "ssh-keys:write");
         if (denied) return denied;
@@ -210,6 +213,7 @@ export function sshKeyTools(): ToolDefinition[] {
         sshKeyId: z.string().describe("Key id (see list_ssh_keys)"),
       },
       risk: "destructive",
+      permission: "ssh-keys:write",
       handler: async (input, auth) => {
         const denied = await denyUnlessPermitted(auth, "ssh-keys:write");
         if (denied) return denied;

@@ -17,6 +17,7 @@ import { eq, and, asc, desc } from "drizzle-orm";
 import { db } from "../db/client";
 import { chatConversations, chatMessages, chatPendingActions } from "../db/schema";
 import { getToolRegistry } from "../tools/registry";
+import { authorizeToolCall } from "../tools/permissions";
 import type { ToolAuthContext, ToolDefinition, ToolResult } from "../tools/types";
 import {
   DEFAULT_CHAT_MODEL,
@@ -403,6 +404,21 @@ export async function* runAgentTurn(input: RunAgentInput): AsyncGenerator<AgentE
         };
         continue;
       }
+      // Central permission gate. Runs BEFORE the destructive-approval branch so
+      // the user is never prompted to approve an action the caller isn't
+      // allowed to take in the first place.
+      const denied = await authorizeToolCall(tool, auth);
+      if (denied) {
+        const text = denied.content.map((c) => c.text).join("\n");
+        autoBlocks.push({
+          type: "tool_result",
+          tool_use_id: tu.id,
+          content: [{ type: "text", text }],
+          is_error: true,
+        });
+        yield { type: "tool_executed", toolUseId: tu.id, isError: true, resultPreview: text };
+        continue;
+      }
       if (tool.risk === "destructive") {
         const pendingId = uuidv4();
         await db.insert(chatPendingActions).values({
@@ -536,13 +552,20 @@ export async function executePendingAction(
       .where(eq(chatPendingActions.id, pendingActionId));
   } else {
     let result: ToolResult;
-    try {
-      result = await tool.handler(pending.toolInput as Record<string, unknown>, auth);
-    } catch (e) {
-      result = {
-        content: [{ type: "text", text: e instanceof Error ? e.message : "Tool threw" }],
-        isError: true,
-      };
+    // Re-checked at execution time, not just when the action was queued: the
+    // caller's role may have been downgraded while the approval sat pending.
+    const denied = await authorizeToolCall(tool, auth);
+    if (denied) {
+      result = { content: denied.content, isError: true };
+    } else {
+      try {
+        result = await tool.handler(pending.toolInput as Record<string, unknown>, auth);
+      } catch (e) {
+        result = {
+          content: [{ type: "text", text: e instanceof Error ? e.message : "Tool threw" }],
+          isError: true,
+        };
+      }
     }
     const text = result.content.map((c) => c.text).join("\n");
     await db

@@ -43,6 +43,7 @@ export function genericTools(): ToolDefinition[] {
         "List all installed Infrawrench plugins (cloud providers, databases, etc.) and their credential field schemas.",
       inputSchema: {},
       risk: "read",
+      permission: null,
       handler: async () => {
         const plugins = await loadPlugins();
         return ok(
@@ -69,6 +70,7 @@ export function genericTools(): ToolDefinition[] {
         pluginId: z.string().describe("Plugin id, e.g. 'digitalocean', 'postgres'"),
       },
       risk: "read",
+      permission: null,
       handler: async (input) => {
         const pluginId = input["pluginId"] as string;
         const loaded = await getPlugin(pluginId);
@@ -108,6 +110,7 @@ export function genericTools(): ToolDefinition[] {
       description: "List all connected accounts (credential sets) in the caller's organization.",
       inputSchema: {},
       risk: "read",
+      permission: "accounts:read",
       handler: async (_input, auth) => {
         const rows = await db
           .select({
@@ -134,6 +137,7 @@ export function genericTools(): ToolDefinition[] {
           .describe("Substring to match. Leave empty to list everything (capped at 50)."),
       },
       risk: "read",
+      permission: "resources:read",
       handler: async (input, auth) => {
         const orgId = auth.organizationId;
         const q = ((input["query"] as string | undefined) ?? "").toLowerCase().trim();
@@ -237,6 +241,7 @@ export function genericTools(): ToolDefinition[] {
           .describe("The parent's resource type id, if known — skips a lookup"),
       },
       risk: "read",
+      permission: "resources:read",
       handler: async (input, auth) => {
         const { accountId, resourceId } = input as { accountId: string; resourceId: string };
         const ctx = await getClientForAccount(accountId, auth.organizationId);
@@ -347,6 +352,7 @@ export function genericTools(): ToolDefinition[] {
         parentResourceId: parentResourceIdField,
       },
       risk: "read",
+      permission: "resources:read",
       handler: async (input, auth) => {
         const { pluginId, accountId, resourceTypeId, parentResourceId } = input as {
           pluginId: string;
@@ -383,6 +389,7 @@ export function genericTools(): ToolDefinition[] {
         "Fetch a single resource's full state: non-secret fields and resolved outputs. Use get_resource_outputs to fetch sensitive outputs explicitly.",
       inputSchema: resourceTargetSchema,
       risk: "read",
+      permission: "resources:read",
       handler: async (input, auth) => {
         const { pluginId, accountId, resourceTypeId, resourceId, parentResourceId } = input as {
           pluginId: string;
@@ -432,6 +439,7 @@ export function genericTools(): ToolDefinition[] {
           .describe("Output keys to resolve. Defaults to every output declared on the type."),
       },
       risk: "read",
+      permission: "secrets:read",
       handler: async (input, auth) => {
         const { pluginId, accountId, resourceTypeId, resourceId, parentResourceId, outputKeys } =
           input as {
@@ -473,6 +481,7 @@ export function genericTools(): ToolDefinition[] {
         resourceId: z.string(),
       },
       risk: "read",
+      permission: "resources:read",
       handler: async (input, auth) => {
         const resourceId = input["resourceId"] as string;
         const [row] = await db
@@ -529,6 +538,7 @@ export function genericTools(): ToolDefinition[] {
       description: "Fetch dashboard-style key/value stats for a resource (when supported).",
       inputSchema: resourceTargetSchema,
       risk: "read",
+      permission: "resources:read",
       handler: async (input, auth) => {
         const { pluginId, accountId, resourceTypeId, resourceId, parentResourceId } = input as {
           pluginId: string;
@@ -565,6 +575,7 @@ export function genericTools(): ToolDefinition[] {
         endMs: z.number().int().optional(),
       },
       risk: "read",
+      permission: "resources:read",
       handler: async (input, auth) => {
         const {
           pluginId,
@@ -613,6 +624,7 @@ export function genericTools(): ToolDefinition[] {
         "Plain-text describe summary for a resource (status, events, related objects), kubectl-describe style. Only available for plugins that implement it.",
       inputSchema: resourceTargetSchema,
       risk: "read",
+      permission: "resources:read",
       handler: async (input, auth) => {
         const { pluginId, accountId, resourceTypeId, resourceId, parentResourceId } = input as {
           pluginId: string;
@@ -657,6 +669,7 @@ export function genericTools(): ToolDefinition[] {
           ),
       },
       risk: "write",
+      permission: "resources:write",
       handler: async (input, auth) => {
         const { pluginId, accountId, resourceTypeId, parentResourceId, sshKeyId } = input as {
           pluginId: string;
@@ -791,6 +804,7 @@ export function genericTools(): ToolDefinition[] {
         "Permanently delete a resource. Audit-logged. The chat surface confirms with the user before invoking.",
       inputSchema: resourceTargetSchema,
       risk: "destructive",
+      permission: "resources:delete",
       handler: async (input, auth) => {
         const { pluginId, accountId, resourceTypeId, resourceId, parentResourceId } = input as {
           pluginId: string;
@@ -834,6 +848,7 @@ export function genericTools(): ToolDefinition[] {
         actionId: z.string(),
       },
       risk: "destructive",
+      permission: "resources:write",
       handler: async (input, auth) => {
         const { pluginId, accountId, resourceTypeId, resourceId, parentResourceId, actionId } =
           input as {
@@ -876,6 +891,7 @@ export function genericTools(): ToolDefinition[] {
         "Read the full manifest (YAML/JSON) for a resource. Edits go through apply_manifest.",
       inputSchema: resourceTargetSchema,
       risk: "read",
+      permission: "resources:read",
       handler: async (input, auth) => {
         const { pluginId, accountId, resourceId, parentResourceId } = input as {
           pluginId: string;
@@ -906,6 +922,7 @@ export function genericTools(): ToolDefinition[] {
         manifest: z.string(),
       },
       risk: "destructive",
+      permission: "resources:write",
       handler: async (input, auth) => {
         const { pluginId, accountId, resourceTypeId, resourceId, parentResourceId, manifest } =
           input as {
@@ -955,6 +972,7 @@ export function genericTools(): ToolDefinition[] {
         pluginId: z.string(),
       },
       risk: "destructive",
+      permission: "resources:write",
       handler: async (input, auth) => {
         const {
           pluginId,

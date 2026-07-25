@@ -43,6 +43,7 @@ export function costTools(): ToolDefinition[] {
         'currency\'s major unit; groups beyond topN fold into an "Other" series.',
       inputSchema: costQueryRequestSchema.shape,
       risk: "read",
+      permission: "costs:read",
       handler: async (input, auth) => {
         const denied = await denyUnlessPermitted(auth, "costs:read");
         if (denied) return denied;
@@ -69,6 +70,7 @@ export function costTools(): ToolDefinition[] {
         tagKey: z.string().optional().describe("Required when dimension is 'tag'."),
       },
       risk: "read",
+      permission: "costs:read",
       handler: async (input, auth) => {
         const denied = await denyUnlessPermitted(auth, "costs:read");
         if (denied) return denied;
@@ -94,6 +96,7 @@ export function costTools(): ToolDefinition[] {
         "query_costs returns empty or surprising data.",
       inputSchema: {},
       risk: "read",
+      permission: "costs:read",
       handler: async (_input, auth) => {
         const denied = await denyUnlessPermitted(auth, "costs:read");
         if (denied) return denied;
@@ -109,6 +112,7 @@ export function costTools(): ToolDefinition[] {
         "spend (in cents) and any alert thresholds fired this month.",
       inputSchema: {},
       risk: "read",
+      permission: "budgets:read",
       handler: async (_input, auth) => {
         const denied = await denyUnlessPermitted(auth, "budgets:read");
         if (denied) return denied;
@@ -124,6 +128,7 @@ export function costTools(): ToolDefinition[] {
         "(up to the last 100 fired thresholds across months).",
       inputSchema: { budgetId: z.string() },
       risk: "read",
+      permission: "budgets:read",
       handler: async (input, auth) => {
         const denied = await denyUnlessPermitted(auth, "budgets:read");
         if (denied) return denied;
@@ -145,6 +150,7 @@ export function costTools(): ToolDefinition[] {
         "of spend; empty filters cover the whole organization. Audit-logged.",
       inputSchema: budgetInputSchema.shape,
       risk: "write",
+      permission: "budgets:write",
       handler: async (input, auth) => {
         const denied = await denyUnlessPermitted(auth, "budgets:write");
         if (denied) return denied;
@@ -171,6 +177,7 @@ export function costTools(): ToolDefinition[] {
         "kept. Audit-logged.",
       inputSchema: { budgetId: z.string(), ...budgetInputSchema.shape },
       risk: "write",
+      permission: "budgets:write",
       handler: async (input, auth) => {
         const denied = await denyUnlessPermitted(auth, "budgets:write");
         if (denied) return denied;
@@ -199,6 +206,7 @@ export function costTools(): ToolDefinition[] {
         "surface confirms with the user before invoking.",
       inputSchema: { budgetId: z.string() },
       risk: "destructive",
+      permission: "budgets:write",
       handler: async (input, auth) => {
         const denied = await denyUnlessPermitted(auth, "budgets:write");
         if (denied) return denied;

@@ -13,6 +13,7 @@ vi.mock("@/tools/registry", () => ({
       description: "Lists resources.",
       inputSchema: { limit: z.number().optional() },
       risk: "read" as const,
+      permission: "resources:read",
       handler,
     },
   ]),
@@ -21,6 +22,13 @@ vi.mock("@/tools/registry", () => ({
 vi.mock("@/api/auth-middleware", () => ({
   hasMembership: vi.fn(),
   listUserOrganizations: vi.fn(),
+}));
+
+// Not the real module: it reaches the permissions resolver, which imports
+// db/client and needs DATABASE_URL at import time.
+const mockAuthorizeToolCall = vi.fn();
+vi.mock("@/tools/permissions", () => ({
+  authorizeToolCall: (...a: unknown[]) => mockAuthorizeToolCall(...a),
 }));
 
 const { buildMcpServer } = await import("@/mcp/server");
@@ -40,7 +48,11 @@ async function connect() {
 }
 
 describe("MCP server org scoping", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Authorized unless a test says otherwise.
+    mockAuthorizeToolCall.mockResolvedValue(null);
+  });
 
   it("exposes an optional org_id on every registry tool", async () => {
     const client = await connect();
@@ -110,6 +122,36 @@ describe("MCP server org scoping", () => {
 
     expect(res.isError).toBe(true);
     expect((res.content as Array<{ text: string }>)[0]!.text).toContain("not a member");
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("checks the tool's permission against the org the call resolved to", async () => {
+    vi.mocked(middleware.hasMembership).mockResolvedValue(true);
+
+    const client = await connect();
+    await client.callTool({ name: "list_resources", arguments: { org_id: "org_other" } });
+
+    // Not the default org: an MCP client that switches orgs mid-session must be
+    // re-authorized against the org it actually named.
+    expect(mockAuthorizeToolCall).toHaveBeenCalledWith(
+      expect.objectContaining({ permission: "resources:read" }),
+      expect.objectContaining({ userId: "user_1", organizationId: "org_other" }),
+    );
+  });
+
+  it("refuses a tool the caller lacks the permission for, without running it", async () => {
+    mockAuthorizeToolCall.mockResolvedValue({
+      content: [{ type: "text", text: "Missing permission: resources:read" }],
+      isError: true,
+    });
+
+    const client = await connect();
+    const res = await client.callTool({ name: "list_resources", arguments: {} });
+
+    expect(res.isError).toBe(true);
+    expect((res.content as Array<{ text: string }>)[0]!.text).toContain(
+      "Missing permission: resources:read",
+    );
     expect(handler).not.toHaveBeenCalled();
   });
 });

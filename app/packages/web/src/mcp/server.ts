@@ -1,6 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { getToolRegistry } from "../tools/registry";
+import { authorizeToolCall } from "../tools/permissions";
 import { hasMembership, listUserOrganizations } from "../api/auth-middleware";
 import type { ToolAuthContext } from "../tools/types";
 import type { McpAuthContext } from "./auth";
@@ -110,6 +111,12 @@ export async function buildMcpServer(auth: McpAuthContext): Promise<McpServer> {
             isError: true,
           };
         }
+
+        // Central permission gate — MCP clients reach these handlers without
+        // passing through the HTTP `requirePermission` middleware, so the
+        // tool's declared permission is enforced here instead.
+        const denied = await authorizeToolCall(tool, callAuth);
+        if (denied) return { content: denied.content, isError: true };
 
         const result = await tool.handler(rest, callAuth);
         return { content: result.content, isError: result.isError ?? false };
