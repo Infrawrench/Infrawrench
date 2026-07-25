@@ -17,6 +17,7 @@ import { createWebWorkflowClient } from "@/lib/workflow-client";
 import { createWebAgentClient } from "@/lib/agent-client";
 import { WebWorkflowsPanel } from "./WebWorkflowsPanel";
 import { WebAgentsPanel } from "./WebAgentsPanel";
+import { WebChatPanel } from "./WebChatPanel";
 
 interface WebWorkspaceTabsViewportProps {
   orgId: string;
@@ -97,10 +98,8 @@ function renderPanel(tab: WorkspaceTab, orgId: string, navigate: ReturnType<type
       );
     case "workflows":
       return <WebWorkflowsPanel client={getWorkflowClient(orgId)} orgId={orgId} />;
-    // Chat never becomes a tab on web (syncWorkspaceRouteFromPath returns null
-    // for /chat) — it renders through the route Outlet instead.
     case "chat":
-      return null;
+      return <WebChatPanel orgId={orgId} conversationId={t.conversationId} />;
     case "resource":
       if (!t.pluginId || !t.resourceTypeId) {
         // Without pluginId/resourceTypeId we can't construct the detail URL.
@@ -131,6 +130,7 @@ function targetsMatch(a: WorkspaceTabTarget, b: WorkspaceTabTarget): boolean {
   if (a.kind !== b.kind) return false;
   if (a.kind === "workflows" && b.kind === "workflows") return a.workflowId === b.workflowId;
   if (a.kind === "agents" && b.kind === "agents") return true;
+  if (a.kind === "chat" && b.kind === "chat") return a.conversationId === b.conversationId;
   if (a.kind === "dashboard" && b.kind === "dashboard") return a.dashboardId === b.dashboardId;
   if (a.kind === "account" && b.kind === "account") return a.accountId === b.accountId;
   if (a.kind === "resource" && b.kind === "resource") {

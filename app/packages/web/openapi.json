@@ -1445,7 +1445,7 @@
         "properties": {
           "kind": {
             "type": "string",
-            "enum": ["dashboard", "account", "resource"]
+            "enum": ["dashboard", "account", "resource", "agents", "workflows", "chat"]
           },
           "dashboardId": {
             "type": "string",
@@ -1459,6 +1459,11 @@
           },
           "resourceId": {
             "$ref": "#/components/schemas/ResourceId"
+          },
+          "conversationId": {
+            "type": "string",
+            "format": "uuid",
+            "example": "00000000-0000-0000-0000-000000000000"
           }
         },
         "required": ["kind"],

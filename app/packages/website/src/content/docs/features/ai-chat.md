@@ -16,7 +16,7 @@ Infrawrench ships an in-app **AI chat** powered by Anthropic Claude. The model h
 
 ## Where it lives
 
-- **In the web app** — `/org/{orgId}/chat`. New conversations are private to the user who created them.
+- **In the web app** — `/org/{orgId}/chat`. Each conversation opens as its own workspace tab, so the tab bar and browser tab title follow the chat you are in, and a streaming reply keeps running while you switch to a dashboard and back. New conversations are private to the user who created them.
 - **In the desktop app** — chat opens as a workspace tab once you sign in to Infrawrench Cloud and pick an organization ([desktop vs web](../core-concepts/desktop-vs-web.md)). The conversation history, the agent loop, and billing all live in the cloud, so the same sessions appear on web and desktop. In local-only mode the chat section is hidden.
 - **In the [mobile app](./mobile-app.md)** — the Chat tab talks to the same cloud conversations, with the same model picker, approval cards, and sleep countdowns as web and desktop.
 - **In the sidebar** (web and desktop) — a **Chat** section lists your recent sessions (like Workflows and Dashboards). Click **+** to start a new chat, click a session to reopen it, or hover and click **×** to archive it. Click the section header to see all chats.

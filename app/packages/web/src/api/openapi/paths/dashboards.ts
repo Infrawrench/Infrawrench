@@ -158,10 +158,12 @@ const ReorderRequest = strict({
 }).openapi("ReorderRequest");
 
 const TabTarget = strict({
-  kind: z.enum(["dashboard", "account", "resource"]),
+  kind: z.enum(["dashboard", "account", "resource", "agents", "workflows", "chat"]),
   dashboardId: Uuid.optional(),
   accountId: Uuid.optional(),
   resourceId: ResourceId.optional(),
+  // Omitted for the conversation-list tab, which is always valid.
+  conversationId: Uuid.optional(),
 }).openapi("TabTarget");
 
 const ValidateTabsRequest = strict({

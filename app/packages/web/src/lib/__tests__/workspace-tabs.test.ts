@@ -190,6 +190,17 @@ describe("syncWorkspaceRouteFromPath", () => {
     });
   });
 
+  it("parses the chat list path", () => {
+    expect(syncWorkspaceRouteFromPath("/org/myorg/chat")).toEqual({ kind: "chat" });
+  });
+
+  it("parses a chat conversation path", () => {
+    expect(syncWorkspaceRouteFromPath("/org/myorg/chat/c1")).toEqual({
+      kind: "chat",
+      conversationId: "c1",
+    });
+  });
+
   it("parses agent SSH key metadata from resource search params", () => {
     (globalThis as Record<string, unknown>).window = {
       location: {

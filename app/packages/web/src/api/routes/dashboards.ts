@@ -20,6 +20,7 @@ import {
   workflows,
   workflowMetrics,
   workflowRuns,
+  chatConversations,
 } from "../../db/schema";
 import {
   getLatestAccountCountsBatch,
@@ -589,6 +590,7 @@ app.post("/workflow-unpin", async (c) => {
 app.post("/validate-tabs", async (c) => {
   requirePermission(c, "dashboards:read");
   const organizationId = c.get("organizationId");
+  const userId = c.get("session").userId;
   const { tabs } = await c.req.json<{
     tabs: Array<{
       id: string;
@@ -597,6 +599,7 @@ app.post("/validate-tabs", async (c) => {
         dashboardId?: string;
         accountId?: string;
         resourceId?: string;
+        conversationId?: string;
       };
     }>;
   }>();
@@ -607,6 +610,26 @@ app.post("/validate-tabs", async (c) => {
     const { target } = tab;
     if (target.kind === "agents" || target.kind === "workflows") {
       validIds.add(tab.id);
+    } else if (target.kind === "chat") {
+      // The conversation-list tab is always valid; a conversation tab only
+      // survives while the caller's own conversation is unarchived.
+      if (!target.conversationId) {
+        validIds.add(tab.id);
+      } else {
+        const [row] = await db
+          .select({ id: chatConversations.id })
+          .from(chatConversations)
+          .where(
+            and(
+              eq(chatConversations.id, target.conversationId),
+              eq(chatConversations.organizationId, organizationId),
+              eq(chatConversations.userId, userId),
+              isNull(chatConversations.archivedAt),
+            ),
+          )
+          .limit(1);
+        if (row) validIds.add(tab.id);
+      }
     } else if (target.kind === "dashboard" && target.dashboardId) {
       const [row] = await db
         .select({ id: dashboards.id, name: dashboards.name })

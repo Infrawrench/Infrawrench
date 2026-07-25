@@ -4,6 +4,7 @@ import {
   dashboardTabTarget,
   accountTabTarget,
   agentsTabTarget,
+  chatTabTarget,
   workflowsTabTarget,
   resourceTabTarget,
   resourceSshTabTarget,
@@ -16,6 +17,7 @@ import {
 export {
   dashboardTabTarget,
   accountTabTarget,
+  chatTabTarget,
   resourceTabTarget,
   resourceSshTabTarget,
   resourceSftpTabTarget,
@@ -63,8 +65,8 @@ export function getWorkspaceNavigateArgs(
         params: { orgId },
         ...(replace ? { replace: true } : {}),
       };
-    // Chat is not a workspace tab on web — it routes like a normal page — but
-    // the shared target union includes it (desktop renders chat as a tab).
+    // Web addresses conversations by path segment; desktop uses a
+    // ?conversation= query param. Both map to the same chat tab target.
     case "chat":
       return target.conversationId
         ? {
@@ -153,6 +155,11 @@ export function syncWorkspaceRouteFromPath(
   }
   if (s[0] === "agents") {
     return agentsTabTarget();
+  }
+  if (s[0] === "chat") {
+    // /chat is the conversation list; /chat/{id} is one conversation. Each
+    // gets its own tab, same as desktop.
+    return chatTabTarget(s[1] ? decodeURIComponent(s[1]) : undefined);
   }
   if (s[0] === "dashboard" && s[1]) {
     return dashboardTabTarget(s[1]);

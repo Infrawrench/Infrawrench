@@ -14,6 +14,7 @@ import {
 import { WorkflowIcon } from "@infrawrench/ui/workflows";
 import { CHAT_CONVERSATIONS_CHANGED_EVENT, type ConversationSummary } from "@infrawrench/ui";
 import { apiGet, apiPost, apiDelete } from "@/lib/api";
+import { chatTabTarget, navigateToWorkspaceTarget } from "@/lib/workspace-tabs";
 import { AddAccountModal } from "./AddAccountModal";
 
 interface ResourceSummary {
@@ -138,10 +139,7 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
     try {
       const created = await apiPost<{ id: string }>(`${apiBase}/chat/conversations`, {});
       window.dispatchEvent(new Event(CHAT_CONVERSATIONS_CHANGED_EVENT));
-      void navigate({
-        to: "/org/$orgId/chat/$conversationId",
-        params: { orgId: orgId!, conversationId: created.id },
-      });
+      void navigateToWorkspaceTarget(navigate, chatTabTarget(created.id), { label: "New chat" });
     } catch (e) {
       console.error("Failed to create chat:", e);
       toast.error("Couldn't create chat", {
@@ -156,9 +154,17 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
       await apiDelete(`${apiBase}/chat/conversations/${id}`);
       setChatSessions((prev) => prev.filter((c) => c.id !== id));
       window.dispatchEvent(new Event(CHAT_CONVERSATIONS_CHANGED_EVENT));
+      // Leave the archived conversation before dropping its tab — the root
+      // route effect re-adds a tab for whatever the URL still points at.
       if (pathname === `/org/${orgId}/chat/${id}`) {
-        void navigate({ to: "/org/$orgId/chat", params: { orgId: orgId! } });
+        await navigate({ to: "/org/$orgId/chat", params: { orgId: orgId! } });
       }
+      const { workspaceTabs, removeWorkspaceTabs } = useUIStore.getState();
+      removeWorkspaceTabs(
+        workspaceTabs.flatMap((tab) =>
+          tab.target.kind === "chat" && tab.target.conversationId === id ? [tab.id] : [],
+        ),
+      );
     } catch (e) {
       console.error("Failed to archive chat:", e);
       toast.error("Couldn't archive chat", {
@@ -464,7 +470,9 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
             <div className="flex items-center justify-between px-3 py-1">
               <button
                 type="button"
-                onClick={() => void navigate({ to: "/org/$orgId/chat", params: { orgId: orgId! } })}
+                onClick={() =>
+                  void navigateToWorkspaceTarget(navigate, chatTabTarget(), { label: "Chat" })
+                }
                 className="text-xs font-medium text-on-surface-muted uppercase tracking-wide hover:text-on-surface-secondary transition-colors"
               >
                 Chat
@@ -493,9 +501,8 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
                   <button
                     type="button"
                     onClick={() =>
-                      void navigate({
-                        to: "/org/$orgId/chat/$conversationId",
-                        params: { orgId: orgId!, conversationId: chat.id },
+                      void navigateToWorkspaceTarget(navigate, chatTabTarget(chat.id), {
+                        label: chat.title,
                       })
                     }
                     className="flex-1 min-w-0 text-left px-3 py-1.5 text-xs"
@@ -518,7 +525,9 @@ export function WebSidebar({ orgId }: WebSidebarProps) {
             {chatSessions.length > 8 && (
               <button
                 type="button"
-                onClick={() => void navigate({ to: "/org/$orgId/chat", params: { orgId: orgId! } })}
+                onClick={() =>
+                  void navigateToWorkspaceTarget(navigate, chatTabTarget(), { label: "Chat" })
+                }
                 className="mx-2 px-3 py-1 text-xs text-on-surface-faint hover:text-on-surface-secondary transition-colors"
               >
                 All chats…
