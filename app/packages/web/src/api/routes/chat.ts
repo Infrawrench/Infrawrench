@@ -210,6 +210,7 @@ app.post("/conversations/:id/messages", async (c) => {
     source: auth.via === "api-key" ? "api" : "chat",
     ...(auth.email !== undefined ? { email: auth.email } : {}),
     ...(auth.apiKeyId !== undefined ? { apiKeyId: auth.apiKeyId } : {}),
+    ...(auth.scopes !== undefined ? { scopes: auth.scopes } : {}),
   };
 
   // Title auto-rename: if conversation still has the default title and the
@@ -293,6 +294,7 @@ app.post("/conversations/:id/pending/:pendingId", async (c) => {
     source: auth.via === "api-key" ? "api" : "chat",
     ...(auth.email !== undefined ? { email: auth.email } : {}),
     ...(auth.apiKeyId !== undefined ? { apiKeyId: auth.apiKeyId } : {}),
+    ...(auth.scopes !== undefined ? { scopes: auth.scopes } : {}),
   };
 
   if (body.action === "reject") {

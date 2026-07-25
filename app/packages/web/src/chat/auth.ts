@@ -2,15 +2,19 @@
  * Chat auth — accepts either:
  *  1. WorkOS session cookie (for the React UI)
  *  2. WorkOS Bearer access token (for browser-side fetch with access tokens)
- *  3. Infrawrench API key (iwk_*) with the `chat:write` scope (programmatic).
+ *  3. Infrawrench API key (iwk_*), programmatic.
  *
- * In all cases produces a {@link ChatAuthResult} pinned to the org in the URL.
- * Returns 401/403 helpers if auth fails or org doesn't match.
+ * In all cases produces a {@link ChatAuthResult} pinned to the org in the URL,
+ * and in all cases the caller must hold the required `chat:read` / `chat:write`
+ * permission — see {@link denyUnlessPermitted}. Returns 401/403 helpers if auth
+ * fails, the org doesn't match, or the permission is missing.
  */
 import type { Context } from "hono";
 import { getCookie } from "hono/cookie";
 import { eq, and } from "drizzle-orm";
 import { workos } from "../auth/workos";
+import { effectivePermissions } from "../auth/effective-permissions";
+import { hasPermission } from "@infrawrench/server-core/permissions/catalog";
 import { authenticateApiRequest, requireScope, verifyWorkosAccessToken } from "../auth/api-auth";
 import { db } from "../db/client";
 import { users, organizationMembers } from "../db/schema";
@@ -21,8 +25,37 @@ interface ChatAuthResult {
   organizationId: string;
   email?: string;
   apiKeyId?: string;
+  /**
+   * The API key's scopes, when authed via API key. Carried through to the tool
+   * layer so a narrowly-scoped key can't act with its owner's full authority.
+   */
+  scopes?: readonly string[];
   /** "session" | "workos-bearer" | "api-key" */
   via: "session" | "workos-bearer" | "api-key";
+}
+
+/**
+ * Enforce `requiredScope` against the principal's effective permissions.
+ *
+ * This runs for every auth path, not just API keys. `requireScope` only ever
+ * looked at a key's stored scopes, so session and OAuth callers reached chat on
+ * membership alone — the `chat:read` / `chat:write` permissions existed in the
+ * catalog but were unenforceable for the UI, which is the surface that
+ * actually matters.
+ *
+ * For key principals this also narrows by the owner's role, so `chat:write` on
+ * a key held by someone without it no longer passes.
+ */
+async function denyUnlessPermitted(
+  c: Context,
+  principal: { userId: string; organizationId: string; scopes?: readonly string[] | undefined },
+  requiredScope: string,
+): Promise<Response | null> {
+  const granted = await effectivePermissions(principal);
+  if (!hasPermission(granted, requiredScope)) {
+    return c.json({ error: `Missing required permission: ${requiredScope}` }, 403);
+  }
+  return null;
 }
 
 async function hasMembership(userId: string, organizationId: string): Promise<boolean> {
@@ -62,9 +95,19 @@ export async function authenticateChat(
       if (auth.organizationId !== pathOrgId) {
         return c.json({ error: "API key belongs to a different organization" }, 403);
       }
+      const denied = await denyUnlessPermitted(
+        c,
+        { userId: auth.userId, organizationId: auth.organizationId, scopes: auth.scopes ?? [] },
+        requiredScope,
+      );
+      if (denied) return denied;
       const result: ChatAuthResult = {
         userId: auth.userId,
         organizationId: auth.organizationId,
+        // Always set, even when empty: `scopes: []` means "this principal is a
+        // key with no scopes", whereas `undefined` means "not a key at all"
+        // and grants the user's full role permissions.
+        scopes: auth.scopes ?? [],
         via: "api-key",
       };
       if (auth.email) result.email = auth.email;
@@ -79,6 +122,12 @@ export async function authenticateChat(
     if (!(await hasMembership(user.id, pathOrgId))) {
       return c.json({ error: "Forbidden — not a member of this organization" }, 403);
     }
+    const denied = await denyUnlessPermitted(
+      c,
+      { userId: user.id, organizationId: pathOrgId },
+      requiredScope,
+    );
+    if (denied) return denied;
     const result: ChatAuthResult = {
       userId: user.id,
       organizationId: pathOrgId,
@@ -116,6 +165,13 @@ export async function authenticateChat(
     if (!(await hasMembership(userId, pathOrgId))) {
       return c.json({ error: "Forbidden — not a member of this organization" }, 403);
     }
+
+    const denied = await denyUnlessPermitted(
+      c,
+      { userId, organizationId: pathOrgId },
+      requiredScope,
+    );
+    if (denied) return denied;
 
     return {
       userId,

@@ -30,6 +30,13 @@ vi.mock("@/api/auth-middleware", () => ({
   ensureUserFromClaims: (...a: unknown[]) => mockEnsureUser(...a),
 }));
 
+// The real module reaches the permissions resolver, which imports db/client
+// and needs DATABASE_URL at import time.
+const mockEffectivePermissions = vi.fn();
+vi.mock("@/auth/effective-permissions", () => ({
+  effectivePermissions: (...a: unknown[]) => mockEffectivePermissions(...a),
+}));
+
 const { authenticateChat } = await import("@/chat/auth");
 
 // Minimal Hono-context stub covering the methods authenticateChat uses.
@@ -62,6 +69,8 @@ describe("authenticateChat", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     process.env["WORKOS_COOKIE_PASSWORD"] = "x".repeat(40);
+    // Permitted unless a test says otherwise.
+    mockEffectivePermissions.mockResolvedValue(["chat:read", "chat:write"]);
   });
 
   describe("API key bearer", () => {
@@ -200,6 +209,107 @@ describe("authenticateChat", () => {
         "chat:read",
       );
       expect((res as Response).status).toBe(401);
+    });
+  });
+
+  /**
+   * The permission is enforced on every path, not just API keys. Session and
+   * OAuth callers previously reached chat on membership alone, which made
+   * `chat:read` / `chat:write` unenforceable for the UI.
+   */
+  describe("chat permission gate", () => {
+    function sealedSession() {
+      mockLoadSealedSession.mockReturnValue({
+        authenticate: vi.fn().mockResolvedValue({
+          authenticated: true,
+          user: { id: "u1", email: "a@b.com" },
+        }),
+      });
+      mockInsert.mockReturnValue({
+        values: vi
+          .fn()
+          .mockReturnValue({ onConflictDoUpdate: vi.fn().mockResolvedValue(undefined) }),
+      });
+    }
+
+    it("403s a session member who lacks the permission", async () => {
+      sealedSession();
+      membershipReturns([{ id: "m1" }]);
+      mockEffectivePermissions.mockResolvedValue(["resources:read"]);
+      const res = await authenticateChat(
+        makeCtx({ cookie: "wos-session=blob" }),
+        "org-1",
+        "chat:write",
+      );
+      expect((res as Response).status).toBe(403);
+    });
+
+    it("403s a session member holding only chat:read on a chat:write call", async () => {
+      sealedSession();
+      membershipReturns([{ id: "m1" }]);
+      mockEffectivePermissions.mockResolvedValue(["chat:read"]);
+      const res = await authenticateChat(
+        makeCtx({ cookie: "wos-session=blob" }),
+        "org-1",
+        "chat:write",
+      );
+      expect((res as Response).status).toBe(403);
+
+      // …but the same principal may still read.
+      const ok = await authenticateChat(
+        makeCtx({ cookie: "wos-session=blob" }),
+        "org-1",
+        "chat:read",
+      );
+      expect(ok).toMatchObject({ userId: "u1", via: "session" });
+    });
+
+    it("403s a WorkOS bearer principal who lacks the permission", async () => {
+      mockVerifyWorkosAccessToken.mockResolvedValue({ sub: "u1", email: "a@b.com" });
+      mockEnsureUser.mockResolvedValue({ id: "u1" });
+      membershipReturns([{ id: "m1" }]);
+      mockEffectivePermissions.mockResolvedValue([]);
+      const res = await authenticateChat(
+        makeCtx({ authorization: "Bearer wos_token" }),
+        "org-1",
+        "chat:read",
+      );
+      expect((res as Response).status).toBe(403);
+    });
+
+    it("403s a scoped key whose owner's role lacks the permission", async () => {
+      // The key carries chat:write, so `requireScope` passes — the owner's
+      // role is what rejects it.
+      mockAuthenticateApiRequest.mockResolvedValue({
+        userId: "u1",
+        organizationId: "org-1",
+        apiKeyId: "k1",
+        scopes: ["chat:write"],
+      });
+      mockRequireScope.mockReturnValue(undefined);
+      mockEffectivePermissions.mockResolvedValue([]);
+      const res = await authenticateChat(
+        makeCtx({ authorization: "Bearer iwk_key" }),
+        "org-1",
+        "chat:write",
+      );
+      expect((res as Response).status).toBe(403);
+    });
+
+    it("scores a key against its scopes, not just the owner's role", async () => {
+      mockAuthenticateApiRequest.mockResolvedValue({
+        userId: "u1",
+        organizationId: "org-1",
+        apiKeyId: "k1",
+        scopes: ["chat:read"],
+      });
+      mockRequireScope.mockReturnValue(undefined);
+      mockEffectivePermissions.mockResolvedValue(["chat:read"]);
+      await authenticateChat(makeCtx({ authorization: "Bearer iwk_key" }), "org-1", "chat:read");
+
+      expect(mockEffectivePermissions).toHaveBeenCalledWith(
+        expect.objectContaining({ userId: "u1", scopes: ["chat:read"] }),
+      );
     });
   });
 });

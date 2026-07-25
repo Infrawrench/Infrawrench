@@ -47,6 +47,16 @@ describe("SYSTEM_ROLE_DEFINITIONS", () => {
     expect(perms).not.toContain("billing:write");
   });
 
+  it("member can use chat", () => {
+    // `authenticateChat` enforces these. They were missing from the member
+    // list while the endpoint checked membership only, so members could always
+    // chat in practice; dropping them here would revoke that for every
+    // existing member rather than fixing anything.
+    const perms = SYSTEM_ROLE_DEFINITIONS.member.permissions;
+    expect(perms).toContain("chat:read");
+    expect(perms).toContain("chat:write");
+  });
+
   it("each definition's key matches its map key", () => {
     for (const [k, def] of Object.entries(SYSTEM_ROLE_DEFINITIONS)) {
       expect(def.key).toBe(k);

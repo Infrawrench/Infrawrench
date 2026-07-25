@@ -46,6 +46,14 @@ export const SYSTEM_ROLE_DEFINITIONS: Record<SystemRoleKey, SystemRoleDefinition
       "ssh-keys:read",
       "bastions:read",
       "billing:read",
+      // Chat was never gated for session callers, so members have always had
+      // it in practice; these were missing from this list rather than
+      // deliberately withheld. Listing them keeps that behaviour now that
+      // `authenticateChat` actually enforces the permission — and makes the
+      // restriction expressible: a custom role that omits `chat:*` now blocks
+      // chat instead of being silently ignored.
+      "chat:read",
+      "chat:write",
     ],
   },
 };
