@@ -112,11 +112,7 @@ function ProfileCard({ profile, onSaved }: { profile: Profile; onSaved: () => Pr
             alt=""
             className="w-14 h-14 rounded-full border border-border flex-shrink-0"
           />
-        ) : (
-          <div className="w-14 h-14 rounded-full border border-border bg-surface-overlay flex items-center justify-center text-lg text-on-surface-tertiary flex-shrink-0">
-            {(profile.firstName ?? profile.email).charAt(0).toUpperCase()}
-          </div>
-        )}
+        ) : null}
 
         <div className="flex-1 space-y-3">
           <div className="grid grid-cols-2 gap-3">

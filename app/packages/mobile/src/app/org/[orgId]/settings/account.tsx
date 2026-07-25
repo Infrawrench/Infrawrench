@@ -154,13 +154,7 @@ export default function AccountScreen() {
         <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
           {me.profilePictureUrl ? (
             <Image source={{ uri: me.profilePictureUrl }} style={styles.avatar} />
-          ) : (
-            <View style={[styles.avatar, styles.avatarFallback]}>
-              <Text style={{ color: colors.textSecondary, fontSize: 20 }}>
-                {(me.firstName ?? me.email).charAt(0).toUpperCase()}
-              </Text>
-            </View>
-          )}
+          ) : null}
           <View style={{ flex: 1, gap: 2 }}>
             <Text style={styles.value}>{me.email}</Text>
             <Text
@@ -330,7 +324,6 @@ export default function AccountScreen() {
 
 const styles = StyleSheet.create({
   avatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: colors.surfaceOverlay },
-  avatarFallback: { alignItems: "center", justifyContent: "center" },
   label: { color: colors.textMuted, fontSize: 12, marginTop: spacing.sm },
   value: { color: colors.text, fontSize: 15 },
   hint: { color: colors.textMuted, fontSize: 12 },
