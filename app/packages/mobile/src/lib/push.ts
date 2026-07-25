@@ -33,48 +33,80 @@ export function configureNotificationHandler(): void {
   });
 }
 
+let registering = false;
+let warnedNoProjectId = false;
+
 export async function registerForPush(api: CloudFetch): Promise<boolean> {
   if (!Device.isDevice) return false; // simulators have no push tokens
-
-  const existing = await Notifications.getPermissionsAsync();
-  let status = existing.status;
-  if (status !== "granted") {
-    status = (await Notifications.requestPermissionsAsync()).status;
-  }
-  if (status !== "granted") return false;
-
-  if (Platform.OS === "android") {
-    await Notifications.setNotificationChannelAsync("incidents", {
-      name: "Incidents & alerts",
-      importance: Notifications.AndroidImportance.HIGH,
-      sound: "default",
-    });
-  }
 
   const projectId: string | undefined =
     (Constants.expoConfig?.extra as { eas?: { projectId?: string } } | undefined)?.eas?.projectId ||
     undefined;
-  const token = (await Notifications.getExpoPushTokenAsync(projectId ? { projectId } : {})).data;
+  if (!projectId) {
+    // Dev builds without EAS config: getExpoPushTokenAsync would throw.
+    if (!warnedNoProjectId) {
+      warnedNoProjectId = true;
+      console.warn(
+        "[push] No EAS projectId configured (set EAS_PROJECT_ID or run `eas init`); skipping push registration.",
+      );
+    }
+    return false;
+  }
 
-  const lastToken = await SecureStore.getItemAsync(LAST_TOKEN_KEY);
-  const deviceId = await SecureStore.getItemAsync(DEVICE_ID_KEY);
-  if (token === lastToken && deviceId) return true; // already registered
+  // getExpoPushTokenAsync re-emits the device token, which would re-trigger
+  // watchPushTokenRotation's listener mid-registration — guard against that.
+  if (registering) return false;
+  registering = true;
+  try {
+    const existing = await Notifications.getPermissionsAsync();
+    let status = existing.status;
+    if (status !== "granted") {
+      status = (await Notifications.requestPermissionsAsync()).status;
+    }
+    if (status !== "granted") return false;
 
-  const res = await registerPushToken(api, {
-    expoPushToken: token,
-    platform: Platform.OS === "ios" ? "ios" : "android",
-    ...(Device.deviceName ? { deviceName: Device.deviceName } : {}),
-  });
-  if (!res) return false;
-  await SecureStore.setItemAsync(DEVICE_ID_KEY, res.id);
-  await SecureStore.setItemAsync(LAST_TOKEN_KEY, token);
-  return true;
+    if (Platform.OS === "android") {
+      await Notifications.setNotificationChannelAsync("incidents", {
+        name: "Incidents & alerts",
+        importance: Notifications.AndroidImportance.HIGH,
+        sound: "default",
+      });
+    }
+
+    const token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
+
+    const lastToken = await SecureStore.getItemAsync(LAST_TOKEN_KEY);
+    const deviceId = await SecureStore.getItemAsync(DEVICE_ID_KEY);
+    if (token === lastToken && deviceId) return true; // already registered
+
+    const res = await registerPushToken(api, {
+      expoPushToken: token,
+      platform: Platform.OS === "ios" ? "ios" : "android",
+      ...(Device.deviceName ? { deviceName: Device.deviceName } : {}),
+    });
+    if (!res) return false;
+    await SecureStore.setItemAsync(DEVICE_ID_KEY, res.id);
+    await SecureStore.setItemAsync(LAST_TOKEN_KEY, token);
+    return true;
+  } finally {
+    registering = false;
+  }
 }
 
 /** Re-register when Expo rotates the push token. */
 export function watchPushTokenRotation(api: CloudFetch): () => void {
-  const sub = Notifications.addPushTokenListener(() => {
-    void registerForPush(api);
+  // Fetching the Expo push token re-emits the current device token, so a
+  // naive listener re-registers in an infinite loop. Only react when the
+  // native token actually changes.
+  let lastNativeToken: string | null = null;
+  const sub = Notifications.addPushTokenListener((devicePushToken) => {
+    const data =
+      typeof devicePushToken.data === "string"
+        ? devicePushToken.data
+        : JSON.stringify(devicePushToken.data);
+    if (data === lastNativeToken) return;
+    lastNativeToken = data;
+    void registerForPush(api).catch(() => {});
   });
   return () => sub.remove();
 }
