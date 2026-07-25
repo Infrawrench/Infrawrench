@@ -1,17 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import type { ServerFrame } from "@infrawrench/client-core";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
 import { WsSession } from "@/lib/ws/WsSession";
 import { Button, Card, SectionTitle } from "@/components/ui";
+import { KeyboardAvoider } from "@/components/KeyboardAvoider";
 import { colors, radii, spacing } from "@/lib/theme";
 
 /**
@@ -120,10 +113,7 @@ export function SqlConsole({ accountId }: { accountId: string }) {
   const columns = firstRow ? Object.keys(firstRow) : [];
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      {...(Platform.OS === "ios" ? { behavior: "padding" as const } : {})}
-    >
+    <KeyboardAvoider style={styles.container}>
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={styles.content}
@@ -195,7 +185,7 @@ export function SqlConsole({ accountId }: { accountId: string }) {
           </Card>
         )}
       </ScrollView>
-    </KeyboardAvoidingView>
+    </KeyboardAvoider>
   );
 }
 

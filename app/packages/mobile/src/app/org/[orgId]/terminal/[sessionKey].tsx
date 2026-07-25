@@ -1,12 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import type { ServerFrame } from "@infrawrench/client-core";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
@@ -18,6 +11,7 @@ import {
 } from "@/components/terminal/TerminalWebView";
 import { SqlConsole } from "@/components/terminal/SqlConsole";
 import { Button, ErrorView } from "@/components/ui";
+import { KeyboardAvoider } from "@/components/KeyboardAvoider";
 import { colors, spacing } from "@/lib/theme";
 
 /**
@@ -180,10 +174,7 @@ function SshTerminal({ accountId, resourceId }: { accountId: string; resourceId:
   }, []);
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      {...(Platform.OS === "ios" ? { behavior: "padding" as const } : {})}
-    >
+    <KeyboardAvoider style={styles.container}>
       <View style={{ flex: 1 }}>
         <TerminalWebView
           ref={termRef}
@@ -206,7 +197,7 @@ function SshTerminal({ accountId, resourceId }: { accountId: string; resourceId:
         )}
       </View>
       <TerminalKeyBar onKey={handleInput} />
-    </KeyboardAvoidingView>
+    </KeyboardAvoider>
   );
 }
 

@@ -1,15 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useLocalSearchParams } from "expo-router";
-import {
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CHAT_MODELS,
@@ -21,6 +12,7 @@ import {
 } from "@infrawrench/client-core";
 import { useOrgApi } from "@/lib/auth/AuthProvider";
 import { Button, ErrorView, LoadingView } from "@/components/ui";
+import { KeyboardAvoider } from "@/components/KeyboardAvoider";
 import { ChatMarkdown } from "@/components/ChatMarkdown";
 import { colors, radii, spacing } from "@/lib/theme";
 
@@ -293,11 +285,7 @@ export default function ConversationScreen() {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: colors.background }}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
-    >
+    <KeyboardAvoider style={{ backgroundColor: colors.background }}>
       <View style={styles.header}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexGrow: 0 }}>
           <View style={styles.modelRow}>
@@ -413,7 +401,7 @@ export default function ConversationScreen() {
           </Text>
         </Pressable>
       </View>
-    </KeyboardAvoidingView>
+    </KeyboardAvoider>
   );
 }
 
