@@ -14,7 +14,7 @@ import { handleK9sSession } from "./src/services/k9s-proxy";
 import { handleK8sPfSession } from "./src/services/k8s-pf-proxy";
 import { handleWorkflowSession } from "./src/services/workflow-ws";
 import { resolveKubeconfig } from "./src/services/k8s-kubeconfig-resolver";
-import { authenticateApiRequest } from "./src/auth/api-auth";
+import { authenticateApiRequest, requireScope } from "./src/auth/api-auth";
 import { validateWsToken } from "./src/services/ws-tokens";
 import { handleMcpHttp } from "./src/mcp/http-handler";
 import { migrateMetrics } from "@infrawrench/server-core/clickhouse/migrate";
@@ -142,14 +142,29 @@ async function start() {
       return;
     }
 
-    // Try short-lived session token first (from web app)
+    // Try short-lived session token first (from web app). Those are minted by
+    // POST /ws-token, which already gates on `resources:execute`.
     let auth = await validateWsToken(token);
     if (!auth) {
-      // Fall back to API key auth (from desktop sync client)
+      // Fall back to API key auth (from desktop sync client). Unlike the
+      // ws-token path there is no prior permission check, so enforce the same
+      // `resources:execute` scope here — every channel this socket can open
+      // (SSH, SQL, k8s exec, port-forward, workflow runs) reaches customer
+      // infrastructure, and a read-scoped key must not get there.
       const fakeRequest = new Request("http://localhost", {
         headers: { authorization: `Bearer ${token}` },
       });
-      auth = await authenticateApiRequest(fakeRequest);
+      const keyAuth = await authenticateApiRequest(fakeRequest);
+      if (keyAuth) {
+        try {
+          requireScope(keyAuth, "resources:execute");
+          auth = keyAuth;
+        } catch {
+          socket.write("HTTP/1.1 403 Forbidden\r\n\r\n");
+          socket.destroy();
+          return;
+        }
+      }
     }
     if (!auth) {
       socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
