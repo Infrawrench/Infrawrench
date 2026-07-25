@@ -10,7 +10,7 @@ concurrency:
 
 jobs:
   r2-setup:
-    runs-on: blacksmith-4vcpu-ubuntu-2404-arm
+    runs-on: ubuntu-24.04-arm
     name: Ensure R2 lifecycle policy
     steps:
       - name: Apply lifecycle rule (7-day TTL on desktop-builds/)
@@ -41,8 +41,8 @@ jobs:
             --endpoint-url "${R2_ENDPOINT}"
 
   linux-x64-build:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
-    name: Build on blacksmith-4vcpu-ubuntu-24.04
+    runs-on: ubuntu-24.04
+    name: Build on ubuntu-24.04
     needs: r2-setup
     steps:
       - name: Checkout code
@@ -90,7 +90,7 @@ jobs:
             --endpoint-url "${R2_ENDPOINT}"
 
   check-if-release:
-    runs-on: blacksmith-4vcpu-ubuntu-2404-arm
+    runs-on: ubuntu-24.04-arm
     name: Check if this is a new tag and get the release notes if it is
     outputs:
       package-version: ${{ steps.check-if-release.outputs.PACKAGE_VERSION }}
@@ -125,8 +125,8 @@ jobs:
           fi
 
   linux-arm64-build:
-    runs-on: blacksmith-4vcpu-ubuntu-2404-arm
-    name: Build on blacksmith-4vcpu-ubuntu-24.04-arm
+    runs-on: ubuntu-24.04-arm
+    name: Build on ubuntu-24.04-arm
     needs: [check-if-release, r2-setup]
     if: needs.check-if-release.outputs.package-version != ''
     steps:
@@ -176,7 +176,7 @@ jobs:
   macos-build:
     strategy:
       matrix:
-        platform: [macos-15-intel, blacksmith-6vcpu-macos-15]
+        platform: [macos-15-intel, macos-15]
     runs-on: ${{ matrix.platform }}
     name: Build on ${{ matrix.platform }}
     needs: [check-if-release, r2-setup]
@@ -275,7 +275,7 @@ jobs:
   windows-build:
     strategy:
       matrix:
-        platform: [blacksmith-4vcpu-windows-2025, windows-11-arm]
+        platform: [windows-2025-vs2026, windows-11-arm]
     runs-on: ${{ matrix.platform }}
     name: Build on ${{ matrix.platform }}
     needs: [check-if-release, r2-setup]
@@ -332,7 +332,7 @@ jobs:
             --endpoint-url "${R2_ENDPOINT}"
 
   publish-release:
-    runs-on: blacksmith-4vcpu-ubuntu-2404-arm
+    runs-on: ubuntu-24.04-arm
     name: Publish release
     needs: [check-if-release, linux-arm64-build, linux-x64-build, macos-build, windows-build]
     if: needs.check-if-release.outputs.package-version != ''
@@ -369,7 +369,7 @@ jobs:
           mkdir dist
 
           # macOS — dmg + zip per arch (zip is electron-updater's payload).
-          mv dist-blacksmith-6vcpu-macos-15/*.dmg dist-blacksmith-6vcpu-macos-15/*.zip dist/
+          mv dist-macos-15/*.dmg dist-macos-15/*.zip dist/
           mv dist-macos-15-intel/*.dmg dist-macos-15-intel/*.zip dist/
 
           # Linux — AppImage/deb already named via artifactName / electron-builder defaults.
@@ -377,26 +377,26 @@ jobs:
           mv dist-linux-x64/*.AppImage dist-linux-x64/*.deb dist-linux-x64/*.snap dist/
 
           # Windows — installers already named correctly via win.artifactName.
-          mv dist-blacksmith-4vcpu-windows-2025/*.exe dist/
+          mv dist-windows-2025-vs2026/*.exe dist/
           mv dist-windows-11-arm/*.exe dist/
       - name: Merge updater metadata
         run: |
           set -eo pipefail
           # Mac: union arm64 + x64 latest-mac.yml into a single file.
           node repo/app/packages/desktop/scripts/merge-update-yml.mjs \
-            dist-blacksmith-6vcpu-macos-15/latest-mac.yml \
+            dist-macos-15/latest-mac.yml \
             dist-macos-15-intel/latest-mac.yml \
             dist/latest-mac.yml
           # Windows: union x64 + arm64 latest.yml into a single file.
           node repo/app/packages/desktop/scripts/merge-update-yml.mjs \
-            dist-blacksmith-4vcpu-windows-2025/latest.yml \
+            dist-windows-2025-vs2026/latest.yml \
             dist-windows-11-arm/latest.yml \
             dist/latest.yml
           # Linux YMLs are already arch-suffixed by electron-builder; ship as-is.
           mv dist-linux-x64/latest-linux.yml dist/
           mv dist-linux-arm64/latest-linux-arm64.yml dist/
       - name: Clean staging dirs
-        run: rm -rf dist-blacksmith-6vcpu-macos-15 dist-macos-15-intel dist-linux-arm64 dist-linux-x64 dist-blacksmith-4vcpu-windows-2025 dist-windows-11-arm repo
+        run: rm -rf dist-macos-15 dist-macos-15-intel dist-linux-arm64 dist-linux-x64 dist-windows-2025-vs2026 dist-windows-11-arm repo
       - name: Create release
         uses: ncipollo/release-action@v1
         with:
